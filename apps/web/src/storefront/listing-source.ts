@@ -5,11 +5,14 @@ import {
   categoryOf,
   readOnce,
   slugsOf,
+  trailOf,
+  countsOf,
   treeOf,
   type TreeRow,
 } from './category-tree.ts';
 import { cardsOf, isObject } from './home-source.ts';
 import type { ApiRead } from './api.ts';
+import type { PhotoUrl } from './photos.ts';
 import type { Category, ShelfCard } from './types.ts';
 
 // The category and search pages' reads with the API on: `GET catalog/categories` to turn the URL's
@@ -59,8 +62,23 @@ export async function liveCategory(
   if (rows === undefined) return undefined;
   const found = findInTree(rows, code, sub);
   if (found === undefined) return null;
+  const trail = trailOf(rows, found.node);
+  const { shortDescription, seo, hasLiveProducts } = found.node;
+  const counts = countsOf(rows, found.node);
   return {
-    category: categoryOf(rows, found.node),
+    category: {
+      ...categoryOf(rows, found.node),
+      page: {
+        trail: trail.map((r) => ({ code: r.slug, name: r.name })),
+        depth: trail.length,
+        ...(shortDescription === undefined ? {} : { shortDescription }),
+        ...(seo === undefined ? {} : { seo }),
+        ...(hasLiveProducts === undefined ? {} : { hasLiveProducts }),
+        ...(counts === undefined
+          ? {}
+          : { childCounts: counts.children, directCount: counts.direct }),
+      },
+    },
     ...(found.child === undefined
       ? {}
       : { child: { code: found.child.slug, name: found.child.name } }),
@@ -71,6 +89,8 @@ export interface LiveQuery {
   readonly q?: string;
   readonly category?: string;
   readonly subcategory?: string;
+  /** Only the products on the category itself ("Other {name}", categories C6). */
+  readonly direct?: boolean;
   readonly page: number;
   readonly pageSize: number;
 }
@@ -88,6 +108,7 @@ export interface LivePage {
 export async function liveProducts(
   query: LiveQuery,
   read: Reader = readOnce,
+  photo: PhotoUrl | null = null,
 ): Promise<LivePage | undefined> {
   const rows = await treeRows(read);
   if (rows === undefined) return undefined;
@@ -97,6 +118,7 @@ export async function liveProducts(
     const found = findInTree(rows, query.category, query.subcategory);
     if (found === undefined) return { items: [], hasMore: false };
     params.set('category', (found.child ?? found.node).id);
+    if (query.direct === true) params.set('direct', 'true');
   }
   params.set('page', String(query.page));
   params.set('pageSize', String(query.pageSize));
@@ -110,5 +132,5 @@ export async function liveProducts(
   const items = (body.items as unknown[]).filter(
     (item) => isObject(item) && typeof item.productId === 'string' && UUID.test(item.productId),
   );
-  return { items: cardsOf({ items }, slugsOf(rows)), hasMore: body.hasMore };
+  return { items: cardsOf({ items }, slugsOf(rows), photo), hasMore: body.hasMore };
 }

@@ -108,6 +108,7 @@ export function SelectedGallery() {
       category={product.category}
       photos={product.photos}
       thumbs={product.photoThumbs}
+      sets={product.photoSets}
       certifications={offer.certifications.filter((badge) => badge.sellerClaim !== true)}
       special={offer.wasPrice !== undefined}
     />

@@ -3,6 +3,7 @@
 
 export const READ_PERMISSION = 'catalog.category-tree.view';
 export const EDIT_PERMISSION = 'catalog.category-tree.edit';
+export const RESTRUCTURE_PERMISSION = 'catalog.category-tree.restructure';
 export const CATEGORIES_PATH = '/catalog/categories';
 export const API_CATEGORIES = 'catalog/admin/categories';
 
@@ -134,4 +135,6 @@ export interface ImpactBody {
   readonly offersWithActiveTag: number;
   readonly descendants: number;
   readonly complete: boolean;
+  /** Present when a target was named: the products whose feature set would change. */
+  readonly featureSetChanges?: number;
 }
