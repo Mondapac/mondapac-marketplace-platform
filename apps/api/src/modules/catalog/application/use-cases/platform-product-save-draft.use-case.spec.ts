@@ -26,6 +26,7 @@ import type { ClaimTextMatcher, ClaimTextToMatch } from '../ports/claim-text-mat
 import type { ProductRepository } from '../ports/product.repository';
 import type { RateCounter, RateCounterRepository } from '../ports/rate-counter.repository';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
+import { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { SaveDraft } from '../working-copy/save-draft.service';
 import { SaveWorkingCopy } from '../working-copy/save-working-copy.service';
 import { PlatformImportRowSave } from './platform-import-row-save.use-case';
@@ -169,7 +170,14 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
       clock,
       ids,
     });
-    const saveDraft = new SaveDraft({ unitOfWork, check, save, workingCopies, policy });
+    const saveDraft = new SaveDraft({
+      unitOfWork,
+      check,
+      save,
+      workingCopies,
+      policy,
+      contentFilter: new ContentFilter(markets),
+    });
     const useCase = new PlatformProductSaveDraft(gate, { saveDraft });
     const importRow = new PlatformImportRowSave(gate, { saveDraft });
     return { useCase, importRow, stored, copies, matched, check, counters };
@@ -314,6 +322,28 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
       },
     ]);
     expect(JSON.stringify([...r.copies.values()])).not.toContain('‮');
+  });
+
+  it("does not write a text that holds a term of the Market's content filter", async () => {
+    const r = rig();
+    const product = newProduct();
+    r.stored.set(product.state.id, product);
+    const blocked = code === 'AU' ? 'what the Shit' : 'a ZZBAD one';
+
+    const saved = await r.useCase.execute(
+      contextOf('admin'),
+      request(product.state.id, {
+        texts: { [locale]: { name: 'Dates', description: blocked } },
+      }),
+    );
+
+    expect(saved.ok && saved.value.refusedFields).toEqual([
+      { field: 'product.description', ref: null, locale, code: 'text.blocked-term' },
+    ]);
+    expect(JSON.stringify([...r.copies.values()])).not.toMatch(/shit|zzbad/i);
+    expect(r.copies.get(product.state.id)?.content).toEqual({
+      texts: { [locale]: { name: 'Dates' } },
+    });
   });
 
   it.each([

@@ -119,6 +119,27 @@ describe('brand names and keys', () => {
 });
 
 describe('parseBrandContent', () => {
+  it('refuses a summary and a logo alt text that the content filter blocks', () => {
+    const blocked = (text: string): boolean => text.includes('badword');
+    const result = parseBrandContent(
+      {
+        name: 'Acme',
+        summary: 'a badword here',
+        logoImageId: '11111111-1111-4111-8111-111111111111',
+        logoAlt: 'badword logo',
+      },
+      blocked,
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: [
+        { path: 'summary', code: 'blocked-term' },
+        { path: 'logoAlt', code: 'blocked-term' },
+      ],
+    });
+    expect(parseBrandContent({ name: 'Acme', summary: 'fine' }, blocked).ok).toBe(true);
+  });
+
   it('accepts a minimal brand and a full one', () => {
     expect(parseBrandContent({ name: ' Acme ' })).toEqual({
       ok: true,

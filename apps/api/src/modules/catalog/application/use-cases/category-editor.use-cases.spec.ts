@@ -23,6 +23,7 @@ import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
+import { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_CATEGORY_TREE_EDIT } from '../../contracts/permissions';
@@ -187,6 +188,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
       outbox,
       clock,
       ids,
+      contentFilter: new ContentFilter(markets),
     };
     return {
       create: new CategoryCreate(gate, deps),
@@ -347,6 +349,27 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
       );
       expect(store.rows.size).toBe(0);
       expect(tree.version).toBe(1);
+    });
+
+    it("refuses a term of the Market's content filter, naming the paths and never the words", async () => {
+      const bad = code === 'AU' ? 'shit' : 'zzbad';
+      const answer = await build().create.execute(context(), {
+        slug: 'rice',
+        texts: text('Rice', { shortDescription: `so ${bad}`, keywords: ['grain', bad] }),
+        seo: { title: `${bad} rice` },
+        treeVersion: 1,
+      });
+      expect(answer).toEqual(
+        err({
+          code: 'validation.failed',
+          fields: [
+            { path: `texts.${english}.shortDescription`, code: 'blocked-term' },
+            { path: `texts.${english}.keywords.1`, code: 'blocked-term' },
+            { path: 'seo.title', code: 'blocked-term' },
+          ],
+        }),
+      );
+      expect(store.rows.size).toBe(0);
     });
 
     it('fails closed when the vocabulary does not cover a locale, or cannot be read', async () => {
