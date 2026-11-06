@@ -37,7 +37,7 @@ const product = (content: Record<string, unknown>): ProductView => ({
   lastChangedAt: '2026-10-01T00:00:00Z',
   createdAt: '2026-10-01T00:00:00Z',
   pendingSubmittedAt: null,
-  form: { taxCategoryCodes: [], fields: [], categories: [] },
+  form: { taxCategoryCodes: [], units: [], fields: [], categories: [] },
   workingCopy: { content, lastSavedAt: '2026-10-01T00:00:00Z', baseRevisionId: null },
   published: null,
   pending: null,

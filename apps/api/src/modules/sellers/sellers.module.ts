@@ -29,8 +29,10 @@ import { SELLER_HEALTH_SIGNALS } from './application/ports/seller-health-signals
 import { SELLER_HEALTH_STORE } from './application/ports/seller-health.store';
 import { SellerHealthQueueRead } from './application/use-cases/seller-health-queue.use-case';
 import { SellerHealthRead } from './application/use-cases/seller-health-read.use-case';
+import { OwnSellerHealthController } from './presentation/own-seller-health.controller';
 import { SellerHealthController } from './presentation/seller-health.controller';
 import { PurgeSellerHealth } from './application/use-cases/purge-seller-health.use-case';
+import { RefreshOwnSellerHealth } from './application/use-cases/refresh-own-seller-health.use-case';
 import { RequestSellerHealthRecalculation } from './application/use-cases/request-seller-health-recalculation.use-case';
 import { RunSellerHealthRequests } from './application/use-cases/run-seller-health-requests.use-case';
 import { RunSellerHealth } from './application/use-cases/run-seller-health.use-case';
@@ -341,6 +343,7 @@ const REVIEW_DECISION_PORTS = {
     SellerListController,
     ServiceAreaNamesController,
     SellerHealthController,
+    OwnSellerHealthController,
     StoreSettingsController,
     OwnZoneController,
     PublicStoreController,
@@ -872,6 +875,13 @@ const REVIEW_DECISION_PORTS = {
       clock: true,
     }),
     useCaseProvider(RequestSellerHealthRecalculation, {
+      unitOfWork: true,
+      healthRoster: true,
+      healthRequests: true,
+      ids: true,
+      clock: true,
+    }),
+    useCaseProvider(RefreshOwnSellerHealth, {
       unitOfWork: true,
       healthRoster: true,
       healthRequests: true,

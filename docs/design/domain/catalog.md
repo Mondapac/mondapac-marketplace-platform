@@ -232,13 +232,19 @@ interface AttributeSchema {
 }
 interface AttributeField {
   readonly code: string;
-  readonly dataType: 'text' | 'long-text' | 'integer' | 'decimal' | 'boolean' | 'select' | 'multi-select' | 'date';
+  readonly dataType: 'text' | 'long-text' | 'integer' | 'decimal' | 'boolean' | 'select' | 'multi-select' | 'date' | 'measure';
   readonly localizable: boolean;       // value per locale of the Market (CAT-02; no per-channel value)
   readonly required: boolean;          // from the family group
   readonly isVariantOption: boolean;   // a select used to define variants (configurable)
   readonly material: boolean;          // ADR-0012 d3; drives 5.7
   readonly claimChecked: true;         // every text value and option label reaches 6 (brief s5 default-deny)
   readonly bounds: { maxLength?: number; min?: number; max?: number; options?: readonly OptionRef[] };
+  // `measure` only (attributes A3): a number with a unit. The value is `{ value, unit }`: `value` is
+  // decimal text in the dimension's base unit (g, ml, mm, count), `unit` is the seller's choice from
+  // `measure.units`. `min` and `max` are in base units. A value must show in its unit with at most
+  // `decimals` places. Issues: attribute.type, attribute.unit-unknown, attribute.precision,
+  // attribute.out-of-range. The Market lists the units it offers (labels per locale) in `catalog.units`.
+  readonly measure?: { dimension: 'mass' | 'volume' | 'length' | 'count'; units: readonly string[]; defaultUnit: string; decimals: number };
 }
 validate(schema: AttributeSchema, values: AttributeValues, locales: readonly Locale[]): ValidationResult;
 ```

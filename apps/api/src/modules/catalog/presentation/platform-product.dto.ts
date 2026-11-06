@@ -1,4 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  OwnProductForm,
+  OwnProductOptionsLocales,
+  OwnVariantView,
+  OwnWorkingCopyView,
+} from './own-reads.dto';
 
 // Bodies and answers of the platform product routes (catalog design 4.2, 8.2; CAT-10, CAT-41;
 // slice 6). Ids and codes only: an answer never carries a text the admin typed, except in the
@@ -140,6 +146,40 @@ export class PlatformProductSubmitted {
 
   @ApiProperty({ description: "An admin's revision publishes at once." })
   published!: boolean;
+}
+
+export class PlatformProductOptionsView {
+  @ApiProperty({ type: [String], description: 'The product types the Market offers.' })
+  productTypes!: string[];
+  @ApiProperty({ type: OwnProductOptionsLocales }) locales!: OwnProductOptionsLocales;
+}
+
+export class PlatformRevisionView {
+  @ApiProperty({ format: 'uuid' }) revisionId!: string;
+  @ApiProperty() revisionNo!: number;
+  @ApiProperty() submittedAt!: string;
+  @ApiProperty({ type: 'object', additionalProperties: true, description: 'The frozen content.' })
+  content!: Record<string, unknown>;
+}
+
+export class PlatformProductView {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ example: 'P00000001' }) productCode!: string;
+  @ApiProperty() typeCode!: string;
+  @ApiProperty() familyCode!: string;
+  @ApiProperty({ description: 'single (one fixed variant) or configurable.' })
+  variantModel!: string;
+  @ApiProperty() status!: string;
+  @ApiProperty({ type: [OwnVariantView] }) variants!: OwnVariantView[];
+  @ApiProperty({ description: "The Market's cap on non-retired variants." }) maxVariants!: number;
+  @ApiProperty() lastChangedAt!: string;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty({ type: OwnProductForm }) form!: OwnProductForm;
+  @ApiProperty({ type: OwnProductOptionsLocales }) locales!: OwnProductOptionsLocales;
+  @ApiProperty({ nullable: true, type: OwnWorkingCopyView })
+  workingCopy!: OwnWorkingCopyView | null;
+  @ApiProperty({ nullable: true, type: PlatformRevisionView })
+  published!: PlatformRevisionView | null;
 }
 
 /** The body of Add sizes (catalog design 4.2a; variants V9). A closed object. */
