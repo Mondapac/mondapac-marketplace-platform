@@ -118,6 +118,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/seller/team/accounts/:id/role',
     'identity/seller/team/accounts/:id/remove',
     'catalog/seller/products/:id/submit',
+    // Turn a Simple product into one with sizes, once (catalog, variants V9).
+    'catalog/seller/products/:id/add-sizes',
     // Ask for a value a select field does not offer (catalog, attributes A5).
     'catalog/seller/products/:id/attribute-suggestions',
     'catalog/seller/products/:id/images',

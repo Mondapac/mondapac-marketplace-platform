@@ -47,6 +47,8 @@ export default async function EditProductPage({
       <h1 className="mb-4 text-2xl font-semibold">{page.body.productCode}</h1>
       <div className="max-w-(--mp-size-form-max)">
         <EditForm
+          // Add sizes changes the product under the form: the form starts again from what is read.
+          key={`${page.body.variantModel}-${page.body.version ?? 0}`}
           product={page.body}
           photos={photos.kind === 'ok' ? photos.body.images : null}
           locales={options.body.locales.supported}

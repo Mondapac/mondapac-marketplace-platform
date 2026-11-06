@@ -1068,6 +1068,8 @@
         "remove-body": "{count, plural, one {This variant has live prices and stock. Removing it ends them. Adding it again later starts from empty.} other {These variants have live prices and stock. Removing them ends them. Adding them again later starts from empty.}}",
         "remove-confirm": "Remove",
         "step-details": "4. Barcode, shipping and photos for each variant",
+        "step-details-adding": "3. Barcode, shipping and photos for each variant",
+        "axis-adding": "{type} (being added)",
         "details-help": "All optional. Shipping left empty uses the product's own values. Photos come from the product's photos above.",
         "details-none": "Tick a combination first.",
         "gtin": "Barcode (GTIN)",
@@ -1184,6 +1186,22 @@
           "approved": "A reviewer added “{label}” to the list. Pick it above.",
           "mapped": "A reviewer matched “{label}” to a value already on the list. Pick that value above."
         }
+      },
+      "second": {
+        "title": "Add a second type",
+        "help": "This product comes in one type today. You can add one more, such as colour next to size. You can do this once.",
+        "start": "Add a second type",
+        "pick": "New type",
+        "choose": "Choose",
+        "add": "Add this type",
+        "cancel": "Cancel",
+        "values-title": "2. Second type: {type}",
+        "review": "Adding a second type goes to review before it is live. It changes how every variant is named.",
+        "no-review": "Adding a second type is published when you submit, like your other changes. It changes how every variant is named.",
+        "values-help": "Choose the {type} of every variant. All are required.",
+        "value-for": "{type} of {variant}",
+        "remove": "Don't add a second type",
+        "missing": "Choose the new type's value for every variant before you submit."
       }
     },
     "offer-edit": {
@@ -1332,6 +1350,58 @@
         "send": "Send suggestion",
         "cancel": "Cancel",
         "value-exists": "That value is already on the list. Pick it in the product form."
+      }
+    },
+    "addSizes": {
+      "start": "Add sizes",
+      "card-help": "This product is sold in one size. Add sizes to sell it in more than one size, colour or other type.",
+      "save-first": "Save your changes before you add sizes.",
+      "title": "Add sizes",
+      "intro": "This product becomes a product with sizes. It keeps its price and stock.",
+      "permanent": "This can't be undone.",
+      "waiting": "A change of this product is waiting for review. If you add sizes, the waiting change is set aside. Its content stays in your draft, and you can submit it again later.",
+      "waiting-agree": "Set aside the change that is waiting",
+      "step-types": "1. What does this product come in?",
+      "types-help": "Choose up to {max} types, such as size or colour.",
+      "step-values": "2. What is this product now?",
+      "values-help": "The product you have today becomes one of the sizes. Choose its value for each type. You add the other sizes next.",
+      "value-of": "This product's {type}",
+      "note-types": "Choose at least one type to continue.",
+      "note-values": "Choose a value for every type to continue.",
+      "note-agree": "Agree to set aside the waiting change to continue.",
+      "choose": "Choose",
+      "cancel": "Cancel",
+      "confirm": "Add sizes",
+      "done": "Sizes added. Now add the other sizes.",
+      "reload": "Reload the product",
+      "error": {
+        "not-simple": "This product already has sizes.",
+        "pending-exists": "A change of this product is waiting for review. Agree to set it aside above, then try again.",
+        "type-not-allowed": "Your seller account can't sell products with sizes.",
+        "stale": "The product changed somewhere else. Reload it and try again.",
+        "family-invalid": "The product's category is not set up for sizes yet. Try again later.",
+        "not-editable": "This product can't be changed now. Reload it to see its state.",
+        "not-found": "This product was not found.",
+        "not-eligible": "Your seller account can't change products right now.",
+        "denied": "You don't have permission to edit products.",
+        "unavailable": "Products are unavailable right now. Try again later.",
+        "throttled": "Too many requests. Try again in {seconds} seconds.",
+        "csrf": "Your session expired. Reload the page and try again.",
+        "invalid": "Check the types and values and try again.",
+        "unknown": "Something went wrong. Try again."
+      },
+      "issue": {
+        "variants": {
+          "axes-none": "Choose at least one type.",
+          "axes-too-many": "This marketplace allows fewer types than you chose.",
+          "axes-duplicate": "A type was chosen twice.",
+          "axes-unknown": "A type you chose is not available for this product.",
+          "axes-locked": "The types of this product can't be changed.",
+          "option-missing": "Choose a value for every type.",
+          "option-unknown": "A value you chose is not available.",
+          "option-not-in-family": "A value you chose is not available for this product.",
+          "option-attribute-missing": "Choose a value for every type."
+        }
       }
     }
   },

@@ -172,6 +172,16 @@ export class PlatformProductView {
   @ApiProperty() status!: string;
   @ApiProperty({ type: [OwnVariantView] }) variants!: OwnVariantView[];
   @ApiProperty({ description: "The Market's cap on non-retired variants." }) maxVariants!: number;
+  @ApiProperty({ description: "The Market's cap on the options a product varies on (1 or 2)." })
+  maxAxes!: number;
+  @ApiProperty({ description: 'The product version, to send back with Add sizes.' })
+  version!: number;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'When the revision that waits for review was submitted; null when none waits.',
+  })
+  pendingSubmittedAt!: string | null;
   @ApiProperty() lastChangedAt!: string;
   @ApiProperty() createdAt!: string;
   @ApiProperty({ type: OwnProductForm }) form!: OwnProductForm;

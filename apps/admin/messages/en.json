@@ -2658,13 +2658,85 @@
         "csrf": "Your session has changed. Reload the page.",
         "unavailable": "The product service is unavailable. Try again shortly.",
         "unknown": "Something went wrong. Try again.",
-        "partial": "The new variants were created but the draft wasn't saved with them. Save again."
+        "partial": "The new variants were created but the draft wasn't saved with them. Save again.",
+        "second-missing": "Choose the new type's value for every variant before you publish."
       },
       "leave": {
         "title": "Leave without saving?",
         "message": "You have changes that are not saved. If you leave this page, they are lost.",
         "stay": "Stay on page",
         "leave": "Leave page"
+      },
+      "addSizes": {
+        "start": "Add sizes",
+        "card-help": "This product is sold in one size. Add sizes to sell it in more than one size, colour or other type.",
+        "save-first": "Save your changes before you add sizes.",
+        "title": "Add sizes",
+        "intro": "This product becomes a product with sizes. It keeps its prices and stock.",
+        "permanent": "This can't be undone.",
+        "loading": "Checking which offers are affected",
+        "impact-failed": "We could not check which offers are affected, so sizes can't be added now. Close this and try again.",
+        "off-sale": "{count, plural, one {1 offer of another seller will go off sale because that seller can't sell products with sizes.} other {# offers of other sellers will go off sale because those sellers can't sell products with sizes.}}",
+        "off-sale-none": "No offers of other sellers are affected.",
+        "count-changed": "The number changed from {before} to {count}. Check it and confirm again.",
+        "waiting": "A change of this product is waiting for review. If you add sizes, the waiting change is set aside. Its content stays in the draft, and you can publish it again later.",
+        "waiting-agree": "Set aside the change that is waiting",
+        "step-types": "1. What does this product come in?",
+        "types-help": "Choose up to {max} types, such as size or colour.",
+        "step-values": "2. What is this product now?",
+        "values-help": "The product as it is today becomes one of the sizes. Choose its value for each type. Add the other sizes next.",
+        "value-of": "This product's {type}",
+        "note-types": "Choose at least one type to continue.",
+        "note-values": "Choose a value for every type to continue.",
+        "note-agree": "Agree to set aside the waiting change to continue.",
+        "choose": "Choose",
+        "cancel": "Cancel",
+        "confirm": "Add sizes",
+        "confirm-again": "Confirm with the new number",
+        "done": "Sizes added. Now add the other sizes.",
+        "reload": "Read the product again",
+        "error": {
+          "not-simple": "This product already has sizes.",
+          "pending-exists": "A change of this product is waiting for review. Agree to set it aside above, then try again.",
+          "type-not-allowed": "Products with sizes are not offered in this market.",
+          "stale": "The product changed somewhere else. Read it again and try again.",
+          "count-changed": "The number of offers affected changed. Check the new number and confirm again.",
+          "family-invalid": "The product's category is not set up for sizes yet. Try again later.",
+          "not-editable": "This product can't be changed now. Read it again to see its state.",
+          "not-found": "This product was not found.",
+          "denied": "You don't have permission to edit platform products.",
+          "unavailable": "Products are unavailable right now. Try again later.",
+          "throttled": "Too many requests. Try again in {seconds} seconds.",
+          "csrf": "Your session expired. Reload the page and try again.",
+          "invalid": "Check the types and values and try again.",
+          "unknown": "Something went wrong. Try again."
+        },
+        "issue": {
+          "variants": {
+            "axes-none": "Choose at least one type.",
+            "axes-too-many": "This market allows fewer types than you chose.",
+            "axes-duplicate": "A type was chosen twice.",
+            "axes-unknown": "A type you chose is not available for this product.",
+            "axes-locked": "The types of this product can't be changed.",
+            "option-missing": "Choose a value for every type.",
+            "option-unknown": "A value you chose is not available.",
+            "option-not-in-family": "A value you chose is not available for this product.",
+            "option-attribute-missing": "Choose a value for every type."
+          }
+        }
+      },
+      "second": {
+        "title": "Add a second type",
+        "help": "This product comes in one type today. You can add one more, such as colour next to size. You can do this once.",
+        "start": "Add a second type",
+        "pick": "New type",
+        "choose": "Choose",
+        "add": "Add this type",
+        "cancel": "Cancel",
+        "values-title": "Second type: {type}",
+        "review": "When you publish, every variant gets a new name.",
+        "values-help": "Choose the {type} of every variant above. All are required.",
+        "remove": "Don't add a second type"
       }
     }
   },
