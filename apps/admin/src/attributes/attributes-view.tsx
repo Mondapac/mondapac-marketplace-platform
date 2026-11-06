@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { AttributesTab } from './attributes-tab.tsx';
 import { FeatureSetsTab } from './feature-sets-tab.tsx';
+import { MissingDetailsTab } from './missing-details-tab.tsx';
 import { SuggestionsTab } from './suggestions-tab.tsx';
 import { WaitingTab } from './waiting-tab.tsx';
 import { ATTRIBUTES_PATH, BRANDS_PATH, type Tab } from './types.ts';
@@ -12,7 +13,7 @@ import { ATTRIBUTES_PATH, BRANDS_PATH, type Tab } from './types.ts';
 /**
  * The Attributes page (attributes plan 16, package A1): four tabs. Attributes and Feature sets
  * are a list with the chosen row's details beside it (below it on a narrow screen); Brands is the
- * brands page; Waiting for you holds the requests to turn off Material (A2 part 3) and the sellers' value
+ * brands page; Missing details is the report of products missing a required detail (A4); Waiting for you holds the requests to turn off Material (A2 part 3) and the sellers' value
  * suggestions (A5). An admin with `catalog.attribute.edit`
  * adds and edits attributes (package A2); any other admin sees the view-only notice.
  */
@@ -54,6 +55,7 @@ export function AttributesView({
     { id: 'feature-sets', label: t('tab.feature-sets') },
     ...(canSeeBrands ? [{ id: 'brands', label: t('tab.brands'), href: BRANDS_PATH }] : []),
     { id: 'waiting', label: t('tab.waiting') },
+    { id: 'missing-details', label: t('tab.missing-details') },
   ];
 
   return (
@@ -107,6 +109,7 @@ export function AttributesView({
           }}
         />
       ) : null}
+      {tab === 'missing-details' ? <MissingDetailsTab /> : null}
       {tab === 'waiting' && canDecide ? <SuggestionsTab csrfToken={csrfToken} /> : null}
     </div>
   );

@@ -4855,6 +4855,37 @@
       "title": "View only",
       "body": "You can view attributes. Ask a Platform Administrator to change them."
     },
+    "missing-details": {
+      "label": "Products missing required details",
+      "loading": "Loading products",
+      "load-error": "We could not load the report.",
+      "info": {
+        "title": "These products stay on sale",
+        "body": "A feature set gained a required detail after these products were approved. The seller is refused at the next submit until it is filled."
+      },
+      "unreadable": {
+        "title": "Some feature sets could not be read",
+        "body": "Products of these feature sets are not judged: {codes}."
+      },
+      "empty": "No products are missing required details.",
+      "empty-body": "Every published product has a value for each required detail of its feature set.",
+      "search-label": "Search loaded products",
+      "search-placeholder": "Search product, code or seller",
+      "feature-set": "Feature set",
+      "all-feature-sets": "All feature sets",
+      "export": "Export CSV",
+      "export-selected": "Export {count} selected",
+      "totals": "Showing {shown} of {loaded} loaded products; {scanned} products read.",
+      "no-match": "No loaded product matches.",
+      "no-match-body": "Clear the search or the feature set, or load more products.",
+      "select-row": "Select {code}",
+      "unnamed": "Unnamed product",
+      "platform-product": "Platform product",
+      "seller": "Seller {id}",
+      "feature-set-named": "Feature set {code}",
+      "missing": "Missing details",
+      "load-more": "Load more"
+    },
     "waiting": {
       "label": "Requests waiting for a second administrator",
       "loading": "Loading requests",
@@ -5105,7 +5136,8 @@
       "attributes": "Attributes",
       "feature-sets": "Feature sets",
       "brands": "Brands",
-      "waiting": "Waiting for you"
+      "waiting": "Waiting for you",
+      "missing-details": "Missing details"
     },
     "add": {
       "open": "Add attribute",
