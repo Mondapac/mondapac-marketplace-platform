@@ -46,7 +46,7 @@
 | ordering | A | ۵ | [`ordering/brief.md`](ordering/brief.md) | تأیید (2026-10-08) | — |
 | payments | A | ۵ | [`payments/brief.md`](payments/brief.md) | تأیید (2026-10-08) | — |
 | commission-payouts | A | ۵ | [`commission-payouts/brief.md`](commission-payouts/brief.md) | تأیید (2026-10-08) | — |
-| agents | A | ۵ | [`agents/brief.md`](agents/brief.md) | تأیید (2026-11-06) | — |
+| agents | A | ۵ | [`agents/brief.md`](agents/brief.md) | تأیید (2026-11-06) | تأیید (2026-11-06) |
 | wallet (کیف پول مشتری، اعتبار فروشگاهی) | A | بسته ۱: هستهٔ دفتر کل | [`wallet/notes.md`](wallet/notes.md) | بدون G1 (speed mode؛ تصمیم‌های مالک 2026-10-25 در یادداشت) | بدون G2 (speed mode) |
 | reviews (نظرها و امتیازهای خریدار) | A | بسته ۱: هستهٔ بک‌اند | [`reviews/notes.md`](reviews/notes.md) | بدون G1 (speed mode؛ تصمیم‌های مالک 2026-10-26 در یادداشت) | بدون G2 (speed mode) |
 | blog (پست‌های بلاگ، دسته و برچسب، سهمیهٔ فروشنده) | B | بسته ۱: هستهٔ بک‌اند | [`blog/notes.md`](blog/notes.md) | بدون G1 (speed mode؛ تصمیم‌ها در یادداشت) | بدون G2 (speed mode) |
