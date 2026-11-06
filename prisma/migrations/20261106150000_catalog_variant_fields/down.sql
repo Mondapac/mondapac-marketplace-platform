@@ -1,4 +1,4 @@
--- Reverses 20261104233000_catalog_variant_fields. A revision that carries the reason `gtin-changed`
+-- Reverses 20261106150000_catalog_variant_fields. A revision that carries the reason `gtin-changed`
 -- keeps its other reasons; the per-variant values (GTIN, shipping, picks) are dropped with their columns.
 ALTER TABLE "catalog"."product_revisions" DISABLE TRIGGER USER;
 UPDATE "catalog"."product_revisions"

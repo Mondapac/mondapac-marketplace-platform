@@ -19,6 +19,7 @@ import { ProductSearchPageBody } from './search.dto';
 const ALLOWED = [
   'q',
   'category',
+  'direct',
   'store',
   'brand',
   'sort',
@@ -78,6 +79,7 @@ function requestOf(query: Record<string, unknown>): SearchProductsRequest {
   const request = {
     q: text('q'),
     category: text('category'),
+    direct: text('direct'),
     store: text('store'),
     brand: text('brand'),
     sort: text('sort'),
@@ -116,6 +118,14 @@ export class SearchController {
   })
   @ApiQuery({ name: 'q', required: false, description: '2 to 100 characters.' })
   @ApiQuery({ name: 'category', required: false, description: 'A platform category id.' })
+  @ApiQuery({
+    name: 'direct',
+    required: false,
+    enum: ['true'],
+    description:
+      '`true` lists only the products on `category` itself, not on a category below it (the ' +
+      'buyer site\'s "Other {name}" filter). Needs `category`.',
+  })
   @ApiQuery({
     name: 'store',
     required: false,

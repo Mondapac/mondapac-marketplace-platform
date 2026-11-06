@@ -9,6 +9,7 @@ import {
 import { isStorableContent } from '../../domain/working-copy';
 import { normalizeGtin } from '../../domain/variant-gtin';
 import type { ClaimCheckedFieldId } from '../../domain/claim-checked-fields';
+import type { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { CheckClaimText, ClaimTextVerdict } from '../claim-text/check-claim-text.service';
 import type { ClaimTextMatch } from '../ports/claim-text-matcher';
@@ -36,6 +37,8 @@ export type RefusedField = {
 } & (
   | { readonly code: 'claim-text.found'; readonly hits: readonly ClaimTextMatch[] }
   | { readonly code: 'claim-text.check-unavailable' }
+  /** The Market's content filter: the text holds a blocked term (the text is never echoed). */
+  | { readonly code: 'text.blocked-term' }
   | {
       readonly code: 'text.invisible-character';
       readonly offset: number;
@@ -81,6 +84,8 @@ export interface SaveDraftDependencies {
   readonly workingCopies: WorkingCopyRepository;
   readonly policy: CatalogMarketPolicy;
   readonly gtinRegistry: VariantGtinRegistry;
+  /** The Market's content filter; a changed text that holds a blocked term is refused. */
+  readonly contentFilter: ContentFilter;
 }
 
 /**
@@ -163,7 +168,16 @@ export class SaveDraft {
       const refusedPaths: (typeof changed)[number]['path'][] = [];
       const list: RefusedField[] = [];
       checked.value.forEach((verdict, index) => {
-        const refusal = refusalOf(verdict);
+        const refusal =
+          refusalOf(verdict) ??
+          (this.deps.contentFilter.isBlocked(market, changed[index]!.text)
+            ? ({
+                field: verdict.field,
+                ref: verdict.ref,
+                locale: verdict.locale,
+                code: 'text.blocked-term',
+              } as const)
+            : null);
         if (refusal === null) return;
         list.push(refusal);
         refusedPaths.push(changed[index]!.path);

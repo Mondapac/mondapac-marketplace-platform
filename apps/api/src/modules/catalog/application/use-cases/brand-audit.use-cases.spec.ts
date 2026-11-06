@@ -1,3 +1,4 @@
+import { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import type { AuditEntry, CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
 import { Temporal } from '@mondapac/shared-kernel';
 import {
@@ -76,7 +77,7 @@ describe.each(['AU', 'ZZ'] as const)('brand audit in market %s', (code) => {
 
   const build = () => {
     const gate = createUseCaseGate(markets, check);
-    const base = { unitOfWork, brands, clock, audit };
+    const base = { unitOfWork, brands, clock, audit, contentFilter: new ContentFilter(markets) };
     return {
       create: new BrandCreate(gate, { ...base, ids }),
       edit: new BrandEdit(gate, base),
