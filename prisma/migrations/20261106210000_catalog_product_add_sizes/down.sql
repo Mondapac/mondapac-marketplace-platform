@@ -1,7 +1,8 @@
+SET lock_timeout = '5s';
 -- Reverses 20261106210000_catalog_product_add_sizes. A product that was changed to Configurable
 -- stays Configurable (its variant row keeps `options` too, so the foreign key still holds); only
--- the right to change a type is taken away. A revision that carries the reason `axis-added` keeps
--- its other reasons.
+-- the right to change a type is taken away. The revision tables are insert-only, so a revision that
+-- carries the reason `axis-added` is not rewritten: the reversal refuses while one exists.
 DELETE FROM "catalog"."rate_counters" WHERE "kind" = 'add-sizes.account.hour';
 ALTER TABLE "catalog"."rate_counters" DROP CONSTRAINT "rate_counters_kind_check";
 ALTER TABLE "catalog"."rate_counters"
@@ -13,11 +14,13 @@ ALTER TABLE "catalog"."rate_counters"
     'platform-import-check.account.hour', 'platform-import-check.account.day',
     'platform-import-start.account.day'));
 
-ALTER TABLE "catalog"."product_revisions" DISABLE TRIGGER "product_revisions_no_update_delete";
-UPDATE "catalog"."product_revisions"
-   SET "sensitive_reasons" = array_remove("sensitive_reasons", 'axis-added')
- WHERE 'axis-added' = ANY("sensitive_reasons");
-ALTER TABLE "catalog"."product_revisions" ENABLE TRIGGER "product_revisions_no_update_delete";
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM "catalog"."product_revisions" WHERE 'axis-added' = ANY("sensitive_reasons")) THEN
+    RAISE EXCEPTION 'cannot reverse add_sizes: product_revisions rows with the reason axis-added exist (insert-only table)'
+      USING ERRCODE = '23514';
+  END IF;
+END $$;
 ALTER TABLE "catalog"."product_revisions" DROP CONSTRAINT "product_revisions_sensitive_reasons_check";
 ALTER TABLE "catalog"."product_revisions"
   ADD CONSTRAINT "product_revisions_sensitive_reasons_check" CHECK (

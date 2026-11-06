@@ -19,8 +19,10 @@ import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
 // Add sizes over HTTP (catalog design 4.2a, 8.2; variants V9a): the seller route and the platform
-// route with their real guards, controller, gate and the real use cases; the service behind them
-// is scripted (its guards and effects are in add-sizes.use-cases.spec.ts and the database spec).
+// route with their real guards, controller, gate and the real use cases. `AddSizes` itself is a
+// FAKE here (scripted answers, no repositories): this file proves routing and mapping only. Its
+// guards and effects are in add-sizes.use-cases.spec.ts and the database specs
+// (test/db/catalog-product-add-sizes*.db-spec.ts).
 // Proved here: the session, the CSRF token, the key, the closed body (offOfferCount only on the
 // platform route), the status of each refusal and the answer of the confirm read.
 
@@ -214,10 +216,10 @@ describe('Add sizes routes over HTTP (integration)', () => {
   });
 
   it('maps the new refusals to a status in both tables', () => {
+    // `revision.revert-changes-type` joins with the revert use cases (see `revertTypeRefusal`).
     for (const table of [PLATFORM_PRODUCT_STATUS, OWN_PRODUCT_STATUS]) {
       expect(table).toMatchObject({
         'product.not-simple': 409,
-        'revision.revert-changes-type': 409,
         'confirm.count-changed': 409,
         'product-type.not-allowed': 403,
         'product.family-invalid': 503,

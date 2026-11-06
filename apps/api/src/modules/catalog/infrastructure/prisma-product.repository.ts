@@ -142,7 +142,8 @@ export class PrismaProductRepository implements ProductRepository {
 
   async lockAtVersion(market: MarketContext, id: Id<'Product'>, version: number): Promise<boolean> {
     // Sets the version to itself: a row lock to the end of the unit and a version check in one
-    // statement. `products` has no trigger and no updated-at column, so nothing else changes
+    // statement. `products` has no updated-at column and its only trigger
+    // (products_type_change_guard) fires on type_code/variant_model alone, so nothing else changes
     // (the grant covers `version`, data design 7).
     const { count } = await this.prisma.tx(market).catalogProduct.updateMany({
       where: { marketId: market.marketId, id, version },

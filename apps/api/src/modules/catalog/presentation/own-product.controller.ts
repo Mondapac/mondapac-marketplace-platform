@@ -509,8 +509,10 @@ export class OwnProductController {
   @ApiBadRequestResponse({
     type: ApiErrorBody,
     description:
-      'validation.failed (details.fields: variants.axes-*, variants.option-* or ' +
-      'variants.option-not-in-family issue codes)',
+      'validation.failed (details.fields). Body: path version, axes, optionValues, replacePending ' +
+      'or offOfferCount with code range, type, format, too-many or unknown-field; the axes ' +
+      '(path axes) and the option values (path optionValues) with the variants.axes-*, ' +
+      'variants.option-* or variants.option-not-in-family issue codes',
   })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
@@ -527,7 +529,7 @@ export class OwnProductController {
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiServiceUnavailableResponse({
     type: ApiErrorBody,
-    description: 'access.unavailable or revision.schema-unavailable',
+    description: 'access.unavailable, revision.schema-unavailable or product.family-invalid',
   })
   async addProductSizes(
     @Call() context: CallContext,

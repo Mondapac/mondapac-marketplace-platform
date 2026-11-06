@@ -29,6 +29,7 @@ import { Product, type ProductState } from '../../domain/product';
 import type { StoredRevision } from '../../domain/stored-revision';
 import type { WorkingCopy } from '../../domain/working-copy';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
+import type { OfferActor } from '../ports/offer.repository';
 import type { AllowedProductTypes } from '../ports/allowed-product-types.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import { AddSizes } from '../products/add-sizes.service';
@@ -228,6 +229,7 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
     const events: PendingEvent[] = [];
     const audits: AuditEntry[] = [];
     const savedOffers: Offer[] = [];
+    const offerActors: OfferActor[] = [];
     const offerReads: number[] = [];
     let locks = 0;
     let reserved = 0;
@@ -270,8 +272,9 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
     const offers = {
       listOnProduct: (_m: MarketContext, _p: unknown, page: { afterId: unknown }) =>
         Promise.resolve(page.afterId === null ? offersOf() : []),
-      save: (_m: MarketContext, offer: Offer) => {
+      save: (_m: MarketContext, offer: Offer, actor: OfferActor) => {
         savedOffers.push(offer);
+        offerActors.push(actor);
         offerListings += offer.pendingEvents.filter(
           (event) => event.type === 'catalog.offer-listing-changed.v1',
         ).length;
@@ -346,6 +349,7 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
     const platform = new PlatformProductAddSizes(gate, { addSizes: service });
     const impact = new PlatformProductAddSizesImpact(gate, { addSizes: service });
     return {
+      service,
       own,
       platform,
       impact,
@@ -354,6 +358,7 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
       events,
       audits,
       savedOffers,
+      offerActors,
       locks: () => locks,
       reserved: () => reserved,
       offerListings: () => offerListings,
@@ -596,20 +601,16 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
     });
 
     it.each([
-      [
-        'no axis',
-        { axes: [], optionValues: {} },
-        [{ path: 'variantAxes', code: 'variants.axes-none' }],
-      ],
+      ['no axis', { axes: [], optionValues: {} }, [{ path: 'axes', code: 'variants.axes-none' }]],
       [
         'an axis twice',
         { axes: ['size', 'size'] },
-        [{ path: 'variantAxes', code: 'variants.axes-duplicate' }],
+        [{ path: 'axes', code: 'variants.axes-duplicate' }],
       ],
       [
         'an axis the feature set does not hold',
         { axes: ['weight'] },
-        [{ path: 'variantAxes', code: 'variants.axes-unknown' }],
+        [{ path: 'axes', code: 'variants.axes-unknown' }],
       ],
       [
         'more axes than the Market allows',
@@ -617,7 +618,7 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
           axes: ['size', 'colour', 'pattern', 'finish'].slice(0, maxAxes + 1),
           optionValues: { size: 's', colour: 'red', pattern: 'plain', finish: 'matt' },
         },
-        [{ path: 'variantAxes', code: 'variants.axes-too-many' }],
+        [{ path: 'axes', code: 'variants.axes-too-many' }],
       ],
       [
         'an axis without an option value',
@@ -656,7 +657,7 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
         ok: false,
         error: {
           code: 'validation.failed',
-          fields: [{ path: 'variantAxes', code: 'variants.option-not-in-family' }],
+          fields: [{ path: 'axes', code: 'variants.option-not-in-family' }],
         },
       });
     });
@@ -707,6 +708,22 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
       expect(await harness.own.execute(adminContext(), { productId, body: body() })).toMatchObject({
         error: { code: 'access.denied' },
       });
+      expect(
+        await harness.own.execute(testCallContext(market, 'anonymous'), {
+          productId,
+          body: body(),
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'access.unauthenticated' } });
+      expect(
+        await harness.own.execute(
+          {
+            ...sellerContext(),
+            actor: { ...sellerContext().actor, sellerId: null },
+          } as unknown as CallContext,
+          { productId, body: body() },
+        ),
+      ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      expect(harness.reserved()).toBe(0);
       expect(harness.saved).toEqual([]);
     });
 
@@ -789,6 +806,69 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
           ).ok,
         ).toBe(true);
         expect(harness.savedOffers).toEqual([]);
+      });
+
+      it('records the seller as the actor of the Offer history change', async () => {
+        const context = sellerContext();
+        const harness = rig({
+          product: pendingState({ status: 'unpublished', publishedRevisionId: null }),
+          published: null,
+          offers: [
+            {
+              state: offerState(sellerId, { status: 'draft', listed: false }),
+              tags: [pendingTag(pendingId)],
+            },
+          ],
+        });
+        const result = await harness.own.execute(context, {
+          productId,
+          body: body({ replacePending: true }),
+        });
+
+        expect(result.ok).toBe(true);
+        const accountId = context.actor.kind === 'authenticated' ? context.actor.accountId : null;
+        expect(harness.offerActors).toEqual([
+          { kind: 'seller', accountId, actingAdminAccountId: null },
+        ]);
+      });
+
+      // The kernel cannot mint an actor with the `actingAs` marker yet (SEL-08 adds it), and the
+      // gate refuses an unminted one, so the service behind the use cases is called with it.
+      it('allows an acting-as session and records the admin behind the seller (content only)', async () => {
+        const adminAccountId = ids.next<'Account'>();
+        const base = sellerContext();
+        const context = {
+          ...base,
+          actor: { ...base.actor, actingAs: { adminAccountId } },
+        } as unknown as CallContext;
+        const harness = rig({
+          product: pendingState({ status: 'unpublished', publishedRevisionId: null }),
+          published: null,
+          offers: [
+            {
+              state: offerState(sellerId, { status: 'draft', listed: false }),
+              tags: [pendingTag(pendingId)],
+            },
+          ],
+        });
+        const result = await harness.service.execute(context, {
+          productId,
+          version: 5,
+          axes: ['size'],
+          optionValues: { size: 'm' },
+          replacePending: true,
+          offOfferCount: null,
+        });
+
+        expect(result.ok).toBe(true);
+        expect(harness.state()).toMatchObject({
+          typeCode: 'configurable',
+          pendingRevisionId: null,
+        });
+        const accountId = base.actor.kind === 'authenticated' ? base.actor.accountId : null;
+        expect(harness.offerActors).toEqual([
+          { kind: 'seller', accountId, actingAdminAccountId: adminAccountId },
+        ]);
       });
     });
   });
@@ -925,11 +1005,37 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
       ).toEqual({ ok: false, error: { code: 'conflict.stale' } });
     });
 
-    it('refuses a SELLER product, a seller caller and a body without the confirmed count', async () => {
-      const harness = rig();
+    it('records the admin as the actor of the Offers it takes off sale', async () => {
+      const harness = rig({ product: platformState(), offers: offersOf(), allowed });
+      const context = adminContext();
       expect(
-        await harness.platform.execute(adminContext(), { productId, body: platformBody() }),
-      ).toMatchObject({ error: { code: 'product.seller-only' } });
+        (
+          await harness.platform.execute(context, {
+            productId,
+            body: platformBody({ offOfferCount: 2 }),
+          })
+        ).ok,
+      ).toBe(true);
+      const accountId = context.actor.kind === 'authenticated' ? context.actor.accountId : null;
+      expect(harness.offerActors).toEqual([
+        { kind: 'admin', accountId },
+        { kind: 'admin', accountId },
+      ]);
+    });
+
+    it('answers a SELLER product as an unknown one, byte-identical, and refuses a seller caller and a body without the confirmed count', async () => {
+      const harness = rig();
+      const sellerProduct = await harness.platform.execute(adminContext(), {
+        productId,
+        body: platformBody(),
+      });
+      const unknown = await rig({ product: null }).platform.execute(adminContext(), {
+        productId,
+        body: platformBody(),
+      });
+      expect(sellerProduct).toEqual({ ok: false, error: { code: 'product.not-found' } });
+      expect(JSON.stringify(sellerProduct)).toBe(JSON.stringify(unknown));
+      expect(harness.saved).toEqual([]);
       expect(
         await harness.platform.execute(sellerContext(), { productId, body: platformBody() }),
       ).toMatchObject({ error: { code: 'access.denied' } });
@@ -966,9 +1072,12 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
           allowed: new Map([...allowed, [buyerSeller, null]]),
         }).impact.execute(adminContext(), { productId }),
       ).toEqual({ ok: false, error: { code: 'access.unavailable' } });
-      expect(await rig().impact.execute(adminContext(), { productId })).toMatchObject({
-        error: { code: 'product.seller-only' },
-      });
+      // A SELLER product is as unknown as a missing one, as for the command.
+      const sellerProduct = await rig().impact.execute(adminContext(), { productId });
+      expect(sellerProduct).toEqual({ ok: false, error: { code: 'product.not-found' } });
+      expect(JSON.stringify(sellerProduct)).toBe(
+        JSON.stringify(await rig({ product: null }).impact.execute(adminContext(), { productId })),
+      );
       expect(
         await rig({ product: null }).impact.execute(adminContext(), { productId }),
       ).toMatchObject({
@@ -976,6 +1085,54 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
       });
       expect(await harness.impact.execute(sellerContext(), { productId })).toMatchObject({
         error: { code: 'access.denied' },
+      });
+    });
+
+    it.each([
+      [
+        'a product that has ended',
+        {
+          product: platformState({
+            status: 'discarded',
+            discardedAt: T0,
+            publishedRevisionId: null,
+          }),
+        },
+        'product.not-editable',
+      ],
+      [
+        'a Configurable product',
+        { product: platformState({ typeCode: 'configurable', variantModel: 'options' }) },
+        'product.not-simple',
+      ],
+      [
+        'a Market that lists no Configurable type',
+        { product: platformState(), policy: { productTypes: () => ['simple'] } },
+        'product-type.not-allowed',
+      ],
+    ] as const)(
+      'refuses the confirm for %s as the command would (%s)',
+      async (_name, change, expected) => {
+        const harness = rig({ offers: offersOf(), allowed, ...change });
+        const read = await harness.impact.execute(adminContext(), { productId });
+        expect(read).toEqual({ ok: false, error: { code: expected } });
+        const command = await harness.platform.execute(adminContext(), {
+          productId,
+          body: platformBody({ offOfferCount: 2 }),
+        });
+        expect(command).toMatchObject({ ok: false, error: { code: expected } });
+      },
+    );
+
+    it('answers the confirm of a product with a pending revision, which the command may set aside', async () => {
+      const harness = rig({
+        product: platformState({ pendingRevisionId: pendingId, pendingSubmittedAt: T0 }),
+        offers: offersOf(),
+        allowed,
+      });
+      expect(await harness.impact.execute(adminContext(), { productId })).toMatchObject({
+        ok: true,
+        value: { offOfferCount: 2 },
       });
     });
   });
