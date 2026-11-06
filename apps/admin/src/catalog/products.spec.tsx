@@ -154,6 +154,19 @@ describe('admin product list', () => {
     }
   });
 
+  it('shows Add product only with the platform-product edit key, linking to the create page', async () => {
+    serve(() => page([row()]));
+    const first = mount([...ALL_KEYS, 'catalog.platform-product.edit']);
+    await screen.findByText('Lamb cutlets 500 g');
+    expect(screen.getByRole('link', { name: 'Add product' }).getAttribute('href')).toBe(
+      '/catalog/products/new',
+    );
+    first.unmount();
+    mount();
+    await screen.findByText('Lamb cutlets 500 g');
+    expect(screen.queryByRole('link', { name: 'Add product' })).toBeNull();
+  });
+
   it('shows the Import button only with the platform-import key, linking to the import page', async () => {
     serve(() => page([row()]));
     const first = mount([...ALL_KEYS, 'catalog.platform-import.run']);
