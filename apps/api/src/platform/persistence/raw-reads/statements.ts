@@ -130,10 +130,14 @@ export interface OfferSearchRow {
   readonly rank: number;
 }
 
-/** One row of `search.offer-facet-rows`: a document of the scope with its facet strings. */
+/**
+ * One row of `search.offer-facet-rows`: a document of the scope with its facet strings, alone
+ * (`unitFacets` empty) or with one in-stock, priced sell unit's axis values (variants V8).
+ */
 export interface OfferFacetRow {
   readonly productId: string;
   readonly facets: readonly string[];
+  readonly unitFacets: readonly string[];
 }
 
 /** One row of `search.offer-number-rows`: one stored number of the scope. */
@@ -239,6 +243,9 @@ export interface RawReadStatements {
       readonly priorMeanTimes1000: string;
       readonly limit: string;
       readonly offset: string;
+      /** Variants V8: the price bounds in minor units, `''` for none. */
+      readonly priceMin: string;
+      readonly priceMax: string;
     };
     readonly row: OfferSearchRow;
   };
@@ -257,6 +264,8 @@ export interface RawReadStatements {
       readonly range3Min: string;
       readonly range3Max: string;
       readonly limit: string;
+      readonly priceMin: string;
+      readonly priceMax: string;
     };
     readonly row: OfferFacetRow;
   };
@@ -336,7 +345,11 @@ const parseOfferSearchRow = (raw: unknown): OfferSearchRow => {
 
 const parseOfferFacetRow = (raw: unknown): OfferFacetRow => {
   const row = asRecord(raw);
-  return { productId: text(row['product_id']), facets: textList(row['facets']) };
+  return {
+    productId: text(row['product_id']),
+    facets: textList(row['facets']),
+    unitFacets: textList(row['unit_facets']),
+  };
 };
 const parseOfferNumberRow = (raw: unknown): OfferNumberRow => {
   const row = asRecord(raw);
@@ -479,7 +492,12 @@ const OFFER_BROWSE_TOP_RATED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id
 // Attribute filters (attributes A7). One statement for a text search or a category browse narrowed by up
 // to eight choice groups (a document holds one of a group's facet strings: an empty group is no
 // filter) and up to three number ranges (an empty attribute is no range; a range joins the
-// document's stored number of that attribute). `$3` empty means a browse (by name); the category
+// document's stored number of that attribute). Variant filters and the price filter (variants V8,
+// `$26`/`$27` are the price bounds in minor units, empty for none): a document matches when its own
+// facets satisfy every group and no price is asked (product attributes only: stock is not asked,
+// as before), or when one of its sell units that is in stock and priced satisfies every group with
+// the document's facets and its own axis values, at a price within the bounds. The product is one
+// result either way. `$3` empty means a browse (by name); the category
 // array empty means no category. The rating boost is joined only when `$22` is not `none`; with
 // `$22 = 'top'` the stored Bayesian average orders first, as in the rated statements.
 const OFFER_FILTERED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, d.short_text,
@@ -493,14 +511,30 @@ const OFFER_FILTERED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name
  WHERE d.market_id = $1
    AND ($3::text = '' OR d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text))
    AND ($4::uuid[] = '{}'::uuid[] OR d.category_ids && $4::uuid[])
-   AND ($5::text[] = '{}'::text[] OR d.facet_codes && $5::text[])
-   AND ($6::text[] = '{}'::text[] OR d.facet_codes && $6::text[])
-   AND ($7::text[] = '{}'::text[] OR d.facet_codes && $7::text[])
-   AND ($8::text[] = '{}'::text[] OR d.facet_codes && $8::text[])
-   AND ($9::text[] = '{}'::text[] OR d.facet_codes && $9::text[])
-   AND ($10::text[] = '{}'::text[] OR d.facet_codes && $10::text[])
-   AND ($11::text[] = '{}'::text[] OR d.facet_codes && $11::text[])
-   AND ($12::text[] = '{}'::text[] OR d.facet_codes && $12::text[])
+   AND (
+        ($26::text = '' AND $27::text = ''
+        AND ($5::text[] = '{}'::text[] OR d.facet_codes && $5::text[])
+        AND ($6::text[] = '{}'::text[] OR d.facet_codes && $6::text[])
+        AND ($7::text[] = '{}'::text[] OR d.facet_codes && $7::text[])
+        AND ($8::text[] = '{}'::text[] OR d.facet_codes && $8::text[])
+        AND ($9::text[] = '{}'::text[] OR d.facet_codes && $9::text[])
+        AND ($10::text[] = '{}'::text[] OR d.facet_codes && $10::text[])
+        AND ($11::text[] = '{}'::text[] OR d.facet_codes && $11::text[])
+        AND ($12::text[] = '{}'::text[] OR d.facet_codes && $12::text[]))
+     OR EXISTS (
+        SELECT 1 FROM "search"."offer_variant_documents" v
+         WHERE v.market_id = $1 AND v.offer_id = d.offer_id
+           AND v.in_stock = true AND v.price_amount >= 0
+          AND ($5::text[] = '{}'::text[] OR d.facet_codes && $5::text[] OR v.facet_codes && $5::text[])
+          AND ($6::text[] = '{}'::text[] OR d.facet_codes && $6::text[] OR v.facet_codes && $6::text[])
+          AND ($7::text[] = '{}'::text[] OR d.facet_codes && $7::text[] OR v.facet_codes && $7::text[])
+          AND ($8::text[] = '{}'::text[] OR d.facet_codes && $8::text[] OR v.facet_codes && $8::text[])
+          AND ($9::text[] = '{}'::text[] OR d.facet_codes && $9::text[] OR v.facet_codes && $9::text[])
+          AND ($10::text[] = '{}'::text[] OR d.facet_codes && $10::text[] OR v.facet_codes && $10::text[])
+          AND ($11::text[] = '{}'::text[] OR d.facet_codes && $11::text[] OR v.facet_codes && $11::text[])
+          AND ($12::text[] = '{}'::text[] OR d.facet_codes && $12::text[] OR v.facet_codes && $12::text[])
+           AND ($26::text = '' OR v.price_amount >= $26::text::int8)
+           AND ($27::text = '' OR v.price_amount <= $27::text::int8)))
    AND ($13::text = '' OR (n1.value >= $14::text::numeric AND n1.value <= $15::text::numeric))
    AND ($16::text = '' OR (n2.value >= $17::text::numeric AND n2.value <= $18::text::numeric))
    AND ($19::text = '' OR (n3.value >= $20::text::numeric AND n3.value <= $21::text::numeric))
@@ -513,18 +547,38 @@ const OFFER_FILTERED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name
 // The documents of a scope with their facet strings, for counting (the counting is done by the
 // caller, so the statement needs no aggregate). Same scope and range rules as above; the choice
 // groups are applied by the caller so an attribute's own options can ignore its own filter.
-const OFFER_FACET_ROWS_SQL = `SELECT d.product_id, d.facet_codes::text[] AS facets
+// Variants V8: one row per document with its own facets (only when no price is asked, `$15`/`$16`
+// empty), and one row per sell unit that is in stock, priced and within the price bounds, with the
+// unit's axis values beside the document's. The caller counts products, never rows.
+const OFFER_FACET_ROWS_SQL = `SELECT d.offer_id, d.product_id, d.facet_codes::text[] AS facets, '{}'::text[] AS unit_facets
   FROM "search"."offer_documents" d
   LEFT JOIN "search"."offer_document_numbers" n1 ON n1.market_id = $1 AND n1.offer_id = d.offer_id AND n1.attr = $5::text
   LEFT JOIN "search"."offer_document_numbers" n2 ON n2.market_id = $1 AND n2.offer_id = d.offer_id AND n2.attr = $8::text
   LEFT JOIN "search"."offer_document_numbers" n3 ON n3.market_id = $1 AND n3.offer_id = d.offer_id AND n3.attr = $11::text
  WHERE d.market_id = $1
+   AND $15::text = '' AND $16::text = ''
    AND ($3::text = '' OR d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text))
    AND ($4::uuid[] = '{}'::uuid[] OR d.category_ids && $4::uuid[])
    AND ($5::text = '' OR (n1.value >= $6::text::numeric AND n1.value <= $7::text::numeric))
    AND ($8::text = '' OR (n2.value >= $9::text::numeric AND n2.value <= $10::text::numeric))
    AND ($11::text = '' OR (n3.value >= $12::text::numeric AND n3.value <= $13::text::numeric))
- ORDER BY d.offer_id ASC
+UNION ALL
+SELECT d.offer_id, d.product_id, d.facet_codes::text[] AS facets, v.facet_codes::text[] AS unit_facets
+  FROM "search"."offer_documents" d
+  JOIN "search"."offer_variant_documents" v ON v.market_id = $1 AND v.offer_id = d.offer_id
+  LEFT JOIN "search"."offer_document_numbers" n1 ON n1.market_id = $1 AND n1.offer_id = d.offer_id AND n1.attr = $5::text
+  LEFT JOIN "search"."offer_document_numbers" n2 ON n2.market_id = $1 AND n2.offer_id = d.offer_id AND n2.attr = $8::text
+  LEFT JOIN "search"."offer_document_numbers" n3 ON n3.market_id = $1 AND n3.offer_id = d.offer_id AND n3.attr = $11::text
+ WHERE d.market_id = $1
+   AND v.in_stock = true AND v.price_amount >= 0
+   AND ($15::text = '' OR v.price_amount >= $15::text::int8)
+   AND ($16::text = '' OR v.price_amount <= $16::text::int8)
+   AND ($3::text = '' OR d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text))
+   AND ($4::uuid[] = '{}'::uuid[] OR d.category_ids && $4::uuid[])
+   AND ($5::text = '' OR (n1.value >= $6::text::numeric AND n1.value <= $7::text::numeric))
+   AND ($8::text = '' OR (n2.value >= $9::text::numeric AND n2.value <= $10::text::numeric))
+   AND ($11::text = '' OR (n3.value >= $12::text::numeric AND n3.value <= $13::text::numeric))
+ ORDER BY offer_id ASC
  LIMIT $14::text::int4`;
 
 // The stored numbers of some attributes over a scope (their lowest and highest are read by the caller).
@@ -762,6 +816,8 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
       { name: 'priorMeanTimes1000', type: 'text' },
       { name: 'limit', type: 'text' },
       { name: 'offset', type: 'text' },
+      { name: 'priceMin', type: 'text' },
+      { name: 'priceMax', type: 'text' },
     ],
     parseRow: parseOfferSearchRow,
   },
@@ -778,6 +834,8 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
       { name: 'categoryIds', type: 'uuid[]', maxLength: 1000 },
       ...RANGE_PARAMS,
       { name: 'limit', type: 'text' },
+      { name: 'priceMin', type: 'text' },
+      { name: 'priceMax', type: 'text' },
     ],
     parseRow: parseOfferFacetRow,
   },

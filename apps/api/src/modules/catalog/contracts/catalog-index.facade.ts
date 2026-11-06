@@ -26,6 +26,22 @@ export interface OfferSearchAttributes {
 }
 
 /**
+ * One published variant of the product's published revision, as the index keeps it (variants V8).
+ * `facets` are the variant's axis values as `attribute=value` (option codes, merges followed; only
+ * of active definitions that can be a filter). `label` is the automatic label in the asked locale
+ * (English fallback) or null. `gtin` is 14 digits or null. No price, stock or selling switch:
+ * search reads those from pricing and inventory.
+ */
+export interface OfferSearchVariant {
+  readonly variantId: Id<'Variant'>;
+  /** The owner's order (0 first): the default variant is the first in-stock one in this order. */
+  readonly position: number;
+  readonly label: string | null;
+  readonly gtin: string | null;
+  readonly facets: readonly string[];
+}
+
+/**
  * What a read model (`search`) may know of one Offer: ids, the sellable flag, the text of the
  * product's published revision in the asked locale and its platform categories. No price, stock,
  * Cost or certification: a certification claim never comes from text (CERT rules).
@@ -40,6 +56,12 @@ export interface OfferSearchFacts {
   readonly categoryIds: readonly Id<'Category'>[];
   /** Empty when the product has no published revision. */
   readonly attributes: OfferSearchAttributes;
+  /**
+   * The published variants of the published revision, in position order (variants V8); empty when
+   * the Offer is not sellable or the product has no published revision. Their labels are also in
+   * `attributes.searchText`.
+   */
+  readonly variants: readonly OfferSearchVariant[];
 }
 
 /**

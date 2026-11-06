@@ -13,7 +13,13 @@ import {
 } from '../application/ports/offer-facet.reader';
 import type { OfferHit } from '../domain/offer-document';
 import { MAX_FILTER_CATEGORIES } from '../domain/category-subtree';
-import { MAX_CHOICE_FILTERS, MAX_RANGE_FILTERS, type RangeFilter } from '../domain/search-filter';
+import {
+  MAX_CHOICE_FILTERS,
+  MAX_PRICE_MINOR,
+  MAX_RANGE_FILTERS,
+  type PriceRange,
+  type RangeFilter,
+} from '../domain/search-filter';
 import { priorMeanTimes1000 } from '../domain/rating-boost';
 import { MAX_PAGE, MAX_PAGE_SIZE } from '../domain/search-query';
 
@@ -35,6 +41,18 @@ function categoriesOf(categoryIds: readonly Id<'Category'>[] | null): readonly s
     throw new RangeError('search: category filter size out of range');
   }
   return categoryIds;
+}
+
+/** The price bounds as whole minor units in text, `''` for an open end (variants V8). */
+function priceSlots(price: PriceRange | null): { priceMin: string; priceMax: string } {
+  const bound = (value: bigint | null): string => {
+    if (value === null) return '';
+    if (value < 0n || value > MAX_PRICE_MINOR) throw new RangeError('search: price out of range');
+    return value.toString();
+  };
+  return price === null
+    ? { priceMin: '', priceMax: '' }
+    : { priceMin: bound(price.min), priceMax: bound(price.max) };
 }
 
 /** The three range slots; an empty attribute is no range. */
@@ -105,6 +123,7 @@ export class RawOfferFacetReader implements OfferFacetReader {
       priorMeanTimes1000: boost === undefined ? '0' : String(priorMeanTimes1000(boost)),
       limit,
       offset,
+      ...priceSlots(request.price),
     };
     const rows = await this.rawReads.rawRead(market, 'search.offer-filtered', params);
     return rows.map((row) => ({
@@ -130,8 +149,12 @@ export class RawOfferFacetReader implements OfferFacetReader {
       categoryIds,
       ...rangeSlots(scope.ranges),
       limit: whole(MAX_FACET_ROWS + 1, 1, MAX_FACET_ROWS + 1),
+      ...priceSlots(scope.price),
     });
-    return rows.map((row) => ({ productId: row.productId as Id<'Product'>, facets: row.facets }));
+    return rows.map((row) => ({
+      productId: row.productId as Id<'Product'>,
+      facets: row.unitFacets.length === 0 ? row.facets : [...row.facets, ...row.unitFacets],
+    }));
   }
 
   async numberRows(

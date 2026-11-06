@@ -142,6 +142,11 @@ describe('SearchProducts with attribute filters', () => {
         browseBySeller: () => Promise.resolve([]),
         browseByProducts: () => Promise.resolve([]),
       },
+      variants: {
+        sellUnitsOf: () => Promise.resolve(new Map()),
+        unitsWithGtin: () => Promise.resolve([]),
+        hitsOf: () => Promise.resolve([]),
+      },
     }) as unknown as SearchDependencies;
   const search = (input: Parameters<SearchProducts['execute']>[1]) =>
     new SearchProducts(gate, deps()).execute(anonymous, input);

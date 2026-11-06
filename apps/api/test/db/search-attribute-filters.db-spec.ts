@@ -1,12 +1,20 @@
 import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
-import type { FilteredSearchRequest } from '../../src/modules/search/application/ports/offer-facet.reader';
+import type {
+  FacetScope,
+  FilteredSearchRequest,
+} from '../../src/modules/search/application/ports/offer-facet.reader';
+import { countFacets } from '../../src/modules/search/application/search-facets';
 import { MAX_FACET_ROWS } from '../../src/modules/search/application/ports/offer-facet.reader';
-import type { OfferDocument } from '../../src/modules/search/domain/offer-document';
+import type {
+  OfferDocument,
+  OfferVariantDocument,
+} from '../../src/modules/search/domain/offer-document';
 import { ConfigSearchPolicy } from '../../src/modules/search/infrastructure/config-search-policy';
 import { PrismaReindexProgress } from '../../src/modules/search/infrastructure/prisma-reindex-progress';
 import { PrismaOfferDocumentRepository } from '../../src/modules/search/infrastructure/prisma-offer-document.repository';
+import { PrismaOfferVariantReader } from '../../src/modules/search/infrastructure/prisma-offer-variant.reader';
 import { RawOfferFacetReader } from '../../src/modules/search/infrastructure/raw-offer-facet.reader';
 import { RawOfferSearchReader } from '../../src/modules/search/infrastructure/raw-offer-search.reader';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
@@ -62,6 +70,7 @@ describe.each(TEST_MARKETS)('attribute filters in market %s (database)', (code) 
     searchText: null,
     facetCodes: [],
     numbers: {},
+    variants: [],
     ...overrides,
   });
   const inUnit = async <T>(target: MarketContext, work: () => Promise<T>, readOnly = false) => {
@@ -81,6 +90,7 @@ describe.each(TEST_MARKETS)('attribute filters in market %s (database)', (code) 
     offset: 0,
     choiceGroups: [],
     ranges: [],
+    price: null,
     ...overrides,
   });
   const filtered = (overrides: Partial<FilteredSearchRequest> = {}, on = market) =>
@@ -253,6 +263,7 @@ describe.each(TEST_MARKETS)('attribute filters in market %s (database)', (code) 
       text: null,
       categoryIds: [CATEGORY],
       ranges: [{ attr: 'weight', min: '250', max: '500' }],
+      price: null,
     };
     const rows = await inUnit(market, () => facets.facetRows(market, scope), true);
     expect(rows.map((row) => [...row.facets].sort())).toEqual([
@@ -269,7 +280,13 @@ describe.each(TEST_MARKETS)('attribute filters in market %s (database)', (code) 
       () =>
         facets.numberRows(
           market,
-          { ...request(), textSearchConfig: settings.textSearchConfig, text: null, ranges: [] },
+          {
+            ...request(),
+            textSearchConfig: settings.textSearchConfig,
+            text: null,
+            ranges: [],
+            price: null,
+          },
           ['weight', 'cups'],
         ),
       true,
@@ -362,5 +379,279 @@ describe.each(TEST_MARKETS)('attribute filters in market %s (database)', (code) 
     await expect(
       sql.query(`UPDATE "search"."reindex_state" SET status = 'paused'`),
     ).rejects.toMatchObject({ code: '23514' });
+  });
+});
+
+// Variants V8, in this file so it runs serially with the attribute filters above (both write
+// `search.offer_documents`): a product matches a variant filter only through an in-stock, priced
+// variant; two axes must be held by one variant; the price filter reads the matching variants only;
+// counts are of products; the GTIN lookup; Market isolation; the CHECKs. Deletes only its own rows.
+
+/** The Offers the variant tests wrote: only these are deleted. */
+const made: string[] = [];
+let vcounter = 0;
+const vid = <T extends string>(): Id<T> => {
+  vcounter += 1;
+  const parsed = parseId(
+    `01990000-0000-7000-8000-${(0xf0000 + vcounter).toString(16).padStart(12, '0')}`,
+  );
+  if (!parsed.ok) throw new Error('bad id');
+  return parsed.value as Id<T>;
+};
+
+describe.each(TEST_MARKETS)('variant filters in market %s (database)', (code) => {
+  const market = marketOf(code);
+  const other = marketOf(otherMarketOf(code));
+  const settings = new ConfigSearchPolicy(markets).settings(market);
+  const currency = markets.get(market.marketId).defaultCurrency;
+  const CATEGORY = vid<'Category'>();
+  let db: Persistence;
+  let documents: PrismaOfferDocumentRepository;
+  let facets: RawOfferFacetReader;
+  let variants: PrismaOfferVariantReader;
+  let sql: Client;
+
+  const unit = (
+    position: number,
+    facetCodes: string[],
+    amount: bigint | null,
+    inStock = true,
+    gtin: string | null = null,
+  ): OfferVariantDocument => ({
+    variantId: vid<'Variant'>(),
+    position,
+    facetCodes,
+    gtin,
+    inStock,
+    price: amount === null ? null : { amount, currency },
+  });
+  const doc = (name: string, overrides: Partial<OfferDocument> = {}): OfferDocument => ({
+    offerId: made[made.push(vid<'Offer'>()) - 1] as Id<'Offer'>,
+    productId: vid<'Product'>(),
+    sellerId: vid<'Seller'>(),
+    locale: settings.locale,
+    name,
+    shortText: null,
+    categoryIds: [CATEGORY],
+    textSearchConfig: settings.textSearchConfig,
+    searchText: null,
+    facetCodes: [],
+    numbers: {},
+    variants: [],
+    ...overrides,
+  });
+  const inUnit = async <T>(target: MarketContext, work: () => Promise<T>, readOnly = false) => {
+    const result = await db.unitOfWork.run(target, async () => ok(await work()), { readOnly });
+    if (!result.ok) throw new Error('unit failed');
+    return result.value;
+  };
+  const seed = (target: MarketContext, ...docs: OfferDocument[]) =>
+    inUnit(target, async () => {
+      for (const d of docs) await documents.upsert(target, d, T0);
+    });
+  const request = (overrides: Partial<FilteredSearchRequest> = {}): FilteredSearchRequest => ({
+    textSearchConfig: settings.textSearchConfig,
+    text: null,
+    categoryIds: [CATEGORY],
+    limit: 49,
+    offset: 0,
+    choiceGroups: [],
+    ranges: [],
+    price: null,
+    ...overrides,
+  });
+  const filtered = async (overrides: Partial<FilteredSearchRequest> = {}, on = market) =>
+    (await inUnit(on, () => facets.searchFiltered(on, request(overrides)), true)).map(
+      (hit) => hit.name,
+    );
+  const scope = (overrides: Partial<FacetScope> = {}): FacetScope => ({
+    textSearchConfig: settings.textSearchConfig,
+    text: null,
+    categoryIds: [CATEGORY],
+    ranges: [],
+    price: null,
+    ...overrides,
+  });
+
+  // Rice (brand al-safa): 1 kg $5, 5 kg $20 OUT of stock, 10 kg $35.
+  // Flour: 1 kg $3 OUT of stock, 5 kg $12.
+  // Shirt: red S $10, blue M $14 (two axes).
+  // Oil: one variant with no price in force; a product attribute only (brand al-safa).
+  const catalogue = () => [
+    doc('Rice', {
+      facetCodes: ['brand=al-safa'],
+      variants: [
+        unit(0, ['weight=1kg'], 500n),
+        unit(1, ['weight=5kg'], 2000n, false, '09300633603366'),
+        unit(2, ['weight=10kg'], 3500n),
+      ],
+    }),
+    doc('Flour', {
+      variants: [unit(0, ['weight=1kg'], 300n, false), unit(1, ['weight=5kg'], 1200n)],
+    }),
+    doc('Shirt', {
+      variants: [
+        unit(0, ['colour=red', 'size=s'], 1000n),
+        unit(1, ['colour=blue', 'size=m'], 1400n),
+      ],
+    }),
+    doc('Oil', { facetCodes: ['brand=al-safa'], variants: [unit(0, [], null)] }),
+  ];
+
+  beforeAll(async () => {
+    db = createPersistence();
+    documents = new PrismaOfferDocumentRepository(db.service);
+    variants = new PrismaOfferVariantReader(db.service);
+    facets = new RawOfferFacetReader(new PrismaRawReadPort(db.root).forModule('search'));
+    sql = new Client({ connectionString: testDatabaseUrl() });
+    await sql.connect();
+  });
+  afterAll(async () => {
+    await db.close();
+    await sql.end();
+  });
+  beforeEach(async () => {
+    await sql.query('DELETE FROM "search"."offer_documents" WHERE offer_id = ANY($1::uuid[])', [
+      made,
+    ]);
+  });
+
+  it('matches a variant filter only through an in-stock variant; the product is one result', async () => {
+    await seed(market, ...catalogue());
+    expect(await filtered({ choiceGroups: [['weight=5kg']] })).toEqual(['Flour']);
+    expect(await filtered({ choiceGroups: [['weight=1kg']] })).toEqual(['Rice']);
+    expect(await filtered({ choiceGroups: [['weight=1kg', 'weight=10kg']] })).toEqual(['Rice']);
+    expect(await filtered({ choiceGroups: [['weight=2kg']] })).toEqual([]);
+  });
+
+  it('needs one variant to hold every axis asked', async () => {
+    await seed(market, ...catalogue());
+    expect(await filtered({ choiceGroups: [['colour=red'], ['size=m']] })).toEqual([]);
+    expect(await filtered({ choiceGroups: [['colour=blue'], ['size=m']] })).toEqual(['Shirt']);
+  });
+
+  it('keeps a product-attribute filter as before (stock not asked), and mixes it with an axis', async () => {
+    await seed(market, ...catalogue());
+    expect(await filtered({ choiceGroups: [['brand=al-safa']] })).toEqual(['Oil', 'Rice']);
+    expect(await filtered({ choiceGroups: [['brand=al-safa'], ['weight=10kg']] })).toEqual([
+      'Rice',
+    ]);
+    expect(await filtered({ choiceGroups: [['brand=al-safa'], ['weight=5kg']] })).toEqual([]);
+  });
+
+  it('applies the price filter to the matching in-stock, priced variants only', async () => {
+    await seed(market, ...catalogue());
+    expect(await filtered({ price: { min: 1100n, max: 1500n } })).toEqual(['Flour', 'Shirt']);
+    // Rice's 5 kg is $20 but out of stock: no Rice between $15 and $25.
+    expect(await filtered({ price: { min: 1500n, max: 2500n } })).toEqual([]);
+    expect(await filtered({ price: { min: null, max: 400n } })).toEqual([]);
+    expect(
+      await filtered({ choiceGroups: [['weight=1kg']], price: { min: 1000n, max: null } }),
+    ).toEqual([]);
+    expect(
+      await filtered({ choiceGroups: [['weight=10kg']], price: { min: 1000n, max: null } }),
+    ).toEqual(['Rice']);
+    // An unpriced variant never matches a price.
+    expect(
+      await filtered({ choiceGroups: [['brand=al-safa']], price: { min: 0n, max: null } }),
+    ).toEqual(['Rice']);
+  });
+
+  it('counts products, not variants, and counts an axis value only where it is in stock', async () => {
+    await seed(market, ...catalogue());
+    const rows = await inUnit(market, () => facets.facetRows(market, scope()), true);
+    const counts = countFacets(rows, [], ['weight', 'brand', 'colour', 'size']);
+    expect(Object.fromEntries([...counts].sort())).toEqual({
+      'brand=al-safa': 2,
+      'colour=blue': 1,
+      'colour=red': 1,
+      'size=m': 1,
+      'size=s': 1,
+      'weight=10kg': 1,
+      'weight=1kg': 1,
+      'weight=5kg': 1,
+    });
+    // With colour red picked, a size counts only on a red variant.
+    const red = countFacets(rows, [{ attr: 'colour', values: ['red'] }], ['size']);
+    expect(Object.fromEntries(red)).toEqual({ 'size=s': 1 });
+    // With a price asked, only variants within it are counted.
+    const priced = await inUnit(
+      market,
+      () => facets.facetRows(market, scope({ price: { min: 1000n, max: null } })),
+      true,
+    );
+    expect(Object.fromEntries([...countFacets(priced, [], ['weight', 'brand'])].sort())).toEqual({
+      'brand=al-safa': 1,
+      'weight=10kg': 1,
+      'weight=5kg': 1,
+    });
+  });
+
+  it('reads the sell units of hits and finds a GTIN, in the Market only', async () => {
+    const [rice] = catalogue();
+    await seed(market, rice!);
+    const units = await inUnit(market, () => variants.sellUnitsOf(market, [rice!.offerId]), true);
+    expect(units.get(rice!.offerId)).toEqual({
+      facetCodes: ['brand=al-safa'],
+      variants: rice!.variants,
+    });
+    expect(
+      await inUnit(market, () => variants.unitsWithGtin(market, '09300633603366'), true),
+    ).toEqual([{ offerId: rice!.offerId, variantId: rice!.variants[1]!.variantId }]);
+    expect(
+      await inUnit(other, () => variants.unitsWithGtin(other, '09300633603366'), true),
+    ).toEqual([]);
+    expect(await filtered({ choiceGroups: [['weight=1kg']] }, other)).toEqual([]);
+  });
+
+  it('replaces the sell units with the document, and drops them with it', async () => {
+    const rice = catalogue()[0]!;
+    await seed(market, rice);
+    await seed(market, { ...rice, variants: [rice.variants[2]!] });
+    const count = async () =>
+      (
+        await sql.query<{ n: string }>(
+          'SELECT count(*)::text AS n FROM "search"."offer_variant_documents" WHERE market_id = $1 AND offer_id = $2',
+          [market.marketId, rice.offerId],
+        )
+      ).rows[0]?.n;
+    expect(await count()).toBe('1');
+    await inUnit(market, () => documents.deleteMany(market, [rice.offerId]));
+    expect(await count()).toBe('0');
+  });
+
+  it('refuses a malformed sell unit (CHECKs)', async () => {
+    const rice = catalogue()[0]!;
+    await seed(market, rice);
+    const CHECK = '23514';
+    const insert = (values: Record<string, unknown>) => {
+      const row = {
+        market_id: market.marketId,
+        tenant_id: market.tenantId,
+        offer_id: rice.offerId,
+        variant_id: vid<'Variant'>(),
+        position: 0,
+        facet_codes: [],
+        gtin: null,
+        in_stock: true,
+        price_amount: '100',
+        price_currency: currency,
+        ...values,
+      };
+      const keys = Object.keys(row);
+      return sql.query(
+        `INSERT INTO "search"."offer_variant_documents" (${keys.map((k) => `"${k}"`).join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')})`,
+        Object.values(row),
+      );
+    };
+    await expect(insert({ gtin: '123' })).rejects.toMatchObject({ code: CHECK });
+    await expect(insert({ price_amount: '-1' })).rejects.toMatchObject({ code: CHECK });
+    await expect(insert({ price_currency: null })).rejects.toMatchObject({ code: CHECK });
+    await expect(insert({ price_currency: 'aud' })).rejects.toMatchObject({ code: CHECK });
+    await expect(insert({ position: -1 })).rejects.toMatchObject({ code: CHECK });
+    await expect(insert({ facet_codes: ['a', 'b', 'c', 'd', 'e'] })).rejects.toMatchObject({
+      code: CHECK,
+    });
+    await expect(insert({ price_amount: null, price_currency: null })).resolves.toBeDefined();
   });
 });
