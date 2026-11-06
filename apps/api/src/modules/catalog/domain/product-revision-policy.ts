@@ -13,6 +13,7 @@ export const SENSITIVE_REASONS = [
   'primary-image',
   'image-added-or-replaced',
   'variant-removed',
+  'gtin-changed',
   'never-published',
   'approval-required',
 ] as const;
@@ -27,6 +28,8 @@ export interface SensitiveChangesPolicy {
   /** Kept for the Market config shape (7.1); ignored by `classify`, as images always go to review (H1). */
   readonly anyImage: boolean;
   readonly variantRemoved: boolean;
+  /** A GTIN set, changed or cleared on a variant that was already published (variants V4). */
+  readonly gtinChanged: boolean;
 }
 
 /** What the policy reads of a revision's content. Ids and the text of names only. */
@@ -38,6 +41,8 @@ export interface RevisionSummary {
   /** Image ids in position order; position 1 is the primary image. Empty until slice 13. */
   readonly imageIds: readonly string[];
   readonly variantIds: readonly string[];
+  /** Variant id to its 14-digit GTIN, or null (V4). */
+  readonly variantGtins: Readonly<Record<string, string | null>>;
 }
 
 export interface Classification {
@@ -94,6 +99,18 @@ export function classify(
     published.variantIds.some((id) => !candidate.variantIds.includes(id))
   ) {
     reasons.push('variant-removed');
+  }
+  // Only a variant that is in both revisions can change its GTIN; a new variant is not a change,
+  // so adding a variant with or without a GTIN stays minor unless it adds an image (V4, t13).
+  if (
+    policy.gtinChanged &&
+    candidate.variantIds.some(
+      (id) =>
+        Object.hasOwn(published.variantGtins, id) &&
+        (published.variantGtins[id] ?? null) !== (candidate.variantGtins[id] ?? null),
+    )
+  ) {
+    reasons.push('gtin-changed');
   }
   return { sensitive: reasons.length > 0, reasons };
 }

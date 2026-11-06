@@ -221,6 +221,7 @@ import { OfferListingsSystemQuery } from './application/use-cases/offer-listings
 import { OFFER_LISTINGS_READER } from './application/ports/offer-listings.reader';
 import { PublishedProductQuery } from './application/use-cases/published-product.use-case';
 import { PUBLISHED_PRODUCT_READER } from './application/ports/published-product.reader';
+import { VARIANT_GTIN_REGISTRY } from './application/ports/variant-gtin.registry';
 import { PUBLISHED_IMAGES_READER } from './application/ports/published-images.reader';
 import { PublishedProductImagesQuery } from './application/use-cases/published-product-images.use-case';
 import { PublishedImageRead } from './application/use-cases/published-image-read.use-case';
@@ -406,6 +407,7 @@ const PORT = {
   tagSelection: TAG_SELECTION_READER,
   listingsReader: OFFER_LISTINGS_READER,
   publishedProductReader: PUBLISHED_PRODUCT_READER,
+  gtinRegistry: VARIANT_GTIN_REGISTRY,
   publishedImagesReader: PUBLISHED_IMAGES_READER,
   ownerContacts: OFFER_OWNER_CONTACT,
   mailTransport: MAIL_TRANSPORT,
@@ -595,6 +597,7 @@ const RESTRUCTURE_DEPS = {
       save: true,
       workingCopies: true,
       policy: true,
+      gtinRegistry: true,
       contentFilter: true,
     }),
     {
@@ -1239,6 +1242,7 @@ const RESTRUCTURE_DEPS = {
       ownReader: true,
       policy: true,
       sellerNames: true,
+      gtinRegistry: true,
     }),
     useCaseProvider(AdminCustomVariantLabels, {
       unitOfWork: true,

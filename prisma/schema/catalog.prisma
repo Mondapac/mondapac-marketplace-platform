@@ -715,11 +715,21 @@ model CatalogProductRevisionVariant {
   optionValues Json                   @map("option_values") @db.JsonB
   /// Locale to label (CA6).
   labels       Json                   @db.JsonB
+  /// The GTIN as 14 digits, check digit validated by the domain; null = none (variants V4).
+  gtin                String?  @db.VarChar(14)
+  /// Shipping values of this variant; null takes the product's value (V4).
+  shippingWeightGrams Int?     @map("shipping_weight_grams")
+  shippingLengthMm    Int?     @map("shipping_length_mm")
+  shippingWidthMm     Int?     @map("shipping_width_mm")
+  shippingHeightMm    Int?     @map("shipping_height_mm")
+  /// Ordered subset of the revision's images; the first is the variant's primary image (V4).
+  imageIds            String[] @default([]) @map("image_ids") @db.Uuid
   revision     CatalogProductRevision @relation(fields: [marketId, productId, revisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
   variant      CatalogProductVariant  @relation(fields: [marketId, productId, variantId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, revisionId, variantId])
   @@unique([marketId, revisionId, optionKey])
+  /// The duplicate-GTIN lookup of a draft save (V4); a partial index, hand-written.
   @@map("product_revision_variants")
   @@schema("catalog")
 }

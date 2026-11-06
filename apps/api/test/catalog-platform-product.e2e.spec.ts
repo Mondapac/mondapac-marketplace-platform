@@ -161,7 +161,7 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
     clock = new FixedClock(START);
     stored = [];
     schemaSeeded = true;
-    saveResult = ok({ variantIds: [], refusedFields: [] });
+    saveResult = ok({ variantIds: [], refusedFields: [], variantNotices: [] });
     submitResult = ok({ revisionId: PRODUCT, revisionNo: 1, published: true });
   });
   afterEach(async () => {
@@ -277,6 +277,9 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       await seeded(code);
       saveResult = ok({
         variantIds: [PRODUCT],
+        variantNotices: [
+          { variantId: PRODUCT, code: 'gtin.duplicate', sellOnProductCode: 'MP-004127' },
+        ],
         refusedFields: [
           {
             field: 'product.name',
@@ -297,6 +300,9 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       expect(saved.status).toBe(200);
       expect(saved.body).toEqual({
         variantIds: [PRODUCT],
+        variantNotices: [
+          { variantId: PRODUCT, code: 'gtin.duplicate', sellOnProductCode: 'MP-004127' },
+        ],
         refusedFields: [
           {
             field: 'product.name',
