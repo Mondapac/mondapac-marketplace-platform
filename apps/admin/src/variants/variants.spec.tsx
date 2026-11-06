@@ -205,6 +205,24 @@ describe.each(MARKETS)('admin Variants page ($name)', ({ locales }) => {
     expect(call.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
   });
 
+  it('ignores a bad colour once another display style is chosen', async () => {
+    route(locales);
+    mount();
+    await screen.findByRole('region', { name: 'Variant type details' });
+    fireEvent.click(screen.getByRole('radio', { name: /Swatches/ }));
+    fireEvent.change(screen.getByLabelText('Colour for 250 g'), { target: { value: 'red' } });
+    fireEvent.click(screen.getByRole('radio', { name: /Dropdown/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'PUT',
+        `catalog/admin/variant-types/${TYPE}/settings`,
+        expect.objectContaining({ displayStyle: 'dropdown', swatches: {} }),
+        'csrf-1',
+      ),
+    );
+  });
+
   it('says so when someone else changed the type first', async () => {
     route(locales, {
       [`PUT catalog/admin/variant-types/${TYPE}/settings`]: fail(409, 'variant-type.stale'),

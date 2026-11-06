@@ -270,7 +270,11 @@ function VariantTypePanel({
 
   async function save() {
     if (draft === null) return;
-    const bad = Object.entries(draft.swatches).find(([, colour]) => colourOf(colour) === null);
+    // Swatches are sent (and so checked) only for the Swatches style.
+    const bad =
+      draft.displayStyle === 'swatches'
+        ? Object.entries(draft.swatches).find(([, colour]) => colourOf(colour) === null)
+        : undefined;
     if (bad !== undefined) {
       setFieldErrors({ [`swatches.${bad[0]}`]: t('swatch.format') });
       return;

@@ -151,10 +151,10 @@ export function VariantsTab() {
             : t('export.unavailable'),
         );
       }
-      const blob =
-        format === 'xlsx'
-          ? new Blob([await response.arrayBuffer()], { type: XLSX_TYPE })
-          : new Blob([await response.text()], { type: 'text/csv;charset=utf-8' });
+      // The bytes as sent: text() would drop the CSV's byte order mark, which Excel needs.
+      const blob = new Blob([await response.arrayBuffer()], {
+        type: format === 'xlsx' ? XLSX_TYPE : 'text/csv;charset=utf-8',
+      });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.href = url;

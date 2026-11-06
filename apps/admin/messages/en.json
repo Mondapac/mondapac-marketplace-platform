@@ -5672,7 +5672,7 @@
       "label": "Variants",
       "filters": "Filter variants",
       "search": "Search",
-      "search-placeholder": "Product, variant code, GTIN or SKU",
+      "search-placeholder": "Product, code, GTIN or SKU",
       "type": "Variant type",
       "type-all": "All variant types",
       "issues": "Issues",
