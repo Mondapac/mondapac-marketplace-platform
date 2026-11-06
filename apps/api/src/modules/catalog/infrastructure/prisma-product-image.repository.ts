@@ -2,7 +2,10 @@ import { Temporal, type Id, type MarketContext } from '@mondapac/shared-kernel';
 import type {
   ProductImage,
   ProductImageRepository,
+  ImageMissingFormats,
+  RenditionFormat,
   RenditionSize,
+  StoredRendition,
   RevisionImage,
   TakedownMark,
   UnattachedImage,
@@ -10,6 +13,7 @@ import type {
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 
 const ORDER = { thumb: 0, medium: 1, large: 2 } as const;
+const FORMAT_ORDER = { jpeg: 0, webp: 1, avif: 2 } as const;
 
 /** Photos of products over the `product_images` family of tables. */
 export class PrismaProductImageRepository implements ProductImageRepository {
@@ -38,12 +42,80 @@ export class PrismaProductImageRepository implements ProductImageRepository {
         imageId: image.id,
         productId: image.productId,
         sizeCode: rendition.size,
+        formatCode: rendition.format,
         objectKey: rendition.objectKey,
         sha256: Uint8Array.from(rendition.sha256),
         byteSize: rendition.byteSize,
         pixelWidth: rendition.width,
         pixelHeight: rendition.height,
       })),
+    });
+  }
+
+  async listMissingFormats(
+    market: MarketContext,
+    query: { readonly afterId: string | null; readonly limit: number },
+  ): Promise<readonly ImageMissingFormats[]> {
+    const rows = await this.prisma.tx(market).catalogProductImage.findMany({
+      where: {
+        marketId: market.marketId,
+        state: 'clean',
+        ...(query.afterId === null ? {} : { id: { gt: query.afterId } }),
+      },
+      select: {
+        id: true,
+        productId: true,
+        renditions: { select: { sizeCode: true, formatCode: true, objectKey: true } },
+      },
+      orderBy: { id: 'asc' },
+      take: query.limit,
+    });
+    const alternates = ['webp', 'avif'] as const;
+    return rows.flatMap((row) => {
+      const jpegs = row.renditions
+        .filter((r) => r.formatCode === 'jpeg')
+        .map((r) => ({ size: r.sizeCode as RenditionSize, objectKey: r.objectKey }));
+      const missing = jpegs.flatMap((jpeg) =>
+        alternates
+          .filter(
+            (format) =>
+              !row.renditions.some((r) => r.sizeCode === jpeg.size && r.formatCode === format),
+          )
+          .map((format) => ({ size: jpeg.size, format })),
+      );
+      if (missing.length === 0) return [];
+      return [
+        {
+          id: row.id as Id<'ProductImage'>,
+          productId: row.productId as Id<'Product'>,
+          jpegs,
+          missing,
+        },
+      ];
+    });
+  }
+
+  async addRenditions(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    imageId: Id<'ProductImage'>,
+    renditions: readonly StoredRendition[],
+  ): Promise<void> {
+    await this.prisma.tx(market).catalogProductImageRendition.createMany({
+      data: renditions.map((rendition) => ({
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        imageId,
+        productId,
+        sizeCode: rendition.size,
+        formatCode: rendition.format,
+        objectKey: rendition.objectKey,
+        sha256: Uint8Array.from(rendition.sha256),
+        byteSize: rendition.byteSize,
+        pixelWidth: rendition.width,
+        pixelHeight: rendition.height,
+      })),
+      skipDuplicates: true,
     });
   }
 
@@ -216,6 +288,7 @@ function toImage(row: {
   createdAt: Date;
   renditions: readonly {
     sizeCode: string;
+    formatCode: string;
     objectKey: string;
     sha256: Uint8Array;
     byteSize: number;
@@ -233,9 +306,15 @@ function toImage(row: {
     uploadedBytes: row.byteSize,
     createdAt: Temporal.Instant.fromEpochMilliseconds(row.createdAt.getTime()),
     renditions: [...row.renditions]
-      .sort((a, b) => ORDER[a.sizeCode as RenditionSize] - ORDER[b.sizeCode as RenditionSize])
+      .sort(
+        (a, b) =>
+          ORDER[a.sizeCode as RenditionSize] - ORDER[b.sizeCode as RenditionSize] ||
+          FORMAT_ORDER[a.formatCode as RenditionFormat] -
+            FORMAT_ORDER[b.formatCode as RenditionFormat],
+      )
       .map((r) => ({
         size: r.sizeCode as RenditionSize,
+        format: r.formatCode as RenditionFormat,
         objectKey: r.objectKey,
         sha256: Buffer.from(r.sha256),
         byteSize: r.byteSize,

@@ -20,20 +20,53 @@ describe('catalog SharpImageProcessor', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.map((r) => [r.size, r.width, r.height])).toEqual([
+    expect(
+      result.value.filter((r) => r.format === 'jpeg').map((r) => [r.size, r.width, r.height]),
+    ).toEqual([
       ['thumb', 240, 120],
       ['medium', 800, 400],
       ['large', 1600, 800],
     ]);
-    for (const rendition of result.value) {
+    for (const rendition of result.value.filter((r) => r.format === 'jpeg')) {
       expect((await sharp(rendition.bytes).metadata()).format).toBe('jpeg');
+    }
+  });
+
+  it('writes WebP and AVIF of every size beside the JPEG, with the same dimensions', async () => {
+    const result = await processor.process(await solid(2000, 1000));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.map((r) => [r.size, r.format, r.width, r.height])).toEqual(
+      (
+        [
+          ['thumb', 240, 120],
+          ['medium', 800, 400],
+          ['large', 1600, 800],
+        ] as const
+      ).flatMap(([size, w, h]) => [
+        [size, 'jpeg', w, h],
+        [size, 'webp', w, h],
+        [size, 'avif', w, h],
+      ]),
+    );
+    for (const rendition of result.value) {
+      const meta = await sharp(rendition.bytes).metadata();
+      // sharp names an AVIF `heif`; the brand is what tells it from HEIC.
+      expect(meta.format).toBe(rendition.format === 'avif' ? 'heif' : rendition.format);
+      if (rendition.format === 'avif') expect(meta.compression).toBe('av1');
+      expect(meta.exif).toBeUndefined();
+      expect(meta.icc).toBeUndefined();
     }
   });
 
   it('never enlarges a small photo', async () => {
     const result = await processor.process(await solid(300, 200, 'webp'));
 
-    expect(result.ok && result.value.map((r) => [r.size, r.width, r.height])).toEqual([
+    expect(
+      result.ok &&
+        result.value.filter((r) => r.format === 'jpeg').map((r) => [r.size, r.width, r.height]),
+    ).toEqual([
       ['thumb', 240, 160],
       ['medium', 300, 200],
       ['large', 300, 200],
@@ -51,7 +84,7 @@ describe('catalog SharpImageProcessor', () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    const large = result.value.at(-1)!;
+    const large = result.value.filter((r) => r.format === 'jpeg').at(-1)!;
     expect([large.width, large.height]).toEqual([300, 400]);
     const meta = await sharp(large.bytes).metadata();
     expect(meta.exif).toBeUndefined();

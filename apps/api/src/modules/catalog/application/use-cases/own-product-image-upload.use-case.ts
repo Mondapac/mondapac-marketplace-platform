@@ -9,7 +9,11 @@ import { IMAGE_BUSY_RETRY_SECONDS } from '../../../../platform/images/image-pipe
 import { MAX_IMAGES_PER_PRODUCT, MAX_UPLOAD_BYTES } from '../images/image-limits';
 import { ownedProduct, type ProductImageView } from '../images/own-product-access';
 import type { ImageProcessor, ImageRefusalCode } from '../ports/image-processor';
-import type { ProductImageRepository, StoredRendition } from '../ports/product-image.repository';
+import {
+  renditionObjectKey,
+  type ProductImageRepository,
+  type StoredRendition,
+} from '../ports/product-image.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
 import type {
@@ -54,8 +58,8 @@ const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
 /**
  * `own-product.upload-image`: a seller adds a photo to a product of their own (catalog design 10,
- * simplified path). The photo is decoded and written again as three metadata-free JPEG
- * renditions; the raw upload is never stored. The upload spends one save of the account's
+ * simplified path). The photo is decoded and written again as three sizes, each as a
+ * metadata-free JPEG, WebP and AVIF; the raw upload is never stored. The upload spends one save of the account's
  * limits. Rule: key `catalog.own-product.edit`, the seller population and a seller who may sell.
  * A product of another seller, a PLATFORM product and an unknown id answer one `product.not-found`.
  * The photo joins a revision only when the seller lists its id in the draft and submits.
@@ -138,11 +142,17 @@ export class OwnProductImageUpload extends UseCase<
     const stored: string[] = [];
     try {
       for (const rendition of processed.value) {
-        const objectKey = `${product.value}/${imageId}/${rendition.size}`;
+        const objectKey = renditionObjectKey(
+          product.value,
+          imageId,
+          rendition.size,
+          rendition.format,
+        );
         await deps.objectStore.put(objectKey, rendition.bytes);
         stored.push(objectKey);
         renditions.push({
           size: rendition.size,
+          format: rendition.format,
           objectKey,
           sha256: createHash('sha256').update(rendition.bytes).digest(),
           byteSize: rendition.bytes.length,
@@ -154,7 +164,7 @@ export class OwnProductImageUpload extends UseCase<
       await removeAll(deps.objectStore, stored);
       return err({ code: 'access.unavailable' });
     }
-    const largest = renditions[renditions.length - 1]!;
+    const largest = renditions.filter((r) => r.format === 'jpeg').at(-1)!;
     const createdAt = deps.clock.now();
     const written = await deps.unitOfWork
       .run(market, async () => {

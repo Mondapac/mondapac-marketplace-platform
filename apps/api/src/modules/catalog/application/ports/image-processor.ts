@@ -1,5 +1,5 @@
 import type { Result } from '@mondapac/shared-kernel';
-import type { RenditionSize } from './product-image.repository';
+import type { RenditionFormat, RenditionSize } from './product-image.repository';
 
 /** Why an upload was refused; codes only, never a file name or content. */
 export type ImageRefusalCode =
@@ -13,6 +13,7 @@ export type ImageRefusalCode =
 
 export interface ProcessedRendition {
   readonly size: RenditionSize;
+  readonly format: RenditionFormat;
   readonly bytes: Buffer;
   readonly width: number;
   readonly height: number;
