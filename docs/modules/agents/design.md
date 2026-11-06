@@ -2,7 +2,7 @@
 
 Author: Mohammad (software-architect), 2026-11-06. Inputs: `docs/modules/agents/brief.md` (G1 approved; owner answers Q1-Q13), ADR-0045 (Accepted), ADR-0006, ADR-0007, ADR-0008, ADR-0018, ADR-0022. Tier A. Module path: `apps/api/src/modules/agents/{domain,application,infrastructure,presentation,contracts}`. The physical schema (columns, constraints, indexes, migrations) belongs to database-designer. This document names aggregates and invariants only.
 
-**Status:** draft for G2 review. Open questions 1-2 decided by the owner and 3-8 by cto (2026-11-06). database-designer, ui-ux-designer and security-tester parts follow. Not approved.
+**Status:** G2 approved by the owner on 2026-11-06, after cto and security-tester review (section 9).
 
 ## 1. Aggregates and invariants
 
