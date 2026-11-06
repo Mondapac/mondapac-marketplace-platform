@@ -3,6 +3,9 @@ import { ga4IdFor } from './src/analytics/ga4-config.ts';
 import { DEFAULT_LOCALE, publishedLocales } from './src/i18n/locale.ts';
 import { makeNonce, policyPath, storefrontCsp } from './src/security/storefront-csp.ts';
 import { NOINDEX_HEADER, indexingOn } from './src/seo/indexing.ts';
+import { apiGetWith } from './src/storefront/api.ts';
+import { categoryRedirect, type ResolveRead } from './src/storefront/category-redirect.ts';
+import { storefrontApiConfig } from './src/storefront/config.ts';
 import { PATH_HEADER } from './src/storefront/path-header.ts';
 import { parseImageOrigin } from './src/storefront/photos.ts';
 
@@ -26,7 +29,42 @@ function imageOrigin(): string | null {
   }
 }
 
-export function proxy(request?: NextRequest): NextResponse {
+/** The resolver read for this request: the API's answer for its host's Market. */
+const resolverFor =
+  (request: NextRequest): ResolveRead =>
+  (slug) =>
+    apiGetWith(
+      storefrontApiConfig(),
+      request.headers,
+      `catalog/categories/resolve?slug=${encodeURIComponent(slug)}`,
+    );
+
+/**
+ * A `/c/...` path that moved answers its 301 or 302 here (categories C6), before any page: an old
+ * two-level address, a retired or merged slug, or a hidden category. Everything else goes on.
+ */
+export async function proxy(request?: NextRequest): Promise<NextResponse> {
+  if (request && request.nextUrl.pathname.startsWith('/c/')) {
+    const moved = await categoryRedirect(
+      request.nextUrl.pathname,
+      request.nextUrl.search,
+      resolverFor(request),
+    );
+    if (moved !== null) {
+      // A site-relative Location (built from a checked slug and the request's already-encoded
+      // query), so the answer never depends on the host the server sees.
+      const response = new NextResponse(null, {
+        status: moved.status,
+        headers: { location: moved.location },
+      });
+      if (!indexingOn()) response.headers.set(NOINDEX_HEADER.name, NOINDEX_HEADER.value);
+      return response;
+    }
+  }
+  return pageResponse(request);
+}
+
+function pageResponse(request?: NextRequest): NextResponse {
   let response: NextResponse;
   if (request && policyPath(request.nextUrl.pathname)) {
     const policy = storefrontCsp(

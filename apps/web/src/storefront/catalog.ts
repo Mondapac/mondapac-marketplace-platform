@@ -52,6 +52,8 @@ export interface ProductQuery {
   /** Category code (the API takes the platform category id). */
   readonly category?: string;
   readonly subcategory?: string;
+  /** Only products on the category itself, none of a subcategory's ("Other {name}"). */
+  readonly direct?: boolean;
   readonly page: number;
   readonly pageSize?: number;
   /** Listing filters; not in the API yet. */
@@ -117,7 +119,13 @@ export async function resolveCategory(
   const live = await liveCategory(code, sub);
   if (live !== undefined) return live ?? undefined;
   const category = SAMPLE_CONTENT.categories.find((c) => c.code === code);
-  if (category === undefined) return undefined;
+  if (category === undefined) {
+    // One segment names a category at any depth (categories C6): a sample subcategory's own slug.
+    if (sub !== undefined) return undefined;
+    const parent = SAMPLE_CONTENT.categories.find((c) => c.children.some((k) => k.code === code));
+    const child = parent?.children.find((k) => k.code === code);
+    return parent === undefined || child === undefined ? undefined : { category: parent, child };
+  }
   if (sub === undefined) return { category };
   const child = category.children.find((c) => c.code === sub);
   return child === undefined ? undefined : { category, child };
@@ -176,12 +184,13 @@ const ORDER: Readonly<Record<Sort, (a: ProductCard, b: ProductCard) => number>> 
   name: (a, b) => a.name.localeCompare(b.name),
 };
 
-function inScope(query: Pick<ProductQuery, 'q' | 'category' | 'subcategory'>) {
+function inScope(query: Pick<ProductQuery, 'q' | 'category' | 'subcategory' | 'direct'>) {
   const words = (query.q ?? '').toLowerCase().split(' ').filter(Boolean);
   return SAMPLE_PRODUCTS.filter(
     (p) =>
       (query.category === undefined || p.category === query.category) &&
       (query.subcategory === undefined || SAMPLE_SUBCATEGORY[p.id] === query.subcategory) &&
+      (query.direct !== true || SAMPLE_SUBCATEGORY[p.id] === undefined) &&
       words.every((w) => `${p.name} ${p.sellerName} ${p.category}`.toLowerCase().includes(w)),
   );
 }
@@ -195,7 +204,8 @@ function inScope(query: Pick<ProductQuery, 'q' | 'category' | 'subcategory'>) {
 export async function searchCategory(code: string | undefined): Promise<Category | undefined> {
   if (code === undefined || code === '') return undefined;
   const found = await resolveCategory(code);
-  if (found !== undefined) return found.category;
+  // A sample subcategory's slug alone is not a search scope (the sample search narrows by top level).
+  if (found !== undefined && found.child === undefined) return found.category;
   if (!listingIsLive()) return undefined;
   const name = Array.from(code).slice(0, 40).join('');
   return { code, name, shortName: name, children: [] };
@@ -212,6 +222,7 @@ export async function findProducts(query: ProductQuery, read?: Reader): Promise<
       ...(query.q === undefined ? {} : { q: query.q }),
       ...(query.category === undefined ? {} : { category: query.category }),
       ...(query.subcategory === undefined ? {} : { subcategory: query.subcategory }),
+      ...(query.direct === true ? { direct: true } : {}),
       page: query.page,
       pageSize,
     },
@@ -330,4 +341,19 @@ export async function categoryIsEmpty(
 ): Promise<boolean> {
   const all = await findProducts({ ...scope, page: 1, pageSize: 1 }, read);
   return (all.total ?? all.items.length) === 0;
+}
+
+/**
+ * The number of products under each direct child of a category, for its filter chips (categories
+ * C6). The sample counts them here; with the API on, the counts come with the live tree
+ * (`Category.page.childCounts`), so this answers undefined.
+ */
+export function childCounts(
+  category: string,
+  children: readonly string[],
+): ReadonlyMap<string, number> | undefined {
+  if (listingIsLive()) return undefined;
+  return new Map(
+    children.map((code) => [code, inScope({ category, subcategory: code }).length] as const),
+  );
 }

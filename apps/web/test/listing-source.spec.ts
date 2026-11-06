@@ -9,6 +9,7 @@ const SELLER = '0b5e1c3a-0000-4000-8000-0000000000b1';
 const P1 = '0b5e1c3a-0000-4000-8000-0000000000c1';
 const P2 = '0b5e1c3a-0000-4000-8000-0000000000c2';
 
+const CHOPS = '0b5e1c3a-0000-4000-8000-0000000000c0';
 const TREE = {
   locale: 'en',
   categories: [
@@ -67,11 +68,45 @@ describe('category of a URL', () => {
         name: 'Meat',
         shortName: 'Meat',
         children: [{ code: 'lamb', name: 'Lamb' }],
+        page: { trail: [], depth: 0 },
       },
     });
     expect((await liveCategory('meat', 'lamb', read))?.child).toEqual({
       code: 'lamb',
       name: 'Lamb',
+    });
+  });
+
+  it('gives a deep category its trail, depth, short description, SEO and live flag', async () => {
+    const tree: ApiRead<unknown> = {
+      kind: 'ok',
+      body: {
+        categories: [
+          ...TREE.categories,
+          {
+            id: CHOPS,
+            parentId: LAMB,
+            slug: 'chops',
+            name: 'Chops',
+            shortDescription: 'Loin and rib',
+            seo: { title: 'Lamb chops', noindex: false },
+            hasLiveProducts: false,
+            inMenu: false,
+          },
+        ],
+      },
+    };
+    const { read } = reader({ kind: 'off' }, tree);
+
+    expect((await liveCategory('chops', undefined, read))?.category.page).toEqual({
+      trail: [
+        { code: 'meat', name: 'Meat' },
+        { code: 'lamb', name: 'Lamb' },
+      ],
+      depth: 2,
+      shortDescription: 'Loin and rib',
+      seo: { title: 'Lamb chops', noindex: false },
+      hasLiveProducts: false,
     });
   });
 
