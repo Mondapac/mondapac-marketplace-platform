@@ -74,7 +74,7 @@ export type SignInIdentifier =
 export type SignInPopulation = 'customer' | 'seller';
 
 /** The populations this sequence runs for: an admin's ends at step 5, never in a session. */
-type FlowPopulation = SignInPopulation | 'admin';
+type FlowPopulation = SignInPopulation | 'admin' | 'agent';
 
 /** A new session. The token goes into the cookie only, never a body or a log. */
 export interface SignedIn {
@@ -254,8 +254,10 @@ export class SignInFlow {
     if (population === 'seller' && sellerDeps === null) {
       throw new Error('SignInFlow: the seller population needs the seller dependencies');
     }
-    if ((population === 'admin') !== (adminStep !== null)) {
-      throw new Error('SignInFlow: the admin step is for, and only for, the admin population');
+    if ((population === 'admin' || population === 'agent') !== (adminStep !== null)) {
+      throw new Error(
+        'SignInFlow: the challenge step is for, and only for, the admin and agent populations',
+      );
     }
     if (sellerStep !== null && population !== 'seller') {
       throw new Error('SignInFlow: the seller step is for the seller population only');
@@ -269,8 +271,8 @@ export class SignInFlow {
     client: SignInClient,
     options: SignInOptions = {},
   ): Promise<Result<SignedIn, SignInRefusal>> {
-    if (this.population === 'admin') {
-      throw new Error('SignInFlow: an admin signs in through runAdmin (AC 10)');
+    if (this.population === 'admin' || this.population === 'agent') {
+      throw new Error('SignInFlow: an admin or an agent signs in through runAdmin (AC 10)');
     }
     const outcome = await this.#run(context, identifier, password, client, options, null, null);
     if (!outcome.ok) return outcome;
@@ -322,7 +324,9 @@ export class SignInFlow {
     client: SignInClient,
     adminPolicy: AdminSecondStepPolicy,
   ): Promise<Result<AdminSecondStepOutcome, SignInRefusal>> {
-    if (this.population !== 'admin') throw new Error('SignInFlow: runAdmin is for admins');
+    if (this.population !== 'admin' && this.population !== 'agent') {
+      throw new Error('SignInFlow: runAdmin is for admins and agents');
+    }
     const outcome = await this.#run(
       context,
       { kind: 'email', email },
@@ -352,7 +356,8 @@ export class SignInFlow {
     if (identifier.kind === 'link' && this.linkDeps === null) {
       throw new Error('SignInFlow: the link variant needs the link dependencies');
     }
-    if (population === 'admin' && (identifier.kind !== 'email' || adminPolicy === null)) {
+    const challenged = population === 'admin' || population === 'agent';
+    if (challenged && (identifier.kind !== 'email' || adminPolicy === null)) {
       throw new Error('SignInFlow: an admin signs in with an email and the admin policy');
     }
     // 6.1: "keep me signed in" is seller side only, and only where the Market offers it. An
@@ -362,8 +367,10 @@ export class SignInFlow {
         ? policy.sessionLifetime(market, population, true)
         : null;
     const lifetime =
-      population === 'admin' ? null : (kept ?? policy.sessionLifetime(market, population));
-    if (population !== 'admin' && lifetime === null) return err(UNAVAILABLE);
+      population === 'admin' || population === 'agent'
+        ? null
+        : (kept ?? policy.sessionLifetime(market, population));
+    if (!challenged && lifetime === null) return err(UNAVAILABLE);
     const persistent = population === 'customer' || kept !== null;
     const rules = policy.signInThrottles(market);
     const originCounter: ThrottleCounter = {

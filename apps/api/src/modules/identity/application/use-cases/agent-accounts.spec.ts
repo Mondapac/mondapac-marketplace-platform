@@ -18,6 +18,8 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../../platform/market-context/tenant';
 import { AGENTS_MANAGE_KEY, AGENTS_READ_KEY } from '../../contracts/agent-access';
+import { AGENT_ACCOUNT_RESET_SECOND_FACTOR } from '../../contracts/permissions';
+import { SecondFactor } from '../../domain/second-factor';
 import type { AccountState } from '../../domain/account';
 import { HmacHandoverCodes } from '../../infrastructure/second-factor/hmac-handover-codes';
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
@@ -29,6 +31,7 @@ import { ContactEmailOf } from './contact-email-of.use-case';
 import { DisableAgentAccount } from './disable-agent-account.use-case';
 import { EnableAgentAccount } from './enable-agent-account.use-case';
 import { IssueAgentInvitation } from './issue-agent-invitation.use-case';
+import { ResetAgentSecondFactor } from './reset-agent-second-factor.use-case';
 
 // ADR-0045 decision 5 and the facade rows of the agents design: disable (sessions revoked, open
 // invitation voided, one unit), enable, the live access read, and the agent contact address.
@@ -68,7 +71,7 @@ describe.each(TEST_MARKETS)('agent accounts in market %s (ADR-0045)', (code) => 
   const effectiveKeys: EffectiveKeyResolver = (subject) =>
     new Set(
       subject.accountId === MANAGER
-        ? [AGENTS_MANAGE_KEY]
+        ? [AGENTS_MANAGE_KEY, AGENT_ACCOUNT_RESET_SECOND_FACTOR.key]
         : subject.accountId === READER
           ? [AGENTS_READ_KEY]
           : [],
@@ -161,6 +164,7 @@ describe.each(TEST_MARKETS)('agent accounts in market %s (ADR-0045)', (code) => 
         memberships: fakes.membershipRepository,
         grants: fakes.grantReader,
       }),
+      reset: new ResetAgentSecondFactor(gate, { ...status, factors: fakes.factorRepository }),
       issue: new IssueAgentInvitation(gate, {
         ...status,
         throttles: fakes.throttleRepository,
@@ -374,6 +378,70 @@ describe.each(TEST_MARKETS)('agent accounts in market %s (ADR-0045)', (code) => 
       expect(
         (await useCases.access.execute(as(CUSTOMER, 'customer'), { accountIds: [AGENT] })).ok,
       ).toBe(false);
+    });
+  });
+
+  describe('ResetAgentSecondFactor', () => {
+    const seedFactor = (accountId: Id<'Account'>) => {
+      const factor = SecondFactor.createActive({
+        id: id<'SecondFactor'>(uuid(0xd001)),
+        marketId,
+        accountId,
+        secretCiphertext: 'sealed',
+        acceptedStep: 1,
+        recoveryCodeHashes: Array.from({ length: 10 }, (_, i) => new Uint8Array(32).fill(i + 1)),
+        now: START,
+      });
+      fakes.factors.set(accountId, factor.state);
+    };
+
+    it('removes the factor, revokes every session, voids challenges, audits and opens no session', async () => {
+      const useCases = setUp();
+      seedFactor(AGENT);
+      openSession(uuid(0xf101), AGENT);
+
+      const result = await useCases.reset.execute(as(MANAGER), { accountId: AGENT });
+
+      expect(result).toMatchObject({
+        ok: true,
+        value: { code: 'second-factor.reset', accountId: AGENT, revokedSessions: 1 },
+      });
+      expect(fakes.factors.has(AGENT)).toBe(false);
+      expect(liveSessions()).toBe(0);
+      expect(fakes.audits.map((a) => a.action)).toContain('identity.second-factor.reset');
+      expect(fakes.events.map((e) => e.type)).toContain('identity.second-factor-changed.v1');
+    });
+
+    it('answers second-factor.none without a factor, and account.unknown for a non-agent', async () => {
+      const useCases = setUp();
+      seedFactor(CUSTOMER);
+
+      expect(await useCases.reset.execute(as(MANAGER), { accountId: AGENT })).toEqual({
+        ok: false,
+        error: { code: 'second-factor.none' },
+      });
+      expect(await useCases.reset.execute(as(MANAGER), { accountId: CUSTOMER })).toEqual({
+        ok: false,
+        error: { code: 'account.unknown' },
+      });
+      expect(fakes.factors.has(CUSTOMER)).toBe(true);
+    });
+
+    it.each([
+      ['an admin holding only agents.manage', () => as(READER)],
+      ['an admin without the key', () => as(NO_KEY)],
+      ['an agent', () => as(AGENT, 'agent')],
+      ['a customer', () => as(CUSTOMER, 'customer')],
+    ])('refuses %s and changes nothing', async (_label, context) => {
+      const useCases = setUp();
+      seedFactor(AGENT);
+      openSession(uuid(0xf101), AGENT);
+
+      const result = await useCases.reset.execute(context(), { accountId: AGENT });
+
+      expect(result.ok).toBe(false);
+      expect(fakes.factors.has(AGENT)).toBe(true);
+      expect(liveSessions()).toBe(1);
     });
   });
 

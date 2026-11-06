@@ -20,6 +20,8 @@ export const ADMIN_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'link.rejected': 400,
   'challenge.rejected': 400,
   'invitation.rejected': 400,
+  'handover-code.invalid': 400,
+  'agent.unknown': 404,
   'invitation.enrolment-expired': 400,
   'second-factor.invalid': 400,
   'credentials.invalid': 401,

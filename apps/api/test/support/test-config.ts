@@ -90,7 +90,7 @@ export function panelOriginMarketConfigDirs(): readonly string[] {
  */
 export function panelHeaders(
   code: string,
-  population: 'admin' | 'seller',
+  population: 'admin' | 'seller' | 'agent',
 ): { readonly origin: string; readonly 'sec-fetch-site': 'same-origin' } {
   const file = readMarketFiles().get(code);
   if (file === undefined) throw new Error(`panelHeaders: no Market file for ${code}`);

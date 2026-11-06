@@ -515,6 +515,21 @@ export const AdminSessionOpenedAudit = defineAuditAction({
 });
 
 /**
+ * An agent signed in: an agent session opened from a correct password and a second-factor proof
+ * (ADR-0045 decision 4). Same shape as the admin's: the actor is anonymous (the request holds no
+ * session yet) and the account is bound by the credentials, named in `boundSubjectId`.
+ */
+export const AgentSessionOpenedAudit = defineAuditAction({
+  action: 'identity.agent-session.opened',
+  targetType: 'identity.account',
+  actors: ['anonymous'],
+  after: {
+    sessionId: auditField.id(),
+    boundSubjectId: auditField.id(),
+  },
+});
+
+/**
  * The holder signed out every other session of the own account (profile package 4, active
  * sessions). Target: the account; the actor is its holder, on the session that was kept. The
  * count only: never a device or an address (R5).
@@ -666,6 +681,7 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   SellerSecondFactorResetRequestedAudit,
   SellerSecondFactorResetConfirmedAudit,
   AdminSessionOpenedAudit,
+  AgentSessionOpenedAudit,
   OtherSessionsSignedOutAudit,
   AccountErasedAudit,
   AccountSessionsEndedForErasureAudit,

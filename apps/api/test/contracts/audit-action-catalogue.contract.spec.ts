@@ -305,6 +305,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.agent-invitation.accepted',
       'identity.agent-invitation.issued',
       'identity.agent-invitation.revoked',
+      'identity.agent-session.opened',
       'identity.invitation.accepted',
       'identity.invitation.issued',
       'identity.invitation.reissued',

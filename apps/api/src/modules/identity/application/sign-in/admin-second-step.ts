@@ -79,8 +79,12 @@ export class AdminSecondStep {
     const { market } = context;
     const accountId = account.state.id;
     const factor = await this.deps.factors.findByAccount(market, accountId);
-    if (factor !== null && factor.isActive) {
-      const wait = lockedFor(factor.state.lockedAt, policy.secondFactorThrottle, now);
+    // An agent always enrols a factor when it accepts (ADR-0045 decision 3). One without an active
+    // factor is a broken state: it gets the same challenge, which no code can pass, and no
+    // enrolment link is ever mailed; a password alone never opens an agent session.
+    const agent = account.state.population === 'agent';
+    if (agent || (factor !== null && factor.isActive)) {
+      const wait = lockedFor(factor?.state.lockedAt ?? null, policy.secondFactorThrottle, now);
       if (wait !== null) return { code: 'second-factor.locked', retryAfterSeconds: wait };
       const challenge = issueChallenge({
         id: this.deps.ids.next<'SignInChallenge'>(),

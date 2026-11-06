@@ -123,6 +123,13 @@ import { EnableCustomerAccount } from './application/use-cases/enable-customer-a
 import { AgentAccessOf } from './application/use-cases/agent-access-of.use-case';
 import { DisableAgentAccount } from './application/use-cases/disable-agent-account.use-case';
 import { EnableAgentAccount } from './application/use-cases/enable-agent-account.use-case';
+import { CompleteAgentSignIn } from './application/use-cases/complete-agent-sign-in.use-case';
+import { DescribeAgentSession } from './application/use-cases/describe-agent-session.use-case';
+import { ResetAgentSecondFactor } from './application/use-cases/reset-agent-second-factor.use-case';
+import { SignInAgent } from './application/use-cases/sign-in-agent.use-case';
+import { SignOutAgent } from './application/use-cases/sign-out-agent.use-case';
+import { AdminAgentController } from './presentation/admin-agent.controller';
+import { AgentSessionController } from './presentation/agent-session.controller';
 import { AcceptAgentInvitation } from './application/use-cases/accept-agent-invitation.use-case';
 import { InviteAdmin } from './application/use-cases/invite-admin.use-case';
 import { IssueAgentInvitation } from './application/use-cases/issue-agent-invitation.use-case';
@@ -454,6 +461,8 @@ function useCaseProvider<D, U>(
     SellerTeamController,
     SellerStepUpController,
     AdminSessionController,
+    AdminAgentController,
+    AgentSessionController,
     AdminSecondFactorController,
     AdminStepUpController,
     AdminPasswordController,
@@ -590,6 +599,58 @@ function useCaseProvider<D, U>(
       flowSecrets: true,
       clock: true,
     }),
+    useCaseProvider(SignInAgent, {
+      unitOfWork: true,
+      accounts: true,
+      sessions: true,
+      throttles: true,
+      records: true,
+      securityEvents: true,
+      hasher: true,
+      tokens: true,
+      keys: true,
+      policy: true,
+      clock: true,
+      ids: true,
+      factors: true,
+      challenges: true,
+      links: true,
+      outbox: true,
+      challengeTokens: true,
+    }),
+    useCaseProvider(CompleteAgentSignIn, {
+      unitOfWork: true,
+      accounts: true,
+      challenges: true,
+      factors: true,
+      throttles: true,
+      records: true,
+      securityEvents: true,
+      keys: true,
+      secrets: true,
+      challengeTokens: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      sessions: true,
+      tokens: true,
+      audit: true,
+      policy: true,
+    }),
+    useCaseProvider(ResetAgentSecondFactor, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+      factors: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SignOutAgent, { unitOfWork: true, sessions: true, clock: true }),
+    useCaseProvider(DescribeAgentSession, { unitOfWork: true, accounts: true, sessions: true }),
     useCaseProvider(SignOut, { unitOfWork: true, sessions: true, clock: true }),
     useCaseProvider(DescribeActor, {
       unitOfWork: true,
