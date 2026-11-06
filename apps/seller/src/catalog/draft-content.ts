@@ -222,6 +222,8 @@ export function contentFrom(
     readonly attributeValues: Record<string, unknown>;
     /** `null` for a product whose variants are fixed: its `variants` key is left alone. */
     readonly variants: Record<string, unknown>[] | null;
+    /** The axis codes of a configurable product (V3); `null` leaves the draft's `variantAxes` alone. */
+    readonly variantAxes?: readonly string[] | null;
   },
 ): Record<string, unknown> {
   const next = { ...content };
@@ -236,5 +238,10 @@ export function contentFrom(
   set('taxCategoryCode', parts.taxCategoryCode, parts.taxCategoryCode === '');
   set('attributeValues', parts.attributeValues, Object.keys(parts.attributeValues).length === 0);
   if (parts.variants !== null) set('variants', parts.variants, parts.variants.length === 0);
+  // Axes are written once the seller has chosen some; a draft that never had any stays without.
+  if (parts.variantAxes !== undefined && parts.variantAxes !== null) {
+    if (parts.variantAxes.length > 0) next['variantAxes'] = [...parts.variantAxes];
+    else delete next['variantAxes'];
+  }
   return next;
 }

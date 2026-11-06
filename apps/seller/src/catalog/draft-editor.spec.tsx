@@ -86,7 +86,15 @@ const mount = (p: ProductView = product()) =>
 const saved = (ids: string[]) =>
   ({ ok: true, status: 200, body: { variantIds: ids, refusedFields: [] } }) as const;
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
+});
 afterEach(cleanup);
 
 describe('draft content helpers', () => {
@@ -161,56 +169,222 @@ describe('EditForm product details', () => {
     });
   });
 
-  it('adds a variant, then writes the draft again with the id the server minted', async () => {
-    call.mockResolvedValueOnce(saved(['v1', 'v9'])).mockResolvedValueOnce(saved(['v1', 'v9']));
-    mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Add a variant' }));
-    fireEvent.change(screen.getAllByLabelText('size')[1] as HTMLElement, {
-      target: { value: 'large' },
-    });
+  const box = (name: string, index = 0) =>
+    screen.getAllByRole('checkbox', { name })[index] as HTMLInputElement;
+
+  it('ticks a combination, then writes the draft again with the id the server minted', async () => {
+    call.mockResolvedValueOnce(saved(['v9'])).mockResolvedValueOnce(saved(['v9']));
+    mount(product({ variants: [] }));
+    fireEvent.click(box('size'));
+    fireEvent.click(box('Large'));
+    fireEvent.click(box('Large', 1));
+    expect(screen.getByText('1 of 3')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
-    expect(call.mock.calls[0]?.[2]).toMatchObject({ variantIds: ['v1', null] });
+    expect(call.mock.calls[0]?.[2]).toMatchObject({
+      variantIds: [null],
+      content: { variantAxes: ['size'] },
+    });
     expect(call.mock.calls[1]?.[2]).toMatchObject({
-      variantIds: ['v1', 'v9'],
+      variantIds: ['v9'],
       content: {
-        variants: [{ variantId: 'v1' }, { variantId: 'v9', optionValues: { size: 'large' } }],
+        variantAxes: ['size'],
+        variants: [{ variantId: 'v9', optionValues: { size: 'large' } }],
       },
     });
+    // The seller never types a label: the draft carries none.
+    expect(JSON.stringify(call.mock.calls[1]?.[2])).not.toContain('labels');
     await expectToast('Draft saved.');
   });
 
   it('tells the seller to save again when the second write fails, and a retry sends real ids', async () => {
     call
-      .mockResolvedValueOnce(saved(['v1', 'v9']))
+      .mockResolvedValueOnce(saved(['v9']))
       .mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'access.unavailable' } })
-      .mockResolvedValueOnce(saved(['v1', 'v9']));
-    mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Add a variant' }));
+      .mockResolvedValueOnce(saved(['v9']));
+    mount(product({ variants: [] }));
+    fireEvent.click(box('size'));
+    fireEvent.click(box('Small'));
+    fireEvent.click(box('Small', 1));
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     expect(await screen.findByText(/do not reload the page/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
-    expect(call.mock.calls[2]?.[2]).toMatchObject({ variantIds: ['v1', 'v9'] });
+    expect(call.mock.calls[2]?.[2]).toMatchObject({ variantIds: ['v9'] });
     await expectToast('Draft saved.');
   });
 
-  it('stops adding at the limit and keeps a published variant', () => {
+  it('allows a partial grid: only the ticked combinations become variants', async () => {
+    call.mockResolvedValueOnce(saved(['v1']));
+    mount(
+      product({
+        variants: [{ variantId: 'v1', state: 'proposed' }],
+        workingCopy: {
+          content: {
+            variantAxes: ['size'],
+            variants: [{ variantId: 'v1', optionValues: { size: 'large' } }],
+          },
+          lastSavedAt: '2026-10-01T00:00:00Z',
+          baseRevisionId: null,
+        },
+      }),
+    );
+    fireEvent.click(box('Small')); // activate Small, leave it unticked
+    expect(box('Small', 1).checked).toBe(false);
+    expect(box('Large', 1).checked).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call.mock.calls[0]?.[2]).toMatchObject({
+      variantIds: ['v1'],
+      content: { variants: [{ variantId: 'v1', optionValues: { size: 'large' } }] },
+    });
+  });
+
+  it('stops ticking at the limit and warns before it', () => {
     mount(
       product({
         maxVariants: 1,
-        variants: [{ variantId: 'v1', state: 'published' }],
+        variants: [{ variantId: 'v1', state: 'proposed' }],
+        workingCopy: {
+          content: {
+            variantAxes: ['size'],
+            variants: [{ variantId: 'v1', optionValues: { size: 'large' } }],
+          },
+          lastSavedAt: '2026-10-01T00:00:00Z',
+          baseRevisionId: null,
+        },
       }),
     );
-    expect(screen.getByRole('button', { name: 'Add a variant' }).hasAttribute('disabled')).toBe(
-      true,
+    fireEvent.click(box('Small'));
+    expect(box('Small', 1).disabled).toBe(true);
+    expect(screen.getByText(/reached the limit of 1 variants/)).toBeTruthy();
+  });
+
+  it('locks the axes once the product is published and confirms removing a published variant', () => {
+    mount(
+      product({
+        published: { revisionId: 'r', revisionNo: 1 } as ProductView['published'],
+        variants: [{ variantId: 'v1', state: 'published' }],
+        workingCopy: {
+          content: {
+            variantAxes: ['size'],
+            variants: [{ variantId: 'v1', optionValues: { size: 'large' } }],
+          },
+          lastSavedAt: '2026-10-01T00:00:00Z',
+          baseRevisionId: 'r',
+        },
+      }),
     );
-    expect(screen.queryByRole('button', { name: 'Remove this variant' })).toBeNull();
+    expect(box('size').disabled).toBe(true);
+    expect(screen.getByText(/what it varies on is locked/)).toBeTruthy();
+    fireEvent.click(box('Large', 1));
+    // Nothing is removed until the seller confirms.
+    expect(box('Large', 1).checked).toBe(true);
+    expect(screen.getByText(/Adding it again later starts from empty/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(box('Large', 1).checked).toBe(false);
+  });
+
+  it('also confirms removing a saved but never published variant', () => {
+    mount(
+      product({
+        variants: [{ variantId: 'v1', state: 'proposed' }],
+        workingCopy: {
+          content: {
+            variantAxes: ['size'],
+            variants: [{ variantId: 'v1', optionValues: { size: 'large' } }],
+          },
+          lastSavedAt: '2026-10-01T00:00:00Z',
+          baseRevisionId: null,
+        },
+      }),
+    );
+    fireEvent.click(box('Large', 1));
+    expect(box('Large', 1).checked).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(box('Large', 1).checked).toBe(false);
+  });
+
+  it('explains a published product whose variants have no axes instead of an empty card', () => {
+    mount(
+      product({
+        published: { revisionId: 'r', revisionNo: 1 } as ProductView['published'],
+        variants: [{ variantId: 'v1', state: 'published' }],
+        workingCopy: {
+          content: { variants: [{ variantId: 'v1', optionValues: {} }] },
+          lastSavedAt: '2026-10-01T00:00:00Z',
+          baseRevisionId: 'r',
+        },
+      }),
+    );
+    expect(screen.getByText(/set up before axes existed/)).toBeTruthy();
+  });
+
+  it('draws two axes as a matrix and ticks one cell', async () => {
+    call.mockResolvedValueOnce(saved(['v9'])).mockResolvedValueOnce(saved(['v9']));
+    mount(
+      product({
+        variants: [],
+        form: {
+          ...product().form,
+          fields: [
+            ...FIELDS,
+            field({
+              code: 'colour',
+              dataType: 'select',
+              isVariantOption: true,
+              options: [
+                { code: 'red', labels: { 'en-AU': 'Red' } },
+                { code: 'blue', labels: { 'en-AU': 'Blue' } },
+              ],
+            }),
+          ],
+        },
+      }),
+    );
+    fireEvent.click(box('size'));
+    fireEvent.click(box('colour'));
+    fireEvent.click(box('Large'));
+    fireEvent.click(box('Red'));
+    fireEvent.click(box('Blue'));
+    expect(screen.getByRole('columnheader', { name: 'size / colour' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Large · Blue' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect(call.mock.calls[1]?.[2]).toMatchObject({
+      content: {
+        variantAxes: ['size', 'colour'],
+        variants: [{ variantId: 'v9', optionValues: { size: 'large', colour: 'blue' } }],
+      },
+    });
+  });
+
+  it('asks before changing the axes of a draft that has ticked combinations', () => {
+    mount(
+      product({
+        variants: [{ variantId: 'v1', state: 'proposed' }],
+        workingCopy: {
+          content: {
+            variantAxes: ['size'],
+            variants: [{ variantId: 'v1', optionValues: { size: 'large' } }],
+          },
+          lastSavedAt: '2026-10-01T00:00:00Z',
+          baseRevisionId: null,
+        },
+      }),
+    );
+    fireEvent.click(box('size'));
+    expect(screen.getByText(/ticked combinations are cleared/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep it' }));
+    expect(box('size').checked).toBe(true);
+    fireEvent.click(box('size'));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear and change' }));
+    expect(box('size').checked).toBe(false);
   });
 
   it('hides the variants editor for a product with one fixed variant', () => {
     mount(product({ variantModel: 'single' }));
-    expect(screen.queryByRole('button', { name: 'Add a variant' })).toBeNull();
+    expect(screen.queryByText('1. What does this product come in?')).toBeNull();
   });
 
   it('warns about changes that go to review once a revision is published', () => {

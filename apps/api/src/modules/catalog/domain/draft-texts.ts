@@ -35,6 +35,7 @@ const TOP_KEYS = [
   'taxCategoryCode',
   'attributeValues',
   'variants',
+  'variantAxes',
   'imageIds',
 ];
 const TEXT_KEYS = ['name', 'shortDescription', 'description'] as const;
@@ -132,6 +133,7 @@ export function draftTextsOf(
   const found: DraftText[] = [];
   if (!closedKeys(content, TOP_KEYS)) return invalid;
   if (!idList(content['categoryIds']) || !idList(content['imageIds'])) return invalid;
+  if (!idList(content['variantAxes'])) return invalid;
   const tax = content['taxCategoryCode'];
   if (tax !== undefined && (typeof tax !== 'string' || !isKey(tax))) return invalid;
 

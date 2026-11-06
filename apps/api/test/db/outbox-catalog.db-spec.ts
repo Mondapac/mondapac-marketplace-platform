@@ -36,6 +36,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX carts_market_id_account_id_active_key ON cart.carts USING btree (market_id, account_id) WHERE ((account_id IS NOT NULL) AND (status = 'active'::text))",
   'cart.carts_market_id_guest_token_hash_key':
     'CREATE UNIQUE INDEX carts_market_id_guest_token_hash_key ON cart.carts USING btree (market_id, guest_token_hash) WHERE (guest_token_hash IS NOT NULL)',
+  // Attributes A8: the merge pointer is looked up by target (the impact of a merge).
+  'catalog.attribute_definitions_market_id_merged_into_id_idx':
+    'CREATE INDEX attribute_definitions_market_id_merged_into_id_idx ON catalog.attribute_definitions USING btree (market_id, merged_into_id) WHERE (merged_into_id IS NOT NULL)',
   // Attributes A2: one open relaxation request per attribute definition (data design 3.21).
   'catalog.attribute_relaxation_requests_open_definition_key':
     "CREATE UNIQUE INDEX attribute_relaxation_requests_open_definition_key ON catalog.attribute_relaxation_requests USING btree (market_id, definition_id) WHERE (status = 'open'::text)",
@@ -272,6 +275,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX special_price_records_market_id_series_id_pending_key ON pricing.special_price_records USING btree (market_id, series_id) WHERE (status = 'pending-review'::text)",
   // docs/design/data/sellers.md 3.2 and 9.5 (slice 5, section 22): one pending and one live
   // approved revision per file, and the reviewer queue by kind and age.
+  // Seller health requests: one pending request per seller, and the pick-up order of the job.
+  'sellers.seller_health_requests_market_id_requested_at_pending_idx':
+    "CREATE INDEX seller_health_requests_market_id_requested_at_pending_idx ON sellers.seller_health_requests USING btree (market_id, requested_at) WHERE (status = 'pending'::text)",
+  'sellers.seller_health_requests_market_id_seller_id_pending_key':
+    "CREATE UNIQUE INDEX seller_health_requests_market_id_seller_id_pending_key ON sellers.seller_health_requests USING btree (market_id, seller_id) WHERE (status = 'pending'::text)",
   'sellers.business_file_revisions_market_id_seller_id_approved_key':
     "CREATE UNIQUE INDEX business_file_revisions_market_id_seller_id_approved_key ON sellers.business_file_revisions USING btree (market_id, seller_id) WHERE (status = 'approved'::text)",
   'sellers.business_file_revisions_market_id_seller_id_pending_key':
@@ -280,6 +288,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX business_file_revisions_market_id_kind_created_at_pending_idx ON sellers.business_file_revisions USING btree (market_id, kind, created_at, id) WHERE (status = 'pending'::text)",
   'sellers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'sellers.seller_business_activities_one_main_key':
+    'CREATE UNIQUE INDEX seller_business_activities_one_main_key ON sellers.seller_business_activities USING btree (market_id, seller_id) WHERE is_main',
   // Customers (package 5a): the relay's claim index of customers.outbox.
   'customers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON customers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',

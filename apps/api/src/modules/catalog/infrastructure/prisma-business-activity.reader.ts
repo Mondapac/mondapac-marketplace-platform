@@ -12,6 +12,17 @@ import { ACTIVITY_INCLUDE, activityStateOf } from './prisma-business-activity.re
 export class PrismaBusinessActivityReader implements BusinessActivityReader {
   constructor(private readonly prisma: PrismaService) {}
 
+  async activeIds(
+    market: MarketContext,
+    ids: readonly Id<'BusinessActivity'>[],
+  ): Promise<ReadonlySet<Id<'BusinessActivity'>>> {
+    const rows = await this.prisma.tx(market).catalogBusinessActivity.findMany({
+      where: { marketId: market.marketId, id: { in: [...ids] }, status: 'active' },
+      select: { id: true },
+    });
+    return new Set(rows.map((row) => row.id as Id<'BusinessActivity'>));
+  }
+
   async list(
     market: MarketContext,
     query: BusinessActivityListQuery,

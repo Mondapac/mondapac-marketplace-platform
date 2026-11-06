@@ -19,6 +19,11 @@ export interface OfferSearchFactsReader {
     market: MarketContext,
     input: PublishedOfferIdsInput,
   ): Promise<readonly Id<'Offer'>[]>;
+  /**
+   * A short text that changes when what the index keeps of an attribute changes: a definition's
+   * published revision (flags, options, names), a brand or an alias. Equal text, same documents.
+   */
+  searchIndexStamp(market: MarketContext): Promise<string>;
 }
 
 export const OFFER_SEARCH_FACTS_READER = Symbol('OFFER_SEARCH_FACTS_READER');

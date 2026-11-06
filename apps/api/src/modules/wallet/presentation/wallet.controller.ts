@@ -15,6 +15,8 @@ import {
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
+import { changeHistoryBody, changeHistoryInputOf } from '../../../platform/audit/change-trail';
+import { ChangeHistoryDto } from '../../../platform/audit/change-trail.dto';
 import { RequiresStepUp } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
@@ -25,6 +27,7 @@ import {
 import { SetWalletStatus } from '../application/use-cases/set-wallet-status.use-case';
 import { ViewMyHistory } from '../application/use-cases/view-my-history.use-case';
 import { ViewMyWallet } from '../application/use-cases/view-my-wallet.use-case';
+import { ViewWalletSettingsHistory } from '../application/use-cases/view-wallet-settings-history.use-case';
 import { ViewWalletSettings } from '../application/use-cases/view-wallet-settings.use-case';
 import {
   HistoryBody,
@@ -128,12 +131,15 @@ export class AdminWalletController {
   constructor(
     private readonly view: ViewWalletSettings,
     private readonly set: SetWalletStatus,
+    private readonly history: ViewWalletSettingsHistory,
   ) {}
 
   @Get()
   @ApiOperation({
     summary: 'The wallet state of the Market (admin)',
-    description: 'Needs wallet.settings.view. No row means off.',
+    description:
+      'Needs wallet.settings.view. No row means off. lastChanged says who switched the wallet ' +
+      'last and when (null while it was never switched).',
   })
   @ApiOkResponse({ type: SettingsBody })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
@@ -149,6 +155,38 @@ export class AdminWalletController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return settingsBody(result.value);
+  }
+
+  @Get('history')
+  @ApiOperation({
+    summary: 'The changes of the wallet state (admin)',
+    description:
+      'Needs wallet.settings.view. Newest first: when, who (a display name, never an email) and ' +
+      'the names of the fields that changed (status, reason), never their values and never the ' +
+      'two-step proof, from the audit log. Paged with after (the next of the previous page) and ' +
+      'limit (1 to 50, default 20).',
+  })
+  @ApiQuery({ name: 'after', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiOkResponse({ type: ChangeHistoryDto })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async changes(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.history.execute(context, changeHistoryInputOf(query));
+    logRoute(
+      this.#logger,
+      'wallet.view-wallet-settings-history-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return changeHistoryBody(result.value);
   }
 
   @Put()
@@ -179,7 +217,8 @@ export class AdminWalletController {
   @ApiConflictResponse({
     ...ERROR,
     description:
-      'wallet.settings-conflict (stale expectedVersion; the two-step proof is kept), ' +
+      'wallet.settings-conflict (stale expectedVersion; the two-step proof is kept; ' +
+      'details.lastChanged says who switched it first and when), ' +
       'wallet.cannot-turn-off-with-history or wallet.busy',
   })
   async put(

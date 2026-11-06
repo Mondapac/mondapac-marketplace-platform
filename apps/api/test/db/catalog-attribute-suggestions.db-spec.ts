@@ -209,6 +209,46 @@ describe.each(TEST_MARKETS)('catalog attribute suggestions in market %s (databas
     expect(history.map((row) => row.state.id)).toEqual([suggestion.state.id]);
   });
 
+  it('lists one seller’s suggestions newest first, by page and status, never another seller’s or Market’s', async () => {
+    const definition = await publishedSelect();
+    const lister = uuid7() as Id<'Seller'>;
+    const made: AttributeValueSuggestion[] = [];
+    for (const label of ['First', 'Second', 'Third']) {
+      const product = await draftProduct();
+      const suggestion = suggestionFor(definition, product, label, lister);
+      expect(await write(market, () => store.add(market, suggestion))).toBeNull();
+      made.push(suggestion);
+    }
+    // Another seller of the same Market: never in this seller's list.
+    const stranger = suggestionFor(
+      definition,
+      await draftProduct(),
+      'Fourth',
+      uuid7() as Id<'Seller'>,
+    );
+    expect(await write(market, () => store.add(market, stranger))).toBeNull();
+    const [first, second, third] = made.map((row) => row.state.id);
+    const rejected = made[1]!.reject({ accountId: admin, reason: 'No.', now: now() });
+    if (!rejected.ok) throw new Error(rejected.error.code);
+    await write(market, () => store.saveDecision(market, rejected.value));
+
+    const page = (
+      status: 'open' | 'rejected' | null,
+      afterId: Id<'AttributeValueSuggestion'> | null,
+      limit = 10,
+    ) => read(market, () => store.listOfSeller(market, lister, { status, afterId, limit }));
+    expect((await page(null, null)).map((row) => row.state.id)).toEqual([third, second, first]);
+    expect((await page(null, null, 2)).map((row) => row.state.id)).toEqual([third, second]);
+    expect((await page(null, second!)).map((row) => row.state.id)).toEqual([first]);
+    expect((await page('rejected', null)).map((row) => row.state.id)).toEqual([second]);
+    expect((await page('open', null)).map((row) => row.state.id)).toEqual([third, first]);
+    expect(
+      await read(other, () =>
+        store.listOfSeller(other, lister, { status: null, afterId: null, limit: 10 }),
+      ),
+    ).toEqual([]);
+  });
+
   it('serves due notices and moves a notice only out of pending', async () => {
     const { suggestion } = await opened();
     const decided = suggestion.map({ accountId: admin, optionCode: 'small', now: now() });

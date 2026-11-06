@@ -10,6 +10,8 @@ export interface ApiFailure {
     /** The problems that keep a draft from being submitted (`revision.not-ready`). */
     readonly issues?: readonly { readonly path: string; readonly code: string }[];
     readonly max?: number;
+    /** Which picture a refused store-profile save was about (`logo` or `banner`). */
+    readonly kind?: 'logo' | 'banner';
     /** Wrong pickup codes the seller order still takes (`ordering.pickup-code-invalid`). */
     readonly attemptsLeft?: number;
     /** The guarded action of `second-factor.required` or `second-factor.enrolment-required`. */

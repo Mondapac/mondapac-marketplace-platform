@@ -18,6 +18,13 @@ export interface StoreTextClaimCheck {
     context: CallContext,
     texts: readonly { readonly locale: string; readonly text: string }[],
   ): Promise<Result<readonly boolean[], ClaimCheckUnavailable>>;
+
+  /**
+   * The Market's claim terms as plain phrases, for the panel's live warning only (the seller
+   * sees what wording is refused while typing). Read from certification; sellers keeps no copy.
+   * Not a decision: `flagged` on save is the authority. Unavailable is never an empty list.
+   */
+  terms(context: CallContext): Promise<Result<readonly string[], ClaimCheckUnavailable>>;
 }
 
 export const STORE_TEXT_CLAIM_CHECK = Symbol('STORE_TEXT_CLAIM_CHECK');
