@@ -65,6 +65,63 @@ describe('buildSearchAttributes', () => {
     expect(facts.searchText).toBe('');
   });
 
+  it('indexes a merged attribute as its target, with the value mapped', () => {
+    const target = definition({
+      options: options([
+        ['tin', 'Tin', null],
+        ['jar', 'Jar', null],
+      ]),
+    });
+    const source = definition({
+      status: 'archived',
+      options: options([['can', 'Can', null]]),
+      mergedInto: { code: 'container', options: new Map([['can', 'tin']]) },
+    });
+    const definitions = new Map([
+      ['container', target],
+      ['pack-type', source],
+    ]);
+    const facts = buildSearchAttributes({
+      values: { 'pack-type': 'can' },
+      definitions,
+      brand: null,
+      locale: 'en-AU',
+    });
+    expect(facts.facets).toEqual(['container=tin']);
+    expect(facts.searchText).toBe('Tin');
+    // The target's own value wins when the product carries both.
+    expect(
+      buildSearchAttributes({
+        values: { 'pack-type': 'can', container: 'jar' },
+        definitions,
+        brand: null,
+        locale: 'en-AU',
+      }).facets,
+    ).toEqual(['container=jar']);
+  });
+
+  it('leaves out a merged attribute whose target is not active or whose value has no target value', () => {
+    const source = definition({
+      status: 'archived',
+      options: options([['can', 'Can', null]]),
+      mergedInto: { code: 'container', options: new Map([['can', 'tin']]) },
+    });
+    const index = (target: SearchDefinition | undefined, values: Record<string, unknown>) =>
+      buildSearchAttributes({
+        values,
+        definitions: new Map([
+          ['pack-type', source],
+          ...(target === undefined ? [] : [['container', target] as const]),
+        ]),
+        brand: null,
+        locale: 'en-AU',
+      }).facets;
+    const live = definition({ options: options([['tin', 'Tin', null]]) });
+    expect(index(undefined, { 'pack-type': 'can' })).toEqual([]);
+    expect(index({ ...live, status: 'archived' }, { 'pack-type': 'can' })).toEqual([]);
+    expect(index(live, { 'pack-type': 'unknown' })).toEqual([]);
+  });
+
   it('leaves out an archived attribute, like a draft one', () => {
     const facts = buildSearchAttributes({
       values: { a: 'kg1' },

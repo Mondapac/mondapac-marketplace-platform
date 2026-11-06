@@ -30,9 +30,44 @@ export async function loadSearchDefinitions(
       localizable: true,
       status: true,
       publishedRevisionId: true,
+      id: true,
+      mergedIntoId: true,
     },
   });
-  const revisionIds = definitions.flatMap((row) =>
+  // A merged attribute is indexed as its target (attributes A8), which the product need not carry.
+  const have = new Set(definitions.map((row) => row.id));
+  const targetIds = [
+    ...new Set(
+      definitions.flatMap((row) =>
+        row.mergedIntoId === null || have.has(row.mergedIntoId) ? [] : [row.mergedIntoId],
+      ),
+    ),
+  ];
+  const targets =
+    targetIds.length === 0
+      ? []
+      : await tx.catalogAttributeDefinition.findMany({
+          where: { marketId, id: { in: targetIds } },
+          select: {
+            code: true,
+            dataType: true,
+            localizable: true,
+            status: true,
+            publishedRevisionId: true,
+            id: true,
+            mergedIntoId: true,
+          },
+        });
+  const allRows = [...definitions, ...targets];
+  const mergeRows = await tx.catalogAttributeMergeOption.findMany({
+    where: {
+      marketId,
+      sourceId: { in: definitions.flatMap((row) => (row.mergedIntoId === null ? [] : [row.id])) },
+    },
+    select: { sourceId: true, sourceCode: true, targetCode: true },
+  });
+  const codeOfId = new Map(allRows.map((row) => [row.id, row.code] as const));
+  const revisionIds = allRows.flatMap((row) =>
     row.publishedRevisionId === null ? [] : [row.publishedRevisionId],
   );
   if (revisionIds.length === 0) return result;
@@ -53,7 +88,7 @@ export async function loadSearchDefinitions(
     orderBy: [{ revisionId: 'asc' }, { position: 'asc' }],
   });
   const revisionById = new Map(revisions.map((row) => [row.id, row]));
-  for (const row of definitions) {
+  for (const row of allRows) {
     const revision =
       row.publishedRevisionId === null ? undefined : revisionById.get(row.publishedRevisionId);
     if (revision === undefined) continue;
@@ -78,6 +113,17 @@ export async function loadSearchDefinitions(
       names: asTexts(revision.names) ?? {},
       options,
       optionOrder,
+      mergedInto:
+        row.mergedIntoId === null || codeOfId.get(row.mergedIntoId) === undefined
+          ? null
+          : {
+              code: codeOfId.get(row.mergedIntoId)!,
+              options: new Map(
+                mergeRows
+                  .filter((merge) => merge.sourceId === row.id)
+                  .map((merge) => [merge.sourceCode, merge.targetCode] as const),
+              ),
+            },
     });
   }
   return result;
