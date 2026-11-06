@@ -141,6 +141,7 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
         sensitiveReasons: true,
         texts: { where: { locale }, select: { name: true } },
         images: { select: { imageId: true }, take: 1 },
+        variants: { where: { gtin: { not: null } }, select: { gtin: true } },
       },
     });
     const byId = new Map(revisions.map((row) => [row.id, row]));
@@ -166,6 +167,9 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
           firstPublication: row.publishedRevisionId === null,
           sensitiveReasons: revision.sensitiveReasons,
           hasImages: revision.images.length > 0,
+          variantGtins: revision.variants.flatMap((variant) =>
+            variant.gtin === null ? [] : [variant.gtin],
+          ),
           name: revision.texts[0]?.name ?? null,
           submittedAt: toInstant(row.pendingSubmittedAt),
         },

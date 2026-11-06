@@ -329,8 +329,8 @@ export const RECORDED_SECURITY_EVENTS: ReadonlyMap<string, SecurityEventDefiniti
  * The audited actions that also make a security event, with its severity (plan sections 2 and
  * 4): admin roles and permissions, account status and second factors, the Market switches
  * (wallet, tax strategy, assistant), payout accounts and schedules, commission rates, refunds,
- * and the support contact. The event's type is the action; its target
- * is the audit row's; its payload is `{ auditLogId }`.
+ * the support contact, and a relaxing policy row on a retired platform category. The event's
+ * type is the action; its target is the audit row's; its payload is `{ auditLogId }`.
  */
 export const AUDITED_SECURITY_ACTIONS: ReadonlyMap<string, SecuritySeverity> = new Map<
   string,
@@ -366,6 +366,8 @@ export const AUDITED_SECURITY_ACTIONS: ReadonlyMap<string, SecuritySeverity> = n
   ['commission-payouts.commission-rate.clear', 's3'],
   ['ordering.refund.requested', 's3'],
   ['notifications.support-contact.changed', 's3'],
+  // The category-retirement backstop found a relaxing policy row on a retired category (C-4, B2).
+  ['certification.retired-category.flagged-relaxing', 's2'],
 ]);
 
 /** The payload of a projected event: the audit row it comes from. */

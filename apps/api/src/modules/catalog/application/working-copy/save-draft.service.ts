@@ -7,11 +7,14 @@ import {
   withoutVariantLabels,
 } from '../../domain/draft-texts';
 import { isStorableContent } from '../../domain/working-copy';
+import { normalizeGtin } from '../../domain/variant-gtin';
 import type { ClaimCheckedFieldId } from '../../domain/claim-checked-fields';
+import type { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { CheckClaimText, ClaimTextVerdict } from '../claim-text/check-claim-text.service';
 import type { ClaimTextMatch } from '../ports/claim-text-matcher';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { VariantGtinRegistry } from '../ports/variant-gtin.registry';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import type {
   SaveWorkingCopy,
@@ -34,6 +37,8 @@ export type RefusedField = {
 } & (
   | { readonly code: 'claim-text.found'; readonly hits: readonly ClaimTextMatch[] }
   | { readonly code: 'claim-text.check-unavailable' }
+  /** The Market's content filter: the text holds a blocked term (the text is never echoed). */
+  | { readonly code: 'text.blocked-term' }
   | {
       readonly code: 'text.invisible-character';
       readonly offset: number;
@@ -41,9 +46,23 @@ export type RefusedField = {
     }
 );
 
+/**
+ * A GTIN of the saved draft that another published product already carries (variants V4). The
+ * save is allowed. For a PLATFORM product the notice carries its public code so the seller can
+ * sell on it instead; for any other product it is neutral: no name, id, code or seller.
+ */
+export interface VariantNotice {
+  readonly variantId: string;
+  readonly code: 'gtin.duplicate';
+  /** The public code of the PLATFORM product to sell on, else null. */
+  readonly sellOnProductCode: string | null;
+}
+
 export interface SaveDraftOutput extends SaveWorkingCopyOutput {
   /** Texts that kept their last saved value; everything else of the request was saved. */
   readonly refusedFields: readonly RefusedField[];
+  /** Advice about the saved variants; never a refusal. */
+  readonly variantNotices: readonly VariantNotice[];
 }
 
 export type SaveDraftFailure =
@@ -64,6 +83,9 @@ export interface SaveDraftDependencies {
   readonly save: SaveWorkingCopy;
   readonly workingCopies: WorkingCopyRepository;
   readonly policy: CatalogMarketPolicy;
+  readonly gtinRegistry: VariantGtinRegistry;
+  /** The Market's content filter; a changed text that holds a blocked term is refused. */
+  readonly contentFilter: ContentFilter;
 }
 
 /**
@@ -146,7 +168,16 @@ export class SaveDraft {
       const refusedPaths: (typeof changed)[number]['path'][] = [];
       const list: RefusedField[] = [];
       checked.value.forEach((verdict, index) => {
-        const refusal = refusalOf(verdict);
+        const refusal =
+          refusalOf(verdict) ??
+          (this.deps.contentFilter.isBlocked(market, changed[index]!.text)
+            ? ({
+                field: verdict.field,
+                ref: verdict.ref,
+                locale: verdict.locale,
+                code: 'text.blocked-term',
+              } as const)
+            : null);
         if (refusal === null) return;
         list.push(refusal);
         refusedPaths.push(changed[index]!.path);
@@ -163,7 +194,59 @@ export class SaveDraft {
       { savesReserved: true },
     );
     if (!saved.ok) return saved;
-    return ok({ ...saved.value, refusedFields: refused });
+    const variantNotices = await this.gtinNotices(context, input.productId, amended);
+    return ok({ ...saved.value, refusedFields: refused, variantNotices });
+  }
+
+  /**
+   * The duplicate-GTIN advice for the saved draft (V4). It is advice after a successful save, so a
+   * failed lookup answers no notice rather than failing the save. A GTIN the freeze would refuse
+   * is skipped here; the submit reports it.
+   */
+  private async gtinNotices(
+    context: CallContext,
+    productId: Id<'Product'>,
+    content: Readonly<Record<string, unknown>>,
+  ): Promise<readonly VariantNotice[]> {
+    const variants = content['variants'];
+    if (!Array.isArray(variants)) return [];
+    const typed: { variantId: string; gtin: string }[] = [];
+    for (const variant of variants as unknown[]) {
+      if (typeof variant !== 'object' || variant === null) continue;
+      const { variantId, gtin } = variant as Record<string, unknown>;
+      if (typeof variantId !== 'string' || typeof gtin !== 'string') continue;
+      const normalized = normalizeGtin(gtin);
+      if (normalized.ok) typed.push({ variantId, gtin: normalized.value });
+    }
+    if (typed.length === 0) return [];
+    try {
+      const read = await this.deps.unitOfWork.run(
+        context.market,
+        async () =>
+          ok(
+            await this.deps.gtinRegistry.duplicatesOf(context.market, productId, [
+              ...new Set(typed.map((entry) => entry.gtin)),
+            ]),
+          ),
+        { readOnly: true },
+      );
+      if (!read.ok) return [];
+      const byGtin = new Map(read.value.map((duplicate) => [duplicate.gtin, duplicate] as const));
+      return typed.flatMap(({ variantId, gtin }) => {
+        const duplicate = byGtin.get(gtin);
+        return duplicate === undefined
+          ? []
+          : [
+              {
+                variantId,
+                code: 'gtin.duplicate' as const,
+                sellOnProductCode: duplicate.platformProductCode,
+              },
+            ];
+      });
+    } catch {
+      return [];
+    }
   }
 }
 

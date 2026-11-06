@@ -30,6 +30,8 @@ export interface PendingRevisionRow {
   readonly firstPublication: boolean;
   readonly sensitiveReasons: readonly string[];
   readonly hasImages: boolean;
+  /** The 14-digit GTINs of the pending revision's variants (V4), for the duplicate warning. */
+  readonly variantGtins: readonly string[];
   readonly name: string | null;
   readonly submittedAt: Temporal.Instant;
 }

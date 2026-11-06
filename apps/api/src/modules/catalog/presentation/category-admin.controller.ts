@@ -9,9 +9,11 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   Res,
+  StreamableFile,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
@@ -25,6 +27,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiPayloadTooLargeResponse,
   ApiParam,
   ApiQuery,
   ApiServiceUnavailableResponse,
@@ -44,20 +47,32 @@ import { CategoryCreate } from '../application/use-cases/category-create.use-cas
 import { CategoryDiscard } from '../application/use-cases/category-discard.use-case';
 import { CategoryEditDetails } from '../application/use-cases/category-edit-details.use-case';
 import { CategoryHide } from '../application/use-cases/category-hide.use-case';
+import { CategoryMove } from '../application/use-cases/category-move.use-case';
+import { CategoryMerge } from '../application/use-cases/category-merge.use-case';
+import { CategoryArchive } from '../application/use-cases/category-archive.use-case';
 import { CategoryReorder } from '../application/use-cases/category-reorder.use-case';
 import { CategoryShow } from '../application/use-cases/category-show.use-case';
 import { CategoryAdminGet } from '../application/use-cases/category-admin-get.use-case';
 import { CategoryAdminTree } from '../application/use-cases/category-admin-tree.use-case';
 import { CategoryImpact } from '../application/use-cases/category-impact.use-case';
+import { CategoryImageRead } from '../application/use-cases/category-image-read.use-case';
+import { CategoryImageRemove } from '../application/use-cases/category-image-remove.use-case';
+import { CategoryImageSet } from '../application/use-cases/category-image-set.use-case';
 import {
   CategoryChangeSlugRequest,
   CategoryCreateRequest,
   CategoryDetailBody,
   CategoryEditDetailsRequest,
+  CategoryImageSetRequest,
+  CategoryImageWriteBody,
   CategoryImpactBody,
   CategoryReorderRequest,
   CategoryTreeBody,
+  CategoryArchiveRequest,
+  CategoryMergeRequest,
+  CategoryMoveRequest,
   CategoryTreeVersionRequest,
+  CategoryVersionRequest,
   CategoryWriteWrapBody,
 } from './category-admin.dto';
 import { closedBody, refusalWith, type Refusal } from './http-answers';
@@ -82,6 +97,21 @@ export const CATEGORY_ADMIN_STATUS: Readonly<Record<string, number>> = Object.fr
   'category.not-editable': 409,
   'category.reorder-edge': 409,
   'category.not-discardable': 409,
+  'image.not-found': 404,
+  'file.too-large': 413,
+  'file.unsupported-type': 415,
+  'file.too-many-pixels': 422,
+  'file.too-small': 422,
+  'file.unreadable': 422,
+  'category.target-not-found': 404,
+  'category.move-unchanged': 409,
+  'category.cycle': 422,
+  'category.has-subcategories': 409,
+  'category.only-platform-category': 422,
+  'category.products-on-upper-level': 422,
+  'category.impact-too-large': 422,
+  'category.referenced-by-policy': 409,
+  'category.check-unavailable': 503,
   'category.depth-exceeded': 422,
   'category.required-locale-missing': 422,
   'category.cascade-too-large': 422,
@@ -101,12 +131,35 @@ const refusal = (error: Refusal, response: Response, context?: CallContext): Htt
     'catalog.category-admin-unmapped-refusal',
   );
 
+/**
+ * The image upload arrives as bytes (its body parser takes a larger limit than the JSON one, see
+ * `configure-app.ts`); anything that is not a JSON object stays as it is and `closedBody` refuses it.
+ */
+function jsonOf(body: unknown): unknown {
+  if (!Buffer.isBuffer(body)) return body;
+  try {
+    return JSON.parse(body.toString('utf8')) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
 const CATEGORY_PARAM = { name: 'categoryId', description: 'The category. A UUID v7.' };
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const EDITS =
   'Needs catalog.category-tree.edit; refused in an acting-as session. A structural write names ' +
   'the tree version the page read (`conflict.stale` when another admin changed the tree).';
+const RESTRUCTURES =
+  'Needs the protected key catalog.category-tree.restructure; refused in an acting-as session. ' +
+  'Names the tree version the page read and a reason note. Certificate rules are checked first.';
+const RESTRUCTURE_409 =
+  'conflict.stale, category.not-editable, category.move-unchanged, category.has-subcategories, ' +
+  'category.sibling-name-taken (details.fields) or category.referenced-by-policy (details.typeCodes)';
+const RESTRUCTURE_422 =
+  'category.cycle, category.depth-exceeded (details.max), category.products-on-upper-level or ' +
+  'category.only-platform-category (details.total), category.impact-too-large (details.max)';
+const RESTRUCTURE_503 = 'category.check-unavailable or access.unavailable';
 const WRITE_422 =
   'category.claim-word or category.locale-uncheckable (details.fields), ' +
   'category.required-locale-missing (details.fields), category.depth-exceeded or ' +
@@ -136,6 +189,12 @@ export class CategoryAdminController {
     private readonly showCategory: CategoryShow,
     private readonly changeSlug: CategoryChangeSlug,
     private readonly discardCategory: CategoryDiscard,
+    private readonly setImage: CategoryImageSet,
+    private readonly removeImage: CategoryImageRemove,
+    private readonly readImage: CategoryImageRead,
+    private readonly moveCategory: CategoryMove,
+    private readonly mergeCategory: CategoryMerge,
+    private readonly archiveCategory: CategoryArchive,
   ) {}
 
   @Get()
@@ -175,11 +234,19 @@ export class CategoryAdminController {
     summary: 'See what a change to a category would touch',
     description:
       'Needs catalog.category-tree.view. Published products in the subtree, their Offers, listed ' +
-      'Offers and Offers with an active certification tag. Advisory: a change re-checks its own ' +
+      'Offers and Offers with an active certification tag; with `targetId`, the products whose ' +
+      'feature set would change. Advisory: a change re-checks its own ' +
       'guards. Bounded at 10 seconds; `complete: false` means "at least".',
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiQuery({ name: 'action', required: true, enum: ['move', 'merge', 'archive'] })
+  @ApiQuery({
+    name: 'targetId',
+    required: false,
+    description:
+      'Move: the new parent id, or `top` for a department; merge: the target id. Adds ' +
+      '`featureSetChanges`. Not taken with archive.',
+  })
   @ApiOkResponse({ type: CategoryImpactBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -194,8 +261,13 @@ export class CategoryAdminController {
     @Res({ passthrough: true }) response: Response,
     @Param('categoryId') categoryId: string,
     @Query('action') action: unknown,
+    @Query('targetId') targetId: unknown,
   ): Promise<CategoryImpactBody> {
-    const result = await this.impact.execute(context, { categoryId, action });
+    const result = await this.impact.execute(context, {
+      categoryId,
+      action,
+      ...(targetId === undefined ? {} : { targetId: targetId === 'top' ? null : targetId }),
+    });
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as CategoryImpactBody)
       : refusal(result.error, response, context);
@@ -505,7 +577,232 @@ export class CategoryAdminController {
     });
   }
 
-  private async write(
+  @Get(':categoryId/images/:imageId/:size')
+  @ReadsSession()
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  @Header('Content-Security-Policy', 'sandbox')
+  @ApiOperation({
+    summary: 'Read one rendition of a category image',
+    description:
+      'Needs catalog.category-tree.view. Any status. `size` is thumb, medium or large; `imageId` ' +
+      "is the category's current image. The answer is an image/jpeg written by the server.",
+  })
+  @ApiParam(CATEGORY_PARAM)
+  @ApiParam({ name: 'imageId', format: 'uuid' })
+  @ApiParam({ name: 'size', enum: ['thumb', 'medium', 'large'] })
+  @ApiOkResponse({ description: 'image/jpeg bytes' })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'image.not-found' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async readImageFile(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('categoryId') categoryId: string,
+    @Param('imageId') imageId: string,
+    @Param('size') size: string,
+  ): Promise<StreamableFile> {
+    const result = await this.readImage.execute(context, { categoryId, imageId, size });
+    const outcome = result.ok
+      ? new StreamableFile(result.value.bytes, { type: result.value.contentType })
+      : refusal(result.error, response, context);
+    return this.settle('catalog.category-image-read', context, outcome);
+  }
+
+  @Put(':categoryId/image')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Set or replace the image of a category',
+    description:
+      'Needs catalog.category-tree.edit; refused in an acting-as session. Names the category ' +
+      'version the admin saw. The picture is decoded and written again as three metadata-free ' +
+      'JPEG renditions; the upload itself is not kept. The old image is removed. Not structural.',
+  })
+  @ApiParam(CATEGORY_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: CategoryImageSetRequest })
+  @ApiOkResponse({ type: CategoryImageWriteBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'category.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'conflict.stale or category.not-editable',
+  })
+  @ApiPayloadTooLargeResponse({ type: ApiErrorBody, description: 'file.too-large' })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorBody,
+    description: 'file.too-small, file.too-many-pixels or file.unreadable',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'file.unsupported-type' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async putImage(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('categoryId') categoryId: string,
+    @Body() body: unknown,
+  ): Promise<CategoryImageWriteBody> {
+    return this.write('catalog.category-image-set', context, response, request, jsonOf(body), {
+      keys: ['version', 'data'],
+      optional: [],
+      run: (input) => this.setImage.execute(context, { ...input, categoryId }),
+    });
+  }
+
+  @Post(':categoryId/image/remove')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Remove the image of a category',
+    description:
+      'Needs catalog.category-tree.edit; refused in an acting-as session. Names the category ' +
+      'version the admin saw. A category with no image answers as it is. Not structural.',
+  })
+  @ApiParam(CATEGORY_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: CategoryVersionRequest })
+  @ApiOkResponse({ type: CategoryImageWriteBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'category.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'conflict.stale or category.not-editable',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async postRemoveImage(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('categoryId') categoryId: string,
+    @Body() body: unknown,
+  ): Promise<CategoryImageWriteBody> {
+    return this.write('catalog.category-image-remove', context, response, request, body, {
+      keys: ['version'],
+      optional: [],
+      run: (input) => this.removeImage.execute(context, { ...input, categoryId }),
+    });
+  }
+
+  @Post(':categoryId/move')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Move a category under a new parent',
+    description:
+      `${RESTRUCTURES} The category and its subcategories go under the new parent (null: a ` +
+      'department), last among its children. Badges under it are checked again.',
+  })
+  @ApiParam(CATEGORY_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: CategoryMoveRequest })
+  @ApiOkResponse({ type: CategoryWriteWrapBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({
+    type: ApiErrorBody,
+    description: 'category.not-found or category.parent-not-found',
+  })
+  @ApiConflictResponse({ type: ApiErrorBody, description: RESTRUCTURE_409 })
+  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: RESTRUCTURE_422 })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: RESTRUCTURE_503 })
+  async move(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('categoryId') categoryId: string,
+    @Body() body: unknown,
+  ): Promise<CategoryWriteWrapBody> {
+    return this.write('catalog.category-move', context, response, request, body, {
+      keys: ['treeVersion', 'parentId', 'reason'],
+      optional: [],
+      run: (input) => this.moveCategory.execute(context, { ...input, categoryId }),
+    });
+  }
+
+  @Post(':categoryId/merge')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Merge a category into another',
+    description:
+      `${RESTRUCTURES} Its subcategories move to the target; its products and old address now ` +
+      'resolve to the target. Badges under it are checked again.',
+  })
+  @ApiParam(CATEGORY_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: CategoryMergeRequest })
+  @ApiOkResponse({ type: CategoryWriteWrapBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({
+    type: ApiErrorBody,
+    description: 'category.not-found or category.target-not-found',
+  })
+  @ApiConflictResponse({ type: ApiErrorBody, description: RESTRUCTURE_409 })
+  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: RESTRUCTURE_422 })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: RESTRUCTURE_503 })
+  async merge(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('categoryId') categoryId: string,
+    @Body() body: unknown,
+  ): Promise<CategoryWriteWrapBody> {
+    return this.write('catalog.category-merge', context, response, request, body, {
+      keys: ['treeVersion', 'targetId', 'reason'],
+      optional: [],
+      run: (input) => this.mergeCategory.execute(context, { ...input, categoryId }),
+    });
+  }
+
+  @Post(':categoryId/archive')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Archive a category',
+    description:
+      `${RESTRUCTURES} Terminal: there is no restore (Hide pauses a category). Only a category ` +
+      'with no live subcategory, and never one that is the only category of a live product.',
+  })
+  @ApiParam(CATEGORY_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: CategoryArchiveRequest })
+  @ApiOkResponse({ type: CategoryWriteWrapBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'category.not-found' })
+  @ApiConflictResponse({ type: ApiErrorBody, description: RESTRUCTURE_409 })
+  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: RESTRUCTURE_422 })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: RESTRUCTURE_503 })
+  async archive(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('categoryId') categoryId: string,
+    @Body() body: unknown,
+  ): Promise<CategoryWriteWrapBody> {
+    return this.write('catalog.category-archive', context, response, request, body, {
+      keys: ['treeVersion', 'reason'],
+      optional: [],
+      run: (input) => this.archiveCategory.execute(context, { ...input, categoryId }),
+    });
+  }
+
+  private async write<T extends object = CategoryWriteWrapBody>(
     msg: string,
     context: CallContext,
     response: Response,
@@ -518,14 +815,14 @@ export class CategoryAdminController {
         input: Record<string, unknown>,
       ) => Promise<{ ok: true; value: unknown } | { ok: false; error: Refusal }>;
     },
-  ): Promise<CategoryWriteWrapBody> {
+  ): Promise<T> {
     const input = closedBody(request, body, spec.keys, spec.optional);
-    let outcome: CategoryWriteWrapBody | HttpException;
+    let outcome: T | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await spec.run(input);
       outcome = result.ok
-        ? (JSON.parse(JSON.stringify(result.value)) as CategoryWriteWrapBody)
+        ? (JSON.parse(JSON.stringify(result.value)) as T)
         : refusal(result.error, response, context);
     }
     return this.settle(msg, context, outcome);

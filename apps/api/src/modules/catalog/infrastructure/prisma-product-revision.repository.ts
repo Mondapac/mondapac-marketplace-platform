@@ -97,18 +97,7 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         isPrimary: index === 0,
       })),
     });
-    await tx.catalogProductRevisionVariant.createMany({
-      data: content.variants.map((variant) => ({
-        ...base,
-        revisionId: revision.id,
-        productId: revision.productId,
-        variantId: variant.variantId,
-        position: variant.position,
-        optionKey: variant.optionKey,
-        optionValues: variant.optionValues,
-        labels: variant.labels,
-      })),
-    });
+    // The images first: a variant's picks are checked against them by the database.
     if (content.imageIds.length > 0) {
       await tx.catalogProductRevisionImage.createMany({
         data: content.imageIds.map((imageId, index) => ({
@@ -120,6 +109,24 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         })),
       });
     }
+    await tx.catalogProductRevisionVariant.createMany({
+      data: content.variants.map((variant) => ({
+        ...base,
+        revisionId: revision.id,
+        productId: revision.productId,
+        variantId: variant.variantId,
+        position: variant.position,
+        optionKey: variant.optionKey,
+        optionValues: variant.optionValues,
+        labels: variant.labels,
+        gtin: variant.gtin,
+        shippingWeightGrams: variant.shippingWeightGrams,
+        shippingLengthMm: variant.shippingLengthMm,
+        shippingWidthMm: variant.shippingWidthMm,
+        shippingHeightMm: variant.shippingHeightMm,
+        imageIds: [...variant.imageIds],
+      })),
+    });
   }
 
   async find(
@@ -157,6 +164,12 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         optionKey: variant.optionKey,
         optionValues: variant.optionValues as Record<string, string>,
         labels: variant.labels as Record<string, string>,
+        gtin: variant.gtin,
+        shippingWeightGrams: variant.shippingWeightGrams,
+        shippingLengthMm: variant.shippingLengthMm,
+        shippingWidthMm: variant.shippingWidthMm,
+        shippingHeightMm: variant.shippingHeightMm,
+        imageIds: [...variant.imageIds],
       })),
       imageIds: row.images.map((image) => image.imageId),
       schemaRef: {

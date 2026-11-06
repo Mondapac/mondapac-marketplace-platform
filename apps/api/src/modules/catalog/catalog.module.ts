@@ -16,6 +16,7 @@ import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { ExtensionPointRegistry } from '../../platform/extensions';
+import { ContentFilter } from '../../platform/content-filter/content-filter';
 import { MarketRegistry } from '../../platform/market-config/market-registry';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
@@ -30,7 +31,10 @@ import {
   type CatalogMarketPolicy,
 } from './application/ports/catalog-market-policy';
 import { CLAIM_TEXT_MATCHER } from './application/ports/claim-text-matcher';
-import { PRODUCT_REVISION_REPOSITORY } from './application/ports/product-revision.repository';
+import {
+  PRODUCT_REVISION_REPOSITORY,
+  type ProductRevisionRepository,
+} from './application/ports/product-revision.repository';
 import {
   PRODUCT_TYPE_LOOKUP,
   type ProductTypeLookup,
@@ -109,6 +113,9 @@ import { SELLER_PRODUCT_OWNERS_READER } from './application/ports/seller-product
 import { SellerProductOwnersQuery } from './application/use-cases/seller-product-owners.use-case';
 import { CATEGORY_TREE_READER } from './application/ports/category-tree.reader';
 import { CategoryTreeQuery } from './application/use-cases/category-tree.use-case';
+import { CategorySlugResolveQuery } from './application/use-cases/category-slug-resolve.use-case';
+import { PublicCategoryTreeQuery } from './application/use-cases/public-category-tree.use-case';
+import { PUBLIC_CATEGORY_READER } from './application/ports/public-category.reader';
 import { PublicCategoryController } from './presentation/public-category.controller';
 import { SELL_UNIT_LABELS_READER } from './application/ports/sell-unit-labels.reader';
 import { SellUnitLabelsQuery } from './application/use-cases/sell-unit-labels.use-case';
@@ -125,6 +132,8 @@ import { FreezeRevision } from './application/revisions/freeze-revision.service'
 import { SubmitProduct } from './application/revisions/submit-product.service';
 import { SaveDraft } from './application/working-copy/save-draft.service';
 import { SaveWorkingCopy } from './application/working-copy/save-working-copy.service';
+import { PlatformProductOptions } from './application/use-cases/platform-product-options.use-case';
+import { PlatformProductRead } from './application/use-cases/platform-product-read.use-case';
 import { PlatformProductCreate } from './application/use-cases/platform-product-create.use-case';
 import { PlatformProductSaveDraft } from './application/use-cases/platform-product-save-draft.use-case';
 import { PlatformProductSubmit } from './application/use-cases/platform-product-submit.use-case';
@@ -214,6 +223,7 @@ import { OfferListingsSystemQuery } from './application/use-cases/offer-listings
 import { OFFER_LISTINGS_READER } from './application/ports/offer-listings.reader';
 import { PublishedProductQuery } from './application/use-cases/published-product.use-case';
 import { PUBLISHED_PRODUCT_READER } from './application/ports/published-product.reader';
+import { VARIANT_GTIN_REGISTRY } from './application/ports/variant-gtin.registry';
 import { PUBLISHED_IMAGES_READER } from './application/ports/published-images.reader';
 import { PublishedProductImagesQuery } from './application/use-cases/published-product-images.use-case';
 import { PublishedImageRead } from './application/use-cases/published-image-read.use-case';
@@ -305,10 +315,21 @@ import { PRODUCT_DETAILS_GAP_READER } from './application/ports/product-details-
 import { ProductsMissingDetailsList } from './application/use-cases/products-missing-details-list.use-case';
 import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
 import { CATEGORY_EDIT_STORE } from './application/ports/category-edit.store';
+import { CATEGORY_IMAGE_STORE } from './application/ports/category-image.store';
+import { CategoryImageRead } from './application/use-cases/category-image-read.use-case';
+import { CategoryImageRemove } from './application/use-cases/category-image-remove.use-case';
+import { CategoryImageSet } from './application/use-cases/category-image-set.use-case';
 import { CategoryCreate } from './application/use-cases/category-create.use-case';
 import { CategoryEditDetails } from './application/use-cases/category-edit-details.use-case';
 import { CategoryReorder } from './application/use-cases/category-reorder.use-case';
 import { CategoryHide } from './application/use-cases/category-hide.use-case';
+import { CategoryMove } from './application/use-cases/category-move.use-case';
+import { CategoryMerge } from './application/use-cases/category-merge.use-case';
+import { CategoryArchive } from './application/use-cases/category-archive.use-case';
+import { ReportRetiredCategories } from './application/use-cases/report-retired-categories.use-case';
+import { categoryRetirementSubscriptions } from './presentation/subscribers/category-retirement.subscriptions';
+import { CATEGORY_RESTRUCTURE_STORE } from './application/ports/category-edit.store';
+import { CATEGORY_RETIREMENT_CHECK } from './application/ports/category-retirement-check';
 import { CategoryShow } from './application/use-cases/category-show.use-case';
 import { CategoryChangeSlug } from './application/use-cases/category-change-slug.use-case';
 import { CategoryDiscard } from './application/use-cases/category-discard.use-case';
@@ -369,6 +390,7 @@ const PORT = {
   productOwnersReader: SELLER_PRODUCT_OWNERS_READER,
   productLinkingReader: PRODUCT_LINKING_READER,
   treeReader: CATEGORY_TREE_READER,
+  publicCategories: PUBLIC_CATEGORY_READER,
   offers: OFFER_REPOSITORY,
   offerFinder: OWN_OFFER_FINDER,
   claims: ClaimQueryBuilder,
@@ -387,6 +409,7 @@ const PORT = {
   tagSelection: TAG_SELECTION_READER,
   listingsReader: OFFER_LISTINGS_READER,
   publishedProductReader: PUBLISHED_PRODUCT_READER,
+  gtinRegistry: VARIANT_GTIN_REGISTRY,
   publishedImagesReader: PUBLISHED_IMAGES_READER,
   ownerContacts: OFFER_OWNER_CONTACT,
   mailTransport: MAIL_TRANSPORT,
@@ -412,6 +435,9 @@ const PORT = {
   brandReader: BRAND_READER,
   adminCategoryReader: ADMIN_CATEGORY_READER,
   store: CATEGORY_EDIT_STORE,
+  categoryImages: CATEGORY_IMAGE_STORE,
+  restructure: CATEGORY_RESTRUCTURE_STORE,
+  retirement: CATEGORY_RETIREMENT_CHECK,
   categoryProbes: CATEGORY_ACTION_PROBES,
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   impact: ATTRIBUTE_IMPACT_READER,
@@ -425,6 +451,7 @@ const PORT = {
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
+  contentFilter: ContentFilter,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -485,6 +512,21 @@ const productTypeProvider: FactoryProvider<string> = {
  * types; slice 2 adds the category store and the seed job; its other use cases arrive with
  * slices 6 and 7.
  */
+const RESTRUCTURE_DEPS = {
+  unitOfWork: true,
+  store: true,
+  restructure: true,
+  categories: true,
+  policy: true,
+  retirement: true,
+  offers: true,
+  requests: true,
+  audit: true,
+  outbox: true,
+  clock: true,
+  ids: true,
+} as const;
+
 @Module({
   controllers: [
     PlatformProductController,
@@ -557,6 +599,8 @@ const productTypeProvider: FactoryProvider<string> = {
       save: true,
       workingCopies: true,
       policy: true,
+      gtinRegistry: true,
+      contentFilter: true,
     }),
     {
       provide: PRODUCT_TYPE_LOOKUP,
@@ -574,6 +618,7 @@ const productTypeProvider: FactoryProvider<string> = {
         PRODUCT_TYPE_LOOKUP,
         PRODUCT_IMAGE_REPOSITORY,
         ATTRIBUTE_VALUE_SUGGESTION_STORE,
+        PRODUCT_REVISION_REPOSITORY,
       ],
       useFactory: (
         attributes: AttributeRepository,
@@ -581,8 +626,9 @@ const productTypeProvider: FactoryProvider<string> = {
         handlerFor: ProductTypeLookup,
         images: ProductImageRepository,
         suggestions: AttributeValueSuggestionStore,
+        revisions: ProductRevisionRepository,
       ): FreezeRevision =>
-        new FreezeRevision({ attributes, policy, handlerFor, images, suggestions }),
+        new FreezeRevision({ attributes, policy, handlerFor, images, suggestions, revisions }),
     },
     serviceProvider(ClaimQueryBuilder, { products: true, revisions: true, categoryPaths: true }),
     serviceProvider(SubmitProduct, {
@@ -907,8 +953,13 @@ const productTypeProvider: FactoryProvider<string> = {
       policy: true,
       categoryProbes: true,
     }),
-    useCaseProvider(CategoryImpact, { unitOfWork: true, adminCategoryReader: true }),
+    useCaseProvider(CategoryImpact, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      linkStore: true,
+    }),
     useCaseProvider(CategoryCreate, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -921,6 +972,7 @@ const productTypeProvider: FactoryProvider<string> = {
       ids: true,
     }),
     useCaseProvider(CategoryEditDetails, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -933,6 +985,7 @@ const productTypeProvider: FactoryProvider<string> = {
       ids: true,
     }),
     useCaseProvider(CategoryReorder, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -945,6 +998,7 @@ const productTypeProvider: FactoryProvider<string> = {
       ids: true,
     }),
     useCaseProvider(CategoryHide, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -957,6 +1011,7 @@ const productTypeProvider: FactoryProvider<string> = {
       ids: true,
     }),
     useCaseProvider(CategoryShow, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -969,6 +1024,7 @@ const productTypeProvider: FactoryProvider<string> = {
       ids: true,
     }),
     useCaseProvider(CategoryChangeSlug, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -981,6 +1037,7 @@ const productTypeProvider: FactoryProvider<string> = {
       ids: true,
     }),
     useCaseProvider(CategoryDiscard, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -992,6 +1049,37 @@ const productTypeProvider: FactoryProvider<string> = {
       clock: true,
       ids: true,
     }),
+    useCaseProvider(CategoryImageSet, {
+      unitOfWork: true,
+      categoryImages: true,
+      categories: true,
+      imageProcessor: true,
+      objectStore: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryImageRemove, {
+      unitOfWork: true,
+      categoryImages: true,
+      categories: true,
+      imageProcessor: true,
+      objectStore: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryImageRead, {
+      unitOfWork: true,
+      categoryImages: true,
+      objectStore: true,
+    }),
+    useCaseProvider(CategoryMove, RESTRUCTURE_DEPS),
+    useCaseProvider(CategoryMerge, RESTRUCTURE_DEPS),
+    useCaseProvider(CategoryArchive, RESTRUCTURE_DEPS),
+    useCaseProvider(ReportRetiredCategories, { unitOfWork: true, retirement: true }),
     useCaseProvider(BrandGet, { unitOfWork: true, brandReader: true }),
     useCaseProvider(BrandCreate, {
       unitOfWork: true,
@@ -999,8 +1087,15 @@ const productTypeProvider: FactoryProvider<string> = {
       clock: true,
       audit: true,
       ids: true,
+      contentFilter: true,
     }),
-    useCaseProvider(BrandEdit, { unitOfWork: true, brands: true, clock: true, audit: true }),
+    useCaseProvider(BrandEdit, {
+      unitOfWork: true,
+      brands: true,
+      clock: true,
+      audit: true,
+      contentFilter: true,
+    }),
     useCaseProvider(BrandArchive, { unitOfWork: true, brands: true, clock: true, audit: true }),
     useCaseProvider(BrandApprove, { unitOfWork: true, brands: true, clock: true, audit: true }),
     useCaseProvider(BrandMerge, { unitOfWork: true, brands: true, clock: true, audit: true }),
@@ -1019,6 +1114,7 @@ const productTypeProvider: FactoryProvider<string> = {
       clock: true,
       ids: true,
       audit: true,
+      contentFilter: true,
     }),
     useCaseProvider(BrandProductIdsQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandQuery, { unitOfWork: true, brandReader: true }),
@@ -1148,6 +1244,7 @@ const productTypeProvider: FactoryProvider<string> = {
       ownReader: true,
       policy: true,
       sellerNames: true,
+      gtinRegistry: true,
     }),
     useCaseProvider(AdminCustomVariantLabels, {
       unitOfWork: true,
@@ -1431,6 +1528,15 @@ const productTypeProvider: FactoryProvider<string> = {
     }),
     useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),
     useCaseProvider(PlatformProductSubmit, { submit: true }),
+    useCaseProvider(PlatformProductOptions, { policy: true }),
+    useCaseProvider(PlatformProductRead, {
+      unitOfWork: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      ownReader: true,
+      policy: true,
+    }),
     useCaseProvider(SeedCategoryTree, {
       unitOfWork: true,
       categories: true,
@@ -1519,10 +1625,15 @@ const productTypeProvider: FactoryProvider<string> = {
     // Certification events consumed (design 5.5, 9.5; slice 12).
     registerSubscriptionsFrom(
       'catalog',
-      [ReevaluateFromCertification, WarnOfferOwnersOfExpiry],
-      (reevaluate: ReevaluateFromCertification, warn: WarnOfferOwnersOfExpiry) => [
+      [ReevaluateFromCertification, WarnOfferOwnersOfExpiry, ReportRetiredCategories],
+      (
+        reevaluate: ReevaluateFromCertification,
+        warn: WarnOfferOwnersOfExpiry,
+        report: ReportRetiredCategories,
+      ) => [
         ...certificationSubscriptions(reevaluate),
         ...certificateExpiryNoticeSubscriptions(warn),
+        ...categoryRetirementSubscriptions(report),
       ],
     ),
     // Certification request C-6 (slice 15): the Owners of Offers whose badge rests on an
@@ -1573,6 +1684,18 @@ const productTypeProvider: FactoryProvider<string> = {
       productLinkingReader: true,
     }),
     useCaseProvider(CategoryTreeQuery, { unitOfWork: true, treeReader: true, policy: true }),
+    useCaseProvider(PublicCategoryTreeQuery, {
+      unitOfWork: true,
+      treeReader: true,
+      publicCategories: true,
+      policy: true,
+    }),
+    useCaseProvider(CategorySlugResolveQuery, {
+      unitOfWork: true,
+      treeReader: true,
+      publicCategories: true,
+      policy: true,
+    }),
     useCaseProvider(OfferListingsQuery, {
       unitOfWork: true,
       listingsReader: true,

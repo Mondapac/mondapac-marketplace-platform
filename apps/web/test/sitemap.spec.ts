@@ -1,12 +1,19 @@
 import { resolveRobots } from 'next/dist/build/webpack/loaders/metadata/resolve-route-data.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiRead } from '../src/storefront/api.ts';
+import { productHref } from '../src/storefront/links.ts';
 
 // The request's Host header and what the API answers per path.
 const request = vi.hoisted(
-  (): { host: string | null; sampleData: boolean; api: (path: string) => unknown } => ({
+  (): {
+    host: string | null;
+    sampleData: boolean;
+    imageOrigin: string | null;
+    api: (path: string) => unknown;
+  } => ({
     host: 'shop.example',
     sampleData: false,
+    imageOrigin: null,
     api: () => ({ kind: 'failed' }),
   }),
 );
@@ -29,7 +36,7 @@ vi.mock('../src/storefront/config.ts', async (importOriginal) => ({
       { origin: 'https://nz.example', host: 'nz.example', marketId: 'NZ' },
     ],
     clientAddressKey: null,
-    imageOrigin: null,
+    imageOrigin: request.imageOrigin,
   }),
 }));
 vi.mock('../src/storefront/api.ts', async (importOriginal) => ({
@@ -43,12 +50,47 @@ const { GET: indexRoute } = await import('../app/sitemap.xml/route.ts');
 const { GET: childRoute } = await import('../app/sitemaps/[name]/route.ts');
 
 const id = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+// The C6a flags decide: shown in the menu (switch on, live products, parent shown) and not noindex.
+const shown = { inMenu: true, hasLiveProducts: true };
 const TREE = {
   categories: [
-    { id: id(1), parentId: null, slug: 'meat', name: 'Meat' },
-    { id: id(2), parentId: null, slug: 'empty-top', name: 'Empty top' },
-    { id: id(3), parentId: id(1), slug: 'lamb', name: 'Lamb' },
-    { id: id(4), parentId: id(1), slug: 'empty-sub', name: 'Empty sub' },
+    { id: id(1), parentId: null, slug: 'meat', name: 'Meat', ...shown },
+    {
+      id: id(2),
+      parentId: null,
+      slug: 'empty-top',
+      name: 'Empty top',
+      inMenu: false,
+      hasLiveProducts: false,
+    },
+    { id: id(3), parentId: id(1), slug: 'lamb', name: 'Lamb', ...shown },
+    { id: id(5), parentId: id(3), slug: 'lamb-chops', name: 'Lamb chops', ...shown },
+    {
+      id: id(4),
+      parentId: id(1),
+      slug: 'empty-sub',
+      name: 'Empty sub',
+      inMenu: false,
+      hasLiveProducts: false,
+    },
+    // Has products, but the admin switched it out of the menu.
+    {
+      id: id(6),
+      parentId: id(1),
+      slug: 'off-menu',
+      name: 'Off menu',
+      inMenu: false,
+      hasLiveProducts: true,
+    },
+    // Shown, but the admin asked search engines to leave it out.
+    {
+      id: id(7),
+      parentId: id(1),
+      slug: 'no-index',
+      name: 'No index',
+      ...shown,
+      seo: { noindex: true },
+    },
   ],
 };
 const item = (n: number) => ({ productId: id(1000 + n), name: `Product ${n}`, offers: [] });
@@ -80,6 +122,7 @@ beforeEach(() => {
   vi.stubEnv('STOREFRONT_INDEXING', 'on');
   request.host = 'shop.example';
   request.sampleData = false;
+  request.imageOrigin = null;
   request.api = () => ({ kind: 'failed' });
 });
 afterEach(() => {
@@ -240,11 +283,12 @@ describe('sitemap children', () => {
     expect(urls).toEqual(['https://shop.example/', 'https://shop.example/sellers']);
   });
 
-  it('lists categories that have products, and never an empty one', async () => {
+  it('lists shown categories with products at any depth, one segment each, and never an empty one', async () => {
     serve();
     expect(await locs(await child('categories.xml'))).toEqual([
       'https://shop.example/c/meat',
-      'https://shop.example/c/meat/lamb',
+      'https://shop.example/c/lamb',
+      'https://shop.example/c/lamb-chops',
     ]);
   });
 
@@ -260,6 +304,19 @@ describe('sitemap children', () => {
     expect(urls).toHaveLength(4);
     expect(urls.every((url) => url.startsWith('https://shop.example/p/'))).toBe(true);
     expect(new Set(urls).size).toBe(urls.length);
+  });
+
+  it('lists the descriptive path /p/<name>-<id>, the same as the product card link', async () => {
+    serve({ pages: 1, perPage: 2 });
+    const urls = await locs(await child('products-1.xml'));
+    expect(urls).toHaveLength(2);
+    for (const url of urls) {
+      const match =
+        /^https:\/\/shop\.example\/p\/product-(\d+)-(0{8}-0000-4000-8000-\d{12})$/u.exec(url);
+      expect(match).not.toBeNull();
+      // The name part is the product's name as the search read gives it.
+      expect(url).toBe(`https://shop.example${productHref(match![2]!, `Product ${match![1]!}`)}`);
+    }
   });
 
   it('stops paging at hasMore false', async () => {
@@ -370,5 +427,68 @@ describe('sitemap host and cache', () => {
     expect((await child('pages.xml')).status).toBe(200);
     vi.stubEnv('STOREFRONT_INDEXING', 'off');
     expect((await child('pages.xml')).status).toBe(404);
+  });
+});
+
+describe('image sitemap (products children)', () => {
+  const IMAGE = '01990000-0000-7000-8000-0000000000a1';
+  const child = (name: string) =>
+    childRoute(new Request('https://shop.example/'), {
+      params: Promise.resolve({ name }),
+    });
+  const withPhoto = (): void => {
+    request.api = (path) => {
+      if (path === 'catalog/categories') return { kind: 'ok', body: TREE };
+      const page = Number(new URLSearchParams(path.split('?')[1]).get('page'));
+      return {
+        kind: 'ok',
+        body: {
+          hasMore: false,
+          items:
+            page === 1
+              ? [
+                  {
+                    ...item(1),
+                    primaryImage: { imageId: IMAGE, width: 1600, height: 1200, alt: 'Product 1' },
+                  },
+                  item(2),
+                ]
+              : [],
+        },
+      };
+    };
+  };
+
+  it('lists the large photo of a product, with the image namespace', async () => {
+    request.imageOrigin = 'https://img.example';
+    withPhoto();
+    const text = await (await child('products-1.xml')).text();
+    expect(text).toContain('xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"');
+    expect(text).toContain(
+      `<image:image><image:loc>https://img.example/catalog/public-images/AU/${id(1001)}/${IMAGE}/large</image:loc></image:image>`,
+    );
+    // The product without a photo is listed on its own.
+    expect(text.match(/<image:image>/gu)).toHaveLength(1);
+    expect(text.match(/<url>/gu)).toHaveLength(2);
+  });
+
+  it('lists no image without a photo origin', async () => {
+    request.imageOrigin = null;
+    withPhoto();
+    const text = await (await child('products-1.xml')).text();
+    expect(text).not.toContain('<image:image>');
+    expect(text.match(/<url>/gu)).toHaveLength(2);
+  });
+
+  it('lists no image from an http origin', async () => {
+    request.imageOrigin = 'http://localhost:4000';
+    withPhoto();
+    expect(await (await child('products-1.xml')).text()).not.toContain('<image:image>');
+  });
+
+  it('leaves the other children without the image namespace', async () => {
+    request.imageOrigin = 'https://img.example';
+    withPhoto();
+    expect(await (await child('categories.xml')).text()).not.toContain('xmlns:image');
   });
 });

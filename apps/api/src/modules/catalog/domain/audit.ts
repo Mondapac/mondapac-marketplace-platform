@@ -369,6 +369,66 @@ export const PlatformCategoryDiscardedAudit = defineAuditAction({
   after: { status: categoryEditStatus },
 });
 
+/**
+ * An admin set, replaced or removed the image of a category (categories package C3c). The ids
+ * only: the picture itself is never in the audit log. `imageId` is absent when there is none.
+ */
+export const PlatformCategoryImageChangedAudit = defineAuditAction({
+  action: 'catalog.platform-category.image-changed',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { imageId: auditField.optional(auditField.id()) },
+  after: { imageId: auditField.optional(auditField.id()) },
+});
+
+/**
+ * An admin moved a category with its subtree under a new parent (categories C4a; catalog design
+ * 4.6, C-8: every move is an audited entry path). Ids, levels and counts only; the reason note is
+ * on the category revision (`reasonGiven`), never here.
+ */
+export const PlatformCategoryMovedAudit = defineAuditAction({
+  action: 'catalog.platform-category.moved',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { parentId: auditField.optional(auditField.id()), level: auditField.integer() },
+  after: {
+    parentId: auditField.optional(auditField.id()),
+    level: auditField.integer(),
+    subtreeSize: auditField.integer(),
+    tagsMarked: auditField.integer(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/** An admin merged a category into another; its children moved there (C4a). */
+export const PlatformCategoryMergedAudit = defineAuditAction({
+  action: 'catalog.platform-category.merged',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { status: categoryEditStatus },
+  after: {
+    mergedIntoId: auditField.id(),
+    childrenMoved: auditField.integer(),
+    activitiesRelinked: auditField.integer(),
+    tagsMarked: auditField.integer(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/** An admin archived a category (terminal, plan decision 7) (C4a). */
+export const PlatformCategoryArchivedAudit = defineAuditAction({
+  action: 'catalog.platform-category.archived',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { status: categoryEditStatus },
+  after: {
+    status: categoryEditStatus,
+    activitiesUnlinked: auditField.integer(),
+    tagsMarked: auditField.integer(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
 /** The audit target type of a brand (catalog brand package; attributes package A5). */
 export const CATALOG_BRAND_TARGET = 'catalog.brand';
 
@@ -559,6 +619,10 @@ export const CATALOG_AUDIT_ACTIONS = [
   PlatformCategoryShownAudit,
   PlatformCategorySlugChangedAudit,
   PlatformCategoryDiscardedAudit,
+  PlatformCategoryImageChangedAudit,
+  PlatformCategoryMovedAudit,
+  PlatformCategoryMergedAudit,
+  PlatformCategoryArchivedAudit,
   BrandCreatedAudit,
   BrandProposedAudit,
   BrandEditedAudit,

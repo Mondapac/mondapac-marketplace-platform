@@ -9,6 +9,8 @@ export interface ApiFailure {
     /** The action a guarded route asks a fresh two-step code for (`second-factor.required`). */
     readonly actionKey?: string;
     readonly fields?: readonly { readonly path: string; readonly code: string }[];
+    /** `revision.not-ready`: what the draft still lacks. */
+    readonly issues?: readonly { readonly path: string; readonly code: string }[];
     /** `batch.too-large`: the cap of one request and how many products the request named. */
     readonly max?: number;
     readonly total?: number;
@@ -19,6 +21,8 @@ export interface ApiFailure {
     readonly rows?: number;
     readonly maxBytes?: number;
     readonly detected?: string;
+    /** `category.referenced-by-policy`: the certificate types whose rules use the category. */
+    readonly typeCodes?: readonly string[];
   };
 }
 

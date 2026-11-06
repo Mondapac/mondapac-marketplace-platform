@@ -19,6 +19,10 @@ import {
 } from '../src/modules/catalog/application/ports/own-catalog.reader';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
 import {
+  VARIANT_GTIN_REGISTRY,
+  type GtinDuplicate,
+} from '../src/modules/catalog/application/ports/variant-gtin.registry';
+import {
   PRODUCT_REVISION_REPOSITORY,
   type ReviewDecision,
 } from '../src/modules/catalog/application/ports/product-revision.repository';
@@ -107,6 +111,7 @@ describe('admin product revision review over HTTP (integration)', () => {
   let eligible: boolean;
   let claimVerdict: 'clean' | 'claim-text.found';
   let saveThrows: Error | null;
+  let gtinMatches: GtinDuplicate[];
   let names: Map<Id<'Seller'>, string>;
   const http = () => request(app.getHttpServer());
 
@@ -121,6 +126,7 @@ describe('admin product revision review over HTTP (integration)', () => {
     firstPublication: state.publishedRevisionId === null,
     sensitiveReasons: revision.sensitiveReasons,
     hasImages: revision.content.imageIds.length > 0,
+    variantGtins: revision.content.variants.flatMap((v) => (v.gtin === null ? [] : [v.gtin])),
     name: 'Dates',
     submittedAt: state.pendingSubmittedAt!,
   });
@@ -195,6 +201,11 @@ describe('admin product revision review over HTTP (integration)', () => {
           .useValue({ assignFromPublished: () => Promise.resolve() })
           .overrideProvider(OWN_OFFER_FINDER)
           .useValue({ findOwnOnProduct: () => Promise.resolve(null) })
+          .overrideProvider(VARIANT_GTIN_REGISTRY)
+          .useValue({
+            duplicatesOf: (_m: MarketContext, _p: Id<'Product'>, gtins: readonly string[]) =>
+              Promise.resolve(gtinMatches.filter((match) => gtins.includes(match.gtin))),
+          })
           .overrideProvider(OWN_CATALOG_READER)
           .useValue({
             pendingReviewCount: () =>
@@ -265,7 +276,12 @@ describe('admin product revision review over HTTP (integration)', () => {
   const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
 
   /** A SELLER product with a pending revision; `n` orders the queue. */
-  function pendingProduct(code: string, n: number, overrides: Partial<ProductState> = {}) {
+  function pendingProduct(
+    code: string,
+    n: number,
+    overrides: Partial<ProductState> = {},
+    gtin: string | null = null,
+  ) {
     const productId = n === 1 ? PRODUCT : id<'Product'>(0xc100 + n);
     const revisionId = n === 1 ? REVISION : id<'ProductRevision'>(0xd100 + n);
     const variantId = n === 1 ? VARIANT : id<'Variant'>(0xe100 + n);
@@ -324,7 +340,21 @@ describe('admin product revision review over HTTP (integration)', () => {
         categoryIds: [],
         taxCategoryCode: 'gst',
         attributeValues: {},
-        variants: [{ variantId, position: 1, optionKey: '', optionValues: {}, labels: {} }],
+        variants: [
+          {
+            variantId,
+            position: 1,
+            optionKey: '',
+            optionValues: {},
+            labels: {},
+            gtin,
+            shippingWeightGrams: null,
+            shippingLengthMm: null,
+            shippingWidthMm: null,
+            shippingHeightMm: null,
+            imageIds: [],
+          },
+        ],
         imageIds: [],
         schemaRef: { familyRevisionId: 'f', definitionRevisionIds: [] },
         contentSchemaVersion: 1,
@@ -459,6 +489,7 @@ describe('admin product revision review over HTTP (integration)', () => {
     eligible = true;
     claimVerdict = 'clean';
     saveThrows = null;
+    gtinMatches = [];
     names = new Map([[SELLER, 'Dates Co']]);
   });
   afterEach(async () => {
@@ -487,6 +518,29 @@ describe('admin product revision review over HTTP (integration)', () => {
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
+    it('warns the reviewer when a GTIN of a pending revision is carried by another product', async () => {
+      await boot();
+      await seeded(code);
+      const plain = pendingProduct(code, 3);
+      const platform = pendingProduct(code, 1, {}, '04006381333931');
+      const neutral = pendingProduct(code, 2, {}, '04012345678905');
+      gtinMatches = [
+        { gtin: '04006381333931', scope: 'PLATFORM', platformProductCode: 'MP-004127' },
+        { gtin: '04012345678905', scope: 'SELLER', platformProductCode: null },
+      ];
+
+      const response = await get(code, '/review-queue', sessionOf(code, VIEWER, 1));
+
+      const items = (response.body as { items: { productId: string; warnings: string[] }[] }).items;
+      const warningsOf = (productId: string) =>
+        items.find((item) => item.productId === productId)?.warnings;
+      expect(warningsOf(platform.productId)).toEqual(['gtin.duplicate-platform']);
+      expect(warningsOf(neutral.productId)).toEqual(['gtin.duplicate']);
+      expect(warningsOf(plain.productId)).toEqual([]);
+      // The reviewer is told there is a duplicate, never which seller's product it is.
+      expect(JSON.stringify(response.body)).not.toContain('MP-004127');
+    });
+
     it('lists product revisions with the Offers in one queue, oldest first, with store name and checks', async () => {
       await boot();
       await seeded(code);
@@ -522,6 +576,7 @@ describe('admin product revision review over HTTP (integration)', () => {
         reasons: ['never-published', 'approval-required'],
         requiredChecks: ALL_CHECKS,
         hasImages: false,
+        warnings: [],
         submittedAt: START.add({ minutes: 1 }).toString(),
       });
       expect(body.nextAfterId).toBeNull();

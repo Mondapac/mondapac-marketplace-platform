@@ -96,6 +96,13 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
     });
   });
 
+  it('passes the direct switch of a category browse (Other {name})', async () => {
+    const response = await get(`?category=${CATEGORY}&direct=true`);
+
+    expect(response.status).toBe(200);
+    expect(calls[0]).toMatchObject({ input: { category: CATEGORY, direct: 'true' } });
+  });
+
   it('passes a store address, alone or with a category, and answers the photo of each item', async () => {
     const alone = await get('?store=kedron-halal&page=2');
     const combined = await get(`?store=kedron-halal&category=${CATEGORY}`);

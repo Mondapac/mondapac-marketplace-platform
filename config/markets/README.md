@@ -212,7 +212,8 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
 - `taxCategories` (required, 1 to 20 entries, no code repeated): `code` (lower-case letters,
   digits and `_`) and `labelKey`. The AU values wait for the tax adviser (ADR-0007 decision 5).
 - `sensitiveChanges` (required, every flag required): `platformCategories`, `taxCategory`,
-  `name`, `primaryImage`, `anyImage`, `variantRemoved`. A change in a field marked `true` sends
+  `name`, `primaryImage`, `anyImage`, `variantRemoved`, `gtinChanged` (a GTIN set,
+  changed or cleared on a published variant). A change in a field marked `true` sends
   the revision to review (design 4.3). `anyImage` must be `true`: an added or replaced
   image always goes to review (Hassan H1), so a Market cannot switch it off.
 - `maxVariantsPerProduct` (required, 1 to 100; AU 100): the most non-retired variants one
@@ -222,6 +223,10 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
   tree (department, group, category, subcategory). Products sit on levels 3 and 4, so fewer than
   3 is refused; the start-up stops on a value outside the range. The category editor reads it and
   never a literal.
+- `maxCategoryChangeTags` (required, 1 to 200,000; AU 50,000): the most certification tags one
+  move, merge or archive of platform categories marks `rechecking` in its unit (catalog design
+  4.6, Q-K4). Above it the change is refused with `category.impact-too-large`, and the admin moves
+  the subcategories in parts.
 - `maxVariantAttributes` (required, 1 to 5; AU 2): the most variant (option) attributes one
   configurable product may vary on (attributes plan A2). A product whose feature set marks more
   option attributes is refused by the configurable type's variant check

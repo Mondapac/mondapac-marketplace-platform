@@ -2400,6 +2400,21 @@ svg {
   background: var(--sf-mist);
   color: var(--sf-teal);
 }
+.fchips a .cnt {
+  margin-inline-start: 6px;
+  color: var(--sf-slate);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+/* The category's short description under its title (categories C6). */
+.rhead .cdesc {
+  margin: 0;
+  max-width: 70ch;
+  color: var(--sf-slate);
+  font-size: calc(14px * var(--fs));
+  line-height: calc(20px * var(--fs));
+  overflow-wrap: anywhere;
+}
 .empty.rich {
   display: grid;
   gap: 12px;

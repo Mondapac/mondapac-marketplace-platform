@@ -84,6 +84,13 @@ export const REVISION_VARIANT_FIELDS: Record<keyof RevisionVariantContent, Field
   // Attribute code to option code: the codes are internal, the labels live on the definition.
   optionValues: exempt('internal-code'),
   labels: checked('product.variant-label'),
+  // Digits only (check digit validated at the freeze), a number, or ids of the revision's images.
+  gtin: exempt('identifier'),
+  shippingWeightGrams: exempt('number'),
+  shippingLengthMm: exempt('number'),
+  shippingWidthMm: exempt('number'),
+  shippingHeightMm: exempt('number'),
+  imageIds: exempt('reference'),
 };
 
 export const REVISION_CONTENT_FIELDS: Record<keyof RevisionContent, FieldDisposition> = {
@@ -299,6 +306,11 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'editor read model; its texts and search-result fields are CategoryText and CategorySeo',
   },
   FieldIssue: { noCustomerText: 'field path and a problem code' },
+  RestructureChange: {
+    noCustomerText: 'ids, a position, a status and a change kind of a move, merge or archive',
+  },
+  RestructurePlan: { noCustomerText: 'category ids and levels of a move, merge or archive plan' },
+  TreeEdge: { noCustomerText: 'a category id and its parent id' },
   HiddenChange: { noCustomerText: 'ids and a state code' },
   PublishedOfferIdsInput: { noCustomerText: 'ids and a page size' },
   Product: { noCustomerText: 'aggregate class around ProductState' },
@@ -462,6 +474,14 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'public tree view: ids, slug and one published category name, already claim-checked when written, with numbers',
   },
   CategoryTreeUnavailableError: { noCustomerText: 'error with a fixed reason' },
+  PublicCategoryDetails: {
+    noCustomerText:
+      'read copy of stored category fields: the menu switch, the English SEO fields and the published short descriptions, already claim-checked when written (C3a)',
+  },
+  PublicCategory: {
+    noCustomerText:
+      'public tree view: LiveCategory with the published short description and SEO fields, already claim-checked when written, with flags and numbers',
+  },
   AdminStoredCategory: {
     noCustomerText:
       'admin read copy of stored category rows in any status: ids, slug and the published CategoryName rows, already claim-checked when written',
@@ -504,6 +524,8 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   VariantDraft: { noCustomerText: 'ids and option codes; labels are RevisionVariantContent' },
   VariantIssue: { noCustomerText: 'issue code with a fixed path' },
+  AxisIssue: { noCustomerText: 'issue code with a fixed path' },
   VariantRecord: { noCustomerText: 'ids and times' },
+  VariantShipping: { noCustomerText: 'four whole numbers (grams, millimetres); no text' },
   WorkingCopy: { noCustomerText: 'opaque draft; its texts are checked before any write (6.1)' },
 };

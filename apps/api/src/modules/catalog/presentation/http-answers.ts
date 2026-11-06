@@ -27,6 +27,7 @@ const DETAIL_KEYS = [
   'rows',
   'detected',
   'rowNumber',
+  'typeCodes',
 ] as const;
 const logger = new Logger('CatalogHttp');
 

@@ -10,7 +10,11 @@ export function CategoryProblemBanner({ problem }: { readonly problem: CategoryP
   if (problem === null) return null;
   return (
     <Banner tone="critical">
-      {problem.max === undefined ? t(problem.key) : t(problem.key, { max: problem.max })}
+      {problem.values !== undefined
+        ? t(problem.key, problem.values)
+        : problem.max === undefined
+          ? t(problem.key)
+          : t(problem.key, { max: problem.max })}
     </Banner>
   );
 }

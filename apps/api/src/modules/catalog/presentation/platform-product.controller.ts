@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  Get,
+  Header,
   HttpCode,
   HttpException,
   Logger,
@@ -37,6 +39,8 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { PlatformProductOptions } from '../application/use-cases/platform-product-options.use-case';
+import { PlatformProductRead } from '../application/use-cases/platform-product-read.use-case';
 import { PlatformProductCreate } from '../application/use-cases/platform-product-create.use-case';
 import { PlatformProductSaveDraft } from '../application/use-cases/platform-product-save-draft.use-case';
 import { PlatformProductSubmit } from '../application/use-cases/platform-product-submit.use-case';
@@ -46,6 +50,8 @@ import {
   PlatformProductCreated,
   PlatformProductCreateRequest,
   PlatformProductDraftSaved,
+  PlatformProductOptionsView,
+  PlatformProductView,
   PlatformProductSaveDraftRequest,
   PlatformProductSubmitRequest,
   PlatformProductSubmitted,
@@ -133,7 +139,65 @@ export class PlatformProductController {
     private readonly createProduct: PlatformProductCreate,
     private readonly saveDraft: PlatformProductSaveDraft,
     private readonly submitProduct: PlatformProductSubmit,
+    private readonly productOptions: PlatformProductOptions,
+    private readonly readProduct: PlatformProductRead,
   ) {}
+
+  // Declared before `:productId`, so "options" is not read as a product id.
+  @Get('options')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Options for the platform product create form',
+    description: "Needs catalog.platform-product.edit. The Market's product types and locales.",
+  })
+  @ApiOkResponse({ type: PlatformProductOptionsView })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async options(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<PlatformProductOptionsView> {
+    const result = await this.productOptions.execute(context, {});
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as PlatformProductOptionsView)
+      : refusal(result.error, response, context);
+    return this.settle('catalog.platform-product-options', context, outcome);
+  }
+
+  @Get(':productId')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Read one PLATFORM product',
+    description:
+      'Needs catalog.platform-product.edit. The product with its variants, working copy and ' +
+      'published revision, and what the form is drawn from. A SELLER product and an unknown id ' +
+      'are one byte-identical product.not-found.',
+  })
+  @ApiParam(PRODUCT_PARAM)
+  @ApiOkResponse({ type: PlatformProductView })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async read(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') rawProductId: string,
+  ): Promise<PlatformProductView> {
+    const productId = productIdOf(rawProductId, response);
+    let outcome: PlatformProductView | HttpException;
+    if (productId instanceof HttpException) outcome = productId;
+    else {
+      const result = await this.readProduct.execute(context, { productId });
+      outcome = result.ok
+        ? (JSON.parse(JSON.stringify(result.value)) as PlatformProductView)
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.platform-product-read', context, outcome);
+  }
 
   @Post()
   @HttpCode(201)
@@ -243,6 +307,7 @@ export class PlatformProductController {
         ? {
             variantIds: [...result.value.variantIds],
             refusedFields: result.value.refusedFields.map((field) => ({ ...field })),
+            variantNotices: result.value.variantNotices.map((notice) => ({ ...notice })),
           }
         : refusal(result.error, response, context);
     }

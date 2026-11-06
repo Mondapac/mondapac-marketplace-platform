@@ -1223,6 +1223,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [
         'brand_id',
         'discarded_at',
+        'family_code',
         'last_changed_at',
         'matched_into_product_id',
         'owner_seller_id',
@@ -1311,6 +1312,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Categories package C2: per-locale content and the slug history are insert-only.
     'catalog.platform_category_revision_texts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.platform_category_slug_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Categories package C3c: one image per category; a replace deletes the old row (its renditions
+    // go by cascade) and inserts the new one, so neither table is ever updated.
+    'catalog.category_images': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.category_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 3): definitions and families are never deleted;
     // code, type and the localizable flag stay on the root, fixed by the column grant; the
     // material and variant-option flags live in insert-only revisions.
@@ -1440,10 +1445,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'catalog.offer_tag_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md 3.18 (slice 11): the fan-out queue moves its state, cursor and
-    // counts; what it names never changes. No DELETE until the purge of 10.3.
+    // counts; what it names never changes. No DELETE until the purge of 10.3. `created_at` since
+    // categories C4a: a category change reopens a request with a later one.
     'catalog.tag_reevaluation_requests': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['counts', 'cursor_offer_id', 'settled_at', 'state'],
+      columnUpdate: ['counts', 'created_at', 'cursor_offer_id', 'settled_at', 'state'],
     },
     // docs/design/data/catalog.md 3.27 (certification slice 15, request C-6): a warning to an Offer
     // owner moves its state, outcome, attempts and next try; what it names never changes. No

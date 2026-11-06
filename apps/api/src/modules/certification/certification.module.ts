@@ -71,11 +71,17 @@ import { ExpireSellerCertificates } from './application/use-cases/expire-seller-
 import { ExpireProductCertificates } from './application/use-cases/expire-product-certificates.use-case';
 import { SendExpiryMail } from './application/use-cases/send-expiry-mail.use-case';
 import { expiryProviders } from './infrastructure/expiry-providers';
+import { sweepOrphanDocumentFilesJob } from './presentation/jobs/sweep-orphan-document-files.job';
+import { SweepOrphanDocumentFiles } from './application/use-cases/sweep-orphan-document-files.use-case';
 import { expiryAndWarningsJob } from './presentation/jobs/expiry-and-warnings.job';
 import { expiryMailSubscriptions } from './presentation/subscribers/expiry-mail.subscriptions';
 import { SendDerecognitionMail } from './application/use-cases/send-derecognition-mail.use-case';
 import { registryProviders } from './infrastructure/registry-providers';
 import { claimPolicyProviders } from './infrastructure/claim-policy-providers';
+import { categoryRetirementProviders } from './infrastructure/category-retirement-providers';
+import { AssertCategoriesRetirable } from './application/use-cases/assert-categories-retirable.use-case';
+import { AssertCategoriesRetirableSystem } from './application/use-cases/assert-categories-retirable-system.use-case';
+import { PlatformCategoriesRetired } from './application/use-cases/platform-categories-retired.use-case';
 import { productCertificationProviders } from './infrastructure/product-certification-providers';
 import { AdminClaimPolicyController } from './presentation/admin-claim-policy.controller';
 import { AdminProductCertificateController } from './presentation/admin-product-certificate.controller';
@@ -171,6 +177,7 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     ...expiryProviders,
     ...registryProviders,
     ...claimPolicyProviders,
+    ...categoryRetirementProviders,
     ...productCertificationProviders,
     PersistenceModule.rawReadFor('certification'),
     publishedTypesReaderProvider,
@@ -224,12 +231,22 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     },
     registerJobsFrom(
       'certification',
-      [SeedCertificationTypes, ExpireSellerCertificates, ExpireProductCertificates],
+      [
+        SeedCertificationTypes,
+        ExpireSellerCertificates,
+        ExpireProductCertificates,
+        SweepOrphanDocumentFiles,
+      ],
       (
         seed: SeedCertificationTypes,
         expire: ExpireSellerCertificates,
         expireProducts: ExpireProductCertificates,
-      ) => [seedCertificationTypesJob(seed), expiryAndWarningsJob(expire, expireProducts)],
+        sweepFiles: SweepOrphanDocumentFiles,
+      ) => [
+        seedCertificationTypesJob(seed),
+        expiryAndWarningsJob(expire, expireProducts),
+        sweepOrphanDocumentFilesJob(sweepFiles),
+      ],
     ),
     ...readerUseCases,
     ...evaluateUseCases,
@@ -246,6 +263,9 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         CertificationTypesSystem,
         SellerCertificateOverview,
         CertifiedCategories,
+        AssertCategoriesRetirable,
+        AssertCategoriesRetirableSystem,
+        PlatformCategoriesRetired,
       ],
       useFactory: (
         evaluateClaims: EvaluateClaims,
@@ -258,6 +278,9 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         certificationTypesSystem: CertificationTypesSystem,
         sellerCertificateOverview: SellerCertificateOverview,
         certifiedCategories: CertifiedCategories,
+        assertCategoriesRetirable: AssertCategoriesRetirable,
+        assertCategoriesRetirableSystem: AssertCategoriesRetirableSystem,
+        platformCategoriesRetired: PlatformCategoriesRetired,
       ) =>
         new CertificationFacadeImplementation({
           evaluateClaims,
@@ -270,6 +293,9 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
           certificationTypesSystem,
           sellerCertificateOverview,
           certifiedCategories,
+          assertCategoriesRetirable,
+          assertCategoriesRetirableSystem,
+          platformCategoriesRetired,
         }),
     },
   ],

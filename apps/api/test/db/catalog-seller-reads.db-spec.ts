@@ -73,11 +73,13 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       primaryImage: true,
       anyImage: false,
       variantRemoved: true,
+      gtinChanged: true,
     }),
     maxVariantsPerProduct: () => 10,
     maxVariantAttributes: () => 2,
     units: () => [],
     maxCategoryDepth: () => 4,
+    maxCategoryChangeTags: () => 50_000,
     productTypes: () => ['simple', 'configurable'],
     defaultFamily: () => 'default',
     conditions: () => ['new'],
@@ -392,6 +394,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       'name',
       'primary-image',
       'variant-removed',
+      'gtin-changed',
       'images',
     ]);
     expect(own.value.workingCopy?.content).toMatchObject({

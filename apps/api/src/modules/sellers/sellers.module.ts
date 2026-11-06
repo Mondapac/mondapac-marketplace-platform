@@ -112,6 +112,11 @@ import { BlogAccess } from './application/use-cases/blog-access.use-case';
 import { BlogAccessSetUseCase } from './application/use-cases/blog-access-set.use-case';
 import { BlogAccessController } from './presentation/blog-access.controller';
 import { BLOG_ACCESS_REPOSITORY } from './application/ports/blog-access.repository';
+import { CATEGORY_PROPOSALS_SETTING_REPOSITORY } from './application/ports/category-proposals-setting.repository';
+import { MayProposeCategoriesSystem } from './application/use-cases/may-propose-categories-system.use-case';
+import { MayProposeCategories } from './application/use-cases/may-propose-categories.use-case';
+import { ChangeCategoryProposalsUseCase } from './application/use-cases/change-category-proposals.use-case';
+import { CategoryProposalsSettingController } from './presentation/category-proposals-setting.controller';
 import { BUSINESS_ACTIVITY_DIRECTORY } from './application/ports/business-activity-directory';
 import { SELLER_BUSINESS_ACTIVITY_REPOSITORY } from './application/ports/seller-business-activity.repository';
 import { SellerActivitiesGetUseCase } from './application/use-cases/seller-activities-get.use-case';
@@ -221,6 +226,7 @@ const PORT = {
   flags: ADMIN_FLAG_REPOSITORY,
   sellingFacts: SELLING_FACTS_REPOSITORY,
   blogAccess: BLOG_ACCESS_REPOSITORY,
+  categoryProposalsSetting: CATEGORY_PROPOSALS_SETTING_REPOSITORY,
   businessActivities: SELLER_BUSINESS_ACTIVITY_REPOSITORY,
   activityDirectory: BUSINESS_ACTIVITY_DIRECTORY,
   storeProfiles: STORE_PROFILE_REPOSITORY,
@@ -330,6 +336,7 @@ const REVIEW_DECISION_PORTS = {
     ReviewRegisterCheckController,
     ReviewDecisionController,
     BlogAccessController,
+    CategoryProposalsSettingController,
     SellerActivitiesController,
     SellerListController,
     ServiceAreaNamesController,
@@ -694,6 +701,16 @@ const REVIEW_DECISION_PORTS = {
     // The blog switch of a seller (blog package 1): the read pair and the admin's set.
     useCaseProvider(BlogAccess, { unitOfWork: true, sellingFacts: true }),
     useCaseProvider(BlogAccessSystem, { unitOfWork: true, sellingFacts: true }),
+    // SEL-26, whether a seller may propose categories: the read pair and the admin's change.
+    useCaseProvider(MayProposeCategories, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(MayProposeCategoriesSystem, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(ChangeCategoryProposalsUseCase, {
+      unitOfWork: true,
+      categoryProposalsSetting: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+    }),
     // A seller's business activities (ADR-0040 decision 4): the admin's get and set, and the read
     // pair behind the facade's `sellerBusinessActivities`.
     useCaseProvider(SellerActivitiesGetUseCase, {
@@ -756,6 +773,8 @@ const REVIEW_DECISION_PORTS = {
         SellerBusinessActivitiesSystem,
         BlogAccess,
         BlogAccessSystem,
+        MayProposeCategories,
+        MayProposeCategoriesSystem,
         ActiveSince,
         ActiveSinceSystem,
         ReviewerBusinessDetailsRead,
@@ -776,6 +795,8 @@ const REVIEW_DECISION_PORTS = {
         sellerBusinessActivitiesSystem: SellerBusinessActivitiesSystem,
         blogAccess: BlogAccess,
         blogAccessSystem: BlogAccessSystem,
+        mayProposeCategories: MayProposeCategories,
+        mayProposeCategoriesSystem: MayProposeCategoriesSystem,
         activeSince: ActiveSince,
         activeSinceSystem: ActiveSinceSystem,
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
@@ -796,6 +817,8 @@ const REVIEW_DECISION_PORTS = {
           sellerBusinessActivitiesSystem,
           blogAccess,
           blogAccessSystem,
+          mayProposeCategories,
+          mayProposeCategoriesSystem,
           activeSince,
           activeSinceSystem,
           reviewerBusinessDetails,

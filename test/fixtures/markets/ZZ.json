@@ -62,6 +62,7 @@
       "repeatedWordShareBps": 7500
     }
   },
+  "contentFilter": { "blockedTerms": ["zzbad", "zz bad phrase"] },
   "promotions": {
     "lineDiscountCapBps": 6000,
     "sellerMaxDiscountBps": 5000,
@@ -337,10 +338,12 @@
       "name": true,
       "primaryImage": false,
       "anyImage": true,
-      "variantRemoved": false
+      "variantRemoved": false,
+      "gtinChanged": false
     },
     "maxVariantsPerProduct": 3,
     "maxCategoryDepth": 3,
+    "maxCategoryChangeTags": 20000,
     "maxVariantAttributes": 3,
     "units": [
       { "code": "g", "labels": { "ja-JP": "g" } },

@@ -42,6 +42,11 @@ import {
 } from '../application/ports/attribute-definition.store';
 import { FEATURE_SET_STORE, type FeatureSetStore } from '../application/ports/feature-set.store';
 import { CertificationClaimTermLocales } from './certification-claim-term-locales';
+import { CertificationCategoryRetirement } from './certification-category-retirement';
+import {
+  CATEGORY_RETIREMENT_CHECK,
+  type CategoryRetirementCheck,
+} from '../application/ports/category-retirement-check';
 import { PrismaAttributeDefinitionStore } from './prisma-attribute-definition.store';
 import { PrismaFeatureSetStore } from './prisma-feature-set.store';
 import {
@@ -161,6 +166,11 @@ import {
   type CategoryTreeReader,
 } from '../application/ports/category-tree.reader';
 import { PrismaCategoryTreeReader } from './prisma-category-tree.reader';
+import {
+  PUBLIC_CATEGORY_READER,
+  type PublicCategoryReader,
+} from '../application/ports/public-category.reader';
+import { PrismaPublicCategoryReader } from './prisma-public-category.reader';
 import { PrismaSellUnitLabelsReader } from './prisma-sell-unit-labels.reader';
 import { PrismaOfferNamesReader } from './prisma-offer-names.reader';
 import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
@@ -212,6 +222,11 @@ import {
 } from '../application/ports/published-product.reader';
 import { PrismaPublishedProductReader } from './prisma-published-product.reader';
 import {
+  VARIANT_GTIN_REGISTRY,
+  type VariantGtinRegistry,
+} from '../application/ports/variant-gtin.registry';
+import { PrismaVariantGtinRegistry } from './prisma-variant-gtin.registry';
+import {
   PUBLISHED_IMAGES_READER,
   type PublishedImagesReader,
 } from '../application/ports/published-images.reader';
@@ -248,9 +263,16 @@ import { PrismaBrandRepository } from './prisma-brand.repository';
 import { PrismaBrandReader } from './prisma-brand.reader';
 import { PrismaAdminCategoryReader } from './prisma-admin-category.reader';
 import { PrismaCategoryEditStore } from './prisma-category-edit.store';
+import { PrismaCategoryImageStore } from './prisma-category-image.store';
+import {
+  CATEGORY_IMAGE_STORE,
+  type CategoryImageStore,
+} from '../application/ports/category-image.store';
 import {
   CATEGORY_EDIT_STORE,
+  CATEGORY_RESTRUCTURE_STORE,
   type CategoryEditStore,
+  type CategoryRestructureStore,
 } from '../application/ports/category-edit.store';
 import {
   ADMIN_CATEGORY_READER,
@@ -271,6 +293,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [CERTIFICATION_FACADE],
     useFactory: (certification: CertificationFacade): ClaimTextMatcher =>
       new CertificationClaimTextMatcher(certification),
+  },
+  {
+    provide: CATEGORY_RETIREMENT_CHECK,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): CategoryRetirementCheck =>
+      new CertificationCategoryRetirement(certification),
   },
   {
     provide: CLAIM_TERM_LOCALES,
@@ -336,6 +364,17 @@ export const catalogProviders: readonly Provider[] = [
     useFactory: (prisma: PrismaService): CategoryEditStore => new PrismaCategoryEditStore(prisma),
   },
   {
+    provide: CATEGORY_IMAGE_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryImageStore => new PrismaCategoryImageStore(prisma),
+  },
+  {
+    // The same store class: the restructure facts read the same tables in the same unit.
+    provide: CATEGORY_RESTRUCTURE_STORE,
+    inject: [CATEGORY_EDIT_STORE],
+    useFactory: (store: PrismaCategoryEditStore): CategoryRestructureStore => store,
+  },
+  {
     provide: BRAND_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BrandReader => new PrismaBrandReader(prisma),
@@ -392,6 +431,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): PublishedProductReader =>
       new PrismaPublishedProductReader(prisma),
+  },
+  {
+    provide: VARIANT_GTIN_REGISTRY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantGtinRegistry =>
+      new PrismaVariantGtinRegistry(prisma),
   },
   {
     provide: PUBLISHED_IMAGES_READER,
@@ -508,6 +553,12 @@ export const catalogProviders: readonly Provider[] = [
     provide: CATEGORY_TREE_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): CategoryTreeReader => new PrismaCategoryTreeReader(prisma),
+  },
+  {
+    provide: PUBLIC_CATEGORY_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PublicCategoryReader =>
+      new PrismaPublicCategoryReader(prisma),
   },
   {
     provide: SELL_UNIT_LABELS_READER,

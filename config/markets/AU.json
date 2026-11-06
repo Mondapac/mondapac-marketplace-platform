@@ -81,6 +81,41 @@
       "repeatedWordShareBps": 6000
     }
   },
+  "contentFilter": {
+    "blockedTerms": [
+      "fuck",
+      "fucking",
+      "fucker",
+      "motherfucker",
+      "shit",
+      "bullshit",
+      "cunt",
+      "bastard",
+      "asshole",
+      "bitch",
+      "whore",
+      "slut",
+      "wanker",
+      "twat",
+      "nigger",
+      "faggot",
+      "جنده",
+      "جاکش",
+      "کصکش",
+      "کسکش",
+      "کونی",
+      "کوسکش",
+      "حرامزاده",
+      "مادرجنده",
+      "کیر",
+      "کیرخر",
+      "شرموطة",
+      "منيوك",
+      "كسمك",
+      "عرص",
+      "ابن الشرموطة"
+    ]
+  },
   "promotions": {
     "lineDiscountCapBps": 8000,
     "sellerMaxDiscountBps": 7000,
@@ -437,10 +472,12 @@
       "name": true,
       "primaryImage": true,
       "anyImage": true,
-      "variantRemoved": true
+      "variantRemoved": true,
+      "gtinChanged": true
     },
     "maxVariantsPerProduct": 100,
     "maxCategoryDepth": 4,
+    "maxCategoryChangeTags": 50000,
     "maxVariantAttributes": 2,
     "units": [
       { "code": "g", "labels": { "en-AU": "g" } },

@@ -30,6 +30,10 @@ const toRecord = (row: {
 export class PrismaAddressRepository implements AddressRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  async lockBook(market: MarketContext, accountId: Id<'Account'>): Promise<void> {
+    await this.prisma.namedQuery(market, 'customers.lock-address-book', { accountId });
+  }
+
   async list(market: MarketContext, accountId: Id<'Account'>) {
     const rows = await this.prisma.tx(market).customersAddress.findMany({
       where: { marketId: market.marketId, accountId },

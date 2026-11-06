@@ -991,6 +991,20 @@
     }
   },
   {
+    "type": "sellers.category-proposals-granted.v1",
+    "aggregateType": "seller-admin-settings",
+    "fields": {
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "sellers.category-proposals-revoked.v1",
+    "aggregateType": "seller-admin-settings",
+    "fields": {
+      "sellerId": "id"
+    }
+  },
+  {
     "type": "shipping.carrier-delivery-progressed.v1",
     "aggregateType": "carrier-booking",
     "fields": {
@@ -1013,6 +1027,31 @@
     "aggregateType": "platform-category",
     "fields": {
       "categoryId": "id"
+    }
+  },
+  {
+    "type": "catalog.platform-category-moved.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id",
+      "checkedIds": "listOf(id)"
+    }
+  },
+  {
+    "type": "catalog.platform-category-merged.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id",
+      "checkedIds": "listOf(id)",
+      "mergedIntoId": "id"
+    }
+  },
+  {
+    "type": "catalog.platform-category-archived.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id",
+      "checkedIds": "listOf(id)"
     }
   }
 ]

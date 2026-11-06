@@ -108,7 +108,8 @@ export class SearchProducts extends UseCase<
     const query = parseSearchQuery(input);
     if (!query.ok) return query;
     const { market } = context;
-    const { text, categoryId, storeSlug, brandSlug, sort, page, pageSize, filters } = query.value;
+    const { text, categoryId, direct, storeSlug, brandSlug, sort, page, pageSize, filters } =
+      query.value;
     const asked = filters.choices.length + filters.ranges.length > 0;
     const { textSearchConfig, ratingBoost } = this.deps.policy.settings(market);
     // `top-rated` exists only while the Market's rating boost is on.
@@ -137,7 +138,10 @@ export class SearchProducts extends UseCase<
       brandProductIds = brand.productIds;
     }
     let categoryIds: readonly Id<'Category'>[] | null = null;
-    if (categoryId !== null) {
+    if (categoryId !== null && direct) {
+      // "Other {name}" (C6): the products on the category itself, none of a subcategory's.
+      categoryIds = [categoryId];
+    } else if (categoryId !== null) {
       categoryIds = await this.deps.categories.subtreeOf(context, categoryId);
       if (categoryIds === null) return err({ code: 'search.unavailable' });
     }

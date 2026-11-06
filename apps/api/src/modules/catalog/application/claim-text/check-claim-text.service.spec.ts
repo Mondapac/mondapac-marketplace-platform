@@ -109,6 +109,7 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
       maxVariantAttributes: () => 2,
       units: () => [],
       maxCategoryDepth: () => 4,
+      maxCategoryChangeTags: () => 50_000,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],

@@ -17,7 +17,7 @@ export function ProductCard({ product }: { readonly product: ShelfCard }) {
     <article className="pc">
       <div className="tile">
         {product.imageUrl ? (
-          <CardPhoto src={product.imageUrl} category={product.category} />
+          <CardPhoto src={product.imageUrl} category={product.category} set={product.imageSet} />
         ) : (
           <CategoryArt code={product.category} />
         )}
@@ -42,7 +42,7 @@ export function ProductCard({ product }: { readonly product: ShelfCard }) {
         </>
       )}
       <h3 className="nm">
-        <Link href={productHref(product.id)}>{product.name}</Link>
+        <Link href={productHref(product.id, product.name)}>{product.name}</Link>
       </h3>
       {product.sellerName === '' ? null : <div className="by">{product.sellerName}</div>}
       {product.lowStock !== undefined ? (

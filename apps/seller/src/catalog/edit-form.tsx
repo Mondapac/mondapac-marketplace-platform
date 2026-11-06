@@ -23,6 +23,8 @@ import {
 } from './draft-content.ts';
 import { editProblemOf, type EditProblem } from './edit-errors.ts';
 import { VariantsSection } from './variants-section.tsx';
+import { hasProblems, problemsOfRows } from './variant-fields.ts';
+import { axesOf } from './variant-grid.ts';
 import type { DraftSaved, ProductPhoto, ProductView, Submitted } from './types.ts';
 
 const KEYS = ['name', 'shortDescription', 'description'] as const;
@@ -97,12 +99,14 @@ export function EditForm({
     attributeInputsOf(content, attributeFields),
   );
   const [rows, setRows] = useState<VariantRow[]>(() => variantRowsOf(content, product.variants));
+  const [axes, setAxes] = useState<string[]>(() => axesOf(content, rows, form.fields));
   const [imageIds, setImageIds] = useState<string[]>(() => imageIdsOf(content));
   const [dirty, setDirty] = useState(false);
   const [replacePending, setReplacePending] = useState(false);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<EditProblem | null>(null);
   const [refused, setRefused] = useState<DraftSaved['refusedFields']>([]);
+  const [notices, setNotices] = useState<NonNullable<DraftSaved['variantNotices']>>([]);
   const busy = useRef(false);
 
   const fixedVariantIds = product.variants
@@ -124,11 +128,17 @@ export function EditForm({
       taxCategoryCode,
       attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
       variants: configurable ? variantsWith(list) : null,
+      variantAxes: configurable ? axes : null,
     });
   }
 
   /** Saves the draft; 'saved' when the API took it whole, 'refused' when it dropped some texts. */
   async function save(): Promise<'saved' | 'refused' | false> {
+    // Barcode, shipping and photo picks that cannot be saved are fixed first, next to their fields.
+    if (configurable && hasProblems(problemsOfRows(rows))) {
+      setProblem({ key: 'catalog.edit.grid.problem.blocked', details: [], reload: false });
+      return false;
+    }
     let list = rows;
     let idsMinted = false;
     let next = contentOf(list);
@@ -162,6 +172,7 @@ export function EditForm({
     }
     setContent(next);
     setRefused(result.body.refusedFields);
+    setNotices(result.body.variantNotices ?? []);
     setDirty(result.body.refusedFields.length > 0);
     return result.body.refusedFields.length === 0 ? 'saved' : 'refused';
   }
@@ -230,6 +241,18 @@ export function EditForm({
   return (
     <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
       {refused.length > 0 ? <Banner tone="attention">{t('catalog.edit.refused')}</Banner> : null}
+      {notices.length > 0 ? (
+        <Banner tone="info">
+          <p>{t('catalog.edit.grid.notice.duplicate', { count: notices.length })}</p>
+          {[
+            ...new Set(
+              notices.flatMap((n) => (n.sellOnProductCode === null ? [] : [n.sellOnProductCode])),
+            ),
+          ].map((code) => (
+            <p key={code}>{t('catalog.edit.grid.notice.sell-on', { code })}</p>
+          ))}
+        </Banner>
+      ) : null}
       {problem === null ? null : (
         <Banner tone="critical">
           <p>{t(problem.key, problem.values)}</p>
@@ -297,12 +320,16 @@ export function EditForm({
         <VariantsSection
           rows={rows}
           fields={form.fields}
-          locales={locales}
+          axes={axes}
+          locked={product.published !== null || rows.some((row) => row.state === 'published')}
           defaultLocale={defaultLocale}
           max={product.maxVariants}
-          refused={refused}
+          productId={product.productId}
+          galleryIds={imageIds}
+          notices={notices.map((notice) => notice.variantId)}
           onChange={(next) => {
-            setRows(next);
+            setRows(next.rows);
+            setAxes(next.axes);
             edited();
           }}
         />
@@ -314,6 +341,14 @@ export function EditForm({
         imageIds={imageIds}
         onImageIds={(ids) => {
           setImageIds(ids);
+          // A variant can only pick photos the product keeps.
+          setRows((list) =>
+            list.map((row) =>
+              row.imageIds.every((id) => ids.includes(id))
+                ? row
+                : { ...row, imageIds: row.imageIds.filter((id) => ids.includes(id)) },
+            ),
+          );
           edited();
         }}
       />
