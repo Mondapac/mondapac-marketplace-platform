@@ -89,7 +89,9 @@ describe('isSlideImageUploadRequest', () => {
   const ADMIN_OK = { cookie: '__Host-session-admin-AU=abc123_-XYZ', 'x-csrf-token': 'token' };
 
   it('takes the large body of a POST of a slide image with an admin session and CSRF header', () => {
-    expect(isSlideImageUploadRequest('POST', '/storefront/admin/slide-images', ADMIN_OK)).toBe(true);
+    expect(isSlideImageUploadRequest('POST', '/storefront/admin/slide-images', ADMIN_OK)).toBe(
+      true,
+    );
     expect(isSlideImageUploadRequest('POST', '/storefront/admin/slide-images/?x=1', ADMIN_OK)).toBe(
       true,
     );
