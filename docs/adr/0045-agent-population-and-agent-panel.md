@@ -28,7 +28,7 @@ populations: not a seller member (an agent acts across many sellers and owns non
    agent, email unique per Market and per population. The value `agent` joins
    `identity.accounts.population` and its check constraint. The audit actor type is `AGENT`.
 2. **Onboarding by invitation only, with a handover code.** There is no self sign-up. An admin
-   with `agents.manage` creates the agent through the `agents` module, which asks `identity` to
+   with `agents.agent.manage` creates the agent through the `agents` module, which asks `identity` to
    issue an invitation on the existing one-time mechanism (single use, revocable, reissued by
    the admin; lifetime 72 hours from Market configuration, as for admin invitations; brief Q9).
    - **Acceptance needs both** the emailed link token **and** a handover code that the admin
