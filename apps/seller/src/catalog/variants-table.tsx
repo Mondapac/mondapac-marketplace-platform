@@ -34,8 +34,8 @@ import { LastSizeHint, SizesYouSell } from './sizes-you-sell.tsx';
 
 type Bulk = 'price' | 'increase' | 'stock';
 
-/** Column widths in rem. Inputs are w-28 (price), w-24 (stock) and w-44 (SKU) inside p-2 cells. */
-const COL = { variant: 9, onSale: 6, price: 8, special: 7, stock: 7, sku: 12 } as const;
+/** Column widths in rem. Inputs are w-28 (price), w-24 (stock) and w-40 (SKU) inside p-2 cells. */
+const COL = { variant: 8, onSale: 6, price: 8, special: 7, stock: 7, sku: 11 } as const;
 
 const unitError = (name: string): string => `catalog.variants-table.units.error.${name}`;
 
@@ -439,8 +439,13 @@ export function VariantsTable({
           role="region"
           aria-label={t('catalog.variants-table.title')}
           tabIndex={0}
-          // A focused field scrolls into view beside the sticky Variant column, not under it.
-          style={{ scrollPaddingInlineStart: `${COL.variant + 0.5}rem` }}
+          // A focused field scrolls into view beside the sticky Variant column, not under it, and
+          // clear of the end fade, so its error text and focus ring stay visible on phones.
+          style={{
+            scrollPaddingInlineStart: `${COL.variant + 0.5}rem`,
+            scrollPaddingInlineEnd: '1rem',
+            paddingInlineEnd: '1rem',
+          }}
           onScroll={updateFade}
         >
           <table className="table-fixed text-start text-sm" style={{ width: `${tableRem}rem` }}>
@@ -658,7 +663,7 @@ export function VariantsTable({
                         {unit == null ? (
                           <Dash />
                         ) : canEditUnits ? (
-                          <div className="w-44">
+                          <div className="w-40">
                             <SkuField
                               name={`sku-${row.variantId}`}
                               label={t('catalog.variants-table.units.sku-for', {
