@@ -2,7 +2,7 @@
 
 import { Banner, Button, CheckboxRow, Dialog, Select, SkeletonRows, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
 import {
   addSizesProblemOf,
@@ -65,13 +65,17 @@ export function AddSizesDialog({
   const [changedFrom, setChangedFrom] = useState<number | null>(null);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<AddSizesProblem | null>(null);
+  // Why the read of the affected offers failed; shown inside the one banner for that failure.
+  const [readProblem, setReadProblem] = useState<AddSizesProblem | null>(null);
   const busy = useRef(false);
   const cancel = useRef<HTMLButtonElement>(null);
+  const noteId = useId();
 
   useEffect(() => {
     if (!open) return;
     let current = true;
     setImpact({ kind: 'loading' });
+    setReadProblem(null);
     void callApi<AddSizesImpact>('GET', `${BASE}/${productId}/add-sizes-impact`).then((result) => {
       if (!current) return;
       if (result.ok) {
@@ -83,7 +87,7 @@ export function AddSizesDialog({
       } else if (result.failure.status === 401) window.location.assign('/session-ended');
       else {
         setImpact({ kind: 'failed' });
-        setProblem(addSizesProblemOf(result.failure));
+        setReadProblem(addSizesProblemOf(result.failure));
       }
     });
     return () => {
@@ -150,6 +154,17 @@ export function AddSizesDialog({
   }
 
   const count = impact.kind === 'ready' ? impact.count : 0;
+  // Why the confirm button is off, when the dialog does not already say so with a banner.
+  const note =
+    pending || impact.kind !== 'ready'
+      ? undefined
+      : axes.length === 0
+        ? t('note-types')
+        : axes.some((axis) => (values[axis] ?? '') === '')
+          ? t('note-values')
+          : mustAgree && !agreed
+            ? t('note-agree')
+            : undefined;
 
   return (
     <Dialog
@@ -157,12 +172,18 @@ export function AddSizesDialog({
       title={t('title')}
       onClose={onClose}
       initialFocus={cancel}
+      {...(note === undefined ? {} : { actionsNote: <span id={noteId}>{note}</span> })}
       actions={
         <>
           <Button ref={cancel} variant="secondary" onClick={onClose}>
             {t('cancel')}
           </Button>
-          <Button loading={pending} disabled={!ready || pending} onClick={() => void confirm()}>
+          <Button
+            loading={pending}
+            disabled={!ready || pending}
+            aria-describedby={note === undefined ? undefined : noteId}
+            onClick={() => void confirm()}
+          >
             {t(changedFrom === null ? 'confirm' : 'confirm-again')}
           </Button>
         </>
@@ -172,15 +193,22 @@ export function AddSizesDialog({
         <p>{t('intro')}</p>
         <Banner tone="attention">{t('permanent')}</Banner>
         {impact.kind === 'loading' ? <SkeletonRows label={t('loading')} rows={1} /> : null}
-        {impact.kind === 'failed' ? <Banner tone="critical">{t('impact-failed')}</Banner> : null}
+        {impact.kind === 'failed' ? (
+          <Banner tone="critical">
+            <p>{t('impact-failed')}</p>
+            {readProblem === null ? null : (
+              <p className="mt-1 text-sm">{t(`error.${readProblem.name}`, readProblem.values)}</p>
+            )}
+          </Banner>
+        ) : null}
+        {impact.kind === 'ready' && changedFrom !== null ? (
+          <Banner tone="attention">
+            <p className="font-medium">{t('count-changed', { before: changedFrom, count })}</p>
+          </Banner>
+        ) : null}
         {impact.kind === 'ready' && count > 0 ? (
           <Banner tone="attention">
             <p>{t('off-sale', { count })}</p>
-            {changedFrom !== null ? (
-              <p className="mt-1 font-medium">
-                {t('count-changed', { before: changedFrom, count })}
-              </p>
-            ) : null}
           </Banner>
         ) : null}
         {impact.kind === 'ready' && count === 0 ? (
@@ -222,7 +250,7 @@ export function AddSizesDialog({
                 <Select
                   key={axis}
                   name={`value.${axis}`}
-                  label={t('value-of', { type: nameOf(field) })}
+                  label={t('value-of', { type: nameOf(field).toLocaleLowerCase(defaultLocale) })}
                   placeholder={t('choose')}
                   options={field.options.map((option) => ({
                     value: option.code,
@@ -235,7 +263,7 @@ export function AddSizesDialog({
             })}
           </section>
         )}
-        {problem === null ? null : (
+        {problem === null || impact.kind === 'failed' ? null : (
           <Banner tone="critical">
             <p>{t(`error.${problem.name}`, problem.values)}</p>
             {problem.issues.length > 0 ? (

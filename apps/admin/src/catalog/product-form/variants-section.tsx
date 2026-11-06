@@ -219,7 +219,7 @@ export function VariantsSection({
           <h3 className="font-medium">{t('second.values-title', { type: nameOf(second) })}</h3>
           <Banner tone="info">{t('second.review')}</Banner>
           <p className="text-sm text-fg-muted">
-            {t('second.values-help', { type: nameOf(second) })}
+            {t('second.values-help', { type: nameOf(second).toLocaleLowerCase(defaultLocale) })}
           </p>
           <div>
             <Button variant="secondary" onClick={dropSecond}>

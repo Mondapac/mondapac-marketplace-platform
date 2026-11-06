@@ -33,7 +33,6 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'revision.pending-exists': 'pending-exists',
   'product-type.not-allowed': 'type-not-allowed',
   'conflict.stale': 'stale',
-  'confirm.count-changed': 'count-changed',
   'product.family-invalid': 'family-invalid',
   'product.not-editable': 'not-editable',
   'product.not-found': 'not-found',
@@ -80,12 +79,6 @@ export function addSizesProblemOf(failure: ApiFailure): AddSizesProblem {
     reload: RELOAD.has(name),
     pendingExists: name === 'pending-exists',
   };
-}
-
-/** The `currentCount` a `confirm.count-changed` answer carries, or null. */
-export function currentCountOf(failure: ApiFailure): number | null {
-  const count = failure.details?.currentCount;
-  return typeof count === 'number' && Number.isSafeInteger(count) && count >= 0 ? count : null;
 }
 
 /** How many option types the Market lets a product vary on. */

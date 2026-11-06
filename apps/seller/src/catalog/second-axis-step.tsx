@@ -9,7 +9,8 @@ import type { FormField } from './types.ts';
 /**
  * "Add a second type" (variants V9d, catalog design 4.2a): a published product that varies on one
  * type may add one more, once. Step 1 picks the new type; step 2 gives every live variant its value
- * for it (all required). The change goes to review: it rewrites the labels of the live variants.
+ * for it (all required). It rewrites the labels of the live variants, so it goes to review when
+ * the Market lists `axis-added` as a sensitive change.
  */
 export function SecondAxisStep({
   choices,
@@ -17,6 +18,7 @@ export function SecondAxisStep({
   rows,
   fields,
   defaultLocale,
+  review,
   onAdd,
   onValue,
   onRemove,
@@ -28,6 +30,8 @@ export function SecondAxisStep({
   readonly rows: readonly VariantRow[];
   readonly fields: readonly FormField[];
   readonly defaultLocale: string;
+  /** Adding a type waits for review (the product's sensitive fields include `axis-added`). */
+  readonly review: boolean;
   readonly onAdd: (code: string) => void;
   readonly onValue: (row: VariantRow, code: string) => void;
   readonly onRemove: () => void;
@@ -92,8 +96,10 @@ export function SecondAxisStep({
   return (
     <section className="flex flex-col gap-3 border-t border-line pt-3">
       <h3 className="font-medium">{t('values-title', { type: nameOf(second) })}</h3>
-      <Banner tone="info">{t('review')}</Banner>
-      <p className="text-sm text-fg-muted">{t('values-help', { type: nameOf(second) })}</p>
+      <Banner tone="info">{t(review ? 'review' : 'no-review')}</Banner>
+      <p className="text-sm text-fg-muted">
+        {t('values-help', { type: nameOf(second).toLocaleLowerCase(defaultLocale) })}
+      </p>
       {rows.map((row, index) => (
         <Select
           key={row.key}

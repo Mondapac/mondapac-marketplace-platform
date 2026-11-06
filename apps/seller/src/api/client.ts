@@ -10,8 +10,6 @@ export interface ApiFailure {
     /** The problems that keep a draft from being submitted (`revision.not-ready`). */
     readonly issues?: readonly { readonly path: string; readonly code: string }[];
     readonly max?: number;
-    /** The new count a stale confirm answers with (`confirm.count-changed`). */
-    readonly currentCount?: number;
     /** Which picture a refused store-profile save was about (`logo` or `banner`). */
     readonly kind?: 'logo' | 'banner';
     /** Wrong pickup codes the seller order still takes (`ordering.pickup-code-invalid`). */

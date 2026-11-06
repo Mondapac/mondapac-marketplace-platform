@@ -105,6 +105,8 @@ export function EditForm({
   const [imageIds, setImageIds] = useState<string[]>(() => imageIdsOf(content));
   const [dirty, setDirty] = useState(false);
   const [sizesOpen, setSizesOpen] = useState(false);
+  // A new run of the dialog per opening: nothing of an earlier one (an error, a tick) survives.
+  const [sizesRun, setSizesRun] = useState(0);
   const [replacePending, setReplacePending] = useState(false);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<EditProblem | null>(null);
@@ -348,6 +350,7 @@ export function EditForm({
           locked={locked}
           publishedAxes={publishedAxes}
           maxAxes={maxAxes}
+          review={product.sensitiveFields.includes('axis-added')}
           defaultLocale={defaultLocale}
           max={product.maxVariants}
           productId={product.productId}
@@ -369,7 +372,10 @@ export function EditForm({
             <Button
               variant="secondary"
               disabled={dirty || pending}
-              onClick={() => setSizesOpen(true)}
+              onClick={() => {
+                setSizesRun((run) => run + 1);
+                setSizesOpen(true);
+              }}
             >
               {t('catalog.addSizes.start')}
             </Button>
@@ -377,6 +383,7 @@ export function EditForm({
         </Card>
       ) : null}
       <AddSizesDialog
+        key={sizesRun}
         open={sizesOpen}
         productId={product.productId}
         version={product.version ?? null}

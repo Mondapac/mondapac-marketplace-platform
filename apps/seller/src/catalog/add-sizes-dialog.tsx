@@ -2,7 +2,7 @@
 
 import { Banner, Button, CheckboxRow, Dialog, Select, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import {
   addSizesProblemOf,
@@ -61,6 +61,7 @@ export function AddSizesDialog({
   const [problem, setProblem] = useState<AddSizesProblem | null>(null);
   const busy = useRef(false);
   const cancel = useRef<HTMLButtonElement>(null);
+  const noteId = useId();
 
   const mustAgree = waiting || lateWaiting;
   const nameOf = (field: FormField) => pickLabel(field.names, defaultLocale, field.code);
@@ -69,6 +70,18 @@ export function AddSizesDialog({
     axes.length >= 1 &&
     axes.every((axis) => (values[axis] ?? '') !== '') &&
     (!mustAgree || agreed);
+
+  // Why the confirm button is off, when the dialog does not already say so with a banner.
+  const note =
+    pending || version === null
+      ? undefined
+      : axes.length === 0
+        ? t('note-types')
+        : axes.some((axis) => (values[axis] ?? '') === '')
+          ? t('note-values')
+          : mustAgree && !agreed
+            ? t('note-agree')
+            : undefined;
 
   function toggle(code: string, on: boolean) {
     setAxes(
@@ -120,12 +133,18 @@ export function AddSizesDialog({
       title={t('title')}
       onClose={onClose}
       initialFocus={cancel}
+      {...(note === undefined ? {} : { actionsNote: <span id={noteId}>{note}</span> })}
       actions={
         <>
           <Button ref={cancel} variant="secondary" onClick={onClose}>
             {t('cancel')}
           </Button>
-          <Button loading={pending} disabled={!ready || pending} onClick={() => void confirm()}>
+          <Button
+            loading={pending}
+            disabled={!ready || pending}
+            aria-describedby={note === undefined ? undefined : noteId}
+            onClick={() => void confirm()}
+          >
             {t('confirm')}
           </Button>
         </>
@@ -171,7 +190,7 @@ export function AddSizesDialog({
                 <Select
                   key={axis}
                   name={`value.${axis}`}
-                  label={t('value-of', { type: nameOf(field) })}
+                  label={t('value-of', { type: nameOf(field).toLocaleLowerCase(defaultLocale) })}
                   placeholder={t('choose')}
                   options={field.options.map((option) => ({
                     value: option.code,

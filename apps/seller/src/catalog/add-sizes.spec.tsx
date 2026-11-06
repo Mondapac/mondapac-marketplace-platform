@@ -154,7 +154,7 @@ const confirmButton = (dialog: HTMLElement) =>
   within(dialog).getByRole('button', { name: 'Add sizes' });
 const chooseSize = (dialog: HTMLElement) => {
   fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Size' }));
-  fireEvent.change(within(dialog).getByLabelText("This product's Size"), {
+  fireEvent.change(within(dialog).getByLabelText("This product's size"), {
     target: { value: 'small' },
   });
 };
@@ -166,7 +166,8 @@ describe('add-sizes logic', () => {
     expect(name('revision.pending-exists')).toBe('pending-exists');
     expect(name('product-type.not-allowed', 403)).toBe('type-not-allowed');
     expect(name('conflict.stale')).toBe('stale');
-    expect(name('confirm.count-changed')).toBe('count-changed');
+    // The seller route never asks for a count, so that code is not special here.
+    expect(name('confirm.count-changed')).toBe('unknown');
     expect(name('product.family-invalid', 503)).toBe('family-invalid');
     expect(name('access.unavailable', 503)).toBe('unavailable');
     expect(name('request.throttled', 429)).toBe('throttled');
@@ -187,7 +188,6 @@ describe('add-sizes logic', () => {
       'product.not-simple',
       'revision.pending-exists',
       'product-type.not-allowed',
-      'confirm.count-changed',
       'conflict.stale',
       'validation.failed',
       'request.throttled',
@@ -367,6 +367,28 @@ describe('Add sizes dialog', () => {
     expect(refresh).toHaveBeenCalled();
   });
 
+  it('says why Add sizes cannot be confirmed yet, and starts clean on each opening', async () => {
+    call.mockResolvedValueOnce(fail(409, 'conflict.stale'));
+    mount(simple());
+    let dialog = openDialog();
+    expect(within(dialog).getByText('Choose at least one type to continue.')).toBeTruthy();
+    expect(confirmButton(dialog).getAttribute('aria-describedby')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Size' }));
+    expect(within(dialog).getByText('Choose a value for every type to continue.')).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText("This product's size"), {
+      target: { value: 'small' },
+    });
+    fireEvent.click(confirmButton(dialog));
+    expect(await within(dialog).findByText(/changed somewhere else/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    dialog = openDialog();
+    expect(within(dialog).queryByText(/changed somewhere else/)).toBeNull();
+    expect(within(dialog).getByRole<HTMLInputElement>('checkbox', { name: 'Size' }).checked).toBe(
+      false,
+    );
+  });
+
   it('asks to save first while the form has unsaved changes', () => {
     mount(simple());
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Tee 2' } });
@@ -412,7 +434,7 @@ describe('Add a second type', () => {
       status: 200,
       body: { variantIds: ['v1', 'v2'], refusedFields: [] },
     } as never);
-    mount(oneType());
+    mount(oneType({ sensitiveFields: ['axis-added'] }));
     fireEvent.click(screen.getByRole('button', { name: 'Add a second type' }));
     fireEvent.change(screen.getByLabelText('New type'), { target: { value: 'colour' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add this type' }));
@@ -437,6 +459,39 @@ describe('Add a second type', () => {
       { size: 'small', colour: 'red' },
       { size: 'large', colour: 'blue' },
     ]);
+  });
+
+  it('says the change is published on submit when the Market does not review it', () => {
+    mount(oneType());
+    fireEvent.click(screen.getByRole('button', { name: 'Add a second type' }));
+    fireEvent.change(screen.getByLabelText('New type'), { target: { value: 'colour' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add this type' }));
+    expect(screen.queryByText(/goes to review/)).toBeNull();
+    expect(screen.getByText(/is published when you submit/)).toBeTruthy();
+  });
+
+  it('shows the published type locked and the new one as being added, and numbers the steps in order', () => {
+    mount(oneType());
+    fireEvent.click(screen.getByRole('button', { name: 'Add a second type' }));
+    fireEvent.change(screen.getByLabelText('New type'), { target: { value: 'colour' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add this type' }));
+    const size = screen.getByRole<HTMLInputElement>('checkbox', { name: 'Size' });
+    expect(size.checked).toBe(true);
+    expect(size.disabled).toBe(true);
+    const adding = screen.getByRole<HTMLInputElement>('checkbox', {
+      name: 'Colour (being added)',
+    });
+    expect(adding.checked).toBe(true);
+    expect(adding.disabled).toBe(false);
+    expect(
+      screen.getByRole('heading', { name: '1. What does this product come in?' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '2. Second type: Colour' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /^3\. Barcode/ })).toBeTruthy();
+    // Unticking the new type takes it back.
+    fireEvent.click(adding);
+    expect(screen.queryByLabelText(/^Colour of /)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Add a second type' })).toBeTruthy();
   });
 
   it('can be taken back before it is saved', () => {

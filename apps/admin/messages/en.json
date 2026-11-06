@@ -2669,7 +2669,7 @@
       },
       "addSizes": {
         "start": "Add sizes",
-        "card-help": "This product has one version. Add sizes to sell it in more than one size, colour or other type.",
+        "card-help": "This product is sold in one size. Add sizes to sell it in more than one size, colour or other type.",
         "save-first": "Save your changes before you add sizes.",
         "title": "Add sizes",
         "intro": "This product becomes a product with sizes. It keeps its prices and stock.",
@@ -2686,6 +2686,9 @@
         "step-values": "2. What is this product now?",
         "values-help": "The product as it is today becomes one of the sizes. Choose its value for each type. Add the other sizes next.",
         "value-of": "This product's {type}",
+        "note-types": "Choose at least one type to continue.",
+        "note-values": "Choose a value for every type to continue.",
+        "note-agree": "Agree to set aside the waiting change to continue.",
         "choose": "Choose",
         "cancel": "Cancel",
         "confirm": "Add sizes",
@@ -2731,7 +2734,7 @@
         "add": "Add this type",
         "cancel": "Cancel",
         "values-title": "Second type: {type}",
-        "review": "Adding a second type goes to review before it is live. It changes how every variant is named.",
+        "review": "When you publish, every variant gets a new name.",
         "values-help": "Choose the {type} of every variant above. All are required.",
         "remove": "Don't add a second type"
       }

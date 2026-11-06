@@ -168,6 +168,8 @@ function EditForm({
   // Axes are sent when the draft already names them, or once the admin has changed them.
   const [axesTouched, setAxesTouched] = useState(false);
   const [sizesOpen, setSizesOpen] = useState(false);
+  // A new run of the dialog per opening: nothing of an earlier one (an error, a tick) survives.
+  const [sizesRun, setSizesRun] = useState(0);
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<FormProblem | null>(null);
@@ -316,6 +318,7 @@ function EditForm({
     <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
       {guard.dialog}
       <AddSizesDialog
+        key={sizesRun}
         open={sizesOpen}
         productId={product.productId}
         fields={form.fields}
@@ -464,7 +467,10 @@ function EditForm({
               setAxesTouched(true);
               edited();
             }}
-            onAddSizes={() => setSizesOpen(true)}
+            onAddSizes={() => {
+              setSizesRun((run) => run + 1);
+              setSizesOpen(true);
+            }}
           />
         </div>
         <aside className="flex flex-col gap-4">

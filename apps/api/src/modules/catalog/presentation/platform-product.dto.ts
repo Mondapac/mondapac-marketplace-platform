@@ -176,7 +176,12 @@ export class PlatformProductView {
   maxAxes!: number;
   @ApiProperty({ description: 'The product version, to send back with Add sizes.' })
   version!: number;
-  @ApiProperty({ nullable: true, type: String }) pendingSubmittedAt!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'When the revision that waits for review was submitted; null when none waits.',
+  })
+  pendingSubmittedAt!: string | null;
   @ApiProperty() lastChangedAt!: string;
   @ApiProperty() createdAt!: string;
   @ApiProperty({ type: OwnProductForm }) form!: OwnProductForm;

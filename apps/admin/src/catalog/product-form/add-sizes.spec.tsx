@@ -149,7 +149,7 @@ const confirmButton = (dialog: HTMLElement) =>
   within(dialog).getByRole('button', { name: /^(Add sizes|Confirm with the new number)$/ });
 const chooseSize = (dialog: HTMLElement) => {
   fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Size' }));
-  fireEvent.change(within(dialog).getByLabelText("This product's Size"), {
+  fireEvent.change(within(dialog).getByLabelText("This product's size"), {
     target: { value: 'small' },
   });
 };
@@ -264,6 +264,70 @@ describe('Add sizes on a platform product', () => {
     expect(posts()[2]?.[2]).toMatchObject({ offOfferCount: 6 });
   });
 
+  it('still shows what changed when the count drops to zero', async () => {
+    mount(view());
+    call.mockResolvedValueOnce(impact(3));
+    call.mockResolvedValueOnce(fail(409, 'confirm.count-changed', { currentCount: 0 }));
+    const dialog = await openDialog();
+    await within(dialog).findByText(/^3 offers of other sellers/);
+    chooseSize(dialog);
+    fireEvent.click(confirmButton(dialog));
+    expect(
+      await within(dialog).findByText(
+        'The number changed from 3 to 0. Check it and confirm again.',
+      ),
+    ).toBeTruthy();
+    expect(within(dialog).getByText('No offers of other sellers are affected.')).toBeTruthy();
+    expect(
+      within(dialog).getByRole('button', { name: 'Confirm with the new number' }),
+    ).toBeTruthy();
+  });
+
+  it('starts clean when it is opened again after Cancel', async () => {
+    mount(view());
+    call.mockResolvedValueOnce(impact(3));
+    call.mockResolvedValueOnce(fail(409, 'confirm.count-changed', { currentCount: 5 }));
+    let dialog = await openDialog();
+    await within(dialog).findByText(/^3 offers of other sellers/);
+    chooseSize(dialog);
+    fireEvent.click(confirmButton(dialog));
+    await within(dialog).findByText(/^5 offers of other sellers/);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+    call.mockResolvedValueOnce(impact(2));
+    dialog = await openDialog();
+    expect(await within(dialog).findByText(/^2 offers of other sellers/)).toBeTruthy();
+    expect(within(dialog).queryByText(/The number changed from/)).toBeNull();
+    expect(within(dialog).queryByText(/number of offers affected changed/)).toBeNull();
+    expect(within(dialog).getByRole<HTMLInputElement>('checkbox', { name: 'Size' }).checked).toBe(
+      false,
+    );
+    expect(within(dialog).getByRole('button', { name: 'Add sizes' })).toBeTruthy();
+  });
+
+  it('says why the button is off', async () => {
+    mount(view());
+    call.mockResolvedValueOnce(impact(1));
+    const dialog = await openDialog();
+    await within(dialog).findByText(/^1 offer of another seller/);
+    expect(within(dialog).getByText('Choose at least one type to continue.')).toBeTruthy();
+    expect(confirmButton(dialog).getAttribute('aria-describedby')).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Size' }));
+    expect(within(dialog).getByText('Choose a value for every type to continue.')).toBeTruthy();
+  });
+
+  it('asks to save first while the form has unsaved changes', async () => {
+    mount(view());
+    const start = await screen.findByRole<HTMLButtonElement>('button', { name: 'Add sizes' });
+    expect(start.disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Tee 2' } });
+    expect(screen.getByText('Save your changes before you add sizes.')).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Add sizes' }).disabled).toBe(
+      true,
+    );
+  });
+
   it('cannot be confirmed when the impact could not be read', async () => {
     mount(view());
     call.mockResolvedValueOnce(fail(503, 'access.unavailable'));
@@ -271,6 +335,9 @@ describe('Add sizes on a platform product', () => {
     expect(
       await within(dialog).findByText(/could not check which offers are affected/),
     ).toBeTruthy();
+    // One banner, with the reason inside it.
+    expect(within(dialog).getByText(/Products are unavailable right now/)).toBeTruthy();
+    expect(within(dialog).getAllByRole('alert').length).toBeLessThanOrEqual(1);
     fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Size' }));
     expect((confirmButton(dialog) as HTMLButtonElement).disabled).toBe(true);
   });
@@ -373,12 +440,13 @@ describe('Add a second type on a platform product', () => {
     expect(screen.queryByRole('button', { name: 'Add a second type' })).toBeNull();
   });
 
-  it('requires the new type on every variant, says it goes to review, and saves both axes', async () => {
+  it('requires the new type on every variant, says every variant is renamed on publishing, and saves both axes', async () => {
     mount(oneType());
     fireEvent.click(await screen.findByRole('button', { name: 'Add a second type' }));
     fireEvent.change(screen.getByLabelText('New type'), { target: { value: 'colour' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add this type' }));
-    expect(screen.getByText(/goes to review before it is live/)).toBeTruthy();
+    expect(screen.getByText('When you publish, every variant gets a new name.')).toBeTruthy();
+    expect(screen.queryByText(/goes to review/)).toBeNull();
     const cells = screen.getAllByLabelText('Colour');
     expect(cells).toHaveLength(2);
 

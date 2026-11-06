@@ -38,6 +38,7 @@ export function VariantsSection({
   locked,
   publishedAxes,
   maxAxes,
+  review,
   defaultLocale,
   max,
   productId,
@@ -54,6 +55,8 @@ export function VariantsSection({
   readonly publishedAxes: readonly string[] | null;
   /** The Market's cap on the types a product varies on. */
   readonly maxAxes: number;
+  /** Adding a second type waits for review (the product's sensitive fields include `axis-added`). */
+  readonly review: boolean;
   readonly defaultLocale: string;
   readonly max: number;
   readonly productId: string;
@@ -213,10 +216,22 @@ export function VariantsSection({
             <CheckboxRow
               key={field.code}
               name={`axis.${field.code}`}
-              label={nameOf(field)}
+              label={
+                field.code === secondCode
+                  ? t('catalog.edit.grid.axis-adding', { type: nameOf(field) })
+                  : nameOf(field)
+              }
               checked={axes.includes(field.code)}
-              disabled={locked || (!axes.includes(field.code) && axes.length >= MAX_AXES)}
-              onChange={(event) => toggleAxis(field.code, event.target.checked)}
+              disabled={
+                field.code === secondCode
+                  ? false
+                  : locked || (!axes.includes(field.code) && axes.length >= MAX_AXES)
+              }
+              onChange={(event) =>
+                field.code === secondCode
+                  ? dropSecond()
+                  : toggleAxis(field.code, event.target.checked)
+              }
             />
           ))
         )}
@@ -260,6 +275,7 @@ export function VariantsSection({
         rows={rows}
         fields={fields}
         defaultLocale={defaultLocale}
+        review={review}
         onAdd={addSecond}
         onValue={(row, code) =>
           onChange({
@@ -344,6 +360,7 @@ export function VariantsSection({
           titleOf={(row) => variantTitle(row, fields, defaultLocale, row.key)}
           productId={productId}
           galleryIds={galleryIds}
+          heading={addingSecond ? t('catalog.edit.grid.step-details-adding') : undefined}
           notices={notices}
           onRow={(row, next) =>
             onChange({ rows: rows.map((item) => (item === row ? next : item)), axes: [...axes] })
