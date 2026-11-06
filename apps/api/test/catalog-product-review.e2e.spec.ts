@@ -325,6 +325,7 @@ describe('admin product revision review over HTTP (integration)', () => {
       id: revisionId,
       productId,
       revisionNo: 1,
+      typeCode: 'simple',
       kind: 'submission',
       baseRevisionId: null,
       revertedFromRevisionId: null,

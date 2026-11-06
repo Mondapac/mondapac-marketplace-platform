@@ -68,8 +68,11 @@ model CatalogProduct {
   ownerSellerId        String?                    @map("owner_seller_id") @db.Uuid
   /// The seller who created it; never updated, so the origin survives promotion.
   createdBySellerId    String?                    @map("created_by_seller_id") @db.Uuid
+  /// Changes once, with `variantModel`, from simple to configurable (Add sizes, trigger
+  /// `products_type_change_guard`); never back.
   typeCode             String                     @map("type_code")
-  /// single | options: the handler's variantModel; the target of the variant foreign key.
+  /// single | options: the handler's variantModel; the target of the variant foreign key, which
+  /// cascades the single -> options change to the variant row.
   variantModel         String                     @map("variant_model")
   familyCode           String                     @map("family_code")
   /// Minted from product_code_counters, never from input. Collation "C" is set in the migration.
@@ -147,7 +150,7 @@ model CatalogProductVariant {
   createdAt        DateTime                        @map("created_at") @db.Timestamptz(6)
   publishedAt      DateTime?                       @map("published_at") @db.Timestamptz(6)
   retiredAt        DateTime?                       @map("retired_at") @db.Timestamptz(6)
-  product          CatalogProduct                  @relation(fields: [marketId, productId, variantModel], references: [marketId, id, variantModel], onDelete: Restrict, onUpdate: Restrict)
+  product          CatalogProduct                  @relation(fields: [marketId, productId, variantModel], references: [marketId, id, variantModel], onDelete: Restrict, onUpdate: Cascade)
   revisionVariants CatalogProductRevisionVariant[]
 
   @@unique([marketId, id])
@@ -619,6 +622,8 @@ model CatalogProductRevision {
   revisionNo             Int                              @map("revision_no")
   /// submission | revert | tax-override.
   revisionKind           String                           @map("revision_kind")
+  /// The product type the revision was frozen with (Add sizes changes the product's later).
+  typeCode               String                           @map("type_code")
   /// The published revision it was built on; same product.
   baseRevisionId         String?                          @map("base_revision_id") @db.Uuid
   revertedFromRevisionId String?                          @map("reverted_from_revision_id") @db.Uuid

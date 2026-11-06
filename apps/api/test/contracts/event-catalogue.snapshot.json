@@ -215,6 +215,15 @@
     }
   },
   {
+    "type": "catalog.product-family-changed.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "revisionId": "id",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
     "type": "catalog.product-revision-changes-requested.v1",
     "aggregateType": "product",
     "fields": {
@@ -231,7 +240,8 @@
       "productId": "id",
       "revisionId": "id",
       "previousRevisionId": "optional(id)",
-      "scope": "enumOf(platform|seller)"
+      "scope": "enumOf(platform|seller)",
+      "typeCode": "enumOf(simple|configurable)"
     }
   },
   {
@@ -241,6 +251,18 @@
       "productId": "id",
       "revisionId": "id",
       "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
+    "type": "catalog.product-type-changed.v1",
+    "aggregateType": "product",
+    "fields": {
+      "fromTypeCode": "enumOf(simple)",
+      "productId": "id",
+      "publishedRevisionId": "optional(id)",
+      "scope": "enumOf(platform|seller)",
+      "toTypeCode": "enumOf(configurable)",
+      "variantId": "id"
     }
   },
   {

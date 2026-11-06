@@ -59,6 +59,25 @@ export const ProductRetiredAudit = defineAuditAction({
   },
 });
 
+/**
+ * A Simple product became Configurable by Add sizes (design 4.2a; variants V9): ids, codes and
+ * counts only. `offerCount` is the Offers on the product when it changed, `offOfferCount` those of
+ * sellers who may not sell the new type, which went off sale with the cause `type-not-allowed`.
+ */
+export const ProductTypeChangedAudit = defineAuditAction({
+  action: 'catalog.product.type-changed',
+  targetType: CATALOG_PRODUCT_TARGET,
+  actors: ['authenticated'],
+  before: { typeCode: auditField.enumOf(['simple'] as const) },
+  after: {
+    typeCode: auditField.enumOf(['configurable'] as const),
+    scope,
+    offerCount: auditField.integer(),
+    offOfferCount: auditField.integer(),
+    axisCount: auditField.integer(),
+  },
+});
+
 /** The audit target type of a platform import job. */
 export const CATALOG_PLATFORM_IMPORT_TARGET = 'catalog.platform-import';
 
@@ -598,6 +617,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   ProductResumedAudit,
   ProductWithdrawnAudit,
   ProductRetiredAudit,
+  ProductTypeChangedAudit,
   PlatformImportStartedAudit,
   SavedFilterSharedAudit,
   SavedFilterChangedAudit,

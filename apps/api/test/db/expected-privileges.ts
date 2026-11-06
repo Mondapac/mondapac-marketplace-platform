@@ -1216,7 +1216,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     // docs/design/data/catalog.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; no DELETE on products or variants, ever (Q-K2: a discard is a
-    // status and a retired variant). The identity columns of a product and a variant never change.
+    // status and a retired variant). The identity columns of a product and a variant never change;
+    // `type_code` and `variant_model` change only together, simple to configurable (Add sizes).
     'catalog.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'catalog.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.products': {
@@ -1238,6 +1239,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'retired_at',
         'scope',
         'status',
+        'type_code',
+        'variant_model',
         'version',
         'withdrawn_at',
       ],

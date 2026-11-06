@@ -159,8 +159,18 @@ export const ProductRevisionSubmitted = defineEvent({
 });
 
 /**
+ * The product types an event can name (catalog design 3.1, 9.4). The event vocabulary has no kind
+ * for an open code, so the two types core registers are the closed list; a Vertical type that
+ * publishes a revision needs this list (or a vocabulary kind) widened in a new event version.
+ */
+export const EVENT_PRODUCT_TYPE_CODES = ['simple', 'configurable'] as const;
+export type EventProductTypeCode = (typeof EVENT_PRODUCT_TYPE_CODES)[number];
+
+/**
  * A revision became the product's published one (catalog design 4.2 rows 1, 3, 4; AC 36 for a tax
- * override). `previousRevisionId` is absent for the first publication. Ids and the scope.
+ * override). `previousRevisionId` is absent for the first publication. `typeCode` is the type the
+ * revision was frozen with, not the product row's (M-9: between Add sizes and the next publish the
+ * row says Configurable while the published revision is still Simple). Ids, the scope and the type.
  */
 export const ProductRevisionPublished = defineEvent({
   type: 'catalog.product-revision-published.v1',
@@ -170,6 +180,27 @@ export const ProductRevisionPublished = defineEvent({
     revisionId: eventField.id(),
     previousRevisionId: eventField.optional(eventField.id()),
     scope: eventField.enumOf(['platform', 'seller'] as const),
+    typeCode: eventField.enumOf(EVENT_PRODUCT_TYPE_CODES),
+  },
+});
+
+/**
+ * A Simple product became Configurable by Add sizes (catalog design 4.2a, M-9; variants V9): the
+ * only type change there is, once, never back. It fires before buyers see anything: they see the
+ * change at `catalog.product-revision-published.v1`. `variantId` is the product's one variant,
+ * which keeps its id, number, code, prices and stock; `publishedRevisionId` is absent for a
+ * product never published. Ids, the scope and the type codes.
+ */
+export const ProductTypeChanged = defineEvent({
+  type: 'catalog.product-type-changed.v1',
+  aggregateType: 'product',
+  payload: {
+    productId: eventField.id(),
+    scope: eventField.enumOf(['platform', 'seller'] as const),
+    fromTypeCode: eventField.enumOf(['simple'] as const),
+    toTypeCode: eventField.enumOf(['configurable'] as const),
+    variantId: eventField.id(),
+    publishedRevisionId: eventField.optional(eventField.id()),
   },
 });
 
@@ -184,6 +215,23 @@ export const ProductRevisionChangesRequested = defineEvent({
     productId: eventField.id(),
     revisionId: eventField.id(),
     reasonCode: eventField.enumOf(OFFER_CHANGE_REASONS),
+    scope: eventField.enumOf(['platform', 'seller'] as const),
+  },
+});
+
+/**
+ * A product's feature set changed with a revision (attributes plan A4, decision ت۱۰; CAT-10): a
+ * submit whose primary category holds another feature set, or the return to the published one
+ * when the pending revision was sent back. Ids and the scope only: a feature set code is an
+ * open Market code, which the event vocabulary has no kind for, so a consumer reads the current
+ * family through catalog.
+ */
+export const ProductFamilyChanged = defineEvent({
+  type: 'catalog.product-family-changed.v1',
+  aggregateType: 'product',
+  payload: {
+    productId: eventField.id(),
+    revisionId: eventField.id(),
     scope: eventField.enumOf(['platform', 'seller'] as const),
   },
 });
@@ -336,6 +384,8 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   ProductRevisionSubmitted,
   ProductRevisionPublished,
   ProductRevisionChangesRequested,
+  ProductFamilyChanged,
+  ProductTypeChanged,
   ProductImageTakenDown,
   OfferTagAdded,
   OfferTagRemoved,

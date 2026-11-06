@@ -182,6 +182,82 @@ export class PlatformProductView {
   published!: PlatformRevisionView | null;
 }
 
+/** The body of Add sizes (catalog design 4.2a; variants V9). A closed object. */
+export class AddSizesRequest {
+  @ApiProperty({ description: 'The product `version` the page read.', minimum: 1 })
+  version!: number;
+
+  @ApiProperty({
+    type: [String],
+    description:
+      'The option attributes the product varies on: 1 to the Market maxVariantAttributes codes ' +
+      'of variant attributes of the feature set its primary category holds.',
+  })
+  axes!: string[];
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description: "One option code per axis, for the product's one existing variant.",
+  })
+  optionValues!: Record<string, string>;
+
+  @ApiProperty({
+    description: 'The page showed the warning that a pending revision is set aside by this.',
+    type: Boolean,
+  })
+  replacePending!: boolean;
+}
+
+export class PlatformAddSizesRequest extends AddSizesRequest {
+  @ApiProperty({
+    description:
+      "The number of other sellers' Offers the confirm showed going off sale; a different count " +
+      'answers confirm.count-changed with the current one.',
+    minimum: 0,
+  })
+  offOfferCount!: number;
+}
+
+export class AddSizesDone {
+  @ApiProperty({ format: 'uuid', description: UUID })
+  productId!: string;
+
+  @ApiProperty({ format: 'uuid', description: 'The one variant, which keeps its id.' })
+  variantId!: string;
+
+  @ApiProperty({ description: 'The product version after the change.' })
+  version!: number;
+
+  @ApiProperty({
+    description: "Offers that went off sale (type-not-allowed); 0 for a seller's product.",
+  })
+  offOfferCount!: number;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    format: 'uuid',
+    description: 'The pending revision that was set aside, or null.',
+  })
+  supersededRevisionId!: string | null;
+}
+
+export class AddSizesImpactView {
+  @ApiProperty({ format: 'uuid', description: UUID })
+  productId!: string;
+
+  @ApiProperty({ description: 'The product version to send back.' })
+  version!: number;
+
+  @ApiProperty({
+    description:
+      'Offers of other sellers whose allowed product types leave out configurable: they go off ' +
+      'sale (cause type-not-allowed) when sizes are added.',
+  })
+  offOfferCount!: number;
+}
+
 /** The error format `{ statusCode, code, details? }`: codes only, never a text of the request. */
 export class ApiErrorBody {
   @ApiProperty()

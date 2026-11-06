@@ -158,6 +158,7 @@ describe.each(TEST_MARKETS)(
         id: uuid7() as Id<'ProductRevision'>,
         productId: p.state.id,
         revisionNo: 1,
+        typeCode: p.state.typeCode,
         kind: 'submission',
         baseRevisionId: null,
         revertedFromRevisionId: null,

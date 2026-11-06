@@ -29,6 +29,8 @@ const unique = () => uuid7().replaceAll('-', '').slice(-10);
 
 describe.each(TEST_MARKETS)('product details gap reader in market %s (database)', (code) => {
   const market = marketOf(code);
+  // The name is read in the Market's own default locale (AU: en-AU, ZZ: ja-JP).
+  const locale = code === 'AU' ? 'en-AU' : 'ja-JP';
   const other = marketOf(otherMarketOf(code));
   let db: Persistence;
   let owner: Client;
@@ -134,6 +136,7 @@ describe.each(TEST_MARKETS)('product details gap reader in market %s (database)'
       product_id: productId,
       revision_no: 1,
       revision_kind: 'submission',
+      type_code: 'simple',
       base_revision_id: null,
       reverted_from_revision_id: null,
       family_revision_id: familyRevisionId,
@@ -175,21 +178,30 @@ describe.each(TEST_MARKETS)('product details gap reader in market %s (database)'
     return productId;
   }
 
+  // Reads every page (the reader does not filter by feature set; other specs leave products in
+  // the Market) and keeps the products of one feature set.
   const read = (
     target: typeof market,
     familyCode: string,
     over: Partial<Parameters<PrismaProductDetailsGapReader['published']>[1]> = {},
   ) =>
-    run(target, () =>
-      reader.published(target, {
-        afterId: null,
-        sellerId: null,
-        familyCode,
-        limit: 50,
-        locale: 'en-AU',
-        ...over,
-      }),
-    );
+    run(target, async () => {
+      const found: Awaited<ReturnType<PrismaProductDetailsGapReader['published']>>[number][] = [];
+      let afterId: string | null = over.afterId ?? null;
+      for (;;) {
+        const page = await reader.published(target, {
+          sellerId: null,
+          locale,
+          ...over,
+          afterId,
+          limit: 200,
+        });
+        if (page.length === 0) break;
+        found.push(...page);
+        afterId = page[page.length - 1]?.productId ?? null;
+      }
+      return found.filter((row) => row.revisionFamilyCode === familyCode);
+    });
 
   it('reads only published products, by id, with their values and name', async () => {
     const set = await family(market, []);
@@ -201,7 +213,7 @@ describe.each(TEST_MARKETS)('product details gap reader in market %s (database)'
       { origin: 'AU' },
       {
         sellerId: seller,
-        names: { 'en-AU': 'Dates', 'xx-XX': 'Other' },
+        names: { [locale]: 'Dates', 'xx-XX': 'Other' },
       },
     );
     const b = await product(market, set.code, set.revisionId, {});
@@ -213,7 +225,8 @@ describe.each(TEST_MARKETS)('product details gap reader in market %s (database)'
     const first = rows.find((row) => row.productId === a)!;
     expect(first).toMatchObject({
       ownerSellerId: seller,
-      familyCode: set.code,
+      revisionFamilyCode: set.code,
+      primaryCategoryId: null,
       name: 'Dates',
       attributeValues: { origin: 'AU' },
     });
@@ -224,7 +237,9 @@ describe.each(TEST_MARKETS)('product details gap reader in market %s (database)'
     });
   });
 
-  it('filters by seller and feature set, and pages by the cursor', async () => {
+  it('filters by seller and pages by the cursor, carrying the revision feature set', async () => {
+    // Ids are time-ordered: products of earlier tests sort before this mark.
+    const mark = uuid7();
     const set = await family(market, []);
     const otherSet = await family(market, []);
     const seller = uuid7();
@@ -233,7 +248,13 @@ describe.each(TEST_MARKETS)('product details gap reader in market %s (database)'
       await product(market, set.code, set.revisionId, {}),
       await product(market, set.code, set.revisionId, {}, { sellerId: seller }),
     ].sort();
-    await product(market, otherSet.code, otherSet.revisionId, {}, { sellerId: seller });
+    const otherId = await product(
+      market,
+      otherSet.code,
+      otherSet.revisionId,
+      {},
+      { sellerId: seller },
+    );
 
     const mine = await read(market, set.code, { sellerId: seller });
     expect(mine).toHaveLength(2);
@@ -241,10 +262,18 @@ describe.each(TEST_MARKETS)('product details gap reader in market %s (database)'
     const everyone = await read(market, set.code);
     expect(everyone.map((row) => row.productId)).toEqual(ids);
 
-    const page = await read(market, set.code, { limit: 2 });
-    expect(page.map((row) => row.productId)).toEqual(ids.slice(0, 2));
-    const next = await read(market, set.code, { afterId: ids[1] ?? null, limit: 2 });
-    expect(next.map((row) => row.productId)).toEqual(ids.slice(2));
+    // The reader does not filter by feature set: the use case judges each product against the one
+    // its primary category holds now. A page counts every product, whatever its feature set.
+    const readAll = (over: Partial<Parameters<PrismaProductDetailsGapReader['published']>[1]>) =>
+      run(market, () =>
+        reader.published(market, { afterId: null, sellerId: null, limit: 50, locale, ...over }),
+      );
+    const all = [...ids, otherId].sort();
+    const page = await readAll({ afterId: mark, limit: 2 });
+    expect(page.map((row) => row.productId)).toEqual(all.slice(0, 2));
+    const next = await readAll({ afterId: all[1] ?? null, limit: 2 });
+    expect(next.map((row) => row.productId)).toEqual(all.slice(2, 4));
+    expect(next.find((row) => row.productId === otherId)?.revisionFamilyCode).toBe(otherSet.code);
   });
 
   it('never reads a product of the other Market', async () => {
