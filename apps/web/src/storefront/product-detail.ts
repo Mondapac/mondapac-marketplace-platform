@@ -2,7 +2,7 @@ import { formatDate } from '../format/date.ts';
 import { formatMoney } from '../format/money.ts';
 import { intlLocale } from '../i18n/locale.ts';
 import { isBrandSlug } from './brands.ts';
-import { imageIdsOf, type PhotoUrl } from './photos.ts';
+import { imageRefsOf, photoSetOf, type PhotoUrl } from './photos.ts';
 import { defaultVariantOf } from './variants.ts';
 import type {
   CertificationBadge,
@@ -34,7 +34,7 @@ export interface ProductDetailBody {
   readonly brand?: unknown;
   /** Attribute values grouped by family group; untrusted, read through {@link specificationsOf}. */
   readonly specifications?: unknown;
-  /** Photo references (`imageId`, size, alt), at most 8; read through {@link imageIdsOf}. */
+  /** Photo references (`imageId`, size, alt), at most 8; read through {@link imageRefsOf}. */
   readonly images?: unknown;
   readonly offers: readonly {
     readonly offerId: string;
@@ -354,12 +354,15 @@ export function productDetailOf(
       ? undefined
       : ([firstVariant, secondVariant, ...restVariants] as const);
   const offers = variants === undefined ? firstVariant.offers : defaultVariantOf(variants).offers;
-  const ids = photo === null ? [] : imageIdsOf(body.images);
+  const refs = photo === null ? [] : imageRefsOf(body.images);
   // Both sizes or neither: an id the builder refuses drops that photo from both lists.
-  const shots = ids.flatMap((id) => {
-    const large = photo?.(body.productId, id, 'large');
-    const thumb = photo?.(body.productId, id, 'thumb');
-    return large === undefined || thumb === undefined ? [] : [{ large, thumb }];
+  const shots = refs.flatMap((ref) => {
+    const large = photo?.(body.productId, ref.imageId, 'large');
+    const thumb = photo?.(body.productId, ref.imageId, 'thumb');
+    const set = photo === null ? undefined : photoSetOf(photo, body.productId, ref, 'large');
+    return large === undefined || thumb === undefined || set === undefined
+      ? []
+      : [{ large, thumb, set }];
   });
   return {
     id: body.productId,
@@ -369,6 +372,7 @@ export function productDetailOf(
     specifications: specificationsOf(body.specifications, locale, labels),
     ...(brandRefOf(body.brand) === undefined ? {} : { brand: brandRefOf(body.brand)! }),
     photos: shots.map((shot) => shot.large),
+    ...(shots.length > 0 ? { photoSets: shots.map((shot) => shot.set) } : {}),
     ...(shots.length > 1 ? { photoThumbs: shots.map((shot) => shot.thumb) } : {}),
     offers,
     ...(variants === undefined ? {} : { variants }),
