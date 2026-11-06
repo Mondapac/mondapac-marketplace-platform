@@ -32,6 +32,10 @@ const PAGE = {
         height: 1200,
         alt: 'Halal sausages',
       },
+      images: [
+        { imageId: id<'ProductImage'>(0x701), width: 1600, height: 1200, alt: 'Halal sausages' },
+        { imageId: id<'ProductImage'>(0x702), width: 800, height: 800, alt: 'Halal sausages' },
+      ],
     },
   ],
   page: 1,

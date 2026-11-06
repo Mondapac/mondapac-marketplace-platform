@@ -8,7 +8,7 @@ import {
 } from '../../domain/search-query';
 import type { ImageRef } from '../../domain/image-ref';
 import { splitFacet } from '../../domain/search-filter';
-import { withPrimaryImages } from '../product-images';
+import { imageRefsOf } from '../product-images';
 import {
   buildFilterViews,
   choiceGroups,
@@ -40,8 +40,13 @@ export interface ProductSearchItem {
 /** A result before its photo is read. */
 export type ProductSearchItemFacts = Omit<ProductSearchItem, 'primaryImage'>;
 
+/** A search result: the item plus every public photo of its product (at most 8, main one first). */
+export interface SearchedProductItem extends ProductSearchItem {
+  readonly images: readonly ImageRef[];
+}
+
 export interface ProductSearchPage {
-  readonly items: readonly ProductSearchItem[];
+  readonly items: readonly SearchedProductItem[];
   readonly page: number;
   readonly pageSize: number;
   /** Whether the next result is visible; hidden matches never change it. */
@@ -250,7 +255,13 @@ export class SearchProducts extends UseCase<
           categoryIds,
         }),
       );
-    const items = await withPrimaryImages(this.deps.images, context, facts);
+    // One photo read for the page; `primaryImage` is the first of `images`, so they never differ.
+    const refs = await imageRefsOf(this.deps.images, context, facts);
+    const items = facts.map((fact): SearchedProductItem => {
+      // `alt` is each item's own name, even when two items share a product.
+      const images = (refs.get(fact.productId) ?? []).map((ref) => ({ ...ref, alt: fact.name }));
+      return { ...fact, primaryImage: images[0] ?? null, images };
+    });
     const views = counted
       ? await this.filterViews(context, definitions, selection, hits.value.rows, hits.value.numbers)
       : null;
