@@ -60,6 +60,15 @@ export interface ProductDetail {
   readonly specifications: readonly DetailSpecificationGroup[];
   /** The product's public photos in the published revision's order, at most 8; may be empty. */
   readonly images: readonly ImageRef[];
+  /**
+   * The photos a Variant shows, for each sold Variant that picked some: the picked photos that are
+   * public now (a taken-down or unknown pick is dropped), in the pick order, main photo first. A
+   * Variant with no public pick is absent and shows the product's photos.
+   */
+  readonly variantImages: readonly {
+    readonly variantId: Id<'Variant'>;
+    readonly imageIds: readonly Id<'ProductImage'>[];
+  }[];
   readonly offers: readonly [ProductDetailOffer, ...ProductDetailOffer[]];
 }
 
@@ -208,6 +217,14 @@ export class ViewProductDetail extends UseCase<
     });
     const [first, ...rest] = shown.sort(byLowestPrice);
     if (first === undefined) return err(NOT_FOUND);
+    const publicImages = new Set((imageRefs.get(productId) ?? []).map((image) => image.imageId));
+    const soldVariants = new Set(shown.flatMap((hit) => hit.units.map((unit) => unit.variantId)));
+    const variantImages = product.variants.flatMap((variant) => {
+      const imageIds = variant.imageIds.filter((imageId) => publicImages.has(imageId));
+      return soldVariants.has(variant.variantId) && imageIds.length > 0
+        ? [{ variantId: variant.variantId, imageIds }]
+        : [];
+    });
     return ok({
       productId,
       name: product.name,
@@ -217,6 +234,7 @@ export class ViewProductDetail extends UseCase<
       brand: product.brand,
       specifications: product.specifications,
       images: imageRefs.get(productId) ?? [],
+      variantImages,
       offers: [first, ...rest],
     });
   }

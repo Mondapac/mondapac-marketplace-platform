@@ -36,6 +36,8 @@ export interface ProductDetailBody {
   readonly specifications?: unknown;
   /** Photo references (`imageId`, size, alt), at most 8; read through {@link imageIdsOf}. */
   readonly images?: unknown;
+  /** Photos a Variant shows (`variantId`, `imageIds`); untrusted, read through {@link variantPhotosOf}. */
+  readonly variantImages?: unknown;
   readonly offers: readonly {
     readonly offerId: string;
     readonly sellerId: string;
@@ -335,6 +337,29 @@ export function variantFromParam(
 }
 
 /**
+ * The positions in `shown` of the photos each Variant picked: a Variant id to indexes, main photo
+ * first. An entry that is not the expected shape, a photo that is not one of the product's shown
+ * photos and a repeated photo are dropped on their own; a Variant left with none is absent (it
+ * shows the product's photos).
+ */
+function variantPhotosOf(raw: unknown, shown: readonly string[]): Map<string, number[]> {
+  const found = new Map<string, number[]>();
+  if (!Array.isArray(raw)) return found;
+  for (const entry of raw as unknown[]) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { variantId, imageIds } = entry as { variantId?: unknown; imageIds?: unknown };
+    if (typeof variantId !== 'string' || !Array.isArray(imageIds)) continue;
+    const indexes: number[] = [];
+    for (const id of imageIds as unknown[]) {
+      const at = typeof id === 'string' ? shown.indexOf(id) : -1;
+      if (at >= 0 && !indexes.includes(at)) indexes.push(at);
+    }
+    if (indexes.length > 0) found.set(variantId, indexes);
+  }
+  return found;
+}
+
+/**
  * The page's product from the API answer, or undefined when no offer can be shown. Each Variant
  * keeps the sellers that sell it; the page opens on the default Variant ({@link defaultVariantOf}).
  * A seller without a public store name is left out. "Only N left" is the API's `onlyLeft` in the
@@ -346,7 +371,22 @@ export function productDetailOf(
   labels: ProductDetailLabels,
   photo: PhotoUrl | null = null,
 ): ProductDetail | undefined {
-  const all = variantsOf(body, locale, labels);
+  const ids = photo === null ? [] : imageIdsOf(body.images);
+  // Both sizes or neither: an id the builder refuses drops that photo from both lists.
+  const kept = ids.flatMap((id) => {
+    const large = photo?.(body.productId, id, 'large');
+    const thumb = photo?.(body.productId, id, 'thumb');
+    return large === undefined || thumb === undefined ? [] : [{ id, large, thumb }];
+  });
+  const shots = kept;
+  const picks = variantPhotosOf(
+    body.variantImages,
+    kept.map((shot) => shot.id),
+  );
+  const all = variantsOf(body, locale, labels).map((variant) => {
+    const photoIndexes = picks.get(variant.id);
+    return photoIndexes === undefined ? variant : { ...variant, photoIndexes };
+  });
   const [firstVariant, secondVariant, ...restVariants] = all;
   if (firstVariant === undefined) return undefined;
   const variants =
@@ -354,13 +394,6 @@ export function productDetailOf(
       ? undefined
       : ([firstVariant, secondVariant, ...restVariants] as const);
   const offers = variants === undefined ? firstVariant.offers : defaultVariantOf(variants).offers;
-  const ids = photo === null ? [] : imageIdsOf(body.images);
-  // Both sizes or neither: an id the builder refuses drops that photo from both lists.
-  const shots = ids.flatMap((id) => {
-    const large = photo?.(body.productId, id, 'large');
-    const thumb = photo?.(body.productId, id, 'thumb');
-    return large === undefined || thumb === undefined ? [] : [{ large, thumb }];
-  });
   return {
     id: body.productId,
     name: body.name,
