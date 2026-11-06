@@ -12,6 +12,7 @@ import {
 } from './category-tree.ts';
 import { cardsOf, isObject } from './home-source.ts';
 import type { ApiRead } from './api.ts';
+import type { PhotoUrl } from './photos.ts';
 import type { Category, ShelfCard } from './types.ts';
 
 // The category and search pages' reads with the API on: `GET catalog/categories` to turn the URL's
@@ -107,6 +108,7 @@ export interface LivePage {
 export async function liveProducts(
   query: LiveQuery,
   read: Reader = readOnce,
+  photo: PhotoUrl | null = null,
 ): Promise<LivePage | undefined> {
   const rows = await treeRows(read);
   if (rows === undefined) return undefined;
@@ -130,5 +132,5 @@ export async function liveProducts(
   const items = (body.items as unknown[]).filter(
     (item) => isObject(item) && typeof item.productId === 'string' && UUID.test(item.productId),
   );
-  return { items: cardsOf({ items }, slugsOf(rows)), hasMore: body.hasMore };
+  return { items: cardsOf({ items }, slugsOf(rows), photo), hasMore: body.hasMore };
 }

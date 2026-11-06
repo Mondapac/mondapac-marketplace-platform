@@ -711,7 +711,7 @@
     "photo": "Photo {index}",
     "photo-gallery": "Product photos",
     "photo-count": "{index}/{total}",
-    "photo-alt": "{name}, photo {index} of {total}",
+    "photo-alt": "{name}, photo {index}",
     "photo-of": "Photo {index} of {total}",
     "by": "By <seller>{name}</seller>",
     "brand": "Brand: <brand>{name}</brand>",
