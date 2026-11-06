@@ -144,6 +144,8 @@ export async function adminInvitationResendVerdict(
   if (inviterId === null || invitation.state !== 'pending') {
     return err({ code: 'invitation.rejected' });
   }
+  // An agent invitation has no role and is never one of these (ADR-0045 decision 6).
+  if (invitation.roleId === null) return err({ code: 'invitation.rejected' });
   const role = await deps.roles.findById(market, invitation.roleId);
   if (role === null || !roleIsInActorsReach(role, actor.self)) {
     return err({ code: 'invitation.rejected' });

@@ -139,7 +139,7 @@ export const AccountOtherSessionsSignedOut = defineEvent({
 });
 
 /** The kinds of an invitation (identity design 3.4): admin (slice 7), seller-owner (9), staff (11). */
-export const INVITATION_KINDS = ['seller-owner', 'staff', 'admin'] as const;
+export const INVITATION_KINDS = ['seller-owner', 'staff', 'admin', 'agent'] as const;
 
 /**
  * An invitation was issued (identity design 3.4, 8.2; slice 7b: the first-admin routine; a re-send

@@ -170,6 +170,12 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         customerAccountExists: undefined as never,
         ownAccountTiedToSeller: undefined as never,
         eraseCustomerAccount: undefined as never,
+        issueAgentInvitation: undefined as never,
+        revokeAgentInvitation: undefined as never,
+        reissueAgentInvitation: undefined as never,
+        disableAgentAccount: undefined as never,
+        enableAgentAccount: undefined as never,
+        agentAccessOf: undefined as never,
       });
 
     it("answers the actor's ids, email and session times; the facade drops the email", async () => {

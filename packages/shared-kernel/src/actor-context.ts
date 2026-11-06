@@ -31,7 +31,7 @@ export interface SystemActor extends Minted<'SystemActor'> {
 }
 
 /** The populations of identity design 4. `seller` means Seller Owner and Staff. */
-export const POPULATIONS = ['customer', 'seller', 'admin'] as const;
+export const POPULATIONS = ['customer', 'seller', 'admin', 'agent'] as const;
 export type Population = (typeof POPULATIONS)[number];
 
 /**

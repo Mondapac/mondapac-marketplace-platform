@@ -127,6 +127,7 @@
   "allowedOrigins": {
     "admin": ["https://admin.zz.test"],
     "seller": ["https://seller.zz.test"],
+    "agent": ["https://agent.zz.test"],
     "customer": ["https://storefront.zz.test"]
   },
   "identity": {
@@ -145,6 +146,10 @@
         "absoluteLifetimeMinutes": 1200
       },
       "admin": {
+        "idleTimeoutMinutes": 20,
+        "absoluteLifetimeMinutes": 480
+      },
+      "agent": {
         "idleTimeoutMinutes": 20,
         "absoluteLifetimeMinutes": 480
       }
@@ -211,12 +216,17 @@
           "accept-invitation": "https://admin.zz.test/einladung",
           "enrol-second-factor": "https://admin.zz.test/zweiter-faktor",
           "reset-password": "https://admin.zz.test/passwort"
+        },
+        "agent": {
+          "sign-in": "https://agent.zz.test/anmelden",
+          "accept-invitation": "https://agent.zz.test/einladung"
         }
       }
     },
     "invitations": {
       "lifetimeMinutes": {
         "admin": 2880,
+        "agent": 2880,
         "seller-owner": 7200,
         "staff": 7200
       }

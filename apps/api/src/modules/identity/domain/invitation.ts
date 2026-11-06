@@ -2,6 +2,7 @@ import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Result } from '@mondapac/shared-kernel';
 import { parseDisplayName } from './display-name';
 import type { EmailAddress } from './email-address';
+import { HANDOVER_MAX_FAILED_ATTEMPTS } from './handover-code';
 import {
   INVITATION_KINDS,
   InvitationAccepted,
@@ -9,7 +10,10 @@ import {
   InvitationRevoked,
 } from './events';
 
-/** The three kinds (identity design 3.4): admin (slice 7), seller-owner (9), staff (11). */
+/**
+ * The kinds (identity design 3.4): admin (slice 7), seller-owner (9), staff (11); agent
+ * (ADR-0045), which also needs a handover code.
+ */
 export { INVITATION_KINDS };
 export type InvitationKind = (typeof INVITATION_KINDS)[number];
 
@@ -29,8 +33,11 @@ export interface InvitationState {
   readonly email: EmailAddress | null;
   /** Personal; only on a pending seller-owner invitation (D 3.4, `ux.md` D6). */
   readonly displayName: string | null;
-  /** May dangle by design (R12): acceptance re-checks that the role exists. */
-  readonly roleId: Id<'Role'>;
+  /**
+   * May dangle by design (R12): acceptance re-checks that the role exists. Null for an agent
+   * invitation: an agent holds no role (ADR-0045 decision 6).
+   */
+  readonly roleId: Id<'Role'> | null;
   /** The seller of a seller-owner or staff invitation; null for admin. */
   readonly sellerId: Id<'Seller'> | null;
   /** Null for the first-admin routine (D 7.4, HF5 (b)). */
@@ -44,7 +51,26 @@ export interface InvitationState {
   readonly acceptedAccountId: Id<'Account'> | null;
   readonly createdAt: Temporal.Instant;
   readonly version: number;
+  /**
+   * Agent kind only (ADR-0045 decision 2): the HMAC of the handover code, bound to this
+   * invitation; null once decided. The code itself is never held.
+   */
+  readonly handoverCodeHmac: Uint8Array | null;
+  /** Agent kind only: wrong codes presented. The code is void from {@link HANDOVER_MAX_FAILED_ATTEMPTS}. */
+  readonly handoverFailedAttempts: number | null;
+  /** Agent kind only: the id the agent account will have, returned at issue. */
+  readonly agentAccountId: Id<'Account'> | null;
 }
+
+/**
+ * The state {@link Invitation.restore} takes: the agent columns may be left out and are then null,
+ * so a store or a fixture of the other kinds names none of them.
+ */
+export type InvitationRestoreState = Omit<
+  InvitationState,
+  'handoverCodeHmac' | 'handoverFailedAttempts' | 'agentAccountId'
+> &
+  Partial<Pick<InvitationState, 'handoverCodeHmac' | 'handoverFailedAttempts' | 'agentAccountId'>>;
 
 /**
  * Where an invitation stands at `now` (3.4): its stored state, or `expired` for a pending one at
@@ -156,6 +182,9 @@ export class Invitation {
         acceptedAccountId: null,
         createdAt: input.now,
         version: 1,
+        handoverCodeHmac: null,
+        handoverFailedAttempts: null,
+        agentAccountId: null,
       },
       null,
     );
@@ -171,8 +200,74 @@ export class Invitation {
     return invitation;
   }
 
-  static restore(state: InvitationState): Invitation {
-    return new Invitation(state, state.version);
+  /**
+   * An agent invitation (ADR-0045 decision 2): `pending` without a token, naming the account it
+   * will create (`agentAccountId`, returned to the issuing admin) and holding only the HMAC of the
+   * handover code. The inviter is required: issuing and accepting are audited with its id. No role
+   * and no seller.
+   */
+  static issueAgent(input: {
+    readonly id: Id<'Invitation'>;
+    readonly marketId: MarketId;
+    readonly email: EmailAddress;
+    readonly displayName: string;
+    readonly agentAccountId: Id<'Account'>;
+    readonly handoverCodeHmac: Uint8Array;
+    readonly invitedByAccountId: Id<'Account'>;
+    readonly now: Temporal.Instant;
+  }): Invitation {
+    const invitation = new Invitation(
+      {
+        id: input.id,
+        marketId: input.marketId,
+        kind: 'agent',
+        email: input.email,
+        displayName: input.displayName,
+        roleId: null,
+        sellerId: null,
+        invitedByAccountId: input.invitedByAccountId,
+        tokenHash: null,
+        expiresAt: null,
+        state: 'pending',
+        decidedAt: null,
+        acceptedAccountId: null,
+        createdAt: input.now,
+        version: 1,
+        handoverCodeHmac: Uint8Array.from(input.handoverCodeHmac),
+        handoverFailedAttempts: 0,
+        agentAccountId: input.agentAccountId,
+      },
+      null,
+    );
+    invitation.#events.push(
+      InvitationIssued.record({
+        aggregateId: input.id,
+        aggregateVersion: 1,
+        occurredAt: input.now,
+        payload: { invitationId: input.id, kind: 'agent', sellerId: null },
+      }),
+    );
+    return invitation;
+  }
+
+  static restore(state: InvitationRestoreState): Invitation {
+    const full: InvitationState = {
+      ...state,
+      handoverCodeHmac: state.handoverCodeHmac ?? null,
+      handoverFailedAttempts: state.handoverFailedAttempts ?? null,
+      agentAccountId: state.agentAccountId ?? null,
+    };
+    return new Invitation(full, full.version);
+  }
+
+  /**
+   * The role of an invitation of a kind that has one (admin, seller-owner, staff). An agent
+   * invitation has none (ADR-0045 decision 6): asking is a programmer error.
+   */
+  get roleId(): Id<'Role'> {
+    const { roleId } = this.#state;
+    if (roleId === null) throw new InvitationInvariantError('an agent invitation has no role');
+    return roleId;
   }
 
   get state(): InvitationState {
@@ -228,15 +323,68 @@ export class Invitation {
     return ok(undefined);
   }
 
-  /** `pending` → `accepted` by the account created for it (3.4). */
+  /**
+   * Whether the handover code of an agent invitation can still be used: pending, with its HMAC
+   * held and fewer than {@link HANDOVER_MAX_FAILED_ATTEMPTS} failures. A voided code is never
+   * live again: the admin revokes and issues a new invitation.
+   */
+  get handoverCodeLive(): boolean {
+    const { state, handoverCodeHmac, handoverFailedAttempts } = this.#state;
+    return (
+      state === 'pending' &&
+      handoverCodeHmac !== null &&
+      handoverFailedAttempts !== null &&
+      handoverFailedAttempts < HANDOVER_MAX_FAILED_ATTEMPTS
+    );
+  }
+
+  /**
+   * One presentation of a handover code, `matched` by the caller against the stored HMAC. A
+   * wrong code is counted (the version rises, so the caller saves it in a unit that commits);
+   * the fifth voids the code. A correct one changes nothing. An invitation that is not usable at
+   * `now`, or whose code is void, answers the same refusal and counts nothing.
+   */
+  presentHandoverCode(matched: boolean, now: Temporal.Instant): Result<void, InvitationRejected> {
+    if (!this.usableAt(now) || !this.handoverCodeLive) return err(REJECTED);
+    if (matched) return ok(undefined);
+    this.change({ handoverFailedAttempts: (this.#state.handoverFailedAttempts ?? 0) + 1 });
+    return err(REJECTED);
+  }
+
+  /**
+   * `pending` → `accepted` for an agent, in one step (ADR-0045 decision 2): only a usable
+   * invitation with a live code that `handoverCodeMatched`. The generic {@link accept} refuses an
+   * agent invitation, so no caller can skip the code. The address, the name and the code's HMAC
+   * are cleared with the decision.
+   */
+  acceptAgent(
+    accountId: Id<'Account'>,
+    handoverCodeMatched: boolean,
+    now: Temporal.Instant,
+  ): Result<void, InvitationRejected> {
+    if (this.#state.kind !== 'agent') return err(REJECTED);
+    if (!handoverCodeMatched || !this.usableAt(now) || !this.handoverCodeLive) return err(REJECTED);
+    return this.decideAccepted(accountId, now);
+  }
+
+  /** `pending` → `accepted` by the account created for it (3.4). Not for an agent invitation. */
   accept(accountId: Id<'Account'>, now: Temporal.Instant): Result<void, InvitationRejected> {
+    if (this.#state.kind === 'agent') return err(REJECTED);
     if (!this.usableAt(now)) return err(REJECTED);
+    return this.decideAccepted(accountId, now);
+  }
+
+  private decideAccepted(
+    accountId: Id<'Account'>,
+    now: Temporal.Instant,
+  ): Result<void, InvitationRejected> {
     this.change({
       state: 'accepted',
       decidedAt: now,
       acceptedAccountId: accountId,
       email: null,
       displayName: null,
+      handoverCodeHmac: null,
     });
     const { id, kind, sellerId, version } = this.#state;
     this.#events.push(
@@ -275,6 +423,9 @@ export class Invitation {
    * again instead, which replaces it.
    */
   reissue(now: Temporal.Instant, lifetimeMinutes: number): Result<void, InvitationRejected> {
+    // An agent invitation is never re-sent in place: a lost handover code means revoke and issue
+    // again, which mints a new code (ADR-0045 decision 2).
+    if (this.#state.kind === 'agent') return err(REJECTED);
     if (!this.reissuableAt(now, lifetimeMinutes)) return err(REJECTED);
     this.change({ tokenHash: null, expiresAt: null });
     const { id, kind, sellerId, version } = this.#state;
@@ -295,7 +446,13 @@ export class Invitation {
    */
   revoke(now: Temporal.Instant): Result<void, InvitationRejected> {
     if (this.#state.state !== 'pending') return err(REJECTED);
-    this.change({ state: 'revoked', decidedAt: now, email: null, displayName: null });
+    this.change({
+      state: 'revoked',
+      decidedAt: now,
+      email: null,
+      displayName: null,
+      handoverCodeHmac: null,
+    });
     const { id, kind, sellerId, version } = this.#state;
     this.#events.push(
       InvitationRevoked.record({
@@ -326,15 +483,41 @@ export class Invitation {
     if (pending !== (state.email !== null)) {
       throw new InvitationInvariantError('the address is held while pending, and only then');
     }
-    if ((state.kind === 'admin') !== (state.sellerId === null)) {
+    const agent = state.kind === 'agent';
+    if ((state.kind === 'admin' || agent) !== (state.sellerId === null)) {
       throw new InvitationInvariantError('a seller on seller-owner and staff invitations only');
     }
-    const ownerName = state.kind === 'seller-owner' && pending;
-    if (state.displayName !== null && !ownerName) {
-      throw new InvitationInvariantError('a name only on a pending seller-owner invitation');
+    if (agent !== (state.roleId === null)) {
+      throw new InvitationInvariantError('a role on every invitation but the agent one');
     }
-    if (ownerName && state.displayName === null) {
-      throw new InvitationInvariantError('a seller-owner invitation names its invitee');
+    const named = (state.kind === 'seller-owner' || agent) && pending;
+    if (state.displayName !== null && !named) {
+      throw new InvitationInvariantError(
+        'a name only on a pending seller-owner or agent invitation',
+      );
+    }
+    if (named && state.displayName === null) {
+      throw new InvitationInvariantError('a seller-owner or agent invitation names its invitee');
+    }
+    if (
+      agent !== (state.agentAccountId !== null) ||
+      agent !== (state.handoverFailedAttempts !== null) ||
+      (state.handoverCodeHmac !== null && !(agent && pending))
+    ) {
+      throw new InvitationInvariantError('the handover code columns belong to agent invitations');
+    }
+    if (agent && pending && state.handoverCodeHmac === null) {
+      throw new InvitationInvariantError('a pending agent invitation holds its handover code');
+    }
+    if (agent && state.invitedByAccountId === null) {
+      throw new InvitationInvariantError('an agent invitation records its inviter');
+    }
+    if (
+      state.handoverCodeHmac !== null &&
+      (state.handoverCodeHmac.length !== 32 ||
+        (state.handoverFailedAttempts ?? 0) > HANDOVER_MAX_FAILED_ATTEMPTS)
+    ) {
+      throw new InvitationInvariantError('the handover code is a 32-byte HMAC, at most 5 failures');
     }
     // The name rules of an account's display name (HF13; review nit): parsed by the caller,
     // re-checked here so a malformed name is never stored.
@@ -362,6 +545,8 @@ export class Invitation {
     return Object.freeze({
       ...state,
       tokenHash: state.tokenHash === null ? null : Uint8Array.from(state.tokenHash),
+      handoverCodeHmac:
+        state.handoverCodeHmac === null ? null : Uint8Array.from(state.handoverCodeHmac),
     });
   }
 }

@@ -14,6 +14,15 @@ export {
 } from '../domain/events';
 export { IDENTITY_AUDIT_ACTIONS } from '../domain/audit';
 export * from './permissions';
+export {
+  AGENTS_MANAGE_KEY,
+  AGENTS_READ_KEY,
+  type AgentAccess,
+  type AgentAccountStatusChanged,
+  type AgentAccountStatusFailure,
+  type AgentInvitationFailure,
+  type AgentInvitationIssued,
+} from './agent-access';
 export { IDENTITY_STEP_UP_ACTIONS, STEP_UP_PROOF_MINUTES, type StepUpFailure } from './step-up';
 export {
   IDENTITY_FACADE,

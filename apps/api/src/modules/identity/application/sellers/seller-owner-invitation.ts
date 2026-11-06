@@ -152,7 +152,8 @@ export async function changeSellerOwnerInvitation(
       if (invitation === null || invitation.state.kind !== 'seller-owner') {
         return err({ code: 'invitation.unknown' });
       }
-      const { kind, roleId } = invitation.state;
+      const { kind } = invitation.state;
+      const roleId = invitation.roleId;
       if (change === 'resend') {
         const address = invitation.state.email;
         const guards = await sellerInvitationResendVerdict(

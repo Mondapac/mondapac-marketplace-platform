@@ -564,7 +564,7 @@
     "aggregateType": "account",
     "fields": {
       "accountId": "id",
-      "population": "enumOf(customer|seller|admin)"
+      "population": "enumOf(customer|seller|admin|agent)"
     }
   },
   {
@@ -572,7 +572,7 @@
     "aggregateType": "account",
     "fields": {
       "accountId": "id",
-      "population": "enumOf(customer|seller|admin)"
+      "population": "enumOf(customer|seller|admin|agent)"
     }
   },
   {
@@ -580,7 +580,7 @@
     "aggregateType": "account",
     "fields": {
       "accountId": "id",
-      "population": "enumOf(customer|seller|admin)"
+      "population": "enumOf(customer|seller|admin|agent)"
     }
   },
   {
@@ -588,7 +588,7 @@
     "aggregateType": "account",
     "fields": {
       "accountId": "id",
-      "population": "enumOf(customer|seller|admin)"
+      "population": "enumOf(customer|seller|admin|agent)"
     }
   },
   {
@@ -629,7 +629,7 @@
     "aggregateType": "invitation",
     "fields": {
       "invitationId": "id",
-      "kind": "enumOf(seller-owner|staff|admin)",
+      "kind": "enumOf(seller-owner|staff|admin|agent)",
       "sellerId": "optional(id)",
       "accountId": "id"
     }
@@ -639,7 +639,7 @@
     "aggregateType": "invitation",
     "fields": {
       "invitationId": "id",
-      "kind": "enumOf(seller-owner|staff|admin)",
+      "kind": "enumOf(seller-owner|staff|admin|agent)",
       "sellerId": "optional(id)"
     }
   },
@@ -648,7 +648,7 @@
     "aggregateType": "invitation",
     "fields": {
       "invitationId": "id",
-      "kind": "enumOf(seller-owner|staff|admin)",
+      "kind": "enumOf(seller-owner|staff|admin|agent)",
       "sellerId": "optional(id)"
     }
   },

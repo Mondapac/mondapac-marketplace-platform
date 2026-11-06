@@ -291,7 +291,7 @@ export const AdminStepUpRefusedAudit = defineAuditAction({
 const ACCOUNT_STATUSES = ['active', 'disabled'] as const;
 
 /** The populations this path disables (3.1): never a seller-side account. */
-const DISABLEABLE_POPULATIONS = ['admin', 'customer'] as const;
+const DISABLEABLE_POPULATIONS = ['admin', 'customer', 'agent'] as const;
 
 /**
  * An admin disabled an admin or a customer account (identity design 3.1; PA 5 row 8b). Target:
@@ -385,6 +385,62 @@ export const InvitationAcceptedAudit = defineAuditAction({
 });
 
 /**
+ * An agent invitation was issued by an admin (ADR-0045 decision 2). Target: the invitation; the
+ * actor is the inviter. `agentAccountId` is the account the invitation will create. Never the
+ * invited address, and never the handover code or its HMAC (the code is shown once, to the
+ * issuing admin only).
+ */
+export const AgentInvitationIssuedAudit = defineAuditAction({
+  action: 'identity.agent-invitation.issued',
+  targetType: 'identity.invitation',
+  actors: ['authenticated'],
+  after: { agentAccountId: auditField.id() },
+});
+
+/**
+ * A pending agent invitation was revoked by an admin, replaced by a re-issue, or voided by
+ * disabling the agent (ADR-0045 decisions 2 and 5). Target: the invitation.
+ */
+export const AgentInvitationRevokedAudit = defineAuditAction({
+  action: 'identity.agent-invitation.revoked',
+  targetType: 'identity.invitation',
+  actors: ['authenticated'],
+  after: { agentAccountId: auditField.id() },
+});
+
+/**
+ * An agent invitation was accepted (ADR-0045 decision 2): the link token and the handover code
+ * together bound the request, so `boundSubjectId` names the invitation; `accountId` is the account
+ * created and `invitedByAccountId` the admin who issued the invitation.
+ */
+export const AgentInvitationAcceptedAudit = defineAuditAction({
+  action: 'identity.agent-invitation.accepted',
+  targetType: 'identity.invitation',
+  actors: ['anonymous'],
+  after: {
+    accountId: auditField.id(),
+    invitedByAccountId: auditField.id(),
+    boundSubjectId: auditField.id(),
+  },
+});
+
+/**
+ * An agent's acceptance was refused at the closing unit because its inviter is no longer an
+ * active, verified admin holding `agents.agent.manage` (ADR-0045 decision 2; as the admin
+ * invitation's inviter re-check). Nothing is created; the invitation stays as it was. Target: the
+ * invitation, named in `boundSubjectId`; `invitedByAccountId` is the inviter who no longer stands.
+ */
+export const AgentInvitationAcceptanceRefusedAudit = defineAuditAction({
+  action: 'identity.agent-invitation.acceptance-refused',
+  targetType: 'identity.invitation',
+  actors: ['anonymous'],
+  after: {
+    invitedByAccountId: auditField.id(),
+    boundSubjectId: auditField.id(),
+  },
+});
+
+/**
  * A second factor became active (identity design 3.4, 3.6; PA 5 row 7): inside an admin
  * invitation's acceptance (`boundSubjectId` = the invitation) or from an enrolment link with the
  * password (`boundSubjectId` = the account). Target: the factor.
@@ -466,6 +522,21 @@ export const SellerSecondFactorResetConfirmedAudit = defineAuditAction({
  */
 export const AdminSessionOpenedAudit = defineAuditAction({
   action: 'identity.admin-session.opened',
+  targetType: 'identity.account',
+  actors: ['anonymous'],
+  after: {
+    sessionId: auditField.id(),
+    boundSubjectId: auditField.id(),
+  },
+});
+
+/**
+ * An agent signed in: an agent session opened from a correct password and a second-factor proof
+ * (ADR-0045 decision 4). Same shape as the admin's: the actor is anonymous (the request holds no
+ * session yet) and the account is bound by the credentials, named in `boundSubjectId`.
+ */
+export const AgentSessionOpenedAudit = defineAuditAction({
+  action: 'identity.agent-session.opened',
   targetType: 'identity.account',
   actors: ['anonymous'],
   after: {
@@ -599,6 +670,10 @@ export const SellerAccessReappliedAudit = defineAuditAction({
 export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   RoleSeeded,
   RoleSeedApplied,
+  AgentInvitationIssuedAudit,
+  AgentInvitationRevokedAudit,
+  AgentInvitationAcceptedAudit,
+  AgentInvitationAcceptanceRefusedAudit,
   RoleCreatedAudit,
   RoleUpdatedAudit,
   RoleDeletedAudit,
@@ -623,6 +698,7 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   SellerSecondFactorResetRequestedAudit,
   SellerSecondFactorResetConfirmedAudit,
   AdminSessionOpenedAudit,
+  AgentSessionOpenedAudit,
   OtherSessionsSignedOutAudit,
   AccountErasedAudit,
   AccountSessionsEndedForErasureAudit,

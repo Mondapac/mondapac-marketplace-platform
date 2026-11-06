@@ -5,7 +5,7 @@ export interface AuditTrailEntry {
   /** The row's id: also the cursor of the next page ({@link AuditTrailQuery.after}). */
   readonly id: string;
   readonly occurredAt: Temporal.Instant;
-  readonly actorType: 'USER' | 'SYSTEM' | 'ANONYMOUS';
+  readonly actorType: 'USER' | 'SYSTEM' | 'ANONYMOUS' | 'AGENT';
   /**
    * The account that acted, as stored (PA 10, Hassan I4): it may be an admin's. The consuming
    * module maps it before anything is shown to a seller.

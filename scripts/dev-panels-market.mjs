@@ -22,6 +22,8 @@ if (code === undefined || !/^[A-Z]{2}$/.test(code)) {
 }
 const sellerOrigin = process.env.SELLER_PANEL_ORIGIN ?? 'http://seller.localhost:3001';
 const adminOrigin = process.env.ADMIN_PANEL_ORIGIN ?? 'http://admin.localhost:3002';
+// The agent panel (ADR-0045) has no app yet; its slot is the next port.
+const agentOrigin = process.env.AGENT_PANEL_ORIGIN ?? 'http://agent.localhost:3004';
 // Opt-in: the buyer site's origin (the local demo's slot is http://storefront.localhost:3003).
 // Unset, the customer list and links stay as committed and no unsafe customer request is allowed.
 const storefrontOrigin = process.env.STOREFRONT_ORIGIN;
@@ -35,6 +37,9 @@ for (const [page, url] of Object.entries(targets.seller)) {
 for (const [page, url] of Object.entries(targets.admin)) {
   targets.admin[page] = `${adminOrigin}${new URL(url).pathname}`;
 }
+for (const [page, url] of Object.entries(targets.agent ?? {})) {
+  targets.agent[page] = `${agentOrigin}${new URL(url).pathname}`;
+}
 if (storefrontOrigin !== undefined && storefrontOrigin !== '') {
   for (const [page, url] of Object.entries(targets.customer ?? {})) {
     targets.customer[page] = `${storefrontOrigin}${new URL(url).pathname}`;
@@ -47,6 +52,7 @@ const committedCustomer = config.allowedOrigins?.customer;
 config.allowedOrigins = {
   admin: [adminOrigin],
   seller: [sellerOrigin],
+  agent: [agentOrigin],
   customer:
     storefrontOrigin !== undefined && storefrontOrigin !== ''
       ? [storefrontOrigin]

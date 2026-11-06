@@ -48,6 +48,8 @@ export interface LinkPages {
     | 'accept-invitation'
     | 'enrol-second-factor'
     | 'reset-password';
+  /** ADR-0045 decision 7: the agent panel's sign-in page and its invitation page. */
+  readonly agent: 'sign-in' | 'accept-invitation';
 }
 
 /** A page of {@link LinkPages}: of one population, or of any when none is named. */

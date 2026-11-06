@@ -65,6 +65,34 @@ describe('CatalogueMailComposer (identity design 9; ux.md E1, E12)', () => {
     expect(mail.text).not.toContain('MondaPac customer');
   });
 
+  it.each([
+    ['AU', 4320, 'You are invited to join MondaPac as an agent'],
+    ['ZZ', 2880, '代理店として招待されました'],
+  ])(
+    'writes the agent invitation in %s with the link and no handover code (ADR-0045)',
+    (market, minutes, subject) => {
+      const url = `https://agent.${market.toLowerCase()}.test/accept-invitation#mi1_TOKEN`;
+      const mail = composer.compose(testMarketContext(market, 'default'), {
+        template: 'invitation',
+        population: 'agent',
+        url,
+        lifetimeMinutes: minutes,
+      });
+
+      expect(mail.subject).toBe(subject);
+      expect(mail.text).toContain(url);
+      expect(mail.text).toContain(
+        formatDuration(
+          markets.get(testMarketContext(market, 'default').marketId).defaultLocale,
+          minutes,
+        ),
+      );
+      // The code travels by hand, never in the mail: the text names no code value.
+      expect(mail.text).not.toMatch(/\b[A-Z2-7]{5}-[A-Z2-7]{5}\b/);
+      expect(mail.text).not.toMatch(/\{[a-z]+\}/);
+    },
+  );
+
   it('writes the existing-account notice with the sign-in page and no token', () => {
     const mail = composer.compose(testMarketContext('AU', 'default'), {
       template: 'existing-account',

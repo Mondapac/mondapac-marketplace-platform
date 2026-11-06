@@ -53,6 +53,9 @@ export interface SendInvitationMailDependencies {
  *    lifetime) stored if the invitation is still the one announced. A retry after a failed unit
  *    sends a new mail and the first token never works (6.6).
  *
+ * The `agent` kind (ADR-0045) goes to the agent panel's acceptance page; its handover code is
+ * never in the mail (the admin gives it to the agent directly).
+ *
  * Slice 7b sends the `admin` kind (the first-admin routine), slice 9 the `seller-owner` kind (E9,
  * to the seller panel's acceptance page), slice 11 the `staff` kind (E10, to the same page). A
  * missing lifetime or page throws, so a delivery is dead-lettered with an alert, never dropped.
@@ -109,12 +112,14 @@ export class SendInvitationMail extends UseCase<
     const { kind, email } = invitation!.state;
     // The panel the invitee joins: an admin's (E11), or the seller panel for a seller created by
     // an admin (E9, slice 9) or for a team member (E10, slice 11: the same acceptance page).
-    const population = kind === 'admin' ? 'admin' : 'seller';
+    const population = kind === 'admin' ? 'admin' : kind === 'agent' ? 'agent' : 'seller';
     const lifetimeMinutes = policy.invitationLifetimeMinutes(market, kind);
     const target =
       population === 'admin'
         ? this.deps.targets.target(market, 'admin', 'accept-invitation')
-        : this.deps.targets.target(market, 'seller', 'accept-invitation');
+        : population === 'agent'
+          ? this.deps.targets.target(market, 'agent', 'accept-invitation')
+          : this.deps.targets.target(market, 'seller', 'accept-invitation');
     if (lifetimeMinutes === null || target === null || email === null) {
       throw new Error(
         `send-invitation-mail: no lifetime or page for ${kind} in ${market.marketId}`,

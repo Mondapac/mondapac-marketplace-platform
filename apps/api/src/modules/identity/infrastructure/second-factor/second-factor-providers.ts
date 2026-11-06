@@ -9,6 +9,8 @@ import {
   type EnrolmentSecretTags,
   type OpaqueTokens,
 } from '../../application/ports/second-factor-tokens';
+import { HANDOVER_CODES, type HandoverCodes } from '../../application/ports/handover-codes';
+import { HmacHandoverCodes } from './hmac-handover-codes';
 import { localThrottleSecret } from '../sessions/hmac-throttle-keys';
 import {
   CHALLENGE_TOKEN_PREFIX,
@@ -87,5 +89,13 @@ export const secondFactorProviders: readonly FactoryProvider[] = [
     inject: [APP_CONFIG],
     useFactory: (config: AppConfig): EnrolmentSecretTags =>
       new HmacEnrolmentSecretTags(localThrottleSecret(config)),
+  },
+  {
+    // The agent handover codes (ADR-0045 decision 2): HMAC under a key derived from the same stack
+    // secret with its own label.
+    provide: HANDOVER_CODES,
+    inject: [APP_CONFIG],
+    useFactory: (config: AppConfig): HandoverCodes =>
+      new HmacHandoverCodes(localThrottleSecret(config)),
   },
 ];

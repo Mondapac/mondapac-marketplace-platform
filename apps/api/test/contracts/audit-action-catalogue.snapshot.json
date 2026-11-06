@@ -1368,7 +1368,7 @@
       "status": "enumOf(active|disabled)"
     },
     "after": {
-      "population": "enumOf(admin|customer)",
+      "population": "enumOf(admin|customer|agent)",
       "status": "enumOf(active|disabled)"
     }
   },
@@ -1381,7 +1381,7 @@
       "status": "enumOf(active|disabled)"
     },
     "after": {
-      "population": "enumOf(admin|customer)",
+      "population": "enumOf(admin|customer|agent)",
       "status": "enumOf(active|disabled)"
     }
   },
@@ -1435,7 +1435,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.agent-account.reset-second-factor|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "cause": "enumOf(invalid|locked)",
       "sessionId": "id"
     }
@@ -1447,7 +1447,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.agent-account.reset-second-factor|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "sessionId": "id"
     }
   },
@@ -1460,7 +1460,7 @@
     "after": {
       "accountId": "id",
       "boundSubjectId": "id",
-      "kind": "enumOf(seller-owner|staff|admin)",
+      "kind": "enumOf(seller-owner|staff|admin|agent)",
       "roleId": "id"
     }
   },
@@ -1471,7 +1471,7 @@
     "actors": ["authenticated", "system"],
     "before": null,
     "after": {
-      "kind": "enumOf(seller-owner|staff|admin)",
+      "kind": "enumOf(seller-owner|staff|admin|agent)",
       "roleId": "id"
     }
   },
@@ -1482,7 +1482,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "kind": "enumOf(seller-owner|staff|admin)",
+      "kind": "enumOf(seller-owner|staff|admin|agent)",
       "roleId": "id"
     }
   },
@@ -1493,7 +1493,7 @@
     "actors": ["authenticated", "system"],
     "before": null,
     "after": {
-      "kind": "enumOf(seller-owner|staff|admin)",
+      "kind": "enumOf(seller-owner|staff|admin|agent)",
       "roleId": "id"
     }
   },
@@ -1740,12 +1740,66 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.agent-account.reset-second-factor|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     },
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.agent-account.reset-second-factor|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
+    }
+  },
+  {
+    "action": "identity.agent-invitation.acceptance-refused",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["anonymous"],
+    "before": null,
+    "after": {
+      "boundSubjectId": "id",
+      "invitedByAccountId": "id"
+    }
+  },
+  {
+    "action": "identity.agent-invitation.accepted",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["anonymous"],
+    "before": null,
+    "after": {
+      "accountId": "id",
+      "boundSubjectId": "id",
+      "invitedByAccountId": "id"
+    }
+  },
+  {
+    "action": "identity.agent-invitation.issued",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "agentAccountId": "id"
+    }
+  },
+  {
+    "action": "identity.agent-invitation.revoked",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "agentAccountId": "id"
+    }
+  },
+  {
+    "action": "identity.agent-session.opened",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["anonymous"],
+    "before": null,
+    "after": {
+      "boundSubjectId": "id",
+      "sessionId": "id"
     }
   },
   {

@@ -32,7 +32,7 @@
       "targetRequired": true,
       "ip": true,
       "payload": {
-        "population": "enumOf(customer|seller|admin)"
+        "population": "enumOf(customer|seller|admin|agent)"
       }
     },
     {
@@ -43,7 +43,7 @@
       "targetRequired": true,
       "ip": true,
       "payload": {
-        "population": "enumOf(customer|seller|admin)"
+        "population": "enumOf(customer|seller|admin|agent)"
       }
     },
     {
@@ -54,7 +54,7 @@
       "targetRequired": true,
       "ip": true,
       "payload": {
-        "population": "enumOf(customer|seller|admin)"
+        "population": "enumOf(customer|seller|admin|agent)"
       }
     },
     {
@@ -65,7 +65,7 @@
       "targetRequired": true,
       "ip": true,
       "payload": {
-        "population": "enumOf(customer|seller|admin)"
+        "population": "enumOf(customer|seller|admin|agent)"
       }
     },
     {
@@ -76,7 +76,7 @@
       "targetRequired": true,
       "ip": true,
       "payload": {
-        "population": "enumOf(customer|seller|admin)"
+        "population": "enumOf(customer|seller|admin|agent)"
       }
     },
     {
@@ -87,7 +87,7 @@
       "targetRequired": false,
       "ip": true,
       "payload": {
-        "population": "enumOf(customer|seller|admin)",
+        "population": "enumOf(customer|seller|admin|agent)",
         "reason": "enumOf(credentials-invalid|link-rejected|challenge-rejected|account-disabled)"
       }
     },
@@ -99,7 +99,7 @@
       "targetRequired": true,
       "ip": true,
       "payload": {
-        "population": "enumOf(customer|seller|admin)",
+        "population": "enumOf(customer|seller|admin|agent)",
         "sessionId": "id"
       }
     },
@@ -111,7 +111,7 @@
       "targetRequired": false,
       "ip": true,
       "payload": {
-        "population": "enumOf(customer|seller|admin)"
+        "population": "enumOf(customer|seller|admin|agent)"
       }
     },
     {

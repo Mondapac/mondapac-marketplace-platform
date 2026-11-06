@@ -15,6 +15,12 @@ export const STEP_UP_PROOF_MINUTES = 5;
 export const IDENTITY_STEP_UP_ACTIONS: readonly StepUpActionDeclaration[] = [
   { key: 'identity.second-factor.manage', defaultRequired: true, locked: true },
   { key: 'identity.team.change-role', defaultRequired: true, locked: true },
+  {
+    key: 'identity.agent-account.reset-second-factor',
+    defaultRequired: true,
+    locked: true,
+    audience: 'admin',
+  },
   { key: 'identity.team.invite-remove', defaultRequired: true, locked: false },
 ];
 

@@ -46,6 +46,7 @@ const VALID = {
   allowedOrigins: {
     admin: ['https://admin.qq.test'],
     seller: ['https://seller.qq.test'],
+    agent: ['https://agent.qq.test'],
     customer: ['https://shop.qq.test'],
   },
   identity: {
@@ -469,7 +470,7 @@ describe('loadMarketConfigs', () => {
     });
 
     it('accepts three empty lists (fail closed, AU until D2)', () => {
-      const empty = { admin: [], seller: [], customer: [] };
+      const empty = { admin: [], seller: [], customer: [], agent: [] };
 
       expect(load(withOrigins(empty)).allowedOrigins).toEqual(empty);
     });
@@ -481,15 +482,17 @@ describe('loadMarketConfigs', () => {
       expect(markets.get(testMarketId('AU'))!.allowedOrigins).toEqual({
         admin: [],
         seller: [],
+        agent: [],
         customer: ['https://storefront.au.mondapac.test'],
       });
       expect(markets.get(testMarketId('ZZ'))!.allowedOrigins).toEqual({
         admin: ['https://admin.zz.test'],
         seller: ['https://seller.zz.test'],
+        agent: ['https://agent.zz.test'],
         customer: ['https://storefront.zz.test'],
       });
       for (const market of markets.values()) {
-        for (const population of ['admin', 'seller', 'customer'] as const) {
+        for (const population of ['admin', 'seller', 'customer', 'agent'] as const) {
           const list = market.allowedOrigins[population];
           if (list.length === 0) continue;
           const pages = Object.values<string>(market.identity.links.targets[population] ?? {});
@@ -512,6 +515,7 @@ describe('loadMarketConfigs', () => {
     it.each([
       ['a flat list (the old shape)', ['https://shop.qq.test'], /allowedOrigins/],
       ['a missing population', { admin: [], seller: [] }, /allowedOrigins\.customer/],
+      ['a missing agent list', { ...ORIGINS, agent: undefined }, /allowedOrigins\.agent/],
       ['an unknown population', { ...ORIGINS, staff: [] }, /allowedOrigins.*(staff|Unrecognized)/],
       [
         'a duplicate within a list',
@@ -559,9 +563,15 @@ describe('loadMarketConfigs', () => {
         {
           admin: ['https://admin.qq.test', 'http://localhost:3002'],
           seller: ORIGINS.seller,
+          agent: ORIGINS.agent,
           customer: ['https://shop.qq.test', 'http://localhost:3000'],
         },
         /allowedOrigins\.admin\.1: an origin must not share its host name/,
+      ],
+      [
+        'an agent host equal to an admin host on another port (ADR-0045 decision 8)',
+        { ...ORIGINS, admin: ['https://admin.qq.test', 'https://agent.qq.test:8443'] },
+        /allowedOrigins\.agent\.0: an origin must not share its host name with another population's origin/,
       ],
       [
         'a seller host equal to a customer host on another port (Ali ruling 1)',
@@ -627,6 +637,7 @@ describe('loadMarketConfigs', () => {
           admin: [] as string[],
           seller: [] as string[],
           customer: [] as string[],
+          agent: [] as string[],
           [earlier]: ['https://shared.qq.test'],
           [later]: ['https://shared.qq.test:8443'],
         };
@@ -642,6 +653,7 @@ describe('loadMarketConfigs', () => {
       const allowedOrigins = {
         admin: [],
         seller: [],
+        agent: [],
         customer: ['https://shop.qq.test', 'https://admin.qq.test'],
       };
 
@@ -823,7 +835,12 @@ describe('loadMarketConfigs', () => {
       expect(au.sessions.admin).toEqual({ idleTimeoutMinutes: 30, absoluteLifetimeMinutes: 720 });
       expect(au.links.lifetimeMinutes['enrol-second-factor']).toBe(60);
       expect(au.invitations).toEqual({
-        lifetimeMinutes: { admin: 72 * 60, 'seller-owner': 7 * 24 * 60, staff: 7 * 24 * 60 },
+        lifetimeMinutes: {
+          admin: 72 * 60,
+          agent: 72 * 60,
+          'seller-owner': 7 * 24 * 60,
+          staff: 7 * 24 * 60,
+        },
       });
       expect(au.challenges).toEqual({ maxAttempts: 5, lifetimeSeconds: 300 });
       expect(au.secondFactorThrottles).toEqual({
@@ -842,7 +859,7 @@ describe('loadMarketConfigs', () => {
       expect(zz.links.lifetimeMinutes['enrol-second-factor']).not.toBe(
         au.links.lifetimeMinutes['enrol-second-factor'],
       );
-      for (const kind of ['admin', 'seller-owner', 'staff'] as const) {
+      for (const kind of ['admin', 'agent', 'seller-owner', 'staff'] as const) {
         expect(zz.invitations!.lifetimeMinutes[kind]).not.toBe(
           au.invitations!.lifetimeMinutes[kind],
         );
@@ -854,6 +871,86 @@ describe('loadMarketConfigs', () => {
           au.secondFactorThrottles!.account[field],
         );
       }
+    });
+
+    describe('agent sign-in (ADR-0045)', () => {
+      const AGENT_PAGES = {
+        'sign-in': 'https://agent.qq.test/sign-in',
+        'accept-invitation': 'https://agent.qq.test/accept-invitation',
+      };
+      const withAgent = (edit?: (copy: Node) => void): Node =>
+        change((copy) => {
+          at(copy, 'sessions')['agent'] = { idleTimeoutMinutes: 30, absoluteLifetimeMinutes: 720 };
+          at(copy, 'links', 'targets')['agent'] = AGENT_PAGES;
+          at(copy, 'invitations', 'lifetimeMinutes')['agent'] = 4320;
+          edit?.(copy);
+        });
+
+      it('accepts agent sessions configured whole, and carries the values of both test Markets', () => {
+        expect(load(withAgent()).sessions['agent']).toEqual({
+          idleTimeoutMinutes: 30,
+          absoluteLifetimeMinutes: 720,
+        });
+        const markets = loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS);
+        const au = markets.get(testMarketId('AU'))!.identity;
+        const zz = markets.get(testMarketId('ZZ'))!.identity;
+        expect(au.sessions.agent).toEqual({ idleTimeoutMinutes: 30, absoluteLifetimeMinutes: 720 });
+        expect(zz.sessions.agent).toEqual({ idleTimeoutMinutes: 20, absoluteLifetimeMinutes: 480 });
+        expect(au.invitations!.lifetimeMinutes.agent).toBe(72 * 60);
+        expect(zz.invitations!.lifetimeMinutes.agent).toBe(48 * 60);
+      });
+
+      it.each([
+        ['challenges', (copy: Node) => delete copy['challenges']],
+        ['secondFactorThrottles', (copy: Node) => delete copy['secondFactorThrottles']],
+        ['links.targets.agent', (copy: Node) => delete at(copy, 'links', 'targets')['agent']],
+        [
+          'invitations.lifetimeMinutes.agent',
+          (copy: Node) => delete at(copy, 'invitations', 'lifetimeMinutes')['agent'],
+        ],
+      ])('refuses agent sessions without %s', (key, edit) => {
+        expect(() => load(withAgent(edit))).toThrow(`sessions.agent needs ${key}`);
+      });
+
+      it.each([
+        ['more than 30 minutes idle', { idleTimeoutMinutes: 31, absoluteLifetimeMinutes: 720 }],
+        ['more than 12 hours absolute', { idleTimeoutMinutes: 30, absoluteLifetimeMinutes: 721 }],
+      ])('refuses an agent session of %s', (_case, lifetime) => {
+        expect(() => load(withAgent((copy) => (at(copy, 'sessions')['agent'] = lifetime)))).toThrow(
+          /sessions\.agent/,
+        );
+      });
+
+      it('refuses an agent invitation of more than 72 hours and agent pages on two origins', () => {
+        expect(() =>
+          load(withAgent((copy) => (at(copy, 'invitations', 'lifetimeMinutes')['agent'] = 4321))),
+        ).toThrow(/lifetimeMinutes\.agent/);
+        expect(() =>
+          load(
+            withAgent(
+              (copy) =>
+                (at(copy, 'links', 'targets')['agent'] = {
+                  ...AGENT_PAGES,
+                  'accept-invitation': 'https://other.qq.test/accept-invitation',
+                }),
+            ),
+          ),
+        ).toThrow('an agent page must have the origin of the agent sign-in page');
+      });
+
+      it('has no keep-signed-in session for agents', () => {
+        expect(() =>
+          load(
+            withAgent(
+              (copy) =>
+                (at(copy, 'keepSignedInSessions')['agent'] = {
+                  idleTimeoutMinutes: 10,
+                  absoluteLifetimeMinutes: 20,
+                }),
+            ),
+          ),
+        ).toThrow();
+      });
     });
 
     it('accepts admin sign-in configured whole, at the ceilings, and a Market without it', () => {

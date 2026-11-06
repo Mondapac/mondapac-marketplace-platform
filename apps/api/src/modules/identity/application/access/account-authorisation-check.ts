@@ -49,6 +49,10 @@ export interface AccountAuthorisationCheckDependencies {
  *   permission registry: a key the registry does not declare, or declares in another scope than
  *   the population's, is never held (R2, R7), so no separate scope test can disagree with it.
  *
+ * - `agent-self` (ADR-0045 decision 6): allowed to an active agent account of the actor's Market
+ *   and population, and denied to every other population; an agent is denied every other rule.
+ *   The resource's ownership is checked by the use case.
+ *
  * A customer never holds a key (R2): a `permissions` rule is denied to one before any read. An
  * exception propagates; the gate turns it into `access.unavailable` (fail closed).
  */
@@ -59,7 +63,17 @@ export class AccountAuthorisationCheck implements AuthorisationCheck {
     const { actor, market } = context;
     if (actor.kind !== 'authenticated') return DENIED;
     const rule = declaration.rule;
-    if (rule.kind !== 'own-resources' && rule.kind !== 'permissions') return DENIED;
+    if (
+      rule.kind !== 'own-resources' &&
+      rule.kind !== 'permissions' &&
+      rule.kind !== 'agent-self'
+    ) {
+      return DENIED;
+    }
+    // ADR-0045 decision 6: `agent-self` is for agents only, and an agent holds no permission key
+    // and no seller or customer resource, so every other authenticated rule is denied to one
+    // before any read. Neither side is decided by a role.
+    if ((rule.kind === 'agent-self') !== (actor.population === 'agent')) return DENIED;
     const required = rule.kind === 'permissions' ? rule.allOf : null;
     if (required !== null && actor.population === 'customer') return DENIED;
     const seller = actor.population === 'seller';

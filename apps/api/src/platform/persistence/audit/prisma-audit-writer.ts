@@ -32,7 +32,7 @@ interface AuditRow {
   readonly marketId: string;
   readonly tenantId: string;
   readonly occurredAt: Date;
-  readonly actorType: 'USER' | 'SYSTEM' | 'ANONYMOUS';
+  readonly actorType: 'USER' | 'SYSTEM' | 'ANONYMOUS' | 'AGENT';
   readonly actorId: string | null;
   readonly actingAsId: null;
   readonly action: string;
@@ -47,7 +47,10 @@ interface AuditRow {
 function actorColumns(actor: ActorContext): Pick<AuditRow, 'actorType' | 'actorId'> {
   switch (actor.kind) {
     case 'authenticated':
-      return { actorType: 'USER', actorId: actor.accountId };
+      return {
+        actorType: actor.population === 'agent' ? 'AGENT' : 'USER',
+        actorId: actor.accountId,
+      };
     case 'system':
       return { actorType: 'SYSTEM', actorId: null };
     case 'anonymous':

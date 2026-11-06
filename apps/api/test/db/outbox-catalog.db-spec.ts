@@ -181,8 +181,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX addresses_one_default_key ON customers.addresses USING btree (market_id, account_id) WHERE is_default',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
+  'identity.invitations_market_id_agent_account_id_idx':
+    "CREATE INDEX invitations_market_id_agent_account_id_idx ON identity.invitations USING btree (market_id, agent_account_id) WHERE (kind = 'agent'::text)",
+  'identity.invitations_market_id_agent_account_id_pending_key':
+    "CREATE UNIQUE INDEX invitations_market_id_agent_account_id_pending_key ON identity.invitations USING btree (market_id, agent_account_id) WHERE ((kind = 'agent'::text) AND (state = 'pending'::text))",
+  'identity.invitations_market_id_email_agent_pending_key':
+    "CREATE UNIQUE INDEX invitations_market_id_email_agent_pending_key ON identity.invitations USING btree (market_id, email_normalized) WHERE ((kind = 'agent'::text) AND (state = 'pending'::text))",
   'identity.invitations_market_id_email_pending_platform_key':
-    "CREATE UNIQUE INDEX invitations_market_id_email_pending_platform_key ON identity.invitations USING btree (market_id, email_normalized) WHERE ((state = 'pending'::text) AND (seller_id IS NULL))",
+    "CREATE UNIQUE INDEX invitations_market_id_email_pending_platform_key ON identity.invitations USING btree (market_id, email_normalized) WHERE ((state = 'pending'::text) AND (seller_id IS NULL) AND (kind <> 'agent'::text))",
   'identity.invitations_market_id_email_seller_owner_pending_key':
     "CREATE UNIQUE INDEX invitations_market_id_email_seller_owner_pending_key ON identity.invitations USING btree (market_id, email_normalized) WHERE ((kind = 'seller-owner'::text) AND (state = 'pending'::text))",
   'identity.invitations_market_id_seller_id_email_pending_key':

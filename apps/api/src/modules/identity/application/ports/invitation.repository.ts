@@ -34,6 +34,13 @@ export interface InvitationRepository {
   findByTokenHash(market: MarketContext, tokenHash: Uint8Array): Promise<Invitation | null>;
 
   /**
+   * Takes the invitation's row write lock until the unit ends, so concurrent handover-code
+   * attempts on one invitation run one after the other (ADR-0045 decision 2: the cap of five
+   * failures is strict). Read the invitation again after the lock. False when it does not exist.
+   */
+  lockForAttempt(market: MarketContext, id: Id<'Invitation'>): Promise<boolean>;
+
+  /**
    * The pending invitation for this address in this scope (a seller, or the platform when
    * `sellerId` is null), or null: the row the partial unique keys of data design 8.4 allow at
    * most one of. An issue reads it to replace it when stale (M7; item G).
@@ -43,6 +50,27 @@ export interface InvitationRepository {
     sellerId: Id<'Seller'> | null,
     emailNormalized: string,
   ): Promise<Invitation | null>;
+
+  /**
+   * The pending agent invitation for this normalised address, or null: at most one, by the
+   * partial unique key `invitations_market_id_email_agent_pending_key` (ADR-0045).
+   */
+  findPendingAgentFor(market: MarketContext, emailNormalized: string): Promise<Invitation | null>;
+
+  /** The pending agent invitation that reserved this account id, or null. */
+  findPendingAgentByAccountId(
+    market: MarketContext,
+    agentAccountId: Id<'Account'>,
+  ): Promise<Invitation | null>;
+
+  /**
+   * Of these agent account ids, those with a pending invitation (an expired one not yet purged
+   * included): the "invited" state of `agentAccessOf`. At most 500 ids per call.
+   */
+  agentAccountIdsWithPendingInvitation(
+    market: MarketContext,
+    agentAccountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlySet<Id<'Account'>>>;
 
   /**
    * The pending seller-owner invitation of this seller, or null: at most one, by the partial

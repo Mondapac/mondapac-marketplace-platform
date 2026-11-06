@@ -41,6 +41,14 @@ export const ADMIN_ACCOUNT_RESET_SECOND_FACTOR = platform(
   'identity.admin-account.reset-second-factor',
   true,
 );
+/**
+ * Reset an agent's second factor (ADR-0045 decision 3, cto ruling of 2026-11-06: declared by
+ * identity, never by `agents`). Protected; a reset never opens a session.
+ */
+export const AGENT_ACCOUNT_RESET_SECOND_FACTOR = platform(
+  'identity.agent-account.reset-second-factor',
+  true,
+);
 /** See roles and their permissions (admin panel). */
 export const PLATFORM_ROLE_VIEW = platform('identity.platform-role.view', false);
 /** The role editor of the admin panel (decision 8b). */
@@ -92,6 +100,7 @@ export const IDENTITY_PERMISSIONS = declarePermissions('identity', [
   ADMIN_ACCOUNT_INVITE,
   ADMIN_ACCOUNT_DISABLE,
   ADMIN_ACCOUNT_RESET_SECOND_FACTOR,
+  AGENT_ACCOUNT_RESET_SECOND_FACTOR,
   PLATFORM_ROLE_VIEW,
   PLATFORM_ROLE_CREATE,
   PLATFORM_ROLE_EDIT,

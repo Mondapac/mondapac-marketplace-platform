@@ -90,7 +90,7 @@ export class RevokeAdminInvitation extends UseCase<
         if (invitation === null || invitation.state.kind !== 'admin') {
           return err({ code: 'invitation.unknown' });
         }
-        const roleId = invitation.state.roleId;
+        const roleId = invitation.roleId;
         if (!invitation.revoke(this.deps.clock.now()).ok) {
           return err({ code: 'invitation.rejected' });
         }

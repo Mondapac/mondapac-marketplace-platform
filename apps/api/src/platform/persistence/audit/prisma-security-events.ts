@@ -34,7 +34,7 @@ export interface SecurityEventRow {
   readonly occurredAt: Date;
   readonly type: string;
   readonly severity: SecuritySeverity;
-  readonly actorType: 'USER' | 'SYSTEM' | 'ANONYMOUS';
+  readonly actorType: 'USER' | 'SYSTEM' | 'ANONYMOUS' | 'AGENT';
   readonly actorId: string | null;
   readonly targetType: string | null;
   readonly targetId: string | null;
@@ -49,7 +49,10 @@ export function securityActorColumns(
 ): Pick<SecurityEventRow, 'actorType' | 'actorId'> {
   switch (actor.kind) {
     case 'authenticated':
-      return { actorType: 'USER', actorId: actor.accountId };
+      return {
+        actorType: actor.population === 'agent' ? 'AGENT' : 'USER',
+        actorId: actor.accountId,
+      };
     case 'system':
       return { actorType: 'SYSTEM', actorId: null };
     case 'anonymous':
@@ -178,7 +181,7 @@ export interface ProjectedAuditRow {
   readonly marketId: string;
   readonly tenantId: string;
   readonly occurredAt: Date;
-  readonly actorType: 'USER' | 'SYSTEM' | 'ANONYMOUS';
+  readonly actorType: 'USER' | 'SYSTEM' | 'ANONYMOUS' | 'AGENT';
   readonly actorId: string | null;
   readonly action: string;
   readonly targetType: string;

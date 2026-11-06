@@ -52,6 +52,19 @@ function routeKeyOf(controller: object, handler: object): string | null {
   return `${method === undefined ? '?' : RequestMethod[method]} ${path}`;
 }
 
+/** The access rule kind of each use case a controller injects (read from its constructor types). */
+function accessRulesOf(controller: object): { useCase: string; kind: string }[] {
+  const types = (Reflect.getMetadata('design:paramtypes', controller) ?? []) as unknown[];
+  const found: { useCase: string; kind: string }[] = [];
+  for (const type of types) {
+    const access = (type as { access?: { rule?: { kind?: unknown } } } | undefined)?.access;
+    if (typeof type === 'function' && typeof access?.rule?.kind === 'string') {
+      found.push({ useCase: type.name, kind: access.rule.kind });
+    }
+  }
+  return found;
+}
+
 /**
  * Every problem with the route populations of the given controllers (identity design 6.4; Ali's
  * ruling and Hassan's review of 2026-10-08), in a stable order. Empty when all hold:
@@ -111,6 +124,18 @@ export function routePopulationProblems(controllers: readonly ControllerClass[])
       problems.push(`${name} uses @ReadsSession without a @RoutePopulation on the class`);
     } else if (!exempt && population === undefined) {
       problems.push(`${name} is market-scoped and has no @RoutePopulation on the class`);
+    }
+    // ADR-0045 decision 6: an agent route's use cases are anonymous or `agent-self`, never a
+    // permission rule (an agent holds none), and `agent-self` belongs to agent routes only.
+    for (const { useCase, kind } of accessRulesOf(controller)) {
+      if (population === 'agent' && kind !== 'anonymous' && kind !== 'agent-self') {
+        problems.push(
+          `${name} is an agent controller but ${useCase} declares the ${kind} rule; an agent route uses anonymous or agent-self`,
+        );
+      }
+      if (population !== 'agent' && kind === 'agent-self') {
+        problems.push(`${name} injects ${useCase}, whose agent-self rule is for agent routes only`);
+      }
     }
     if (exempt) {
       for (const { key, handler } of methods) {

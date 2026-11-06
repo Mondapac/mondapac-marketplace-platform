@@ -83,6 +83,7 @@ function adminConfigOf(code: string) {
     challengeLifetimeSeconds: identity.challenges!.lifetimeSeconds,
     invitationMinutes: {
       admin: identity.invitations!.lifetimeMinutes.admin!,
+      agent: identity.invitations!.lifetimeMinutes.agent!,
       'seller-owner': identity.invitations!.lifetimeMinutes['seller-owner']!,
       staff: identity.invitations!.lifetimeMinutes.staff!,
     },
@@ -780,6 +781,7 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
         Object.fromEntries(Object.entries(cutOffs ?? {}).map(([k, v]) => [k, v.toString()])),
       ).toEqual({
         admin: START.subtract({ minutes: fixture.invitationMinutes.admin }).toString(),
+        agent: START.subtract({ minutes: fixture.invitationMinutes.agent }).toString(),
         'seller-owner': START.subtract({
           minutes: fixture.invitationMinutes['seller-owner'],
         }).toString(),
@@ -1034,7 +1036,7 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
       const token = await invited(code);
       const ready = await acceptAt(token, asIssued);
       const invitation = [...fakes.invitations.values()].at(-1)!;
-      const role = fakes.roles.get(invitation.roleId)!;
+      const role = fakes.roles.get(invitation.roleId!)!;
 
       // The role read in this Market's context is not found when it belongs to another Market.
       fakes.roles.set(role.id, { ...role, marketId: other as typeof role.marketId });

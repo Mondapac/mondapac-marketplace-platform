@@ -112,6 +112,7 @@ describe('the audit key list', () => {
       .sort();
 
     expect(locked).toEqual([
+      'identity.agent-account.reset-second-factor',
       'identity.second-factor.manage',
       'identity.team.change-role',
       'payments.payout-account.change',
@@ -124,6 +125,7 @@ describe('the audit key list', () => {
     );
 
     expect(admin.map((a) => a.key)).toEqual([
+      'identity.agent-account.reset-second-factor',
       'wallet.credit.approve',
       'wallet.credit.issue',
       'wallet.settings.change',

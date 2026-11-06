@@ -32,6 +32,8 @@ const PENDING_KEYS: ReadonlySet<string> = new Set([
   'invitations_market_id_email_pending_platform_key',
   'invitations_market_id_seller_id_owner_pending_key',
   'invitations_market_id_email_seller_owner_pending_key',
+  'invitations_market_id_email_agent_pending_key',
+  'invitations_market_id_agent_account_id_pending_key',
 ]);
 
 const SELECTED = {
@@ -51,6 +53,9 @@ const SELECTED = {
   acceptedAccountId: true,
   version: true,
   createdAt: true,
+  handoverCodeHmac: true,
+  handoverFailedAttempts: true,
+  agentAccountId: true,
 } as const;
 
 interface SelectedRow {
@@ -60,7 +65,7 @@ interface SelectedRow {
   readonly email: string | null;
   readonly emailNormalized: string | null;
   readonly displayName: string | null;
-  readonly roleId: string;
+  readonly roleId: string | null;
   readonly sellerId: string | null;
   readonly invitedByAccountId: string | null;
   readonly tokenHash: Uint8Array | null;
@@ -70,6 +75,9 @@ interface SelectedRow {
   readonly acceptedAccountId: string | null;
   readonly version: number;
   readonly createdAt: Date;
+  readonly handoverCodeHmac: Uint8Array | null;
+  readonly handoverFailedAttempts: number | null;
+  readonly agentAccountId: string | null;
 }
 
 /**
@@ -107,17 +115,75 @@ export class PrismaInvitationRepository implements InvitationRepository {
     return restore(row);
   }
 
+  async lockForAttempt(market: MarketContext, id: Id<'Invitation'>): Promise<boolean> {
+    // An UPDATE that changes no value takes the row's write lock until the unit ends (as
+    // `AccountRepository.lockCredential`); a concurrent holder makes this statement wait.
+    const { count } = await this.prisma.tx(market).identityInvitation.updateMany({
+      where: { marketId: market.marketId, id },
+      data: { version: { increment: 0 } },
+    });
+    return count === 1;
+  }
+
   async findPendingFor(
     market: MarketContext,
     sellerId: Id<'Seller'> | null,
     emailNormalized: string,
   ): Promise<Invitation | null> {
-    // On the partial unique keys of data design 8.4 (pending, by scope and address).
+    // On the partial unique keys of data design 8.4 (pending, by scope and address). The platform
+    // scope is the admin's: an agent invitation has an index of its own (ADR-0045).
     const row = await this.prisma.tx(market).identityInvitation.findFirst({
-      where: { marketId: market.marketId, sellerId, emailNormalized, state: 'pending' },
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        emailNormalized,
+        state: 'pending',
+        kind: { not: 'agent' },
+      },
       select: SELECTED,
     });
     return row === null ? null : restore(row);
+  }
+
+  async findPendingAgentFor(
+    market: MarketContext,
+    emailNormalized: string,
+  ): Promise<Invitation | null> {
+    // The predicate of the partial unique key `invitations_market_id_email_agent_pending_key`.
+    const row = await this.prisma.tx(market).identityInvitation.findFirst({
+      where: { marketId: market.marketId, emailNormalized, kind: 'agent', state: 'pending' },
+      select: SELECTED,
+    });
+    return row === null ? null : restore(row);
+  }
+
+  async findPendingAgentByAccountId(
+    market: MarketContext,
+    agentAccountId: Id<'Account'>,
+  ): Promise<Invitation | null> {
+    // `invitations_market_id_agent_account_id_idx`.
+    const row = await this.prisma.tx(market).identityInvitation.findFirst({
+      where: { marketId: market.marketId, agentAccountId, kind: 'agent', state: 'pending' },
+      select: SELECTED,
+    });
+    return row === null ? null : restore(row);
+  }
+
+  async agentAccountIdsWithPendingInvitation(
+    market: MarketContext,
+    agentAccountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlySet<Id<'Account'>>> {
+    if (agentAccountIds.length === 0) return new Set();
+    const rows = await this.prisma.tx(market).identityInvitation.findMany({
+      where: {
+        marketId: market.marketId,
+        kind: 'agent',
+        state: 'pending',
+        agentAccountId: { in: [...agentAccountIds] },
+      },
+      select: { agentAccountId: true },
+    });
+    return new Set(rows.map((row) => row.agentAccountId as Id<'Account'>));
   }
 
   async findPendingOwnerInvitation(
@@ -241,6 +307,7 @@ export class PrismaInvitationRepository implements InvitationRepository {
           tenantId: market.tenantId,
           kind: state.kind,
           roleId: state.roleId,
+          agentAccountId: state.agentAccountId,
           sellerId: state.sellerId,
           invitedByAccountId: state.invitedByAccountId,
           createdAt: toDate(state.createdAt),
@@ -308,6 +375,9 @@ function columns(state: InvitationState) {
     state: state.state,
     decidedAt: toOptionalDate(state.decidedAt),
     acceptedAccountId: state.acceptedAccountId,
+    handoverCodeHmac:
+      state.handoverCodeHmac === null ? null : Uint8Array.from(state.handoverCodeHmac),
+    handoverFailedAttempts: state.handoverFailedAttempts,
     version: state.version,
   };
 }
@@ -331,7 +401,7 @@ function restore(row: SelectedRow): Invitation {
         ? null
         : { typed: row.email, normalized: row.emailNormalized },
     displayName: row.displayName,
-    roleId: row.roleId as Id<'Role'>,
+    roleId: row.roleId as Id<'Role'> | null,
     sellerId: row.sellerId as Id<'Seller'> | null,
     invitedByAccountId: row.invitedByAccountId as Id<'Account'> | null,
     tokenHash: row.tokenHash === null ? null : Uint8Array.from(row.tokenHash),
@@ -341,5 +411,8 @@ function restore(row: SelectedRow): Invitation {
     acceptedAccountId: row.acceptedAccountId as Id<'Account'> | null,
     createdAt: toInstant(row.createdAt),
     version: row.version,
+    handoverCodeHmac: row.handoverCodeHmac === null ? null : Uint8Array.from(row.handoverCodeHmac),
+    handoverFailedAttempts: row.handoverFailedAttempts,
+    agentAccountId: row.agentAccountId as Id<'Account'> | null,
   });
 }

@@ -30,6 +30,7 @@ describe('scripts/dev-panels-market.mjs', () => {
     expect(market.allowedOrigins).toEqual({
       admin: ['http://admin.localhost:3002'],
       seller: ['http://seller.localhost:3001'],
+      agent: ['http://agent.localhost:3004'],
       // Without STOREFRONT_ORIGIN the committed storefront list stays.
       customer: ['https://storefront.au.mondapac.test'],
     });
@@ -86,11 +87,13 @@ describe('scripts/dev-panels-market.mjs', () => {
     const out = generate({
       SELLER_PANEL_ORIGIN: 'http://127.0.0.1:4001',
       ADMIN_PANEL_ORIGIN: 'http://admin.localhost:4002',
+      AGENT_PANEL_ORIGIN: 'http://agent.localhost:4004',
     });
 
     expect(loadMarketConfigs([out], [AU]).get(AU)!.allowedOrigins).toMatchObject({
       admin: ['http://admin.localhost:4002'],
       seller: ['http://127.0.0.1:4001'],
+      agent: ['http://agent.localhost:4004'],
     });
   });
 });

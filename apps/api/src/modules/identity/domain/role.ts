@@ -146,6 +146,7 @@ export function scopeOfPopulation(population: Population): RoleScope | null {
     case 'admin':
       return 'platform';
     case 'customer':
+    case 'agent':
       return null;
   }
 }

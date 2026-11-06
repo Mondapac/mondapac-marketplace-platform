@@ -1,6 +1,12 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { AgentAccessOf } from '../application/use-cases/agent-access-of.use-case';
+import type { DisableAgentAccount } from '../application/use-cases/disable-agent-account.use-case';
+import type { EnableAgentAccount } from '../application/use-cases/enable-agent-account.use-case';
+import type { IssueAgentInvitation } from '../application/use-cases/issue-agent-invitation.use-case';
+import type { ReissueAgentInvitation } from '../application/use-cases/reissue-agent-invitation.use-case';
+import type { RevokeAgentInvitation } from '../application/use-cases/revoke-agent-invitation.use-case';
 import type { ConfirmSellerSecondFactor } from '../application/use-cases/confirm-seller-second-factor.use-case';
 import type { ContactEmailOf } from '../application/use-cases/contact-email-of.use-case';
 import type { OwnOwnerEmail } from '../application/use-cases/own-owner-email.use-case';
@@ -19,6 +25,13 @@ import type { MembershipOf } from '../application/use-cases/membership-of.use-ca
 import type { ChangeActorLabels } from '../application/use-cases/change-actor-labels.use-case';
 import type { TeamMemberLabels } from '../application/use-cases/team-member-labels.use-case';
 import type { TeamMembershipOf } from '../application/use-cases/team-membership-of.use-case';
+import type {
+  AgentAccess,
+  AgentAccountStatusChanged,
+  AgentAccountStatusFailure,
+  AgentInvitationFailure,
+  AgentInvitationIssued,
+} from '../contracts/agent-access';
 import type {
   ActorDescription,
   ConfirmSecondFactorFailure,
@@ -56,6 +69,12 @@ export interface IdentityFacadeUseCases {
   readonly customerAccountExists: CustomerAccountExists;
   readonly ownAccountTiedToSeller: OwnAccountTiedToSeller;
   readonly eraseCustomerAccount: EraseCustomerAccount;
+  readonly issueAgentInvitation: IssueAgentInvitation;
+  readonly revokeAgentInvitation: RevokeAgentInvitation;
+  readonly reissueAgentInvitation: ReissueAgentInvitation;
+  readonly disableAgentAccount: DisableAgentAccount;
+  readonly enableAgentAccount: EnableAgentAccount;
+  readonly agentAccessOf: AgentAccessOf;
 }
 
 /**
@@ -110,6 +129,66 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     target: ContactEmailTarget,
   ): Promise<Result<string | null, AccessDenied>> {
     return this.useCases.contactEmailOf.execute(context, target);
+  }
+
+  async issueAgentInvitation(
+    context: CallContext,
+    input: { readonly email: string; readonly displayName: string },
+  ): Promise<Result<AgentInvitationIssued, AgentInvitationFailure>> {
+    const result = await this.useCases.issueAgentInvitation.execute(context, input);
+    if (!result.ok) return err(result.error);
+    const { accountId, invitationId, handoverCode } = result.value;
+    return ok({ accountId, invitationId, handoverCode });
+  }
+
+  async revokeAgentInvitation(
+    context: CallContext,
+    invitationId: Id<'Invitation'>,
+  ): Promise<Result<void, AgentInvitationFailure>> {
+    const result = await this.useCases.revokeAgentInvitation.execute(context, { invitationId });
+    return result.ok ? ok(undefined) : err(result.error);
+  }
+
+  async reissueAgentInvitation(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<AgentInvitationIssued, AgentInvitationFailure>> {
+    const result = await this.useCases.reissueAgentInvitation.execute(context, { accountId });
+    if (!result.ok) return err(result.error);
+    const { invitationId, handoverCode } = result.value;
+    return ok({ accountId: result.value.accountId, invitationId, handoverCode });
+  }
+
+  async disableAgentAccount(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<AgentAccountStatusChanged, AgentAccountStatusFailure>> {
+    const result = await this.useCases.disableAgentAccount.execute(context, { accountId });
+    if (!result.ok) return err(result.error);
+    const { revokedSessions, voidedInvitations } = result.value;
+    return ok({ accountId: result.value.accountId, revokedSessions, voidedInvitations });
+  }
+
+  async enableAgentAccount(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<AgentAccountStatusChanged, AgentAccountStatusFailure>> {
+    const result = await this.useCases.enableAgentAccount.execute(context, { accountId });
+    if (!result.ok) return err(result.error);
+    const { revokedSessions, voidedInvitations } = result.value;
+    return ok({ accountId: result.value.accountId, revokedSessions, voidedInvitations });
+  }
+
+  agentAccessOf(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Account'>, AgentAccess>,
+      AccessDenied | { readonly code: 'validation.failed' }
+    >
+  > {
+    return this.useCases.agentAccessOf.execute(context, { accountIds });
   }
 
   ownOwnerEmail(context: CallContext): Promise<Result<string | null, AccessDenied>> {
