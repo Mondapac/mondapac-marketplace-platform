@@ -19,6 +19,8 @@ export interface AttributeDefinitionRecord {
   readonly createdAt: Temporal.Instant;
   /** The definition's version, which a later edit names (package A2). */
   readonly version: number;
+  /** The attribute this one was merged into (attributes A8), set only on an archived one. */
+  readonly mergedInto?: { readonly id: Id<'AttributeDefinition'>; readonly code: string } | null;
   readonly revision: AttributeRevisionRecord;
 }
 

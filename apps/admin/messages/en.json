@@ -4913,6 +4913,7 @@
       "publish": "Publish",
       "discard": "Discard draft",
       "draft-note": "Draft: sellers and buyers do not see this attribute until it is published.",
+      "merged-into-note": "Merged into {code}. Products keep their values, and product pages show the other attribute. Filters and search do not read the merge yet.",
       "saved": "Attribute saved.",
       "published": "Attribute published.",
       "discarded": "Draft discarded.",

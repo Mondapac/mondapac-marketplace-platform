@@ -123,6 +123,8 @@ export interface AttributeDetail extends AttributeSummary {
   readonly createdByKind: 'seed' | 'admin';
   readonly createdAt: string;
   readonly version: number;
+  /** The attribute this one was merged into (attributes A8); set only on an archived one. */
+  readonly mergedInto?: { readonly id: string; readonly code: string } | null;
   readonly bounds: { readonly maxLength?: number; readonly min?: number; readonly max?: number };
   readonly display: AttributeDisplay;
   readonly options: readonly AttributeOption[];
