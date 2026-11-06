@@ -125,3 +125,59 @@ describe('routePopulationProblems', () => {
     ).toHaveLength(2);
   });
 });
+
+// ADR-0045 decision 6: an agent route never declares a permission rule.
+class PermissionUseCase {
+  static readonly access = { name: 'x.permission', rule: { kind: 'permissions', allOf: ['a.b'] } };
+}
+class AgentSelfUseCase {
+  static readonly access = { name: 'x.agent-self', rule: { kind: 'agent-self' } };
+}
+class AnonymousUseCase {
+  static readonly access = { name: 'x.anonymous', rule: { kind: 'anonymous' } };
+}
+
+@RoutePopulation('agent')
+@Controller('agent-good')
+class AgentGoodController {
+  constructor(
+    readonly a: AgentSelfUseCase,
+    readonly b: AnonymousUseCase,
+  ) {}
+  @Post()
+  write(): void {}
+}
+
+@RoutePopulation('agent')
+@Controller('agent-bad')
+class AgentBadController {
+  constructor(readonly a: PermissionUseCase) {}
+  @Post()
+  write(): void {}
+}
+
+@RoutePopulation('admin')
+@Controller('admin-with-agent-rule')
+class AdminAgentSelfController {
+  constructor(readonly a: AgentSelfUseCase) {}
+  @Post()
+  write(): void {}
+}
+
+describe('agent routes and access rules (ADR-0045 decision 6)', () => {
+  it('accepts an agent controller whose use cases are anonymous or agent-self', () => {
+    expect(routePopulationProblems([AgentGoodController])).toEqual([]);
+  });
+
+  it('refuses an agent controller that injects a permission-rule use case', () => {
+    expect(routePopulationProblems([AgentBadController])).toEqual([
+      'AgentBadController is an agent controller but PermissionUseCase declares the permissions rule; an agent route uses anonymous or agent-self',
+    ]);
+  });
+
+  it('refuses an agent-self use case on a route of another population', () => {
+    expect(routePopulationProblems([AdminAgentSelfController])).toEqual([
+      'AdminAgentSelfController injects AgentSelfUseCase, whose agent-self rule is for agent routes only',
+    ]);
+  });
+});
