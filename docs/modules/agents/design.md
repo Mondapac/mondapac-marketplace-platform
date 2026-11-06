@@ -48,7 +48,7 @@ Every record carries `market_id` and `tenant_id`. Instants are stored in UTC. Mo
 **Issue** (root): `issueId`, `agentId`, `sellerId`, `title`, `description`, `severity` (`low` | `medium` | `high`), `status`, `closeReason` (`confirmed` | `withdrawn` | null), `raisedBy`, `commentCount`, `version`, timestamps.
 
 - When raised, the seller must be linked to that agent at that moment.
-- The issue stays visible to its agent after an unlink, because ownership is `issue.agentId`.
+- The issue stays visible to its agent after an unlink or move, because ownership is `issue.agentId`, but it becomes read-only for that agent (no comment, no mark fixed). Issue lists filtered by shop are always scoped to the caller's own `agentId`.
 
 **IssueComment** (child of Issue, append-only): `commentId`, `issueId`, `seq`, `authorType` (`admin` | `agent`), `authorAccountId`, `body` (plain text; length limit from config), `createdAt`.
 
@@ -90,7 +90,9 @@ Comments in other states do not change the status. Every comment and every trans
 
 **Refund flow.** `ordering.refund-succeeded.v1 {orderId, sellerOrderId, refundId}` arrives through the inbox.
 
-- If there is no AgentEarning for the seller order, or the `refundId` is in `nettedRefundIds`, ack with no row. A refund that happens before delivery is already netted in step 2.
+- If the `refundId` is in `nettedRefundIds`, ack with no row (a refund before delivery is already netted in step 2).
+- If there is no AgentEarning and a link existed at `placedAt`, throw so the inbox retries (bounded, as in step 7). Ack with no row only when no earning will ever be written (no link at `placedAt`, or the seller order will never be delivered).
+- For commission-share, every id in ordering's `includedRefundIds` must appear in commission's `includedRefundIds` or be reported as `nothing-to-post`; otherwise treat it as `not-recorded-yet` and retry (security-tester G2, High).
 - Otherwise read `refundedBasis`:
   - `net-sales` and `gross`: `ordering.refundEarningFacts(system, refundId)`, which returns `goodsNetExTax` and `goodsGrossIncTax` refunded.
   - `commission-share`: `commissionPayouts.refundCommission(system, refundId)`, which returns the reversed commission excluding GST; `not-recorded-yet` means retry.
@@ -115,7 +117,7 @@ Event name: the code publishes `ordering.refund-succeeded.v1`. That is the name 
 | identity           | `sellerAccessOf` (shop status for the agent portal)                                                                            | EXISTS (check the system rule)                                                                             |
 | ordering           | `sellerOrderEarningFacts(ctx, sellerOrderId)`, rule `system`                                                                   | MISSING (ordering)                                                                                         |
 | ordering           | `refundEarningFacts(ctx, refundId)`, rule `system`                                                                             | MISSING (ordering)                                                                                         |
-| ordering           | `sellerMonthlySales(ctx, sellerIds <= 500, windows <= 12)` takes `[from, to)` UTC instants that agents computes in the agent's own time zone (ADR-0005), not month labels; returns net sales and order count, counters only (ADR-0045 d10)     | MISSING (ordering)                                                                                         |
+| ordering           | `sellerMonthlySales(ctx, [{sellerId, windows[]}] <= 500 sellers, <= 12 windows each)` takes `[from, to)` UTC instants per seller, which agents intersects with that seller's link intervals and that agents computes in the agent's own time zone (ADR-0005), not month labels; returns net sales and order count, counters only (ADR-0045 d10)     | MISSING (ordering)                                                                                         |
 | commission-payouts | `sellerOrderCommission(ctx, sellerOrderId)`, `refundCommission(ctx, refundId)`, rule `system`                                  | MISSING (commission-payouts); the current facade is only what ordering calls                                |
 | commission-payouts | `eligibilityAnchorOf(ctx, sellerOrderId)`, rule `system`                                                                       | MISSING (commission-payouts)                                                                               |
 | notifications      | subscribers for `agents.issue-*` events; an `agent` recipient kind for in-app notices; an agent notices route                  | MISSING (notifications); today only seller and admin notices exist                                         |
@@ -142,7 +144,8 @@ Payloads hold ids only. Market and tenant travel in the envelope.
   - `ordering.refund-succeeded.v1 {orderId, sellerOrderId, refundId}`
 - **LinkByReferralOnApproval**:
   - Read `referralCodeEnteredOf`.
-  - If the code matches an agent of the same Market and the seller has no link history at all, open a link with `validFrom` = the envelope's `occurredAt` and `source = referral-code`.
+  - Match only an active code (`voided_at IS NULL`) of an agent that `agentAccessOf` reports `active`; otherwise write an UnmatchedReferral.
+  - If the code matches such an agent of the same Market and the seller has no link history at all, open a link with `validFrom` = the envelope's `occurredAt` and `source = referral-code`.
   - If the code does not match, write an UnmatchedReferral.
   - A seller that already has history is left alone, so a re-approval never relinks.
 
@@ -151,25 +154,26 @@ Payloads hold ids only. Market and tenant travel in the envelope.
 Every use case takes ActorContext and MarketContext (ADR-0018). Every write by an admin goes to the Audit Log in the same unit of work.
 
 - **`agents.manage`**:
-  - CreateAgent (profile, referral code, first rate, identity invitation)
-  - ReissueInvitation, RevokeInvitation
-  - DisableAgent: end all active links (`agent-disabled`), then `identity.disableAgentAccount`; idempotent, retry-safe
-  - EnableAgent
+  - CreateAgent (profile, referral code, first rate, identity invitation) (step-up)
+  - ReissueInvitation (step-up), RevokeInvitation
+  - DisableAgent (step-up): end all active links (`agent-disabled`), then `identity.disableAgentAccount`; idempotent, retry-safe
+  - EnableAgent (step-up)
   - SetAgentRate (step-up)
-  - RegenerateReferralCode
+  - RegenerateReferralCode (step-up)
   - LinkShop, UnlinkShop, MoveShop (reason required; step-up)
-  - ResolveUnmatchedReferral
+  - ResolveUnmatchedReferral (step-up when it links a shop)
   - RaiseIssue, AdminCommentOnIssue, CloseIssue, ReopenIssue
 - **`agents.read`**: ListAgents, GetAgent (with live access state), GetAgentEarnings (per seller and month, in the agent's zone), ListShopLinkHistory, ListUnmatchedReferrals, ListIssues, GetIssue, PollIssueComments.
 - **`identity.agent-account.reset-second-factor`**: ResetAgentSecondFactor. This lives in identity, with step-up and `canActOn`, and opens no session.
 - **`agent-self`** (an active agent; resource `agentId` = the session's agent, else `not-found`):
-  - GetMyProfile (referral code), UpdateMyProfile (time zone, tax id via the Market validator)
+  - GetMyProfile (referral code), UpdateMyProfile (time zone, tax id via the Market validator; a tax id change is audited with the agent as actor)
   - MyDashboard, MyShops (name, status, monthly totals clipped to the agent's own link intervals), MyEarnings
   - ListMyIssues, GetMyIssue, CommentOnMyIssue, MarkIssueResolved, PollIssueComments
 - **system**: LinkByReferralOnApproval, RecordEarningOnDelivery, ReverseEarningOnRefund, `AgentsFacade.issueNotice`.
 - **`agents.linked-agent.view`** (seller scope, not protected; identity's seed maps it to Seller Owner and Store Manager): the seller panel's `linkedAgentNameOf` (Q13).
 - **Policy point:** `agent-self` use cases call the `sellers` and `ordering` read facades as `system` with only the agent's linked `sellerIds` (see section 3).
-- **Live updates**: the panel servers poll `PollIssueComments(after=cursor)`, with rate limits in each BFF.
+- **Live updates**: the panel servers poll `PollIssueComments(after=seq)`. Server-side per-actor rate limits apply to PollIssueComments, CommentOnMyIssue and AdminCommentOnIssue (Market config), not only in the BFF.
+- **Comment bodies** are stored and rendered as plain text: no HTML, no markdown, no auto-linking.
 
 ## 6. Where each brief section 5 hard rule is enforced
 
@@ -223,3 +227,8 @@ Every use case takes ActorContext and MarketContext (ADR-0018). Every write by a
 - **D4, which month a reversal counts in:** **owner decision 2026-11-06: the refund's month.** A reversal is reported in the month of its own `recordedAt`, in the agent's time zone; past months never change. The dashboard and the AGT-10 statement sum earnings by `placedAt` month and reversals by their own month.
 - **`issue_status_changes`:** accepted as part of the Issue aggregate (history of every transition with actor and reason).
 
+
+## 9. G2 reviews
+
+- 2026-11-06, Ali (cto): open questions 3 to 8 decided; final review wording fixes applied.
+- 2026-11-06, Hassan (security-tester): one High (refund lost on the commission-share basis when it arrives before the earning) and five Medium, three Low findings; all applied in sections 1, 2, 3, 4 and 5 and in `ux.md` section 1 and 4. Re-review pending.

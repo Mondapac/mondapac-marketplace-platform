@@ -21,10 +21,10 @@ components are built in code first and listed in section 9 for Figma back-port. 
 
 ## 1. Agent set-up (AGT-01)
 
-Route: `/setup?token=...` (email link). Layout: `AuthLayout`, single card, 3 steps shown as a text progress line "Step 1 of 3" (a real sequence).
+Route: the email link `/setup?token=...` is exchanged on first load for an httpOnly, `SameSite=Strict` set-up cookie, the token is stripped from the URL (redirect to `/setup`), and the page sends `Referrer-Policy: no-referrer`. An unknown, used or expired token shows the same expired banner as below (no difference an attacker can see). Layout: `AuthLayout`, single card, 3 steps shown as a text progress line "Step 1 of 3" (a real sequence).
 1. **Verify**: `TextField` "Email" (read-only, from link), `OtpField`-style code input "Handover code" (8 characters, from the admin). Primary `Button` "Continue".
 2. **Password**: `TextField` "New password" + "Confirm password", rule list under the field (Market policy text from server). Primary "Set password".
-3. **Authenticator**: QR image (`ImageSlot`), manual key with "Copy key" `FieldAction`, `OtpField` 6 digits "Code from your app". Primary "Finish set-up". Success: redirect to the dashboard, toast "Account ready".
+3. **Authenticator**: QR image (`ImageSlot`), manual key with "Copy key" `FieldAction`, `OtpField` 6 digits "Code from your app". Primary "Finish set-up". The three steps are collected in the page; the server checks the handover code, password and authenticator code together in one request on "Finish set-up" (one acceptance step, ADR-0045 d2). A wrong handover code returns to step 1 with the tries left. Success opens no session: redirect to sign-in with success `Banner` "Your account is ready. Sign in." Sign-in is refused until set-up is complete.
 
 States:
 - Loading: submit button shows busy state, fields disabled. Step 3 QR: skeleton until loaded.
@@ -63,6 +63,7 @@ Thread layout: `BackLink` "Issues"; header (title, shop, severity, status, raise
 - Polling update: BFF poll every 15s by default (Market config; BFF rate-limited) while the tab is visible (paused when hidden, resume on focus). New comments append, a `role="status"` line says "New comment from MondaPac"; the scroll position is kept and a "New comments" `FieldAction` jumps down if the user is not at the bottom. A status change updates the badge and shows a toast. Poll failure: after 3 misses a quiet attention `Banner` "Live updates paused. Retrying." with no data loss.
 - Conflict (version changed): `SettingsConflictBanner` pattern text "This issue changed. Reload to see the latest." with "Reload"; the typed comment is kept.
 - Errors: send failure keeps the text, `FieldStatus` error "Could not send. Try again." Not found / other agent's issue: not-found page. Empty list: `EmptyState` "No issues", body "Nothing needs your attention."
+- Composer: plain text only (no formatting, no auto-linked URLs); hint under the field: "Don't include customers' names, addresses or phone numbers." After an unlink or move, the old agent sees the thread read-only with info `Banner` "This shop is no longer linked to you."
 - Responsive: composer sticky at the bottom at 375 (above the keyboard); thread max width 720px at 768/1280.
 
 ## 5. Admin: agents list and create (AGT-07)
