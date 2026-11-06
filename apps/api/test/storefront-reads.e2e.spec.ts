@@ -2,14 +2,16 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import request from 'supertest';
-import { CategoryTreeQuery } from '../src/modules/catalog/application/use-cases/category-tree.use-case';
+import { CategorySlugResolveQuery } from '../src/modules/catalog/application/use-cases/category-slug-resolve.use-case';
+import { PublicCategoryTreeQuery } from '../src/modules/catalog/application/use-cases/public-category-tree.use-case';
 import { ListBestsellers } from '../src/modules/search/application/use-cases/list-bestsellers.use-case';
 import { ViewProductDetail } from '../src/modules/search/application/use-cases/view-product-detail.use-case';
 import { ListSpecials } from '../src/modules/search/application/use-cases/list-specials.use-case';
 import { createTestApp } from './support/test-app';
 import { TEST_MARKETS } from './support/test-config';
 
-// The storefront read routes over HTTP (storefront reads package): GET /catalog/categories,
+// The storefront read routes over HTTP (storefront reads package): GET /catalog/categories and
+// GET /catalog/categories/resolve (categories C6a),
 // GET /search/bestsellers, GET /search/specials and GET /search/product-detail/:productId with the real guards, rate limiter and
 // controllers; the use cases are stubs. This proves anonymous access (no session, no CSRF), the
 // request Market, the strict query string, the answer shapes (Money as a string amount and its
@@ -46,6 +48,21 @@ const BADGE = {
   verifiedWithIssuer: true,
 };
 const ENDS = '2026-10-20T00:00:00Z';
+const MEAT = {
+  id: CATEGORY,
+  parentId: null,
+  slug: 'meat',
+  name: 'Meat',
+  depth: 0,
+  position: 0,
+  shortDescription: 'Fresh cuts',
+  imageUrl: null,
+  seo: { title: 'Halal meat', description: null, noindex: false },
+  showInMenu: true,
+  hasLiveProducts: true,
+  liveProductCount: 4,
+  inMenu: true,
+};
 const PRODUCT = ITEM.productId;
 
 type Call = { route: string; actor: string; market: string; input: unknown };
@@ -71,12 +88,8 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
 
   beforeEach(async () => {
     calls = [];
-    next.tree = ok({
-      locale: 'en-AU',
-      categories: [
-        { id: CATEGORY, parentId: null, slug: 'meat', name: 'Meat', depth: 0, position: 0 },
-      ],
-    });
+    next.tree = ok({ locale: 'en-AU', defaultLocale: 'en-AU', categories: [MEAT] });
+    next.resolve = ok({ kind: 'category', id: CATEGORY, slug: 'meat' });
     next.bestsellers = ok({ items: [ITEM] });
     next.specials = ok({
       items: [
@@ -138,8 +151,10 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
     ({ app } = await createTestApp({
       override: (builder) =>
         builder
-          .overrideProvider(CategoryTreeQuery)
+          .overrideProvider(PublicCategoryTreeQuery)
           .useValue(stub('tree'))
+          .overrideProvider(CategorySlugResolveQuery)
+          .useValue(stub('resolve'))
           .overrideProvider(ListBestsellers)
           .useValue(stub('bestsellers'))
           .overrideProvider(ListSpecials)
@@ -160,13 +175,62 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
     expect(response.status).toBe(200);
     expect(response.headers['cache-control']).toBe('no-store');
     expect(response.headers['set-cookie']).toBeUndefined();
-    expect(response.body).toEqual({
-      locale: 'en-AU',
-      categories: [
-        { id: CATEGORY, parentId: null, slug: 'meat', name: 'Meat', depth: 0, position: 0 },
-      ],
-    });
+    expect(response.body).toEqual({ locale: 'en-AU', defaultLocale: 'en-AU', categories: [MEAT] });
     expect(calls).toEqual([{ route: 'tree', actor: 'anonymous', market: code, input: {} }]);
+  });
+
+  it('passes the asked locale of the category tree to the use case', async () => {
+    const response = await get('/catalog/categories?locale=fa-IR');
+
+    expect(response.status).toBe(200);
+    expect(calls).toEqual([
+      { route: 'tree', actor: 'anonymous', market: code, input: { locale: 'fa-IR' } },
+    ]);
+  });
+
+  it('resolves a category slug to a visitor with no session, not cacheable', async () => {
+    const live = await get('/catalog/categories/resolve?slug=meat');
+    next.resolve = ok({ kind: 'redirect', slug: 'halal-meat', permanent: true });
+    const moved = await get('/catalog/categories/resolve?slug=old-meat');
+    next.resolve = ok({ kind: 'redirect', slug: 'pantry', permanent: false });
+    const hidden = await get('/catalog/categories/resolve?slug=secret');
+    next.resolve = err({ code: 'catalog.category-not-found' });
+    const missing = await get('/catalog/categories/resolve?slug=nothing');
+    next.resolve = err({ code: 'catalog.categories-unavailable' });
+    const unavailable = await get('/catalog/categories/resolve?slug=meat');
+
+    expect(live.status).toBe(200);
+    expect(live.headers['cache-control']).toBe('no-store');
+    expect(live.body).toEqual({ kind: 'category', id: CATEGORY, slug: 'meat' });
+    expect(moved.body).toEqual({ kind: 'redirect', slug: 'halal-meat', permanent: true });
+    expect(hidden.body).toEqual({ kind: 'redirect', slug: 'pantry', permanent: false });
+    expect(missing.status).toBe(404);
+    expect(missing.body).toEqual({ statusCode: 404, code: 'catalog.category-not-found' });
+    expect(unavailable.status).toBe(503);
+    expect(unavailable.body).toEqual({ statusCode: 503, code: 'catalog.categories-unavailable' });
+    expect(calls.map((call) => [call.route, call.actor, call.market, call.input])).toEqual([
+      ['resolve', 'anonymous', code, { slug: 'meat' }],
+      ['resolve', 'anonymous', code, { slug: 'old-meat' }],
+      ['resolve', 'anonymous', code, { slug: 'secret' }],
+      ['resolve', 'anonymous', code, { slug: 'nothing' }],
+      ['resolve', 'anonymous', code, { slug: 'meat' }],
+    ]);
+  });
+
+  it.each([
+    'a'.repeat(121),
+    '%2F%2Fevil.com',
+    '%5C%5Cevil.com',
+    'https%3A%2F%2Fevil.com',
+    'Meat',
+    'meat%2Flamb',
+  ])('answers 404 for slug=%s without calling the use case or redirecting', async (slug) => {
+    const response = await get(`/catalog/categories/resolve?slug=${slug}`);
+
+    expect(response.status).toBe(404);
+    expect(response.headers.location).toBeUndefined();
+    expect(response.body).toEqual({ statusCode: 404, code: 'catalog.category-not-found' });
+    expect(calls).toEqual([]);
   });
 
   it('answers the best sellers with the strict query string', async () => {
@@ -293,6 +357,11 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
 
   it.each([
     ['/catalog/categories?depth=2', 'depth'],
+    ['/catalog/categories?locale=en-AU&locale=fa-IR', 'locale'],
+    ['/catalog/categories?locale=%3Cscript%3E', 'locale'],
+    ['/catalog/categories/resolve', 'slug'],
+    ['/catalog/categories/resolve?slug=a&slug=b', 'slug'],
+    ['/catalog/categories/resolve?slug=meat&next=%2F%2Fevil.com', 'next'],
     ['/search/bestsellers?sort=price', 'sort'],
     ['/search/bestsellers?limit=six', 'limit'],
     ['/search/bestsellers?limit=-1', 'limit'],

@@ -59,7 +59,7 @@ describe('Products tab of a real store', () => {
     });
     expect(screen.getByRole('tab', { name: 'Products' })).toBeTruthy();
     const link = screen.getByRole('link', { name: 'Lamb shoulder' });
-    expect(link.getAttribute('href')).toBe(`/p/${PRODUCT}`);
+    expect(link.getAttribute('href')).toBe(`/p/lamb-shoulder-${PRODUCT}`);
     const img = document.querySelector('img.photo');
     expect(img?.getAttribute('src')).toBe(
       `https://img.example.com/catalog/public-images/AU/${PRODUCT}/${IMAGE}/medium`,

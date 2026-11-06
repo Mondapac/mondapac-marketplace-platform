@@ -395,6 +395,7 @@ enforces; no work now.
 | `my-tax-registration.record` | same | allow | V2 period; audited; refused in acting-as (6.4) |
 | `my-store-profile.read` | `permissions [sellers.store-profile.view]` | deny | |
 | `my-store-settings.save-minimum-order` | `permissions [sellers.store-settings.edit]` | deny | Sets or clears the minimum order; the request names the expected `StoreProfile` version and a stale save is refused (`conflict.stale`; Hassan L5); refused in acting-as (6.4); audited; applies at once (Q4); no notice (18); slice 20 |
+| `store-profile.history` (`GET /sellers/store-profile/history`) | `permissions [sellers.store-profile.view]` | deny | The changes of the seller's own store profile from the `sellers.store-profile.saved` and `sellers.store-image.changed` audit rows: when, who (a display name for a member of the shop's team; Mondapac staff as `platform` with no name; a former member unnamed) and the field (`about`, `logo`, `banner`), never the text or an image. The seller is `ActorContext.sellerId`. Paged, 1 to 50. `my-store-profile.read` also returns `lastChanged` and a `conflict.stale` save carries the winning save's `lastChanged` (panel settings gap T3b/ST4) |
 | `seller.change-minimum-order` | `permissions [sellers.seller.edit]` | — | Admin edit screen (SEL-23); same checks and expected version; audited with the admin as actor; mails the Seller Owner (10); slice 20 (18) |
 | `my-store-profile.save`, `my-contact.save` | `permissions [sellers.store-profile.edit]` | deny | `my-contact.save` after approval, with the V4 history: slice 10 (14.3 Q-M10) |
 | `sellers.list`, `seller.read` (clear fields) | `permissions [sellers.seller.view]` | — | No decryption (Hassan M4) |
@@ -632,6 +633,20 @@ own read. The column is not a gate: if the health read fails, the failure is log
 `healthUnavailable: true`, so the screen can tell "not measured yet" (`health` null,
 `healthUnavailable` false) from "could not load" (`healthUnavailable` true). The list itself still
 answers.
+
+### 7.9 Recalculate now: the request row (seller health)
+The health counts come from feeds whose rule is `system`, so an admin's click cannot read them.
+The click therefore only enqueues: `sellers.request-seller-health-recalculation` (permission
+`sellers.seller-health.recalculate`, platform scope; `POST /sellers/:sellerId/health/recalculate`,
+202, CSRF header) writes one row to `sellers.seller_health_requests` (id, Market, seller, source
+`admin` or `seller`, requesting account, `requested_at`, status `pending`, `done` or `failed`,
+`finished_at`). A partial unique index allows one pending row per seller, so a second click answers
+`already-queued`; a finished row lets the next click through. The job `sellers.seller-health-requests`
+(every minute) runs `sellers.run-seller-health-requests` as the system actor: for each pending row,
+oldest first, it counts the seller's recent days (the seller's own zone) and replaces the day rows,
+then marks the row `done` (or `failed`, logged). Recounting replaces rows, so overlapping runs are
+safe. The seller's "Refresh now" with a cooldown (HLT-03) will reuse this table with source `seller`.
+The key is given to the onboarding-compliance role (seed version 8).
 
 ## 8. Personal data
 

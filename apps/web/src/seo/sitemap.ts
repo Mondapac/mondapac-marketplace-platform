@@ -1,7 +1,7 @@
 import 'server-only';
 import { headers } from 'next/headers';
 import { apiGet } from '../storefront/api.ts';
-import { MAX_PAGE, categoryIsEmpty } from '../storefront/catalog.ts';
+import { MAX_PAGE } from '../storefront/catalog.ts';
 import { treeOf, type TreeRow } from '../storefront/category-tree.ts';
 import {
   storefrontApiConfig,
@@ -118,48 +118,26 @@ async function treeRows(read: Reader): Promise<TreeRow[]> {
   return rows;
 }
 
-const CATEGORY_BATCH = 8;
-/** Most category pages checked for one sitemap; a Market's tree is far smaller. */
+/** Most category pages one sitemap lists; a Market's tree is far smaller. */
 export const MAX_CATEGORY_NODES = 400;
 
 /**
- * The category pages that are not empty: every top-level category and each of its direct children
- * (the page serves no deeper path), judged by the same rule as the page's robots tag.
+ * The category pages worth indexing (categories C6, plan decision 11): every category of the live
+ * tree that is shown in the menu, which the API sets only when its Show in menu switch is on, it
+ * has live products and its parent is shown too. One path per category, at any depth (`/c/<slug>`);
+ * no language prefix and no hreflang (buyer i18n plan v3). A category the admin marked noindex
+ * stays out.
  */
 export async function categoryPaths(read: Reader = memoReader()): Promise<string[]> {
   const rows = await treeRows(read);
   const seen = new Set<string>();
-  const nodes: { category: string; sub?: string }[] = [];
-  for (const top of rows.filter((r) => r.parentId === null)) {
-    if (seen.has(top.slug)) continue;
-    seen.add(top.slug);
-    nodes.push({ category: top.slug });
-    const subs = new Set<string>();
-    for (const child of rows.filter((r) => r.parentId === top.id)) {
-      if (subs.has(child.slug)) continue;
-      subs.add(child.slug);
-      nodes.push({ category: top.slug, sub: child.slug });
-    }
-  }
-  nodes.length = Math.min(nodes.length, MAX_CATEGORY_NODES);
   const paths: string[] = [];
-  try {
-    for (let i = 0; i < nodes.length; i += CATEGORY_BATCH) {
-      const batch = nodes.slice(i, i + CATEGORY_BATCH);
-      const empty = await Promise.all(
-        batch.map((n) =>
-          categoryIsEmpty(
-            { category: n.category, ...(n.sub === undefined ? {} : { subcategory: n.sub }) },
-            read,
-          ),
-        ),
-      );
-      batch.forEach((n, j) => {
-        if (!empty[j]) paths.push(categoryHref(n.category, n.sub));
-      });
-    }
-  } catch {
-    throw new SitemapReadFailed('category listing');
+  for (const row of rows) {
+    if (!row.inMenu || row.hasLiveProducts !== true || row.seo?.noindex === true) continue;
+    if (seen.has(row.slug)) continue;
+    seen.add(row.slug);
+    paths.push(categoryHref(row.slug));
+    if (paths.length >= MAX_CATEGORY_NODES) break;
   }
   return paths;
 }
@@ -192,16 +170,16 @@ export async function productPaths(
 ): Promise<string[] | null> {
   const range = pageRange(n);
   if (range === null) return null;
-  const ids = new Set<string>();
+  const names = new Map<string, string>();
   for (let page = range.first; page <= range.last; page += 1) {
     const live = await productPage(page, read);
-    for (const card of live.items) ids.add(card.id);
+    for (const card of live.items) names.set(card.id, card.name);
     if (!live.hasMore) break;
     if (page === MAX_PAGE) {
       log({ msg: 'storefront.sitemap-product-cap', products: MAX_PAGE * PRODUCT_PAGE_SIZE });
     }
   }
-  return [...ids].map(productHref);
+  return [...names].map(([id, name]) => productHref(id, name));
 }
 
 /** The index children, kept per Market origin for CACHE_MS. */

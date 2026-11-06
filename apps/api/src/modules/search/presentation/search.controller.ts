@@ -16,7 +16,18 @@ import type { SearchProductsRequest } from '../domain/search-query';
 import { SearchProducts } from '../application/use-cases/search-products.use-case';
 import { ProductSearchPageBody } from './search.dto';
 
-const ALLOWED = ['q', 'category', 'store', 'brand', 'sort', 'page', 'pageSize'] as const;
+const ALLOWED = [
+  'q',
+  'category',
+  'direct',
+  'store',
+  'brand',
+  'sort',
+  'filter',
+  'range',
+  'page',
+  'pageSize',
+] as const;
 const WHOLE_NUMBER = /^[0-9]{1,6}$/u;
 
 const fail = (status: number, code: string, details?: object): HttpException =>
@@ -45,6 +56,17 @@ function requestOf(query: Record<string, unknown>): SearchProductsRequest {
     }
     return value;
   };
+  /** A parameter that may repeat: one string or a list of strings. */
+  const list = (name: 'filter' | 'range'): string | string[] | undefined => {
+    const value = query[name];
+    if (value === undefined) return undefined;
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value) && value.every((entry) => typeof entry === 'string')) {
+      return value;
+    }
+    fields.push({ path: name, code: 'type' });
+    return undefined;
+  };
   const whole = (name: 'page' | 'pageSize'): number | undefined => {
     const value = text(name);
     if (value === undefined) return undefined;
@@ -57,9 +79,12 @@ function requestOf(query: Record<string, unknown>): SearchProductsRequest {
   const request = {
     q: text('q'),
     category: text('category'),
+    direct: text('direct'),
     store: text('store'),
     brand: text('brand'),
     sort: text('sort'),
+    filter: list('filter'),
+    range: list('range'),
     page: whole('page'),
     pageSize: whole('pageSize'),
   };
@@ -94,6 +119,14 @@ export class SearchController {
   @ApiQuery({ name: 'q', required: false, description: '2 to 100 characters.' })
   @ApiQuery({ name: 'category', required: false, description: 'A platform category id.' })
   @ApiQuery({
+    name: 'direct',
+    required: false,
+    enum: ['true'],
+    description:
+      '`true` lists only the products on `category` itself, not on a category below it (the ' +
+      'buyer site\'s "Other {name}" filter). Needs `category`.',
+  })
+  @ApiQuery({
     name: 'store',
     required: false,
     description: 'A store address (slug), 3 to 50 characters. Not with `q`.',
@@ -116,6 +149,25 @@ export class SearchController {
       '(`search.ratingBoost`, off by default) and is `validation.failed` otherwise. Not with ' +
       '`store` or `brand`. While the boost is on, `relevance` is also nudged by the ratings, ' +
       'by 10 % at most.',
+  })
+  @ApiQuery({
+    name: 'filter',
+    required: false,
+    description:
+      'Attribute filters, one parameter per attribute: `<attribute>:<code>[,<code>...]` with option ' +
+      'codes (never labels). Values of one attribute are OR-ed, attributes are AND-ed. A yes switch is ' +
+      '`<attribute>:true`. On a category list the attributes are the filters the admin chose for ' +
+      'the category; on a text search they are `brand` (brand address) and `country-of-origin` (a ' +
+      'lower case ISO 3166-1 code). An attribute that is not a filter of the listing is ignored. ' +
+      'Up to 8; not with `store` or `brand`. A filtered page has `filtered: true` and is not for ' +
+      'search engines (`noindex`, canonical to the category).',
+  })
+  @ApiQuery({
+    name: 'range',
+    required: false,
+    description:
+      'Number ranges, one parameter per attribute: `<attribute>:<min>..<max>` (either end may be ' +
+      'left out). Up to 3; same rules as `filter`.',
   })
   @ApiQuery({ name: 'page', required: false, description: '1 to 100, default 1.' })
   @ApiQuery({ name: 'pageSize', required: false, description: '1 to 48, default 24.' })

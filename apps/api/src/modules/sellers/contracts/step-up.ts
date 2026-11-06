@@ -6,4 +6,12 @@ import type { StepUpActionDeclaration } from '../../../platform/authz';
  */
 export const SELLERS_STEP_UP_ACTIONS: readonly StepUpActionDeclaration[] = [
   { key: 'sellers.store-terms.change', defaultRequired: false, locked: false },
+  // Admin action (issue #491): replacing a seller's business activities asks the admin session for
+  // a fresh two-step code on `PUT /sellers/admin/:sellerId/business-activities`.
+  {
+    key: 'sellers.business-activity.change',
+    defaultRequired: true,
+    locked: true,
+    audience: 'admin',
+  },
 ];

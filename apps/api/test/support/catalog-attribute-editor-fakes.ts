@@ -14,7 +14,10 @@ import {
   type FeatureSetStore,
 } from '../../src/modules/catalog/application/ports/feature-set.store';
 import type { AttributeFamily } from '../../src/modules/catalog/domain/attribute-family';
-import type { AttributeDefinition } from '../../src/modules/catalog/domain/attribute-definition';
+import type {
+  AttributeDefinition,
+  AttributeMergeOption,
+} from '../../src/modules/catalog/domain/attribute-definition';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 
 // In-memory ports of the attribute editor (attributes plan, package A2) for the use-case specs and
@@ -30,6 +33,7 @@ export class MemoryAttributeDefinitionStore implements AttributeDefinitionStore 
   reset(): void {
     this.rows.clear();
     this.authors.length = 0;
+    this.merges.length = 0;
     this.raceNext = false;
   }
 
@@ -82,6 +86,29 @@ export class MemoryAttributeDefinitionStore implements AttributeDefinitionStore 
   saveStatus(_m: MarketContext, definition: AttributeDefinition) {
     this.#check(definition);
     this.rows.set(definition.state.id, definition);
+    return Promise.resolve();
+  }
+
+  /** What each merge wrote: the source, its target and the value map. */
+  readonly merges: {
+    source: string;
+    target: string;
+    options: readonly AttributeMergeOption[];
+  }[] = [];
+
+  hasMergedSources(_m: MarketContext, id: Id<'AttributeDefinition'>) {
+    return Promise.resolve(this.merges.some((merge) => merge.target === id));
+  }
+
+  saveMerge(
+    _m: MarketContext,
+    source: AttributeDefinition,
+    target: Id<'AttributeDefinition'>,
+    options: readonly AttributeMergeOption[],
+  ) {
+    this.#check(source);
+    this.rows.set(source.state.id, source);
+    this.merges.push({ source: source.state.id, target, options });
     return Promise.resolve();
   }
 

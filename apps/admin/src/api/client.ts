@@ -19,6 +19,8 @@ export interface ApiFailure {
     readonly rows?: number;
     readonly maxBytes?: number;
     readonly detected?: string;
+    /** `category.referenced-by-policy`: the certificate types whose rules use the category. */
+    readonly typeCodes?: readonly string[];
   };
 }
 
@@ -27,7 +29,7 @@ export type ApiResult<T> =
   | { readonly ok: false; readonly failure: ApiFailure };
 
 export async function callApi<T>(
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
   csrfToken?: string,

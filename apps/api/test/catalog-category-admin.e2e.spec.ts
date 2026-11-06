@@ -6,6 +6,15 @@ import request from 'supertest';
 import { ADMIN_CATEGORY_READER } from '../src/modules/catalog/application/ports/admin-category.reader';
 import type { AdminCategoryReader } from '../src/modules/catalog/application/ports/admin-category.reader';
 import { CATEGORY_ADMIN_STATUS } from '../src/modules/catalog/presentation/category-admin.controller';
+import {
+  CATEGORY_EDIT_STORE,
+  CATEGORY_RESTRUCTURE_STORE,
+} from '../src/modules/catalog/application/ports/category-edit.store';
+import { CATEGORY_RETIREMENT_CHECK } from '../src/modules/catalog/application/ports/category-retirement-check';
+import type { CategoryRetirementCheck } from '../src/modules/catalog/application/ports/category-retirement-check';
+import { CLAIM_TERM_LOCALES } from '../src/modules/catalog/application/ports/claim-term-locales';
+import { CLAIM_TEXT_MATCHER } from '../src/modules/catalog/application/ports/claim-text-matcher';
+import { PLATFORM_CATEGORY_REPOSITORY } from '../src/modules/catalog/application/ports/platform-category.repository';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
@@ -14,6 +23,11 @@ import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
+import {
+  MemoryCategoryEditStore,
+  MemoryCategoryRestructureStore,
+  MemoryTreeVersion,
+} from './support/catalog-category-editor-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -36,12 +50,36 @@ const NOKEY = id<'Account'>(0xca01);
 const VIEWER = id<'Account'>(0xca02);
 const MODERATOR = id<'Account'>(0xca03);
 const NOKEY_ROLE = id<'Role'>(0xcf11);
+const RESTRUCTURER = id<'Account'>(0xca04);
+const RESTRUCTURE_ROLE = id<'Role'>(0xcf12);
 const ROOT = id<'Category'>(0xcc01);
 const LEAF = id<'Category'>(0xcc02);
 const MISSING = id<'Category'>(0xccff);
 
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
+
+const editStore = new MemoryCategoryEditStore();
+const restructureStore = new MemoryCategoryRestructureStore();
+let retirementAnswer: Awaited<ReturnType<CategoryRetirementCheck['assertRetirable']>>;
+const retirementChecked: string[][] = [];
+const retirement: CategoryRetirementCheck = {
+  assertRetirable: (_context, ids) => {
+    retirementChecked.push([...ids]);
+    return Promise.resolve(retirementAnswer);
+  },
+  retired: () => Promise.resolve({ ok: true, value: undefined }),
+};
+const treeVersion = new MemoryTreeVersion();
+const halalOnlyMatcher = {
+  match: (_context: unknown, texts: readonly { text: string }[]) =>
+    Promise.resolve({
+      ok: true as const,
+      value: texts.map((t) =>
+        /halal/i.test(t.text) ? [{ typeCode: 'halal', span: { fromToken: 0, toToken: 0 } }] : [],
+      ),
+    }),
+};
 
 const reader: AdminCategoryReader = {
   categories: () =>
@@ -55,6 +93,8 @@ const reader: AdminCategoryReader = {
         names: [{ locale: 'en', name: 'Pantry' }],
         revisionNo: 1,
         version: 1,
+        position: 0,
+        showInMenu: true,
       },
       {
         id: LEAF,
@@ -65,6 +105,8 @@ const reader: AdminCategoryReader = {
         names: [{ locale: 'en', name: 'Rice' }],
         revisionNo: 1,
         version: 1,
+        position: 0,
+        showInMenu: true,
       },
     ]),
   treeVersion: () => Promise.resolve(4),
@@ -72,6 +114,14 @@ const reader: AdminCategoryReader = {
     Promise.resolve({
       facts: [{ categoryIds: [LEAF], offers: 2, listedOffers: 1, offersWithActiveTag: 1 }],
       complete: true,
+    }),
+  detail: () =>
+    Promise.resolve({
+      texts: [],
+      seo: { title: null, description: null, noindex: false },
+      showInMenu: true,
+      imageId: null,
+      hiddenById: null,
     }),
   revisions: (_m, categoryId) =>
     Promise.resolve(
@@ -101,6 +151,13 @@ describe.each(TEST_MARKETS)(
 
     beforeEach(async () => {
       fakes.reset();
+      editStore.reset();
+      restructureStore.products.clear();
+      restructureStore.archiveOthers.clear();
+      restructureStore.relinked.length = 0;
+      retirementChecked.length = 0;
+      retirementAnswer = { ok: true, value: undefined };
+      treeVersion.version = 1;
       ({ app } = await createTestApp({
         env: { LOG_LEVEL: 'info', API_DOCS_ENABLED: 'true' },
         panelOrigins: true,
@@ -110,7 +167,22 @@ describe.each(TEST_MARKETS)(
             .overrideProvider(CLOCK)
             .useValue(clock)
             .overrideProvider(ADMIN_CATEGORY_READER)
-            .useValue(reader),
+            .useValue(reader)
+            .overrideProvider(CATEGORY_EDIT_STORE)
+            .useValue(editStore)
+            .overrideProvider(CATEGORY_RESTRUCTURE_STORE)
+            .useValue(restructureStore)
+            .overrideProvider(CATEGORY_RETIREMENT_CHECK)
+            .useValue(retirement)
+            .overrideProvider(PLATFORM_CATEGORY_REPOSITORY)
+            .useValue(treeVersion)
+            .overrideProvider(CLAIM_TEXT_MATCHER)
+            .useValue(halalOnlyMatcher)
+            .overrideProvider(CLAIM_TERM_LOCALES)
+            .useValue({
+              covered: () =>
+                Promise.resolve({ ok: true, value: ['en-AU', 'en-US', 'ja-JP', 'fa', 'ar'] }),
+            }),
       }));
       await app.get(SeedRoles).execute(testCallContext(market, 'system', 'category-0001'), {});
       const marketId = code as AccountState['marketId'];
@@ -131,9 +203,27 @@ describe.each(TEST_MARKETS)(
         version: 1,
         createdAt: START,
       });
+      fakes.seedRole({
+        id: RESTRUCTURE_ROLE,
+        marketId,
+        scope: 'platform',
+        kind: 'custom',
+        seedCode: null,
+        seedVersion: null,
+        sellerId: null,
+        name: 'Tree restructurer',
+        permissionKeys: [
+          'catalog.category-tree.view',
+          'catalog.category-tree.edit',
+          'catalog.category-tree.restructure',
+        ],
+        version: 1,
+        createdAt: START,
+      });
       let n = 0;
       for (const [accountId, label, roleId] of [
         [NOKEY, 'nokey', NOKEY_ROLE],
+        [RESTRUCTURER, 'restructurer', RESTRUCTURE_ROLE],
         [VIEWER, 'viewer', roleOf('viewer')],
         [MODERATOR, 'moderator', roleOf('catalogue-moderator')],
       ] as const) {
@@ -291,13 +381,300 @@ describe.each(TEST_MARKETS)(
       await http().get(`${BASE}/${ROOT}/impact?action=delete`).set(session).expect(400);
     });
 
-    it('documents the three routes in OpenAPI', async () => {
+    describe('the editor routes (C3a)', () => {
+      const english = code === 'AU' ? 'en-AU' : 'ja-JP';
+      const body = (over: Record<string, unknown> = {}) => ({
+        slug: 'rice',
+        texts: { [english]: { name: 'Rice' } },
+        treeVersion: treeVersion.version,
+        ...over,
+      });
+
+      it('maps the refusals of the editor to their status', () => {
+        expect(CATEGORY_ADMIN_STATUS).toMatchObject({
+          'conflict.stale': 409,
+          'category.slug-taken': 409,
+          'category.reorder-edge': 409,
+          'category.depth-exceeded': 422,
+          'category.claim-word': 422,
+          'claim-text.check-unavailable': 503,
+        });
+      });
+
+      it('refuses no session with 401, a Viewer with 403, a missing CSRF token with 403, a body that is not JSON with 415', async () => {
+        await http()
+          .post(BASE)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') })
+          .send(body())
+          .expect(401);
+        await http().post(BASE).set(adminSession(VIEWER, 20)).send(body()).expect(403);
+        const moderator = adminSession(MODERATOR, 21);
+        const withoutCsrf: Record<string, string> = { ...moderator };
+        delete withoutCsrf['x-csrf-token'];
+        await http().post(BASE).set(withoutCsrf).send(body()).expect(403);
+        await http()
+          .post(BASE)
+          .set({ ...moderator, 'content-type': 'text/plain' })
+          .send('x')
+          .expect(415);
+        expect(editStore.rows.size).toBe(0);
+      });
+
+      it('refuses a Viewer with 403 on every write route, and writes nothing', async () => {
+        const viewer = adminSession(VIEWER, 24);
+        const target = '01990000-0000-7000-8000-0000000000c9';
+        await http()
+          .patch(`${BASE}/${target}`)
+          .set(viewer)
+          .send({ version: 1, texts: {} })
+          .expect(403);
+        const posts: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+          ['reorder', { direction: 'up', treeVersion: 1 }],
+          ['hide', { treeVersion: 1 }],
+          ['show', { treeVersion: 1 }],
+          ['change-slug', { slug: 'other', treeVersion: 1 }],
+          ['discard', { treeVersion: 1 }],
+        ];
+        for (const [action, payload] of posts) {
+          await http().post(`${BASE}/${target}/${action}`).set(viewer).send(payload).expect(403);
+        }
+        expect(editStore.rows.size).toBe(0);
+      });
+
+      it('adds a category (201, hidden), shows it, saves its details and reorders', async () => {
+        const session = adminSession(MODERATOR, 22);
+        const created = await http().post(BASE).set(session).send(body()).expect(201);
+        const {
+          id: newId,
+          status,
+          treeVersion: afterCreate,
+        } = (created.body as { category: { id: string; status: string; treeVersion: number } })
+          .category;
+        expect(status).toBe('hidden');
+        expect(afterCreate).toBe(2);
+
+        const shown = await http()
+          .post(`${BASE}/${newId}/show`)
+          .set(session)
+          .send({ treeVersion: afterCreate })
+          .expect(200);
+        expect(shown.body).toMatchObject({ category: { status: 'active', treeVersion: 3 } });
+
+        const saved = await http()
+          .patch(`${BASE}/${newId}`)
+          .set(session)
+          .send({
+            version: 2,
+            texts: { [english]: { name: 'Basmati', keywords: ['rice'] } },
+            showInMenu: false,
+          })
+          .expect(200);
+        expect(saved.body).toMatchObject({ category: { version: 3, revisionNo: 3 } });
+
+        await http()
+          .post(`${BASE}/${newId}/reorder`)
+          .set(session)
+          .send({ direction: 'up', treeVersion: 3 })
+          .expect(409)
+          .expect((response) => {
+            expect((response.body as { code: string }).code).toBe('category.reorder-edge');
+          });
+      });
+
+      it('answers 409 for a stale tree and a taken slug, 422 for a claim word, 400 for an unknown field', async () => {
+        const session = adminSession(MODERATOR, 23);
+        await http().post(BASE).set(session).send(body()).expect(201);
+        const stale = await http()
+          .post(BASE)
+          .set(session)
+          .send(body({ slug: 'rice-2', treeVersion: 1 }))
+          .expect(409);
+        expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.stale' });
+        const taken = await http()
+          .post(BASE)
+          .set(session)
+          .send(body({ treeVersion: treeVersion.version, texts: { [english]: { name: 'Other' } } }))
+          .expect(409);
+        expect(taken.body).toEqual({ statusCode: 409, code: 'category.slug-taken' });
+        const claim = await http()
+          .post(BASE)
+          .set(session)
+          .send(
+            body({
+              slug: 'halal-corner',
+              treeVersion: treeVersion.version,
+              texts: { [english]: { name: 'Halal corner' } },
+            }),
+          )
+          .expect(422);
+        expect(claim.body).toMatchObject({ code: 'category.claim-word' });
+        expect(JSON.stringify(claim.body)).not.toMatch(/halal corner/i);
+        await http()
+          .post(BASE)
+          .set(session)
+          .send(body({ colour: 'red' }))
+          .expect(400);
+        await http().post(BASE).set(session).send({ slug: 'x' }).expect(400);
+      });
+
+      it('answers 404 for an unknown category and 400 for a malformed body of hide', async () => {
+        const session = adminSession(MODERATOR, 24);
+        await http()
+          .post(`${BASE}/${MISSING}/hide`)
+          .set(session)
+          .send({ treeVersion: treeVersion.version })
+          .expect(404);
+        await http().post(`${BASE}/${MISSING}/hide`).set(session).send({}).expect(400);
+      });
+    });
+
+    describe('the restructure routes (C4a)', () => {
+      const REASON = 'Pantry aisle reorganised';
+      const stored = (n: number, parent: number | null, position = n) => ({
+        id: id<'Category'>(n),
+        parentId: parent === null ? null : id<'Category'>(parent),
+        slug: `c${n.toString(16)}`,
+        status: 'active' as const,
+        hiddenById: null,
+        position,
+        version: 1,
+        revisionNo: 1,
+        createdByKind: 'admin' as const,
+        showInMenu: true,
+        imageId: null,
+        seo: { title: null, description: null, noindex: false },
+        texts: [
+          { locale: 'en', name: `Category ${n}`, shortDescription: null, keywords: [] as string[] },
+        ],
+      });
+      // 0xd1 > 0xd2 > 0xd3, and a second department 0xd4 > 0xd5.
+      const seedTree = () => {
+        editStore.put(stored(0xd1, null, 0));
+        editStore.put(stored(0xd2, 0xd1, 0));
+        editStore.put(stored(0xd3, 0xd2, 0));
+        editStore.put(stored(0xd4, null, 1));
+        editStore.put(stored(0xd5, 0xd4, 0));
+      };
+
+      it('maps the refusals of a move, merge and archive to their status', () => {
+        expect(CATEGORY_ADMIN_STATUS).toMatchObject({
+          'category.target-not-found': 404,
+          'category.move-unchanged': 409,
+          'category.has-subcategories': 409,
+          'category.referenced-by-policy': 409,
+          'category.cycle': 422,
+          'category.only-platform-category': 422,
+          'category.products-on-upper-level': 422,
+          'category.impact-too-large': 422,
+          'category.check-unavailable': 503,
+        });
+      });
+
+      it('refuses the Catalogue Moderator (no restructure key) with 403 on all three routes', async () => {
+        seedTree();
+        const moderator = adminSession(MODERATOR, 30);
+        const target = id<'Category'>(0xd3);
+        for (const [action, payload] of [
+          ['move', { treeVersion: 1, parentId: id<'Category'>(0xd5), reason: REASON }],
+          ['merge', { treeVersion: 1, targetId: id<'Category'>(0xd5), reason: REASON }],
+          ['archive', { treeVersion: 1, reason: REASON }],
+        ] as const) {
+          await http().post(`${BASE}/${target}/${action}`).set(moderator).send(payload).expect(403);
+        }
+        expect(retirementChecked).toEqual([]);
+        expect(editStore.revisions).toEqual([]);
+      });
+
+      it('moves a category for a holder of the key and answers the new tree version', async () => {
+        seedTree();
+        const session = adminSession(RESTRUCTURER, 31);
+        const moved = await http()
+          .post(`${BASE}/${id<'Category'>(0xd3)}/move`)
+          .set(session)
+          .send({ treeVersion: 1, parentId: id<'Category'>(0xd5), reason: REASON })
+          .expect(200);
+        expect(moved.body).toMatchObject({
+          category: { id: id<'Category'>(0xd3), version: 2, treeVersion: 2 },
+        });
+        expect(retirementChecked).toEqual([
+          [id<'Category'>(0xd3), id<'Category'>(0xd2), id<'Category'>(0xd1)],
+        ]);
+      });
+
+      it('answers 409 with the type codes when a certificate rule names the category, 503 when the check is down', async () => {
+        seedTree();
+        const session = adminSession(RESTRUCTURER, 32);
+        retirementAnswer = {
+          ok: false,
+          error: { code: 'category.referenced-by-policy', typeCodes: ['halal', 'kosher'] },
+        };
+        const refused = await http()
+          .post(`${BASE}/${id<'Category'>(0xd3)}/archive`)
+          .set(session)
+          .send({ treeVersion: 1, reason: REASON })
+          .expect(409);
+        expect(refused.body).toEqual({
+          statusCode: 409,
+          code: 'category.referenced-by-policy',
+          details: { typeCodes: ['halal', 'kosher'] },
+        });
+        retirementAnswer = { ok: false, error: { code: 'category.check-unavailable' } };
+        await http()
+          .post(`${BASE}/${id<'Category'>(0xd3)}/archive`)
+          .set(session)
+          .send({ treeVersion: 1, reason: REASON })
+          .expect(503);
+        expect(editStore.revisions).toEqual([]);
+      });
+
+      it('answers 400 for a short reason, 404 for an unknown target, 409 for subcategories, 422 for a cycle', async () => {
+        seedTree();
+        const session = adminSession(RESTRUCTURER, 33);
+        await http()
+          .post(`${BASE}/${id<'Category'>(0xd3)}/move`)
+          .set(session)
+          .send({ treeVersion: 1, parentId: id<'Category'>(0xd5), reason: 'too short' })
+          .expect(400);
+        await http()
+          .post(`${BASE}/${id<'Category'>(0xd3)}/merge`)
+          .set(session)
+          .send({ treeVersion: 1, targetId: MISSING, reason: REASON })
+          .expect(404);
+        await http()
+          .post(`${BASE}/${id<'Category'>(0xd2)}/archive`)
+          .set(session)
+          .send({ treeVersion: 1, reason: REASON })
+          .expect(409);
+        await http()
+          .post(`${BASE}/${id<'Category'>(0xd1)}/move`)
+          .set(session)
+          .send({ treeVersion: 1, parentId: id<'Category'>(0xd3), reason: REASON })
+          .expect(422);
+        expect(retirementChecked).toEqual([]);
+      });
+    });
+
+    it('documents the routes in OpenAPI', async () => {
       const document = (await http().get('/docs-json').expect(200)).body as {
         paths: Record<string, Record<string, { responses: Record<string, unknown> }>>;
       };
       expect(document.paths[BASE]).toHaveProperty('get');
       expect(document.paths[`${BASE}/{categoryId}`]?.get?.responses).toHaveProperty('404');
       expect(document.paths[`${BASE}/{categoryId}/impact`]?.get?.responses).toHaveProperty('400');
+      expect(document.paths[BASE]).toHaveProperty('post');
+      expect(document.paths[`${BASE}/{categoryId}`]).toHaveProperty('patch');
+      for (const action of [
+        'reorder',
+        'hide',
+        'show',
+        'change-slug',
+        'discard',
+        'move',
+        'merge',
+        'archive',
+      ]) {
+        expect(document.paths[`${BASE}/{categoryId}/${action}`]).toHaveProperty('post');
+      }
     });
   },
 );

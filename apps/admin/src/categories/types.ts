@@ -3,11 +3,12 @@
 
 export const READ_PERMISSION = 'catalog.category-tree.view';
 export const EDIT_PERMISSION = 'catalog.category-tree.edit';
+export const RESTRUCTURE_PERMISSION = 'catalog.category-tree.restructure';
 export const CATEGORIES_PATH = '/catalog/categories';
 export const API_CATEGORIES = 'catalog/admin/categories';
 
-export type CategoryStatus = 'active' | 'merged' | 'archived';
-export const STATUS_FILTERS = ['all', 'active', 'merged', 'archived'] as const;
+export type CategoryStatus = 'active' | 'hidden' | 'merged' | 'archived';
+export const STATUS_FILTERS = ['all', 'active', 'hidden', 'merged', 'archived'] as const;
 export type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 export interface CategoryName {
@@ -71,6 +72,45 @@ export interface Revision {
   readonly createdAt: string;
 }
 
+/** What the edit form starts from (apps/api CategoryEditDetailsBody). */
+export interface EditDetails {
+  readonly texts: readonly {
+    readonly locale: string;
+    readonly name: string;
+    readonly shortDescription: string | null;
+    readonly keywords: readonly string[];
+  }[];
+  readonly seo: {
+    readonly title: string | null;
+    readonly description: string | null;
+    readonly noindex: boolean;
+  };
+  readonly showInMenu: boolean;
+  readonly imageId: string | null;
+  readonly hiddenById: string | null;
+}
+
+/** The answer of every category write (apps/api CategoryWriteWrapBody). */
+export interface WriteWrap {
+  readonly category: {
+    readonly id: string;
+    readonly slug: string;
+    readonly status: string;
+    readonly version: number;
+    readonly revisionNo: number;
+    readonly treeVersion: number;
+  };
+}
+
+export const NAME_MAX = 120;
+export const SHORT_DESCRIPTION_MAX = 300;
+export const KEYWORDS_MAX = 20;
+export const KEYWORD_MAX = 40;
+export const SEO_TITLE_MAX = 60;
+export const SEO_DESCRIPTION_MAX = 160;
+export const SLUG_MIN = 2;
+export const SLUG_MAX = 80;
+
 export interface DetailBody {
   readonly category: CategoryRow;
   readonly path: readonly PathEntry[];
@@ -79,6 +119,9 @@ export interface DetailBody {
   readonly revisions: readonly Revision[];
   readonly complete: boolean;
   readonly actions: Readonly<Record<string, ActionAnswer>>;
+  readonly details: EditDetails;
+  /** The tree version a structural change of this category must name. */
+  readonly treeVersion: number;
 }
 
 export const DETAIL_TABS = ['details', 'products', 'history'] as const;
@@ -92,4 +135,6 @@ export interface ImpactBody {
   readonly offersWithActiveTag: number;
   readonly descendants: number;
   readonly complete: boolean;
+  /** Present when a target was named: the products whose feature set would change. */
+  readonly featureSetChanges?: number;
 }

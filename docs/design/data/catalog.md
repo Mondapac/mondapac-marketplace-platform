@@ -125,7 +125,7 @@ migration in 8. "Privileges" lines are in 7.
 | `created_by_seller_id` | `uuid` | yes | 1 | The seller who created it; never updated (column grant). Keeps the origin after promotion without a history read |
 | `type_code` | `text` | no | 1 | CA4 pattern; never updated (column grant; CAT-10) |
 | `variant_model` | `text` | no | 1 | CHECK `single`, `options` (the handler's `variantModel`, D 3.2). Never updated. Target of the variant FK (3.2) |
-| `family_code` | `text` | no | 1 | CA4; never updated |
+| `family_code` | `text` | no | 1 | CA4; changes only with a revision pointer (trigger `products_family_follows_revision`; A4, CAT-10 change): the family of the last accepted submit (the database guards the timing, not the value: the application resolves it from the primary category) |
 | `product_code` | `text COLLATE "C"` | no | 1 | From `product_code_counters` (3.3), never input. CHECK `^[A-Z0-9][A-Z0-9-]{3,31}$`. **Unique `(market_id, product_code)`** (D 17.1). Never updated |
 | `status` | `text` | no | 1 | CHECK `draft`, `discarded`, `unpublished`, `published`, `matched`, `withdrawn`, `retired` (D 4.1; `discarded` terminal, Q-K2) |
 | `discarded_at` | `timestamptz(6)` | yes | 1 | CHECK `products_discarded_check`: `(status = 'discarded') = (discarded_at IS NOT NULL)`; CHECK `status <> 'discarded' OR (published_revision_id IS NULL AND pending_revision_id IS NULL)` (a backstop: a discarded product has no published or pending revision; "never submitted" itself is the use case's check. Added with the pointers in migration 4) |
@@ -213,7 +213,8 @@ database stays the source of truth.
 | `published_revision_id` | `uuid` | yes | Current revision (name, parent). FK `(market_id, id, published_revision_id)` → revisions of this category. Nullable (Q-K10, as CE-data 3.1): the creating unit inserts the root with NULL, then revision 1, then sets the pointer; NULL is never visible after commit. Plain FK, no deferred constraint |
 | `created_by_kind` | `text` | no | CHECK `seed`, `admin` (D 17.1 item 4). Never updated |
 | `version`, `created_at` | | no | CA1 |
-| `position` | `integer` | no | Order among siblings (roots are siblings). CHECK `>= 0`. **Unique `(market_id, parent_id, position)`**, `NULLS NOT DISTINCT`, `DEFERRABLE INITIALLY IMMEDIATE` (constraint `platform_categories_market_id_parent_id_position_key`): a reorder defers the check and swaps inside one unit. Backfilled by the order of the first-locale name per parent (lower-case, then slug). A row inserted without one, or with `-1` (the seed repository), goes last among its siblings under a transaction advisory lock on the sibling set (trigger `platform_categories_default_position`, `BEFORE INSERT`), so concurrent inserts take consecutive positions |
+| `position` | `integer` | no | Order among siblings (roots are siblings). CHECK `>= 0`. **Unique `(market_id, parent_id, position)`**, `NULLS NOT DISTINCT`, `DEFERRABLE INITIALLY IMMEDIATE` (constraint `platform_categories_market_id_parent_id_position_key`): a reorder swaps in one unit through a parking value (2 000 000 000) so no check is deferred in the C3a code; the constraint stays deferrable. Backfilled by the order of the first-locale name per parent (lower-case, then slug). A row inserted without one, or with `-1` (the seed repository), goes last among its siblings under a transaction advisory lock on the sibling set (trigger `platform_categories_default_position`, `BEFORE INSERT`), so concurrent inserts take consecutive positions |
+| `hidden_by_id` | `uuid` | yes | C3a. The category whose Hide cascaded to this one; NULL when hidden on its own. FK `(market_id, hidden_by_id)` → `platform_categories`; CHECK `hidden_by_id IS NULL OR (status = 'hidden' AND hidden_by_id <> id)`. Show restores exactly the descendants that name the shown category here |
 | `show_in_menu` | `boolean` | no | Default `true` |
 | `image_id` | `uuid` | yes | The category image from the product image intake (purpose `category-image`, wired in C3). **No foreign key**: `product_images` rows belong to a product (`product_id NOT NULL`); C3 decides the link |
 | `seo_title`, `seo_description` | `text` | yes | English only. CHECK 1 to 60 and 1 to 160 characters, trimmed, no control or bidi characters |
@@ -248,8 +249,9 @@ database stays the source of truth.
   (`BEFORE INSERT OR UPDATE OF slug`) refuses what it missed (`23514`); the category's own old slug may
   return. The key lets a slug be retired again after a later reuse; a lookup takes the latest row (the
   redirect is for a slug nobody holds now). Index `(market_id, category_id)`.
-- **Slug is still not in the application's `UPDATE` list.** The package that builds Change URL name grants
-  it together with the writer of the history row.
+- **Slug is in the application's `UPDATE` list since C3a** (`GRANT UPDATE ("slug", "hidden_by_id")`). The
+  Change URL name use case writes the old slug into this history in the same unit as the update; the
+  trigger above refuses a slug another category retired in the last 12 months.
 - The seed only inserts (D 7.2, B4): the application has no grant that a seed could use to rewrite a
   category other than the editor's column list, and the seed use case has no update path. A test
   applies the seed twice and asserts no `UPDATE` reached the table (statement counter of the unit).
@@ -662,7 +664,11 @@ offer_id, offer_version)`; `outcome` CHECK `approved`, `changes-requested`; `rea
   a newer publish supersedes the older request in its unit (update then insert), so one pending request
   per product (D 5.4).
 - Unique `(market_id, product_revision_id) WHERE kind = 'revision-published'`: a request for a
-  revision is written once (idempotent publish handler).
+  revision is written once (idempotent publish handler). A category move, merge or archive
+  (categories C4a, migration `20261105200000_catalog_tag_request_reopen`) reopens that one row
+  instead, with the product row locked first: `pending`, no cursor, zero counts, `settled_at` NULL
+  and a `created_at` strictly after the stored one. The job's cursor update and close match the
+  `created_at` the run read, so a run already under way never moves or closes the reopened request.
 - Unique `(market_id, source_event_id, cause) NULLS NOT DISTINCT` where `source_event_id` is not
   NULL: one request per consumed event and cause (certification slice 14; was one per event). A
   manufacturer certificate's coverage change writes two from one event (Hassan M2).
@@ -676,7 +682,8 @@ offer_id, offer_version)`; `outcome` CHECK `approved`, `changes-requested`; `rea
   cause; migration `20261018210000_catalog_product_certification_endings`).
 - Claim index `(market_id, created_at, id) WHERE state = 'pending'`. The job runs under its scheduler
   lock (PM8) per Market, so no `SKIP LOCKED` is needed; requests are taken in order.
-- Grants `SELECT, INSERT, UPDATE (state, cursor_offer_id, counts, settled_at)`; purge of settled rows
+- Grants `SELECT, INSERT, UPDATE (state, cursor_offer_id, counts, settled_at, created_at)` (`created_at`
+  since C4a); purge of settled rows
   after 30 days (10.3).
 
 ### 3.19 `product_images`, `product_image_renditions` (slice 13; D 10, D 17.1 item 1)
@@ -1345,16 +1352,16 @@ No sequence; no function gets a grant.
 |---|---|---|---|
 | `outbox` | `SELECT, INSERT`, `UPDATE (published_at)` | Never | PM2 |
 | `inbox` | `SELECT, INSERT` | Prune job | PM4 |
-| `products` | `SELECT, INSERT`, `UPDATE (scope, owner_seller_id, status, discarded_at, own_brand, matched_into_product_id, promoted_at, retired_at, withdrawn_at, paused_at, paused_by_account_id, published_revision_id, pending_revision_id, pending_submitted_at, claim_text_flagged_at, photo_taken_down_at, last_changed_at, version)` | Never (Q-K2: discard is a status) | Type, family, code, creator immutable (CAT-10) |
+| `products` | `SELECT, INSERT`, `UPDATE (family_code, scope, owner_seller_id, status, discarded_at, own_brand, matched_into_product_id, promoted_at, retired_at, withdrawn_at, paused_at, paused_by_account_id, published_revision_id, pending_revision_id, pending_submitted_at, claim_text_flagged_at, photo_taken_down_at, last_changed_at, version)` | Never (Q-K2: discard is a status) | Type, code, creator immutable (CAT-10); family only with a revision pointer (trigger) |
 | `product_variants` | `SELECT, INSERT`, `UPDATE (state, published_at, retired_at)` | Never (the guard refuses it for every role) | M-1 |
 | `product_code_counters` | `SELECT, INSERT`, `UPDATE (next_value)` | Never | |
 | `category_trees` | `SELECT, INSERT`, `UPDATE (version)` | Never | |
-| `platform_categories` | `SELECT, INSERT`, `UPDATE (parent_id, status, merged_into_id, published_revision_id, version, position, show_in_menu, image_id, seo_title, seo_description, seo_noindex)` | Never | Slug (until Change URL name is built), creator kind immutable; never deleted |
+| `platform_categories` | `SELECT, INSERT`, `UPDATE (parent_id, status, merged_into_id, published_revision_id, version, position, show_in_menu, image_id, seo_title, seo_description, seo_noindex, slug, hidden_by_id)` | Never | Creator kind immutable; never deleted. `slug` is granted by C3a with its history writer: the use case retires the old slug in the same unit and the C2 trigger refuses a slug another category retired less than 12 months ago |
 | `attribute_definitions`, `attribute_families` | `SELECT, INSERT`, `UPDATE (status, published_revision_id, version)`; definitions also `archived_by_request_id` (slice 21) | Never: "delete" means archive (Q-K6) | Code, type, localizable immutable |
 | `product_working_copies` | `SELECT, INSERT, UPDATE, DELETE` | 4 (discard and prune, 10.1) | |
 | `offers` | `SELECT, INSERT`, `UPDATE (product_id, seller_sku, condition_code, description, handling, attestation_recorded_at, attestation_account_id, shelf_category_id, status, off_sale_*, listed, submitted_at, first_published_at, deleted_at, version)` | Never (a discarded draft's Offer becomes `deleted`) | `seller_id` never changes (PRC 2.3) |
 | `offer_tags` | `SELECT, INSERT`, `UPDATE` on every column except `id, offer_id, seller_id, type_code, created_at` | Never | |
-| `tag_reevaluation_requests` | `SELECT, INSERT`, `UPDATE (state, cursor_offer_id, counts, settled_at)` | Purge (10.3) | |
+| `tag_reevaluation_requests` | `SELECT, INSERT`, `UPDATE (state, cursor_offer_id, counts, settled_at, created_at)` (`created_at` since C4a) | Purge (10.3) | |
 | `offer_owner_notices` | `SELECT, INSERT`, `UPDATE (state, outcome, attempts, next_attempt_at, settled_at)` | Purge (open) | Certification slice 15 (3.27) |
 | `saved_filters` | `SELECT, INSERT`, `UPDATE (visibility, name, updated_at)` | The application (a filter is a preference, not a record to keep) | Saved filters (3.28); the document, owner, list and position never change after the insert |
 | `platform_import_jobs` | `SELECT, INSERT, DELETE`, `UPDATE (state, file_deleted_at, start_as, skip_errors, to_import, added_rows, failed_rows, stop_reason, not_before, lease_until, version, started_at, finished_at)` | Purge (10.3, 10.4): discarded jobs at once, finished and stopped after 90 days | Admin import (3.29); the owner, file, counts of the check and the creation time never change |
@@ -1802,4 +1809,5 @@ Answered in D 19.4 and D 17.1 item 12b (2026-10-07); Q-K8 ruled by Ali at the da
 | `docs/design/domain/catalog.md` | Done: Q-K15 confirmed in D 2.1 (Mohammad); Q-K8 ruled (Ali) | Before slice 1 |
 | `catalog.product_images`, `product_image_renditions`, `product_revision_images` (migration `20261014120000_catalog_product_images`; slice 13, PR #288) | Simplified media path: one row per uploaded photo plus three JPEG renditions (thumb, medium, large) whose bytes live in the `ObjectStore` port (`platform/storage`, local disk stand-in, key `<productId>/<imageId>/<size>`). Images are insert-only into revisions and only `clean` ones may join (trigger). Limits: 8 per product, 4 MiB upload (raw 5800kb body parser on that one route), 24 MP, sides 200 to 12000 px. Takedown (`20261017100000_catalog_image_takedown`): `clean` to `taken-down` only (trigger `product_images_state_guard`), column-level `UPDATE` on the state and the three takedown columns, key `catalog.product.approve` (not `.delete`, undeclared), event `catalog.image-taken-down.v1`; the clean-image trigger locks the photo `FOR SHARE`. Orphan sweep `catalog.sweep-orphan-images` (hourly, 48 h grace, skips photos a draft names). Not built: S3 adapter, scanner, sweep of files without a row (the `ObjectStore` port cannot list), `photoTakenDownAt` flag | Done in PR #288; handoff `catalog-media.md` |
 | Categories C2 (migration `20261103100000_catalog_category_management_model`; plan v7) | Data model of the category editor: `position` (unique per sibling, deferrable), `hidden` status, `show_in_menu`, `image_id`, SEO columns; revision kinds and `reason`; `platform_category_revision_texts` (name, short description, keywords per locale; names copied by backfill and trigger); `platform_category_slug_history` with the 12-month trigger; `product_revision_categories.is_primary` with its partial unique index. Backfills run in the file (nothing deployed, six seed rows): 8.2 forbids that only for large tables. Market config `catalog.maxCategoryDepth` (AU 4, ZZ 3, schema range 3 to 4). Use cases and UI follow in C3 on; test `catalog-category-model.db-spec.ts` | Done in the C2 PR; Mojtaba, Hassan (grants) |
+| Categories C3 (migration `20261105030000_catalog_category_edit_support`; plan v7) | The tree editor's writes: add, edit details, reorder, hide and show, change URL name, discard. Adds `platform_categories.hidden_by_id` (cascade marker, see 3.4) and grants `UPDATE (slug, hidden_by_id)`. Every write is a new insert-only revision with the full texts (texts row before the name row); `apply` takes the row lock with the version-guarded update first, so a second admin with the same version is `conflict.stale` and never meets the `(category_id, revision_no)` unique. Positions swap through a parking value (no deferred constraint). Review amendment: CHECK `array_ndims(keywords) <= 1` on `platform_category_revision_texts` (added NOT VALID, then validated), and add / change URL name take the named advisory lock `catalog.lock-category-slug` (class 1704) on each slug involved, sorted. Test `catalog-category-editor.db-spec.ts` | Done in the C3a PR; Mojtaba, Hassan (claim-text path) |
 | Public photo reads (storefront images package; no migration) | Two read-only readers over the slice 13 tables, `PrismaPublishedImagesReader`: the public photos of a published product's `published_revision_id` (revision rows by `position`, joined to the photo's state in one statement, `clean` only, at most 8 per product) and one rendition key of such a photo. Every statement is scoped by `market_id` and the revision's own `product_id`. Uses the existing grants and indexes (`product_revision_images` primary key and `(market_id, revision_id, position)`); no new index needed at this size | Done; `test/db/catalog-published-images.db-spec.ts` |

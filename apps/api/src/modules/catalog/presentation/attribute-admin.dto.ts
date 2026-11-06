@@ -65,6 +65,12 @@ export class AttributeOptionBody {
   @ApiProperty(LOCALIZED) labels!: Record<string, string>;
   @ApiProperty() active!: boolean;
   @ApiProperty() position!: number;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The value this one was merged into (attributes A8), or null.',
+  })
+  mergedInto!: string | null;
   @ApiProperty({ description: 'Published products whose current revision holds this value.' })
   productCount!: number;
 }
@@ -480,4 +486,66 @@ export class MissingDetailsListBody {
     description: 'Feature sets that could not be read; their products are not judged.',
   })
   unreadableFeatureSets!: string[];
+}
+
+// The restructure routes (attributes A8): the impact dialog, merging values and archiving.
+
+class ImpactCountBody {
+  @ApiProperty() count!: number;
+  @ApiProperty({ description: 'True when the real number is count or more (the read stopped).' })
+  atLeast!: boolean;
+}
+
+class ImpactFeatureSetBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' } })
+  names!: Record<string, string>;
+}
+
+class ImpactAttributeBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty({ enum: ['draft', 'active', 'archived'] }) status!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty() material!: boolean;
+  @ApiProperty() isVariantOption!: boolean;
+  @ApiProperty() dataType!: string;
+}
+
+class ImpactBody {
+  @ApiProperty({ type: ImpactCountBody }) publishedProducts!: ImpactCountBody;
+  @ApiProperty({ type: ImpactCountBody }) drafts!: ImpactCountBody;
+  @ApiProperty() featureSetCount!: number;
+  @ApiProperty({ type: [ImpactFeatureSetBody] }) featureSets!: ImpactFeatureSetBody[];
+  @ApiProperty({ type: ImpactCountBody }) categories!: ImpactCountBody;
+  @ApiProperty({ type: ImpactCountBody }) filters!: ImpactCountBody;
+  @ApiProperty({ type: ImpactCountBody }) liveVariantProducts!: ImpactCountBody;
+}
+
+export class AttributeImpactBody {
+  @ApiProperty({ type: ImpactAttributeBody }) attribute!: ImpactAttributeBody;
+  @ApiProperty({ type: ImpactBody }) impact!: ImpactBody;
+}
+
+export class AttributeMergeRequest {
+  @ApiProperty({ description: 'The version of the attribute that is merged away.' })
+  version!: number;
+  @ApiProperty({ description: 'The id of the active attribute of the same type it goes into.' })
+  target!: string;
+  @ApiProperty({ description: 'The version of the target the impact dialog showed.' })
+  targetVersion!: number;
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description: 'For a choice attribute: every value code of the source to a target value code.',
+  })
+  options?: Record<string, string>;
+}
+
+export class ValuesMergeRequest {
+  @ApiProperty({ description: 'The attribute version the impact dialog showed.' })
+  version!: number;
+  @ApiProperty({ description: 'The code of the value that is merged away.' }) source!: string;
+  @ApiProperty({ description: 'The code of the active value it is merged into.' }) target!: string;
 }

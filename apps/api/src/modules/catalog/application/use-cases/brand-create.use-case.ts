@@ -1,9 +1,12 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
+import type { ContentFilter } from '../../../../platform/content-filter/content-filter';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_BRAND_EDIT } from '../../contracts/permissions';
+import { BrandCreatedAudit } from '../../domain/audit';
 import {
   Brand,
   brandNameKey,
@@ -51,10 +54,13 @@ export type BrandCreateFailure =
   | ValidationFailure;
 
 export interface BrandCreateDependencies {
+  /** The Market's content filter: public text with a blocked term is refused. */
+  readonly contentFilter: ContentFilter;
   readonly unitOfWork: UnitOfWork;
   readonly brands: BrandRepository;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  readonly audit: AuditWriter;
 }
 
 const CREATE_KEYS = [
@@ -129,7 +135,9 @@ export class BrandCreate extends UseCase<
     if (accountId === null) return err({ code: 'access.denied' });
     const body = closedInput(input, CREATE_KEYS);
     if (!body.ok) return body;
-    const content = parseBrandContent(body.value);
+    const content = parseBrandContent(body.value, (text) =>
+      this.deps.contentFilter.isBlocked(context.market, text),
+    );
     if (!content.ok) return invalidFields(content.error);
     const givenSlug = body.value['slug'];
     if (givenSlug !== undefined && givenSlug !== null && !isBrandSlug(givenSlug)) {
@@ -174,6 +182,12 @@ export class BrandCreate extends UseCase<
         if (!created.ok) return err(created.error);
         const added = await brands.add(market, created.value);
         if (added !== null) return err({ code: added } as const);
+        await this.deps.audit.record(
+          context,
+          BrandCreatedAudit.entry(created.value.state.id, {
+            after: { status: created.value.state.status, origin: 'admin' },
+          }),
+        );
         return ok({ brand: viewOf(created.value.state) });
       },
     );

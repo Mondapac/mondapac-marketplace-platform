@@ -235,3 +235,16 @@ export class OwnProductCreated {
   @ApiProperty({ format: 'uuid', description: "The seller's draft Offer on it. A UUID v7." })
   offerId!: string;
 }
+
+export class OwnProductOwnBrandRequest {
+  @ApiProperty({
+    type: Boolean,
+    description: "Whether the product carries the seller's own brand.",
+  })
+  ownBrand!: boolean;
+}
+
+export class OwnProductOwnBrandSet {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ type: Boolean }) ownBrand!: boolean;
+}

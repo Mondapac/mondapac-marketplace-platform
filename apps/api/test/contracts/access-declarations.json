@@ -27,6 +27,8 @@
   { "name": "cart.view-guest-cart", "rule": "anonymous" },
   { "name": "cart.view-saved", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "catalog.brand-product-ids", "rule": "anonymous" },
+  { "name": "catalog.business-activities-active", "rule": "anonymous" },
+  { "name": "catalog.category-slug-resolve", "rule": "anonymous" },
   { "name": "catalog.category-tree", "rule": "anonymous" },
   { "name": "catalog.expire-relaxation-requests", "rule": "system" },
   { "name": "catalog.offer-badges", "rule": "anonymous" },
@@ -37,6 +39,11 @@
   { "name": "catalog.offer-sell-units", "rule": "anonymous" },
   { "name": "catalog.offer-sell-units-system", "rule": "system" },
   { "name": "catalog.offer-tax-categories", "rule": "anonymous" },
+  {
+    "name": "catalog.own-attribute-suggestions-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "catalog.own-offer-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.own-offers-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {
@@ -62,6 +69,7 @@
   { "name": "catalog.products-for-linking", "rule": "anonymous" },
   { "name": "catalog.public-brand", "rule": "anonymous" },
   { "name": "catalog.public-brands-az", "rule": "anonymous" },
+  { "name": "catalog.public-category-tree", "rule": "anonymous" },
   { "name": "catalog.published-image-read", "rule": "anonymous" },
   { "name": "catalog.published-offer-ids", "rule": "system" },
   { "name": "catalog.published-product", "rule": "anonymous" },
@@ -69,6 +77,9 @@
   { "name": "catalog.reconcile-tags", "rule": "system" },
   { "name": "catalog.reevaluate-from-certification", "rule": "system" },
   { "name": "catalog.reevaluate-tags", "rule": "system" },
+  { "name": "catalog.report-retired-categories", "rule": "system" },
+  { "name": "catalog.search-filters", "rule": "anonymous" },
+  { "name": "catalog.search-index-stamp", "rule": "system" },
   { "name": "catalog.seed-attributes", "rule": "system" },
   { "name": "catalog.seed-category-tree", "rule": "system" },
   { "name": "catalog.sell-unit-labels", "rule": "anonymous" },
@@ -78,9 +89,12 @@
   { "name": "catalog.sweep-orphan-image-files", "rule": "system" },
   { "name": "catalog.sweep-orphan-images", "rule": "system" },
   { "name": "catalog.warn-offer-owners-of-expiry", "rule": "system" },
+  { "name": "certification.assert-categories-retirable", "rule": "anonymous" },
+  { "name": "certification.assert-categories-retirable-system", "rule": "system" },
   { "name": "certification.certification-types", "rule": "anonymous" },
   { "name": "certification.certification-types-system", "rule": "system" },
   { "name": "certification.certified-categories", "rule": "anonymous" },
+  { "name": "certification.claim-term-list", "rule": "anonymous" },
   { "name": "certification.claim-term-locales", "rule": "anonymous" },
   { "name": "certification.evaluate-claims", "rule": "anonymous" },
   { "name": "certification.evaluate-claims-system", "rule": "system" },
@@ -148,6 +162,7 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "certification.platform-categories-retired", "rule": "system" },
   { "name": "certification.seed-certification-types", "rule": "system" },
   { "name": "certification.send-decision-mail", "rule": "system" },
   { "name": "certification.send-derecognition-mail", "rule": "system" },
@@ -248,6 +263,11 @@
   },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
+  {
+    "name": "identity.change-actor-labels",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   {
     "name": "identity.change-customer-language",
     "rule": "own-resources",
@@ -597,6 +617,7 @@
   { "name": "search.list-recently-viewed-guest", "rule": "anonymous" },
   { "name": "search.list-specials", "rule": "anonymous" },
   { "name": "search.rebuild-offer-index", "rule": "system" },
+  { "name": "search.reindex-offer-attributes", "rule": "system" },
   { "name": "search.search-products", "rule": "anonymous" },
   { "name": "search.sync-offer-documents", "rule": "system" },
   { "name": "search.sync-product-ratings", "rule": "system" },
@@ -656,11 +677,23 @@
   { "name": "sellers.purge-seller-health", "rule": "system" },
   { "name": "sellers.reconcile-decisions", "rule": "system" },
   { "name": "sellers.run-seller-health", "rule": "system" },
+  { "name": "sellers.run-seller-health-requests", "rule": "system" },
+  {
+    "name": "sellers.seller-business-activities",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  { "name": "sellers.seller-business-activities-system", "rule": "system" },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },
   { "name": "sellers.selling-eligibility-system", "rule": "system" },
   { "name": "sellers.sweep-orphan-store-image-files", "rule": "system" },
+  {
+    "name": "settings.read-list-paging",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "shipping.book-carrier-delivery", "rule": "system" },
   { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
   { "name": "shipping.carrier-shipment", "rule": "system" },

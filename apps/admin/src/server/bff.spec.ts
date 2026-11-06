@@ -552,6 +552,35 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${path}/extra`)).status).toBe(404);
   });
 
+  it('relays the category editor on its exact paths and methods only (categories C3)', async () => {
+    const id = ID;
+    const base = 'catalog/admin/categories';
+    expect((await call('POST', base)).status).toBe(200);
+    expect((await call('PATCH', `${base}/${id}`)).status).toBe(200);
+    for (const action of ['reorder', 'hide', 'show', 'change-slug', 'discard']) {
+      expect((await call('POST', `${base}/${id}/${action}`)).status).toBe(200);
+      expect((await call('PUT', `${base}/${id}/${action}`)).status).toBe(404);
+    }
+    expect((await call('PUT', `${base}/${id}`)).status).toBe(404);
+    expect((await call('DELETE', `${base}/${id}`)).status).toBe(404);
+    expect((await call('POST', `${base}/${id}`)).status).toBe(404);
+    expect((await call('PATCH', `${base}/not-a-uuid`)).status).toBe(404);
+    expect((await call('POST', `${base}/${id}/restore`)).status).toBe(404);
+  });
+
+  it('relays move, merge and archive on their exact paths and methods only (categories C4a)', async () => {
+    const id = ID;
+    const base = 'catalog/admin/categories';
+    for (const action of ['move', 'merge', 'archive']) {
+      expect((await call('POST', `${base}/${id}/${action}`)).status).toBe(200);
+      expect((await call('PUT', `${base}/${id}/${action}`)).status).toBe(404);
+      expect((await call('PATCH', `${base}/${id}/${action}`)).status).toBe(404);
+      expect((await call('DELETE', `${base}/${id}/${action}`)).status).toBe(404);
+      expect((await call('POST', `${base}/not-a-uuid/${action}`)).status).toBe(404);
+      expect((await call('POST', `${base}/${id}/${action}/extra`)).status).toBe(404);
+    }
+  });
+
   it('relays the assistant settings read and write on their exact path only', async () => {
     const path = 'assistant/admin/settings';
     const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
@@ -1146,10 +1175,21 @@ describe('relay of the wallet and step-up routes', () => {
     ['PUT', `catalog/admin/attributes/${id}`],
     ['POST', `catalog/admin/attributes/${id}/publish`],
     ['POST', `catalog/admin/attributes/${id}/discard`],
+    ['GET', 'catalog/admin/attribute-suggestions'],
+    ['POST', `catalog/admin/attribute-suggestions/${id}/approve`],
+    ['POST', `catalog/admin/attribute-suggestions/${id}/map`],
+    ['POST', `catalog/admin/attribute-suggestions/${id}/reject`],
     ['GET', 'catalog/admin/attribute-relaxations'],
+    ['GET', 'catalog/admin/attribute-archive-requests'],
     ['POST', `catalog/admin/attributes/${id}/relaxation-requests`],
     ['POST', `catalog/admin/attribute-relaxations/${id}/confirm`],
     ['POST', `catalog/admin/attribute-relaxations/${id}/cancel`],
+    ['GET', `catalog/admin/attributes/${id}/impact`],
+    ['POST', `catalog/admin/attributes/${id}/merge-values`],
+    ['POST', `catalog/admin/attributes/${id}/merge`],
+    ['POST', `catalog/admin/attributes/${id}/archive`],
+    ['POST', `catalog/admin/attributes/${id}/archive-requests`],
+    ['POST', `catalog/admin/attribute-archive-requests/${id}/confirm`],
     ['GET', 'catalog/admin/feature-sets'],
     ['GET', `catalog/admin/feature-sets/${id}`],
   ])('relays %s %s', async (method, path) => {
@@ -1189,7 +1229,6 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/brands/${id}/delete`],
     ['POST', 'catalog/admin/brands/merge-queue'],
     ['GET', 'catalog/admin/brands/merge-queue/dismiss'],
-    ['POST', 'catalog/admin/categories'],
     ['PUT', `catalog/admin/categories/${id}`],
     ['DELETE', `catalog/admin/categories/${id}`],
     ['GET', 'catalog/admin/categories/not-a-uuid'],
@@ -1201,6 +1240,9 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/business-activities/${id}`],
     ['GET', 'catalog/admin/business-activities/not-a-uuid'],
     ['PUT', 'catalog/admin/attributes'],
+    ['POST', 'catalog/admin/attribute-suggestions'],
+    ['POST', `catalog/admin/attribute-suggestions/${id}`],
+    ['PUT', `catalog/admin/attribute-suggestions/${id}/approve`],
     ['PUT', 'catalog/admin/attributes/not-a-uuid'],
     ['POST', `catalog/admin/attributes/${id}`],
     ['DELETE', `catalog/admin/attributes/${id}`],
@@ -1209,10 +1251,16 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', 'catalog/admin/attribute-relaxations/not-a-uuid/cancel'],
     ['POST', 'catalog/admin/attributes/not-a-uuid/relaxation-requests'],
     ['POST', 'catalog/admin/attribute-relaxations/not-a-uuid/confirm'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/merge-values'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/merge'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/archive'],
+    ['POST', 'catalog/admin/attribute-archive-requests/not-a-uuid/confirm'],
+    ['GET', `catalog/admin/attribute-archive-requests/${id}/confirm`],
+    ['POST', `catalog/admin/attributes/${id}/impact`],
     ['GET', `catalog/admin/attributes/${id}/relaxation-requests`],
     ['POST', `catalog/admin/attribute-relaxations/${id}`],
     ['POST', 'catalog/admin/attributes/not-a-uuid/publish'],
-    ['POST', `catalog/admin/attributes/${id}/archive`],
+    ['GET', `catalog/admin/attributes/${id}/archive`],
     ['GET', `catalog/admin/attributes/${id}/publish`],
     ['GET', 'catalog/admin/attributes/not-a-uuid'],
     ['POST', 'catalog/admin/feature-sets'],
@@ -1301,6 +1349,46 @@ describe('relay of the wallet and step-up routes', () => {
     );
     const tree = await run('GET', 'catalog/admin/categories?q=x&limit=3', readHeaders);
     expect(tree.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/categories');
+  });
+
+  it('drops a target that is not exactly top or an id: TOP, Top and an empty one (categories C4b)', async () => {
+    for (const bad of ['TOP', 'Top', '']) {
+      const { upstream } = await run(
+        'GET',
+        `catalog/admin/categories/${id}/impact?action=move&targetId=${bad}`,
+        readHeaders,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/catalog/admin/categories/${id}/impact?action=move`,
+      );
+    }
+  });
+
+  it('passes the target of the category impact read only as an id or top (categories C4b)', async () => {
+    const withId = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=move&targetId=${id}&x=1`,
+      readHeaders,
+    );
+    expect(withId.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact?action=move&targetId=${id}`,
+    );
+    const top = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=move&targetId=top`,
+      readHeaders,
+    );
+    expect(top.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact?action=move&targetId=top`,
+    );
+    const bad = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=merge&targetId=../x`,
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact?action=merge`,
+    );
   });
 
   it('passes only the known, well-formed filters of the attribute list', async () => {

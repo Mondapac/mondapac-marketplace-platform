@@ -16,6 +16,7 @@ import type { EraseCustomerAccount } from '../application/use-cases/erase-custom
 import type { DescribeActor } from '../application/use-cases/describe-actor.use-case';
 import type { RequireStepUp } from '../application/use-cases/require-step-up.use-case';
 import type { MembershipOf } from '../application/use-cases/membership-of.use-case';
+import type { ChangeActorLabels } from '../application/use-cases/change-actor-labels.use-case';
 import type { TeamMemberLabels } from '../application/use-cases/team-member-labels.use-case';
 import type { TeamMembershipOf } from '../application/use-cases/team-membership-of.use-case';
 import type {
@@ -31,6 +32,7 @@ import type {
   IdentityValidationFailed,
   SellerMembershipSummary,
   TeamMemberLabel,
+  ChangeActorLabel,
 } from '../contracts/identity.facade';
 import type { StepUpFailure } from '../contracts/step-up';
 
@@ -47,6 +49,7 @@ export interface IdentityFacadeUseCases {
   readonly customerAccountSummaries: CustomerAccountSummaries;
   readonly customerShortNames: CustomerShortNames;
   readonly teamMemberLabels: TeamMemberLabels;
+  readonly changeActorLabels: ChangeActorLabels;
   readonly endOtherCustomerSessions: EndOtherCustomerSessions;
   readonly endAllCustomerSessions: EndAllCustomerSessions;
   readonly adminEndCustomerSessions: AdminEndCustomerSessions;
@@ -159,6 +162,13 @@ export class IdentityFacadeImplementation implements IdentityFacade {
             : { kind: row.role.kind, seedCode: row.role.seedCode, name: row.role.name },
       })),
     );
+  }
+
+  changeActors(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<Result<readonly ChangeActorLabel[], AccessDenied | IdentityValidationFailed>> {
+    return this.useCases.changeActorLabels.execute(context, { accountIds });
   }
 
   async endOtherCustomerSessions(

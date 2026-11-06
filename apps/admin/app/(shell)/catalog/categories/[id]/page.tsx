@@ -2,7 +2,11 @@ import { LoadError } from '@mondapac/ui';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { CategoryPageView } from '../../../../../src/categories/category-page-view.tsx';
-import { EDIT_PERMISSION, READ_PERMISSION } from '../../../../../src/categories/types.ts';
+import {
+  EDIT_PERMISSION,
+  READ_PERMISSION,
+  RESTRUCTURE_PERMISSION,
+} from '../../../../../src/categories/types.ts';
 import { AdminShell } from '../../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../../src/server/session.ts';
 
@@ -31,7 +35,12 @@ export default async function CategoryPage({
     <AdminShell session={gate.session} activeId="categories" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {permissionKeys.includes(READ_PERMISSION) ? (
-        <CategoryPageView id={id} canEdit={permissionKeys.includes(EDIT_PERMISSION)} />
+        <CategoryPageView
+          id={id}
+          canEdit={permissionKeys.includes(EDIT_PERMISSION)}
+          canRestructure={permissionKeys.includes(RESTRUCTURE_PERMISSION)}
+          csrfToken={gate.session.csrfToken}
+        />
       ) : (
         <p className="text-fg-muted">{t('categories.no-access')}</p>
       )}

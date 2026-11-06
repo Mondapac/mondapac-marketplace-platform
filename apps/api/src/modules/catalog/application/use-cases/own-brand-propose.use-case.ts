@@ -1,9 +1,12 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
+import type { ContentFilter } from '../../../../platform/content-filter/content-filter';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
+import { BrandProposedAudit } from '../../domain/audit';
 import {
   Brand,
   brandNameKey,
@@ -52,12 +55,15 @@ export type OwnBrandProposeFailure =
   | ValidationFailure;
 
 export interface OwnBrandProposeDependencies {
+  /** The Market's content filter: public text with a blocked term is refused. */
+  readonly contentFilter: ContentFilter;
   readonly unitOfWork: UnitOfWork;
   readonly brands: BrandRepository;
   readonly brandReader: BrandReader;
   readonly eligibility: SellerEligibilityReader;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  readonly audit: AuditWriter;
 }
 
 const PROPOSE_KEYS = ['name', 'summary', 'originCountry'] as const;
@@ -115,7 +121,9 @@ export class OwnBrandPropose extends UseCase<
     if (sellerId === null) return err({ code: 'access.denied' });
     const body = closedInput(input, PROPOSE_KEYS);
     if (!body.ok) return body;
-    const content = parseBrandContent(body.value);
+    const content = parseBrandContent(body.value, (text) =>
+      this.deps.contentFilter.isBlocked(context.market, text),
+    );
     if (!content.ok) return invalidFields(content.error);
     const { market } = context;
     const { brands } = this.deps;
@@ -160,6 +168,12 @@ export class OwnBrandPropose extends UseCase<
       if (!created.ok) return err(created.error);
       const added = await brands.add(market, created.value);
       if (added !== null) return err({ code: added } as const);
+      await this.deps.audit.record(
+        context,
+        BrandProposedAudit.entry(created.value.state.id, {
+          after: { status: 'draft', origin: 'seller' },
+        }),
+      );
       return ok({
         brandId: created.value.state.id,
         slug: created.value.state.slug,

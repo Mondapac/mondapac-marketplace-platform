@@ -96,6 +96,11 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'catalog.reevaluate-on-seller-certification-expired',
       'catalog.reevaluate-on-seller-certification-issuer-confirmed',
       'catalog.reevaluate-on-seller-certification-revoked',
+      // Categories C4a: catalog reports its moved, merged and archived categories to
+      // certification's backstop (C-4).
+      'catalog.report-archived-category',
+      'catalog.report-merged-category',
+      'catalog.report-moved-category',
       'catalog.warn-offer-owners-of-expiry',
       'certification.approved-mail',
       'certification.changes-requested-mail',
@@ -261,6 +266,15 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('catalog.offer-listing-changed.v1')).toEqual([
       'search.index-listing-changed-offer',
+    ]);
+    expect(subscriptions.subscribersOf('catalog.platform-category-moved.v1')).toEqual([
+      'catalog.report-moved-category',
+    ]);
+    expect(subscriptions.subscribersOf('catalog.platform-category-merged.v1')).toEqual([
+      'catalog.report-merged-category',
+    ]);
+    expect(subscriptions.subscribersOf('catalog.platform-category-archived.v1')).toEqual([
+      'catalog.report-archived-category',
     ]);
     expect(subscriptions.subscribersOf('catalog.product-revision-published.v1')).toEqual([
       'notifications.seller-product-published-notice',

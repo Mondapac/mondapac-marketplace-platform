@@ -272,6 +272,7 @@ const sellable = (overrides: Partial<FeedFacts> = {}): FeedFacts => ({
   name: 'Halal beef sausages',
   shortText: 'Twelve sausages',
   categoryIds: [CATEGORY],
+  attributes: { searchText: '', facets: [], numbers: {} },
   ...overrides,
 });
 
@@ -323,6 +324,12 @@ describe.each([
       unitOfWork: new FakeUnitOfWork(),
       documents,
       reader,
+      facets: {
+        searchFiltered: () => Promise.resolve([]),
+        facetRows: () => Promise.resolve([]),
+        numberRows: () => Promise.resolve([]),
+      },
+      filterSource: { filters: () => Promise.resolve([]) },
       policy: new ConfigSearchPolicy(markets),
       feed,
       visibility,
@@ -366,6 +373,9 @@ describe.each([
           shortText: 'Twelve sausages',
           categoryIds: [CATEGORY],
           textSearchConfig: config,
+          searchText: null,
+          facetCodes: [],
+          numbers: {},
         },
       ]);
       expect(documents.markets).toEqual(new Set([code]));
@@ -574,6 +584,9 @@ describe.each([
           page: 1,
           pageSize: 10,
           hasMore: false,
+          filters: [],
+          filtered: false,
+          countsComplete: true,
         },
       });
       expect(reader.requests).toEqual([
@@ -676,6 +689,35 @@ describe.each([
       const result = await search({ category: CATEGORY });
 
       expect(result).toEqual({ ok: false, error: { code: 'search.unavailable' } });
+      expect(reader.requests).toEqual([]);
+    });
+
+    it('lists only the category itself with direct (Other {name}), without reading the tree', async () => {
+      categories.children.set(CATEGORY, [SUBCATEGORY]);
+      reader.hits = [hit(1)];
+
+      await search({ category: CATEGORY, direct: 'true' });
+
+      expect(categories.asked).toEqual([]);
+      expect(reader.requests.map(({ request }) => request.categoryIds)).toEqual([[CATEGORY]]);
+    });
+
+    it('refuses direct without a category or with another value, before any read', async () => {
+      const without = await search({ q: 'sausages', direct: 'true' });
+      const other = await search({ category: CATEGORY, direct: '1' });
+
+      expect(without).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: 'direct', code: 'without-category' }],
+        },
+      });
+      expect(other).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'direct', code: 'value' }] },
+      });
+      expect(categories.asked).toEqual([]);
       expect(reader.requests).toEqual([]);
     });
 
@@ -816,7 +858,15 @@ describe.each([
 
         expect(result).toEqual({
           ok: true,
-          value: { items: [], page: 3, pageSize: 5, hasMore: false },
+          value: {
+            items: [],
+            page: 3,
+            pageSize: 5,
+            hasMore: false,
+            filters: [],
+            filtered: false,
+            countsComplete: true,
+          },
         });
         expect(shelves.browsed).toEqual([]);
         expect(reader.requests).toEqual([]);
@@ -928,7 +978,15 @@ describe.each([
 
         expect(result).toEqual({
           ok: true,
-          value: { items: [], page: 2, pageSize: 5, hasMore: false },
+          value: {
+            items: [],
+            page: 2,
+            pageSize: 5,
+            hasMore: false,
+            filters: [],
+            filtered: false,
+            countsComplete: true,
+          },
         });
         expect(shelves.browsedProducts).toEqual([]);
         expect(reader.requests).toEqual([]);
@@ -1019,6 +1077,9 @@ describe.each([
       shortText: null,
       categoryIds: [],
       textSearchConfig: config,
+      searchText: null,
+      facetCodes: [],
+      numbers: {},
     };
   }
 });

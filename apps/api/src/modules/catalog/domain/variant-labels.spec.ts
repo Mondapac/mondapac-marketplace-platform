@@ -1,5 +1,5 @@
 import type { AttributeField, AttributeSchema } from '@mondapac/shared-kernel';
-import { buildVariantLabels } from './variant-labels';
+import { buildVariantLabels, differingLabels } from './variant-labels';
 
 const field = (
   code: string,
@@ -83,5 +83,30 @@ describe.each([
     expect(buildVariantLabels(schema([blank]), { size: 'l' }, locales)).toEqual({
       [first]: 'Large',
     });
+  });
+});
+
+describe('differingLabels', () => {
+  const locales = ['en-AU', 'ar-AU'];
+
+  it('is empty when stored and built agree, including both absent', () => {
+    expect(differingLabels({ 'en-AU': 'A' }, { 'en-AU': 'A' }, locales)).toEqual([]);
+    expect(differingLabels({}, {}, locales)).toEqual([]);
+  });
+
+  it('reports a free label, a missing stored label and a missing built label by locale', () => {
+    expect(
+      differingLabels({ 'en-AU': 'Big red' }, { 'en-AU': 'Large · Red', 'ar-AU': 'x' }, locales),
+    ).toEqual([
+      { locale: 'ar-AU', stored: null, built: 'x' },
+      { locale: 'en-AU', stored: 'Big red', built: 'Large · Red' },
+    ]);
+    expect(differingLabels({ 'en-AU': 'Old' }, {}, locales)).toEqual([
+      { locale: 'en-AU', stored: 'Old', built: null },
+    ]);
+  });
+
+  it('ignores a locale the Market does not support', () => {
+    expect(differingLabels({ fr: 'x' }, {}, locales)).toEqual([]);
   });
 });

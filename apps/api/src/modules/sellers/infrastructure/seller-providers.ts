@@ -31,6 +31,10 @@ import {
   type SellerHealthPolicy,
 } from '../application/ports/seller-health-policy';
 import {
+  SELLER_HEALTH_REQUEST_STORE,
+  type SellerHealthRequestStore,
+} from '../application/ports/seller-health-request.store';
+import {
   SELLER_HEALTH_ROSTER,
   type SellerHealthRoster,
 } from '../application/ports/seller-health-roster';
@@ -44,6 +48,7 @@ import {
 } from '../application/ports/seller-health.store';
 import { DefaultSellerHealthPolicy } from './default-seller-health-policy';
 import { LateBoundSellerHealthSignals } from './late-bound-seller-health-signals';
+import { PrismaSellerHealthRequestStore } from './prisma-seller-health-request.store';
 import { PrismaSellerHealthRoster } from './prisma-seller-health-roster';
 import { PrismaSellerHealthStore } from './prisma-seller-health.store';
 import {
@@ -72,6 +77,13 @@ import {
   type BlogAccessRepository,
 } from '../application/ports/blog-access.repository';
 import { PrismaBlogAccessRepository } from './prisma-blog-access.repository';
+import {
+  SELLER_BUSINESS_ACTIVITY_REPOSITORY,
+  type SellerBusinessActivityRepository,
+} from '../application/ports/seller-business-activity.repository';
+import { BUSINESS_ACTIVITY_DIRECTORY } from '../application/ports/business-activity-directory';
+import { LateBoundBusinessActivityDirectory } from './late-bound-business-activity-directory';
+import { PrismaSellerBusinessActivityRepository } from './prisma-seller-business-activity.repository';
 import {
   AREA_NAME_SOURCE,
   SERVICE_AREA_NAMES_REPOSITORY,
@@ -401,6 +413,16 @@ export const sellerProviders: readonly FactoryProvider[] = [
       new PrismaAdminFlagRepository(prisma),
   },
   {
+    provide: SELLER_BUSINESS_ACTIVITY_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerBusinessActivityRepository =>
+      new PrismaSellerBusinessActivityRepository(prisma),
+  },
+  {
+    provide: BUSINESS_ACTIVITY_DIRECTORY,
+    useFactory: (): LateBoundBusinessActivityDirectory => new LateBoundBusinessActivityDirectory(),
+  },
+  {
     provide: SERVICE_AREA_NAMES_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): ServiceAreaNamesRepository =>
@@ -455,6 +477,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     provide: SELLER_HEALTH_STORE,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellerHealthStore => new PrismaSellerHealthStore(prisma),
+  },
+  {
+    provide: SELLER_HEALTH_REQUEST_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerHealthRequestStore =>
+      new PrismaSellerHealthRequestStore(prisma),
   },
   {
     provide: SELLER_HEALTH_ROSTER,

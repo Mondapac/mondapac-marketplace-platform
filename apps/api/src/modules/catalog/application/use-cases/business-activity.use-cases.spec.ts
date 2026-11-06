@@ -75,6 +75,8 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
     },
   };
   const activityReader: BusinessActivityReader = {
+    activeIds: (_m, ids) =>
+      Promise.resolve(new Set(ids.filter((id) => rows.get(id)?.status === 'active'))),
     list: (_m, query: BusinessActivityListQuery) =>
       Promise.resolve({
         items: [...rows.values()].filter((r) => query.status === null || r.status === query.status),
@@ -96,6 +98,7 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
     id: cat(n),
     parentId: parent,
     status,
+    position: 0,
     mergedIntoId: null,
     slug: `c${n}`,
     names: status === 'active' ? [{ locale: main, name: `Category ${n}` }] : [],

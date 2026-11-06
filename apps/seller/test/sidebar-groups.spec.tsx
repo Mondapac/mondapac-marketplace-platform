@@ -186,7 +186,15 @@ describe('grouped sidebar', () => {
 
 describe('seller menu structure', () => {
   const ALL = sellerNav.items.flatMap((item) => item.anyOf ?? []);
-  const WORK = ['s_home', 's_orders', 's_products', 's_offers', 's_reviews', 's_earnings'];
+  const WORK = [
+    's_home',
+    's_orders',
+    's_products',
+    's_offers',
+    's_suggestions',
+    's_reviews',
+    's_earnings',
+  ];
 
   it('shows daily work in the menu and Settings in the footer, and only setup before approval', () => {
     const ids = (state: 'approved' | 'pending') =>

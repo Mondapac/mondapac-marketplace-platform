@@ -307,6 +307,104 @@ describe.each(TEST_MARKETS)('the seller health store in market %s', (code) => {
     expect(await run(market, () => store.latest(market, [], from, to))).toEqual(new Map());
   });
 
+  it('queues the sellers whose newest snapshot is unhealthy, worst first, in this Market only', async () => {
+    const a = await newSeller();
+    const recovered = await newSeller();
+    const c = await newSeller();
+    const old = await newSeller();
+    const foreign = await newSeller(other);
+    const inputs = {
+      orders: 12,
+      sellerCancellations: { count: 0, base: 0 },
+      lateReady: { count: 0, base: 12 },
+      lostDisputes: { count: 0, base: 12 },
+      customerRating: { count: 0, averageHundredths: 0 },
+      reports: null,
+    };
+    const bad = (score: number) => ({
+      kind: 'scored' as const,
+      band: 'unhealthy' as const,
+      score,
+      lowestMetric: 'late-ready' as const,
+      metrics: [],
+      formulaVersion: 'v1',
+    });
+    const good = { ...bad(90), band: 'healthy' as const };
+    const snap = (iso: string, health: ReturnType<typeof bad> | typeof good) => ({
+      day: Temporal.PlainDate.from(iso),
+      health,
+      inputs,
+      computedAt: T0,
+    });
+    await run(market, () => store.saveSnapshot(market, a, snap('2026-11-10', bad(20))));
+    await run(market, () => store.saveSnapshot(market, recovered, snap('2026-11-09', bad(10))));
+    await run(market, () => store.saveSnapshot(market, recovered, snap('2026-11-10', good)));
+    await run(market, () => store.saveSnapshot(market, c, snap('2026-11-10', bad(5))));
+    await run(market, () => store.saveSnapshot(market, old, snap('2026-11-01', bad(1))));
+    await run(other, () => store.saveSnapshot(other, foreign, snap('2026-11-10', bad(2))));
+
+    const queue = await run(market, () =>
+      store.unhealthy(
+        market,
+        Temporal.PlainDate.from('2026-11-08'),
+        Temporal.PlainDate.from('2026-11-11'),
+      ),
+    );
+
+    const mine = new Set([a, recovered, c, old, foreign]);
+    expect(
+      queue.sellers.filter((x) => mine.has(x.sellerId)).map((x) => [x.sellerId, x.score]),
+    ).toEqual([
+      [c, 5],
+      [a, 20],
+    ]);
+    expect(queue.sellers[0]).toMatchObject({ band: 'unhealthy', lowestMetric: 'late-ready' });
+    expect(queue.truncated).toBe(false);
+  });
+
+  it('caps the queue and says truncated when more sellers are unhealthy than the cap', async () => {
+    const sellers = [await newSeller(), await newSeller(), await newSeller()];
+    const inputs = {
+      orders: 12,
+      sellerCancellations: { count: 0, base: 0 },
+      lateReady: { count: 0, base: 12 },
+      lostDisputes: { count: 0, base: 12 },
+      customerRating: { count: 0, averageHundredths: 0 },
+      reports: null,
+    };
+    const scores = [30, 10, 20];
+    for (const [i, seller] of sellers.entries()) {
+      await run(market, () =>
+        store.saveSnapshot(market, seller, {
+          day: Temporal.PlainDate.from('2026-12-02'),
+          health: {
+            kind: 'scored' as const,
+            band: 'unhealthy' as const,
+            score: scores[i]!,
+            lowestMetric: 'late-ready' as const,
+            metrics: [],
+            formulaVersion: 'v1',
+          },
+          inputs,
+          computedAt: T0,
+        }),
+      );
+    }
+    const from = Temporal.PlainDate.from('2026-12-01');
+    const to = Temporal.PlainDate.from('2026-12-03');
+
+    const capped = await run(market, () => store.unhealthy(market, from, to, 2));
+    expect(capped.truncated).toBe(true);
+    expect(capped.sellers.map((x) => [x.sellerId, x.score])).toEqual([
+      [sellers[1], 10],
+      [sellers[2], 20],
+    ]);
+
+    const roomy = await run(market, () => store.unhealthy(market, from, to, 3));
+    expect(roomy.truncated).toBe(false);
+    expect(roomy.sellers).toHaveLength(3);
+  });
+
   it('refuses rows the rules forbid', async () => {
     const seller = await newSeller();
     const insert = (patch: Record<string, unknown>) => {

@@ -1,5 +1,5 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
-import type { AttributeDefinition } from '../../domain/attribute-definition';
+import type { AttributeDefinition, AttributeMergeOption } from '../../domain/attribute-definition';
 
 /**
  * The store the attribute editor writes through (attributes plan, package A2): one definition by
@@ -53,8 +53,22 @@ export interface AttributeDefinitionStore {
     version: number,
   ): Promise<boolean>;
 
+  /** `true` when another attribute was merged into this one (attributes A8). */
+  hasMergedSources(market: MarketContext, id: Id<'AttributeDefinition'>): Promise<boolean>;
+
   /** Writes the status of `publish` or `discard`, if the stored version is the one before. */
   saveStatus(market: MarketContext, definition: AttributeDefinition): Promise<void>;
+
+  /**
+   * Writes the archive of a merge (attributes A8): the status of `source.archive()`, the target it
+   * points at and where each of its values goes, if the stored version is the one before.
+   */
+  saveMerge(
+    market: MarketContext,
+    source: AttributeDefinition,
+    target: Id<'AttributeDefinition'>,
+    options: readonly AttributeMergeOption[],
+  ): Promise<void>;
 }
 
 /** `addDraft` lost a race for the code: another definition of the Market took it first. */
