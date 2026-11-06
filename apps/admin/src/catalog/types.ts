@@ -31,7 +31,20 @@ export interface ReviewRow {
   readonly submittedAt: string | null;
 }
 
+/**
+ * A pending product revision. The same queue answer carries these next to the Offer rows; this
+ * page does not show them yet (the product version review screen does), so only the kind is read.
+ */
+export interface RevisionQueueRow {
+  readonly kind: 'product-revision';
+}
+
 export interface ReviewPage {
-  readonly items: readonly ReviewRow[];
+  readonly items: readonly (ReviewRow | RevisionQueueRow)[];
   readonly nextAfterId: string | null;
+}
+
+/** The Offer rows of a queue page, in queue order; product revision rows are left out. */
+export function offerRowsOf(items: ReviewPage['items']): readonly ReviewRow[] {
+  return items.filter((row): row is ReviewRow => row.kind === 'offer-first-publication');
 }

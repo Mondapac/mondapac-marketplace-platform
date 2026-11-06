@@ -204,6 +204,17 @@ describe('admin dashboard', () => {
     expect(screen.getByRole('link', { name: /Held prices to decide/ }).textContent).toContain('0');
   });
 
+  it('counts and lists only Offers, not the product revisions in the same queue', () => {
+    const mixed: AdminDashboardData = {
+      ...none,
+      offers: ok({ items: [{ kind: 'product-revision' as const }], nextAfterId: null }),
+    };
+    render(wrap(<AdminDashboard data={mixed} permissionKeys={[]} />));
+    expect(screen.getByText('No offers are waiting for their first publication.')).toBeTruthy();
+    expect(screen.queryAllByRole('table')).toHaveLength(0);
+    expect(screen.getByRole('link', { name: /Offers to review/ }).textContent).toContain('0');
+  });
+
   it('fails one widget in place and still renders the others', () => {
     const partly: AdminDashboardData = {
       ...full,

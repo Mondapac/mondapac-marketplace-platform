@@ -11,7 +11,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 import { callApi } from '../api/client.ts';
 import { reviewProblemOf } from './review-errors.ts';
 import { ReviewQueue } from './review-queue.tsx';
-import type { ReviewRow } from './types.ts';
+import { offerRowsOf, type ReviewRow } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
@@ -127,6 +127,20 @@ describe('ReviewQueue', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     fireEvent.click(screen.getByRole('button', { name: 'Yes, approve' }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+  });
+});
+
+describe('offerRowsOf', () => {
+  it('keeps the Offer rows in order and leaves product revision rows out', () => {
+    const second = row({ offerId: '0190a000-0000-7000-8000-0000000000c2' });
+    const items = [
+      { kind: 'product-revision' as const },
+      row(),
+      { kind: 'product-revision' as const },
+      second,
+    ];
+    expect(offerRowsOf(items).map((r) => r.offerId)).toEqual([ID, second.offerId]);
+    expect(offerRowsOf([{ kind: 'product-revision' }])).toEqual([]);
   });
 });
 
