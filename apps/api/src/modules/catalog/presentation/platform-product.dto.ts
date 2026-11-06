@@ -82,6 +82,23 @@ export class RefusedFieldView {
   character?: string;
 }
 
+export class VariantNoticeView {
+  @ApiProperty({ format: 'uuid' })
+  variantId!: string;
+
+  @ApiProperty({ enum: ['gtin.duplicate'] })
+  code!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The public code of the PLATFORM product that already carries this GTIN, so the seller can ' +
+      'sell on it; null when the GTIN is on any other product (no name, id or seller is given).',
+  })
+  sellOnProductCode!: string | null;
+}
+
 export class PlatformProductDraftSaved {
   @ApiProperty({ type: [String], description: 'The draft variant list, in order.' })
   variantIds!: string[];
@@ -91,6 +108,13 @@ export class PlatformProductDraftSaved {
     description: 'Texts that kept their last saved value; everything else was saved.',
   })
   refusedFields!: RefusedFieldView[];
+
+  @ApiProperty({
+    type: [VariantNoticeView],
+    description:
+      'Advice about the saved variants (a GTIN another product carries). Never a refusal.',
+  })
+  variantNotices!: VariantNoticeView[];
 }
 
 export class PlatformProductSubmitRequest {

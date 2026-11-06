@@ -1109,6 +1109,7 @@
         "name": "name",
         "primary-image": "main image",
         "variant-removed": "removed variants",
+        "gtin-changed": "variant barcodes (GTIN)",
         "images": "images"
       },
       "attribute": {

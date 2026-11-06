@@ -337,7 +337,8 @@
       "name": true,
       "primaryImage": false,
       "anyImage": true,
-      "variantRemoved": false
+      "variantRemoved": false,
+      "gtinChanged": false
     },
     "maxVariantsPerProduct": 3,
     "maxCategoryDepth": 3,

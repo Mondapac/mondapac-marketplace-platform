@@ -180,6 +180,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
         primaryImage: true,
         anyImage: false,
         variantRemoved: true,
+        gtinChanged: true,
       }),
       maxVariantsPerProduct: () => 100,
       maxVariantAttributes: () => 2,

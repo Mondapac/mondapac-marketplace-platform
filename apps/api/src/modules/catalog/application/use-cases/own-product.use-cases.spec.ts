@@ -267,6 +267,7 @@ describe.each(FIXTURES)(
           primaryImage: true,
           anyImage: false,
           variantRemoved: true,
+          gtinChanged: true,
         }),
         maxVariantsPerProduct: () => 100,
         maxVariantAttributes: () => 2,

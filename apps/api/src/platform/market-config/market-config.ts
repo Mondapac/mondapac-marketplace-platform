@@ -1181,6 +1181,8 @@ const catalogSchema = z
       primaryImage: z.boolean(),
       anyImage: z.literal(true),
       variantRemoved: z.boolean(),
+      /** A GTIN set, changed or cleared on an already published variant (variants V4). */
+      gtinChanged: z.boolean(),
     }),
     /**
      * The most non-retired variants one product may hold (catalog design 2.1; AU 100). Bounded
