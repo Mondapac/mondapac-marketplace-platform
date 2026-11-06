@@ -110,6 +110,10 @@ export function SelectedGallery() {
     picked === undefined || product.photoThumbs === undefined
       ? product.photoThumbs
       : picked.flatMap((at) => product.photoThumbs?.[at] ?? []);
+  const sets =
+    picked === undefined || product.photoSets === undefined
+      ? product.photoSets
+      : picked.flatMap((at) => product.photoSets?.[at] ?? []);
   return (
     <Gallery
       // A new Variant starts on its first photo.
@@ -118,6 +122,7 @@ export function SelectedGallery() {
       category={product.category}
       photos={photos}
       thumbs={thumbs}
+      sets={sets}
       certifications={offer.certifications.filter((badge) => badge.sellerClaim !== true)}
       special={offer.wasPrice !== undefined}
     />

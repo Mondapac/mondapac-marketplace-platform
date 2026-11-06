@@ -3,7 +3,7 @@ import { formatMoney } from '../format/money.ts';
 import { apiGet, type ApiRead } from './api.ts';
 import { storefrontApiConfig } from './config.ts';
 import { photoUrls } from './photo-source.ts';
-import { imageIdOf, type PhotoUrl } from './photos.ts';
+import { imageRefOf, photoSetOf, type PhotoUrl } from './photos.ts';
 import { PRODUCTS, SAMPLE_CONTENT, SAMPLE_HERO } from './sample-home.ts';
 import { emptySet, legacySlideOf, PLACEHOLDER_KEYS, slideSetOf } from './slides.ts';
 import type {
@@ -162,9 +162,13 @@ export function cardOf(
     : undefined;
   // The card's photo: the item's `primaryImage` when it is a well-formed reference and photos are
   // on; otherwise the card keeps its category illustration.
-  const imageId = imageIdOf(item.primaryImage);
+  const ref = imageRefOf(item.primaryImage);
   const imageUrl =
-    photo === null || imageId === undefined ? undefined : photo(item.productId, imageId, 'medium');
+    photo === null || ref === undefined ? undefined : photo(item.productId, ref.imageId, 'medium');
+  const imageSet =
+    photo === null || ref === undefined || imageUrl === undefined
+      ? undefined
+      : photoSetOf(photo, item.productId, ref, 'medium');
   return {
     id: item.productId,
     name,
@@ -174,6 +178,7 @@ export function cardOf(
     ...(wasPrice === undefined ? {} : { wasPrice }),
     certifications: [],
     ...(imageUrl === undefined ? {} : { imageUrl }),
+    ...(imageUrl === undefined || imageSet === undefined ? {} : { imageSet }),
   };
 }
 

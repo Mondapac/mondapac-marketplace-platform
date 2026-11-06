@@ -4259,7 +4259,15 @@
       "note-down": "Moved down.",
       "reason-first": "Move up is off: this is the first category at its level.",
       "reason-last": "Move down is off: this is the last category at its level.",
-      "reason-only": "Move is off: this is the only category at its level."
+      "reason-only": "Move is off: this is the only category at its level.",
+      "move": "Move…",
+      "merge": "Merge…",
+      "archive": "Archive…",
+      "restructure-reason-acting-as": "Not available while acting as a seller.",
+      "restructure-reason-not-active": "Only live categories can be moved, merged or archived.",
+      "note-move": "Category moved.",
+      "note-merge": "Category merged.",
+      "note-archive": "Category archived."
     },
     "form": {
       "tabs": "Sections",
@@ -4360,6 +4368,62 @@
       "catalog_categories-unavailable": "Categories are not available now. Try again.",
       "conflict_stale_tree": "The tree changed since you opened it. Reload.",
       "conflict_stale_details": "Someone changed this category. Reload."
+    },
+    "restructure": {
+      "title": {
+        "move": "Move {name}",
+        "merge": "Merge {name}",
+        "archive": "Archive {name}"
+      },
+      "action": {
+        "move": "Move",
+        "merge": "Merge",
+        "archive": "Archive"
+      },
+      "cancel": "Cancel",
+      "reload": "Reload",
+      "intro": {
+        "move": "Choose where {name} goes. Its subcategories and products go with it.",
+        "merge": "Its subcategories and products move to the category you choose, and {name} is marked merged.",
+        "archive": "{name} leaves the catalog."
+      },
+      "terminal": "Archived categories can't be restored.",
+      "target-move": "New parent",
+      "target-merge": "Merge into",
+      "top": "Top level (department)",
+      "search": "Find a category",
+      "no-match": "No category matches.",
+      "status-hidden": "Hidden",
+      "impact-title": "What will change",
+      "impact-loading": "Counting what this reaches…",
+      "impact-error": "We couldn't count what this reaches. The change is still checked when you confirm it.",
+      "at-least": "at least {text}",
+      "products": "{n, plural, one {# product} other {# products}}",
+      "offers": "{n, plural, one {# offer} other {# offers}}",
+      "tagged": "{n} with certification badges",
+      "subcategories": "{n, plural, one {# subcategory} other {# subcategories}}",
+      "feature-sets": "Feature set changes for {n, plural, one {# product} other {# products}}",
+      "reason": "Reason",
+      "reason-help": "10 to 500 characters. It is kept in the category's history.",
+      "reason-counter": "{n} / 500",
+      "reason-short": "Add a reason of 10 to 500 characters.",
+      "reason-long": "The reason is longer than 500 characters.",
+      "need-target": "Choose a category to continue.",
+      "need-reason": "Add a reason to continue.",
+      "error": {
+        "category_cycle": "A category can't go inside itself.",
+        "category_depth-exceeded": "Categories can be at most {max} levels deep.",
+        "category_referenced-by-policy": "Certificate rules for {types} use this category, so it can't be moved yet. Move or remove those rules first.",
+        "category_check-unavailable": "We couldn't check the certificate rules, so nothing was changed. Try again.",
+        "category_impact-too-large": "This change affects more than {max} badges. Move its subcategories one at a time.",
+        "category_only-platform-category": "{n, plural, one {# live product would} other {# live products would}} be left without a category. Choose a replacement.",
+        "category_products-on-upper-level": "Choose a category or subcategory. Products can't go on a department or group.",
+        "category_has-subcategories": "Move or archive its subcategories first.",
+        "category_move-unchanged": "It's already there. Choose another place.",
+        "category_target-not-found": "The category you chose is no longer available. Reload to choose another.",
+        "category_parent-not-found": "The category you chose is no longer available. Reload to choose another.",
+        "reason": "Add a reason of 10 to 500 characters."
+      }
     }
   },
   "brands": {

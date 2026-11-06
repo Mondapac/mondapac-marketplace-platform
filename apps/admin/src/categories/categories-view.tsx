@@ -30,9 +30,12 @@ const WIDE = '(min-width: 1024px)';
  */
 export function CategoriesView({
   canEdit,
+  canRestructure = false,
   csrfToken = '',
 }: {
   readonly canEdit: boolean;
+  /** `catalog.category-tree.restructure`: Move, Merge and Archive. */
+  readonly canRestructure?: boolean;
   readonly csrfToken?: string;
 }) {
   const t = useTranslations('categories');
@@ -276,6 +279,7 @@ export function CategoriesView({
               id={selectedId}
               tree={tree}
               canEdit={canEdit}
+              canRestructure={canRestructure}
               csrfToken={csrfToken}
               onChanged={changed}
               onCreated={created}

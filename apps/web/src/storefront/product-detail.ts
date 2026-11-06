@@ -2,7 +2,7 @@ import { formatDate } from '../format/date.ts';
 import { formatMoney } from '../format/money.ts';
 import { intlLocale } from '../i18n/locale.ts';
 import { isBrandSlug } from './brands.ts';
-import { imageIdsOf, type PhotoUrl } from './photos.ts';
+import { imageRefsOf, photoSetOf, type PhotoUrl } from './photos.ts';
 import { defaultVariantOf } from './variants.ts';
 import type {
   CertificationBadge,
@@ -34,7 +34,7 @@ export interface ProductDetailBody {
   readonly brand?: unknown;
   /** Attribute values grouped by family group; untrusted, read through {@link specificationsOf}. */
   readonly specifications?: unknown;
-  /** Photo references (`imageId`, size, alt), at most 8; read through {@link imageIdsOf}. */
+  /** Photo references (`imageId`, size, alt), at most 8; read through {@link imageRefsOf}. */
   readonly images?: unknown;
   /** Photos a Variant shows (`variantId`, `imageIds`); untrusted, read through {@link variantPhotosOf}. */
   readonly variantImages?: unknown;
@@ -371,17 +371,19 @@ export function productDetailOf(
   labels: ProductDetailLabels,
   photo: PhotoUrl | null = null,
 ): ProductDetail | undefined {
-  const ids = photo === null ? [] : imageIdsOf(body.images);
-  // Both sizes or neither: an id the builder refuses drops that photo from both lists.
-  const kept = ids.flatMap((id) => {
-    const large = photo?.(body.productId, id, 'large');
-    const thumb = photo?.(body.productId, id, 'thumb');
-    return large === undefined || thumb === undefined ? [] : [{ id, large, thumb }];
+  const refs = photo === null ? [] : imageRefsOf(body.images);
+  // Both sizes or neither: an id the builder refuses drops that photo from all lists.
+  const shots = refs.flatMap((ref) => {
+    const large = photo?.(body.productId, ref.imageId, 'large');
+    const thumb = photo?.(body.productId, ref.imageId, 'thumb');
+    const set = photo === null ? undefined : photoSetOf(photo, body.productId, ref, 'large');
+    return large === undefined || thumb === undefined || set === undefined
+      ? []
+      : [{ id: ref.imageId, large, thumb, set }];
   });
-  const shots = kept;
   const picks = variantPhotosOf(
     body.variantImages,
-    kept.map((shot) => shot.id),
+    shots.map((shot) => shot.id),
   );
   const all = variantsOf(body, locale, labels).map((variant) => {
     const photoIndexes = picks.get(variant.id);
@@ -402,6 +404,7 @@ export function productDetailOf(
     specifications: specificationsOf(body.specifications, locale, labels),
     ...(brandRefOf(body.brand) === undefined ? {} : { brand: brandRefOf(body.brand)! }),
     photos: shots.map((shot) => shot.large),
+    ...(shots.length > 0 ? { photoSets: shots.map((shot) => shot.set) } : {}),
     ...(shots.length > 1 ? { photoThumbs: shots.map((shot) => shot.thumb) } : {}),
     offers,
     ...(variants === undefined ? {} : { variants }),

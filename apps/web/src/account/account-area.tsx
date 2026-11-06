@@ -126,7 +126,7 @@ export function LineThumb({
   return (
     <span className="cim" aria-hidden="true">
       {imageUrl ? (
-        <img src={imageUrl} alt="" loading="lazy" decoding="async" />
+        <img src={imageUrl} alt="" width={64} height={64} loading="lazy" decoding="async" />
       ) : (
         <Icon name={categoryIcon(category)} />
       )}
