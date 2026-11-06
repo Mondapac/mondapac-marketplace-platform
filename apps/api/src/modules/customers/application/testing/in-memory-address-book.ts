@@ -18,6 +18,14 @@ export class InMemoryAddresses implements AddressRepository {
     );
   }
 
+  /** Accounts whose book lock was taken, in order (tests check who locked before writing). */
+  readonly locked: string[] = [];
+
+  lockBook(_market: MarketContext, accountId: Id<'Account'>) {
+    this.locked.push(accountId);
+    return Promise.resolve();
+  }
+
   list(market: MarketContext, accountId: Id<'Account'>) {
     return Promise.resolve(
       this.mine(market, accountId).sort(
