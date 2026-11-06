@@ -82,7 +82,7 @@ MondaPac فروشنده‌ها را از راه نماینده‌ها (بازا�
 - **رویدادهایی که منتشر می‌کند:** `agents.issue-raised.v1`، `agents.issue-commented.v1`، `agents.issue-status-changed.v1`، `agents.earning-recorded.v1`.
 - **زنده بودن (MVP):** polling کوتاه از راه BFF هر پنل (`packages/panel-server`) با محدودیت نرخ؛ بدون broker تازه (ADR-0006). SSE از راه relay در ADR-0034 یا Redis pub/sub الگوی انتقال تازه است و تصمیم جدای خودش را بعداً می‌گیرد.
 - **ابعاد:** `market_id`، `tenant_id`؛ زمان‌ها UTC؛ منطقهٔ زمانی IANA نماینده روی پروفایل او نگه داشته می‌شود و داشبورد و دوره‌ها به آن حساب می‌شوند (ADR-0005).
-- **پنل:** اپ تازهٔ `apps/agent` (Next.js، پورت 3003، `agent.localhost`) با `packages/ui` و `packages/panel-server` (ADR-0034)؛ صفحه‌های ادمین در `apps/admin`.
+- **پنل:** اپ تازهٔ `apps/agent` (Next.js، پورت 3004، `agent.localhost`) با `packages/ui` و `packages/panel-server` (ADR-0034)؛ صفحه‌های ادمین در `apps/admin`.
 
 ## ۷. تصمیم‌هایی که از مالک لازم است
 | # | سؤال | گزینه‌ها و پیشنهاد تیم | پاسخ مالک |
@@ -129,7 +129,7 @@ MondaPac فروشنده‌ها را از راه نماینده‌ها (بازا�
 - همهٔ آزمون‌ها برای AU و ZZ سبزند.
 
 ## ۱۱. وابستگی‌ها و ترتیب برش‌ها
-- ADRهای لازم پیش از G2 (هر دو باید Accepted شوند): (۱) اصلاح ADR-0018 تصمیم ۳ برای جمعیت تازهٔ `agent` با ورود خودش، وابسته به Market، ایمیل یکتا در Market و جمعیت، عامل دوم اجباری؛ (۲) اصلاح ADR-0034 (و چیدمان ADR-0008) برای `apps/agent` (پورت 3003، `agent.localhost`)، `@RoutePopulation` تازهٔ `agent`، فهرست `allowedOrigins` جدا به‌ازای میزبان و ورودی‌های اسکریپت مرز و relay. می‌توانند یک ADR کوتاه باشند.
+- ADRهای لازم پیش از G2 (هر دو باید Accepted شوند): (۱) اصلاح ADR-0018 تصمیم ۳ برای جمعیت تازهٔ `agent` با ورود خودش، وابسته به Market، ایمیل یکتا در Market و جمعیت، عامل دوم اجباری؛ (۲) اصلاح ADR-0034 (و چیدمان ADR-0008) برای `apps/agent` (پورت 3004، `agent.localhost`)، `@RoutePopulation` تازهٔ `agent`، فهرست `allowedOrigins` جدا به‌ازای میزبان و ورودی‌های اسکریپت مرز و relay. می‌توانند یک ADR کوتاه باشند.
 - پیش‌نیاز: `identity` (دعوت و عامل دوم موجود است)، رویداد تحویل `ordering` (موجود)، کمیسیون `commission-payouts` (برای مبنای سهم از کمیسیون؛ بستهٔ فاز ۵)، `notifications`.
 - ترتیب پیشنهادی (یک قابلیت کامل در هر PR، حالت سرعت):
   1. AGT-01 حساب نماینده، کد تأیید و ورود + اسکلت `apps/agent`

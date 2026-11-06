@@ -8,7 +8,7 @@ components are built in code first and listed in section 9 for Figma back-port. 
 
 ## 0. Shared rules
 
-- Apps: `apps/agent` (`agent.localhost:3003`, BFF per ADR-0034/0045); admin additions in `apps/admin`.
+- Apps: `apps/agent` (`agent.localhost:3004`, BFF per ADR-0034/0045); admin additions in `apps/admin`.
 - Shell: `AppShell` + `Sidebar` + `Topbar` + `AccountMenu`. Agent nav: Dashboard, My shops, Issues.
   Below 760px the sidebar becomes the `AppShell` drawer (menu button); the agent app has no bottom bar
   (3 items fit the drawer; the seller bottom bar is not reused).
