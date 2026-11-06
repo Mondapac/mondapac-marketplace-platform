@@ -34,6 +34,13 @@ export interface InvitationRepository {
   findByTokenHash(market: MarketContext, tokenHash: Uint8Array): Promise<Invitation | null>;
 
   /**
+   * Takes the invitation's row write lock until the unit ends, so concurrent handover-code
+   * attempts on one invitation run one after the other (ADR-0045 decision 2: the cap of five
+   * failures is strict). Read the invitation again after the lock. False when it does not exist.
+   */
+  lockForAttempt(market: MarketContext, id: Id<'Invitation'>): Promise<boolean>;
+
+  /**
    * The pending invitation for this address in this scope (a seller, or the platform when
    * `sellerId` is null), or null: the row the partial unique keys of data design 8.4 allow at
    * most one of. An issue reads it to replace it when stale (M7; item G).

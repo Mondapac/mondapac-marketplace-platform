@@ -15,6 +15,16 @@ import {
 import { parseEmailAddress } from '../../src/modules/identity/domain/email-address';
 import { Invitation } from '../../src/modules/identity/domain/invitation';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
+import {
+  HANDOVER_CODES,
+  type HandoverCodes,
+} from '../../src/modules/identity/application/ports/handover-codes';
+import {
+  INVITATION_TOKENS,
+  type OpaqueTokens,
+} from '../../src/modules/identity/application/ports/second-factor-tokens';
+import { AcceptAgentInvitation } from '../../src/modules/identity/application/use-cases/accept-agent-invitation.use-case';
+import { testCallContext } from '@mondapac/shared-kernel/testing';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
 import { marketOf } from './persistence-support';
@@ -261,6 +271,56 @@ describe.each(TEST_MARKETS)('agent invitations in market %s (database, ADR-0045)
       );
       expect([...reserved]).toEqual([pending.state.agentAccountId]);
       expect(await inUnit(market, () => accounts.agentStatuses(market, []))).toEqual(new Map());
+    });
+
+    it('counts every one of parallel wrong handover codes: the cap of five is strict', async () => {
+      const codes = app.get<HandoverCodes>(HANDOVER_CODES, { strict: false });
+      const tokens = app.get<OpaqueTokens>(INVITATION_TOKENS, { strict: false });
+      const invitationId = newId<'Invitation'>();
+      const invitation = Invitation.issueAgent({
+        id: invitationId,
+        marketId: market.marketId,
+        email: email('parallel'),
+        displayName: 'Agent One',
+        agentAccountId: newId<'Account'>(),
+        handoverCodeHmac: codes.hmacOf(market, invitationId, 'ABCDE23456'),
+        invitedByAccountId: newId<'Account'>(),
+        now: NOW,
+      });
+      await inUnit(market, () => invitations.add(market, invitation));
+      const issued = tokens.issue();
+      const now = Temporal.Now.instant();
+      await inUnit(market, async () => {
+        const stored = (await invitations.findById(market, invitation.state.id))!;
+        if (!stored.dispatch(issued.tokenHash, now, 60).ok) throw new Error('dispatch');
+        await invitations.save(market, stored);
+      });
+      const attempt = (n: number, handoverCode: string) =>
+        app.get(AcceptAgentInvitation).execute(testCallContext(market, 'anonymous'), {
+          token: issued.token,
+          handoverCode,
+          password: 'correct horse battery staple',
+          secret: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+          tag: 'tag',
+          expiresAt: now.add({ minutes: 10 }).toString(),
+          code: '123456',
+          client: { origin: `203.0.113.${n}`, address: `203.0.113.${n}` },
+        });
+
+      const results = await Promise.all(
+        Array.from({ length: 8 }, (_, n) => attempt(n + 10, 'ZZZZZ-ZZZZZ')),
+      );
+      const outcomes = results.map((r) => (r.ok ? 'ok' : r.error.code));
+      expect(outcomes.filter((o) => o === 'handover-code.invalid')).toHaveLength(5);
+      expect(outcomes.filter((o) => o === 'invitation.rejected')).toHaveLength(3);
+      const { rows } = await sql.query<{ n: number }>(
+        `SELECT handover_failed_attempts AS n FROM identity.invitations WHERE market_id = $1 AND id = $2`,
+        [code, invitation.state.id],
+      );
+      expect(rows[0]!.n).toBe(5);
+      // The code is void: even the right one is refused.
+      const right = await attempt(30, 'ABCDE-23456');
+      expect(right).toMatchObject({ ok: false, error: { code: 'invitation.rejected' } });
     });
   });
 });

@@ -1677,6 +1677,10 @@ export class IdentityFakes {
       );
       return Promise.resolve(state === undefined ? null : Invitation.restore(state));
     },
+    lockForAttempt: (market, id) => {
+      const state = this.invitations.get(id);
+      return Promise.resolve(state !== undefined && state.marketId === market.marketId);
+    },
     findPendingAgentFor: (market, emailNormalized) => {
       const state = [...this.invitations.values()].find(
         (candidate) =>

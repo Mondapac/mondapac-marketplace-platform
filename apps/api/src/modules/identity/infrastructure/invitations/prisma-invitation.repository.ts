@@ -114,6 +114,16 @@ export class PrismaInvitationRepository implements InvitationRepository {
     return restore(row);
   }
 
+  async lockForAttempt(market: MarketContext, id: Id<'Invitation'>): Promise<boolean> {
+    // An UPDATE that changes no value takes the row's write lock until the unit ends (as
+    // `AccountRepository.lockCredential`); a concurrent holder makes this statement wait.
+    const { count } = await this.prisma.tx(market).identityInvitation.updateMany({
+      where: { marketId: market.marketId, id },
+      data: { version: { increment: 0 } },
+    });
+    return count === 1;
+  }
+
   async findPendingFor(
     market: MarketContext,
     sellerId: Id<'Seller'> | null,

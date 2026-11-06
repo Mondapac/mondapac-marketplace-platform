@@ -234,10 +234,17 @@ export class AcceptAgentInvitation extends UseCase<
             refusal: { code: 'request.throttled', retryAfterSeconds: verdict.retryAfterSeconds },
           });
         }
-        const invitation =
+        const found =
           tokenHash === null
             ? null
             : await this.deps.invitations.findByTokenHash(market, tokenHash);
+        // Concurrent attempts on one invitation run one after the other: the row lock is taken
+        // first and the invitation read again, so no failed attempt is lost and the cap of five
+        // is strict.
+        const invitation =
+          found !== null && (await this.deps.invitations.lockForAttempt(market, found.state.id))
+            ? await this.deps.invitations.findById(market, found.state.id)
+            : null;
         if (!acceptableAgentInvitation(invitation, now)) {
           return ok({ kind: 'refused', refusal: REJECTED });
         }
