@@ -68,8 +68,8 @@ Thread layout: `BackLink` "Issues"; header (title, shop, severity, status, raise
 
 ## 5. Admin: agents list and create (AGT-07)
 
-Routes: `/agents` (list), `/agents/new` (create), `/agents/[id]` (detail). Nav item "Agents" under `agents.read`.
-- List: `SearchField` (name, email, referral code), `FilterChip` Status (Active, Invited, Disabled). Columns: Name, Email, Referral code, Rate and basis, Linked shops, Status `Badge` (Active success, Invited attention, Invitation expired critical, Disabled neutral). Primary `Button` "Create agent" (hidden without `agents.manage`; read-only users see the list only).
+Routes: `/agents` (list), `/agents/new` (create), `/agents/[id]` (detail). Nav item "Agents" under `agents.agent.read`.
+- List: `SearchField` (name, email, referral code), `FilterChip` Status (Active, Invited, Disabled). Columns: Name, Email, Referral code, Rate and basis, Linked shops, Status `Badge` (Active success, Invited attention, Invitation expired critical, Disabled neutral). Primary `Button` "Create agent" (hidden without `agents.agent.manage`; read-only users see the list only).
 - Create: `SettingsPage` form: Name, Email, Rate (percent field, converted to basis points; 0 to 100, two decimals), Basis `RadioGroup` (Net sales, Share of commission, Gross sales, each with one-line help), Time zone `Select` (default from Market). Submit "Create agent" opens the step-up `Dialog` (section 7), then shows the **code-once screen**: `Banner` attention "Copy this code now. It is shown only once and cannot be viewed again." Code in a large mono block, "Copy code" button, checkbox `CheckboxRow` "I have given this code to the agent"; "Done" disabled until ticked. An invitation email is sent automatically (stated under the code). Leaving the screen discards the code; the detail page offers "Reissue code" (step-up) which shows a new one the same way.
 - Detail: header (name, status, referral code with "Regenerate" action, step-up), `Tabs`: Overview, Shops, Earnings, Issues. Overview actions in `ActionMenu`: Set rate, Reissue invitation, Revoke invitation, Reset second factor, Disable / Enable agent. Disable `Dialog`: "Disable {name}? Their shop links end now and they cannot sign in." Reason field required.
 - States: loading `SkeletonRows`; empty list `EmptyState` "No agents yet" with "Create agent"; error `LoadError`; refused `NoAccess`; email already used: `FieldStatus` "An agent with this email already exists." Invitation locked/expired shows on detail as critical `Banner` with "Reissue code".
@@ -83,11 +83,11 @@ Thread is the same component as section 4 with admin framing: authors "You/{admi
 - resolved: "Close issue" (primary) and "Reopen" (secondary; `Dialog` with required reason "Why is it not fixed?").
 - closed: read-only info `Banner` with close reason and date: "Closed as fixed on {date}" for `confirmed`, "Withdrawn: {reason}" for `withdrawn`. Reopen is not offered (terminal).
 - Same polling, conflict, error and not-found behaviour as section 4. A refused action (agent cannot close, admin cannot mark fixed) never shows as a disabled button; the action is simply absent.
-- `agents.read` only: thread visible, composer and actions hidden, `SettingsViewOnlyBanner`.
+- `agents.agent.read` only: thread visible, composer and actions hidden, `SettingsViewOnlyBanner`.
 
 ## 7. Admin additions elsewhere
 
-- **Seller list and seller detail** (`agents.linked-agent.view`): column "Linked agent" (name, or "None" muted); on detail a read-only row with name and linked-since date. Without the permission the column is absent. Admin with `agents.manage` sees "Manage link" opening section 7 link dialog.
+- **Seller list and seller detail** (`agents.linked-agent.view`): column "Linked agent" (name, or "None" muted); on detail a read-only row with name and linked-since date. Without the permission the column is absent. Admin with `agents.agent.manage` sees "Manage link" opening section 7 link dialog.
 - **Unmatched referrals** (`/agents/referrals`, tab "Unmatched referrals" on the agents list): table: Submitted code, Shop, Application date, Status. Row action "Link to agent" (`SearchSelect` agent, reason, step-up) or "Dismiss" (reason). Empty: `EmptyState` "No unmatched referrals". Badge counts in the tab label when above 0.
 - **Set rate** (detail, step-up): `Dialog` with Rate and Basis, `Banner` info "Applies to orders placed from now on. Earnings already recorded do not change." and an effective-from timestamp line. Rate history table below (Effective from, rate, basis, set by).
 - **Link / unlink / move shop**: `Dialog` with `SearchSelect` shop (link), target agent (move), required `TextAreaField` "Reason" (min 10 characters), summary line "{shop} will move from {A} to {B}". A shop with another agent shows an attention `Banner` "This shop is linked to {A}. Use Move instead." History table (`ActivityTable`): date, action, from, to, reason, admin.

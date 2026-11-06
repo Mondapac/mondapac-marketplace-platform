@@ -58,12 +58,12 @@ Every record carries `market_id` and `tenant_id`. Instants are stored in UTC. Mo
 
 | From                         | To                | Trigger                             | Actor                  |
 | ---------------------------- | ----------------- | ----------------------------------- | ---------------------- |
-| (new)                        | `open`            | RaiseIssue                          | admin `agents.manage`  |
+| (new)                        | `open`            | RaiseIssue                          | admin `agents.agent.manage`  |
 | `open`                       | `agent_responded` | the agent's first comment           | agent-self             |
 | `open`, `agent_responded`    | `resolved`        | MarkIssueResolved                   | agent-self             |
-| `resolved`                   | `closed`          | CloseIssue with `closeReason = confirmed` | admin `agents.manage`  |
-| `resolved`                   | `open`            | ReopenIssue (reason required)       | admin `agents.manage`  |
-| `open`, `agent_responded`    | `closed`          | CloseIssue with `closeReason = withdrawn` (required), audited | admin `agents.manage` |
+| `resolved`                   | `closed`          | CloseIssue with `closeReason = confirmed` | admin `agents.agent.manage`  |
+| `resolved`                   | `open`            | ReopenIssue (reason required)       | admin `agents.agent.manage`  |
+| `open`, `agent_responded`    | `closed`          | CloseIssue with `closeReason = withdrawn` (required), audited | admin `agents.agent.manage` |
 
 Everything else is forbidden:
 
@@ -153,7 +153,7 @@ Payloads hold ids only. Market and tenant travel in the envelope.
 
 Every use case takes ActorContext and MarketContext (ADR-0018). Every write by an admin goes to the Audit Log in the same unit of work.
 
-- **`agents.manage`**:
+- **`agents.agent.manage`**:
   - CreateAgent (profile, referral code, first rate, identity invitation) (step-up)
   - ReissueInvitation (step-up), RevokeInvitation
   - DisableAgent (step-up): end all active links (`agent-disabled`), then `identity.disableAgentAccount`; idempotent, retry-safe
@@ -163,7 +163,7 @@ Every use case takes ActorContext and MarketContext (ADR-0018). Every write by a
   - LinkShop, UnlinkShop, MoveShop (reason required; step-up)
   - ResolveUnmatchedReferral (step-up when it links a shop)
   - RaiseIssue, AdminCommentOnIssue, CloseIssue, ReopenIssue
-- **`agents.read`**: ListAgents, GetAgent (with live access state), GetAgentEarnings (per seller and month, in the agent's zone), ListShopLinkHistory, ListUnmatchedReferrals, ListIssues, GetIssue, PollIssueComments.
+- **`agents.agent.read`**: ListAgents, GetAgent (with live access state), GetAgentEarnings (per seller and month, in the agent's zone), ListShopLinkHistory, ListUnmatchedReferrals, ListIssues, GetIssue, PollIssueComments.
 - **`identity.agent-account.reset-second-factor`**: ResetAgentSecondFactor. This lives in identity, with step-up and `canActOn`, and opens no session.
 - **`agent-self`** (an active agent; resource `agentId` = the session's agent, else `not-found`):
   - GetMyProfile (referral code), UpdateMyProfile (time zone, tax id via the Market validator; a tax id change is audited with the agent as actor)
@@ -191,7 +191,7 @@ Every use case takes ActorContext and MarketContext (ADR-0018). Every write by a
 | Agent sees only its own shops; never customer personal data                    | `agent-self` check in every `application/agent-self/*` use case; facades return counters only                                               |
 | Second factor mandatory                                                        | identity sign-in and session creation (ADR-0045 d3), not in agents                                                                          |
 | One-time code, expiry, only the hash stored                                    | identity invitation mechanism (ADR-0045 d2)                                                                                                 |
-| Only `agents.manage` sets rates, links and closes; all audited                 | `application/` access declarations plus the audit port in the same unit                                                                    |
+| Only `agents.agent.manage` sets rates, links and closes; all audited                 | `application/` access declarations plus the audit port in the same unit                                                                    |
 | security-tester review | mandatory for the identity agent facades and for ResetAgentSecondFactor |
 | No country `if`                                                                | caps, hold, tax-id scheme and lengths all from Market config; the two-Market fixture suite                                                  |
 
@@ -232,3 +232,4 @@ Every use case takes ActorContext and MarketContext (ADR-0018). Every write by a
 
 - 2026-11-06, Ali (cto): open questions 3 to 8 decided; final review wording fixes applied.
 - 2026-11-06, Hassan (security-tester): one High (refund lost on the commission-share basis when it arrives before the earning) and five Medium, three Low findings; all applied in sections 1, 2, 3, 4 and 5 and in `ux.md` section 1 and 4. Re-review: blocker cleared; two Low wording fixes in `ux.md` section 1 applied (already-set-up shows the expired banner; steps 1–2 checked only in the browser).
+- 2026-11-06, Hassan (security-tester), PR #718: permission keys renamed to `agents.agent.manage` and `agents.agent.read`, because a permission key needs three segments (`PERMISSION_KEY_PATTERN`).
