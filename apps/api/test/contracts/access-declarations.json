@@ -168,6 +168,7 @@
   { "name": "certification.send-derecognition-mail", "rule": "system" },
   { "name": "certification.send-expiry-mail", "rule": "system" },
   { "name": "certification.send-issuer-request-mail", "rule": "system" },
+  { "name": "certification.sweep-orphan-document-files", "rule": "system" },
   { "name": "commission-payouts.apply-transfer-change", "rule": "system" },
   {
     "name": "commission-payouts.commission-rates",
