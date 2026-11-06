@@ -13,6 +13,7 @@ import { unavailableClaimTextMatcher } from '../../../../../test/support/unavail
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
+import { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -125,6 +126,7 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       matcher,
       clock,
       ids,
+      contentFilter: new ContentFilter(markets),
     }),
     edit: new BusinessActivityEdit(gate, {
       unitOfWork,
@@ -133,6 +135,7 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       policy,
       matcher,
       clock,
+      contentFilter: new ContentFilter(markets),
     }),
     get: new BusinessActivityGet(gate, { unitOfWork, activities }),
     list: new BusinessActivityList(gate, { unitOfWork, activityReader, policy }),
@@ -252,6 +255,27 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       },
     });
     expect(down).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+    expect(rows.size).toBe(0);
+  });
+
+  it("refuses a name or description with a term of the Market's content filter", async () => {
+    const bad = code === 'AU' ? 'shit' : 'zzbad';
+
+    const result = await build().create.execute(admin, {
+      names: { [main]: `${bad} shop` },
+      description: `so ${bad}`,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'validation.failed',
+        fields: [
+          { path: `names.${main}`, code: 'blocked-term' },
+          { path: 'description', code: 'blocked-term' },
+        ],
+      },
+    });
     expect(rows.size).toBe(0);
   });
 
