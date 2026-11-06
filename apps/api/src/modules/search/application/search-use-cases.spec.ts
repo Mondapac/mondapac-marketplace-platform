@@ -692,6 +692,35 @@ describe.each([
       expect(reader.requests).toEqual([]);
     });
 
+    it('lists only the category itself with direct (Other {name}), without reading the tree', async () => {
+      categories.children.set(CATEGORY, [SUBCATEGORY]);
+      reader.hits = [hit(1)];
+
+      await search({ category: CATEGORY, direct: 'true' });
+
+      expect(categories.asked).toEqual([]);
+      expect(reader.requests.map(({ request }) => request.categoryIds)).toEqual([[CATEGORY]]);
+    });
+
+    it('refuses direct without a category or with another value, before any read', async () => {
+      const without = await search({ q: 'sausages', direct: 'true' });
+      const other = await search({ category: CATEGORY, direct: '1' });
+
+      expect(without).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: 'direct', code: 'without-category' }],
+        },
+      });
+      expect(other).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'direct', code: 'value' }] },
+      });
+      expect(categories.asked).toEqual([]);
+      expect(reader.requests).toEqual([]);
+    });
+
     it('does not read the category tree for a text query without a category', async () => {
       await search({ q: 'sausages' });
 

@@ -391,7 +391,12 @@ export class PlatformImportRun extends UseCase<
           (field) => field.code === 'claim-text.check-unavailable',
         )
           ? { kind: 'transient' }
-          : { kind: 'failed', code: 'claim-text.found' };
+          : {
+              kind: 'failed',
+              code: saved.value.refusedFields.some((field) => field.code === 'text.blocked-term')
+                ? 'text.blocked-term'
+                : 'claim-text.found',
+            };
       }
       const submitted = await deps.rowSubmit.execute(admin, { productId, startAs });
       if (!submitted.ok) {

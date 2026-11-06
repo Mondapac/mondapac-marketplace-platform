@@ -129,14 +129,17 @@ function optionalImageId(
  * Validates the content fields of a create or an edit. Every field is judged; the problems come
  * back together so a form shows them at once. A logo needs its alt text and alt text needs a logo.
  */
-export function parseBrandContent(input: {
-  readonly name?: unknown;
-  readonly summary?: unknown;
-  readonly originCountry?: unknown;
-  readonly logoImageId?: unknown;
-  readonly logoAlt?: unknown;
-  readonly headerImageId?: unknown;
-}): Result<BrandContent, readonly BrandFieldProblem[]> {
+export function parseBrandContent(
+  input: {
+    readonly name?: unknown;
+    readonly summary?: unknown;
+    readonly originCountry?: unknown;
+    readonly logoImageId?: unknown;
+    readonly logoAlt?: unknown;
+    readonly headerImageId?: unknown;
+  },
+  isBlocked: (text: string) => boolean = () => false,
+): Result<BrandContent, readonly BrandFieldProblem[]> {
   const problems: BrandFieldProblem[] = [];
   let name = '';
   if (typeof input.name !== 'string') problems.push({ path: 'name', code: 'required' });
@@ -160,6 +163,17 @@ export function parseBrandContent(input: {
   if (logoImageId !== null && logoAlt === null)
     problems.push({ path: 'logoAlt', code: 'required' });
   if (logoImageId === null && logoAlt !== null) problems.push({ path: 'logoAlt', code: 'no-logo' });
+  // The Market's content filter: the summary and the logo's alt text are public, and the alt text
+  // is read aloud. A field already refused for another reason is not judged twice.
+  for (const [path, text] of [
+    ['name', name],
+    ['summary', summary],
+    ['logoAlt', logoAlt],
+  ] as const) {
+    if (text !== null && isBlocked(text) && !problems.some((problem) => problem.path === path)) {
+      problems.push({ path, code: 'blocked-term' });
+    }
+  }
   if (problems.length > 0) return err(problems);
   return ok({ name, summary, originCountry, logoImageId, logoAlt, headerImageId });
 }

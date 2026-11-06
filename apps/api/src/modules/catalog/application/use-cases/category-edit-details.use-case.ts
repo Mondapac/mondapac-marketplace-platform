@@ -7,6 +7,7 @@ import { CATALOG_CATEGORY_TREE_EDIT } from '../../contracts/permissions';
 import { MAX_TREE_NODES } from '../../domain/category-tree';
 import {
   isEditable,
+  blockedCategoryFields,
   parseCategorySeo,
   parseCategoryTexts,
   siblingNameClashes,
@@ -110,6 +111,10 @@ export class CategoryEditDetails extends UseCase<
     if (!texts.ok) return texts;
     const seo = parseCategorySeo(body.value['seo']);
     if (!seo.ok) return seo;
+    const blocked = blockedCategoryFields(texts.value, seo.value, (text) =>
+      this.deps.contentFilter.isBlocked(market, text),
+    );
+    if (!blocked.ok) return blocked;
 
     const claim = await refuseClaimTexts(
       this.deps,

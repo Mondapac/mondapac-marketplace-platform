@@ -43,6 +43,7 @@ export function CategoryDetails({
   id,
   tree,
   canEdit = false,
+  canRestructure = false,
   csrfToken = '',
   onChanged,
   onCreated,
@@ -51,6 +52,8 @@ export function CategoryDetails({
   /** The tree the page shows: with it (and the permission) the category can be changed here. */
   readonly tree?: TreeBody | null;
   readonly canEdit?: boolean;
+  /** `catalog.category-tree.restructure`: shows Move, Merge and Archive. */
+  readonly canRestructure?: boolean;
   readonly csrfToken?: string;
   /** A change was saved: the owner reads the tree again and remounts this view. */
   readonly onChanged?: (note?: string, focusId?: string) => void;
@@ -118,6 +121,7 @@ export function CategoryDetails({
           body={body}
           tree={tree}
           canEdit={canEdit && onChanged !== undefined && onCreated !== undefined}
+          canRestructure={canRestructure && onChanged !== undefined}
           csrfToken={csrfToken}
           title={title}
           onChanged={onChanged ?? noop}
@@ -148,6 +152,7 @@ function ToolbarFor({
   body,
   tree,
   canEdit,
+  canRestructure,
   csrfToken,
   title,
   onChanged,
@@ -156,6 +161,7 @@ function ToolbarFor({
   readonly body: DetailBody;
   readonly tree: TreeBody;
   readonly canEdit: boolean;
+  readonly canRestructure: boolean;
   readonly csrfToken: string;
   readonly title: string;
   readonly onChanged: (note?: string, focusId?: string) => void;
@@ -179,6 +185,9 @@ function ToolbarFor({
     <CategoryToolbar
       body={body}
       canEdit={canEdit}
+      canRestructure={canRestructure}
+      rows={tree.categories}
+      defaultLocale={tree.defaultLocale}
       csrfToken={csrfToken}
       supportedLocales={tree.supportedLocales}
       firstSibling={siblings[0]?.id === category.id}

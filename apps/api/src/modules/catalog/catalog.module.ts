@@ -16,6 +16,7 @@ import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { ExtensionPointRegistry } from '../../platform/extensions';
+import { ContentFilter } from '../../platform/content-filter/content-filter';
 import { MarketRegistry } from '../../platform/market-config/market-registry';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
@@ -112,6 +113,9 @@ import { SELLER_PRODUCT_OWNERS_READER } from './application/ports/seller-product
 import { SellerProductOwnersQuery } from './application/use-cases/seller-product-owners.use-case';
 import { CATEGORY_TREE_READER } from './application/ports/category-tree.reader';
 import { CategoryTreeQuery } from './application/use-cases/category-tree.use-case';
+import { CategorySlugResolveQuery } from './application/use-cases/category-slug-resolve.use-case';
+import { PublicCategoryTreeQuery } from './application/use-cases/public-category-tree.use-case';
+import { PUBLIC_CATEGORY_READER } from './application/ports/public-category.reader';
 import { PublicCategoryController } from './presentation/public-category.controller';
 import { SELL_UNIT_LABELS_READER } from './application/ports/sell-unit-labels.reader';
 import { SellUnitLabelsQuery } from './application/use-cases/sell-unit-labels.use-case';
@@ -383,6 +387,7 @@ const PORT = {
   productOwnersReader: SELLER_PRODUCT_OWNERS_READER,
   productLinkingReader: PRODUCT_LINKING_READER,
   treeReader: CATEGORY_TREE_READER,
+  publicCategories: PUBLIC_CATEGORY_READER,
   offers: OFFER_REPOSITORY,
   offerFinder: OWN_OFFER_FINDER,
   claims: ClaimQueryBuilder,
@@ -442,6 +447,7 @@ const PORT = {
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
+  contentFilter: ContentFilter,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -589,6 +595,7 @@ const RESTRUCTURE_DEPS = {
       save: true,
       workingCopies: true,
       policy: true,
+      contentFilter: true,
     }),
     {
       provide: PRODUCT_TYPE_LOOKUP,
@@ -947,6 +954,7 @@ const RESTRUCTURE_DEPS = {
       linkStore: true,
     }),
     useCaseProvider(CategoryCreate, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -959,6 +967,7 @@ const RESTRUCTURE_DEPS = {
       ids: true,
     }),
     useCaseProvider(CategoryEditDetails, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -971,6 +980,7 @@ const RESTRUCTURE_DEPS = {
       ids: true,
     }),
     useCaseProvider(CategoryReorder, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -983,6 +993,7 @@ const RESTRUCTURE_DEPS = {
       ids: true,
     }),
     useCaseProvider(CategoryHide, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -995,6 +1006,7 @@ const RESTRUCTURE_DEPS = {
       ids: true,
     }),
     useCaseProvider(CategoryShow, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -1007,6 +1019,7 @@ const RESTRUCTURE_DEPS = {
       ids: true,
     }),
     useCaseProvider(CategoryChangeSlug, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -1019,6 +1032,7 @@ const RESTRUCTURE_DEPS = {
       ids: true,
     }),
     useCaseProvider(CategoryDiscard, {
+      contentFilter: true,
       unitOfWork: true,
       store: true,
       categories: true,
@@ -1068,8 +1082,15 @@ const RESTRUCTURE_DEPS = {
       clock: true,
       audit: true,
       ids: true,
+      contentFilter: true,
     }),
-    useCaseProvider(BrandEdit, { unitOfWork: true, brands: true, clock: true, audit: true }),
+    useCaseProvider(BrandEdit, {
+      unitOfWork: true,
+      brands: true,
+      clock: true,
+      audit: true,
+      contentFilter: true,
+    }),
     useCaseProvider(BrandArchive, { unitOfWork: true, brands: true, clock: true, audit: true }),
     useCaseProvider(BrandApprove, { unitOfWork: true, brands: true, clock: true, audit: true }),
     useCaseProvider(BrandMerge, { unitOfWork: true, brands: true, clock: true, audit: true }),
@@ -1088,6 +1109,7 @@ const RESTRUCTURE_DEPS = {
       clock: true,
       ids: true,
       audit: true,
+      contentFilter: true,
     }),
     useCaseProvider(BrandProductIdsQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandQuery, { unitOfWork: true, brandReader: true }),
@@ -1647,6 +1669,18 @@ const RESTRUCTURE_DEPS = {
       productLinkingReader: true,
     }),
     useCaseProvider(CategoryTreeQuery, { unitOfWork: true, treeReader: true, policy: true }),
+    useCaseProvider(PublicCategoryTreeQuery, {
+      unitOfWork: true,
+      treeReader: true,
+      publicCategories: true,
+      policy: true,
+    }),
+    useCaseProvider(CategorySlugResolveQuery, {
+      unitOfWork: true,
+      treeReader: true,
+      publicCategories: true,
+      policy: true,
+    }),
     useCaseProvider(OfferListingsQuery, {
       unitOfWork: true,
       listingsReader: true,

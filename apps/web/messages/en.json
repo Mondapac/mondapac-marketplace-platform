@@ -603,6 +603,8 @@
     "all": "All",
     "all-of": "See all {name}",
     "filter-subcategory": "Filter {name}",
+    "other-of": "Other {name}",
+    "chip-count": "{count, number}",
     "results": "Products",
     "pages": "Pages",
     "previous": "Previous",

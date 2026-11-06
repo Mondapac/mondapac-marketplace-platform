@@ -7,6 +7,7 @@ import {
   isCategorySlug,
   isEditable,
   levelOf,
+  blockedCategoryFields,
   parseCategorySeo,
   parseCategoryTexts,
   siblingNameClashes,
@@ -119,6 +120,10 @@ export class CategoryCreate extends UseCase<
     if (!texts.ok) return texts;
     const seo = parseCategorySeo(body.value['seo']);
     if (!seo.ok) return seo;
+    const blocked = blockedCategoryFields(texts.value, seo.value, (text) =>
+      this.deps.contentFilter.isBlocked(market, text),
+    );
+    if (!blocked.ok) return blocked;
 
     const claim = await refuseClaimTexts(
       this.deps,
