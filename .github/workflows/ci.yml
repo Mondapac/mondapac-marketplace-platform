@@ -5,9 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# A newer push to a pull request cancels its older run. On main every commit gets its own group
+# and is never cancelled, so each merge gets a CI verdict of its own.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -91,12 +93,13 @@ jobs:
       - name: Validate docker-compose.yml
         run: docker compose config --quiet
 
-      # Typecheck, lint, architecture boundaries, tests and the up -> down -> up migration
-      # check. The database tests run in the db-tests job below, split in two parts: together
-      # with them this is `pnpm verify`, the command developers run locally. One job running
-      # all of it reached the 30-minute limit (owner decision 2026-10-29: split the tests).
-      - name: Verify
-        run: pnpm verify:without-test-db
+      # Typecheck, lint, architecture boundaries and the up -> down -> up migration check. The
+      # tests run in parallel jobs below: api-tests (the API's unit tests, three parts),
+      # package-tests (every other workspace package) and db-tests (three parts). Together they
+      # are `pnpm verify`, the command developers run locally. One job running all of it took
+      # 20-30 minutes (owner decisions 2026-10-29 and 2026-11-06: split the tests).
+      - name: Verify (static checks)
+        run: pnpm verify:static
         env:
           MIGRATION_DATABASE_URL: postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac
 
@@ -167,11 +170,11 @@ jobs:
           if [ "${{ job.status }}" != "success" ]; then docker compose logs postgres || true; fi
           docker compose down -v
 
-  # The database tests (`pnpm test:db`), split by spec file into two parts that run in parallel
-  # (Jest --shard). Every spec file runs in exactly one part; each part migrates its own
-  # throwaway database in its own PostgreSQL service.
-  db-tests:
-    name: Database tests (region ${{ matrix.region.name }}, Node ${{ matrix.node.label }}, part ${{ matrix.shard }}/2)
+  # The API's unit and e2e tests (`pnpm test:api`, the API part of `pnpm test`), split by spec
+  # file into three parts that run in parallel (Jest --shard). Every spec file runs in exactly one
+  # part. Same service, roles and environment as the verify job, where these tests ran before.
+  api-tests:
+    name: API tests (region ${{ matrix.region.name }}, Node ${{ matrix.node.label }}, part ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -187,7 +190,7 @@ jobs:
             version: 24.20.0
           - label: .nvmrc
             version-file: .nvmrc
-        shard: [1, 2]
+        shard: [1, 2, 3]
 
     services:
       # Same service as the verify job.
@@ -230,8 +233,121 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Database tests (part ${{ matrix.shard }} of 2)
-        run: pnpm db:generate && pnpm test:db --shard=${{ matrix.shard }}/2
+      - name: API tests (part ${{ matrix.shard }} of 3)
+        run: pnpm db:generate && pnpm test:api --shard=${{ matrix.shard }}/3
+        env:
+          MIGRATION_DATABASE_URL: postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac
+
+  # The tests of every workspace package except the API (`pnpm test:packages`: admin, seller, web,
+  # ui, panel-server, shared-kernel), the rest of `pnpm test`. Same environment as the verify job.
+  package-tests:
+    name: Package tests (region ${{ matrix.region.name }}, Node ${{ matrix.node.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Same region and Node entries as the verify job.
+        region:
+          - name: au
+            hosted_markets: AU
+        node:
+          - label: minimum
+            version: 24.20.0
+          - label: .nvmrc
+            version-file: .nvmrc
+
+    env:
+      DATABASE_URL: postgresql://mondapac_api:mondapac_api@localhost:5432/mondapac
+      HOSTED_MARKETS: ${{ matrix.region.hosted_markets }}
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node.version }}
+          node-version-file: ${{ matrix.node.version-file }}
+          cache: pnpm
+
+      - name: Show the Node.js version
+        run: node --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package tests
+        run: pnpm db:generate && pnpm test:packages
+
+  # The database tests (`pnpm test:db`), split by spec file into three parts that run in parallel
+  # (Jest --shard). Every spec file runs in exactly one part; each part migrates its own
+  # throwaway database in its own PostgreSQL service.
+  db-tests:
+    name: Database tests (region ${{ matrix.region.name }}, Node ${{ matrix.node.label }}, part ${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Same region and Node entries as the verify job.
+        region:
+          - name: au
+            hosted_markets: AU
+        node:
+          - label: minimum
+            version: 24.20.0
+          - label: .nvmrc
+            version-file: .nvmrc
+        shard: [1, 2, 3]
+
+    services:
+      # Same service as the verify job.
+      postgres:
+        image: mirror.gcr.io/library/postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mondapac
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d mondapac"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://mondapac_api:mondapac_api@localhost:5432/mondapac
+      HOSTED_MARKETS: ${{ matrix.region.hosted_markets }}
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create database roles (cluster bootstrap)
+        run: docker exec -i "${{ job.services.postgres.id }}" psql -U postgres -d mondapac < scripts/db/bootstrap-dev.sql
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node.version }}
+          node-version-file: ${{ matrix.node.version-file }}
+          cache: pnpm
+
+      - name: Show the Node.js version
+        run: node --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Database tests (part ${{ matrix.shard }} of 3)
+        run: pnpm db:generate && pnpm test:db --shard=${{ matrix.shard }}/3
         env:
           MIGRATION_DATABASE_URL: postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac
           # Fewer database spec files at once than Jest's default (cores - 1): under the full
