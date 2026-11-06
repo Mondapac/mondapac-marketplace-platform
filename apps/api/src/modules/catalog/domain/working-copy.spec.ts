@@ -1,4 +1,11 @@
-import { MAX_WORKING_COPY_CONTENT_BYTES, isStorableContent } from './working-copy';
+import type { Id } from '@mondapac/shared-kernel';
+import type { RevisionContent } from './revision-content';
+import {
+  MAX_WORKING_COPY_CONTENT_BYTES,
+  isStorableContent,
+  withSizes,
+  workingContentOfRevision,
+} from './working-copy';
 
 describe('isStorableContent', () => {
   it('accepts a plain object', () => {
@@ -48,5 +55,100 @@ describe('isStorableContent', () => {
     // 2 bytes per character: fewer characters than the cap, more bytes than it.
     const persian = { t: 'ب'.repeat(MAX_WORKING_COPY_CONTENT_BYTES / 2) };
     expect(isStorableContent(persian)).toBe(false);
+  });
+});
+
+describe('Add sizes and the working copy (catalog design 4.2a)', () => {
+  const variantId = 'v1' as Id<'Variant'>;
+  const revision: RevisionContent = {
+    texts: { en: { name: 'Dates', shortDescription: null, description: 'Sweet' } },
+    categoryIds: ['c1', 'c2'],
+    taxCategoryCode: 'gst',
+    attributeValues: { origin: 'AU', tags: ['a', 'b'] },
+    variants: [
+      {
+        variantId,
+        position: 1,
+        optionKey: '',
+        optionValues: {},
+        labels: {},
+        gtin: '09506000134352',
+        shippingWeightGrams: 500,
+        shippingLengthMm: null,
+        shippingWidthMm: null,
+        shippingHeightMm: null,
+        imageIds: ['i1'],
+      },
+    ],
+    imageIds: ['i1', 'i2'],
+    schemaRef: { familyRevisionId: 'f1', definitionRevisionIds: ['d1'] },
+    contentSchemaVersion: 1,
+  };
+
+  it('starts a working copy from a revision in the closed shape of the draft, without labels', () => {
+    const content = workingContentOfRevision(revision);
+
+    expect(content).toEqual({
+      texts: { en: { name: 'Dates', shortDescription: null, description: 'Sweet' } },
+      categoryIds: ['c1', 'c2'],
+      taxCategoryCode: 'gst',
+      attributeValues: { origin: 'AU', tags: ['a', 'b'] },
+      variants: [
+        {
+          variantId,
+          optionValues: {},
+          gtin: '09506000134352',
+          shippingWeightGrams: 500,
+          shippingLengthMm: null,
+          shippingWidthMm: null,
+          shippingHeightMm: null,
+          imageIds: ['i1'],
+        },
+      ],
+      imageIds: ['i1', 'i2'],
+    });
+    // Nothing is shared with the stored revision.
+    (content['categoryIds'] as string[]).push('c3');
+    expect(revision.categoryIds).toEqual(['c1', 'c2']);
+    expect(isStorableContent(content)).toBe(true);
+  });
+
+  it('sets the axes and the option values of the variant and keeps its other fields', () => {
+    const base = workingContentOfRevision(revision);
+    const content = withSizes(base, {
+      variantId,
+      axes: ['size'],
+      optionValues: { size: 'l' },
+    });
+
+    expect(content['variantAxes']).toEqual(['size']);
+    expect(content['variants']).toEqual([
+      expect.objectContaining({
+        variantId,
+        optionValues: { size: 'l' },
+        gtin: '09506000134352',
+        shippingWeightGrams: 500,
+        imageIds: ['i1'],
+      }),
+    ]);
+    expect(content['texts']).toEqual(base['texts']);
+    // The input is not modified.
+    expect(base['variantAxes']).toBeUndefined();
+  });
+
+  it('replaces earlier axes and adds the variant entry a draft did not have', () => {
+    const content = withSizes(
+      { texts: {}, variantAxes: ['colour'], variants: [] },
+      { variantId, axes: ['size', 'colour'], optionValues: { size: 'l', colour: 'red' } },
+    );
+    expect(content).toEqual({
+      texts: {},
+      variantAxes: ['size', 'colour'],
+      variants: [{ variantId, optionValues: { size: 'l', colour: 'red' } }],
+    });
+    expect(withSizes({}, { variantId, axes: ['size'], optionValues: { size: 'm' } })).toEqual({
+      variantAxes: ['size'],
+      variants: [{ variantId, optionValues: { size: 'm' } }],
+    });
   });
 });

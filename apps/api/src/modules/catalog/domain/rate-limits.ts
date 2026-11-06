@@ -6,6 +6,7 @@ import type { Temporal } from '@mondapac/shared-kernel';
  * them (kind, then key), so two units never wait on each other in a cycle.
  */
 export const RATE_COUNTER_KINDS = [
+  'add-sizes.account.hour',
   'ai-suggest.seller.day',
   'claim-text-check.account.day',
   'claim-text-check.account.minute',
@@ -40,6 +41,11 @@ export const DRAFT_SAVE_LIMITS: readonly RateLimit[] = Object.freeze([
 /** Submits per seller (D 8.4): 30 per hour. */
 export const SUBMIT_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'submit.seller.hour', limit: 30, windowMinutes: 60 },
+]);
+
+/** Add sizes per account (D 8.4; variants V9): 20 an hour, a structural change rarely repeated. */
+export const ADD_SIZES_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'add-sizes.account.hour', limit: 20, windowMinutes: 60 },
 ]);
 
 /** Claim-text checks per account (D 6.6, L6): 30 per minute and 1,000 per 24 h. */

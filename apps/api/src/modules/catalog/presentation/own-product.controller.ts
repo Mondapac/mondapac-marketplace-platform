@@ -41,6 +41,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { OwnProductAddSizes } from '../application/use-cases/own-product-add-sizes.use-case';
 import { OwnProductCreate } from '../application/use-cases/own-product-create.use-case';
 import { OwnProductOptions as OwnProductOptionsUseCase } from '../application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from '../application/use-cases/own-product-save-draft.use-case';
@@ -51,6 +52,8 @@ import { OwnProductsList } from '../application/use-cases/own-products-list.use-
 import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { OwnProductList, OwnProductOptions, OwnProductView } from './own-reads.dto';
 import {
+  AddSizesDone,
+  AddSizesRequest,
   ApiErrorBody,
   PlatformProductDraftSaved,
   PlatformProductSaveDraftRequest,
@@ -128,6 +131,7 @@ export class OwnProductController {
     private readonly readProduct: OwnProductRead,
     private readonly productOptions: OwnProductOptionsUseCase,
     private readonly setOwnBrand: OwnProductSetOwnBrand,
+    private readonly addSizes: OwnProductAddSizes,
   ) {}
 
   @Get()
@@ -482,6 +486,66 @@ export class OwnProductController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.own-product-submit', context, outcome);
+  }
+
+  @Post(':productId/add-sizes')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Add sizes: turn an own Simple product into a Configurable one',
+    description:
+      'Needs catalog.own-product.edit and a seller who may sell. Once and never back. Sets the ' +
+      "axes and the option values of the product's one variant, which keeps its id, price and " +
+      'stock, and changes the type; nothing is published, the next submit freezes a ' +
+      'Configurable revision. A pending revision is set aside only with replacePending ' +
+      '(revision.pending-exists otherwise); the working copy keeps its content. The type must ' +
+      'be one the seller may sell (product-type.not-allowed). 20 an hour per account ' +
+      '(request.throttled).',
+  })
+  @ApiParam(PRODUCT_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: AddSizesRequest })
+  @ApiOkResponse({ type: AddSizesDone })
+  @ApiBadRequestResponse({
+    type: ApiErrorBody,
+    description:
+      'validation.failed (details.fields: variants.axes-*, variants.option-* or ' +
+      'variants.option-not-in-family issue codes)',
+  })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf, seller.not-eligible or product-type.not-allowed',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description:
+      'product.not-simple, revision.pending-exists, product.not-editable or conflict.stale',
+  })
+  @ApiTooManyRequestsResponse({ type: ApiErrorBody, description: 'request.throttled' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable or revision.schema-unavailable',
+  })
+  async addProductSizes(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') rawProductId: string,
+    @Body() body: unknown,
+  ): Promise<AddSizesDone> {
+    const productId = productIdOf(rawProductId, response);
+    const input = closedBody(request, body, ['version', 'axes', 'optionValues', 'replacePending']);
+    let outcome: AddSizesDone | HttpException;
+    if (productId instanceof HttpException) outcome = productId;
+    else if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.addSizes.execute(context, { productId, body: input });
+      outcome = result.ok ? { ...result.value } : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.own-product-add-sizes', context, outcome);
   }
 
   private settle<T extends object>(

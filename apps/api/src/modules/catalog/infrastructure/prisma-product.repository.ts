@@ -166,6 +166,9 @@ export class PrismaProductRepository implements ProductRepository {
       data: {
         // Changes only with a revision-pointer move in the same statement (the guard of #709).
         familyCode: state.familyCode,
+        // Change once, together, simple to configurable (Add sizes; trigger products_type_change_guard).
+        typeCode: state.typeCode,
+        variantModel: state.variantModel,
         status: state.status,
         discardedAt: state.discardedAt === null ? null : toDate(state.discardedAt),
         withdrawnAt: state.withdrawnAt === null ? null : toDate(state.withdrawnAt),
