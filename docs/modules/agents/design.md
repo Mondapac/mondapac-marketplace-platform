@@ -2,7 +2,7 @@
 
 Author: Mohammad (software-architect), 2026-11-06. Inputs: `docs/modules/agents/brief.md` (G1 approved; owner answers Q1-Q13), ADR-0045 (Accepted), ADR-0006, ADR-0007, ADR-0008, ADR-0018, ADR-0022. Tier A. Module path: `apps/api/src/modules/agents/{domain,application,infrastructure,presentation,contracts}`. The physical schema (columns, constraints, indexes, migrations) belongs to database-designer. This document names aggregates and invariants only.
 
-**Status:** draft for G2 review (cto, database-designer, ui-ux-designer, security-tester). Not approved.
+**Status:** draft for G2 review. Open questions 1-2 decided by the owner and 3-8 by cto (2026-11-06). database-designer, ui-ux-designer and security-tester parts follow. Not approved.
 
 ## 1. Aggregates and invariants
 
@@ -63,13 +63,14 @@ Every record carries `market_id` and `tenant_id`. Instants are stored in UTC. Mo
 | `open`, `agent_responded`    | `resolved`        | MarkIssueResolved                   | agent-self             |
 | `resolved`                   | `closed`          | CloseIssue                          | admin `agents.manage`  |
 | `resolved`                   | `open`            | ReopenIssue (reason required)       | admin `agents.manage`  |
+| `open`, `agent_responded`    | `closed`          | CloseIssue with `closeReason = withdrawn` (required), audited | admin `agents.manage` |
 
 Everything else is forbidden:
 
 - An agent cannot close or reopen.
 - An admin cannot mark an issue resolved.
 - `closed` is terminal.
-- `open → closed` is not allowed (see open question 4).
+- `open` or `agent_responded` → `closed` only as `withdrawn`, with a reason (cto, open question 4).
 
 Comments in other states do not change the status. Every transition bumps `version`, which is checked with optimistic concurrency.
 
@@ -84,7 +85,7 @@ Comments in other states do not change the status. Every transition bumps `versi
    - `gross`: `goodsGrossIncTax`.
    - `commission-share`: `commissionPayouts.sellerOrderCommission(system, sellerOrderId)`, which returns the commission excluding commission GST, net of recorded reversals, with `includedRefundIds`. A `not-recorded-yet` answer throws, so the inbox retries.
 6. **Round down.** `earning = floor(basis × rateBps / 10000)`. A zero earning is still written, for audit.
-7. **Set `finalAt`.** It is the seller order's eligibility anchor from `commissionPayouts.eligibilityAnchorOf(system, sellerOrderId)`: delivery plus the seller hold, 7 days by default (Q5). If it is not anchored yet, retry. "Final" is derived at read time (`now >= finalAt`), with no job. A refund after `finalAt` still writes a reversal (accrual only; AGT-11 settles later).
+7. **Set `finalAt`.** It is the seller order's eligibility anchor from `commissionPayouts.eligibilityAnchorOf(system, sellerOrderId)`: delivery plus the seller hold, 7 days by default (Q5). If no anchor exists, the inbox retries with backoff up to the Market retry limit, then parks the event for an admin; it never loops. "Final" is derived at read time (`now >= finalAt`), with no job. A refund after `finalAt` still writes a reversal (accrual only; AGT-11 settles later).
 8. **Write once.** The earning and an outbox `agents.earning-recorded.v1` are written in one unit of work.
 
 **Refund flow.** `ordering.refund-succeeded.v1 {orderId, sellerOrderId, refundId}` arrives through the inbox.
@@ -107,17 +108,19 @@ Event name: the code publishes `ordering.refund-succeeded.v1`. That is the name 
 | identity           | `agentAccessOf(ctx, accountIds[])` returns `active` / `disabled` / `invited`, read live                                        | MISSING (identity)                                                                                         |
 | identity           | `contactEmailOf(ctx, {kind:'agent', accountId})`                                                                               | EXISTS; needs an `agent` variant of `ContactEmailTarget`                                                   |
 | identity           | `requireStepUp(ctx, actionKey)` (admin audience)                                                                               | EXISTS                                                                                                     |
-| identity           | admin use case ResetAgentSecondFactor (key `agents.reset-second-factor`, step-up, `canActOn`)                                  | MISSING (identity owns the second factor)                                                                  |
+| identity           | admin use case ResetAgentSecondFactor (key `identity.agent-account.reset-second-factor`, step-up, `canActOn`)                                  | MISSING (identity owns the second factor)                                                                  |
 | identity           | event `identity.seller-access-approved.v1 {sellerId, decisionId, basisId}`                                                     | EXISTS                                                                                                     |
 | sellers            | `referralCodeEnteredOf(ctx, sellerId)` returns `string \| null` (system)                                                       | MISSING (sellers; also a scope change in its application form, logged in the sellers brief change log)     |
 | sellers            | `sellerSummaries(ctx, ids)` (store name)                                                                                       | EXISTS (check that the `system` and `agent-self` callers are allowed)                                       |
 | identity           | `sellerAccessOf` (shop status for the agent portal)                                                                            | EXISTS (check the system rule)                                                                             |
 | ordering           | `sellerOrderEarningFacts(ctx, sellerOrderId)`, rule `system`                                                                   | MISSING (ordering)                                                                                         |
 | ordering           | `refundEarningFacts(ctx, refundId)`, rule `system`                                                                             | MISSING (ordering)                                                                                         |
-| ordering           | `sellerMonthlySales(ctx, sellerIds <= 500, windows <= 12)` returns net sales and order count, counters only (ADR-0045 d10)     | MISSING (ordering)                                                                                         |
+| ordering           | `sellerMonthlySales(ctx, sellerIds <= 500, windows <= 12)` takes `[from, to)` UTC instants that agents computes in the agent's own time zone (ADR-0005), not month labels; returns net sales and order count, counters only (ADR-0045 d10)     | MISSING (ordering)                                                                                         |
 | commission-payouts | `sellerOrderCommission(ctx, sellerOrderId)`, `refundCommission(ctx, refundId)`, rule `system`                                  | MISSING (commission-payouts); the current facade is only what ordering calls                                |
 | commission-payouts | `eligibilityAnchorOf(ctx, sellerOrderId)`, rule `system`                                                                       | MISSING (commission-payouts)                                                                               |
 | notifications      | subscribers for `agents.issue-*` events; an `agent` recipient kind for in-app notices; an agent notices route                  | MISSING (notifications); today only seller and admin notices exist                                         |
+
+**agents is the policy point** (cto, G2): after its `agent-self` and link-interval checks, it calls the `sellers` and `ordering` read facades as `system`, passing only the linked `sellerIds`; those facades return counters only. Reason: ADR-0045 d6 means an agent actor is refused by every permission rule.
 
 **agents publishes `AgentsFacade`** (in `contracts/`):
 
@@ -158,13 +161,14 @@ Every use case takes ActorContext and MarketContext (ADR-0018). Every write by a
   - ResolveUnmatchedReferral
   - RaiseIssue, AdminCommentOnIssue, CloseIssue, ReopenIssue
 - **`agents.read`**: ListAgents, GetAgent (with live access state), GetAgentEarnings (per seller and month, in the agent's zone), ListShopLinkHistory, ListUnmatchedReferrals, ListIssues, GetIssue, PollIssueComments.
-- **`agents.reset-second-factor`**: ResetAgentSecondFactor. This lives in identity, with step-up and `canActOn`, and opens no session.
+- **`identity.agent-account.reset-second-factor`**: ResetAgentSecondFactor. This lives in identity, with step-up and `canActOn`, and opens no session.
 - **`agent-self`** (an active agent; resource `agentId` = the session's agent, else `not-found`):
   - GetMyProfile (referral code), UpdateMyProfile (time zone, tax id via the Market validator)
   - MyDashboard, MyShops (name, status, monthly totals clipped to the agent's own link intervals), MyEarnings
   - ListMyIssues, GetMyIssue, CommentOnMyIssue, MarkIssueResolved, PollIssueComments
 - **system**: LinkByReferralOnApproval, RecordEarningOnDelivery, ReverseEarningOnRefund, `AgentsFacade.issueNotice`.
-- **Seller route** for Q13 (`linkedAgentNameOf`): the rule is open question 5.
+- **`agents.linked-agent.view`** (seller scope, not protected; identity's seed maps it to Seller Owner and Store Manager): the seller panel's `linkedAgentNameOf` (Q13).
+- **Policy point:** `agent-self` use cases call the `sellers` and `ordering` read facades as `system` with only the agent's linked `sellerIds` (see section 3).
 - **Live updates**: the panel servers poll `PollIssueComments(after=cursor)`, with rate limits in each BFF.
 
 ## 6. Where each brief section 5 hard rule is enforced
@@ -184,6 +188,7 @@ Every use case takes ActorContext and MarketContext (ADR-0018). Every write by a
 | Second factor mandatory                                                        | identity sign-in and session creation (ADR-0045 d3), not in agents                                                                          |
 | One-time code, expiry, only the hash stored                                    | identity invitation mechanism (ADR-0045 d2)                                                                                                 |
 | Only `agents.manage` sets rates, links and closes; all audited                 | `application/` access declarations plus the audit port in the same unit                                                                    |
+| security-tester review | mandatory for the identity agent facades and for ResetAgentSecondFactor |
 | No country `if`                                                                | caps, hold, tax-id scheme and lengths all from Market config; the two-Market fixture suite                                                  |
 
 ## 7. Open questions for cto
@@ -198,8 +203,14 @@ Every use case takes ActorContext and MarketContext (ADR-0018). Every write by a
    - Option A: reuse commission-payouts' eligibility anchor (carrier vs seller-click hold).
    - Option B: a separate Market config `agents.earnings.hold-days`.
    - Recommendation: A, one hold for both, no drift.
+   - **cto decision 2026-11-06: A.** `commission_payouts.eligibility_anchors` already freezes `eligibleAt` and `holdDaysApplied` per seller order and is never updated, so one hold serves both and cannot drift.
 4. **Closing an unresolved issue.** May an admin close an issue that is not `resolved` (for example a withdrawn issue)? The design forbids it for now.
+   - **cto decision 2026-11-06: allowed as `withdrawn`** with a required reason and an audit entry (state machine above); logged in the brief change log because AGT-08 changes.
 5. **Access rule for Q13.** Which seller-side permission guards `linkedAgentNameOf` (an existing seller profile view key, or a new `agents.linked-agent.view`)?
-6. **Permission key ownership.** `agents.reset-second-factor` is declared in `agents/contracts/permissions.ts` but checked by an identity use case. Is that cross-module key ownership acceptable, or should identity declare it?
+   - **cto decision 2026-11-06: new key `agents.linked-agent.view`** (seller scope, not protected), seeded by identity to Seller Owner and Store Manager. `definePermission` only allows a module's own prefix.
+6. **Permission key ownership.** The draft declared `agents.reset-second-factor` in `agents/contracts/permissions.ts` but checked by an identity use case. Is that cross-module key ownership acceptable, or should identity declare it?
+   - **cto decision 2026-11-06: identity declares `identity.agent-account.reset-second-factor`**, like the existing seller and admin reset keys; importing a key from agents would make the modules depend on each other (ADR-0008). ADR-0045 d3 updated in its PR.
 7. **Dashboard target.** ADR-0045 d10 reads monthly totals from `ordering.sellerMonthlySales`. Can that meet "< 1 s for 500 shops × 12 months"? If not, the alternative is an agents-owned projection from its own ledger, which needs an ADR-0045 amendment.
+   - **cto decision 2026-11-06: keep ADR-0045 d10, no projection.** `seller_orders` has no `placed_at` index, so ordering's PR ships one set-based query, an index approved by database-designer, and a test of 500 shops × 12 months, p95 under 1 s, on both Markets. Only if that test fails is the amendment written.
 8. **Delivery order of the four missing facade sets.** Missing facade sets (ordering, commission-payouts, sellers, notifications) must land before AGT-02, AGT-05 and AGT-08. cto to schedule them with each module's owner; each is a scope change to log in that module's brief.
+   - **cto decision 2026-11-06, one PR each, each logged in that module's brief change log:** (1) identity: invitations, disable/enable, `agentAccessOf`, the `agent` contact-email variant, the reset use case (security-tester review); (2) sellers: `referralCodeEnteredOf` and the application-form field; (3) ordering, alongside (4): the two earning-facts reads, `sellerMonthlySales` with its index, and the docs fix renaming the event to `refund-succeeded`; (4) commission-payouts: `sellerOrderCommission`, `refundCommission`, `eligibilityAnchorOf`; (5) notifications: the `agent` recipient kind and subscribers, after agents merges `AgentsFacade.issueNotice`.
