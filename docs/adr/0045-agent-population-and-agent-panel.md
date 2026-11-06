@@ -49,8 +49,9 @@ populations: not a seller member (an agent acts across many sellers and owns non
 3. **Second factor is mandatory.** No agent session exists without the second factor
    (authenticator app only), as for admins. The `second-factor.account` throttle and the sign-in
    counters of identity design 6.8 cover the agent population. Resetting an agent's second
-   factor needs a new platform permission, `agents.reset-second-factor`, with step-up and
-   `canActOn`; a reset never opens a session.
+   factor needs a new platform permission declared by `identity`,
+   `identity.agent-account.reset-second-factor` (like the existing seller and admin reset keys),
+   with step-up and `canActOn`; a reset never opens a session.
 4. **Sessions.** Agent sessions follow the admin policy (identity design 6.1): idle 30 minutes,
    absolute 12 hours (Market configuration `identity.sessions.agent`), cookie
    `__Host-session-agent-<MARKET>` with `SameSite=Strict`, never "keep me signed in", and a
@@ -119,5 +120,9 @@ populations: not a seller member (an agent acts across many sellers and owns non
 - 2026-11-06, Hassan (security-tester): two High findings (undefined handover code, missing
   session policy) and five Medium or Low; all applied above (decisions 1 to 8). Re-review: blockers
   cleared; two wording fixes (code shown once, per-origin limits) applied in decision 2.
+- 2026-11-06, Ali (cto), `agents` G2: the reset key is declared by `identity` as
+  `identity.agent-account.reset-second-factor`, because `definePermission` allows only a module's
+  own prefix and importing the key from `agents` would make the two modules depend on each other
+  (ADR-0008). Decision 3 updated before merge.
 - 2026-11-06, Ali (cto) re-review: accepted; the decision 10 wording on what `agents` reads was
   widened to match brief Q6.
