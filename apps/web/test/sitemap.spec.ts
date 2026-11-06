@@ -472,6 +472,32 @@ describe('image sitemap (products children)', () => {
     expect(text.match(/<url>/gu)).toHaveLength(2);
   });
 
+  it('lists every photo of a product, in order, from `images`', async () => {
+    request.imageOrigin = 'https://img.example';
+    const SECOND = '01990000-0000-7000-8000-0000000000a2';
+    const ref = (imageId: string) => ({ imageId, width: 1600, height: 1200, alt: 'Product 1' });
+    request.api = (path) => {
+      if (path === 'catalog/categories') return { kind: 'ok', body: TREE };
+      const page = Number(new URLSearchParams(path.split('?')[1]).get('page'));
+      return {
+        kind: 'ok',
+        body: {
+          hasMore: false,
+          items:
+            page === 1
+              ? [{ ...item(1), primaryImage: ref(IMAGE), images: [ref(IMAGE), ref(SECOND)] }]
+              : [],
+        },
+      };
+    };
+    const text = await (await child('products-1.xml')).text();
+    const base = `https://img.example/catalog/public-images/AU/${id(1001)}`;
+    expect(text).toContain(
+      `<image:image><image:loc>${base}/${IMAGE}/large</image:loc></image:image>` +
+        `<image:image><image:loc>${base}/${SECOND}/large</image:loc></image:image>`,
+    );
+  });
+
   it('lists no image without a photo origin', async () => {
     request.imageOrigin = null;
     withPhoto();

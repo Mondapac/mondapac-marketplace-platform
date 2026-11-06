@@ -3,7 +3,7 @@ import { formatMoney } from '../format/money.ts';
 import { apiGet, type ApiRead } from './api.ts';
 import { storefrontApiConfig } from './config.ts';
 import { photoUrls } from './photo-source.ts';
-import { imageRefOf, photoSetOf, type PhotoUrl } from './photos.ts';
+import { imageRefOf, imageRefsOf, photoSetOf, type PhotoUrl } from './photos.ts';
 import { PRODUCTS, SAMPLE_CONTENT, SAMPLE_HERO } from './sample-home.ts';
 import { emptySet, legacySlideOf, PLACEHOLDER_KEYS, slideSetOf } from './slides.ts';
 import type {
@@ -169,6 +169,15 @@ export function cardOf(
     photo === null || ref === undefined || imageUrl === undefined
       ? undefined
       : photoSetOf(photo, item.productId, ref, 'medium');
+  // Every photo of the item (`images`, at most 8), as large URLs for the sitemap; an item that
+  // only carries `primaryImage` lists that one.
+  const listed = imageRefsOf(item.images);
+  const large =
+    photo === null
+      ? []
+      : (listed.length > 0 ? listed : ref === undefined ? [] : [ref])
+          .map((r) => photo(item.productId as string, r.imageId, 'large'))
+          .filter((u): u is string => u !== undefined);
   return {
     id: item.productId,
     name,
@@ -179,6 +188,7 @@ export function cardOf(
     certifications: [],
     ...(imageUrl === undefined ? {} : { imageUrl }),
     ...(imageUrl === undefined || imageSet === undefined ? {} : { imageSet }),
+    ...(large.length === 0 ? {} : { largeImages: large }),
   };
 }
 
