@@ -92,7 +92,7 @@ async function Results({
       { ...scope, ...sorted, pageSize: LISTING_PAGE_SIZE },
       through,
     );
-    // A GTIN of a variant on sale opens that variant's product page (variants V8).
+    // A GTIN of a published variant opens that variant's product page (variants V8).
     const exact = products.exactMatch;
     if (exact !== undefined)
       redirect(`${productHref(exact.productId)}?v=${encodeURIComponent(exact.variantId)}`);

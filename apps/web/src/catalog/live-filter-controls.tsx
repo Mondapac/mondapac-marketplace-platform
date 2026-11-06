@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useOptimistic, useTransition } from 'react';
+import { useOptimistic, useState, useTransition } from 'react';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import type { LiveFilterGroup } from '../storefront/listing-source.ts';
@@ -61,6 +61,9 @@ function LiveFiltersBar({ path, state, filters, groups, currency }: Props) {
   const { filtersOpen, setFiltersOpen } = useStore();
   const { current, pending, apply } = useApplyLive(path, state, filters);
   const count = liveFilterCount(current);
+  // Open when the page came with a price, and never closed under the buyer while they change it:
+  // the value is fixed at mount, so a later render does not touch the group's open state.
+  const [priceOpen] = useState(filters.price !== null);
   const bands = currency === undefined ? [] : livePriceBands(currency);
   const picked = (attr: string, code: string) =>
     current.choices.find((c) => c.attr === attr)?.values.includes(code) === true;
@@ -127,7 +130,7 @@ function LiveFiltersBar({ path, state, filters, groups, currency }: Props) {
           </FilterGroupView>
         ))}
         {bands.length === 0 ? null : (
-          <FilterGroupView title={t('group-price')} open={current.price !== null}>
+          <FilterGroupView title={t('group-price')} open={priceOpen}>
             {bands.map(({ band, price }) => {
               const on = samePrice(current.price, price);
               return (

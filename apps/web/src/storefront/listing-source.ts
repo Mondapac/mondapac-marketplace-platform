@@ -127,7 +127,7 @@ export interface LivePage {
   readonly hasMore: boolean;
   /** The filters of the listing with their counts (never ranges: the page has no control for one). */
   readonly filters: readonly LiveFilterGroup[];
-  /** Present when the query was a GTIN of a variant on sale. */
+  /** Present when the query was the GTIN of a published variant (in stock or not). */
   readonly exactMatch?: ExactMatch;
 }
 

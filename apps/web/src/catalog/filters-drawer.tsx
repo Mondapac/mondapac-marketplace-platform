@@ -87,7 +87,7 @@ export function FilterGroupView({
   return (
     <details className="fg" open={open}>
       <summary>
-        {title}
+        <span dir="auto">{title}</span>
         <Icon name="chevd" />
       </summary>
       <div className="opts">{children}</div>
