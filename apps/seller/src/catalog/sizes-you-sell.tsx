@@ -1,6 +1,8 @@
 'use client';
 
+import { Icon } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import { CHECKBOX } from './sku-field.tsx';
 
 export interface SizeItem {
   readonly variantId: string;
@@ -11,10 +13,27 @@ export interface SizeItem {
   readonly locked: boolean;
 }
 
+/** The note shown while only one size is on sale: it cannot be switched off. */
+export function LastSizeHint({ id }: { readonly id: string }) {
+  const t = useTranslations();
+  return (
+    <p
+      id={id}
+      className="flex items-start gap-2 rounded-md bg-info-bg px-3 py-2 text-sm text-info-fg"
+    >
+      <span className="mt-0.5 size-4 shrink-0">
+        <Icon name="info" className="size-4" />
+      </span>
+      <span>{t('catalog.variants-table.units.last-hint')}</span>
+    </p>
+  );
+}
+
 /**
  * "Sizes you sell" (variants V5), shown on a PLATFORM product: one checkbox per variant of the
- * product. It drives the same Selling state as the table's Selling column, so a size is on or off in
- * one place only. At least one size stays ticked; the last one is disabled with a hint.
+ * product. It drives the same On sale state as the table's On sale column, so a size is on or off
+ * in one place only. At least one size stays ticked; the last one is disabled with a hint. A
+ * fieldset with a legend for assistive technology, drawn as a card section.
  */
 export function SizesYouSell({
   items,
@@ -31,8 +50,8 @@ export function SizesYouSell({
   const t = useTranslations();
   const hasLocked = items.some((item) => item.locked);
   return (
-    <fieldset className="flex flex-col gap-3 rounded-md border border-line p-4">
-      <legend className="px-1 text-sm font-semibold">
+    <fieldset className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
+      <legend className="mb-1 p-0 text-sm font-semibold text-fg">
         {t('catalog.variants-table.units.sizes')}
       </legend>
       <p className="text-sm text-fg-muted">{t('catalog.variants-table.units.sizes-help')}</p>
@@ -42,10 +61,10 @@ export function SizesYouSell({
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                className="size-4 accent-accent"
+                className={CHECKBOX}
                 checked={item.checked}
                 disabled={disabled || item.locked}
-                aria-describedby={item.locked && hasLocked ? hintId : undefined}
+                aria-describedby={item.locked ? hintId : undefined}
                 onChange={(event) => onChange(item.variantId, event.target.checked)}
               />
               <span>{item.label}</span>
@@ -53,11 +72,7 @@ export function SizesYouSell({
           </li>
         ))}
       </ul>
-      {hasLocked ? (
-        <p id={hintId} className="text-sm text-fg-muted">
-          {t('catalog.variants-table.units.last-hint')}
-        </p>
-      ) : null}
+      {hasLocked ? <LastSizeHint id={hintId} /> : null}
     </fieldset>
   );
 }

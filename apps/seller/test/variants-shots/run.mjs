@@ -30,37 +30,37 @@ const server = createServer((req, res) => {
 const port = server.address().port;
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH ?? 'playwright');
 const browser = await chromium.launch();
-const scenarios = ['seller', 'platform', 'taken'];
-const widths = [1280, 768, 375];
+const plan = [
+  ...['seller', 'platform', 'taken'].flatMap((s) => [1280, 768, 375].map((w) => [s, w])),
+  ...['platform-last'].flatMap((s) => [1280, 375].map((w) => [s, w])),
+];
 for (const scheme of ['light', 'dark']) {
-  for (const scenario of scenarios) {
-    for (const width of widths) {
-      const ctx = await browser.newContext({
-        viewport: { width, height: 900 },
-        colorScheme: scheme,
-        deviceScaleFactor: 2,
-      });
-      const page = await ctx.newPage();
-      await page.goto(`http://localhost:${port}/?s=${scenario === 'taken' ? 'seller' : scenario}`);
-      await page.evaluate(
-        (s) => globalThis.document.documentElement.setAttribute('data-theme', s),
-        scheme,
-      );
-      if (scenario === 'taken') {
-        await page.getByLabel('SKU for Mango · 2 L').fill('TAKEN-1');
-        await page.getByRole('button', { name: /^Save/ }).click();
-        await page.getByText('This SKU is already used').waitFor();
-      }
-      const over = await page.evaluate(
-        () => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth,
-      );
-      console.log(scenario, width, scheme, 'page horizontal overflow:', over);
-      await page.screenshot({
-        path: join(out, `variants-${scenario}-${width}-${scheme}.png`),
-        fullPage: true,
-      });
-      await ctx.close();
+  for (const [scenario, width] of plan) {
+    const ctx = await browser.newContext({
+      viewport: { width, height: 900 },
+      colorScheme: scheme,
+      deviceScaleFactor: 2,
+    });
+    const page = await ctx.newPage();
+    await page.goto(`http://localhost:${port}/?s=${scenario === 'taken' ? 'seller' : scenario}`);
+    await page.evaluate(
+      (s) => globalThis.document.documentElement.setAttribute('data-theme', s),
+      scheme,
+    );
+    if (scenario === 'taken') {
+      await page.getByLabel('SKU for Mango · 2 L').fill('TAKEN-1');
+      await page.getByRole('button', { name: /^Save/ }).click();
+      await page.getByText('You already use this SKU').waitFor();
     }
+    const over = await page.evaluate(
+      () => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth,
+    );
+    console.log(scenario, width, scheme, 'page horizontal overflow:', over);
+    await page.screenshot({
+      path: join(out, `variants-${scenario}-${width}-${scheme}.png`),
+      fullPage: true,
+    });
+    await ctx.close();
   }
 }
 await browser.close();

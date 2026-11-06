@@ -13,10 +13,15 @@ export const isValidSku = (text: string): boolean => SKU_SHAPE.test(text);
 
 /**
  * The SKU exports and invoices use when the unit has none: the offer SKU and the variant number,
- * padded like the variant code (`ABC-01`).
+ * not padded (`ABC-2`), as the API's `sellUnitDisplaySku` builds it.
  */
 export function fallbackSku(sellerSku: string, variantNo: number): string {
-  return `${sellerSku}-${String(variantNo).padStart(2, '0')}`;
+  return `${sellerSku}-${variantNo}`;
+}
+
+/** The text a SKU field shows while empty: what exports show for this unit when it has no SKU. */
+export function skuPlaceholder(unit: SellUnitView, sellerSku: string): string {
+  return unit.variantSku === null ? unit.displaySku : fallbackSku(sellerSku, unit.variantNo);
 }
 
 /** One requested change as the route takes it; a field left out keeps its value. */

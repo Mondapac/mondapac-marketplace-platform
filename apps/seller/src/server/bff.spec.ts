@@ -558,6 +558,12 @@ describe('relay allowlist for stock locations', () => {
     for (const path of bad) {
       expect((await relay(config, put(path.join('/')), path, upstream)).status).toBe(404);
     }
+    // The page reads the units on the server; the browser relay carries only the write.
+    const read = new Request(`http://seller.localhost:3001/api/${units.join('/')}`, {
+      method: 'GET',
+      headers: sameOrigin,
+    });
+    expect((await relay(config, read, units, upstream)).status).toBe(404);
   });
   it('relays a regular price write by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();

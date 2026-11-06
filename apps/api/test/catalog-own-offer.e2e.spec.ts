@@ -1569,6 +1569,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
             label: 'Small',
             selling: true,
             variantSku: null,
+            displaySku: 'SKU-1-1',
           },
           {
             variantId: V2,
@@ -1578,10 +1579,22 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
             label: null,
             selling: false,
             variantSku: 'PK-2',
+            displaySku: 'PK-2',
           },
         ],
       });
       expect((await get({})).status).toBe(401);
+    });
+
+    it('refuses the read with 403 for a seller without catalog.own-product.view', async () => {
+      await boot();
+      await seeded(code);
+      offer = ownOffer();
+      sellUnitRows = rows();
+      fakes.assignments.clear();
+      const answer = await get({ cookie: sessionOf(code).cookie });
+      expect(answer.status).toBe(403);
+      expect(answer.body).toMatchObject({ code: 'access.denied' });
     });
 
     it('answers a bad id and every Offer that is not the seller’s to read with the same 404 body', async () => {

@@ -4,6 +4,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_VIEW } from '../../contracts/permissions';
 import { sellUnitKey } from '../../contracts/catalog.facade';
+import { sellUnitDisplaySku } from '../../domain/offer-sell-unit';
 import { variantCodeOf } from '../../domain/product';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { OfferRepository } from '../ports/offer.repository';
@@ -25,6 +26,8 @@ export interface OwnOfferSellUnitView {
   readonly label: string | null;
   readonly selling: boolean;
   readonly variantSku: string | null;
+  /** The SKU exports and invoices show: the variant SKU, else `{sellerSku}-{variantNo}`. */
+  readonly displaySku: string;
 }
 
 export interface OwnOfferSellUnitsView {
@@ -127,6 +130,11 @@ export class OwnOfferReadSellUnits extends UseCase<
               labels.get(sellUnitKey({ offerId, variantId: unit.variantId }))?.variantLabel ?? null,
             selling: unit.selling,
             variantSku: unit.variantSku,
+            displaySku: sellUnitDisplaySku({
+              sellerSku,
+              variantSku: unit.variantSku,
+              variantNo,
+            }),
           }));
         return ok({ productScope: facts.scope, sellerSku, units: rows });
       },

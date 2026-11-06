@@ -23,6 +23,7 @@ const unit = (n: number, over: Partial<SellUnitView> = {}): SellUnitView => ({
   label: null,
   selling: true,
   variantSku: null,
+  displaySku: over.variantSku ?? `RICE-${n}`,
   ...over,
 });
 const row = (n: number, label: string, over: Partial<SellUnitView> = {}): TableRow => ({
@@ -57,7 +58,7 @@ function mount(
 }
 const skuBox = (label: string) => screen.getByLabelText<HTMLInputElement>(`SKU for ${label}`);
 const sell = (label: string) =>
-  screen.getByRole<HTMLInputElement>('switch', { name: `Selling ${label}` });
+  screen.getByRole<HTMLInputElement>('switch', { name: `On sale: ${label}` });
 const save = (count: number) =>
   screen.getByRole('button', { name: `Save ${count} change${count === 1 ? '' : 's'}` });
 
@@ -69,8 +70,8 @@ describe('VariantsTable SKU and Selling', () => {
     mount();
     expect(skuBox('Large').value).toBe('LG-1');
     expect(skuBox('Small').value).toBe('');
-    expect(skuBox('Small').placeholder).toBe('RICE-01');
-    expect(skuBox('Huge').placeholder).toBe('RICE-03');
+    expect(skuBox('Small').placeholder).toBe('RICE-1');
+    expect(skuBox('Huge').placeholder).toBe('RICE-3');
     expect(sell('Small').checked).toBe(true);
     expect(screen.getByText('MP-000123-02')).toBeTruthy();
     expect(screen.queryByRole('group', { name: 'Sizes you sell' })).toBeNull();
@@ -86,7 +87,7 @@ describe('VariantsTable SKU and Selling', () => {
     mount({}, 'SELLER', false);
     expect(screen.queryByLabelText(/SKU for/)).toBeNull();
     expect(screen.getByText('LG-1')).toBeTruthy();
-    expect(screen.getByText('RICE-01')).toBeTruthy();
+    expect(screen.getByText('RICE-1')).toBeTruthy();
     expect(sell('Small').disabled).toBe(true);
     expect(screen.queryByRole('button', { name: /Save/ })).toBeNull();
   });
@@ -99,7 +100,7 @@ describe('VariantsTable SKU and Selling', () => {
     });
     const small = screen.getByRole('rowheader', { name: /Small/ }).closest('tr')!;
     expect(within(small).getByText('Off sale')).toBeTruthy();
-    expect(small.className).toContain('text-fg-muted');
+    expect(small.className).toContain('bg-muted');
     expect(within(small).getByLabelText('Price for Small')).toBeTruthy();
     expect(screen.getAllByText('Off sale')).toHaveLength(1);
   });
@@ -138,6 +139,62 @@ describe('VariantsTable SKU and Selling', () => {
     expect(call.mock.calls[0]![2]).toEqual({ units: [{ variantId: 'v2', variantSku: null }] });
   });
 
+  it('with several new SKUs, marks each one as maybe used and shows the table message', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'offer.sku-taken' } });
+    mount();
+    fireEvent.change(skuBox('Small'), { target: { value: 'A1' } });
+    fireEvent.change(skuBox('Huge'), { target: { value: 'A2' } });
+    fireEvent.click(save(2));
+    await screen.findByText(/One of the SKUs you entered is already in use/);
+    expect(screen.getAllByText('You may already use this SKU. Change it if so.')).toHaveLength(2);
+    expect(skuBox('Small').getAttribute('aria-invalid')).toBe('true');
+    expect(skuBox('Huge').getAttribute('aria-describedby')).toBeTruthy();
+    // the first invalid field takes focus
+    await waitFor(() => expect(document.activeElement).toBe(skuBox('Small')));
+  });
+
+  it('offers a Reload button when the sizes changed elsewhere', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
+    mount();
+    fireEvent.change(skuBox('Small'), { target: { value: 'SM' } });
+    fireEvent.click(save(1));
+    fireEvent.click(await screen.findByRole('button', { name: 'Reload' }));
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it('does not send the units, and keeps every draft, when the price step-up is cancelled', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 0, code: 'step-up.cancelled' } });
+    mount({
+      currency: 'AUD',
+      canEditPrice: true,
+      rows: ROWS.map((r, i) => ({
+        ...r,
+        price:
+          i === 0
+            ? {
+                variantId: 'v1',
+                seriesVersion: 3,
+                currency: 'AUD',
+                inForce: { amount: '1000', effectiveFrom: 'x' },
+                held: null,
+                special: null,
+                heldSpecial: null,
+                retired: false,
+              }
+            : null,
+      })),
+    });
+    fireEvent.change(screen.getByLabelText('Price for Small'), { target: { value: '12' } });
+    fireEvent.change(skuBox('Large'), { target: { value: 'NEW' } });
+    fireEvent.click(save(2));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call.mock.calls[0]![1]).toMatch(/regular-price/);
+    expect(skuBox('Large').value).toBe('NEW');
+    expect(screen.getByLabelText<HTMLInputElement>('Price for Small').value).toBe('12');
+    await waitFor(() => expect(save(2)).toBeTruthy());
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses a malformed SKU before sending, on that field', () => {
     mount();
     fireEvent.change(skuBox('Small'), { target: { value: 'has space' } });
@@ -163,7 +220,7 @@ describe('VariantsTable SKU and Selling', () => {
     fireEvent.click(sell('Small'));
     fireEvent.click(sell('Large'));
     expect(sell('Huge').disabled).toBe(true);
-    const hint = screen.getByText('At least one size must stay on sale.');
+    const hint = screen.getByText('At least one size must stay on sale.').closest('p')!;
     expect(sell('Huge').getAttribute('aria-describedby')).toBe(hint.id);
     fireEvent.click(sell('Small'));
     expect(sell('Huge').disabled).toBe(false);
@@ -196,23 +253,10 @@ describe('VariantsTable SKU and Selling', () => {
     mount();
     fireEvent.change(skuBox('Small'), { target: { value: 'TAKEN' } });
     fireEvent.click(save(1));
-    expect(
-      await screen.findByText('This SKU is already used by another variant or offer of yours.'),
-    ).toBeTruthy();
+    expect(await screen.findByText('You already use this SKU. Pick a different one.')).toBeTruthy();
     expect(skuBox('Small').value).toBe('TAKEN');
     expect(skuBox('Small').getAttribute('aria-invalid')).toBe('true');
     expect(refresh).not.toHaveBeenCalled();
-  });
-
-  it('shows a table error when it cannot tell which of several SKUs is taken', async () => {
-    call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'offer.sku-taken' } });
-    mount();
-    fireEvent.change(skuBox('Small'), { target: { value: 'A1' } });
-    fireEvent.change(skuBox('Huge'), { target: { value: 'A2' } });
-    fireEvent.click(save(2));
-    expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.getByRole('alert').textContent).toMatch(/A SKU you entered is already used/);
-    expect(skuBox('Small').value).toBe('A1');
   });
 
   it('shows the server refusal that no unit would keep selling as a table error', async () => {
@@ -273,6 +317,6 @@ describe('VariantsTable SKU and Selling', () => {
     fireEvent.click(save(2));
     await expectToast('Saved 1, 1 could not be saved. The cells that failed show why.', 'info');
     expect(call.mock.calls[1]![1]).toBe('catalog/seller/offers/o1/sell-units');
-    expect(screen.getByText(/already used by another variant/)).toBeTruthy();
+    expect(screen.getByText('You already use this SKU. Pick a different one.')).toBeTruthy();
   });
 });

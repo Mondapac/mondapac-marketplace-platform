@@ -114,6 +114,11 @@ export class OwnOfferSellUnitView {
   label!: string | null;
   @ApiProperty() selling!: boolean;
   @ApiProperty({ nullable: true, type: String }) variantSku!: string | null;
+  @ApiProperty({
+    description:
+      'The SKU exports and invoices show: the variant SKU, else the Offer SKU and the variant number, e.g. RICE-2.',
+  })
+  displaySku!: string;
 }
 
 export class OwnOfferSellUnitsView {

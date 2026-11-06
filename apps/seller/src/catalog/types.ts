@@ -133,6 +133,8 @@ export interface SellUnitView {
   readonly label: string | null;
   readonly selling: boolean;
   readonly variantSku: string | null;
+  /** What exports and invoices show: the variant SKU, else `{sellerSku}-{variantNo}`. */
+  readonly displaySku: string;
 }
 
 /** `GET catalog/seller/offers/:id/sell-units`. */

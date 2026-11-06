@@ -1262,19 +1262,19 @@
       "partial": "Saved {done}, {failed} could not be saved. The cells that failed show why.",
       "units": {
         "sku": "SKU",
-        "selling": "Selling",
+        "selling": "On sale",
         "sku-for": "SKU for {variant}",
-        "selling-for": "Selling {variant}",
+        "selling-for": "On sale: {variant}",
         "off-sale": "Off sale",
         "sizes": "Sizes you sell",
         "sizes-help": "Untick a size to take it off sale. You keep its price and stock and can put it back any time.",
         "last-hint": "At least one size must stay on sale.",
-        "sku-help": "Leave a SKU empty to use your offer SKU and the variant number, like {example}. Exports and invoices show that SKU.",
+        "sku-help": "Empty SKU uses your offer SKU plus the variant number, e.g. {example}.",
         "error": {
           "format": "Use 1 to 64 letters, digits or symbols, with no spaces.",
           "duplicate": "This SKU is typed on more than one variant. Each SKU must be different.",
-          "sku-taken": "This SKU is already used by another variant or offer of yours.",
-          "sku-taken-table": "A SKU you entered is already used by another variant or offer of yours. Check the SKU fields and save again.",
+          "sku-taken": "You already use this SKU. Pick a different one.",
+          "sku-taken-table": "One of the SKUs you entered is already in use. Check the fields marked below.",
           "none-selling": "At least one size must stay on sale. Turn one on before you save.",
           "invalid": "The SKU or Selling changes were not accepted. Check the SKU fields and try again.",
           "stale": "The sizes changed somewhere else. Reload the page and try again.",
@@ -1283,8 +1283,10 @@
           "not-eligible": "Your seller account can't change this right now.",
           "csrf": "Your session expired. Reload the page and try again.",
           "unavailable": "SKUs and Selling are unavailable right now. Try again later.",
-          "unknown": "Something went wrong. Try again."
-        }
+          "unknown": "Something went wrong. Try again.",
+          "sku-maybe": "You may already use this SKU. Change it if so."
+        },
+        "reload": "Reload"
       }
     },
     "suggestions": {

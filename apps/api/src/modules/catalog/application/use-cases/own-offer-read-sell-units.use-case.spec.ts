@@ -155,6 +155,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.read-sell-units in market %s', (
             label: 'Small',
             selling: true,
             variantSku: null,
+            displaySku: 'SKU-1-1',
           },
           {
             variantId: v2,
@@ -164,6 +165,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.read-sell-units in market %s', (
             label: null,
             selling: false,
             variantSku: 'PK-2',
+            displaySku: 'PK-2',
           },
         ],
       },

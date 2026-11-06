@@ -3,6 +3,7 @@ import {
   fallbackSku,
   isLastSelling,
   isValidSku,
+  skuPlaceholder,
   unitPlanOf,
   type UnitRow,
 } from './sell-unit-logic.ts';
@@ -18,16 +19,23 @@ const unit = (n: number, over: Partial<SellUnitView> = {}): UnitRow => ({
     label: null,
     selling: true,
     variantSku: null,
+    displaySku: `RICE-${n}`,
     ...over,
   },
 });
 const ROWS = [unit(1), unit(2, { variantSku: 'OLD-2' }), unit(3, { selling: false })];
 
 describe('fallbackSku', () => {
-  it('pads the variant number like the variant code', () => {
-    expect(fallbackSku('ABC', 2)).toBe('ABC-02');
+  it('is the offer SKU and the unpadded variant number, as the API builds it', () => {
+    expect(fallbackSku('ABC', 2)).toBe('ABC-2');
     expect(fallbackSku('ABC', 12)).toBe('ABC-12');
-    expect(fallbackSku('ABC', 100)).toBe('ABC-100');
+  });
+});
+
+describe('skuPlaceholder', () => {
+  it('is the displayed SKU when the unit has none, else the fallback', () => {
+    expect(skuPlaceholder(unit(2).unit, 'RICE')).toBe('RICE-2');
+    expect(skuPlaceholder(unit(2, { variantSku: 'X' }).unit, 'RICE')).toBe('RICE-2');
   });
 });
 

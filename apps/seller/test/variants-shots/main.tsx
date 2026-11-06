@@ -30,37 +30,32 @@ const unit = (n: number, label: string | null, over = {}) => ({
   label,
   selling: true,
   variantSku: null as string | null,
+  displaySku: (over as { variantSku?: string }).variantSku ?? `RICE-${n}`,
   ...over,
 });
+const last = scenario === 'platform-last';
+const sellerSku = platform || last ? 'RICE' : 'MJ';
+const names =
+  platform || last
+    ? ['1 kg', '5 kg', '10 kg', '20 kg']
+    : ['Mango · 1 L', 'Mango · 2 L', 'Guava · 1 L', 'Guava · 2 L'];
+const skus =
+  platform || last ? ['RICE-1KG', null, null, 'RICE-20KG'] : ['MJ-1L', null, null, 'GJ-2L'];
 const rows: TableRow[] = [
-  {
-    v: 1,
-    name: platform ? '1 kg' : 'Mango · 1 L',
-    amount: '420',
-    n: 36,
-    over: { variantSku: 'MJ-1L' },
-  },
-  { v: 2, name: platform ? '5 kg' : 'Mango · 2 L', amount: '750', n: 0, over: {} },
-  {
-    v: 3,
-    name: platform ? '10 kg' : 'Guava · 1 L',
-    amount: '440',
-    n: 12,
-    over: { selling: false },
-  },
-  {
-    v: 4,
-    name: platform ? '20 kg' : 'Guava · 2 L',
-    amount: '780',
-    n: 8,
-    over: { variantSku: 'GJ-2L' },
-  },
+  { v: 1, amount: '420', n: 36 },
+  { v: 2, amount: '750', n: 0 },
+  { v: 3, amount: '440', n: 12 },
+  { v: 4, amount: '780', n: 8 },
 ].map((r) => ({
   variantId: `v${r.v}`,
-  label: r.name,
+  label: names[r.v - 1]!,
   price: price(`v${r.v}`, r.amount),
   stock: stock(`v${r.v}`, r.n),
-  unit: unit(r.v, r.name, r.over),
+  unit: unit(r.v, names[r.v - 1]!, {
+    variantSku: skus[r.v - 1],
+    // The last scenario has one size on sale; the plain ones have the third off.
+    selling: last ? r.v === 2 : r.v !== 3,
+  }),
 }));
 
 window.fetch = () =>
@@ -88,7 +83,7 @@ createRoot(document.getElementById('root')!).render(
         currency="AUD"
         canEditPrice
         canEditStock
-        units={{ canEdit: true, productScope: platform ? 'PLATFORM' : 'SELLER', sellerSku: 'MJ' }}
+        units={{ canEdit: true, productScope: platform || last ? 'PLATFORM' : 'SELLER', sellerSku }}
         csrfToken="csrf"
       />
     </div>
