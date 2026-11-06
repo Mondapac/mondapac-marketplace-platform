@@ -187,6 +187,8 @@ export class PublicStorefrontController {
     @Res({ passthrough: true }) response: Response,
   ) {
     response.vary('X-Market-Id');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
     const result = await this.slideImage.execute(context, { imageId, size });
     this.#logger.log({
       msg: 'storefront.view-slide-image-route',
