@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { LastChangedDto } from '../../../platform/audit/change-trail.dto';
 
 // Bodies of the support contact routes.
 
@@ -13,6 +14,13 @@ export class SupportContactBody {
     description: '0 while the Market default is in force, then 1, 2, ... per change.',
   })
   version!: number;
+  @ApiProperty({
+    type: LastChangedDto,
+    nullable: true,
+    description:
+      'Who changed the address last and when; null while the Market default is in force.',
+  })
+  lastChanged!: LastChangedDto | null;
 }
 
 export class PublicSupportContactBody {

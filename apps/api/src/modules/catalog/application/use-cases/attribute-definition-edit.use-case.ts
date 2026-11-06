@@ -21,7 +21,13 @@ import {
   type AttributeWriteFailure,
   type AttributeWriteView,
 } from '../attributes/attribute-editor';
+import { cancelOpenRelaxation } from '../attributes/attribute-relaxation';
+import type { AttributeRelaxationStore } from '../ports/attribute-relaxation.store';
 import type { AttributeDefinitionWriteDependencies } from './attribute-definition-create.use-case';
+
+export interface AttributeDefinitionEditDependencies extends AttributeDefinitionWriteDependencies {
+  readonly relaxations: AttributeRelaxationStore;
+}
 
 export interface AttributeDefinitionEditInput {
   readonly [key: string]: unknown;
@@ -45,7 +51,8 @@ const EDIT_KEYS = ['attributeId', 'version', ...CONTENT_KEYS] as const;
  * breaks. A published attribute keeps its variant flag, keeps what sellers need (default-locale
  * name, an active value with a default-locale label), and clearing `material` is refused here: it
  * needs the two-person request (catalog design 8.2). Turning `material` on applies at once. Every
- * customer-visible text passes the claim-text check, fail closed. One audit row.
+ * customer-visible text passes the claim-text check, fail closed. One audit row. An open request
+ * to clear `material` named the version this edit replaces, so the same unit cancels it (Q-K14).
  */
 export class AttributeDefinitionEdit extends UseCase<
   AttributeDefinitionEditInput,
@@ -61,7 +68,7 @@ export class AttributeDefinitionEdit extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: AttributeDefinitionWriteDependencies,
+    private readonly deps: AttributeDefinitionEditDependencies,
   ) {
     super(gate);
   }
@@ -129,9 +136,14 @@ export class AttributeDefinitionEdit extends UseCase<
           context,
           AttributeDefinitionRevisedAudit.entry(id, {
             before: auditShapeOf(found),
-            after: auditShapeOf(next.value),
+            after: {
+              ...auditShapeOf(next.value),
+              relaxationRequestId: null,
+              requestedByAccountId: null,
+            },
           }),
         );
+        await cancelOpenRelaxation(this.deps, context, market, id);
         return ok({ attribute: writeViewOf(next.value) });
       });
     } catch (error) {

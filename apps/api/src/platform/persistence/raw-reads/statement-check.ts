@@ -446,7 +446,11 @@ function visit(value: unknown, walk: Walk): void {
           operator?.[0] === '@@'
             ? isColumn(child.lexpr) && isTsQueryCall(child.rexpr)
             : operator?.[0] === '@>' || operator?.[0] === '&&'
-              ? isColumn(child.lexpr) && isParamCast(child.rexpr, 'uuid')
+              ? isColumn(child.lexpr) &&
+                (isParamCast(child.rexpr, 'uuid') ||
+                  // Attribute facets (ADR-0030 amendment 2026-11-04, `search`): `&&` only, with a
+                  // `text[]` cast of a bound parameter; `@>` stays `uuid[]`.
+                  (operator?.[0] === '&&' && isParamCast(child.rexpr, 'text')))
               : operator?.[0] === '*'
                 ? isTsRankCall(child.lexpr) && isColumnOrInteger(child.rexpr)
                 : true;

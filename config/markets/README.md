@@ -218,6 +218,14 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
 - `maxVariantsPerProduct` (required, 1 to 100; AU 100): the most non-retired variants one
   product may hold. The ceiling of 100 keeps the re-key of a moved Offer (inventory design 3.6)
   under the lock helper's 1,000-item cap with 4 sources.
+- `maxCategoryDepth` (required, 3 to 4; AU 4, ZZ 3): the deepest level of the platform category
+  tree (department, group, category, subcategory). Products sit on levels 3 and 4, so fewer than
+  3 is refused; the start-up stops on a value outside the range. The category editor reads it and
+  never a literal.
+- `maxCategoryChangeTags` (required, 1 to 200,000; AU 50,000): the most certification tags one
+  move, merge or archive of platform categories marks `rechecking` in its unit (catalog design
+  4.6, Q-K4). Above it the change is refused with `category.impact-too-large`, and the admin moves
+  the subcategories in parts.
 - `maxVariantAttributes` (required, 1 to 5; AU 2): the most variant (option) attributes one
   configurable product may vary on (attributes plan A2). A product whose feature set marks more
   option attributes is refused by the configurable type's variant check

@@ -101,7 +101,14 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
     version: 4,
     createdAt: T0,
     variants: [
-      { id: variantId, state: 'proposed', createdAt: T0, publishedAt: null, retiredAt: null },
+      {
+        id: variantId,
+        variantNo: 1,
+        state: 'proposed',
+        createdAt: T0,
+        publishedAt: null,
+        retiredAt: null,
+      },
     ],
     publishedRevisionId: null,
     pendingRevisionId: revisionId,
@@ -434,7 +441,14 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
           status: 'published',
           publishedRevisionId: published,
           variants: [
-            { id: variantId, state: 'published', createdAt: T0, publishedAt: T0, retiredAt: null },
+            {
+              id: variantId,
+              variantNo: 1,
+              state: 'published',
+              createdAt: T0,
+              publishedAt: T0,
+              retiredAt: null,
+            },
           ],
         }),
         revision: revisionOf({ baseRevisionId: published, sensitiveReasons: ['name'] }),

@@ -36,6 +36,48 @@ export class ProductSearchItemBody {
   primaryImage!: ProductImageRefBody | null;
 }
 
+export class SearchFilterOptionBody {
+  @ApiProperty({ description: 'The option code: use it in `filter`, never the label.' })
+  code!: string;
+  @ApiProperty({ description: 'The label in the Market default locale (English fallback).' })
+  label!: string;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Products this option would show; null when the scope was too large to count.',
+  })
+  count!: number | null;
+  @ApiProperty({ description: 'Whether the request already picked it.' }) selected!: boolean;
+}
+
+export class SearchFilterBoundsBody {
+  @ApiProperty({ description: 'Decimal text.' }) min!: string;
+  @ApiProperty({ description: 'Decimal text.' }) max!: string;
+}
+
+export class SearchFilterPickedBody {
+  @ApiProperty({ nullable: true, type: String }) min!: string | null;
+  @ApiProperty({ nullable: true, type: String }) max!: string | null;
+}
+
+export class SearchFilterBody {
+  @ApiProperty({ description: 'The attribute code, the `filter` or `range` name.' }) code!: string;
+  @ApiProperty({ description: 'The attribute name in the Market default locale.' }) name!: string;
+  @ApiProperty({
+    enum: ['choice', 'range', 'toggle'],
+    description:
+      '`choice` (several values may be picked), `range` (a number between two bounds) or ' +
+      '`toggle` (only yes: option code `true`). Show more after 8 options; zero-count values ' +
+      'are not listed unless picked.',
+  })
+  kind!: 'choice' | 'range' | 'toggle';
+  @ApiProperty({ type: [SearchFilterOptionBody] }) options!: SearchFilterOptionBody[];
+  @ApiProperty({ type: SearchFilterBoundsBody, nullable: true, description: 'Range only.' })
+  bounds!: SearchFilterBoundsBody | null;
+  @ApiProperty({ type: SearchFilterPickedBody, nullable: true, description: 'Range only.' })
+  picked!: SearchFilterPickedBody | null;
+}
+
 export class ProductSearchPageBody {
   @ApiProperty({ type: [ProductSearchItemBody], description: 'In rank order for a text query.' })
   items!: ProductSearchItemBody[];
@@ -48,6 +90,21 @@ export class ProductSearchPageBody {
       'items when some hits are no longer sellable.',
   })
   hasMore!: boolean;
+  @ApiProperty({
+    type: [SearchFilterBody],
+    description:
+      'The listing filters with counts (a category list: the admin-chosen filters; a text search: ' +
+      'Brand and Country of origin). Empty for a store or brand list.',
+  })
+  filters!: SearchFilterBody[];
+  @ApiProperty({
+    description:
+      'True when a filter narrowed the list. A filtered page is `noindex` with the canonical ' +
+      'link to the unfiltered category.',
+  })
+  filtered!: boolean;
+  @ApiProperty({ description: 'False when the scope was too large to count (counts are null).' })
+  countsComplete!: boolean;
 }
 
 export class SearchQueryParams {
@@ -75,6 +132,16 @@ export class SearchQueryParams {
       'combine with `category`. An unknown, draft or archived brand answers an empty page.',
   })
   brand?: string;
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Attribute filters, `<attribute>:<code>[,<code>...]`; see the route.',
+  })
+  filter?: string[];
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Number ranges, `<attribute>:<min>..<max>`; see the route.',
+  })
+  range?: string[];
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 1 }) page?: number;
   @ApiPropertyOptional({ minimum: 1, maximum: 48, default: 24 }) pageSize?: number;
 }
@@ -205,6 +272,32 @@ export class ProductDetailBrandBody {
   @ApiProperty() name!: string;
 }
 
+export class ProductDetailSpecificationValueBody {
+  @ApiProperty({ enum: ['text', 'list', 'number', 'boolean', 'date'] })
+  kind!: 'text' | 'list' | 'number' | 'boolean' | 'date';
+  @ApiPropertyOptional({ description: 'kind text: the text (a select label is in the locale).' })
+  text?: string;
+  @ApiPropertyOptional({ type: [String], description: 'kind list: option labels.' })
+  items?: string[];
+  @ApiPropertyOptional({
+    description: 'kind number: a decimal string; boolean: true or false; date: YYYY-MM-DD.',
+  })
+  value?: string | boolean;
+}
+
+export class ProductDetailSpecificationBody {
+  @ApiProperty() code!: string;
+  @ApiProperty({ description: 'The attribute name in the Market default locale.' }) name!: string;
+  @ApiProperty({ type: ProductDetailSpecificationValueBody })
+  value!: ProductDetailSpecificationValueBody;
+}
+
+export class ProductDetailSpecificationGroupBody {
+  @ApiProperty({ description: 'The family group code, e.g. details.' }) groupCode!: string;
+  @ApiProperty({ type: [ProductDetailSpecificationBody] })
+  specifications!: ProductDetailSpecificationBody[];
+}
+
 export class ProductDetailBody {
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty({ description: 'The published name in the Market default locale.' })
@@ -219,6 +312,12 @@ export class ProductDetailBody {
     description: "The product's brand while it is active; null for none.",
   })
   brand!: ProductDetailBrandBody | null;
+  @ApiProperty({
+    type: [ProductDetailSpecificationGroupBody],
+    description:
+      'Attribute values the product page lists (not drafts, shown on the product page), grouped by family group in the family order; empty for none.',
+  })
+  specifications!: ProductDetailSpecificationGroupBody[];
   @ApiProperty({
     type: [ProductImageRefBody],
     description:

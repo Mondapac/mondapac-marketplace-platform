@@ -107,8 +107,8 @@ describe('mailTransportFor', () => {
       MailpitHttpTransport,
     );
     expect(() => mailTransportFor(loadAppConfig(base))).toThrow(MailCatcherNotAllowedError);
-    expect(() => mailTransportFor(loadAppConfig({ ...base, NODE_ENV: 'production' }))).toThrow(
-      MailCatcherNotAllowedError,
-    );
+    expect(() =>
+      mailTransportFor(loadAppConfig({ ...base, NODE_ENV: 'production', CLAMD_HOST: 'clamav' })),
+    ).toThrow(MailCatcherNotAllowedError);
   });
 });

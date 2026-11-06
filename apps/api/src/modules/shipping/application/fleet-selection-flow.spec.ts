@@ -1,3 +1,8 @@
+import {
+  changeTrailOf,
+  FakeChangeActors,
+  InMemoryAuditTrail,
+} from '../../../../test/support/change-trail-fakes';
 import { err, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -33,6 +38,7 @@ import type { ShippingDependencies } from './shipping-dependencies';
 import { CreateFleetSelectionModel } from './use-cases/create-fleet-selection-model.use-case';
 import { SetFleetSelection } from './use-cases/set-fleet-selection.use-case';
 import { UpdateFleetSelectionModel } from './use-cases/update-fleet-selection-model.use-case';
+import { ViewFleetSelectionHistory } from './use-cases/view-fleet-selection-history.use-case';
 import { ViewFleetSelection } from './use-cases/view-fleet-selection.use-case';
 
 // The admin side of fleet selection in memory on both Market fixtures: define, edit and name
@@ -49,14 +55,12 @@ const id = <T extends string>(n: number): Id<T> => {
 };
 const ADMIN = id<'Account'>(0xad);
 
-class RecordingAudit implements AuditWriter {
-  readonly entries: AuditEntry[] = [];
-  record(_context: CallContext, entry: AuditEntry): Promise<void> {
+class RecordingAudit extends InMemoryAuditTrail implements AuditWriter {
+  override record(context: CallContext, entry: AuditEntry): Promise<void> {
     if (!SHIPPING_AUDIT_ACTIONS.some((definition) => definition.action === entry.action)) {
       throw new Error(`audit: unknown action ${entry.action}`);
     }
-    this.entries.push(entry);
-    return Promise.resolve();
+    return super.record(context, entry);
   }
 }
 
@@ -100,14 +104,16 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
 
   let selection: MemorySelection;
   let audit: RecordingAudit;
+  let actors: FakeChangeActors;
   let clock: FixedClock;
   let deps: ShippingDependencies;
   let drive: ScriptedFleet;
 
   beforeEach(() => {
     selection = new MemorySelection();
-    audit = new RecordingAudit();
     clock = new FixedClock(T0);
+    audit = new RecordingAudit(clock);
+    actors = new FakeChangeActors();
     drive = new ScriptedFleet('mondapac_drive', {
       fleet: 'mondapac_drive',
       methods: ['instant', 'scheduled'],
@@ -121,8 +127,9 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       idempotentBooking: true,
       supportsWindow: true,
     });
+    const unitOfWork = new FakeUnitOfWork();
     deps = {
-      unitOfWork: new FakeUnitOfWork(),
+      unitOfWork,
       policy: undefined as never,
       sellers: undefined as never,
       audit,
@@ -140,6 +147,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       webhookSignature: undefined as never,
       uberWebhookSignature: undefined as never,
       securityEvents: undefined as never,
+      trail: changeTrailOf(unitOfWork, audit, actors),
     };
   });
 
@@ -292,7 +300,10 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
     await created('Two');
     expect(await update(model.id, 'One b', { kind: 'cheapest' }, 1)).toMatchObject({ ok: true });
     expect(await update(model.id, 'One c', { kind: 'cheapest' }, 1)).toEqual(
-      err({ code: 'shipping.fleet-model-conflict' }),
+      err({
+        code: 'shipping.fleet-model-conflict',
+        lastChanged: { at: T0, byDisplayName: null, byKind: 'member' },
+      }),
     );
     expect(await update(model.id, 'two', { kind: 'cheapest' }, 2)).toEqual(
       err({ code: 'shipping.fleet-model-name-taken' }),
@@ -353,6 +364,47 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
     ).toContainEqual(['uber_direct', 90, 90]);
   });
 
+  it('says who changed the page last and when, on the read and the save', async () => {
+    expect(await view()).toMatchObject({ ok: true, value: { lastChanged: null } });
+    actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
+    const model = await created('Cheapest wins');
+    clock.advance(Temporal.Duration.from({ minutes: 4 }));
+    const saved = await save(0, { ...NONE, instant: model.id }, { zoom2u: 70 });
+    const lastChanged = { at: T0.add({ minutes: 4 }), byDisplayName: 'Sara K.', byKind: 'member' };
+    expect(saved.ok && saved.value.lastChanged).toEqual(lastChanged);
+    expect(await view()).toMatchObject({ ok: true, value: { lastChanged } });
+  });
+
+  it('lists the changes of every model, method and score, naming the field and never a value', async () => {
+    actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
+    const model = await created('Secret model name');
+    clock.advance(Temporal.Duration.from({ minutes: 1 }));
+    await update(
+      model.id,
+      'Secret model name 2',
+      { kind: 'weighted', weights: { price: 20, eta: 70, reliability: 10 } },
+      1,
+    );
+    clock.advance(Temporal.Duration.from({ minutes: 1 }));
+    await save(0, { ...NONE, instant: model.id }, { zoom2u: 70 });
+    const history = (input: object, context: CallContext = admin) =>
+      new ViewFleetSelectionHistory(gate, deps).execute(context, input);
+    const page = await history({});
+    expect(page.ok && page.value.items.map((i) => [...i.fields])).toEqual([
+      ['reliability'],
+      ['activeModel'],
+      ['kind', 'weightEta', 'weightPrice', 'weightReliability'],
+      ['model'],
+    ]);
+    expect(JSON.stringify(page)).not.toContain('Secret');
+    const first = await history({ limit: 3 });
+    const next = first.ok ? first.value.next : null;
+    expect(next).not.toBeNull();
+    const rest = await history({ after: next });
+    expect(rest.ok && rest.value.items).toHaveLength(1);
+    expect((await history({}, actor('customer'))).ok).toBe(false);
+  });
+
   it('shows version 0 before the first save', async () => {
     const shown = await view();
     expect(shown).toMatchObject({ ok: true, value: { version: 0 } });
@@ -362,10 +414,13 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
     const model = await created('Cheapest wins');
     const entries = audit.entries.length;
     await save(0, { ...NONE, instant: model.id });
+    const winner = { at: T0, byDisplayName: null, byKind: 'member' };
     expect(await save(0, { ...NONE, scheduled: model.id }, { zoom2u: 70 })).toEqual(
-      err({ code: 'shipping.fleet-selection-conflict' }),
+      err({ code: 'shipping.fleet-selection-conflict', lastChanged: winner }),
     );
-    expect(await save(5)).toEqual(err({ code: 'shipping.fleet-selection-conflict' }));
+    expect(await save(5)).toEqual(
+      err({ code: 'shipping.fleet-selection-conflict', lastChanged: winner }),
+    );
     expect(audit.entries.length).toBe(entries + 1);
     expect((await selection.assignments(market)).get('scheduled')).toBeUndefined();
     expect((await selection.reliabilities(market)).size).toBe(0);

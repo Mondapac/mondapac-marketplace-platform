@@ -3,6 +3,7 @@
 
 export const VIEW_PERMISSION = 'catalog.attribute.view';
 export const EDIT_PERMISSION = 'catalog.attribute.edit';
+export const RESTRUCTURE_PERMISSION = 'catalog.attribute.restructure';
 export const BRANDS_READ_PERMISSION = 'catalog.brand.read';
 export const ATTRIBUTES_PATH = '/catalog/attributes';
 export const BRANDS_PATH = '/catalog/brands';
@@ -81,6 +82,8 @@ export interface AttributeOption {
   readonly active: boolean;
   readonly position: number;
   readonly productCount: number;
+  /** The value this one was merged into (attributes A8). */
+  readonly mergedInto?: string | null;
 }
 
 export interface FeatureSetUse {
@@ -211,4 +214,111 @@ export function textIn(
 ): string {
   if (text === null || text === undefined) return fallback;
   return text[locale] ?? text[fallbackLocale] ?? fallback;
+}
+
+/** The requests to relax an attribute waiting for a second administrator (attributes A2). */
+export const API_RELAXATIONS = 'catalog/admin/attribute-relaxations';
+
+export type RelaxationKind = 'clear-material' | 'archive' | 'remove-from-family';
+
+interface RelaxationAction {
+  readonly allowed: boolean;
+  readonly reason?: string;
+}
+
+export interface OpenRelaxation {
+  readonly id: string;
+  readonly version: number;
+  readonly kind: RelaxationKind;
+  readonly attribute: {
+    readonly id: string;
+    readonly code: string;
+    readonly names: Localized;
+    readonly version: number;
+  };
+  /** The reader's own request: they may withdraw it, not confirm it. */
+  readonly mine: boolean;
+  /** The requesting administrator; their display name waits for an identity read. */
+  readonly requestedByAccountId: string;
+  readonly requestedAt: string;
+  readonly expiresAt: string;
+  readonly allowedActions: {
+    readonly confirm: RelaxationAction;
+    readonly cancel: RelaxationAction;
+  };
+}
+
+export interface OpenRelaxationList {
+  readonly requests: readonly OpenRelaxation[];
+}
+
+/** A count the server may have cut short: `atLeast` means the real number is this or more. */
+export interface ImpactCount {
+  readonly count: number;
+  readonly atLeast: boolean;
+}
+
+/** What a merge or an archive reaches (attributes A8; `GET .../attributes/:id/impact`). */
+export interface ImpactAnswer {
+  readonly attribute: {
+    readonly id: string;
+    readonly code: string;
+    readonly status: AttributeStatus;
+    readonly version: number;
+    readonly material: boolean;
+    readonly isVariantOption: boolean;
+    readonly dataType: string;
+  };
+  readonly impact: {
+    readonly publishedProducts: ImpactCount;
+    readonly drafts: ImpactCount;
+    readonly featureSetCount: number;
+    readonly featureSets: readonly {
+      readonly id: string;
+      readonly code: string;
+      readonly names: Localized;
+    }[];
+    readonly categories: ImpactCount;
+    readonly filters: ImpactCount;
+    readonly liveVariantProducts: ImpactCount;
+  };
+}
+
+export const API_ARCHIVE_REQUESTS = 'catalog/admin/attribute-archive-requests';
+
+// Value suggestions (attributes A5): a seller asked for a value a select field does not offer.
+// The label is the seller's own text: rendered as plain text only.
+export const DECIDE_PERMISSION = 'catalog.attribute-suggestion.decide';
+export const API_SUGGESTIONS = 'catalog/admin/attribute-suggestions';
+
+export interface SuggestionItem {
+  readonly id: string;
+  readonly version: number;
+  readonly label: string;
+  readonly createdAt: string;
+  readonly sellerId: string;
+  readonly productId: string;
+  readonly productCode: string | null;
+  readonly attribute: {
+    readonly id: string;
+    readonly code: string;
+    readonly names: Localized;
+    readonly multi: boolean;
+    readonly options: readonly { readonly code: string; readonly labels: Localized }[];
+  };
+}
+
+export interface SuggestionList {
+  readonly items: readonly SuggestionItem[];
+  readonly requiredLocales: readonly string[];
+  readonly locales: MarketLocales;
+}
+
+export interface SuggestionDecided {
+  readonly suggestion: {
+    readonly id: string;
+    readonly status: 'approved' | 'mapped' | 'rejected';
+    readonly version: number;
+    readonly optionCode: string | null;
+  };
 }

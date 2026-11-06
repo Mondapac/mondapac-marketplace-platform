@@ -27,7 +27,8 @@ describe('loadAppConfig', () => {
       databaseUrl: DATABASE_URL,
       databasePoolMax: 10,
       mailCatcherUrl: null,
-      objectStoreDir: null,
+      objectStore: null,
+      malwareScanner: null,
       stripeSecretKey: null,
       stripePaymentMethodConfiguration: null,
       stripeWebhookSecrets: {},
@@ -607,12 +608,29 @@ describe('loadAppConfig', () => {
     );
   });
 
+  it('requires the virus scanner in production, so no certificate file is stored unscanned', () => {
+    expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'production' })).toThrow(
+      'CLAMD_HOST',
+    );
+    expect(
+      loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'production', CLAMD_HOST: 'clamav' })
+        .malwareScanner,
+    ).not.toBeNull();
+    // Development and test stay free to run without one.
+    expect(
+      loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'development' }).malwareScanner,
+    ).toBeNull();
+  });
+
   it('lets a reviewer download certificate files only when explicitly enabled', () => {
     const base = { HOSTED_MARKETS: 'AU' };
     expect(loadAppConfig(base).certificationReviewerDocumentsEnabled).toBe(false);
     expect(
-      loadAppConfig({ ...base, CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true' })
-        .certificationReviewerDocumentsEnabled,
+      loadAppConfig({
+        ...base,
+        CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true',
+        CLAMD_HOST: 'clamav',
+      }).certificationReviewerDocumentsEnabled,
     ).toBe(true);
     expect(() =>
       loadAppConfig({ ...base, CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'yes' }),
@@ -730,7 +748,12 @@ describe('loadAppConfig', () => {
     (nodeEnv, value) => {
       expect.assertions(3);
       try {
-        loadAppConfig({ NODE_ENV: nodeEnv, HOSTED_MARKETS: 'AU', MIGRATION_DATABASE_URL: value });
+        loadAppConfig({
+          NODE_ENV: nodeEnv,
+          HOSTED_MARKETS: 'AU',
+          CLAMD_HOST: 'clamav',
+          MIGRATION_DATABASE_URL: value,
+        });
       } catch (error) {
         expect(error).toBeInstanceOf(InvalidConfigError);
         expect((error as InvalidConfigError).issues).toEqual([
@@ -740,4 +763,114 @@ describe('loadAppConfig', () => {
       }
     },
   );
+
+  describe('object store settings', () => {
+    const s3 = {
+      OBJECT_STORE_DRIVER: 's3',
+      OBJECT_STORE_S3_BUCKET: 'mondapac-pilot-files',
+      OBJECT_STORE_S3_REGION: 'ap-southeast-2',
+    };
+
+    it('keeps the earlier behaviour: a directory alone means disk', () => {
+      const config = loadAppConfig({ HOSTED_MARKETS: 'AU', OBJECT_STORE_DIR: './files' });
+      expect(config.objectStore).toEqual({ driver: 'disk', dir: path.resolve('./files') });
+    });
+
+    it('accepts s3 with the default credential chain', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU', ...s3 }).objectStore).toEqual({
+        driver: 's3',
+        bucket: 'mondapac-pilot-files',
+        region: 'ap-southeast-2',
+        credentials: null,
+      });
+    });
+
+    it('accepts s3 with a key pair', () => {
+      const config = loadAppConfig({
+        HOSTED_MARKETS: 'AU',
+        ...s3,
+        OBJECT_STORE_S3_ACCESS_KEY_ID: 'id',
+        OBJECT_STORE_S3_SECRET_ACCESS_KEY: 'secret',
+      });
+      expect(config.objectStore).toMatchObject({
+        credentials: { accessKeyId: 'id', secretAccessKey: 'secret' },
+      });
+    });
+
+    it('lets s3 keep OBJECT_STORE_DIR for the migration command', () => {
+      expect(
+        loadAppConfig({ HOSTED_MARKETS: 'AU', ...s3, OBJECT_STORE_DIR: './files' }).objectStore,
+      ).toMatchObject({ driver: 's3' });
+    });
+
+    it.each([
+      [{ OBJECT_STORE_DRIVER: 'disk' }, 'OBJECT_STORE_DIR: required'],
+      [{ OBJECT_STORE_DRIVER: 's3' }, 'OBJECT_STORE_S3_BUCKET: required'],
+      [
+        { OBJECT_STORE_DRIVER: 's3', OBJECT_STORE_S3_BUCKET: 'mondapac-pilot-files' },
+        'OBJECT_STORE_S3_REGION: required',
+      ],
+      [{ ...s3, OBJECT_STORE_S3_ACCESS_KEY_ID: 'id' }, 'set both or neither'],
+      [
+        {
+          OBJECT_STORE_DRIVER: 'disk',
+          OBJECT_STORE_DIR: './f',
+          OBJECT_STORE_S3_BUCKET: 'mondapac-pilot-files',
+        },
+        'only valid when OBJECT_STORE_DRIVER is s3',
+      ],
+      [{ ...s3, OBJECT_STORE_DRIVER: 'gcs' }, 'OBJECT_STORE_DRIVER'],
+    ])('refuses to start with %p', (env, message) => {
+      expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', ...env })).toThrow(message);
+    });
+
+    it('never puts the secret key in the error', () => {
+      try {
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          ...s3,
+          OBJECT_STORE_S3_SECRET_ACCESS_KEY: 'topsecretvalue',
+        });
+        throw new Error('should have thrown');
+      } catch (error) {
+        expect(String(error)).not.toContain('topsecretvalue');
+      }
+    });
+  });
+
+  describe('malware scanner settings', () => {
+    it('has no scanner by default', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).malwareScanner).toBeNull();
+    });
+
+    it('reads the clamd host with the default port and timeout', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU', CLAMD_HOST: 'clamav' }).malwareScanner).toEqual({
+        host: 'clamav',
+        port: 3310,
+        timeoutMs: 30_000,
+      });
+    });
+
+    it('refuses reviewer document downloads without a scanner', () => {
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true' }),
+      ).toThrow('CLAMD_HOST');
+      expect(
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: 'true',
+          CLAMD_HOST: 'clamav',
+        }).certificationReviewerDocumentsEnabled,
+      ).toBe(true);
+    });
+
+    it('refuses a bad port or timeout', () => {
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', CLAMD_HOST: 'c', CLAMD_PORT: '0' }),
+      ).toThrow();
+      expect(() =>
+        loadAppConfig({ HOSTED_MARKETS: 'AU', CLAMD_HOST: 'c', CLAMD_TIMEOUT_MS: '10' }),
+      ).toThrow();
+    });
+  });
 });

@@ -72,6 +72,8 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
     names,
     revisionNo: 1,
     version: 3,
+    position: 0,
+    showInMenu: true,
   });
   let nodes: AdminStoredCategory[] = [];
   let facts: CategoryProductFact[] = [];
@@ -80,6 +82,14 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
     categories: () => Promise.resolve(nodes),
     treeVersion: () => Promise.resolve(7),
     productFacts: () => Promise.resolve({ facts, complete }),
+    detail: () =>
+      Promise.resolve({
+        texts: [],
+        seo: { title: null, description: null, noindex: false },
+        showInMenu: true,
+        imageId: null,
+        hiddenById: null,
+      }),
     revisions: (_m, id) =>
       Promise.resolve(
         nodes.some((n) => n.id === id)
@@ -120,7 +130,16 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
     policy,
     categoryProbes,
   });
-  const impact = new CategoryImpact(gate, { unitOfWork, adminCategoryReader: reader });
+  let links: {
+    categoryId: Id<'Category'>;
+    familyId: Id<'AttributeFamily'> | null;
+    filters: string[];
+  }[] = [];
+  const impact = new CategoryImpact(gate, {
+    unitOfWork,
+    adminCategoryReader: reader,
+    linkStore: { all: () => Promise.resolve(links) },
+  });
 
   const contextOf = (population: 'admin' | 'seller'): CallContext =>
     testCallContext(
@@ -307,6 +326,76 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
         },
       });
     }
+  });
+
+  describe('the feature set changes of a move or merge (review amendments, C4)', () => {
+    const family = (n: number) =>
+      `01990000-0000-7000-8000-${(0xf000 + n).toString(16).padStart(12, '0')}` as Id<'AttributeFamily'>;
+    beforeEach(() => {
+      nodes = [...nodes, node(5, null)];
+      links = [
+        { categoryId: cat(1), familyId: family(1), filters: [] },
+        { categoryId: cat(5), familyId: family(5), filters: [] },
+      ];
+    });
+
+    it('counts the products whose inherited feature set a move would change', async () => {
+      const answer = await impact.execute(admin, {
+        categoryId: cat(2),
+        action: 'move',
+        targetId: cat(5),
+      });
+      expect(answer).toMatchObject({ ok: true, value: { featureSetChanges: 2, products: 2 } });
+      const top = await impact.execute(admin, {
+        categoryId: cat(2),
+        action: 'move',
+        targetId: null,
+      });
+      expect(top).toMatchObject({ ok: true, value: { featureSetChanges: 2 } });
+    });
+
+    it('counts none when the target gives the same feature set, and keeps "at least"', async () => {
+      complete = false;
+      const answer = await impact.execute(admin, {
+        categoryId: cat(2),
+        action: 'merge',
+        targetId: cat(1),
+      });
+      expect(answer).toMatchObject({ ok: true, value: { featureSetChanges: 0, complete: false } });
+      // A count above zero is "at least" too when the read ran out of time.
+      const some = await impact.execute(admin, {
+        categoryId: cat(2),
+        action: 'move',
+        targetId: cat(5),
+      });
+      expect(some).toMatchObject({ ok: true, value: { featureSetChanges: 2, complete: false } });
+    });
+
+    it('leaves the count out without a target, and refuses one for an archive or an unknown one', async () => {
+      const plain = await impact.execute(admin, { categoryId: cat(2), action: 'move' });
+      expect(plain.ok && 'featureSetChanges' in plain.value).toBe(false);
+      expect(
+        await impact.execute(admin, { categoryId: cat(2), action: 'archive', targetId: cat(5) }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'targetId', code: 'unknown' }] },
+      });
+      expect(
+        await impact.execute(admin, { categoryId: cat(2), action: 'merge', targetId: 'nope' }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'targetId', code: 'format' }] },
+      });
+      expect(
+        await impact.execute(admin, { categoryId: cat(2), action: 'merge', targetId: null }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'targetId', code: 'format' }] },
+      });
+      expect(
+        await impact.execute(admin, { categoryId: cat(2), action: 'merge', targetId: cat(98) }),
+      ).toEqual({ ok: false, error: { code: 'category.not-found' } });
+    });
   });
 
   it('refuses an impact with no or an unknown action, and an unknown field', async () => {

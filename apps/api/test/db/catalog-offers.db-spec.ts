@@ -260,12 +260,12 @@ describe.each(TEST_MARKETS)('catalog offers in market %s (database integration)'
         { id: uuid7(), state: 'published', at: '2026-10-09T00:00:02Z' },
         { id: uuid7(), state: 'retired', at: '2026-10-09T00:00:03Z' },
       ];
-      for (const variant of variants) {
+      for (const [index, variant] of variants.entries()) {
         await owner.query(
           `INSERT INTO catalog.product_variants (id, market_id, tenant_id, product_id,
-             variant_model, state, created_at, published_at, retired_at)
-           VALUES ($1,$2,$3,$4,'options','proposed',$5,NULL,NULL)`,
-          [variant.id, market.marketId, market.tenantId, product.state.id, variant.at],
+             variant_model, variant_no, state, created_at, published_at, retired_at)
+           VALUES ($1,$2,$3,$4,'options',$6,'proposed',$5,NULL,NULL)`,
+          [variant.id, market.marketId, market.tenantId, product.state.id, variant.at, index + 1],
         );
       }
       await owner.query(

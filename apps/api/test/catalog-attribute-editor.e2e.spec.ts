@@ -4,6 +4,7 @@ import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { ATTRIBUTE_DEFINITION_STORE } from '../src/modules/catalog/application/ports/attribute-definition.store';
+import { ATTRIBUTE_RELAXATION_STORE } from '../src/modules/catalog/application/ports/attribute-relaxation.store';
 import { CLAIM_TERM_LOCALES } from '../src/modules/catalog/application/ports/claim-term-locales';
 import { CLAIM_TEXT_MATCHER } from '../src/modules/catalog/application/ports/claim-text-matcher';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
@@ -15,6 +16,7 @@ import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import {
   MemoryAttributeDefinitionStore,
+  MemoryAttributeRelaxationStore,
   claimLocalesOf,
   halalOnlyMatcher,
 } from './support/catalog-attribute-editor-fakes';
@@ -62,6 +64,8 @@ describe('attribute editor over HTTP (integration)', () => {
           .useValue(new FixedClock(START))
           .overrideProvider(ATTRIBUTE_DEFINITION_STORE)
           .useValue(store)
+          .overrideProvider(ATTRIBUTE_RELAXATION_STORE)
+          .useValue(new MemoryAttributeRelaxationStore())
           .overrideProvider(CLAIM_TEXT_MATCHER)
           .useValue(halalOnlyMatcher)
           .overrideProvider(CLAIM_TERM_LOCALES)

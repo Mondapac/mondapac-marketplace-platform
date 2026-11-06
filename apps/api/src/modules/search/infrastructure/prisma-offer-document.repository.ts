@@ -26,6 +26,8 @@ export class PrismaOfferDocumentRepository implements OfferDocumentRepository {
       shortText: document.shortText,
       categoryIds: [...document.categoryIds],
       textSearchConfig: document.textSearchConfig,
+      searchText: document.searchText,
+      facetCodes: [...document.facetCodes],
       indexedAt: toDate(indexedAt),
     };
     await this.prisma.tx(market).searchOfferDocument.upsert({
@@ -41,6 +43,19 @@ export class PrismaOfferDocumentRepository implements OfferDocumentRepository {
       },
       update: data,
     });
+    // The numbers are replaced as a set: the document's own rows go, the current ones come.
+    const tx = this.prisma.tx(market);
+    await tx.searchOfferDocumentNumber.deleteMany({
+      where: { marketId: market.marketId, offerId: document.offerId },
+    });
+    const rows = Object.entries(document.numbers).map(([attr, value]) => ({
+      marketId: market.marketId,
+      tenantId: market.tenantId,
+      offerId: document.offerId,
+      attr,
+      value,
+    }));
+    if (rows.length > 0) await tx.searchOfferDocumentNumber.createMany({ data: rows });
   }
 
   async deleteMany(market: MarketContext, offerIds: readonly Id<'Offer'>[]): Promise<number> {

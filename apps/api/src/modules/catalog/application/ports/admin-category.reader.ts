@@ -1,5 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { AdminStoredCategory, CategoryProductFact } from '../../domain/category-admin-tree';
+import type { CategorySeo, CategoryText } from '../../domain/category-edit';
 import type { CategoryName } from '../../domain/platform-category';
 
 /** One revision of a category, newest first in {@link AdminCategoryReader.revisions}. */
@@ -13,6 +14,16 @@ export interface AdminCategoryRevisionRecord {
   readonly parentId: Id<'Category'> | null;
   readonly names: readonly CategoryName[];
   readonly createdAt: Temporal.Instant;
+}
+
+/** What the edit form of one category needs beyond its names: the whole text and the flags. */
+export interface AdminCategoryDetailRecord {
+  readonly texts: readonly CategoryText[];
+  readonly seo: CategorySeo;
+  readonly showInMenu: boolean;
+  readonly imageId: string | null;
+  /** The category whose Hide cascaded to this one; null when hidden on its own or not hidden. */
+  readonly hiddenById: Id<'Category'> | null;
 }
 
 /** The facts the counts are built from, and whether the read finished inside its time bound. */
@@ -38,6 +49,9 @@ export interface AdminCategoryReader {
    * pages and stops when `budgetMs` has passed, then answers `complete: false` with what it has.
    */
   productFacts(market: MarketContext, budgetMs: number): Promise<CategoryProductFacts>;
+
+  /** The current texts and flags of one category; null for an unknown id. */
+  detail(market: MarketContext, id: Id<'Category'>): Promise<AdminCategoryDetailRecord | null>;
 
   /** The revisions of one category, newest first, at most `limit`. Empty for an unknown id. */
   revisions(

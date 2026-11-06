@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import messages from '../../messages/en.json';
 import { SettingsHub } from '@mondapac/ui';
 import { visibleSettings } from './settings-nav.ts';
-import { SettingsSubNav } from './settings-sub-nav.tsx';
+import { SettingsSubNav } from '@mondapac/ui';
 
 const text = (key: string): string =>
   key

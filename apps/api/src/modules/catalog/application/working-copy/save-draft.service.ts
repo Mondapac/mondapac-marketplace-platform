@@ -1,6 +1,11 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
-import { changedTexts, draftTextsOf, restoreRefused } from '../../domain/draft-texts';
+import {
+  changedTexts,
+  draftTextsOf,
+  restoreRefused,
+  withoutVariantLabels,
+} from '../../domain/draft-texts';
 import { isStorableContent } from '../../domain/working-copy';
 import type { ClaimCheckedFieldId } from '../../domain/claim-checked-fields';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -90,7 +95,8 @@ export class SaveDraft {
     options?: SaveDraftOptions,
   ): Promise<Result<SaveDraftOutput, SaveDraftFailure>> {
     if (!isStorableContent(input.content)) return err({ code: 'working-copy.invalid-content' });
-    const content = input.content;
+    // A variant label is built by the server (V2): one a client still sends is dropped, not stored.
+    const content = withoutVariantLabels(input.content);
     const { market } = context;
 
     let locales: { readonly default: string; readonly supported: readonly string[] };

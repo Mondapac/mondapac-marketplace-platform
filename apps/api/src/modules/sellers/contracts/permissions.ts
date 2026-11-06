@@ -103,12 +103,63 @@ export const SELLERS_BLOG_ACCESS_EDIT = definePermission('sellers', {
   protected: true,
 });
 
+/**
+ * Edit the display names of service areas (ADR-0041). Platform scope; unprotected: a name is
+ * display text, moves no money, certification or access, and the area itself (code, postcodes,
+ * flags) is configuration this key cannot change. No default role lists it yet: the Platform
+ * Administrator holds every key. Reading the page needs `sellers.seller.view`.
+ */
+export const SELLERS_SERVICE_AREA_EDIT = definePermission('sellers', {
+  key: 'sellers.service-area.edit',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Read the business activities a seller carries and who last changed them and why (ADR-0040
+ * decision 4). Platform scope, not protected. The Viewer role lists it (seed version 27).
+ */
+export const SELLERS_BUSINESS_ACTIVITY_VIEW = definePermission('sellers', {
+  key: 'sellers.business-activity.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Ask for a seller's health to be measured again now (seller health; owner decision 5 Nov 2026).
+ * The request only queues a recount of numbers the nightly run also computes; nothing happens to
+ * the seller (R2). Platform scope; unprotected: it moves no money, certification or access. The
+ * default role mapping is `identity`'s seed (Onboarding and Compliance since its version 8) and
+ * the Platform Administrator holds every key. Reading the card needs `sellers.seller.view`.
+ */
+export const SELLERS_SELLER_HEALTH_RECALCULATE = definePermission('sellers', {
+  key: 'sellers.seller-health.recalculate',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Replace the business activities a seller carries, with a reason (ADR-0040 decision 4). Platform
+ * scope and protected: the assignment decides what a seller may sell once the offer rule reads it,
+ * so only the Platform Administrator system role holds it and no custom role can. The PUT route also
+ * asks for a fresh two-step code (`sellers.business-activity.change`).
+ */
+export const SELLERS_BUSINESS_ACTIVITY_MANAGE = definePermission('sellers', {
+  key: 'sellers.business-activity.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BLOG_ACCESS_EDIT,
+  SELLERS_BUSINESS_ACTIVITY_MANAGE,
+  SELLERS_BUSINESS_ACTIVITY_VIEW,
   SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_SELLER_FILE_REVIEW,
+  SELLERS_SELLER_HEALTH_RECALCULATE,
   SELLERS_SELLER_VIEW,
+  SELLERS_SERVICE_AREA_EDIT,
   SELLERS_STORE_PROFILE_EDIT,
   SELLERS_STORE_PROFILE_VIEW,
   SELLERS_STORE_SETTINGS_EDIT,

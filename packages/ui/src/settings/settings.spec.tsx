@@ -14,6 +14,9 @@ import {
 } from './setting-row.tsx';
 import { SettingsPage } from './settings-page.tsx';
 import { SettingsSection } from './settings-section.tsx';
+import { SettingsViewOnlyBanner } from './view-only-banner.tsx';
+import { SettingsSubNav } from './settings-sub-nav.tsx';
+import { SettingsTitle } from './settings-title.tsx';
 import { leavesPage, type ClickInfo } from './unsaved-changes-guard.tsx';
 
 const html = (node: React.ReactNode) => renderToStaticMarkup(node);
@@ -40,14 +43,24 @@ describe('SettingRow', () => {
     expect(out).toContain('border-critical-solid');
   });
 
-  it('is two columns from 760 px and one column below it', () => {
+  it('puts the control in a fixed 360 px column on the end side, and stacks it when the section is narrow', () => {
     const out = html(
       <SettingRow label="Fee">
         <SettingInput />
       </SettingRow>,
     );
-    expect(out).toContain('md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]');
+    // 22.5rem is 360 px; the section is the container, so the sidebar cannot squeeze the label.
+    expect(out).toContain('@[39rem]:grid-cols-[minmax(0,1fr)_22.5rem]');
+    expect(out).not.toContain('md:grid-cols');
     expect(out).toContain('grid gap-1.5');
+    const section = html(
+      <SettingsSection title="Fees">
+        <SettingRow label="Fee">
+          <SettingInput />
+        </SettingRow>
+      </SettingsSection>,
+    );
+    expect(section).toContain('@container');
   });
 
   it('marks a changed control with the attention ring, not a critical edge', () => {
@@ -265,6 +278,24 @@ describe('NoAccess and the conflict banner', () => {
     expect(out).toContain('Back to dashboard');
   });
 
+  it('is a card under the page h1 when a settings page names itself', () => {
+    const out = html(
+      <NoAccess
+        pageTitle="Delivery rules"
+        title="You don't have access to this page"
+        body='Delivery rules needs the permission "View delivery settings".'
+        backHref="/settings"
+        backLabel="Back to Settings"
+      />,
+    );
+    expect(out.match(/<h1/g)).toHaveLength(1);
+    expect(out).toContain('>Delivery rules</h1>');
+    expect(out).toContain('<h2');
+    expect(out).toContain('rounded-lg border border-line');
+    expect(out).toContain('href="/settings"');
+    expect(out).toContain('Back to Settings');
+  });
+
   it('says who saved first, that changes are kept, and offers Compare only with a handler', () => {
     const base = {
       title: 'Sara K. saved these settings 1 minute ago',
@@ -315,19 +346,36 @@ describe('SettingsErrorSummary', () => {
   it('is a critical alert that links each invalid field', () => {
     const out = html(
       <SettingsErrorSummary
-        title="2 settings need fixing before you can save"
+        title="2 settings need fixing"
         items={[
-          { id: 'cutoff', label: 'Cut-off time' },
+          { id: 'cutoff', label: 'Cut-off time', reason: 'Enter a time such as 1:00 pm.' },
           { id: 'free', label: 'Free delivery from' },
         ]}
+        focusSignal={1}
       />,
     );
     expect(out).toContain('role="alert"');
     expect(out).toContain('tabindex="-1"');
-    expect(out).toContain('2 settings need fixing before you can save');
+    expect(out).toContain('2 settings need fixing');
     expect(out).toContain('<a href="#cutoff"');
     expect(out).toContain('>Free delivery from</a>');
+    // The reason follows its link; an item without one shows the link alone.
+    expect(out).toMatch(
+      />Cut-off time<\/a><span>: (<!-- -->)?Enter a time such as 1:00 pm\.<\/span>/,
+    );
     expect(out).toContain('text-critical-fg');
+  });
+
+  it('stays quiet (no alert role) before a Save press, so typing is not interrupted', () => {
+    const out = html(
+      <SettingsErrorSummary
+        title="1 setting needs fixing before you can save"
+        items={[{ id: 'cutoff', label: 'Cut-off time' }]}
+      />,
+    );
+    expect(out).not.toContain('role="alert"');
+    expect(out).toContain('role="group"');
+    expect(out).toContain('<a href="#cutoff"');
   });
 
   it('renders nothing without fields', () => {
@@ -360,5 +408,51 @@ describe('Button disabled state', () => {
     const out = html(<Button variant="destructive-solid">Delete</Button>);
     expect(out).toContain('bg-critical-solid');
     expect(out).toContain('text-on-accent');
+  });
+});
+
+describe('SettingsViewOnlyBanner', () => {
+  it('is an info banner titled with the same words on every page, with the reason under it', () => {
+    const out = html(
+      <SettingsViewOnlyBanner title="View only">
+        Your role can see these settings but not change them.
+      </SettingsViewOnlyBanner>,
+    );
+    expect(out).toContain('role="status"');
+    expect(out).toContain('<p class="font-semibold">View only</p>');
+    expect(out).toContain('Your role can see these settings but not change them.');
+    expect(out).toContain('text-info-fg');
+  });
+});
+
+describe('SettingsSubNav', () => {
+  const groups = [
+    {
+      id: 'delivery',
+      label: 'Delivery',
+      links: [
+        { id: 'rules', href: '/settings/delivery', label: 'Delivery rules' },
+        { id: 'fleets', href: '/settings/fleets', label: 'Delivery fleets' },
+      ],
+    },
+  ];
+
+  it('marks the current page with the selected background and strong primary text, not link blue', () => {
+    const out = html(<SettingsSubNav label="Settings pages" groups={groups} activeId="fleets" />);
+    const current = /<a[^>]*aria-current="page"[^>]*>/.exec(out)?.[0] ?? '';
+    expect(current).toContain('bg-selected');
+    expect(current).toContain('font-semibold');
+    expect(current).toContain('text-fg');
+    expect(current).not.toContain('text-link');
+    expect(out.match(/aria-current/g)).toHaveLength(1);
+  });
+});
+
+describe('SettingsTitle', () => {
+  it('is the page h1 with room for the pin star beside it', () => {
+    const out = html(<SettingsTitle>Delivery rules</SettingsTitle>);
+    expect(out).toContain('<h1');
+    expect(out).toContain('>Delivery rules</h1>');
+    expect(out).toContain('flex min-w-0 items-center');
   });
 });

@@ -40,8 +40,30 @@ import {
   ATTRIBUTE_DEFINITION_STORE,
   type AttributeDefinitionStore,
 } from '../application/ports/attribute-definition.store';
+import { FEATURE_SET_STORE, type FeatureSetStore } from '../application/ports/feature-set.store';
 import { CertificationClaimTermLocales } from './certification-claim-term-locales';
+import { CertificationCategoryRetirement } from './certification-category-retirement';
+import {
+  CATEGORY_RETIREMENT_CHECK,
+  type CategoryRetirementCheck,
+} from '../application/ports/category-retirement-check';
 import { PrismaAttributeDefinitionStore } from './prisma-attribute-definition.store';
+import { PrismaFeatureSetStore } from './prisma-feature-set.store';
+import {
+  CATEGORY_ATTRIBUTE_LINK_STORE,
+  type CategoryAttributeLinkStore,
+} from '../application/ports/category-attribute-link.store';
+import { PrismaCategoryAttributeLinkStore } from './prisma-category-attribute-link.store';
+import { PrismaAttributeRelaxationStore } from './prisma-attribute-relaxation.store';
+import { PrismaAttributeValueSuggestionStore } from './prisma-attribute-value-suggestion.store';
+import {
+  ATTRIBUTE_VALUE_SUGGESTION_STORE,
+  type AttributeValueSuggestionStore,
+} from '../application/ports/attribute-value-suggestion.store';
+import {
+  ATTRIBUTE_RELAXATION_STORE,
+  type AttributeRelaxationStore,
+} from '../application/ports/attribute-relaxation.store';
 import { OFFER_REPOSITORY, type OfferRepository } from '../application/ports/offer.repository';
 import { OWN_OFFER_FINDER } from '../application/ports/own-offer-finder';
 import { CLAIM_EVALUATOR, type ClaimEvaluator } from '../application/ports/claim-evaluator';
@@ -79,6 +101,11 @@ import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.rea
 import { PrismaOfferRepository } from './prisma-offer.repository';
 import { PrismaOwnCatalogReader } from './prisma-own-catalog.reader';
 import { PrismaAdminProductsReader } from './prisma-admin-products.reader';
+import { PrismaCustomVariantLabelsReader } from './prisma-custom-variant-labels.reader';
+import {
+  CUSTOM_VARIANT_LABELS_READER,
+  type CustomVariantLabelsReader,
+} from '../application/ports/custom-variant-labels.reader';
 import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
 import {
   SAVED_FILTER_REPOSITORY,
@@ -105,6 +132,11 @@ import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
 import { xlsxParser } from './xlsx/isolated-xlsx-parser';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSearchFactsReader } from './prisma-offer-search-facts.reader';
+import {
+  SEARCH_FILTER_READER,
+  type SearchFilterReader,
+} from '../application/ports/search-filter.reader';
+import { PrismaSearchFilterReader } from './prisma-search-filter.reader';
 import {
   SELL_UNIT_LABELS_READER,
   type SellUnitLabelsReader,
@@ -196,6 +228,16 @@ import {
   type AttributeAdminReader,
 } from '../application/ports/attribute-admin.reader';
 import { PrismaAttributeAdminReader } from './prisma-attribute-admin.reader';
+import {
+  ATTRIBUTE_IMPACT_READER,
+  type AttributeImpactReader,
+} from '../application/ports/attribute-impact.reader';
+import { PrismaAttributeImpactReader } from './prisma-attribute-impact.reader';
+import {
+  PRODUCT_DETAILS_GAP_READER,
+  type ProductDetailsGapReader,
+} from '../application/ports/product-details-gap.reader';
+import { PrismaProductDetailsGapReader } from './prisma-product-details-gap.reader';
 import { BRAND_ASSIGNER, type BrandAssigner } from '../application/ports/brand-assigner';
 import {
   BUSINESS_ACTIVITY_REPOSITORY,
@@ -210,6 +252,13 @@ import { PrismaBusinessActivityReader } from './prisma-business-activity.reader'
 import { PrismaBrandRepository } from './prisma-brand.repository';
 import { PrismaBrandReader } from './prisma-brand.reader';
 import { PrismaAdminCategoryReader } from './prisma-admin-category.reader';
+import { PrismaCategoryEditStore } from './prisma-category-edit.store';
+import {
+  CATEGORY_EDIT_STORE,
+  CATEGORY_RESTRUCTURE_STORE,
+  type CategoryEditStore,
+  type CategoryRestructureStore,
+} from '../application/ports/category-edit.store';
 import {
   ADMIN_CATEGORY_READER,
   type AdminCategoryReader,
@@ -231,6 +280,12 @@ export const catalogProviders: readonly Provider[] = [
       new CertificationClaimTextMatcher(certification),
   },
   {
+    provide: CATEGORY_RETIREMENT_CHECK,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): CategoryRetirementCheck =>
+      new CertificationCategoryRetirement(certification),
+  },
+  {
     provide: CLAIM_TERM_LOCALES,
     inject: [CERTIFICATION_FACADE],
     useFactory: (certification: CertificationFacade): ClaimTermLocales =>
@@ -241,6 +296,29 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeDefinitionStore =>
       new PrismaAttributeDefinitionStore(prisma),
+  },
+  {
+    provide: FEATURE_SET_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): FeatureSetStore => new PrismaFeatureSetStore(prisma),
+  },
+  {
+    provide: CATEGORY_ATTRIBUTE_LINK_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryAttributeLinkStore =>
+      new PrismaCategoryAttributeLinkStore(prisma),
+  },
+  {
+    provide: ATTRIBUTE_RELAXATION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeRelaxationStore =>
+      new PrismaAttributeRelaxationStore(prisma),
+  },
+  {
+    provide: ATTRIBUTE_VALUE_SUGGESTION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeValueSuggestionStore =>
+      new PrismaAttributeValueSuggestionStore(prisma),
   },
   {
     provide: CATALOG_MARKET_POLICY,
@@ -266,6 +344,17 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaAdminCategoryReader(prisma),
   },
   {
+    provide: CATEGORY_EDIT_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryEditStore => new PrismaCategoryEditStore(prisma),
+  },
+  {
+    // The same store class: the restructure facts read the same tables in the same unit.
+    provide: CATEGORY_RESTRUCTURE_STORE,
+    inject: [CATEGORY_EDIT_STORE],
+    useFactory: (store: PrismaCategoryEditStore): CategoryRestructureStore => store,
+  },
+  {
     provide: BRAND_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BrandReader => new PrismaBrandReader(prisma),
@@ -275,6 +364,18 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeAdminReader =>
       new PrismaAttributeAdminReader(prisma),
+  },
+  {
+    provide: ATTRIBUTE_IMPACT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeImpactReader =>
+      new PrismaAttributeImpactReader(prisma),
+  },
+  {
+    provide: PRODUCT_DETAILS_GAP_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ProductDetailsGapReader =>
+      new PrismaProductDetailsGapReader(prisma),
   },
   {
     provide: BUSINESS_ACTIVITY_REPOSITORY,
@@ -364,6 +465,12 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaAdminProductsReader(prisma),
   },
   {
+    provide: CUSTOM_VARIANT_LABELS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomVariantLabelsReader =>
+      new PrismaCustomVariantLabelsReader(prisma),
+  },
+  {
     provide: SAVED_FILTER_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SavedFilterRepository =>
@@ -438,6 +545,11 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferSearchFactsReader =>
       new PrismaOfferSearchFactsReader(prisma),
+  },
+  {
+    provide: SEARCH_FILTER_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SearchFilterReader => new PrismaSearchFilterReader(prisma),
   },
   {
     provide: PLATFORM_CATEGORY_REPOSITORY,

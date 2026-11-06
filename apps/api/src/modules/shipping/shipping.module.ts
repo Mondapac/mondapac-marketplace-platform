@@ -1,6 +1,7 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
@@ -32,6 +33,9 @@ import { QuoteDeliveries } from './application/use-cases/quote-deliveries.use-ca
 import { RecordFleetFee } from './application/use-cases/record-fleet-fee.use-case';
 import { SetDeliverySettings } from './application/use-cases/set-delivery-settings.use-case';
 import { SetSellerDeliveryMethods } from './application/use-cases/set-seller-delivery-methods.use-case';
+import { changeTrailProvider, IdentityModule } from '../identity';
+import { ViewDeliverySettingsHistory } from './application/use-cases/view-delivery-settings-history.use-case';
+import { ViewFleetSelectionHistory } from './application/use-cases/view-fleet-selection-history.use-case';
 import { ViewDeliverySettings } from './application/use-cases/view-delivery-settings.use-case';
 import { ViewSellerDeliveryMethods } from './application/use-cases/view-seller-delivery-methods.use-case';
 import { CreateFleetSelectionModel } from './application/use-cases/create-fleet-selection-model.use-case';
@@ -66,6 +70,7 @@ const PORTS: readonly [keyof ShippingDependencies, InjectionToken][] = [
   ['policy', SHIPPING_POLICY],
   ['sellers', SELLER_DIRECTORY],
   ['audit', AUDIT_WRITER],
+  ['trail', CHANGE_TRAIL],
   ['clock', CLOCK],
   ['ids', ID_GENERATOR],
   ['outbox', OUTBOX_WRITER],
@@ -113,7 +118,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * the facade; the sellers module is asked only for a seller's operating zone and pickup address.
  */
 @Module({
-  imports: [SellersModule],
+  imports: [SellersModule, IdentityModule],
   controllers: [
     DeliveryAreaController,
     CarrierWebhookController,
@@ -123,6 +128,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   ],
   providers: [
     PersistenceModule.auditWriterFor('shipping'),
+    PersistenceModule.auditTrailReaderFor('shipping'),
+    changeTrailProvider(),
     PersistenceModule.securityEventsFor('shipping'),
     registerAuditActions('shipping', SHIPPING_AUDIT_ACTIONS),
     registerPermissions('shipping', SHIPPING_PERMISSIONS),
@@ -143,6 +150,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ReceiveUberWebhook,
       PollFleetStatus,
       ViewFleetSelection,
+      ViewFleetSelectionHistory,
+      ViewDeliverySettingsHistory,
       CreateFleetSelectionModel,
       UpdateFleetSelectionModel,
       SetFleetSelection,

@@ -179,6 +179,7 @@ describe.each(TEST_MARKETS)(
         ...base,
         product_id: productId,
         variant_model: 'single',
+        variant_no: 1,
         state: 'published',
         created_at: T0,
         published_at: T0,
@@ -590,6 +591,7 @@ describe.each(TEST_MARKETS)(
               await repo.progress(market, id, {
                 cursorOfferId: cursor as Id<'Offer'> | null,
                 counts: { ...NO_COUNTS, unavailable },
+                requestedAt: Temporal.Instant.from(T0),
               }),
             ),
           );
@@ -619,6 +621,159 @@ describe.each(TEST_MARKETS)(
         expect(await progress(low, 7)).toEqual({ ok: true, value: false });
         expect(await progress(null, 7)).toEqual({ ok: true, value: false });
         expect(await stored()).toMatchObject({ cursor_offer_id: high, counts: { unavailable: 5 } });
+      });
+
+      it('reopens the request of the published revision for a category change, with a later createdAt (C4a)', async () => {
+        const { productId, first } = await publishedProduct();
+        const repo = new PrismaTagReevaluationRequests(persistence.service);
+        const id = uuid7() as Id<'TagReevaluationRequest'>;
+        const at = Temporal.Instant.from(T0);
+        const write = (work: () => Promise<unknown>) =>
+          persistence.unitOfWork.run(market, async () => ok(await work()));
+        const request = {
+          productId: productId as Id<'Product'>,
+          productRevisionId: first as Id<'ProductRevision'>,
+          now: at,
+        };
+        // No request yet for the revision: one is written.
+        await write(() => repo.requestForCategoryChange(market, { ...request, id }));
+        const rows = async () =>
+          (
+            await owner.query<{
+              id: string;
+              state: string;
+              cursor_offer_id: string | null;
+              created_at: Date;
+              settled_at: Date | null;
+            }>(
+              `SELECT id, state, cursor_offer_id, created_at, settled_at
+                 FROM catalog.tag_reevaluation_requests WHERE product_revision_id = $1`,
+              [first],
+            )
+          ).rows;
+        expect(await rows()).toMatchObject([{ id, state: 'pending' }]);
+        const cursor = uuid7() as Id<'Offer'>;
+        expect(
+          await write(() =>
+            repo.progress(market, id, {
+              cursorOfferId: cursor,
+              counts: NO_COUNTS,
+              requestedAt: at,
+            }),
+          ),
+        ).toEqual({ ok: true, value: true });
+        expect(
+          await write(() =>
+            repo.close(market, id, {
+              requestedAt: at,
+              state: 'settled',
+              counts: NO_COUNTS,
+              now: at,
+            }),
+          ),
+        ).toEqual({ ok: true, value: true });
+
+        // The settled request is pending again from its first Offer, with a later createdAt, at the
+        // same clock instant: the one request per revision is kept (the unique is not hit).
+        await write(() =>
+          repo.requestForCategoryChange(market, {
+            ...request,
+            id: uuid7() as Id<'TagReevaluationRequest'>,
+          }),
+        );
+        const [reopened] = await rows();
+        expect(await rows()).toHaveLength(1);
+        expect(reopened).toMatchObject({
+          id,
+          state: 'pending',
+          cursor_offer_id: null,
+          settled_at: null,
+        });
+        expect(reopened!.created_at.getTime()).toBe(at.epochMilliseconds + 1);
+
+        // A run that read it before: neither its cursor nor its close lands.
+        expect(
+          await write(() =>
+            repo.progress(market, id, {
+              cursorOfferId: cursor,
+              counts: NO_COUNTS,
+              requestedAt: at,
+            }),
+          ),
+        ).toEqual({ ok: true, value: false });
+        expect(
+          await write(() =>
+            repo.close(market, id, {
+              requestedAt: at,
+              state: 'settled',
+              counts: NO_COUNTS,
+              now: at,
+            }),
+          ),
+        ).toEqual({ ok: true, value: false });
+        expect(await rows()).toMatchObject([{ state: 'pending', cursor_offer_id: null }]);
+      });
+
+      it('a category change reopens the request of the revision published now, never a newer one (L-A)', async () => {
+        const { productId, variantId, first } = await publishedProduct();
+        const repo = new PrismaTagReevaluationRequests(persistence.service);
+        const at = Temporal.Instant.from(T0);
+        const write = (work: () => Promise<unknown>) =>
+          persistence.unitOfWork.run(market, async () => ok(await work()));
+        const firstId = uuid7() as Id<'TagReevaluationRequest'>;
+        await write(async () => {
+          await repo.requestForPublish(market, {
+            id: firstId,
+            productId: productId as Id<'Product'>,
+            productRevisionId: first as Id<'ProductRevision'>,
+            now: at,
+          });
+          await repo.close(market, firstId, {
+            requestedAt: at,
+            state: 'settled',
+            counts: NO_COUNTS,
+            now: at,
+          });
+        });
+        // A publish of revision 2 commits after the change read revision 1.
+        const second = await revision(productId, variantId, 2);
+        await owner.query(
+          `UPDATE catalog.products SET published_revision_id = $2, version = 3 WHERE id = $1`,
+          [productId, second],
+        );
+        const secondId = uuid7() as Id<'TagReevaluationRequest'>;
+        await write(() =>
+          repo.requestForPublish(market, {
+            id: secondId,
+            productId: productId as Id<'Product'>,
+            productRevisionId: second as Id<'ProductRevision'>,
+            now: at,
+          }),
+        );
+        expect(
+          await write(() =>
+            repo.requestForCategoryChange(market, {
+              id: uuid7() as Id<'TagReevaluationRequest'>,
+              productId: productId as Id<'Product'>,
+              productRevisionId: first as Id<'ProductRevision'>,
+              now: at,
+            }),
+          ),
+        ).toEqual({ ok: true, value: undefined });
+        const rows = await owner.query<{ id: string; state: string }>(
+          `SELECT id, state FROM catalog.tag_reevaluation_requests
+            WHERE product_id = $1 ORDER BY state, id`,
+          [productId],
+        );
+        expect(rows.rows).toEqual([
+          { id: secondId, state: 'pending' },
+          { id: firstId, state: 'settled' },
+        ]);
+        const product = await owner.query<{ version: number }>(
+          `SELECT version FROM catalog.products WHERE id = $1`,
+          [productId],
+        );
+        expect(product.rows).toEqual([{ version: 3 }]);
       });
 
       it('grants no DELETE and no update of the identity columns', async () => {

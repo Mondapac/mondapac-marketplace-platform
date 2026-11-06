@@ -39,8 +39,10 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // `certification.issuer.view` (certification slice 6: the issuer request queue and the typed
     // name); answering needs the protected `certification.issuer.edit`, not listed. Version 7
     // adds `certification.type.view` (certification slice 12: every default admin role reads the
-    // types; the protected `certification.type.edit` is not listed).
-    seedVersion: 7,
+    // types; the protected `certification.type.edit` is not listed). Version 8 adds
+    // `sellers.seller-health.recalculate` (seller health: the admin's "Recalculate now" queues a
+    // recount of one seller; owner decision 5 Nov 2026).
+    seedVersion: 8,
     nameKey: 'identity.role.onboarding-compliance',
     permissionKeys: [
       'identity.seller-access.view',
@@ -54,6 +56,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'certification.seller-certificate.review',
       'certification.issuer.view',
       'certification.type.view',
+      'sellers.seller-health.recalculate',
     ],
   },
   {
@@ -82,8 +85,11 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // holds). Version 12 adds `catalog.attribute.view` (attributes package A1: the read-only
     // Attributes page; the protected `catalog.attribute.edit` is not listed). Version 13 adds
     // `catalog.category-tree.view` and `.edit` (categories package C1, plan section 11); the
-    // protected `.restructure` and `.import` are not listed.
-    seedVersion: 13,
+    // protected `.restructure` and `.import` are not listed. Version 14 adds
+    // `catalog.attribute-suggestion.decide` (attributes package A5: approve, map or reject a
+    // seller's suggested value; unprotected, it adds one value to a published attribute that is not
+    // `material` and nothing else).
+    seedVersion: 14,
     nameKey: 'identity.role.catalogue-moderator',
     permissionKeys: [
       'identity.seller-access.view',
@@ -97,6 +103,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.attribute.view',
       'catalog.category-tree.view',
       'catalog.category-tree.edit',
+      'catalog.attribute-suggestion.decide',
       'sellers.seller.view',
       'pricing.price-hold.view',
       'certification.type.view',
@@ -182,8 +189,16 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 25 adds `catalog.attribute.view`, likewise unprotected (attributes package A1); the
     // protected `catalog.attribute.edit` is not a viewer key. Version 26 adds
     // `catalog.category-tree.view`, likewise unprotected (categories package C1); the edit,
-    // restructure and import keys are not viewer keys.
-    seedVersion: 26,
+    // restructure and import keys are not viewer keys. Version 27 adds
+    // `settings.list-paging.view`, likewise unprotected (settings module: List paging); the
+    // manage key is not a viewer key.
+    // Version 28 drops `commission-payouts.payout-terms.view` (design 5.3, the owner's decision of
+    // 2026-11-04): a seller's payout terms are financial data, not a viewer read. Unlike version 22
+    // the key is live, so the seed upgrade removes it from the stored Viewer role, with an
+    // audited `removedKeys` entry; a custom role that lists it is never touched (R10).
+    // Version 29 adds `sellers.business-activity.view`, likewise unprotected (seller business
+    // activities, ADR-0040); the `.manage` key is not a viewer key.
+    seedVersion: 29,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -204,7 +219,6 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'assistant.settings.view',
       'customers.account-deletion-settings.view',
       'shipping.fleet-selection.view',
-      'commission-payouts.payout-terms.view',
       'commission-payouts.dispute.view',
       'shipping.delivery-settings.view',
       'blog.post.read',
@@ -213,6 +227,8 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.brand.read',
       'catalog.attribute.view',
       'catalog.category-tree.view',
+      'settings.list-paging.view',
+      'sellers.business-activity.view',
     ],
   },
   {

@@ -7,7 +7,10 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
-import { MemoryAttributeDefinitionStore as MemoryStore } from '../../../../../test/support/catalog-attribute-editor-fakes';
+import {
+  MemoryAttributeDefinitionStore as MemoryStore,
+  MemoryAttributeRelaxationStore,
+} from '../../../../../test/support/catalog-attribute-editor-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { AuthorisationCheck } from '../../../../platform/authz';
@@ -125,6 +128,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
     const deps = {
       unitOfWork,
       attributeStore: store,
+      relaxations: new MemoryAttributeRelaxationStore(),
       policy,
       matcher,
       claimLocales,

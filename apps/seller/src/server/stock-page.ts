@@ -14,7 +14,8 @@ export type StockPage =
       readonly options: StockFormOptions;
     }
   | { readonly kind: 'no-access'; readonly session: SellerSession }
-  | { readonly kind: 'unavailable' };
+  /** `session` is set when only the data failed to load: the page then keeps its settings shell. */
+  | { readonly kind: 'unavailable'; readonly session?: SellerSession };
 
 /** The distinct zone ids of every region, sorted, for the optional zone of a location. */
 export function zonesOf(timezones: FormDescriptors['timezones']): string[] {
@@ -36,7 +37,7 @@ export async function loadStockPage(): Promise<StockPage> {
   if (sources.kind === 'signed-out' || descriptors.kind === 'signed-out') {
     redirect('/session-ended');
   }
-  if (sources.kind !== 'ok' || descriptors.kind !== 'ok') return { kind: 'unavailable' };
+  if (sources.kind !== 'ok' || descriptors.kind !== 'ok') return { kind: 'unavailable', session };
   const { address, timezones } = descriptors.body;
   return {
     kind: 'ok',
