@@ -392,6 +392,23 @@ describe('OrderDetail', () => {
     expect(screen.getByText(/^Paid 14 Oct 2026, 11:00 pm NZDT · 2 items$/)).toBeTruthy();
   });
 
+  it('puts the next step in its own card above the lines', () => {
+    mountDetail();
+    const card = screen.getByRole('heading', { name: 'Next step' }).closest('section');
+    expect(card?.contains(screen.getByRole('button', { name: 'Mark ready' }))).toBe(true);
+    const lines = screen.getByRole('heading', { name: 'Items in this order' }).closest('section');
+    expect(card?.compareDocumentPosition(lines as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('copies the order reference', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    mountDetail();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy order ID' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0]?.[0]).toMatch(/^[0-9A-F]{8}$/);
+  });
+
   it('has one action on a paid order, "Mark ready", and no carrier or tracking form', () => {
     mountDetail();
     expect(screen.getByRole('button', { name: 'Mark ready' })).toBeTruthy();
@@ -490,7 +507,7 @@ describe('OrderDetail', () => {
         'MondaPac is still assigning a courier. Keep the order packed and ready. No action needed.',
       ),
     ).toBeTruthy();
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(Mark|Confirm)/ })).toBeNull();
   });
 
   it('shows carrier, tracking and timestamps once shipped and marks it delivered', async () => {
@@ -546,11 +563,11 @@ describe('OrderDetail', () => {
 
   it('hides the actions without the permissions', () => {
     const { unmount } = mountDetail(order(), { canMarkReady: false, canDeliver: false });
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(Mark|Confirm)/ })).toBeNull();
     expect(screen.getByText('This order is not marked ready yet.')).toBeTruthy();
     unmount();
     mountDetail(shippedOrder(), { canMarkReady: false, canDeliver: false });
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(Mark|Confirm)/ })).toBeNull();
   });
 });
 
