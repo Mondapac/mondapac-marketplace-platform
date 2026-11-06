@@ -216,6 +216,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/show',
     'catalog/admin/categories/:id/change-slug',
     'catalog/admin/categories/:id/discard',
+    // Remove a category's image, with the category version seen (catalog, categories C3c).
+    'catalog/admin/categories/:id/image/remove',
     // Move, merge and archive a platform category (catalog, categories C4a: protected key
     // `catalog.category-tree.restructure`), each with the tree version and a reason note.
     'catalog/admin/categories/:id/move',
@@ -268,8 +270,13 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'reviews/admin/moderation/:id/dismiss-reports',
   ],
   PUT: [
+    // Set or replace a category's image, with the category version seen (catalog, categories
+    // C3c). A base64 picture: the body cap of this path is the larger image one.
+    'catalog/admin/categories/:id/image',
     'identity/admin/roles/:id',
     'sellers/admin/:id/review/manual-register-check',
+    // Whether the seller may propose categories (sellers, SEL-26; categories C9-0).
+    'sellers/admin/:id/category-proposals',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
     // A fleet-selection model edited by its id (shipping).
@@ -309,6 +316,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/impact',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
+    // The current image of a category, medium size only (catalog, categories C3c).
+    'catalog/admin/categories/:id/images/:id/medium',
     // One import and its report CSV (catalog): the report takes the query `kind`.
     'catalog/admin/platform-imports/:id',
     'catalog/admin/platform-imports/:id/report',
@@ -576,6 +585,19 @@ const MAX_BODY_BYTES = 16 * 1024;
  */
 const UPLOAD_PATH = 'catalog/admin/platform-imports';
 const MAX_UPLOAD_BODY_BYTES = 14_500 * 1024;
+/**
+ * A category image (categories C3c) is a picture of at most 4 MiB as base64 (about 5.6 MB). The API
+ * accepts 5800 kB for this one route and checks the real size itself.
+ */
+const CATEGORY_IMAGE_PATH = /^catalog\/admin\/categories\/[0-9a-f-]{36}\/image$/i;
+const MAX_IMAGE_BODY_BYTES = 5_800 * 1024;
+
+/** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
+function bodyCapOf(method: string, target: string): number {
+  if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
+  if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
+  return MAX_BODY_BYTES;
+}
 
 /** Lower case, no trailing dot on the host name; the port stays. */
 export function normaliseHost(raw: string | null): string | null {
@@ -689,8 +711,7 @@ export async function relay(
       return jsonError(403, 'request.csrf');
     if (request.headers.get('origin') !== host.origin) return jsonError(403, 'request.csrf');
   }
-  const bodyCap =
-    request.method === 'POST' && target === UPLOAD_PATH ? MAX_UPLOAD_BODY_BYTES : MAX_BODY_BYTES;
+  const bodyCap = bodyCapOf(request.method, target);
   const declared = Number(request.headers.get('content-length') ?? 0);
   if (declared > bodyCap) return jsonError(413, 'request.too-large');
   let body: string | undefined;

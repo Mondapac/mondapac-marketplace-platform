@@ -17,6 +17,15 @@ export interface RevisionVariantContent {
   readonly optionValues: Readonly<Record<string, string>>;
   /** Locale to label. */
   readonly labels: Readonly<Record<string, string>>;
+  /** The GTIN as 14 digits, or null (V4). */
+  readonly gtin: string | null;
+  /** Shipping values of this variant; null takes the product's value (V4). */
+  readonly shippingWeightGrams: number | null;
+  readonly shippingLengthMm: number | null;
+  readonly shippingWidthMm: number | null;
+  readonly shippingHeightMm: number | null;
+  /** Ordered subset of the revision's `imageIds`; the first is the variant's primary image (V4). */
+  readonly imageIds: readonly string[];
 }
 
 export interface RevisionContent {

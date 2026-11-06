@@ -732,6 +732,13 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('POST', `sellers/admin/${ID}/review/suspend`)).status).toBe(404);
   });
 
+  it('relays the category-proposals switch as PUT for a seller UUID only (C9-0)', async () => {
+    expect((await call('PUT', `sellers/admin/${ID}/category-proposals`)).status).toBe(200);
+    expect((await call('PUT', 'sellers/admin/nope/category-proposals')).status).toBe(404);
+    expect((await call('POST', `sellers/admin/${ID}/category-proposals`)).status).toBe(404);
+    expect((await call('DELETE', `sellers/admin/${ID}/category-proposals`)).status).toBe(404);
+  });
+
   it('relays approve and reject of a held price for a UUID only, and no other method', async () => {
     expect((await call('POST', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(200);
     expect((await call('POST', `pricing/admin/price-holds/${ID}/reject`)).status).toBe(200);
@@ -1917,6 +1924,79 @@ describe('relay of the product import', () => {
     expect(
       (await relay(config, post(start.join('/'), sameOrigin, large), start, upstream)).status,
     ).toBe(413);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('relay of the category image (categories C3c)', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const imageId = '0190a000-0000-7000-8000-000000000002';
+  const base = ['catalog', 'admin', 'categories', id];
+  const put = (target: string, body = '{}') =>
+    new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'PUT',
+      headers: sameOrigin,
+      body,
+    });
+  const get = (target: string) =>
+    new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+
+  it('relays the upload as a same-origin PUT and the removal as a same-origin POST', async () => {
+    const upstream = upstreamOk();
+    const image = [...base, 'image'];
+    expect((await relay(config, put(image.join('/')), image, upstream)).status).toBe(200);
+    const remove = [...base, 'image', 'remove'];
+    expect((await relay(config, post(remove.join('/')), remove, upstream)).status).toBe(200);
+    expect(
+      (
+        await relay(
+          config,
+          post(remove.join('/'), { host: 'admin.localhost:3002' }),
+          remove,
+          upstream,
+        )
+      ).status,
+    ).toBe(403);
+    // Not a POST of the image path, not a PUT of the removal, not a malformed id.
+    expect((await relay(config, post(image.join('/')), image, upstream)).status).toBe(404);
+    expect((await relay(config, put(remove.join('/')), remove, upstream)).status).toBe(404);
+    const bad = ['catalog', 'admin', 'categories', 'nope', 'image'];
+    expect((await relay(config, put(bad.join('/')), bad, upstream)).status).toBe(404);
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets the upload carry a picture of up to 5.8 MB and keeps the removal at 16 KB', async () => {
+    const upstream = upstreamOk();
+    const image = [...base, 'image'];
+    const large = JSON.stringify({ version: 1, data: 'A'.repeat(5 * 1024 * 1024) });
+    expect((await relay(config, put(image.join('/'), large), image, upstream)).status).toBe(200);
+    const tooLarge = JSON.stringify({ version: 1, data: 'A'.repeat(6 * 1024 * 1024) });
+    expect((await relay(config, put(image.join('/'), tooLarge), image, upstream)).status).toBe(413);
+    const remove = [...base, 'image', 'remove'];
+    expect(
+      (await relay(config, post(remove.join('/'), sameOrigin, large), remove, upstream)).status,
+    ).toBe(413);
+    const details = ['catalog', 'admin', 'categories', id];
+    const patch = new Request(`http://admin.localhost:3002/api/${details.join('/')}`, {
+      method: 'PATCH',
+      headers: sameOrigin,
+      body: large,
+    });
+    expect((await relay(config, patch, details, upstream)).status).toBe(413);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('relays the medium rendition of the current image, GET only, no other size', async () => {
+    const upstream = upstreamOk();
+    const medium = [...base, 'images', imageId, 'medium'];
+    expect((await relay(config, get(medium.join('/')), medium, upstream)).status).toBe(200);
+    for (const size of ['large', 'thumb', 'raw']) {
+      const other = [...base, 'images', imageId, size];
+      expect((await relay(config, get(other.join('/')), other, upstream)).status).toBe(404);
+    }
     expect(upstream).toHaveBeenCalledTimes(1);
   });
 });

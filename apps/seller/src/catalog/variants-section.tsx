@@ -3,7 +3,8 @@
 import { Banner, Button, Card, CheckboxRow, Dialog } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
-import { pickLabel, type VariantRow } from './draft-content.ts';
+import { NO_VARIANT_FIELDS, pickLabel, variantTitle, type VariantRow } from './draft-content.ts';
+import { VariantDetails } from './variant-details.tsx';
 import type { FormField } from './types.ts';
 import {
   activeOptionsOf,
@@ -35,6 +36,9 @@ export function VariantsSection({
   locked,
   defaultLocale,
   max,
+  productId,
+  galleryIds,
+  notices,
   onChange,
 }: {
   readonly rows: readonly VariantRow[];
@@ -44,6 +48,11 @@ export function VariantsSection({
   readonly locked: boolean;
   readonly defaultLocale: string;
   readonly max: number;
+  readonly productId: string;
+  /** The product's photos in the draft, for the photo picks of each variant. */
+  readonly galleryIds: readonly string[];
+  /** Variant ids whose barcode another product carries (advice from the last save). */
+  readonly notices: readonly string[];
   readonly onChange: (change: { rows: VariantRow[]; axes: string[] }) => void;
 }) {
   const t = useTranslations();
@@ -112,6 +121,7 @@ export function VariantsSection({
         state: 'new',
         options: combo.options,
         labels: {},
+        ...NO_VARIANT_FIELDS,
       };
       onChange({ rows: [...rows, row], axes: [...axes] });
     } else if (found !== undefined) {
@@ -266,6 +276,19 @@ export function VariantsSection({
             </div>
           )}
         </section>
+      )}
+
+      {first === undefined ? null : (
+        <VariantDetails
+          rows={rows}
+          titleOf={(row) => variantTitle(row, fields, defaultLocale, row.key)}
+          productId={productId}
+          galleryIds={galleryIds}
+          notices={notices}
+          onRow={(row, next) =>
+            onChange({ rows: rows.map((item) => (item === row ? next : item)), axes: [...axes] })
+          }
+        />
       )}
 
       <Dialog

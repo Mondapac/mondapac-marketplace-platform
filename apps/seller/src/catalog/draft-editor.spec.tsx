@@ -12,10 +12,12 @@ import {
   attributeProblem,
   attributeValuesWith,
   contentFrom,
+  NO_VARIANT_FIELDS,
   variantRowsOf,
+  variantsWith,
 } from './draft-content.ts';
 import { EditForm } from './edit-form.tsx';
-import type { FormField, ProductView } from './types.ts';
+import type { FormField, ProductPhoto, ProductView } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
@@ -71,12 +73,12 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   pending: null,
   ...over,
 });
-const mount = (p: ProductView = product()) =>
+const mount = (p: ProductView = product(), photos: ProductPhoto[] = []) =>
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <EditForm
         product={p}
-        photos={[]}
+        photos={photos}
         locales={['en-AU']}
         defaultLocale="en-AU"
         csrfToken="csrf"
@@ -143,8 +145,52 @@ describe('draft content helpers', () => {
         state: 'published',
         options: { size: 'large' },
         labels: { 'en-AU': 'L' },
+        ...NO_VARIANT_FIELDS,
       },
     ]);
+  });
+
+  it('reads and writes the V4 fields of a variant, leaving empty ones out', () => {
+    const rows = variantRowsOf(
+      {
+        variants: [
+          {
+            variantId: 'v1',
+            optionValues: { size: 'large' },
+            gtin: '00012345600012',
+            shippingWeightGrams: 250,
+            shippingLengthMm: 120,
+            shippingWidthMm: 80,
+            shippingHeightMm: 40,
+            imageIds: ['i2', 'i1'],
+          },
+        ],
+      },
+      [{ variantId: 'v1', state: 'proposed' }],
+    );
+    expect(rows[0]).toMatchObject({
+      gtin: '00012345600012',
+      weightGrams: '250',
+      lengthMm: '120',
+      imageIds: ['i2', 'i1'],
+    });
+    expect(variantsWith(rows)).toEqual([
+      {
+        variantId: 'v1',
+        optionValues: { size: 'large' },
+        gtin: '00012345600012',
+        shippingWeightGrams: 250,
+        shippingLengthMm: 120,
+        shippingWidthMm: 80,
+        shippingHeightMm: 40,
+        imageIds: ['i2', 'i1'],
+      },
+    ]);
+    const blank = variantRowsOf(
+      { variants: [{ variantId: 'v1', optionValues: { size: 'large' } }] },
+      [{ variantId: 'v1', state: 'proposed' }],
+    );
+    expect(variantsWith(blank)).toEqual([{ variantId: 'v1', optionValues: { size: 'large' } }]);
   });
 });
 
@@ -390,5 +436,95 @@ describe('EditForm product details', () => {
   it('warns about changes that go to review once a revision is published', () => {
     mount(product({ published: { revisionId: 'r', revisionNo: 1 } as ProductView['published'] }));
     expect(screen.getByText(/checked by us before they go live: name, images/)).toBeTruthy();
+  });
+});
+
+describe('EditForm variant details', () => {
+  const withRow = (extra: Record<string, unknown> = {}, images: string[] = []) =>
+    product({
+      workingCopy: {
+        content: {
+          variantAxes: ['size'],
+          imageIds: images,
+          variants: [{ variantId: 'v1', optionValues: { size: 'large' }, ...extra }],
+        },
+        lastSavedAt: '2026-10-01T00:00:00Z',
+        baseRevisionId: null,
+      },
+    });
+  const photo = (imageId: string): ProductPhoto => ({
+    imageId,
+    width: 10,
+    height: 10,
+    createdAt: '2026-10-01T00:00:00Z',
+  });
+  const type = (label: RegExp | string, value: string) =>
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+
+  it('saves a barcode, weight, box and photo picks with the variant', async () => {
+    call.mockResolvedValueOnce(saved(['v1']));
+    mount(withRow({}, ['i1', 'i2']), [photo('i1'), photo('i2')]);
+    type(/Barcode/, '4006381333931');
+    type('Shipping weight (g)', '250');
+    type('Length (mm)', '120');
+    type('Width (mm)', '80');
+    type('Height (mm)', '40');
+    fireEvent.click(screen.getByLabelText('Photo 2', { selector: 'input' }));
+    fireEvent.click(screen.getByLabelText('Photo 1', { selector: 'input' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call.mock.calls[0]?.[2]).toMatchObject({
+      content: {
+        variants: [
+          {
+            variantId: 'v1',
+            gtin: '4006381333931',
+            shippingWeightGrams: 250,
+            shippingLengthMm: 120,
+            shippingWidthMm: 80,
+            shippingHeightMm: 40,
+            imageIds: ['i2', 'i1'],
+          },
+        ],
+      },
+    });
+  });
+
+  it('shows a bad barcode and a half-set box under their fields and does not save', async () => {
+    mount(withRow());
+    type(/Barcode/, '4006381333932');
+    type('Length (mm)', '120');
+    expect(screen.getByText('Not a valid barcode. Check the digits.')).toBeTruthy();
+    expect(screen.getAllByText('Enter all three sides, or none.')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(
+      await screen.findByText('Fix the highlighted variant fields before saving.'),
+    ).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('drops a variant photo pick when the product no longer has that photo', async () => {
+    mount(withRow({ imageIds: ['i1'] }, ['i1']), [photo('i1')]);
+    expect(screen.getByText('1 photo picked. The first one is the main photo.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Take off/ }));
+    expect(await screen.findByText(/Add photos to the product first/)).toBeTruthy();
+  });
+
+  it('shows the advice when a barcode is already used and names the product to sell on', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: {
+        variantIds: ['v1'],
+        refusedFields: [],
+        variantNotices: [
+          { variantId: 'v1', code: 'gtin.duplicate', sellOnProductCode: 'P00000042' },
+        ],
+      },
+    });
+    mount(withRow({ gtin: '4006381333931' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(await screen.findByText(/Product P00000042 already carries/)).toBeTruthy();
+    await expectToast('Draft saved.');
   });
 });

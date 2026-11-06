@@ -20,6 +20,8 @@
     "lint": "node --max-old-space-size=8192 ./node_modules/eslint/bin/eslint.js . && prettier --check .",
     "format": "prettier --write .",
     "test": "pnpm -r test",
+    "test:api": "pnpm --filter @mondapac/api test",
+    "test:packages": "pnpm -r --filter '!@mondapac/api' --filter '!mondapac-marketplace-platform' test",
     "test:db": "pnpm --filter @mondapac/api test:db",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
@@ -27,7 +29,8 @@
     "db:check-reversible": "node scripts/check-migrations-reversible.mjs",
     "db:bootstrap": "docker compose exec -T postgres psql -U postgres -d mondapac -f /docker-entrypoint-initdb.d/10-bootstrap-dev.sql",
     "verify": "pnpm verify:without-test-db && pnpm test:db",
-    "verify:without-test-db": "pnpm db:generate && pnpm typecheck && pnpm lint && pnpm boundaries && pnpm test && pnpm db:check-reversible",
+    "verify:without-test-db": "pnpm verify:static && pnpm test",
+    "verify:static": "pnpm db:generate && pnpm typecheck && pnpm lint && pnpm boundaries && pnpm db:check-reversible",
     "boundaries": "pnpm --filter @mondapac/api boundaries && node scripts/check-prisma-boundaries.mjs && node scripts/check-panel-boundaries.mjs"
   },
   "devDependencies": {

@@ -40,6 +40,7 @@ describe('ConfigCatalogMarketPolicy', () => {
       name: true,
       primaryImage: false,
       variantRemoved: false,
+      gtinChanged: false,
     });
   });
 

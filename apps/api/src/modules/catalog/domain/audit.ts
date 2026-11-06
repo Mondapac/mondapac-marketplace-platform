@@ -370,6 +370,18 @@ export const PlatformCategoryDiscardedAudit = defineAuditAction({
 });
 
 /**
+ * An admin set, replaced or removed the image of a category (categories package C3c). The ids
+ * only: the picture itself is never in the audit log. `imageId` is absent when there is none.
+ */
+export const PlatformCategoryImageChangedAudit = defineAuditAction({
+  action: 'catalog.platform-category.image-changed',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { imageId: auditField.optional(auditField.id()) },
+  after: { imageId: auditField.optional(auditField.id()) },
+});
+
+/**
  * An admin moved a category with its subtree under a new parent (categories C4a; catalog design
  * 4.6, C-8: every move is an audited entry path). Ids, levels and counts only; the reason note is
  * on the category revision (`reasonGiven`), never here.
@@ -607,6 +619,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   PlatformCategoryShownAudit,
   PlatformCategorySlugChangedAudit,
   PlatformCategoryDiscardedAudit,
+  PlatformCategoryImageChangedAudit,
   PlatformCategoryMovedAudit,
   PlatformCategoryMergedAudit,
   PlatformCategoryArchivedAudit,

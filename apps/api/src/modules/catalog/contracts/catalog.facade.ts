@@ -180,6 +180,24 @@ export interface PublishedProductVariant {
   readonly variantCode: string;
   /** The option chosen on each axis, with its label in the asked locale. */
   readonly axes: readonly VariantAxisValue[];
+  /** The GTIN as 14 digits, or null (variants V4). */
+  readonly gtin: string | null;
+  /**
+   * The photos this variant picked from the product gallery, in order; the first is its primary.
+   * Empty means the product's own photos. Ids only: `publishedProductImages` gives the renditions,
+   * and a photo that is no longer clean is simply absent there.
+   */
+  readonly imageIds: readonly Id<'ProductImage'>[];
+  /** What a carrier reads of this variant; a null value takes the product's own (V4). */
+  readonly shipping: VariantShipping;
+}
+
+/** Shipping weight (grams) and box (millimetres) of one variant; null = the product's value. */
+export interface VariantShipping {
+  readonly weightGrams: number | null;
+  readonly lengthMm: number | null;
+  readonly widthMm: number | null;
+  readonly heightMm: number | null;
 }
 
 /**

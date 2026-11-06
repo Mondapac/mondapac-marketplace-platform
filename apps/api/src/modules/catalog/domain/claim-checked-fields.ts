@@ -84,6 +84,13 @@ export const REVISION_VARIANT_FIELDS: Record<keyof RevisionVariantContent, Field
   // Attribute code to option code: the codes are internal, the labels live on the definition.
   optionValues: exempt('internal-code'),
   labels: checked('product.variant-label'),
+  // Digits only (check digit validated at the freeze), a number, or ids of the revision's images.
+  gtin: exempt('identifier'),
+  shippingWeightGrams: exempt('number'),
+  shippingLengthMm: exempt('number'),
+  shippingWidthMm: exempt('number'),
+  shippingHeightMm: exempt('number'),
+  imageIds: exempt('reference'),
 };
 
 export const REVISION_CONTENT_FIELDS: Record<keyof RevisionContent, FieldDisposition> = {
@@ -525,5 +532,6 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   VariantIssue: { noCustomerText: 'issue code with a fixed path' },
   AxisIssue: { noCustomerText: 'issue code with a fixed path' },
   VariantRecord: { noCustomerText: 'ids and times' },
+  VariantShipping: { noCustomerText: 'four whole numbers (grams, millimetres); no text' },
   WorkingCopy: { noCustomerText: 'opaque draft; its texts are checked before any write (6.1)' },
 };

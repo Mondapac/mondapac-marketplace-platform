@@ -102,6 +102,24 @@ export interface WriteWrap {
   };
 }
 
+/** The answer of the image writes (apps/api CategoryImageWriteBody). */
+export interface ImageWrite extends WriteWrap {
+  readonly image: {
+    readonly imageId: string;
+    readonly width: number;
+    readonly height: number;
+  } | null;
+}
+
+/** The path of one rendition of a category's current image, through the panel's relay. */
+export function categoryImagePath(
+  categoryId: string,
+  imageId: string,
+  size: 'thumb' | 'medium',
+): string {
+  return `/api/${API_CATEGORIES}/${categoryId}/images/${imageId}/${size}`;
+}
+
 export const NAME_MAX = 120;
 export const SHORT_DESCRIPTION_MAX = 300;
 export const KEYWORDS_MAX = 20;
