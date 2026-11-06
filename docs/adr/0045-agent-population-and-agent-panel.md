@@ -74,7 +74,7 @@ populations: not a seller member (an agent acts across many sellers and owns non
    - A contract test calls every agent route with admin, seller and customer sessions, and
      every admin and seller route with an agent session; all are refused.
 7. **Panel `apps/agent`.** A third thin Next.js app on the ADR-0034 pattern:
-   - its own host (`agent.localhost`, port 3003 locally; `agent.<market host>` elsewhere);
+   - its own host (`agent.localhost`, port 3004 locally, since 3003 is the storefront's local demo slot; `agent.<market host>` elsewhere);
    - `__Host-` cookies with no `Domain`;
    - the panel server as the BFF, relaying an allowlist of `agent` routes only;
    - its own CSP;
