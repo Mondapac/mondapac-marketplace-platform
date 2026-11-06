@@ -864,7 +864,12 @@ const REVIEW_DECISION_PORTS = {
       healthPolicy: true,
       clock: true,
     }),
-    useCaseProvider(PurgeSellerHealth, { unitOfWork: true, healthStore: true, clock: true }),
+    useCaseProvider(PurgeSellerHealth, {
+      unitOfWork: true,
+      healthStore: true,
+      healthRequests: true,
+      clock: true,
+    }),
     registerJobsFrom(
       'sellers',
       [

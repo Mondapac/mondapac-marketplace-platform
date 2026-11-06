@@ -123,6 +123,45 @@ describe.each(TEST_MARKETS)('the seller health request store in market %s', (cod
     await expect(run(market, () => store.pending(market, 101))).rejects.toThrow(RangeError);
   });
 
+  it('purges finished requests older than the cut and never a pending one', async () => {
+    const oldDone = await newSeller();
+    const oldFailed = await newSeller();
+    const oldPending = await newSeller();
+    const recentDone = await newSeller();
+    for (const [seller, at] of [
+      [oldDone, T0],
+      [oldFailed, T0],
+      [oldPending, T0],
+      [recentDone, T0.add({ hours: 24 * 40 })],
+    ] as const) {
+      await enqueue(market, seller, at);
+    }
+    await run(market, async () => {
+      for (const [seller, status] of [
+        [oldDone, 'done'],
+        [oldFailed, 'failed'],
+        [recentDone, 'done'],
+      ] as const) {
+        const row = (await store.latest(market, seller))!;
+        await store.finish(market, row.id, status, T0.add({ hours: 24 * 40 }));
+      }
+    });
+    const cut = T0.add({ hours: 24 * 30 });
+
+    const purged = await run(market, () => store.purgeFinishedBefore(market, cut));
+    const again = await run(market, () => store.purgeFinishedBefore(market, cut));
+
+    expect(purged).toBeGreaterThanOrEqual(2);
+    expect(again).toBe(0);
+    expect(await run(market, () => store.latest(market, oldDone))).toBeNull();
+    expect(await run(market, () => store.latest(market, oldFailed))).toBeNull();
+    expect((await run(market, () => store.latest(market, oldPending)))?.status).toBe('pending');
+    expect((await run(market, () => store.latest(market, recentDone)))?.status).toBe('done');
+    // Another Market's rows are out of reach.
+    expect(await run(other, () => store.purgeFinishedBefore(other, cut))).toBeGreaterThanOrEqual(0);
+    expect((await run(market, () => store.latest(market, recentDone)))?.status).toBe('done');
+  });
+
   it('keeps Markets apart', async () => {
     const seller = await newSeller();
     await enqueue(market, seller);

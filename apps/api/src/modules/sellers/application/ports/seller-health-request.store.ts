@@ -51,6 +51,13 @@ export interface SellerHealthRequestStore {
     at: Temporal.Instant,
   ): Promise<boolean>;
 
+  /**
+   * Deletes the finished (`done` or `failed`) requests of the Market that were requested before
+   * `before`, and answers how many went. A pending request is never deleted. Only the retention
+   * purge calls it.
+   */
+  purgeFinishedBefore(market: MarketContext, before: Temporal.Instant): Promise<number>;
+
   /** The newest request of a seller, any status, or `null`. */
   latest(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerHealthRequest | null>;
 }
