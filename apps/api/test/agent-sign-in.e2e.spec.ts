@@ -16,6 +16,9 @@ import { parseEmailAddress } from '../src/modules/identity/domain/email-address'
 import { Invitation } from '../src/modules/identity/domain/invitation';
 import { TOTP } from '../src/modules/identity/domain/totp';
 import { hotp } from '../src/modules/identity/infrastructure/second-factor/totp';
+import { EFFECTIVE_KEY_RESOLVER } from '../src/modules/identity/application/access/effective-keys';
+import { AGENTS_MANAGE_KEY } from '../src/modules/identity/contracts';
+import { fakeHashOf } from './support/identity-fakes';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { IdentityFakes } from './support/identity-fakes';
@@ -32,6 +35,8 @@ const EMAIL = 'Agent.One@Example.com';
 const PASSWORD = 'correct horse battery staple';
 const STEP = Temporal.Duration.from({ seconds: TOTP.periodSeconds });
 const HANDOVER = 'ABCDE-23456';
+const INVITER = '01990000-0000-7000-8000-00000000d003' as Id<'Account'>;
+const INVITER_ROLE = '01990000-0000-7000-8000-00000000d004' as Id<'Role'>;
 
 const fakes = new IdentityFakes();
 let clock: FixedClock;
@@ -70,7 +75,7 @@ describe.each(TEST_MARKETS)('agent routes over HTTP in market %s (ADR-0045)', (c
       displayName: 'Agent One',
       agentAccountId: '01990000-0000-7000-8000-00000000d002' as Id<'Account'>,
       handoverCodeHmac: codes.hmacOf(market, id, HANDOVER.replace('-', '')),
-      invitedByAccountId: '01990000-0000-7000-8000-00000000d003' as Id<'Account'>,
+      invitedByAccountId: INVITER,
       now: START,
     });
     const minted = tokens.issue();
@@ -101,14 +106,66 @@ describe.each(TEST_MARKETS)('agent routes over HTTP in market %s (ADR-0045)', (c
     return { secret: enrol.secret };
   }
 
+  /** An active, verified admin with a platform role: the inviter the acceptance re-checks. */
+  function seedInviter(): void {
+    const marketId = testMarketContext(code, PLATFORM_TENANT_ID).marketId;
+    fakes.seedRole({
+      id: INVITER_ROLE,
+      marketId,
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      name: 'Agents role',
+      permissionKeys: [],
+      version: 1,
+      createdAt: START,
+    });
+    fakes.seedAccount({
+      id: INVITER,
+      marketId,
+      population: 'admin',
+      email: { typed: 'inviter@example.com', normalized: 'inviter@example.com' },
+      displayName: 'Inviter',
+      status: 'active',
+      emailVerifiedAt: START,
+      existingAccountNoticeAt: null,
+      signedUpAt: START,
+      createdAt: START,
+      version: 1,
+      credential: { passwordHash: fakeHashOf('x'), changedAt: START },
+    });
+    fakes.seedAssignment({
+      id: '01990000-0000-7000-8000-00000000d005' as Id<'RoleAssignment'>,
+      marketId,
+      accountId: INVITER,
+      roleId: INVITER_ROLE,
+      assignedByAccountId: null,
+      assignedAt: START,
+      version: 1,
+    });
+  }
+
   beforeEach(async () => {
     fakes.reset();
     clock = new FixedClock(START);
     ({ app } = await createTestApp({
       env: { LOG_LEVEL: 'silent' },
       panelOrigins: true,
-      override: (builder) => fakes.override(builder).overrideProvider(CLOCK).useValue(clock),
+      override: (builder) =>
+        fakes
+          .override(builder)
+          .overrideProvider(CLOCK)
+          .useValue(clock)
+          // `agents` declares agents.agent.manage later; until then the registry holds it for
+          // nobody, so the inviter's key is granted here (the acceptance re-checks the inviter).
+          .overrideProvider(EFFECTIVE_KEY_RESOLVER)
+          .useValue((subject: { accountId: Id<'Account'> }) =>
+            subject.accountId === INVITER ? new Set([AGENTS_MANAGE_KEY]) : new Set<string>(),
+          ),
     }));
+    seedInviter();
   });
   afterEach(async () => {
     await app.close();

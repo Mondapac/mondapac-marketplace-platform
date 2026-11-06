@@ -85,6 +85,11 @@
     "reason": "Admin invitation acceptance with the mailed token: the invitee has no session yet."
   },
   {
+    "name": "identity.accept-agent-invitation",
+    "rule": "anonymous",
+    "reason": "Agent invitation acceptance in one request with the mailed link token and the handover code given in person: the invitee has no session yet, and the account is created by this request."
+  },
+  {
     "name": "identity.accept-seller-invitation",
     "rule": "anonymous",
     "reason": "Seller Owner invitation acceptance with the mailed token (slice 9): the invitee has no account or session yet."
@@ -93,6 +98,11 @@
     "name": "identity.complete-admin-sign-in",
     "rule": "anonymous",
     "reason": "Second step of admin sign-in with the pending sign-in ticket: no session exists until it passes."
+  },
+  {
+    "name": "identity.complete-agent-sign-in",
+    "rule": "anonymous",
+    "reason": "Second step of agent sign-in with the challenge token and a code: no session exists until it passes."
   },
   {
     "name": "identity.complete-seller-sign-in",
@@ -165,6 +175,11 @@
     "reason": "Admin sign-in first step: the caller has no session."
   },
   {
+    "name": "identity.sign-in-agent",
+    "rule": "anonymous",
+    "reason": "Agent sign-in first step: the caller has no session, and a correct password never opens one."
+  },
+  {
     "name": "identity.sign-in-customer",
     "rule": "anonymous",
     "reason": "Customer sign-in: the caller has no session yet."
@@ -183,6 +198,11 @@
     "name": "identity.start-admin-invitation-acceptance",
     "rule": "anonymous",
     "reason": "Start of admin invitation acceptance with the mailed token: the invitee has no session yet."
+  },
+  {
+    "name": "identity.start-agent-invitation-acceptance",
+    "rule": "anonymous",
+    "reason": "Start of agent invitation acceptance with the mailed link token: the invitee has no session yet and receives only an authenticator secret."
   },
   {
     "name": "identity.start-second-factor-enrolment",
