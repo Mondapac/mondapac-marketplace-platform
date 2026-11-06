@@ -1076,6 +1076,8 @@ with no frozen revision (never submitted), each type answers `reason: 'decided-a
 basis (5.1a: never the working copy). `claim.check-unavailable` when the facade fails. Rate limit:
 the OFR-03 search limit (60 per minute).
 
+**Variant number and code (variants V2).** `own-product.read` returns, per variant, `variantNo` and the read-only `variantCode` (`{productCode}-{nn}`, M-7) beside `variantId` and `state`, so the seller form can show the code. The labels shown there are previews the form builds from the option labels; the server builds the stored label at revision time.
+
 **Sensitive fields (item 4).** `own-product.read` and `admin-product.read` return `maxVariants`
 (7.1) and
 `sensitiveFields`: the field ids (6.2 names) of the Market's `sensitiveChanges` (7.1) plus

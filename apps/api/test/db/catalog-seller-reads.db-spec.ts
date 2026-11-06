@@ -398,6 +398,14 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       texts: { en: { name: 'Readable' } },
     });
     expect(own.value.variants).toHaveLength(1);
+    // Each variant carries its number and its read-only code `{productCode}-{nn}` (V2).
+    expect(own.value.variants[0]).toMatchObject({
+      variantNo: expect.any(Number) as unknown,
+      variantCode: expect.stringMatching(/-\d{2,}$/) as unknown,
+    });
+    expect(own.value.variants[0]?.variantCode).toBe(
+      `${own.value.productCode}-${String(own.value.variants[0]?.variantNo).padStart(2, '0')}`,
+    );
     expect(own.value.form.taxCategoryCodes).toEqual(['t1']);
     expect(own.value.form.fields).toEqual(expect.any(Array));
     expect(own.value.form.categories).toEqual(expect.any(Array));
