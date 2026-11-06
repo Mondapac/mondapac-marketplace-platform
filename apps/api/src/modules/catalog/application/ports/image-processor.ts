@@ -25,8 +25,13 @@ export interface ProcessedRendition {
  * block (EXIF, GPS, ICC, thumbnails) dropped. Nothing of the upload survives except its pixels.
  */
 export interface ImageProcessor {
+  /**
+   * Smallest size first, each size as JPEG then WebP then AVIF. `jpegOnly` leaves out the WebP and
+   * AVIF (a caller that stores JPEG only, such as a category image, and need not pay for them).
+   */
   process(
     bytes: Buffer,
+    options?: { readonly jpegOnly?: boolean },
   ): Promise<Result<readonly ProcessedRendition[], { readonly code: ImageRefusalCode }>>;
 }
 

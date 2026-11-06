@@ -386,7 +386,9 @@ describe.each(TEST_MARKETS)(
         );
         expect(meta.exif).toBeUndefined();
       }
-      const stored = await inUnit(() => images.find(market, product.state.id, view.imageId));
+      const stored = await inUnit(() =>
+        images.find(market, product.state.id, view.imageId as Id<'ProductImage'>),
+      );
       expect(stored?.renditions.map((r) => `${r.size}/${r.format}`)).toEqual(
         ['thumb', 'medium', 'large'].flatMap((s) =>
           ['jpeg', 'webp', 'avif'].map((f) => `${s}/${f}`),
@@ -931,7 +933,9 @@ describe.each(TEST_MARKETS)(
       it('reprocess gives a photo that has only JPEGs its WebP and AVIF, and touches nothing else', async () => {
         const product = await draftedProduct();
         const modern = await uploaded(product.state.id);
-        const found = await inUnit(() => images.find(market, product.state.id, modern.imageId));
+        const found = await inUnit(() =>
+          images.find(market, product.state.id, modern.imageId as Id<'ProductImage'>),
+        );
         // A photo as it was before the formats existed: the same JPEGs, no other rows.
         const legacyId = uuid7() as Id<'ProductImage'>;
         const jpegs = found!.renditions.filter((r) => r.format === 'jpeg');
@@ -967,7 +971,7 @@ describe.each(TEST_MARKETS)(
           ),
         );
         for (const r of now!.renditions.filter((x) => x.format !== 'jpeg')) {
-          const meta = await sharp(await store.get(r.objectKey)).metadata();
+          const meta = await sharp((await store.get(r.objectKey))!).metadata();
           expect(meta.format).toBe(r.format === 'avif' ? 'heif' : 'webp');
           expect(r.byteSize).toBe((await store.get(r.objectKey))!.length);
         }

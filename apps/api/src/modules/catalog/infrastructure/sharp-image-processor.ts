@@ -34,12 +34,13 @@ const MIN_SIDE = 200;
 export class SharpImageProcessor implements ImageProcessor {
   async process(
     bytes: Buffer,
+    options?: { readonly jpegOnly?: boolean },
   ): Promise<Result<readonly ProcessedRendition[], { readonly code: ImageRefusalCode }>> {
     const processed = await processImage(bytes, {
       maxUploadBytes: MAX_UPLOAD_BYTES,
       minLongestSide: MIN_SIDE,
       renditions: RENDITIONS,
-      alternateFormats: ['webp', 'avif'],
+      alternateFormats: options?.jpegOnly === true ? [] : ['webp', 'avif'],
     });
     if (!processed.ok) return processed;
     // Smallest first, as the port has always answered; the JPEG before its alternates.

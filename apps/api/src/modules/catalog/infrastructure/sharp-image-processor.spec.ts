@@ -60,6 +60,16 @@ describe('catalog SharpImageProcessor', () => {
     }
   });
 
+  it('writes JPEG only when the caller asks for it (a category image)', async () => {
+    const result = await processor.process(await solid(2000, 1000), { jpegOnly: true });
+
+    expect(result.ok && result.value.map((r) => [r.size, r.format])).toEqual([
+      ['thumb', 'jpeg'],
+      ['medium', 'jpeg'],
+      ['large', 'jpeg'],
+    ]);
+  });
+
   it('never enlarges a small photo', async () => {
     const result = await processor.process(await solid(300, 200, 'webp'));
 
