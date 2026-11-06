@@ -214,3 +214,12 @@ Every use case takes ActorContext and MarketContext (ADR-0018). Every write by a
    - **cto decision 2026-11-06: keep ADR-0045 d10, no projection.** `seller_orders` has no `placed_at` index, so ordering's PR ships one set-based query, an index approved by database-designer, and a test of 500 shops × 12 months, p95 under 1 s, on both Markets. Only if that test fails is the amendment written.
 8. **Delivery order of the four missing facade sets.** Missing facade sets (ordering, commission-payouts, sellers, notifications) must land before AGT-02, AGT-05 and AGT-08. cto to schedule them with each module's owner; each is a scope change to log in that module's brief.
    - **cto decision 2026-11-06, one PR each, each logged in that module's brief change log:** (1) identity: invitations, disable/enable, `agentAccessOf`, the `agent` contact-email variant, the reset use case (security-tester review); (2) sellers: `referralCodeEnteredOf` and the application-form field; (3) ordering, alongside (4): the two earning-facts reads, `sellerMonthlySales` with its index, and the docs fix renaming the event to `refund-succeeded`; (4) commission-payouts: `sellerOrderCommission`, `refundCommission`, `eligibilityAnchorOf`; (5) notifications: the `agent` recipient kind and subscribers, after agents merges `AgentsFacade.issueNotice`.
+
+## 8. Resolutions from the data review (database-designer, `data.md` section 6)
+
+- **D1, comment polling cursor:** accepted. Each comment takes a per-issue `seq` (`issues.comment_count + 1`) in the same unit of work, so the Issue aggregate is updated on every comment, not only on status changes. Polling uses `after=seq`.
+- **D2, two refunds at once:** accepted. Each reversal takes a unique per-earning `seq`; the cap and remainder checks make the database refuse a second remainder. No row lock on earnings (they have no UPDATE grant); a refused insert retries through the inbox.
+- **D3, close reasons:** `closeReason` is `confirmed` for a normal close of a `resolved` issue and `withdrawn` (reason text required) for `open` or `agent_responded`.
+- **D4, which month a reversal counts in:** **owner decision 2026-11-06: the refund's month.** A reversal is reported in the month of its own `createdAt`, in the agent's time zone; past months never change. The dashboard and the AGT-10 statement sum earnings by `placedAt` month and reversals by their own month.
+- **`issue_status_changes`:** accepted as part of the Issue aggregate (history of every transition with actor and reason).
+
