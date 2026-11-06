@@ -100,6 +100,55 @@ describe('buildSearchAttributes', () => {
     ).toEqual(['container=jar']);
   });
 
+  it('maps a merged multi-select without duplicates and carries numbers to the target', () => {
+    const multi = (overrides: Partial<SearchDefinition>) =>
+      definition({ dataType: 'multi-select', ...overrides });
+    const target = multi({ options: options([['tin', 'Tin', null]]) });
+    const source = multi({
+      status: 'archived',
+      options: options([
+        ['can', 'Can', null],
+        ['tub', 'Tub', null],
+      ]),
+      mergedInto: {
+        code: 'container',
+        options: new Map([
+          ['can', 'tin'],
+          ['tub', 'tin'],
+        ]),
+      },
+    });
+    expect(
+      buildSearchAttributes({
+        values: { 'pack-type': ['can', 'tub', 'gone'] },
+        definitions: new Map([
+          ['container', target],
+          ['pack-type', source],
+        ]),
+        brand: null,
+        locale: 'en-AU',
+      }).facets,
+    ).toEqual(['container=tin']);
+    const weight = definition({ dataType: 'decimal', options: new Map() });
+    const oldWeight = definition({
+      dataType: 'decimal',
+      status: 'archived',
+      options: new Map(),
+      mergedInto: { code: 'net-weight', options: new Map() },
+    });
+    expect(
+      buildSearchAttributes({
+        values: { weight: '12.5' },
+        definitions: new Map([
+          ['net-weight', weight],
+          ['weight', oldWeight],
+        ]),
+        brand: null,
+        locale: 'en-AU',
+      }).numbers,
+    ).toEqual({ 'net-weight': 12.5 });
+  });
+
   it('leaves out a merged attribute whose target is not active or whose value has no target value', () => {
     const source = definition({
       status: 'archived',

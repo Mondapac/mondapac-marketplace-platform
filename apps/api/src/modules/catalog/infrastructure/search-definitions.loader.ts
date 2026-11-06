@@ -12,7 +12,10 @@ const MAX_CODES = 500;
 /**
  * The definitions with these codes in the Market, each with its published revision's flags,
  * names and options (insert-only revisions: a change by an admin reaches search at the next read).
- * A definition with no published revision is absent. Three statements, no join, all by `market_id`.
+ * A definition with no published revision is absent. For a merged attribute (attributes A8) the
+ * result also holds its target definition, even when the caller did not ask for that code, and the
+ * source's option map. A handful of statements, no join, all by `market_id`; the merge statements
+ * run only when a listed attribute is merged.
  */
 export async function loadSearchDefinitions(
   tx: MarketTransaction,
@@ -59,13 +62,14 @@ export async function loadSearchDefinitions(
           },
         });
   const allRows = [...definitions, ...targets];
-  const mergeRows = await tx.catalogAttributeMergeOption.findMany({
-    where: {
-      marketId,
-      sourceId: { in: definitions.flatMap((row) => (row.mergedIntoId === null ? [] : [row.id])) },
-    },
-    select: { sourceId: true, sourceCode: true, targetCode: true },
-  });
+  const mergedSourceIds = definitions.flatMap((row) => (row.mergedIntoId === null ? [] : [row.id]));
+  const mergeRows =
+    mergedSourceIds.length === 0
+      ? []
+      : await tx.catalogAttributeMergeOption.findMany({
+          where: { marketId, sourceId: { in: mergedSourceIds } },
+          select: { sourceId: true, sourceCode: true, targetCode: true },
+        });
   const codeOfId = new Map(allRows.map((row) => [row.id, row.code] as const));
   const revisionIds = allRows.flatMap((row) =>
     row.publishedRevisionId === null ? [] : [row.publishedRevisionId],
