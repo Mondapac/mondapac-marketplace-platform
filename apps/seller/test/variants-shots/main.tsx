@@ -63,10 +63,10 @@ const rows: TableRow[] = [
   unit: unit(r.v, r.name, r.over),
 }));
 
-window.fetch = ((_input: string) =>
+window.fetch = () =>
   Promise.resolve(
     new Response(JSON.stringify({ code: 'offer.sku-taken', statusCode: 409 }), { status: 409 }),
-  )) as typeof fetch;
+  );
 
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
