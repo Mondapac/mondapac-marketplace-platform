@@ -22,6 +22,11 @@ const CASES = [
   // removed product: its own page stays in the 404 (heading, seller link, similar products)
   [404, '/p/lamb-leg-roast', 'no longer available', 'Similar products', 'Visit Kedron'],
   [404, '/s/no-such-store', 'We cannot find that page'], // unknown store
+  // the internal route is never reachable with a 200, whatever the spelling
+  [404, '/missing/p/lamb-shoulder', 'We cannot find that page'],
+  [404, '/missing/p/lamb-leg-roast', 'We cannot find that page'],
+  [404, '/missing/s/kedron', 'We cannot find that page'],
+  [404, '/%6dissing/p/lamb-shoulder'],
   [200, '/p/lamb-shoulder'], // a product
   [200, '/s/kedron'], // a store
   [200, '/s/west-end-grocer'], // a store not taking orders keeps its page

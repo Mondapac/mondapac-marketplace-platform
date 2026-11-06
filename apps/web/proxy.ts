@@ -74,6 +74,8 @@ export async function proxy(request?: NextRequest): Promise<NextResponse> {
  * for `/missing/...` goes to `/missing`, which has no page: the framework's 404.
  */
 async function missingRoute(request: NextRequest): Promise<string | null> {
+  // Only a page read can be a 404 page: a POST (a server action) goes on to the page untouched.
+  if (request.method !== 'GET' && request.method !== 'HEAD') return null;
   const path = request.nextUrl.pathname;
   // The proxy does not run again for the route it rewrites to, so a request for `/missing/...`
   // here came from a client: it gets the site's own 404 page, never a 200 "not found" page.

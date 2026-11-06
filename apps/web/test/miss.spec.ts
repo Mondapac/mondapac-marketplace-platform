@@ -78,6 +78,16 @@ describe('a product path with no page, API on', () => {
   });
 });
 
+describe('other methods', () => {
+  it('leaves a POST to a missing product to the page, with no read', async () => {
+    const response = await proxy(
+      new NextRequest(`http://shop.example/p/no-such-product`, { method: 'POST' }),
+    );
+    expect(rewrittenTo(response)).toBeNull();
+    expect(asked).toEqual([]);
+  });
+});
+
 describe('a store path with no page', () => {
   it("rewrites an unknown store with the store module's own 404 code", async () => {
     answers.set('sellers/stores/no-such-store', noStore);
