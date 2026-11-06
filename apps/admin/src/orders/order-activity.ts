@@ -3,7 +3,7 @@ import type { AdminOrder } from './types.ts';
 export type OrderEvent =
   | { readonly kind: 'placed' | 'paid' | 'cancelled'; readonly at: string }
   | {
-      readonly kind: 'ready' | 'shipped' | 'delivered';
+      readonly kind: 'ready' | 'ready-pickup' | 'shipped' | 'delivered' | 'collected';
       readonly at: string;
       readonly sellerId: string;
       readonly storeName: string | null;
@@ -19,9 +19,14 @@ export function orderEvents(order: AdminOrder): readonly OrderEvent[] {
   if (order.cancelledAt !== null) events.push({ kind: 'cancelled', at: order.cancelledAt });
   for (const part of order.sellerOrders) {
     const who = { sellerId: part.sellerId, storeName: part.storeName };
-    if (part.readyAt !== null) events.push({ kind: 'ready', at: part.readyAt, ...who });
+    const pickup = part.deliveryMethod === 'pickup';
+    if (part.readyAt !== null) {
+      events.push({ kind: pickup ? 'ready-pickup' : 'ready', at: part.readyAt, ...who });
+    }
     if (part.shippedAt !== null) events.push({ kind: 'shipped', at: part.shippedAt, ...who });
-    if (part.deliveredAt !== null) events.push({ kind: 'delivered', at: part.deliveredAt, ...who });
+    if (part.deliveredAt !== null) {
+      events.push({ kind: pickup ? 'collected' : 'delivered', at: part.deliveredAt, ...who });
+    }
   }
-  return events.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return events.sort((a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0));
 }

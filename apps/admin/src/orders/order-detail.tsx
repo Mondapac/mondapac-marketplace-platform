@@ -23,7 +23,14 @@ import {
  * goods: each seller's part, then the payment. The side column holds who ordered and what has
  * happened. The panel is English and left to right.
  */
-export function OrderDetail({ order }: { readonly order: AdminOrder }) {
+export function OrderDetail({
+  order,
+  canViewCustomer,
+}: {
+  readonly order: AdminOrder;
+  /** Whether the admin holds identity.customer-account.view; tells "hidden" from "failed to load". */
+  readonly canViewCustomer: boolean;
+}) {
   const t = useTranslations('orders');
   const locale = useLocale();
   return (
@@ -62,6 +69,7 @@ export function OrderDetail({ order }: { readonly order: AdminOrder }) {
               <SellerPartCard
                 key={part.sellerId}
                 part={part}
+                paid={order.status === 'confirmed'}
                 index={index + 1}
                 count={order.sellerOrders.length}
               />
@@ -70,7 +78,7 @@ export function OrderDetail({ order }: { readonly order: AdminOrder }) {
           <PaymentCard order={order} />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
-          <CustomerCard order={order} />
+          <CustomerCard order={order} canView={canViewCustomer} />
           <ActivityCard order={order} />
         </div>
       </div>
@@ -122,7 +130,13 @@ function PaymentCard({ order }: { readonly order: AdminOrder }) {
   );
 }
 
-function CustomerCard({ order }: { readonly order: AdminOrder }) {
+function CustomerCard({
+  order,
+  canView,
+}: {
+  readonly order: AdminOrder;
+  readonly canView: boolean;
+}) {
   const t = useTranslations('orders');
   const rows: readonly DataListRow[] = [
     ...(order.customer === null
@@ -136,9 +150,18 @@ function CustomerCard({ order }: { readonly order: AdminOrder }) {
   return (
     <Card title={t('detail.customer')}>
       {order.customer === null ? (
-        <p className="text-sm text-fg-muted">{t('detail.no-customer')}</p>
+        <p className="text-sm text-fg-muted">
+          {t(canView ? 'detail.customer-unavailable' : 'detail.no-customer')}
+        </p>
       ) : null}
-      <DataList rows={rows} missing={t('none')} />
+      <dl className="flex flex-col gap-3">
+        {rows.map((row) => (
+          <div key={String(row.label)} className="flex min-w-0 flex-col">
+            <dt className="text-sm text-fg-muted">{row.label}</dt>
+            <dd className="min-w-0 font-medium break-words">{row.value || t('none')}</dd>
+          </div>
+        ))}
+      </dl>
     </Card>
   );
 }
@@ -168,19 +191,32 @@ function eventText(event: OrderEvent, t: ReturnType<typeof useTranslations>): st
   });
 }
 
-/** Ready, shipped and delivered as they stand: done with a time, or waiting. */
+/**
+ * Ready, shipped and delivered as they stand: done with a time, or waiting. A pickup part has no
+ * shipping: Ready for pickup, then Collected. Nothing is shown before payment or after a cancel.
+ */
 function FulfilmentSteps({ part }: { readonly part: SellerPart }) {
   const t = useTranslations('orders');
   const locale = useLocale();
+  const pickup = part.deliveryMethod === 'pickup';
   const delivered = part.deliveredAt !== null || part.fulfilment === 'delivered';
   const shipped = part.shippedAt !== null || part.fulfilment === 'shipped' || delivered;
-  const steps = [
-    { key: 'ready', done: part.readyAt !== null || shipped, at: part.readyAt },
-    { key: 'shipped', done: shipped, at: part.shippedAt },
-    { key: 'delivered', done: delivered, at: part.deliveredAt },
-  ] as const;
+  const ready = part.readyAt !== null || shipped;
+  const steps = pickup
+    ? ([
+        { key: 'ready-pickup', done: ready, at: part.readyAt },
+        { key: 'collected', done: delivered, at: part.deliveredAt },
+      ] as const)
+    : ([
+        { key: 'ready', done: ready, at: part.readyAt },
+        { key: 'shipped', done: shipped, at: part.shippedAt },
+        { key: 'delivered', done: delivered, at: part.deliveredAt },
+      ] as const);
   return (
-    <ol aria-label={t('detail.steps')} className="grid gap-2 sm:grid-cols-3">
+    <ol
+      aria-label={t('detail.steps')}
+      className={`grid gap-2 ${pickup ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}
+    >
       {steps.map((step) => (
         <li
           key={step.key}
@@ -202,10 +238,12 @@ function FulfilmentSteps({ part }: { readonly part: SellerPart }) {
 
 function SellerPartCard({
   part,
+  paid,
   index,
   count,
 }: {
   readonly part: SellerPart;
+  readonly paid: boolean;
   readonly index: number;
   readonly count: number;
 }) {
@@ -223,7 +261,7 @@ function SellerPartCard({
       : [
           {
             label: t('field.delivery-window'),
-            value: `${formatInstant(part.deliveryWindowStart, locale)} - ${formatInstant(part.deliveryWindowEnd, locale)}`,
+            value: `${formatInstant(part.deliveryWindowStart, locale)} \u2013 ${formatInstant(part.deliveryWindowEnd, locale)}`,
           },
         ]),
     { label: t('field.carrier'), value: part.carrier },
@@ -233,12 +271,12 @@ function SellerPartCard({
     <Card title={part.storeName?.trim() || t('detail.seller', { id: shortId(part.sellerId) })}>
       <p className="text-sm text-fg-muted">{t('detail.part-of', { index, count })}</p>
       {part.deliveryAttention === null ? null : (
-        <Banner tone="critical">
+        <Banner tone="attention">
           {t('detail.attention.title')}{' '}
           {t(`detail.attention.${attentionKey(part.deliveryAttention)}`)}
         </Banner>
       )}
-      <FulfilmentSteps part={part} />
+      {paid ? <FulfilmentSteps part={part} /> : null}
       <DataList rows={rows} missing={t('none')} />
       <ul className="flex flex-col divide-y divide-line-row border-t border-line">
         {part.lines.map((line) => (
