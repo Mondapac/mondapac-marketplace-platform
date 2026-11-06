@@ -655,6 +655,7 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
         `reviews.detach:${BUYER}`,
       ]);
       expect(await addresses.list(market, BUYER)).toEqual([]);
+      expect(addresses.locked).toEqual([BUYER]);
       expect(await addresses.list(market, OTHER_BUYER)).toHaveLength(1);
       const [row] = rowsOf();
       expect(row?.status).toBe('completed');

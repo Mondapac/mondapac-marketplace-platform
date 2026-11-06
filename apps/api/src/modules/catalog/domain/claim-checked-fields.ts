@@ -467,6 +467,14 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'public tree view: ids, slug and one published category name, already claim-checked when written, with numbers',
   },
   CategoryTreeUnavailableError: { noCustomerText: 'error with a fixed reason' },
+  PublicCategoryDetails: {
+    noCustomerText:
+      'read copy of stored category fields: the menu switch, the English SEO fields and the published short descriptions, already claim-checked when written (C3a)',
+  },
+  PublicCategory: {
+    noCustomerText:
+      'public tree view: LiveCategory with the published short description and SEO fields, already claim-checked when written, with flags and numbers',
+  },
   AdminStoredCategory: {
     noCustomerText:
       'admin read copy of stored category rows in any status: ids, slug and the published CategoryName rows, already claim-checked when written',
@@ -509,6 +517,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   VariantDraft: { noCustomerText: 'ids and option codes; labels are RevisionVariantContent' },
   VariantIssue: { noCustomerText: 'issue code with a fixed path' },
+  AxisIssue: { noCustomerText: 'issue code with a fixed path' },
   VariantRecord: { noCustomerText: 'ids and times' },
   WorkingCopy: { noCustomerText: 'opaque draft; its texts are checked before any write (6.1)' },
 };

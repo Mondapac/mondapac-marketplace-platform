@@ -166,6 +166,11 @@ import {
   type CategoryTreeReader,
 } from '../application/ports/category-tree.reader';
 import { PrismaCategoryTreeReader } from './prisma-category-tree.reader';
+import {
+  PUBLIC_CATEGORY_READER,
+  type PublicCategoryReader,
+} from '../application/ports/public-category.reader';
+import { PrismaPublicCategoryReader } from './prisma-public-category.reader';
 import { PrismaSellUnitLabelsReader } from './prisma-sell-unit-labels.reader';
 import { PrismaOfferNamesReader } from './prisma-offer-names.reader';
 import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
@@ -527,6 +532,12 @@ export const catalogProviders: readonly Provider[] = [
     provide: CATEGORY_TREE_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): CategoryTreeReader => new PrismaCategoryTreeReader(prisma),
+  },
+  {
+    provide: PUBLIC_CATEGORY_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PublicCategoryReader =>
+      new PrismaPublicCategoryReader(prisma),
   },
   {
     provide: SELL_UNIT_LABELS_READER,

@@ -175,7 +175,8 @@ describe('AccountDeletionSettingsPanel', () => {
 
   it('is read-only without the manage permission: disabled fields, a note and no save bar', () => {
     mount(answer(true), none, false);
-    expect(screen.getByText('You can view this setting but not change it.')).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
+    expect(screen.getByText(/^Your role can see these settings but not change them/)).toBeTruthy();
     expect(enabledBox().disabled).toBe(true);
     expect(daysSelect().disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();

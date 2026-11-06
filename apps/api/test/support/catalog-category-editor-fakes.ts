@@ -49,7 +49,12 @@ export class MemoryCategoryEditStore implements CategoryEditStore {
   }
 
   loadAll(): Promise<readonly EditableCategory[]> {
-    return Promise.resolve([...this.rows.values()]);
+    return Promise.resolve(
+      [...this.rows.values()].map((row) => {
+        const into = this.mergedInto.get(row.id);
+        return into === undefined ? row : { ...row, mergedIntoId: into as Id<'Category'> };
+      }),
+    );
   }
 
   /** The slugs locked, in the order asked (one list per call). */
@@ -171,8 +176,11 @@ export class MemoryTreeVersion implements Pick<
 export class MemoryCategoryRestructureStore implements CategoryRestructureStore {
   /** Published products per category id: product id and its published revision id. */
   readonly products = new Map<string, { productId: string; revisionId: string }[]>();
-  /** Products that name no other live platform category, per category id (AC 4). */
-  readonly onlyHere = new Map<string, number>();
+  /**
+   * Per category id, the products an archive reads on it: each the other categories its
+   * published revision names (AC 4; Hassan M1).
+   */
+  readonly archiveOthers = new Map<string, string[][]>();
   /** Active tags per product id. */
   readonly activeTags = new Map<string, number>();
   readonly relinked: { from: string; to: string | null }[] = [];
@@ -186,8 +194,11 @@ export class MemoryCategoryRestructureStore implements CategoryRestructureStore 
     return Promise.resolve(counts as ReadonlyMap<string, number>);
   }
 
-  onlyCategoryProducts(_m: MarketContext, id: Id<'Category'>) {
-    return Promise.resolve(this.onlyHere.get(id) ?? 0);
+  otherCategoriesOf(_m: MarketContext, categoryIds: readonly Id<'Category'>[], limit: number) {
+    const found = categoryIds.flatMap((id) => this.archiveOthers.get(id) ?? []);
+    return Promise.resolve(
+      found.slice(0, limit).map((others) => others as unknown as readonly Id<'Category'>[]),
+    );
   }
 
   productsUnder(_m: MarketContext, categoryIds: readonly Id<'Category'>[], limit: number) {

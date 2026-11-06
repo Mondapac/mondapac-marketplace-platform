@@ -125,7 +125,7 @@ migration in 8. "Privileges" lines are in 7.
 | `created_by_seller_id` | `uuid` | yes | 1 | The seller who created it; never updated (column grant). Keeps the origin after promotion without a history read |
 | `type_code` | `text` | no | 1 | CA4 pattern; never updated (column grant; CAT-10) |
 | `variant_model` | `text` | no | 1 | CHECK `single`, `options` (the handler's `variantModel`, D 3.2). Never updated. Target of the variant FK (3.2) |
-| `family_code` | `text` | no | 1 | CA4; never updated |
+| `family_code` | `text` | no | 1 | CA4; changes only with a revision pointer (trigger `products_family_follows_revision`; A4, CAT-10 change): the family of the last accepted submit (the database guards the timing, not the value: the application resolves it from the primary category) |
 | `product_code` | `text COLLATE "C"` | no | 1 | From `product_code_counters` (3.3), never input. CHECK `^[A-Z0-9][A-Z0-9-]{3,31}$`. **Unique `(market_id, product_code)`** (D 17.1). Never updated |
 | `status` | `text` | no | 1 | CHECK `draft`, `discarded`, `unpublished`, `published`, `matched`, `withdrawn`, `retired` (D 4.1; `discarded` terminal, Q-K2) |
 | `discarded_at` | `timestamptz(6)` | yes | 1 | CHECK `products_discarded_check`: `(status = 'discarded') = (discarded_at IS NOT NULL)`; CHECK `status <> 'discarded' OR (published_revision_id IS NULL AND pending_revision_id IS NULL)` (a backstop: a discarded product has no published or pending revision; "never submitted" itself is the use case's check. Added with the pointers in migration 4) |
@@ -664,7 +664,11 @@ offer_id, offer_version)`; `outcome` CHECK `approved`, `changes-requested`; `rea
   a newer publish supersedes the older request in its unit (update then insert), so one pending request
   per product (D 5.4).
 - Unique `(market_id, product_revision_id) WHERE kind = 'revision-published'`: a request for a
-  revision is written once (idempotent publish handler).
+  revision is written once (idempotent publish handler). A category move, merge or archive
+  (categories C4a, migration `20261105200000_catalog_tag_request_reopen`) reopens that one row
+  instead, with the product row locked first: `pending`, no cursor, zero counts, `settled_at` NULL
+  and a `created_at` strictly after the stored one. The job's cursor update and close match the
+  `created_at` the run read, so a run already under way never moves or closes the reopened request.
 - Unique `(market_id, source_event_id, cause) NULLS NOT DISTINCT` where `source_event_id` is not
   NULL: one request per consumed event and cause (certification slice 14; was one per event). A
   manufacturer certificate's coverage change writes two from one event (Hassan M2).
@@ -678,7 +682,8 @@ offer_id, offer_version)`; `outcome` CHECK `approved`, `changes-requested`; `rea
   cause; migration `20261018210000_catalog_product_certification_endings`).
 - Claim index `(market_id, created_at, id) WHERE state = 'pending'`. The job runs under its scheduler
   lock (PM8) per Market, so no `SKIP LOCKED` is needed; requests are taken in order.
-- Grants `SELECT, INSERT, UPDATE (state, cursor_offer_id, counts, settled_at)`; purge of settled rows
+- Grants `SELECT, INSERT, UPDATE (state, cursor_offer_id, counts, settled_at, created_at)` (`created_at`
+  since C4a); purge of settled rows
   after 30 days (10.3).
 
 ### 3.19 `product_images`, `product_image_renditions` (slice 13; D 10, D 17.1 item 1)
@@ -1347,7 +1352,7 @@ No sequence; no function gets a grant.
 |---|---|---|---|
 | `outbox` | `SELECT, INSERT`, `UPDATE (published_at)` | Never | PM2 |
 | `inbox` | `SELECT, INSERT` | Prune job | PM4 |
-| `products` | `SELECT, INSERT`, `UPDATE (scope, owner_seller_id, status, discarded_at, own_brand, matched_into_product_id, promoted_at, retired_at, withdrawn_at, paused_at, paused_by_account_id, published_revision_id, pending_revision_id, pending_submitted_at, claim_text_flagged_at, photo_taken_down_at, last_changed_at, version)` | Never (Q-K2: discard is a status) | Type, family, code, creator immutable (CAT-10) |
+| `products` | `SELECT, INSERT`, `UPDATE (family_code, scope, owner_seller_id, status, discarded_at, own_brand, matched_into_product_id, promoted_at, retired_at, withdrawn_at, paused_at, paused_by_account_id, published_revision_id, pending_revision_id, pending_submitted_at, claim_text_flagged_at, photo_taken_down_at, last_changed_at, version)` | Never (Q-K2: discard is a status) | Type, code, creator immutable (CAT-10); family only with a revision pointer (trigger) |
 | `product_variants` | `SELECT, INSERT`, `UPDATE (state, published_at, retired_at)` | Never (the guard refuses it for every role) | M-1 |
 | `product_code_counters` | `SELECT, INSERT`, `UPDATE (next_value)` | Never | |
 | `category_trees` | `SELECT, INSERT`, `UPDATE (version)` | Never | |
@@ -1356,7 +1361,7 @@ No sequence; no function gets a grant.
 | `product_working_copies` | `SELECT, INSERT, UPDATE, DELETE` | 4 (discard and prune, 10.1) | |
 | `offers` | `SELECT, INSERT`, `UPDATE (product_id, seller_sku, condition_code, description, handling, attestation_recorded_at, attestation_account_id, shelf_category_id, status, off_sale_*, listed, submitted_at, first_published_at, deleted_at, version)` | Never (a discarded draft's Offer becomes `deleted`) | `seller_id` never changes (PRC 2.3) |
 | `offer_tags` | `SELECT, INSERT`, `UPDATE` on every column except `id, offer_id, seller_id, type_code, created_at` | Never | |
-| `tag_reevaluation_requests` | `SELECT, INSERT`, `UPDATE (state, cursor_offer_id, counts, settled_at)` | Purge (10.3) | |
+| `tag_reevaluation_requests` | `SELECT, INSERT`, `UPDATE (state, cursor_offer_id, counts, settled_at, created_at)` (`created_at` since C4a) | Purge (10.3) | |
 | `offer_owner_notices` | `SELECT, INSERT`, `UPDATE (state, outcome, attempts, next_attempt_at, settled_at)` | Purge (open) | Certification slice 15 (3.27) |
 | `saved_filters` | `SELECT, INSERT`, `UPDATE (visibility, name, updated_at)` | The application (a filter is a preference, not a record to keep) | Saved filters (3.28); the document, owner, list and position never change after the insert |
 | `platform_import_jobs` | `SELECT, INSERT, DELETE`, `UPDATE (state, file_deleted_at, start_as, skip_errors, to_import, added_rows, failed_rows, stop_reason, not_before, lease_until, version, started_at, finished_at)` | Purge (10.3, 10.4): discarded jobs at once, finished and stopped after 90 days | Admin import (3.29); the owner, file, counts of the check and the creation time never change |

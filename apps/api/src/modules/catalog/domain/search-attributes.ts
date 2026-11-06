@@ -1,5 +1,6 @@
 import type { AttributeDataType } from '@mondapac/shared-kernel';
 import { countryCodeOf, countryName } from './iso-countries';
+import { mergedValue } from './published-specifications';
 
 /** The attribute codes the index treats specially: the brand (a product column) and the origin. */
 export const BRAND_FACET = 'brand';
@@ -30,6 +31,14 @@ export interface SearchDefinition {
   /** May be offered as a category filter: its values are indexed as facets. */
   readonly canBeFilter: boolean;
   readonly options: ReadonlyMap<string, SearchOption>;
+  /**
+   * The attribute this one was merged into (attributes A8): its code, and for a choice attribute
+   * where each of its option codes goes. A product's value is indexed as the target's.
+   */
+  readonly mergedInto?: {
+    readonly code: string;
+    readonly options: ReadonlyMap<string, string>;
+  } | null;
 }
 
 /** A definition's PUBLISHED revision as search reads it, with the names a filter list shows. */
@@ -121,11 +130,29 @@ export function buildSearchAttributes(input: {
   }
   for (const [code, stored] of Object.entries(input.values)) {
     if (code === BRAND_FACET || stored === undefined || stored === null) continue;
-    const definition = input.definitions.get(code);
-    if (definition === undefined || definition.status !== 'active') continue;
-    const raw = plain(stored, definition, input.locale);
+    const own = input.definitions.get(code);
+    if (own === undefined) continue;
+    let definition: SearchDefinition = own;
+    let value: unknown = stored;
+    let at = code;
+    // A merged attribute is indexed as its target (attributes A8): the value is mapped, and the
+    // target's own value wins when the product has both. A target that is not active adds nothing.
+    if (own.mergedInto != null) {
+      const target = input.definitions.get(own.mergedInto.code);
+      const targetValue = input.values[own.mergedInto.code];
+      if (target === undefined || target.status !== 'active') continue;
+      if (targetValue !== undefined && targetValue !== null) continue;
+      const mapped = mergedValue(own.mergedInto.options, stored);
+      if (mapped === null) continue;
+      definition = target;
+      value = mapped;
+      at = own.mergedInto.code;
+    } else if (own.status !== 'active') {
+      continue;
+    }
+    const raw = plain(value, definition, input.locale);
     if (raw === null || raw === undefined) continue;
-    if (code === ORIGIN_ATTRIBUTE) {
+    if (at === ORIGIN_ATTRIBUTE) {
       const countries = Array.isArray(raw) ? raw : [raw];
       for (const entry of countries as unknown[]) {
         if (typeof entry !== 'string') continue;
@@ -144,7 +171,7 @@ export function buildSearchAttributes(input: {
         for (const entry of picked as unknown[]) {
           const resolved = resolveOption(definition, entry);
           if (resolved === null) continue;
-          if (definition.canBeFilter) facets.add(`${code}=${resolved.code}`);
+          if (definition.canBeFilter) facets.add(`${at}=${resolved.code}`);
           if (definition.searchable) {
             const label = labelOf(resolved.option.labels, input.locale);
             if (label !== null) words.push(label);
@@ -153,13 +180,13 @@ export function buildSearchAttributes(input: {
         break;
       }
       case 'boolean':
-        if (raw === true && definition.canBeFilter) facets.add(`${code}=true`);
+        if (raw === true && definition.canBeFilter) facets.add(`${at}=true`);
         break;
       case 'integer':
       case 'decimal': {
         if (!definition.canBeFilter) break;
         const text = typeof raw === 'number' && Number.isFinite(raw) ? String(raw) : raw;
-        if (typeof text === 'string' && NUMBER.test(text)) numbers[code] = Number(text);
+        if (typeof text === 'string' && NUMBER.test(text)) numbers[at] = Number(text);
         break;
       }
       case 'text':

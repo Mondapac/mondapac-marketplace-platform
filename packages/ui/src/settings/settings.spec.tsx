@@ -14,6 +14,7 @@ import {
 } from './setting-row.tsx';
 import { SettingsPage } from './settings-page.tsx';
 import { SettingsSection } from './settings-section.tsx';
+import { SettingsViewOnlyBanner } from './view-only-banner.tsx';
 import { SettingsSubNav } from './settings-sub-nav.tsx';
 import { SettingsTitle } from './settings-title.tsx';
 import { leavesPage, type ClickInfo } from './unsaved-changes-guard.tsx';
@@ -345,7 +346,7 @@ describe('SettingsErrorSummary', () => {
   it('is a critical alert that links each invalid field', () => {
     const out = html(
       <SettingsErrorSummary
-        title="2 settings need fixing before you can save"
+        title="2 settings need fixing"
         items={[
           { id: 'cutoff', label: 'Cut-off time', reason: 'Enter a time such as 1:00 pm.' },
           { id: 'free', label: 'Free delivery from' },
@@ -355,7 +356,7 @@ describe('SettingsErrorSummary', () => {
     );
     expect(out).toContain('role="alert"');
     expect(out).toContain('tabindex="-1"');
-    expect(out).toContain('2 settings need fixing before you can save');
+    expect(out).toContain('2 settings need fixing');
     expect(out).toContain('<a href="#cutoff"');
     expect(out).toContain('>Free delivery from</a>');
     // The reason follows its link; an item without one shows the link alone.
@@ -407,6 +408,20 @@ describe('Button disabled state', () => {
     const out = html(<Button variant="destructive-solid">Delete</Button>);
     expect(out).toContain('bg-critical-solid');
     expect(out).toContain('text-on-accent');
+  });
+});
+
+describe('SettingsViewOnlyBanner', () => {
+  it('is an info banner titled with the same words on every page, with the reason under it', () => {
+    const out = html(
+      <SettingsViewOnlyBanner title="View only">
+        Your role can see these settings but not change them.
+      </SettingsViewOnlyBanner>,
+    );
+    expect(out).toContain('role="status"');
+    expect(out).toContain('<p class="font-semibold">View only</p>');
+    expect(out).toContain('Your role can see these settings but not change them.');
+    expect(out).toContain('text-info-fg');
   });
 });
 

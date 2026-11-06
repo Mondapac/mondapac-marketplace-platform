@@ -460,8 +460,8 @@ describe('Routes', () => {
     read.product = product({ id: 'free' }, { price: { amount: 0, currency: 'AUD' } });
     expect(scriptOf(jsonLdOf(await productRoute('free')))).toBeNull();
     read.product = undefined;
-    // A removed product renders its own view, without a fragment or script.
-    expect(jsonLdOf(await productRoute('lamb-leg-roast'))).toBeNull();
+    // A removed product is a 404 (its body is the not-found page's), with no fragment or script.
+    await expect(productRoute('lamb-leg-roast')).rejects.toThrow('not found');
     read.product = product({ id: 'lamb-shoulder' });
     request.host = 'evil.example';
     expect(scriptOf(jsonLdOf(await productRoute('lamb-shoulder')))).toBeNull();

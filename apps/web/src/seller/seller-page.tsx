@@ -120,18 +120,3 @@ export function SellerPage({
     </div>
   );
 }
-
-/** The seller page while it loads: the header card, the tabs and a row of cards. */
-export function SellerLoading({ label }: { readonly label: string }) {
-  return (
-    <div role="status" aria-label={label} className="loading">
-      <div className="skel shop-skel-head" aria-hidden="true" />
-      <div className="skel line" aria-hidden="true" />
-      <div className="shop-grid" aria-hidden="true">
-        {Array.from({ length: 4 }, (_, i) => (
-          <div key={i} className="skel card" />
-        ))}
-      </div>
-    </div>
-  );
-}

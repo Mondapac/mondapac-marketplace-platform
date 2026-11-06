@@ -96,6 +96,7 @@ export class CategoryMerge extends UseCase<
       targetId: id.value,
       treeVersion: treeVersion.value,
       reason: reason.value,
+      kind: 'merge',
       plan: (nodes, source, read) =>
         planMerge(nodes, source, targetId.value, maxDepth, read.directProducts),
       finish: async ({ target: source, plan, tagsMarked, targetVersion }) => {

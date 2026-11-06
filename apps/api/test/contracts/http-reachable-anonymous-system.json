@@ -50,9 +50,9 @@
     "reason": "The guest cart is read with the cart cookie of the browser: a guest has no account or session."
   },
   {
-    "name": "catalog.category-tree",
+    "name": "catalog.category-slug-resolve",
     "rule": "anonymous",
-    "reason": "The buyer site's left menu and Browse drawer for a visitor with no session: the live platform category tree (ids, slugs, names, order); no seller category, no count, nothing unpublished."
+    "reason": "The buyer site's /c/{slug} page for a visitor with no session (categories C6a): whether a slug names a live platform category, or the one slug to redirect to (slug history, merges, archives, a hidden category's nearest shown ancestor); public slugs only, another Market's slug is not found."
   },
   {
     "name": "catalog.public-brand",
@@ -63,6 +63,11 @@
     "name": "catalog.public-brands-az",
     "rule": "anonymous",
     "reason": "The public brands A to Z index (/brands) for a visitor with no session: the slug, name and logo image id of every ACTIVE brand, grouped by first letter; nothing about drafts, proposals or sellers; no-store; rate limited per origin."
+  },
+  {
+    "name": "catalog.public-category-tree",
+    "rule": "anonymous",
+    "reason": "The buyer site's menus, category pages and sitemap for a visitor with no session (categories C6a): the live platform category tree (ids, slugs, names, order, short descriptions, English SEO fields, menu flags, whether live products exist); no seller category, no count, nothing unpublished."
   },
   {
     "name": "catalog.published-image-read",

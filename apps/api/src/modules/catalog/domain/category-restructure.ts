@@ -90,6 +90,61 @@ function ancestorsOf(
 const liveDescendants = (nodes: readonly EditableCategory[], id: string) =>
   descendantsOf(nodes, id).filter((node) => isEditable(node.status));
 
+/**
+ * The `merged` rows whose merge chain ends in one of `ids` (Hassan H1, #712): their products
+ * resolve there, so a change of those categories changes their path too. In id order.
+ */
+export function mergedInto(
+  nodes: readonly EditableCategory[],
+  ids: Iterable<string>,
+): Id<'Category'>[] {
+  const byId = byIdOf(nodes);
+  const set = new Set<string>(ids);
+  return nodes
+    .filter((node) => node.status === 'merged' && !set.has(node.id))
+    .filter((node) => {
+      const root = resolvedOf(byId, node.id);
+      return root !== null && set.has(root);
+    })
+    .map((node) => node.id)
+    .sort();
+}
+
+/** Where a category resolves: itself, or the end of its merge chain; null when broken. */
+function resolvedOf(byId: ReadonlyMap<string, EditableCategory>, id: string): string | null {
+  let current = byId.get(id);
+  for (let hops = 0; current !== undefined && hops <= 64; hops += 1) {
+    if (current.status !== 'merged') return current.id;
+    const next = current.mergedIntoId ?? null;
+    if (next === null) return null;
+    current = byId.get(next);
+  }
+  return null;
+}
+
+/** Each merged row at the level its merge chain resolves to, when that one is in `levels`. */
+function withMerged(
+  nodes: readonly EditableCategory[],
+  levels: Map<string, number>,
+): Id<'Category'>[] {
+  const byId = byIdOf(nodes);
+  const merged = mergedInto(nodes, levels.keys());
+  for (const id of merged) levels.set(id, levels.get(resolvedOf(byId, id)!)!);
+  return merged;
+}
+
+/**
+ * The ids a move or merge reads direct products of (Mojtaba 2, #712): the acted-on category, its
+ * live subtree and the rows merged into those. Nothing else changes level.
+ */
+export function directProductScope(
+  nodes: readonly EditableCategory[],
+  target: EditableCategory,
+): Id<'Category'>[] {
+  const own = [target.id, ...liveDescendants(nodes, target.id).map((node) => node.id)];
+  return [...own, ...mergedInto(nodes, own)];
+}
+
 /** The next free position among all children of a parent (any status: the unique key counts them). */
 function nextPosition(nodes: readonly EditableCategory[], parentId: Id<'Category'> | null): number {
   let max = -1;
@@ -173,6 +228,7 @@ export function planMove(
   if (Math.max(...levels.values()) > maxDepth) {
     return err({ code: 'category.depth-exceeded', max: maxDepth });
   }
+  const merged = withMerged(nodes, levels);
   const clashes = siblingNameClashes(nodes, newParentId, target.id, target.texts);
   if (clashes.length > 0) return err({ code: 'category.sibling-name-taken', fields: clashes });
   const above = productsAboveCategoryLevel(levels, direct);
@@ -199,8 +255,8 @@ export function planMove(
   const leaving = ancestorsOf(byId, target.id).filter((id) => !newAncestors.has(id));
   return ok({
     changes,
-    retirementCheckIds: [...movedIds, ...leaving] as Id<'Category'>[],
-    affectedIds: [...movedIds] as Id<'Category'>[],
+    retirementCheckIds: [...movedIds, ...merged, ...leaving] as Id<'Category'>[],
+    affectedIds: [...movedIds, ...merged] as Id<'Category'>[],
     levelBefore,
     levelAfter,
   });
@@ -240,6 +296,7 @@ export function planMerge(
   if (Math.max(...levels.values()) > maxDepth) {
     return err({ code: 'category.depth-exceeded', max: maxDepth });
   }
+  const merged = withMerged(nodes, levels);
   const children = nodes
     .filter((node) => node.parentId === source.id && isEditable(node.status))
     .sort((a, b) => a.position - b.position || (a.id < b.id ? -1 : 1));
@@ -278,33 +335,59 @@ export function planMerge(
   const leaving = ancestorsOf(byId, source.id).filter((id) => !kept.has(id));
   return ok({
     changes,
-    retirementCheckIds: [source.id, ...leaving],
-    affectedIds: [source.id, ...movedIds] as Id<'Category'>[],
+    retirementCheckIds: [source.id, ...merged, ...leaving],
+    affectedIds: [source.id, ...movedIds, ...merged] as Id<'Category'>[],
     levelBefore,
     levelAfter,
   });
 }
 
 /**
+ * What an archive reads of the published products on the category or on a row merged into it:
+ * per product, the other platform categories its published revision names.
+ */
+export type ArchiveProducts = readonly (readonly string[])[];
+
+/**
  * Archive (plan decision 7): terminal, no restore. Only a category with no live subcategory (move
  * or archive those first), and never while a published product would be left with no live
- * platform category (catalog design AC 4): `onlyHere` is that count, read in the unit.
+ * platform category (catalog design AC 4). The rows merged into it are retired with it (their
+ * products resolved there). The certification check clears the category, those rows, and every
+ * ancestor some product leaves: one its remaining live categories are not under (Hassan M1, #712).
  */
 export function planArchive(
   nodes: readonly EditableCategory[],
   target: EditableCategory,
-  onlyHere: number,
+  products: ArchiveProducts,
 ): Result<RestructurePlan, RestructureRefusal> {
   if (!isEditable(target.status)) return err({ code: 'category.not-editable' });
   if (nodes.some((node) => node.parentId === target.id && isEditable(node.status))) {
     return err({ code: 'category.has-subcategories' });
   }
+  const byId = byIdOf(nodes);
+  const merged = mergedInto(nodes, [target.id]);
+  const retiring = new Set<string>([target.id, ...merged]);
+  // Each product's remaining live categories, merges resolved.
+  const remaining = products.map((others) =>
+    others.flatMap((id) => {
+      const root = resolvedOf(byId, id);
+      const node = root === null ? undefined : byId.get(root);
+      return node !== undefined && isEditable(node.status) && !retiring.has(node.id)
+        ? [node.id]
+        : [];
+    }),
+  );
+  const onlyHere = remaining.filter((live) => live.length === 0).length;
   if (onlyHere > 0) return err({ code: 'category.only-platform-category', total: onlyHere });
-  const level = levelOf(byIdOf(nodes), target.id);
+  const paths = remaining.map(
+    (live) => new Set<string>(live.flatMap((id) => [id, ...ancestorsOf(byId, id)])),
+  );
+  const leaving = ancestorsOf(byId, target.id).filter((id) => paths.some((path) => !path.has(id)));
+  const level = levelOf(byId, target.id);
   return ok({
     changes: [{ id: target.id, kind: 'archived', status: 'archived', hiddenById: null }],
-    retirementCheckIds: [target.id],
-    affectedIds: [target.id],
+    retirementCheckIds: [target.id, ...merged, ...leaving],
+    affectedIds: [target.id, ...merged],
     levelBefore: level,
     levelAfter: level,
   });

@@ -122,10 +122,16 @@ export interface CategoryRestructureStore {
   ): Promise<ReadonlyMap<string, number>>;
 
   /**
-   * The published products whose published revision names `id` and no other live (active or
-   * hidden) platform category: those an archive would leave with none (catalog design AC 4).
+   * The published products whose published revision names one of `categoryIds`, in product id
+   * order, at most `limit`: per product, the other platform categories (any status) the revision
+   * names. An archive reads it for the products it would leave with no live category (catalog
+   * design AC 4) and for the ancestors they leave (Hassan M1, #712).
    */
-  onlyCategoryProducts(market: MarketContext, id: Id<'Category'>): Promise<number>;
+  otherCategoriesOf(
+    market: MarketContext,
+    categoryIds: readonly Id<'Category'>[],
+    limit: number,
+  ): Promise<readonly (readonly Id<'Category'>[])[]>;
 
   /**
    * The published products whose published revision names one of the ids, in id order, at most

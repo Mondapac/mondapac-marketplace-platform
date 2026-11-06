@@ -468,7 +468,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       ).toBe('23514');
     });
 
-    it('lets the application change status columns but not type, family, code or creator', async () => {
+    it('lets the application change status columns but not type, code or creator, and the family only with a revision pointer', async () => {
       const id = await insertProduct();
       expect(
         await sqlState(
@@ -479,7 +479,6 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       ).toBeNull();
       for (const column of [
         'type_code',
-        'family_code',
         'product_code',
         'created_by_seller_id',
         'variant_model',
@@ -501,6 +500,10 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
           ]),
         ).toBe('42501');
       }
+      // The family is writable, but the trigger refuses it without a revision pointer (A4, CAT-10).
+      expect(
+        await sqlState(app, `UPDATE catalog.products SET family_code = 'zzz' WHERE id = $1`, [id]),
+      ).toBe('23514');
     });
 
     it('lets nobody delete a product, and the application not even try', async () => {

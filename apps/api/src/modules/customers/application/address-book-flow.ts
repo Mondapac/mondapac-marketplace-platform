@@ -9,6 +9,9 @@ import type { AddressRecord } from './ports/address.repository';
 // The first address becomes the default; removing the default makes the newest remaining
 // address the default, so a book that is not empty always has exactly one. Checkout (package 2)
 // copies the chosen address onto the order, so a later change never touches a placed order.
+// Every write takes the book's lock first (`customers.lock-address-book`), so parallel writes of
+// one book run one after the other under READ COMMITTED; the unique index of the one default is
+// the second line. (Serializable units fought each other and ran out of attempts, 40001.)
 // No address value reaches a log, an event, an audit row or an error.
 
 export type AddressBookFailure =
@@ -35,9 +38,6 @@ export interface AddressBookView {
 
 /** The input of an add or a change: the address fields and the optional `isDefault`. */
 export type AddressInput = Readonly<Record<string, unknown>>;
-
-/** Spans rows (the limit, the one default), so the writes run serializable and are retried. */
-const SERIAL = { isolation: 'serializable' } as const;
 
 /** The signed-in customer's account; null for any other actor (fail closed). */
 function customerOf(context: CallContext): Id<'Account'> | null {
@@ -135,29 +135,26 @@ export async function createAddress(
 
   const now = deps.clock.now();
   const id = deps.ids.next<'CustomerAddress'>();
-  return deps.unitOfWork.run<AddressView, AddressBookFailure>(
-    context.market,
-    async () => {
-      const existing = await deps.addresses.list(context.market, accountId);
-      if (existing.length >= settings.limit) {
-        return err({ code: 'customers.address-limit-reached', limit: settings.limit } as const);
-      }
-      const isDefault = parsed.value.makeDefault || !existing.some((record) => record.isDefault);
-      if (isDefault) await deps.addresses.clearDefault(context.market, accountId, now);
-      const record: AddressRecord = {
-        id,
-        accountId,
-        sealed: sealed.value,
-        countryCode: settings.format.countryCode,
-        isDefault,
-        createdAt: now,
-        updatedAt: now,
-      };
-      await deps.addresses.insert(context.market, record);
-      return ok(viewOf(record, parsed.value.content));
-    },
-    SERIAL,
-  );
+  return deps.unitOfWork.run<AddressView, AddressBookFailure>(context.market, async () => {
+    await deps.addresses.lockBook(context.market, accountId);
+    const existing = await deps.addresses.list(context.market, accountId);
+    if (existing.length >= settings.limit) {
+      return err({ code: 'customers.address-limit-reached', limit: settings.limit } as const);
+    }
+    const isDefault = parsed.value.makeDefault || !existing.some((record) => record.isDefault);
+    if (isDefault) await deps.addresses.clearDefault(context.market, accountId, now);
+    const record: AddressRecord = {
+      id,
+      accountId,
+      sealed: sealed.value,
+      countryCode: settings.format.countryCode,
+      isDefault,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await deps.addresses.insert(context.market, record);
+    return ok(viewOf(record, parsed.value.content));
+  });
 }
 
 /**
@@ -181,31 +178,25 @@ export async function updateAddress(
   if (!sealed.ok) return err({ code: 'access.denied' });
 
   const now = deps.clock.now();
-  return deps.unitOfWork.run<AddressView, AddressBookFailure>(
-    context.market,
-    async () => {
-      const before = await deps.addresses.find(context.market, accountId, id);
-      if (before === null) return err({ code: 'customers.address-not-found' } as const);
-      await deps.addresses.update(context.market, {
-        id,
-        accountId,
-        sealed: sealed.value,
-        updatedAt: now,
-      });
-      const isDefault = before.isDefault || parsed.value.makeDefault;
-      if (!before.isDefault && isDefault) {
-        await deps.addresses.clearDefault(context.market, accountId, now);
-        await deps.addresses.markDefault(context.market, accountId, id, now);
-      }
-      return ok(
-        viewOf(
-          { ...before, sealed: sealed.value, isDefault, updatedAt: now },
-          parsed.value.content,
-        ),
-      );
-    },
-    SERIAL,
-  );
+  return deps.unitOfWork.run<AddressView, AddressBookFailure>(context.market, async () => {
+    await deps.addresses.lockBook(context.market, accountId);
+    const before = await deps.addresses.find(context.market, accountId, id);
+    if (before === null) return err({ code: 'customers.address-not-found' } as const);
+    await deps.addresses.update(context.market, {
+      id,
+      accountId,
+      sealed: sealed.value,
+      updatedAt: now,
+    });
+    const isDefault = before.isDefault || parsed.value.makeDefault;
+    if (!before.isDefault && isDefault) {
+      await deps.addresses.clearDefault(context.market, accountId, now);
+      await deps.addresses.markDefault(context.market, accountId, id, now);
+    }
+    return ok(
+      viewOf({ ...before, sealed: sealed.value, isDefault, updatedAt: now }, parsed.value.content),
+    );
+  });
 }
 
 /** The customer removes an address; when it was the default, the newest remaining one is. */
@@ -224,6 +215,7 @@ export async function deleteAddress(
   return deps.unitOfWork.run<{ readonly deleted: true }, AddressBookFailure>(
     context.market,
     async () => {
+      await deps.addresses.lockBook(context.market, accountId);
       const before = await deps.addresses.find(context.market, accountId, id);
       if (before === null) return err({ code: 'customers.address-not-found' } as const);
       await deps.addresses.remove(context.market, accountId, id);
@@ -235,7 +227,6 @@ export async function deleteAddress(
       }
       return ok({ deleted: true } as const);
     },
-    SERIAL,
   );
 }
 
@@ -256,6 +247,7 @@ export async function setDefaultAddress(
   const records = await deps.unitOfWork.run<readonly AddressRecord[], AddressBookFailure>(
     context.market,
     async () => {
+      await deps.addresses.lockBook(context.market, accountId);
       const target = await deps.addresses.find(context.market, accountId, id);
       if (target === null) return err({ code: 'customers.address-not-found' } as const);
       if (!target.isDefault) {
@@ -264,7 +256,6 @@ export async function setDefaultAddress(
       }
       return ok(await deps.addresses.list(context.market, accountId));
     },
-    SERIAL,
   );
   if (!records.ok) return records;
   return ok({

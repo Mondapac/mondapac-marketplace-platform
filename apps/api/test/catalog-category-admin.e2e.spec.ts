@@ -153,7 +153,7 @@ describe.each(TEST_MARKETS)(
       fakes.reset();
       editStore.reset();
       restructureStore.products.clear();
-      restructureStore.onlyHere.clear();
+      restructureStore.archiveOthers.clear();
       restructureStore.relinked.length = 0;
       retirementChecked.length = 0;
       retirementAnswer = { ok: true, value: undefined };

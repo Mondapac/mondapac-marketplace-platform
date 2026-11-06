@@ -99,6 +99,7 @@ export class CategoryMove extends UseCase<
       targetId: id.value,
       treeVersion: treeVersion.value,
       reason: reason.value,
+      kind: 'move',
       plan: (nodes, target, read) =>
         planMove(nodes, target, parentId, maxDepth, read.directProducts),
       finish: async ({ target, plan, tagsMarked, targetVersion }) => {
