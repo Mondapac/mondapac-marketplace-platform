@@ -1898,38 +1898,6 @@ describe('relay of the order list views', () => {
       ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
     });
 
-  it('forwards the list filters, sort and page with the shape the API reads', async () => {
-    const upstream = upstreamOk();
-    const query =
-      'status=confirmed&paymentState=captured&fulfilment=shipped&from=2026-11-01T00:00:00.000Z' +
-      '&to=2026-11-06T00:00:00.000Z&sort=total&direction=desc&page=2&pageSize=25&x=1';
-    await relay(
-      config,
-      request('GET', `ordering/admin/orders?${query}`),
-      ['ordering', 'admin', 'orders'],
-      upstream,
-    );
-    expect(upstream.mock.calls[0]?.[0]).toBe(
-      `http://api.test/ordering/admin/orders?${query.replace('&x=1', '').replaceAll(':', '%3A')}`,
-    );
-  });
-
-  it('drops filter values of the wrong shape', async () => {
-    const upstream = upstreamOk();
-    await relay(
-      config,
-      request(
-        'GET',
-        'ordering/admin/orders?paymentState=paid&sort=name&page=0&from=2026-11-01&status=confirmed',
-      ),
-      ['ordering', 'admin', 'orders'],
-      upstream,
-    );
-    expect(upstream.mock.calls[0]?.[0]).toBe(
-      'http://api.test/ordering/admin/orders?status=confirmed',
-    );
-  });
-
   it('relays the saved views with the admin list key only', async () => {
     const upstream = upstreamOk();
     await relay(

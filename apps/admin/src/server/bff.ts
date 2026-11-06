@@ -451,18 +451,6 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sellerId: UUID,
   },
   'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
-  'ordering/admin/orders': {
-    status: /^(pending-payment|confirmed|cancelled)$/,
-    paymentState: /^(none|authorised|captured|voided)$/,
-    fulfilment: /^(to-ship|shipped|delivered)$/,
-    // An ISO instant, as the panel sends the start of a day.
-    from: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/,
-    to: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/,
-    sort: /^(created|total)$/,
-    direction: /^(asc|desc)$/,
-    page: /^[1-9][0-9]{0,3}$/,
-    pageSize: /^([1-9][0-9]?|100)$/,
-  },
   'ordering/admin/saved-filters': { listKey: /^admin\.ordering\.orders$/ },
   'commission-payouts/admin/payouts': {
     status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,

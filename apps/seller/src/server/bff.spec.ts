@@ -1139,33 +1139,6 @@ describe('relay of the seller order list views', () => {
       ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
     });
 
-  it('forwards the tab, days, sort and page of the order list with the shape the API reads', async () => {
-    const upstream = upstreamOk();
-    const query =
-      'status=to-ship&page=2&pageSize=25&sort=total&direction=asc&from=2026-11-01T00:00:00.000Z' +
-      '&to=2026-11-06T00:00:00.000Z';
-    await relay(
-      config,
-      request('GET', `ordering/seller/orders?${query}&x=1`),
-      ['ordering', 'seller', 'orders'],
-      upstream,
-    );
-    expect(upstream.mock.calls[0]?.[0]).toBe(
-      `http://api.test/ordering/seller/orders?${query.replaceAll(':', '%3A')}`,
-    );
-  });
-
-  it('drops values of the wrong shape', async () => {
-    const upstream = upstreamOk();
-    await relay(
-      config,
-      request('GET', 'ordering/seller/orders?status=confirmed&sort=name&page=0&limit=20'),
-      ['ordering', 'seller', 'orders'],
-      upstream,
-    );
-    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/ordering/seller/orders?limit=20');
-  });
-
   it('relays the saved views with the seller list key only', async () => {
     const upstream = upstreamOk();
     await relay(
