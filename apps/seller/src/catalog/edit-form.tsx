@@ -23,6 +23,7 @@ import {
 } from './draft-content.ts';
 import { editProblemOf, type EditProblem } from './edit-errors.ts';
 import { VariantsSection } from './variants-section.tsx';
+import { axesOf } from './variant-grid.ts';
 import type { DraftSaved, ProductPhoto, ProductView, Submitted } from './types.ts';
 
 const KEYS = ['name', 'shortDescription', 'description'] as const;
@@ -97,6 +98,7 @@ export function EditForm({
     attributeInputsOf(content, attributeFields),
   );
   const [rows, setRows] = useState<VariantRow[]>(() => variantRowsOf(content, product.variants));
+  const [axes, setAxes] = useState<string[]>(() => axesOf(content, rows, form.fields));
   const [imageIds, setImageIds] = useState<string[]>(() => imageIdsOf(content));
   const [dirty, setDirty] = useState(false);
   const [replacePending, setReplacePending] = useState(false);
@@ -124,6 +126,7 @@ export function EditForm({
       taxCategoryCode,
       attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
       variants: configurable ? variantsWith(list) : null,
+      variantAxes: configurable ? axes : null,
     });
   }
 
@@ -296,12 +299,13 @@ export function EditForm({
         <VariantsSection
           rows={rows}
           fields={form.fields}
-          locales={locales}
+          axes={axes}
+          locked={product.published !== null || rows.some((row) => row.state === 'published')}
           defaultLocale={defaultLocale}
           max={product.maxVariants}
-          refused={refused}
           onChange={(next) => {
-            setRows(next);
+            setRows(next.rows);
+            setAxes(next.axes);
             edited();
           }}
         />
