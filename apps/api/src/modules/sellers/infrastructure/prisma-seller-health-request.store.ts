@@ -94,9 +94,13 @@ export class PrismaSellerHealthRequestStore implements SellerHealthRequestStore 
     return updated.count > 0;
   }
 
-  async latest(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerHealthRequest | null> {
+  async latest(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    source?: SellerHealthRequestSource,
+  ): Promise<SellerHealthRequest | null> {
     const row = await this.prisma.tx(market).sellersSellerHealthRequest.findFirst({
-      where: { marketId: market.marketId, sellerId },
+      where: { marketId: market.marketId, sellerId, ...(source === undefined ? {} : { source }) },
       orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
       select: SELECT,
     });

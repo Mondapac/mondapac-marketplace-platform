@@ -123,6 +123,20 @@ describe.each(TEST_MARKETS)('the seller health request store in market %s', (cod
     await expect(run(market, () => store.pending(market, 101))).rejects.toThrow(RangeError);
   });
 
+  it("finds the latest request of one source, so an admin click never counts as the seller's", async () => {
+    const seller = await newSeller();
+    await enqueue(market, seller, T0, 'seller');
+    const first = (await run(market, () => store.latest(market, seller, 'seller')))!;
+    await run(market, () => store.finish(market, first.id, 'done', T0));
+    await enqueue(market, seller, T0.add({ minutes: 20 }), 'admin');
+    expect((await run(market, () => store.latest(market, seller)))?.source).toBe('admin');
+    const own = await run(market, () => store.latest(market, seller, 'seller'));
+    expect(own).toMatchObject({ id: first.id, source: 'seller' });
+    const other = await newSeller();
+    await enqueue(market, other, T0, 'admin');
+    expect(await run(market, () => store.latest(market, other, 'seller'))).toBeNull();
+  });
+
   it('keeps Markets apart', async () => {
     const seller = await newSeller();
     await enqueue(market, seller);

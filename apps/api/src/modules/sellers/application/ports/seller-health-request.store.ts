@@ -51,8 +51,15 @@ export interface SellerHealthRequestStore {
     at: Temporal.Instant,
   ): Promise<boolean>;
 
-  /** The newest request of a seller, any status, or `null`. */
-  latest(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerHealthRequest | null>;
+  /**
+   * The newest request of a seller, any status, or `null`. With `source`, only requests that came
+   * from it (the seller's cooldown looks at the seller's own clicks, never an admin's).
+   */
+  latest(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    source?: SellerHealthRequestSource,
+  ): Promise<SellerHealthRequest | null>;
 }
 
 export const SELLER_HEALTH_REQUEST_STORE = Symbol('SELLER_HEALTH_REQUEST_STORE');
