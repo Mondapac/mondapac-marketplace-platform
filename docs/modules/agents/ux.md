@@ -60,7 +60,7 @@ Status badges: open attention "Open", agent_responded info "You replied", resolv
 Thread layout: `BackLink` "Issues"; header (title, shop, severity, status, raised date, raised by "MondaPac"); description card; comment list oldest first (author "You" or "MondaPac", time in agent zone); composer at bottom: `TextAreaField` "Comment" (max length from server, counter), `Button` primary "Send comment", secondary "Mark as fixed" (opens `Dialog`: "Mark this issue as fixed? MondaPac will review it and may reopen it." buttons "Mark as fixed" / "Cancel").
 - Actions by state: open or responded: comment + "Mark as fixed" enabled. Resolved: composer stays (comments allowed), "Mark as fixed" replaced by info `Banner` "Waiting for MondaPac to close this issue." Closed: composer replaced by info `Banner` "This issue is closed." (with close reason when "withdrawn": "MondaPac withdrew this issue.").
 - Disabled states: Send disabled while empty or sending; both buttons disabled while a request is in flight.
-- Polling update: BFF poll every 15s while the tab is visible (paused when hidden, resume on focus). New comments append, a `role="status"` line says "New comment from MondaPac"; the scroll position is kept and a "New comments" `FieldAction` jumps down if the user is not at the bottom. A status change updates the badge and shows a toast. Poll failure: after 3 misses a quiet attention `Banner` "Live updates paused. Retrying." with no data loss.
+- Polling update: BFF poll every 15s by default (Market config; BFF rate-limited) while the tab is visible (paused when hidden, resume on focus). New comments append, a `role="status"` line says "New comment from MondaPac"; the scroll position is kept and a "New comments" `FieldAction` jumps down if the user is not at the bottom. A status change updates the badge and shows a toast. Poll failure: after 3 misses a quiet attention `Banner` "Live updates paused. Retrying." with no data loss.
 - Conflict (version changed): `SettingsConflictBanner` pattern text "This issue changed. Reload to see the latest." with "Reload"; the typed comment is kept.
 - Errors: send failure keeps the text, `FieldStatus` error "Could not send. Try again." Not found / other agent's issue: not-found page. Empty list: `EmptyState` "No issues", body "Nothing needs your attention."
 - Responsive: composer sticky at the bottom at 375 (above the keyboard); thread max width 720px at 768/1280.
@@ -80,7 +80,7 @@ Routes: `/agents/[id]/issues` (list inside the Issues tab) and `/agents/[id]/iss
 Thread is the same component as section 4 with admin framing: authors "You/{admin}" and "{agent name}". Actions by state:
 - open or responded: comment, "Close as withdrawn" (`Dialog`, reason required, copy "Close this issue as withdrawn? The agent will be told it is no longer needed.").
 - resolved: "Close issue" (primary) and "Reopen" (secondary; `Dialog` with required reason "Why is it not fixed?").
-- closed: read-only info `Banner` with close reason and date. Reopen is not offered (terminal).
+- closed: read-only info `Banner` with close reason and date: "Closed as fixed on {date}" for `confirmed`, "Withdrawn: {reason}" for `withdrawn`. Reopen is not offered (terminal).
 - Same polling, conflict, error and not-found behaviour as section 4. A refused action (agent cannot close, admin cannot mark fixed) never shows as a disabled button; the action is simply absent.
 - `agents.read` only: thread visible, composer and actions hidden, `SettingsViewOnlyBanner`.
 

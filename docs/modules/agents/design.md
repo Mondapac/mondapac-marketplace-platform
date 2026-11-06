@@ -39,18 +39,18 @@ Every record carries `market_id` and `tenant_id`. Instants are stored in UTC. Mo
 - `earning = floor(basisAmount × rateBps / 10000)`.
 - `currency` is the seller order's currency.
 
-**AgentEarningReversal** (one per refund; unique on `refundId`): `reversalId`, `earningId`, `refundId`, `refundedBasis: Money`, `reversed: Money`, `isRemainder`.
+**AgentEarningReversal** (one per refund; unique on `refundId`): `reversalId`, `earningId`, `refundId`, `seq`, `refundedBasis: Money`, `reversed: Money`, `cumRefundedBasis`, `cumReversed`, `isRemainder`, `recordedAt`.
 
 - `reversed = floor(earning × refundedBasis / basisAmount)`.
 - If the cumulative `refundedBasis` reaches `basisAmount`, then `reversed = earning − sum(previous reversals)` and `isRemainder = true`.
 - The sum of reversals is always `<= earning`, so the net per order is never negative. Cumulative `refundedBasis` is capped at `basisAmount`.
 
-**Issue** (root): `issueId`, `agentId`, `sellerId`, `title`, `description`, `severity` (`low` | `medium` | `high`), `status`, `raisedBy`, `version`, timestamps.
+**Issue** (root): `issueId`, `agentId`, `sellerId`, `title`, `description`, `severity` (`low` | `medium` | `high`), `status`, `closeReason` (`confirmed` | `withdrawn` | null), `raisedBy`, `commentCount`, `version`, timestamps.
 
 - When raised, the seller must be linked to that agent at that moment.
 - The issue stays visible to its agent after an unlink, because ownership is `issue.agentId`.
 
-**IssueComment** (child of Issue, append-only): `commentId`, `issueId`, `authorType` (`admin` | `agent`), `authorAccountId`, `body` (plain text; length limit from config), `createdAt`.
+**IssueComment** (child of Issue, append-only): `commentId`, `issueId`, `seq`, `authorType` (`admin` | `agent`), `authorAccountId`, `body` (plain text; length limit from config), `createdAt`.
 
 - No edit and no delete. No comment on a `closed` issue.
 
@@ -61,7 +61,7 @@ Every record carries `market_id` and `tenant_id`. Instants are stored in UTC. Mo
 | (new)                        | `open`            | RaiseIssue                          | admin `agents.manage`  |
 | `open`                       | `agent_responded` | the agent's first comment           | agent-self             |
 | `open`, `agent_responded`    | `resolved`        | MarkIssueResolved                   | agent-self             |
-| `resolved`                   | `closed`          | CloseIssue                          | admin `agents.manage`  |
+| `resolved`                   | `closed`          | CloseIssue with `closeReason = confirmed` | admin `agents.manage`  |
 | `resolved`                   | `open`            | ReopenIssue (reason required)       | admin `agents.manage`  |
 | `open`, `agent_responded`    | `closed`          | CloseIssue with `closeReason = withdrawn` (required), audited | admin `agents.manage` |
 
@@ -72,7 +72,7 @@ Everything else is forbidden:
 - `closed` is terminal.
 - `open` or `agent_responded` → `closed` only as `withdrawn`, with a reason (cto, open question 4).
 
-Comments in other states do not change the status. Every transition bumps `version`, which is checked with optimistic concurrency.
+Comments in other states do not change the status. Every comment and every transition bumps `version`, which is checked with optimistic concurrency; a comment also bumps `commentCount` and takes `seq = commentCount + 1` (D1).
 
 ## 2. Earnings flow (AGT-05)
 
@@ -220,6 +220,6 @@ Every use case takes ActorContext and MarketContext (ADR-0018). Every write by a
 - **D1, comment polling cursor:** accepted. Each comment takes a per-issue `seq` (`issues.comment_count + 1`) in the same unit of work, so the Issue aggregate is updated on every comment, not only on status changes. Polling uses `after=seq`.
 - **D2, two refunds at once:** accepted. Each reversal takes a unique per-earning `seq`; the cap and remainder checks make the database refuse a second remainder. No row lock on earnings (they have no UPDATE grant); a refused insert retries through the inbox.
 - **D3, close reasons:** `closeReason` is `confirmed` for a normal close of a `resolved` issue and `withdrawn` (reason text required) for `open` or `agent_responded`.
-- **D4, which month a reversal counts in:** **owner decision 2026-11-06: the refund's month.** A reversal is reported in the month of its own `createdAt`, in the agent's time zone; past months never change. The dashboard and the AGT-10 statement sum earnings by `placedAt` month and reversals by their own month.
+- **D4, which month a reversal counts in:** **owner decision 2026-11-06: the refund's month.** A reversal is reported in the month of its own `recordedAt`, in the agent's time zone; past months never change. The dashboard and the AGT-10 statement sum earnings by `placedAt` month and reversals by their own month.
 - **`issue_status_changes`:** accepted as part of the Issue aggregate (history of every transition with actor and reason).
 
