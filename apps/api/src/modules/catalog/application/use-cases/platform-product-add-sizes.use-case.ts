@@ -27,7 +27,8 @@ export interface PlatformProductAddSizesDependencies {
  * `offOfferCount`, the number of other sellers' Offers the confirm showed going off sale (their
  * sellers may not sell `configurable`, SEL-12); the count read in the unit must equal it, else
  * `confirm.count-changed` with `currentCount`. Those Offers get the cause `type-not-allowed`.
- * The guards, their order and the effects are {@link AddSizes}'s.
+ * The guards, their order and the effects are {@link AddSizes}'s; a SELLER product, another
+ * Market's id and an unknown id are one byte-identical `product.not-found`.
  */
 export class PlatformProductAddSizes extends UseCase<
   PlatformProductAddSizesInput,

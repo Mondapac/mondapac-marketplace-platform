@@ -22,8 +22,10 @@ export interface PlatformProductAddSizesImpactInput {
  * `platform-product.add-sizes-impact` (catalog design 4.2a): the admin's confirm before Add
  * sizes reads how many other sellers' Offers on the product would go off sale, and the product
  * `version` to send back. Rule: the key `catalog.platform-product.edit`. A read; it writes
- * nothing and spends no limit. A SELLER product, another Market's id and an unknown id are
- * refused as for the command.
+ * nothing and spends no limit. It asks the command's first guards (the product is a PLATFORM
+ * one, has not ended and is Simple; the Market lists `configurable`), so it refuses what the
+ * command would; a SELLER product, another Market's id and an unknown id are one byte-identical
+ * `product.not-found`.
  */
 export class PlatformProductAddSizesImpact extends UseCase<
   PlatformProductAddSizesImpactInput,

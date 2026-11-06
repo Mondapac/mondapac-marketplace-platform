@@ -89,7 +89,6 @@ export const PLATFORM_PRODUCT_STATUS: Readonly<Record<string, number>> = Object.
   // Add sizes (design 4.2a): a type that is not Simple, a count that moved, a type the Market or
   // the seller's allowed types do not list.
   'product.not-simple': 409,
-  'revision.revert-changes-type': 409,
   'confirm.count-changed': 409,
   'product-type.not-allowed': 403,
   'product.family-invalid': 503,
@@ -417,13 +416,15 @@ export class PlatformProductController {
   @ApiBadRequestResponse({
     type: ApiErrorBody,
     description:
-      'validation.failed (details.fields: variants.axes-*, variants.option-* or ' +
-      'variants.option-not-in-family issue codes)',
+      'validation.failed (details.fields). Body: path version, axes, optionValues, replacePending ' +
+      'or offOfferCount with code range, type, format, too-many or unknown-field; the axes ' +
+      '(path axes) and the option values (path optionValues) with the variants.axes-*, ' +
+      'variants.option-* or variants.option-not-in-family issue codes',
   })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
     type: ApiErrorBody,
-    description: 'access.denied, request.csrf, product.seller-only or product-type.not-allowed',
+    description: 'access.denied, request.csrf or product-type.not-allowed',
   })
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
   @ApiConflictResponse({
@@ -436,7 +437,7 @@ export class PlatformProductController {
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiServiceUnavailableResponse({
     type: ApiErrorBody,
-    description: 'access.unavailable or revision.schema-unavailable',
+    description: 'access.unavailable, revision.schema-unavailable or product.family-invalid',
   })
   async addProductSizes(
     @Call() context: CallContext,
@@ -478,9 +479,16 @@ export class PlatformProductController {
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
     type: ApiErrorBody,
-    description: 'access.denied or product.seller-only',
+    description: 'access.denied or product-type.not-allowed',
   })
-  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiNotFoundResponse({
+    type: ApiErrorBody,
+    description: 'product.not-found (also a SELLER product, as for the command)',
+  })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'product.not-simple or product.not-editable, as for the command',
+  })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
   async addSizesImpactOf(
     @Call() context: CallContext,

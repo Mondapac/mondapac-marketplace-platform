@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Result, Temporal } from '@mondapac/shared-kernel';
+import { actingAdminAccountOf } from '../acting-as';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
@@ -24,7 +25,7 @@ import type {
 } from '../ports/allowed-product-types.reader';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
-import type { OfferRepository } from '../ports/offer.repository';
+import type { OfferActor, OfferRepository } from '../ports/offer.repository';
 import type { OwnOfferFinder } from '../ports/own-offer-finder';
 import type { ProductRepository } from '../ports/product.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
@@ -100,7 +101,13 @@ export interface AddSizesDependencies {
 }
 
 type Author =
-  | { readonly kind: 'seller'; readonly accountId: Id<'Account'>; readonly sellerId: Id<'Seller'> }
+  | {
+      readonly kind: 'seller';
+      readonly accountId: Id<'Account'>;
+      readonly sellerId: Id<'Seller'>;
+      /** The admin behind an acting-as session; null for the seller's own. */
+      readonly actingAdminAccountId: Id<'Account'> | null;
+    }
   | { readonly kind: 'admin'; readonly accountId: Id<'Account'> };
 
 /** What the read before the unit learned: who to ask SEL-12 about. */
@@ -167,21 +174,36 @@ export class AddSizes {
     const author = authorOf(context);
     if (author === null || author.kind !== 'admin') return err({ code: 'access.denied' });
     const { market } = context;
+    let marketTypes: readonly string[];
+    try {
+      marketTypes = this.deps.policy.productTypes(market);
+    } catch {
+      return err({ code: 'access.unavailable' });
+    }
     const read = await this.deps.unitOfWork.run<
       { readonly product: Product; readonly prepared: Prepared },
       AddSizesFailure
     >(
       market,
       async () => {
-        const product = await this.deps.products.findById(market, productId);
-        if (product === null) return err({ code: 'product.not-found' as const });
-        if (product.state.scope !== 'PLATFORM')
-          return err({ code: 'product.seller-only' as const });
-        return ok({ product, prepared: await this.#prepare(context, product) });
+        const product = await this.#load(market, productId, author);
+        if (!product.ok) return product;
+        // The command's guards 1 to 3 first, so the confirm refuses what the command would. A
+        // pending revision is no refusal here: the command may set it aside with `replacePending`.
+        const checked = product.value.checkAddSizes({
+          authorKind: author.kind,
+          replacePending: true,
+        });
+        if (!checked.ok) return err(checked.error);
+        return ok({
+          product: product.value,
+          prepared: await this.#prepare(context, product.value),
+        });
       },
       { readOnly: true },
     );
     if (!read.ok) return err(read.error);
+    if (!marketTypes.includes(CONFIGURABLE)) return err({ code: 'product-type.not-allowed' });
     const notAllowed = await this.#sellersWithoutConfigurable(context, read.value.prepared);
     if (!notAllowed.ok) return notAllowed;
     const offers = await this.deps.unitOfWork.run(
@@ -357,7 +379,7 @@ export class AddSizes {
               // product's pending revision (`own-product.submit`); so does setting it aside.
               const cleared = this.#clearPendingTags(offer, author, now);
               if (!cleared.ok) return cleared;
-              await saveOffer(deps, context, offer, author.accountId);
+              await saveOffer(deps, context, offer, author.accountId, sellerActor(author));
             }
           } else {
             for (const offer of targets) {
@@ -394,7 +416,10 @@ export class AddSizes {
     }
   }
 
-  /** The product, for this author only: another seller's, a PLATFORM one and a missing one are alike. */
+  /**
+   * The product, for this author only: a seller sees their own; an admin sees PLATFORM products.
+   * Any other and a missing one are alike (`product.not-found`, byte-identical).
+   */
   async #load(
     market: CallContext['market'],
     productId: Id<'Product'>,
@@ -402,13 +427,11 @@ export class AddSizes {
   ): Promise<Result<Product, AddSizesFailure>> {
     const product = await this.deps.products.findById(market, productId);
     if (product === null) return err({ code: 'product.not-found' });
-    if (
-      author.kind === 'seller' &&
-      (product.state.scope !== 'SELLER' || product.state.ownerSellerId !== author.sellerId)
-    ) {
-      return err({ code: 'product.not-found' });
-    }
-    return ok(product);
+    const mine =
+      author.kind === 'seller'
+        ? product.state.scope === 'SELLER' && product.state.ownerSellerId === author.sellerId
+        : product.state.scope === 'PLATFORM';
+    return mine ? ok(product) : err({ code: 'product.not-found' });
   }
 
   /** Who SEL-12 must be asked about: the owner of a SELLER product, the Offer sellers of a PLATFORM one. */
@@ -464,7 +487,12 @@ export class AddSizes {
         ? 'variants.option-not-in-family'
         : code;
     if (!chosen.ok) {
-      fields.push(...chosen.issues.map((issue) => ({ path: issue.path, code: named(issue.code) })));
+      fields.push(
+        ...chosen.issues.map((issue) => ({
+          path: requestPath(issue.path),
+          code: named(issue.code),
+        })),
+      );
     } else {
       const maxVariants = this.deps.policy.maxVariantsPerProduct(market);
       const variants = configurableProductType.validateVariants(
@@ -476,7 +504,7 @@ export class AddSizes {
       if (!variants.ok) {
         fields.push(
           ...variants.issues.map((issue) => ({
-            path: issue.path === 'variants' ? 'variantAxes' : 'optionValues',
+            path: requestPath(issue.path),
             code: named(issue.code),
           })),
         );
@@ -540,6 +568,15 @@ export class AddSizes {
   }
 }
 
+/**
+ * The request field an issue of the freeze's validators is about: the axes (`variantAxes`, or the
+ * product-wide `variants` issues about the option attributes) are `axes` in this request; the
+ * option values of the one variant (`variants[0]`) are `optionValues`.
+ */
+function requestPath(path: string): 'axes' | 'optionValues' {
+  return path === 'variantAxes' || path === 'variants' ? 'axes' : 'optionValues';
+}
+
 /** The author kind from the actor's population; a seller actor without a seller id is nobody. */
 function authorOf(context: CallContext): (Author & { readonly kind: AuthorKind }) | null {
   const { actor } = context;
@@ -547,11 +584,23 @@ function authorOf(context: CallContext): (Author & { readonly kind: AuthorKind }
   if (actor.population === 'seller') {
     return actor.sellerId === null
       ? null
-      : { kind: 'seller', accountId: actor.accountId, sellerId: actor.sellerId };
+      : {
+          kind: 'seller',
+          accountId: actor.accountId,
+          sellerId: actor.sellerId,
+          actingAdminAccountId: actingAdminAccountOf(actor),
+        };
   }
   if (actor.population === 'admin') return { kind: 'admin', accountId: actor.accountId };
   return null;
 }
+
+/** The history actor of a seller's change: the seller, and the admin behind an acting-as session. */
+const sellerActor = (author: Extract<Author, { kind: 'seller' }>): OfferActor => ({
+  kind: 'seller',
+  accountId: author.accountId,
+  actingAdminAccountId: author.actingAdminAccountId,
+});
 
 const allows = (allowed: AllowedProductTypes): boolean =>
   allowed === 'all' || allowed.has(CONFIGURABLE);

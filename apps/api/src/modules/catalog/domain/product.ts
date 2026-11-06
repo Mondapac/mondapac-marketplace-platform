@@ -1040,6 +1040,11 @@ export function variantCodeOf(productCode: string, variantNo: number): string {
  * The type guard of a revert (catalog design 4.2 row 6; M-9): a revert to an old revision whose
  * type is not the product's is refused, so a Configurable product never goes back to Simple
  * content. `revisionTypeCode` is the old revision's own `typeCode`, the product's the row's.
+ *
+ * TODO(revert use cases, design 4.2 row 6): `own-product.revert` and `platform-product.revert` do
+ * not exist yet and nothing calls this. The first of them calls it before it writes anything and
+ * answers `revision.revert-changes-type`; that code then joins the HTTP status maps
+ * (`PLATFORM_PRODUCT_STATUS`) with a use-case test.
  */
 export function revertTypeRefusal(
   productTypeCode: ProductTypeCode,
