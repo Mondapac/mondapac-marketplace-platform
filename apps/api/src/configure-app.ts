@@ -106,6 +106,33 @@ export function isStoreImageUploadRequest(
   );
 }
 
+/** An admin's category image (categories package C3c): `PUT /catalog/admin/categories/<id>/image`. */
+const CATEGORY_IMAGE_PATH = /^\/catalog\/admin\/categories\/[0-9a-fA-F-]{36}\/image\/?(?:\?.*)?$/;
+
+/** An admin session cookie of any Market: `__Host-session-admin-<MARKET>=...`. */
+const ADMIN_SESSION_COOKIE = /(?:^|;\s*)__Host-session-admin-[A-Z][A-Z0-9_]{1,7}=[^;\s]/;
+
+/**
+ * True for a category image upload that may carry the large body: a PUT to the route that holds
+ * an admin session cookie and the CSRF header (the same pre-filter as the store images, Hassan H4).
+ * Anything else gets the 64 KiB JSON parser. A cheap pre-filter only: the actor guard still checks
+ * the session and the CSRF token itself.
+ */
+export function isCategoryImageUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'PUT' || url === undefined || !CATEGORY_IMAGE_PATH.test(url)) return false;
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+
 /** A base64 certificate file of 10 MiB is 14 million characters; the rest is the JSON around it. */
 const CERTIFICATE_DOCUMENT_BODY_LIMIT = '14500kb';
 // The admin platform import's upload (catalog design 14a): a base64 CSV file of at most 10 MiB, read
@@ -185,6 +212,13 @@ export function configureApp(app: NestExpressApplication): void {
   // for a request that carries a seller session cookie and the CSRF header (Hassan H4).
   app.useBodyParser('raw', {
     type: (request) => isStoreImageUploadRequest(request.method, request.url, request.headers),
+    limit: PRODUCT_IMAGE_BODY_LIMIT,
+    inflate: false,
+  });
+  // An admin's category image takes the same larger body (categories package C3c), only for a
+  // request that carries an admin session cookie and the CSRF header.
+  app.useBodyParser('raw', {
+    type: (request) => isCategoryImageUploadRequest(request.method, request.url, request.headers),
     limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });
