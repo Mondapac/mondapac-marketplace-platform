@@ -426,6 +426,60 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
     expect(attributes?.searchText).not.toContain('Draft words');
   });
 
+  it('gives the published variants of a sellable Offer with axis facets, label and GTIN (variants V8)', async () => {
+    const tag = uuid7().slice(-8);
+    const size = `vsize-${tag}`;
+    await definition(market, size, {
+      dataType: 'select',
+      canBeFilter: true,
+      names: { 'en-AU': 'Size' },
+      options: { s: { label: 'Small' }, 'old-s': { label: 'Old small', mergedInto: 's' } },
+    });
+    const productId = await product(market, { texts: { 'en-AU': ['Rice', null] }, categories: [] });
+    const { rows } = await owner.query<{ id: string; revision: string }>(
+      `SELECT v.id, p.published_revision_id AS revision
+         FROM catalog.product_variants v JOIN catalog.products p
+           ON p.market_id = v.market_id AND p.id = v.product_id
+        WHERE v.market_id = $1 AND v.product_id = $2`,
+      [market.marketId, productId],
+    );
+    const variantId = rows[0]!.id;
+    await owner.query(
+      `UPDATE catalog.product_variants SET state = 'published', published_at = now()
+        WHERE market_id = $1 AND id = $2`,
+      [market.marketId, variantId],
+    );
+    await insert('product_revision_variants', {
+      market_id: market.marketId,
+      tenant_id: market.tenantId,
+      revision_id: rows[0]!.revision,
+      variant_id: variantId,
+      product_id: productId,
+      position: 0,
+      option_key: `${size}=old-s`,
+      option_values: JSON.stringify({ [size]: 'old-s' }),
+      labels: JSON.stringify({ 'en-AU': `Small ${tag}` }),
+      gtin: '09300633603366',
+    });
+    const sellable = await offer(market, productId, 'published');
+    const draft = await offer(market, productId, 'draft');
+
+    const map = await run(market, () => reader.read(market, [sellable, draft], 'en-AU'), true);
+
+    expect(map.get(sellable)?.variants).toEqual([
+      {
+        variantId,
+        position: 0,
+        label: `Small ${tag}`,
+        gtin: '09300633603366',
+        facets: [`${size}=s`],
+      },
+    ]);
+    expect(map.get(sellable)?.attributes.searchText).toContain(`Small ${tag}`);
+    // An Offer that is not sellable carries no variants.
+    expect(map.get(draft)?.variants).toEqual([]);
+  });
+
   it('indexes the values of a merged attribute as its target, with the option map (attributes A8)', async () => {
     const tag = uuid7().slice(-8);
     const [pack, container] = [`pack-${tag}`, `container-${tag}`];

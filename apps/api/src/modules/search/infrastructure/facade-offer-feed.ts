@@ -23,6 +23,14 @@ export class FacadeOfferFeed implements OfferFeed {
         shortText: value.text?.shortDescription ?? null,
         categoryIds: value.categoryIds,
         attributes: value.attributes,
+        // Field by field: nothing catalog might add later reaches the index unreviewed.
+        variants: value.variants.map(({ variantId, position, label, gtin, facets }) => ({
+          variantId,
+          position,
+          label,
+          gtin,
+          facets,
+        })),
       });
     }
     return facts;
