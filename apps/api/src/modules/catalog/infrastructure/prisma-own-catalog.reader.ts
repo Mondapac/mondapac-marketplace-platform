@@ -1,5 +1,5 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, MeasureSettings } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   ListPage,
@@ -250,7 +250,12 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
       const row = byCode.get(entry.code);
       const published = row?.publishedRevision;
       if (row === undefined || published === null || published === undefined) continue;
-      const bounds = published.bounds as { maxLength?: number; min?: number; max?: number };
+      const bounds = published.bounds as {
+        maxLength?: number;
+        min?: number;
+        max?: number;
+        measure?: MeasureSettings;
+      };
       fields.push({
         code: row.code,
         dataType: row.dataType,
@@ -262,6 +267,9 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
           ...(bounds.min === undefined ? {} : { min: bounds.min }),
           ...(bounds.max === undefined ? {} : { max: bounds.max }),
         },
+        ...(row.dataType === 'measure' && bounds.measure !== undefined
+          ? { measure: bounds.measure }
+          : {}),
         names: published.names as Record<string, string>,
         options: published.options
           .filter((option) => option.active)

@@ -132,6 +132,8 @@ import { FreezeRevision } from './application/revisions/freeze-revision.service'
 import { SubmitProduct } from './application/revisions/submit-product.service';
 import { SaveDraft } from './application/working-copy/save-draft.service';
 import { SaveWorkingCopy } from './application/working-copy/save-working-copy.service';
+import { PlatformProductOptions } from './application/use-cases/platform-product-options.use-case';
+import { PlatformProductRead } from './application/use-cases/platform-product-read.use-case';
 import { PlatformProductCreate } from './application/use-cases/platform-product-create.use-case';
 import { PlatformProductSaveDraft } from './application/use-cases/platform-product-save-draft.use-case';
 import { PlatformProductSubmit } from './application/use-cases/platform-product-submit.use-case';
@@ -1578,6 +1580,15 @@ const RESTRUCTURE_DEPS = {
     }),
     useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),
     useCaseProvider(PlatformProductSubmit, { submit: true }),
+    useCaseProvider(PlatformProductOptions, { policy: true }),
+    useCaseProvider(PlatformProductRead, {
+      unitOfWork: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      ownReader: true,
+      policy: true,
+    }),
     useCaseProvider(SeedCategoryTree, {
       unitOfWork: true,
       categories: true,

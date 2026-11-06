@@ -77,6 +77,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     }),
     maxVariantsPerProduct: () => 10,
     maxVariantAttributes: () => 2,
+    units: () => [],
     maxCategoryDepth: () => 4,
     maxCategoryChangeTags: () => 50_000,
     productTypes: () => ['simple', 'configurable'],

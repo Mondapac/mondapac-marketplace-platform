@@ -119,6 +119,7 @@ describe.each(TEST_MARKETS)(
       }),
       maxVariantsPerProduct: () => 10,
       maxVariantAttributes: () => 2,
+      units: () => [],
       maxCategoryDepth: () => 4,
       maxCategoryChangeTags: () => 50_000,
       productTypes: () => ['simple', 'configurable'],

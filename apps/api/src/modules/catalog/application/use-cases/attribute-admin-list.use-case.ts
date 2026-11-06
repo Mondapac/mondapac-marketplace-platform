@@ -18,6 +18,7 @@ import {
   usesOf,
   type AttributeSummaryView,
   type MarketLocales,
+  type MarketUnit,
 } from '../attributes/attribute-admin-views';
 import { closedInput, invalid, type ValidationFailure } from '../brands/brand-views';
 import type { AttributeAdminReader } from '../ports/attribute-admin.reader';
@@ -50,6 +51,8 @@ export interface AttributeAdminListOutput {
   readonly totalAll: number;
   /** The Market's locales: the default first, then every supported one. */
   readonly locales: MarketLocales;
+  /** The units the Market offers for a number-with-unit attribute (attributes A3). */
+  readonly units: readonly MarketUnit[];
   /** The families the "Used in" filter offers, by code. */
   readonly featureSets: readonly { readonly id: string; readonly code: string }[];
   /** True when the Market holds more definitions than one read loads (never silently partial). */
@@ -175,6 +178,7 @@ export class AttributeAdminList extends UseCase<
           total: matching.length,
           totalAll: loaded.length,
           locales,
+          units: this.deps.policy.units(market).map((unit) => ({ ...unit })),
           featureSets: featureSets.map((set) => ({ id: set.id, code: set.code })),
           truncated: definitions.length > ATTRIBUTE_LOAD_MAX,
         });

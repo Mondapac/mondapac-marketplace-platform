@@ -70,16 +70,37 @@ export class OwnFormBounds {
   @ApiProperty({ required: false }) max?: number;
 }
 
+export class OwnFormMeasure {
+  @ApiProperty({ enum: ['mass', 'volume', 'length', 'count'] }) dimension!: string;
+  @ApiProperty({ type: [String], description: 'Unit codes the seller may pick.' }) units!: string[];
+  @ApiProperty() defaultUnit!: string;
+  @ApiProperty({ description: 'Decimal places the seller may type in the unit picked.' })
+  decimals!: number;
+}
+
+export class OwnFormUnit {
+  @ApiProperty() code!: string;
+  @ApiProperty(LOCALE_MAP) labels!: Record<string, string>;
+}
+
 export class OwnFormField {
   @ApiProperty() code!: string;
   @ApiProperty({
-    description: 'text, long-text, integer, decimal, boolean, select, multi-select or date.',
+    description:
+      'text, long-text, integer, decimal, boolean, select, multi-select, date or measure.',
   })
   dataType!: string;
   @ApiProperty() localizable!: boolean;
   @ApiProperty() required!: boolean;
   @ApiProperty() isVariantOption!: boolean;
   @ApiProperty({ type: OwnFormBounds }) bounds!: OwnFormBounds;
+  @ApiProperty({
+    type: OwnFormMeasure,
+    required: false,
+    description:
+      'A measure field only. Min and max in bounds are in base units (g, ml, mm, count).',
+  })
+  measure?: OwnFormMeasure;
   @ApiProperty(LOCALE_MAP) names!: Record<string, string>;
   @ApiProperty({ type: [OwnFormOption] }) options!: OwnFormOption[];
 }
@@ -92,6 +113,12 @@ export class OwnFormCategory {
 
 export class OwnProductForm {
   @ApiProperty({ type: [String] }) taxCategoryCodes!: string[];
+  @ApiProperty({
+    type: [OwnFormUnit],
+    description:
+      "The Market's units with a label per locale (a measure field names units by code).",
+  })
+  units!: OwnFormUnit[];
   @ApiProperty({ type: [OwnFormField], description: 'The fields of the product family.' })
   fields!: OwnFormField[];
   @ApiProperty({ type: [OwnFormCategory], description: 'Active platform categories.' })
