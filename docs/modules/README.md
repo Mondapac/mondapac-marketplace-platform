@@ -22,7 +22,7 @@
 
 | سطح | دروازه‌ها | ماژول‌ها |
 |---|---|---|
-| **A** | G1 + G2 + بازبینی امنیتی | identity، sellers (مدیریت فروشنده)، certification، catalog (محصول، دسته‌بندی، Offer)، inventory، pricing (قیمت؛ ADR-0024 تصمیم ۳، G1 2026-10-07)، ordering، payments، commission-payouts، tax، assistant (گفت‌وگوی خریدار؛ دروازه‌هایش فقط هستهٔ ۳ AI را می‌بندند، ADR-0019) |
+| **A** | G1 + G2 + بازبینی امنیتی | identity، sellers (مدیریت فروشنده)، certification، catalog (محصول، دسته‌بندی، Offer)، inventory، pricing (قیمت؛ ADR-0024 تصمیم ۳، G1 2026-10-07)، ordering، payments، commission-payouts، tax، agents (پرتال نماینده؛ G1 با استثنای حالت سرعت، 2026-11-06)، assistant (گفت‌وگوی خریدار؛ دروازه‌هایش فقط هستهٔ ۳ AI را می‌بندند، ADR-0019) |
 | **B** | یک دروازهٔ ترکیبی | cart، shipping، notifications، search، content (CMS و بلاگ)، legal، promotions |
 | **C** | فقط تأیید PO | reporting و قابلیت‌های P2 به بعد بدون اثر روی پول، اعتماد یا دادهٔ شخصی |
 
@@ -46,6 +46,7 @@
 | ordering | A | ۵ | [`ordering/brief.md`](ordering/brief.md) | تأیید (2026-10-08) | — |
 | payments | A | ۵ | [`payments/brief.md`](payments/brief.md) | تأیید (2026-10-08) | — |
 | commission-payouts | A | ۵ | [`commission-payouts/brief.md`](commission-payouts/brief.md) | تأیید (2026-10-08) | — |
+| agents | A | ۵ | [`agents/brief.md`](agents/brief.md) | تأیید (2026-11-06) | — |
 | wallet (کیف پول مشتری، اعتبار فروشگاهی) | A | بسته ۱: هستهٔ دفتر کل | [`wallet/notes.md`](wallet/notes.md) | بدون G1 (speed mode؛ تصمیم‌های مالک 2026-10-25 در یادداشت) | بدون G2 (speed mode) |
 | reviews (نظرها و امتیازهای خریدار) | A | بسته ۱: هستهٔ بک‌اند | [`reviews/notes.md`](reviews/notes.md) | بدون G1 (speed mode؛ تصمیم‌های مالک 2026-10-26 در یادداشت) | بدون G2 (speed mode) |
 | blog (پست‌های بلاگ، دسته و برچسب، سهمیهٔ فروشنده) | B | بسته ۱: هستهٔ بک‌اند | [`blog/notes.md`](blog/notes.md) | بدون G1 (speed mode؛ تصمیم‌ها در یادداشت) | بدون G2 (speed mode) |
