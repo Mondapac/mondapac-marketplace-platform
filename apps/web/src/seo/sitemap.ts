@@ -184,7 +184,7 @@ function pageRange(n: number): { first: number; last: number } | null {
 
 async function productPage(page: number, read: Reader, photo: PhotoUrl | null = null) {
   try {
-    const live = await liveProducts({ page, pageSize: PRODUCT_PAGE_SIZE }, read, photo);
+    const live = await liveProducts({ page, pageSize: PRODUCT_PAGE_SIZE }, read, photo, true);
     if (live === undefined) throw new SitemapReadFailed('product search');
     return live;
   } catch {

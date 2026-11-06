@@ -498,6 +498,46 @@ describe('image sitemap (products children)', () => {
     );
   });
 
+  it('caps at 8, skips repeats and invalid refs, and falls back to primaryImage', async () => {
+    request.imageOrigin = 'https://img.example';
+    const at = (n: number) => `01990000-0000-7000-8000-0000000000${(0xb0 + n).toString(16)}`;
+    const ref = (imageId: string) => ({ imageId, width: 1600, height: 1200, alt: 'Product' });
+    const many = [
+      ref(at(0)),
+      ref(at(0)),
+      { imageId: 'nope' },
+      ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ref(at(n))),
+    ];
+    request.api = (path) => {
+      if (path === 'catalog/categories') return { kind: 'ok', body: TREE };
+      const page = Number(new URLSearchParams(path.split('?')[1]).get('page'));
+      return {
+        kind: 'ok',
+        body: {
+          hasMore: false,
+          items:
+            page === 1
+              ? [
+                  { ...item(1), primaryImage: ref(at(0)), images: many },
+                  { ...item(2), primaryImage: ref(IMAGE), images: [{ imageId: 'nope' }] },
+                  { ...item(3), images: [] },
+                ]
+              : [],
+        },
+      };
+    };
+    const text = await (await child('products-1.xml')).text();
+    const base1 = `https://img.example/catalog/public-images/AU/${id(1001)}`;
+    const urls = [...text.matchAll(/<image:loc>([^<]+)<\/image:loc>/gu)].map((m) => m[1]);
+    expect(urls.filter((u) => u!.startsWith(base1))).toEqual(
+      [0, 1, 2, 3, 4, 5, 6, 7].map((n) => `${base1}/${at(n)}/large`),
+    );
+    expect(urls).toContain(
+      `https://img.example/catalog/public-images/AU/${id(1002)}/${IMAGE}/large`,
+    );
+    expect(urls.some((u) => u!.includes(id(1003)))).toBe(false);
+  });
+
   it('lists no image without a photo origin', async () => {
     request.imageOrigin = null;
     withPhoto();

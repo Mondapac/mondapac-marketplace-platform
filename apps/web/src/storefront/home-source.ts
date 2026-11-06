@@ -144,6 +144,7 @@ export function cardOf(
   item: unknown,
   slugs: ReadonlyMap<string, string>,
   photo: PhotoUrl | null = null,
+  allImages = false,
 ): ShelfCard | null {
   if (!isObject(item) || typeof item.productId !== 'string') return null;
   const name = textOf(item.name, 200);
@@ -169,11 +170,12 @@ export function cardOf(
     photo === null || ref === undefined || imageUrl === undefined
       ? undefined
       : photoSetOf(photo, item.productId, ref, 'medium');
-  // Every photo of the item (`images`, at most 8), as large URLs for the sitemap; an item that
-  // only carries `primaryImage` lists that one.
+  // Every photo of the item (`images`, at most 8), as large URLs, only when `allImages` is set (the
+  // sitemap: other pages hand cards to client components and do not need them); an item that only
+  // carries `primaryImage` lists that one.
   const listed = imageRefsOf(item.images);
   const large =
-    photo === null
+    photo === null || !allImages
       ? []
       : (listed.length > 0 ? listed : ref === undefined ? [] : [ref])
           .map((r) => photo(item.productId as string, r.imageId, 'large'))
@@ -197,12 +199,13 @@ export function cardsOf(
   body: unknown,
   slugs: ReadonlyMap<string, string>,
   photo: PhotoUrl | null = null,
+  allImages = false,
 ): ShelfCard[] {
   if (!isObject(body) || !Array.isArray(body.items)) return [];
   const seen = new Set<string>();
   const cards: ShelfCard[] = [];
   for (const item of body.items as unknown[]) {
-    const card = cardOf(item, slugs, photo);
+    const card = cardOf(item, slugs, photo, allImages);
     if (card === null || seen.has(card.id)) continue;
     seen.add(card.id);
     cards.push(card);
