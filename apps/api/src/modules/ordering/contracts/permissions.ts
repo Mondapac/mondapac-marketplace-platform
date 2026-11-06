@@ -50,8 +50,20 @@ export const ORDERING_ORDER_REFUND = definePermission('ordering', {
   protected: true,
 });
 
+/**
+ * Share a saved filter of the admin order list with every admin of the Market (the same idea as
+ * `catalog.saved-filter.share`). Unprotected. No default role lists it yet: the Platform
+ * Administrator grants it to the roles that should (which also need `ordering.order.view`).
+ */
+export const ORDERING_SAVED_FILTER_SHARE = definePermission('ordering', {
+  key: 'ordering.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
 export const ORDERING_PERMISSIONS = declarePermissions('ordering', [
   ORDERING_ORDER_REFUND,
+  ORDERING_SAVED_FILTER_SHARE,
   ORDERING_ORDER_VIEW,
   ORDERING_SELLER_ORDER_CONFIRM_PICKUP,
   ORDERING_SELLER_ORDER_MARK_DELIVERED,

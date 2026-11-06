@@ -1,9 +1,12 @@
 import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { headers } from 'next/headers';
 import { OrdersList } from '../../../src/orders/orders-list.tsx';
 import { VIEW_PERMISSION } from '../../../src/orders/types.ts';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
+import { panelHostFor } from '../../../src/server/bff.ts';
+import { panelConfig } from '../../../src/server/config.ts';
 import { requireSession } from '../../../src/server/session.ts';
 
 export async function generateMetadata() {
@@ -22,11 +25,17 @@ export default async function OrdersPage() {
   // read means Previous and next, which works for any number of orders.
   const mode = await serverGet<{ readonly listPaging: string }>('settings/admin/list-paging');
   const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
   return (
     <AdminShell session={gate.session} activeId="orders" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {gate.session.permissionKeys.includes(VIEW_PERMISSION) ? (
-        <OrdersList paging={paging} />
+        <OrdersList
+          paging={paging}
+          accountId={gate.session.accountId}
+          marketId={marketId}
+          csrfToken={gate.session.csrfToken}
+        />
       ) : (
         <>
           <p className="text-fg-muted">{t('orders.no-access')}</p>

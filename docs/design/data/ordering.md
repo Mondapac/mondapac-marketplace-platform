@@ -587,6 +587,24 @@ One row per payment or refund event that `ordering` must not act on by itself an
 - Volume: a handful a month, from provider or payments bugs only. Kept (an audit trail of money anomalies; ids only, no personal data).
 - Alternative considered: columns on `checkouts` and `refund_requests`. Rejected: an orphan by definition has no matching row, and one Checkout can collect several facts.
 
+### 3.15 `ordering.saved_filters` (saved views of the order lists)
+
+A named saved view of an order list: its tab, filters and sort, for its owner (`me`) or, on the admin list only, for every admin of the Market who can see the list (`everyone`). A preference, not a record: the application deletes it. The design follows catalog 3.28 (the same caps and rules); the table is ordering's own because modules never share a table.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | `uuid` | no | PK; also `(market_id, id)` unique |
+| `market_id`, `tenant_id` | | no | C1 CHECKs |
+| `owner_account_id` | `uuid` | no | Identity account id, no FK (C4). Never updated |
+| `visibility` | `text` | no | `me` or `everyone`; the only column besides `name` that changes |
+| `list_key` | `text` | no | `admin.ordering.orders` or `seller.ordering.orders`; the application holds the known keys; never updated |
+| `name` | `text` | no | 1 to 60 characters, trimmed, no control character |
+| `payload` | `jsonb` | no | Closed document (tab, filters, sort) of at most 2 KB; keys checked by the application; never updated |
+| `position` | `integer` | no | The order of the owner's filters, 1 and up; never updated |
+| `created_at`, `updated_at` | `timestamptz` | no | `updated_at >= created_at` |
+
+Uniques (case-insensitive on the name): one name per owner and list; one name among `everyone` filters of a list. Grants: `SELECT`, `INSERT`, `DELETE`, and `UPDATE (visibility, name, updated_at)`. Caps (application): 50 filters per owner and list, 20 shared per list. Only the admin list can be shared; a seller filter is always `me`. A filter shared with everyone is audited.
+
 ## 4. What is never stored
 
 | Never in the database | Instead |
