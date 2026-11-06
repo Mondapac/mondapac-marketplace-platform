@@ -62,6 +62,7 @@
       "repeatedWordShareBps": 7500
     }
   },
+  "contentFilter": { "blockedTerms": ["zzbad", "zz bad phrase"] },
   "promotions": {
     "lineDiscountCapBps": 6000,
     "sellerMaxDiscountBps": 5000,

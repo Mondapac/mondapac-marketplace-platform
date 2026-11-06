@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
+import type { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -53,6 +54,8 @@ export type BrandCreateFailure =
   | ValidationFailure;
 
 export interface BrandCreateDependencies {
+  /** The Market's content filter: public text with a blocked term is refused. */
+  readonly contentFilter: ContentFilter;
   readonly unitOfWork: UnitOfWork;
   readonly brands: BrandRepository;
   readonly clock: Clock;
@@ -132,7 +135,9 @@ export class BrandCreate extends UseCase<
     if (accountId === null) return err({ code: 'access.denied' });
     const body = closedInput(input, CREATE_KEYS);
     if (!body.ok) return body;
-    const content = parseBrandContent(body.value);
+    const content = parseBrandContent(body.value, (text) =>
+      this.deps.contentFilter.isBlocked(context.market, text),
+    );
     if (!content.ok) return invalidFields(content.error);
     const givenSlug = body.value['slug'];
     if (givenSlug !== undefined && givenSlug !== null && !isBrandSlug(givenSlug)) {
