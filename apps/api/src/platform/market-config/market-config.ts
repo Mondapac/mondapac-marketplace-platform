@@ -263,8 +263,30 @@ const linkTargetsSchema = z
         'reset-password': pageUrl.optional(),
       })
       .optional(),
+    /**
+     * The agent panel's pages (ADR-0045 decision 7): the sign-in page and the page of the agent
+     * invitation mail; both or neither. Absent for a Market without agents.
+     */
+    agent: z
+      .strictObject({
+        'sign-in': pageUrl,
+        'accept-invitation': pageUrl,
+      })
+      .optional(),
   })
   .superRefine((targets, context) => {
+    if (targets.agent !== undefined) {
+      const signIn = hostOf(targets.agent['sign-in']);
+      for (const [page, url] of Object.entries(targets.agent)) {
+        if (signIn !== null && hostOf(url)?.origin !== signIn.origin) {
+          context.addIssue({
+            code: 'custom',
+            message: 'an agent page must have the origin of the agent sign-in page',
+            path: ['agent', page],
+          });
+        }
+      }
+    }
     if (targets.seller !== undefined && targets.admin === undefined) {
       context.addIssue({
         code: 'custom',
@@ -373,6 +395,8 @@ const identitySchema = z
       seller: sessionLifetimeSchema.optional(),
       /** Admin side (6.1: 30 minutes idle, 12 hours absolute; slice 7b). */
       admin: adminSessionLifetimeSchema.optional(),
+      /** Agent side (ADR-0045 decision 4: the admin policy, 30 minutes idle, 12 hours absolute). */
+      agent: adminSessionLifetimeSchema.optional(),
     }),
     /**
      * "Keep me signed in" (identity design 6.1, 14.4): per population that offers it, opt-in at
@@ -425,6 +449,13 @@ const identitySchema = z
       .strictObject({
         lifetimeMinutes: z.strictObject({
           admin: z
+            .number()
+            .int()
+            .min(1)
+            .max(72 * 60)
+            .optional(),
+          /** ADR-0045 decision 2: an agent invitation lives at most 72 hours, as the admin's. */
+          agent: z
             .number()
             .int()
             .min(1)
@@ -584,6 +615,25 @@ const identitySchema = z
         });
       }
     }
+    // Agent sign-in is configured whole or not at all (ADR-0045): a session needs the admin-side
+    // pieces (challenge, second-factor counter) and the agent pages and invitation lifetime.
+    if (identity.sessions.agent !== undefined) {
+      const missing = [
+        identity.challenges === undefined ? 'challenges' : null,
+        identity.secondFactorThrottles === undefined ? 'secondFactorThrottles' : null,
+        identity.links.targets.agent === undefined ? 'links.targets.agent' : null,
+        identity.invitations?.lifetimeMinutes.agent === undefined
+          ? 'invitations.lifetimeMinutes.agent'
+          : null,
+      ].filter((key) => key !== null);
+      if (missing.length > 0) {
+        context.addIssue({
+          code: 'custom',
+          message: `sessions.agent needs ${missing.join(', ')}`,
+          path: ['sessions', 'agent'],
+        });
+      }
+    }
   });
 
 /**
@@ -639,7 +689,12 @@ function hostnameOf(value: string): string | null {
  * (HF7). The hosts wait for D2.
  */
 const allowedOriginsSchema = z
-  .strictObject({ admin: originList, seller: originList, customer: originList })
+  .strictObject({
+    admin: originList,
+    seller: originList,
+    customer: originList,
+    agent: originList,
+  })
   .superRefine((lists, context) => {
     POPULATIONS.forEach((population, index) => {
       const earlier = new Set(

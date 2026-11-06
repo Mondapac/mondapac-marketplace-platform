@@ -18,6 +18,7 @@ const SAME_SITE: Readonly<Record<Population, 'Lax' | 'Strict'>> = Object.freeze(
   customer: 'Lax',
   seller: 'Lax',
   admin: 'Strict',
+  agent: 'Strict',
 });
 
 /** The attributes every session cookie carries, set or cleared. */

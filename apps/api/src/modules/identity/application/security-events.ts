@@ -13,7 +13,7 @@ import {
 import type { SecurityEvents } from '../../../platform/security-events/security-events';
 
 /** The populations of identity's security events. */
-export type SecurityPopulation = 'customer' | 'seller' | 'admin';
+export type SecurityPopulation = 'customer' | 'seller' | 'admin' | 'agent';
 
 /** One sign-in record's facts (identity design 10.2), as the security event reads them. */
 export interface SignInOutcome {

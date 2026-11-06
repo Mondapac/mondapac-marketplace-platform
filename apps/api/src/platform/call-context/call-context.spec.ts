@@ -50,6 +50,14 @@ class SellerController {
   sessionRoute(this: void): void {}
 }
 
+@RoutePopulation('agent')
+@Controller('agent')
+class AgentController {
+  anonymousRoute(this: void): void {}
+  @ReadsSession()
+  sessionRoute(this: void): void {}
+}
+
 @RoutePopulation('admin')
 @Controller('admin')
 class AdminController {
@@ -62,6 +70,7 @@ const CONTROLLER_OF: Readonly<Record<Population, typeof CustomerController>> = {
   customer: CustomerController,
   seller: SellerController,
   admin: AdminController,
+  agent: AgentController,
 };
 
 /** A market-scoped controller without a population (the start-up check refuses it). */
@@ -161,7 +170,7 @@ const panelMarkets = new MarketRegistry(
   new Map(
     TEST_MARKET_IDS.map((marketId) => {
       const config = markets.get(marketId);
-      const filled = (population: 'admin' | 'seller'): readonly string[] => {
+      const filled = (population: 'admin' | 'seller' | 'agent'): readonly string[] => {
         const list = config.allowedOrigins[population];
         if (list.length > 0) return list;
         const pages = Object.values<string>(config.identity.links.targets[population] ?? {});
@@ -171,6 +180,7 @@ const panelMarkets = new MarketRegistry(
         ...config.allowedOrigins,
         admin: filled('admin'),
         seller: filled('seller'),
+        agent: filled('agent'),
       };
       return [marketId, { ...config, allowedOrigins } as typeof config] as const;
     }),
@@ -585,7 +595,7 @@ describe.each(TEST_MARKETS)('the actor and CallContext of a request in %s', (cod
               const config = markets.get(marketId);
               return [
                 marketId,
-                { ...config, allowedOrigins: { admin: [], seller: [], customer: [] } },
+                { ...config, allowedOrigins: { admin: [], seller: [], customer: [], agent: [] } },
               ] as const;
             }),
           ),

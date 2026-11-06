@@ -154,6 +154,7 @@
   "allowedOrigins": {
     "admin": [],
     "seller": [],
+    "agent": [],
     "customer": ["https://storefront.au.mondapac.test"]
   },
   "identity": {
@@ -172,6 +173,10 @@
         "absoluteLifetimeMinutes": 1440
       },
       "admin": {
+        "idleTimeoutMinutes": 30,
+        "absoluteLifetimeMinutes": 720
+      },
+      "agent": {
         "idleTimeoutMinutes": 30,
         "absoluteLifetimeMinutes": 720
       }
@@ -238,12 +243,17 @@
           "accept-invitation": "https://admin.au.mondapac.test/accept-invitation",
           "enrol-second-factor": "https://admin.au.mondapac.test/second-factor/enrol",
           "reset-password": "https://admin.au.mondapac.test/reset-password"
+        },
+        "agent": {
+          "sign-in": "https://agent.au.mondapac.test/sign-in",
+          "accept-invitation": "https://agent.au.mondapac.test/accept-invitation"
         }
       }
     },
     "invitations": {
       "lifetimeMinutes": {
         "admin": 4320,
+        "agent": 4320,
         "seller-owner": 10080,
         "staff": 10080
       }

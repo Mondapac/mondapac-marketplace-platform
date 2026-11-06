@@ -45,6 +45,7 @@ export function csrfTokenMatches(sessionToken: string, presented: unknown): bool
 export const ORIGIN_HEADERS_REQUIRED: Readonly<Record<Population, boolean>> = Object.freeze({
   admin: true,
   seller: true,
+  agent: true,
   customer: false,
 });
 

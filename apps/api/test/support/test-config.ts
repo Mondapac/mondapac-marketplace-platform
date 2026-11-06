@@ -25,8 +25,10 @@ export const TEST_LOCALE_CONFIG_DIRS = [
 ] as const;
 
 interface RawMarketFile {
-  allowedOrigins: Record<'admin' | 'seller' | 'customer', string[]>;
-  identity: { links: { targets: Partial<Record<'admin' | 'seller', Record<string, string>>> } };
+  allowedOrigins: Record<'admin' | 'seller' | 'customer' | 'agent', string[]>;
+  identity: {
+    links: { targets: Partial<Record<'admin' | 'seller' | 'agent', Record<string, string>>> };
+  };
 }
 
 function readMarketFiles(): Map<string, RawMarketFile> {
@@ -43,7 +45,7 @@ function readMarketFiles(): Map<string, RawMarketFile> {
 }
 
 /** The origin of a panel population's link pages in a Market's checked-in configuration. */
-function panelOriginOf(file: RawMarketFile, population: 'admin' | 'seller'): string {
+function panelOriginOf(file: RawMarketFile, population: 'admin' | 'seller' | 'agent'): string {
   const pages = Object.values(file.identity.links.targets[population] ?? {});
   const origins = new Set(pages.map((page) => new URL(page).origin));
   if (origins.size !== 1) {
@@ -70,7 +72,7 @@ export function panelOriginMarketConfigDirs(): readonly string[] {
   if (panelDirs !== undefined) return panelDirs;
   const directory = mkdtempSync(path.join(tmpdir(), 'markets-panel-'));
   for (const [code, file] of readMarketFiles()) {
-    for (const population of ['admin', 'seller'] as const) {
+    for (const population of ['admin', 'seller', 'agent'] as const) {
       if (file.allowedOrigins[population].length === 0) {
         file.allowedOrigins[population] = [panelOriginOf(file, population)];
       }

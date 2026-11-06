@@ -23,7 +23,7 @@ export const SECURITY_SEVERITIES: readonly SecuritySeverity[] = Object.freeze([
 ]);
 
 /** The population of an identity event: who was signing in. */
-const population = eventField.enumOf(['customer', 'seller', 'admin'] as const);
+const population = eventField.enumOf(['customer', 'seller', 'admin', 'agent'] as const);
 
 /** One recorded type. `F` is its payload; never a secret, an email or free text (P 5.3). */
 export interface SecurityEventDefinition<F extends PayloadFields = PayloadFields> {
