@@ -425,6 +425,57 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
     expect(attributes?.searchText).not.toContain('Draft words');
   });
 
+  it('indexes the values of a merged attribute as its target, with the option map (attributes A8)', async () => {
+    const tag = uuid7().slice(-8);
+    const [pack, container] = [`pack-${tag}`, `container-${tag}`];
+    await definition(market, container, {
+      dataType: 'select',
+      canBeFilter: true,
+      names: { 'en-AU': 'Container' },
+      options: { tin: { label: 'Tin' }, jar: { label: 'Jar' } },
+    });
+    await definition(market, pack, {
+      dataType: 'select',
+      canBeFilter: true,
+      names: { 'en-AU': 'Pack type' },
+      options: { can: { label: 'Can' } },
+    });
+    const idOf = async (attribute: string) =>
+      (
+        await owner.query<{ id: string }>(
+          'SELECT id FROM catalog.attribute_definitions WHERE market_id = $1 AND code = $2',
+          [market.marketId, attribute],
+        )
+      ).rows[0]!.id;
+    const [sourceId, targetId] = [await idOf(pack), await idOf(container)];
+    await owner.query(
+      `INSERT INTO catalog.attribute_merge_options (market_id, tenant_id, source_id, source_code, target_code)
+       VALUES ($1, $2, $3, 'can', 'tin')`,
+      [market.marketId, market.tenantId, sourceId],
+    );
+    await owner.query(
+      `UPDATE catalog.attribute_definitions SET status = 'archived', merged_into_id = $3, version = version + 1
+        WHERE market_id = $1 AND id = $2`,
+      [market.marketId, sourceId, targetId],
+    );
+    const onlySource = await product(market, {
+      texts: { 'en-AU': ['Beans', null] },
+      categories: [],
+      values: { [pack]: 'can' },
+    });
+    const both = await product(market, {
+      texts: { 'en-AU': ['Peas', null] },
+      categories: [],
+      values: { [pack]: 'can', [container]: 'jar' },
+    });
+    const first = await offer(market, onlySource, 'published');
+    const second = await offer(market, both, 'published');
+    const map = await run(market, () => reader.read(market, [first, second], 'en-AU'), true);
+    expect(map.get(first)?.attributes.facets).toEqual([`${container}=tin`]);
+    // The target's own value wins when a product carries both.
+    expect(map.get(second)?.attributes.facets).toEqual([`${container}=jar`]);
+  });
+
   it('gives a stamp that holds while nothing changes and changes with a definition or a brand', async () => {
     const stampOf = (target: typeof market) =>
       run(target, () => reader.searchIndexStamp(target), true);

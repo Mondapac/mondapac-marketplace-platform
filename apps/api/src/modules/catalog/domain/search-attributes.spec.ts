@@ -65,6 +65,112 @@ describe('buildSearchAttributes', () => {
     expect(facts.searchText).toBe('');
   });
 
+  it('indexes a merged attribute as its target, with the value mapped', () => {
+    const target = definition({
+      options: options([
+        ['tin', 'Tin', null],
+        ['jar', 'Jar', null],
+      ]),
+    });
+    const source = definition({
+      status: 'archived',
+      options: options([['can', 'Can', null]]),
+      mergedInto: { code: 'container', options: new Map([['can', 'tin']]) },
+    });
+    const definitions = new Map([
+      ['container', target],
+      ['pack-type', source],
+    ]);
+    const facts = buildSearchAttributes({
+      values: { 'pack-type': 'can' },
+      definitions,
+      brand: null,
+      locale: 'en-AU',
+    });
+    expect(facts.facets).toEqual(['container=tin']);
+    expect(facts.searchText).toBe('Tin');
+    // The target's own value wins when the product carries both.
+    expect(
+      buildSearchAttributes({
+        values: { 'pack-type': 'can', container: 'jar' },
+        definitions,
+        brand: null,
+        locale: 'en-AU',
+      }).facets,
+    ).toEqual(['container=jar']);
+  });
+
+  it('maps a merged multi-select without duplicates and carries numbers to the target', () => {
+    const multi = (overrides: Partial<SearchDefinition>) =>
+      definition({ dataType: 'multi-select', ...overrides });
+    const target = multi({ options: options([['tin', 'Tin', null]]) });
+    const source = multi({
+      status: 'archived',
+      options: options([
+        ['can', 'Can', null],
+        ['tub', 'Tub', null],
+      ]),
+      mergedInto: {
+        code: 'container',
+        options: new Map([
+          ['can', 'tin'],
+          ['tub', 'tin'],
+        ]),
+      },
+    });
+    expect(
+      buildSearchAttributes({
+        values: { 'pack-type': ['can', 'tub', 'gone'] },
+        definitions: new Map([
+          ['container', target],
+          ['pack-type', source],
+        ]),
+        brand: null,
+        locale: 'en-AU',
+      }).facets,
+    ).toEqual(['container=tin']);
+    const weight = definition({ dataType: 'decimal', options: new Map() });
+    const oldWeight = definition({
+      dataType: 'decimal',
+      status: 'archived',
+      options: new Map(),
+      mergedInto: { code: 'net-weight', options: new Map() },
+    });
+    expect(
+      buildSearchAttributes({
+        values: { weight: '12.5' },
+        definitions: new Map([
+          ['net-weight', weight],
+          ['weight', oldWeight],
+        ]),
+        brand: null,
+        locale: 'en-AU',
+      }).numbers,
+    ).toEqual({ 'net-weight': 12.5 });
+  });
+
+  it('leaves out a merged attribute whose target is not active or whose value has no target value', () => {
+    const source = definition({
+      status: 'archived',
+      options: options([['can', 'Can', null]]),
+      mergedInto: { code: 'container', options: new Map([['can', 'tin']]) },
+    });
+    const index = (target: SearchDefinition | undefined, values: Record<string, unknown>) =>
+      buildSearchAttributes({
+        values,
+        definitions: new Map([
+          ['pack-type', source],
+          ...(target === undefined ? [] : [['container', target] as const]),
+        ]),
+        brand: null,
+        locale: 'en-AU',
+      }).facets;
+    const live = definition({ options: options([['tin', 'Tin', null]]) });
+    expect(index(undefined, { 'pack-type': 'can' })).toEqual([]);
+    expect(index({ ...live, status: 'archived' }, { 'pack-type': 'can' })).toEqual([]);
+    expect(index(live, { 'pack-type': 'unknown' })).toEqual([]);
+  });
+
   it('leaves out an archived attribute, like a draft one', () => {
     const facts = buildSearchAttributes({
       values: { a: 'kg1' },

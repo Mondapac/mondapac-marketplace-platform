@@ -145,7 +145,7 @@ function valueOf(
  * map (a code the map lacks cannot be told, so null), a list maps each code; any other value is
  * the same value, as the types are equal.
  */
-function mergedValue(options: ReadonlyMap<string, string>, stored: unknown): unknown {
+export function mergedValue(options: ReadonlyMap<string, string>, stored: unknown): unknown {
   if (options.size === 0) return stored;
   if (typeof stored === 'string') return options.get(stored) ?? null;
   if (Array.isArray(stored)) {
