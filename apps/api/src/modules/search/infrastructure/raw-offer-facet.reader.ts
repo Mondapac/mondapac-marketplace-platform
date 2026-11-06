@@ -152,6 +152,7 @@ export class RawOfferFacetReader implements OfferFacetReader {
       ...priceSlots(scope.price),
     });
     return rows.map((row) => ({
+      offerId: row.offerId as Id<'Offer'>,
       productId: row.productId as Id<'Product'>,
       facets: row.unitFacets.length === 0 ? row.facets : [...row.facets, ...row.unitFacets],
     }));

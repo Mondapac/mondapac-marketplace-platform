@@ -71,7 +71,7 @@ export interface FacetFilterView {
 
 /** Products per `attribute=value`, ignoring the attribute's own filter (pure). */
 export function countFacets(
-  rows: readonly FacetRow[],
+  rows: readonly Pick<FacetRow, 'productId' | 'facets'>[],
   choices: readonly ChoiceFilter[],
   attrs: readonly string[],
 ): ReadonlyMap<string, number> {

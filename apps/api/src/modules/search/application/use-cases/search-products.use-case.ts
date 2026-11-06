@@ -80,7 +80,7 @@ export interface ProductSearchPage {
   /** False when the scope was too large to count: option counts are then null. */
   readonly countsComplete: boolean;
   /**
-   * The text was exactly one GTIN of a variant on sale (V8): the storefront goes straight to that
+   * The text was exactly one GTIN of a published variant, in stock or not (V8): the storefront goes straight to that
    * product page with `?v=`. Null otherwise.
    */
   readonly exactMatch: {
@@ -388,7 +388,11 @@ export class SearchProducts extends UseCase<
       filters: [],
       filtered: false,
       countsComplete: true,
-      exactMatch: { productId: first.productId, variantId: variantOf.get(first.offerId)! },
+      // A later page has no items, so it names no match to open.
+      exactMatch:
+        page === 1
+          ? { productId: first.productId, variantId: variantOf.get(first.offerId)! }
+          : null,
     };
   }
 
@@ -405,8 +409,15 @@ export class SearchProducts extends UseCase<
     numbers: readonly NumberRow[],
   ): Promise<{ filters: FacetFilterView[]; complete: boolean }> {
     // A read cut at the cap (facets or numbers) cannot give true counts or true slider bounds.
-    const complete = allRows.length <= MAX_FACET_ROWS && numbers.length <= MAX_FACET_ROWS;
-    const rows = allRows.length <= MAX_FACET_ROWS ? allRows : allRows.slice(0, MAX_FACET_ROWS);
+    // The facet read is capped in documents, each of which may come once per sell unit (V8).
+    const documents = new Set<string>();
+    const rows = allRows.filter((row) => {
+      if (documents.has(row.offerId)) return true;
+      if (documents.size >= MAX_FACET_ROWS) return false;
+      documents.add(row.offerId);
+      return true;
+    });
+    const complete = rows.length === allRows.length && numbers.length <= MAX_FACET_ROWS;
     const counts = countFacets(
       rows,
       selection.choices,

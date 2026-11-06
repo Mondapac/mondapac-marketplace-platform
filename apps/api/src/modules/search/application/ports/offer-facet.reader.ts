@@ -36,6 +36,8 @@ export interface FacetScope {
  * products.
  */
 export interface FacetRow {
+  /** The document the row is of: one document can give several rows (one per sell unit). */
+  readonly offerId: Id<'Offer'>;
   readonly productId: Id<'Product'>;
   readonly facets: readonly string[];
 }
@@ -59,7 +61,10 @@ export interface OfferFacetReader {
     market: MarketContext,
     request: FilteredSearchRequest,
   ): Promise<readonly OfferHit[]>;
-  /** The documents of the scope with their facets, at most `MAX_FACET_ROWS + 1`. */
+  /**
+   * The documents of the scope with their facets, at most `MAX_FACET_ROWS + 1` documents; a
+   * document comes once per in-stock unit (its axis values added) or once without units.
+   */
   facetRows(market: MarketContext, scope: FacetScope): Promise<readonly FacetRow[]>;
   /** The stored numbers of these attributes in the scope, at most `MAX_FACET_ROWS + 1`. */
   numberRows(

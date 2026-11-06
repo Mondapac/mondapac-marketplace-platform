@@ -587,6 +587,17 @@ describe.each(TEST_MARKETS)('variant filters in market %s (database)', (code) =>
     });
   });
 
+  it('reads a facet row per in-stock unit, or one per document without such a unit, capped in documents', async () => {
+    await seed(market, ...catalogue());
+    const rows = await inUnit(market, () => facets.facetRows(market, scope()), true);
+    const perOffer = new Map<string, number>();
+    for (const row of rows) perOffer.set(row.offerId, (perOffer.get(row.offerId) ?? 0) + 1);
+    // Rice and Shirt: two in-stock units each; Flour: one; Oil: none priced, so its document once.
+    expect([...perOffer.values()].sort()).toEqual([1, 1, 2, 2]);
+    const single = rows.filter((row) => perOffer.get(row.offerId) === 1).map((r) => r.facets);
+    expect(single.sort()).toEqual([['brand=al-safa'], ['weight=5kg']]);
+  });
+
   it('reads the sell units of hits and finds a GTIN, in the Market only', async () => {
     const [rice] = catalogue();
     await seed(market, rice!);

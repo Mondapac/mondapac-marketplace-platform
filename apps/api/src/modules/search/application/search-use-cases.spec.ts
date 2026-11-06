@@ -1323,6 +1323,28 @@ describe.each([
       expect(reader.requests).toEqual([]);
     });
 
+    it('stores a unit price in another currency than the Market currency as no price', async () => {
+      feed.facts_.set(offer(1), riceFacts());
+      const other = currency === 'AUD' ? 'NZD' : 'AUD';
+      sellUnits.states_.set(`${offer(1)}/${V1}`, { inStock: true, price: money(500n) });
+      sellUnits.states_.set(`${offer(1)}/${V2}`, {
+        inStock: true,
+        price: { amount: 700n, currency: other },
+      });
+      await new SyncOfferDocuments(gate, deps).execute(system, { offerIds: [offer(1)] });
+
+      const stored = [...documents.rows.values()][0]!.document;
+      expect(stored.variants.map((v) => v.price)).toEqual([money(500n), null, null]);
+    });
+
+    it('an exact GTIN has items and the exact match on page 1 only', async () => {
+      await indexRice();
+
+      const second = await search({ q: '9300633603366', page: 2 });
+
+      expect(second).toMatchObject({ ok: true, value: { items: [], exactMatch: null } });
+    });
+
     it('a GTIN no visible document has is searched as text', async () => {
       await indexRice();
       visibility.hidden.add(offer(1));
