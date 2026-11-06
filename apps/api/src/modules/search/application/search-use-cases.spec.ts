@@ -570,6 +570,7 @@ describe.each([
               shortText: null,
               categoryIds: [CATEGORY],
               primaryImage: null,
+              images: [],
             },
             {
               offerId: offer(2),
@@ -579,6 +580,7 @@ describe.each([
               shortText: null,
               categoryIds: [CATEGORY],
               primaryImage: null,
+              images: [],
             },
           ],
           page: 1,
@@ -781,6 +783,40 @@ describe.each([
         expect(images.asked).toEqual([[PRODUCT]]);
       });
 
+      it('lists every public photo of the product in `images`, main one first, alt = the name', async () => {
+        reader.hits = [hit(1)];
+        const second = id<'ProductImage'>(0x702);
+        images.images_.set(PRODUCT, [
+          { imageId: PHOTO, width: 1600, height: 1200 },
+          { imageId: second, width: 800, height: 800 },
+        ]);
+
+        const result = await search({ q: 'product' });
+
+        const item = result.ok ? result.value.items[0] : undefined;
+        expect(item?.images).toEqual([
+          { imageId: PHOTO, width: 1600, height: 1200, alt: 'Product 1' },
+          { imageId: second, width: 800, height: 800, alt: 'Product 1' },
+        ]);
+        expect(item?.primaryImage).toEqual(item?.images[0]);
+      });
+
+      it('lists at most 8 photos', async () => {
+        reader.hits = [hit(1)];
+        images.images_.set(
+          PRODUCT,
+          Array.from({ length: 10 }, (_, n) => ({
+            imageId: id<'ProductImage'>(0x710 + n),
+            width: 100,
+            height: 100,
+          })),
+        );
+
+        const result = await search({ q: 'product' });
+
+        expect(result.ok && result.value.items[0]?.images).toHaveLength(8);
+      });
+
       it('asks for the photos of the shown items only, never of a hidden or extra hit', async () => {
         reader.hits = [hit(1), hit(2), hit(3)];
         visibility.hidden = new Set([offer(2)]);
@@ -801,6 +837,7 @@ describe.each([
         const result = await search({ q: 'product' });
 
         expect(result.ok && result.value.items.map((item) => item.primaryImage)).toEqual([null]);
+        expect(result.ok && result.value.items[0]?.images).toEqual([]);
       });
     });
 

@@ -36,6 +36,15 @@ export class ProductSearchItemBody {
   primaryImage!: ProductImageRefBody | null;
 }
 
+export class SearchProductItemBody extends ProductSearchItemBody {
+  @ApiProperty({
+    type: [ProductImageRefBody],
+    description:
+      'All public photos of the product in the published revision order (the first is `primaryImage`); at most 8, empty for none.',
+  })
+  images!: ProductImageRefBody[];
+}
+
 export class SearchFilterOptionBody {
   @ApiProperty({ description: 'The option code: use it in `filter`, never the label.' })
   code!: string;
@@ -79,8 +88,8 @@ export class SearchFilterBody {
 }
 
 export class ProductSearchPageBody {
-  @ApiProperty({ type: [ProductSearchItemBody], description: 'In rank order for a text query.' })
-  items!: ProductSearchItemBody[];
+  @ApiProperty({ type: [SearchProductItemBody], description: 'In rank order for a text query.' })
+  items!: SearchProductItemBody[];
   @ApiProperty() page!: number;
   @ApiProperty() pageSize!: number;
   @ApiProperty({
