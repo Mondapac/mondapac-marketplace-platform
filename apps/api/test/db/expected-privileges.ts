@@ -928,6 +928,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['sort_order'],
     },
+    // File storage pilot F9: a slide image and its renditions are inserted once and never changed.
+    'storefront.slide_images': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'storefront.slide_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'storefront.slide_saved_orders': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'storefront.slide_position_locks': {
       table: ['INSERT', 'SELECT'],

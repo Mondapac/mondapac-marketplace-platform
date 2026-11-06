@@ -7,7 +7,13 @@ import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../plat
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
+import { OBJECT_STORE } from '../../platform/storage/object-store';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { SLIDE_IMAGE_PROCESSOR } from './application/ports/slide-image-processor';
+import { SLIDE_IMAGE_STORE } from './application/ports/slide-image.store';
+import { UploadStorefrontSlideImage } from './application/use-cases/upload-slide-image.use-case';
+import { ViewStorefrontSlideImage } from './application/use-cases/view-slide-image.use-case';
+import { AdminSlideImageController } from './presentation/admin-slide-image.controller';
 import { PAGE_REPOSITORY } from './application/ports/page.repository';
 import { LINK_TARGETS } from './application/ports/link-targets';
 import { SLIDE_REPOSITORY } from './application/ports/slide.repository';
@@ -64,6 +70,9 @@ const PORTS: readonly [keyof StorefrontDependencies, InjectionToken][] = [
   ['slides', SLIDE_REPOSITORY],
   ['targets', SLIDE_TARGETS],
   ['links', LINK_TARGETS],
+  ['slideImages', SLIDE_IMAGE_STORE],
+  ['imageProcessor', SLIDE_IMAGE_PROCESSOR],
+  ['objectStore', OBJECT_STORE],
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
@@ -99,6 +108,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminStorefrontController,
     AdminNavigationController,
     AdminSlideController,
+    AdminSlideImageController,
     PublicStorefrontController,
   ],
   providers: [
@@ -141,6 +151,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ReorderStorefrontSlides,
       SubmitStorefrontSlide,
       ViewServedPlacements,
+      UploadStorefrontSlideImage,
+      ViewStorefrontSlideImage,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: STOREFRONT_FACADE,

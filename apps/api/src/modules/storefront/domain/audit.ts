@@ -151,6 +151,17 @@ export const StorefrontSlideArchived = defineAuditAction({
   after: { wasApproved: auditField.boolean() },
 });
 
+/** The audit target type of a slide library image. */
+export const STOREFRONT_SLIDE_IMAGE_TARGET = 'storefront.slide-image';
+
+/** An editor uploaded a slide image; `hasMobile` says a separate mobile picture came with it. */
+export const StorefrontSlideImageUploaded = defineAuditAction({
+  action: 'storefront.slide-image.upload',
+  targetType: STOREFRONT_SLIDE_IMAGE_TARGET,
+  actors: ['authenticated'],
+  after: { hasMobile: auditField.boolean() },
+});
+
 /** The audit target type of the order of the live slides at one position (and scope). */
 export const STOREFRONT_SLIDE_ORDER_TARGET = 'storefront.slide-order';
 
@@ -189,4 +200,5 @@ export const STOREFRONT_AUDIT_ACTIONS = [
   StorefrontSlideResumed,
   StorefrontSlideArchived,
   StorefrontSlideReordered,
+  StorefrontSlideImageUploaded,
 ] as const;
