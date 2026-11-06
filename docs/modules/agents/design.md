@@ -192,7 +192,8 @@ Every use case takes ActorContext and MarketContext (ADR-0018). Every write by a
    - Option A: the agent's commission-share earning follows the commission actually reversed, so here nothing is reversed.
    - Option B: always reverse in proportion to the goods refunded.
    - Recommendation: A, the agent shares what MondaPac keeps. Needs an owner nod because the brief says "proportional".
-2. **"Gross" basis wording.** Is "gross" the tax-inclusive goods amount after discounts (what the buyer paid for goods), or before discounts? Recommendation: after discounts, in line with net-sales.
+   - **Owner decision 2026-11-06: A.** The agent's commission-share earning follows the commission actually reversed.
+2. **"Gross" basis wording.** Is "gross" the tax-inclusive goods amount after discounts (what the buyer paid for goods), or before discounts? Recommendation: after discounts, in line with net-sales. **Owner decision 2026-11-06: after discounts.**
 3. **Hold source.**
    - Option A: reuse commission-payouts' eligibility anchor (carrier vs seller-click hold).
    - Option B: a separate Market config `agents.earnings.hold-days`.
