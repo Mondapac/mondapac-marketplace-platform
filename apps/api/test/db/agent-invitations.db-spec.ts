@@ -4,6 +4,10 @@ import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import {
+  ACCOUNT_REPOSITORY,
+  type AccountRepository,
+} from '../../src/modules/identity/application/ports/account.repository';
+import {
   INVITATION_REPOSITORY,
   InvitationAlreadyPendingError,
   type InvitationRepository,
@@ -33,6 +37,7 @@ describe.each(TEST_MARKETS)('agent invitations in market %s (database, ADR-0045)
   let sql: Client;
   let unitOfWork: UnitOfWork;
   let invitations: InvitationRepository;
+  let accounts: AccountRepository;
 
   beforeAll(async () => {
     ({ app } = await createTestApp({ env: { DATABASE_URL: testDatabaseUrl() } }));
@@ -40,6 +45,7 @@ describe.each(TEST_MARKETS)('agent invitations in market %s (database, ADR-0045)
     await sql.connect();
     unitOfWork = app.get(UNIT_OF_WORK, { strict: false });
     invitations = app.get(INVITATION_REPOSITORY, { strict: false });
+    accounts = app.get(ACCOUNT_REPOSITORY, { strict: false });
   });
   afterAll(async () => {
     await sql.end();
@@ -217,5 +223,44 @@ describe.each(TEST_MARKETS)('agent invitations in market %s (database, ADR-0045)
         expect(rows[0]!.definition).toContain("'customer'");
       },
     );
+
+    it('reads agent statuses live: active, disabled, and nothing for other populations or Markets', async () => {
+      const insert = async (population: string, status: string, marketCode = code) => {
+        const accountId = newId<'Account'>();
+        await sql.query(
+          `INSERT INTO identity.accounts (id, market_id, tenant_id, population, email,
+         email_normalized, display_name, status, email_verified_at, signed_up_at, version, created_at)
+         VALUES ($1, $2, 'default', $3, $4, $4, 'Someone', $5, now(), now(), 1, now())`,
+          [accountId, marketCode, population, `${accountId}@agents.example`, status],
+        );
+        return accountId;
+      };
+      const active = await insert('agent', 'active');
+      const disabled = await insert('agent', 'disabled');
+      const customer = await insert('customer', 'active');
+      const invited = newId<'Account'>();
+      const pending = agentInvitation();
+      await inUnit(market, () => invitations.add(market, pending));
+
+      const statuses = await inUnit(market, () =>
+        accounts.agentStatuses(market, [active, disabled, customer, invited]),
+      );
+      const reserved = await inUnit(market, () =>
+        invitations.agentAccountIdsWithPendingInvitation(market, [
+          pending.state.agentAccountId!,
+          active,
+          invited,
+        ]),
+      );
+
+      expect([...statuses].sort()).toEqual(
+        [
+          [active, 'active'],
+          [disabled, 'disabled'],
+        ].sort(),
+      );
+      expect([...reserved]).toEqual([pending.state.agentAccountId]);
+      expect(await inUnit(market, () => accounts.agentStatuses(market, []))).toEqual(new Map());
+    });
   });
 });

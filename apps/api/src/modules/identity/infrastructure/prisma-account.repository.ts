@@ -200,6 +200,23 @@ export class PrismaAccountRepository implements AccountRepository {
     return row.status === 'active' ? 'active' : 'disabled';
   }
 
+  async agentStatuses(
+    market: MarketContext,
+    ids: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, 'active' | 'disabled'>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.prisma.tx(market).identityAccount.findMany({
+      where: { marketId: market.marketId, population: 'agent', id: { in: [...ids] } },
+      select: { id: true, status: true },
+    });
+    return new Map(
+      rows.map((row) => [
+        row.id as Id<'Account'>,
+        row.status === 'active' ? ('active' as const) : ('disabled' as const),
+      ]),
+    );
+  }
+
   private restore(row: SelectedRow): Account {
     const credential = row.passwordCredential;
     const marketId = parseMarketId(row.marketId);

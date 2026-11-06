@@ -1,5 +1,12 @@
 import type { CallContext, Id, Population, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type {
+  AgentAccess,
+  AgentAccountStatusChanged,
+  AgentAccountStatusFailure,
+  AgentInvitationFailure,
+  AgentInvitationIssued,
+} from './agent-access';
 import type { StepUpFailure } from './step-up';
 
 /**
@@ -41,7 +48,9 @@ export type SellerMembershipSummary = {
 /** Whose address {@link IdentityFacade.contactEmailOf} reads. */
 export type ContactEmailTarget =
   | { readonly kind: 'customer'; readonly accountId: Id<'Account'> }
-  | { readonly kind: 'seller-owner'; readonly sellerId: Id<'Seller'> };
+  | { readonly kind: 'seller-owner'; readonly sellerId: Id<'Seller'> }
+  /** An agent's sign-in address (ADR-0045), only while the account is active and verified. */
+  | { readonly kind: 'agent'; readonly accountId: Id<'Account'> };
 
 /** An active customer account of the context's Market ({@link IdentityFacade.customerAccountOf}). */
 export interface CustomerAccountRef {
@@ -282,6 +291,65 @@ export interface IdentityFacade {
     accountId: Id<'Account'>,
     requestId: Id<'AccountDeletionRequest'>,
   ): Promise<Result<{ readonly revokedSessions: number }, AccessDenied>>;
+
+  /**
+   * Issues an agent invitation with a handover code (ADR-0045 decision 2). The caller is the
+   * `agents` module's CreateAgent, running for an admin who holds `agents.manage`; the caller's
+   * context goes through unchanged and identity checks the key again on that actor, in the unit
+   * that writes. Rule `own-resources` (an active admin). The code is returned once and only its
+   * HMAC is stored; the link goes by mail. An address that already has an agent account or a live
+   * invitation answers `invitation.already-pending`, to the admin only.
+   */
+  issueAgentInvitation(
+    context: CallContext,
+    input: { readonly email: string; readonly displayName: string },
+  ): Promise<Result<AgentInvitationIssued, AgentInvitationFailure>>;
+
+  /** Revokes a pending agent invitation: its code is void. Same rule as issuing. */
+  revokeAgentInvitation(
+    context: CallContext,
+    invitationId: Id<'Invitation'>,
+  ): Promise<Result<void, AgentInvitationFailure>>;
+
+  /**
+   * Revokes the agent's pending invitation and issues a new one for the same address, name and
+   * account id, with a new handover code shown once ("a lost code means revoke and reissue").
+   */
+  reissueAgentInvitation(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<AgentInvitationIssued, AgentInvitationFailure>>;
+
+  /**
+   * Disables an agent: sessions revoked and open invitations voided in one serializable unit
+   * (ADR-0045 decision 5). Idempotent. Rule `own-resources` (an active admin holding
+   * `agents.manage`, re-checked).
+   */
+  disableAgentAccount(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<AgentAccountStatusChanged, AgentAccountStatusFailure>>;
+
+  /** Enables a disabled agent again; sessions and invitations are not restored. Idempotent. */
+  enableAgentAccount(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<AgentAccountStatusChanged, AgentAccountStatusFailure>>;
+
+  /**
+   * The access state of up to 500 agents, read live: `active`, `disabled` or `invited`; an id
+   * that is none of them is absent. Rule `own-resources` (an active admin holding `agents.read` or
+   * `agents.manage`).
+   */
+  agentAccessOf(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Account'>, AgentAccess>,
+      AccessDenied | { readonly code: 'validation.failed' }
+    >
+  >;
 
   /**
    * Ends every session of a customer account because an admin asked for its deletion (customers

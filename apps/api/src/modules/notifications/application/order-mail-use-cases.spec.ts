@@ -88,7 +88,7 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
     attempt: 1,
   });
   const keyOf = (target: ContactEmailTarget) =>
-    target.kind === 'customer' ? target.accountId : target.sellerId;
+    target.kind === 'seller-owner' ? target.sellerId : target.accountId;
 
   beforeEach(() => {
     sent = [];

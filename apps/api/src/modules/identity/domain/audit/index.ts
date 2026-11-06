@@ -291,7 +291,7 @@ export const AdminStepUpRefusedAudit = defineAuditAction({
 const ACCOUNT_STATUSES = ['active', 'disabled'] as const;
 
 /** The populations this path disables (3.1): never a seller-side account. */
-const DISABLEABLE_POPULATIONS = ['admin', 'customer'] as const;
+const DISABLEABLE_POPULATIONS = ['admin', 'customer', 'agent'] as const;
 
 /**
  * An admin disabled an admin or a customer account (identity design 3.1; PA 5 row 8b). Target:

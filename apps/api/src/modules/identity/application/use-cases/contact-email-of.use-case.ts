@@ -9,7 +9,9 @@ import type { AccountRepository } from '../ports/account.repository';
 /** Whose address is wanted: a customer's own, or a seller's Owner (who is told of new orders). */
 export type ContactEmailInput =
   | { readonly kind: 'customer'; readonly accountId: Id<'Account'> }
-  | { readonly kind: 'seller-owner'; readonly sellerId: Id<'Seller'> };
+  | { readonly kind: 'seller-owner'; readonly sellerId: Id<'Seller'> }
+  /** An agent's own sign-in address (ADR-0045), for the issue notices of the agents module. */
+  | { readonly kind: 'agent'; readonly accountId: Id<'Account'> };
 
 export type ContactEmailFailure = { readonly code: 'access.denied' };
 
@@ -21,7 +23,7 @@ export interface ContactEmailOfDependencies extends SellerOwnerDependencies {
 /**
  * `contactEmailOf` (Phase 6 package 1, the order emails): the address to mail an order notice
  * to, read at send time and never stored or put in an event or a log. Rule `system`. It answers
- * the address of a customer account of the context's Market, or of a seller's Owner, only when
+ * the address of a customer account of the context's Market, of an agent, or of a seller's Owner, only when
  * the account is active and its email is verified; otherwise `null`, and the caller sends
  * nothing. No reason is given: a missing, disabled and unverified account answer alike.
  */
@@ -47,9 +49,9 @@ export class ContactEmailOf extends UseCase<ContactEmailInput, string | null, Co
     const read = await this.deps.unitOfWork.run<Account | null, never>(
       market,
       async () => {
-        if (input.kind === 'customer') {
+        if (input.kind === 'customer' || input.kind === 'agent') {
           const account = await this.deps.accounts.findById(market, input.accountId);
-          return ok(account !== null && account.state.population === 'customer' ? account : null);
+          return ok(account !== null && account.state.population === input.kind ? account : null);
         }
         return ok((await readSellerPeople(this.deps, market, input.sellerId)).owner);
       },

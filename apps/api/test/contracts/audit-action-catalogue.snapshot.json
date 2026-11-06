@@ -1368,7 +1368,7 @@
       "status": "enumOf(active|disabled)"
     },
     "after": {
-      "population": "enumOf(admin|customer)",
+      "population": "enumOf(admin|customer|agent)",
       "status": "enumOf(active|disabled)"
     }
   },
@@ -1381,7 +1381,7 @@
       "status": "enumOf(active|disabled)"
     },
     "after": {
-      "population": "enumOf(admin|customer)",
+      "population": "enumOf(admin|customer|agent)",
       "status": "enumOf(active|disabled)"
     }
   },

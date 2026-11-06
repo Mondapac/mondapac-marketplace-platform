@@ -120,6 +120,9 @@ import { DisableAdminAccount } from './application/use-cases/disable-admin-accou
 import { DisableCustomerAccount } from './application/use-cases/disable-customer-account.use-case';
 import { EnableAdminAccount } from './application/use-cases/enable-admin-account.use-case';
 import { EnableCustomerAccount } from './application/use-cases/enable-customer-account.use-case';
+import { AgentAccessOf } from './application/use-cases/agent-access-of.use-case';
+import { DisableAgentAccount } from './application/use-cases/disable-agent-account.use-case';
+import { EnableAgentAccount } from './application/use-cases/enable-agent-account.use-case';
 import { AcceptAgentInvitation } from './application/use-cases/accept-agent-invitation.use-case';
 import { InviteAdmin } from './application/use-cases/invite-admin.use-case';
 import { IssueAgentInvitation } from './application/use-cases/issue-agent-invitation.use-case';
@@ -1370,6 +1373,37 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
+    useCaseProvider(DisableAgentAccount, {
+      unitOfWork: true,
+      accounts: true,
+      invitations: true,
+      grants: true,
+      effectiveKeys: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(EnableAgentAccount, {
+      unitOfWork: true,
+      accounts: true,
+      invitations: true,
+      grants: true,
+      effectiveKeys: true,
+      sessions: true,
+      challenges: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AgentAccessOf, {
+      unitOfWork: true,
+      accounts: true,
+      invitations: true,
+      grants: true,
+      effectiveKeys: true,
+    }),
     useCaseProvider(IssueAgentInvitation, {
       unitOfWork: true,
       accounts: true,
@@ -1850,6 +1884,12 @@ function useCaseProvider<D, U>(
         CustomerAccountExists,
         OwnAccountTiedToSeller,
         EraseCustomerAccount,
+        IssueAgentInvitation,
+        RevokeAgentInvitation,
+        ReissueAgentInvitation,
+        DisableAgentAccount,
+        EnableAgentAccount,
+        AgentAccessOf,
       ],
       useFactory: (
         describeActor: DescribeActor,
@@ -1870,6 +1910,12 @@ function useCaseProvider<D, U>(
         customerAccountExists: CustomerAccountExists,
         ownAccountTiedToSeller: OwnAccountTiedToSeller,
         eraseCustomerAccount: EraseCustomerAccount,
+        issueAgentInvitation: IssueAgentInvitation,
+        revokeAgentInvitation: RevokeAgentInvitation,
+        reissueAgentInvitation: ReissueAgentInvitation,
+        disableAgentAccount: DisableAgentAccount,
+        enableAgentAccount: EnableAgentAccount,
+        agentAccessOf: AgentAccessOf,
       ) =>
         new IdentityFacadeImplementation({
           describeActor,
@@ -1890,6 +1936,12 @@ function useCaseProvider<D, U>(
           customerAccountExists,
           ownAccountTiedToSeller,
           eraseCustomerAccount,
+          issueAgentInvitation,
+          revokeAgentInvitation,
+          reissueAgentInvitation,
+          disableAgentAccount,
+          enableAgentAccount,
+          agentAccessOf,
         }),
     },
     {

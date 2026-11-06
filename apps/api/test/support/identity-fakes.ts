@@ -360,6 +360,19 @@ export class IdentityFakes {
           : state.status,
       );
     },
+    agentStatuses: (market: MarketContext, ids: readonly Id<'Account'>[]) =>
+      Promise.resolve(
+        new Map(
+          ids.flatMap((id) => {
+            const state = this.accounts.get(id);
+            return state !== undefined &&
+              state.marketId === market.marketId &&
+              state.population === 'agent'
+              ? [[id, state.status] as const]
+              : [];
+          }),
+        ),
+      ),
     lockCredential: (market: MarketContext, id: Id<'Account'>) => {
       const state = this.accounts.get(id);
       this.credentialLocks.push(id);

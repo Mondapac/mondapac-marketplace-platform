@@ -49,6 +49,7 @@ const fakeAccounts: AccountRepository = {
   },
   findById: () => Promise.reject(new Error('sign-up reads no account by id')),
   lockCredential: () => Promise.reject(new Error('sign-up takes no credential lock')),
+  agentStatuses: () => Promise.reject(new Error('sign-up reads no agent statuses')),
   add: (market, account) => {
     const { population, email } = account.state;
     state.accounts.set(`${market.marketId}|${population}|${email.normalized}`, account.state);

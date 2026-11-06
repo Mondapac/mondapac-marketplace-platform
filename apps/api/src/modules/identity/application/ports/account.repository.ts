@@ -87,6 +87,16 @@ export interface AccountRepository {
   customerStatus(market: MarketContext, id: Id<'Account'>): Promise<'active' | 'disabled' | null>;
 
   /**
+   * The status of the agent accounts among `ids` in this Market, one read (ADR-0045 decision 5):
+   * an id that is not an agent account of the Market is absent. A malformed status reads as
+   * `disabled`, never `active`. At most 500 ids.
+   */
+  agentStatuses(
+    market: MarketContext,
+    ids: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, 'active' | 'disabled'>>;
+
+  /**
    * Stores a new account, its credential and its data key (identity design 11.3: the key is
    * created with the account, in the same unit).
    */
