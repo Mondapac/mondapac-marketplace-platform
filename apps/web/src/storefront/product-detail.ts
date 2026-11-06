@@ -140,11 +140,6 @@ export function brandRefOf(raw: unknown): ProductDetail['brand'] {
   return isBrandSlug(slug) && isText(name) ? { slug, name } : undefined;
 }
 
-const spelledOut = (code: string): string => {
-  const words = code.replaceAll(/[-_]+/gu, ' ');
-  return words.charAt(0).toUpperCase() + words.slice(1);
-};
-
 const MAX_SPECS = 60;
 const MAX_LIST = 20;
 const GROUP_CODE = /^[a-z][a-z0-9_-]{0,63}$/u;
@@ -219,9 +214,9 @@ export function specificationsOf(
   for (const group of raw as unknown[]) {
     if (!isRecord(group) || typeof group.groupCode !== 'string') continue;
     if (!GROUP_CODE.test(group.groupCode) || !Array.isArray(group.specifications)) continue;
-    // A group the page has no word for is spelled out from its code ("nutrition-facts" is
-    // "Nutrition facts"), so no group in a list of several is left without a heading.
-    const heading = labels.group?.(group.groupCode) ?? spelledOut(group.groupCode);
+    // A heading comes only from the page's own words (the message catalog). A group code is an
+    // internal admin-defined code and is never shown, so a group with no word has no heading.
+    const heading = labels.group?.(group.groupCode);
     for (const item of group.specifications as unknown[]) {
       if (out.length >= MAX_SPECS) return out;
       if (!isRecord(item) || typeof item.code !== 'string' || seen.has(item.code)) continue;
@@ -233,7 +228,7 @@ export function specificationsOf(
         label: item.name,
         value,
         group: group.groupCode,
-        groupLabel: heading,
+        ...(heading === undefined ? {} : { groupLabel: heading }),
       });
     }
   }

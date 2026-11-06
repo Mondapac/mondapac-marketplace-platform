@@ -254,8 +254,27 @@ describe('specifications from the API', () => {
       ['Best before', 'March 1, 2027', 'details'],
     ]);
     expect(rows[2]?.groupLabel).toBe('Details');
-    // A group the page has no word for is spelled out from its code.
-    expect(rows[0]?.groupLabel).toBe('General');
+    // A group the page has no word for has no heading; its internal code is never shown.
+    expect(rows[0]?.groupLabel).toBeUndefined();
+  });
+
+  it('never turns a group code into a heading, even one that reads like a certification', () => {
+    const detail = productDetailOf(
+      {
+        ...TWO_SELLERS,
+        specifications: [
+          {
+            groupCode: 'halal-certified',
+            specifications: [
+              { code: 'origin', name: 'Origin', value: { kind: 'text', text: 'Iran' } },
+            ],
+          },
+        ],
+      },
+      'en',
+      labels,
+    )!;
+    expect(detail.specifications?.[0]?.groupLabel).toBeUndefined();
   });
 
   it('shows digits as Latin digits in a right-to-left language', () => {
@@ -313,15 +332,15 @@ describe('specifications from the API', () => {
     expect(within(section).getByText('Iran').tagName).toBe('DD');
     expect(within(section).getByText('Details', { selector: 'h4' })).toBeTruthy();
     // The group with no word for its code has no heading.
-    expect(section.querySelectorAll('h4')).toHaveLength(2);
+    expect(section.querySelectorAll('h4')).toHaveLength(1);
   });
 
   it('keeps the group heading one level under the section heading', () => {
     // With a description the section is h3 and the groups are h4; without one, h2 and h3.
     renderWith(groups);
     const section = screen.getByText('Specifications').closest('section')!;
-    expect(section.querySelectorAll('h3.spec-title, h4.spec-title')).toHaveLength(2);
-    expect(section.querySelectorAll('h4.spec-title')).toHaveLength(2);
+    expect(section.querySelectorAll('h3.spec-title, h4.spec-title')).toHaveLength(1);
+    expect(section.querySelectorAll('h4.spec-title')).toHaveLength(1);
     cleanup();
     render(
       <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
@@ -339,7 +358,7 @@ describe('specifications from the API', () => {
     );
     const bare = screen.getByText('Specifications').closest('section')!;
     expect(bare.querySelector('h2')?.textContent).toBe('Specifications');
-    expect(bare.querySelectorAll('h3.spec-title')).toHaveLength(2);
+    expect(bare.querySelectorAll('h3.spec-title')).toHaveLength(1);
     expect(bare.querySelectorAll('h4')).toHaveLength(0);
   });
 
@@ -359,26 +378,6 @@ describe('specifications from the API', () => {
     expect(screen.getByText('Wool')).toBeTruthy();
     expect(errors).not.toHaveBeenCalled();
     errors.mockRestore();
-  });
-
-  it('spells out a group code the page has no word for', () => {
-    const heading = (groupCode: string) =>
-      productDetailOf(
-        {
-          ...TWO_SELLERS,
-          specifications: [
-            {
-              groupCode,
-              specifications: [{ code: 'x', name: 'X', value: { kind: 'text', text: 'y' } }],
-            },
-          ],
-        },
-        'en',
-        labels,
-      )!.specifications[0]?.groupLabel;
-    expect(heading('nutrition-facts')).toBe('Nutrition facts');
-    expect(heading('a_b')).toBe('A b');
-    expect(heading('general')).toBe('General');
   });
 
   it('writes a list with the language separator and a decimal without rounding it', () => {
