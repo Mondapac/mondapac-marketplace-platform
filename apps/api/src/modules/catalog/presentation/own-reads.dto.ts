@@ -161,6 +161,10 @@ export class OwnProductView {
   ownBrand!: boolean;
   @ApiProperty({ type: [OwnVariantView] }) variants!: OwnVariantView[];
   @ApiProperty({ description: "The Market's cap on non-retired variants." }) maxVariants!: number;
+  @ApiProperty({ description: "The Market's cap on the options a product varies on (1 or 2)." })
+  maxAxes!: number;
+  @ApiProperty({ description: 'The product version, to send back with Add sizes.' })
+  version!: number;
   @ApiProperty({
     type: [String],
     description: 'Changes the Market sends to review, plus `images` (always).',

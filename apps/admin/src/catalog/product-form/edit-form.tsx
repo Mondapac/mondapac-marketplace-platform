@@ -19,11 +19,14 @@ import {
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../../api/client.ts';
+import { AddSizesDialog } from './add-sizes-dialog.tsx';
+import { canAddSizes, maxAxesOf, publishedAxesOf } from './add-sizes.ts';
 import { AttributesSection } from './attributes-section.tsx';
 import { categoryOptions } from './category-options.ts';
 import {
   attributeInputsOf,
   attributeValuesWith,
+  axesOf,
   categoryIdsOf,
   contentFrom,
   taxCategoryOf,
@@ -161,6 +164,10 @@ function EditForm({
     attributeInputsOf(content, attributeFields),
   );
   const [rows, setRows] = useState<VariantRow[]>(() => variantRowsOf(content, product.variants));
+  const [axes, setAxes] = useState<string[] | null>(() => axesOf(content, rows, form.fields));
+  // Axes are sent when the draft already names them, or once the admin has changed them.
+  const [axesTouched, setAxesTouched] = useState(false);
+  const [sizesOpen, setSizesOpen] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<FormProblem | null>(null);
@@ -180,6 +187,16 @@ function EditForm({
     .map((variant) => variant.variantId);
   const base = `${BASE}/${product.productId}`;
   const published = product.published !== null || status === 'published';
+  const publishedAxes = publishedAxesOf(product.published?.content, form.fields);
+  const maxAxes = maxAxesOf(product.maxAxes);
+  // A second type being added: every live variant must hold a value for it before publishing.
+  const secondCodes =
+    configurable && publishedAxes?.length === 1
+      ? (axes ?? []).filter((axis) => !publishedAxes.includes(axis))
+      : [];
+  const secondMissing = rows.some((row) =>
+    secondCodes.some((axis) => (row.options[axis] ?? '') === ''),
+  );
 
   const labels: Partial<SearchSelectLabels> = {
     search: t('select.search'),
@@ -202,6 +219,10 @@ function EditForm({
       taxCategoryCode,
       attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
       variants: configurable ? variantsWith(list) : null,
+      variantAxes:
+        configurable && axes !== null && (axesTouched || 'variantAxes' in (content ?? {}))
+          ? axes
+          : null,
     });
   }
 
@@ -249,6 +270,12 @@ function EditForm({
     busy.current = true;
     setPending(true);
     setProblem(null);
+    if (action === 'publish' && secondMissing) {
+      setProblem({ key: 'second-missing', details: [], reload: false });
+      busy.current = false;
+      setPending(false);
+      return;
+    }
     if (dirty || action === 'save' || content === undefined) {
       const saved = await save();
       if (saved !== 'saved' || action === 'save') {
@@ -288,6 +315,24 @@ function EditForm({
   return (
     <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
       {guard.dialog}
+      <AddSizesDialog
+        open={sizesOpen}
+        productId={product.productId}
+        fields={form.fields}
+        maxAxes={maxAxes}
+        waiting={(product.pendingSubmittedAt ?? null) !== null}
+        defaultLocale={defaultLocale}
+        csrfToken={csrfToken}
+        onClose={() => setSizesOpen(false)}
+        onDone={() => {
+          setSizesOpen(false);
+          onReload();
+        }}
+        onStale={() => {
+          setSizesOpen(false);
+          onReload();
+        }}
+      />
       <BackLink href="/catalog/products" label={t('back')} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -404,11 +449,22 @@ function EditForm({
             defaultLocale={defaultLocale}
             max={product.maxVariants}
             published={published}
+            axes={axes}
+            publishedAxes={publishedAxes}
+            maxAxes={maxAxes}
+            canAddSizes={canAddSizes(product, form.fields)}
+            addSizesBlocked={dirty || pending}
             refused={refused}
             onChange={(next) => {
               setRows(next);
               edited();
             }}
+            onAxes={(next) => {
+              setAxes(next);
+              setAxesTouched(true);
+              edited();
+            }}
+            onAddSizes={() => setSizesOpen(true)}
           />
         </div>
         <aside className="flex flex-col gap-4">

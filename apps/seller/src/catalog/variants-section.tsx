@@ -4,6 +4,8 @@ import { Banner, Button, Card, CheckboxRow, Dialog } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { NO_VARIANT_FIELDS, pickLabel, variantTitle, type VariantRow } from './draft-content.ts';
+import { secondAxisChoices } from './add-sizes.ts';
+import { SecondAxisStep } from './second-axis-step.tsx';
 import { VariantDetails } from './variant-details.tsx';
 import type { FormField } from './types.ts';
 import {
@@ -34,6 +36,8 @@ export function VariantsSection({
   fields,
   axes,
   locked,
+  publishedAxes,
+  maxAxes,
   defaultLocale,
   max,
   productId,
@@ -46,6 +50,10 @@ export function VariantsSection({
   readonly axes: readonly string[];
   /** The product was published: its axes stay as they are (decision t3). */
   readonly locked: boolean;
+  /** The types the published revision varies on; null while it is Simple or nothing is published. */
+  readonly publishedAxes: readonly string[] | null;
+  /** The Market's cap on the types a product varies on. */
+  readonly maxAxes: number;
   readonly defaultLocale: string;
   readonly max: number;
   readonly productId: string;
@@ -146,6 +154,38 @@ export function VariantsSection({
     );
   };
 
+  // A published product with one type may add a second once (catalog design 4.2a): it is picked
+  // below, and every live variant then needs a value for it.
+  const choices = locked ? secondAxisChoices(publishedAxes, fields, maxAxes) : [];
+  const secondCode =
+    locked && publishedAxes?.length === 1
+      ? axes.find((axis) => !publishedAxes.includes(axis))
+      : undefined;
+  const secondField =
+    secondCode === undefined ? undefined : fields.find((field) => field.code === secondCode);
+  const addingSecond = secondField !== undefined;
+
+  function addSecond(code: string) {
+    const keep = axisCandidates(fields)
+      .map((field) => field.code)
+      .filter((item) => item === code || axes.includes(item));
+    setActive((current) => ({ ...current, [code]: [] }));
+    onChange({ rows: [...rows], axes: keep });
+  }
+
+  function dropSecond() {
+    if (secondCode === undefined) return;
+    onChange({
+      rows: rows.map((row) => ({
+        ...row,
+        options: Object.fromEntries(
+          Object.entries(row.options).filter(([axis]) => axis !== secondCode),
+        ),
+      })),
+      axes: axes.filter((axis) => axis !== secondCode),
+    });
+  }
+
   const first = axes[0] === undefined ? undefined : fields.find((field) => field.code === axes[0]);
   const second = axes[1] === undefined ? undefined : fields.find((field) => field.code === axes[1]);
   const optionsOf = (field: FormField) =>
@@ -188,7 +228,7 @@ export function VariantsSection({
         </Banner>
       ) : null}
 
-      {axes.length === 0 ? null : (
+      {axes.length === 0 || addingSecond ? null : (
         <section className="flex flex-col gap-3 border-t border-line pt-3">
           <h3 className="font-medium">{t('catalog.edit.grid.step-options')}</h3>
           {axes.map((axis) => {
@@ -214,7 +254,27 @@ export function VariantsSection({
         </section>
       )}
 
-      {first === undefined ? null : (
+      <SecondAxisStep
+        choices={choices}
+        second={secondField}
+        rows={rows}
+        fields={fields}
+        defaultLocale={defaultLocale}
+        onAdd={addSecond}
+        onValue={(row, code) =>
+          onChange({
+            rows: rows.map((item) =>
+              item === row
+                ? { ...item, options: { ...item.options, [secondField?.code ?? '']: code } }
+                : item,
+            ),
+            axes: [...axes],
+          })
+        }
+        onRemove={dropSecond}
+      />
+
+      {first === undefined || addingSecond ? null : (
         <section className="flex flex-col gap-2 border-t border-line pt-3">
           <h3 className="font-medium">{t('catalog.edit.grid.step-grid')}</h3>
           {combos.length === 0 ? (

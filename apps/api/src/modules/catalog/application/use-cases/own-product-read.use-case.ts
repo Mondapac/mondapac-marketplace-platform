@@ -44,6 +44,10 @@ export interface OwnProductReadOutput {
   readonly variants: readonly { variantId: string; state: VariantState }[];
   /** The Market's cap on non-retired variants. */
   readonly maxVariants: number;
+  /** The Market's cap on the options a product varies on (1 or 2); Add a second type needs 2. */
+  readonly maxAxes: number;
+  /** The product version, for the commands that name it (Add sizes). */
+  readonly version: number;
   /** Change reasons the Market sends to review, plus `images` which always is (H1). */
   readonly sensitiveFields: readonly string[];
   readonly lastChangedAt: string;
@@ -153,6 +157,7 @@ export class OwnProductRead extends UseCase<
     const { deps } = this;
 
     let maxVariants: number;
+    let maxAxes: number;
     let sensitiveFields: string[];
     let taxCategoryCodes: readonly string[];
     let units: ReturnType<CatalogMarketPolicy['units']>;
@@ -160,6 +165,7 @@ export class OwnProductRead extends UseCase<
       taxCategoryCodes = deps.policy.taxCategoryCodes(market);
       units = deps.policy.units(market);
       maxVariants = deps.policy.maxVariantsPerProduct(market);
+      maxAxes = deps.policy.maxVariantAttributes(market);
       sensitiveFields = sensitiveFieldsOf(deps.policy.sensitiveChanges(market));
     } catch {
       return err({ code: 'access.unavailable' });
@@ -252,6 +258,8 @@ export class OwnProductRead extends UseCase<
         state: variant.state,
       })),
       maxVariants,
+      maxAxes,
+      version: state.version,
       sensitiveFields,
       lastChangedAt: state.lastChangedAt.toString(),
       createdAt: state.createdAt.toString(),

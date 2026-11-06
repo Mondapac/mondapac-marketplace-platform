@@ -222,6 +222,8 @@ export function contentFrom(
     readonly attributeValues: Record<string, unknown>;
     /** `null` for a product whose variants are fixed: its `variants` key is left alone. */
     readonly variants: Record<string, unknown>[] | null;
+    /** The axis codes of a configurable product; `null` or left out keeps the draft's `variantAxes`. */
+    readonly variantAxes?: readonly string[] | null;
   },
 ): Record<string, unknown> {
   const next = { ...content };
@@ -236,5 +238,30 @@ export function contentFrom(
   set('taxCategoryCode', parts.taxCategoryCode, parts.taxCategoryCode === '');
   set('attributeValues', parts.attributeValues, Object.keys(parts.attributeValues).length === 0);
   if (parts.variants !== null) set('variants', parts.variants, parts.variants.length === 0);
+  // Axes are written once a product has some; a draft that never had any stays without.
+  if (parts.variantAxes !== undefined && parts.variantAxes !== null) {
+    if (parts.variantAxes.length > 0) next['variantAxes'] = [...parts.variantAxes];
+    else delete next['variantAxes'];
+  }
   return next;
+}
+
+/**
+ * The axis codes a saved draft names, else the types its variants already use, in feature set
+ * order; `null` while neither says (the product then varies on every type its feature set has).
+ */
+export function axesOf(
+  content: Readonly<Record<string, unknown>> | undefined,
+  rows: readonly VariantRow[],
+  fields: readonly FormField[],
+): string[] | null {
+  const candidates = fields
+    .filter((field) => field.isVariantOption && field.dataType === 'select')
+    .map((field) => field.code);
+  const stored = content?.['variantAxes'];
+  if (Array.isArray(stored)) {
+    return candidates.filter((code) => stored.includes(code));
+  }
+  const used = new Set(rows.flatMap((row) => Object.keys(row.options)));
+  return used.size === 0 ? null : candidates.filter((code) => used.has(code));
 }

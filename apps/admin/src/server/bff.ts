@@ -207,6 +207,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/offers/:id/request-changes',
     // Submit (publish) a platform product's working copy (catalog).
     'catalog/admin/platform-products/:id/submit',
+    // Turn a Simple platform product into one with sizes, once (catalog, variants V9).
+    'catalog/admin/platform-products/:id/add-sizes',
     // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
     // merge other brands into it.
     'catalog/admin/brands/:id/approve',
@@ -324,6 +326,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/impact',
     // One platform product with its working copy, for the product form (catalog).
     'catalog/admin/platform-products/:id',
+    // How many offers of other sellers go off sale if sizes are added (catalog, variants V9).
+    'catalog/admin/platform-products/:id/add-sizes-impact',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
     // The current image of a category, medium size only (catalog, categories C3c).
