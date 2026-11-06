@@ -94,7 +94,6 @@ export class PrismaSellerHealthRequestStore implements SellerHealthRequestStore 
     return updated.count > 0;
   }
 
-<<<<<<< HEAD
   async purgeFinishedBefore(market: MarketContext, before: Temporal.Instant): Promise<number> {
     const deleted = await this.prisma.tx(market).sellersSellerHealthRequest.deleteMany({
       where: {
@@ -106,14 +105,11 @@ export class PrismaSellerHealthRequestStore implements SellerHealthRequestStore 
     return deleted.count;
   }
 
-  async latest(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerHealthRequest | null> {
-=======
   async latest(
     market: MarketContext,
     sellerId: Id<'Seller'>,
     source?: SellerHealthRequestSource,
   ): Promise<SellerHealthRequest | null> {
->>>>>>> origin/main
     const row = await this.prisma.tx(market).sellersSellerHealthRequest.findFirst({
       where: { marketId: market.marketId, sellerId, ...(source === undefined ? {} : { source }) },
       orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
