@@ -10,7 +10,11 @@ import type { ApiRead } from '../src/storefront/api.ts';
 // their counts and "Other {name}" on a level-3 category, the short description, the deep crumbs,
 // the "Other" view (`?direct=1`) and the empty category, with the API answering from a stub.
 
-const api = vi.hoisted(() => ({ paths: [] as string[], items: [] as unknown[] }));
+const api = vi.hoisted(() => ({
+  paths: [] as string[],
+  items: [] as unknown[],
+  extra: {},
+}));
 
 vi.mock('next/headers', () => ({
   headers: () => Promise.resolve(new Headers({ host: 'shop.example' })),
@@ -24,6 +28,7 @@ vi.mock('next/navigation', () => ({
   notFound: () => {
     throw new Error('not found');
   },
+  useRouter: () => ({ replace: () => undefined }),
 }));
 // Indexing on, so a page's own noindex is what the metadata shows.
 vi.mock('../src/storefront/source.ts', async (importOriginal) => ({
@@ -68,7 +73,10 @@ vi.mock('../src/storefront/api.ts', async (importOriginal) => ({
   apiGet: (path: string): Promise<ApiRead<unknown>> => {
     api.paths.push(path);
     if (path.startsWith('catalog/categories')) return Promise.resolve({ kind: 'ok', body: TREE });
-    return Promise.resolve({ kind: 'ok', body: { items: api.items, hasMore: false } });
+    return Promise.resolve({
+      kind: 'ok',
+      body: { items: api.items, hasMore: false, ...api.extra },
+    });
   },
 }));
 
@@ -98,6 +106,7 @@ beforeEach(() => {
   vi.stubEnv('STOREFRONT_INDEXING', 'on');
   api.paths.length = 0;
   api.items = [ITEM];
+  api.extra = {};
 });
 
 describe('category page on the live tree', () => {
@@ -174,5 +183,61 @@ describe('category page on the live tree', () => {
       [4, 'Lamb chops'],
       [5, 'Loin'],
     ]);
+  });
+});
+
+describe('category page with variant filters (attributes A7, variants V8)', () => {
+  const VARIANT = id(93);
+  const filtered = { filter: 'size:small', price: '1000..2500' };
+  beforeEach(() => {
+    api.items = [
+      {
+        ...ITEM,
+        variantId: VARIANT,
+        price: { from: { amount: '1299', currency: 'AUD' }, varies: true },
+      },
+    ];
+    api.extra = {
+      filters: [
+        {
+          code: 'size',
+          name: 'Size',
+          kind: 'choice',
+          options: [
+            { code: 'small', label: 'Small', count: 1, selected: true },
+            { code: 'large', label: 'Large', count: 4, selected: false },
+          ],
+          bounds: null,
+          picked: null,
+        },
+      ],
+      filtered: true,
+    };
+  });
+
+  it('sends the URL filters to the search and shows them with the "From" price and variant link', async () => {
+    const page = await html('lamb-chops', filtered);
+
+    expect(api.paths.at(-1)).toBe(
+      `search/products?category=${id(3)}&filter=size%3Asmall&price=1000..2500&page=1&pageSize=12`,
+    );
+    expect(page).toContain('All filters');
+    // The chips of the filters in use: the option label and the price band, each removable.
+    expect(page).toContain('aria-label="Remove filter: Small"');
+    expect(page).toContain('href="/c/lamb-chops?price=1000..2500"');
+    expect(page).toContain('aria-label="Remove filter: A$10 to A$25"');
+    expect(page).toContain('href="/c/lamb-chops?filter=size%3Asmall"');
+    expect(page).toContain('From A$12.99');
+    expect(page).toContain(`?v=${VARIANT}"`);
+  });
+
+  it('keeps a filtered page out of the index with the plain category as canonical', async () => {
+    const page = await html('lamb-chops', filtered);
+    expect(page).not.toContain('application/ld+json');
+    const meta = await generateMetadata(props('lamb-chops', filtered));
+    expect(meta.robots).toEqual({ index: false, follow: true });
+    expect(meta.alternates?.canonical).toBe('https://shop.example/c/lamb-chops');
+    const plain = await generateMetadata(props('lamb-chops'));
+    expect(plain.robots).not.toEqual({ index: false, follow: true });
   });
 });

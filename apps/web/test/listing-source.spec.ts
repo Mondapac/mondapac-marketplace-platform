@@ -177,6 +177,7 @@ describe('products of a listing', () => {
     expect(await liveProducts({ category: 'nope', page: 1, pageSize: 12 }, read)).toEqual({
       items: [],
       hasMore: false,
+      filters: [],
     });
     expect(paths).toEqual(['catalog/categories']);
   });
@@ -195,5 +196,112 @@ describe('products of a listing', () => {
         liveProducts({ q: 'lamb', page: 1, pageSize: 12 }, reader(search).read),
       ).rejects.toThrow('product search');
     }
+  });
+});
+
+describe('variant filters, prices and GTIN of a listing (variants V8)', () => {
+  const V1 = '0b5e1c3a-0000-4000-8000-0000000000d1';
+  const priced = {
+    ...item(P1, 'Lamb chops'),
+    variantId: V1,
+    price: { from: { amount: '1299', currency: 'AUD' }, varies: true },
+  };
+  const exact = { ...item(P2, 'Lamb mince'), variantId: null, price: null };
+  const BODY = {
+    items: [priced, exact],
+    page: 1,
+    pageSize: 12,
+    hasMore: false,
+    filters: [
+      {
+        code: 'size',
+        name: 'Size',
+        kind: 'choice',
+        options: [
+          { code: 'small', label: 'Small', count: 3, selected: true },
+          { code: 'BAD CODE', label: 'Bad', count: 1, selected: false },
+          { code: 'large', label: 'Large', count: null, selected: false },
+        ],
+        bounds: null,
+        picked: null,
+      },
+      { code: 'weight', name: 'Weight', kind: 'range', options: [], bounds: null, picked: null },
+      {
+        code: 'organic',
+        name: 'Organic',
+        kind: 'toggle',
+        options: [{ code: 'true', label: 'Yes', count: 2, selected: false }],
+      },
+    ],
+    filtered: true,
+    exactMatch: { productId: P1, variantId: V1 },
+  };
+
+  it('sends the filters in the API words and reads the price, the variant and the groups', async () => {
+    const { read, paths } = reader({ kind: 'ok', body: BODY });
+    const page = await liveProducts(
+      {
+        category: 'lamb',
+        filters: {
+          choices: [{ attr: 'size', values: ['large', 'small'] }],
+          price: { min: 1000, max: 2500 },
+        },
+        page: 1,
+        pageSize: 12,
+      },
+      read,
+    );
+    const asked = new URLSearchParams(paths[1]?.split('?')[1]);
+    expect(asked.getAll('filter')).toEqual(['size:large,small']);
+    expect(asked.get('price')).toBe('1000..2500');
+    expect(page?.items[0]).toMatchObject({
+      id: P1,
+      price: { amount: 1299, currency: 'AUD' },
+      priceFrom: true,
+      variantId: V1,
+    });
+    expect(page?.items[1]).not.toHaveProperty('price');
+    expect(page?.items[1]).not.toHaveProperty('variantId');
+    // A range has no control on the page; a malformed option code is dropped.
+    expect(page?.filters).toEqual([
+      {
+        code: 'size',
+        name: 'Size',
+        kind: 'choice',
+        options: [
+          { code: 'small', label: 'Small', count: 3, selected: true },
+          { code: 'large', label: 'Large', count: null, selected: false },
+        ],
+      },
+      {
+        code: 'organic',
+        name: 'Organic',
+        kind: 'toggle',
+        options: [{ code: 'true', label: 'Yes', count: 2, selected: false }],
+      },
+    ]);
+    expect(page?.exactMatch).toEqual({ productId: P1, variantId: V1 });
+  });
+
+  it('keeps a single price without "From" and ignores a variant id that is not a UUID', async () => {
+    const body = {
+      ...BODY,
+      items: [
+        {
+          ...priced,
+          variantId: 'not-a-uuid',
+          price: { from: { amount: '500', currency: 'NZD' }, varies: false },
+        },
+      ],
+      exactMatch: { productId: 'x', variantId: V1 },
+    };
+    const page = await liveProducts(
+      { q: 'lamb', page: 1, pageSize: 12 },
+      reader({ kind: 'ok', body }).read,
+    );
+    expect(page?.items[0]).toMatchObject({ price: { amount: 500, currency: 'NZD' } });
+    expect(page?.items[0]).not.toHaveProperty('priceFrom');
+    expect(page?.items[0]).not.toHaveProperty('variantId');
+    expect(page?.exactMatch).toBeUndefined();
   });
 });
