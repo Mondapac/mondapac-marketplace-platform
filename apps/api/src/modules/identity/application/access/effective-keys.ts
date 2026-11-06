@@ -72,6 +72,8 @@ const SCOPE_OF: Readonly<Record<Population, PermissionScopeOfRole | null>> = Obj
   customer: null,
   seller: 'seller',
   admin: 'platform',
+  // An agent holds no permission key (ADR-0045 decision 6).
+  agent: null,
 });
 
 /**

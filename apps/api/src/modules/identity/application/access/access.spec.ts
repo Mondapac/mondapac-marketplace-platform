@@ -498,6 +498,66 @@ describe.each(TEST_MARKETS)('identity access ports in market %s', (code) => {
       });
     });
 
+    describe('for the agent population (ADR-0045 decision 6)', () => {
+      const agentSelf = { name: 'agents.my-profile', rule: { kind: 'agent-self' as const } };
+      const as = (population: 'customer' | 'seller' | 'admin' | 'agent') =>
+        testCallContext(
+          market,
+          testAuthenticatedActor(market, {
+            population,
+            accountId: ACCOUNT_ID,
+            sessionId: SESSION_ID,
+            sellerId: population === 'seller' ? SELLER_ID : null,
+          }),
+        );
+
+      it('allows agent-self to an active agent account, read in a read-only unit', async () => {
+        fakes.seedAccount(account(code, { population: 'agent', displayName: 'Agent' }));
+
+        await expect(check().check(as('agent'), agentSelf)).resolves.toEqual(ALLOWED);
+        expect(units).toEqual([{ readOnly: true }]);
+      });
+
+      it('denies agent-self to a disabled agent and to an agent whose account is gone', async () => {
+        fakes.seedAccount(
+          account(code, { population: 'agent', displayName: 'Agent', status: 'disabled' }),
+        );
+        await expect(check().check(as('agent'), agentSelf)).resolves.toEqual(DENIED);
+        fakes.accounts.delete(ACCOUNT_ID);
+        await expect(check().check(as('agent'), agentSelf)).resolves.toEqual(DENIED);
+      });
+
+      it.each(['customer', 'seller', 'admin'] as const)(
+        'denies agent-self to a %s session, before any read',
+        async (population) => {
+          fakes.seedAccount(account(code, { population, displayName: 'X' }));
+
+          await expect(check().check(as(population), agentSelf)).resolves.toEqual(DENIED);
+          expect(units).toEqual([]);
+        },
+      );
+
+      it('denies every permission-keyed rule to an agent, even for a key every role holds', async () => {
+        fakes.seedAccount(account(code, { population: 'agent', displayName: 'Agent' }));
+        for (const key of [
+          SELLER_ACCESS_VIEW.key,
+          TEAM_MEMBER_VIEW.key,
+          'identity.agent-account.reset-second-factor',
+          'agents.manage',
+        ]) {
+          await expect(check().check(as('agent'), needs(key))).resolves.toEqual(DENIED);
+        }
+        expect(units).toEqual([]);
+      });
+
+      it('denies own-resources to an agent: it owns no customer, seller or admin resource', async () => {
+        fakes.seedAccount(account(code, { population: 'agent', displayName: 'Agent' }));
+
+        await expect(check().check(as('agent'), ownResources)).resolves.toEqual(DENIED);
+        expect(units).toEqual([]);
+      });
+    });
+
     describe('for the seller population (slice 5)', () => {
       const sellerContext = (sellerId: Id<'Seller'> = SELLER_ID) =>
         testCallContext(

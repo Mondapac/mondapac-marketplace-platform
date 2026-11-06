@@ -22,14 +22,26 @@ export const PERMISSION_KEY_PATTERN = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*){2}$/;
  * - `own-resources`: an authenticated actor, on what its own account owns.
  * - `system`: the system actor only; never satisfiable from HTTP.
  * - `permissions`: an authenticated actor that holds every listed key.
+ * - `agent-self` (ADR-0045 decision 6): the named non-permission rule of the agent population.
+ *   Only an active `agent` actor passes, and only on a resource that belongs to that agent (the
+ *   use case checks ownership in the application layer). Every other actor is denied, and an
+ *   `agent` actor is denied every other authenticated rule, so a role error cannot open an
+ *   admin route to an agent nor an agent route to anyone else.
  */
 export type AccessRule =
   | { readonly kind: 'permissions'; readonly allOf: readonly [PermissionKey, ...PermissionKey[]] }
   | { readonly kind: 'anonymous' }
   | { readonly kind: 'own-resources' }
+  | { readonly kind: 'agent-self' }
   | { readonly kind: 'system' };
 
-export const ACCESS_RULE_KINDS = ['permissions', 'anonymous', 'own-resources', 'system'] as const;
+export const ACCESS_RULE_KINDS = [
+  'permissions',
+  'anonymous',
+  'own-resources',
+  'agent-self',
+  'system',
+] as const;
 export type AccessRuleKind = AccessRule['kind'];
 
 /** What a seller that is not approved may do (brief decision 6; identity design 5.2). */
@@ -112,7 +124,10 @@ export function checkAccessDeclaration(
   if (sellerState !== undefined && sellerState !== 'deny' && sellerState !== 'allow') {
     return err({ code: 'seller-state-invalid' });
   }
-  if ((kind === 'anonymous' || kind === 'system') && 'whenSellerNotApproved' in value) {
+  if (
+    (kind === 'anonymous' || kind === 'system' || kind === 'agent-self') &&
+    'whenSellerNotApproved' in value
+  ) {
     return err({ code: 'seller-state-not-applicable' });
   }
   if (kind === 'own-resources' && sellerState === undefined) {
