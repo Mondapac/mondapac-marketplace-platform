@@ -54,6 +54,7 @@ describe.each(FIXTURES)('revision texts in market $code', ({ supported, defaultL
       imageIds: [],
       variantIds: ['v1'],
       variantGtins: { v1: null },
+      variantAxes: ['size'],
     });
   });
 });

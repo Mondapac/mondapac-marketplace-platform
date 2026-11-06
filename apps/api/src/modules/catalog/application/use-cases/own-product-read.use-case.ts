@@ -304,6 +304,7 @@ export function sensitiveFieldsOf(
   if (policy.primaryImage) fields.push('primary-image');
   if (policy.variantRemoved) fields.push('variant-removed');
   if (policy.gtinChanged) fields.push('gtin-changed');
+  if (policy.axisAdded) fields.push('axis-added');
   fields.push('images');
   return fields;
 }

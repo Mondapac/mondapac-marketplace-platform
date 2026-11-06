@@ -269,6 +269,7 @@ describe.each(FIXTURES)(
           anyImage: false,
           variantRemoved: true,
           gtinChanged: true,
+          axisAdded: true,
         }),
         maxVariantsPerProduct: () => 100,
         maxVariantAttributes: () => 2,
@@ -333,6 +334,7 @@ describe.each(FIXTURES)(
           ),
       } as unknown as AttributeRepository;
       const freeze = new FreezeRevision({
+        revisions: { find: () => Promise.resolve(null) },
         familyResolver: fixedFamilyResolver(),
         attributes,
         policy,

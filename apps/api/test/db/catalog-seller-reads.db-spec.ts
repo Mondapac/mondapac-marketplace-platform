@@ -75,6 +75,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       anyImage: false,
       variantRemoved: true,
       gtinChanged: true,
+      axisAdded: true,
     }),
     maxVariantsPerProduct: () => 10,
     maxVariantAttributes: () => 2,
@@ -189,6 +190,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       workingCopies: copies,
       revisions,
       freeze: new FreezeRevision({
+        revisions,
         familyResolver: fixedFamilyResolver(),
         attributes,
         policy,
@@ -397,6 +399,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       'primary-image',
       'variant-removed',
       'gtin-changed',
+      'axis-added',
       'images',
     ]);
     expect(own.value.workingCopy?.content).toMatchObject({

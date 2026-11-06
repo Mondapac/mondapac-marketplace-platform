@@ -182,6 +182,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
         anyImage: false,
         variantRemoved: true,
         gtinChanged: true,
+        axisAdded: true,
       }),
       maxVariantsPerProduct: () => 100,
       maxVariantAttributes: () => 2,
@@ -243,6 +244,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
         ),
     } as unknown as AttributeRepository;
     const freeze = new FreezeRevision({
+      revisions: { find: () => Promise.resolve(null) },
       familyResolver: fixedFamilyResolver(),
       attributes,
       policy,

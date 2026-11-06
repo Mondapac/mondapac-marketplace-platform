@@ -99,6 +99,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       approvalRequired: () => Promise.resolve(true),
     };
     service = new FreezeRevision({
+      revisions: { find: () => Promise.resolve(null) },
       familyResolver: fixedFamilyResolver(),
       attributes,
       policy,
@@ -175,6 +176,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     ): FreezeRevision {
       const deps = (service as unknown as { deps: Record<string, unknown> }).deps;
       return new FreezeRevision({
+        revisions: { find: () => Promise.resolve(null) },
         ...deps,
         familyResolver: { resolve } as never,
         attributes: {
@@ -260,6 +262,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       // new set's values: they are left out, never met as unknown (CAT-10).
       const deps = (service as unknown as { deps: Record<string, unknown> }).deps;
       const back = new FreezeRevision({
+        revisions: { find: () => Promise.resolve(null) },
         ...deps,
         familyResolver: { resolve: () => Promise.resolve({ ok: true, familyCode: 'default' }) },
         attributes: {
@@ -283,6 +286,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     it('a dropped material attribute is no relaxation: the revision just does not carry it', async () => {
       const deps = (service as unknown as { deps: Record<string, unknown> }).deps;
       const moved = new FreezeRevision({
+        revisions: { find: () => Promise.resolve(null) },
         ...deps,
         familyResolver: { resolve: () => Promise.resolve({ ok: true, familyCode: 'frozen' }) },
         attributes: {
@@ -488,6 +492,131 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     });
   });
 
+  describe('add a second axis (variants V9b)', () => {
+    const colour: AttributeSchema['fields'][number] = {
+      code: 'colour',
+      dataType: 'select' as const,
+      localizable: false,
+      required: false,
+      isVariantOption: true,
+      material: false,
+      claimChecked: true,
+      bounds: {
+        options: ['r', 'b'].map((option) => ({
+          code: option,
+          labels: Object.fromEntries(ALL_LOCALES.map((l) => [l, `${option.toUpperCase()} ${l}`])),
+        })),
+      },
+    };
+    const codesOf = (result: Awaited<ReturnType<FreezeRevision['freeze']>>): string[] =>
+      !result.ok && result.error.code === 'revision.not-ready'
+        ? result.error.issues.map((issue) => issue.code)
+        : [];
+
+    function lockedTo(axes: readonly string[]): { service: FreezeRevision; product: Product } {
+      if (schema === null) throw new Error('no schema');
+      schema = { ...schema, fields: [...schema.fields, colour] };
+      const draft = product('configurable');
+      const published = new Proxy(draft, {
+        get: (target, prop) =>
+          prop === 'state'
+            ? { ...target.state, publishedRevisionId: 'rev-1' as Id<'ProductRevision'> }
+            : (Reflect.get(target, prop, target) as unknown),
+      });
+      const revisions = {
+        find: () =>
+          Promise.resolve({
+            content: {
+              variants: [{ optionValues: Object.fromEntries(axes.map((axis) => [axis, 'x'])) }],
+            },
+          }),
+      } as unknown as ProductRevisionRepository;
+      return {
+        product: published,
+        service: new FreezeRevision({
+          familyResolver: fixedFamilyResolver(),
+          attributes: {
+            loadSchema: () => Promise.resolve(schema),
+          } as unknown as AttributeRepository,
+          policy: (service as unknown as { deps: { policy: CatalogMarketPolicy } }).deps.policy,
+          handlerFor: () => configurableProductType,
+          revisions,
+        }),
+      };
+    }
+
+    const both = [
+      { variantId: v(1), optionValues: { size: 'l', colour: 'r' } },
+      { variantId: v(2), optionValues: { size: 's', colour: 'r' } },
+    ];
+
+    it('freezes the locked axis plus a new one, keeps the ids and rebuilds keys and labels of every variant', async () => {
+      const { service: locked, product: published } = lockedTo(['size']);
+      const result = await locked.freeze(
+        market,
+        published,
+        copyOf(
+          ready({
+            variantAxes: ['size', 'colour'],
+            variants: [{ ...both[0], labels: { [locale]: 'Seller typed' } }, both[1]],
+          }),
+        ),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const [large, small] = result.value.content.variants;
+      expect([large?.variantId, small?.variantId]).toEqual([v(1), v(2)]);
+      expect(large?.optionKey).toBe('colour=r;size=l');
+      expect(small?.optionKey).toBe('colour=r;size=s');
+      expect(large?.labels).toEqual(
+        Object.fromEntries(locales.map((l) => [l, `Large ${l} · R ${l}`])),
+      );
+      expect(small?.labels).toEqual(
+        locales.includes('en-AU' as never) ? { 'en-AU': 'Small en-AU · R en-AU' } : {},
+      );
+    });
+
+    it('refuses a live variant without an option of the new axis', async () => {
+      const { service: locked, product: published } = lockedTo(['size']);
+      const result = await locked.freeze(
+        market,
+        published,
+        copyOf(
+          ready({
+            variantAxes: ['size', 'colour'],
+            variants: [both[0], { variantId: v(2), optionValues: { size: 's' } }],
+          }),
+        ),
+      );
+      expect(codesOf(result)).toContain('variants.option-missing');
+    });
+
+    it('refuses the same combination twice', async () => {
+      const { service: locked, product: published } = lockedTo(['size']);
+      const result = await locked.freeze(
+        market,
+        published,
+        copyOf(
+          ready({
+            variantAxes: ['size', 'colour'],
+            variants: [both[0], { variantId: v(2), optionValues: { size: 'l', colour: 'r' } }],
+          }),
+        ),
+      );
+      expect(codesOf(result)).toContain('duplicate');
+    });
+
+    it('keeps a product on two axes locked', async () => {
+      const { service: locked, product: published } = lockedTo(['size', 'colour']);
+      const result = await locked.freeze(
+        market,
+        published,
+        copyOf(ready({ variantAxes: ['size'], variants: [both[0], both[1]] })),
+      );
+      expect(codesOf(result)).toContain('variants.axes-locked');
+    });
+  });
+
   it('builds the variant labels from the option labels and drops a locale with a missing one (V2)', async () => {
     const frozen = await service.freeze(
       market,
@@ -536,6 +665,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       }),
     ).rejects.toThrow(/do not belong together/);
     const mismatched = new FreezeRevision({
+      revisions: { find: () => Promise.resolve(null) },
       familyResolver: fixedFamilyResolver(),
       attributes: {
         loadSchema: () => Promise.resolve(schemaOf()),
@@ -566,6 +696,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       error: { code: 'revision.schema-unavailable' },
     });
     const unknown = new FreezeRevision({
+      revisions: { find: () => Promise.resolve(null) },
       familyResolver: fixedFamilyResolver(),
       attributes: {
         loadSchema: () => Promise.resolve(schemaOf()),
@@ -580,6 +711,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
   });
   it('reports a required field whose value suggestion is open as pending, not as missing', async () => {
     const withSuggestions = new FreezeRevision({
+      revisions: { find: () => Promise.resolve(null) },
       familyResolver: fixedFamilyResolver(),
       attributes: { loadSchema: () => Promise.resolve(schema) } as unknown as AttributeRepository,
       policy: {
