@@ -966,7 +966,8 @@
         "unknown": "Unknown reason"
       },
       "tab": {
-        "details": "Details"
+        "details": "Details",
+        "variants": "Variants"
       },
       "tabs": "Offer sections"
     },
@@ -1227,6 +1228,39 @@
       }
     },
     "not-given": "Not given",
+    "variants-table": {
+      "title": "Prices and stock by variant",
+      "tab": "Variants",
+      "variant": "Variant",
+      "variant-n": "Variant {number}",
+      "select": "Select {variant}",
+      "select-all": "Select all variants",
+      "price-for": "Price for {variant}",
+      "held": "Waiting for review: {amount}",
+      "special": {
+        "running": "{amount}, running",
+        "scheduled": "{amount}, scheduled"
+      },
+      "special-link": "Set or end a special price on the Prices page.",
+      "bulk": "Bulk actions",
+      "selected": "{count, plural, one {# variant selected} other {# variants selected}}",
+      "set-price": "Set price",
+      "increase": "Increase by %",
+      "set-stock": "Set stock",
+      "location": "Location",
+      "bulk-label": {
+        "price": "New price ({currency}, GST included)",
+        "increase": "Increase prices by (%)",
+        "stock": "Units in stock"
+      },
+      "apply": "{count, plural, one {Apply to # variant} other {Apply to # variants}}",
+      "bulk-help": "Bulk actions only fill the cells below. Nothing is saved until you press Save.",
+      "skipped": "{count, plural, one {# variant has no price yet and was left as it is.} other {# variants have no price yet and were left as they are.}}",
+      "save": "{count, plural, =0 {Save changes} one {Save # change} other {Save # changes}}",
+      "discard": "Discard changes",
+      "saved": "{count, plural, one {Saved # change.} other {Saved # changes.}}",
+      "partial": "Saved {done}, {failed} could not be saved. The cells that failed show why."
+    },
     "suggestions": {
       "title": "Value suggestions",
       "intro": "When a field of your product does not have the value you need, suggest it here. A reviewer adds it for everyone, matches it to a value already on the list, or tells you why not. We also email you the answer.",
