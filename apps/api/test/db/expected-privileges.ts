@@ -350,10 +350,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
-    // Seller health requests: inserted, then finished once (status and finished_at); never
-    // deleted by the app.
+    // Seller health requests: inserted, then finished once (status and finished_at); finished
+    // rows are deleted by the retention purge (30 days).
     'sellers.seller_health_requests': {
-      table: ['INSERT', 'SELECT'],
+      table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['finished_at', 'status'],
     },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
