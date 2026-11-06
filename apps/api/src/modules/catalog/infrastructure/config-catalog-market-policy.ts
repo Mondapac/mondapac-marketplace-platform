@@ -41,6 +41,10 @@ export class ConfigCatalogMarketPolicy implements CatalogMarketPolicy {
     return this.section(market).maxCategoryDepth;
   }
 
+  maxCategoryChangeTags(market: MarketContext): number {
+    return this.section(market).maxCategoryChangeTags;
+  }
+
   maxVariantAttributes(market: MarketContext): number {
     return this.section(market).maxVariantAttributes;
   }

@@ -47,6 +47,7 @@ const settingsPages: readonly PaletteSettingsPage[] = [
       view: link.view,
       groupLabelKey: group.labelKey,
       groupIcon: group.icon,
+      rootLabelKey: 'nav.settings',
     })),
   ),
   ...accountPages,
@@ -54,18 +55,18 @@ const settingsPages: readonly PaletteSettingsPage[] = [
 
 export const adminActions: readonly PaletteActionSpec[] = [
   {
-    id: 'create-role',
-    labelKey: 'palette.action.create-role',
-    href: '/settings/roles/new',
-    icon: 'shield-check',
-    anyOf: ['identity.platform-role.create'],
-  },
-  {
     id: 'invite-admin',
     labelKey: 'palette.action.invite-admin',
     href: '/settings/admins',
     icon: 'users',
     anyOf: ['identity.admin-account.invite'],
+  },
+  {
+    id: 'create-role',
+    labelKey: 'palette.action.create-role',
+    href: '/settings/roles/new',
+    icon: 'shield-check',
+    anyOf: ['identity.platform-role.create'],
   },
 ];
 

@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { ChangeScope, LastChanged } from '../../../platform/audit/change-trail';
 import { SupportContactChanged } from '../domain/audit';
 import { parseSupportEmail } from '../domain/support-email';
 import type { NotificationsDependencies } from './notifications-dependencies';
@@ -10,8 +11,11 @@ export type SupportContactFailure =
       readonly code: 'validation.failed';
       readonly fields: readonly { path: string; code: string }[];
     }
-  /** Another admin changed the address first; the screen reloads and tries again. */
-  | { readonly code: 'notifications.conflict' };
+  /**
+   * Another admin changed the address first; the screen reloads and tries again. `lastChanged` is
+   * the winning save (who and when), null when it cannot be read.
+   */
+  | { readonly code: 'notifications.conflict'; readonly lastChanged?: LastChanged | null };
 
 /** `email` is null when neither an admin nor the Market configuration gave an address. */
 export interface SupportContactView {
@@ -19,6 +23,19 @@ export interface SupportContactView {
   /** 0 while the Market default (or nothing) is in force. */
   readonly version: number;
 }
+
+/** The support contact page's read model: the address, its version and the latest change. */
+export interface SupportContactPage extends SupportContactView {
+  /** Null while the Market default is in force (never changed). */
+  readonly lastChanged: LastChanged | null;
+}
+
+/** The audit rows of the support contact page: one target, `email` is the one field. */
+export const SUPPORT_CONTACT_CHANGES: ChangeScope = {
+  actions: [SupportContactChanged.action],
+  targetId: 'support-email',
+  fixedFields: { [SupportContactChanged.action]: ['email'] },
+};
 
 /** What a visitor without a session may read: the address only. */
 export interface PublicSupportContact {

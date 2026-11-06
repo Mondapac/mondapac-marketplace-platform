@@ -36,3 +36,31 @@ export function buildVariantLabels(
   }
   return labels;
 }
+
+/** One locale in which a stored variant label is not the automatic one. */
+export interface LabelDifference {
+  readonly locale: string;
+  /** The label stored on the revision; null when the revision has none in this locale. */
+  readonly stored: string | null;
+  /** The label the builder gives now; null when it gives none (an option label is missing). */
+  readonly built: string | null;
+}
+
+/**
+ * The locales in which the stored labels of a variant differ from the built ones, in locale
+ * order (the "Custom variant labels" report, variants V2). A locale where both are absent is not a
+ * difference. Pure.
+ */
+export function differingLabels(
+  stored: Readonly<Record<string, string>>,
+  built: Readonly<Record<string, string>>,
+  locales: readonly string[],
+): LabelDifference[] {
+  const out: LabelDifference[] = [];
+  for (const locale of [...locales].sort()) {
+    const s = Object.hasOwn(stored, locale) ? stored[locale]! : null;
+    const b = Object.hasOwn(built, locale) ? built[locale]! : null;
+    if (s !== b) out.push({ locale, stored: s, built: b });
+  }
+  return out;
+}

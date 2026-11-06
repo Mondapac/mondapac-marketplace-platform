@@ -27,6 +27,32 @@ export interface AuditTrailQuery {
   readonly limit: number;
 }
 
+/** One row of {@link AuditTrailReader.historyOf}: the entry and which action and target it is. */
+export interface AuditTrailRow extends AuditTrailEntry {
+  readonly action: string;
+  readonly targetId: string;
+}
+
+/** What {@link AuditTrailReader.historyOf} reads. */
+export interface AuditTrailScope {
+  /** 1 to {@link MAX_AUDIT_TRAIL_ACTIONS} actions of the reader's own module, in the catalogue. */
+  readonly actions: readonly string[];
+  /**
+   * One target of the actions' declared target types, or null for every target of those types in
+   * the Market. Null is for settings that belong to the whole Market (delivery fleets, platform
+   * roles): never for a target that belongs to one seller, because the rows of every seller would
+   * come back.
+   */
+  readonly targetId: string | null;
+  /** The id of the last row of the previous page; null for the first page. */
+  readonly after: string | null;
+  /** 1 to {@link MAX_AUDIT_TRAIL_PAGE}. */
+  readonly limit: number;
+}
+
+/** The most actions one {@link AuditTrailScope} may name. */
+export const MAX_AUDIT_TRAIL_ACTIONS = 8;
+
 /** The largest page one read returns. */
 export const MAX_AUDIT_TRAIL_PAGE = 100;
 
@@ -49,11 +75,27 @@ export interface AuditTrailReader {
     market: MarketContext,
     query: AuditTrailQuery,
   ): Promise<Result<readonly AuditTrailEntry[], { readonly code: 'cursor.unknown' }>>;
+
+  /**
+   * As {@link history}, over several of the module's own actions at once (a settings page whose
+   * changes are written under more than one action), newest first across all of them, each row
+   * saying which action and target it is. The same rules apply: the module's own catalogue
+   * entries only, the context's Market, the caller's open unit, and a cursor that names no row of
+   * this history is `cursor.unknown`.
+   */
+  historyOf(
+    market: MarketContext,
+    scope: AuditTrailScope,
+  ): Promise<Result<readonly AuditTrailRow[], { readonly code: 'cursor.unknown' }>>;
 }
 
 /** Why the reader refused a call. Codes only. */
 export type AuditReadRefusal =
-  'catalogue-not-sealed' | 'action-not-in-catalogue' | 'action-of-another-owner' | 'limit-invalid';
+  | 'catalogue-not-sealed'
+  | 'action-not-in-catalogue'
+  | 'action-of-another-owner'
+  | 'limit-invalid'
+  | 'actions-invalid';
 
 export class AuditReadRefusedError extends Error {
   override readonly name = 'AuditReadRefusedError';

@@ -74,9 +74,9 @@ const sameLabel = (a: string, b: string): boolean =>
  * `catalog.own-product.edit`, the seller population and a seller who may sell. The request names
  * the product, the field code and the text; the seller, Market and status come from stored state.
  * A product of another seller, a PLATFORM product and an unknown id answer a byte-identical
- * `product.not-found`. Only a published, select-like field that is neither `material` nor a
- * variant option takes a suggestion (`attribute.not-suggestable`). One open suggestion per
- * product and field, at most {@link MAX_OPEN_SUGGESTIONS_PER_SELLER} open per seller, and not a
+ * `product.not-found`. Only a published, select-like field that is not `material` takes a
+ * suggestion (`attribute.not-suggestable`); a variant option (colour, size) does, so a seller can
+ * ask for the option a variant needs (john, 5 Nov 2026). One open suggestion per product and field, at most {@link MAX_OPEN_SUGGESTIONS_PER_SELLER} open per seller, and not a
  * text the list already has. The text is the seller's own in the Market's default locale; it
  * reaches no buyer and no model, and an admin decides it. The product keeps the field empty
  * meanwhile (the submit says why when the field is required). One audit row, with ids only.
@@ -164,8 +164,7 @@ export class OwnAttributeValueSuggest extends UseCase<
       if (
         field === undefined ||
         (field.dataType !== 'select' && field.dataType !== 'multi-select') ||
-        field.material ||
-        field.isVariantOption
+        field.material
       ) {
         return err({ code: 'attribute.not-suggestable' } as const);
       }

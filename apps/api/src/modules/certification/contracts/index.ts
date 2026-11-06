@@ -10,11 +10,13 @@ export type {
 } from '../domain/claim-types';
 export {
   CERTIFICATION_FACADE,
+  type CategoryReferencedByPolicy,
   type CertificationFacade,
   type CertificationTypeView,
   type CertificationUnavailable,
   type CertificationValidationFailed,
   type ClaimTextInput,
+  type RetiredCategoriesFlagged,
   type SellerCertificateOverviewRow,
 } from './certification.facade';
 export {

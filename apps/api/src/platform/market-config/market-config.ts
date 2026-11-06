@@ -1198,6 +1198,13 @@ const catalogSchema = z
      */
     maxCategoryDepth: z.number().int().min(3).max(4),
     /**
+     * The most certification tags one move, merge or archive of platform categories may mark
+     * `rechecking` in its unit (catalog design 4.6, Q-K4; categories C4a; AU 50,000, about 8 s in
+     * Mojtaba's estimate). Above it the change is refused with `category.impact-too-large` and the
+     * admin moves the subcategories in parts. Required, no default.
+     */
+    maxCategoryChangeTags: z.number().int().min(1).max(200_000),
+    /**
      * The most variant (option) attributes one product may vary on (attributes plan A2; AU 2). A
      * configurable product whose feature set marks more option attributes is refused by the
      * product type's variant check. Required: a Market never defaults it.
@@ -1747,6 +1754,18 @@ const marketSchema = z
           repeatedWordMinTokens: z.number().int().min(3).max(100),
           repeatedWordShareBps: z.number().int().min(5000).max(10000),
         }),
+      })
+      .optional(),
+    /**
+     * The content filter (owner decision, 6 Nov 2026), owned by the platform. `blockedTerms`: words
+     * and phrases (any language of the Market, matched as whole words, case-insensitive, Persian
+     * and Arabic letter variants unified) that a description or the alt text of an image may not
+     * hold. A field that holds one is refused with a validation error naming the field. Without
+     * this section nothing is refused. Reviews keep `reviews.autoChecks`.
+     */
+    contentFilter: z
+      .strictObject({
+        blockedTerms: z.array(z.string().trim().min(2).max(64)).max(2000),
       })
       .optional(),
     /**

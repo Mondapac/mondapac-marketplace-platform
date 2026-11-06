@@ -65,7 +65,14 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
   /** A PLATFORM product, with a published revision (texts per locale, categories) when asked. */
   async function product(
     target: typeof market,
-    revision?: { texts: Record<string, [string, string | null]>; categories: string[] },
+    revision?: {
+      texts: Record<string, [string, string | null]>;
+      categories: string[];
+      /** The revision's attribute values by attribute code (attributes A7). */
+      values?: Record<string, unknown>;
+      /** The address of the brand the product carries. */
+      brandSlug?: string;
+    },
   ): Promise<Id<'Product'>> {
     const created = Product.create({
       id: uuid7() as Id<'Product'>,
@@ -114,7 +121,7 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
       family_revision_id: familyRevisionId,
       definition_revision_ids: [],
       tax_category_code: 'standard',
-      attribute_values: '{}',
+      attribute_values: JSON.stringify(revision.values ?? {}),
       field_provenance: null,
       sensitive: false,
       sensitive_reasons: [],
@@ -148,7 +155,99 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
          WHERE market_id = $1 AND id = $2`,
       [target.marketId, created.value.state.id, revisionId],
     );
+    if (revision.brandSlug !== undefined) {
+      await owner.query(
+        `UPDATE catalog.products SET brand_id = (SELECT id FROM catalog.brands WHERE slug = $3)
+          WHERE market_id = $1 AND id = $2`,
+        [target.marketId, created.value.state.id, revision.brandSlug],
+      );
+    }
     return created.value.state.id;
+  }
+
+  /** An attribute definition with one PUBLISHED revision (and its options); the code is the test's own. */
+  async function definition(
+    target: typeof market,
+    code: string,
+    kind: {
+      dataType: string;
+      status?: string;
+      searchable?: boolean;
+      canBeFilter?: boolean;
+      names: Record<string, string>;
+      options?: Record<string, { label: string; mergedInto?: string; active?: boolean }>;
+    },
+  ): Promise<void> {
+    const base = { market_id: target.marketId, tenant_id: target.tenantId };
+    const definitionId = uuid7();
+    const revisionId = uuid7();
+    await insert('attribute_definitions', {
+      id: definitionId,
+      ...base,
+      code,
+      data_type: kind.dataType,
+      localizable: false,
+      status: kind.status ?? 'active',
+      created_by_kind: 'seed',
+      version: 1,
+      created_at: T0.toString(),
+    });
+    await insert('attribute_definition_revisions', {
+      id: revisionId,
+      ...base,
+      definition_id: definitionId,
+      revision_no: 1,
+      material: false,
+      is_variant_option: false,
+      bounds: '{}',
+      names: JSON.stringify(kind.names),
+      searchable: kind.searchable ?? false,
+      can_be_filter: kind.canBeFilter ?? false,
+      author_kind: 'seed',
+      created_at: T0.toString(),
+    });
+    for (const [index, [optionCode, option]] of Object.entries(kind.options ?? {}).entries()) {
+      await insert('attribute_definition_revision_options', {
+        ...base,
+        revision_id: revisionId,
+        option_code: optionCode,
+        labels: JSON.stringify({ 'en-AU': option.label, 'ja-JP': option.label }),
+        active: option.active ?? true,
+        position: index,
+        merged_into: option.mergedInto ?? null,
+      });
+    }
+    await owner.query(
+      `UPDATE catalog.attribute_definitions SET published_revision_id = $3
+         WHERE market_id = $1 AND id = $2`,
+      [target.marketId, definitionId, revisionId],
+    );
+  }
+
+  /** An active brand with aliases (brands are shared by every Market). */
+  async function brand(name: string, aliases: string[], status = 'active'): Promise<string> {
+    const brandId = uuid7();
+    const slug = `fx-${uuid7().slice(-12)}`;
+    await insert('brands', {
+      id: brandId,
+      slug,
+      name,
+      name_key: slug.replaceAll('-', ''),
+      status,
+      ...(status === 'draft' ? { proposed_by_seller_id: uuid7() } : {}),
+      created_at: T0.toString(),
+      updated_at: T0.toString(),
+      version: 1,
+    });
+    for (const alias of aliases) {
+      await insert('brand_aliases', {
+        id: uuid7(),
+        brand_id: brandId,
+        alias,
+        created_at: T0.toString(),
+      });
+    }
+    return slug;
   }
 
   async function category(target: typeof market): Promise<string> {
@@ -226,6 +325,190 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
       shortDescription: null,
     });
     expect(missing.get(published)?.text).toBeNull();
+  });
+
+  it('gives the attribute facts of the published revision for the index (attributes A7)', async () => {
+    const tag = uuid7().slice(-8);
+    const [diet, size, organic, weight, note, hidden, draft] = [
+      'diet',
+      'size',
+      'organic',
+      'weight',
+      'note',
+      'hidden',
+      'draftattr',
+    ].map((name) => `${name}-${tag}`) as [string, string, string, string, string, string, string];
+    await definition(market, diet, {
+      dataType: 'multi-select',
+      searchable: true,
+      canBeFilter: true,
+      names: { 'en-AU': 'Diet' },
+      options: {
+        halal: { label: 'Halal certified' },
+        vegan: { label: 'Vegan' },
+        'old-halal': { label: 'Old halal', mergedInto: 'halal' },
+      },
+    });
+    await definition(market, size, {
+      dataType: 'select',
+      canBeFilter: true,
+      names: { 'en-AU': 'Size' },
+      options: { s: { label: 'Small' } },
+    });
+    await definition(market, organic, {
+      dataType: 'boolean',
+      canBeFilter: true,
+      names: { 'en-AU': 'Organic' },
+    });
+    await definition(market, weight, {
+      dataType: 'decimal',
+      canBeFilter: true,
+      names: { 'en-AU': 'Weight' },
+    });
+    await definition(market, note, {
+      dataType: 'text',
+      searchable: true,
+      names: { 'en-AU': 'Note' },
+    });
+    await definition(market, hidden, { dataType: 'text', names: { 'en-AU': 'Hidden' } });
+    await definition(market, draft, {
+      dataType: 'text',
+      status: 'draft',
+      searchable: true,
+      names: { 'en-AU': 'Draft' },
+    });
+    await definition(market, 'country-of-origin', {
+      dataType: 'text',
+      names: { 'en-AU': 'Country of origin' },
+    }).catch(() => undefined); // another test of the Market may have made it
+    const slug = await brand(`Al Safa ${tag}`, [`Alsafa${tag}`, `Al-Safa Foods ${tag}`]);
+    const productId = await product(market, {
+      texts: { 'en-AU': ['Dates', null] },
+      categories: [],
+      brandSlug: slug,
+      values: {
+        [diet]: ['halal', 'old-halal', 'vegan', 'gone'],
+        [size]: 's',
+        [organic]: true,
+        [weight]: '12.5',
+        [note]: 'Stone ground',
+        [hidden]: 'Never indexed',
+        [draft]: 'Draft words',
+        'country-of-origin': 'Australia',
+      },
+    });
+    const published = await offer(market, productId, 'published');
+
+    const map = await run(market, () => reader.read(market, [published], 'en-AU'), true);
+    const attributes = map.get(published)?.attributes;
+
+    expect(attributes?.facets).toEqual(
+      [
+        `brand=${slug}`,
+        `${diet}=halal`,
+        `${diet}=vegan`,
+        `${size}=s`,
+        `${organic}=true`,
+        'country-of-origin=au',
+      ].sort(),
+    );
+    expect(attributes?.numbers).toEqual({ [weight]: 12.5 });
+    const words = (attributes?.searchText ?? '').split(' ');
+    expect(attributes?.searchText).toContain(`Al Safa ${tag}`);
+    expect(attributes?.searchText).toContain(`Al-Safa Foods ${tag}`);
+    expect(attributes?.searchText).toContain('Halal certified');
+    expect(attributes?.searchText).toContain('Stone ground');
+    expect(attributes?.searchText).toContain('Australia');
+    // The merged option shows under its target only; the unsearchable and draft attributes are not text.
+    expect(attributes?.searchText).not.toContain('Old halal');
+    expect(words).not.toContain('Never');
+    expect(attributes?.searchText).not.toContain('Draft words');
+  });
+
+  it('indexes the values of a merged attribute as its target, with the option map (attributes A8)', async () => {
+    const tag = uuid7().slice(-8);
+    const [pack, container] = [`pack-${tag}`, `container-${tag}`];
+    await definition(market, container, {
+      dataType: 'select',
+      canBeFilter: true,
+      names: { 'en-AU': 'Container' },
+      options: { tin: { label: 'Tin' }, jar: { label: 'Jar' } },
+    });
+    await definition(market, pack, {
+      dataType: 'select',
+      canBeFilter: true,
+      names: { 'en-AU': 'Pack type' },
+      options: { can: { label: 'Can' } },
+    });
+    const idOf = async (attribute: string) =>
+      (
+        await owner.query<{ id: string }>(
+          'SELECT id FROM catalog.attribute_definitions WHERE market_id = $1 AND code = $2',
+          [market.marketId, attribute],
+        )
+      ).rows[0]!.id;
+    const [sourceId, targetId] = [await idOf(pack), await idOf(container)];
+    await owner.query(
+      `INSERT INTO catalog.attribute_merge_options (market_id, tenant_id, source_id, source_code, target_code)
+       VALUES ($1, $2, $3, 'can', 'tin')`,
+      [market.marketId, market.tenantId, sourceId],
+    );
+    await owner.query(
+      `UPDATE catalog.attribute_definitions SET status = 'archived', merged_into_id = $3, version = version + 1
+        WHERE market_id = $1 AND id = $2`,
+      [market.marketId, sourceId, targetId],
+    );
+    const onlySource = await product(market, {
+      texts: { 'en-AU': ['Beans', null] },
+      categories: [],
+      values: { [pack]: 'can' },
+    });
+    const both = await product(market, {
+      texts: { 'en-AU': ['Peas', null] },
+      categories: [],
+      values: { [pack]: 'can', [container]: 'jar' },
+    });
+    const first = await offer(market, onlySource, 'published');
+    const second = await offer(market, both, 'published');
+    const map = await run(market, () => reader.read(market, [first, second], 'en-AU'), true);
+    expect(map.get(first)?.attributes.facets).toEqual([`${container}=tin`]);
+    // The target's own value wins when a product carries both.
+    expect(map.get(second)?.attributes.facets).toEqual([`${container}=jar`]);
+  });
+
+  it('gives a stamp that holds while nothing changes and changes with a definition or a brand', async () => {
+    const stampOf = (target: typeof market) =>
+      run(target, () => reader.searchIndexStamp(target), true);
+    const before = await stampOf(market);
+    expect(await stampOf(market)).toBe(before);
+    expect(before).toMatch(/^[0-9a-f]{32}$/);
+
+    await definition(market, `stamp-${uuid7().slice(-8)}`, {
+      dataType: 'select',
+      canBeFilter: true,
+      names: { 'en-AU': 'Stamp' },
+    });
+    const afterDefinition = await stampOf(market);
+    expect(afterDefinition).not.toBe(before);
+
+    await brand('Stamp brand', []);
+    expect(await stampOf(market)).not.toBe(afterDefinition);
+  });
+
+  it('indexes no brand for a draft or archived brand, and nothing for a product with no revision', async () => {
+    const draftBrand = await brand('Draft Brand', [`Dbrand${uuid7().slice(-8)}`], 'draft');
+    const productId = await product(market, {
+      texts: { 'en-AU': ['Unbranded now', null] },
+      categories: [],
+      brandSlug: draftBrand,
+    });
+    const published = await offer(market, productId, 'published');
+    const bare = await offer(market, await product(market), 'published');
+
+    const map = await run(market, () => reader.read(market, [published, bare], 'en-AU'), true);
+
+    expect(map.get(published)?.attributes).toEqual({ searchText: '', facets: [], numbers: {} });
+    expect(map.get(bare)?.attributes).toEqual({ searchText: '', facets: [], numbers: {} });
   });
 
   it('marks an Offer that is not published as not sellable, and a product without a revision as text-less', async () => {

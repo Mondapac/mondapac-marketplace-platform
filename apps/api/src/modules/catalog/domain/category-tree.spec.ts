@@ -27,6 +27,7 @@ const node = (
   status: 'active',
   mergedIntoId: null,
   slug: `c-${n}`,
+  position: 0,
   names: [{ locale: 'en-AU', name }],
   ...extra,
 });
@@ -47,6 +48,63 @@ describe.each(['en-AU', 'ja-JP'])('live category tree (locale %s)', (locale) => 
       ['c-4', id(1), 1, 0],
       ['c-3', id(1), 1, 1],
     ]);
+  });
+
+  it("orders siblings by the admin's stored position before the name (C6a)", () => {
+    const at = (n: number, parent: number | null, name: string, position: number) =>
+      node(n, parent, name, { names: [{ locale, name }], position });
+    const tree = liveCategoryTree(
+      [
+        at(1, null, 'Meat', 0),
+        at(2, null, 'Bakery', 1),
+        at(3, 1, 'Lamb', 0),
+        at(4, 1, 'Beef', 2),
+        // Came up from under an archived parent with a position its new siblings also use.
+        node(5, 1, 'Old', { status: 'archived', names: [], position: 1 }),
+        at(6, 5, 'Goat', 2),
+      ],
+      locale,
+    );
+
+    expect(tree.map((c) => [c.slug, c.position])).toEqual([
+      ['c-1', 0],
+      ['c-3', 0],
+      ['c-4', 1],
+      ['c-6', 2],
+      ['c-2', 1],
+    ]);
+  });
+
+  it('takes the name in the fallback locale before the first locale in code order', () => {
+    const tree = liveCategoryTree(
+      [
+        node(1, null, 'x', {
+          names: [
+            { locale: 'ar-SA', name: 'First in code order' },
+            { locale: 'xx-XX', name: 'Default' },
+          ],
+        }),
+      ],
+      'fa-IR',
+      'xx-XX',
+    );
+
+    expect(tree.map((c) => c.name)).toEqual(['Default']);
+  });
+
+  it('leaves out a hidden category and everything below it', () => {
+    const tree = liveCategoryTree(
+      [
+        named(1, null, 'Pantry'),
+        node(2, 1, 'Secret', { status: 'hidden', names: [{ locale, name: 'Secret' }] }),
+        named(3, 2, 'Spices'),
+        named(4, 3, 'Chilli'),
+        named(5, 1, 'Rice'),
+      ],
+      locale,
+    );
+
+    expect(tree.map((c) => c.slug)).toEqual(['c-1', 'c-5']);
   });
 
   it('skips an archived ancestor and follows a merged one to its target', () => {

@@ -28,6 +28,7 @@
     "hint-move": "to move",
     "hint-open": "to open",
     "hint-close": "to close",
+    "hint-shortcuts": "for shortcuts",
     "group": {
       "account": "Account"
     },
@@ -614,9 +615,9 @@
       },
       "conflict": {
         "title": "Someone saved this role first",
-        "body": "Your changes are kept. Review what changed, then save again to replace the saved role.",
-        "compare": "Compare",
-        "hide": "Hide comparison",
+        "body": "Your changes are kept. Review what changed, then save again.",
+        "compare": "Show what changed",
+        "hide": "Hide what changed",
         "name": "Saved name: {saved}. Your name: {yours}.",
         "saved-only": "In the saved role but not in yours: {keys}.",
         "saved-none": "Every permission in the saved role is in yours.",
@@ -1526,11 +1527,15 @@
     },
     "no-access": "You don't have access to settings.",
     "no-access-title": "You don't have access to this page",
-    "no-access-needs": "{page} needs the \"{permission}\" permission. Ask an admin who manages roles to add it.",
+    "no-access-needs": "{page} needs the permission \"{permission}\". An admin who manages roles can add it.",
+    "load-error": {
+      "title": "{page} could not be loaded",
+      "body": "Try again. If it keeps happening, check the status page."
+    },
     "back-home": "Back to dashboard",
     "unavailable": "Settings could not be loaded. Try again later.",
     "errors": {
-      "title": "{count, plural, one {# setting needs fixing before you can save} other {# settings need fixing before you can save}}"
+      "title": "{count, plural, one {# setting needs fixing} other {# settings need fixing}}"
     },
     "bar": {
       "region": "Unsaved changes",
@@ -1543,21 +1548,25 @@
     },
     "leave": {
       "title": "Leave without saving?",
-      "message": "You have changes that are not saved. If you leave this page, they are lost.",
-      "stay": "Stay on page",
-      "leave": "Leave page"
+      "message": "You have {count, plural, one {# unsaved change on {page}. If you leave now, it is lost.} other {# unsaved changes on {page}. If you leave now, they are lost.}}",
+      "stay": "Stay",
+      "leave": "Leave"
     },
     "conflict": {
       "title": "Someone else saved these settings first",
-      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Check the differences, then Save changes again to overwrite them.",
-      "compare": "Compare",
-      "hide": "Hide comparison",
+      "body": "{count, plural, =0 {Your draft now matches what is saved.} one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
+      "compare": "Show what changed",
+      "hide": "Hide what changed",
       "heading": "What changed",
       "list-label": "Changes compared",
       "saved-label": "Saved now:",
       "yours-label": "Yours:",
       "same": "Your draft now matches what is saved.",
-      "unset": "not set"
+      "unset": "not set",
+      "saved-by-named": "{name} saved {subject} {when}",
+      "saved-by-platform": "Mondapac saved {subject} {when}",
+      "subject-settings": "these settings",
+      "subject-store-profile": "the store profile"
     },
     "support": {
       "title": "Support contact",
@@ -1603,7 +1612,8 @@
         "fleets": "Delivery fleets",
         "wallet": "Customer wallet",
         "admins": "Admins",
-        "roles": "Roles & permissions"
+        "roles": "Roles & permissions",
+        "lists": "Lists"
       }
     },
     "sub": {
@@ -1612,7 +1622,7 @@
     },
     "assistant": {
       "title": "Smart assistant",
-      "permission-view": "Smart assistant: view",
+      "permission-view": "View smart assistant",
       "intro": "Whether the shopping assistant is on, who sees it, what it answers and what it may spend.",
       "no-access": "You don't have access to the smart assistant settings.",
       "unavailable": "The smart assistant settings could not be loaded. Try again later.",
@@ -1743,11 +1753,36 @@
       },
       "not-configured-option": "{option} (not configured on the server)",
       "version-defaults": "Built-in defaults, never saved"
+    },
+    "view-only": {
+      "title": "View only",
+      "body": "Your role can see these settings but not change them. An admin who manages roles can give you access."
+    },
+    "last-changed": {
+      "named": "Last changed by {name} · {when}",
+      "platform": "Last changed by Mondapac · {when}",
+      "unnamed": "Last changed {when}",
+      "view-history": "View history"
+    },
+    "history": {
+      "title": "History",
+      "close": "Close history",
+      "loading": "Loading history",
+      "empty-title": "No changes yet",
+      "empty-body": "When someone saves this page, the change shows up here.",
+      "error": "The history could not be loaded.",
+      "retry": "Try again",
+      "load-more": "Show older changes",
+      "more-failed": "Older changes could not be loaded.",
+      "who-platform": "Mondapac",
+      "who-unnamed": "Someone",
+      "changed": "Changed: {fields}",
+      "saved": "Saved"
     }
   },
   "fleets": {
     "title": "Delivery fleets",
-    "permission-view": "Delivery fleets: view",
+    "permission-view": "View delivery fleets",
     "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
     "no-access": "Your role cannot see delivery fleets.",
     "back-home": "Back to the dashboard",
@@ -1862,7 +1897,6 @@
       "unknown": "Something went wrong. Try again.",
       "page-conflict": "Someone saved the fleet settings first, and the page could not be reloaded. Reload the page and try again."
     },
-    "viewer-only": "You can view but not change delivery fleets.",
     "confirm": {
       "title": "Change the active models?",
       "edit-title": "Save a model that is in use?",
@@ -1875,8 +1909,8 @@
       "title": "Someone else saved the fleet settings first",
       "model-title": "This page changed while you were editing",
       "body": "{count, plural, one {Your # change is kept.} other {Your # changes are kept.}} Review what changed, then save again.",
-      "compare": "Compare",
-      "hide": "Hide comparison",
+      "compare": "Show what changed",
+      "hide": "Hide what changed",
       "same": "Your draft now matches what is saved.",
       "line": "{field}: saved now {saved}, yours {yours}"
     },
@@ -2768,7 +2802,6 @@
     "settings": {
       "card": "Account deletion",
       "load-failed": "Couldn't load this setting.",
-      "read-only": "You can view this setting but not change it.",
       "enabled": {
         "legend": "Allow buyers to delete their account",
         "off": "Off",
@@ -2782,7 +2815,7 @@
       },
       "section": "Buyer self-service",
       "intro": "Let buyers delete their own account, and set how long a request waits before the account is erased.",
-      "permission-view": "Account deletion: view",
+      "permission-view": "View account deletion",
       "version": "Saved version {version}",
       "version-defaults": "Built-in defaults in force",
       "saved": "Saved. Buyers see the change within a minute.",
@@ -2817,7 +2850,7 @@
     "requests": {
       "title": "Pending deletion requests",
       "back": "Account deletion",
-      "permission-view": "Account deletion requests: view",
+      "permission-view": "View account deletion requests",
       "caption": "Accounts waiting to be deleted, earliest first",
       "loading": "Loading the requests",
       "load-failed": "Couldn't load the list.",
@@ -3075,7 +3108,7 @@
   },
   "deliverySettings": {
     "title": "Delivery rules",
-    "permission-view": "Delivery settings: view",
+    "permission-view": "View delivery settings",
     "state": {
       "on": "On",
       "off": "Off"
@@ -3086,12 +3119,12 @@
     "intro": "Choose which delivery methods the whole Market offers, when same-day orders close, how far ahead buyers can schedule, and what the platform adds on top of the fleet quote. Which methods each seller supports is set on the seller page.",
     "no-access": "Your role cannot see delivery settings.",
     "back-home": "Back to the dashboard",
-    "unavailable": "Delivery settings could not be loaded. Try again.",
+    "unavailable": "Delivery settings could not be loaded",
     "defaults": "Nothing has been saved yet, so the defaults apply: every method on, same-day orders close at 12:00, buyers can schedule up to 7 days ahead in 2-hour windows, and no margin is added.",
     "read-only": "Your role can view these settings but not change them.",
     "save": "Save delivery settings",
     "notice": {
-      "saved": "Delivery settings saved. They apply to orders placed from now on.",
+      "saved": "Delivery rules saved.",
       "reloaded": "Someone saved these settings first. The page now shows what is stored. Make your change again."
     },
     "method": {
@@ -3150,7 +3183,7 @@
       "line-none": "A fleet quote of {quote} stays {total} for the buyer: no margin added."
     },
     "invalid": {
-      "cutoff": "Enter a time such as 12:00.",
+      "cutoff": "Enter a time between 12:00 am and 11:59 pm, such as 1:00 pm.",
       "daysAhead": "Enter a whole number of days from 1 to 30.",
       "margin-percent": "Enter a percentage from 0 to 100, with up to two decimals.",
       "margin-fixed": "Enter an amount up to {max}, with no more decimals than the currency uses."
@@ -3165,7 +3198,6 @@
       "unavailable": "Delivery settings are not available right now. Try again shortly.",
       "unknown": "Something went wrong. Try again."
     },
-    "viewer-only": "You can view these settings but not change them. Ask an admin with the manage permission to make changes.",
     "confirm": {
       "title": "Save these delivery settings?",
       "intro": "These changes apply to orders placed from now on.",
@@ -4125,12 +4157,14 @@
       "all": "All statuses",
       "active": "Active",
       "merged": "Merged",
-      "archived": "Archived"
+      "archived": "Archived",
+      "hidden": "Hidden"
     },
     "status": {
       "active": "Active",
       "merged": "Merged",
-      "archived": "Archived"
+      "archived": "Archived",
+      "hidden": "Hidden"
     },
     "filter-note": "Matching categories are shown with the categories above them.",
     "loading": "Loading categories",
@@ -4161,7 +4195,12 @@
       "live-products": "Live products",
       "live-products-direct": "Live products directly in it",
       "offers": "Offers",
-      "version": "Version"
+      "version": "Version",
+      "in-menu": "Shown in the menu",
+      "yes": "Yes",
+      "no": "No",
+      "seo-title": "Search title",
+      "not-set": "Not set"
     },
     "products": {
       "intro": "What a change to this category would reach: the published products in it and under it.",
@@ -4178,7 +4217,149 @@
       "empty": "No changes are recorded for this category.",
       "revision": "Revision {no}",
       "by-seed": "Set up with the platform",
-      "by-admin": "Changed by an admin"
+      "by-admin": "Changed by an admin",
+      "kind": {
+        "created": "Added",
+        "renamed": "Renamed",
+        "moved": "Moved",
+        "merged": "Merged",
+        "archived": "Archived",
+        "details-changed": "Details changed",
+        "reordered": "Order changed",
+        "hidden": "Hidden",
+        "shown": "Shown",
+        "slug-changed": "URL name changed",
+        "discarded": "Discarded"
+      },
+      "kind-unknown": "Changed"
+    },
+    "intro-edit": "The category tree of this Market. Products and Offers sit in the categories below it. New categories start hidden until you show them.",
+    "missing-label": "Missing a name",
+    "missing-none": "All languages",
+    "missing-option": "Missing: {language} ({count})",
+    "add-category": "Add category",
+    "toolbar": {
+      "label": "Change this category",
+      "edit": "Edit details",
+      "add-child": "Add child",
+      "move-up": "Move up",
+      "move-down": "Move down",
+      "hide": "Hide",
+      "show": "Show",
+      "change-slug": "Change URL name",
+      "discard": "Discard",
+      "reload": "Read again",
+      "note-edit": "Details saved.",
+      "note-slug": "URL name changed.",
+      "note-hide": "Category hidden.",
+      "note-show": "Category shown.",
+      "note-discard": "Category discarded.",
+      "note-add": "Category added.",
+      "note-up": "Moved up.",
+      "note-down": "Moved down.",
+      "reason-first": "Move up is off: this is the first category at its level.",
+      "reason-last": "Move down is off: this is the last category at its level.",
+      "reason-only": "Move is off: this is the only category at its level."
+    },
+    "form": {
+      "tabs": "Sections",
+      "tab-content": "Content",
+      "tab-seo": "Search engines",
+      "cancel": "Cancel",
+      "save": "Save",
+      "create": "Add category",
+      "reload": "Read again",
+      "edit-title": "Edit details",
+      "create-title": "Add category",
+      "create-child-title": "Add a child of {parent}",
+      "created-hidden": "A new category starts hidden. Show it from its page when it is ready.",
+      "language": "Language",
+      "language-help": "Each language is filled in on its own. A language without a name is marked Missing and is not shown to buyers.",
+      "required-mark": "Required",
+      "missing-mark": "Missing",
+      "other-language-error": "Another language has a problem. Pick it from the language list.",
+      "name": "Name ({language})",
+      "name-optional": "Optional. Leave empty to keep this language Missing.",
+      "short-description": "Short description",
+      "optional": "Optional",
+      "keywords": "Keywords",
+      "keywords-help": "Separate with commas. At most {max}.",
+      "show-in-menu": "Show in the menu",
+      "show-in-menu-help": "When off, buyers can still reach the category by its link.",
+      "slug": "URL name",
+      "slug-help": "English words in lower case with hyphens, for example dried-fruit.",
+      "slug-title": "Change URL name",
+      "slug-save": "Change URL name",
+      "slug-warning": "The old URL name keeps working and redirects to the new one. Links already shared and search engines need time to learn the new address, so change it only when you must.",
+      "seo-help": "Search engines read English only. Leave empty to use the category name and short description.",
+      "seo-title": "Search title",
+      "seo-description": "Search description",
+      "noindex": "Keep out of search engines",
+      "noindex-help": "Buyers can still open the page.",
+      "preview-label": "How it may look in a search result",
+      "preview-host": "www.example.com",
+      "preview-slug": "url-name",
+      "error": {
+        "required": "This is required.",
+        "format": "Check this text: it is too long or has characters that are not allowed.",
+        "english-only": "Use English letters only here.",
+        "claim-word": "This word names a certification or a similar claim. Remove it; certificates are shown on the Offer.",
+        "locale-uncheckable": "This language can not be checked for certification words yet, so it can not be saved.",
+        "locale-unsupported": "This language is not supported in this Market.",
+        "sibling-name-taken": "Another category with the same parent already has this name.",
+        "required-locale-missing": "A name is required in this language.",
+        "slug-taken": "This URL name is used or was used by another category.",
+        "unchanged": "This is the current URL name.",
+        "type": "Check this value.",
+        "unknown": "Check this value."
+      }
+    },
+    "confirm": {
+      "cancel": "Cancel",
+      "reload": "Read again",
+      "hide": {
+        "title": "Hide {name}?",
+        "action": "Hide",
+        "body": "{name} leaves the menu and its page. Its products stay on sale.",
+        "cascade": "Also hides {count, plural, one {# subcategory} other {# subcategories}}."
+      },
+      "show": {
+        "title": "Show {name}?",
+        "action": "Show",
+        "body": "{name} and the categories this Hide hid come back to the menu and get their pages again. Showing needs no image and no search-result text."
+      },
+      "discard": {
+        "title": "Discard {name}?",
+        "action": "Discard",
+        "body": "{name} never went live. It will be archived and its URL name stays reserved. This can not be undone here."
+      }
+    },
+    "error": {
+      "unknown": "The change was not saved. Try again.",
+      "validation_failed": "Some fields need attention.",
+      "category_not-found": "This category is gone. Read the tree again.",
+      "category_parent-not-found": "The parent category is gone. Read the tree again.",
+      "category_slug-taken": "This URL name is used or was used by another category.",
+      "category_slug-unchanged": "This is already the URL name.",
+      "category_sibling-name-taken": "Another category with the same parent already has this name.",
+      "category_already-hidden": "This category is already hidden. Read it again.",
+      "category_not-hidden": "This category is not hidden. Read it again.",
+      "category_parent-hidden": "The parent is hidden. Show the parent first.",
+      "category_not-editable": "This category can not be changed in its state. Read it again.",
+      "category_reorder-edge": "It is already at the end. Read the tree again.",
+      "category_not-discardable": "Only a hidden category that never went live, with no child and no product that named it, can be discarded.",
+      "category_depth-exceeded": "The tree is at most {max} levels deep here.",
+      "category_required-locale-missing": "A name is required in the required languages.",
+      "category_cascade-too-large": "Hiding this would reach more than {max} categories. Hide the branches one by one.",
+      "category_claim-word": "A text names a certification or a similar claim. Remove it; certificates are shown on the Offer.",
+      "category_locale-uncheckable": "A language can not be checked for certification words yet, so nothing was saved.",
+      "claim-text_check-unavailable": "The word check is not available now, so nothing was saved. Try again later.",
+      "access_permission-missing": "Your role can not change categories.",
+      "access_acting-as-refused": "Categories can not be changed while acting as someone else.",
+      "access_unavailable": "The service is not available now. Try again.",
+      "catalog_categories-unavailable": "Categories are not available now. Try again.",
+      "conflict_stale_tree": "The tree changed since you opened it. Reload.",
+      "conflict_stale_details": "Someone changed this category. Reload."
     }
   },
   "brands": {
@@ -4610,10 +4791,15 @@
       "reload": "Reload",
       "cancel": "Cancel",
       "same-admin-note": "A different administrator must confirm your request.",
-      "view-only-body": "Requests to turn off Material are confirmed by administrators who can edit attributes.",
+      "view-only-body": "Requests to turn off Material are confirmed by administrators who can edit attributes. Archive requests need permission to restructure attributes.",
       "confirm-named": "Confirm request for {name}",
       "withdraw-named": "Withdraw request for {name}",
-      "open-named": "Open {name}"
+      "open-named": "Open {name}",
+      "confirm-archive-title": "Archive {name}?",
+      "confirm-archive-body": "The attribute is archived at once. Products that already have its values keep them, and feature sets can no longer offer it.",
+      "withdraw-archive-body": "The request closes and the attribute stays as it is.",
+      "withdraw-archive-title": "Withdraw your request to archive {name}?",
+      "confirmed-archive": "Attribute archived."
     },
     "list-label": "Attributes",
     "filters": "Filter attributes",
@@ -4743,7 +4929,14 @@
       "relax-body": "While Material is on, a change to this attribute's value on a product sends its product certifications for a new check. Once it is off, that no longer happens. A different administrator must confirm within 72 hours. Nothing changes until then.",
       "relax-send": "Send request",
       "relax-sent": "Request sent. A different administrator can confirm it under Waiting for you.",
-      "go-to-waiting": "Go to Waiting for you"
+      "go-to-waiting": "Go to Waiting for you",
+      "merge-values": "Merge values",
+      "merge-attribute": "Merge into attribute",
+      "attribute-merged": "Attribute merged.",
+      "archive": "Archive",
+      "merged": "Values merged.",
+      "archived": "Attribute archived.",
+      "archive-requested": "Request sent. A different administrator can confirm it under Waiting for you."
     },
     "values": {
       "not-choice": "This attribute has no list of values: sellers type or pick its value.",
@@ -4755,7 +4948,8 @@
       "inactive": "Inactive",
       "code": "Code: {code}",
       "second-clear": "Hide the second language",
-      "missing": "Missing"
+      "missing": "Missing",
+      "merged-into": "Merged into {code}"
     },
     "used-in": {
       "products": "Live products",
@@ -4956,10 +5150,121 @@
         "relaxation-expired": "This request expired. The requester can ask again.",
         "relaxation-attribute-changed": "The attribute changed after this request was made, so it can't be confirmed. The requester can withdraw it and ask again.",
         "relaxation-same-admin": "You made this request. A different administrator must confirm it.",
-        "relaxation-not-requester": "Only the administrator who made this request can withdraw it."
+        "relaxation-not-requester": "Only the administrator who made this request can withdraw it.",
+        "merge-invalid": "Those two values cannot be merged. Choose two different values that are not already merged.",
+        "not-select": "Only attributes with a list of values can have values merged.",
+        "merge-type-mismatch": "These attributes differ in type, language setting or limits, so they cannot be merged.",
+        "blocked-merge-target": "Other attributes were merged into this one, so it cannot be archived or merged. Their values would disappear from product pages.",
+        "merge-unmapped": "Every value of this attribute needs a value to go to. Check the list.",
+        "merge-material": "A Material attribute cannot be merged, or merged into. Archive a Material attribute with a second administrator instead.",
+        "merge-blocked-in-feature-set": "It is still in an active feature set. Remove it from those feature sets first.",
+        "merge-blocked-live-variants": "Live products use it as a variant option, so it cannot be merged.",
+        "not-published": "This attribute is not published. Reload to see the latest version.",
+        "archive-needs-second-admin": "This attribute is Material, so a second administrator has to confirm. Reload and ask for the archive.",
+        "archive-not-material": "This attribute is not Material, so it can be archived at once. Reload and try again.",
+        "archive-blocked-in-feature-set": "It is still in an active feature set. Remove it from those feature sets first.",
+        "archive-blocked-live-variants": "Live products use it as a variant option, so it cannot be archived."
       },
       "has-error": "Needs a change",
       "check-languages": "Check the text in: {languages}."
+    },
+    "restructure": {
+      "at-least": "At least {count}",
+      "yes": "Yes",
+      "no": "No",
+      "choose": "Choose a value",
+      "impact-label": "What this change reaches",
+      "impact-loading": "Checking what this reaches",
+      "impact-error": "We could not check what this reaches. Try again.",
+      "impact": {
+        "published": "Published products",
+        "drafts": "Product drafts",
+        "feature-sets": "Active feature sets",
+        "categories": "Categories",
+        "filters": "Categories that filter by it",
+        "variants": "Products with live variants",
+        "material": "Material"
+      },
+      "merge-title": "Merge values of {name}",
+      "merge-body": "The value you merge away stays in the list, switched off and marked as merged. Products keep what they have. The storefront, filters and search show the value you merge into, and a product's next save stores that value.",
+      "merge-source": "Merge this value",
+      "merge-target": "Into this value",
+      "merge-confirm": "Merge values",
+      "merge-attributes": "Merge into another attribute",
+      "merge-attributes-title": "Merge {name} into another attribute",
+      "merge-attributes-body": "{name} is archived and points at the attribute you choose. This cannot be undone. Products keep what they have, and product pages show the other attribute. Filters and search do not read the merge yet.",
+      "merge-attributes-target": "Merge into",
+      "merge-attributes-confirm": "Merge attributes",
+      "merge-attributes-loading": "Loading attributes",
+      "merge-attributes-none": "No other active attribute of this type to merge into.",
+      "merge-attributes-load-failed": "The attributes could not be loaded.",
+      "merge-attributes-map": "Where each value goes",
+      "merge-attributes-map-for": "{value} goes to",
+      "archive-title": "Archive {name}?",
+      "archive-body": "Products that already have its values keep them. It is no longer offered to sellers, and its history is kept. It cannot be brought back.",
+      "archive-confirm": "Archive attribute",
+      "archive-request-title": "Ask to archive {name}?",
+      "archive-request-body": "This attribute is Material. A different administrator who can restructure attributes must confirm within 72 hours. Nothing changes until then.",
+      "archive-request-send": "Send request",
+      "go-to-waiting": "Go to Waiting for you",
+      "feature-sets-list": "Feature sets: {codes}",
+      "blocked": {
+        "in-feature-set": "It is still in an active feature set. Remove it from those feature sets first.",
+        "live-variants": "Live products use it as a variant option, so it cannot be archived."
+      }
+    },
+    "suggestions": {
+      "list-label": "Value suggestions",
+      "loading": "Loading suggestions",
+      "load-failed": "The suggestions could not be loaded.",
+      "empty": "Nothing is waiting for you.",
+      "empty-body": "Values that sellers ask for on a product form will show here.",
+      "open": "Waiting",
+      "asked": "Asked for on {attribute}, product {product}.",
+      "no-product-code": "without a code",
+      "approve": "Approve",
+      "map": "Map to existing",
+      "reject": "Reject",
+      "cancel": "Cancel",
+      "approve-note": "Approving adds the value to the field for every seller. Name it in each required language.",
+      "name-in": "Name in {language}",
+      "approve-confirm": "Approve value",
+      "map-none": "This field has no values to map to yet.",
+      "map-to": "Existing value",
+      "map-choose": "Choose a value",
+      "map-confirm": "Map to this value",
+      "reason": "Reason for the seller",
+      "reason-help": "The seller reads this in an email.",
+      "reject-confirm": "Reject suggestion",
+      "decided": {
+        "approved": "Value added. The seller was told.",
+        "mapped": "Mapped to an existing value. The seller was told.",
+        "rejected": "Suggestion rejected. The seller was told."
+      },
+      "error": {
+        "invalid": "Check the names and try again.",
+        "claim": "A name uses a word that only a certificate can back. Choose another word.",
+        "stale": "Someone else already decided this suggestion. The list is read again.",
+        "attribute-unavailable": "The field changed or is no longer open to suggestions. The list is read again.",
+        "value-exists": "The field already has a value with that code or name. Map the suggestion to it instead.",
+        "option-invalid": "That value is no longer available. The list is read again.",
+        "denied": "You cannot decide value suggestions.",
+        "throttled": "Too many requests. Try again in a moment.",
+        "csrf": "Your session needs a refresh. Reload the page.",
+        "unavailable": "The service is not reachable. Try again.",
+        "unknown": "The decision could not be saved.",
+        "locale-uncheckable": "A name is in a language that cannot be checked for certification words yet.",
+        "check-unavailable": "The certification-wording check is unavailable. Try again in a moment.",
+        "reload-failed": "The list could not be refreshed and may be out of date. Reload the page."
+      },
+      "approve-for": "Approve “{label}”",
+      "map-for": "Map to existing: “{label}”",
+      "reject-for": "Reject “{label}”",
+      "value-code": "Value code",
+      "value-code-help": "Optional. Letters a to z, digits and hyphens. Made from the name if left empty.",
+      "value-code-needed": "Required: the name has no Latin letters or digits. Use letters a to z, digits and hyphens.",
+      "value-code-bad": "Start with a letter; use only letters a to z, digits and hyphens.",
+      "title": "Value suggestions from sellers"
     }
   },
   "serviceAreas": {
@@ -4998,6 +5303,34 @@
       "csrf": "Your session needs a refresh. Reload the page and try again.",
       "denied": "Your role cannot change service area names.",
       "unavailable": "Service areas are not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
+    }
+  },
+  "lists-settings": {
+    "title": "Lists",
+    "permission-view": "Market settings: view",
+    "load-failed": "Couldn't load this setting.",
+    "read-only": "You can view this setting but not change it.",
+    "intro": "How lists move between pages, in the admin and seller panels.",
+    "section": "Paging",
+    "version-defaults": "Not changed yet. The default is in force.",
+    "version": "Version {version}",
+    "saved": "Saved.",
+    "paging": {
+      "label": "List paging",
+      "help": "Page numbers show the total and let people jump to a page, up to the first 10,000 rows. Previous and next works for any length and is used when this setting cannot be read.",
+      "option": {
+        "pages": "Page numbers",
+        "prev-next": "Previous and next"
+      }
+    },
+    "error": {
+      "invalid": "This value isn't allowed.",
+      "conflict": "Someone changed this setting. Reload the page and try again.",
+      "denied": "You don't have permission to change this setting.",
+      "csrf": "Your session expired. Reload the page.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "unavailable": "The service isn't available right now. Try again.",
       "unknown": "Something went wrong. Try again."
     }
   }

@@ -1,7 +1,12 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { SHIPPING_FLEET_SELECTION_MANAGE } from '../../contracts/permissions';
-import { updateFleetSelectionModel, type FleetSelectionFailure } from '../fleet-selection-flow';
+import {
+  FLEET_SELECTION_CHANGES,
+  FLEET_SELECTION_CONFLICTS,
+  updateFleetSelectionModel,
+  type FleetSelectionFailure,
+} from '../fleet-selection-flow';
 import type { FleetSelectionModel } from '../../domain/fleet-selection';
 import type { ShippingDependencies } from '../shipping-dependencies';
 
@@ -28,7 +33,7 @@ export class UpdateFleetSelectionModel extends UseCase<
     super(gate);
   }
 
-  protected handle(
+  protected async handle(
     context: CallContext,
     input: {
       readonly modelId: unknown;
@@ -36,7 +41,14 @@ export class UpdateFleetSelectionModel extends UseCase<
       readonly rule: unknown;
       readonly expectedVersion: unknown;
     },
-  ) {
-    return updateFleetSelectionModel(this.deps, context, input);
+  ): Promise<Result<FleetSelectionModel, FleetSelectionFailure>> {
+    const result = await updateFleetSelectionModel(this.deps, context, input);
+    // On a conflict the winning save is named.
+    return this.deps.trail.namingTheWinner(
+      context,
+      FLEET_SELECTION_CHANGES,
+      result,
+      FLEET_SELECTION_CONFLICTS,
+    );
   }
 }

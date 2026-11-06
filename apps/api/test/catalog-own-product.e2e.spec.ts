@@ -55,6 +55,7 @@ describe('seller product routes over HTTP (integration)', () => {
   let app: NestExpressApplication;
   let logLines: LogLine[];
   let added: Product[];
+  let savedProducts: Product[];
   let addedOffers: Offer[];
   let offerRefusal: string | null;
   let verdicts: unknown[];
@@ -83,6 +84,10 @@ describe('seller product routes over HTTP (integration)', () => {
             nextProductCode: () => Promise.resolve('P00000042'),
             add: (_m: unknown, created: Product) => {
               added.push(created);
+              return Promise.resolve();
+            },
+            save: (_m: unknown, changed: Product) => {
+              savedProducts.push(changed);
               return Promise.resolve();
             },
           })
@@ -243,6 +248,7 @@ describe('seller product routes over HTTP (integration)', () => {
     fakes.reset();
     clock = new FixedClock(START);
     added = [];
+    savedProducts = [];
     addedOffers = [];
     offerRefusal = null;
     verdicts = [];
@@ -278,6 +284,11 @@ describe('seller product routes over HTTP (integration)', () => {
     const submit = document.paths['/catalog/seller/products/{productId}/submit']?.post?.responses;
     for (const status of ['200', '400', '403', '404', '409', '422', '429', '503']) {
       expect(submit).toHaveProperty(status);
+    }
+    const ownBrand =
+      document.paths['/catalog/seller/products/{productId}/own-brand']?.put?.responses;
+    for (const status of ['200', '400', '403', '404', '409', '503']) {
+      expect(ownBrand).toHaveProperty(status);
     }
   });
 
@@ -448,6 +459,50 @@ describe('seller product routes over HTTP (integration)', () => {
       );
       expect(extra.status).toBe(400);
       expect(saveCalls).toHaveLength(1);
+    });
+
+    it('marks an own product as carrying the seller own brand, and refuses another seller’s product', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+
+      const marked = await put(
+        code,
+        `/catalog/seller/products/${PRODUCT}/own-brand`,
+        { ownBrand: true },
+        session,
+      );
+
+      expect(marked.status).toBe(200);
+      expect(marked.body).toEqual({ productId: PRODUCT, ownBrand: true });
+      expect(savedProducts).toHaveLength(1);
+      expect(savedProducts[0]?.state.ownBrand).toBe(true);
+
+      const loose = await put(
+        code,
+        `/catalog/seller/products/${PRODUCT}/own-brand`,
+        { ownBrand: 'yes' },
+        session,
+      );
+      const extra = await put(
+        code,
+        `/catalog/seller/products/${PRODUCT}/own-brand`,
+        { ownBrand: true, scope: 'PLATFORM' },
+        session,
+      );
+      expect(loose.status).toBe(400);
+      expect(extra.status).toBe(400);
+
+      product = Product.restore({ ...state(code), ownerSellerId: id<'Seller'>(0xb999) });
+      const other = await put(
+        code,
+        `/catalog/seller/products/${PRODUCT}/own-brand`,
+        { ownBrand: true },
+        session,
+      );
+      expect(other.status).toBe(404);
+      expect(other.body).toEqual({ statusCode: 404, code: 'product.not-found' });
+      expect(savedProducts).toHaveLength(1);
     });
 
     it('answers a malformed product id as an unknown product, byte-identical', async () => {

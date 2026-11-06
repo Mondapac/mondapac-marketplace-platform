@@ -267,6 +267,7 @@ describe.each(TEST_MARKETS)(
       const REVIEW = 'sellers.seller-file.review';
       const SELLER_VIEW = 'sellers.seller.view';
       const DETAILS = 'sellers.business-details.view';
+      const RECALCULATE = 'sellers.seller-health.recalculate';
       await seedRoles();
       const compliance = await roleRow('platform', 'onboarding-compliance');
       const viewer = await roleRow('platform', 'viewer');
@@ -283,7 +284,16 @@ describe.each(TEST_MARKETS)(
         [
           code,
           compliance.id,
-          [REVIEW, SELLER_VIEW, DETAILS, CERT_VIEW, CERT_REVIEW, ISSUER_VIEW, TYPE_VIEW],
+          [
+            REVIEW,
+            SELLER_VIEW,
+            DETAILS,
+            CERT_VIEW,
+            CERT_REVIEW,
+            ISSUER_VIEW,
+            TYPE_VIEW,
+            RECALCULATE,
+          ],
         ],
       );
       // A custom platform role (kind custom, no seed code) that holds the same key and another.
@@ -309,7 +319,7 @@ describe.each(TEST_MARKETS)(
       await expect(seedRoles()).resolves.toEqual({ ok: true, value: { created: 0, upgraded: 1 } });
 
       const upgraded = await roleRow('platform', 'onboarding-compliance');
-      expect([upgraded.id, upgraded.seed_version]).toEqual([compliance.id, 7]);
+      expect([upgraded.id, upgraded.seed_version]).toEqual([compliance.id, 8]);
       expect(await keysOf(compliance.id)).toEqual(expectedKeys);
       expect(await keysOf(compliance.id)).toContain(REVIEW);
       const applied = (await auditRowsOf(compliance.id)).filter(
@@ -318,8 +328,9 @@ describe.each(TEST_MARKETS)(
       expect(applied.at(-1)).toMatchObject({
         before: { seedVersion: 1 },
         after: {
-          seedVersion: 7,
+          seedVersion: 8,
           addedKeys: [
+            RECALCULATE,
             REVIEW,
             SELLER_VIEW,
             DETAILS,

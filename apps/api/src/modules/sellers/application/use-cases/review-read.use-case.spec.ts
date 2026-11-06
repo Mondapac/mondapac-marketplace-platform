@@ -111,6 +111,7 @@ describe.each(['AU', 'ZZ'] as const)('review.read in Market %s', (code) => {
   let sellerId: Id<'Seller'>;
   const index = identifierIndexKeyOf(new Uint8Array(32).fill(7));
 
+  let editedNames: ReadonlyMap<string, Readonly<Record<string, string>>>;
   const useCase = (authorisation: AuthorisationCheck = admitAll) =>
     new ReviewRead(createUseCaseGate(markets, authorisation), {
       unitOfWork: new TransactionalUnitOfWork([files, revisions, checks]),
@@ -122,6 +123,13 @@ describe.each(['AU', 'ZZ'] as const)('review.read in Market %s', (code) => {
       reviewChecks,
       accessReader: access,
       identifierSchemes: { schemeOf: () => null },
+      onboardingAreas: {
+        openCodes: () => [],
+        nameOf: (_market, code) => (code === 'area-1' ? 'Area One' : null),
+        all: () => [],
+        configured: () => [],
+      },
+      areaNames: { edited: () => Promise.resolve(editedNames), forget: () => undefined },
       audit,
       clock,
     });
@@ -170,6 +178,7 @@ describe.each(['AU', 'ZZ'] as const)('review.read in Market %s', (code) => {
   }
 
   beforeEach(() => {
+    editedNames = new Map();
     jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     files = new InMemoryFiles();
@@ -226,6 +235,19 @@ describe.each(['AU', 'ZZ'] as const)('review.read in Market %s', (code) => {
     for (const secret of ['Al Noor', '3000 0000', 'example.com', '51824753556', 'George']) {
       expect(logged).not.toContain(secret);
     }
+  });
+
+  it('names the area: the edited English name, else the configured one, else null', async () => {
+    editedNames = new Map();
+    await addRevision('onboarding', 1, CONTENT);
+    access.set(sellerId, 'pending');
+    const configured = await useCase().execute(admin(), { sellerId });
+    expect(configured.ok && configured.value.current.serviceAreaName).toBe('Area One');
+
+    editedNames = new Map([['area-1', { en: 'Area Uno' }]]);
+    const edited = await useCase().execute(admin(), { sellerId });
+    expect(edited.ok && edited.value.current.serviceAreaName).toBe('Area Uno');
+    expect(edited.ok && edited.value.current.serviceAreaCode).toBe('area-1');
   });
 
   it('shows the approved revision beside a pending identity change, and nothing older', async () => {

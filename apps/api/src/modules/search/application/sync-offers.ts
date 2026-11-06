@@ -3,6 +3,7 @@ import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
   clip,
   MAX_DOCUMENT_CATEGORIES,
+  MAX_FACET_CODES,
   MAX_NAME,
   MAX_SHORT_TEXT,
   type OfferDocument,
@@ -43,6 +44,9 @@ export function documentOf(
     shortText: shortText === '' ? null : shortText,
     categoryIds: [...new Set(facts.categoryIds)].slice(0, MAX_DOCUMENT_CATEGORIES),
     textSearchConfig: settings.textSearchConfig,
+    searchText: facts.attributes.searchText === '' ? null : facts.attributes.searchText,
+    facetCodes: [...new Set(facts.attributes.facets)].slice(0, MAX_FACET_CODES),
+    numbers: facts.attributes.numbers,
   };
 }
 

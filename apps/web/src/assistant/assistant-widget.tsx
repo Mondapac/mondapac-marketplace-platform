@@ -16,6 +16,7 @@ import { useDialog } from '../account/use-dialog.ts';
 import { Icon } from '../icons/icon.tsx';
 import { under } from '../shell/breakpoints.ts';
 import { useStore } from '../shell/store-context.tsx';
+import { productHref } from '../storefront/links.ts';
 import {
   MESSAGE_LIMIT,
   QUICK_PROMPTS,
@@ -431,7 +432,7 @@ export function AssistantWidget({
                 {reply.products.map((card) => (
                   <li key={card.offerId}>
                     <Link
-                      href={`/p/${encodeURIComponent(card.productId)}`}
+                      href={productHref(card.productId, card.name)}
                       onClick={() => sheet && setOpen(false)}
                     >
                       {card.name}
