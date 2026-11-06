@@ -735,6 +735,14 @@ describe('relay of the seller order routes', () => {
     );
   });
 
+  it('forwards the page mode and the filters of the list', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'page=2&pageSize=25&sort=total&direction=desc&status=shipped&to=2026-10-10T00%3A00%3A00.000Z';
+    await relay(config, get(`?${q}&x=1`), list, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/seller/orders?${q}`);
+  });
+
   it('posts ship and deliver by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     for (const action of ['ship', 'deliver']) {

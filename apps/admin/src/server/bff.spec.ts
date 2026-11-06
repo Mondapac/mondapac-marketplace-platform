@@ -822,6 +822,14 @@ describe('relay of the orders list', () => {
     );
   });
 
+  it('forwards the page mode and the filters', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'page=2&pageSize=25&sort=total&direction=desc&paymentState=paid&from=2026-10-01T00%3A00%3A00.000Z';
+    await relay(config, get(`?${q}&x=1`), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/admin/orders?${q}`);
+  });
+
   it('refuses other paths and methods', async () => {
     const upstream = upstreamOk();
     const other = ['ordering', 'admin', 'orders', '0190a000-0000-7000-8000-000000000001'];
