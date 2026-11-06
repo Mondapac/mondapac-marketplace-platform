@@ -1238,6 +1238,10 @@
     "optional": "optional",
     "ref": "#{id}",
     "detail-title": "Order #{id}",
+    "next-step": "Next step",
+    "copy-id": "Copy order ID",
+    "copy-id-done": "Order ID copied.",
+    "copy-id-failed": "Could not copy. Select the ID in the title instead.",
     "back": "Back to orders",
     "not-given": "Not given",
     "col": {
