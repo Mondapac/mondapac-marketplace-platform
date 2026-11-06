@@ -148,9 +148,12 @@ export interface FeatureSetList {
   readonly truncated: boolean;
 }
 
+export type RequirementLevel = 'required' | 'recommended' | 'optional';
+
 export interface FeatureSetAttribute {
   readonly code: string;
   readonly required: boolean;
+  readonly level?: RequirementLevel;
   readonly isVariantOption: boolean;
   readonly attributeId: string | null;
   readonly names: Localized | null;
@@ -164,9 +167,13 @@ export interface FeatureSetDetail {
   readonly code: string;
   readonly status: string;
   readonly revisionNo: number;
+  /** The version the editor names when it saves. */
+  readonly version?: number;
+  readonly names?: Localized;
   readonly createdAt: string;
   readonly groups: readonly {
     readonly groupCode: string;
+    readonly names?: Localized;
     readonly attributes: readonly FeatureSetAttribute[];
   }[];
   readonly productCount: number;
