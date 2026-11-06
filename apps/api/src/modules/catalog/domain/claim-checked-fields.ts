@@ -384,6 +384,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   OfferSearchFacts: {
     noCustomerText: 'read model feed: ids, a flag and OfferSearchText, nothing entered here',
   },
+  OfferSearchVariant: {
+    noCustomerText:
+      'read copy of a published Variant: ids, a position, a GTIN, facet codes and its label (claim-checked when the revision was frozen); the label is index words only, never shown from the index',
+  },
   OfferSearchAttributes: {
     noCustomerText:
       'index words and facet codes read from a published revision: brand name and aliases (an approved brand entity), a country name from the ISO list, option labels and searchable text values (admin text claim-checked when written; seller text claim-checked when the revision was frozen); matching only, never shown and never a certification claim',
