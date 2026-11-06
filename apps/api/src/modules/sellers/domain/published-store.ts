@@ -30,6 +30,8 @@ export interface PublishedStore {
   readonly slug: string;
   readonly name: string;
   readonly serviceAreaCode: string;
+  /** The area's English display name (edited in admin, else configured); null if the code is unknown. */
+  readonly serviceAreaName: string | null;
   /** The calendar year of the first approval, in the seller's own zone (ADR-0005). */
   readonly sellingSince: number;
   readonly minimumOrder?: Money | null;
