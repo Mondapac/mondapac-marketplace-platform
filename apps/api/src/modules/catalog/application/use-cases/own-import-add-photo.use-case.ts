@@ -58,13 +58,13 @@ export type OwnImportAddPhotoFailure =
 
 export interface OwnImportAddPhotoDependencies {
   readonly unitOfWork: UnitOfWork;
-  readonly importJobs: SellerImportRepository;
+  readonly sellerJobs: SellerImportRepository;
   readonly products: ProductRepository;
   readonly workingCopies: WorkingCopyRepository;
   readonly revisions: ProductRevisionRepository;
   readonly saveDraft: SaveDraft;
   /** `own-product.upload-image` built without the interactive save budget. */
-  readonly upload: OwnProductImageUpload;
+  readonly ownImageUpload: OwnProductImageUpload;
   readonly eligibility: SellerEligibilityReader;
   readonly counters: RateCounterRepository;
   readonly counterKeys: RateCounterKeys;
@@ -163,14 +163,14 @@ export class OwnImportAddPhoto extends UseCase<
     const read = await deps.unitOfWork.run<string, OwnImportAddPhotoFailure>(
       market,
       async () => {
-        const job = await deps.importJobs.find(market, sellerId, importId);
+        const job = await deps.sellerJobs.find(market, sellerId, importId);
         if (job === null || job.startedByAccountId !== actor.accountId) {
           return err({ code: 'import.not-found' } as const);
         }
         if (!photoWindowOpen(job, now)) return err({ code: 'import.photos-closed' } as const);
-        const target = (await deps.importJobs.photoTargets(market, importId)).get(nameKey);
+        const target = (await deps.sellerJobs.photoTargets(market, importId)).get(nameKey);
         if (target === undefined) return err({ code: 'import.photo-not-named' } as const);
-        if ((await deps.importJobs.photoNames(market, importId)).has(nameKey)) {
+        if ((await deps.sellerJobs.photoNames(market, importId)).has(nameKey)) {
           return err({ code: 'import.photo-already-added' } as const);
         }
         return ok(target);
@@ -186,7 +186,7 @@ export class OwnImportAddPhoto extends UseCase<
     const throttled = await reserveForAccount(deps, context, IMPORT_PHOTO_LIMITS, sellerId);
     if (throttled !== null) return err(throttled);
 
-    const uploaded = await deps.upload.execute(context, {
+    const uploaded = await deps.ownImageUpload.execute(context, {
       productId: productId.value,
       data: input.data,
     });
@@ -231,7 +231,7 @@ export class OwnImportAddPhoto extends UseCase<
 
     const recorded = await deps.unitOfWork.run(market, async () =>
       ok(
-        await deps.importJobs.addPhoto(market, {
+        await deps.sellerJobs.addPhoto(market, {
           jobId: importId,
           nameKey,
           productId: productId.value,

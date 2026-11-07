@@ -23,7 +23,7 @@ export interface OwnImportPurgeOutput {
 
 export interface OwnImportPurgeDependencies {
   readonly unitOfWork: UnitOfWork;
-  readonly importJobs: SellerImportRepository;
+  readonly sellerJobs: SellerImportRepository;
   readonly importFiles: ImportFileStore;
   readonly clock: Clock;
 }
@@ -76,7 +76,7 @@ export class OwnImportPurge extends UseCase<
         market,
         async () =>
           ok(
-            await deps.importJobs.filesDue(
+            await deps.sellerJobs.filesDue(
               market,
               now.subtract({ hours: IMPORT_FILE_RETENTION_DAYS * 24 }),
               BATCH,
@@ -90,7 +90,7 @@ export class OwnImportPurge extends UseCase<
         try {
           await deps.importFiles.delete(job.fileKey);
           await deps.unitOfWork.run(market, async () => {
-            await deps.importJobs.markFileDeleted(market, job.id, now);
+            await deps.sellerJobs.markFileDeleted(market, job.id, now);
             return ok(undefined);
           });
           deletedHere += 1;
@@ -107,8 +107,8 @@ export class OwnImportPurge extends UseCase<
     let jobsDeleted = 0;
     const settledBefore = now.subtract({ hours: IMPORT_JOB_RETENTION_DAYS * 24 });
     for (const next of [
-      () => deps.importJobs.deleteDiscarded(market, { limit: BATCH }),
-      () => deps.importJobs.deleteSettledBefore(market, settledBefore, BATCH),
+      () => deps.sellerJobs.deleteDiscarded(market, { limit: BATCH }),
+      () => deps.sellerJobs.deleteSettledBefore(market, settledBefore, BATCH),
     ]) {
       while (!overBudget()) {
         const deleted = await deps.unitOfWork.run(market, async () => ok(await next()));

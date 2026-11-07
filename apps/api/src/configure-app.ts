@@ -145,6 +145,26 @@ export function isPlatformImportUploadRequest(
 ): boolean {
   return method === 'POST' && url !== undefined && PLATFORM_IMPORT_UPLOAD_PATH.test(url);
 }
+// The seller import's upload (catalog design 14c) takes the same body as the admin's, and its photo
+// step (one base64 photo of at most 4 MiB per call) the photo body; both controllers parse the JSON
+// themselves. Only these two routes.
+const SELLER_IMPORT_UPLOAD_PATH = /^\/catalog\/seller\/imports\/?(?:\?.*)?$/;
+const SELLER_IMPORT_PHOTO_PATH =
+  /^\/catalog\/seller\/imports\/[0-9a-fA-F-]{36}\/photos\/?(?:\?.*)?$/;
+
+export function isSellerImportUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+): boolean {
+  return method === 'POST' && url !== undefined && SELLER_IMPORT_UPLOAD_PATH.test(url);
+}
+
+export function isSellerImportPhotoRequest(
+  method: string | undefined,
+  url: string | undefined,
+): boolean {
+  return method === 'POST' && url !== undefined && SELLER_IMPORT_PHOTO_PATH.test(url);
+}
 const CERTIFICATE_DOCUMENT_PATH =
   /^\/certification\/seller\/certificates\/[0-9a-fA-F-]{36}\/documents\/?(?:\?.*)?$/;
 /** An admin adds a file to a manufacturer certificate's draft (certification slice 15 part 2). */
@@ -241,6 +261,16 @@ export function configureApp(app: NestExpressApplication): void {
   app.useBodyParser('raw', {
     type: (request) => isPlatformImportUploadRequest(request.method, request.url),
     limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
+    inflate: false,
+  });
+  app.useBodyParser('raw', {
+    type: (request) => isSellerImportUploadRequest(request.method, request.url),
+    limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
+    inflate: false,
+  });
+  app.useBodyParser('raw', {
+    type: (request) => isSellerImportPhotoRequest(request.method, request.url),
+    limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });
   app.useBodyParser('json', { limit: '64kb', strict: true, inflate: false });

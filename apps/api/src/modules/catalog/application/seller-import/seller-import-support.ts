@@ -213,7 +213,7 @@ export async function loadSellerView(
 export async function dropDiscardedSellerJobs(
   deps: {
     readonly unitOfWork: UnitOfWork;
-    readonly importJobs: SellerImportRepository;
+    readonly sellerJobs: SellerImportRepository;
     readonly importFiles: ImportFileStore;
   },
   market: MarketContext,
@@ -224,8 +224,8 @@ export async function dropDiscardedSellerJobs(
     try {
       await deps.importFiles.delete(job.fileKey);
       await deps.unitOfWork.run(market, async () => {
-        await deps.importJobs.markFileDeleted(market, job.id, now);
-        await deps.importJobs.deleteDiscarded(market, { ids: [job.id] });
+        await deps.sellerJobs.markFileDeleted(market, job.id, now);
+        await deps.sellerJobs.deleteDiscarded(market, { ids: [job.id] });
         return ok(undefined);
       });
     } catch {

@@ -60,7 +60,7 @@ export type OwnImportStartFailure =
 
 export interface OwnImportStartDependencies {
   readonly unitOfWork: UnitOfWork;
-  readonly importJobs: SellerImportRepository;
+  readonly sellerJobs: SellerImportRepository;
   readonly eligibility: SellerEligibilityReader;
   readonly counters: RateCounterRepository;
   readonly counterKeys: RateCounterKeys;
@@ -142,7 +142,7 @@ export class OwnImportStart extends UseCase<
     const written = await deps.unitOfWork.run<SellerImportView, OwnImportStartFailure>(
       market,
       async () => {
-        const job = await deps.importJobs.find(market, who.sellerId, id);
+        const job = await deps.sellerJobs.find(market, who.sellerId, id);
         // Another seller's job, and another account's, is the same answer as an unknown one.
         if (job === null || job.startedByAccountId !== who.accountId) {
           return err({ code: 'import.not-found' } as const);
@@ -152,16 +152,16 @@ export class OwnImportStart extends UseCase<
         if (mustSkipErrors(job) && !skipErrors) {
           return err({ code: 'import.errors-not-skipped' } as const);
         }
-        if (await deps.importJobs.hasActive(market, who.sellerId)) {
+        if (await deps.sellerJobs.hasActive(market, who.sellerId)) {
           return err({ code: 'import.already-running' } as const);
         }
         const toImport = job.readyRows;
         const since = now.subtract({ milliseconds: DAY_MS });
-        const started = await deps.importJobs.rowsStartedSince(market, who.sellerId, since);
+        const started = await deps.sellerJobs.rowsStartedSince(market, who.sellerId, since);
         if (started + toImport > SELLER_IMPORT_DAILY_ROWS) {
           return err({ code: 'import.daily-rows-reached', retryAfterSeconds: 3600 } as const);
         }
-        const applied = await deps.importJobs.confirm(market, id, { skipErrors, toImport, now });
+        const applied = await deps.sellerJobs.confirm(market, id, { skipErrors, toImport, now });
         if (!applied) return err({ code: 'import.not-confirmable' } as const);
         await deps.audit.record(
           context,
@@ -205,7 +205,7 @@ export type OwnImportResumeFailure =
 
 export interface OwnImportResumeDependencies {
   readonly unitOfWork: UnitOfWork;
-  readonly importJobs: SellerImportRepository;
+  readonly sellerJobs: SellerImportRepository;
   readonly eligibility: SellerEligibilityReader;
   readonly clock: Clock;
 }
@@ -252,17 +252,17 @@ export class OwnImportResume extends UseCase<
     const written = await deps.unitOfWork.run<SellerImportView, OwnImportResumeFailure>(
       market,
       async () => {
-        const job = await deps.importJobs.find(market, who.sellerId, id);
+        const job = await deps.sellerJobs.find(market, who.sellerId, id);
         if (job === null || job.startedByAccountId !== who.accountId) {
           return err({ code: 'import.not-found' } as const);
         }
         if (job.state !== 'stopped' || job.fileDeletedAt !== null) {
           return err({ code: 'import.not-resumable' } as const);
         }
-        if (await deps.importJobs.hasActive(market, who.sellerId)) {
+        if (await deps.sellerJobs.hasActive(market, who.sellerId)) {
           return err({ code: 'import.already-running' } as const);
         }
-        if (!(await deps.importJobs.resume(market, id))) {
+        if (!(await deps.sellerJobs.resume(market, id))) {
           return err({ code: 'import.not-resumable' } as const);
         }
         return ok(
@@ -283,7 +283,7 @@ export type OwnImportDiscardFailure =
 
 export interface OwnImportDiscardDependencies {
   readonly unitOfWork: UnitOfWork;
-  readonly importJobs: SellerImportRepository;
+  readonly sellerJobs: SellerImportRepository;
   readonly importFiles: ImportFileStore;
   readonly clock: Clock;
 }
@@ -328,11 +328,11 @@ export class OwnImportDiscard extends UseCase<
     const done = await deps.unitOfWork.run<{ readonly fileKey: string }, OwnImportDiscardFailure>(
       market,
       async () => {
-        const job = await deps.importJobs.find(market, who.sellerId, id);
+        const job = await deps.sellerJobs.find(market, who.sellerId, id);
         if (job === null || job.startedByAccountId !== who.accountId) {
           return err({ code: 'import.not-found' } as const);
         }
-        const dropped = await deps.importJobs.discard(market, id, now);
+        const dropped = await deps.sellerJobs.discard(market, id, now);
         if (dropped === null) return err({ code: 'import.not-discardable' } as const);
         return ok(dropped);
       },

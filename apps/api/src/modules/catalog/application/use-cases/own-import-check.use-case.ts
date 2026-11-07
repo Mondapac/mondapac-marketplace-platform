@@ -67,7 +67,7 @@ export type OwnImportCheckFailure =
 
 export interface OwnImportCheckDependencies extends CheckEnvironmentDependencies {
   readonly unitOfWork: UnitOfWork;
-  readonly importJobs: SellerImportRepository;
+  readonly sellerJobs: SellerImportRepository;
   readonly importFiles: ImportFileStore;
   readonly importParsers: ImportFileParsers;
   readonly counters: RateCounterRepository;
@@ -291,13 +291,13 @@ export class OwnImportCheck extends UseCase<
       const stored = await deps.unitOfWork.run(
         market,
         async () => {
-          const discarded = await deps.importJobs.discardChecked(
+          const discarded = await deps.sellerJobs.discardChecked(
             market,
             sellerId,
             actor.accountId,
             now,
           );
-          await deps.importJobs.add(market, job, records);
+          await deps.sellerJobs.add(market, job, records);
           return ok(discarded);
         },
         { timeoutMs: 30_000 },

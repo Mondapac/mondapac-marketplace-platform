@@ -74,7 +74,7 @@ export type OwnImportRunFailure = { readonly code: 'access.denied' };
 
 export interface OwnImportRunDependencies extends CheckEnvironmentDependencies {
   readonly unitOfWork: UnitOfWork;
-  readonly importJobs: SellerImportRepository;
+  readonly sellerJobs: SellerImportRepository;
   readonly importFiles: ImportFileStore;
   readonly importParsers: ImportFileParsers;
   readonly importFacts: SellerImportFactsReader;
@@ -84,10 +84,10 @@ export interface OwnImportRunDependencies extends CheckEnvironmentDependencies {
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
   readonly jobContexts: JobCallContexts;
-  readonly rowCreate: OwnImportRowCreate;
-  readonly rowSave: OwnImportRowSave;
-  readonly rowOfferCreate: OwnImportRowOfferCreate;
-  readonly rowOfferEdit: OwnImportRowOfferEdit;
+  readonly ownRowCreate: OwnImportRowCreate;
+  readonly ownRowSave: OwnImportRowSave;
+  readonly ownRowOfferCreate: OwnImportRowOfferCreate;
+  readonly ownRowOfferEdit: OwnImportRowOfferEdit;
 }
 
 /** What happened to one group. */
@@ -151,7 +151,7 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
     const { market } = context;
     const startedAt = deps.clock.now();
     const claimed = await this.#write(context, () =>
-      deps.importJobs.claim(market, startedAt, startedAt.add({ seconds: LEASE_SECONDS })),
+      deps.sellerJobs.claim(market, startedAt, startedAt.add({ seconds: LEASE_SECONDS })),
     );
     if (claimed === null) return ok({ ran: false });
 
@@ -212,13 +212,13 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
     const { market } = context;
     const now = deps.clock.now();
     await this.#write(context, async () => {
-      const version = await deps.importJobs.endTurn(
+      const version = await deps.sellerJobs.endTurn(
         market,
         job.id,
         next.state === 'finished' ? { state: 'finished', now } : next,
       );
       if (version === null || next.state === 'queued') return;
-      const current = await deps.importJobs.find(market, job.sellerId, job.id);
+      const current = await deps.sellerJobs.find(market, job.sellerId, job.id);
       await deps.outbox.append(context, [
         SellerImportFinished.record({
           aggregateId: job.id,
@@ -246,7 +246,7 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
     const { market } = context;
     const counts = async (): Promise<{ created: number; updated: number; failed: number }> => {
       const current = await this.#write(context, () =>
-        deps.importJobs.find(market, job.sellerId, job.id),
+        deps.sellerJobs.find(market, job.sellerId, job.id),
       );
       return {
         created: current?.createdRows ?? job.createdRows,
@@ -308,7 +308,7 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
 
     for (;;) {
       const pending = await this.#write(context, () =>
-        deps.importJobs.pendingRows(market, job.id, BATCH),
+        deps.sellerJobs.pendingRows(market, job.id, BATCH),
       );
       if (pending.length === 0) {
         await this.#end(context, job, { state: 'finished' });
@@ -319,7 +319,7 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
         return done('queued');
       }
       const leased = await this.#write(context, () =>
-        deps.importJobs.renewLease(
+        deps.sellerJobs.renewLease(
           market,
           job.id,
           deps.clock.now().add({ seconds: LEASE_SECONDS }),
@@ -352,7 +352,7 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
         );
         if (outcome.kind === 'done') {
           await this.#write(context, () =>
-            deps.importJobs.settleGroup(market, job.id, groupRow, {
+            deps.sellerJobs.settleGroup(market, job.id, groupRow, {
               state: outcome.state,
               productId: null,
               offerId: null,
@@ -361,7 +361,7 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
           );
         } else if (outcome.kind === 'failed') {
           await this.#write(context, () =>
-            deps.importJobs.settleGroup(market, job.id, groupRow, {
+            deps.sellerJobs.settleGroup(market, job.id, groupRow, {
               state: 'failed',
               code: reasonOf(outcome.code),
             }),
@@ -386,7 +386,7 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
     stop: (reason: SellerStopReason) => Promise<OwnImportRunOutput>,
   ): Promise<OwnImportRunOutput> {
     await this.#write(context, () =>
-      this.deps.importJobs.failRemaining(context.market, job.id, 'seller.not-eligible'),
+      this.deps.sellerJobs.failRemaining(context.market, job.id, 'seller.not-eligible'),
     );
     return stop('seller-not-eligible');
   }
@@ -467,7 +467,7 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
 
   async #record(seller: SellerJobContext, job: SellerImportJob, groupRow: number, ids: Ids) {
     await this.#write(seller, () =>
-      this.deps.importJobs.recordGroup(seller.market, job.id, groupRow, ids),
+      this.deps.sellerJobs.recordGroup(seller.market, job.id, groupRow, ids),
     );
   }
 
@@ -487,7 +487,7 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
     let state: 'created' | 'updated' | 'unchanged' = plan.kind === 'create' ? 'created' : 'unchanged';
 
     if (productId === null || offerId === null) {
-      const created = await deps.rowCreate.execute(seller, {
+      const created = await deps.ownRowCreate.execute(seller, {
         typeCode: product.typeCode,
         sellerSku: plan.sellerSku,
         conditionCode: plan.conditionCode ?? env.conditions[0] ?? '',
@@ -508,7 +508,7 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
       if (edited.changed) state = 'updated';
     }
 
-    const saved = await deps.rowSave.execute(seller, { productId, plan });
+    const saved = await deps.ownRowSave.execute(seller, { productId, plan });
     if (!saved.ok) return failureOf(saved.error.code, saved.error);
     if (state === 'unchanged' && !saved.value.unchanged) state = 'updated';
     return { kind: 'done', state };
@@ -530,7 +530,7 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
     if (recorded.offerId !== null) return { kind: 'done', state: 'created' };
     const productId = plan.catalogueProduct?.productId;
     if (productId === undefined) return { kind: 'failed', code: 'row.changed' };
-    const created = await deps.rowOfferCreate.execute(seller, {
+    const created = await deps.ownRowOfferCreate.execute(seller, {
       productId,
       sellerSku: plan.sellerSku,
       conditionCode: plan.conditionCode ?? env.conditions[0] ?? '',
@@ -576,7 +576,7 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
       conditionCode === stored.conditionCode &&
       JSON.stringify(description) === JSON.stringify(stored.description);
     if (same) return { kind: 'ok', changed: false };
-    const edited = await deps.rowOfferEdit.execute(seller, {
+    const edited = await deps.ownRowOfferEdit.execute(seller, {
       offerId,
       sellerSku: stored.sellerSku,
       conditionCode,

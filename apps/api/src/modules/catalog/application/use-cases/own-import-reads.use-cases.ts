@@ -44,7 +44,7 @@ const VIEW_KEYS = [CATALOG_OWN_PRODUCT_VIEW.key] as const;
 
 export interface OwnImportReadDependencies {
   readonly unitOfWork: UnitOfWork;
-  readonly importJobs: SellerImportRepository;
+  readonly sellerJobs: SellerImportRepository;
   readonly clock: Clock;
 }
 
@@ -88,16 +88,16 @@ export class OwnImportRead extends UseCase<
     if (wanted !== null && id === null) {
       return err({ code: 'validation.failed', fields: [{ path: 'importId', code: 'format' }] });
     }
-    const { importJobs, clock } = this.deps;
+    const { sellerJobs, clock } = this.deps;
     const read = await this.deps.unitOfWork.run<SellerImportView | null, SellerImportCommonFailure>(
       market,
       async () => {
         const job =
           id === null
-            ? await importJobs.latestOf(market, sellerId)
-            : await importJobs.find(market, sellerId, id);
+            ? await sellerJobs.latestOf(market, sellerId)
+            : await sellerJobs.find(market, sellerId, id);
         if (job === null) return id === null ? ok(null) : err({ code: 'import.not-found' } as const);
-        return ok(await loadSellerView(importJobs, market, job, clock.now()));
+        return ok(await loadSellerView(sellerJobs, market, job, clock.now()));
       },
       { readOnly: true },
     );
@@ -164,14 +164,14 @@ export class OwnImportReport extends UseCase<
       return err({ code: 'validation.failed', fields: [{ path: 'kind', code: 'enum' }] });
     }
     const kind = input.kind;
-    const { importJobs } = this.deps;
+    const { sellerJobs } = this.deps;
     const read = await this.deps.unitOfWork.run<
       { job: SellerImportJob; rows: SellerRowRecord[] },
       OwnImportReportFailure
     >(
       market,
       async () => {
-        const job = await importJobs.find(market, sellerId, id);
+        const job = await sellerJobs.find(market, sellerId, id);
         if (job === null) return err({ code: 'import.not-found' } as const);
         if (kind === 'full' && job.state !== 'finished' && job.state !== 'stopped') {
           return err({ code: 'import.report-unavailable' } as const);
@@ -181,7 +181,7 @@ export class OwnImportReport extends UseCase<
         }
         const rows: SellerRowRecord[] = [];
         for (let offset = 0; ; offset += REPORT_PAGE) {
-          const page = await importJobs.rows(
+          const page = await sellerJobs.rows(
             market,
             id,
             kind === 'errors' ? { checkState: 'error' } : {},
