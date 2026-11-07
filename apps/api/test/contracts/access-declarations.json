@@ -47,6 +47,11 @@
   { "name": "catalog.own-import-purge", "rule": "system" },
   { "name": "catalog.own-import-run", "rule": "system" },
   { "name": "catalog.own-offer-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  {
+    "name": "catalog.own-offer-read-sell-units",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "catalog.own-offers-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {
     "name": "catalog.own-product-image-list",

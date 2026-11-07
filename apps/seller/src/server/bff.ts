@@ -113,6 +113,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'inventory/seller/sources/:id',
     'catalog/seller/products/:id/draft',
     'catalog/seller/offers/:id',
+    // The SKU and the selling switch of the sell units of an offer (variants V5).
+    'catalog/seller/offers/:id/sell-units',
     'inventory/seller/offers/:id/variants/:id/sources/:id/stock',
     'pricing/seller/offers/:id/variants/:id/regular-price',
     'pricing/seller/offers/:id/variants/:id/special-price',

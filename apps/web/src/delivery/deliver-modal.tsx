@@ -18,7 +18,9 @@ import { useStore } from '../shell/store-context.tsx';
 import type { DeliveryLocatorSource, GeoPoint, Place } from '../storefront/types.ts';
 import { saveDeliverTo } from './deliver-to.ts';
 import { addressLine, insideArea, locality } from './geo.ts';
-import { sampleLookup } from './lookup.ts';
+import { deliveryAreaFor } from '../checkout/actions.ts';
+import { SearchProblem, liveLookup, sampleLookup } from './lookup.ts';
+import { MIN_QUERY } from './mapbox.ts';
 import { StubMap } from './stub-map.tsx';
 
 /** How the pin got where it is: an address picked, the pin moved, or the device location. */
@@ -44,8 +46,10 @@ const NARROW = '(max-width: 760px)';
  * 761px a centred dialog (controls left, map right); narrower, a full-screen sheet with the map on
  * top and a sticky footer. The buyer searches an address, uses the device location (asked for
  * only on tap), picks a saved address when signed in, or moves the pin. Confirm (only inside the
- * delivery area) sets the header's "<suburb> <postcode>" and refreshes the page. The map and the
- * address lookup are stubs on sample data until john chooses a provider.
+ * delivery area) sets the header's "<suburb> <postcode>" and refreshes the page. With the live
+ * lookup (`source.live`) addresses and suburbs come from Mapbox through the buyer site's own
+ * routes and "We deliver to this area" from the API's delivery area for the postcode; otherwise
+ * both are stubs on sample data. The map is still the stub until its provider PR.
  */
 export function DeliverModal({ source }: { readonly source: DeliveryLocatorSource }) {
   const t = useTranslations('deliver');
@@ -58,7 +62,18 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     customer,
     setLoginOpen,
   } = useStore();
-  const lookup = useMemo(() => sampleLookup(source), [source]);
+  const lookup = useMemo(
+    () =>
+      source.live
+        ? liveLookup({ fetch: (input, init) => fetch(input, init), area: deliveryAreaFor })
+        : sampleLookup(source),
+    [source],
+  );
+  /** The API's answer for the last postcode asked (live lookup only). */
+  const [areaAnswer, setAreaAnswer] = useState<{
+    readonly postcode: string;
+    readonly delivers: boolean | null;
+  } | null>(null);
   const [mounted, setMounted] = useState(false);
   const [pick, setPick] = useState<Pick>({
     point: source.start.point,
@@ -70,6 +85,8 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   const [results, setResults] = useState<readonly Place[] | null>(null);
   const [active, setActive] = useState(-1);
   const [locating, setLocating] = useState<Locating>('idle');
+  /** Why the live search shows no list: typed too little, too many searches, or it failed. */
+  const [searchNote, setSearchNote] = useState<'short' | SearchProblem['kind'] | null>(null);
   const confirmed = useRef<Pick | null>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -96,6 +113,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     setResults(null);
     setActive(-1);
     setLocating('idle');
+    setSearchNote(null);
     if (confirmed.current) setPick(confirmed.current);
     else if (deliverTo) {
       const ticket = ++placeTicket.current;
@@ -114,8 +132,25 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     // Only opening resets the modal; the stored location is read at that moment.
   }, [open]);
 
-  const inside = insideArea(pick.point, source.area.boundary);
-  const ready = inside && pick.place !== null && !pick.pending;
+  const postcode = pick.place?.postcode;
+  useEffect(() => {
+    if (!source.live || !open || postcode === undefined) return;
+    let current = true;
+    void lookup.delivers(postcode).then((delivers) => {
+      if (current) setAreaAnswer({ postcode, delivers });
+    });
+    return () => {
+      current = false;
+    };
+  }, [source.live, open, postcode, lookup]);
+  const answered = areaAnswer?.postcode === postcode ? areaAnswer?.delivers : undefined;
+  // The API's yes or no wins; with no answer the area's boundary is the preview.
+  const inside =
+    typeof answered === 'boolean' ? answered : insideArea(pick.point, source.area.boundary);
+  const checking = source.live === true && postcode !== undefined && answered === undefined;
+  /** The API did not answer for this postcode: the boundary preview stands, unconfirmed. */
+  const unconfirmed = source.live === true && answered === null;
+  const ready = inside && pick.place !== null && !pick.pending && !checking;
   const area = source.area.name;
 
   const close = () => setDeliverOpen(false);
@@ -137,13 +172,28 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     setQuery(value);
     setActive(-1);
     const ticket = ++searchTicket.current;
+    setSearchNote(null);
     if (!value.trim()) {
       setResults(null);
       return;
     }
-    void lookup.search(value).then((found) => {
-      if (ticket === searchTicket.current) setResults(found);
-    });
+    if (source.live && value.trim().length < MIN_QUERY) {
+      setResults(null);
+      setSearchNote('short');
+      return;
+    }
+    // Rank towards the pin only once the buyer set it: the start point is the sample area's.
+    const near = pick.point === source.start.point ? undefined : pick.point;
+    lookup.search(value, near).then(
+      (found) => {
+        if (ticket === searchTicket.current) setResults(found);
+      },
+      (error: unknown) => {
+        if (ticket !== searchTicket.current) return;
+        setResults(null);
+        setSearchNote(error instanceof SearchProblem ? error.kind : 'failed');
+      },
+    );
   };
   const pickResult = (place: Place) => {
     choose(place);
@@ -152,6 +202,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   };
   const clear = () => {
     searchTicket.current++;
+    setSearchNote(null);
     setQuery('');
     setResults(null);
     setActive(-1);
@@ -180,13 +231,16 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     );
   };
   const chooseSaved = (id: string, line: string) => {
-    void lookup.search(line).then((found) => {
-      const place = found.find((p) => addressLine(p) === line) ?? found[0];
-      if (place) {
-        setQuery('');
-        choose(place, id);
-      }
-    });
+    lookup.search(line).then(
+      (found) => {
+        const place = found.find((p) => addressLine(p) === line) ?? found[0];
+        if (place) {
+          setQuery('');
+          choose(place, id);
+        }
+      },
+      () => setSearchNote('failed'),
+    );
   };
   const confirm = () => {
     if (!ready || !pick.place) return;
@@ -309,14 +363,25 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                         <Icon name="pin" />
                         <span>
                           <b>{place.street || place.suburb}</b>
-                          <small>{locality(place)}</small>
+                          <small>
+                            {place.street
+                              ? locality(place)
+                              : t('suburb-line', {
+                                  region: place.region,
+                                  postcode: place.postcode,
+                                })}
+                          </small>
                         </span>
                       </li>
                     ))}
                   </ul>
                 ) : null}
                 <p className="lmnone" role="status">
-                  {results?.length === 0 ? t('no-match') : null}
+                  {searchNote
+                    ? t(`search-${searchNote}`)
+                    : results?.length === 0
+                      ? t('no-match')
+                      : null}
                 </p>
               </div>
               <button
@@ -343,7 +408,12 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
               <div className="lmsel" aria-live="polite">
                 <small>{t('delivering-to')}</small>
                 <b>{summary}</b>
-                {inside ? (
+                {checking ? (
+                  <span className="lmst" id={`${ids}-checking`}>
+                    <span className="spin" aria-hidden="true" />
+                    {t('checking')}
+                  </span>
+                ) : inside ? (
                   <span className="lmst ok">
                     <Icon name="check" />
                     {t('in-area')}
@@ -354,7 +424,11 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                     <span>{t('out-of-area', { area })}</span>
                   </span>
                 )}
+                {unconfirmed && inside ? <small>{t('area-unconfirmed')}</small> : null}
                 {pick.origin === 'device' && inside ? <small>{t('device-note')}</small> : null}
+                {source.live && pick.origin === 'place' && pick.place?.street === '' ? (
+                  <small>{t('suburb-hint')}</small>
+                ) : null}
               </div>
               {customer ? (
                 <fieldset className="lmsv">
@@ -398,12 +472,19 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                 </p>
               )}
               <p className="lmpriv">{t(customer ? 'privacy-account' : 'privacy-guest')}</p>
+              {source.live ? <p className="lmpriv">{t('privacy-provider')}</p> : null}
             </div>
             <div className="lmf">
               <button className="btn ghost" type="button" onClick={close}>
                 {t('cancel')}
               </button>
-              <button className="btn" type="button" aria-disabled={!ready} onClick={confirm}>
+              <button
+                className="btn"
+                type="button"
+                aria-disabled={!ready}
+                aria-describedby={checking ? `${ids}-checking` : undefined}
+                onClick={confirm}
+              >
                 {t('confirm')}
               </button>
             </div>

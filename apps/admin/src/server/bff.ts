@@ -97,6 +97,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/attribute-relaxations',
     // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
     'catalog/admin/attribute-archive-requests',
+    // The variant types and the variants of live products, their issue counts and their export
+    // (catalog, variants V6; query of the list: `q`, `typeCode`, `issue`, `after`, `limit`).
+    'catalog/admin/variant-types',
+    'catalog/admin/variants',
+    'catalog/admin/variants/issue-counts',
+    'catalog/admin/variants/export',
     // The report of published products missing a required detail (catalog, attributes A4;
     // query: `sellerId`, `familyCode`, `afterId`, `limit`).
     'catalog/admin/reports/products-missing-details',
@@ -208,6 +214,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/admin/price-holds/:id/reject',
     'catalog/admin/offers/:id/approve',
     'catalog/admin/offers/:id/request-changes',
+    // Approve or send back a pending product version, naming the version seen (catalog, product
+    // version review); take a photo down with a reason (cannot be undone).
+    'catalog/admin/products/:id/revisions/:id/approve',
+    'catalog/admin/products/:id/revisions/:id/request-changes',
+    'catalog/admin/products/:id/images/:id/take-down',
     // Submit (publish) a platform product's working copy (catalog).
     'catalog/admin/platform-products/:id/submit',
     // Discard a platform product that was never submitted (catalog).
@@ -307,6 +318,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/business-activities/:id',
     // The whole content of an attribute, a new revision, with the version seen (attributes A2).
     'catalog/admin/attributes/:id',
+    // How buyers choose a variant type, the whole settings with the version seen (variants V6).
+    'catalog/admin/variant-types/:id/settings',
     // A saved view's name and who can use it (catalog).
     'catalog/admin/saved-filters/:id',
     // The working copy of a platform product, saved as a draft (catalog).
@@ -334,6 +347,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/platform-products/:id',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
+    // A product version's photo opened large, for its review (catalog).
+    'catalog/admin/products/:id/images/:id/large',
     // The current image of a category, medium size only (catalog, categories C3c).
     'catalog/admin/categories/:id/images/:id/medium',
     // One import and its report CSV (catalog): the report takes the query `kind`.
@@ -346,6 +361,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // What merging values or archiving an attribute reaches (catalog, attributes A8).
     'catalog/admin/attributes/:id/impact',
     'catalog/admin/feature-sets/:id',
+    // One variant type with its options and settings (catalog, variants V6).
+    'catalog/admin/variant-types/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',
     // A storefront slide as a package to create in another Market (storefront).
@@ -409,6 +426,9 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
+  'catalog/admin/variants': ['q', 'typeCode', 'issue', 'after', 'limit'],
+  'catalog/admin/variants/issue-counts': ['typeCode'],
+  'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
   'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
@@ -455,6 +475,18 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     categoryId: UUID,
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
+  },
+  'catalog/admin/variants': {
+    typeCode: /^[a-z][a-z0-9_-]{0,63}$/,
+    issue: /^(no-seller-selling|missing-gtin|duplicate-gtin|no-image|missing-language)$/,
+    after: UUID,
+    limit: /^([1-9][0-9]?|100)$/,
+  },
+  'catalog/admin/variants/issue-counts': { typeCode: /^[a-z][a-z0-9_-]{0,63}$/ },
+  'catalog/admin/variants/export': {
+    format: /^(csv|xlsx)$/,
+    typeCode: /^[a-z][a-z0-9_-]{0,63}$/,
+    issue: /^(no-seller-selling|missing-gtin|duplicate-gtin|no-image|missing-language)$/,
   },
   'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'commission-payouts/admin/payouts': {
