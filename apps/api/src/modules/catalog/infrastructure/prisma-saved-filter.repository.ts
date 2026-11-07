@@ -27,6 +27,7 @@ const filterOf = (row: Row): SavedFilter => ({
   id: row.id as Id<'SavedFilter'>,
   listKey: row.listKey,
   ownerAccountId: row.ownerAccountId as Id<'Account'>,
+  sellerId: row.sellerId === null ? null : (row.sellerId as Id<'Seller'>),
   visibility: row.visibility as SavedFilterVisibility,
   name: row.name,
   payload: row.payload,
@@ -38,7 +39,8 @@ const filterOf = (row: Row): SavedFilter => ({
 /**
  * {@link SavedFilterRepository} on `catalog.saved_filters`. Every statement goes through
  * `PrismaService.tx(market)` with `marketId` in `where`, so another Market's rows are never read
- * or changed.
+ * or changed. It serves the admin lists only: `sellerId: null` is in every `where`, so a seller's
+ * filter is never read or changed through an admin route (the seller store is its own repository).
  */
 export class PrismaSavedFilterRepository implements SavedFilterRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -51,6 +53,7 @@ export class PrismaSavedFilterRepository implements SavedFilterRepository {
     const rows = await this.prisma.tx(market).catalogSavedFilter.findMany({
       where: {
         marketId: market.marketId,
+        sellerId: null,
         listKey,
         OR: [{ ownerAccountId: accountId }, { visibility: 'everyone' }],
       },
@@ -63,20 +66,20 @@ export class PrismaSavedFilterRepository implements SavedFilterRepository {
 
   async find(market: MarketContext, id: Id<'SavedFilter'>): Promise<SavedFilter | null> {
     const row = await this.prisma.tx(market).catalogSavedFilter.findFirst({
-      where: { marketId: market.marketId, id },
+      where: { marketId: market.marketId, sellerId: null, id },
     });
     return row === null ? null : filterOf(row);
   }
 
   countOwnedBy(market: MarketContext, listKey: string, accountId: Id<'Account'>): Promise<number> {
     return this.prisma.tx(market).catalogSavedFilter.count({
-      where: { marketId: market.marketId, listKey, ownerAccountId: accountId },
+      where: { marketId: market.marketId, sellerId: null, listKey, ownerAccountId: accountId },
     });
   }
 
   countShared(market: MarketContext, listKey: string): Promise<number> {
     return this.prisma.tx(market).catalogSavedFilter.count({
-      where: { marketId: market.marketId, listKey, visibility: 'everyone' },
+      where: { marketId: market.marketId, sellerId: null, listKey, visibility: 'everyone' },
     });
   }
 
@@ -86,7 +89,7 @@ export class PrismaSavedFilterRepository implements SavedFilterRepository {
     accountId: Id<'Account'>,
   ): Promise<number> {
     const last = await this.prisma.tx(market).catalogSavedFilter.aggregate({
-      where: { marketId: market.marketId, listKey, ownerAccountId: accountId },
+      where: { marketId: market.marketId, sellerId: null, listKey, ownerAccountId: accountId },
       _max: { position: true },
     });
     return (last._max.position ?? 0) + 1;
@@ -100,6 +103,7 @@ export class PrismaSavedFilterRepository implements SavedFilterRepository {
           marketId: market.marketId,
           tenantId: market.tenantId,
           ownerAccountId: filter.ownerAccountId,
+          sellerId: null,
           visibility: filter.visibility,
           listKey: filter.listKey,
           name: filter.name,
@@ -120,7 +124,7 @@ export class PrismaSavedFilterRepository implements SavedFilterRepository {
   async change(market: MarketContext, filter: SavedFilter): Promise<SavedFilterWrite | 'gone'> {
     try {
       const changed = await this.prisma.tx(market).catalogSavedFilter.updateMany({
-        where: { marketId: market.marketId, id: filter.id },
+        where: { marketId: market.marketId, sellerId: null, id: filter.id },
         data: {
           name: filter.name,
           visibility: filter.visibility,
@@ -136,7 +140,7 @@ export class PrismaSavedFilterRepository implements SavedFilterRepository {
 
   async remove(market: MarketContext, id: Id<'SavedFilter'>): Promise<boolean> {
     const removed = await this.prisma.tx(market).catalogSavedFilter.deleteMany({
-      where: { marketId: market.marketId, id },
+      where: { marketId: market.marketId, sellerId: null, id },
     });
     return removed.count > 0;
   }
