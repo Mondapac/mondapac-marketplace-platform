@@ -127,6 +127,15 @@ export interface OwnCatalogReader {
   ): Promise<readonly ProductLabel[]>;
 
   /**
+   * The stored sell-unit rows of one Offer (V5, design 2.4): the variant SKU and the selling
+   * switch of the variants that have a row. A variant with no row sells and has no SKU.
+   */
+  sellUnitsOf(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+  ): Promise<readonly { variantId: string; variantSku: string | null; selling: boolean }[]>;
+
+  /**
    * What the product form needs to be drawn: the fields of the family (published revisions, active
    * options only, in family order) and the active platform categories. Fields of a family that is
    * missing or archived: an empty list.

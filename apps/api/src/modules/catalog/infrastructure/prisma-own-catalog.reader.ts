@@ -207,6 +207,17 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
     }));
   }
 
+  async sellUnitsOf(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+  ): Promise<readonly { variantId: string; variantSku: string | null; selling: boolean }[]> {
+    return await this.prisma.tx(market).catalogOfferSellUnit.findMany({
+      where: { marketId: market.marketId, offerId },
+      select: { variantId: true, variantSku: true, selling: true },
+      orderBy: { variantId: 'asc' },
+    });
+  }
+
   async findWorkingCopies(
     market: MarketContext,
     productIds: readonly Id<'Product'>[],

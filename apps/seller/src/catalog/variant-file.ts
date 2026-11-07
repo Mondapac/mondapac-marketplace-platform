@@ -12,10 +12,8 @@ import { inputOf, minorOf } from '../price/money.ts';
 // server; a changed cell becomes a draft of the tab and is saved through the price and stock
 // routes by the tab's own Save. Pure functions: no I/O, no React.
 //
-// TODO(14b, V5 / PR #688): the `variant_sku` and `selling` columns wait for the sell-unit route
-// (`own-offer.set-sell-units`) and the per-sell-unit SKU. Until then they are not written, they
-// are not read as keys (rule (c) is skipped) and a file that has them lists them as unknown
-// columns that are ignored. Nothing here stubs them as working.
+// `variant_sku` and `selling` are the sell-unit columns of V5 (`own-offer.set-sell-units`): the
+// seller's SKU of one variant and its on-sale switch. A SKU the file names is also a key (rule (c)).
 
 /** The limits of a variant file (design 14b); the row cap is the Market's `maxVariantsPerProduct`. */
 export const FILE_LIMITS = Object.freeze({ bytes: 1024 * 1024, columns: 64, cellChars: 10_000 });
@@ -36,6 +34,10 @@ export interface FileVariant {
   /** Option code per axis code. */
   readonly options: Readonly<Record<string, string>>;
   readonly gtin: string;
+  /** The seller's SKU of this sell unit; empty when it has none. */
+  readonly variantSku: string;
+  /** The sell unit is on sale (no stored row means it is). */
+  readonly selling: boolean;
   /** The regular price in force, in minor units; null when there is none or it is not visible. */
   readonly price: string | null;
   /** The level and its version per stock location id. */
@@ -55,9 +57,14 @@ export interface FileModel {
   /** The seller may change them (a file that has the column is refused without the key). */
   readonly canEditPrice: boolean;
   readonly canEditStock: boolean;
+  /** The seller may change the SKU and the selling switch (the V5 route's key). */
+  readonly canEditSellUnits: boolean;
   /** `maxVariantsPerProduct`: the data rows one file may hold. */
   readonly maxRows: number;
 }
+
+/** A variant SKU: 1 to 64 printable ASCII characters, no space (the V5 rule). */
+export const VARIANT_SKU = /^[\x21-\x7e]{1,64}$/;
 
 const optionHeader = (axis: string) => `option[${axis}]`;
 const stockHeader = (sourceId: string) => `stock[${sourceId}]`;
@@ -73,6 +80,8 @@ export function exportVariantFile(model: FileModel): string {
     'variant_code',
     ...model.axes.map((axis) => optionHeader(axis.code)),
     'gtin',
+    'variant_sku',
+    'selling',
     ...(model.showPrice ? ['price'] : []),
     ...(model.showStock ? model.sources.map((source) => stockHeader(source.id)) : []),
     ...(model.showStock ? model.sources.map((source) => exportedHeader(source.id)) : []),
@@ -87,6 +96,8 @@ export function exportVariantFile(model: FileModel): string {
       return axis.options.find((option) => option.code === code)?.label ?? code ?? '';
     }),
     variant.gtin,
+    variant.variantSku,
+    variant.selling ? 'yes' : 'no',
     ...(model.showPrice
       ? [variant.price === null ? '' : inputOf(variant.price, model.currency)]
       : []),
@@ -118,6 +129,7 @@ export type RowCode =
   | 'import.option-unknown'
   | 'import.duplicate-row'
   | 'import.invalid-value'
+  | 'import.none-selling'
   | 'import.read-only-column';
 
 export interface RowIssue {
@@ -129,14 +141,14 @@ export interface RowIssue {
 
 /** One cell the import would change: current value to file value. */
 export interface CellChange {
-  /** `price:<variantId>` or `stock:<variantId>:<sourceId>`: the key of the tab's drafts. */
+  /** `price:<id>`, `stock:<id>:<sourceId>`, `sku:<id>` or `selling:<id>`: the key of a draft. */
   readonly key: string;
   readonly rowNumber: number;
   readonly variantId: string;
   readonly variantCode: string;
-  readonly kind: 'price' | 'stock';
+  readonly kind: 'price' | 'stock' | 'sku' | 'selling';
   readonly sourceId?: string;
-  /** Texts as the tab shows them (price in major units, stock as a count). */
+  /** Texts as the tab shows them (price in major units, stock as a count, selling `yes`/`no`). */
   readonly from: string;
   readonly to: string;
   /** `import.stock-changed`: the level moved since the export; the seller confirms or exports again. */
@@ -204,6 +216,8 @@ export function readVariantFile(bytes: Uint8Array, model: FileModel): ImportResu
     name === 'product_code' ||
     name === 'variant_code' ||
     name === 'gtin' ||
+    name === 'variant_sku' ||
+    name === 'selling' ||
     name === 'price' ||
     axisByColumn.has(name) ||
     [...sourceById.keys()].some((id) => name === stockHeader(id) || name === exportedHeader(id));
@@ -218,6 +232,7 @@ export function readVariantFile(bytes: Uint8Array, model: FileModel): ImportResu
   const notAllowed = header.filter(
     (name) =>
       (name === 'price' && !model.canEditPrice) ||
+      ((name === 'variant_sku' || name === 'selling') && !model.canEditSellUnits) ||
       ([...sourceById.keys()].some((id) => name === stockHeader(id)) && !model.canEditStock),
   );
   if (notAllowed.length > 0) {
@@ -227,6 +242,9 @@ export function readVariantFile(bytes: Uint8Array, model: FileModel): ImportResu
 
   const live = model.variants.filter((variant) => variant.state === 'published');
   const byCode = new Map(model.variants.map((variant) => [variant.variantCode, variant]));
+  const bySku = new Map(
+    live.filter((variant) => variant.variantSku !== '').map((variant) => [variant.variantSku, variant]),
+  );
   const byCombination = new Map(
     live.map((variant) => [
       JSON.stringify(model.axes.map((axis) => variant.options[axis.code] ?? '')),
@@ -288,6 +306,8 @@ export function readVariantFile(bytes: Uint8Array, model: FileModel): ImportResu
     }
 
     const code = (cell(row.cells, 'variant_code') ?? '').trim();
+    const fileSku = (cell(row.cells, 'variant_sku') ?? '').trim();
+    const skuOwner = fileSku === '' ? undefined : bySku.get(fileSku);
     let variant: FileVariant | undefined;
     if (code !== '') {
       // (b) the variant code is the only key.
@@ -300,14 +320,23 @@ export function readVariantFile(bytes: Uint8Array, model: FileModel): ImportResu
         fail('import.variant-retired', 'variant_code');
         continue;
       }
-      if (named !== 'partial' && named !== null && named.variantId !== found.variantId) {
+      if (
+        (named !== 'partial' && named !== null && named.variantId !== found.variantId) ||
+        (skuOwner !== undefined && skuOwner.variantId !== found.variantId)
+      ) {
         fail('import.key-conflict', 'variant_code');
         continue;
       }
       variant = found;
+    } else if (skuOwner !== undefined) {
+      // (c) without a variant code, a variant SKU that is some variant's own is the key.
+      if (named !== 'partial' && named !== null && named.variantId !== skuOwner.variantId) {
+        fail('import.key-conflict', 'variant_sku');
+        continue;
+      }
+      variant = skuOwner;
     } else {
-      // (c) variant_sku would be the key here: waits for V5 (see the TODO above).
-      // (d) the option labels.
+      // (d) the option labels. A SKU that is nobody's is a new value for the variant they name.
       if (optionProblem !== null) {
         fail(optionProblem, failedColumn);
         continue;
@@ -358,6 +387,47 @@ export function readVariantFile(bytes: Uint8Array, model: FileModel): ImportResu
           rowNumber: row.rowNumber,
           code: 'import.read-only-column',
           column,
+        });
+      }
+    }
+
+    const sku = (cell(row.cells, 'variant_sku') ?? '').trim();
+    if (sku !== '' && sku !== variant.variantSku) {
+      if (!VARIANT_SKU.test(sku)) {
+        rowErrors.push({
+          rowNumber: row.rowNumber,
+          code: 'import.invalid-value',
+          column: 'variant_sku',
+        });
+      } else {
+        rowChanges.push({
+          key: `sku:${variant.variantId}`,
+          rowNumber: row.rowNumber,
+          variantId: variant.variantId,
+          variantCode: variant.variantCode,
+          kind: 'sku',
+          from: variant.variantSku,
+          to: sku,
+        });
+      }
+    }
+    const selling = (cell(row.cells, 'selling') ?? '').trim().toLowerCase();
+    if (selling !== '') {
+      if (selling !== 'yes' && selling !== 'no') {
+        rowErrors.push({
+          rowNumber: row.rowNumber,
+          code: 'import.invalid-value',
+          column: 'selling',
+        });
+      } else if ((selling === 'yes') !== variant.selling) {
+        rowChanges.push({
+          key: `selling:${variant.variantId}`,
+          rowNumber: row.rowNumber,
+          variantId: variant.variantId,
+          variantCode: variant.variantCode,
+          kind: 'selling',
+          from: variant.selling ? 'yes' : 'no',
+          to: selling,
         });
       }
     }
@@ -416,11 +486,52 @@ export function readVariantFile(bytes: Uint8Array, model: FileModel): ImportResu
     else changes.push(...rowChanges);
   }
 
+  // Two variants asking for the same new SKU: both rows fail (the route would refuse the pair).
+  const wantedSku = new Map<string, CellChange[]>();
+  for (const change of changes) {
+    if (change.kind === 'sku') {
+      wantedSku.set(change.to, [...(wantedSku.get(change.to) ?? []), change]);
+    }
+  }
+  const dropped = new Set<string>();
+  for (const group of wantedSku.values()) {
+    if (group.length < 2) continue;
+    for (const change of group) {
+      dropped.add(change.key);
+      errors.push({ rowNumber: change.rowNumber, code: 'import.duplicate-row', column: 'variant_sku' });
+    }
+  }
+  // A new SKU that is another variant's own today is taken (unless that variant gets another).
+  const movedAway = new Set(
+    changes.filter((change) => change.kind === 'sku').map((change) => change.variantId),
+  );
+  for (const change of changes) {
+    if (change.kind !== 'sku' || dropped.has(change.key)) continue;
+    const owner = bySku.get(change.to);
+    if (owner !== undefined && owner.variantId !== change.variantId && !movedAway.has(owner.variantId)) {
+      dropped.add(change.key);
+      errors.push({ rowNumber: change.rowNumber, code: 'import.key-conflict', column: 'variant_sku' });
+    }
+  }
+  // At least one live variant must keep selling.
+  const sellingAfter = new Map(live.map((variant) => [variant.variantId, variant.selling]));
+  for (const change of changes) {
+    if (change.kind === 'selling') sellingAfter.set(change.variantId, change.to === 'yes');
+  }
+  if (live.length > 0 && ![...sellingAfter.values()].some(Boolean)) {
+    for (const change of changes) {
+      if (change.kind !== 'selling') continue;
+      dropped.add(change.key);
+      errors.push({ rowNumber: change.rowNumber, code: 'import.none-selling', column: 'selling' });
+    }
+  }
+  const kept = changes.filter((change) => !dropped.has(change.key));
+
   const byRow = (a: RowIssue, b: RowIssue) => a.rowNumber - b.rowNumber;
   return {
     ok: true,
     preview: {
-      changes,
+      changes: kept,
       errors: errors.length === 0 ? NO_ISSUES : errors.sort(byRow),
       warnings: warnings.sort(byRow),
       ignoredColumns,

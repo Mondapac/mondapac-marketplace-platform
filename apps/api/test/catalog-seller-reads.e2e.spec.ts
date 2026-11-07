@@ -100,6 +100,7 @@ describe('seller read routes over HTTP (integration)', () => {
             },
             findWorkingCopies: () => Promise.resolve([]),
             productLabels: () => Promise.resolve([]),
+            sellUnitsOf: () => Promise.resolve([]),
             offerStatusCounts: () =>
               Promise.resolve({ draft: 0, pendingFirstPublish: 0, changesNeeded: 0, published: 0 }),
             pendingReviewCount: () => Promise.resolve(0),

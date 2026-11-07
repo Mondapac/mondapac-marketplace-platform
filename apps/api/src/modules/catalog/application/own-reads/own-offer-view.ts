@@ -26,6 +26,14 @@ export interface OwnOfferView {
   readonly version: number;
   /** The open tags, each with its basis (AC 14); on the single read only. */
   readonly tags?: readonly OwnOfferTagView[];
+  /** The stored sell-unit rows (variant SKU and selling switch); on the single read only. */
+  readonly sellUnits?: readonly OwnOfferSellUnitView[];
+}
+
+export interface OwnOfferSellUnitView {
+  readonly variantId: string;
+  readonly variantSku: string | null;
+  readonly selling: boolean;
 }
 
 /** One open tag as the seller sees it (design 5.3 "Seller sees"): badge data only while active. */
