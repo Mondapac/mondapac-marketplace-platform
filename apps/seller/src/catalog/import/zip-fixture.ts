@@ -20,6 +20,10 @@ export interface FixtureEntry {
   readonly declaredCompressedSize?: number;
   /** Written as the local header offset when set. */
   readonly localOffset?: number;
+  /** Name bytes written in the local header only. */
+  readonly localNameBytes?: Uint8Array;
+  /** Method written in the local header only. */
+  readonly localMethod?: number;
   /** Compressed bytes to use instead of compressing `data`. */
   readonly compressed?: Uint8Array;
 }
@@ -58,6 +62,7 @@ export function buildZip(
     const method = entry.method ?? 8;
     const body = entry.compressed ?? (method === 8 ? deflateRawSync(data) : data);
     const nameBytes = entry.nameBytes ?? encoder.encode(entry.name);
+    const localName = entry.localNameBytes ?? nameBytes;
     const flags = (entry.flags ?? 0) | (entry.utf8 === false ? 0 : 0x0800);
     const crc = crc32(data);
     const size = entry.declaredSize ?? data.length;
@@ -67,14 +72,14 @@ export function buildZip(
       ...u32(0x04034b50),
       ...u16(20),
       ...u16(flags),
-      ...u16(method),
+      ...u16(entry.localMethod ?? method),
       ...u32(0),
       ...u32(crc),
       ...u32(compressedSize),
       ...u32(size),
-      ...u16(nameBytes.length),
+      ...u16(localName.length),
       ...u16(0),
-      ...nameBytes,
+      ...localName,
       ...body,
     );
     central.push(

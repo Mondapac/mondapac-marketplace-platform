@@ -4,7 +4,7 @@
 
 import { PHOTO_MAX_INPUT_BYTES } from '../photo-limits.ts';
 import { MAX_PICKED_PHOTOS, PHOTO_EXTENSION } from './photo-queue.ts';
-import { readZipEntries, type ZipLimits } from './zip-reader.ts';
+import { readZip, type ZipLimits } from './zip-reader.ts';
 
 const MIB = 1024 * 1024;
 
@@ -12,9 +12,9 @@ const MIB = 1024 * 1024;
  * The ZIP file: one budget for all the photos in it. Photos hardly compress, so the archive is
  * about as large as its pictures; this is the most the tab is asked to hold at once.
  */
-export const MAX_ZIP_BYTES = 512 * MIB;
-/** All pictures together once unzipped: twice the archive, which also stops a zip bomb early. */
-export const MAX_ZIP_TOTAL_BYTES = 1024 * MIB;
+export const MAX_ZIP_BYTES = 256 * MIB;
+/** All pictures together once unzipped: as large as the archive, which also stops a zip bomb early. */
+export const MAX_ZIP_TOTAL_BYTES = 256 * MIB;
 
 export const PHOTO_ZIP_LIMITS: ZipLimits = {
   maxZipBytes: MAX_ZIP_BYTES,
@@ -48,22 +48,31 @@ export function sniffImage(bytes: Uint8Array): ImageType | null {
   return null;
 }
 
+export interface UnzippedPhotos {
+  readonly files: File[];
+  /** Entries left out because they are not pictures (Thumbs.db, a CSV, a file that only says .jpg). */
+  readonly notImage: number;
+  /** Entries left out because they are over the size of one photo. */
+  readonly tooBig: number;
+}
+
 /**
  * The pictures in a ZIP as files named by their base name, ready for `pickPhotos`. Throws a
- * `ZipError` for the first problem; a ZIP is taken whole or not at all.
+ * `ZipError` for a fault in the ZIP itself; entries that are only not pictures, or too big, are
+ * left out and counted.
  */
 export async function unzipPhotos(
   zip: Blob,
-  limits: ZipLimits = PHOTO_ZIP_LIMITS,
-): Promise<File[]> {
-  const entries = await readZipEntries(
-    zip,
-    limits,
-    (name) => PHOTO_EXTENSION.test(name),
-    (_name, bytes) => sniffImage(bytes) !== null,
+  options: { readonly limits?: ZipLimits; readonly signal?: AbortSignal } = {},
+): Promise<UnzippedPhotos> {
+  const read = await readZip(zip, options.limits ?? PHOTO_ZIP_LIMITS, {
+    isWantedName: (name) => PHOTO_EXTENSION.test(name),
+    isWantedContent: (head) => sniffImage(head) !== null,
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
+  });
+  // A File over a Blob is a view of it; the inflated bytes are not copied again.
+  const files = read.entries.map(
+    (entry) => new File([entry.blob], entry.name, { type: sniffImage(entry.head) ?? '' }),
   );
-  return entries.map(
-    (entry) =>
-      new File([entry.bytes as BlobPart], entry.name, { type: sniffImage(entry.bytes) ?? '' }),
-  );
+  return { files, notImage: read.notImage, tooBig: read.tooBig };
 }

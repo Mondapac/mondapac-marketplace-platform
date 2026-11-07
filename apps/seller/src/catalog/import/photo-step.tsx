@@ -17,11 +17,11 @@ import {
   type PickedPhotos,
 } from './photo-queue.ts';
 import { PHOTO_ZIP_LIMITS, unzipPhotos, ZIP_ACCEPT } from './photo-zip.ts';
-import { ZipError } from './zip-reader.ts';
+import { ZipCancelled, ZipError } from './zip-reader.ts';
 
 // The photo step of a finished or stopped my-products import (catalog design 14c, "Photos"). The
-// seller picks photos, a folder or one ZIP (opened here in the browser, never sent); the panel sends each one as its own request, one at a time, and
-// stops when the server says too many. The server matches the file name to the rows' Images cell;
+// seller picks photos, a folder or one ZIP (opened here in the browser, never sent); the panel
+// sends each one as its own request, one at a time, and stops when the server says too many. The server matches the file name to the rows' Images cell;
 // the page never says which product a photo belongs to.
 
 const PROBLEM_LIST_MAX = 50;
@@ -68,7 +68,10 @@ export function PhotoStep({
   const [tick, setTick] = useState(() => now());
   const [unzipping, setUnzipping] = useState(false);
   const [zipError, setZipError] = useState<ZipError | null>(null);
+  const [zipLeft, setZipLeft] = useState({ notImage: 0, tooBig: 0 });
   const cancelled = useRef(false);
+  const unzipAbort = useRef<AbortController | null>(null);
+  const cancelUnzip = useRef<HTMLButtonElement>(null);
   const zipInput = useRef<HTMLInputElement>(null);
 
   const total = picked?.items.length ?? 0;
@@ -84,9 +87,15 @@ export function PhotoStep({
     return () => clearInterval(timer);
   }, [waitingUntil, now]);
 
-  const take = (files: readonly File[]) => {
+  // The picker is disabled while a ZIP opens, so focus moves to Cancel, the control that matters then.
+  useEffect(() => {
+    if (unzipping) cancelUnzip.current?.focus();
+  }, [unzipping]);
+
+  const take = (files: readonly File[], left = { notImage: 0, tooBig: 0 }) => {
     const next = pickPhotos(files);
     setPicked(next);
+    setZipLeft(left);
     setQueue(next.items);
     setCounts(NO_COUNTS);
     setProblems([]);
@@ -103,12 +112,19 @@ export function PhotoStep({
   const onPickZip = async (zip: File | undefined) => {
     if (zip === undefined || busy) return;
     setZipError(null);
+    const abort = new AbortController();
+    unzipAbort.current = abort;
     setUnzipping(true);
     try {
-      take(await unzipPhotos(zip));
+      const read = await unzipPhotos(zip, { signal: abort.signal });
+      take(read.files, { notImage: read.notImage, tooBig: read.tooBig });
     } catch (error) {
-      setZipError(error instanceof ZipError ? error : new ZipError('broken'));
+      // Cancel is the seller's choice, not a fault: the earlier picking stays as it was.
+      if (!(error instanceof ZipCancelled)) {
+        setZipError(error instanceof ZipError ? error : new ZipError('broken'));
+      }
     } finally {
+      unzipAbort.current = null;
       setUnzipping(false);
     }
   };
@@ -193,10 +209,16 @@ export function PhotoStep({
         </FileButton>
       </div>
 
+      {/* Always in the page, so a screen reader hears the text when it appears. */}
+      <p role="status" className={unzipping ? 'text-sm text-fg-secondary' : 'sr-only'}>
+        {unzipping ? t('zip.opening') : ''}
+      </p>
       {unzipping ? (
-        <p role="status" className="text-sm text-fg-secondary">
-          {t('zip.opening')}
-        </p>
+        <div>
+          <Button ref={cancelUnzip} variant="secondary" onClick={() => unzipAbort.current?.abort()}>
+            {t('zip.cancel')}
+          </Button>
+        </div>
       ) : null}
       {zipError === null ? null : (
         <Banner tone="critical" title={t('zip.error-title')}>
@@ -216,10 +238,17 @@ export function PhotoStep({
           <p role="status" className="text-sm text-fg">
             {t('picked', { count: total })}
           </p>
-          {picked.notPhotos + picked.sameName + picked.overLimit === 0 ? null : (
+          {picked.notPhotos +
+            zipLeft.notImage +
+            picked.sameName +
+            picked.overLimit +
+            zipLeft.tooBig ===
+          0 ? null : (
             <p className="text-sm text-fg-muted">
               {t('left-out', {
-                notPhotos: picked.notPhotos,
+                notPhotos: picked.notPhotos + zipLeft.notImage,
+                tooBig: zipLeft.tooBig,
+                maxPhoto: number(PHOTO_ZIP_LIMITS.maxEntryBytes / MIB),
                 sameName: picked.sameName,
                 overLimit: picked.overLimit,
                 max: MAX_PICKED_PHOTOS,

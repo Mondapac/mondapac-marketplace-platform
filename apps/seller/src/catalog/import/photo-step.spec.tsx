@@ -169,6 +169,51 @@ describe('a ZIP of photos', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
+  it('leaves out what is not a picture or is too big, and says so in the left-out line', async () => {
+    mount();
+    pick('Choose a ZIP file', [
+      zipOf([
+        { name: 'a.jpg', data: JPEG() },
+        { name: 'Thumbs.db', data: new Uint8Array([1]) },
+        { name: 'list.csv', data: new Uint8Array([2]) },
+        { name: 'huge.jpg', data: JPEG(), declaredSize: 30 * 1024 * 1024 },
+      ]),
+    ]);
+    expect(await screen.findByText('1 photo ready to send')).toBeTruthy();
+    const left = screen.getByText(/^Left out:/).textContent ?? '';
+    expect(left).toContain('2 files that are not JPEG, PNG or WebP pictures.');
+    expect(left).toContain('1 photo in the ZIP file over 25 MB.');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('shows that it is opening, disables the pickers, and moves focus to Cancel', async () => {
+    mount();
+    const zipInput = screen.getByLabelText<HTMLInputElement>('Choose a ZIP file');
+    zipInput.focus();
+    pick('Choose a ZIP file', [zipOf([{ name: 'a.jpg', data: JPEG() }])]);
+    const status = screen.getAllByRole('status').find((el) => /Opening/.test(el.textContent ?? ''));
+    expect(status?.textContent).toBe('Opening your ZIP file…');
+    for (const label of ['Choose photos', 'Choose a folder', 'Choose a ZIP file']) {
+      expect(screen.getByLabelText<HTMLInputElement>(label).disabled).toBe(true);
+    }
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    expect(document.activeElement).toBe(cancel);
+    expect(await screen.findByText('1 photo ready to send')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    expect(screen.getByLabelText<HTMLInputElement>('Choose photos').disabled).toBe(false);
+  });
+
+  it('cancels a long unzip without a message and keeps the earlier picking', async () => {
+    mount();
+    pick('Choose photos', [jpg('old.jpg')]);
+    pick('Choose a ZIP file', [zipOf([{ name: 'a.jpg', data: JPEG() }])]);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull());
+    expect(screen.getByText('1 photo ready to send')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByLabelText<HTMLInputElement>('Choose a ZIP file').disabled).toBe(false);
+  });
+
   it('has one message for every refusal code', () => {
     const codes: ZipErrorCode[] = [
       'too-big',
@@ -180,8 +225,7 @@ describe('a ZIP of photos', () => {
       'multi-disk',
       'broken',
       'duplicate-name',
-      'not-image',
-      'entry-too-big',
+      'unsupported-browser',
     ];
     expect(Object.keys(messages.catalog.import.photos.zip.errors).sort()).toEqual(
       [...codes].sort(),

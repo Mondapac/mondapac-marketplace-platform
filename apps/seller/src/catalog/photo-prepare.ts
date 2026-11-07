@@ -2,11 +2,13 @@
 // rewrites every upload anyway; this keeps the request small and drops the file's metadata
 // (location, camera) on the seller's own device.
 
-/** The longest side sent, in pixels. */
-export const PHOTO_MAX_SIDE = 2048;
 import { PHOTO_MAX_INPUT_BYTES } from './photo-limits.ts';
 
+// Files larger than PHOTO_MAX_INPUT_BYTES (25 MB) are not even decoded.
 export { PHOTO_MAX_INPUT_BYTES };
+
+/** The longest side sent, in pixels. */
+export const PHOTO_MAX_SIDE = 2048;
 const JPEG_QUALITY = 0.85;
 
 export type PreparedPhoto =

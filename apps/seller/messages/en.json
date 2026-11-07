@@ -1499,7 +1499,10 @@
           "change": "Current → File",
           "sku": "Variant SKU",
           "selling": "Selling",
-          "selling-value": { "yes": "Yes", "no": "No" },
+          "selling-value": {
+            "yes": "Yes",
+            "no": "No"
+          },
           "price": "Price",
           "stock": "Stock at {location}",
           "from-to": "{from} → {to}",
@@ -1971,12 +1974,12 @@
             "multi-disk": "The ZIP file is one part of a split archive. Make a single ZIP file instead.",
             "broken": "The ZIP file is damaged or isn’t a ZIP file. Make it again and try once more.",
             "duplicate-name": "Two files in the ZIP file are both called {name}. Every photo needs its own file name.",
-            "not-image": "{name} is not a JPEG, PNG or WebP picture. Take it out of the ZIP file and try again.",
-            "entry-too-big": "{name} is too large. A photo can be up to {maxPhoto} MB."
-          }
+            "unsupported-browser": "This browser can’t open ZIP files. Update your browser, or choose the photos or a folder instead."
+          },
+          "cancel": "Cancel"
         },
         "picked": "{count, plural, =0 {No photos found in your choice} one {# photo ready to send} other {# photos ready to send}}",
-        "left-out": "Left out: {notPhotos, plural, =0 {} one {# file that is not a JPEG, PNG or WebP picture. } other {# files that are not JPEG, PNG or WebP pictures. }}{sameName, plural, =0 {} one {# file with a name already picked. } other {# files with names already picked. }}{overLimit, plural, =0 {} one {# file over the limit of {max, number} per step.} other {# files over the limit of {max, number} per step.}}",
+        "left-out": "Left out: {notPhotos, plural, =0 {} one {# file that is not a JPEG, PNG or WebP picture. } other {# files that are not JPEG, PNG or WebP pictures. }}{sameName, plural, =0 {} one {# file with a name already picked. } other {# files with names already picked. }}{overLimit, plural, =0 {} one {# file over the limit of {max, number} per step.} other {# files over the limit of {max, number} per step.}}{tooBig, plural, =0 {} one { # photo in the ZIP file over {maxPhoto} MB.} other { # photos in the ZIP file over {maxPhoto} MB.}}",
         "meter": "Photo upload progress",
         "progress": "{done} of {total} photos done",
         "tile": {
