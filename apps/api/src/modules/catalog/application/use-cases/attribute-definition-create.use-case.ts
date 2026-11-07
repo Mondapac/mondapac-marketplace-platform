@@ -14,6 +14,7 @@ import {
   CONTENT_KEYS,
   editorAccountOf,
   invalid,
+  marketUnitsRefusal,
   parseEditorContent,
   refuseClaimContent,
   writeViewOf,
@@ -149,6 +150,10 @@ export class AttributeDefinitionCreate extends UseCase<
       now,
     });
     if (!draft.ok) return err(domainFailureOf(draft.error));
+    const notOffered = marketUnitsRefusal(content.value.bounds, this.deps.policy.units(market));
+    if (notOffered !== null) {
+      return err({ code: 'attribute-definition.measure-invalid', fields: [notOffered] });
+    }
     const claim = await refuseClaimContent(this.deps, context, content.value);
     if (claim !== null) return err(claim);
 

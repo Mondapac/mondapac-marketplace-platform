@@ -102,20 +102,17 @@
     "sellers": "All sellers",
     "orders": "Orders",
     "price-holds": "Held prices",
-    "offer-reviews": "Offer reviews",
+    "review-queue": "Review queue",
     "payout-accounts": "Connected accounts",
     "content": "Content",
     "settings": "Settings",
-    "expandAll": "Expand all",
-    "collapseAll": "Collapse all",
     "group": {
       "catalogue": "Catalogue",
       "reviews": "Reviews",
       "content": "Content",
       "sellers": "Sellers",
       "orders": "Orders & customers",
-      "money": "Money",
-      "catalog": "Catalog"
+      "money": "Money"
     },
     "wallet-credits": "Issue credit",
     "wallet-requests": "Credit approvals",
@@ -123,10 +120,12 @@
     "products": "Products",
     "payouts": "Payouts",
     "attributes": "Attributes",
+    "variants": "Variants",
     "brands": "Brands",
     "categories": "Categories",
     "review-moderation": "Buyer reviews",
-    "business-activities": "Business activities"
+    "business-activities": "Business activities",
+    "tags": "Tags"
   },
   "home": {
     "title": "Dashboard",
@@ -1991,6 +1990,7 @@
       "unavailable": "Offer reviews could not be loaded. Try again later.",
       "more": "Next page",
       "empty": "No offers are waiting for review.",
+      "empty-page": "No offers on this page. More of the queue is on the next page.",
       "view-only": "You can view this queue but not decide.",
       "open": "Review",
       "close": "Close",
@@ -2286,7 +2286,8 @@
           "help-own": "Rename or delete your filters. Your role can’t share filters."
         }
       },
-      "import": "Import"
+      "import": "Import",
+      "add": "Add product"
     },
     "import": {
       "title": "Import products",
@@ -2540,6 +2541,714 @@
           "body": "Try again. If it keeps happening, check the status page."
         }
       }
+    },
+    "productForm": {
+      "back": "Back to products",
+      "loading": "Loading the product",
+      "load-failed": "The product could not be loaded.",
+      "retry": "Try again",
+      "not-found": "This product does not exist, or it is not a platform product.",
+      "no-access": "You don't have access to add or edit platform products.",
+      "optional": "optional",
+      "refused-field": "Not saved: this text holds a claim or a hidden character.",
+      "reload": "Read the product again",
+      "create": {
+        "title": "Add product",
+        "subtitle": "Platform product",
+        "type": "Product type",
+        "type-help": "The type decides the product's fields and whether it is one size or has variants. It can't be changed later.",
+        "choose": "Choose a type",
+        "type-required": "Choose a product type.",
+        "submit": "Create draft",
+        "cancel": "Cancel"
+      },
+      "edit": {
+        "title": "Edit product"
+      },
+      "save-draft": "Save draft",
+      "publish": "Publish",
+      "title-card": "Product",
+      "field": {
+        "name": "Title",
+        "name-help": "In English. It is translated when a new buyer language is published.",
+        "description": "Description",
+        "categories": "Product category",
+        "categories-help": "Its feature set adds the details below and suggests variant types.",
+        "categories-placeholder": "Choose a category or subcategory",
+        "tax": "Tax category",
+        "tax-help": "Required. Separate from the product category: it decides GST on every seller's offer.",
+        "categories-help-empty": "Only a category or subcategory (levels 3 and 4). It decides the product details and variant types.",
+        "tax-placeholder": "Choose a tax category",
+        "name-claim": "Product text can't include certification words like \"halal\". Badges come from seller offers."
+      },
+      "category": "Category",
+      "details": "Product details",
+      "attribute": {
+        "unset": "Not set",
+        "yes": "Yes",
+        "no": "No",
+        "problem": {
+          "whole": "Enter a whole number.",
+          "decimal": "Enter a number, for example 12.5.",
+          "range": "This number is outside the allowed range.",
+          "length": "At most {length} characters."
+        }
+      },
+      "variants": "Variants",
+      "model": {
+        "single": "One size",
+        "single-help": "Sold as a single item. Sellers add their offer to it.",
+        "configurable": "Different sizes or flavours",
+        "configurable-help": "Sellers choose which variants they sell. Variant types come from the category's feature set.",
+        "lock-note": "You can't switch between these after the first publish. Variant types are fixed once published.",
+        "locked": "This product is published, so its variant types are fixed."
+      },
+      "variants-count": "{count} of {max} variants",
+      "variant-n": "Variant {n}",
+      "variant-label": "Variant label",
+      "variant-published": "Published variants stay; they can't be removed here.",
+      "variant-remove": "Remove variant",
+      "variant-add": "Add variant",
+      "status": {
+        "title": "Status",
+        "draft": "Draft",
+        "published": "Published",
+        "paused": "Paused",
+        "unpublished": "Unpublished",
+        "matched": "Matched",
+        "retired": "Retired",
+        "withdrawn": "Withdrawn",
+        "discarded": "Discarded",
+        "draft-help": "Sellers can't find it until you publish. Save draft keeps your work.",
+        "published-help": "Changes are saved as a new revision. Buyers keep seeing revision {n} until you publish.",
+        "revision": "Revision {n} · unpublished changes"
+      },
+      "organisation": {
+        "title": "Organisation",
+        "type": "Type",
+        "scope": "Scope",
+        "platform": "Platform product",
+        "market": "Market"
+      },
+      "notice": {
+        "saved": "Draft saved.",
+        "revision-saved": "Revision saved.",
+        "published": "Product published.",
+        "submitted": "Product submitted.",
+        "turned-off": "Product turned off.",
+        "turned-on": "Product turned on."
+      },
+      "select": {
+        "search": "Search",
+        "no-results": "No results",
+        "loading": "Loading…",
+        "retry": "Try again",
+        "remove": "Remove {name}",
+        "limit": "You can pick up to {max}"
+      },
+      "error": {
+        "claim-text": "A text holds a claim. Claims are made through a certificate, never in free text.",
+        "not-ready": "The product isn't ready to publish yet:",
+        "invalid-content": "The draft has content the form doesn't know. Read the product again.",
+        "no-draft": "This product has no draft. Read the product again.",
+        "stale": "Someone else changed this product. Read it again, then redo your change.",
+        "not-editable": "This product can't be edited in its current state.",
+        "not-found": "This product no longer exists.",
+        "type-not-offered": "This Market doesn't offer that product type.",
+        "variant": "The variants can't be saved. Check the variant types and the limit of {max}.",
+        "denied": "You don't have access to do this.",
+        "throttled": "Too many saves. Wait {seconds} seconds and try again.",
+        "invalid": "Some fields are not valid.",
+        "csrf": "Your session has changed. Reload the page.",
+        "unavailable": "The product service is unavailable. Try again shortly.",
+        "unknown": "Something went wrong. Try again.",
+        "partial": "The new variants were created but the draft wasn't saved with them. Save again.",
+        "pause-failed": "The product could not be turned on or off. Read it again, then retry."
+      },
+      "discard": {
+        "button": "Discard product",
+        "title": "Discard this product?",
+        "message": "The product and its draft are removed from the catalog. This can't be undone.",
+        "keep": "Keep product",
+        "confirm": "Discard product"
+      },
+      "leave": {
+        "title": "Leave this page?",
+        "message": "Your changes to {title} aren't saved.",
+        "message-untitled": "Your changes aren't saved.",
+        "stay": "Cancel",
+        "leave": "Leave without saving"
+      },
+      "page": {
+        "subtitle-add": "Platform product · {market}",
+        "subtitle-edit": "Platform product · {market} · {code}",
+        "untitled": "Untitled product"
+      },
+      "bar": {
+        "region": "Unsaved changes",
+        "unsaved-product": "Unsaved product",
+        "unsaved-changes": "Unsaved changes",
+        "errors": "{count, plural, one {# field needs fixing} other {# fields need fixing}}",
+        "discard": "Discard",
+        "save-draft": "Save draft",
+        "save-revision": "Save revision"
+      },
+      "publish-revision": "Publish revision {n}",
+      "blockers": {
+        "lead": "To publish: {items}.",
+        "title": "add a title",
+        "category": "choose a category",
+        "tax": "choose the tax category",
+        "details": "fill in the required details"
+      },
+      "details-empty": "Choose a category first. Its feature set lists what to fill in here.",
+      "active": {
+        "title": "Active",
+        "inactive": "Inactive",
+        "help": "Turn off to stop all sales at once. Sellers keep their offers and nothing is deleted.",
+        "inactive-help": "Paused {date}. {count, plural, =0 {No offers are on sale.} one {Its 1 offer is off sale; the seller keeps it.} other {All # offers are off sale; sellers keep them.}} Turn on to sell again.",
+        "banner-title": "This product is inactive",
+        "banner-body": "{count, plural, =0 {Buyers can't find it.} one {Buyers can't find it and its 1 offer is off sale.} other {Buyers can't find it and all # offers are off sale.}} Sellers keep their offers.",
+        "turn-on": "Turn on",
+        "off": {
+          "title": "Turn off {title}?",
+          "body": "Buyers can't find it and every offer stops selling at once. Sellers keep their offers and you can turn it on again.",
+          "impact": "Offers that stop selling",
+          "cancel": "Cancel",
+          "confirm": "Turn off"
+        }
+      },
+      "sellers": {
+        "title": "Sellers selling it",
+        "sellers": "Sellers",
+        "offers": "Offers",
+        "help": "Read only. Each seller sets price and stock on their own offer.",
+        "none": "No offers yet. Sellers can add theirs now that it is published."
+      },
+      "banner": {
+        "stale-title": "Someone published a newer revision.",
+        "stale-body": "Reload to see it. Changes on this page that are not saved are lost.",
+        "reload": "Reload",
+        "published-title": "{title} is published.",
+        "published-body": "Sellers can now add their offers."
+      },
+      "publish-dialog": {
+        "title": "Publish {title}?",
+        "revision-title": "Publish revision {n} of {title}?",
+        "body": "Sellers in {market} can find it and add their offers. Buyers see it once at least one offer is on sale.",
+        "variants": "Variants",
+        "texts": "Title and description",
+        "texts-value": "{language} · translated when a buyer language is published",
+        "cancel": "Cancel",
+        "confirm": "Publish"
+      },
+      "certs": {
+        "title": "Product certifications",
+        "helper": "Certificates the manufacturer holds for this exact product, e.g. Halal, Vegan or Kosher. Each one is checked by a certification reviewer before sellers can use it.",
+        "add": "Add certificate",
+        "publish-first": "Publish the product first, then add its certificates.",
+        "just-published": "This product was just published. Read it again to add its certificates.",
+        "loading": "Loading the certificates",
+        "load-failed": "The certificates could not be loaded.",
+        "retry": "Try again",
+        "latest": "Showing the latest {count}",
+        "table-caption": "Product certificates",
+        "live": {
+          "sent": "Sent for review"
+        },
+        "col": {
+          "certificate": "Certificate",
+          "expires": "Expires",
+          "covers": "Covers",
+          "status": "Status",
+          "actions": "Actions"
+        },
+        "issuer-unset": "Issuer not set",
+        "empty": {
+          "title": "No product certificates yet",
+          "body": "Add one if the manufacturer certified this product."
+        },
+        "info": {
+          "title": "Badges stay on seller offers",
+          "body": "A seller can show the badge only where {category} allows a manufacturer certificate, the item is sealed and original, and the seller confirms it. The product page never shows a badge on its own.",
+          "category-fallback": "the category"
+        },
+        "status": {
+          "approved": "Approved",
+          "waiting": "Waiting for review",
+          "draft": "Draft",
+          "expiring": "{days, plural, =0 {Expires today} =1 {Expires tomorrow} other {Expires in # days}}",
+          "expired": "Expired",
+          "suspended": "Suspended",
+          "rejected": "Rejected",
+          "revoked": "Revoked"
+        },
+        "covers": {
+          "all": "All variants",
+          "some": "{count} of {total} variants",
+          "whole": "Whole product"
+        },
+        "finish-link": "Finish and send",
+        "menu": {
+          "label": "Actions for {type} certificate",
+          "view": "View details",
+          "finish": "Finish and send"
+        },
+        "banner": {
+          "expired": {
+            "title": "The {type} certificate expired on {date}.",
+            "body": "Offers that used it lost the {type} badge. Add the new certificate to restore it."
+          },
+          "rejected": {
+            "title": "The {type} certificate was rejected.",
+            "body": "Reason from the reviewer: {reason}"
+          },
+          "words": {
+            "title": "{languages} names are missing for {type}.",
+            "body-ask": "Ask a certification admin to add them before {languagesOr} is published."
+          },
+          "view": "View details"
+        },
+        "reason": {
+          "unknown": "see the details.",
+          "unreadable": "the file could not be read.",
+          "holder-name-mismatch": "the name on the certificate does not match the manufacturer.",
+          "location-scope-unclear": "the location or scope on the certificate does not cover this product.",
+          "issuer-unclear": "the certificate could not be matched to the issuer.",
+          "dates-unclear": "the dates do not match the certificate.",
+          "incomplete-file": "the certificate is incomplete: pages or details are missing.",
+          "signs-of-tampering": "the certificate shows signs of having been altered.",
+          "issuer-not-recognised": "the issuer is not one the platform recognises.",
+          "not-confirmed-by-issuer": "the issuer did not confirm the certificate.",
+          "declaration-not-accepted": "the declaration could not be accepted.",
+          "withdrawn-by-issuer": "the issuer has withdrawn or suspended this certificate.",
+          "approved-in-error": "the certificate was approved in error and no longer counts.",
+          "under-investigation": "the certificate is being checked again and does not count until the check ends.",
+          "number-mismatch": "the number doesn’t match the issuer’s register."
+        },
+        "dialog": {
+          "title-add": "Add product certificate",
+          "title-finish": "Finish product certificate",
+          "subtitle": "{title} · checked by a certification reviewer before use.",
+          "loading": "Loading the certification types",
+          "load-failed": "The certification types could not be loaded.",
+          "no-types": "No certification types are available for {market} yet. Ask a certification admin to add one.",
+          "send": "Send for review",
+          "sending": "Sending…",
+          "try-again": "Try again",
+          "cancel": "Cancel",
+          "close": "Close",
+          "choose": "Choose…",
+          "field": {
+            "type": "Certification type",
+            "type-hint": "Names show in English. A certification admin must add Persian and Arabic names before those languages go live.",
+            "issuer": "Issuer",
+            "issuer-hint": "Only approved issuers for {type} in {market}.",
+            "issuer-none": "No approved issuers for {type} in {market} yet.",
+            "manufacturer": "Manufacturer · required",
+            "manufacturer-hint": "The company named on the certificate.",
+            "number": "Certificate number · required",
+            "number-saved": "Certificate number · already saved",
+            "number-placeholder": "Number saved. Type to replace it.",
+            "issue": "Issue date · optional",
+            "expires-required": "Expires · required",
+            "expires-optional": "Expires · optional",
+            "covers": "Covers",
+            "covers-hint": "Or choose the variants the certificate names.",
+            "covers-some": "Some variants",
+            "variants": "Variants covered",
+            "variants-hint": "Only variants in the published revision are listed.",
+            "select-all": "Select all",
+            "clear": "Clear",
+            "document": "Certificate document",
+            "document-hint": "PDF or image, up to 10 MB. Only reviewers can open it.",
+            "choose-file": "Choose a file",
+            "replace": "Replace",
+            "attached": "Attached · {kind} · {size}",
+            "uploaded": "Uploaded · {name}"
+          },
+          "error": {
+            "summary": "{count} fields need fixing.",
+            "type": "Choose a certification type.",
+            "issuer": "Choose an issuer.",
+            "manufacturer": "Enter the manufacturer.",
+            "number": "Enter the certificate number.",
+            "expires": "Enter the expiry date.",
+            "expires-order": "Expires must be after the issue date.",
+            "expired": "This certificate has already expired.",
+            "covers": "Choose at least one variant.",
+            "file": "Add the certificate document.",
+            "file-type": "Use a PDF, JPEG or PNG.",
+            "file-size": "This file is over 10 MB.",
+            "file-rejected": "We couldn’t use this file. Choose another one."
+          },
+          "failed": {
+            "draft": "Saved as a draft. We couldn’t send it for review. Try again.",
+            "create": "We couldn’t save the certificate. Try again.",
+            "invalid": "Some details were not accepted. Check the fields and try again.",
+            "unavailable": "That type or issuer is not available any more. Choose another.",
+            "denied": "You don’t have permission to add certificates.",
+            "throttled": "Too many tries. Wait a moment and try again.",
+            "stale": "Someone changed this certificate. Reload to see it.",
+            "reload": "Reload"
+          },
+          "confirm": {
+            "message": "Sending is still in progress. If you close this, it finishes in the background and the row shows the result.",
+            "keep": "Keep waiting",
+            "close": "Close anyway"
+          }
+        },
+        "details": {
+          "title": "Certificate details",
+          "close": "Close",
+          "loading": "Loading the certificate",
+          "error": "The certificate could not be loaded.",
+          "retry": "Try again",
+          "field": {
+            "status": "Status",
+            "type": "Type",
+            "issuer": "Issuer",
+            "manufacturer": "Manufacturer",
+            "number": "Certificate number",
+            "issued": "Issue date",
+            "expires": "Expires",
+            "covers": "Covers",
+            "document": "Document",
+            "reason": "Latest rejection reason"
+          },
+          "number-recorded": "Number recorded",
+          "document": "Attached · {kind} · {size}",
+          "no-document": "No document",
+          "none": "Not set",
+          "history": "History"
+        },
+        "history": {
+          "title": "Certificate details",
+          "close": "Close",
+          "loading": "Loading the history",
+          "empty-title": "No history yet",
+          "empty-body": "Changes to this certificate show here.",
+          "error": "The history could not be loaded.",
+          "retry": "Try again",
+          "load-more": "Show older",
+          "more-failed": "Older entries could not be loaded.",
+          "who-author": "Author",
+          "who-reviewer": "Reviewer",
+          "who-system": "System",
+          "who-other": "Another admin",
+          "moved": "{from} to {to}",
+          "started": "Started as {to}",
+          "reason": "Reason: {reason}"
+        }
+      },
+      "images": {
+        "label": "Images",
+        "upload": "Upload images",
+        "add": "Add image",
+        "formats": "JPG, PNG or WebP, at least 1200 px on the long side. Images only for now.",
+        "full": "Up to {max} images.",
+        "uploading": "Uploading…",
+        "unavailable": "Images could not be loaded. Reload the page to try again.",
+        "main": "Main",
+        "not-in-product": "Not in product",
+        "library-only": "In the library only. Add one back from its menu, or delete it.",
+        "library-label": "Images not in the product",
+        "alt": "Image {n} of {total}",
+        "menu": {
+          "label": "Image {n} options",
+          "make-main": "Make main",
+          "move-left": "Move left",
+          "move-right": "Move right",
+          "remove": "Remove from product",
+          "add-back": "Add to product",
+          "delete": "Delete",
+          "wait": "Wait for the upload to finish."
+        },
+        "delete": {
+          "title": "Delete this image?",
+          "message": "It is removed from the library and cannot be restored.",
+          "confirm": "Delete",
+          "cancel": "Cancel"
+        },
+        "announce": {
+          "main": "Image {n} is now the main image.",
+          "moved": "Image moved to position {n} of {total}.",
+          "removed": "Image removed from the product. Save to keep the change.",
+          "added": "Image added to the product at position {n}.",
+          "deleted": "Image deleted."
+        },
+        "error": {
+          "limit": "A product holds up to 8 images. Delete one to add another.",
+          "in-use": "This image is in a published version. Remove it from the product instead.",
+          "not-found": "This image or product is no longer available. Reload the page.",
+          "too-large": "The file is too large. Use an image under 25 MB.",
+          "unsupported": "Use a JPG, PNG or WebP image.",
+          "too-many-pixels": "The image has too many pixels. Use a smaller one.",
+          "too-small": "The image is too small to use. Choose a larger one.",
+          "unreadable": "The file could not be read as an image.",
+          "denied": "You don't have permission to change this product's images.",
+          "csrf": "Your session needs refreshing. Reload the page and try again.",
+          "throttled": "Too many changes in a short time. Wait a moment and try again.",
+          "unavailable": "Images are unavailable right now. Try again in a moment.",
+          "unknown": "Something went wrong with the image. Try again."
+        }
+      },
+      "grid": {
+        "step-axes": "1. What does this product come in?",
+        "axes-help": "Choose one or two options that vary, such as size or colour.",
+        "axes-locked": "This product is published, so what it varies on is locked. You can still tick and untick combinations.",
+        "no-axes": "This product's feature set has no option that can vary. Ask us to add one.",
+        "step-options": "2. Which options do you sell?",
+        "step-grid": "3. Tick the combinations you sell",
+        "empty": "Choose the options above, then tick the combinations here.",
+        "sold": "Sold",
+        "caption": "Variants sold: tick each combination you sell",
+        "locked-no-axes": "{count, plural, one {This published product has 1 variant that was set up before axes existed.} other {This published product has # variants that were set up before axes existed.}} They cannot be edited here.",
+        "near-limit": "You are close to the limit of {max} variants.",
+        "at-limit": "You have reached the limit of {max} variants. Untick a combination to add another.",
+        "keep": "Keep it",
+        "axes-dialog": "Change what the product varies on?",
+        "axes-body": "Your ticked combinations are cleared and you start the grid again. Combinations that were never saved are deleted.",
+        "axes-confirm": "Clear and change",
+        "remove-dialog": "Remove this variant?",
+        "remove-body": "{count, plural, one {This variant may have prices and stock. Removing it ends them. Adding it again later starts from empty.} other {These variants may have prices and stock. Removing them ends them. Adding them again later starts from empty.}}",
+        "remove-confirm": "Remove",
+        "step-labels": "4. Name each variant (optional)"
+      }
+    },
+    "queue": {
+      "title": "Review queue",
+      "tabs": "Review queue",
+      "tab": {
+        "revision": "Product revisions",
+        "offer": "Offers"
+      },
+      "tab-count": "{tab} ({count})",
+      "no-access": "You don't have access to the review queue.",
+      "unavailable": "The review queue could not be loaded. Try again later.",
+      "more": "Next page",
+      "filter": {
+        "change": "Change",
+        "change-all": "All changes",
+        "change-new": "New products",
+        "change-update": "Updates",
+        "photos": "Photos",
+        "photos-any": "Any",
+        "photos-with": "Has photos",
+        "apply": "Apply",
+        "seller-is": "Seller is {name}",
+        "seller-unnamed": "Unnamed store",
+        "seller-picked": "One seller only",
+        "by-seller": "Show only {name}",
+        "remove": "Remove filter {filter}",
+        "clear": "Clear filters"
+      },
+      "col": {
+        "product": "Product",
+        "change": "Change",
+        "seller": "Seller",
+        "reasons": "Reasons",
+        "checks": "Checks",
+        "waiting": "Waiting since (UTC)",
+        "action": "Review"
+      },
+      "change": {
+        "new": "New",
+        "update": "Update"
+      },
+      "reason": {
+        "platform-categories": "Category",
+        "tax-category": "Tax category",
+        "name": "Name",
+        "primary-image": "Main photo",
+        "image-added-or-replaced": "New photos",
+        "variant-removed": "Variant removed",
+        "gtin-changed": "GTIN changed",
+        "never-published": "First publication",
+        "approval-required": "Approval required"
+      },
+      "checks": "{count, plural, =0 {No checks} one {# check} other {# checks}}",
+      "revision-no": "Revision {number}",
+      "unnamed-product": "Unnamed product",
+      "open": "Review",
+      "open-named": "Review {name}",
+      "empty": {
+        "revision": "No product revisions are waiting for review.",
+        "offer": "No offers are waiting for review.",
+        "page": "Nothing on this page. More of the queue is on the next page.",
+        "filtered": "Nothing matches these filters."
+      }
+    },
+    "version": {
+      "title": "Version review",
+      "not-found": "This product version was not found.",
+      "unavailable": "This product version could not be loaded. Try again later.",
+      "side": "Decision and history",
+      "summary": {
+        "seller": "Seller",
+        "code": "Code",
+        "revision": "Version",
+        "revision-no": "Revision {number}",
+        "submitted": "Submitted",
+        "reasons": "What changed"
+      },
+      "state": {
+        "pending": "Waiting for review",
+        "published": "Published",
+        "closed": "Closed"
+      },
+      "closed": {
+        "published": "This version is live. There is nothing to decide.",
+        "closed": "This version was decided or replaced. There is nothing to decide."
+      },
+      "warning": {
+        "title": "Check for a duplicate",
+        "gtin-duplicate-platform": "A GTIN of this version is on a published platform product.",
+        "gtin-duplicate": "A GTIN of this version is on another product."
+      },
+      "section": {
+        "texts": "Texts",
+        "photos": "Photos",
+        "categories": "Categories and tax",
+        "variants": "Variants",
+        "attributes": "Details that changed",
+        "attributes-first": "Details"
+      },
+      "field": {
+        "name": "Name",
+        "shortDescription": "Short description",
+        "description": "Description",
+        "tax-category": "Tax category"
+      },
+      "mark": {
+        "same": "Unchanged",
+        "added": "Added",
+        "removed": "Removed",
+        "changed": "Changed",
+        "new": "New"
+      },
+      "unchanged-locale": "{locale}: unchanged",
+      "published": "Published",
+      "this-version": "This version",
+      "removed-text": "Removed:",
+      "added-text": "Added:",
+      "empty-value": "(empty)",
+      "variants": {
+        "none": "No variants.",
+        "single": "Single variant",
+        "gtin": "GTIN {gtin}",
+        "weight": "{grams} g",
+        "photos": "{count, plural, one {# photo} other {# photos}}",
+        "nothing": "No details"
+      },
+      "photos": {
+        "none": "This version has no photos.",
+        "name": "Photo {position}",
+        "not-served": "Taken down, not shown",
+        "mark": {
+          "new": "New",
+          "kept": "Unchanged",
+          "taken-down": "Taken down"
+        },
+        "view": "View large",
+        "view-named": "View large: {name}",
+        "take-down": "Take down",
+        "take-down-named": "Take down {name}",
+        "removed": "{count, plural, one {# published photo is removed in this version.} other {# published photos are removed in this version.}}",
+        "close": "Close",
+        "cancel": "Cancel",
+        "take-down-title": "Take down {name}?",
+        "take-down-warning": "This cannot be undone. The photo is never shown again, its files are deleted, and it cannot be used in a new version.",
+        "take-down-confirm": "Take down photo",
+        "reason": "Reason",
+        "reason-placeholder": "Choose a reason",
+        "reason-missing": "Choose a reason.",
+        "reason-code": {
+          "certification-mark": "Shows a certification mark",
+          "misleading": "Misleading",
+          "rights": "Rights problem",
+          "unsafe-or-illegal": "Unsafe or illegal",
+          "other": "Other"
+        },
+        "load-error": "The photos could not be loaded. Reload the page to see them before you decide."
+      },
+      "decision": {
+        "title": "Decision",
+        "view-only": "View only. You can't decide on product versions.",
+        "checks": "Confirm each check",
+        "no-checks": "This version needs no checks.",
+        "check": {
+          "photos-no-certification-mark": "The photos show no certification mark",
+          "category-fits": "The category fits the product",
+          "tax-category-fits": "The tax category fits the product",
+          "not-a-duplicate": "This is not a duplicate of another product"
+        },
+        "approve": "Approve",
+        "send-back": "Send back",
+        "tick-all": "Tick every check to approve.",
+        "reload": "Reload",
+        "done": {
+          "approved": "Approved. The version is live.",
+          "sent-back": "Sent back to the seller."
+        },
+        "back-to-queue": "Back to queue",
+        "next": "Next in queue",
+        "send-back-title": "Send this version back?",
+        "send-back-body": "The seller sees the reason and can send a new version.",
+        "send-back-confirm": "Send back",
+        "cancel": "Cancel",
+        "reason": "Reason",
+        "reason-placeholder": "Choose a reason",
+        "reason-missing": "Choose a reason.",
+        "reason-code": {
+          "content-unclear": "Content unclear",
+          "description-claim": "Description claim",
+          "sku-or-condition": "SKU or condition",
+          "handling-unclear": "Handling unclear",
+          "photos": "Photos",
+          "category": "Category",
+          "tax-category": "Tax category",
+          "duplicate": "Duplicate",
+          "other": "Other"
+        },
+        "photos-missing": "Load the photos before you approve."
+      },
+      "error": {
+        "stale": "This version changed since you opened it. Reload to see the current one.",
+        "checks-missing": "Some checks are missing. Tick every check and approve again.",
+        "claim-text": "A text makes a claim that is not allowed. Send it back with Description claim.",
+        "send-back": "This version can't be approved. Send it back to the seller.",
+        "gone": "This no longer exists. Go back to the queue.",
+        "denied": "You don't have access to this action.",
+        "csrf": "Your session needs a refresh. Reload the page and try again.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "invalid": "The request was not valid. Reload the page and try again.",
+        "retry": "Something went wrong for a moment. Try again.",
+        "unknown": "Something went wrong. Try again later."
+      },
+      "history": {
+        "title": "History",
+        "none": "No history yet.",
+        "entry": "Revision {number}",
+        "this": "this version",
+        "sent": "{kind} by {author}, {at}",
+        "kind": {
+          "submission": "Submitted",
+          "revert": "Reverted",
+          "tax-override": "Tax change"
+        },
+        "author": {
+          "seller": "the seller",
+          "admin": "an admin"
+        },
+        "waiting": "Waiting for review",
+        "outcome": {
+          "published": "Published",
+          "changes-requested": "Sent back",
+          "superseded": "Replaced"
+        },
+        "reason": "reason: {reason}"
+      }
     }
   },
   "orders": {
@@ -2645,7 +3354,9 @@
       "delivered": "Delivered",
       "subtotal": "Goods",
       "shipping": "Delivery",
-      "part-total": "Seller total"
+      "part-total": "Seller total",
+      "delivery-method": "Delivery",
+      "delivery-window": "Customer window"
     },
     "line": {
       "variant": "Variant {id}",
@@ -2657,10 +3368,53 @@
     "detail": {
       "page-title": "Order",
       "back": "Back to orders",
-      "summary": "Summary",
-      "parts": "{count, plural, one {# seller} other {# sellers}}",
       "seller": "Seller {id}",
-      "no-parts": "This order has no seller parts."
+      "no-parts": "This order has no seller parts.",
+      "copy-id": "Copy order ID",
+      "copied": "Copied",
+      "copy-failed": "Couldn't copy. Select the ID and copy it.",
+      "meta": "Placed {placed} · {sellers, plural, one {# seller} other {# sellers}} · {total}",
+      "payment": "Payment",
+      "customer": "Customer",
+      "no-customer": "Customer details are hidden for your role.",
+      "activity": "Activity",
+      "part-of": "Seller order {index} of {count}",
+      "steps": "Progress",
+      "step-pending": "Waiting",
+      "step-done": "Done",
+      "attention": {
+        "title": "Delivery needs a look",
+        "carrier-unknown": "The carrier may already hold a booking. Check before booking again.",
+        "cancel-unknown": "A courier cancellation was not confirmed.",
+        "other": "Check the delivery with the carrier.",
+        "no-carrier": "No courier could take this delivery."
+      },
+      "cancelled-banner": "This order was cancelled: {reason}.",
+      "customer-unavailable": "Customer details couldn't be loaded. Reload the page to try again."
+    },
+    "delivery-method": {
+      "pickup": "Pickup",
+      "instant": "Instant delivery",
+      "same_day": "Same-day delivery",
+      "scheduled": "Scheduled delivery",
+      "unknown": "Not recorded"
+    },
+    "step": {
+      "ready": "Ready",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "ready-pickup": "Ready for pickup",
+      "collected": "Collected"
+    },
+    "event": {
+      "placed": "Order placed",
+      "paid": "Payment confirmed",
+      "cancelled": "Order cancelled",
+      "ready": "{seller} marked ready",
+      "shipped": "{seller} shipped",
+      "delivered": "{seller} delivered",
+      "collected": "{seller} handed over for pickup",
+      "ready-pickup": "{seller} marked ready for pickup"
     }
   },
   "load": {
@@ -4202,6 +4956,27 @@
       "seo-title": "Search title",
       "not-set": "Not set"
     },
+    "image": {
+      "title": "Image",
+      "label": "Change the image",
+      "none": "No image yet.",
+      "alt": "Image of the category {slug}",
+      "help": "Optional. JPEG, PNG or WebP. Shown on the category card and page. A category can be shown without an image.",
+      "upload": "Upload image",
+      "replace": "Replace image",
+      "uploading": "Uploading…",
+      "remove": "Remove image",
+      "remove-title": "Remove the image?",
+      "remove-body": "The category will show no image until you upload a new one.",
+      "remove-action": "Remove image",
+      "cancel": "Cancel",
+      "reload": "Read again",
+      "note-added": "Image added.",
+      "note-replaced": "Image replaced.",
+      "note-removed": "Image removed.",
+      "refused-too-large": "This file is larger than 25 MB. Choose a smaller picture.",
+      "refused-unreadable": "This file could not be read as a picture. Choose a JPEG, PNG or WebP file."
+    },
     "products": {
       "intro": "What a change to this category would reach: the published products in it and under it.",
       "empty": "No published products are in this category.",
@@ -4367,7 +5142,12 @@
       "access_unavailable": "The service is not available now. Try again.",
       "catalog_categories-unavailable": "Categories are not available now. Try again.",
       "conflict_stale_tree": "The tree changed since you opened it. Reload.",
-      "conflict_stale_details": "Someone changed this category. Reload."
+      "conflict_stale_details": "Someone changed this category. Reload.",
+      "file_too-large": "The picture is too large. Choose one under 4 MB.",
+      "file_unsupported-type": "This file type is not supported. Choose a JPEG, PNG or WebP picture.",
+      "file_too-many-pixels": "The picture has too many pixels. Choose a smaller one.",
+      "file_too-small": "The picture is too small. Choose one at least 200 pixels on its longest side.",
+      "file_unreadable": "The picture could not be read. Choose another file."
     },
     "restructure": {
       "title": {
@@ -4819,6 +5599,132 @@
       }
     }
   },
+  "tags": {
+    "title": "Tags",
+    "intro": "Shopping themes that group products across categories, such as Ramadan or BBQ. Sellers pick from this list.",
+    "new": "New tag",
+    "search": "Search by name, synonym or address",
+    "search-label": "Search tags",
+    "status-filter": "Status",
+    "group-filter": "Group",
+    "loading": "Loading tags",
+    "load-error": "The tags could not be loaded. Check your connection and try again.",
+    "retry": "Try again",
+    "more": "Load more",
+    "more-error": "More tags could not be loaded. Try again.",
+    "stale": "Someone else changed that tag. The list is up to date now; nothing was saved.",
+    "no-access": "Your role cannot see tags.",
+    "back-home": "Back to the dashboard",
+    "empty": "No tags yet. Create the first one with New tag.",
+    "empty-reader": "No tags yet.",
+    "empty-filtered": "No tag matches these filters.",
+    "not-set": "Not set",
+    "and-more": "and {count} more",
+    "col": {
+      "name": "Name",
+      "group": "Group",
+      "synonyms": "Synonyms",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "all": "All",
+      "active": "Active",
+      "archived": "Archived"
+    },
+    "group": {
+      "all": "All",
+      "occasion": "Occasion",
+      "cuisine": "Cuisine",
+      "use": "Use"
+    },
+    "action": {
+      "edit": "Edit",
+      "edit-name": "Edit {name}"
+    },
+    "done": {
+      "created": "{name} was created.",
+      "saved": "{name} was saved."
+    },
+    "error": {
+      "invalid": "Some values were not accepted. Check the fields and try again.",
+      "claim-word": "Certification words such as halal or organic cannot be used in a tag.",
+      "locale-uncheckable": "One of these languages cannot be checked for certification words yet. Remove it and try again.",
+      "slug-taken": "Another tag already has this address.",
+      "term-taken": "Another tag already uses one of these words.",
+      "gone": "This tag no longer exists.",
+      "stale": "Someone else changed this tag. Reload to see the latest.",
+      "retry": "Another change was in progress. Try again.",
+      "denied": "Your role cannot do this.",
+      "throttled": "Too many requests. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "unavailable": "The service is unavailable. Nothing was saved. Try again in a moment.",
+      "unknown": "Something went wrong. Nothing was saved."
+    },
+    "form": {
+      "new-title": "New tag",
+      "edit-title": "Edit {name}",
+      "names": "Names",
+      "names-help": "A name in {language} is required. Add other languages if you need them.",
+      "name-default": "{language} (required)",
+      "named-in": "Names in: {languages}",
+      "add-language": "Add language",
+      "add-language-placeholder": "Choose a language",
+      "remove": "Remove",
+      "remove-language": "Remove the {language} name and its synonyms",
+      "group": "Group",
+      "group-placeholder": "Choose a group",
+      "synonyms": "Synonyms",
+      "synonyms-help": "Other words buyers search for, such as barbecue for BBQ.",
+      "synonyms-in": "Synonyms in {language}",
+      "synonym-label": "Synonym {n} ({language})",
+      "remove-synonym": "Remove synonym {n}",
+      "remove-synonym-in": "Remove synonym {n} ({language})",
+      "add-synonym": "Add synonym",
+      "add-synonym-in": "Add synonym in {language}",
+      "synonyms-count": "{count} / {max}",
+      "synonyms-limit": "Up to {max} synonyms per language.",
+      "intro": "Intro",
+      "intro-help": "Shown on the tag's page. Written in {language} by a person; no links.",
+      "optional": "optional",
+      "slug": "Address",
+      "slug-help": "Part of the page address. Leave empty to build it from the name. It cannot be changed later.",
+      "slug-locked": "The address is fixed after creation.",
+      "active": "Active",
+      "active-help": "An archived tag is not offered to sellers.",
+      "cancel": "Cancel",
+      "create": "Create tag",
+      "save": "Save",
+      "reload": "Reload the list",
+      "select": {
+        "search": "Search",
+        "no-results": "No results",
+        "loading": "Loading...",
+        "retry": "Try again",
+        "remove": "Remove {name}",
+        "limit": "You can pick up to {max}"
+      },
+      "error": {
+        "name-required": "Enter a name.",
+        "group-required": "Choose a group.",
+        "short": "Use at least 2 characters.",
+        "long": "Use at most {max} characters.",
+        "intro-long": "Use at most 1000 characters.",
+        "slug-format": "Use lower case letters and digits, joined by hyphens (at most 40 characters).",
+        "slug-taken": "Another tag already has this address.",
+        "chars": "Remove hidden or control characters.",
+        "link": "Links cannot be used.",
+        "duplicate": "This word is already in the list.",
+        "name-taken": "Another tag already has this name.",
+        "synonym-taken": "Another tag already uses this word.",
+        "claim-word": "Certification words such as halal or organic cannot be used in a tag.",
+        "locale-uncheckable": "This language cannot be checked for certification words yet.",
+        "too-many": "Use at most {maxSynonyms} synonyms per language.",
+        "name-missing": "Add a name in this language before its synonyms.",
+        "refused": "This value was not accepted."
+      }
+    }
+  },
   "attributes": {
     "title": "Attributes",
     "no-access": "You do not have access to attributes. Ask a Platform Administrator if you need it.",
@@ -4828,6 +5734,37 @@
     "view-only": {
       "title": "View only",
       "body": "You can view attributes. Ask a Platform Administrator to change them."
+    },
+    "missing-details": {
+      "label": "Products missing required details",
+      "loading": "Loading products",
+      "load-error": "We could not load the report.",
+      "info": {
+        "title": "These products stay on sale",
+        "body": "A feature set gained a required detail after these products were approved. The seller is refused at the next submit until it is filled."
+      },
+      "unreadable": {
+        "title": "Some feature sets could not be read",
+        "body": "Products of these feature sets are not judged: {codes}."
+      },
+      "empty": "No products are missing required details.",
+      "empty-body": "Every published product has a value for each required detail of its feature set.",
+      "search-label": "Search loaded products",
+      "search-placeholder": "Search product, code or seller",
+      "feature-set": "Feature set",
+      "all-feature-sets": "All feature sets",
+      "export": "Export CSV",
+      "export-selected": "Export {count} selected",
+      "totals": "Showing {shown} of {loaded} loaded products; {scanned} products read.",
+      "no-match": "No loaded product matches.",
+      "no-match-body": "Clear the search or the feature set, or load more products.",
+      "select-row": "Select {code}",
+      "unnamed": "Unnamed product",
+      "platform-product": "Platform product",
+      "seller": "Seller {id}",
+      "feature-set-named": "Feature set {code}",
+      "missing": "Missing details",
+      "load-more": "Load more"
     },
     "waiting": {
       "label": "Requests waiting for a second administrator",
@@ -4888,7 +5825,8 @@
       "boolean": "Yes or no",
       "date": "Date",
       "select": "One choice",
-      "multi-select": "Several choices"
+      "multi-select": "Several choices",
+      "measure": "Number with unit"
     },
     "status": {
       "active": "Active",
@@ -4952,7 +5890,11 @@
       "searchable": "Searchable",
       "can-be-filter": "Can be a filter",
       "position": "Position",
-      "internal-note": "Internal note"
+      "internal-note": "Internal note",
+      "measure-dimension": "Kind of quantity",
+      "measure-units": "Units sellers can pick",
+      "measure-default-unit": "Unit offered first",
+      "measure-decimals": "Decimal places"
     },
     "detail": {
       "label": "Attribute details",
@@ -5045,7 +5987,8 @@
         "searchable": "Searchable",
         "can-be-filter": "Can be a filter",
         "position": "Position",
-        "internal-note": "Internal note changed"
+        "internal-note": "Internal note changed",
+        "measure": "{setting}"
       }
     },
     "feature-sets": {
@@ -5073,13 +6016,62 @@
       "no-groups": "This feature set has no groups.",
       "group": "Group: {group}",
       "unknown": "{code} · not found in this Market",
-      "truncated": "Only the first 500 feature sets are shown."
+      "truncated": "Only the first 500 feature sets are shown.",
+      "edit": "Edit feature set",
+      "saved": "Feature set saved.",
+      "editor": {
+        "label": "Feature set editor",
+        "title": "Edit {code}",
+        "language": "Language",
+        "name": "Name in {language}",
+        "missing": "Missing: {languages}",
+        "no-groups": "This feature set has no groups yet.",
+        "group-name": "Group {group}: name in {language}",
+        "core": "Core group (fixed)",
+        "group-up": "Move group {group} up",
+        "group-down": "Move group {group} down",
+        "group-remove": "Remove group {group}",
+        "level-of": "Requirement for {attribute}",
+        "level": {
+          "required": "Required",
+          "recommended": "Recommended",
+          "optional": "Optional"
+        },
+        "entry-up": "Move {attribute} up",
+        "entry-down": "Move {attribute} down",
+        "entry-remove": "Remove {attribute}",
+        "add-attribute-to": "Add attribute to {group}",
+        "choose": "Choose an attribute",
+        "add-attribute": "Add attribute",
+        "new-group": "New group name in {language}",
+        "add-group": "Add group",
+        "impact": {
+          "title": "Sellers will be asked for more",
+          "body": "{count, plural, =0 {No live products use} one {# live product uses} other {# live products use}} this feature set. They stay on sale, and are asked for {attributes} at their next submit."
+        },
+        "material": {
+          "title": "Material attribute removed",
+          "body": "{attributes} can't be removed here. Removing a Material attribute needs a request that a second administrator approves. Put it back to save."
+        },
+        "cancel": "Cancel",
+        "save": "Save changes",
+        "error": {
+          "name-required": "Add a name in the Market's default language.",
+          "stale": "Someone else changed this feature set. Cancel to load the latest version.",
+          "material-removal": "A Material attribute can only be removed through a request that a second administrator approves.",
+          "invalid": "Check the names and attributes. Something isn't accepted.",
+          "refused": "The feature set could not be saved. Check the names and attributes.",
+          "unavailable": "We could not save right now. Try again.",
+          "unknown": "The feature set could not be saved."
+        }
+      }
     },
     "tab": {
       "attributes": "Attributes",
       "feature-sets": "Feature sets",
       "brands": "Brands",
-      "waiting": "Waiting for you"
+      "waiting": "Waiting for you",
+      "missing-details": "Missing details"
     },
     "add": {
       "open": "Add attribute",
@@ -5098,7 +6090,8 @@
         "boolean": "Yes or no, such as “Contains nuts”.",
         "date": "A date, such as the harvest date.",
         "select": "One value from a list, such as Size: Small, Medium, Large.",
-        "multi-select": "Several values from a list, such as Allergens."
+        "multi-select": "Several values from a list, such as Allergens.",
+        "measure": "A number with a unit the seller picks, such as net weight in g or kg."
       },
       "type-chosen": "Type: {type}.",
       "draft-note": "It is added as a draft: sellers see it only after you publish it.",
@@ -5182,7 +6175,8 @@
         "number": "Enter a number.",
         "other": "Check this field.",
         "below-min": "The highest value must not be below the lowest.",
-        "unavailable": "We could not check this text. Try again."
+        "unavailable": "We could not check this text. Try again.",
+        "not-offered": "This Market does not offer this unit."
       },
       "error": {
         "invalid": "Some fields need a change.",
@@ -5207,6 +6201,8 @@
         "unavailable": "We could not reach the server. Try again.",
         "unknown": "Something went wrong. Try again.",
         "too-large": "This attribute has too many values or too much text to save. Shorten labels or make unused values inactive.",
+        "measure-invalid": "The unit settings are not valid. Pick at least one unit, and one that is offered first.",
+        "measure-locked": "Once published, the kind of quantity cannot change and a unit in use cannot be removed.",
         "not-material": "This attribute is not Material any more. Reload to see the latest version.",
         "relaxation-already-open": "A request to turn off Material for this attribute is already open. Find it under Waiting for you.",
         "relaxation-gone": "This request no longer exists. Reload the list.",
@@ -5230,7 +6226,33 @@
         "archive-blocked-live-variants": "Live products use it as a variant option, so it cannot be archived."
       },
       "has-error": "Needs a change",
-      "check-languages": "Check the text in: {languages}."
+      "check-languages": "Check the text in: {languages}.",
+      "measure": {
+        "dimension": {
+          "label": "Kind of quantity",
+          "help": "Decides which units can be offered.",
+          "locked": "Fixed once the attribute is published.",
+          "mass": "Weight",
+          "volume": "Volume",
+          "length": "Length",
+          "count": "Count"
+        },
+        "units": {
+          "label": "Units sellers can pick",
+          "help": "The Market decides which units exist. Pick the ones sellers may use for this attribute.",
+          "in-use": "In use: it stays on once the attribute is published."
+        },
+        "default-unit": {
+          "label": "Unit offered first",
+          "help": "The unit a seller sees when they start typing."
+        },
+        "decimals": {
+          "label": "Decimal places",
+          "help": "The most decimal places a seller can type, from 0 to 6. Whole numbers: 0."
+        },
+        "min": "Lowest value (in {unit})",
+        "max": "Highest value (in {unit})"
+      }
     },
     "restructure": {
       "at-least": "At least {count}",
@@ -5396,6 +6418,131 @@
       "throttled": "Too many attempts. Wait a moment and try again.",
       "unavailable": "The service isn't available right now. Try again.",
       "unknown": "Something went wrong. Try again."
+    }
+  },
+  "variants": {
+    "title": "Variants",
+    "intro": "Sizes, flavours and colours across the Market: how buyers choose each variant type, and every variant of the live products.",
+    "no-access": "You need the catalog.variant.view permission to see variants.",
+    "back-home": "Back to the dashboard",
+    "tabs": "Variant views",
+    "tab": {
+      "types": "Variant types",
+      "variants": "Variants"
+    },
+    "view-only": {
+      "title": "View only",
+      "body": "You can view variants. Ask a Platform Administrator to change them."
+    },
+    "types": {
+      "list-label": "Variant types",
+      "loading": "Loading variant types",
+      "load-error": "The variant types could not be loaded.",
+      "empty": "No variant types yet",
+      "empty-body": "A variant type is an attribute marked Variant in a feature set. Add one in Attributes.",
+      "footnote": "A variant type is an attribute marked Variant in a feature set. Add one in Attributes.",
+      "status": {
+        "draft": "Draft"
+      },
+      "counts": "{options, plural, one {# option} other {# options}} · {products, plural, one {# product} other {# products}} · {variants, plural, one {# live variant} other {# live variants}}",
+      "languages": {
+        "all": "All languages",
+        "missing": "{language}: {count} missing"
+      },
+      "none": "Choose a variant type",
+      "none-body": "Its options and how buyers choose it show here.",
+      "missing": "This variant type is no longer there.",
+      "detail-label": "Variant type details",
+      "detail-error": "This variant type could not be loaded.",
+      "badge": "Variant",
+      "edit-in-attributes": "Edit in Attributes",
+      "intro": "Names and labels are edited in Attributes, so there is one place for them. Here you set how buyers choose.",
+      "display": {
+        "legend": "How buyers choose",
+        "buttons": "Buttons",
+        "buttons-help": "One button per option.",
+        "swatches": "Swatches",
+        "swatches-help": "A colour per option; an option without one shows its label.",
+        "dropdown": "Dropdown",
+        "dropdown-help": "A list, for many options."
+      },
+      "order": {
+        "label": "Option order",
+        "help": "Manual keeps the order set in Attributes.",
+        "manual": "Manual",
+        "alphabetical": "Alphabetical in each language",
+        "by-size": "By size (from the amount and unit)"
+      },
+      "help": {
+        "label": "Help for sellers ({language})",
+        "help": "One sentence above the variant grid. 200 characters at most.",
+        "invalid": "Write one plain sentence of 200 characters at most."
+      },
+      "options": {
+        "title": "Options",
+        "missing": "{language} missing",
+        "inactive": "Inactive",
+        "products": "{count, plural, one {# product} other {# products}}"
+      },
+      "swatch": {
+        "label": "Colour for {option}",
+        "format": "Enter a colour as #RRGGBB, for example #A1B2C3.",
+        "placeholder": "#RRGGBB"
+      },
+      "save": {
+        "label": "Save",
+        "discard": "Discard changes",
+        "done": "Variant type saved",
+        "failed": "Not saved",
+        "stale": "Someone else changed this variant type. Reload it and make your change again.",
+        "claim-word": "Help for sellers can't name a certification such as halal.",
+        "denied": "You can't change variant types.",
+        "unavailable": "The service is unavailable. Try again in a moment.",
+        "invalid": "Check the highlighted fields."
+      }
+    },
+    "list": {
+      "label": "Variants",
+      "filters": "Filter variants",
+      "search": "Search",
+      "search-placeholder": "Product, code, GTIN or SKU",
+      "type": "Variant type",
+      "type-all": "All variant types",
+      "issues": "Issues",
+      "issue-count": "{issue} · {count}",
+      "issue": {
+        "no-seller-selling": "No seller selling",
+        "missing-gtin": "Missing GTIN",
+        "duplicate-gtin": "Duplicate GTIN",
+        "no-image": "No image",
+        "missing-language": "Missing language"
+      },
+      "stock-note": "Stock is not shown here yet.",
+      "loading": "Loading variants",
+      "load-error": "The variants could not be loaded.",
+      "more-error": "More variants could not be loaded.",
+      "empty": "No variants yet",
+      "empty-filtered": "No variants match",
+      "clear": "Clear filters",
+      "col": {
+        "variant": "Product · variant",
+        "code": "Code",
+        "gtin": "GTIN",
+        "sellers": "Sellers",
+        "issues": "Issues"
+      },
+      "no-label": "No label",
+      "paused": "Paused",
+      "shown": "{count, plural, one {# variant shown} other {# variants shown}}",
+      "more": "Show more",
+      "export": {
+        "csv": "Export CSV",
+        "xlsx": "Export XLSX",
+        "pending": "Preparing the file",
+        "done": "File downloaded",
+        "too-large": "More than {max} variants match. Narrow the filter and export again.",
+        "unavailable": "The file could not be made. Try again in a moment."
+      }
     }
   }
 }

@@ -17,6 +17,7 @@ import type { CatalogMarketPolicy } from '../../src/modules/catalog/application/
 import { FreezeRevision } from '../../src/modules/catalog/application/revisions/freeze-revision.service';
 import { SubmitProduct } from '../../src/modules/catalog/application/revisions/submit-product.service';
 import { OwnOfferAddTag } from '../../src/modules/catalog/application/use-cases/own-offer-add-tag.use-case';
+import { ProductRevisionAdminRead } from '../../src/modules/catalog/application/use-cases/revision-review-read.use-case';
 import { ProductRevisionApprove } from '../../src/modules/catalog/application/use-cases/product-revision-approve.use-case';
 import { ProductRevisionRequestChanges } from '../../src/modules/catalog/application/use-cases/product-revision-request-changes.use-case';
 import { Product } from '../../src/modules/catalog/domain/product';
@@ -36,6 +37,7 @@ import { PrismaCategoryPathsReader } from '../../src/modules/catalog/infrastruct
 import { FakeClaimEvaluator, allowedDecision } from '../support/catalog-tag-fakes';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
+import { fixedFamilyResolver } from '../support/family-resolver';
 
 // Catalog slice 10 (product revision review) on PostgreSQL, for both Market fixtures: the seller's
 // submit, then the reviewer's approve and request-changes use cases end to end over the real
@@ -74,6 +76,7 @@ describe.each(TEST_MARKETS)(
     let submit: SubmitProduct;
     let approve: ProductRevisionApprove;
     let requestChanges: ProductRevisionRequestChanges;
+    let readRevision: ProductRevisionAdminRead;
     let offerStore: PrismaOfferRepository;
     let evaluator: FakeClaimEvaluator;
     const certificate = {
@@ -95,9 +98,11 @@ describe.each(TEST_MARKETS)(
         primaryImage: true,
         anyImage: false,
         variantRemoved: true,
+        gtinChanged: true,
       }),
       maxVariantsPerProduct: () => 10,
       maxVariantAttributes: () => 2,
+      units: () => [],
       maxCategoryDepth: () => 4,
       maxCategoryChangeTags: () => 50_000,
       productTypes: () => ['simple', 'configurable'],
@@ -216,6 +221,7 @@ describe.each(TEST_MARKETS)(
         workingCopies: copies,
         revisions,
         freeze: new FreezeRevision({
+          familyResolver: fixedFamilyResolver(),
           attributes,
           policy,
           handlerFor: (typeCode) => (typeCode === 'simple' ? simpleProductType : undefined),
@@ -252,8 +258,17 @@ describe.each(TEST_MARKETS)(
         unitOfWork: persistence.unitOfWork,
         products,
         revisions,
+        attributes: { familyCodeOfRevision: () => Promise.resolve('default') } as never,
+        policy: { defaultFamily: () => 'default' } as never,
         outbox,
         clock: reviewClock,
+      });
+      readRevision = new ProductRevisionAdminRead(gate, {
+        unitOfWork: persistence.unitOfWork,
+        products,
+        revisions,
+        sellerNames: { storeNames: () => Promise.resolve(new Map([[SELLER, 'Dates Co']])) },
+        gtinRegistry: { duplicatesOf: () => Promise.resolve([]) },
       });
     });
     beforeEach(() => {
@@ -532,7 +547,7 @@ describe.each(TEST_MARKETS)(
         decided_by_kind: 'admin',
         decided_by_account_id: ADMIN,
       });
-      expect(appended).toEqual(['catalog.product-revision-changes-requested.v1']);
+      expect(appended).toEqual(['catalog.product-revision-changes-requested.v2']);
       const view = await inUnit(() => revisions.latestChangeRequest(market, productId), true);
       expect(view).toMatchObject({
         revisionId,
@@ -548,6 +563,210 @@ describe.each(TEST_MARKETS)(
       expect(await inUnit(() => revisions.latestChangeRequest(market, productId), true)).toBeNull();
       const stillThere = await decisionRows(productId);
       expect(stillThere).toHaveLength(1);
+    });
+
+    it('keeps the queue rows the filters ask for, in the list and in the count', async () => {
+      const { productId } = await submitted();
+      const OTHER = uuid7() as Id<'Seller'>;
+      const page = { after: null, limit: 500 };
+      const has = async (filter: Parameters<typeof reader.listPendingRevisions>[3]) => {
+        const rows = await inUnit(
+          () => reader.listPendingRevisions(market, page, 'en', filter),
+          true,
+        );
+        const count = await inUnit(() => reader.pendingRevisionCount(market, filter), true);
+        expect(count).toBeGreaterThanOrEqual(rows.length);
+        return rows.some((row) => row.productId === productId);
+      };
+
+      expect(await has({ sellerId: SELLER })).toBe(true);
+      expect(await has({ sellerId: OTHER })).toBe(false);
+      expect(
+        await inUnit(() => reader.pendingRevisionCount(market, { sellerId: OTHER }), true),
+      ).toBe(0);
+      expect(await has({ firstPublication: true })).toBe(true);
+      expect(await has({ firstPublication: false })).toBe(false);
+      expect(await has({ hasImages: false })).toBe(true);
+      expect(await has({ hasImages: true })).toBe(false);
+      expect(await has({ sellerId: SELLER, firstPublication: true, hasImages: false })).toBe(true);
+      expect(await inUnit(() => reader.pendingReviewCount(market, { sellerId: OTHER }), true)).toBe(
+        0,
+      );
+      expect(
+        await inUnit(() => offerStore.listPendingReview(market, page, { sellerId: OTHER }), true),
+      ).toEqual([]);
+    });
+
+    it('reads a revision for review with its history: decided ones carry the outcome and code', async () => {
+      const { productId, revisionId, version } = await submitted();
+      await requestChanges.execute(adminContext(), {
+        productId,
+        revisionId,
+        version,
+        reasonCode: 'photos',
+      });
+      await saveCopy(productId, 'Dates, new box', null);
+      const again = await submit.execute(sellerContext(), { productId, replacePending: false });
+      if (!again.ok) throw new Error(again.error.code);
+
+      const read = await readRevision.execute(adminContext(), {
+        productId,
+        revisionId: again.value.revisionId,
+      });
+
+      expect(read.ok).toBe(true);
+      if (!read.ok) return;
+      expect(read.value).toMatchObject({
+        productId,
+        sellerId: SELLER,
+        storeName: 'Dates Co',
+        state: 'pending',
+        firstPublication: true,
+        requiredChecks: ALL_CHECKS,
+        published: null,
+        revision: {
+          revisionId: again.value.revisionId,
+          revisionNo: 2,
+          texts: { en: { name: 'Dates, new box', description: 'Sweet and soft' } },
+          categoryIds: [categoryId],
+          taxCategoryCode: 't1',
+        },
+      });
+      expect(read.value.history).toEqual([
+        expect.objectContaining({ revisionNo: 2, decision: null }),
+        expect.objectContaining({ revisionId, revisionNo: 1, authorKind: 'seller' }),
+      ]);
+      expect(read.value.history[1]!.decision).toEqual({
+        outcome: 'changes-requested',
+        publishKind: null,
+        supersededCause: null,
+        reasonCode: 'photos',
+        decidedByKind: 'admin',
+        decidedAt: T1.toString(),
+      });
+      const closed = await readRevision.execute(adminContext(), { productId, revisionId });
+      expect(closed).toMatchObject({ ok: true, value: { state: 'closed', requiredChecks: [] } });
+      expect(
+        await readRevision.execute(adminContext(), {
+          productId: uuid7(),
+          revisionId,
+        }),
+      ).toEqual({ ok: false, error: { code: 'product.not-found' } });
+    });
+
+    it('filters an update with a photo against PostgreSQL: firstPublication false, hasImages true', async () => {
+      const first = await submitted();
+      await approve.execute(adminContext(), { ...first, checksConfirmed: ALL_CHECKS });
+      const { productId } = first;
+      await saveCopy(productId, 'Dates, new box', first.revisionId);
+      const again = await submit.execute(sellerContext(), { productId, replacePending: false });
+      if (!again.ok) throw new Error(again.error.code);
+      const imageId = uuid7();
+      await insert('product_images', {
+        ...base,
+        id: imageId,
+        product_id: productId,
+        uploader_account_id: uuid7(),
+        state: 'clean',
+        pixel_width: 800,
+        pixel_height: 800,
+        byte_size: 1000,
+        created_at: T0.toString(),
+      });
+      await insert('product_revision_images', {
+        ...base,
+        revision_id: again.value.revisionId,
+        product_id: productId,
+        image_id: imageId,
+        position: 1,
+      });
+      const page = { after: null, limit: 500 };
+      const has = async (filter: Parameters<typeof reader.listPendingRevisions>[3]) =>
+        (await inUnit(() => reader.listPendingRevisions(market, page, 'en', filter), true)).some(
+          (row) => row.productId === productId,
+        );
+
+      expect(await has({ firstPublication: false })).toBe(true);
+      expect(await has({ firstPublication: true })).toBe(false);
+      expect(await has({ hasImages: true })).toBe(true);
+      expect(await has({ hasImages: false })).toBe(false);
+      expect(await has({ sellerId: SELLER, firstPublication: false, hasImages: true })).toBe(true);
+      expect(
+        await inUnit(
+          () => reader.pendingRevisionCount(market, { firstPublication: false, hasImages: true }),
+          true,
+        ),
+      ).toBeGreaterThanOrEqual(1);
+
+      const read = await readRevision.execute(adminContext(), {
+        productId,
+        revisionId: again.value.revisionId,
+      });
+      expect(read).toMatchObject({
+        ok: true,
+        value: {
+          state: 'pending',
+          firstPublication: false,
+          revision: { revisionNo: 2, imageIds: [imageId] },
+          published: { revisionId: first.revisionId, revisionNo: 1, imageIds: [] },
+        },
+      });
+    });
+
+    it("never returns the reviewer's words or account ids, and not another Market's product", async () => {
+      const { productId, revisionId } = await submitted();
+      const DECIDER = uuid7();
+      await insert('product_revision_decisions', {
+        ...base,
+        revision_id: revisionId,
+        outcome: 'changes-requested',
+        reason_code: 'other',
+        reason_text: 'secret reviewer words',
+        required_checks: [],
+        confirmed_checks: [],
+        decided_by_kind: 'admin',
+        decided_by_account_id: DECIDER,
+        product_version: 1,
+        decided_at: T1.toString(),
+      });
+
+      const read = await readRevision.execute(adminContext(), { productId, revisionId });
+
+      expect(read.ok).toBe(true);
+      const text = JSON.stringify(read);
+      expect(text).toContain('"reasonCode":"other"');
+      expect(text).not.toContain('secret reviewer words');
+      expect(text).not.toContain(DECIDER);
+      const revision = await inUnit(() => revisions.find(market, productId, revisionId), true);
+      expect(text).not.toContain(revision!.authorAccountId);
+
+      const other = marketOf(TEST_MARKETS.find((m) => m !== code)!);
+      const otherAdmin = testCallContext(
+        other,
+        testAuthenticatedActor(other, {
+          population: 'admin',
+          accountId: ADMIN,
+          sessionId: uuid7() as Id<'Session'>,
+          sellerId: null,
+        }),
+      );
+      expect(await readRevision.execute(otherAdmin, { productId, revisionId })).toEqual({
+        ok: false,
+        error: { code: 'product.not-found' },
+      });
+      const elsewhere = await persistence.unitOfWork.run(
+        other,
+        async () =>
+          ok(
+            await reader.listPendingRevisions(other, { after: null, limit: 500 }, 'en', {
+              sellerId: SELLER,
+            }),
+          ),
+        { readOnly: true },
+      );
+      expect(elsewhere.ok && elsewhere.value.some((row) => row.productId === productId)).toBe(
+        false,
+      );
     });
 
     it('publishes a later revision over the first one, with no check for a name-only change', async () => {

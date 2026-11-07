@@ -119,6 +119,18 @@ export const BlogAccessChanged = defineAuditAction({
 });
 
 /**
+ * An admin switched whether a seller may propose categories (SEL-26; sellers design 9, "who,
+ * when, before and after"). Flags only.
+ */
+export const CategoryProposalsChanged = defineAuditAction({
+  action: 'sellers.category-proposals.changed',
+  targetType: SELLER_TARGET,
+  actors: ['authenticated'],
+  before: { enabled: auditField.boolean() },
+  after: { enabled: auditField.boolean() },
+});
+
+/**
  * An admin replaced a seller's business activities (ADR-0040 decision 4): the main activity and the
  * extras before and after, as ids. The admin's reason is text, so it is never in the row: it is
  * kept in the seller's activity change log (`seller_business_activity_changes`) with the same
@@ -159,6 +171,7 @@ export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.fr
   StoreImageChanged,
   PickupDetailsReadForCarrier,
   BlogAccessChanged,
+  CategoryProposalsChanged,
   BusinessActivitiesChanged,
   ServiceAreaNamesChanged,
 ]);

@@ -249,6 +249,19 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       expect(found.filter((violation) => violation.endsWith('/uses-kernel.ts'))).toEqual([]);
     });
 
+    it('lets domain/ import the platform-import package by its package name', () => {
+      const domainFile = cruise.modules.find(
+        (module) => module.source === 'src/modules/alpha/domain/uses-platform-import.ts',
+      );
+
+      expect(new Set(domainFile?.dependencies.map((dependency) => dependency.resolved))).toEqual(
+        new Set(['packages/platform-import/src/index.ts']),
+      );
+      expect(found.filter((violation) => violation.endsWith('/uses-platform-import.ts'))).toEqual(
+        [],
+      );
+    });
+
     it.each([
       // The two importers allowed to use the market exemption.
       'src/platform/market-context/market-context.guard.ts',

@@ -142,6 +142,7 @@ export class SavedFilterCreate extends UseCase<
           id: deps.ids.next<'SavedFilter'>(),
           listKey,
           ownerAccountId: admin.accountId,
+          sellerId: null,
           visibility: visibility.value,
           name: name.value,
           payload: payload.value,

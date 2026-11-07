@@ -1,9 +1,19 @@
 'use client';
 
-import { Banner, Button, Card, CheckboxRow, TextField, toast } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import {
+  BackLink,
+  Banner,
+  Button,
+  Card,
+  TextField,
+  UnsavedBar,
+  toast,
+  useUnsavedChangesGuard,
+} from '@mondapac/ui';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { callApi } from '../api/client.ts';
 import { AttributesSection } from './attributes-section.tsx';
 import { ClassificationSection } from './classification-section.tsx';
@@ -13,6 +23,7 @@ import {
   attributeValuesWith,
   categoryIdsOf,
   contentFrom,
+  isMeasureInput,
   taxCategoryOf,
   variantRowsOf,
   variantsWith,
@@ -22,45 +33,79 @@ import {
   type VariantRow,
 } from './draft-content.ts';
 import { editProblemOf, type EditProblem } from './edit-errors.ts';
+import { OrganisationCard, StatusBadge, StatusCard, type Blocker } from './product-side.tsx';
 import { VariantsSection } from './variants-section.tsx';
+import { hasProblems, problemsOfRows } from './variant-fields.ts';
 import { axesOf } from './variant-grid.ts';
 import type { DraftSaved, ProductPhoto, ProductView, Submitted } from './types.ts';
 
 const KEYS = ['name', 'shortDescription', 'description'] as const;
 type TextKey = (typeof KEYS)[number];
-type Texts = Record<string, Record<TextKey, string>>;
+type Texts = Record<TextKey, string>;
 
-function textsOf(
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** The default-language title, short description and description a saved draft holds. */
+export function textsOf(
   content: Readonly<Record<string, unknown>> | undefined,
-  locales: readonly string[],
+  locale: string,
 ): Texts {
-  const stored = (content?.['texts'] ?? {}) as Record<string, Record<string, unknown> | undefined>;
-  return Object.fromEntries(
-    locales.map((locale) => [
-      locale,
-      Object.fromEntries(
-        KEYS.map((key) => {
-          const value = stored[locale]?.[key];
-          return [key, typeof value === 'string' ? value : ''];
-        }),
-      ) as Record<TextKey, string>,
-    ]),
-  );
+  const stored = content?.['texts'];
+  const entry = isObject(stored) ? stored[locale] : undefined;
+  const read = (key: TextKey) =>
+    isObject(entry) && typeof entry[key] === 'string' ? entry[key] : '';
+  return {
+    name: read('name'),
+    shortDescription: read('shortDescription'),
+    description: read('description'),
+  };
 }
 
-/** The saved content with only `texts` replaced: every other key of the draft is sent back as it was. */
+/**
+ * The saved content with the default language's texts replaced (ADR-0046: entered once). Every
+ * other key of the draft is sent back as it was, the other languages included.
+ */
 export function contentWith(
   content: Readonly<Record<string, unknown>> | undefined,
-  texts: Texts,
+  locale: string,
+  next: Texts,
 ): Record<string, unknown> {
-  const next: Record<string, Record<string, string>> = {};
-  for (const [locale, entry] of Object.entries(texts)) {
-    const kept = Object.fromEntries(
-      KEYS.map((key) => [key, entry[key].trim()] as const).filter(([, value]) => value !== ''),
-    );
-    if (Object.keys(kept).length > 0) next[locale] = kept;
+  const stored = content?.['texts'];
+  const texts: Record<string, unknown> = isObject(stored) ? { ...stored } : {};
+  const saved = texts[locale];
+  const entry: Record<string, unknown> = isObject(saved) ? { ...saved } : {};
+  for (const key of KEYS) {
+    const text = next[key].trim();
+    if (text === '') delete entry[key];
+    else entry[key] = text;
   }
-  return { ...(content ?? {}), texts: next };
+  if (Object.keys(entry).length === 0) delete texts[locale];
+  else texts[locale] = entry;
+  return { ...(content ?? {}), texts };
+}
+
+/** "a, b and c" for the "To submit:" line. */
+function listOf(items: readonly string[], locale: string): string {
+  try {
+    return new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(items);
+  } catch {
+    return items.join(', ');
+  }
+}
+
+function filled(value: AttributeInput | undefined): boolean {
+  if (value === undefined) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (typeof value === 'boolean') return true;
+  if (Array.isArray(value)) return value.length > 0;
+  if (isMeasureInput(value)) return value.amount.trim() !== '';
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).some((item) =>
+      typeof item === 'string' ? item.trim() !== '' : item !== undefined && item !== null,
+    );
+  }
+  return true;
 }
 
 /** The photo ids a saved draft lists, in order. */
@@ -76,6 +121,7 @@ export function EditForm({
   photos,
   locales,
   defaultLocale,
+  marketName,
   csrfToken,
 }: {
   readonly product: ProductView;
@@ -83,12 +129,16 @@ export function EditForm({
   readonly photos: readonly ProductPhoto[] | null;
   readonly locales: readonly string[];
   readonly defaultLocale: string;
+  readonly marketName: string;
   readonly csrfToken: string;
 }) {
   const t = useTranslations();
+  const locale = useLocale();
   const router = useRouter();
   const [content, setContent] = useState(product.workingCopy?.content);
-  const [texts, setTexts] = useState<Texts>(() => textsOf(content, locales));
+  // Title and description are entered once, in the default language (ADR-0046); the other
+  // languages of the draft are sent back as they were.
+  const [texts, setTexts] = useState<Texts>(() => textsOf(content, defaultLocale));
   const { form } = product;
   const configurable = product.variantModel === 'configurable';
   const attributeFields = form.fields.filter((field) => !field.isVariantOption);
@@ -105,12 +155,47 @@ export function EditForm({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<EditProblem | null>(null);
   const [refused, setRefused] = useState<DraftSaved['refusedFields']>([]);
+  const [notices, setNotices] = useState<NonNullable<DraftSaved['variantNotices']>>([]);
   const busy = useRef(false);
+  const savedName = textsOf(content, defaultLocale).name;
+  const shownTitle = savedName === '' ? t('catalog.edit.page.untitled') : savedName;
+  const published = product.published !== null;
+  // Leaving with edits that are not saved asks first (the same dialog the settings pages use).
+  const guard = useUnsavedChangesGuard(dirty, {
+    title: t('catalog.edit.leave.title'),
+    message:
+      savedName === ''
+        ? t('catalog.edit.leave.message-untitled')
+        : t('catalog.edit.leave.message', { title: savedName }),
+    stay: t('catalog.edit.leave.stay'),
+    leave: t('catalog.edit.leave.leave'),
+    destructive: true,
+  });
 
   const fixedVariantIds = product.variants
     .filter((variant) => variant.state !== 'retired')
     .map((variant) => variant.variantId);
   const base = `catalog/seller/products/${product.productId}`;
+
+  // What the page can see is missing; the server stays the authority and its not-ready list is
+  // shown when it refuses. A list the Market does not offer (no categories, no tax codes) cannot
+  // be a gap.
+  const missing: Blocker[] = [];
+  if (texts.name.trim() === '') missing.push('title');
+  if (form.categories.length > 0 && categoryIds.length === 0) missing.push('category');
+  if (form.taxCategoryCodes.length > 0 && taxCategoryCode === '') missing.push('tax');
+  if (attributeFields.some((field) => field.required && !filled(inputs[field.code]))) {
+    missing.push('details');
+  }
+  const blockers =
+    missing.length === 0
+      ? null
+      : t('catalog.edit.status.blockers', {
+          items: listOf(
+            missing.map((item) => t(`catalog.edit.status.${item}-item`)),
+            locale,
+          ),
+        });
 
   function fail(failure: Parameters<typeof editProblemOf>[0]) {
     if (failure.status === 401) window.location.assign('/session-ended');
@@ -118,7 +203,7 @@ export function EditForm({
   }
 
   function contentOf(list: readonly VariantRow[]): Record<string, unknown> {
-    const withTexts = contentWith(content, texts);
+    const withTexts = contentWith(content, defaultLocale, texts);
     // `imageIds` stays out of a draft that never had photos, so it is sent back as it was.
     if (imageIds.length > 0 || 'imageIds' in withTexts) withTexts['imageIds'] = imageIds;
     return contentFrom(withTexts, {
@@ -132,6 +217,11 @@ export function EditForm({
 
   /** Saves the draft; 'saved' when the API took it whole, 'refused' when it dropped some texts. */
   async function save(): Promise<'saved' | 'refused' | false> {
+    // Barcode, shipping and photo picks that cannot be saved are fixed first, next to their fields.
+    if (configurable && hasProblems(problemsOfRows(rows))) {
+      setProblem({ key: 'catalog.edit.grid.problem.blocked', details: [], reload: false });
+      return false;
+    }
     let list = rows;
     let idsMinted = false;
     let next = contentOf(list);
@@ -165,6 +255,7 @@ export function EditForm({
     }
     setContent(next);
     setRefused(result.body.refusedFields);
+    setNotices(result.body.variantNotices ?? []);
     setDirty(result.body.refusedFields.length > 0);
     return result.body.refusedFields.length === 0 ? 'saved' : 'refused';
   }
@@ -199,11 +290,13 @@ export function EditForm({
     router.refresh();
   }
 
-  function change(locale: string, key: TextKey, value: string) {
-    setTexts({
-      ...texts,
-      [locale]: { ...(texts[locale] as Record<TextKey, string>), [key]: value },
-    });
+  function change(key: TextKey, value: string) {
+    setTexts({ ...texts, [key]: value });
+    const suffix =
+      key === 'name' ? 'name' : key === 'shortDescription' ? 'short-description' : 'description';
+    setRefused((list) =>
+      list.filter((item) => !(item.ref === null && item.field.endsWith(suffix))),
+    );
     setDirty(true);
   }
 
@@ -211,15 +304,21 @@ export function EditForm({
     setDirty(true);
   }
 
+  /** Throws the edits away: the product is read again and the form starts over. */
+  function discardChanges() {
+    flushSync(() => setDirty(false));
+    window.location.reload();
+  }
+
   function submit(event: FormEvent) {
     event.preventDefault();
     void run('save');
   }
 
-  const refusedAt = (locale: string, key: TextKey): boolean =>
-    refused.some(
+  const refusedAt = (key: TextKey) =>
+    refused.find(
       (item) =>
-        item.locale === locale &&
+        item.locale === defaultLocale &&
         item.ref === null &&
         item.field.endsWith(
           key === 'name'
@@ -229,10 +328,55 @@ export function EditForm({
               : 'description',
         ),
     );
+  const refusedMessage = (item: DraftSaved['refusedFields'][number] | undefined) =>
+    item === undefined
+      ? undefined
+      : item.code.startsWith('claim-text')
+        ? t('catalog.edit.field.name-claim')
+        : t('catalog.edit.refused-field');
 
   return (
     <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
-      {refused.length > 0 ? <Banner tone="attention">{t('catalog.edit.refused')}</Banner> : null}
+      {guard.dialog}
+      {dirty ? (
+        <UnsavedBar
+          region={t('catalog.edit.bar.region')}
+          label={
+            refused.length > 0
+              ? t('catalog.edit.bar.errors', { count: refused.length })
+              : t('catalog.edit.bar.unsaved')
+          }
+          error={refused.length > 0}
+          discardLabel={t('catalog.edit.bar.discard')}
+          saveLabel={t(
+            published ? 'catalog.edit.bar.save-revision' : 'catalog.edit.bar.save-draft',
+          )}
+          saving={pending}
+          onDiscard={discardChanges}
+        />
+      ) : null}
+      <BackLink href={`/products/${product.productId}`} label={t('catalog.edit.back')} />
+      <div className="flex flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="min-w-0 break-words text-2xl font-semibold">{shownTitle}</h1>
+          <StatusBadge status={product.status} />
+        </div>
+        <p className="text-sm text-fg-muted">
+          {t('catalog.edit.page.subtitle', { market: marketName, code: product.productCode })}
+        </p>
+      </div>
+      {notices.length > 0 ? (
+        <Banner tone="info">
+          <p>{t('catalog.edit.grid.notice.duplicate', { count: notices.length })}</p>
+          {[
+            ...new Set(
+              notices.flatMap((n) => (n.sellOnProductCode === null ? [] : [n.sellOnProductCode])),
+            ),
+          ].map((code) => (
+            <p key={code}>{t('catalog.edit.grid.notice.sell-on', { code })}</p>
+          ))}
+        </Banner>
+      ) : null}
       {problem === null ? null : (
         <Banner tone="critical">
           <p>{t(problem.key, problem.values)}</p>
@@ -250,103 +394,124 @@ export function EditForm({
           ) : null}
         </Banner>
       )}
-      {locales.map((locale) => (
-        <Card key={locale} title={t('catalog.edit.locale', { locale })}>
-          {KEYS.map((key) => (
-            <TextField
-              key={key}
-              name={`${locale}.${key}`}
-              label={t(`catalog.edit.field.${key}`)}
-              optionalLabel={key === 'name' ? undefined : t('catalog.create.optional')}
-              value={texts[locale]?.[key] ?? ''}
-              error={refusedAt(locale, key) ? t('catalog.edit.refused-field') : undefined}
-              onChange={(event) => change(locale, key, event.target.value)}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_21.25rem] lg:grid-rows-[auto_1fr] lg:items-start">
+        <div className="lg:col-start-2 lg:row-start-1">
+          <StatusCard
+            status={product.status}
+            waiting={product.pending !== null}
+            published={published}
+            blockers={blockers}
+            canSubmit={missing.length === 0}
+            pending={pending}
+            onSubmit={() => void run('submit')}
+            replacePending={
+              product.pending === null
+                ? null
+                : { checked: replacePending, onChange: setReplacePending }
+            }
+          />
+        </div>
+        <div className="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-span-2 lg:row-start-1">
+          {product.pausedAt === null ? null : (
+            <Banner tone="attention" title={t('catalog.edit.paused.title')}>
+              <p>{t('catalog.edit.paused.body')}</p>
+            </Banner>
+          )}
+          {product.published !== null && product.sensitiveFields.length > 0 ? (
+            <Banner tone="info">
+              {t('catalog.edit.sensitive', {
+                fields: product.sensitiveFields
+                  .map((field) => t(`catalog.edit.sensitive-field.${field}`))
+                  .join(', '),
+              })}
+            </Banner>
+          ) : null}
+          <Card title={t('catalog.edit.product-card')}>
+            {KEYS.map((key) => (
+              <TextField
+                key={key}
+                name={key}
+                label={t(`catalog.edit.field.${key}`)}
+                {...(key === 'name' ? { help: t('catalog.edit.field.name-help') } : {})}
+                optionalLabel={key === 'name' ? undefined : t('catalog.create.optional')}
+                value={texts[key]}
+                error={refusedMessage(refusedAt(key))}
+                onChange={(event) => change(key, event.target.value)}
+              />
+            ))}
+          </Card>
+          <ClassificationSection
+            categories={form.categories}
+            taxCategoryCodes={form.taxCategoryCodes}
+            categoryIds={categoryIds}
+            taxCategoryCode={taxCategoryCode}
+            defaultLocale={defaultLocale}
+            onCategories={(ids) => {
+              setCategoryIds(ids);
+              edited();
+            }}
+            onTax={(code) => {
+              setTaxCategoryCode(code);
+              edited();
+            }}
+          />
+          <AttributesSection
+            fields={attributeFields}
+            units={form.units}
+            inputs={inputs}
+            locales={locales}
+            defaultLocale={defaultLocale}
+            refused={refused}
+            productId={product.productId}
+            csrfToken={csrfToken}
+            suggestions={product.suggestions ?? []}
+            onSuggested={() => router.refresh()}
+            onChange={(code: string, value: AttributeInput | undefined) => {
+              setInputs({ ...inputs, [code]: value });
+              setRefused((list) => list.filter((item) => item.ref !== code));
+              edited();
+            }}
+          />
+          {configurable ? (
+            <VariantsSection
+              rows={rows}
+              fields={form.fields}
+              axes={axes}
+              locked={product.published !== null || rows.some((row) => row.state === 'published')}
+              defaultLocale={defaultLocale}
+              max={product.maxVariants}
+              productId={product.productId}
+              galleryIds={imageIds}
+              notices={notices.map((notice) => notice.variantId)}
+              onChange={(next) => {
+                setRows(next.rows);
+                setAxes(next.axes);
+                edited();
+              }}
             />
-          ))}
-        </Card>
-      ))}
-      <ClassificationSection
-        categories={form.categories}
-        taxCategoryCodes={form.taxCategoryCodes}
-        categoryIds={categoryIds}
-        taxCategoryCode={taxCategoryCode}
-        defaultLocale={defaultLocale}
-        onCategories={(ids) => {
-          setCategoryIds(ids);
-          edited();
-        }}
-        onTax={(code) => {
-          setTaxCategoryCode(code);
-          edited();
-        }}
-      />
-      <AttributesSection
-        fields={attributeFields}
-        inputs={inputs}
-        locales={locales}
-        defaultLocale={defaultLocale}
-        refused={refused}
-        productId={product.productId}
-        csrfToken={csrfToken}
-        suggestions={product.suggestions ?? []}
-        onSuggested={() => router.refresh()}
-        onChange={(code: string, value: AttributeInput | undefined) => {
-          setInputs({ ...inputs, [code]: value });
-          edited();
-        }}
-      />
-      {configurable ? (
-        <VariantsSection
-          rows={rows}
-          fields={form.fields}
-          axes={axes}
-          locked={product.published !== null || rows.some((row) => row.state === 'published')}
-          defaultLocale={defaultLocale}
-          max={product.maxVariants}
-          onChange={(next) => {
-            setRows(next.rows);
-            setAxes(next.axes);
-            edited();
-          }}
-        />
-      ) : null}
-      <PhotosSection
-        productId={product.productId}
-        csrfToken={csrfToken}
-        library={photos}
-        imageIds={imageIds}
-        onImageIds={(ids) => {
-          setImageIds(ids);
-          edited();
-        }}
-      />
-      {product.published !== null && product.sensitiveFields.length > 0 ? (
-        <Banner tone="info">
-          {t('catalog.edit.sensitive', {
-            fields: product.sensitiveFields
-              .map((field) => t(`catalog.edit.sensitive-field.${field}`))
-              .join(', '),
-          })}
-        </Banner>
-      ) : null}
-      {product.pending !== null ? (
-        <CheckboxRow
-          name="replacePending"
-          label={t('catalog.edit.replace-pending')}
-          checked={replacePending}
-          onChange={(event) => setReplacePending(event.target.checked)}
-        />
-      ) : null}
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" variant="secondary" loading={pending} disabled={pending}>
-          {t('catalog.edit.save')}
-        </Button>
-        <Button disabled={pending} onClick={() => void run('submit')}>
-          {t('catalog.edit.submit')}
-        </Button>
-        <a className="font-medium text-link underline" href={`/products/${product.productId}`}>
-          {t('catalog.edit.back')}
-        </a>
+          ) : null}
+          <PhotosSection
+            productId={product.productId}
+            csrfToken={csrfToken}
+            library={photos}
+            imageIds={imageIds}
+            onImageIds={(ids) => {
+              setImageIds(ids);
+              // A variant can only pick photos the product keeps.
+              setRows((list) =>
+                list.map((row) =>
+                  row.imageIds.every((id) => ids.includes(id))
+                    ? row
+                    : { ...row, imageIds: row.imageIds.filter((id) => ids.includes(id)) },
+                ),
+              );
+              edited();
+            }}
+          />
+        </div>
+        <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-2">
+          <OrganisationCard marketName={marketName} typeCode={product.typeCode} />
+        </div>
       </div>
     </form>
   );

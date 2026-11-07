@@ -15,6 +15,7 @@ import type { ProductView } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
+const reload = vi.fn();
 const product = (over: Partial<ProductView> = {}): ProductView => ({
   productId: 'p1',
   productCode: 'P00000001',
@@ -22,18 +23,22 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   familyCode: 'food',
   variantModel: 'single',
   status: 'draft',
+  pausedAt: null,
   variants: [
-    { variantId: 'v1', state: 'active' },
-    { variantId: 'v2', state: 'retired' },
+    { variantId: 'v1', state: 'active', variantCode: 'P-000001-0v1' },
+    { variantId: 'v2', state: 'retired', variantCode: 'P-000001-0v2' },
   ],
   maxVariants: 5,
   sensitiveFields: [],
   lastChangedAt: '2026-10-01T00:00:00Z',
   createdAt: '2026-10-01T00:00:00Z',
   pendingSubmittedAt: null,
-  form: { taxCategoryCodes: [], fields: [], categories: [] },
+  form: { taxCategoryCodes: [], units: [], fields: [], categories: [] },
   workingCopy: {
-    content: { texts: { 'en-AU': { name: 'Olive oil' } }, attributes: { size: '1L' } },
+    content: {
+      texts: { 'en-AU': { name: 'Olive oil' }, ar: { name: 'زيت' } },
+      attributes: { size: '1L' },
+    },
     lastSavedAt: '2026-10-01T00:00:00Z',
     baseRevisionId: null,
   },
@@ -49,6 +54,7 @@ const mount = (p: ProductView = product()) =>
         photos={[]}
         locales={['en-AU', 'ar']}
         defaultLocale="en-AU"
+        marketName="Australia"
         csrfToken="csrf"
       />
     </NextIntlClientProvider>,
@@ -57,7 +63,20 @@ const saved = { ok: true, status: 200, body: { variantIds: ['v1'], refusedFields
 
 beforeEach(() => {
   vi.clearAllMocks();
-  Object.defineProperty(window, 'location', { value: { assign: vi.fn() }, writable: true });
+  Object.defineProperty(window, 'location', {
+    value: {
+      assign: vi.fn(),
+      reload,
+      href: `${document.baseURI.replace(/\/$/, '')}/products/p1/edit`,
+    },
+    writable: true,
+  });
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
 });
 afterEach(cleanup);
 
@@ -75,7 +94,10 @@ describe('EditForm', () => {
       'catalog/seller/products/p1/draft',
       {
         content: {
-          texts: { 'en-AU': { name: 'Olive oil', shortDescription: 'Cold pressed' } },
+          texts: {
+            'en-AU': { name: 'Olive oil', shortDescription: 'Cold pressed' },
+            ar: { name: 'زيت' },
+          },
           attributes: { size: '1L' },
         },
         variantIds: ['v1'],
@@ -110,9 +132,7 @@ describe('EditForm', () => {
       body: { revisionId: 'r1', revisionNo: 1, published: true },
     });
     mount();
-    fireEvent.change(screen.getAllByLabelText('Name')[1] as HTMLElement, {
-      target: { value: 'زيت' },
-    });
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Olive oil 1L' } });
     const button = screen.getByRole('button', { name: 'Submit for review' });
     fireEvent.click(button);
     fireEvent.click(button);
@@ -121,21 +141,121 @@ describe('EditForm', () => {
     await expectToast('Published.');
   });
 
-  it('shows the refused texts and does not submit', async () => {
+  it('shows the title and description once, in the default language, with no language cards', () => {
+    mount();
+    expect(screen.getAllByLabelText('Title')).toHaveLength(1);
+    expect(screen.getAllByLabelText(/^Description/)).toHaveLength(1);
+    expect(screen.queryByText(/Texts \(/)).toBeNull();
+    expect(
+      screen.getByText('In English. It is translated when a new buyer language is published.'),
+    ).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>('Title').value).toBe('Olive oil');
+  });
+
+  it('sends the other languages of the draft back untouched, edited or not', async () => {
+    call.mockResolvedValue(saved);
+    mount();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Olive oil 2' } });
+    fireEvent.change(screen.getByLabelText(/^Description/), { target: { value: 'Cold pressed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    const body = call.mock.calls[0]?.[2] as { content: { texts: Record<string, unknown> } };
+    expect(body.content.texts).toEqual({
+      'en-AU': { name: 'Olive oil 2', description: 'Cold pressed' },
+      ar: { name: 'زيت' },
+    });
+  });
+
+  it('lays the cards out in order, Status first, and has no price, stock or cost field', () => {
+    mount();
+    const headings = Array.from(document.querySelectorAll('h2')).map((h) => h.textContent);
+    expect(headings.slice(0, 3)).toEqual(['Status', 'Product', 'Category']);
+    expect(headings.at(-1)).toBe('Organisation');
+    expect(headings.indexOf('Photos')).toBeGreaterThan(headings.indexOf('Product'));
+    expect(headings.indexOf('Photos')).toBeLessThan(headings.indexOf('Organisation'));
+    expect(screen.queryByLabelText(/^(price|stock|cost)/i)).toBeNull();
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Olive oil');
+    expect(screen.getByText('Your product · Australia · P00000001')).toBeTruthy();
+    expect(screen.getByText('Your product')).toBeTruthy();
+  });
+
+  it('shows the unsaved bar only after an edit, and asks before leaving with unsaved edits', async () => {
+    mount();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Olive' } });
+    expect(screen.getByRole('region', { name: 'Unsaved changes' }).textContent).toContain(
+      'Unsaved changes',
+    );
+    fireEvent.click(screen.getByRole('link', { name: 'Back to product' }));
+    expect(await screen.findByText('Leave this page?')).toBeTruthy();
+    expect(screen.getByText("Your changes to Olive oil aren't saved.")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Leave without saving' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+  });
+
+  it('throws the edits away with Discard in the bar by reading the page again', () => {
+    mount();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Olive' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps Submit off, and names what is missing, until the product can be submitted', () => {
+    mount(
+      product({
+        form: {
+          taxCategoryCodes: ['gst'],
+          units: [],
+          fields: [],
+          categories: [{ categoryId: 'c1', parentId: null, names: { 'en-AU': 'Pantry' } }],
+        },
+      }),
+    );
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Submit for review' }).disabled,
+    ).toBe(true);
+    expect(
+      screen.getByText('To submit: choose a category and choose the tax category.'),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: '' } });
+    expect(
+      screen.getByText('To submit: add a title, choose a category and choose the tax category.'),
+    ).toBeTruthy();
+  });
+
+  it('tells the seller when an admin paused the product, and not otherwise', () => {
+    mount(product({ status: 'published', pausedAt: '2026-11-01T01:00:00.000Z' }));
+    expect(screen.getByText('Mondapac paused this product.')).toBeTruthy();
+    expect(screen.getByText("Buyers can't find it and your offers are off sale.")).toBeTruthy();
+    expect(screen.queryByRole('switch')).toBeNull();
+    cleanup();
+    mount(product({ status: 'published' }));
+    expect(screen.queryByText('Mondapac paused this product.')).toBeNull();
+  });
+
+  it('shows the claim words error under the title and counts it in the bar', async () => {
     call.mockResolvedValue({
       ok: true,
       status: 200,
       body: {
         variantIds: ['v1'],
-        refusedFields: [{ field: 'texts.name', ref: null, locale: 'en-AU', code: 'claim-text' }],
+        refusedFields: [
+          { field: 'texts.name', ref: null, locale: 'en-AU', code: 'claim-text.found' },
+        ],
       },
     });
     mount();
-    fireEvent.change(screen.getAllByLabelText('Name')[0] as HTMLElement, {
-      target: { value: 'x' },
-    });
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Halal oil' } });
     fireEvent.click(screen.getByRole('button', { name: 'Submit for review' }));
-    expect(await screen.findByText(/Some texts were not saved/)).toBeTruthy();
+    expect(
+      await screen.findByText(
+        'Product text can\'t include certification words like "halal". Badges come from seller offers.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('1 field needs fixing')).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' }).disabled).toBe(
+      true,
+    );
     expect(call).toHaveBeenCalledTimes(1);
   });
 
@@ -149,7 +269,7 @@ describe('EditForm', () => {
       },
     });
     mount();
-    fireEvent.change(screen.getAllByLabelText('Name')[0] as HTMLElement, {
+    fireEvent.change(screen.getByLabelText('Title'), {
       target: { value: 'x' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
@@ -187,13 +307,16 @@ describe('contentWith and editProblemOf', () => {
   it('drops empty texts and keeps other keys', () => {
     expect(
       contentWith(
-        { a: 1 },
-        {
-          x: { name: ' ', shortDescription: '', description: '' },
-          y: { name: 'n', shortDescription: '', description: '' },
-        },
+        { a: 1, texts: { x: { name: 'keep' }, y: { name: 'old', description: 'old text' } } },
+        'y',
+        { name: 'n', shortDescription: '', description: ' ' },
       ),
-    ).toEqual({ a: 1, texts: { y: { name: 'n' } } });
+    ).toEqual({ a: 1, texts: { x: { name: 'keep' }, y: { name: 'n' } } });
+    expect(
+      contentWith(undefined, 'y', { name: ' ', shortDescription: '', description: '' }),
+    ).toEqual({
+      texts: {},
+    });
   });
 
   it('maps codes to messages and asks for a reload when stale', () => {

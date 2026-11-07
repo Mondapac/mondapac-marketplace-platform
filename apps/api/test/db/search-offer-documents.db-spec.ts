@@ -8,6 +8,7 @@ import type { OfferDocument } from '../../src/modules/search/domain/offer-docume
 import { ConfigSearchPolicy } from '../../src/modules/search/infrastructure/config-search-policy';
 import { PrismaOfferDocumentRepository } from '../../src/modules/search/infrastructure/prisma-offer-document.repository';
 import { PrismaShelfDocumentsReader } from '../../src/modules/search/infrastructure/prisma-shelf-documents.reader';
+import { PrismaOfferVariantReader } from '../../src/modules/search/infrastructure/prisma-offer-variant.reader';
 import { RawOfferFacetReader } from '../../src/modules/search/infrastructure/raw-offer-facet.reader';
 import { RawOfferSearchReader } from '../../src/modules/search/infrastructure/raw-offer-search.reader';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
@@ -65,6 +66,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
     searchText: null,
     facetCodes: [],
     numbers: {},
+    variants: [],
     ...overrides,
   });
   const inUnit = async <T>(target: MarketContext, work: () => Promise<T>, readOnly = false) => {
@@ -418,6 +420,8 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       brands: { productIdsOf: () => Promise.resolve({ productIds: [], truncated: false }) },
       images: { of: () => Promise.resolve(new Map()) },
       categories: { subtreeOf: (_context, categoryId) => Promise.resolve([categoryId]) },
+      sellUnits: { states: () => Promise.resolve(null) },
+      variants: new PrismaOfferVariantReader(db.service),
     };
     const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
     const visitor = testCallContext(market, 'anonymous', 'search-db-visitor-1');

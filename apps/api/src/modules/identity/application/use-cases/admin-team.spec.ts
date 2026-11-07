@@ -87,6 +87,7 @@ const LEAD_KEYS = [
   'catalog.brand.read',
   'catalog.category-tree.view',
   'catalog.product.view',
+  'catalog.variant.view',
   'identity.admin-account.disable',
   'identity.admin-account.invite',
   'identity.admin-account.reset-second-factor',

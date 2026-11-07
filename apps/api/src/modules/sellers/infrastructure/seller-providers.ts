@@ -78,6 +78,11 @@ import {
 } from '../application/ports/blog-access.repository';
 import { PrismaBlogAccessRepository } from './prisma-blog-access.repository';
 import {
+  CATEGORY_PROPOSALS_SETTING_REPOSITORY,
+  type CategoryProposalsSettingRepository,
+} from '../application/ports/category-proposals-setting.repository';
+import { PrismaCategoryProposalsSettingRepository } from './prisma-category-proposals-setting.repository';
+import {
   SELLER_BUSINESS_ACTIVITY_REPOSITORY,
   type SellerBusinessActivityRepository,
 } from '../application/ports/seller-business-activity.repository';
@@ -442,6 +447,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BlogAccessRepository =>
       new PrismaBlogAccessRepository(prisma),
+  },
+  {
+    provide: CATEGORY_PROPOSALS_SETTING_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryProposalsSettingRepository =>
+      new PrismaCategoryProposalsSettingRepository(prisma),
   },
   {
     provide: SELLING_FACTS_REPOSITORY,

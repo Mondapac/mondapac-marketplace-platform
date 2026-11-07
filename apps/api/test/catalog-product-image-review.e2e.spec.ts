@@ -46,6 +46,9 @@ const MODERATOR = id<'Account'>(0xa001);
 const VIEWER = id<'Account'>(0xa002);
 const NO_KEY = id<'Account'>(0xa003);
 const NO_KEY_ROLE = id<'Role'>(0xc0f2);
+// Decides product versions but may not delete: the takedown needs catalog.product.delete.
+const APPROVER = id<'Account'>(0xa004);
+const APPROVE_ONLY_ROLE = id<'Role'>(0xc0f3);
 const PRODUCT = id<'Product'>(0xc101);
 const OTHER_PRODUCT = id<'Product'>(0xc102);
 const REVISION = id<'ProductRevision'>(0xd101);
@@ -193,6 +196,19 @@ describe('reviewer photo routes over HTTP (integration)', () => {
       version: 1,
       createdAt: START,
     });
+    fakes.seedRole({
+      id: APPROVE_ONLY_ROLE,
+      marketId,
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      name: 'Approve only',
+      permissionKeys: ['catalog.product.view', 'catalog.product.approve'],
+      version: 1,
+      createdAt: START,
+    });
     const seedRole = (seedCode: string) =>
       [...fakes.roles.values()].find(
         (r) => r.marketId === code && r.scope === 'platform' && r.seedCode === seedCode,
@@ -227,6 +243,7 @@ describe('reviewer photo routes over HTTP (integration)', () => {
     admin(MODERATOR, 'moderator', seedRole('catalogue-moderator'));
     admin(VIEWER, 'viewer', seedRole('viewer'));
     admin(NO_KEY, 'nokey', NO_KEY_ROLE);
+    admin(APPROVER, 'approver', APPROVE_ONLY_ROLE);
   }
 
   function sessionOf(code: string, account: Id<'Account'>, n: number) {
@@ -367,6 +384,11 @@ describe('reviewer photo routes over HTTP (integration)', () => {
         reasonCode: 'misleading',
       });
       expect(viewerTry.status).toBe(403);
+      // Approving versions is not enough: the takedown deletes, so it needs catalog.product.delete.
+      const approverTry = await post(code, takeDownPath(), sessionOf(code, APPROVER, 3), {
+        reasonCode: 'misleading',
+      });
+      expect(approverTry.status).toBe(403);
       const noCsrf = await http()
         .post(`/catalog/admin/products/${takeDownPath()}`)
         .set({ ...base(code), cookie: moderator.cookie })

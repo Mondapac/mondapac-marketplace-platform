@@ -33,6 +33,7 @@ import {
   type FieldErrors,
   type ValueRow,
 } from './editor.ts';
+import { MeasureSettings } from './measure-settings.tsx';
 import { useSelectLabels } from './select-labels.ts';
 import {
   API_ATTRIBUTES,
@@ -472,6 +473,21 @@ export function AttributeEditForm({
             value={form.maxLength}
             error={msg('bounds.maxLength')}
             onChange={(event) => patch({ maxLength: event.target.value })}
+          />
+        ) : null}
+        {dataType === 'measure' ? (
+          <MeasureSettings
+            form={form}
+            units={detail.units}
+            defaultLocale={locales.default}
+            savedUnits={published ? (detail.bounds.measure?.units ?? []) : []}
+            locked={published}
+            errors={errors}
+            onChange={(next) => {
+              patch(next);
+              clearError('bounds.measure.units');
+              clearError('bounds.measure.defaultUnit');
+            }}
           />
         ) : null}
         {dataType === 'integer' || dataType === 'decimal' ? (

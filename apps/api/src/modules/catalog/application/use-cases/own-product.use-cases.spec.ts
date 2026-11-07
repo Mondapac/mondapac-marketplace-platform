@@ -44,6 +44,7 @@ import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import { OwnProductCreate } from './own-product-create.use-case';
 import { OwnProductSubmit, type OwnProductSubmitInput } from './own-product-submit.use-case';
 import type { AllowedProductTypes } from '../ports/allowed-product-types.reader';
+import { fixedFamilyResolver } from '../../../../../test/support/family-resolver';
 
 // `own-product.create` and `own-product.submit` in memory (catalog design 4.2 row 1, 6; slice 6), on both Market
 // fixtures: the freeze, the claim-text check over every text of the frozen content, the admin
@@ -252,6 +253,7 @@ describe.each(FIXTURES)(
         },
         recordDecision: () => Promise.resolve(),
         latestChangeRequest: () => Promise.resolve(null),
+        history: () => Promise.resolve([]),
         find: (_m, productId, id) => {
           const found = revisions.get(id);
           return Promise.resolve(found?.productId === productId ? found : null);
@@ -267,9 +269,11 @@ describe.each(FIXTURES)(
           primaryImage: true,
           anyImage: false,
           variantRemoved: true,
+          gtinChanged: true,
         }),
         maxVariantsPerProduct: () => 100,
         maxVariantAttributes: () => 2,
+        units: () => [],
         maxCategoryDepth: () => 4,
         maxCategoryChangeTags: () => 50_000,
         productTypes: () => ['simple', 'configurable'],
@@ -330,6 +334,7 @@ describe.each(FIXTURES)(
           ),
       } as unknown as AttributeRepository;
       const freeze = new FreezeRevision({
+        familyResolver: fixedFamilyResolver(),
         attributes,
         policy,
         handlerFor: (typeCode) => (typeCode === 'simple' ? simpleProductType : undefined),

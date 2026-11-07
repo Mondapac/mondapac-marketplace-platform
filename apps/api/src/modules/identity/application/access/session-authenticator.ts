@@ -8,6 +8,7 @@ import type {
   CredentialRejected,
   JobIdentity,
   JobIdentityResolver,
+  SellerJobIdentity,
   SessionCredential,
 } from '../../../../platform/authz';
 import {
@@ -17,6 +18,7 @@ import {
   type SessionRevokedReason,
 } from '../../domain/session';
 import type { AccountRepository } from '../ports/account.repository';
+import type { SellerMembershipRepository } from '../ports/seller-team.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import type { SessionTokens } from '../ports/session-secrets';
 
@@ -140,7 +142,7 @@ export const SESSION_REASONS_THAT_LEAVE_JOBS: ReadonlySet<string> = new Set<Sess
  * the bulk update skipped it (`sessionsInvalidatedAt`; Hassan M-585-1). Nothing is cached, and the
  * actor holds no permission: the gate asks `identity` again for every use case the job calls.
  */
-export class AdminJobIdentityResolver implements JobIdentityResolver {
+export class AdminJobIdentityResolver implements Pick<JobIdentityResolver, 'resumeAdmin'> {
   constructor(private readonly deps: AdminJobIdentityDependencies) {}
 
   async resumeAdmin(market: MarketContext, identity: JobIdentity) {
@@ -182,4 +184,85 @@ export class AdminJobIdentityResolver implements JobIdentityResolver {
       sellerId: null,
     });
   }
+}
+
+export interface SellerJobIdentityDependencies extends AdminJobIdentityDependencies {
+  readonly memberships: SellerMembershipRepository;
+}
+
+/**
+ * The seller counterpart of {@link AdminJobIdentityResolver} (catalog design 14c): a background job a
+ * seller's account started (the seller import) runs as that account, later. In one read-only unit it
+ * reads the kept session, the account and the account's active membership. The session must be the
+ * account's, of the Market, of the `seller` population and of **this** seller, with no acting-as
+ * marker (Login as Seller must not start or feed a job: an acting-as session is never resumed); it
+ * may have ended by a sign-out or by running out, and by nothing else (the same
+ * {@link SESSION_REASONS_THAT_LEAVE_JOBS}, and the same bulk-end rule, as the admin's). The account
+ * must be active and still an active member of that seller. The seller's access state is **not**
+ * read: a suspension is the gate's and the per-row eligibility check's outcome, so it is not
+ * confused with a lost identity. Nothing is cached and the actor holds no permission.
+ */
+export class SellerJobIdentityResolver implements Pick<JobIdentityResolver, 'resumeSeller'> {
+  constructor(private readonly deps: SellerJobIdentityDependencies) {}
+
+  async resumeSeller(market: MarketContext, identity: SellerJobIdentity) {
+    const found = await this.deps.unitOfWork.run(
+      market,
+      async () =>
+        ok({
+          session: await this.deps.sessions.findById(market, identity.sessionId),
+          account: await this.deps.accounts.findById(market, identity.accountId),
+          membership: await this.deps.memberships.findActiveByAccount(market, identity.accountId),
+          invalidatedAt: await this.deps.sessions.sessionsInvalidatedAt(market, identity.accountId),
+        }),
+      { readOnly: true },
+    );
+    if (!found.ok) return null;
+    const { session, account, membership, invalidatedAt } = found.value;
+    if (
+      session === null ||
+      account === null ||
+      membership === null ||
+      session.marketId !== market.marketId ||
+      session.accountId !== identity.accountId ||
+      session.population !== 'seller' ||
+      session.sellerId !== identity.sellerId ||
+      // The reserved acting-as marker (identity design 3.4 row 6): no session carries it yet; one
+      // that does is never resumed.
+      hasActingAsMarker(session) ||
+      (session.revokedAt !== null &&
+        (session.revokedReason === null ||
+          !SESSION_REASONS_THAT_LEAVE_JOBS.has(session.revokedReason))) ||
+      (invalidatedAt !== null && Temporal.Instant.compare(invalidatedAt, session.createdAt) >= 0) ||
+      account.state.population !== 'seller' ||
+      account.state.status !== 'active' ||
+      membership.state.state !== 'active' ||
+      membership.state.sellerId !== identity.sellerId
+    ) {
+      return null;
+    }
+    return authenticatedActor(market, {
+      population: 'seller',
+      accountId: identity.accountId,
+      sessionId: identity.sessionId,
+      sellerId: identity.sellerId,
+    });
+  }
+}
+
+function hasActingAsMarker(session: object): boolean {
+  if (!Object.hasOwn(session, 'actingAs')) return false;
+  const marker = (session as { readonly actingAs?: unknown }).actingAs;
+  return marker !== null && marker !== undefined;
+}
+
+/** Both resumes behind the one port the platform names (`JOB_IDENTITY_RESOLVER`). */
+export function jobIdentityResolverOf(
+  admin: Pick<JobIdentityResolver, 'resumeAdmin'>,
+  seller: Pick<JobIdentityResolver, 'resumeSeller'>,
+): JobIdentityResolver {
+  return {
+    resumeAdmin: (market, identity) => admin.resumeAdmin(market, identity),
+    resumeSeller: (market, identity) => seller.resumeSeller(market, identity),
+  };
 }

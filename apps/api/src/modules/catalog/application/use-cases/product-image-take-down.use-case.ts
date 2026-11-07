@@ -5,7 +5,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { ObjectStore } from '../../../../platform/storage/object-store';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { CATALOG_PRODUCT_APPROVE } from '../../contracts/permissions';
+import { CATALOG_PRODUCT_DELETE } from '../../contracts/permissions';
 import { IMAGE_TAKEDOWN_REASONS, ProductImageTakenDown } from '../../domain/events';
 import { parseAdminImageIds } from '../images/admin-image-input';
 import type { ProductImage, ProductImageRepository } from '../ports/product-image.repository';
@@ -49,8 +49,8 @@ const TAKEDOWN_AGGREGATE_VERSION = 2;
  * again and cannot join a new revision (the database refuses it). Taking down a photo that is
  * already down succeeds without a second event.
  *
- * Deviation from design 10.5: the key is `catalog.product.approve`, not `catalog.product.delete`
- * (not declared yet; identity's seed would change). Rule: that key and the admin population.
+ * Rule (design 10.5): the key `catalog.product.delete` and the admin population. Deciding a
+ * version (`catalog.product.approve`) is not enough: a takedown deletes the photo's files.
  */
 export class ProductImageTakeDown extends UseCase<
   ProductImageTakeDownInput,
@@ -59,7 +59,7 @@ export class ProductImageTakeDown extends UseCase<
 > {
   static override readonly access: AccessDeclaration = {
     name: 'catalog.product-image-take-down',
-    rule: { kind: 'permissions', allOf: [CATALOG_PRODUCT_APPROVE.key] },
+    rule: { kind: 'permissions', allOf: [CATALOG_PRODUCT_DELETE.key] },
   };
 
   readonly #logger = new Logger('ProductImageTakeDown');

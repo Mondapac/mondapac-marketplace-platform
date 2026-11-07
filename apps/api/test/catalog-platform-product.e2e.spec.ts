@@ -7,8 +7,11 @@ import { PLATFORM_PRODUCT_STATUS } from '../src/modules/catalog/presentation/pla
 import { SaveDraft } from '../src/modules/catalog/application/working-copy/save-draft.service';
 import { SubmitProduct } from '../src/modules/catalog/application/revisions/submit-product.service';
 import { ATTRIBUTE_REPOSITORY } from '../src/modules/catalog/application/ports/attribute.repository';
+import { OWN_CATALOG_READER } from '../src/modules/catalog/application/ports/own-catalog.reader';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
-import type { Product } from '../src/modules/catalog/domain/product';
+import { PRODUCT_REVISION_REPOSITORY } from '../src/modules/catalog/application/ports/product-revision.repository';
+import { WORKING_COPY_REPOSITORY } from '../src/modules/catalog/application/ports/working-copy.repository';
+import { Product } from '../src/modules/catalog/domain/product';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
@@ -52,6 +55,8 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
   let schemaSeeded: boolean;
   let saveResult: unknown;
   let submitResult: unknown;
+  // Per Market: what the reader counts on the product (the two fixtures differ, so a mix-up shows).
+  let offerTotals: Record<string, { sellerCount: number; offerCount: number }>;
   const http = () => request(app.getHttpServer());
 
   async function boot(env: Record<string, string> = {}) {
@@ -71,8 +76,23 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
               stored.push(product);
               return Promise.resolve();
             },
-            findById: () => Promise.resolve(null),
+            findById: (_m: unknown, productId: string) =>
+              Promise.resolve(stored.find((product) => product.state.id === productId) ?? null),
             save: () => Promise.resolve(),
+          })
+          .overrideProvider(WORKING_COPY_REPOSITORY)
+          .useValue({ find: () => Promise.resolve(null) })
+          .overrideProvider(PRODUCT_REVISION_REPOSITORY)
+          .useValue({ find: () => Promise.resolve(null) })
+          .overrideProvider(OWN_CATALOG_READER)
+          .useValue({
+            offerTotalsOfProduct: (market: { marketId: string }) =>
+              Promise.resolve(offerTotals[market.marketId] ?? { sellerCount: 0, offerCount: 0 }),
+            productForm: () =>
+              Promise.resolve({
+                fields: [],
+                categories: [{ categoryId: PRODUCT, parentId: null, names: { en: 'Pantry' } }],
+              }),
           })
           .overrideProvider(ATTRIBUTE_REPOSITORY)
           .useValue({
@@ -160,8 +180,9 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
     fakes.reset();
     clock = new FixedClock(START);
     stored = [];
+    offerTotals = {};
     schemaSeeded = true;
-    saveResult = ok({ variantIds: [], refusedFields: [] });
+    saveResult = ok({ variantIds: [], refusedFields: [], variantNotices: [] });
     submitResult = ok({ revisionId: PRODUCT, revisionNo: 1, published: true });
   });
   afterEach(async () => {
@@ -177,6 +198,8 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
     expect(document.paths[base]?.post?.responses).toHaveProperty('201');
     expect(document.paths[`${base}/{productId}/draft`]?.put?.responses).toHaveProperty('429');
     expect(document.paths[`${base}/{productId}/submit`]?.post?.responses).toHaveProperty('422');
+    expect(document.paths[`${base}/options`]?.get?.responses).toHaveProperty('200');
+    expect(document.paths[`${base}/{productId}`]?.get?.responses).toHaveProperty('404');
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
@@ -233,6 +256,101 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       expect(stored).toHaveLength(0);
     });
 
+    it('reads the options and one platform product for the admin form, and refuses without the key', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+      const viewer = sessionOf(code, VIEWER, 2);
+      const get = (path: string, headers: Record<string, string>) =>
+        http()
+          .get(`/catalog/admin/platform-products${path}`)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...headers });
+
+      const options = await get('/options', root);
+      expect(options.status).toBe(200);
+      expect(options.headers['cache-control']).toBe('no-store');
+      expect((options.body as { productTypes: string[] }).productTypes).toContain('simple');
+
+      const created = await send('post', code, '', { typeCode: 'simple' }, root);
+      const productId = (created.body as { productId: string }).productId;
+      const read = await get(`/${productId}`, root);
+      expect(read.status).toBe(200);
+      expect(read.body).toMatchObject({
+        productId,
+        status: 'draft',
+        variantModel: 'single',
+        workingCopy: null,
+        published: null,
+        pausedAt: null,
+        offers: { sellerCount: 0, offerCount: 0 },
+        form: { categories: [{ names: { en: 'Pantry' } }] },
+      });
+
+      // Offers of every seller are counted, and an admin pause shows as its instant.
+      offerTotals = {
+        [code]: { sellerCount: 2, offerCount: 3 },
+        [code === 'AU' ? 'ZZ' : 'AU']: { sellerCount: 9, offerCount: 9 },
+      };
+      const pausedAt = Temporal.Instant.from('2026-11-01T01:02:03Z');
+      stored[0] = Product.restore({
+        ...stored[0]!.state,
+        status: 'published',
+        pausedAt,
+        pausedByAccountId: ROOT,
+      });
+      const paused = await get(`/${productId}`, root);
+      expect(paused.status).toBe(200);
+      expect(paused.body).toMatchObject({
+        status: 'published',
+        pausedAt: pausedAt.toString(),
+        offers: { sellerCount: 2, offerCount: 3 },
+      });
+      expect((read.body as { form: { taxCategoryCodes: string[] } }).form.taxCategoryCodes).toEqual(
+        expect.any(Array),
+      );
+
+      for (const path of ['/options', `/${productId}`]) {
+        const denied = await get(path, viewer);
+        expect(denied.status).toBe(403);
+        expect(denied.body).toEqual({ statusCode: 403, code: 'access.denied' });
+        expect((await get(path, {})).status).toBe(401);
+      }
+      const missing = await get(`/${PRODUCT}`, root);
+      expect(missing.status).toBe(404);
+      expect(missing.body).toEqual({ statusCode: 404, code: 'product.not-found' });
+      const malformed = await get('/not-an-id', root);
+      expect(malformed.status).toBe(404);
+      expect(malformed.body).toEqual(missing.body);
+    });
+
+    it('discards a draft platform product once, and refuses a second discard, a stranger and a missing key', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+      const viewer = sessionOf(code, VIEWER, 2);
+      const created = await send('post', code, '', { typeCode: 'simple' }, root);
+      const productId = (created.body as { productId: string }).productId;
+
+      const denied = await send('post', code, `/${productId}/discard`, {}, viewer);
+      expect(denied.status).toBe(403);
+      expect(stored[0]!.state.status).toBe('draft');
+
+      const first = await send('post', code, `/${productId}/discard`, {}, root);
+      expect(first.status).toBe(200);
+      expect(first.body).toEqual({ productId });
+      expect(stored[0]!.state).toMatchObject({ status: 'discarded' });
+
+      const again = await send('post', code, `/${productId}/discard`, {}, root);
+      expect(again.status).toBe(404);
+      expect(again.body).toEqual({ statusCode: 404, code: 'product.not-found' });
+      const missing = await send('post', code, `/${PRODUCT}/discard`, {}, root);
+      expect(missing.body).toEqual(again.body);
+      const malformed = await send('post', code, '/not-an-id/discard', {}, root);
+      expect(malformed.status).toBe(404);
+      const extra = await send('post', code, `/${productId}/discard`, { force: true }, root);
+      expect(extra.status).toBe(400);
+    });
+
     it('refuses an unknown field, a missing field and a non-JSON body with a 400 or 415', async () => {
       await boot();
       await seeded(code);
@@ -277,6 +395,9 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       await seeded(code);
       saveResult = ok({
         variantIds: [PRODUCT],
+        variantNotices: [
+          { variantId: PRODUCT, code: 'gtin.duplicate', sellOnProductCode: 'MP-004127' },
+        ],
         refusedFields: [
           {
             field: 'product.name',
@@ -297,6 +418,9 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       expect(saved.status).toBe(200);
       expect(saved.body).toEqual({
         variantIds: [PRODUCT],
+        variantNotices: [
+          { variantId: PRODUCT, code: 'gtin.duplicate', sellOnProductCode: 'MP-004127' },
+        ],
         refusedFields: [
           {
             field: 'product.name',

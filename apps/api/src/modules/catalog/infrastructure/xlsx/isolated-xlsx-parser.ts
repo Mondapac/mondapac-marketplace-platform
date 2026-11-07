@@ -138,6 +138,8 @@ function typescriptWorker(
       // a world-writable cache would let one of them plant code that this worker runs (Hassan, #616).
       cacheDir: path.join(root, 'node_modules/.cache/mondapac-xlsx-worker-ts'),
       aliases: {
+        // The shared CSV rules, which the domain import file module reads (catalog design 14b).
+        '@mondapac/platform-import': path.join(root, 'packages/platform-import/src/index.ts'),
         '@mondapac/shared-kernel': path.join(kernel, 'index.ts'),
         '@mondapac/shared-kernel/testing': path.join(kernel, 'testing.ts'),
         '@mondapac/shared-kernel/contexts': path.join(kernel, 'contexts.ts'),

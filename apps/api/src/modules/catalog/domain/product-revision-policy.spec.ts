@@ -17,6 +17,7 @@ const AU: SensitiveChangesPolicy = {
   primaryImage: true,
   anyImage: true,
   variantRemoved: true,
+  gtinChanged: true,
 };
 const SYNTHETIC: SensitiveChangesPolicy = {
   platformCategories: false,
@@ -25,6 +26,7 @@ const SYNTHETIC: SensitiveChangesPolicy = {
   primaryImage: false,
   anyImage: false,
   variantRemoved: false,
+  gtinChanged: false,
 };
 
 const published: RevisionSummary = {
@@ -33,6 +35,7 @@ const published: RevisionSummary = {
   taxCategoryCode: 'standard',
   imageIds: ['i1', 'i2'],
   variantIds: ['v1', 'v2'],
+  variantGtins: { v1: '00012345678905', v2: null },
 };
 const change = (patch: Partial<RevisionSummary>): RevisionSummary => ({ ...published, ...patch });
 
@@ -86,6 +89,55 @@ describe('classify', () => {
     expect(classify(published, change({ variantIds: ['v1', 'v2', 'v3'] }), AU).sensitive).toBe(
       false,
     );
+  });
+
+  describe('GTIN (variants V4)', () => {
+    const gtins = (variantGtins: Record<string, string | null>, variantIds = ['v1', 'v2']) =>
+      change({ variantGtins, variantIds });
+
+    it.each([
+      ['a changed GTIN', { v1: '04006381333931', v2: null }],
+      ['a cleared GTIN', { v1: null, v2: null }],
+      ['a GTIN set on a published variant', { v1: '00012345678905', v2: '04006381333931' }],
+    ])('flags %s', (_name, variantGtins) => {
+      expect(classify(published, gtins(variantGtins), AU)).toEqual({
+        sensitive: true,
+        reasons: ['gtin-changed'],
+      });
+    });
+
+    it('does not flag an unchanged GTIN or a variant added with or without one', () => {
+      expect(classify(published, gtins({ v1: '00012345678905', v2: null }), AU).sensitive).toBe(
+        false,
+      );
+      const added = gtins({ v1: '00012345678905', v2: null, v3: null }, ['v1', 'v2', 'v3']);
+      expect(classify(published, added, AU).sensitive).toBe(false);
+      const withGtin = gtins({ v1: '00012345678905', v2: null, v3: '04006381333931' }, [
+        'v1',
+        'v2',
+        'v3',
+      ]);
+      expect(classify(published, withGtin, AU).sensitive).toBe(false);
+    });
+
+    it('adding a variant without a new image is minor, with a new image it is sensitive (t13)', () => {
+      expect(classify(published, change({ variantIds: ['v1', 'v2', 'v3'] }), AU).sensitive).toBe(
+        false,
+      );
+      expect(
+        classify(
+          published,
+          change({ variantIds: ['v1', 'v2', 'v3'], imageIds: ['i1', 'i2', 'i9'] }),
+          AU,
+        ).reasons,
+      ).toEqual(['image-added-or-replaced']);
+    });
+
+    it('is ignored in a Market that does not list it', () => {
+      expect(
+        classify(published, gtins({ v1: '04006381333931', v2: null }), SYNTHETIC).sensitive,
+      ).toBe(false);
+    });
   });
 
   it('reads only the fields the Market lists', () => {

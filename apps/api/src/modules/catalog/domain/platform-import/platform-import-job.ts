@@ -2,25 +2,23 @@ import type { Id, Temporal } from '@mondapac/shared-kernel';
 import type { IgnoredColumn } from './columns';
 import type { ImportFormat } from './import-file';
 import type { RowIssue, RowSummary } from './row-check';
+import {
+  canConfirm as coreCanConfirm,
+  fileLabelOf,
+  FILE_LABEL_MAX,
+  IMPORT_JOB_STATES,
+  isSettled,
+  MAX_ISSUES_PER_ROW,
+  mustSkipErrors as coreMustSkipErrors,
+  type ImportJobState,
+} from '../import-jobs/import-job-core';
+
+// The states, the label and the row limit are the job core the seller import (14c) shares.
+export { fileLabelOf, FILE_LABEL_MAX, IMPORT_JOB_STATES, isSettled, MAX_ISSUES_PER_ROW };
+export type { ImportJobState };
 
 // The platform import job (catalog design 14a): the record of one admin's file from its check to
 // its report. Plain data and pure rules; the store moves it between states with conditional writes.
-
-/**
- * `checked`: the file was read and checked, nothing else happened. `queued`: confirmed, waiting for
- * the worker (or waiting out a rate window). `running`: the worker holds it. `finished`: every row
- * the run took was tried. `stopped`: the run ended part way and can be resumed. `discarded`: the
- * admin left or replaced the file, or the retention removed an unconfirmed check.
- */
-export const IMPORT_JOB_STATES = [
-  'checked',
-  'queued',
-  'running',
-  'finished',
-  'stopped',
-  'discarded',
-] as const;
-export type ImportJobState = (typeof IMPORT_JOB_STATES)[number];
 
 /** What the admin chose in "New products start as" (design 14a, 4.1a). */
 export const START_AS = ['inactive', 'active'] as const;
@@ -84,46 +82,15 @@ export interface ImportRowRecord {
   readonly productCode: string | null;
 }
 
-/** The most issues kept for one row (the table's CHECK). */
-export const MAX_ISSUES_PER_ROW = 12;
-
-/** The longest a stored file label is. */
-export const FILE_LABEL_MAX = 80;
-
-/**
- * The name an upload is shown under. It is never echoed as sent: only letters, digits, spaces and
- * `. _ ( ) -` stay, the rest becomes a space, the length is capped and a name with nothing left
- * becomes `import`. The path of a client (`C:\\x\\a.csv`) is cut to its last part.
- */
-export function fileLabelOf(name: unknown): string {
-  if (typeof name !== 'string') return 'import';
-  const last = name.split(/[\\/]/).at(-1) ?? '';
-  const clean = last
-    .normalize('NFKC')
-    .replace(/[^\p{L}\p{N} ._()-]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, FILE_LABEL_MAX)
-    .trim();
-  return clean === '' ? 'import' : clean;
-}
-
 /** True when the job can still be confirmed: checked, with at least one ready row. */
-export function canConfirm(job: Pick<ImportJob, 'state' | 'readyRows'>): boolean {
-  return job.state === 'checked' && job.readyRows > 0;
-}
+export const canConfirm = (job: Pick<ImportJob, 'state' | 'readyRows'>): boolean =>
+  coreCanConfirm(job);
 
 /** True when the rows with errors may be left out only by the admin's explicit choice. */
-export function mustSkipErrors(job: Pick<ImportJob, 'errorRows'>): boolean {
-  return job.errorRows > 0;
-}
+export const mustSkipErrors = (job: Pick<ImportJob, 'errorRows'>): boolean =>
+  coreMustSkipErrors(job);
 
 /** The rows a confirmed run will try: every ready row (error rows are skipped, never tried). */
 export function rowsToImport(job: Pick<ImportJob, 'readyRows'>): number {
   return job.readyRows;
-}
-
-/** True when a state is the end of the road for the page's polling. */
-export function isSettled(state: ImportJobState): boolean {
-  return state === 'finished' || state === 'stopped' || state === 'discarded';
 }

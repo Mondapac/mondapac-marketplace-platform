@@ -8,6 +8,7 @@ import type { OfferState } from './offer';
 import type { CategorySeo, CategoryText } from './category-edit';
 import type { CategoryName, PlatformCategoryState } from './platform-category';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
+import type { TopicContent, TopicState, TopicTerm } from './topic';
 
 /**
  * The claim-checked fields (catalog design 6.2, AC 21): every customer- or search-visible text
@@ -36,6 +37,9 @@ export const CLAIM_CHECKED_FIELD_IDS = [
   'product.name',
   'product.short-description',
   'product.variant-label',
+  'topic.intro',
+  'topic.slug',
+  'topic.term',
 ] as const;
 export type ClaimCheckedFieldId = (typeof CLAIM_CHECKED_FIELD_IDS)[number];
 
@@ -84,6 +88,13 @@ export const REVISION_VARIANT_FIELDS: Record<keyof RevisionVariantContent, Field
   // Attribute code to option code: the codes are internal, the labels live on the definition.
   optionValues: exempt('internal-code'),
   labels: checked('product.variant-label'),
+  // Digits only (check digit validated at the freeze), a number, or ids of the revision's images.
+  gtin: exempt('identifier'),
+  shippingWeightGrams: exempt('number'),
+  shippingLengthMm: exempt('number'),
+  shippingWidthMm: exempt('number'),
+  shippingHeightMm: exempt('number'),
+  imageIds: exempt('reference'),
 };
 
 export const REVISION_CONTENT_FIELDS: Record<keyof RevisionContent, FieldDisposition> = {
@@ -223,6 +234,36 @@ export const FEATURE_SET_FIELDS: Record<keyof AttributeFamilyState, FieldDisposi
   createdAt: exempt('timestamp'),
 };
 
+// Topics (product tags package T1): names, synonyms, the intro and the slug are read by buyers on
+// the topic page and in search, so every one of them is claim-checked (john 24 Oct: claim words
+// are refused). The normalised key is derived from the checked text.
+export const TOPIC_TERM_FIELDS: Record<keyof TopicTerm, FieldDisposition> = {
+  locale: exempt('internal-code'),
+  kind: exempt('internal-code'),
+  text: checked('topic.term'),
+  key: exempt('internal-code'),
+};
+
+export const TOPIC_CONTENT_FIELDS: Record<keyof TopicContent, FieldDisposition> = {
+  group: exempt('internal-code'),
+  terms: nested('TOPIC_TERM_FIELDS'),
+  intro: checked('topic.intro'),
+};
+
+export const TOPIC_FIELDS: Record<keyof TopicState, FieldDisposition> = {
+  id: exempt('identifier'),
+  // The slug is the address of the topic page, so it is a customer-visible text.
+  slug: checked('topic.slug'),
+  group: exempt('internal-code'),
+  status: exempt('internal-code'),
+  terms: nested('TOPIC_TERM_FIELDS'),
+  intro: checked('topic.intro'),
+  createdBy: exempt('identifier'),
+  createdAt: exempt('timestamp'),
+  updatedAt: exempt('timestamp'),
+  version: exempt('number'),
+};
+
 /** Every table above by name, so the schema test can walk them and follow `nested`. */
 export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, FieldDisposition>>>> = {
   REVISION_TEXT_FIELDS,
@@ -239,6 +280,9 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
   CATEGORY_SEO_FIELDS,
   PLATFORM_CATEGORY_FIELDS,
   OFFER_FIELDS,
+  TOPIC_TERM_FIELDS,
+  TOPIC_CONTENT_FIELDS,
+  TOPIC_FIELDS,
 };
 
 /**
@@ -251,6 +295,12 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
 export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   Record<string, { readonly table: string } | { readonly noCustomerText: string }>
 > = {
+  SellUnitState: {
+    noCustomerText:
+      'a variant id, a printable-ASCII SKU (1 to 64, no space) and a flag; no free text',
+  },
+  SellUnitChange: { noCustomerText: 'the same fields as SellUnitState, as requested' },
+  SellUnitOutcome: { noCustomerText: 'lists of SellUnitState' },
   ImportColumn: { noCustomerText: 'fixed header names of the import template' },
   IgnoredColumn: { noCustomerText: 'a header of the file, shown to the admin only' },
   MappedColumns: { noCustomerText: 'column positions' },
@@ -267,6 +317,53 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   RowSummary: { noCustomerText: 'the admin report line of a row' },
   CheckedRow: { noCustomerText: 'the admin check result of a row' },
+  SellerIgnoredColumn: { noCustomerText: 'a header of the file, shown to the seller only' },
+  BracketColumn: { noCustomerText: 'column positions' },
+  SellerColumnMap: { noCustomerText: 'column positions of a seller import file' },
+  KnownBracketCodes: { noCustomerText: 'attribute codes of the Market family' },
+  MergeBase: {
+    noCustomerText:
+      'the stored draft an import row is merged into; saved by the draft save, which checks every text',
+  },
+  MergeEnvironment: { noCustomerText: 'the default locale' },
+  MergedRow: {
+    noCustomerText:
+      'draft content for the own-import row-save use case, which claim-checks every text itself',
+  },
+  ExistingOfferFact: {
+    noCustomerText: 'ids and option keys of the seller own Offer, for the check',
+  },
+  CatalogueProductFact: { noCustomerText: 'ids and the type code of a catalogue product' },
+  SellerCheckFacts: {
+    noCustomerText: 'facts the seller import check reads about the seller own Offers',
+  },
+  SellerCheckEnvironment: {
+    noCustomerText: 'facts of the Market a seller import row is checked against',
+  },
+  SellerRowIssue: {
+    noCustomerText: 'issue code with a column and the cell as sent, for the seller only',
+  },
+  SellerRowSummary: { noCustomerText: 'the seller report line of a row' },
+  SellerProductPatch: {
+    noCustomerText:
+      'draft content for the own-import row-save use case, which claim-checks every text itself',
+  },
+  SellerVariantPlan: {
+    noCustomerText: 'option codes and V4 fields of a variant row, no free text',
+  },
+  SellerGroupPlan: {
+    noCustomerText:
+      'plan of one group for the own-import row use cases, which claim-check every text themselves',
+  },
+  CheckedSellerRow: { noCustomerText: 'the seller check result of a row' },
+  CheckedSellerGroup: { noCustomerText: 'the seller check result of a group of rows' },
+  SellerGroupRows: {
+    noCustomerText: 'raw cells of a seller import file; never shown to customers',
+  },
+  SellerImportJob: { noCustomerText: 'seller job record: counts, states and a cleaned file label' },
+  SellerRowRecord: {
+    noCustomerText: 'seller report row: codes and the title as the seller sent it',
+  },
   AttributeDefinition: { noCustomerText: 'aggregate class around AttributeDefinitionState' },
   AttributeFamily: { noCustomerText: 'aggregate class around AttributeFamilyState' },
   CategoryAttributeLink: { noCustomerText: 'aggregate class around CategoryAttributeLinkState' },
@@ -322,6 +419,11 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText:
       'panel-only names and description of a business activity (admin and seller panels); refused when they assert a certification; see BusinessActivityState',
   },
+  TopicContent: { table: 'TOPIC_CONTENT_FIELDS' },
+  TopicFieldProblem: { noCustomerText: 'field path and a problem code' },
+  TopicLocales: { noCustomerText: 'locale codes' },
+  TopicState: { table: 'TOPIC_FIELDS' },
+  TopicTerm: { table: 'TOPIC_TERM_FIELDS' },
   BusinessActivityState: {
     noCustomerText: 'a business activity as stored; panel-only text, see BusinessActivityContent',
   },
@@ -333,6 +435,17 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   VariantValidationResult: { noCustomerText: 'issue codes with fixed paths' },
   AttributeBounds: { noCustomerText: 'numbers' },
   AttributeMergeOption: { noCustomerText: 'two option codes of a merge; no text' },
+  VariantTypeSettingsContent: {
+    noCustomerText:
+      'display codes, swatch colours and one seller-panel help sentence per locale; the help is shown to sellers only and the settings edit claim-checks it, fail closed',
+  },
+  VariantTypeSettingsState: {
+    noCustomerText: 'the stored settings revision; see VariantTypeSettingsContent',
+  },
+  VariantTypeSettings: { noCustomerText: 'aggregate class around VariantTypeSettingsState' },
+  OrderableOption: {
+    noCustomerText: 'an option code, its position and the labels it is sorted by; no new text',
+  },
   AttributeDefinitionState: { table: 'ATTRIBUTE_DEFINITION_FIELDS' },
   AttributeDisplaySettings: { table: 'ATTRIBUTE_DISPLAY_FIELDS' },
   AttributeFamilyState: { table: 'FEATURE_SET_FIELDS' },
@@ -376,6 +489,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   ClaimFacts: { noCustomerText: 'ids of the revision, its variants and category paths' },
   OfferSearchFacts: {
     noCustomerText: 'read model feed: ids, a flag and OfferSearchText, nothing entered here',
+  },
+  OfferSearchVariant: {
+    noCustomerText:
+      'read copy of a published Variant: ids, a position, a GTIN, facet codes and its label (claim-checked when the revision was frozen); the label is index words only, never shown from the index',
   },
   OfferSearchAttributes: {
     noCustomerText:
@@ -519,5 +636,6 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   VariantIssue: { noCustomerText: 'issue code with a fixed path' },
   AxisIssue: { noCustomerText: 'issue code with a fixed path' },
   VariantRecord: { noCustomerText: 'ids and times' },
+  VariantShipping: { noCustomerText: 'four whole numbers (grams, millimetres); no text' },
   WorkingCopy: { noCustomerText: 'opaque draft; its texts are checked before any write (6.1)' },
 };

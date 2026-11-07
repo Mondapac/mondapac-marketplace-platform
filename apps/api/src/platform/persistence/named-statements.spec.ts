@@ -478,3 +478,35 @@ describe.each(['AU', 'ZZ'] as const)('customers.lock-address-book in market %s',
     ).rejects.toBeInstanceOf(NamedStatementRefusedError);
   });
 });
+
+describe.each(['AU', 'ZZ'] as const)('identity.lock-invitation in market %s', (code) => {
+  const market = testMarketContext(code, 'default');
+  const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+
+  it('takes the exclusive invitation lock keyed on the unit Market and tenant', async () => {
+    const { runner, seen } = runnerAnswering([{ locked: true }]);
+    const rows = await runNamedStatement(runner, market, 'identity.lock-invitation', {
+      invitationId: ID(6),
+    });
+    expect(rows).toEqual([{ locked: true }]);
+    expect(seen[0]!.sql).toContain('pg_advisory_xact_lock(');
+    expect(seen[0]!.sql).toContain('1706::int4');
+    expect(seen[0]!.values).toEqual([market.marketId, market.tenantId, ID(6)]);
+    const request = { operation: '$queryRaw', args: seen[0] };
+    expect(isApprovedStatement(request, market)).toBe(true);
+    expect(isApprovedStatement(request, other)).toBe(false);
+    expect(isApprovedStatement({ operation: '$executeRaw', args: seen[0] }, market)).toBe(false);
+    const forged = { sql: seen[0]!.sql, values: [market.marketId, market.tenantId, "x' OR '1"] };
+    expect(isApprovedStatement({ operation: '$queryRaw', args: forged }, market)).toBe(false);
+  });
+
+  it('refuses a malformed invitation id and a missing row', async () => {
+    const { runner } = runnerAnswering([]);
+    await expect(
+      runNamedStatement(runner, market, 'identity.lock-invitation', { invitationId: "x' OR '1" }),
+    ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+    await expect(
+      runNamedStatement(runner, market, 'identity.lock-invitation', { invitationId: ID(6) }),
+    ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+  });
+});

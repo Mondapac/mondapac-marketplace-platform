@@ -323,6 +323,9 @@ export function ProductsList({
               void loadSaved();
             }}
           />
+          {permissionKeys.includes('catalog.platform-product.edit') ? (
+            <LinkButton href="/catalog/products/new">{t('add')}</LinkButton>
+          ) : null}
           {permissionKeys.includes('catalog.platform-import.run') ? (
             <LinkButton variant="secondary" href="/catalog/products/import" className="gap-2">
               <Icon name="file" />

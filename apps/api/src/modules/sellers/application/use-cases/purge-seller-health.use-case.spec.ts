@@ -13,8 +13,13 @@ import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import type { SellerHealthRequestStore } from '../ports/seller-health-request.store';
 import type { SellerHealthStore } from '../ports/seller-health.store';
-import { PurgeSellerHealth, SELLER_HEALTH_KEPT_DAYS } from './purge-seller-health.use-case';
+import {
+  PurgeSellerHealth,
+  SELLER_HEALTH_KEPT_DAYS,
+  SELLER_HEALTH_REQUESTS_KEPT_DAYS,
+} from './purge-seller-health.use-case';
 
 // `sellers.purge-seller-health` in memory, on both Market fixtures. PostgreSQL behaviour is
 // covered by test/db/sellers-health-store.db-spec.ts.
@@ -31,6 +36,13 @@ function setUp(unitFails = false) {
       return Promise.resolve({ days: 3, snapshots: 2 });
     },
   } as unknown as SellerHealthStore;
+  const requestsAsked: { market: string; before: string }[] = [];
+  const healthRequests = {
+    purgeFinishedBefore: (market: MarketContext, before: Temporal.Instant) => {
+      requestsAsked.push({ market: market.marketId, before: before.toString() });
+      return Promise.resolve(4);
+    },
+  } as unknown as SellerHealthRequestStore;
   const units: { readOnly: boolean }[] = [];
   const unitOfWork: UnitOfWork = {
     run: <T, E>(_market: MarketContext, work: () => Promise<Result<T, E>>, options?: unknown) => {
@@ -42,9 +54,10 @@ function setUp(unitFails = false) {
   const clock = new FixedClock(NOW);
   return {
     asked,
+    requestsAsked,
     units,
     ids: new SequenceIdGenerator(clock),
-    purge: new PurgeSellerHealth(gate, { unitOfWork, healthStore, clock }),
+    purge: new PurgeSellerHealth(gate, { unitOfWork, healthStore, healthRequests, clock }),
   };
 }
 
@@ -54,12 +67,24 @@ describe.each(['AU', 'ZZ'] as const)('sellers.purge-seller-health (%s)', (code) 
   it('deletes local dates before the kept span, cut on the UTC date, in one write unit', async () => {
     const t = setUp();
     const result = await t.purge.execute(testCallContext(market, 'system'), {});
-    expect(result).toEqual({ ok: true, value: { days: 3, snapshots: 2 } });
+    expect(result).toEqual({ ok: true, value: { days: 3, snapshots: 2, requests: 4 } });
     const expected = Temporal.PlainDate.from('2026-11-10')
       .subtract({ days: SELLER_HEALTH_KEPT_DAYS })
       .toString();
     expect(t.asked).toEqual([{ market: code, before: expected }]);
     expect(t.units).toEqual([{ readOnly: false }]);
+  });
+
+  it('deletes finished requests older than the kept span, in the same unit', async () => {
+    const t = setUp();
+    await t.purge.execute(testCallContext(market, 'system'), {});
+    expect(t.requestsAsked).toEqual([
+      {
+        market: code,
+        before: NOW.subtract({ hours: 24 * SELLER_HEALTH_REQUESTS_KEPT_DAYS }).toString(),
+      },
+    ]);
+    expect(t.units).toHaveLength(1);
   });
 
   it('keeps more than the longest window plus the recount', () => {
@@ -86,5 +111,6 @@ describe.each(['AU', 'ZZ'] as const)('sellers.purge-seller-health (%s)', (code) 
       expect((await t.purge.execute(context, {})).ok).toBe(false);
     }
     expect(t.asked).toEqual([]);
+    expect(t.requestsAsked).toEqual([]);
   });
 });
