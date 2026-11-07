@@ -87,3 +87,9 @@ export function queueHref(params: QueueParams, change: Partial<QueueParams> = {}
 export function clearedHref(params: QueueParams): string {
   return queueHref(params, { change: 'all', photos: 'any', seller: null });
 }
+
+/** The page of one product version review (server and client code both build it). */
+export const revisionHref = (row: {
+  readonly productId: string;
+  readonly revisionId: string;
+}): string => `/review/products/${row.productId}/revisions/${row.revisionId}`;
