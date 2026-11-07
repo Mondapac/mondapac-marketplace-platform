@@ -276,6 +276,13 @@ import { BusinessActivityEdit } from './application/use-cases/business-activity-
 import { BusinessActivityGet } from './application/use-cases/business-activity-get.use-case';
 import { BusinessActivityList } from './application/use-cases/business-activity-list.use-case';
 import { BusinessActivityAdminController } from './presentation/business-activity-admin.controller';
+import { TOPIC_READER } from './application/ports/topic.reader';
+import { TOPIC_REPOSITORY } from './application/ports/topic.repository';
+import { TopicCreate } from './application/use-cases/topic-create.use-case';
+import { TopicEdit } from './application/use-cases/topic-edit.use-case';
+import { TopicGet } from './application/use-cases/topic-get.use-case';
+import { TopicList } from './application/use-cases/topic-list.use-case';
+import { TopicAdminController } from './presentation/topic-admin.controller';
 import { BrandCreate } from './application/use-cases/brand-create.use-case';
 import { BrandEdit } from './application/use-cases/brand-edit.use-case';
 import { BrandGet } from './application/use-cases/brand-get.use-case';
@@ -513,6 +520,8 @@ const PORT = {
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
+  topics: TOPIC_REPOSITORY,
+  topicReader: TOPIC_READER,
   contentFilter: ContentFilter,
   variantAdminReader: VARIANT_ADMIN_READER,
   variantTypeSettings: VARIANT_TYPE_SETTINGS_STORE,
@@ -644,6 +653,7 @@ const RESTRUCTURE_DEPS = {
     OwnAttributeSuggestionsController,
     CategoryAdminController,
     BusinessActivityAdminController,
+    TopicAdminController,
     OwnBrandController,
     PublicBrandController,
   ],
@@ -782,6 +792,23 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       activities: true,
       treeReader: true,
+      policy: true,
+      matcher: true,
+      clock: true,
+    }),
+    useCaseProvider(TopicList, { unitOfWork: true, topicReader: true, policy: true }),
+    useCaseProvider(TopicGet, { unitOfWork: true, topics: true }),
+    useCaseProvider(TopicCreate, {
+      unitOfWork: true,
+      topics: true,
+      policy: true,
+      matcher: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(TopicEdit, {
+      unitOfWork: true,
+      topics: true,
       policy: true,
       matcher: true,
       clock: true,
