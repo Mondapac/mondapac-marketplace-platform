@@ -11,7 +11,6 @@ import { CATALOG_OWN_IMPORT_RUN, CATALOG_OWN_PRODUCT_EDIT } from '../../contract
 import {
   draftContentOfRevision,
   mergeImportRow,
-  withMintedIds,
 } from '../../domain/seller-import/merge-import-row';
 import type { SellerGroupPlan } from '../../domain/seller-import/row-check';
 import { isActingAsSession } from '../acting-as';
