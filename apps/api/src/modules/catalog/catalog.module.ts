@@ -200,6 +200,7 @@ import { simpleProductType } from './domain/product-types/simple';
 import { PlatformProductController } from './presentation/platform-product.controller';
 import { OfferReviewController } from './presentation/offer-review.controller';
 import { OwnOfferController } from './presentation/own-offer.controller';
+import { OwnProductsExport } from './application/use-cases/own-products-export.use-case';
 import { OwnProductsList } from './application/use-cases/own-products-list.use-case';
 import { OwnProductRead } from './application/use-cases/own-product-read.use-case';
 import { OwnOffersList } from './application/use-cases/own-offers-list.use-case';
@@ -1957,6 +1958,13 @@ const RESTRUCTURE_DEPS = {
       clock: true,
     }),
     useCaseProvider(OwnProductsList, { unitOfWork: true, ownReader: true, policy: true }),
+    useCaseProvider(OwnProductsExport, {
+      unitOfWork: true,
+      ownReader: true,
+      policy: true,
+      sheetWriter: true,
+      clock: true,
+    }),
     useCaseProvider(OwnProductRead, {
       unitOfWork: true,
       products: true,

@@ -69,6 +69,11 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "catalog.own-product-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  {
+    "name": "catalog.own-products-export",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "catalog.own-products-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {
     "name": "catalog.own-saved-filter-create",

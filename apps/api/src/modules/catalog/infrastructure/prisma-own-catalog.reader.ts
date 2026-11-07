@@ -7,6 +7,7 @@ import type {
   OwnCatalogReader,
   OwnOfferSellUnitView,
   OwnProductRow,
+  OwnProductIdsResult,
   OwnProductViewTotals,
   OwnProductSort,
   OwnProductsFilter,
@@ -110,6 +111,7 @@ function listWhere(
     scope: 'SELLER',
     ownerSellerId: sellerId,
     status: { in: [...filter.statuses] },
+    ...(filter.productIds === undefined ? {} : { id: { in: [...filter.productIds] } }),
     ...(filter.inReview ? { pendingRevisionId: { not: null } } : {}),
     ...(filter.paused === null ? {} : { pausedAt: filter.paused ? { not: null } : null }),
     ...(filter.typeCode === null ? {} : { typeCode: filter.typeCode }),
@@ -243,38 +245,8 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
     const where = listWhere(market, sellerId, filter);
     let picked: ListedProduct[];
     if (order.sort === 'name') {
-      const found = await tx.catalogProduct.findMany({
-        where,
-        select: LIST_SELECT,
-        orderBy: { id: 'asc' },
-        take: OWN_NAME_SORT_LIMIT + 1,
-      });
-      if (found.length > OWN_NAME_SORT_LIMIT) return { kind: 'too-broad' };
-      // The revision's name is read only for the rows that show it (no draft).
-      const names = await this.revisionNames(
-        market,
-        found.flatMap((row) =>
-          row.workingCopy !== null || shownRevisionOf(row) === null ? [] : [shownRevisionOf(row)!],
-        ),
-        filter.locale,
-      );
-      const nameOf = (row: ListedProduct): string | null => {
-        if (row.workingCopy !== null) return draftNameIn(draftContentOf(row), filter.locale);
-        const revisionId = shownRevisionOf(row);
-        return revisionId === null ? null : (names.get(revisionId) ?? null);
-      };
-      const collator = new Intl.Collator(filter.locale, { sensitivity: 'base', numeric: true });
-      const sign = order.direction === 'asc' ? 1 : -1;
-      found.sort((a, b) => {
-        const left = nameOf(a);
-        const right = nameOf(b);
-        // A product without a name in the locale sorts last in either direction.
-        if (left === null || right === null) {
-          if (left === right) return a.id < b.id ? -1 : 1;
-          return left === null ? 1 : -1;
-        }
-        return sign * collator.compare(left, right) || (a.id < b.id ? -1 : 1);
-      });
+      const found = await this.nameSorted(market, where, filter.locale, order.direction);
+      if (found === null) return { kind: 'too-broad' };
       picked = found.slice(page.offset, page.offset + page.limit);
     } else {
       const column = order.sort === 'created' ? 'createdAt' : 'lastChangedAt';
@@ -287,6 +259,99 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
       });
     }
     return { kind: 'rows', rows: await this.productRows(market, sellerId, picked, filter.locale) };
+  }
+
+  async listProductIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnProductsFilter,
+    order: { readonly sort: OwnProductSort; readonly direction: OwnSortDirection },
+    limit: number,
+  ): Promise<OwnProductIdsResult> {
+    const where = listWhere(market, sellerId, filter);
+    if (order.sort === 'name') {
+      const found = await this.nameSorted(market, where, filter.locale, order.direction);
+      if (found === null) return { kind: 'too-broad' };
+      return { kind: 'ids', ids: found.slice(0, limit).map((row) => row.id as Id<'Product'>) };
+    }
+    const column = order.sort === 'created' ? 'createdAt' : 'lastChangedAt';
+    const rows = await this.prisma.tx(market).catalogProduct.findMany({
+      where,
+      select: { id: true },
+      orderBy: [{ [column]: order.direction }, { id: order.direction }],
+      take: limit,
+    });
+    return { kind: 'ids', ids: rows.map((row) => row.id as Id<'Product'>) };
+  }
+
+  async listProductRowsByIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    productIds: readonly Id<'Product'>[],
+    locale: string,
+  ): Promise<readonly OwnProductRow[]> {
+    const wanted = productIds.slice(0, MAX_PAGE);
+    if (wanted.length === 0) return [];
+    // The owner and the Market only: a product that changed status since the ids were read still
+    // belongs to the snapshot; one that left the seller's list altogether is absent.
+    const found = await this.prisma.tx(market).catalogProduct.findMany({
+      where: {
+        marketId: market.marketId,
+        scope: 'SELLER',
+        ownerSellerId: sellerId,
+        status: { notIn: ['discarded', 'withdrawn'] },
+        id: { in: [...wanted] },
+      },
+      select: LIST_SELECT,
+    });
+    const byId = new Map(found.map((row) => [row.id, row]));
+    const picked = wanted.flatMap((id) => byId.get(id) ?? []);
+    return this.productRows(market, sellerId, picked, locale);
+  }
+
+  /**
+   * The products `where` keeps in name order (the name in `locale`, a product without one last),
+   * or null when more than {@link OWN_NAME_SORT_LIMIT} match.
+   */
+  private async nameSorted(
+    market: MarketContext,
+    where: Prisma.CatalogProductWhereInput,
+    locale: string,
+    direction: OwnSortDirection,
+  ): Promise<ListedProduct[] | null> {
+    const found = await this.prisma.tx(market).catalogProduct.findMany({
+      where,
+      select: LIST_SELECT,
+      orderBy: { id: 'asc' },
+      take: OWN_NAME_SORT_LIMIT + 1,
+    });
+    if (found.length > OWN_NAME_SORT_LIMIT) return null;
+    // The revision's name is read only for the rows that show it (no draft).
+    const names = await this.revisionNames(
+      market,
+      found.flatMap((row) =>
+        row.workingCopy !== null || shownRevisionOf(row) === null ? [] : [shownRevisionOf(row)!],
+      ),
+      locale,
+    );
+    const nameOf = (row: ListedProduct): string | null => {
+      if (row.workingCopy !== null) return draftNameIn(draftContentOf(row), locale);
+      const revisionId = shownRevisionOf(row);
+      return revisionId === null ? null : (names.get(revisionId) ?? null);
+    };
+    const collator = new Intl.Collator(locale, { sensitivity: 'base', numeric: true });
+    const sign = direction === 'asc' ? 1 : -1;
+    found.sort((a, b) => {
+      const left = nameOf(a);
+      const right = nameOf(b);
+      // A product without a name in the locale sorts last in either direction.
+      if (left === null || right === null) {
+        if (left === right) return a.id < b.id ? -1 : 1;
+        return left === null ? 1 : -1;
+      }
+      return sign * collator.compare(left, right) || (a.id < b.id ? -1 : 1);
+    });
+    return found;
   }
 
   private async revisionNames(
