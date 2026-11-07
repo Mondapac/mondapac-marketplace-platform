@@ -1101,8 +1101,10 @@ delete, 10.1, and a photo delete must never conflict with a row that remembers w
   (jsonb: header and a mark `certification`, `elsewhere` or none), `skip_errors`, `to_import` (set
   together at the start), `created_rows`, `updated_rows`, `unchanged_rows`, `failed_rows` (CHECK
   `>= 0`), `stop_reason` CHECK (`rate-limited`, `access-lost`, `seller-not-eligible`, `file-missing`,
-  `unexpected`; set exactly when `stopped`), `not_before` (only on `queued`), `lease_until` (exactly
-  when `running`), `version`, `created_at`, `checked_at`, `started_at`, `finished_at` (exactly when
+  `unexpected`; set exactly when `stopped`), `ended_at` (exactly when `stopped`: the start of the
+  7-day photo window of a stopped job; cleared by a resume), `not_before` (only on `queued`),
+  `lease_until` (exactly when `running`), `last_turn_at` (the end of the job's last turn; the
+  round-robin claim orders by it, never-run first), `version`, `created_at`, `checked_at`, `started_at`, `finished_at` (exactly when
   `finished` or `discarded`). No price, cost or stock column (the "no money or stock column" name
   test of section 1 covers these tables).
 - `seller_import_rows`: PK `(market_id, job_id, row_number)` (as 3.29), `tenant_id`,
@@ -1115,9 +1117,9 @@ delete, 10.1, and a photo delete must never conflict with a row that remembers w
   statement). CHECK: `run_state IN ('created','updated','unchanged')` implies `offer_id IS NOT
   NULL`. Composite FK to the job, `ON DELETE CASCADE`.
 - `seller_import_photos`: PK `(market_id, job_id, name_key)` (`name_key` the cleaned label in lower
-  case, 1 to 80 characters), `tenant_id`, `product_id`, `image_id`, `added_at`. Insert-only: one
-  row per photo added by the photo step (the `import.photo-already-added` guard and the per-job
-  count). Composite FK to the job, `ON DELETE CASCADE`. No bytes and no object key: the photo is an
+  case, 1 to 80 characters), `tenant_id`, `product_id`, `image_id` (null while the name is reserved and the upload runs; set once), `added_at`. One
+  row per photo added by the photo step, inserted as a reservation before the upload and deleted
+  when the upload fails (the `import.photo-already-added` guard and the per-job count). Composite FK to the job, `ON DELETE CASCADE`. No bytes and no object key: the photo is an
   ordinary `product_images` row (3.19).
 - Indexes: unique `(market_id, id)`; `seller_import_jobs_market_id_seller_created_at_idx (market_id,
   seller_id, created_at DESC)` (the seller's list and latest job); `seller_import_jobs_market_id_account_created_at_idx
@@ -1129,12 +1131,12 @@ delete, 10.1, and a photo delete must never conflict with a row that remembers w
   enforced by the database and not only by the discard in the check's unit; Mojtaba M1);
   `seller_import_jobs_market_id_seller_started_at_idx (market_id, seller_id, started_at) WHERE
   started_at IS NOT NULL` (the 24-hour sum of `to_import`, at most 5 starts a day, so a few rows;
-  Mojtaba M2); `seller_import_jobs_market_id_queue_idx` and `..._file_purge_idx` as 3.29. Rows are
+  Mojtaba M2); `seller_import_jobs_market_id_queue_idx (market_id, last_turn_at NULLS FIRST, created_at, id)` and `..._file_purge_idx` as 3.29. Rows are
   read by primary-key range, as 3.29.
 - Grants (app role): `SELECT, INSERT, DELETE` on the three tables; `UPDATE` on jobs only `(state,
   file_deleted_at, skip_errors, to_import, created_rows, updated_rows, unchanged_rows, failed_rows,
-  stop_reason, not_before, lease_until, version, started_at, finished_at)` and on rows only
-  `(run_state, run_code, product_id, offer_id, product_code)`; none on photos. No `TRUNCATE`.
+  stop_reason, ended_at, not_before, lease_until, last_turn_at, version, started_at, finished_at)` and on rows only
+  `(run_state, run_code, product_id, offer_id, product_code)`; on photos only `(image_id)`. No `TRUNCATE`.
 - `rate_counters` kinds `seller-import-check.seller.hour`, `seller-import-check.seller.day`,
   `import-photo.seller.minute`, `import-photo.seller.day` join the CHECK (`import-start.seller.day`
   is already there).
@@ -1146,7 +1148,7 @@ delete, 10.1, and a photo delete must never conflict with a row that remembers w
   bytes each. The purge `catalog.purge-seller-imports` works in units of 5 jobs within 30 s
   (10.3, 10.4).
 - `seller_import_photos` is not on the insert-only trigger list (5.1): the purge removes it by the
-  job's cascade, and the missing `UPDATE` grant is its guard (Mojtaba M5).
+  job's cascade, and the narrow `UPDATE (image_id)` grant is its guard (Mojtaba M5).
 - Reversible: `pnpm db:check-reversible` passes (up, down newest-first, up, no drift).
 
 ## 4. What is never stored
