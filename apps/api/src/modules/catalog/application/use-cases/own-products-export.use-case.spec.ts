@@ -18,7 +18,7 @@ import type {
   OwnCatalogReader,
   OwnProductRow,
   OwnProductsFilter,
-  OwnProductsPageResult,
+  OwnProductIdsResult,
 } from '../ports/own-catalog.reader';
 import { XLSX_CONTENT_TYPE, type SheetWriter } from '../ports/sheet-writer';
 import {
@@ -87,7 +87,7 @@ describe.each(['AU', 'ZZ'] as const)('seller products export in market %s', (cod
 
   function setup(
     options: {
-      /** Every row the reader holds; pages slice it by offset and limit. */
+      /** Every row the reader holds, in file order; ids are read first, then rows by those ids. */
       readonly rows?: readonly OwnProductRow[];
       readonly total?: number;
       readonly tooBroad?: boolean;
@@ -119,25 +119,45 @@ describe.each(['AU', 'ZZ'] as const)('seller products export in market %s', (cod
         return fails ? Promise.resolve({ ok: false, error: new Error('down') }) : work();
       },
     } as unknown as UnitOfWork;
-    const countCalls: { sellerId: string; filters: readonly OwnProductsFilter[] }[] = [];
-    const pageCalls: {
+    const countCalls: { sellerId: string; filter: OwnProductsFilter }[] = [];
+    const idCalls: {
       market: string;
       sellerId: string;
       filter: OwnProductsFilter;
       order: { sort: string; direction: string };
-      page: { offset: number; limit: number };
+      limit: number;
     }[] = [];
+    const rowCalls: { market: string; sellerId: string; ids: readonly string[]; locale: string }[] =
+      [];
+    // The store the fake reads: a test may change it between the id read and a chunk read.
+    const store = [...rows];
     const ownReader = {
-      countProductsBy: (_m, s, filters) => {
-        countCalls.push({ sellerId: s, filters });
-        return Promise.resolve([options.total ?? rows.length]);
+      countProductViews: (_m, s, filter) => {
+        countCalls.push({ sellerId: s, filter });
+        return Promise.resolve({
+          byStatus: { published: options.total ?? store.length },
+          inReview: 0,
+        });
       },
-      listProductPage: (m, s, filter, order, page) => {
-        pageCalls.push({ market: m.marketId, sellerId: s, filter, order, page });
-        const result: OwnProductsPageResult = options.tooBroad
+      listProductIds: (m, s, filter, order, limit) => {
+        idCalls.push({ market: m.marketId, sellerId: s, filter, order, limit });
+        const result: OwnProductIdsResult = options.tooBroad
           ? { kind: 'too-broad' }
-          : { kind: 'rows', rows: rows.slice(page.offset, page.offset + page.limit) };
+          : {
+              kind: 'ids',
+              ids:
+                options.total === undefined
+                  ? store.slice(0, limit).map((r) => r.productId)
+                  : Array.from({ length: Math.min(limit, options.total) }, () =>
+                      ids.next<'Product'>(),
+                    ),
+            };
         return Promise.resolve(result);
+      },
+      listProductRowsByIds: (m, s, productIds, rowLocale) => {
+        rowCalls.push({ market: m.marketId, sellerId: s, ids: productIds, locale: rowLocale });
+        const found = productIds.flatMap((id) => store.find((r) => r.productId === id) ?? []);
+        return Promise.resolve(found);
       },
     } as Partial<OwnCatalogReader> as OwnCatalogReader;
     const xlsxRows: (readonly string[])[] = [];
@@ -157,7 +177,7 @@ describe.each(['AU', 'ZZ'] as const)('seller products export in market %s', (cod
       sheetWriter,
       clock,
     });
-    return { useCase, checked, units, countCalls, pageCalls, xlsxRows };
+    return { useCase, checked, units, countCalls, idCalls, rowCalls, store, xlsxRows };
   }
 
   async function read(chunks: AsyncIterable<string | Uint8Array>): Promise<string> {
@@ -206,7 +226,7 @@ describe.each(['AU', 'ZZ'] as const)('seller products export in market %s', (cod
   });
 
   it('writes a CSV with the default columns, a byte order mark and the day in the name', async () => {
-    const { useCase, units, countCalls, pageCalls } = setup({
+    const { useCase, units, countCalls, idCalls, rowCalls } = setup({
       rows: [row({ name: 'Dates', productCode: 'P00000007' })],
     });
 
@@ -220,39 +240,34 @@ describe.each(['AU', 'ZZ'] as const)('seller products export in market %s', (cod
       `${BOM}Product,Status,Category,Product code,Last changed\r\n` +
         'Dates,Live,Fruit,P00000007,2026-11-07T00:00:00Z\r\n',
     );
-    // The selector is the list's: the all view, newest change first, for the calling seller.
-    expect(countCalls).toEqual([
-      {
-        sellerId,
-        filters: [
-          {
-            statuses: ['draft', 'unpublished', 'published', 'matched', 'retired'],
-            inReview: false,
-            paused: null,
-            categoryId: null,
-            typeCode: null,
-            text: null,
-            locale,
-          },
-        ],
-      },
-    ]);
-    expect(pageCalls).toEqual([
+    // The selector is the list's: the all view, newest change first, for the calling seller; the
+    // ids are read first (one more than the cap), then the rows by those ids.
+    expect(countCalls).toEqual([]);
+    expect(idCalls).toEqual([
       {
         market: code,
         sellerId,
-        filter: countCalls[0]!.filters[0],
+        filter: {
+          statuses: ['draft', 'unpublished', 'published', 'matched', 'retired'],
+          inReview: false,
+          paused: null,
+          categoryId: null,
+          typeCode: null,
+          text: null,
+          locale,
+        },
         order: { sort: 'updated', direction: 'desc' },
-        page: { offset: 0, limit: 100 },
+        limit: OWN_EXPORT_MAX_ROWS + 1,
       },
     ]);
+    expect(rowCalls).toEqual([{ market: code, sellerId, ids: [expect.any(String)], locale }]);
     expect(units.every((unit) => unit.market === code && unit.options?.readOnly === true)).toBe(
       true,
     );
   });
 
   it('passes the tab, search, filters and order of the list to the reader', async () => {
-    const { useCase, pageCalls } = setup({ rows: [row()] });
+    const { useCase, idCalls } = setup({ rows: [row()] });
     const category = ids.next<'Category'>();
 
     await csvOf(useCase, {
@@ -266,7 +281,7 @@ describe.each(['AU', 'ZZ'] as const)('seller products export in market %s', (cod
       direction: 'desc',
     });
 
-    expect(pageCalls[0]).toMatchObject({
+    expect(idCalls[0]).toMatchObject({
       sellerId,
       filter: {
         statuses: ['published'],
@@ -360,27 +375,55 @@ describe.each(['AU', 'ZZ'] as const)('seller products export in market %s', (cod
     ]);
   });
 
-  it('reads the products in chunks of 100, each in its own read-only unit', async () => {
+  it('reads the ids once, then the rows by id in chunks of 100, each in its own read-only unit', async () => {
     const many = Array.from({ length: 250 }, (_, index) =>
       row({ name: `Product ${index}`, productCode: `P${String(index).padStart(8, '0')}` }),
     );
-    const { useCase, units, pageCalls } = setup({ rows: many });
+    const { useCase, units, idCalls, rowCalls } = setup({ rows: many });
 
     const text = await csvOf(useCase, { columns: 'product,status,category' });
 
     expect(text.split('\r\n')).toHaveLength(250 + 2);
-    expect(pageCalls.map((call) => call.page)).toEqual([
-      { offset: 0, limit: 100 },
-      { offset: 100, limit: 100 },
-      { offset: 200, limit: 100 },
+    expect(idCalls).toHaveLength(1);
+    expect(rowCalls.map((call) => call.ids)).toEqual([
+      many.slice(0, 100).map((product) => product.productId),
+      many.slice(100, 200).map((product) => product.productId),
+      many.slice(200).map((product) => product.productId),
     ]);
-    // One unit for the count and the first chunk, one for each later chunk.
+    // One unit for the ids and the first chunk, one for each later chunk.
     expect(units).toHaveLength(3);
+  });
+
+  it('keeps the file to the ids it read first when the products change while it streams', async () => {
+    const many = Array.from({ length: 250 }, (_, index) =>
+      row({ name: `Product ${index}`, productCode: `P${String(index).padStart(8, '0')}` }),
+    );
+    const { useCase, store } = setup({ rows: many });
+
+    const result = await useCase.execute(sellerContext(), { columns: 'code' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // The first chunk is read; then the seller edits: a product moves to the front of the list,
+    // one is deleted, and a new one appears. Reading by offset would repeat and skip rows.
+    const moved = many[150]!;
+    store.splice(store.indexOf(moved), 1);
+    store.unshift(moved);
+    store.splice(store.indexOf(many[120]!), 1);
+    store.unshift(row({ productCode: 'P99999999' }));
+    const lines = (await read(result.value.chunks)).split('\r\n').slice(1, -1);
+
+    const codes = lines.map((line) => line.split(',')[3]);
+    expect(new Set(codes).size).toBe(codes.length);
+    expect(codes).not.toContain('P99999999');
+    // Every product of the snapshot appears once, in its first order, but the deleted one.
+    const expected = many.map((product) => product.productCode);
+    expect(codes).toEqual(expected.filter((code) => code !== many[120]!.productCode));
   });
 
   it('exports exactly the selected rows, in the order asked, whatever the tab and search', async () => {
     const mine = [row({ name: 'A' }), row({ name: 'B' })];
-    const { useCase, countCalls, pageCalls } = setup({ rows: mine });
+    const { useCase, countCalls, idCalls } = setup({ rows: mine });
     const selected = mine.map((product) => product.productId);
 
     const text = await csvOf(useCase, {
@@ -403,19 +446,19 @@ describe.each(['AU', 'ZZ'] as const)('seller products export in market %s', (cod
       locale,
       productIds: selected,
     };
-    expect(countCalls).toEqual([{ sellerId, filters: [filter] }]);
-    expect(pageCalls[0]).toMatchObject({ filter, order: { sort: 'created', direction: 'asc' } });
+    expect(countCalls).toEqual([]);
+    expect(idCalls[0]).toMatchObject({ filter, order: { sort: 'created', direction: 'asc' } });
   });
 
   it('answers product.not-found when a selected id is not a listed product of the seller', async () => {
     // The reader keeps only the seller's products, so a stranger's id lowers the count.
-    const { useCase, pageCalls } = setup({ rows: [row()], total: 1 });
+    const { useCase, rowCalls } = setup({ rows: [row()] });
     const result = await useCase.execute(sellerContext(), {
       productIds: `${ids.next<'Product'>()},${ids.next<'Product'>()}`,
     });
 
     expect(result).toEqual({ ok: false, error: { code: 'product.not-found' } });
-    expect(pageCalls).toEqual([]);
+    expect(rowCalls).toEqual([]);
   });
 
   it('refuses a bad selection: format, duplicates, too many ids', async () => {
@@ -486,24 +529,25 @@ describe.each(['AU', 'ZZ'] as const)('seller products export in market %s', (cod
   });
 
   it('refuses more than the row cap whole, with the total, and writes nothing', async () => {
-    const { useCase, pageCalls } = setup({ total: OWN_EXPORT_MAX_ROWS + 1 });
+    const { useCase, rowCalls, countCalls } = setup({ total: OWN_EXPORT_MAX_ROWS + 1 });
 
     expect(await useCase.execute(sellerContext(), {})).toEqual({
       ok: false,
       error: { code: 'batch.too-large', max: OWN_EXPORT_MAX_ROWS, total: OWN_EXPORT_MAX_ROWS + 1 },
     });
-    expect(pageCalls).toEqual([]);
+    expect(rowCalls).toEqual([]);
+    expect(countCalls).toHaveLength(1);
   });
 
   it('exports exactly the row cap', async () => {
-    const { useCase, pageCalls } = setup({
+    const { useCase, rowCalls } = setup({
       rows: Array.from({ length: OWN_EXPORT_MAX_ROWS }, () => row()),
     });
 
     const text = await csvOf(useCase, { columns: 'product' });
 
     expect(text.split('\r\n')).toHaveLength(OWN_EXPORT_MAX_ROWS + 2);
-    expect(pageCalls).toHaveLength(OWN_EXPORT_MAX_ROWS / 100);
+    expect(rowCalls).toHaveLength(OWN_EXPORT_MAX_ROWS / 100);
   });
 
   it('refuses a name sort over too many matches before the status line, as the list does', async () => {

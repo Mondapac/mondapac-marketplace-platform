@@ -9,14 +9,10 @@ import type {
   OwnCatalogReader,
   OwnProductRow,
   OwnProductsFilter,
-  OwnProductsPageResult,
-  OwnProductSort,
-  OwnSortDirection,
 } from '../ports/own-catalog.reader';
 import { XLSX_CONTENT_TYPE, type SheetWriter } from '../ports/sheet-writer';
 import { productIdOf } from '../products/product-lifecycle';
 import { csvChunks, textRows, type ExportCell } from '../products/products-csv';
-import { BULK_MAX_IDS } from './admin-products-bulk.use-case';
 import { EXPORT_FORMATS, EXPORT_MAX_ROWS } from './admin-products-export.use-case';
 import {
   filterOf,
@@ -29,8 +25,8 @@ export { EXPORT_FORMATS };
 
 /** Products one export may hold (the admin export's cap); more is refused whole. */
 export const OWN_EXPORT_MAX_ROWS = EXPORT_MAX_ROWS;
-/** Selected rows one export may name (the admin export's cap on `ids`). */
-export const OWN_EXPORT_MAX_IDS = BULK_MAX_IDS;
+/** Selected rows one export may name: one list page at its largest (100 rows). */
+export const OWN_EXPORT_MAX_IDS = 100;
 /** Products read per chunk while the file streams: the reader's page ceiling. */
 const CHUNK = 100;
 
@@ -107,8 +103,14 @@ export interface OwnProductsExportDependencies {
 /** What the first read of an export found. */
 type Head =
   | { readonly kind: 'not-found' }
+  | { readonly kind: 'too-broad' }
   | { readonly kind: 'too-large'; readonly total: number }
-  | { readonly kind: 'page'; readonly total: number; readonly page: OwnProductsPageResult };
+  | {
+      readonly kind: 'snapshot';
+      /** The matching products in file order, read once: the file holds exactly these. */
+      readonly ids: readonly Id<'Product'>[];
+      readonly firstRows: readonly OwnProductRow[];
+    };
 
 const OWN_KEYS = new Set(['format', 'columns', 'productIds']);
 
@@ -129,9 +131,10 @@ const OWN_KEYS = new Set(['format', 'columns', 'productIds']);
  * `catalog.own-product.view` and the seller population; the seller comes from the actor, so
  * another seller's product is never read. The file is built like the admin export's: the same
  * writers, so a CSV text cell that starts with a formula sign gets a leading quote and an XLSX
- * cell is always a string. Reads run in read-only units of {@link CHUNK} products each, so no
- * export holds the whole file; the first chunk is read before the answer, so a refusal never
- * arrives after the status line.
+ * cell is always a string. The matching ids are read first, in file order (at most the cap), and
+ * the rows are read by those ids in read-only units of {@link CHUNK} products each, so an edit
+ * while the file streams cannot shift or repeat a row, and no export holds the whole file; the
+ * first chunk is read before the answer, so a refusal never arrives after the status line.
  */
 export class OwnProductsExport extends UseCase<
   OwnProductsExportInput,
@@ -201,31 +204,45 @@ export class OwnProductsExport extends UseCase<
     const first = await deps.unitOfWork.run(
       market,
       async (): Promise<Result<Head, never>> => {
-        const [total = 0] = await deps.ownReader.countProductsBy(market, sellerId, [filter]);
-        if (ids.value !== null && total !== ids.value.length) {
+        // The matching ids first, in file order and one more than the cap: the rows are then read
+        // by id, so an edit while the file streams can neither move nor repeat a row.
+        const snapshot = await deps.ownReader.listProductIds(
+          market,
+          sellerId,
+          filter,
+          order,
+          OWN_EXPORT_MAX_ROWS + 1,
+        );
+        if (snapshot.kind === 'too-broad') return ok({ kind: 'too-broad' });
+        const found = snapshot.ids;
+        if (ids.value !== null && found.length !== ids.value.length) {
           return ok({ kind: 'not-found' });
         }
-        if (total > OWN_EXPORT_MAX_ROWS) return ok({ kind: 'too-large', total });
-        const page = await deps.ownReader.listProductPage(market, sellerId, filter, order, {
-          offset: 0,
-          limit: CHUNK,
-        });
-        return ok({ kind: 'page', total, page });
+        if (found.length > OWN_EXPORT_MAX_ROWS) {
+          const totals = await deps.ownReader.countProductViews(market, sellerId, filter);
+          const total = Object.values(totals.byStatus).reduce((sum, n) => sum + n, 0);
+          return ok({ kind: 'too-large', total });
+        }
+        const firstRows = await deps.ownReader.listProductRowsByIds(
+          market,
+          sellerId,
+          found.slice(0, CHUNK),
+          locale,
+        );
+        return ok({ kind: 'snapshot', ids: found, firstRows });
       },
       { readOnly: true },
     );
     if (!first.ok) return err({ code: 'access.unavailable' });
     const head = first.value;
     if (head.kind === 'not-found') return err({ code: 'product.not-found' });
+    if (head.kind === 'too-broad') return invalid('sort', 'too-broad');
     if (head.kind === 'too-large') {
       return err({ code: 'batch.too-large', max: OWN_EXPORT_MAX_ROWS, total: head.total });
     }
-    if (head.page.kind === 'too-broad') return invalid('sort', 'too-broad');
 
     const day = deps.clock.now().toString().slice(0, 10);
-    const rows = this.#rows(context, sellerId, filter, order, columns.value, head.total, [
-      ...head.page.rows,
-    ]);
+    const rows = this.#rows(context, sellerId, locale, columns.value, head.ids, head.firstRows);
     if (format === 'xlsx') {
       return ok({
         filename: `products-${day}.xlsx`,
@@ -240,37 +257,37 @@ export class OwnProductsExport extends UseCase<
     });
   }
 
-  /** The rows of the file, a group per page of products: the header group first. */
+  /** The rows of the file, a group per chunk of the snapshot's ids: the header group first. */
   async *#rows(
     context: CallContext,
     sellerId: Id<'Seller'>,
-    filter: OwnProductsFilter,
-    order: { readonly sort: OwnProductSort; readonly direction: OwnSortDirection },
+    locale: string,
     columns: readonly OwnExportColumn[],
-    total: number,
-    firstPage: readonly OwnProductRow[],
+    snapshot: readonly Id<'Product'>[],
+    firstRows: readonly OwnProductRow[],
   ): AsyncGenerator<readonly (readonly ExportCell[])[]> {
     const { market } = context;
     const { deps } = this;
     yield [columns.map((column) => OWN_EXPORT_HEADERS[column])];
-    yield firstPage.map((row) => columns.map((column) => cellOf(column, row)));
-    for (let offset = CHUNK; offset < total; offset += CHUNK) {
+    yield firstRows.map((row) => columns.map((column) => cellOf(column, row)));
+    for (let start = CHUNK; start < snapshot.length; start += CHUNK) {
       const read = await deps.unitOfWork.run(
         market,
         async () =>
           ok(
-            await deps.ownReader.listProductPage(market, sellerId, filter, order, {
-              offset,
-              limit: CHUNK,
-            }),
+            await deps.ownReader.listProductRowsByIds(
+              market,
+              sellerId,
+              snapshot.slice(start, start + CHUNK),
+              locale,
+            ),
           ),
         { readOnly: true },
       );
-      if (!read.ok || read.value.kind !== 'rows') {
-        throw new Error('catalog.own-products-export: the read failed');
-      }
-      if (read.value.rows.length === 0) return;
-      yield read.value.rows.map((row) => columns.map((column) => cellOf(column, row)));
+      if (!read.ok) throw new Error('catalog.own-products-export: the read failed');
+      // A product deleted since the snapshot is absent; the rest keep their place.
+      if (read.value.length === 0) continue;
+      yield read.value.map((row) => columns.map((column) => cellOf(column, row)));
     }
   }
 }

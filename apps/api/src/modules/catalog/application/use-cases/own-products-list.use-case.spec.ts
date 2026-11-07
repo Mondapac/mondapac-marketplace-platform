@@ -19,6 +19,7 @@ import type {
   OwnProductRow,
   OwnProductsFilter,
   OwnProductsPageResult,
+  OwnProductViewTotals,
 } from '../ports/own-catalog.reader';
 import { MAX_OWN_LIST_ROWS, OwnProductsList, parseListQuery } from './own-products-list.use-case';
 
@@ -108,6 +109,13 @@ describe('the closed query of the seller product list', () => {
     expect(parseListQuery([])).toEqual(failure('query', 'type'));
   });
 
+  it('echoes at most 64 characters of an unknown key', () => {
+    expect(parseListQuery({ ['k'.repeat(500)]: 1 })).toEqual(failure('k'.repeat(64), 'unknown'));
+    expect(parseListQuery({ ['\u{1F600}'.repeat(70)]: 1 })).toEqual(
+      failure('\u{1F600}'.repeat(64), 'unknown'),
+    );
+  });
+
   it('accepts a search of exactly 100 characters, counted as characters', () => {
     expect(parseListQuery({ q: 'x'.repeat(100) }).ok).toBe(true);
     expect(parseListQuery({ q: '\u{1F600}'.repeat(100) }).ok).toBe(true);
@@ -174,7 +182,7 @@ describe.each(['AU', 'ZZ'] as const)('seller products list in market %s', (code)
   function setup(
     options: {
       readonly rows?: readonly OwnProductRow[];
-      readonly counts?: readonly number[];
+      readonly counts?: OwnProductViewTotals;
       readonly page?: OwnProductsPageResult;
       readonly allow?: boolean;
       readonly unitFails?: boolean;
@@ -203,7 +211,7 @@ describe.each(['AU', 'ZZ'] as const)('seller products list in market %s', (code)
     const countCalls: {
       market: string;
       sellerId: string;
-      filters: readonly OwnProductsFilter[];
+      filter: OwnProductsFilter;
     }[] = [];
     const listCalls: {
       market: string;
@@ -214,9 +222,14 @@ describe.each(['AU', 'ZZ'] as const)('seller products list in market %s', (code)
     }[] = [];
     const keysetCalls: unknown[] = [];
     const ownReader = {
-      countProductsBy: (m, s, filters) => {
-        countCalls.push({ market: m.marketId, sellerId: s, filters });
-        return Promise.resolve(options.counts ?? [9, 3, 4, 2, 1]);
+      countProductViews: (m, s, filter) => {
+        countCalls.push({ market: m.marketId, sellerId: s, filter });
+        return Promise.resolve(
+          options.counts ?? {
+            byStatus: { draft: 3, published: 2, matched: 2, unpublished: 1, retired: 1 },
+            inReview: 1,
+          },
+        );
       },
       listProductPage: (m, s, filter, order, page) => {
         listCalls.push({ market: m.marketId, sellerId: s, filter, order, page });
@@ -346,16 +359,13 @@ describe.each(['AU', 'ZZ'] as const)('seller products list in market %s', (code)
     await useCase.execute(sellerContext(), { view: 'live', q: '  dates ' });
     await useCase.execute(sellerContext(), { view: 'in-review' });
 
-    const filters = countCalls[0]!.filters;
-    expect(filters.map((filter) => filter.statuses)).toEqual([
-      LISTED,
-      ['draft'],
-      ['published', 'matched'],
-      ['unpublished', 'retired'],
-      LISTED,
-    ]);
-    expect(filters.map((filter) => filter.inReview)).toEqual([false, false, false, false, true]);
-    expect(filters.every((filter) => filter.text === 'dates')).toBe(true);
+    // One count read serves all five tabs: the listed statuses, with the search.
+    expect(countCalls).toHaveLength(2);
+    expect(countCalls[0]!.filter).toMatchObject({
+      statuses: LISTED,
+      inReview: false,
+      text: 'dates',
+    });
     expect(listCalls[0]!.filter.statuses).toEqual(['published', 'matched']);
     expect(listCalls[1]!.filter).toMatchObject({ statuses: LISTED, inReview: true });
     // A paused product is not an inactive one: Live holds it, Inactive does not.
@@ -366,23 +376,26 @@ describe.each(['AU', 'ZZ'] as const)('seller products list in market %s', (code)
   });
 
   it('narrows the tabs by the status filter, down to none', async () => {
-    const { useCase, countCalls } = setup({ counts: [4, 0, 4, 0, 1] });
+    const { useCase, countCalls } = setup({ counts: { byStatus: { published: 4 }, inReview: 1 } });
 
     const result = await useCase.execute(sellerContext(), { view: 'drafts', status: 'published' });
 
-    expect(countCalls[0]!.filters.map((filter) => filter.statuses)).toEqual([
-      ['published'],
-      [],
-      ['published'],
-      [],
-      ['published'],
-    ]);
-    expect(result).toMatchObject({ ok: true, value: { total: 0, items: [] } });
+    expect(countCalls[0]!.filter.statuses).toEqual(['published']);
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        total: 0,
+        items: [],
+        counts: { all: 4, drafts: 0, live: 4, inactive: 0, inReview: 1 },
+      },
+    });
   });
 
   it('passes the filters, sort and page on, and the offset follows the page', async () => {
     const category = ids.next<'Category'>();
-    const { useCase, listCalls } = setup({ counts: [200, 0, 120, 0, 0] });
+    const { useCase, listCalls } = setup({
+      counts: { byStatus: { draft: 80, published: 120 }, inReview: 0 },
+    });
 
     await useCase.execute(sellerContext(), {
       view: 'live',
@@ -403,7 +416,9 @@ describe.each(['AU', 'ZZ'] as const)('seller products list in market %s', (code)
   });
 
   it('answers an empty page without a list read when the page is past the end', async () => {
-    const { useCase, listCalls } = setup({ counts: [3, 1, 1, 1, 0] });
+    const { useCase, listCalls } = setup({
+      counts: { byStatus: { draft: 1, published: 1, retired: 1 }, inReview: 0 },
+    });
 
     const result = await useCase.execute(sellerContext(), { page: 2 });
 

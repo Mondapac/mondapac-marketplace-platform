@@ -198,7 +198,7 @@ export class OwnProductController {
       '`sort` is name, updated or created (default updated), `direction` asc or desc (default ' +
       'asc for name, desc otherwise). `pageSize` is 25, 50 or 100 (default 25); page numbers stop ' +
       'at row 10,000 (a later page is validation.failed on page). `counts` holds the five tab ' +
-      'counts for the same search and filters. Sorting by name over more than 2000 matches is ' +
+      'counts for the same search and filters. Sorting by name over more than 500 matches is ' +
       'refused with validation.failed (sort, too-broad). Do not mix afterId or limit with the ' +
       'list parameters. No price and no stock.',
   })
@@ -263,7 +263,7 @@ export class OwnProductController {
       'follow. The header row is in English. The file streams ' +
       'as an attachment, built like the admin export. CSV: a text cell that starts with = + - @ ' +
       'is written with a leading quote. XLSX: every cell is a string value, never a formula. ' +
-      'Sorting by name over more than 2000 matches is validation.failed (sort, too-broad).',
+      'Sorting by name over more than 500 matches is validation.failed (sort, too-broad).',
   })
   @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
   @ApiQuery({

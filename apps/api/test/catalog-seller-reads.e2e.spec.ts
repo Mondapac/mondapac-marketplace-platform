@@ -86,9 +86,12 @@ describe('seller read routes over HTTP (integration)', () => {
   let listCalls: { sellerId: unknown; filter: unknown; order: unknown; page: unknown }[];
   let countCalls: { sellerId: unknown; filters: unknown }[];
   let pageRows: OwnProductRow[];
-  let counts: number[];
+  let idCalls: { sellerId: unknown; filter: unknown; order: unknown; limit: unknown }[];
+  let rowCalls: { sellerId: unknown; ids: unknown }[];
+  let viewTotals: Record<string, number>;
   let allowed: AllowedProductTypes | null;
   let allowedAsked: unknown[];
+  const pageIds = () => pageRows.map((row) => row.productId);
   const http = () => request(app.getHttpServer());
 
   async function boot(env: Record<string, string> = {}) {
@@ -126,9 +129,27 @@ describe('seller read routes over HTTP (integration)', () => {
               pageCalls.push(page);
               return Promise.resolve(listed.products);
             },
-            countProductsBy: (_m: unknown, sellerId: unknown, filters: unknown) => {
+            countProductViews: (_m: unknown, sellerId: unknown, filters: unknown) => {
               countCalls.push({ sellerId, filters });
-              return Promise.resolve(counts);
+              return Promise.resolve({ byStatus: viewTotals, inReview: 1 });
+            },
+            listProductIds: (
+              _m: unknown,
+              sellerId: unknown,
+              filter: unknown,
+              order: unknown,
+              limit: unknown,
+            ) => {
+              idCalls.push({ sellerId, filter, order, limit });
+              const total = Object.values(viewTotals).reduce((sum, n) => sum + n, 0);
+              // The snapshot is capped at the limit the use case asks for.
+              const ids =
+                total > 1000 ? Array.from({ length: Number(limit) }, () => PRODUCT) : pageIds();
+              return Promise.resolve({ kind: 'ids', ids });
+            },
+            listProductRowsByIds: (_m: unknown, sellerId: unknown, ids: unknown) => {
+              rowCalls.push({ sellerId, ids });
+              return Promise.resolve(pageRows);
             },
             listProductPage: (
               _m: unknown,
@@ -287,7 +308,9 @@ describe('seller read routes over HTTP (integration)', () => {
     listCalls = [];
     countCalls = [];
     pageRows = [];
-    counts = [7, 3, 2, 1, 1];
+    idCalls = [];
+    rowCalls = [];
+    viewTotals = { draft: 3, published: 1, matched: 1, retired: 1 };
     allowed = 'all';
     allowedAsked = [];
   });
@@ -375,7 +398,7 @@ describe('seller read routes over HTTP (integration)', () => {
         total: 2,
         page: 2,
         pageSize: 50,
-        counts: { all: 7, drafts: 3, live: 2, inactive: 1, inReview: 1 },
+        counts: { all: 6, drafts: 3, live: 2, inactive: 1, inReview: 1 },
       });
       expect(countCalls).toHaveLength(1);
       expect(countCalls[0]!.sellerId).toBe(SELLER);
@@ -391,7 +414,7 @@ describe('seller read routes over HTTP (integration)', () => {
 
       const first = await get(code, '/catalog/seller/products?page=1', sessionOf(code));
       expect(first.status).toBe(200);
-      expect(first.body).toMatchObject({ page: 1, pageSize: 25, total: 7 });
+      expect(first.body).toMatchObject({ page: 1, pageSize: 25, total: 6 });
       expect(listCalls[0]).toMatchObject({
         sellerId: SELLER,
         order: { sort: 'updated', direction: 'desc' },
@@ -432,6 +455,8 @@ describe('seller read routes over HTTP (integration)', () => {
       }
       expect(countCalls).toHaveLength(0);
       expect(listCalls).toHaveLength(0);
+      expect(idCalls).toHaveLength(0);
+      expect(rowCalls).toHaveLength(0);
     });
 
     const exportRow = (overrides: Partial<OwnProductRow> = {}): OwnProductRow => ({
@@ -458,7 +483,6 @@ describe('seller read routes over HTTP (integration)', () => {
       await boot();
       await seeded(code);
       pageRows = [exportRow(), exportRow({ name: '=1+1', pausedAt: START })];
-      counts = [2];
 
       const answer = await get(
         code,
@@ -478,14 +502,14 @@ describe('seller read routes over HTTP (integration)', () => {
           `Lamb cutlets 500 g,Live,Meat,6,${code}-000184\r\n` +
           `'=1+1,Live (paused),Meat,6,${code}-000184\r\n`,
       );
-      expect(countCalls).toHaveLength(1);
-      expect(countCalls[0]!.sellerId).toBe(SELLER);
-      expect(listCalls[0]).toMatchObject({
+      expect(countCalls).toHaveLength(0);
+      expect(idCalls[0]).toMatchObject({
         sellerId: SELLER,
         order: { sort: 'name', direction: 'desc' },
-        page: { offset: 0, limit: 100 },
+        limit: 10_001,
         filter: { statuses: ['published', 'matched'], paused: false, text: 'lamb' },
       });
+      expect(rowCalls[0]).toMatchObject({ sellerId: SELLER, ids: [PRODUCT, PRODUCT] });
       expect(
         logLines.find((l) => l.msg === 'catalog.own-products-export' && l.outcome),
       ).toMatchObject({ outcome: 'ok', marketId: code });
@@ -495,7 +519,6 @@ describe('seller read routes over HTTP (integration)', () => {
       await boot();
       await seeded(code);
       pageRows = [exportRow({ name: '=SUM(A1)' })];
-      counts = [1];
 
       const answer = await get(
         code,
@@ -538,7 +561,6 @@ describe('seller read routes over HTTP (integration)', () => {
       await boot();
       await seeded(code);
       pageRows = [exportRow()];
-      counts = [1];
 
       const mine = await get(
         code,
@@ -546,7 +568,7 @@ describe('seller read routes over HTTP (integration)', () => {
         sessionOf(code),
       ).buffer(true);
       expect(mine.status).toBe(200);
-      expect(listCalls[0]).toMatchObject({ filter: { productIds: [PRODUCT] } });
+      expect(idCalls[0]).toMatchObject({ filter: { productIds: [PRODUCT] } });
 
       // The store keeps only the seller's products: a stranger's id lowers the count.
       const other = id<'Product'>(0xc777);
@@ -558,13 +580,14 @@ describe('seller read routes over HTTP (integration)', () => {
       expect(refused.status).toBe(404);
       expect(refused.headers['cache-control']).toBe('no-store');
       expect(refused.body).toEqual({ statusCode: 404, code: 'product.not-found' });
-      expect(listCalls).toHaveLength(1);
+      expect(idCalls).toHaveLength(2);
+      expect(rowCalls).toHaveLength(1);
     });
 
     it('refuses a request over the row cap or the id cap with 413 and writes nothing', async () => {
       await boot();
       await seeded(code);
-      counts = [10_001];
+      viewTotals = { published: 10_001 };
 
       const rows = await get(code, '/catalog/seller/products/export', sessionOf(code));
       expect(rows.status).toBe(413);
@@ -573,15 +596,19 @@ describe('seller read routes over HTTP (integration)', () => {
         code: 'batch.too-large',
         details: { max: 10_000, total: 10_001 },
       });
-      const idList = Array.from({ length: 201 }, (_, n) => id<'Product'>(0xd000 + n)).join(',');
+      const idList = Array.from({ length: 101 }, (_, n) => id<'Product'>(0xd000 + n)).join(',');
       const idsOver = await get(
         code,
         `/catalog/seller/products/export?productIds=${idList}`,
         sessionOf(code),
       );
       expect(idsOver.status).toBe(413);
-      expect(idsOver.body).toMatchObject({ code: 'batch.too-large', details: { max: 200 } });
+      expect(idsOver.body).toMatchObject({ code: 'batch.too-large', details: { max: 100 } });
       expect(listCalls).toHaveLength(0);
+      // Only the oversized row request reads ids (it is refused before any row is read); the id
+      // cap is refused before any read.
+      expect(idCalls).toHaveLength(1);
+      expect(rowCalls).toHaveLength(0);
     });
 
     it('refuses a bad export query with validation.failed and without touching the store', async () => {
@@ -614,6 +641,8 @@ describe('seller read routes over HTTP (integration)', () => {
       }
       expect(countCalls).toHaveLength(0);
       expect(listCalls).toHaveLength(0);
+      expect(idCalls).toHaveLength(0);
+      expect(rowCalls).toHaveLength(0);
     });
 
     it('needs a seller session for the export', async () => {

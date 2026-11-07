@@ -57,7 +57,13 @@ const OTHER = '01990000-0000-7000-8000-00000000c5a2' as Id<'Seller'>;
 // The list-mode test owns this seller, so the rows it counts are its own alone.
 const LISTED = '01990000-0000-7000-8000-00000000c5a3' as Id<'Seller'>;
 // The export test owns this seller too.
-const EXPORTED = '01990000-0000-7000-8000-00000000c5a4' as Id<'Seller'>;
+const EXPORTED = '01990000-0000-7000-8000-00000000c5a7' as Id<'Seller'>;
+// Own sellers for the filter alignment, the name-sort ceiling and the name order tests.
+const ALIGNED = '01990000-0000-7000-8000-00000000c5a4' as Id<'Seller'>;
+const CEILING = '01990000-0000-7000-8000-00000000c5a5' as Id<'Seller'>;
+const ORDERED = '01990000-0000-7000-8000-00000000c5a6' as Id<'Seller'>;
+// The snapshot test of the export edits this seller's products while a file streams.
+const STREAMED = '01990000-0000-7000-8000-00000000c5a8' as Id<'Seller'>;
 const uuid7 = (): string =>
   uuidV7(Date.now() + sequence++, crypto.getRandomValues(new Uint8Array(10)));
 
@@ -504,6 +510,35 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     expect((await query({ typeCode: 'simple' })).total).toBe(4);
     expect((await query({ typeCode: 'other' })).total).toBe(0);
     expect((await query({ view: 'live', status: 'draft' })).total).toBe(0);
+    // A status filter with a view: the counts follow the filter, the total follows the view.
+    const draftsOnly = await query({ view: 'drafts', status: 'draft' });
+    expect(draftsOnly.total).toBe(2);
+    expect(draftsOnly.counts).toEqual({ all: 2, drafts: 2, live: 0, inactive: 0, inReview: 0 });
+    const publishedOnly = await query({ view: 'live', status: 'published' });
+    expect(publishedOnly.items.map((item) => item.productId)).toEqual([delta.state.id]);
+    expect(publishedOnly.counts).toEqual({ all: 1, drafts: 0, live: 1, inactive: 0, inReview: 0 });
+    const reviewUnpublished = await query({ view: 'in-review', status: 'unpublished' });
+    expect(reviewUnpublished.total).toBe(1);
+    expect(reviewUnpublished.counts).toEqual({
+      all: 1,
+      drafts: 0,
+      live: 0,
+      inactive: 1,
+      inReview: 1,
+    });
+    const crossed = await query({ view: 'inactive', status: 'draft' });
+    expect(crossed.total).toBe(0);
+    expect(crossed.counts).toEqual({ all: 2, drafts: 2, live: 0, inactive: 0, inReview: 0 });
+    // Paused with a view: Live holds the paused product; the other tabs count none of it.
+    const pausedLive = await query({ view: 'live', paused: true });
+    expect(pausedLive.items.map((item) => item.productId)).toEqual([delta.state.id]);
+    expect(pausedLive.counts).toEqual({ all: 1, drafts: 0, live: 1, inactive: 0, inReview: 0 });
+    const pausedDrafts = await query({ view: 'drafts', paused: true });
+    expect(pausedDrafts.total).toBe(0);
+    expect(pausedDrafts.counts).toEqual({ all: 1, drafts: 0, live: 1, inactive: 0, inReview: 0 });
+    const notPausedLive = await query({ view: 'live', paused: false });
+    expect(notPausedLive.total).toBe(0);
+    expect(notPausedLive.counts).toEqual({ all: 3, drafts: 2, live: 0, inactive: 1, inReview: 1 });
     // Sort, and paging by page numbers.
     expect(names(await query({ sort: 'name' }))).toEqual([
       'Alpha Dates',
@@ -593,6 +628,245 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     const none = await exporter.execute(sellerContext(uuid7() as Id<'Seller'>), {});
     expect(none.ok).toBe(true);
   }, 120_000);
+
+  it('keeps an export to the products it matched first when they change while the file streams', async () => {
+    const ctx = () => sellerContext(STREAMED);
+    // 205 products: three chunks, so two chunks are read after the answer.
+    const made: Product[] = [];
+    for (let n = 0; n < 205; n++) {
+      made.push(await draftedProduct('SELLER', STREAMED, `Stream ${String(n).padStart(3, '0')}`));
+    }
+    const answer = await exporter.execute(ctx(), {
+      sort: 'created',
+      direction: 'asc',
+      columns: 'code',
+    });
+    if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+
+    // After the answer (the ids and the first chunk are read): the last product of the file is
+    // edited, so it would jump to the front of an offset read in "updated" order and push every
+    // other row down by one; one product is discarded; a new one is made.
+    await app.query('UPDATE catalog.products SET last_changed_at = $2 WHERE id = $1', [
+      made[204]!.state.id,
+      T0.add({ hours: 1 }).toString(),
+    ]);
+    await app.query(
+      "UPDATE catalog.products SET status = 'discarded', discarded_at = $2 WHERE id = $1",
+      [made[150]!.state.id, T0.add({ hours: 1 }).toString()],
+    );
+    await draftedProduct('SELLER', STREAMED, 'Stream late arrival');
+
+    let text = '';
+    for await (const chunk of answer.value.chunks) text += chunk as string;
+    const codes = text
+      .replace('\uFEFF', '')
+      .split('\r\n')
+      .slice(1, -1)
+      .map((line) => line.split(',')[3]);
+    expect(codes).toEqual(
+      made.filter((_, n) => n !== 150).map((product) => product.state.productCode),
+    );
+
+    // "updated" order too: the snapshot, not the edit order, decides what the later chunks read.
+    const byUpdate = await exporter.execute(ctx(), {
+      sort: 'updated',
+      direction: 'desc',
+      columns: 'code',
+    });
+    if (!byUpdate.ok) throw new Error(JSON.stringify(byUpdate.error));
+    await app.query('UPDATE catalog.products SET last_changed_at = $2 WHERE id = $1', [
+      made[0]!.state.id,
+      T0.add({ hours: 2 }).toString(),
+    ]);
+    let later = '';
+    for await (const chunk of byUpdate.value.chunks) later += chunk as string;
+    const lines = later.replace('\uFEFF', '').split('\r\n').slice(1, -1);
+    expect(lines).toHaveLength(205);
+    expect(new Set(lines).size).toBe(205);
+  }, 120_000);
+
+  async function newCategory(): Promise<string> {
+    const id = uuid7();
+    await insert('platform_categories', {
+      id,
+      ...base,
+      slug: `s-${randomUUID().slice(0, 12)}`,
+      parent_id: null,
+      status: 'active',
+      merged_into_id: null,
+      vertical_root_code: null,
+      created_by_kind: 'seed',
+      version: 1,
+      created_at: T0.toString(),
+    });
+    return id;
+  }
+
+  const setDraft = (product: Product, name: string, categoryIds: readonly string[]) =>
+    inUnit(() =>
+      copies.save(market, {
+        productId: product.state.id,
+        content: { texts: { en: { name } }, categoryIds: [...categoryIds], taxCategoryCode: 't1' },
+        contentSchemaVersion: 1,
+        baseRevisionId: null,
+        lastSavedAt: T0,
+        lastSavedByAccountId: uuid7() as Id<'Account'>,
+      }),
+    );
+
+  /** Submits the product, then makes the pending revision its published one (as a review would). */
+  async function publishedWith(seller: Id<'Seller'>, product: Product) {
+    const done = await submit.execute(sellerContext(seller), {
+      productId: product.state.id,
+      replacePending: false,
+    });
+    if (!done.ok) throw new Error(done.error.code);
+    await app.query(
+      `UPDATE catalog.products SET status = 'published', published_revision_id = pending_revision_id,
+         pending_revision_id = NULL, pending_submitted_at = NULL WHERE id = $1`,
+      [product.state.id],
+    );
+  }
+
+  it('matches the name and category filters on what the row shows: the draft when there is one, else the shown revision', async () => {
+    const second = await newCategory();
+    const ctx = () => sellerContext(ALIGNED);
+    // Published as "Old Published Name" in the first category; the draft has moved on.
+    const edited = await draftedProduct('SELLER', ALIGNED, 'Old Published Name');
+    await publishedWith(ALIGNED, edited);
+    await setDraft(edited, 'Fresh Draft Name', [second, categoryId]);
+    // Published with two categories and no working copy: the revision is what shows.
+    const plain = await draftedProduct('SELLER', ALIGNED, 'Revision Only Name');
+    await setDraft(plain, 'Revision Only Name', [categoryId, second]);
+    await publishedWith(ALIGNED, plain);
+    await app.query('DELETE FROM catalog.product_working_copies WHERE product_id = $1', [
+      plain.state.id,
+    ]);
+
+    const query = async (input: Record<string, unknown>) => {
+      const answer = await list.execute(ctx(), { page: 1, ...input });
+      if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+      if (!('total' in answer.value)) throw new Error('not the list answer');
+      return answer.value;
+    };
+    const idsOf = (value: { items: readonly { productId: string }[] }) =>
+      value.items.map((item) => item.productId).sort();
+
+    // The name: the draft's value matches, the superseded published one does not.
+    const byDraft = await query({ q: 'fresh draft' });
+    expect(byDraft.items.map((item) => [item.productId, item.name])).toEqual([
+      [edited.state.id, 'Fresh Draft Name'],
+    ]);
+    expect((await query({ q: 'old published' })).total).toBe(0);
+    expect((await query({ q: 'old published' })).counts.all).toBe(0);
+    // Without a draft the shown revision's name matches and is what shows.
+    const byRevision = await query({ q: 'revision only' });
+    expect(byRevision.items.map((item) => [item.productId, item.name])).toEqual([
+      [plain.state.id, 'Revision Only Name'],
+    ]);
+
+    // The category: the first one shown. The draft starts with `second`, the revision with the first.
+    const inSecond = await query({ categoryId: second });
+    expect(idsOf(inSecond)).toEqual([edited.state.id]);
+    expect(inSecond.items[0]!.categoryId).toBe(second);
+    const inFirst = await query({ categoryId });
+    expect(idsOf(inFirst)).toEqual([plain.state.id]);
+    expect(inFirst.items[0]!.categoryId).toBe(categoryId);
+    expect(inFirst.counts.all).toBe(1);
+    // A second-position category matches neither the draft nor the revision.
+    expect(inFirst.items.map((item) => item.productId)).not.toContain(edited.state.id);
+    expect(inSecond.items.map((item) => item.productId)).not.toContain(plain.state.id);
+    // Every filtered row shows the value it was matched on.
+    for (const input of [
+      { q: 'fresh' },
+      { q: 'revision only' },
+      { categoryId },
+      { categoryId: second },
+    ]) {
+      const answer = await query(input);
+      expect(answer.total).toBeGreaterThan(0);
+      for (const item of answer.items) {
+        if ('q' in input) expect(item.name?.toLowerCase()).toContain(input.q);
+        if ('categoryId' in input) expect(item.categoryId).toBe(input.categoryId);
+      }
+    }
+  });
+
+  it('refuses a name sort over more than 500 matches and sorts exactly 500', async () => {
+    const template = await draftedProduct('SELLER', CEILING, 'Template');
+    const copy = (count: number) =>
+      app.query(
+        `INSERT INTO catalog.products (id, market_id, tenant_id, scope, owner_seller_id,
+           created_by_seller_id, type_code, variant_model, family_code, product_code, status,
+           own_brand, last_changed_at, version, created_at)
+         SELECT gen_random_uuid(), market_id, tenant_id, scope, owner_seller_id,
+           created_by_seller_id, type_code, variant_model, family_code,
+           'Y' || upper(substr(md5(random()::text || g::text), 1, 12)), status,
+           own_brand, last_changed_at, 1, created_at
+         FROM catalog.products, generate_series(1, $2::int) g WHERE id = $1`,
+        [template.state.id, count],
+      );
+    const ask = async (input: Record<string, unknown>) => {
+      const answer = await list.execute(sellerContext(CEILING), { page: 1, ...input });
+      if (!answer.ok) return answer.error;
+      return answer.value;
+    };
+
+    await copy(499);
+    const exactly = await ask({ sort: 'name', pageSize: 100 });
+    expect(exactly).toMatchObject({ total: 500 });
+    expect('items' in exactly ? exactly.items.length : -1).toBe(100);
+
+    await copy(1);
+    expect(await ask({ sort: 'name' })).toEqual({
+      code: 'validation.failed',
+      fields: [{ path: 'sort', code: 'too-broad' }],
+    });
+    // The other sorts are not limited, and a narrower search sorts by name again.
+    expect(await ask({ sort: 'updated', pageSize: 100 })).toMatchObject({ total: 501 });
+    expect(await ask({ sort: 'name', q: 'Template' })).toMatchObject({ total: 1 });
+  });
+
+  it('sorts by name in the locale’s order, in both directions, with nameless products last', async () => {
+    const named = async (name: string) => draftedProduct('SELLER', ORDERED, name);
+    await named('banana');
+    await named('Apple');
+    const cherry = await named('Cherry');
+    // Shown from its revision (no draft any more).
+    await publishedWith(ORDERED, cherry);
+    await app.query('DELETE FROM catalog.product_working_copies WHERE product_id = $1', [
+      cherry.state.id,
+    ]);
+    // A draft without a name, and a product with neither draft nor revision.
+    const blank = await named('Blank');
+    await inUnit(() =>
+      copies.save(market, {
+        productId: blank.state.id,
+        content: { texts: {}, categoryIds: [categoryId], taxCategoryCode: 't1' },
+        contentSchemaVersion: 1,
+        baseRevisionId: null,
+        lastSavedAt: T0,
+        lastSavedByAccountId: uuid7() as Id<'Account'>,
+      }),
+    );
+    const bare = await named('Bare');
+    await app.query('DELETE FROM catalog.product_working_copies WHERE product_id = $1', [
+      bare.state.id,
+    ]);
+
+    const order = async (direction: 'asc' | 'desc') => {
+      const answer = await list.execute(sellerContext(ORDERED), {
+        page: 1,
+        sort: 'name',
+        direction,
+      });
+      if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+      if (!('total' in answer.value)) throw new Error('not the list answer');
+      return answer.value.items.map((item) => item.name);
+    };
+    expect(await order('asc')).toEqual(['Apple', 'banana', 'Cherry', null, null]);
+    expect(await order('desc')).toEqual(['Cherry', 'banana', 'Apple', null, null]);
+  });
 
   it('reads an own product with its working copy and answers every other id as not found', async () => {
     const product = await draftedProduct('SELLER', SELLER, 'Readable');
