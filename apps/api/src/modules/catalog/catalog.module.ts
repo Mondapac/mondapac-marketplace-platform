@@ -68,8 +68,10 @@ import { CUSTOM_VARIANT_LABELS_READER } from './application/ports/custom-variant
 import { AdminCustomVariantLabelsController } from './presentation/admin-custom-variant-labels.controller';
 import { AdminProductsList } from './application/use-cases/admin-products-list.use-case';
 import { ADMIN_PRODUCTS_READER } from './application/ports/admin-products.reader';
+import { ADMIN_VARIANTS_READER } from './application/ports/admin-variants.reader';
 import { AdminProductListController } from './presentation/admin-product-list.controller';
 import { AdminProductBulkController } from './presentation/admin-product-bulk.controller';
+import { AdminVariantExportController } from './presentation/admin-variant-export.controller';
 import { AdminProductPause } from './application/use-cases/admin-product-pause.use-case';
 import { IMPORT_FILE_STORE } from './application/ports/import-file-store';
 import { PLATFORM_IMPORT_REPOSITORY } from './application/ports/platform-import.repository';
@@ -92,6 +94,7 @@ import { AdminProductWithdraw } from './application/use-cases/admin-product-with
 import { PlatformProductRetire } from './application/use-cases/platform-product-retire.use-case';
 import { AdminProductsBulk } from './application/use-cases/admin-products-bulk.use-case';
 import { AdminProductsExport } from './application/use-cases/admin-products-export.use-case';
+import { AdminVariantsExport } from './application/use-cases/admin-variants-export.use-case';
 import { SAVED_FILTER_REPOSITORY } from './application/ports/saved-filter.repository';
 import { SavedFilterCreate } from './application/use-cases/saved-filter-create.use-case';
 import { SavedFilterDelete } from './application/use-cases/saved-filter-delete.use-case';
@@ -404,6 +407,7 @@ const PORT = {
   sellerNames: SELLER_NAMES_READER,
   ownReader: OWN_CATALOG_READER,
   adminProductsReader: ADMIN_PRODUCTS_READER,
+  adminVariantsReader: ADMIN_VARIANTS_READER,
   customVariantLabelsReader: CUSTOM_VARIANT_LABELS_READER,
   images: PRODUCT_IMAGE_REPOSITORY,
   imageProcessor: IMAGE_PROCESSOR,
@@ -540,6 +544,7 @@ const RESTRUCTURE_DEPS = {
     AdminProductListController,
     AdminCustomVariantLabelsController,
     AdminProductBulkController,
+    AdminVariantExportController,
     PlatformImportController,
     SavedFilterController,
     ProductReviewController,
@@ -1408,6 +1413,14 @@ const RESTRUCTURE_DEPS = {
       adminProductsReader: true,
       policy: true,
       sellerNames: true,
+      sheetWriter: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminVariantsExport, {
+      unitOfWork: true,
+      adminProductsReader: true,
+      adminVariantsReader: true,
+      policy: true,
       sheetWriter: true,
       clock: true,
     }),

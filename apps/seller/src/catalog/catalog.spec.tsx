@@ -59,8 +59,8 @@ const detail = (over: Partial<ProductView> = {}): ProductView => ({
   variantModel: 'single',
   status: 'published',
   variants: [
-    { variantId: 'a', state: 'published' },
-    { variantId: 'b', state: 'retired' },
+    { variantId: 'a', state: 'published', variantCode: 'P-000001-0a' },
+    { variantId: 'b', state: 'retired', variantCode: 'P-000001-0b' },
   ],
   maxVariants: 20,
   sensitiveFields: ['images'],

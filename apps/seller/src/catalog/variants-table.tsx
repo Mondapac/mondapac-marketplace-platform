@@ -21,6 +21,8 @@ import {
   type TableRow,
 } from './variants-table-logic.ts';
 import { inputOf } from '../price/money.ts';
+import { VariantFileTools } from './variant-file-tools.tsx';
+import type { CellChange, FileModel } from './variant-file.ts';
 
 type Bulk = 'price' | 'increase' | 'stock';
 
@@ -38,6 +40,7 @@ export function VariantsTable({
   canEditPrice: mayEditPrice,
   canEditStock,
   csrfToken,
+  fileModel = null,
 }: {
   readonly offerId: string;
   readonly rows: readonly TableRow[];
@@ -47,6 +50,8 @@ export function VariantsTable({
   readonly canEditPrice: boolean;
   readonly canEditStock: boolean;
   readonly csrfToken: string;
+  /** The variant file (design 14b); null when the seller may not read the product. */
+  readonly fileModel?: FileModel | null;
 }) {
   const t = useTranslations();
   const showPrice = marketCurrency !== null;
@@ -78,6 +83,20 @@ export function VariantsTable({
     if (on) next.add(variantId);
     else next.delete(variantId);
     setSelected(next);
+  }
+
+  /** A confirmed import fills the drafts; the Save below writes them, exactly as typed cells. */
+  function applyFile(changes: readonly CellChange[]) {
+    const prices = { ...priceDrafts };
+    const stocks = { ...stockDrafts };
+    for (const change of changes) {
+      if (change.kind === 'price') prices[change.variantId] = change.to;
+      else if (change.sourceId !== undefined)
+        stocks[stockKey(change.variantId, change.sourceId)] = change.to;
+    }
+    setPriceDrafts(prices);
+    setStockDrafts(stocks);
+    setErrors({});
   }
 
   function applyBulk() {
@@ -121,6 +140,7 @@ export function VariantsTable({
     const seen = { ...versions };
     let done = 0;
     let stopped = false;
+    let waitSeconds: number | null = null;
     for (const write of plan.writes) {
       const row = rows.find((item) => item.variantId === write.variantId);
       if (row === undefined) continue;
@@ -142,6 +162,13 @@ export function VariantsTable({
           if (result.failure.status === 401) {
             window.location.assign('/session-ended');
             return;
+          }
+          if (result.failure.code === 'request.throttled') {
+            // Stop here: this cell and every one after it stay drafts, nothing is retried.
+            waitSeconds = result.failure.details?.retryAfterSeconds ?? 60;
+            found[write.variantId] = t('catalog.variants-table.throttled-cell');
+            stopped = true;
+            break;
           }
           found[write.variantId] = t(`price.error.${priceProblemOf(result.failure)}`);
           continue;
@@ -165,6 +192,12 @@ export function VariantsTable({
             window.location.assign('/session-ended');
             return;
           }
+          if (result.failure.code === 'request.throttled') {
+            waitSeconds = result.failure.details?.retryAfterSeconds ?? 60;
+            found[key] = t('catalog.variants-table.throttled-cell');
+            stopped = true;
+            break;
+          }
           found[key] = t(`stock.levels.error.${levelsProblemOf(result.failure)}`);
           continue;
         }
@@ -180,7 +213,14 @@ export function VariantsTable({
     setStockDrafts(stockLeft);
     setErrors(found);
     const failed = Object.keys(found).length;
-    if (done > 0 && failed === 0 && !stopped)
+    if (waitSeconds !== null) {
+      toast.warning(
+        t('catalog.variants-table.throttled', {
+          done,
+          minutes: Math.max(1, Math.ceil(waitSeconds / 60)),
+        }),
+      );
+    } else if (done > 0 && failed === 0 && !stopped)
       toast.success(t('catalog.variants-table.saved', { count: done }));
     else if (done > 0) toast.info(t('catalog.variants-table.partial', { done, failed }));
     // Fresh versions, held prices and special prices come from the server.
@@ -203,6 +243,9 @@ export function VariantsTable({
           </a>
         </Banner>
       ) : null}
+      {fileModel === null ? null : (
+        <VariantFileTools model={fileModel} disabled={saving} onApply={applyFile} />
+      )}
       {canBulk && selected.size > 0 ? (
         <div
           className="flex flex-col gap-3 rounded-md border border-line p-3"

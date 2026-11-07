@@ -1619,6 +1619,21 @@ What is **not** built: the seller product import of 14 (new products and variant
 XLSX on the seller side (later, through a server-side parse-only route reusing the 14a parser and worker;
 a new route, its own decision), and an admin import of variant rows.
 
+**Built (V9c).** Admin export `GET catalog/admin/variants/export` (use case `admin-variants.export`,
+reader `AdminVariantsReader`), the shared package `packages/platform-import` (CSV reader with its limits,
+sniff, formula guard; the API's CSV parser and 9.2c export use it), the seller export and update-only import
+in the offer Variants tab (`apps/seller/src/catalog/variant-file*.ts`), and an "Export variants" action on the
+admin product list. Points where the build differs from the text above: (1) there is no admin Variants tab
+yet (V6), so the export takes the product list's filters (`view`, `q`, `scope`, `status`, `categoryId`,
+`typeCode`, `sellerId`); (2) a stock location has no code in `inventory`, only an id and a name that is not
+unique, so `<source code>` is the location id; (3) a column that would set certification, handling, status,
+approval or a claim is refused whole as `import.column-refused`; a price or stock value that is not valid is
+the row error `import.invalid-value`; a missing `product_code` column is `import.column-missing`; (4) "Apply"
+in the preview fills the tab's drafts and the tab's own Save writes them (one step-up: the proof of the
+first guarded price write covers the rest; a `request.throttled` answer stops the run and keeps every unsent
+and failed cell as a draft); (5) the own product read now carries `variantCode` on each variant.
+`variant_sku` and `selling` are not written or read: TODO until PR #688 (V5).
+
 **Tests (Done when).** Each matching rule (a) to (e); another Offer's `product_code`; read-only `gtin`
 and options; a variant left out of the file stays untouched (never-retire); a column refused for a
 missing key; certification, handling and status columns refused; formula-guard round trip (a CSV export

@@ -55,6 +55,8 @@ export class OwnWorkingCopyView {
 export class OwnVariantView {
   @ApiProperty({ format: 'uuid' }) variantId!: string;
   @ApiProperty({ description: 'proposed, published or retired.' }) state!: string;
+  @ApiProperty({ description: 'The variant code, `{productCode}-{nn}` (design 2, M-7).' })
+  variantCode!: string;
 }
 
 const LOCALE_MAP = { type: 'object', additionalProperties: { type: 'string' } } as const;

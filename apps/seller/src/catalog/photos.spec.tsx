@@ -31,7 +31,7 @@ const product = (content: Record<string, unknown>): ProductView => ({
   familyCode: 'food',
   variantModel: 'single',
   status: 'draft',
-  variants: [{ variantId: 'v1', state: 'active' }],
+  variants: [{ variantId: 'v1', state: 'active', variantCode: 'P-000001-0v1' }],
   maxVariants: 5,
   sensitiveFields: [],
   lastChangedAt: '2026-10-01T00:00:00Z',

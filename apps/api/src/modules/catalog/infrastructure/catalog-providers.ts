@@ -101,6 +101,7 @@ import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.rea
 import { PrismaOfferRepository } from './prisma-offer.repository';
 import { PrismaOwnCatalogReader } from './prisma-own-catalog.reader';
 import { PrismaAdminProductsReader } from './prisma-admin-products.reader';
+import { PrismaAdminVariantsReader } from './prisma-admin-variants.reader';
 import { PrismaCustomVariantLabelsReader } from './prisma-custom-variant-labels.reader';
 import {
   CUSTOM_VARIANT_LABELS_READER,
@@ -115,6 +116,10 @@ import {
   ADMIN_PRODUCTS_READER,
   type AdminProductsReader,
 } from '../application/ports/admin-products.reader';
+import {
+  ADMIN_VARIANTS_READER,
+  type AdminVariantsReader,
+} from '../application/ports/admin-variants.reader';
 import {
   PRODUCT_IMAGE_REPOSITORY,
   type ProductImageRepository,
@@ -500,6 +505,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminProductsReader =>
       new PrismaAdminProductsReader(prisma),
+  },
+  {
+    provide: ADMIN_VARIANTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminVariantsReader =>
+      new PrismaAdminVariantsReader(prisma),
   },
   {
     provide: CUSTOM_VARIANT_LABELS_READER,

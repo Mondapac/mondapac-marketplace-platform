@@ -54,6 +54,7 @@ export default async function OfferVariantsPage({
           canEditPrice={permissionKeys.includes(PRICE_EDIT_PERMISSION)}
           canEditStock={permissionKeys.includes(STOCK_EDIT_PERMISSION)}
           csrfToken={page.session.csrfToken}
+          fileModel={page.fileModel}
         />
       </div>
     </SellerShell>

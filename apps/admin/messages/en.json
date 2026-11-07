@@ -2286,7 +2286,27 @@
         }
       },
       "import": "Import",
-      "add": "Add product"
+      "add": "Add product",
+      "variants-export": {
+        "button": "Export variants",
+        "title": "Export variants",
+        "body": "One row per variant of the live version of each product in this list, with the search and filters kept. The file has no prices, stock or sellers.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "cancel": "Cancel",
+        "confirm": "Export",
+        "pending": "Preparing the variant file…",
+        "done": "The variant file was downloaded.",
+        "error": {
+          "unavailable": "That didn’t work. Try again.",
+          "denied": "You don’t have access to do this.",
+          "invalid": "That request can’t be done. Reload the page and try again.",
+          "too-large": "The file would be too large ({total, number}). Narrow the filter so it has {max, number} rows or fewer."
+        }
+      }
     },
     "import": {
       "title": "Import products",

@@ -99,7 +99,12 @@ export interface ProductView {
   /** `single`: one fixed variant; `configurable`: variants defined by option values. */
   readonly variantModel: string;
   readonly status: string;
-  readonly variants: readonly { readonly variantId: string; readonly state: string }[];
+  readonly variants: readonly {
+    readonly variantId: string;
+    readonly state: string;
+    /** `{productCode}-{nn}` (design 2, M-7). */
+    readonly variantCode: string;
+  }[];
   readonly maxVariants: number;
   readonly sensitiveFields: readonly string[];
   readonly lastChangedAt: string;

@@ -21,6 +21,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { numberFormat } from '../shared/intl.ts';
 import { ProductsBulk } from './products-bulk.tsx';
+import { VariantsExport } from './variants-export.tsx';
 import { ProductsColumnsPanel } from './products-columns-panel.tsx';
 import { ProductsFilterPanel } from './products-filter-panel.tsx';
 import { ManageFiltersDialog } from './products-saved-manage.tsx';
@@ -323,6 +324,7 @@ export function ProductsList({
               void loadSaved();
             }}
           />
+          <VariantsExport query={query} />
           {permissionKeys.includes('catalog.platform-product.edit') ? (
             <LinkButton href="/catalog/products/new">{t('add')}</LinkButton>
           ) : null}
