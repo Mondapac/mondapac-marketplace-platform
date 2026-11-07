@@ -205,6 +205,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/admin/price-holds/:id/reject',
     'catalog/admin/offers/:id/approve',
     'catalog/admin/offers/:id/request-changes',
+    // Approve or send back a pending product version, naming the version seen (catalog, product
+    // version review); take a photo down with a reason (cannot be undone).
+    'catalog/admin/products/:id/revisions/:id/approve',
+    'catalog/admin/products/:id/revisions/:id/request-changes',
+    'catalog/admin/products/:id/images/:id/take-down',
     // Submit (publish) a platform product's working copy (catalog).
     'catalog/admin/platform-products/:id/submit',
     // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
@@ -326,6 +331,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/platform-products/:id',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
+    // A product version's photo opened large, for its review (catalog).
+    'catalog/admin/products/:id/images/:id/large',
     // The current image of a category, medium size only (catalog, categories C3c).
     'catalog/admin/categories/:id/images/:id/medium',
     // One import and its report CSV (catalog): the report takes the query `kind`.

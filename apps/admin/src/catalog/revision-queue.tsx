@@ -11,17 +11,19 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { shortInstant } from '../shared/format.ts';
-import { clearedHref, isFiltered, queueHref, type QueueParams } from './review-queue-params.ts';
+import {
+  clearedHref,
+  isFiltered,
+  queueHref,
+  revisionHref,
+  type QueueParams,
+} from './review-queue-params.ts';
 import { REVISION_REASONS, type RevisionRow } from './types.ts';
 
 const COLUMNS = ['product', 'change', 'seller', 'reasons', 'checks', 'waiting', 'action'] as const;
 const KNOWN_REASONS: ReadonlySet<string> = new Set(REVISION_REASONS);
 
 const go = (href: string) => window.location.assign(href);
-
-/** The page's link to one product version review. */
-export const revisionHref = (row: Pick<RevisionRow, 'productId' | 'revisionId'>): string =>
-  `/review/products/${row.productId}/revisions/${row.revisionId}`;
 
 /**
  * The filters of the Product revisions tab: change (new or update) and photos, sent with Apply as

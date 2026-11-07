@@ -2729,6 +2729,173 @@
         "page": "Nothing on this page. More of the queue is on the next page.",
         "filtered": "Nothing matches these filters."
       }
+    },
+    "version": {
+      "title": "Version review",
+      "not-found": "This product version was not found.",
+      "unavailable": "This product version could not be loaded. Try again later.",
+      "side": "Decision and history",
+      "summary": {
+        "seller": "Seller",
+        "code": "Code",
+        "revision": "Version",
+        "revision-no": "Revision {number}",
+        "submitted": "Submitted",
+        "reasons": "What changed"
+      },
+      "state": {
+        "pending": "Waiting for review",
+        "published": "Published",
+        "closed": "Closed"
+      },
+      "closed": {
+        "published": "This version is live. There is nothing to decide.",
+        "closed": "This version was decided or replaced. There is nothing to decide."
+      },
+      "warning": {
+        "title": "Check for a duplicate",
+        "gtin-duplicate-platform": "A GTIN of this version is on a published platform product.",
+        "gtin-duplicate": "A GTIN of this version is on another product."
+      },
+      "section": {
+        "texts": "Texts",
+        "photos": "Photos",
+        "categories": "Categories and tax",
+        "variants": "Variants",
+        "attributes": "Details that changed"
+      },
+      "field": {
+        "name": "Name",
+        "shortDescription": "Short description",
+        "description": "Description",
+        "tax-category": "Tax category"
+      },
+      "mark": {
+        "same": "Unchanged",
+        "added": "Added",
+        "removed": "Removed",
+        "changed": "Changed"
+      },
+      "unchanged-locale": "{locale}: unchanged",
+      "published": "Published",
+      "this-version": "This version",
+      "removed-text": "Removed:",
+      "added-text": "Added:",
+      "empty-value": "(empty)",
+      "variants": {
+        "none": "No variants.",
+        "single": "Single variant",
+        "gtin": "GTIN {gtin}",
+        "weight": "{grams} g",
+        "photos": "{count, plural, one {# photo} other {# photos}}",
+        "nothing": "No details"
+      },
+      "photos": {
+        "none": "This version has no photos.",
+        "name": "Photo {position}",
+        "not-served": "Taken down, not shown",
+        "mark": {
+          "new": "New",
+          "kept": "Unchanged",
+          "taken-down": "Taken down"
+        },
+        "view": "View large",
+        "view-named": "View {name} large",
+        "take-down": "Take down",
+        "take-down-named": "Take down {name}",
+        "removed": "{count, plural, one {# published photo is removed in this version.} other {# published photos are removed in this version.}}",
+        "close": "Close",
+        "cancel": "Cancel",
+        "take-down-title": "Take down {name}?",
+        "take-down-warning": "This cannot be undone. The photo is never shown again, its files are deleted, and it cannot be used in a new version.",
+        "take-down-confirm": "Take down photo",
+        "reason": "Reason",
+        "reason-placeholder": "Choose a reason",
+        "reason-missing": "Choose a reason.",
+        "reason-code": {
+          "certification-mark": "Shows a certification mark",
+          "misleading": "Misleading",
+          "rights": "Rights problem",
+          "unsafe-or-illegal": "Unsafe or illegal",
+          "other": "Other"
+        }
+      },
+      "decision": {
+        "title": "Decision",
+        "view-only": "View only. You can't decide on product versions.",
+        "checks": "Confirm each check",
+        "no-checks": "This version needs no checks.",
+        "check": {
+          "photos-no-certification-mark": "The photos show no certification mark",
+          "category-fits": "The category fits the product",
+          "tax-category-fits": "The tax category fits the product",
+          "not-a-duplicate": "This is not a duplicate of another product"
+        },
+        "approve": "Approve",
+        "send-back": "Send back",
+        "tick-all": "Tick every check to approve.",
+        "reload": "Reload",
+        "done": {
+          "approved": "Approved. The version is live.",
+          "sent-back": "Sent back to the seller."
+        },
+        "back-to-queue": "Back to queue",
+        "next": "Next in queue",
+        "send-back-title": "Send this version back?",
+        "send-back-body": "The seller sees the reason and can send a new version.",
+        "send-back-confirm": "Send back",
+        "cancel": "Cancel",
+        "reason": "Reason",
+        "reason-placeholder": "Choose a reason",
+        "reason-missing": "Choose a reason.",
+        "reason-code": {
+          "content-unclear": "Content unclear",
+          "description-claim": "Description claim",
+          "sku-or-condition": "SKU or condition",
+          "handling-unclear": "Handling unclear",
+          "photos": "Photos",
+          "category": "Category",
+          "tax-category": "Tax category",
+          "duplicate": "Duplicate",
+          "other": "Other"
+        }
+      },
+      "error": {
+        "stale": "This version changed since you opened it. Reload to see the current one.",
+        "checks-missing": "Some checks are missing. Tick every check and approve again.",
+        "claim-text": "A text makes a claim that is not allowed. Send it back with Description claim.",
+        "send-back": "This version can't be approved. Send it back to the seller.",
+        "gone": "This no longer exists. Go back to the queue.",
+        "denied": "You don't have access to this action.",
+        "csrf": "Your session needs a refresh. Reload the page and try again.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "invalid": "The request was not valid. Reload the page and try again.",
+        "retry": "Something went wrong for a moment. Try again.",
+        "unknown": "Something went wrong. Try again later."
+      },
+      "history": {
+        "title": "History",
+        "none": "No history yet.",
+        "entry": "Revision {number}",
+        "this": "this version",
+        "sent": "{kind} by {author}, {at}",
+        "kind": {
+          "submission": "Submitted",
+          "revert": "Reverted",
+          "tax-override": "Tax change"
+        },
+        "author": {
+          "seller": "the seller",
+          "admin": "an admin"
+        },
+        "waiting": "Waiting for review",
+        "outcome": {
+          "published": "Published",
+          "changes-requested": "Sent back",
+          "superseded": "Replaced"
+        },
+        "reason": "reason: {reason}"
+      }
     }
   },
   "orders": {

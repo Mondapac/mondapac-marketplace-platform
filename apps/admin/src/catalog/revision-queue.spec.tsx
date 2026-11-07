@@ -4,14 +4,8 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import { parseQueueParams } from './review-queue-params.ts';
-import {
-  QueueEmpty,
-  RevisionFilters,
-  RevisionQueueTable,
-  SellerChip,
-  revisionHref,
-} from './revision-queue.tsx';
+import { parseQueueParams, revisionHref } from './review-queue-params.ts';
+import { QueueEmpty, RevisionFilters, RevisionQueueTable, SellerChip } from './revision-queue.tsx';
 import type { RevisionRow } from './types.ts';
 
 const SELLER = '0190a000-0000-7000-8000-0000000000f1';

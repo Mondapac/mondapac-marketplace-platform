@@ -746,6 +746,41 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(404);
     expect((await call('POST', `pricing/admin/price-holds/${ID}/delete`)).status).toBe(404);
   });
+  it('relays the product version decisions and the photo takedown by UUID, POST only', async () => {
+    const id = '0190a000-0000-7000-8000-0000000000c1';
+    const request = (method: string, path: string) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      });
+    for (const path of [
+      `catalog/admin/products/${id}/revisions/${id}/approve`,
+      `catalog/admin/products/${id}/revisions/${id}/request-changes`,
+      `catalog/admin/products/${id}/images/${id}/take-down`,
+    ]) {
+      expect(
+        (await relay(config, request('POST', path), path.split('/'), upstreamOk())).status,
+        path,
+      ).toBe(200);
+    }
+    for (const [method, path] of [
+      ['PUT', `catalog/admin/products/${id}/revisions/${id}/approve`],
+      ['POST', `catalog/admin/products/nope/revisions/${id}/approve`],
+      ['POST', `catalog/admin/products/${id}/revisions/nope/request-changes`],
+      ['POST', `catalog/admin/products/${id}/revisions/${id}/delete`],
+      ['DELETE', `catalog/admin/products/${id}/images/${id}/take-down`],
+      ['POST', `catalog/admin/products/${id}/images/${id}`],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      expect(
+        (await relay(config, request(method, path), path.split('/'), fetchImpl)).status,
+        `${method} ${path}`,
+      ).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+
   it('relays the offer decisions by UUID, POST only', async () => {
     const id = '0190a000-0000-7000-8000-0000000000c1';
     const request = (method: string, path: string) =>
@@ -1871,10 +1906,15 @@ describe('relay of the product list', () => {
     });
   });
 
-  it('refuses a write, another photo size, a take-down and a product that is not a UUID', async () => {
+  it('relays the large photo of a version review, GET only', async () => {
+    const large = ['catalog', 'admin', 'products', id, 'images', id, 'large'];
+    expect((await relay(config, get(large.join('/')), large, upstreamOk())).status).toBe(200);
+  });
+
+  it('refuses a write, another photo size, a take-down read and a product that is not a UUID', async () => {
     const upstream = upstreamOk();
     expect((await relay(config, post('catalog/admin/products'), path, upstream)).status).toBe(404);
-    for (const tail of ['large', 'medium', 'take-down']) {
+    for (const tail of ['medium', 'original', 'take-down']) {
       const other = ['catalog', 'admin', 'products', id, 'images', id, tail];
       expect((await relay(config, get(other.join('/')), other, upstream)).status).toBe(404);
     }
