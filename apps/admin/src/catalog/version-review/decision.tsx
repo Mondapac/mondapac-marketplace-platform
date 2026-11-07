@@ -118,10 +118,11 @@ export function DecisionCard({
       {requiredChecks.length === 0 ? (
         <p className="text-sm text-fg-muted">{t('no-checks')}</p>
       ) : (
-        <fieldset className="flex flex-col gap-3">
+        <fieldset className="flex flex-col gap-3 max-lg:gap-0">
           <legend className="mb-2 text-sm font-medium">{t('checks')}</legend>
           {requiredChecks.map((code) => (
             <CheckboxRow
+              touch
               key={code}
               label={t.has(`check.${code}`) ? t(`check.${code}`) : code}
               checked={ticked.has(code)}
