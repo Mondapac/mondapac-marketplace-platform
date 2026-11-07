@@ -1643,6 +1643,8 @@ export class IdentityFakes {
   };
 
   readonly invitationRepository: InvitationRepository = {
+    // The in-memory store runs one unit at a time, so the lock has nothing to order.
+    lockForAcceptance: () => Promise.resolve(),
     findById: (market, id) => {
       const state = this.invitations.get(id);
       return Promise.resolve(

@@ -65,3 +65,13 @@ seller is not approved; the use case answers only a platform admin that is not a
 read-only unit reading the status only (`AccountRepository.customerStatus`: no credential, so a
 customer without a password is answered, and no address); a failed read is `access.unavailable`, so the caller fails closed. Not exposed
 over HTTP.
+
+## Invitation acceptance lock (2026-11-07)
+
+The closing unit of `AcceptSellerInvitation` (Seller Owner and Staff) first takes the invitation's
+advisory lock `identity.lock-invitation` (lock class 1706, one lock per Market, tenant and
+invitation), then runs at SERIALIZABLE as before (C11). Two acceptances of one invitation used to
+read it pending side by side and sometimes ran out of retry attempts with 40001 under the parallel
+database run (PR #769); now the second waits for the first's commit and refuses
+(`invitation.rejected`). Its snapshot may still predate that commit, so the address's unique key,
+or a 40001 retry that reads the invitation accepted, is what refuses it; never a second account.

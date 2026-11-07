@@ -24,6 +24,7 @@ import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed
 import { parseEmailAddress } from '../../src/modules/identity/domain/email-address';
 import { Invitation } from '../../src/modules/identity/domain/invitation';
 import { SellerAccess } from '../../src/modules/identity/domain/seller-access';
+import { IDENTITY_INVITATION_LOCK_CLASS } from '../../src/platform/persistence/named-statements';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
@@ -32,7 +33,8 @@ import { testDatabaseUrl } from './test-database';
 
 // Identity slice 9 on PostgreSQL, round 1 of PR #204 (Hassan M2; data design 3.10), for both
 // Market fixtures: two acceptances of one seller-owner invitation racing under SERIALIZABLE
-// create exactly one account (one success, one `invitation.rejected`), and the partial unique key
+// create exactly one account (one success, one `invitation.rejected`), also when both queue behind
+// the invitation's lock (`identity.lock-invitation`), and the partial unique key
 // keeps one pending seller-owner invitation per address in the Market.
 
 const PASSWORD = 'correct horse battery staple';
@@ -88,6 +90,30 @@ describe.each(TEST_MARKETS)('seller-owner invitations in market %s (database, sl
     );
     return rows[0]!.id;
   };
+
+  /**
+   * Waits until both closing units wait on the invitation's lock, or until one has waited for
+   * 1.5 s (the second may still be hashing), well inside the role's `lock_timeout` of 3 s.
+   */
+  async function untilQueuedOnInvitation(key: string, timeoutMs = 10_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    let firstSeen: number | null = null;
+    while (Date.now() < deadline) {
+      const { rows } = await sql.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM pg_locks
+          WHERE locktype = 'advisory' AND NOT granted AND classid = $1::int4::oid
+            AND objid = ((hashtext($2)::bigint + 4294967296) % 4294967296)::oid
+            AND objsubid = 2`,
+        [IDENTITY_INVITATION_LOCK_CLASS, key],
+      );
+      const n = rows[0]!.n;
+      if (n >= 2) return;
+      if (n === 1) firstSeen ??= Date.now();
+      if (firstSeen !== null && Date.now() - firstSeen > 1500) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw new Error(`no acceptance waited on the invitation lock within ${timeoutMs} ms`);
+  }
 
   /** An active, verified admin holding `identity.seller-account.create` (the inviter). */
   async function inviter(): Promise<Id<'Account'>> {
@@ -161,6 +187,49 @@ describe.each(TEST_MARKETS)('seller-owner invitations in market %s (database, sl
       });
 
     const results = await Promise.all([accept(), accept()]);
+
+    const outcomes = results.map((r) => (r.ok ? r.value.code : r.error.code)).sort();
+    expect(outcomes).toEqual(['invitation.accepted', 'invitation.rejected']);
+    const accounts = await sql.query<{ id: string }>(
+      `SELECT id FROM identity.accounts WHERE market_id = $1 AND email_normalized = $2`,
+      [code, email],
+    );
+    expect(accounts.rows).toHaveLength(1);
+    const members = await sql.query<{ n: string }>(
+      `SELECT count(*) AS n FROM identity.seller_memberships WHERE market_id = $1 AND seller_id = $2`,
+      [code, sellerId],
+    );
+    expect(members.rows[0]!.n).toBe('1');
+  });
+
+  it('queues two acceptances behind the invitation lock; the second refuses (Hassan M2)', async () => {
+    const email = `queued.${randomUUID()}@invitations.example`;
+    const { token, sellerId, invitation } = await invited(email, await inviter());
+    const key = `${market.marketId}:${market.tenantId}:${invitation.state.id}`;
+    const accept = () =>
+      app.get(AcceptSellerInvitation).execute(testCallContext(market, 'anonymous'), {
+        token,
+        password: PASSWORD,
+        client: CLIENT,
+      });
+
+    // This connection holds the lock both closing units take first, so they meet behind it
+    // whatever their timing: without the lock both would read the invitation pending at once.
+    await sql.query('BEGIN');
+    let results;
+    try {
+      await sql.query(
+        `SELECT pg_advisory_xact_lock(${IDENTITY_INVITATION_LOCK_CLASS}::int4, hashtext($1))`,
+        [key],
+      );
+      const pending = Promise.all([accept(), accept()]);
+      await untilQueuedOnInvitation(key);
+      await sql.query('COMMIT');
+      results = await pending;
+    } catch (error) {
+      await sql.query('ROLLBACK');
+      throw error;
+    }
 
     const outcomes = results.map((r) => (r.ok ? r.value.code : r.error.code)).sort();
     expect(outcomes).toEqual(['invitation.accepted', 'invitation.rejected']);

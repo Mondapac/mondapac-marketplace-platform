@@ -149,7 +149,8 @@ function acceptableInvitation(
  * 2. Outside any unit: the password's rules against the address and the name (HF13), then its
  *    hash (6.5).
  * 3. **Closing unit**, SERIALIZABLE (C11: it writes `accounts`, `seller_memberships` and
- *    `role_assignments`): the invitation read again and still acceptable; its role read again,
+ *    `role_assignments`), which first takes the invitation's lock (`identity.lock-invitation`,
+ *    Hassan M2) so two acceptances of one invitation never run side by side: the invitation read again and still acceptable; its role read again,
  *    still the seller system role of this Market (I-6); the seller's access of this Market, which
  *    never had a member (HF5 (a)); the inviter still an active, verified admin holding
  *    `identity.seller-account.create` (Hassan 14.2). Then the account `active` and verified with
@@ -293,6 +294,12 @@ export class AcceptSellerInvitation extends UseCase<
     const closed = await unitOfWork.run(
       market,
       async (): Promise<Result<Id<'Account'> | null, never>> => {
+        // Hassan M2: two acceptances of one invitation wait here for each other, so they never
+        // run side by side and fight until the unit runs out of attempts (40001). The lock is
+        // the unit's first statement, so the second one's snapshot may predate the first's
+        // commit and still read the invitation pending: the address's unique key (or 40001 and
+        // a retry, which reads it accepted) then refuses it, never a second account.
+        await this.deps.invitations.lockForAcceptance(market, invitationId);
         const now = this.deps.clock.now();
         const invitation = await this.deps.invitations.findById(market, invitationId);
         if (!acceptableInvitation(invitation, now) || invitation.state.kind !== invitationKind) {
