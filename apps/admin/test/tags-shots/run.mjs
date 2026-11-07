@@ -62,7 +62,11 @@ for (const scheme of ['light', 'dark']) {
       console.log(name, width, scheme, 'horizontal overflow:', over);
       const dialog = name === 'list' ? null : page.getByRole('dialog');
       if (dialog) await dialog.screenshot({ path: join(out, `${name}-${width}-${scheme}.png`) });
-      else await page.screenshot({ path: join(out, `${name}-${width}-${scheme}.png`), fullPage: true });
+      else
+        await page.screenshot({
+          path: join(out, `${name}-${width}-${scheme}.png`),
+          fullPage: true,
+        });
       await ctx.close();
     }
   }
