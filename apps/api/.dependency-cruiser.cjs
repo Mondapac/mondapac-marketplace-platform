@@ -436,11 +436,18 @@ module.exports = {
       name: 'domain-is-pure',
       comment:
         'domain/ holds pure business rules: it may import only its own domain/ and the ' +
-        'shared kernel. No NestJS, no Prisma, no I/O, no other layer.',
+        'shared kernel and @mondapac/platform-import. No NestJS, no Prisma, no I/O, no other layer.',
       severity: 'error',
       from: { path: '^src/modules/([^/]+)/domain/' },
       // The kernel arrives through tsconfig.json's paths (positive fixture: domain/uses-kernel.ts).
-      to: { pathNot: ['^src/modules/$1/domain/', 'packages/shared-kernel/'] },
+      to: {
+        pathNot: [
+          '^src/modules/$1/domain/',
+          'packages/shared-kernel/',
+          // The shared CSV rules, framework free like the kernel (catalog design 14b).
+          'packages/platform-import/',
+        ],
+      },
     },
     {
       name: 'application-does-not-know-delivery',
