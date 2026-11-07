@@ -145,7 +145,7 @@ describe.each(['AU', 'ZZ'] as const)('own-import.check in market %s', (code) => 
         },
         purgeStartedBefore: () => Promise.resolve(0),
       } as never,
-      counterKeys: { keyOf: () => new Uint8Array(32) } as never,
+      counterKeys: { keyOf: () => new Uint8Array(32) },
       importFacts: {
         load: () =>
           Promise.resolve({
@@ -271,7 +271,7 @@ describe.each(['AU', 'ZZ'] as const)('own-import.check in market %s', (code) => 
     ['data that is not base64', mine('@@@@')],
   ])('refuses %s without storing anything', async (_label, input) => {
     const r = rig();
-    const result = await r.useCase.execute(r.context(), input as OwnImportCheckInput);
+    const result = await r.useCase.execute(r.context(), input);
     expect(result.ok ? 'ok' : result.error.code).toBe('validation.failed');
     expect(r.jobs).toHaveLength(0);
     expect(r.files.size).toBe(0);

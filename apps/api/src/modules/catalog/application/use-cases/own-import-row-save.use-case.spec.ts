@@ -18,7 +18,10 @@ import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-m
 import type { ProductRepository } from '../ports/product.repository';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import type { SaveDraft } from '../working-copy/save-draft.service';
-import { OwnImportRowSave } from './own-import-row-save.use-case';
+import {
+  OwnImportRowSave,
+  type OwnImportRowSaveDependencies,
+} from './own-import-row-save.use-case';
 
 // `own-import.row-save` in memory, on both Market fixtures (catalog design 14c): a group that fails
 // writes nothing (one all-or-nothing save, never a first save followed by a refusal), the ids a new
@@ -47,30 +50,29 @@ describe.each(['AU', 'ZZ'] as const)('own-import.row-save in market %s', (code) 
   );
   const locale = policy.locales(market).default;
 
-  const planOf = (over: Partial<SellerGroupPlan> = {}): SellerGroupPlan =>
-    ({
-      mode: 'my-products',
-      kind: 'update',
-      groupRow: 2,
-      sellerSku: 'SKU-1',
-      conditionCode: null,
-      offerDescription: null,
-      existing: null,
-      catalogueProduct: null,
-      product: {
-        typeCode: 'simple',
-        title: 'New title',
-        shortDescription: null,
-        description: null,
-        categoryId: null,
-        taxCategoryCode: null,
-        attributeValues: {},
-        imageNames: [],
-        axes: [],
-      },
-      variants: [],
-      ...over,
-    }) as SellerGroupPlan;
+  const planOf = (over: Partial<SellerGroupPlan> = {}): SellerGroupPlan => ({
+    mode: 'my-products',
+    kind: 'update',
+    groupRow: 2,
+    sellerSku: 'SKU-1',
+    conditionCode: null,
+    offerDescription: null,
+    existing: null,
+    catalogueProduct: null,
+    product: {
+      typeCode: 'simple',
+      title: 'New title',
+      shortDescription: null,
+      description: null,
+      categoryId: null,
+      taxCategoryCode: null,
+      attributeValues: {},
+      imageNames: [],
+      axes: [],
+    },
+    variants: [],
+    ...over,
+  });
 
   function rig(
     refuse = false,
@@ -186,9 +188,9 @@ describe.each(['AU', 'ZZ'] as const)('own-import.row-save in market %s', (code) 
   it('refuses a seller who may not sell and an acting-as session, saving nothing', async () => {
     const r = rig();
     const deniedUseCase = new OwnImportRowSave(createUseCaseGate(markets, admitAll), {
-      ...(r.useCase as unknown as { deps: never }).deps,
+      ...(r.useCase as unknown as { deps: Record<string, unknown> }).deps,
       eligibility: { isEligible: () => Promise.resolve(false) },
-    });
+    } as unknown as OwnImportRowSaveDependencies);
     expect(await deniedUseCase.execute(context, { productId, plan: planOf() })).toEqual({
       ok: false,
       error: { code: 'seller.not-eligible' },

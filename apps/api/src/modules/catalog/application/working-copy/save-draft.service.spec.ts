@@ -11,7 +11,6 @@ import type { ContentFilter } from '../../../../platform/content-filter/content-
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { CheckClaimText, ClaimTextVerdict } from '../claim-text/check-claim-text.service';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
-import type { VariantGtinRegistry } from '../ports/variant-gtin.registry';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import { SaveDraft } from './save-draft.service';
 import type { SaveWorkingCopy } from './save-working-copy.service';
@@ -94,7 +93,7 @@ describe.each(['AU', 'ZZ'])('SaveDraft in market %s', (code) => {
       policy: {
         locales: () => ({ default: 'en', supported: ['en'] }),
       } as unknown as CatalogMarketPolicy,
-      gtinRegistry: { duplicatesOf: () => Promise.resolve([]) } as unknown as VariantGtinRegistry,
+      gtinRegistry: { duplicatesOf: () => Promise.resolve([]) },
       contentFilter: {
         isBlocked: (_m: MarketContext, text: string) =>
           blocked.some((term) => text.toLowerCase().includes(term)),
@@ -127,8 +126,9 @@ describe.each(['AU', 'ZZ'])('SaveDraft in market %s', (code) => {
     });
     expect(refused).toMatchObject({
       ok: false,
-      error: { code: 'claim-text.refused', fields: [{ field: expect.any(String) }] },
+      error: { code: 'claim-text.refused' },
     });
+    expect(!refused.ok && 'fields' in refused.error && refused.error.fields).toHaveLength(1);
     expect(r.saves).toHaveLength(0);
   });
 

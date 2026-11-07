@@ -203,7 +203,7 @@ describe.each(['AU', 'ZZ'] as const)('own-import.add-photo in market %s', (code)
         },
         purgeStartedBefore: () => Promise.resolve(0),
       } as never,
-      counterKeys: { keyOf: () => new Uint8Array(32) } as never,
+      counterKeys: { keyOf: () => new Uint8Array(32) },
       clock,
     });
     return { useCase, log, looked, reserved, saves };
@@ -214,7 +214,7 @@ describe.each(['AU', 'ZZ'] as const)('own-import.add-photo in market %s', (code)
       name: 'Lamb.JPG',
       data: Buffer.from('x').toString('base64'),
       ...input,
-    } as never);
+    });
 
   it('reserves the name, uploads for the job’s product, saves the draft and sets the image', async () => {
     const r = rig();
@@ -229,14 +229,11 @@ describe.each(['AU', 'ZZ'] as const)('own-import.add-photo in market %s', (code)
     ]);
     expect(r.reserved.sort()).toEqual(['import-photo.seller.day', 'import-photo.seller.minute']);
     // The interactive save budget is not spent for a photo, and the image joins the gallery.
-    expect(r.saves).toEqual([
-      {
-        input: expect.objectContaining({
-          content: expect.objectContaining({ imageIds: ['img-0', IMAGE] }),
-        }),
-        opts: { spendSavesLimit: false },
-      },
-    ]);
+    expect(r.saves).toHaveLength(1);
+    expect(r.saves[0]).toMatchObject({
+      input: { content: { imageIds: ['img-0', IMAGE] } },
+      opts: { spendSavesLimit: false },
+    });
   });
 
   it('answers request.throttled over the minute or day photo count and drops the reservation', async () => {

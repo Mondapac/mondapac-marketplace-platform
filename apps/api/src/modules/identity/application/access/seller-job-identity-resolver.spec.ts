@@ -176,9 +176,9 @@ describe.each(TEST_MARKETS)('SellerJobIdentityResolver in market %s', (code) => 
     const { fakes, resume } = await rig();
     const stored = (await fakes.sessionRepository.findById(market, SESSION_ID)) as Session;
     const spy = jest.spyOn(fakes.sessionRepository, 'findById');
-    spy.mockResolvedValue({ ...stored, revokedAt: T0, revokedReason: null } as Session);
+    spy.mockResolvedValue({ ...stored, revokedAt: T0, revokedReason: null });
     expect(await resume()).toBeNull();
-    spy.mockResolvedValue({ ...stored, revokedAt: T0, revokedReason: 'something-new' } as never);
+    spy.mockResolvedValue({ ...stored, revokedAt: T0, revokedReason: 'something-new' });
     expect(await resume()).toBeNull();
   });
 

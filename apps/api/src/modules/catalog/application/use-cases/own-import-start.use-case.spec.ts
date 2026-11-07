@@ -9,7 +9,6 @@ import {
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
-import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -166,16 +165,16 @@ describe.each(['AU', 'ZZ'] as const)('own-import.start in market %s', (code) => 
         },
         purgeStartedBefore: () => Promise.resolve(0),
       } as never,
-      counterKeys: { keyOf: () => new Uint8Array(32) } as never,
+      counterKeys: { keyOf: () => new Uint8Array(32) },
       audit: {
         record: (_c: unknown, entry: unknown) => (audited.push(entry), Promise.resolve()),
-      } as unknown as AuditWriter,
+      },
       clock,
     });
     return { useCase, confirmed, audited, reserved };
   }
   const start = (r: ReturnType<typeof rig>, input: object = {}, context = contextOf()) =>
-    r.useCase.execute(context, { importId: JOB, skipErrors: true, ...input } as never);
+    r.useCase.execute(context, { importId: JOB, skipErrors: true, ...input });
 
   it('confirms a checked job, counts the start, audits it and answers the queued job', async () => {
     const r = rig();

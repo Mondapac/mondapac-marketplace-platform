@@ -139,7 +139,7 @@ export class SaveWorkingCopy {
           );
           const stored =
             input.placeholders !== undefined && input.placeholders.length > 0
-              ? withMintedIds(content as Record<string, unknown>, input.placeholders, minted)
+              ? withMintedIds(content, input.placeholders, minted)
               : content;
           const copy: WorkingCopy = {
             productId: product.state.id,

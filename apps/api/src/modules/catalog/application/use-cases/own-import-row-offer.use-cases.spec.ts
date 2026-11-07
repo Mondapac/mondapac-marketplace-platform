@@ -66,7 +66,7 @@ describe.each(['AU', 'ZZ'] as const)('seller import Offer rows in market %s', (c
   } as unknown as UnitOfWork;
   const matched: string[] = [];
   const matcher: ClaimTextMatcher = {
-    match: (_c, texts) => {
+    match: (_c: unknown, texts: readonly { text: string }[]) => {
       matched.push(...texts.map((item) => item.text));
       return Promise.resolve({
         ok: true as const,
@@ -135,7 +135,7 @@ describe.each(['AU', 'ZZ'] as const)('seller import Offer rows in market %s', (c
           save: () => Promise.reject(new Error('unused')),
         },
         offers: {
-          add: (_m, offer) => {
+          add: (_m: unknown, offer: Offer) => {
             stored.push(offer);
             return Promise.resolve(null);
           },
@@ -269,7 +269,7 @@ describe.each(['AU', 'ZZ'] as const)('seller import Offer rows in market %s', (c
                   activeTagState(ids.next<'OfferTag'>(), typeCode, certificateIds, T0),
                 ]),
               ),
-            save: (_m, offer) => {
+            save: (_m: unknown, offer: Offer) => {
               saved.push(offer);
               return Promise.resolve(null);
             },
@@ -282,7 +282,7 @@ describe.each(['AU', 'ZZ'] as const)('seller import Offer rows in market %s', (c
           evaluator,
           outbox,
           clock,
-        } as never,
+        },
         'import-row',
       );
       const useCase = new OwnImportRowOfferEdit(gate, { edit: inner });
