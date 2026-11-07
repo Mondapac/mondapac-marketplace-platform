@@ -22,24 +22,6 @@ import type { ProductRevisionRepository } from '../ports/product-revision.reposi
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import type { SaveDraft, SaveDraftFailure, RefusedField } from '../working-copy/save-draft.service';
-import type {
-  OwnProductCreate,
-  OwnProductCreateFailure,
-  OwnProductCreateInput,
-  OwnProductCreateOutput,
-} from './own-product-create.use-case';
-import type {
-  OwnOfferCreateOnPlatformProduct,
-  OwnOfferCreateOnPlatformProductFailure,
-  OwnOfferCreateOnPlatformProductInput,
-  OwnOfferCreateOnPlatformProductOutput,
-} from './own-offer-create-on-platform-product.use-case';
-import type {
-  OwnOfferEdit,
-  OwnOfferEditFailure,
-  OwnOfferEditInput,
-  OwnOfferEditOutput,
-} from './own-offer-edit.use-case';
 
 // The row use cases of the seller import (catalog design 14c, "Limits of a run"). Each is the
 // interactive use case of the same action for the job: the same service, so the same guards, the
@@ -58,99 +40,6 @@ type Refused = AccessDenied | { readonly code: 'access.acting-as-refused' };
 function sellerOf(context: CallContext): Id<'Seller'> | null {
   const { actor } = context;
   return actor.kind === 'authenticated' && actor.population === 'seller' ? actor.sellerId : null;
-}
-
-export type OwnImportRowCreateFailure = OwnProductCreateFailure | Refused;
-
-/** `own-import.row-create`: `own-product.create` for a row, with no interactive save spent. */
-export class OwnImportRowCreate extends UseCase<
-  OwnProductCreateInput,
-  OwnProductCreateOutput,
-  OwnImportRowCreateFailure
-> {
-  static override readonly access: AccessDeclaration = {
-    name: 'catalog.own-import-row-create',
-    rule: { kind: 'permissions', allOf: ACCESS_KEYS },
-    whenSellerNotApproved: 'deny',
-  };
-
-  constructor(
-    gate: UseCaseGate,
-    private readonly deps: { readonly create: OwnProductCreate },
-  ) {
-    super(gate);
-  }
-
-  protected async handle(
-    context: CallContext,
-    input: OwnProductCreateInput,
-  ): Promise<Result<OwnProductCreateOutput, OwnImportRowCreateFailure>> {
-    if (sellerOf(context) === null) return err({ code: 'access.denied' });
-    if (isActingAsSession(context.actor)) return err({ code: 'access.acting-as-refused' });
-    return this.deps.create.execute(context, input);
-  }
-}
-
-export type OwnImportRowOfferCreateFailure = OwnOfferCreateOnPlatformProductFailure | Refused;
-
-/** `own-import.row-offer-create`: an Offer on a catalogue product for a row. */
-export class OwnImportRowOfferCreate extends UseCase<
-  OwnOfferCreateOnPlatformProductInput,
-  OwnOfferCreateOnPlatformProductOutput,
-  OwnImportRowOfferCreateFailure
-> {
-  static override readonly access: AccessDeclaration = {
-    name: 'catalog.own-import-row-offer-create',
-    rule: { kind: 'permissions', allOf: ACCESS_KEYS },
-    whenSellerNotApproved: 'deny',
-  };
-
-  constructor(
-    gate: UseCaseGate,
-    private readonly deps: { readonly create: OwnOfferCreateOnPlatformProduct },
-  ) {
-    super(gate);
-  }
-
-  protected async handle(
-    context: CallContext,
-    input: OwnOfferCreateOnPlatformProductInput,
-  ): Promise<Result<OwnOfferCreateOnPlatformProductOutput, OwnImportRowOfferCreateFailure>> {
-    if (sellerOf(context) === null) return err({ code: 'access.denied' });
-    if (isActingAsSession(context.actor)) return err({ code: 'access.acting-as-refused' });
-    return this.deps.create.execute(context, input);
-  }
-}
-
-export type OwnImportRowOfferEditFailure = OwnOfferEditFailure | Refused;
-
-/** `own-import.row-offer-edit`: `own-offer.edit` for a row; its tags are asked again as ever. */
-export class OwnImportRowOfferEdit extends UseCase<
-  OwnOfferEditInput,
-  OwnOfferEditOutput,
-  OwnImportRowOfferEditFailure
-> {
-  static override readonly access: AccessDeclaration = {
-    name: 'catalog.own-import-row-offer-edit',
-    rule: { kind: 'permissions', allOf: ACCESS_KEYS },
-    whenSellerNotApproved: 'deny',
-  };
-
-  constructor(
-    gate: UseCaseGate,
-    private readonly deps: { readonly edit: OwnOfferEdit },
-  ) {
-    super(gate);
-  }
-
-  protected async handle(
-    context: CallContext,
-    input: OwnOfferEditInput,
-  ): Promise<Result<OwnOfferEditOutput, OwnImportRowOfferEditFailure>> {
-    if (sellerOf(context) === null) return err({ code: 'access.denied' });
-    if (isActingAsSession(context.actor)) return err({ code: 'access.acting-as-refused' });
-    return this.deps.edit.execute(context, input);
-  }
 }
 
 /** The request: the product and the checked plan of its group. */
@@ -266,7 +155,9 @@ export class OwnImportRowSave extends UseCase<
       { readOnly: true },
     );
     if (!read.ok) {
-      return err(read.error.code === 'product.not-found' ? read.error : { code: 'access.unavailable' });
+      return err(
+        read.error.code === 'product.not-found' ? read.error : { code: 'access.unavailable' },
+      );
     }
     const base = read.value;
 

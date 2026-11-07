@@ -19,8 +19,7 @@ export function purgeSellerImportsJob(purge: OwnImportPurge): JobDefinition {
     every: Temporal.Duration.from({ hours: 1 }),
     async run(context: JobContext): Promise<void> {
       const result = await purge.execute(context, {});
-      if (!result.ok)
-        throw new Error(`${PURGE_SELLER_IMPORTS_JOB} refused: ${result.error.code}`);
+      if (!result.ok) throw new Error(`${PURGE_SELLER_IMPORTS_JOB} refused: ${result.error.code}`);
       logger.log({
         msg: PURGE_SELLER_IMPORTS_JOB,
         marketId: context.market.marketId,

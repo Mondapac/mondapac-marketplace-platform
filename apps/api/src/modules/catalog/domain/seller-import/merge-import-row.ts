@@ -189,7 +189,8 @@ export function draftContentOfRevision(revision: RevisionContent): Draft {
       out['optionValues'] = { ...variant.optionValues };
     }
     if (variant.gtin !== null) out['gtin'] = variant.gtin;
-    if (variant.shippingWeightGrams !== null) out['shippingWeightGrams'] = variant.shippingWeightGrams;
+    if (variant.shippingWeightGrams !== null)
+      out['shippingWeightGrams'] = variant.shippingWeightGrams;
     if (variant.shippingLengthMm !== null) out['shippingLengthMm'] = variant.shippingLengthMm;
     if (variant.shippingWidthMm !== null) out['shippingWidthMm'] = variant.shippingWidthMm;
     if (variant.shippingHeightMm !== null) out['shippingHeightMm'] = variant.shippingHeightMm;

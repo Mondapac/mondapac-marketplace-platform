@@ -1,8 +1,4 @@
-import {
-  CERTIFICATION_HEADER,
-  displayHeader,
-  normaliseHeader,
-} from '../platform-import/columns';
+import { CERTIFICATION_HEADER, displayHeader, normaliseHeader } from '../platform-import/columns';
 import type { ParsedTable } from '../platform-import/import-file';
 
 // The columns of the seller import file (catalog design 14c). Headers are matched as the platform
@@ -55,7 +51,13 @@ const CATALOGUE = ['sell-from-catalogue'] as const;
 export const SELLER_COLUMNS: readonly SellerColumn[] = Object.freeze([
   { key: 'sku', header: 'Seller SKU', aliases: ['sku'], modes: BOTH, requiredIn: BOTH },
   { key: 'condition', header: 'Condition', aliases: [], modes: BOTH, requiredIn: [] },
-  { key: 'offerDescription', header: 'Offer description', aliases: [], modes: BOTH, requiredIn: [] },
+  {
+    key: 'offerDescription',
+    header: 'Offer description',
+    aliases: [],
+    modes: BOTH,
+    requiredIn: [],
+  },
   {
     key: 'productCode',
     header: 'Product code',
@@ -78,7 +80,13 @@ export const SELLER_COLUMNS: readonly SellerColumn[] = Object.freeze([
     requiredIn: MINE,
   },
   { key: 'type', header: 'Product type', aliases: ['type'], modes: MINE, requiredIn: MINE },
-  { key: 'shortDescription', header: 'Short description', aliases: [], modes: MINE, requiredIn: [] },
+  {
+    key: 'shortDescription',
+    header: 'Short description',
+    aliases: [],
+    modes: MINE,
+    requiredIn: [],
+  },
   { key: 'description', header: 'Description', aliases: [], modes: MINE, requiredIn: [] },
   { key: 'brand', header: 'Brand', aliases: [], modes: MINE, requiredIn: [] },
   { key: 'taxCategory', header: 'Tax category', aliases: ['tax'], modes: MINE, requiredIn: [] },
@@ -188,7 +196,12 @@ export function mapSellerColumns(
       const kind = bracket[1] as 'option' | 'attribute';
       const code = bracket[2] ?? '';
       const inSet = kind === 'option' ? known.optionCodes : known.attributeCodes;
-      if (mode !== 'my-products' || code === '' || !inSet.has(code) || markOf(normaliseHeader(code)) !== null) {
+      if (
+        mode !== 'my-products' ||
+        code === '' ||
+        !inSet.has(code) ||
+        markOf(normaliseHeader(code)) !== null
+      ) {
         ignore();
         return;
       }
@@ -201,8 +214,7 @@ export function mapSellerColumns(
       return;
     }
     const column = SELLER_COLUMNS.find(
-      (candidate) =>
-        normaliseHeader(candidate.header) === name || candidate.aliases.includes(name),
+      (candidate) => normaliseHeader(candidate.header) === name || candidate.aliases.includes(name),
     );
     if (column === undefined || !column.modes.includes(mode)) {
       ignore();

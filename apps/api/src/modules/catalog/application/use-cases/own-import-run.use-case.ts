@@ -48,12 +48,10 @@ import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader
 import type { SellerImportFactsReader } from '../ports/seller-import-facts.reader';
 import type { SellerImportRepository } from '../ports/seller-import.repository';
 import { readSellerCheckEnvironment } from '../seller-import/seller-import-support';
-import type {
-  OwnImportRowOfferCreate,
-  OwnImportRowOfferEdit,
-  OwnImportRowCreate,
-  OwnImportRowSave,
-} from './own-import-row.use-case';
+import type { OwnImportRowCreate } from './own-import-row-create.use-case';
+import type { OwnImportRowOfferCreate } from './own-import-row-offer-create.use-case';
+import type { OwnImportRowOfferEdit } from './own-import-row-offer-edit.use-case';
+import type { OwnImportRowSave } from './own-import-row-save.use-case';
 
 export interface OwnImportRunInput {
   /** How long one turn may take (milliseconds). */
@@ -127,7 +125,11 @@ interface Ids {
  * to `queued`), or when it cannot go on (`stopped` with a reason). The finish writes one event,
  * `catalog.seller-import-finished.v1`, for the seller's notice.
  */
-export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput, OwnImportRunFailure> {
+export class OwnImportRun extends UseCase<
+  OwnImportRunInput,
+  OwnImportRunOutput,
+  OwnImportRunFailure
+> {
   static override readonly access: AccessDeclaration = {
     name: 'catalog.own-import-run',
     rule: { kind: 'system' },
@@ -254,7 +256,9 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
         failed: current?.failedRows ?? job.failedRows,
       };
     };
-    const done = async (outcome: 'finished' | 'stopped' | 'queued'): Promise<OwnImportRunOutput> => ({
+    const done = async (
+      outcome: 'finished' | 'stopped' | 'queued',
+    ): Promise<OwnImportRunOutput> => ({
       ran: true,
       outcome,
       ...(await counts()),
@@ -484,7 +488,8 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
     const description = plan.offerDescription;
     let productId = recorded.productId ?? plan.existing?.productId ?? null;
     let offerId = recorded.offerId ?? plan.existing?.offerId ?? null;
-    let state: 'created' | 'updated' | 'unchanged' = plan.kind === 'create' ? 'created' : 'unchanged';
+    let state: 'created' | 'updated' | 'unchanged' =
+      plan.kind === 'create' ? 'created' : 'unchanged';
 
     if (productId === null || offerId === null) {
       const created = await deps.ownRowCreate.execute(seller, {
@@ -565,7 +570,8 @@ export class OwnImportRun extends UseCase<OwnImportRunInput, OwnImportRunOutput,
       async () => ok(await deps.offers.findById(seller.market, offerId as Id<'Offer'>)),
       { readOnly: true },
     );
-    if (!found.ok || found.value === null) return { kind: 'failed', outcome: { kind: 'transient' } };
+    if (!found.ok || found.value === null)
+      return { kind: 'failed', outcome: { kind: 'transient' } };
     const stored = found.value.state;
     const conditionCode = plan.conditionCode ?? stored.conditionCode;
     const description =
@@ -607,4 +613,3 @@ function failureOf(code: string, detail?: unknown): GroupOutcome {
       return { kind: 'failed', code: action.code };
   }
 }
-

@@ -41,16 +41,12 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { OwnImportAddPhoto } from '../application/use-cases/own-import-add-photo.use-case';
 import { OwnImportCheck } from '../application/use-cases/own-import-check.use-case';
-import {
-  OwnImportDiscard,
-  OwnImportResume,
-  OwnImportStart,
-} from '../application/use-cases/own-import-control.use-case';
-import {
-  OwnImportRead,
-  OwnImportReport,
-  OwnImportTemplate,
-} from '../application/use-cases/own-import-reads.use-case';
+import { OwnImportDiscard } from '../application/use-cases/own-import-discard.use-case';
+import { OwnImportResume } from '../application/use-cases/own-import-resume.use-case';
+import { OwnImportStart } from '../application/use-cases/own-import-start.use-case';
+import { OwnImportRead } from '../application/use-cases/own-import-read.use-case';
+import { OwnImportReport } from '../application/use-cases/own-import-report.use-case';
+import { OwnImportTemplate } from '../application/use-cases/own-import-template.use-case';
 import { closedBody, refusalWith } from './http-answers';
 import { PRODUCT_IMAGE_STATUS } from './product-image.controller';
 import { ApiErrorBody } from './platform-product.dto';
@@ -435,8 +431,7 @@ export class SellerImportController {
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'import.not-found' })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description:
-      'import.photos-closed, import.photo-already-added or image.limit-reached',
+    description: 'import.photos-closed, import.photo-already-added or image.limit-reached',
   })
   @ApiPayloadTooLargeResponse({ type: ApiErrorBody, description: 'file.too-large' })
   @ApiUnprocessableEntityResponse({

@@ -1053,5 +1053,17 @@
       "categoryId": "id",
       "checkedIds": "listOf(id)"
     }
+  },
+  {
+    "type": "catalog.seller-import-finished.v1",
+    "aggregateType": "import-job",
+    "fields": {
+      "importId": "id",
+      "sellerId": "id",
+      "outcome": "enumOf(completed|stopped)",
+      "created": "integer",
+      "updated": "integer",
+      "failed": "integer"
+    }
   }
 ]

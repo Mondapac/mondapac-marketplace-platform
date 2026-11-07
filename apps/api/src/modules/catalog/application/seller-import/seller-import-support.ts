@@ -194,13 +194,28 @@ export async function loadSellerView(
   const ran = job.state === 'finished' || job.state === 'stopped';
   const [errorRows, failedRows, previewRows] = await Promise.all([
     checking && job.errorRows > 0
-      ? repository.rows(market, job.id, { checkState: 'error' }, { offset: 0, limit: VIEW_ERROR_LINES })
+      ? repository.rows(
+          market,
+          job.id,
+          { checkState: 'error' },
+          { offset: 0, limit: VIEW_ERROR_LINES },
+        )
       : [],
     ran && job.failedRows > 0
-      ? repository.rows(market, job.id, { runState: 'failed' }, { offset: 0, limit: VIEW_FAILURE_LINES })
+      ? repository.rows(
+          market,
+          job.id,
+          { runState: 'failed' },
+          { offset: 0, limit: VIEW_FAILURE_LINES },
+        )
       : [],
     checking
-      ? repository.rows(market, job.id, { checkState: 'ready' }, { offset: 0, limit: VIEW_PREVIEW_ROWS })
+      ? repository.rows(
+          market,
+          job.id,
+          { checkState: 'ready' },
+          { offset: 0, limit: VIEW_PREVIEW_ROWS },
+        )
       : [],
   ]);
   return sellerViewOf(job, { errorRows, failedRows, previewRows }, now);

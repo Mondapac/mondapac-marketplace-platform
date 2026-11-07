@@ -110,6 +110,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
       ],
     });
     expect(roleOf('seller', 'store-manager').permissionKeys).toEqual([
+      'catalog.own-import.run',
       'catalog.own-product.edit',
       'catalog.own-product.view',
       'certification.own-certificate.manage',
@@ -514,7 +515,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
       role.seedCode === 'store-manager'
         ? {
             ...role,
-            seedVersion: 5,
+            seedVersion: 6,
             permissionKeys: ['identity.team-member.view', 'identity.seller-access.view'].slice(
               0,
               1,
@@ -530,18 +531,19 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('seller', 'store-manager')).toMatchObject({
       id: before.id,
-      seedVersion: 5,
+      seedVersion: 6,
       version: before.version + 1,
       permissionKeys: ['identity.team-member.view'],
     });
     expect(fakes.audits).toEqual([
       {
         ...RoleSeedApplied.entry(before.id, {
-          before: { seedVersion: 4 },
+          before: { seedVersion: 5 },
           after: {
-            seedVersion: 5,
+            seedVersion: 6,
             addedKeys: [],
             removedKeys: [
+              'catalog.own-import.run',
               'catalog.own-product.edit',
               'catalog.own-product.view',
               'certification.own-certificate.manage',
@@ -556,8 +558,8 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
     expect(logged('identity.seed-roles.upgraded')?.[0]).toMatchObject({
       roleId: before.id,
-      fromSeedVersion: 4,
-      seedVersion: 5,
+      fromSeedVersion: 5,
+      seedVersion: 6,
     });
 
     // Applied once: the next run finds the role current and writes nothing.

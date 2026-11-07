@@ -61,10 +61,15 @@ export class PrismaSellerImportFactsReader implements SellerImportFactsReader {
           });
     const catalogueByCode = new Map<string, CatalogueProductFact>();
     for (const product of catalogue) {
-      catalogueByCode.set(product.productCode, { productId: product.id, typeCode: product.typeCode });
+      catalogueByCode.set(product.productCode, {
+        productId: product.id,
+        typeCode: product.typeCode,
+      });
     }
 
-    const productIds = [...new Set([...offers.map((o) => o.productId), ...catalogue.map((p) => p.id)])];
+    const productIds = [
+      ...new Set([...offers.map((o) => o.productId), ...catalogue.map((p) => p.id)]),
+    ];
     const ownOnProducts =
       productIds.length === 0
         ? []

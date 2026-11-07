@@ -34,7 +34,9 @@ const option = (code: string, values: readonly string[]): AttributeField => ({
   isVariantOption: true,
   material: false,
   claimChecked: true,
-  bounds: { options: values.map((value) => ({ code: value, labels: { 'en-AU': value, 'en-ZZ': value } })) },
+  bounds: {
+    options: values.map((value) => ({ code: value, labels: { 'en-AU': value, 'en-ZZ': value } })),
+  },
 });
 
 const schema: AttributeSchema = {
@@ -311,7 +313,9 @@ describe('sell-from-catalogue', () => {
       env,
       facts,
     );
-    const answers = groups.map((group) => group.rows[0]!.issues.map((i) => `${i.column}:${i.code}`));
+    const answers = groups.map((group) =>
+      group.rows[0]!.issues.map((i) => `${i.column}:${i.code}`),
+    );
     expect(answers[0]).toEqual(answers[1]);
     expect(answers[0]).toContain('productCode:product.not-found');
   });
@@ -326,7 +330,10 @@ describe('sell-from-catalogue', () => {
       env,
       facts,
     );
-    expect(groups[0]!.plan).toMatchObject({ kind: 'create', catalogueProduct: { productId: 'p-1' } });
+    expect(groups[0]!.plan).toMatchObject({
+      kind: 'create',
+      catalogueProduct: { productId: 'p-1' },
+    });
     expect(groups[1]!.rows[0]!.issues.map((i) => i.code)).toContain('offer.exists-for-product');
   });
 
@@ -355,14 +362,21 @@ describe('mergeImportRow', () => {
 
   it('keeps a stored value when the cell is empty and replaces it when it is given', () => {
     const plan = planOf([
-      { 'Seller SKU': 'LAMB', Title: 'New title', 'Main category': 'Meat', 'Product type': 'simple' },
+      {
+        'Seller SKU': 'LAMB',
+        Title: 'New title',
+        'Main category': 'Meat',
+        'Product type': 'simple',
+      },
     ]);
     const base = {
       content: { texts: { 'en-AU': { name: 'Old', description: 'Kept' } }, imageIds: ['img1'] },
       liveVariantIds: ['v1'],
     };
     const merged = mergeImportRow(base, plan, { defaultLocale: 'en-AU' });
-    expect(merged.content['texts']).toEqual({ 'en-AU': { name: 'New title', description: 'Kept' } });
+    expect(merged.content['texts']).toEqual({
+      'en-AU': { name: 'New title', description: 'Kept' },
+    });
     expect(merged.content['imageIds']).toEqual(['img1']);
     expect(merged.variantIds).toEqual(['v1']);
   });
@@ -374,11 +388,9 @@ describe('mergeImportRow', () => {
     const first = mergeImportRow({ content: {}, liveVariantIds: ['v1'] }, plan, {
       defaultLocale: 'en-AU',
     });
-    const again = mergeImportRow(
-      { content: first.content, liveVariantIds: ['v1'] },
-      plan,
-      { defaultLocale: 'en-AU' },
-    );
+    const again = mergeImportRow({ content: first.content, liveVariantIds: ['v1'] }, plan, {
+      defaultLocale: 'en-AU',
+    });
     expect(first.changed).toBe(true);
     expect(again.changed).toBe(false);
   });

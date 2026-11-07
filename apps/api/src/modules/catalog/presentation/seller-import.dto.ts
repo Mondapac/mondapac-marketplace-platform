@@ -109,7 +109,9 @@ export class SellerImportDto {
   @ApiProperty() ready!: number;
   @ApiProperty() errors!: number;
   @ApiProperty() warnings!: number;
-  @ApiProperty({ description: 'Products (my-products) or Offers (sell-from-catalogue) in the file.' })
+  @ApiProperty({
+    description: 'Products (my-products) or Offers (sell-from-catalogue) in the file.',
+  })
   groups!: number;
   @ApiProperty({ type: [SellerIgnoredColumnDto] }) ignoredColumns!: SellerIgnoredColumnDto[];
   @ApiProperty({ nullable: true, type: Boolean }) skipErrors!: boolean | null;
@@ -121,13 +123,18 @@ export class SellerImportDto {
   @ApiProperty({ enum: SELLER_STOP_REASONS, nullable: true, type: String })
   stopReason!: string | null;
   @ApiProperty() canResume!: boolean;
-  @ApiProperty({ description: 'The photo step is open (a my-products import ended within 7 days).' })
+  @ApiProperty({
+    description: 'The photo step is open (a my-products import ended within 7 days).',
+  })
   photoStepOpen!: boolean;
   @ApiProperty() checkedAt!: string;
   @ApiProperty({ nullable: true, type: String }) startedAt!: string | null;
   @ApiProperty({ nullable: true, type: String }) finishedAt!: string | null;
   @ApiProperty({ nullable: true, type: Number }) durationSeconds!: number | null;
-  @ApiProperty({ type: [SellerImportErrorLineDto], description: 'At most 100; the report has all.' })
+  @ApiProperty({
+    type: [SellerImportErrorLineDto],
+    description: 'At most 100; the report has all.',
+  })
   errorLines!: SellerImportErrorLineDto[];
   @ApiProperty({ type: [SellerImportFailureLineDto], description: 'At most 100.' })
   failureLines!: SellerImportFailureLineDto[];

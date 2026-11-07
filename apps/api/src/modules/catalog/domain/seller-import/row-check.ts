@@ -11,10 +11,7 @@ import {
   type CheckEnvironment,
   type IssueSeverity,
 } from '../platform-import/row-check';
-import {
-  hasControlCharacter,
-  hasUnpairedSurrogate,
-} from '../platform-import/text-safety';
+import { hasControlCharacter, hasUnpairedSurrogate } from '../platform-import/text-safety';
 import { fileLabelOf, MAX_ISSUES_PER_ROW } from '../import-jobs/import-job-core';
 import { headerOfKey, type SellerColumnKey, type SellerColumnMap } from './columns';
 
@@ -278,13 +275,7 @@ export function looseLabel(value: string): string {
 /** Accumulates the issues of one row. */
 class Issues {
   readonly list: SellerRowIssue[] = [];
-  add(
-    severity: IssueSeverity,
-    column: string,
-    code: string,
-    value = '',
-    otherRow?: number,
-  ): void {
+  add(severity: IssueSeverity, column: string, code: string, value = '', otherRow?: number): void {
     this.list.push({
       severity,
       column,
@@ -464,9 +455,7 @@ function finish(group: SellerGroupRows, outcome: GroupOutcome): CheckedSellerGro
       state,
       plan: failed ? null : (outcome.plan?.kind ?? null),
       issues: boundedIssues(list),
-      summary:
-        outcome.summaries.get(cells.rowNumber) ??
-        summaryOf(cells, cells.text.type, '', []),
+      summary: outcome.summaries.get(cells.rowNumber) ?? summaryOf(cells, cells.text.type, '', []),
     };
   });
   return { groupRow: group.groupRow, rows, plan: failed ? null : outcome.plan };
@@ -568,7 +557,8 @@ export function checkProductGroup(
   // Title, texts, brand.
   if (text.title === '') {
     if (creating) firstIssues.add('error', 'title', 'required');
-  } else if (text.title.length > TITLE_MAX) firstIssues.add('error', 'title', 'too-long', text.title);
+  } else if (text.title.length > TITLE_MAX)
+    firstIssues.add('error', 'title', 'too-long', text.title);
   if (text.shortDescription.length > SHORT_DESCRIPTION_MAX) {
     firstIssues.add('error', 'shortDescription', 'too-long', text.shortDescription);
   }
@@ -598,7 +588,9 @@ export function checkProductGroup(
       }
     }
   } else {
-    const match = env.taxCategoryCodes.find((code) => looseName(code) === looseName(text.taxCategory));
+    const match = env.taxCategoryCodes.find(
+      (code) => looseName(code) === looseName(text.taxCategory),
+    );
     if (match === undefined) {
       firstIssues.add('error', 'taxCategory', 'tax-category.unknown', text.taxCategory);
     } else taxCategoryCode = match;
@@ -609,7 +601,8 @@ export function checkProductGroup(
   if (text.condition === '') {
     if (creating) firstIssues.add('error', 'condition', 'required');
   } else {
-    conditionCode = env.conditions.find((code) => looseName(code) === looseName(text.condition)) ?? null;
+    conditionCode =
+      env.conditions.find((code) => looseName(code) === looseName(text.condition)) ?? null;
     if (conditionCode === null) {
       firstIssues.add('error', 'condition', 'condition.unknown', text.condition);
     }
@@ -647,7 +640,11 @@ export function checkProductGroup(
       for (const issue of validated.error) {
         const code = issue.path.split('.')[0] ?? '';
         const column =
-          code === 'brand' || code === 'description' ? code : code === '' ? 'row' : `attribute[${code}]`;
+          code === 'brand' || code === 'description'
+            ? code
+            : code === ''
+              ? 'row'
+              : `attribute[${code}]`;
         if (issue.code === 'attribute.required') {
           // A draft may lack a required attribute; the submit asks for it. A create says so.
           if (creating && !seen.has(`w:${column}`)) {
@@ -681,7 +678,12 @@ export function checkProductGroup(
       for (const cells of rows) {
         for (const code of optionColumns) {
           if ((cells.options[code] ?? '') !== '') {
-            at(cells).add('error', `option[${code}]`, 'import.option-not-allowed', cells.options[code]);
+            at(cells).add(
+              'error',
+              `option[${code}]`,
+              'import.option-not-allowed',
+              cells.options[code],
+            );
           }
         }
       }
@@ -705,7 +707,11 @@ export function checkProductGroup(
           }
         }
       }
-      if (!firstIssues.list.some((issue) => issue.column === 'row' && issue.code.startsWith('variants.'))) {
+      if (
+        !firstIssues.list.some(
+          (issue) => issue.column === 'row' && issue.code.startsWith('variants.'),
+        )
+      ) {
         for (const cells of rows) {
           for (const code of optionColumns) {
             const cell = cells.options[code] ?? '';
@@ -764,7 +770,8 @@ export function checkProductGroup(
       else {
         gtin = normalised.value;
         const earlier = seenGtins.get(gtin);
-        if (earlier !== undefined) issues.add('error', 'gtin', 'gtin.duplicate', cells.text.gtin, earlier);
+        if (earlier !== undefined)
+          issues.add('error', 'gtin', 'gtin.duplicate', cells.text.gtin, earlier);
         else seenGtins.set(gtin, cells.rowNumber);
       }
     }
@@ -885,11 +892,7 @@ export function checkCatalogueRow(
     product = facts.catalogueByCode.get(text.productCode) ?? null;
     if (product === null) issues.add('error', 'productCode', 'product.not-found');
   }
-  if (
-    product !== null &&
-    env.allowedTypes !== 'all' &&
-    !env.allowedTypes.has(product.typeCode)
-  ) {
+  if (product !== null && env.allowedTypes !== 'all' && !env.allowedTypes.has(product.typeCode)) {
     issues.add('error', 'productCode', 'type.not-allowed');
   }
   let kind: 'create' | 'update' = 'create';
@@ -907,8 +910,10 @@ export function checkCatalogueRow(
   if (text.condition === '') {
     if (creating) issues.add('error', 'condition', 'required');
   } else {
-    conditionCode = env.conditions.find((code) => looseName(code) === looseName(text.condition)) ?? null;
-    if (conditionCode === null) issues.add('error', 'condition', 'condition.unknown', text.condition);
+    conditionCode =
+      env.conditions.find((code) => looseName(code) === looseName(text.condition)) ?? null;
+    if (conditionCode === null)
+      issues.add('error', 'condition', 'condition.unknown', text.condition);
   }
   if (text.offerDescription.length > MAX_DESCRIPTION_CHARS) {
     issues.add('error', 'offerDescription', 'too-long', text.offerDescription);
@@ -955,7 +960,9 @@ export function checkSellerFile(
   env: SellerCheckEnvironment,
   facts: SellerCheckFacts,
 ): CheckedSellerGroup[] {
-  const groups = groupSellerRows(rows, map).map((group) => checkSellerGroup(group, map, env, facts));
+  const groups = groupSellerRows(rows, map).map((group) =>
+    checkSellerGroup(group, map, env, facts),
+  );
   if (map.mode !== 'sell-from-catalogue') return groups;
   const bySku = new Map<string, number>();
   const byProduct = new Map<string, number>();

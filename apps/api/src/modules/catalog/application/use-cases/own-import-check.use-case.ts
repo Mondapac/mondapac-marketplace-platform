@@ -206,7 +206,8 @@ export class OwnImportCheck extends UseCase<
     const skus = new Set<string>();
     const productCodes = new Set<string>();
     for (const row of table.value.rows) {
-      const sku = skuColumn === undefined ? '' : (row.cells[skuColumn] ?? '').normalize('NFC').trim();
+      const sku =
+        skuColumn === undefined ? '' : (row.cells[skuColumn] ?? '').normalize('NFC').trim();
       if (sku !== '') skus.add(sku);
       const code =
         codeColumn === undefined ? '' : (row.cells[codeColumn] ?? '').normalize('NFC').trim();

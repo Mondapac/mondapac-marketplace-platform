@@ -199,7 +199,10 @@ export function sellerTemplateRows(
     width: '',
     height: '',
   };
-  return [columns.map((column) => column.header), columns.map((column) => example[column.key] ?? '')];
+  return [
+    columns.map((column) => column.header),
+    columns.map((column) => example[column.key] ?? ''),
+  ];
 }
 
 export function sellerTemplateCsv(rows: readonly (readonly string[])[]): string {
