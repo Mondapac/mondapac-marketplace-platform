@@ -239,6 +239,10 @@ import { OwnProductImageDelete } from './application/use-cases/own-product-image
 import { ProductImageController } from './presentation/product-image.controller';
 import { ProductImageReviewController } from './presentation/product-image-review.controller';
 import { ProductImageAdminRead } from './application/use-cases/product-image-admin-read.use-case';
+import { PlatformProductImageDelete } from './application/use-cases/platform-product-image-delete.use-case';
+import { PlatformProductImageList } from './application/use-cases/platform-product-image-list.use-case';
+import { PlatformProductImageUpload } from './application/use-cases/platform-product-image-upload.use-case';
+import { PlatformProductImageController } from './presentation/platform-product-image.controller';
 import { ProductImageTakeDown } from './application/use-cases/product-image-take-down.use-case';
 import { ProductRevisionImageList } from './application/use-cases/product-revision-image-list.use-case';
 import { SweepOrphanImageFiles } from './application/use-cases/sweep-orphan-image-files.use-case';
@@ -633,6 +637,7 @@ const RESTRUCTURE_DEPS = {
     SavedFilterController,
     ProductReviewController,
     ProductImageReviewController,
+    PlatformProductImageController,
     PublicCategoryController,
     PublicProductImageController,
     BrandAdminController,
@@ -1839,6 +1844,23 @@ const RESTRUCTURE_DEPS = {
       images: true,
     }),
     useCaseProvider(ProductImageAdminRead, { unitOfWork: true, images: true, objectStore: true }),
+    useCaseProvider(PlatformProductImageUpload, {
+      unitOfWork: true,
+      products: true,
+      images: true,
+      imageProcessor: true,
+      objectStore: true,
+      save: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(PlatformProductImageList, { unitOfWork: true, products: true, images: true }),
+    useCaseProvider(PlatformProductImageDelete, {
+      unitOfWork: true,
+      products: true,
+      images: true,
+      objectStore: true,
+    }),
     useCaseProvider(ProductImageTakeDown, {
       unitOfWork: true,
       images: true,
