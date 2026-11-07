@@ -41,6 +41,8 @@ export function PhotosSection({
   const [problems, setProblems] = useState<string[]>([]);
   const [confirming, setConfirming] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const latestIds = useRef(imageIds);
+  latestIds.current = imageIds;
   const base = `catalog/admin/platform-products/${productId}/images`;
 
   if (library === null) {
@@ -59,7 +61,6 @@ export function PhotosSection({
     setProblems([]);
     const chosen = [...files].slice(0, Math.max(0, room));
     if (files.length > chosen.length) fail('limit');
-    let ids = [...imageIds];
     for (const file of chosen) {
       setUploading((count) => count + 1);
       const prepared = await preparePhoto(file);
@@ -74,10 +75,10 @@ export function PhotosSection({
         );
         if (result.ok) {
           setPhotos((current) => [...current, result.body]);
-          ids = [...ids, result.body.imageId];
-          onImageIds(ids);
+          onImageIds([...latestIds.current, result.body.imageId]);
         } else if (result.failure.status === 401) {
           window.location.assign('/session-ended');
+          return;
         } else {
           fail(photoProblemOf(result.failure));
         }
@@ -258,7 +259,9 @@ export function ProductPhotos(props: {
   useEffect(() => {
     let live = true;
     void callApi<ProductPhotoList>('GET', `${BASE}/${productId}/images`).then((result) => {
-      if (live) setLibrary(result.ok ? result.body.images : null);
+      if (!live) return;
+      if (!result.ok && result.failure.status === 401) window.location.assign('/session-ended');
+      setLibrary(result.ok ? result.body.images : null);
     });
     return () => {
       live = false;
