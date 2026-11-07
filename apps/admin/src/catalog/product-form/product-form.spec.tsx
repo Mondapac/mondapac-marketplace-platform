@@ -180,7 +180,8 @@ describe('the create form', () => {
       'catalog/admin/platform-products/options',
     ]);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    // The heading shows while the options load; the form (and its button) only after the read.
+    fireEvent.click(await screen.findByRole('button', { name: 'Create draft' }));
     expect(screen.getByText('Choose a product type.')).toBeTruthy();
     expect(call).toHaveBeenCalledTimes(1);
 
