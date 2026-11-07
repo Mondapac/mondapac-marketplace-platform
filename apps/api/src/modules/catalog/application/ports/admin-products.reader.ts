@@ -1,5 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { ProductScope, ProductStatus } from '../../domain/product';
+import type { TopicStatus } from '../../domain/topic';
 
 /**
  * One state a listed product can be in: its status and, for a published one, whether the admin
@@ -35,6 +36,8 @@ export type SortDirection = 'asc' | 'desc';
 export interface AdminProductTopic {
   readonly id: Id<'Topic'>;
   readonly slug: string;
+  /** An archived topic stays on a product until the next revision drops it. */
+  readonly status: TopicStatus;
   readonly name: string | null;
 }
 

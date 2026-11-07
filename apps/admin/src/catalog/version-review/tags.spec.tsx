@@ -73,7 +73,7 @@ describe('the Tags card of the version review', () => {
     ).toEqual(['− EidRemoved', '− Ramadan (archived)Removed']);
   });
 
-  it('names a tag in the panel language, then any language, then the id when unnamed', () => {
+  it('names a tag in the panel language, then the default name, then any language', () => {
     mount({
       topicRefs: [
         {
@@ -90,13 +90,29 @@ describe('the Tags card of the version review', () => {
           name: 'Ramadan',
           names: { 'en-AU': 'R' },
         },
+        {
+          id: TOPIC(3),
+          slug: 'barbecue',
+          status: 'active',
+          name: null,
+          names: { ar: 'شواء' },
+        },
       ],
     });
     const text = card()
       .getAllByRole('listitem')
       .map((li) => li.textContent);
-    // TOPIC(3) has no ref: its id shows. TOPIC(1) falls back to its first language.
-    expect(text).toEqual(['R', `+ ${TOPIC(3)}Added`, '− عيدRemoved']);
+    // TOPIC(1) has no panel-language name: the default name wins over another language.
+    // TOPIC(3) has neither: its first language shows.
+    expect(text).toEqual(['R', '+ شواءAdded', '− EidRemoved']);
+  });
+
+  it('shows the id of a tag the read did not name', () => {
+    mount({ topicRefs: [] });
+    const text = card()
+      .getAllByRole('listitem')
+      .map((li) => li.textContent);
+    expect(text).toContain(`+ ${TOPIC(3)}Added`);
   });
 
   it('labels the change reason "Tags" among the reasons of the header', () => {

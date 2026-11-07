@@ -98,8 +98,8 @@ describe('admin product bulk action and export over HTTP (integration)', () => {
     categoryId: null,
     categoryName: 'Meat',
     topics: [
-      { id: id<'Topic'>(0xd001), slug: 'eid', name: 'Eid' },
-      { id: id<'Topic'>(0xd002), slug: 'barbecue', name: null },
+      { id: id<'Topic'>(0xd001), slug: 'eid', status: 'active', name: 'Eid' },
+      { id: id<'Topic'>(0xd002), slug: 'barbecue', status: 'archived', name: null },
     ],
     typeCode: 'simple',
     status: 'published',

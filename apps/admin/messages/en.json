@@ -2755,7 +2755,7 @@
         "help": "Optional. Tags help shoppers find this product. Pick up to {max} from the active list.",
         "readonly": "Your role can't change tags.",
         "none": "No tags.",
-        "archived-help": "Archived tags can't be added to a product. Remove them before you publish.",
+        "archived-help": "Archived tags can't be added. One the live product already has can stay.",
         "archived-chip": "{name} (archived)",
         "unknown-chip": "Unavailable tag",
         "load-error": "Tags can't be loaded right now.",

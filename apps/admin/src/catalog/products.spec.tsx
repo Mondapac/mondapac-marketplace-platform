@@ -893,7 +893,7 @@ describe('admin product bulk action', () => {
   it('exports the ticked rows with the columns shown, as a CSV download', async () => {
     window.localStorage.setItem(
       'mp:admin:AU:acc-1:products-columns',
-      JSON.stringify(['offers', 'updated']),
+      JSON.stringify(['offers', 'updated', 'tags']),
     );
     serveBulk(() => answer({ done: 0, skipped: 0, failed: 0 }));
     const fetched: string[] = [];
@@ -913,7 +913,7 @@ describe('admin product bulk action', () => {
     try {
       mount();
       await screen.findByText('Beef mince');
-      await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(6));
+      await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(7));
       fireEvent.click(rowBox('Lamb cutlets 500 g'));
       fireEvent.click(rowBox('Beef mince'));
 
@@ -928,7 +928,7 @@ describe('admin product bulk action', () => {
 
       expect(await screen.findByText('2 products exported.')).toBeTruthy();
       expect(fetched).toEqual([
-        `/api/catalog/admin/products/export?format=csv&columns=offers%2Cupdated&ids=${ID}%2C${ID2}`,
+        `/api/catalog/admin/products/export?format=csv&columns=offers%2Cupdated%2Ctags&ids=${ID}%2C${ID2}`,
       ]);
       expect(create).toHaveBeenCalledTimes(1);
       expect(click).toHaveBeenCalledTimes(1);

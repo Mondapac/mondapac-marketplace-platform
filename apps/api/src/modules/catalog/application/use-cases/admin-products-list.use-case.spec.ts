@@ -220,6 +220,23 @@ describe.each(['AU', 'ZZ'] as const)('admin products list in market %s', (code) 
     expect(listCalls[0]!.filter.locale).toBe(locale);
   });
 
+  it('passes the topics on in order with their status, so an archived one can be marked', async () => {
+    const tagged = row({
+      topics: [
+        { id: 'topic-1' as Id<'Topic'>, slug: 'eid', status: 'active', name: 'Eid' },
+        { id: 'topic-2' as Id<'Topic'>, slug: 'old', status: 'archived', name: null },
+      ],
+    });
+    const { useCase } = setup({ rows: [tagged] });
+
+    const result = await useCase.execute(adminContext(), {});
+
+    expect(result.ok && result.value.items[0]!.topics).toEqual([
+      { id: 'topic-1', slug: 'eid', status: 'active', name: 'Eid' },
+      { id: 'topic-2', slug: 'old', status: 'archived', name: null },
+    ]);
+  });
+
   it('maps each tab to its states, and counts all three for the same search', async () => {
     const { useCase, countCalls, listCalls } = setup();
 

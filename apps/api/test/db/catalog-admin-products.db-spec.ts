@@ -193,7 +193,11 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
     readonly name: string | null;
   }
   /** A topic of `target` with a name in that Market's default locale (none when `name` is null). */
-  async function topic(target: typeof market, name: string | null): Promise<TopicSeed> {
+  async function topic(
+    target: typeof market,
+    name: string | null,
+    status: 'active' | 'archived' = 'active',
+  ): Promise<TopicSeed> {
     const id = uuid7();
     const slug = `t-${uuid7().slice(-12)}`;
     await insert('topics', {
@@ -201,7 +205,7 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
       ...base(target),
       slug,
       topic_group: 'use',
-      status: 'active',
+      status,
       created_by: uuid7(),
       created_at: T0.toString(),
       updated_at: T0.toString(),
@@ -765,7 +769,7 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
     const mine = seller();
     const second = await topic(market, 'Ramadan');
     const first = await topic(market, 'Barbecue');
-    const unnamed = await topic(market, null);
+    const unnamed = await topic(market, null, 'archived');
     const tagged = await make({ sellerId: mine, topics: [second, first, unnamed] });
     const plain = await make({ sellerId: mine, name: 'Plain' });
     // A topic of the other Market on a product there never reaches this Market's answer.
@@ -776,9 +780,10 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
 
     const row = answer.items.find((i) => i.productId === tagged.productId)!;
     expect(row.topics).toEqual([
-      { id: second.id, slug: second.slug, name: 'Ramadan' },
-      { id: first.id, slug: first.slug, name: 'Barbecue' },
-      { id: unnamed.id, slug: unnamed.slug, name: null },
+      { id: second.id, slug: second.slug, status: 'active', name: 'Ramadan' },
+      { id: first.id, slug: first.slug, status: 'active', name: 'Barbecue' },
+      // An archived topic stays on the revision and says so.
+      { id: unnamed.id, slug: unnamed.slug, status: 'archived', name: null },
     ]);
     expect(answer.items.find((i) => i.productId === plain.productId)!.topics).toEqual([]);
     expect(JSON.stringify(answer)).not.toContain('Canary');

@@ -69,7 +69,8 @@ export function VersionReview({
   const topicName = (id: string) => {
     const ref = topicRefs.get(id);
     if (ref === undefined) return id;
-    const name = ref.names[locale] ?? Object.values(ref.names)[0] ?? ref.name ?? id;
+    // The panel language, then the Market default name the API picked, then any language.
+    const name = ref.names[locale] ?? ref.name ?? Object.values(ref.names)[0] ?? ref.slug;
     return ref.status === 'archived' ? t('topic-archived', { name }) : name;
   };
 

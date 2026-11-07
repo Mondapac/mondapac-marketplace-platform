@@ -153,7 +153,11 @@ describe.each(MARKETS)('TagField in market $code', ({ locale, names }) => {
     });
     expect(screen.getByRole('button', { name: 'Remove Ramadan (archived)' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Remove Unavailable tag' })).toBeTruthy();
-    expect(screen.getByText(/Archived tags can't be added to a product/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Archived tags can't be added\. One the live product already has can stay\./,
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText(/retired/i)).toBeNull();
     expect(call).not.toHaveBeenCalled();
   });

@@ -1230,7 +1230,7 @@
         "label": "Tags",
         "placeholder": "Choose tags",
         "help": "Optional. Tags help shoppers find this product. Tag changes are checked by us before they go live.",
-        "archived-help": "Archived tags can't be added to a product. Remove them before you submit.",
+        "archived-help": "Archived tags can't be added. One the live product already has can stay.",
         "archived-chip": "{name} (archived)",
         "unknown-chip": "Unavailable tag",
         "load-error": "Tags can't be loaded right now.",
