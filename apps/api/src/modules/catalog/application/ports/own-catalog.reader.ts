@@ -110,7 +110,10 @@ export interface OwnProductRow {
   readonly productCode: string;
   readonly typeCode: string;
   readonly status: ProductStatus;
-  /** The name the seller sees: the draft's in `locale`, else the shown revision's; else null. */
+  /**
+   * The name the seller sees: the draft's in `locale` while the product has a working copy, else
+   * the shown revision's; null when it has none. The list filters on this same value.
+   */
   readonly name: string | null;
   /** The draft's name in `locale` alone (kept for the keyset list's field of the same name). */
   readonly draftName: string | null;
@@ -128,10 +131,22 @@ export interface OwnProductRow {
   readonly createdAt: Temporal.Instant;
 }
 
+/** Products kept by a filter: per status (a status with none is absent) and in review. */
+export interface OwnProductViewTotals {
+  readonly byStatus: Readonly<Record<string, number>>;
+  readonly inReview: number;
+}
+
 export type OwnProductsPageResult =
   | { readonly kind: 'rows'; readonly rows: readonly OwnProductRow[] }
-  /** Sorting by name needs the matching products in memory; a search this wide must narrow. */
+  /** Sorting by name needs the matching products in memory (at most 500); a search this wide must narrow. */
   | { readonly kind: 'too-broad' };
+
+/** The Offers on one product, deleted ones left out. */
+export interface ProductOfferTotals {
+  readonly sellerCount: number;
+  readonly offerCount: number;
+}
 
 /**
  * The seller's own catalogue lists (catalog design 8.2, 9.2a): products and Offers of one seller,
@@ -158,12 +173,15 @@ export interface OwnCatalogReader {
     page: { readonly offset: number; readonly limit: number },
   ): Promise<OwnProductsPageResult>;
 
-  /** How many of the seller's products each filter keeps, in the order given. */
-  countProductsBy(
+  /**
+   * How many of the seller's products `filter` keeps, per status, and how many of those have a
+   * pending revision (two reads). `filter.inReview` is ignored: both answers are given.
+   */
+  countProductViews(
     market: MarketContext,
     sellerId: Id<'Seller'>,
-    filters: readonly OwnProductsFilter[],
-  ): Promise<readonly number[]>;
+    filter: OwnProductsFilter,
+  ): Promise<OwnProductViewTotals>;
 
   /** The seller's Offers that are not deleted. */
   listOffers(
@@ -174,6 +192,15 @@ export interface OwnCatalogReader {
 
   /** How many of the seller's Offers are in each status, deleted ones left out (one count). */
   offerStatusCounts(market: MarketContext, sellerId: Id<'Seller'>): Promise<OfferStatusCounts>;
+
+  /**
+   * How many Offers (not deleted) stand on one product and how many sellers hold them, every
+   * seller counted (the admin product form's "Sellers selling it"). Market-scoped.
+   */
+  offerTotalsOfProduct(
+    market: MarketContext,
+    productId: Id<'Product'>,
+  ): Promise<ProductOfferTotals>;
 
   /**
    * How many Offers of the Market wait for their first publication (the review queue), of one
