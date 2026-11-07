@@ -30,6 +30,8 @@ const product = {
   familyCode: 'default',
   variantModel: 'configurable',
   status: 'published',
+  pausedAt: null,
+  offers: { sellerCount: 3, offerCount: 7 },
   variants: [1, 2, 3, 4].map((n) => ({ variantId: V(n), state: 'published' })),
   maxVariants: 100,
   lastChangedAt: '2026-11-05T01:00:00.000Z',
@@ -211,7 +213,14 @@ window.fetch = ((input: string) => {
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     <main className="mx-auto max-w-7xl p-4 md:p-6">
-      <ProductEdit productId={P} csrfToken="tok" permissionKeys={keys} marketName="Australia" />
+      <ProductEdit
+        productId={P}
+        csrfToken="tok"
+        timeZone="Australia/Brisbane"
+        canPause
+        permissionKeys={keys}
+        marketName="Australia"
+      />
     </main>
   </NextIntlClientProvider>,
 );

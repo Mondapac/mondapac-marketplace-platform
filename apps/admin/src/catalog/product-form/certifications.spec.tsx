@@ -65,6 +65,8 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   familyCode: 'default',
   variantModel: 'configurable',
   status: 'published',
+  pausedAt: null,
+  offers: { sellerCount: 3, offerCount: 7 },
   variants: [1, 2, 3, 4].map((n) => ({ variantId: V(n), state: 'published' })),
   maxVariants: 100,
   lastChangedAt: '2026-11-05T01:00:00.000Z',
@@ -1109,6 +1111,8 @@ describe('inside the product form', () => {
         <ProductEdit
           productId={PRODUCT}
           csrfToken="csrf-1"
+          timeZone="Australia/Brisbane"
+          canPause={false}
           permissionKeys={keys}
           marketName="Australia"
         />
@@ -1144,15 +1148,14 @@ describe('inside the product form', () => {
     const variants = screen.getByRole('heading', { name: 'Variants' });
     expect(variants.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(await screen.findByText('Approved')).toBeTruthy();
-    // A certificate action is not an unsaved change: "Save draft" stays disabled.
+    // A certificate action is not an unsaved change: the unsaved-changes bar does not appear.
     fireEvent.click(screen.getByRole('button', { name: /Add certificate/ }));
     const box = within(screen.getByRole('dialog', { name: 'Add product certificate' }));
     fireEvent.change(await box.findByLabelText('Manufacturer · required'), {
       target: { value: 'Tilda' },
     });
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' }).disabled).toBe(
-      true,
-    );
+    expect(screen.queryByText('Unsaved changes')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save revision' })).toBeNull();
   });
 
   it('has no card at all for a role without the view key', async () => {

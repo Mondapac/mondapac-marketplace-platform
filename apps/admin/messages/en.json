@@ -2549,7 +2549,6 @@
       "not-found": "This product does not exist, or it is not a platform product.",
       "no-access": "You don't have access to add or edit platform products.",
       "optional": "optional",
-      "refused": "Some text was not saved because it holds a claim or a hidden character. Those fields kept their last saved value.",
       "refused-field": "Not saved: this text holds a claim or a hidden character.",
       "reload": "Read the product again",
       "create": {
@@ -2563,22 +2562,23 @@
         "cancel": "Cancel"
       },
       "edit": {
-        "title": "Edit product",
-        "subtitle": "{code} · {type} · Platform product"
+        "title": "Edit product"
       },
       "save-draft": "Save draft",
       "publish": "Publish",
-      "publish-changes": "Publish changes",
-      "title-card": "Title and description",
+      "title-card": "Product",
       "field": {
         "name": "Title",
         "name-help": "In English. It is translated when a new buyer language is published.",
         "description": "Description",
         "categories": "Product category",
         "categories-help": "Its feature set adds the details below and suggests variant types.",
-        "categories-placeholder": "Search categories",
+        "categories-placeholder": "Choose a category or subcategory",
         "tax": "Tax category",
-        "tax-help": "Required. Separate from the product category: it decides GST on every seller's offer."
+        "tax-help": "Required. Separate from the product category: it decides GST on every seller's offer.",
+        "categories-help-empty": "Only a category or subcategory (levels 3 and 4). It decides the product details and variant types.",
+        "tax-placeholder": "Choose a tax category",
+        "name-claim": "Product text can't include certification words like \"halal\". Badges come from seller offers."
       },
       "category": "Category",
       "details": "Product details",
@@ -2619,19 +2619,23 @@
         "withdrawn": "Withdrawn",
         "discarded": "Discarded",
         "draft-help": "Sellers can't find it until you publish. Save draft keeps your work.",
-        "live-help": "Publish changes puts your edits live for buyers and sellers."
+        "published-help": "Changes are saved as a new revision. Buyers keep seeing revision {n} until you publish.",
+        "revision": "Revision {n} · unpublished changes"
       },
       "organisation": {
         "title": "Organisation",
         "type": "Type",
         "scope": "Scope",
         "platform": "Platform product",
-        "help": "No tags or collections: categories drive the menu and filters. Certification badges belong to each seller's offer, never to the product."
+        "market": "Market"
       },
       "notice": {
         "saved": "Draft saved.",
+        "revision-saved": "Revision saved.",
         "published": "Product published.",
-        "submitted": "Product submitted."
+        "submitted": "Product submitted.",
+        "turned-off": "Product turned off.",
+        "turned-on": "Product turned on."
       },
       "select": {
         "search": "Search",
@@ -2657,7 +2661,8 @@
         "csrf": "Your session has changed. Reload the page.",
         "unavailable": "The product service is unavailable. Try again shortly.",
         "unknown": "Something went wrong. Try again.",
-        "partial": "The new variants were created but the draft wasn't saved with them. Save again."
+        "partial": "The new variants were created but the draft wasn't saved with them. Save again.",
+        "pause-failed": "The product could not be turned on or off. Read it again, then retry."
       },
       "discard": {
         "button": "Discard product",
@@ -2667,10 +2672,74 @@
         "confirm": "Discard product"
       },
       "leave": {
-        "title": "Leave without saving?",
-        "message": "You have changes that are not saved. If you leave this page, they are lost.",
-        "stay": "Stay on page",
-        "leave": "Leave page"
+        "title": "Leave this page?",
+        "message": "Your changes to {title} aren't saved.",
+        "message-untitled": "Your changes aren't saved.",
+        "stay": "Cancel",
+        "leave": "Leave without saving"
+      },
+      "page": {
+        "subtitle-add": "Platform product · {market}",
+        "subtitle-edit": "Platform product · {market} · {code}",
+        "untitled": "Untitled product"
+      },
+      "bar": {
+        "region": "Unsaved changes",
+        "unsaved-product": "Unsaved product",
+        "unsaved-changes": "Unsaved changes",
+        "errors": "{count, plural, one {# field needs fixing} other {# fields need fixing}}",
+        "discard": "Discard",
+        "save-draft": "Save draft",
+        "save-revision": "Save revision"
+      },
+      "publish-revision": "Publish revision {n}",
+      "blockers": {
+        "lead": "To publish: {items}.",
+        "title": "add a title",
+        "category": "choose a category",
+        "tax": "choose the tax category",
+        "details": "fill in the required details"
+      },
+      "details-empty": "Choose a category first. Its feature set lists what to fill in here.",
+      "active": {
+        "title": "Active",
+        "inactive": "Inactive",
+        "help": "Turn off to stop all sales at once. Sellers keep their offers and nothing is deleted.",
+        "inactive-help": "Paused {date}. {count, plural, =0 {No offers are on sale.} one {Its 1 offer is off sale; the seller keeps it.} other {All # offers are off sale; sellers keep them.}} Turn on to sell again.",
+        "banner-title": "This product is inactive",
+        "banner-body": "{count, plural, =0 {Buyers can't find it.} one {Buyers can't find it and its 1 offer is off sale.} other {Buyers can't find it and all # offers are off sale.}} Sellers keep their offers.",
+        "turn-on": "Turn on",
+        "off": {
+          "title": "Turn off {title}?",
+          "body": "Buyers can't find it and every offer stops selling at once. Sellers keep their offers and you can turn it on again.",
+          "impact": "Offers that stop selling",
+          "cancel": "Cancel",
+          "confirm": "Turn off"
+        }
+      },
+      "sellers": {
+        "title": "Sellers selling it",
+        "sellers": "Sellers",
+        "offers": "Offers",
+        "help": "Read only. Each seller sets price and stock on their own offer.",
+        "none": "No offers yet. Sellers can add theirs now that it is published."
+      },
+      "banner": {
+        "stale-title": "Someone published a newer revision.",
+        "stale-body": "Reload to see it. Changes on this page that are not saved are lost.",
+        "reload": "Reload",
+        "published-title": "{title} is published.",
+        "published-body": "Sellers can now add their offers."
+      },
+      "publish-dialog": {
+        "title": "Publish {title}?",
+        "revision-title": "Publish revision {n} of {title}?",
+        "body": "Sellers in {market} can find it and add their offers. Buyers see it once at least one offer is on sale.",
+        "variants": "Variants",
+        "texts": "Title and description",
+        "texts-value": "{language} · translated when a buyer language is published",
+        "cancel": "Cancel",
+        "confirm": "Publish"
       },
       "certs": {
         "title": "Product certifications",
