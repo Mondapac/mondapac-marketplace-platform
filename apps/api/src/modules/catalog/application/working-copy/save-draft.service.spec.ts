@@ -96,7 +96,8 @@ describe.each(['AU', 'ZZ'])('SaveDraft in market %s', (code) => {
       } as unknown as CatalogMarketPolicy,
       gtinRegistry: { duplicatesOf: () => Promise.resolve([]) } as unknown as VariantGtinRegistry,
       contentFilter: {
-        isBlocked: (_m: MarketContext, text: string) => blocked.some((term) => text.toLowerCase().includes(term)),
+        isBlocked: (_m: MarketContext, text: string) =>
+          blocked.some((term) => text.toLowerCase().includes(term)),
       } as unknown as ContentFilter,
     });
     return { draft, saves, reserved: () => reserved };
@@ -127,6 +128,29 @@ describe.each(['AU', 'ZZ'])('SaveDraft in market %s', (code) => {
     expect(refused).toMatchObject({
       ok: false,
       error: { code: 'claim-text.refused', fields: [{ field: expect.any(String) }] },
+    });
+    expect(r.saves).toHaveLength(0);
+  });
+
+  it.each([
+    ['title', { texts: { en: { name: BAD } } }, 'product.name'],
+    [
+      'short description',
+      { texts: { en: { name: 'Lamb', shortDescription: BAD } } },
+      'product.short-description',
+    ],
+    ['description', { texts: { en: { name: 'Lamb', description: BAD } } }, 'product.description'],
+    [
+      'text attribute',
+      { texts: { en: { name: 'Lamb' } }, attributeValues: { origin: BAD } },
+      'product.attribute-text-value',
+    ],
+  ])('refuses the whole import save for a claim text in the %s', async (_label, draft, field) => {
+    const r = rig();
+    const refused = await r.draft.executeAllOrNothing(context, { ...input(), content: draft });
+    expect(refused).toMatchObject({
+      ok: false,
+      error: { code: 'claim-text.refused', fields: [{ field }] },
     });
     expect(r.saves).toHaveLength(0);
   });
