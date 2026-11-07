@@ -111,11 +111,17 @@ export const CATALOG_SAVED_FILTER_TARGET = 'catalog.saved-filter';
 const savedFilterVisibility = auditField.enumOf(['me', 'everyone'] as const);
 
 /** The lists a saved filter can belong to (the keys of `SAVED_FILTER_LISTS`). */
-export const SAVED_FILTER_AUDIT_LISTS = ['admin.catalog.products'] as const;
+export const SAVED_FILTER_AUDIT_LISTS = [
+  'admin.catalog.products',
+  'seller.catalog.products',
+] as const;
 export type SavedFilterAuditList = (typeof SAVED_FILTER_AUDIT_LISTS)[number];
 const savedFilterList = auditField.enumOf(SAVED_FILTER_AUDIT_LISTS);
 
-/** An admin saved a filter for everyone (design 9.2d). The name is not audited: ids and codes only. */
+/**
+ * An admin or a seller member saved a filter for everyone (design 9.2d, 9.2e). The name is not
+ * audited: ids and codes only.
+ */
 export const SavedFilterSharedAudit = defineAuditAction({
   action: 'catalog.saved-filter.shared',
   targetType: CATALOG_SAVED_FILTER_TARGET,

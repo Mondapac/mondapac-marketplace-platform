@@ -881,6 +881,7 @@ approved at identity G2 (ID 5.6); the mapping is the identity mini-review of req
 | `catalog.own-product.view` | seller | no | Own products, Offers, revisions, reasons, tags, photos, Import reports | Store Manager; Catalogue and Stock; Customer Service |
 | `catalog.own-product.edit` | seller | no | Create, edit, submit, delete own products and Offers; photos; handling and attestation; add and remove tags; sell without a suspended badge; revert | Store Manager; Catalogue and Stock |
 | `catalog.own-import.run` | seller | no | Import (P1) | Store Manager |
+| `catalog.own-saved-filter.share` | seller | no | Save a filter of the seller Products list for everyone in the store, and manage a filter a colleague shared (9.2e). Without it a member keeps filters for themselves only | Seller Owner (holds every seller key); no default role |
 | `catalog.own-category.propose` | seller | no | Propose categories (with SEL-26 on) | Store Manager |
 
 Non-default verbs: `approve`, `match`, `promote`, `retire`, `pause`, `override`, `decide`, `promote-merge`,
@@ -919,6 +920,7 @@ session (and when the context cannot say, CD M5).
 | `platform-import.run`, `platform-import.purge` | `system` (the run acts as the admin who started the import) | — | 14a |
 | `admin-products.bulk` (`POST catalog/admin/products/bulk`) | `permissions [catalog.product.view]` at the gate; **each product** then needs the key of its action (`pause`, `resume`: `catalog.product.pause`; `delete`: `catalog.product.delete` for a SELLER product, `catalog.platform-product.retire` for a PLATFORM product), checked per product; a product the admin may not act on is skipped as `access.denied`, and all of them denied refuses the request | refused | 9.2c |
 | `admin-products.export` (`GET catalog/admin/products/export`) | `permissions [catalog.product.view]` | — | 9.2c |
+| `own-saved-filters.list`, `own-saved-filter.create`, `.update`, `.delete` (`catalog/seller/saved-filters`) | `permissions [catalog.own-product.view]`, `whenSellerNotApproved: allow` | writes refused (`access.acting-as-refused`) | 9.2e. Sharing and managing a shared filter need `catalog.own-saved-filter.share`, asked through `own-saved-filter.share-check`, a use case that reads nothing |
 | `saved-filters.list`, `saved-filter.create`, `.update`, `.delete` (`catalog/admin/saved-filters`) | `permissions [catalog.product.view]` | — | 9.2d. Sharing and managing a shared filter need `catalog.saved-filter.share`, asked through `saved-filter.share-check` (`permissions [catalog.saved-filter.share]`), a use case that reads nothing |
 | `platform-product.*` (create, save-draft, submit, revert, upload) | `permissions [catalog.platform-product.edit]` | — | CAT-41 |
 | `platform-product.retire` | `permissions [catalog.platform-product.retire]` | — | Confirm carries the count shown |
@@ -1266,6 +1268,39 @@ booleans only; **never the name** (audit rows carry no free text). Private filte
 reader) for the first 12 filters in tab order and `null` for the rest, so a page load costs at most
 12 count statements, not one per tab; the page shows a count where there is one. Create and update
 answer `count: null`.
+
+### 9.2e Saved filters of the seller Products list (`own-saved-filters.list`, `own-saved-filter.create`, `.update`, `.delete`)
+The seller variant of 9.2d, on the same table and the same rules (names, caps, owner-or-sharer may
+manage, audit), for the list `seller.catalog.products` (the key starts with `seller.`: the table's
+CHECK ties that prefix to a store). The **document** is the list's own selector and is read by the
+list's own closed parser (`parseListQuery` of `own-products.list`), so a saved value is exactly one
+the list accepts: `{v: 1, view, q?, status?, categoryId?, paused?, typeCode?, sort, direction}`,
+flat, with the list's keys. `view`, `sort` and `direction` are stored resolved (defaults filled as
+the list fills them); empty values are dropped; a page key (`page`, `pageSize`, `afterId`), a nested
+`filters` and any unknown key are `validation.failed` naming the field (`payload.page`).
+
+**Routes** (seller session; the writes need the CSRF token): `GET catalog/seller/saved-filters?listKey=`,
+`POST catalog/seller/saved-filters`, `PUT .../:id` (`name` and `visibility`), `DELETE .../:id`.
+Bodies are closed. There is no reorder (the admin routes have none). The answer has no `count`: the
+list answers its own counts.
+
+**Visibility.** `me` is for the owner only. `everyone` is every member of **the same store** who
+holds `catalog.own-product.view`. The store is the actor's and goes into every statement; a filter of
+another store, another member's `me` filter and an unknown id are one `saved-filter.not-found`.
+
+| Action | Needs |
+|---|---|
+| List; save a filter for yourself; rename, unshare or delete your own filter | `catalog.own-product.view` |
+| Save a filter for `everyone`; make a filter `everyone` (own or not) | `catalog.own-product.view` and `catalog.own-saved-filter.share` (else `access.denied`, nothing written) |
+| Rename, unshare or delete a colleague's `everyone` filter | `catalog.own-product.view` and `catalog.own-saved-filter.share` |
+
+No existing seller key fits sharing: `sellers.store-settings.edit` is the minimum-order setting and
+the team keys are protected. `catalog.own-saved-filter.share` is seller scope, not protected; the
+Seller Owner holds it as every seller key, and no default role lists it (the owner puts it in a role
+of their own). The caps are **50** per member, store and list and **20** shared per store and list;
+a name is one per member, store and list, and one among a store's shared filters, whatever its case.
+A Login-as-Seller session reads but writes nothing (`access.acting-as-refused`). Audit rows are the
+three of 9.2d with `listKey` `seller.catalog.products`.
 
 ### 9.3 Ports
 | Port | Declared in | Implemented by | Notes |

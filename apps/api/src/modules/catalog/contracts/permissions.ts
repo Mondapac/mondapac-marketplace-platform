@@ -126,6 +126,21 @@ export const CATALOG_SAVED_FILTER_SHARE = definePermission('catalog', {
 });
 
 /**
+ * Share a saved filter of the seller Products list with everyone in the store (catalog design 9.2e):
+ * "Everyone" in the seller's Save filter dialog, and the rename and delete of a filter somebody
+ * else in the store shared. Without it a member who can see the list still saves and manages
+ * filters for themselves only. Seller scope, unprotected; the Seller Owner holds every seller key by
+ * definition and no default role lists it (the owner puts it in a role of their own). No existing
+ * seller key fits: `sellers.store-settings.edit` is the minimum-order setting and the team keys are
+ * protected.
+ */
+export const CATALOG_OWN_SAVED_FILTER_SHARE = definePermission('catalog', {
+  key: 'catalog.own-saved-filter.share',
+  scope: 'seller',
+  protected: false,
+});
+
+/**
  * Read brands, the brand merge queue and seller brand proposals (catalog brand package). Platform
  * scope; unprotected, so Viewer receives it by identity's seed.
  */
@@ -300,6 +315,7 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_PLATFORM_PRODUCT_RETIRE,
   CATALOG_PLATFORM_IMPORT_RUN,
   CATALOG_SAVED_FILTER_SHARE,
+  CATALOG_OWN_SAVED_FILTER_SHARE,
   CATALOG_BRAND_READ,
   CATALOG_BRAND_EDIT,
   CATALOG_BUSINESS_ACTIVITY_READ,
