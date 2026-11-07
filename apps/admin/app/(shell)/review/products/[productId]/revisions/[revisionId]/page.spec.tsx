@@ -86,6 +86,7 @@ beforeEach(() => {
     session: session([
       'catalog.product.view',
       'catalog.product.approve',
+      'catalog.product.delete',
       'catalog.category-tree.view',
     ]),
   });
@@ -101,6 +102,7 @@ describe('version review page', () => {
     expect(screen.getByText('the version')).toBeTruthy();
     const props = mocks.view.mock.calls[0]![0] as Record<string, unknown>;
     expect(props['canDecide']).toBe(true);
+    expect(props['canTakeDown']).toBe(true);
     expect(props['categoryNames']).toEqual({ [CAT]: 'Oils' });
     expect(props['images']).toHaveLength(1);
     expect(props['nextHref']).toBe(`/review/products/${P}/revisions/${NEXT}`);
@@ -138,6 +140,7 @@ describe('version review page', () => {
     expect(paths.some((path) => path.startsWith('catalog/admin/review-queue'))).toBe(false);
     const props = mocks.view.mock.calls[0]![0] as Record<string, unknown>;
     expect(props['canDecide']).toBe(false);
+    expect(props['canTakeDown']).toBe(false);
     expect(props['nextHref']).toBeNull();
   });
 

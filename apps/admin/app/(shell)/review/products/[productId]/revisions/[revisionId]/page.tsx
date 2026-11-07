@@ -4,6 +4,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { revisionHref } from '../../../../../../../src/catalog/review-queue-params.ts';
 import {
   DECIDE_PERMISSION,
+  TAKE_DOWN_PERMISSION,
   VIEW_PERMISSION,
   type QueuePage,
   type RevisionRow,
@@ -119,6 +120,7 @@ export default async function VersionReviewPage({
       images={images.kind === 'ok' ? images.body.images : null}
       categoryNames={categoryNames}
       canDecide={keys.includes(DECIDE_PERMISSION)}
+      canTakeDown={keys.includes(TAKE_DOWN_PERMISSION)}
       csrfToken={gate.session.csrfToken}
       nextHref={next === undefined ? null : revisionHref(next)}
     />,
