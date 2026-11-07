@@ -173,6 +173,8 @@ import { OwnOfferController } from './presentation/own-offer.controller';
 import { OwnProductsList } from './application/use-cases/own-products-list.use-case';
 import { OwnProductRead } from './application/use-cases/own-product-read.use-case';
 import { OwnOffersList } from './application/use-cases/own-offers-list.use-case';
+import { OwnOfferReadSellUnits } from './application/use-cases/own-offer-read-sell-units.use-case';
+import { PRODUCT_SELL_UNIT_FACTS_READER } from './application/ports/product-sell-unit-facts.reader';
 import { OwnOfferRead } from './application/use-cases/own-offer-read.use-case';
 import { OWN_CATALOG_READER } from './application/ports/own-catalog.reader';
 import {
@@ -400,6 +402,7 @@ const PORT = {
   filterReader: SEARCH_FILTER_READER,
   namesReader: OFFER_NAMES_READER,
   labelsReader: SELL_UNIT_LABELS_READER,
+  productSellUnitFacts: PRODUCT_SELL_UNIT_FACTS_READER,
   taxCategoriesReader: OFFER_TAX_CATEGORIES_READER,
   pendingRevisionsReader: PENDING_PRODUCT_REVISIONS_READER,
   productOwnersReader: SELLER_PRODUCT_OWNERS_READER,
@@ -1621,6 +1624,14 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       offers: true,
       ownReader: true,
+      policy: true,
+    }),
+    useCaseProvider(OwnOfferReadSellUnits, {
+      unitOfWork: true,
+      offers: true,
+      reader: true,
+      labelsReader: true,
+      productSellUnitFacts: true,
       policy: true,
     }),
     useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),

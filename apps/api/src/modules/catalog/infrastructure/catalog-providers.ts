@@ -171,6 +171,11 @@ import {
   type PublicCategoryReader,
 } from '../application/ports/public-category.reader';
 import { PrismaPublicCategoryReader } from './prisma-public-category.reader';
+import {
+  PRODUCT_SELL_UNIT_FACTS_READER,
+  type ProductSellUnitFactsReader,
+} from '../application/ports/product-sell-unit-facts.reader';
+import { PrismaProductSellUnitFactsReader } from './prisma-product-sell-unit-facts.reader';
 import { PrismaSellUnitLabelsReader } from './prisma-sell-unit-labels.reader';
 import { PrismaOfferNamesReader } from './prisma-offer-names.reader';
 import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
@@ -581,6 +586,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): PublicCategoryReader =>
       new PrismaPublicCategoryReader(prisma),
+  },
+  {
+    provide: PRODUCT_SELL_UNIT_FACTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ProductSellUnitFactsReader =>
+      new PrismaProductSellUnitFactsReader(prisma),
   },
   {
     provide: SELL_UNIT_LABELS_READER,

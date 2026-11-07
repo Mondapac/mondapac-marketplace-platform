@@ -2,7 +2,12 @@ import 'server-only';
 import { redirect } from 'next/navigation';
 import { axesOf, combinationTitle } from '../catalog/variant-grid.ts';
 import { variantRowsOf } from '../catalog/draft-content.ts';
-import { VIEW_PERMISSION, type OfferView, type ProductView } from '../catalog/types.ts';
+import {
+  VIEW_PERMISSION,
+  type OfferSellUnitsView,
+  type OfferView,
+  type ProductView,
+} from '../catalog/types.ts';
 import type { TableRow } from '../catalog/variants-table-logic.ts';
 import { PRICE_VIEW_PERMISSION, type OfferPricesView } from '../price/types.ts';
 import { SETUP_ROOT } from '../setup/steps.ts';
@@ -20,6 +25,11 @@ export type VariantsPage =
       readonly currency: string | null;
       readonly rows: readonly TableRow[];
       readonly sources: SourcesView['sources'];
+      /** The SKU and Selling columns (variants V5); null when the seller may not view the catalog. */
+      readonly units: {
+        readonly productScope: 'PLATFORM' | 'SELLER';
+        readonly sellerSku: string;
+      } | null;
     }
   | { readonly kind: 'no-access'; readonly session: SellerSession }
   | { readonly kind: 'not-found'; readonly session: SellerSession }
@@ -27,8 +37,8 @@ export type VariantsPage =
 
 /**
  * The session, the offer and, for what the seller may see, its prices and stock levels, joined per
- * variant for the offer's variants table. The variant names come from the product's draft when the
- * seller may read it; otherwise a row is named by its position.
+ * variant for the offer's variants table. The variant names are the published label of the unit, else come from the product's draft
+ * when the seller may read it; otherwise a row is named by its position.
  */
 export async function loadVariantsPage(
   offerId: string,
@@ -42,13 +52,14 @@ export async function loadVariantsPage(
   const keys = session.permissionKeys;
   const canPrice = keys.includes(PRICE_VIEW_PERMISSION);
   const canStock = keys.includes(STOCK_VIEW_PERMISSION);
-  if (!canPrice && !canStock) return { kind: 'no-access', session };
+  const canUnits = keys.includes(VIEW_PERMISSION);
+  if (!canPrice && !canStock && !canUnits) return { kind: 'no-access', session };
 
   const offer = await serverGet<OfferView>(`catalog/seller/offers/${offerId}`);
   if (offer.kind === 'signed-out') redirect('/session-ended');
   if (offer.kind === 'not-found') return { kind: 'not-found', session };
   if (offer.kind !== 'ok') return { kind: 'unavailable' };
-  const [prices, stock, sources, product] = await Promise.all([
+  const [prices, stock, sources, product, units] = await Promise.all([
     canPrice
       ? serverGet<OfferPricesView>(`pricing/seller/offers/${offerId}/prices`)
       : Promise.resolve(null),
@@ -56,18 +67,25 @@ export async function loadVariantsPage(
       ? serverGet<StockLevelsView>(`inventory/seller/offers/${offerId}/stock`)
       : Promise.resolve(null),
     canStock ? serverGet<SourcesView>('inventory/seller/sources') : Promise.resolve(null),
-    keys.includes(VIEW_PERMISSION)
+    canUnits
       ? serverGet<ProductView>(`catalog/seller/products/${offer.body.productId}`)
       : Promise.resolve(null),
+    canUnits
+      ? serverGet<OfferSellUnitsView>(`catalog/seller/offers/${offerId}/sell-units`)
+      : Promise.resolve(null),
   ]);
-  const reads = [prices, stock, sources];
+  const reads = [prices, stock, sources, units];
   if (reads.some((item) => item?.kind === 'signed-out')) redirect('/session-ended');
   if (reads.some((item) => item?.kind === 'not-found')) return { kind: 'not-found', session };
   if (reads.some((item) => item !== null && item.kind !== 'ok')) return { kind: 'unavailable' };
   const priceBody = prices?.kind === 'ok' ? prices.body : null;
   const stockBody = stock?.kind === 'ok' ? stock.body : null;
 
+  const unitsBody = units?.kind === 'ok' ? units.body : null;
+  const unitOf = new Map(unitsBody?.units.map((unit) => [unit.variantId, unit] as const) ?? []);
+
   const ids = [
+    ...(unitsBody?.units.map((unit) => unit.variantId) ?? []),
     ...(priceBody?.variants.map((variant) => variant.variantId) ?? []),
     ...(stockBody?.variants.map((variant) => variant.variantId) ?? []),
   ].filter((id, index, all) => all.indexOf(id) === index);
@@ -86,7 +104,8 @@ export async function loadVariantsPage(
   }
   const rows: TableRow[] = ids.map((id, index) => ({
     variantId: id,
-    label: names.get(id) ?? fallbackName(index + 1),
+    label: unitOf.get(id)?.label ?? names.get(id) ?? fallbackName(index + 1),
+    unit: unitOf.get(id) ?? null,
     price: priceBody?.variants.find((variant) => variant.variantId === id) ?? null,
     stock: Object.fromEntries(
       (stockBody?.variants.find((variant) => variant.variantId === id)?.sources ?? []).map(
@@ -101,5 +120,9 @@ export async function loadVariantsPage(
     currency: priceBody?.currency ?? null,
     rows,
     sources: sources?.kind === 'ok' ? sources.body.sources : [],
+    units:
+      unitsBody === null
+        ? null
+        : { productScope: unitsBody.productScope, sellerSku: unitsBody.sellerSku },
   };
 }
