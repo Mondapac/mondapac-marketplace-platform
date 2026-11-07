@@ -49,7 +49,10 @@ import { CATEGORY_PATHS_READER } from './application/ports/category-paths.reader
 import { ClaimQueryBuilder } from './application/tags/claim-query-builder';
 import { OwnOfferAddTag } from './application/use-cases/own-offer-add-tag.use-case';
 import { OwnOfferRemoveTag } from './application/use-cases/own-offer-remove-tag.use-case';
-import { SELLER_ELIGIBILITY_READER } from './application/ports/seller-eligibility.reader';
+import {
+  SELLER_ELIGIBILITY_READER,
+  SELLER_ELIGIBILITY_STATUS_READER,
+} from './application/ports/seller-eligibility.reader';
 import { SELLER_NAMES_READER } from './application/ports/seller-names.reader';
 import { ProductRevisionApprove } from './application/use-cases/product-revision-approve.use-case';
 import { ProductRevisionRequestChanges } from './application/use-cases/product-revision-request-changes.use-case';
@@ -87,6 +90,25 @@ import { PlatformImportRowSave } from './application/use-cases/platform-import-r
 import { PlatformImportRowSubmit } from './application/use-cases/platform-import-row-submit.use-case';
 import { PlatformImportRun } from './application/use-cases/platform-import-run.use-case';
 import { PlatformImportController } from './presentation/platform-import.controller';
+import { SellerImportController } from './presentation/seller-import.controller';
+import { ownImportRunJob } from './presentation/jobs/own-import-run.job';
+import { purgeSellerImportsJob } from './presentation/jobs/purge-seller-imports.job';
+import { SELLER_IMPORT_REPOSITORY } from './application/ports/seller-import.repository';
+import { SELLER_IMPORT_FACTS_READER } from './application/ports/seller-import-facts.reader';
+import { OwnImportAddPhoto } from './application/use-cases/own-import-add-photo.use-case';
+import { OwnImportCheck } from './application/use-cases/own-import-check.use-case';
+import { OwnImportDiscard } from './application/use-cases/own-import-discard.use-case';
+import { OwnImportResume } from './application/use-cases/own-import-resume.use-case';
+import { OwnImportStart } from './application/use-cases/own-import-start.use-case';
+import { OwnImportPurge } from './application/use-cases/own-import-purge.use-case';
+import { OwnImportRead } from './application/use-cases/own-import-read.use-case';
+import { OwnImportReport } from './application/use-cases/own-import-report.use-case';
+import { OwnImportTemplate } from './application/use-cases/own-import-template.use-case';
+import { OwnImportRowCreate } from './application/use-cases/own-import-row-create.use-case';
+import { OwnImportRowOfferCreate } from './application/use-cases/own-import-row-offer-create.use-case';
+import { OwnImportRowOfferEdit } from './application/use-cases/own-import-row-offer-edit.use-case';
+import { OwnImportRowSave } from './application/use-cases/own-import-row-save.use-case';
+import { OwnImportRun } from './application/use-cases/own-import-run.use-case';
 import { platformImportRunJob } from './presentation/jobs/platform-import-run.job';
 import { purgePlatformImportsJob } from './presentation/jobs/purge-platform-imports.job';
 import { AdminProductResume } from './application/use-cases/admin-product-resume.use-case';
@@ -376,6 +398,17 @@ import { VariantAdminController } from './presentation/variant-admin.controller'
 /** The three key probes the category reads use for their allowed actions (categories C1). */
 const CATEGORY_ACTION_PROBES = Symbol('CATEGORY_ACTION_PROBES');
 
+/**
+ * The row use cases of the seller import hold the interactive use case of the same action, built
+ * with a save budget that spends nothing (catalog design 14c): the import is bounded by its own
+ * limits instead. These instances are private to the import and never reach a route.
+ */
+const OWN_IMPORT_PRODUCT_CREATE = Symbol('CATALOG_OWN_IMPORT_PRODUCT_CREATE');
+const OWN_IMPORT_OFFER_CREATE = Symbol('CATALOG_OWN_IMPORT_OFFER_CREATE');
+const OWN_IMPORT_OFFER_EDIT = Symbol('CATALOG_OWN_IMPORT_OFFER_EDIT');
+const OWN_IMPORT_IMAGE_UPLOAD = Symbol('CATALOG_OWN_IMPORT_IMAGE_UPLOAD');
+const NO_SAVE_BUDGET = { reserveSaves: (): Promise<null> => Promise.resolve(null) } as const;
+
 const PORT = {
   unitOfWork: UNIT_OF_WORK,
   categories: PLATFORM_CATEGORY_REPOSITORY,
@@ -417,6 +450,7 @@ const PORT = {
   evaluator: CLAIM_EVALUATOR,
   categoryPaths: CATEGORY_PATHS_READER,
   eligibility: SELLER_ELIGIBILITY_READER,
+  eligibilityStatus: SELLER_ELIGIBILITY_STATUS_READER,
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
   sellerNames: SELLER_NAMES_READER,
   ownReader: OWN_CATALOG_READER,
@@ -442,6 +476,14 @@ const PORT = {
   withdraw: AdminProductWithdraw,
   retire: PlatformProductRetire,
   importJobs: PLATFORM_IMPORT_REPOSITORY,
+  sellerJobs: SELLER_IMPORT_REPOSITORY,
+  importFacts: SELLER_IMPORT_FACTS_READER,
+  ownRowCreate: OwnImportRowCreate,
+  ownRowSave: OwnImportRowSave,
+  ownRowOfferCreate: OwnImportRowOfferCreate,
+  ownRowOfferEdit: OwnImportRowOfferEdit,
+  ownImageUpload: OWN_IMPORT_IMAGE_UPLOAD,
+  ownImageDelete: OwnProductImageDelete,
   importFiles: IMPORT_FILE_STORE,
   importParsers: IMPORT_FILE_PARSERS,
   sheetWriter: SHEET_WRITER,
@@ -495,6 +537,32 @@ function useCaseProvider<D, U>(
     inject: [USE_CASE_GATE, ...names.map((name) => PORT[name])],
     useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
       new type(gate, Object.fromEntries(names.map((name, index) => [name, values[index]])) as D),
+  };
+}
+
+/**
+ * A provider of a use case instance under a token of its own, built from the same named ports as the
+ * use case's usual provider but with the dependencies the factory changes (the seller import's row
+ * use cases, which hold the interactive use case with no save budget).
+ */
+function portVariantProvider<D, U>(
+  provide: symbol,
+  type: new (gate: UseCaseGate, deps: D, ...rest: never[]) => U,
+  ports: { readonly [K in keyof D]-?: K extends PortName ? true : never },
+  override: Partial<D>,
+  extra: readonly unknown[] = [],
+): FactoryProvider<U> {
+  const names = Object.keys(ports) as PortName[];
+  return {
+    provide,
+    inject: [USE_CASE_GATE, ...names.map((name) => PORT[name])],
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) => {
+      const deps = {
+        ...Object.fromEntries(names.map((name, index) => [name, values[index]])),
+        ...override,
+      } as D;
+      return new (type as new (...args: unknown[]) => U)(gate, deps, ...extra);
+    },
   };
 }
 
@@ -563,6 +631,7 @@ const RESTRUCTURE_DEPS = {
     VariantAdminController,
     AdminProductBulkController,
     PlatformImportController,
+    SellerImportController,
     SavedFilterController,
     ProductReviewController,
     ProductImageReviewController,
@@ -1408,6 +1477,189 @@ const RESTRUCTURE_DEPS = {
       importFiles: true,
       clock: true,
     }),
+    // The seller import (catalog design 14c).
+    portVariantProvider(
+      OWN_IMPORT_PRODUCT_CREATE,
+      OwnProductCreate,
+      {
+        unitOfWork: true,
+        products: true,
+        offers: true,
+        check: true,
+        attributes: true,
+        eligibility: true,
+        allowedTypes: true,
+        save: true,
+        policy: true,
+        productTypes: true,
+        outbox: true,
+        clock: true,
+        ids: true,
+      },
+      { save: NO_SAVE_BUDGET },
+    ),
+    portVariantProvider(
+      OWN_IMPORT_OFFER_CREATE,
+      OwnOfferCreateOnPlatformProduct,
+      {
+        unitOfWork: true,
+        products: true,
+        offers: true,
+        eligibility: true,
+        allowedTypes: true,
+        check: true,
+        save: true,
+        policy: true,
+        outbox: true,
+        clock: true,
+        ids: true,
+      },
+      { save: NO_SAVE_BUDGET },
+    ),
+    portVariantProvider(
+      OWN_IMPORT_OFFER_EDIT,
+      OwnOfferEdit,
+      {
+        unitOfWork: true,
+        offers: true,
+        eligibility: true,
+        check: true,
+        save: true,
+        policy: true,
+        claims: true,
+        evaluator: true,
+        outbox: true,
+        clock: true,
+      },
+      { save: NO_SAVE_BUDGET },
+      ['import-row'],
+    ),
+    portVariantProvider(
+      OWN_IMPORT_IMAGE_UPLOAD,
+      OwnProductImageUpload,
+      {
+        unitOfWork: true,
+        products: true,
+        images: true,
+        imageProcessor: true,
+        objectStore: true,
+        eligibility: true,
+        save: true,
+        clock: true,
+        ids: true,
+      },
+      { save: NO_SAVE_BUDGET },
+    ),
+    {
+      provide: OwnImportRowCreate,
+      inject: [USE_CASE_GATE, OWN_IMPORT_PRODUCT_CREATE],
+      useFactory: (gate: UseCaseGate, create: OwnProductCreate) =>
+        new OwnImportRowCreate(gate, { create }),
+    },
+    {
+      provide: OwnImportRowOfferCreate,
+      inject: [USE_CASE_GATE, OWN_IMPORT_OFFER_CREATE],
+      useFactory: (gate: UseCaseGate, create: OwnOfferCreateOnPlatformProduct) =>
+        new OwnImportRowOfferCreate(gate, { create }),
+    },
+    {
+      provide: OwnImportRowOfferEdit,
+      inject: [USE_CASE_GATE, OWN_IMPORT_OFFER_EDIT],
+      useFactory: (gate: UseCaseGate, edit: OwnOfferEdit) =>
+        new OwnImportRowOfferEdit(gate, { edit }),
+    },
+    useCaseProvider(OwnImportRowSave, {
+      unitOfWork: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      saveDraft: true,
+      eligibility: true,
+      allowedTypes: true,
+      policy: true,
+    }),
+    useCaseProvider(OwnImportCheck, {
+      unitOfWork: true,
+      treeReader: true,
+      attributes: true,
+      policy: true,
+      productTypes: true,
+      sellerJobs: true,
+      importFiles: true,
+      importParsers: true,
+      counters: true,
+      counterKeys: true,
+      importFacts: true,
+      eligibility: true,
+      allowedTypes: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnImportStart, {
+      unitOfWork: true,
+      sellerJobs: true,
+      eligibility: true,
+      counters: true,
+      counterKeys: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnImportRead, { unitOfWork: true, sellerJobs: true, clock: true }),
+    useCaseProvider(OwnImportReport, { unitOfWork: true, sellerJobs: true, clock: true }),
+    useCaseProvider(OwnImportTemplate, { policy: true, sheetWriter: true }),
+    useCaseProvider(OwnImportDiscard, {
+      unitOfWork: true,
+      sellerJobs: true,
+      importFiles: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnImportResume, {
+      unitOfWork: true,
+      sellerJobs: true,
+      eligibility: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnImportAddPhoto, {
+      unitOfWork: true,
+      sellerJobs: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      saveDraft: true,
+      ownImageUpload: true,
+      ownImageDelete: true,
+      eligibility: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnImportRun, {
+      unitOfWork: true,
+      treeReader: true,
+      attributes: true,
+      policy: true,
+      productTypes: true,
+      sellerJobs: true,
+      importFiles: true,
+      importParsers: true,
+      importFacts: true,
+      eligibilityStatus: true,
+      allowedTypes: true,
+      offers: true,
+      outbox: true,
+      clock: true,
+      jobContexts: true,
+      ownRowCreate: true,
+      ownRowSave: true,
+      ownRowOfferCreate: true,
+      ownRowOfferEdit: true,
+    }),
+    useCaseProvider(OwnImportPurge, {
+      unitOfWork: true,
+      sellerJobs: true,
+      importFiles: true,
+      clock: true,
+    }),
     {
       provide: SavedFilterShareCheck,
       inject: [USE_CASE_GATE],
@@ -1710,6 +1962,8 @@ const RESTRUCTURE_DEPS = {
         SendOfferOwnerNotices,
         PlatformImportRun,
         PlatformImportPurge,
+        OwnImportRun,
+        OwnImportPurge,
         ExpireRelaxationRequests,
         SendAttributeSuggestionNotices,
       ],
@@ -1723,6 +1977,8 @@ const RESTRUCTURE_DEPS = {
         notices: SendOfferOwnerNotices,
         importRun: PlatformImportRun,
         importPurge: PlatformImportPurge,
+        sellerRun: OwnImportRun,
+        sellerPurge: OwnImportPurge,
         expireRelaxations: ExpireRelaxationRequests,
         suggestionNotices: SendAttributeSuggestionNotices,
       ) => [
@@ -1735,6 +1991,8 @@ const RESTRUCTURE_DEPS = {
         sendOfferOwnerNoticesJob(notices),
         platformImportRunJob(importRun),
         purgePlatformImportsJob(importPurge),
+        ownImportRunJob(sellerRun),
+        purgeSellerImportsJob(sellerPurge),
         expireRelaxationRequestsJob(expireRelaxations),
         sendAttributeSuggestionNoticesJob(suggestionNotices),
       ],

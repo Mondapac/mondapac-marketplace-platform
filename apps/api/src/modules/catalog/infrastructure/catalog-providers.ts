@@ -88,7 +88,9 @@ import {
 } from '../application/ports/allowed-product-types.reader';
 import {
   SELLER_ELIGIBILITY_READER,
+  SELLER_ELIGIBILITY_STATUS_READER,
   type SellerEligibilityReader,
+  type SellerEligibilityStatusReader,
 } from '../application/ports/seller-eligibility.reader';
 import {
   SELLER_NAMES_READER,
@@ -200,6 +202,16 @@ import { PrismaProductRevisionRepository } from './prisma-product-revision.repos
 import { OBJECT_STORE, type ObjectStore } from '../../../platform/storage/object-store';
 import { PrismaWorkingCopyRepository } from './prisma-working-copy.repository';
 import { PrismaPlatformImportRepository } from './prisma-platform-import.repository';
+import { PrismaSellerImportRepository } from './prisma-seller-import.repository';
+import { PrismaSellerImportFactsReader } from './prisma-seller-import-facts.reader';
+import {
+  SELLER_IMPORT_REPOSITORY,
+  type SellerImportRepository,
+} from '../application/ports/seller-import.repository';
+import {
+  SELLER_IMPORT_FACTS_READER,
+  type SellerImportFactsReader,
+} from '../application/ports/seller-import-facts.reader';
 import { ObjectImportFileStore } from './object-import-file-store';
 import { IMPORT_FILE_STORE, type ImportFileStore } from '../application/ports/import-file-store';
 import {
@@ -547,6 +559,12 @@ export const catalogProviders: readonly Provider[] = [
       new SellersSellerEligibilityReader(sellers),
   },
   {
+    provide: SELLER_ELIGIBILITY_STATUS_READER,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerEligibilityStatusReader =>
+      new SellersSellerEligibilityReader(sellers),
+  },
+  {
     provide: SELLER_NAMES_READER,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): SellerNamesReader =>
@@ -652,6 +670,18 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): PlatformImportRepository =>
       new PrismaPlatformImportRepository(prisma),
+  },
+  {
+    provide: SELLER_IMPORT_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerImportRepository =>
+      new PrismaSellerImportRepository(prisma),
+  },
+  {
+    provide: SELLER_IMPORT_FACTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerImportFactsReader =>
+      new PrismaSellerImportFactsReader(prisma),
   },
   {
     provide: IMPORT_FILE_STORE,

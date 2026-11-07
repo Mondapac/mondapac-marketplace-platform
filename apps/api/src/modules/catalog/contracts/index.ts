@@ -29,6 +29,9 @@ export {
   // Consumed by notifications' admin notice (the finished platform import).
   PlatformImportFinished,
   PLATFORM_IMPORT_OUTCOMES,
+  // Consumed by notifications' seller notice (the finished seller import).
+  SellerImportFinished,
+  SELLER_IMPORT_OUTCOMES,
   ProductRevisionChangesRequested,
   ProductRevisionChangesRequestedV2,
   VariantAdded,
@@ -41,6 +44,7 @@ export {
   CATALOG_BUSINESS_ACTIVITY_READ,
   CATALOG_BRAND_EDIT,
   CATALOG_BRAND_READ,
+  CATALOG_OWN_IMPORT_RUN,
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PERMISSIONS,
   CATALOG_PLATFORM_IMPORT_RUN,

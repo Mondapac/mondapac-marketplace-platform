@@ -1295,6 +1295,121 @@ model CatalogPlatformImportRow {
   @@schema("catalog")
 }
 
+/// One seller's import file, from its check to its report (catalog design 14c; data design 3.31). It
+/// keeps the identity of the account and session that started it (ids only) and the seller, from the
+/// starting ActorContext; the worker resumes them as that seller. No price, cost or stock column.
+/// `seller_id`, `product_id`, `offer_id` and `image_id` have no foreign key (other schema, or a
+/// delete must never conflict with a row that remembers what the run did). The CHECKs, the partial
+/// indexes and the column grants are hand-written.
+model CatalogSellerImportJob {
+  id                 String                     @id @db.Uuid
+  marketId           String                     @map("market_id") @db.VarChar(8)
+  tenantId           String                     @map("tenant_id")
+  sellerId           String                     @map("seller_id") @db.Uuid
+  startedByAccountId String                     @map("started_by_account_id") @db.Uuid
+  startedBySessionId String                     @map("started_by_session_id") @db.Uuid
+  /// my-products | sell-from-catalogue.
+  mode               String
+  /// checked | queued | running | finished | stopped | discarded.
+  state              String
+  /// csv | xlsx.
+  format             String
+  fileLabel          String                     @map("file_label")
+  /// The object key, built by code from the Market and the job id.
+  fileKey            String                     @map("file_key")
+  fileSha256         Bytes                      @map("file_sha256")
+  fileBytes          Int                        @map("file_bytes")
+  fileDeletedAt      DateTime?                  @map("file_deleted_at") @db.Timestamptz(6)
+  totalRows          Int                        @map("total_rows")
+  readyRows          Int                        @map("ready_rows")
+  errorRows          Int                        @map("error_rows")
+  warningRows        Int                        @map("warning_rows")
+  /// The products (my-products) or Offers (sell-from-catalogue) in the file: groups of rows.
+  groupCount         Int                        @map("group_count")
+  /// [{header, mark}]: columns the check did not read; mark certification | elsewhere | null.
+  ignoredColumns     Json                       @map("ignored_columns") @db.JsonB
+  skipErrors         Boolean?                   @map("skip_errors")
+  toImport           Int?                       @map("to_import")
+  createdRows        Int                        @map("created_rows")
+  updatedRows        Int                        @map("updated_rows")
+  unchangedRows      Int                        @map("unchanged_rows")
+  failedRows         Int                        @map("failed_rows")
+  /// rate-limited | access-lost | seller-not-eligible | file-missing | unexpected; set while stopped.
+  stopReason         String?                    @map("stop_reason")
+  notBefore          DateTime?                  @map("not_before") @db.Timestamptz(6)
+  leaseUntil         DateTime?                  @map("lease_until") @db.Timestamptz(6)
+  /// When the runner last claimed the job: the claim takes the oldest last turn first (round-robin).
+  lastTurnAt         DateTime?                  @map("last_turn_at") @db.Timestamptz(6)
+  version            Int
+  createdAt          DateTime                   @map("created_at") @db.Timestamptz(6)
+  checkedAt          DateTime                   @map("checked_at") @db.Timestamptz(6)
+  startedAt          DateTime?                  @map("started_at") @db.Timestamptz(6)
+  finishedAt         DateTime?                  @map("finished_at") @db.Timestamptz(6)
+  /// When the job stopped (set exactly while `stopped`; a resume clears it): the photo window closes
+  /// seven days after it.
+  endedAt            DateTime?                  @map("ended_at") @db.Timestamptz(6)
+  rows               CatalogSellerImportRow[]
+  photos             CatalogSellerImportPhoto[]
+
+  @@unique([marketId, id])
+  @@index([marketId, sellerId, createdAt(sort: Desc)], map: "seller_import_jobs_market_id_seller_created_at_idx")
+  @@index([marketId, startedByAccountId, createdAt(sort: Desc)], map: "seller_import_jobs_market_id_account_created_at_idx")
+  @@map("seller_import_jobs")
+  @@schema("catalog")
+}
+
+/// One data row of a seller import: its check result, its plan and, once run, what happened to it
+/// (design 14c). Cell values are kept only as the shortened, cleaned `value` of an issue and the
+/// summary; never an ignored or price cell.
+model CatalogSellerImportRow {
+  marketId    String                 @map("market_id") @db.VarChar(8)
+  tenantId    String                 @map("tenant_id")
+  jobId       String                 @map("job_id") @db.Uuid
+  /// The number a spreadsheet shows (the header is row 1).
+  rowNumber   Int                    @map("row_number")
+  /// The row number of the first row of this row's group.
+  groupRow    Int                    @map("group_row")
+  /// ready | error.
+  checkState  String                 @map("check_state")
+  /// create | update; null exactly for an error row.
+  plan        String?
+  /// [{severity, column, code, value, otherRow?}], at most 12.
+  issues      Json                   @db.JsonB
+  /// {sku, title, productCode, typeCode, options}: cleaned and cut.
+  summary     Json                   @db.JsonB
+  /// pending | created | updated | unchanged | failed | skipped.
+  runState    String                 @map("run_state")
+  runCode     String?                @map("run_code")
+  productId   String?                @map("product_id") @db.Uuid
+  offerId     String?                @map("offer_id") @db.Uuid
+  productCode String?                @map("product_code")
+  job         CatalogSellerImportJob @relation(fields: [marketId, jobId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, jobId, rowNumber])
+  @@map("seller_import_rows")
+  @@schema("catalog")
+}
+
+/// One photo added by the photo step of a seller import (design 14c): insert-only, the guard of
+/// `import.photo-already-added` and the per-job count. The photo itself is an ordinary
+/// `product_images` row.
+model CatalogSellerImportPhoto {
+  marketId  String                 @map("market_id") @db.VarChar(8)
+  tenantId  String                 @map("tenant_id")
+  jobId     String                 @map("job_id") @db.Uuid
+  /// The cleaned label in lower case, 1 to 80 characters.
+  nameKey   String                 @map("name_key")
+  productId String                 @map("product_id") @db.Uuid
+  /// null while the name is reserved and the upload runs; set once.
+  imageId   String?                @map("image_id") @db.Uuid
+  addedAt   DateTime               @map("added_at") @db.Timestamptz(6)
+  job       CatalogSellerImportJob @relation(fields: [marketId, jobId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, jobId, nameKey])
+  @@map("seller_import_photos")
+  @@schema("catalog")
+}
+
 /// A saved filter (saved view) of an admin list (catalog design 9.2d; data design 3.28): the tab,
 /// search, filters and sort of the list under a name, for one admin ("me") or for every admin of
 /// the Market who can see that list ("everyone"). `list_key` names the list (`admin.catalog.products`

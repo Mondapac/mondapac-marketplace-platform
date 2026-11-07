@@ -280,6 +280,53 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   RowSummary: { noCustomerText: 'the admin report line of a row' },
   CheckedRow: { noCustomerText: 'the admin check result of a row' },
+  SellerIgnoredColumn: { noCustomerText: 'a header of the file, shown to the seller only' },
+  BracketColumn: { noCustomerText: 'column positions' },
+  SellerColumnMap: { noCustomerText: 'column positions of a seller import file' },
+  KnownBracketCodes: { noCustomerText: 'attribute codes of the Market family' },
+  MergeBase: {
+    noCustomerText:
+      'the stored draft an import row is merged into; saved by the draft save, which checks every text',
+  },
+  MergeEnvironment: { noCustomerText: 'the default locale' },
+  MergedRow: {
+    noCustomerText:
+      'draft content for the own-import row-save use case, which claim-checks every text itself',
+  },
+  ExistingOfferFact: {
+    noCustomerText: 'ids and option keys of the seller own Offer, for the check',
+  },
+  CatalogueProductFact: { noCustomerText: 'ids and the type code of a catalogue product' },
+  SellerCheckFacts: {
+    noCustomerText: 'facts the seller import check reads about the seller own Offers',
+  },
+  SellerCheckEnvironment: {
+    noCustomerText: 'facts of the Market a seller import row is checked against',
+  },
+  SellerRowIssue: {
+    noCustomerText: 'issue code with a column and the cell as sent, for the seller only',
+  },
+  SellerRowSummary: { noCustomerText: 'the seller report line of a row' },
+  SellerProductPatch: {
+    noCustomerText:
+      'draft content for the own-import row-save use case, which claim-checks every text itself',
+  },
+  SellerVariantPlan: {
+    noCustomerText: 'option codes and V4 fields of a variant row, no free text',
+  },
+  SellerGroupPlan: {
+    noCustomerText:
+      'plan of one group for the own-import row use cases, which claim-check every text themselves',
+  },
+  CheckedSellerRow: { noCustomerText: 'the seller check result of a row' },
+  CheckedSellerGroup: { noCustomerText: 'the seller check result of a group of rows' },
+  SellerGroupRows: {
+    noCustomerText: 'raw cells of a seller import file; never shown to customers',
+  },
+  SellerImportJob: { noCustomerText: 'seller job record: counts, states and a cleaned file label' },
+  SellerRowRecord: {
+    noCustomerText: 'seller report row: codes and the title as the seller sent it',
+  },
   AttributeDefinition: { noCustomerText: 'aggregate class around AttributeDefinitionState' },
   AttributeFamily: { noCustomerText: 'aggregate class around AttributeFamilyState' },
   CategoryAttributeLink: { noCustomerText: 'aggregate class around CategoryAttributeLinkState' },

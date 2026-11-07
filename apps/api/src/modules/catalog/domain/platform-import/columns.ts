@@ -51,7 +51,7 @@ export function normaliseHeader(header: string): string {
  * content never asserts a certification; Import never writes handling, attestation or tags). Such
  * a column is not read; the check lists it so the admin knows it did nothing.
  */
-const CERTIFICATION_HEADER =
+export const CERTIFICATION_HEADER =
   /halal|kosher|vegan|certif|attest|handling|\btags?\b|badge|approv|basis|provenance|publish|\bstatus\b/;
 
 export interface IgnoredColumn {

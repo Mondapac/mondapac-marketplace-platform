@@ -351,6 +351,27 @@ export const PlatformImportFinished = defineEvent({
   },
 });
 
+/** How a seller import run ended (design 14c): every row it took was tried, or it stopped part way. */
+export const SELLER_IMPORT_OUTCOMES = ['completed', 'stopped'] as const;
+
+/**
+ * A seller import ended its turn for good: finished, or stopped part way (catalog design 14c). Ids,
+ * an enum and counts only. Consumed by notifications, which turns it into the seller's in-app
+ * notice for the members who may see the seller's products.
+ */
+export const SellerImportFinished = defineEvent({
+  type: 'catalog.seller-import-finished.v1',
+  aggregateType: 'import-job',
+  payload: {
+    importId: eventField.id(),
+    sellerId: eventField.id(),
+    outcome: eventField.enumOf(SELLER_IMPORT_OUTCOMES),
+    created: eventField.integer(),
+    updated: eventField.integer(),
+    failed: eventField.integer(),
+  },
+});
+
 /** The reasons a reviewer may give when a photo is taken down (catalog design 10.5). */
 export const IMAGE_TAKEDOWN_REASONS = [
   'certification-mark',
@@ -412,4 +433,5 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   ProductWithdrawn,
   ProductRetired,
   PlatformImportFinished,
+  SellerImportFinished,
 ];

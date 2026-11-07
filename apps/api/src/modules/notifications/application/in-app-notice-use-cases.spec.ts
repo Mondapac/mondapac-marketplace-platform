@@ -31,6 +31,7 @@ import {
   SELLER_ACCESS_CHANGED,
   SELLER_CERTIFICATE_DECIDED,
   SELLER_IMAGE_TAKEN_DOWN,
+  SELLER_IMPORT_FINISHED,
   SELLER_LOW_STOCK,
   SELLER_OFFER_TAG_CHANGED,
   SELLER_ORDER_PAID,
@@ -1247,6 +1248,27 @@ describe.each([['AU'], ['ZZ']] as const)('seller notices (package 4) in market %
       keys.set(MEMBER_2, ['inventory.stock.view']);
       expect(await kindsSeenBy(member(MEMBER_1))).toEqual([SELLER_PAYOUT_TERMS_CHANGED]);
       expect(await kindsSeenBy(member(MEMBER_2))).toEqual([SELLER_LOW_STOCK]);
+    });
+
+    it("shows an import's end only to the importing seller's catalog viewers, never to seller B", async () => {
+      await record({
+        kind: SELLER_IMPORT_FINISHED,
+        owner: { by: 'seller', sellerId: SELLER_A },
+        params: {
+          importId: id(0x91),
+          sellerId: SELLER_A,
+          outcome: 'completed',
+          created: 3,
+          updated: 1,
+          failed: 0,
+        },
+      });
+      keys.set(MEMBER_1, ['catalog.own-product.view']);
+      keys.set(MEMBER_2, ['inventory.stock.view']);
+      keys.set(MEMBER_B, ['catalog.own-product.view']);
+      expect(await kindsSeenBy(member(MEMBER_1))).toContain(SELLER_IMPORT_FINISHED);
+      expect(await kindsSeenBy(member(MEMBER_2))).not.toContain(SELLER_IMPORT_FINISHED);
+      expect(await kindsSeenBy(member(MEMBER_B, SELLER_B))).not.toContain(SELLER_IMPORT_FINISHED);
     });
 
     it('shows the review notices only to a member who may see the shop reviews, with ids only', async () => {

@@ -3,6 +3,8 @@
 
 export const VIEW_PERMISSION = 'catalog.product.view';
 export const DECIDE_PERMISSION = 'catalog.product.approve';
+/** A photo takedown deletes its files, so it needs the delete key (catalog design 10.5). */
+export const TAKE_DOWN_PERMISSION = 'catalog.product.delete';
 export const PAGE_SIZE = 25;
 export const CHANGE_REASONS = [
   'content-unclear',

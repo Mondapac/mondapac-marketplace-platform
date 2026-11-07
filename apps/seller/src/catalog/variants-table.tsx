@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useId, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { priceProblemOf } from '../price/errors.ts';
-import { formatMinor } from '../price/money.ts';
+import { formatMinor, inputOf } from '../price/money.ts';
 import type { PriceWritten } from '../price/types.ts';
 import { levelsProblemOf } from '../stock/levels-errors.ts';
 import type { StockSet } from '../stock/levels-types.ts';
@@ -20,7 +20,6 @@ import {
   writesOf,
   type TableRow,
 } from './variants-table-logic.ts';
-import { inputOf } from '../price/money.ts';
 import { unitProblemOf, variantOfPath } from './sell-unit-errors.ts';
 import {
   fallbackSku,
@@ -369,6 +368,7 @@ export function VariantsTable({
     } else if (done > 0 && failed === 0 && !stopped)
       toast.success(t('catalog.variants-table.saved', { count: done }));
     else if (done > 0) toast.info(t('catalog.variants-table.partial', { done, failed }));
+    else if (stopped) toast.info(t('catalog.variants-table.cancelled'));
     // Fresh versions, held prices and special prices come from the server.
     if (done > 0) router.refresh();
   }
@@ -444,16 +444,28 @@ export function VariantsTable({
           <div className="flex flex-wrap gap-2">
             {canEditPrice ? (
               <>
-                <Button variant="secondary" onClick={() => setBulk('price')}>
+                <Button
+                  variant="secondary"
+                  aria-pressed={bulk === 'price'}
+                  onClick={() => setBulk('price')}
+                >
                   {t('catalog.variants-table.set-price')}
                 </Button>
-                <Button variant="secondary" onClick={() => setBulk('increase')}>
+                <Button
+                  variant="secondary"
+                  aria-pressed={bulk === 'increase'}
+                  onClick={() => setBulk('increase')}
+                >
                   {t('catalog.variants-table.increase')}
                 </Button>
               </>
             ) : null}
             {canEditStock && sources.length > 0 ? (
-              <Button variant="secondary" onClick={() => setBulk('stock')}>
+              <Button
+                variant="secondary"
+                aria-pressed={bulk === 'stock'}
+                onClick={() => setBulk('stock')}
+              >
                 {t('catalog.variants-table.set-stock')}
               </Button>
             ) : null}
@@ -481,7 +493,9 @@ export function VariantsTable({
               </Button>
             </div>
           )}
-          {bulkNote === null ? null : <p className="text-sm text-fg-muted">{bulkNote}</p>}
+          <p className="text-sm text-fg-muted" role="status">
+            {bulkNote}
+          </p>
           <p className="text-sm text-fg-muted">{t('catalog.variants-table.bulk-help')}</p>
         </div>
       ) : null}
