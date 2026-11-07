@@ -96,9 +96,12 @@ describe('seller read routes over HTTP (integration)', () => {
               pageCalls.push(page);
               return Promise.resolve(listed.products);
             },
-            countProductsBy: (_m: unknown, sellerId: unknown, filters: unknown) => {
+            countProductViews: (_m: unknown, sellerId: unknown, filters: unknown) => {
               countCalls.push({ sellerId, filters });
-              return Promise.resolve([7, 3, 2, 1, 1]);
+              return Promise.resolve({
+                byStatus: { draft: 3, published: 1, matched: 1, retired: 1 },
+                inReview: 1,
+              });
             },
             listProductPage: (
               _m: unknown,
@@ -342,7 +345,7 @@ describe('seller read routes over HTTP (integration)', () => {
         total: 2,
         page: 2,
         pageSize: 50,
-        counts: { all: 7, drafts: 3, live: 2, inactive: 1, inReview: 1 },
+        counts: { all: 6, drafts: 3, live: 2, inactive: 1, inReview: 1 },
       });
       expect(countCalls).toHaveLength(1);
       expect(countCalls[0]!.sellerId).toBe(SELLER);
@@ -358,7 +361,7 @@ describe('seller read routes over HTTP (integration)', () => {
 
       const first = await get(code, '/catalog/seller/products?page=1', sessionOf(code));
       expect(first.status).toBe(200);
-      expect(first.body).toMatchObject({ page: 1, pageSize: 25, total: 7 });
+      expect(first.body).toMatchObject({ page: 1, pageSize: 25, total: 6 });
       expect(listCalls[0]).toMatchObject({
         sellerId: SELLER,
         order: { sort: 'updated', direction: 'desc' },

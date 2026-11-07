@@ -268,9 +268,20 @@ export class OwnProductsList extends UseCase<
       market,
       async () => {
         const reader = this.deps.ownReader;
-        const [all = 0, drafts = 0, live = 0, inactive = 0, inReview = 0] =
-          await reader.countProductsBy(market, sellerId, OWN_PRODUCT_VIEWS.map(filterFor));
-        const counts: OwnProductViewCounts = { all, drafts, live, inactive, inReview };
+        // Two reads for the five tabs: the products per status, and those in review.
+        const totals = await reader.countProductViews(market, sellerId, filterFor('all'));
+        const inStatuses = (view: OwnProductView): number =>
+          VIEW_RULES[view].statuses.reduce(
+            (sum, status) => sum + (totals.byStatus[status] ?? 0),
+            0,
+          );
+        const counts: OwnProductViewCounts = {
+          all: inStatuses('all'),
+          drafts: inStatuses('drafts'),
+          live: inStatuses('live'),
+          inactive: inStatuses('inactive'),
+          inReview: totals.inReview,
+        };
         const total = counts[VIEW_COUNT_KEY[q.view]];
         const result =
           offset >= total
@@ -379,7 +390,10 @@ export function parseListQuery(input: unknown): Result<ParsedOwnListQuery, Valid
     return invalid('query', 'type');
   }
   const record = input as Record<string, unknown>;
-  for (const key of Object.keys(record)) if (!LIST_KEY_SET.has(key)) return invalid(key, 'unknown');
+  for (const key of Object.keys(record)) {
+    // The key is the caller's own text: echo no more than 64 characters of it.
+    if (!LIST_KEY_SET.has(key)) return invalid(Array.from(key).slice(0, 64).join(''), 'unknown');
+  }
 
   const view = oneOf('view', record['view'], OWN_PRODUCT_VIEWS, 'all');
   if (!view.ok) return view;

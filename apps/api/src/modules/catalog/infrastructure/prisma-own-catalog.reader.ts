@@ -6,6 +6,7 @@ import type {
   ListPage,
   OwnCatalogReader,
   OwnProductRow,
+  OwnProductViewTotals,
   OwnProductSort,
   OwnProductsFilter,
   OwnProductsPageResult,
@@ -30,7 +31,7 @@ const toInstant = (date: Date): Temporal.Instant =>
 const MAX_PAGE = 100;
 
 /** Sorting by name holds the matching products in memory; more than this must be narrowed. */
-export const OWN_NAME_SORT_LIMIT = 2000;
+export const OWN_NAME_SORT_LIMIT = 500;
 
 /** Escapes `\\`, `%` and `_`, so a search term is matched as typed (LIKE patterns). */
 const literal = (term: string): string => term.replace(/[\\%_]/g, (char) => `\\${char}`);
@@ -48,7 +49,24 @@ const viaShownRevision = (
   ],
 });
 
-/** The seller's list filter. A name, a category or a photo comes from the draft, else the shown revision. */
+/**
+ * A condition on the value a row shows. While the product has a working copy (a draft) the draft
+ * is what the list displays, so only the draft is matched; without one, the shown revision is.
+ */
+const viaDraftOrShown = (
+  draft: Prisma.CatalogProductWorkingCopyWhereInput,
+  revision: Prisma.CatalogProductRevisionWhereInput,
+): Prisma.CatalogProductWhereInput => ({
+  OR: [
+    { workingCopy: { is: draft } },
+    { AND: [{ workingCopy: { is: null } }, viaShownRevision(revision)] },
+  ],
+});
+
+/**
+ * The seller's list filter. A name or a category is matched on what the row shows: the draft when
+ * there is one, else the shown revision. The category is the displayed (first) one.
+ */
 function listWhere(
   market: MarketContext,
   sellerId: Id<'Seller'>,
@@ -56,36 +74,33 @@ function listWhere(
 ): Prisma.CatalogProductWhereInput {
   const and: Prisma.CatalogProductWhereInput[] = [];
   if (filter.categoryId !== null) {
-    and.push({
-      OR: [
-        {
-          workingCopy: {
-            is: { content: { path: ['categoryIds'], array_contains: [filter.categoryId] } },
-          },
-        },
-        viaShownRevision({ categories: { some: { categoryId: filter.categoryId } } }),
-      ],
-    });
+    // The first category: index 0 of the draft, position 1 of a revision (numbered from 1).
+    and.push(
+      viaDraftOrShown(
+        { content: { path: ['categoryIds', '0'], equals: filter.categoryId } },
+        { categories: { some: { categoryId: filter.categoryId, position: 1 } } },
+      ),
+    );
   }
   if (filter.text !== null) {
     const part = literal(filter.text);
     and.push({
       OR: [
         { productCode: { contains: part, mode: 'insensitive' } },
-        {
-          workingCopy: {
-            is: {
-              content: {
-                path: ['texts', filter.locale, 'name'],
-                string_contains: part,
-                mode: 'insensitive',
-              },
+        viaDraftOrShown(
+          {
+            content: {
+              path: ['texts', filter.locale, 'name'],
+              string_contains: part,
+              mode: 'insensitive',
             },
           },
-        },
-        viaShownRevision({
-          texts: { some: { locale: filter.locale, name: { contains: part, mode: 'insensitive' } } },
-        }),
+          {
+            texts: {
+              some: { locale: filter.locale, name: { contains: part, mode: 'insensitive' } },
+            },
+          },
+        ),
       ],
     });
   }
@@ -120,11 +135,32 @@ function draftIds(content: unknown, key: 'categoryIds' | 'imageIds'): readonly s
     : [];
 }
 
-interface Candidate {
-  readonly id: string;
-  readonly shownRevisionId: string | null;
-  readonly content: unknown;
-}
+/** The columns the list needs of a product, read in the one statement that picks the page. */
+const LIST_SELECT = {
+  id: true,
+  productCode: true,
+  typeCode: true,
+  status: true,
+  pausedAt: true,
+  publishedRevisionId: true,
+  pendingRevisionId: true,
+  pendingSubmittedAt: true,
+  lastChangedAt: true,
+  createdAt: true,
+  workingCopy: { select: { content: true } },
+} satisfies Prisma.CatalogProductSelect;
+
+type ListedProduct = Prisma.CatalogProductGetPayload<{ select: typeof LIST_SELECT }>;
+
+/** The revision a row shows: the published one, else the pending one. */
+const shownRevisionOf = (row: ListedProduct): string | null =>
+  row.publishedRevisionId ?? row.pendingRevisionId;
+
+/**
+ * The draft's content while the product has a working copy, else null. With a working copy the
+ * list shows the draft's name and category alone (and filters on them), never the revision's.
+ */
+const draftContentOf = (row: ListedProduct): unknown => row.workingCopy?.content ?? null;
 
 /**
  * The SELLER products of the Market with a pending revision that `filter` keeps: one seller (the
@@ -174,17 +210,25 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
     return rows.map(productFromRow);
   }
 
-  async countProductsBy(
+  async countProductViews(
     market: MarketContext,
     sellerId: Id<'Seller'>,
-    filters: readonly OwnProductsFilter[],
-  ): Promise<readonly number[]> {
+    filter: OwnProductsFilter,
+  ): Promise<OwnProductViewTotals> {
     const tx = this.prisma.tx(market);
-    const counts: number[] = [];
-    for (const filter of filters) {
-      counts.push(await tx.catalogProduct.count({ where: listWhere(market, sellerId, filter) }));
-    }
-    return counts;
+    // Two statements: the products per status, and those with a pending revision.
+    const groups = await tx.catalogProduct.groupBy({
+      by: ['status'],
+      where: listWhere(market, sellerId, { ...filter, inReview: false }),
+      _count: { _all: true },
+    });
+    const inReview = await tx.catalogProduct.count({
+      where: listWhere(market, sellerId, { ...filter, inReview: true }),
+    });
+    return {
+      byStatus: Object.fromEntries(groups.map((group) => [group.status, group._count._all])),
+      inReview,
+    };
   }
 
   async listProductPage(
@@ -196,47 +240,31 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
   ): Promise<OwnProductsPageResult> {
     const tx = this.prisma.tx(market);
     const where = listWhere(market, sellerId, filter);
-    const select = {
-      id: true,
-      publishedRevisionId: true,
-      pendingRevisionId: true,
-      workingCopy: { select: { content: true } },
-    } satisfies Prisma.CatalogProductSelect;
-    const candidateOf = (row: {
-      id: string;
-      publishedRevisionId: string | null;
-      pendingRevisionId: string | null;
-      workingCopy: { content: unknown } | null;
-    }): Candidate => ({
-      id: row.id,
-      shownRevisionId: row.publishedRevisionId ?? row.pendingRevisionId,
-      content: row.workingCopy?.content ?? null,
-    });
-    let picked: Candidate[];
+    let picked: ListedProduct[];
     if (order.sort === 'name') {
       const found = await tx.catalogProduct.findMany({
         where,
-        select,
+        select: LIST_SELECT,
         orderBy: { id: 'asc' },
         take: OWN_NAME_SORT_LIMIT + 1,
       });
       if (found.length > OWN_NAME_SORT_LIMIT) return { kind: 'too-broad' };
-      const candidates = found.map(candidateOf);
+      // The revision's name is read only for the rows that show it (no draft).
       const names = await this.revisionNames(
         market,
-        candidates.flatMap((row) =>
-          row.shownRevisionId === null || draftNameIn(row.content, filter.locale) !== null
-            ? []
-            : [row.shownRevisionId],
+        found.flatMap((row) =>
+          row.workingCopy !== null || shownRevisionOf(row) === null ? [] : [shownRevisionOf(row)!],
         ),
         filter.locale,
       );
-      const nameOf = (row: Candidate): string | null =>
-        draftNameIn(row.content, filter.locale) ??
-        (row.shownRevisionId === null ? null : (names.get(row.shownRevisionId) ?? null));
+      const nameOf = (row: ListedProduct): string | null => {
+        if (row.workingCopy !== null) return draftNameIn(draftContentOf(row), filter.locale);
+        const revisionId = shownRevisionOf(row);
+        return revisionId === null ? null : (names.get(revisionId) ?? null);
+      };
       const collator = new Intl.Collator(filter.locale, { sensitivity: 'base', numeric: true });
       const sign = order.direction === 'asc' ? 1 : -1;
-      candidates.sort((a, b) => {
+      found.sort((a, b) => {
         const left = nameOf(a);
         const right = nameOf(b);
         // A product without a name in the locale sorts last in either direction.
@@ -246,17 +274,16 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
         }
         return sign * collator.compare(left, right) || (a.id < b.id ? -1 : 1);
       });
-      picked = candidates.slice(page.offset, page.offset + page.limit);
+      picked = found.slice(page.offset, page.offset + page.limit);
     } else {
       const column = order.sort === 'created' ? 'createdAt' : 'lastChangedAt';
-      const rows = await tx.catalogProduct.findMany({
+      picked = await tx.catalogProduct.findMany({
         where,
-        select,
+        select: LIST_SELECT,
         orderBy: [{ [column]: order.direction }, { id: order.direction }],
         skip: page.offset,
         take: page.limit,
       });
-      picked = rows.map(candidateOf);
     }
     return { kind: 'rows', rows: await this.productRows(market, sellerId, picked, filter.locale) };
   }
@@ -287,24 +314,13 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
   private async productRows(
     market: MarketContext,
     sellerId: Id<'Seller'>,
-    picked: readonly Candidate[],
+    picked: readonly ListedProduct[],
     locale: string,
   ): Promise<readonly OwnProductRow[]> {
     if (picked.length === 0) return [];
     const tx = this.prisma.tx(market);
     const productIds = picked.map((row) => row.id).slice(0, MAX_PAGE);
-    const products = await tx.catalogProduct.findMany({
-      where: {
-        marketId: market.marketId,
-        scope: 'SELLER',
-        ownerSellerId: sellerId,
-        id: { in: productIds },
-      },
-    });
-    const byId = new Map(products.map((row) => [row.id, row]));
-    const revisionIds = picked.flatMap((row) =>
-      row.shownRevisionId === null ? [] : [row.shownRevisionId],
-    );
+    const revisionIds = picked.flatMap((row) => shownRevisionOf(row) ?? []);
     const revisions =
       revisionIds.length === 0
         ? []
@@ -324,7 +340,7 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
           });
     const revisionById = new Map(revisions.map((row) => [row.id, row]));
     // The draft's photos count only while they are not taken down.
-    const draftImageIds = picked.flatMap((row) => draftIds(row.content, 'imageIds'));
+    const draftImageIds = picked.flatMap((row) => draftIds(draftContentOf(row), 'imageIds'));
     const cleanImages =
       draftImageIds.length === 0
         ? []
@@ -338,11 +354,15 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
             select: { id: true, productId: true },
           });
     const cleanOf = new Set(cleanImages.map((row) => `${row.productId}/${row.id}`));
-    const categoryOf = (entry: Candidate): string | null =>
-      draftIds(entry.content, 'categoryIds')[0] ??
-      (entry.shownRevisionId === null
+    // With a draft the draft's category and name are shown (and filtered on), else the revision's.
+    const categoryOf = (entry: ListedProduct): string | null => {
+      if (entry.workingCopy !== null)
+        return draftIds(draftContentOf(entry), 'categoryIds')[0] ?? null;
+      const revisionId = shownRevisionOf(entry);
+      return revisionId === null
         ? null
-        : (revisionById.get(entry.shownRevisionId)?.categories[0]?.categoryId ?? null));
+        : (revisionById.get(revisionId)?.categories[0]?.categoryId ?? null);
+    };
     const categoryIds = [...new Set(picked.flatMap((entry) => categoryOf(entry) ?? []))];
     const categories =
       categoryIds.length === 0
@@ -370,39 +390,35 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
       _count: { _all: true },
     });
     const offersOf = new Map(offerCounts.map((row) => [row.productId, row._count._all]));
-    return picked.flatMap((entry): OwnProductRow[] => {
-      const row = byId.get(entry.id);
-      if (row === undefined) return [];
-      const revision =
-        entry.shownRevisionId === null ? undefined : revisionById.get(entry.shownRevisionId);
-      const draftName = draftNameIn(entry.content, locale);
-      const draftImage = draftIds(entry.content, 'imageIds').find((imageId) =>
+    return picked.map((row): OwnProductRow => {
+      const shownId = shownRevisionOf(row);
+      const revision = shownId === null ? undefined : revisionById.get(shownId);
+      const draftName = draftNameIn(draftContentOf(row), locale);
+      const draftImage = draftIds(draftContentOf(row), 'imageIds').find((imageId) =>
         cleanOf.has(`${row.id}/${imageId}`),
       );
-      const categoryId = categoryOf(entry);
-      return [
-        {
-          productId: row.id as Id<'Product'>,
-          productCode: row.productCode,
-          typeCode: row.typeCode,
-          status: row.status as ProductStatus,
-          name: draftName ?? revision?.texts[0]?.name ?? null,
-          draftName,
-          primaryImageId: (draftImage ??
-            revision?.images[0]?.imageId ??
-            null) as Id<'ProductImage'> | null,
-          categoryId: categoryId as Id<'Category'> | null,
-          categoryName: categoryId === null ? null : (categoryName.get(categoryId) ?? null),
-          offerCount: offersOf.get(row.id) ?? 0,
-          pausedAt: row.pausedAt === null ? null : toInstant(row.pausedAt),
-          hasPublishedRevision: row.publishedRevisionId !== null,
-          hasPendingRevision: row.pendingRevisionId !== null,
-          pendingSubmittedAt:
-            row.pendingSubmittedAt === null ? null : toInstant(row.pendingSubmittedAt),
-          lastChangedAt: toInstant(row.lastChangedAt),
-          createdAt: toInstant(row.createdAt),
-        },
-      ];
+      const categoryId = categoryOf(row);
+      return {
+        productId: row.id as Id<'Product'>,
+        productCode: row.productCode,
+        typeCode: row.typeCode,
+        status: row.status as ProductStatus,
+        name: row.workingCopy !== null ? draftName : (revision?.texts[0]?.name ?? null),
+        draftName,
+        primaryImageId: (draftImage ??
+          revision?.images[0]?.imageId ??
+          null) as Id<'ProductImage'> | null,
+        categoryId: categoryId as Id<'Category'> | null,
+        categoryName: categoryId === null ? null : (categoryName.get(categoryId) ?? null),
+        offerCount: offersOf.get(row.id) ?? 0,
+        pausedAt: row.pausedAt === null ? null : toInstant(row.pausedAt),
+        hasPublishedRevision: row.publishedRevisionId !== null,
+        hasPendingRevision: row.pendingRevisionId !== null,
+        pendingSubmittedAt:
+          row.pendingSubmittedAt === null ? null : toInstant(row.pendingSubmittedAt),
+        lastChangedAt: toInstant(row.lastChangedAt),
+        createdAt: toInstant(row.createdAt),
+      };
     });
   }
 
