@@ -34,7 +34,8 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
   const area = deliverTo
     ? deliverToLabel(deliverTo)
     : deliverGuess
-      ? t('near-guess', { place: deliverToLabel(deliverGuess) })
+      ? // The suburb only: the postcode does not fit at 320px; the modal shows it.
+        t('near-guess', { place: deliverGuess.suburb })
       : delivery.label;
   const cartButton = useCartButton();
   const { count, total } = summarise(cart);

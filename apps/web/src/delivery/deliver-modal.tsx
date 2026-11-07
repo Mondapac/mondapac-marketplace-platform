@@ -89,6 +89,8 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   /** Why the live search shows no list: typed too little, too many searches, or it failed. */
   const [searchNote, setSearchNote] = useState<'short' | SearchProblem['kind'] | null>(null);
   const confirmed = useRef<Pick | null>(null);
+  /** The pick made from the guessed area on opening; the guess note shows while it stands. */
+  const guessPick = useRef<Pick | null>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const opener = useRef<Element | null>(null);
@@ -120,8 +122,10 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
       const ticket = ++placeTicket.current;
       // A confirmed location, or else the area guessed from the connection: the buyer confirms it.
       void lookup.locate((deliverTo ?? deliverGuess)!).then((place) => {
-        if (place && ticket === placeTicket.current)
-          setPick({ point: place.point, origin: 'place', place });
+        if (!place || ticket !== placeTicket.current) return;
+        const next: Pick = { point: place.point, origin: 'place', place };
+        guessPick.current = deliverTo ? null : next;
+        setPick(next);
       });
     }
     const narrow = typeof window.matchMedia === 'function' && window.matchMedia(NARROW).matches;
@@ -250,6 +254,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     saveDeliverTo(to);
     setDeliverTo(to);
     confirmed.current = pick;
+    guessPick.current = null;
     close();
     router.refresh();
   };
@@ -428,7 +433,9 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                 )}
                 {unconfirmed && inside ? <small>{t('area-unconfirmed')}</small> : null}
                 {pick.origin === 'device' && inside ? <small>{t('device-note')}</small> : null}
-                {source.live && pick.origin === 'place' && pick.place?.street === '' ? (
+                {pick === guessPick.current ? (
+                  <small>{t('guess-note')}</small>
+                ) : source.live && pick.origin === 'place' && pick.place?.street === '' ? (
                   <small>{t('suburb-hint')}</small>
                 ) : null}
               </div>
