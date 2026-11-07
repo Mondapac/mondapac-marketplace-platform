@@ -123,3 +123,10 @@ describe('writesOf: equivalent values are not writes', () => {
     expect(increasedBy('1', '0.01')).toBe('1');
   });
 });
+
+describe('increasedBy bounds', () => {
+  it('accepts 1000 and refuses 1000.01', () => {
+    expect(increasedBy('100', '1000')).toBe('1100');
+    expect(increasedBy('100', '1000.01')).toBeNull();
+  });
+});
