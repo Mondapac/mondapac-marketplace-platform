@@ -104,6 +104,39 @@ describe('seller notice subscriptions', () => {
     ]);
   });
 
+  it("tells a seller about its own import's end, with counts only", async () => {
+    const { inputs, named } = subscriptions();
+    await named(SELLER_NOTICE_SUBSCRIBERS.importFinished).handle(
+      {
+        payload: {
+          importId: 'imp-1',
+          sellerId: 'seller-a',
+          outcome: 'completed',
+          created: 3,
+          updated: 2,
+          failed: 1,
+          filename: 'secret.csv',
+        },
+      } as never,
+      delivery,
+      context,
+    );
+    expect(inputs.map((input) => input.item)).toEqual([
+      {
+        kind: 'seller.import-finished',
+        owner: { by: 'seller', sellerId: 'seller-a' },
+        params: {
+          importId: 'imp-1',
+          sellerId: 'seller-a',
+          outcome: 'completed',
+          created: 3,
+          updated: 2,
+          failed: 1,
+        },
+      },
+    ]);
+  });
+
   it('throws when the use case refuses', async () => {
     const all = inAppNoticeSubscriptions(
       {} as never,
