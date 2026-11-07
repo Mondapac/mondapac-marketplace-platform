@@ -164,6 +164,11 @@ export function looksLikeText(bytes: Uint8Array): boolean {
   if (NOT_TEXT.some((magic) => startsWith(bytes, magic)) || isZipContainer(bytes)) return false;
   const window = bytes.subarray(0, Math.min(bytes.length, SNIFF_WINDOW));
   if (window.includes(0)) return false;
-  const head = new TextDecoder('latin1').decode(window.subarray(0, 64)).trimStart().toLowerCase();
+  // A UTF-8 byte order mark may stand in front of the markup.
+  const start = window[0] === 0xef && window[1] === 0xbb && window[2] === 0xbf ? 3 : 0;
+  const head = new TextDecoder('latin1')
+    .decode(window.subarray(start, start + 64))
+    .trimStart()
+    .toLowerCase();
   return !(head.startsWith('<?xml') || head.startsWith('<html') || head.startsWith('<!doctype'));
 }

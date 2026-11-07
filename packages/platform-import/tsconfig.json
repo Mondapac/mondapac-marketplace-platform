@@ -3,6 +3,7 @@
   "compilerOptions": {
     "rootDir": ".",
     "outDir": "./dist",
+    // DOM only for TextDecoder and TextEncoder (the package runs in the API and in the browser).
     "lib": ["ES2023", "DOM"],
     "types": []
   },
