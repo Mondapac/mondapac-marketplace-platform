@@ -2671,6 +2671,58 @@
         "message": "You have changes that are not saved. If you leave this page, they are lost.",
         "stay": "Stay on page",
         "leave": "Leave page"
+      },
+      "images": {
+        "label": "Images",
+        "upload": "Upload images",
+        "add": "Add image",
+        "formats": "JPG, PNG or WebP, at least 1200 px on the long side. Images only for now.",
+        "full": "Up to {max} images.",
+        "uploading": "Uploading…",
+        "unavailable": "Images could not be loaded. Reload the page to try again.",
+        "main": "Main",
+        "not-in-product": "Not in product",
+        "library-only": "In the library only. Add one back from its menu, or delete it.",
+        "library-label": "Images not in the product",
+        "alt": "Image {n} of {total}",
+        "menu": {
+          "label": "Image {n} options",
+          "make-main": "Make main",
+          "move-left": "Move left",
+          "move-right": "Move right",
+          "remove": "Remove from product",
+          "add-back": "Add to product",
+          "delete": "Delete",
+          "wait": "Wait for the upload to finish."
+        },
+        "delete": {
+          "title": "Delete this image?",
+          "message": "It is removed from the library and cannot be restored.",
+          "confirm": "Delete",
+          "cancel": "Cancel"
+        },
+        "announce": {
+          "main": "Image {n} is now the main image.",
+          "moved": "Image moved to position {n} of {total}.",
+          "removed": "Image removed from the product. Save to keep the change.",
+          "added": "Image added to the product at position {n}.",
+          "deleted": "Image deleted."
+        },
+        "error": {
+          "limit": "A product holds up to 8 images. Delete one to add another.",
+          "in-use": "This image is in a published version. Remove it from the product instead.",
+          "not-found": "This image or product is no longer available. Reload the page.",
+          "too-large": "The file is too large. Use an image under 25 MB.",
+          "unsupported": "Use a JPG, PNG or WebP image.",
+          "too-many-pixels": "The image has too many pixels. Use a smaller one.",
+          "too-small": "The image is too small to use. Choose a larger one.",
+          "unreadable": "The file could not be read as an image.",
+          "denied": "You don't have permission to change this product's images.",
+          "csrf": "Your session needs refreshing. Reload the page and try again.",
+          "throttled": "Too many changes in a short time. Wait a moment and try again.",
+          "unavailable": "Images are unavailable right now. Try again in a moment.",
+          "unknown": "Something went wrong with the image. Try again."
+        }
       }
     },
     "queue": {

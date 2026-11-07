@@ -37,8 +37,16 @@ import {
   type VariantRow,
 } from './draft-content.ts';
 import { problemOf, type FormProblem } from './errors.ts';
+import { ImagesSection } from './images-section.tsx';
 import { VariantsSection } from './variants-section.tsx';
-import { BASE, readable, type DraftSaved, type ProductView, type Submitted } from './types.ts';
+import {
+  BASE,
+  readable,
+  type DraftSaved,
+  type ProductImage,
+  type ProductView,
+  type Submitted,
+} from './types.ts';
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -78,11 +86,33 @@ export function contentWithTexts(
   return { ...(content ?? {}), texts };
 }
 
+/** The draft's ordered photo ids; the first is the main photo. */
+export function imageIdsOf(content: Readonly<Record<string, unknown>> | undefined): string[] {
+  const ids = content?.['imageIds'];
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
+}
+
+/** The draft's photo ids that are still in the library; all of them when the library is unknown. */
+export function knownImageIds(
+  content: Readonly<Record<string, unknown>> | undefined,
+  library: readonly ProductImage[] | null,
+): string[] {
+  const ids = imageIdsOf(content);
+  if (library === null) return ids;
+  const known = new Set(library.map((image) => image.imageId));
+  return ids.filter((id) => known.has(id));
+}
+
 type Phase =
   | { readonly kind: 'loading' }
   | { readonly kind: 'failed' }
   | { readonly kind: 'not-found' }
-  | { readonly kind: 'ready'; readonly product: ProductView };
+  | {
+      readonly kind: 'ready';
+      readonly product: ProductView;
+      /** `null` when the photo list could not be read; the rest of the form still works. */
+      readonly images: readonly ProductImage[] | null;
+    };
 
 /** The admin's "Edit product" page: loads one platform product and shows its form. */
 export function ProductEdit({
@@ -99,9 +129,16 @@ export function ProductEdit({
 
   const load = useCallback(async () => {
     setPhase({ kind: 'loading' });
-    const result = await callApi<ProductView>('GET', `${BASE}/${productId}`);
+    const [result, images] = await Promise.all([
+      callApi<ProductView>('GET', `${BASE}/${productId}`),
+      callApi<{ images: ProductImage[] }>('GET', `${BASE}/${productId}/images`),
+    ]);
     if (result.ok) {
-      setPhase({ kind: 'ready', product: result.body });
+      setPhase({
+        kind: 'ready',
+        product: result.body,
+        images: images.ok ? images.body.images : null,
+      });
       setGeneration((value) => value + 1);
     } else if (result.failure.status === 401) window.location.assign('/session-ended');
     else if (result.failure.status === 404) setPhase({ kind: 'not-found' });
@@ -129,6 +166,7 @@ export function ProductEdit({
     <EditForm
       key={generation}
       product={phase.product}
+      images={phase.images}
       csrfToken={csrfToken}
       onReload={() => void load()}
     />
@@ -143,10 +181,12 @@ const STATUS_TONE: Readonly<Record<string, 'neutral' | 'success' | 'attention'>>
 
 function EditForm({
   product,
+  images,
   csrfToken,
   onReload,
 }: {
   readonly product: ProductView;
+  readonly images: readonly ProductImage[] | null;
   readonly csrfToken: string;
   readonly onReload: () => void;
 }) {
@@ -163,7 +203,12 @@ function EditForm({
     attributeInputsOf(content, attributeFields),
   );
   const [rows, setRows] = useState<VariantRow[]>(() => variantRowsOf(content, product.variants));
-  const [dirty, setDirty] = useState(false);
+  // A photo deleted while the draft still named it (the draft was not saved after) is dropped
+  // here, and the form starts unsaved so the next save or publish writes the shorter list.
+  const [imageIds, setImageIds] = useState<string[]>(() => knownImageIds(content, images));
+  const [dirty, setDirty] = useState(
+    () => knownImageIds(content, images).length !== imageIdsOf(content).length,
+  );
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<FormProblem | null>(null);
   const [refused, setRefused] = useState<DraftSaved['refusedFields']>([]);
@@ -202,12 +247,15 @@ function EditForm({
   }
 
   function contentOf(list: readonly VariantRow[]): Record<string, unknown> {
-    return contentFrom(contentWithTexts(content, defaultLocale, texts), {
+    const next = contentFrom(contentWithTexts(content, defaultLocale, texts), {
       categoryIds,
       taxCategoryCode,
       attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
       variants: configurable ? variantsWith(list) : null,
     });
+    if (imageIds.length > 0) next['imageIds'] = [...imageIds];
+    else delete next['imageIds'];
+    return next;
   }
 
   /** Saves the draft; 'saved' when the API took it whole, 'refused' when it dropped some texts. */
@@ -401,6 +449,16 @@ function EditForm({
               error={refusedAt('description') ? t('refused-field') : undefined}
               onChange={(event) => {
                 setTexts({ ...texts, description: event.target.value });
+                edited();
+              }}
+            />
+            <ImagesSection
+              productId={product.productId}
+              csrfToken={csrfToken}
+              library={images}
+              imageIds={imageIds}
+              onImageIds={(next) => {
+                setImageIds(next);
                 edited();
               }}
             />

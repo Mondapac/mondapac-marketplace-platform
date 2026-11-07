@@ -3,21 +3,39 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
+import type { callApi } from '../../api/client.ts';
 
-vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
+// The form also reads the photo library of the product (P1 images). That call goes to its own
+// mock, so `call` sees the same calls in the same order as before; the images card has its own
+// spec (images-section.spec.tsx).
+const mocks = vi.hoisted(() => ({
+  call: vi.fn<typeof callApi>(),
+  images: vi.fn<typeof callApi>(),
+}));
+vi.mock('../../api/client.ts', () => ({
+  callApi: ((...args: Parameters<typeof callApi>) =>
+    args[0] === 'GET' && args[1].endsWith('/images')
+      ? mocks.images(...args)
+      : mocks.call(...args)) as typeof callApi,
+}));
 
-import { callApi } from '../../api/client.ts';
 import { expectToast } from '../../../test/toast-spy.ts';
 import { ProductCreateForm } from './create-form.tsx';
 import { contentWithTexts, ProductEdit, textsOf } from './edit-form.tsx';
 import { problemOf } from './errors.ts';
 import type { ProductView } from './types.ts';
 
-const call = vi.mocked(callApi);
+const call = mocks.call;
 const ID = '0190a000-0000-7000-8000-0000000000c1';
 const CATEGORY = '0190a000-0000-7000-8000-0000000000d1';
 const CHILD = '0190a000-0000-7000-8000-0000000000d2';
 const assign = vi.fn();
+const LIBRARY_PHOTO = {
+  imageId: 'img-1',
+  width: 1600,
+  height: 1200,
+  createdAt: '2026-11-05T01:00:00.000Z',
+};
 
 const view = (over: Partial<ProductView> = {}): ProductView => ({
   productId: ID,
@@ -97,6 +115,9 @@ const lastBody = (index: number) => call.mock.calls[index]?.[2] as Record<string
 beforeEach(() => {
   vi.clearAllMocks();
   call.mockReset();
+  mocks.images.mockReset();
+  // The library holds the photo the saved draft names, as it does after an upload.
+  mocks.images.mockResolvedValue({ ok: true, status: 200, body: { images: [LIBRARY_PHOTO] } });
   Object.defineProperty(window, 'location', {
     value: { assign, href: `${document.baseURI.replace(/\/$/, '')}/catalog/products/edit` },
     writable: true,
@@ -227,6 +248,31 @@ describe('the edit form', () => {
       },
       variantIds: ['0190a000-0000-7000-8000-0000000000e1'],
     });
+  });
+
+  it('drops a photo the library no longer holds from the draft and starts unsaved', async () => {
+    mocks.images.mockResolvedValueOnce({ ok: true, status: 200, body: { images: [] } });
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    await screen.findByLabelText('Title');
+    const save = screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' });
+    expect(save.disabled).toBe(false);
+    call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
+    fireEvent.click(save);
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect((lastBody(1)['content'] as Record<string, unknown>)['imageIds']).toBeUndefined();
+  });
+
+  it('keeps the image card working when the library cannot be read', async () => {
+    mocks.images.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 503, code: 'access.unavailable' },
+    } as never);
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    expect(await screen.findByText(/Images could not be loaded/)).toBeTruthy();
+    const save = screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' });
+    expect(save.disabled).toBe(true);
   });
 
   it('files a product in categories picked by their full path from a searchable list', async () => {
