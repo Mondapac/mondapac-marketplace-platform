@@ -52,6 +52,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // direction, page, pageSize). The keyset parameters (`afterId`, `limit`) are read by the
     // panel's server pages only and do not cross.
     'catalog/seller/products',
+    // The Products list as a file (CSV or XLSX): the list's selector plus format, columns and the
+    // selected product ids; the answer is an attachment.
+    'catalog/seller/products/export',
+    // The saved filters of the Products list (query: `listKey`).
+    'catalog/seller/saved-filters',
   ]),
   PUT: new Set([
     // The signed-in member's own display name (profile).
@@ -99,6 +104,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/withdraw',
     'inventory/seller/sources',
     'catalog/seller/products',
+    // Saves the Products list's tab, search, filters and sort under a name.
+    'catalog/seller/saved-filters',
     // The import's upload: a base64 CSV or XLSX file in a JSON body, checked and saved as nothing but a record.
     'catalog/seller/imports',
     // Each asks for a second-factor code in the body and answers with a one-time Stripe address.
@@ -117,6 +124,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'inventory/seller/sources/:id',
     'catalog/seller/products/:id/draft',
     'catalog/seller/offers/:id',
+    // Rename a saved filter of the Products list and set who can use it.
+    'catalog/seller/saved-filters/:id',
     // The SKU and the selling switch of the sell units of an offer (variants V5).
     'catalog/seller/offers/:id/sell-units',
     'inventory/seller/offers/:id/variants/:id/sources/:id/stock',
@@ -147,7 +156,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'reviews/seller/:id/report',
   ],
   PATCH: ['reviews/seller/:id/reply'],
-  DELETE: ['catalog/seller/offers/:id', 'catalog/seller/products/:id/images/:id'],
+  DELETE: [
+    'catalog/seller/offers/:id',
+    'catalog/seller/products/:id/images/:id',
+    'catalog/seller/saved-filters/:id',
+  ],
   // A product photo for the panel's <img> tags: the API serves a JPEG it wrote itself.
   GET: [
     'catalog/seller/products/:id/images/:id/:size',
@@ -183,6 +196,24 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     page: /^[0-9]{1,5}$/,
     pageSize: /^(25|50|100)$/,
   },
+  // The export takes the list's selector (no page), the file format, the columns shown and the
+  // ids of the selected rows (at most 100, see QUERY_VALUE_MAX_FOR).
+  'catalog/seller/products/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(product|status|category|code|updated|created|offers|type)(,(product|status|category|code|updated|created|offers|type)){0,7}$/,
+    productIds:
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
+    view: /^(all|drafts|live|inactive|in-review)$/,
+    q: null,
+    status: /^(draft|unpublished|published|matched|retired)$/,
+    categoryId: UUID,
+    paused: /^(true|false)$/,
+    typeCode: /^[A-Za-z0-9_.-]{1,64}$/,
+    sort: /^(name|updated|created)$/,
+    direction: /^(asc|desc)$/,
+  },
+  'catalog/seller/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'notifications/seller/notices': { show: /^(unread|read|all)$/, before: UUID },
   // The API's own opaque cursor (epoch milliseconds of the publication, an underscore, the review id).
   'reviews/seller': { cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/ },
@@ -192,6 +223,10 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp
   'catalog/seller/imports/:id/report': { kind: /^(errors|full)$/ },
 };
 const QUERY_VALUE_MAX = 512;
+/** A longer value for a key that carries a list: 100 ids of 36 characters and 99 commas. */
+const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
+  'catalog/seller/products/export:productIds': 3700,
+};
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
 function upstreamQuery(method: string, path: readonly string[], requestUrl: string): string {
@@ -205,7 +240,8 @@ function upstreamQuery(method: string, path: readonly string[], requestUrl: stri
   const kept = new URLSearchParams();
   for (const [key, shape] of Object.entries(keys)) {
     const value = source.get(key);
-    if (value === null || value.length > QUERY_VALUE_MAX) continue;
+    const max = QUERY_VALUE_MAX_FOR[`${path.join('/')}:${key}`] ?? QUERY_VALUE_MAX;
+    if (value === null || value.length > max) continue;
     if (shape === null || shape.test(value)) kept.set(key, value);
   }
   const text = kept.toString();
@@ -276,6 +312,8 @@ const FORWARDED_REQUEST_HEADERS = [
 /** Response headers that cross back to the browser (Set-Cookie is handled on its own). */
 const FORWARDED_RESPONSE_HEADERS = [
   'content-type',
+  // The Products export arrives as an attachment with a file name the API made.
+  'content-disposition',
   'retry-after',
   'x-content-type-options',
 ] as const;

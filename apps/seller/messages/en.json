@@ -1014,6 +1014,95 @@
           "inactive": "No inactive products",
           "in-review": "No products in review"
         }
+      },
+      "export-button": "Export",
+      "select": {
+        "page": "Select all products on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "saved": {
+        "manage-link": "Manage filters",
+        "save-link": "Save filter…",
+        "summary-search": "Search “{q}”",
+        "summary-sort": "Sorted by {field}, {order}",
+        "cancel": "Cancel",
+        "save": {
+          "title": "Save this filter",
+          "name": "Name",
+          "who": "Who can use it",
+          "submit": "Save filter",
+          "everyone-help": "Everyone: everyone in your store gets it as a tab.",
+          "own-only": "Saved for you only. Your role can’t share filters."
+        },
+        "visibility": {
+          "me": "Only me",
+          "everyone": "Everyone"
+        },
+        "error": {
+          "name-taken": "A filter with this name already exists. Choose another name.",
+          "name-empty": "Enter a name for the filter.",
+          "limit": "You can keep up to {max} saved filters. Delete one to save another.",
+          "shared-limit": "Up to {max} filters can be shared with everyone in your store. Delete or unshare one first.",
+          "denied": "Your role can’t do this.",
+          "acting-as": "Filters can’t be changed while you are signed in as this seller.",
+          "not-found": "This filter is no longer there. The list has been refreshed.",
+          "unavailable": "The filter could not be saved. Try again."
+        },
+        "toast": {
+          "saved": "Saved “{name}”",
+          "updated": "Updated “{name}”",
+          "deleted": "Deleted “{name}”"
+        },
+        "manage": {
+          "title": "Manage filters",
+          "close": "Close",
+          "edit": "Edit",
+          "edit-named": "Edit {name}",
+          "delete": "Delete",
+          "delete-named": "Delete {name}",
+          "delete-confirm": "Delete filter",
+          "delete-own": "Delete “{name}”? It is removed from your tabs.",
+          "delete-shared": "Delete “{name}”? It is removed from the tabs of everyone in your store.",
+          "save": "Save changes",
+          "shared-by-other": "Shared by a team member",
+          "empty": "No saved filters yet",
+          "empty-help": "Set up a search or filters, then choose Save filter to keep them as a tab.",
+          "help-share": "Rename, change who can use a filter, or delete it.",
+          "help-own": "Rename or delete your filters. Your role can’t share filters."
+        }
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# product selected} other {# products selected}}",
+        "select-all": "Select all {count, number} products in this filter",
+        "clear": "Clear selection",
+        "menu": {
+          "export": "Export",
+          "export-help": "CSV or XLSX, with the columns shown"
+        }
+      },
+      "export": {
+        "title": "Export {count, plural, one {# product} other {# products}}",
+        "body": "The file has the columns shown in the list.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "confirm": "Export",
+        "cancel": "Cancel",
+        "pending": "Preparing your export…",
+        "done": "{count, plural, one {# product exported.} other {# products exported.}}",
+        "error": {
+          "unavailable": "The export didn’t work. Try again.",
+          "denied": "You don’t have access to export products.",
+          "too-large": "Too many products to export ({total}). Narrow the list to {max} or fewer, then try again.",
+          "too-many-selected": "You can export up to {max} selected products at a time.",
+          "too-broad": "Too many products to put in order by name. Sort by Last changed or narrow the list, then try again.",
+          "not-found": "Some of the selected products are no longer in your store. Reload the list and try again.",
+          "invalid": "That export can’t be done. Reload the page and try again."
+        }
       }
     },
     "product": {

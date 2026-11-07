@@ -46,6 +46,7 @@ export default async function ProductsPage() {
         marketId={marketId}
         timeZone={session.timezone}
         permissionKeys={session.permissionKeys}
+        csrfToken={session.csrfToken}
         categories={tree.kind === 'ok' ? tree.body.categories : []}
         productTypes={options?.kind === 'ok' ? options.body.productTypes : []}
         paging={paging}

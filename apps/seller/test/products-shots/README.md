@@ -9,3 +9,7 @@ the filter sheet). Run from `apps/seller`:
 
 Set `CHROME_PATH` to use an installed Chrome. It builds with Vite, serves the build on a local
 port and drives the browser. The page is the list alone, without the panel shell.
+
+The F2 states (saved-filter tabs, Save filter, Manage filters, selection with the Bulk action menu,
+Export dialog) are saved as `products-f2-<state>-<width>-<theme>.png`; set `SHOTS_ONLY=f2` to take
+only those.
