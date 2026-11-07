@@ -1211,6 +1211,10 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', `catalog/admin/business-activities/${id}`],
     ['POST', 'catalog/admin/business-activities'],
     ['PUT', `catalog/admin/business-activities/${id}`],
+    ['GET', 'catalog/admin/topics'],
+    ['GET', `catalog/admin/topics/${id}`],
+    ['POST', 'catalog/admin/topics'],
+    ['PUT', `catalog/admin/topics/${id}`],
     ['GET', 'catalog/admin/attributes'],
     ['GET', `catalog/admin/attributes/${id}`],
     ['POST', 'catalog/admin/attributes'],
@@ -1283,6 +1287,10 @@ describe('relay of the wallet and step-up routes', () => {
     ['PUT', 'catalog/admin/business-activities/not-a-uuid'],
     ['POST', `catalog/admin/business-activities/${id}`],
     ['GET', 'catalog/admin/business-activities/not-a-uuid'],
+    ['DELETE', `catalog/admin/topics/${id}`],
+    ['PUT', 'catalog/admin/topics'],
+    ['POST', `catalog/admin/topics/${id}`],
+    ['GET', 'catalog/admin/topics/not-a-uuid'],
     ['PUT', 'catalog/admin/attributes'],
     ['POST', 'catalog/admin/attribute-suggestions'],
     ['POST', `catalog/admin/attribute-suggestions/${id}`],
@@ -1375,6 +1383,23 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe(
       'http://api.test/catalog/admin/business-activities',
     );
+  });
+
+  it('passes only status, group, search, afterId and limit of the tag list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/topics?status=archived&group=cuisine&search=bbq&afterId=${id}&limit=25&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/topics?status=archived&group=cuisine&search=bbq&afterId=${id}&limit=25`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/topics?status=inactive&group=season&afterId=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/topics');
   });
 
   it('passes only the action of the category impact read, in its shape, and no query on the tree', async () => {

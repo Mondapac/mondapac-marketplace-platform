@@ -50,6 +50,7 @@ describe('admin nav: Catalogue', () => {
       'variants',
       'brands',
       'business-activities',
+      'tags',
     ]);
   });
 
@@ -108,6 +109,7 @@ describe('admin nav: daily work only', () => {
       'variants',
       'brands',
       'business-activities',
+      'tags',
       'review-queue',
       'review-moderation',
       'price-holds',
@@ -287,5 +289,22 @@ describe('admin nav: Business activities', () => {
   it('is hidden without it, also with the edit key alone', () => {
     expect(ids([])).not.toContain('business-activities');
     expect(ids(['catalog.business-activity.edit'])).not.toContain('business-activities');
+  });
+});
+
+describe('admin nav: Tags', () => {
+  it('is there for catalog.topic.read, in the Catalogue group', () => {
+    expect(ids(['catalog.topic.read'])).toEqual(['home', 'tags']);
+    expect(adminNav.items.find((item) => item.id === 'tags')).toMatchObject({
+      href: '/catalog/tags',
+      labelKey: 'nav.tags',
+      group: 'catalogue',
+      icon: 'star',
+    });
+  });
+
+  it('is hidden without it, also with the manage key alone', () => {
+    expect(ids([])).not.toContain('tags');
+    expect(ids(['catalog.topic.manage'])).not.toContain('tags');
   });
 });
