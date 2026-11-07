@@ -134,8 +134,6 @@ const fail = (status: number, code: string, details?: object) => ({
   ok: false as const,
   failure: { status, code, ...(details === undefined ? {} : { details }) },
 });
-const discardDialog = (): HTMLElement =>
-  screen.getByText('Discard this product?').closest('dialog') as HTMLElement;
 const lastBody = (index: number) => call.mock.calls[index]?.[2] as Record<string, unknown>;
 
 beforeEach(() => {
