@@ -715,11 +715,25 @@ describe('seller product list', () => {
     mount();
     expect(await screen.findByText('No products yet')).toBeTruthy();
     expect(screen.getByText('Add a product or import a list to start your store.')).toBeTruthy();
-    expect(screen.getAllByRole('link', { name: 'Add product' })).toHaveLength(2);
+    // Add product is shown once, in the empty card (the header keeps Import).
+    expect(screen.getAllByRole('link', { name: 'Add product' })).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'Add product' }).closest('table')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Import' })).toBeTruthy();
     cleanup();
     mount({ keys: ['catalog.own-product.view'] });
     expect(await screen.findByText('No products yet')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Add product' })).toBeNull();
+  });
+
+  it('keeps the header Add product when a filter matches nothing in a store that has products', async () => {
+    open('q=zzz');
+    serve(() =>
+      page([], { total: 0, counts: { all: 0, drafts: 0, live: 0, inactive: 0, inReview: 0 } }),
+    );
+    mount();
+    expect(await screen.findByText('No products match')).toBeTruthy();
+    expect(screen.getAllByRole('link', { name: 'Add product' })).toHaveLength(1);
+    expect(screen.queryByRole('link', { name: 'Add product' })?.closest('table')).toBeNull();
   });
 
   it('says so for an empty view of a store that has products', async () => {

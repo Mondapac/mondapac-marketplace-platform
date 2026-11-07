@@ -308,7 +308,8 @@ export function ProductsList({
               {t('import')}
             </LinkButton>
           ) : null}
-          {canEdit ? <LinkButton href="/products/new">{t('add')}</LinkButton> : null}
+          {/* An empty store carries Add product in its empty state, so it is shown once. */}
+          {canEdit && !noProducts ? <LinkButton href="/products/new">{t('add')}</LinkButton> : null}
         </div>
       </div>
       {canEdit ? null : (
