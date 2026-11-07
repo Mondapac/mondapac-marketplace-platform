@@ -606,6 +606,11 @@ export interface DeliveryLocatorSource {
   readonly addresses: readonly Place[];
   /** Sample only: the suburbs the stubbed reverse lookup and the map labels use. */
   readonly suburbs: readonly Place[];
+  /**
+   * True when the address lookup is live (Mapbox through /api/deliver-to/*, delivery area from
+   * the API); false or absent: the stubbed lookup on the sample places above.
+   */
+  readonly live?: boolean;
 }
 
 /**

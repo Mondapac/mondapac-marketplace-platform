@@ -18,7 +18,8 @@ import { useStore } from '../shell/store-context.tsx';
 import type { DeliveryLocatorSource, GeoPoint, Place } from '../storefront/types.ts';
 import { saveDeliverTo } from './deliver-to.ts';
 import { addressLine, insideArea, locality } from './geo.ts';
-import { sampleLookup } from './lookup.ts';
+import { deliveryAreaFor } from '../checkout/actions.ts';
+import { liveLookup, sampleLookup } from './lookup.ts';
 import { StubMap } from './stub-map.tsx';
 
 /** How the pin got where it is: an address picked, the pin moved, or the device location. */
@@ -44,8 +45,10 @@ const NARROW = '(max-width: 760px)';
  * 761px a centred dialog (controls left, map right); narrower, a full-screen sheet with the map on
  * top and a sticky footer. The buyer searches an address, uses the device location (asked for
  * only on tap), picks a saved address when signed in, or moves the pin. Confirm (only inside the
- * delivery area) sets the header's "<suburb> <postcode>" and refreshes the page. The map and the
- * address lookup are stubs on sample data until john chooses a provider.
+ * delivery area) sets the header's "<suburb> <postcode>" and refreshes the page. With the live
+ * lookup (`source.live`) addresses and suburbs come from Mapbox through the buyer site's own
+ * routes and "We deliver to this area" from the API's delivery area for the postcode; otherwise
+ * both are stubs on sample data. The map is still the stub until its provider PR.
  */
 export function DeliverModal({ source }: { readonly source: DeliveryLocatorSource }) {
   const t = useTranslations('deliver');
@@ -58,7 +61,18 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     customer,
     setLoginOpen,
   } = useStore();
-  const lookup = useMemo(() => sampleLookup(source), [source]);
+  const lookup = useMemo(
+    () =>
+      source.live
+        ? liveLookup({ fetch: (input, init) => fetch(input, init), area: deliveryAreaFor })
+        : sampleLookup(source),
+    [source],
+  );
+  /** The API's answer for the last postcode asked (live lookup only). */
+  const [areaAnswer, setAreaAnswer] = useState<{
+    readonly postcode: string;
+    readonly delivers: boolean | null;
+  } | null>(null);
   const [mounted, setMounted] = useState(false);
   const [pick, setPick] = useState<Pick>({
     point: source.start.point,
@@ -114,8 +128,23 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     // Only opening resets the modal; the stored location is read at that moment.
   }, [open]);
 
-  const inside = insideArea(pick.point, source.area.boundary);
-  const ready = inside && pick.place !== null && !pick.pending;
+  const postcode = pick.place?.postcode;
+  useEffect(() => {
+    if (!source.live || !open || postcode === undefined) return;
+    let current = true;
+    void lookup.delivers(postcode).then((delivers) => {
+      if (current) setAreaAnswer({ postcode, delivers });
+    });
+    return () => {
+      current = false;
+    };
+  }, [source.live, open, postcode, lookup]);
+  const answered = areaAnswer?.postcode === postcode ? areaAnswer?.delivers : undefined;
+  // The API's yes or no wins; with no answer the area's boundary is the preview.
+  const inside =
+    typeof answered === 'boolean' ? answered : insideArea(pick.point, source.area.boundary);
+  const checking = source.live === true && postcode !== undefined && answered === undefined;
+  const ready = inside && pick.place !== null && !pick.pending && !checking;
   const area = source.area.name;
 
   const close = () => setDeliverOpen(false);
@@ -398,6 +427,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                 </p>
               )}
               <p className="lmpriv">{t(customer ? 'privacy-account' : 'privacy-guest')}</p>
+              {source.live ? <p className="lmpriv">{t('privacy-provider')}</p> : null}
             </div>
             <div className="lmf">
               <button className="btn ghost" type="button" onClick={close}>

@@ -1032,6 +1032,7 @@
     "log-in": "<login>Log in</login> to choose one of your saved addresses.",
     "privacy-guest": "We use your device location only when you tap the button, and only to find your address. Without an account we keep only your suburb and postcode in this browser, not exact coordinates. The delivery location decides which sellers and delivery times you see.",
     "privacy-account": "We use your device location only when you tap the button, and only to find your address. Your delivery location is saved to your account. The delivery location decides which sellers and delivery times you see.",
+    "privacy-provider": "Address search and finding your suburb use Mapbox: the text you type and the pin or device location are sent to Mapbox, never your name or account.",
     "cancel": "Cancel",
     "confirm": "Confirm location",
     "map": "Map of {area} showing your delivery pin",
