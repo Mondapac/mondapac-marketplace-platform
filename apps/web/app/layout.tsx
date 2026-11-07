@@ -17,6 +17,7 @@ import { CONSENT_COOKIE, consentOf } from '../src/consent/consent.ts';
 import { fontClassNames } from '../src/i18n/fonts.ts';
 import { directionOf, languageTag } from '../src/i18n/locale.ts';
 import { DELIVER_TO_COOKIE, deliverToOf } from '../src/delivery/deliver-to.ts';
+import { geoGuessConfig, geoGuessOf } from '../src/delivery/geo-guess.ts';
 import { RegisterServiceWorker } from '../src/pwa/register-service-worker.tsx';
 import { ICONS, THEME_COLOR } from '../src/pwa/pwa-config.ts';
 import { titleTemplate } from '../src/seo/defaults.ts';
@@ -86,6 +87,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     headers(),
   ]);
   const ga4Id = ga4IdFor(incoming.get('host'));
+  const deliverTo = deliverToOf(jar.get(DELIVER_TO_COOKIE)?.value);
+  // First visit: the edge's approximate area, shown as "Near …" until the buyer confirms one.
+  const deliverGuess = deliverTo ? null : geoGuessOf(geoGuessConfig(), incoming);
   const consent = consentOf(jar.get(CONSENT_COOKIE)?.value);
   const lang = languageTag(locale);
   const palette = paletteOf(jar.get(PALETTE_COOKIE)?.value);
@@ -107,7 +111,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             liveCart={liveCart}
             photoBase={photos}
             locator={locator}
-            deliverTo={deliverToOf(jar.get(DELIVER_TO_COOKIE)?.value)}
+            deliverTo={deliverTo}
+            deliverGuess={deliverGuess}
             consent={consent}
             analyticsAvailable={ga4Id !== null}
             signIn={checkout.customer}

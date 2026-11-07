@@ -99,8 +99,9 @@ export function Footer({ area }: { readonly area: string }) {
   const t = useTranslations('footer');
   const name = useTranslations('store')('name');
   const desktop = useDesktop();
-  const { deliverTo } = useStore();
-  const shown = deliverTo ? deliverToLabel(deliverTo) : area;
+  const { deliverTo, deliverGuess } = useStore();
+  const known = deliverTo ?? deliverGuess;
+  const shown = known ? deliverToLabel(known) : area;
   const trust: [IconName | 'seal', string][] = [
     ['seal', 'certificates'],
     ['truck', 'delivery'],

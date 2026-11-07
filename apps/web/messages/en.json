@@ -7,6 +7,7 @@
   "header": {
     "categories": "Categories",
     "deliver-to": "Deliver to",
+    "near-guess": "Near {place}",
     "change-area": "Delivery area {area}, change",
     "log-in": "Log in",
     "cart": "{count, plural, =0 {Cart, empty} one {Cart, # item, {total}} other {Cart, # items, {total}}}",
@@ -1039,6 +1040,7 @@
     "log-in": "<login>Log in</login> to choose one of your saved addresses.",
     "privacy-guest": "We use your device location only when you tap the button, and only to find your address. Without an account we keep only your suburb and postcode in this browser, not exact coordinates. The delivery location decides which sellers and delivery times you see.",
     "privacy-account": "We use your device location only when you tap the button, and only to find your address. Your delivery location is saved to your account. The delivery location decides which sellers and delivery times you see.",
+    "privacy-estimate": "We guessed your area from your internet connection, without asking for your device location. Nothing is kept until you confirm a location.",
     "privacy-provider": "Address search and your suburb come from Mapbox. It receives what you type, your saved suburb and your pin location, never your name or account.",
     "cancel": "Cancel",
     "confirm": "Confirm location",

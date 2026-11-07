@@ -23,6 +23,7 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
     setLoginOpen,
     setAccountOpen,
     deliverTo,
+    deliverGuess,
     deliverOpen,
     setDeliverOpen,
     setBrowseOpen,
@@ -30,7 +31,11 @@ export function Header({ delivery }: { readonly delivery: DeliveryArea }) {
     setCartOpen,
   } = useStore();
   const logOut = useLogOut();
-  const area = deliverTo ? deliverToLabel(deliverTo) : delivery.label;
+  const area = deliverTo
+    ? deliverToLabel(deliverTo)
+    : deliverGuess
+      ? t('near-guess', { place: deliverToLabel(deliverGuess) })
+      : delivery.label;
   const cartButton = useCartButton();
   const { count, total } = summarise(cart);
   const totalText = total ? formatMoney(total, locale) : '';

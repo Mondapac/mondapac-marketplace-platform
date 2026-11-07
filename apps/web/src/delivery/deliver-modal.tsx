@@ -59,6 +59,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     setDeliverOpen,
     deliverTo,
     setDeliverTo,
+    deliverGuess,
     customer,
     setLoginOpen,
   } = useStore();
@@ -115,9 +116,10 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     setLocating('idle');
     setSearchNote(null);
     if (confirmed.current) setPick(confirmed.current);
-    else if (deliverTo) {
+    else if (deliverTo ?? deliverGuess) {
       const ticket = ++placeTicket.current;
-      void lookup.locate(deliverTo).then((place) => {
+      // A confirmed location, or else the area guessed from the connection: the buyer confirms it.
+      void lookup.locate((deliverTo ?? deliverGuess)!).then((place) => {
         if (place && ticket === placeTicket.current)
           setPick({ point: place.point, origin: 'place', place });
       });
@@ -473,6 +475,9 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
               )}
               <p className="lmpriv">{t(customer ? 'privacy-account' : 'privacy-guest')}</p>
               {source.live ? <p className="lmpriv">{t('privacy-provider')}</p> : null}
+              {!deliverTo && deliverGuess ? (
+                <p className="lmpriv">{t('privacy-estimate')}</p>
+              ) : null}
             </div>
             <div className="lmf">
               <button className="btn ghost" type="button" onClick={close}>
