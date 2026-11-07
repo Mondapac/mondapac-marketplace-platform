@@ -134,7 +134,9 @@ export class OfferReviewController {
     name: 'hasImages',
     required: false,
     enum: ['true', 'false'],
-    description: 'Product revisions only: the pending revision has a photo or none.',
+    description:
+      'Product revisions only: the pending revision lists a photo (any state, as the row field) ' +
+      'or none.',
   })
   @ApiOkResponse({ type: ReviewQueueListDto })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })

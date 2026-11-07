@@ -125,7 +125,10 @@ export class ProductRevisionRowDto {
   submittedAt!: string;
 }
 
-/** The whole queue per kind, whatever the filters: the counts of the queue's tabs. */
+/**
+ * The whole queue per kind, whatever the filters (also `sellerId`): the counts of the queue's tabs.
+ * The number of rows a filtered list holds is `total`.
+ */
 export class ReviewQueueTotals {
   @ApiProperty({ name: 'product-revision', description: 'Pending product revisions.' })
   'product-revision'!: number;
@@ -164,7 +167,12 @@ export class ReviewQueueList {
   })
   total!: number;
 
-  @ApiProperty({ type: () => ReviewQueueTotals })
+  @ApiProperty({
+    type: () => ReviewQueueTotals,
+    description:
+      'Every row of each kind in the queue, ignoring every filter: use it for the tab badges and ' +
+      '`total` for the count of a filtered list.',
+  })
   totals!: ReviewQueueTotals;
 }
 

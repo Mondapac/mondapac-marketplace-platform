@@ -38,7 +38,8 @@ export interface PendingRevisionRow {
 
 /**
  * The review queue filters a product revision row can be read by (product version review B1). An
- * absent key does not filter. `hasImages` is the row's own: the pending revision has a photo.
+ * absent key does not filter. `hasImages` is the row's own: the pending revision lists a photo, in
+ * any state (a taken-down photo counts, as on the row).
  */
 export interface RevisionQueueFilter {
   readonly sellerId?: Id<'Seller'>;

@@ -650,6 +650,121 @@ describe.each(TEST_MARKETS)(
       ).toEqual({ ok: false, error: { code: 'product.not-found' } });
     });
 
+    it('filters an update with a photo against PostgreSQL: firstPublication false, hasImages true', async () => {
+      const first = await submitted();
+      await approve.execute(adminContext(), { ...first, checksConfirmed: ALL_CHECKS });
+      const { productId } = first;
+      await saveCopy(productId, 'Dates, new box', first.revisionId);
+      const again = await submit.execute(sellerContext(), { productId, replacePending: false });
+      if (!again.ok) throw new Error(again.error.code);
+      const imageId = uuid7();
+      await insert('product_images', {
+        ...base,
+        id: imageId,
+        product_id: productId,
+        uploader_account_id: uuid7(),
+        state: 'clean',
+        pixel_width: 800,
+        pixel_height: 800,
+        byte_size: 1000,
+        created_at: T0.toString(),
+      });
+      await insert('product_revision_images', {
+        ...base,
+        revision_id: again.value.revisionId,
+        product_id: productId,
+        image_id: imageId,
+        position: 1,
+      });
+      const page = { after: null, limit: 500 };
+      const has = async (filter: Parameters<typeof reader.listPendingRevisions>[3]) =>
+        (await inUnit(() => reader.listPendingRevisions(market, page, 'en', filter), true)).some(
+          (row) => row.productId === productId,
+        );
+
+      expect(await has({ firstPublication: false })).toBe(true);
+      expect(await has({ firstPublication: true })).toBe(false);
+      expect(await has({ hasImages: true })).toBe(true);
+      expect(await has({ hasImages: false })).toBe(false);
+      expect(await has({ sellerId: SELLER, firstPublication: false, hasImages: true })).toBe(true);
+      expect(
+        await inUnit(
+          () => reader.pendingRevisionCount(market, { firstPublication: false, hasImages: true }),
+          true,
+        ),
+      ).toBeGreaterThanOrEqual(1);
+
+      const read = await readRevision.execute(adminContext(), {
+        productId,
+        revisionId: again.value.revisionId,
+      });
+      expect(read).toMatchObject({
+        ok: true,
+        value: {
+          state: 'pending',
+          firstPublication: false,
+          revision: { revisionNo: 2, imageIds: [imageId] },
+          published: { revisionId: first.revisionId, revisionNo: 1, imageIds: [] },
+        },
+      });
+    });
+
+    it("never returns the reviewer's words or account ids, and not another Market's product", async () => {
+      const { productId, revisionId } = await submitted();
+      const DECIDER = uuid7();
+      await insert('product_revision_decisions', {
+        ...base,
+        revision_id: revisionId,
+        outcome: 'changes-requested',
+        reason_code: 'other',
+        reason_text: 'secret reviewer words',
+        required_checks: [],
+        confirmed_checks: [],
+        decided_by_kind: 'admin',
+        decided_by_account_id: DECIDER,
+        product_version: 1,
+        decided_at: T1.toString(),
+      });
+
+      const read = await readRevision.execute(adminContext(), { productId, revisionId });
+
+      expect(read.ok).toBe(true);
+      const text = JSON.stringify(read);
+      expect(text).toContain('"reasonCode":"other"');
+      expect(text).not.toContain('secret reviewer words');
+      expect(text).not.toContain(DECIDER);
+      const revision = await inUnit(() => revisions.find(market, productId, revisionId), true);
+      expect(text).not.toContain(revision!.authorAccountId);
+
+      const other = marketOf(TEST_MARKETS.find((m) => m !== code)!);
+      const otherAdmin = testCallContext(
+        other,
+        testAuthenticatedActor(other, {
+          population: 'admin',
+          accountId: ADMIN,
+          sessionId: uuid7() as Id<'Session'>,
+          sellerId: null,
+        }),
+      );
+      expect(await readRevision.execute(otherAdmin, { productId, revisionId })).toEqual({
+        ok: false,
+        error: { code: 'product.not-found' },
+      });
+      const elsewhere = await persistence.unitOfWork.run(
+        other,
+        async () =>
+          ok(
+            await reader.listPendingRevisions(other, { after: null, limit: 500 }, 'en', {
+              sellerId: SELLER,
+            }),
+          ),
+        { readOnly: true },
+      );
+      expect(elsewhere.ok && elsewhere.value.some((row) => row.productId === productId)).toBe(
+        false,
+      );
+    });
+
     it('publishes a later revision over the first one, with no check for a name-only change', async () => {
       const { productId, revisionId, version } = await submitted();
       await approve.execute(adminContext(), {
