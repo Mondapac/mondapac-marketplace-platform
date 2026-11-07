@@ -12,12 +12,14 @@ import {
   SkeletonRows,
   TextAreaField,
   TextField,
+  Dialog,
   toast,
   useUnsavedChangesGuard,
   type SearchSelectLabels,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { callApi } from '../../api/client.ts';
 import { AttributesSection } from './attributes-section.tsx';
 import { categoryOptions } from './category-options.ts';
@@ -167,6 +169,9 @@ function EditForm({
   const [refused, setRefused] = useState<DraftSaved['refusedFields']>([]);
   const [status, setStatus] = useState(product.status);
   const busy = useRef(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const keepRef = useRef<HTMLButtonElement>(null);
   // Leaving with edits that are not saved asks first (the same dialog the settings pages use).
   const guard = useUnsavedChangesGuard(dirty, {
     title: t('leave.title'),
@@ -271,7 +276,26 @@ function EditForm({
       return;
     }
     if (result.body.published) setStatus('published');
+    else setSubmitted(true);
     toast.success(t(result.body.published ? 'notice.published' : 'notice.submitted'));
+  }
+
+  /** Drops a product that was never published; the form is left without the leave prompt. */
+  async function discard() {
+    if (busy.current) return;
+    busy.current = true;
+    setPending(true);
+    setProblem(null);
+    const result = await callApi<{ productId: string }>('POST', `${base}/discard`, {}, csrfToken);
+    busy.current = false;
+    setPending(false);
+    setConfirmDiscard(false);
+    if (!result.ok) {
+      fail(result.failure);
+      return;
+    }
+    flushSync(() => setDirty(false));
+    window.location.assign('/catalog/products');
   }
 
   const edited = () => setDirty(true);
@@ -288,6 +312,24 @@ function EditForm({
   return (
     <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
       {guard.dialog}
+      <Dialog
+        open={confirmDiscard}
+        title={t('discard.title')}
+        onClose={() => setConfirmDiscard(false)}
+        initialFocus={keepRef}
+        actions={
+          <>
+            <Button ref={keepRef} variant="secondary" onClick={() => setConfirmDiscard(false)}>
+              {t('discard.keep')}
+            </Button>
+            <Button variant="destructive-solid" loading={pending} onClick={() => void discard()}>
+              {t('discard.confirm')}
+            </Button>
+          </>
+        }
+      >
+        {t('discard.message')}
+      </Dialog>
       <BackLink href="/catalog/products" label={t('back')} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -305,6 +347,15 @@ function EditForm({
           >
             {t('save-draft')}
           </Button>
+          {published || submitted || status !== 'draft' ? null : (
+            <Button
+              variant="destructive"
+              disabled={pending}
+              onClick={() => setConfirmDiscard(true)}
+            >
+              {t('discard.button')}
+            </Button>
+          )}
           <Button disabled={pending} onClick={() => void run('publish')}>
             {t(published ? 'publish-changes' : 'publish')}
           </Button>
