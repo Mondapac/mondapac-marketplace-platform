@@ -125,6 +125,18 @@ export class ProductRevisionRowDto {
   submittedAt!: string;
 }
 
+/** The whole queue per kind, whatever the filters: the counts of the queue's tabs. */
+export class ReviewQueueTotals {
+  @ApiProperty({ name: 'product-revision', description: 'Pending product revisions.' })
+  'product-revision'!: number;
+
+  @ApiProperty({
+    name: 'offer-first-publication',
+    description: 'Offers waiting for their first publication.',
+  })
+  'offer-first-publication'!: number;
+}
+
 @ApiExtraModels(ReviewQueueRowDto, ProductRevisionRowDto)
 export class ReviewQueueList {
   @ApiProperty({
@@ -146,9 +158,14 @@ export class ReviewQueueList {
   nextAfterId!: string | null;
 
   @ApiProperty({
-    description: 'Every Offer and pending product revision in the queue, whatever the page.',
+    description:
+      'The rows the filters keep, whatever the page; with no filter, every Offer and pending ' +
+      'product revision in the queue.',
   })
   total!: number;
+
+  @ApiProperty({ type: () => ReviewQueueTotals })
+  totals!: ReviewQueueTotals;
 }
 
 export class OfferDecided {}

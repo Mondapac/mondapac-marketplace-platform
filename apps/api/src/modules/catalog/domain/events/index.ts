@@ -174,8 +174,27 @@ export const ProductRevisionPublished = defineEvent({
 });
 
 /**
- * A reviewer sent a pending product revision back to its seller (catalog design 4.2 row 5). The
- * reason is a code of the Market list, never text. Ids and the scope.
+ * The reasons a reviewer may give when a product revision goes back to its seller (catalog design
+ * 4.2 row 5; product version review D2, john 2026-11-07): the Offer reasons plus four of the
+ * product's own. A closed list; the seller panel holds the copy of each code.
+ */
+export const PRODUCT_CHANGE_REASONS = [
+  'content-unclear',
+  'description-claim',
+  'sku-or-condition',
+  'handling-unclear',
+  'photos',
+  'category',
+  'tax-category',
+  'duplicate',
+  'other',
+] as const;
+export type ProductChangeReason = (typeof PRODUCT_CHANGE_REASONS)[number];
+
+/**
+ * A reviewer sent a pending product revision back to its seller (catalog design 4.2 row 5), with a
+ * reason of the Offer list. Superseded by v2, which carries the product list: no new v1 is raised,
+ * and the type stays registered so that a v1 still in an outbox is delivered.
  */
 export const ProductRevisionChangesRequested = defineEvent({
   type: 'catalog.product-revision-changes-requested.v1',
@@ -184,6 +203,21 @@ export const ProductRevisionChangesRequested = defineEvent({
     productId: eventField.id(),
     revisionId: eventField.id(),
     reasonCode: eventField.enumOf(OFFER_CHANGE_REASONS),
+    scope: eventField.enumOf(['platform', 'seller'] as const),
+  },
+});
+
+/**
+ * A reviewer sent a pending product revision back to its seller (catalog design 4.2 row 5): v2 of
+ * the event, whose reason is a code of {@link PRODUCT_CHANGE_REASONS}, never text. Ids and the scope.
+ */
+export const ProductRevisionChangesRequestedV2 = defineEvent({
+  type: 'catalog.product-revision-changes-requested.v2',
+  aggregateType: 'product',
+  payload: {
+    productId: eventField.id(),
+    revisionId: eventField.id(),
+    reasonCode: eventField.enumOf(PRODUCT_CHANGE_REASONS),
     scope: eventField.enumOf(['platform', 'seller'] as const),
   },
 });
@@ -346,6 +380,7 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   ProductRevisionSubmitted,
   ProductRevisionPublished,
   ProductRevisionChangesRequested,
+  ProductRevisionChangesRequestedV2,
   ProductImageTakenDown,
   OfferTagAdded,
   OfferTagRemoved,

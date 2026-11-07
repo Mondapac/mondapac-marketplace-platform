@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  Get,
+  Header,
   HttpCode,
   HttpException,
   Logger,
@@ -33,10 +35,12 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { ProductRevisionAdminRead } from '../application/use-cases/product-revision-admin-read.use-case';
 import { ProductRevisionApprove } from '../application/use-cases/product-revision-approve.use-case';
 import { ProductRevisionRequestChanges } from '../application/use-cases/product-revision-request-changes.use-case';
 import { closedBody, refusalWith } from './http-answers';
 import {
+  ProductRevisionAdminReadDto,
   ProductRevisionApproveRequest,
   ProductRevisionDecided,
   ProductRevisionRequestChangesRequest,
@@ -53,6 +57,7 @@ import { ApiErrorBody } from './platform-product.dto';
 export const PRODUCT_REVIEW_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
   'product.not-found': 404,
+  'revision.not-found': 404,
   'review.not-current-revision': 409,
   'review.checks-missing': 409,
   'revision.base-changed': 409,
@@ -72,8 +77,8 @@ const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token o
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
 
 /**
- * The review of a seller product's pending revision over HTTP (catalog design 4.2, 8.2): approve
- * it or send it back with a reason code. The queue itself is `GET /catalog/admin/review-queue`.
+ * The review of a seller product's pending revision over HTTP (catalog design 4.2, 8.2): read it
+ * next to the published one, approve it or send it back with a reason code. The queue itself is `GET /catalog/admin/review-queue`.
  * Admin routes read the admin session (`@ReadsSession`), so decisions need the CSRF token and the
  * admin panel's origin; JSON only, closed bodies. A thin adapter: one use case does the work
  * through its gate.
@@ -85,9 +90,46 @@ export class ProductReviewController {
   readonly #logger = new Logger('ProductReviewController');
 
   constructor(
+    private readonly readRevision: ProductRevisionAdminRead,
     private readonly approveRevision: ProductRevisionApprove,
     private readonly requestChanges: ProductRevisionRequestChanges,
   ) {}
+
+  @Get('products/:productId/revisions/:revisionId')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Read one revision of a seller product for review, with the published one',
+    description:
+      "Needs catalog.product.view. The revision's frozen content (texts per locale, platform " +
+      'categories, tax category, attribute values, variants, photo ids) next to the published ' +
+      "revision's (null before the first publication), the product version a decision names, " +
+      'the checks an approval needs while the revision is pending, and the history of the ' +
+      "product's revisions with their decisions (codes only, newest first).",
+  })
+  @ApiParam({ name: 'productId', format: 'uuid' })
+  @ApiParam({ name: 'revisionId', format: 'uuid' })
+  @ApiOkResponse({ type: ProductRevisionAdminReadDto })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({
+    type: ApiErrorBody,
+    description: 'product.not-found (also a PLATFORM product) or revision.not-found',
+  })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async read(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') productId: string,
+    @Param('revisionId') revisionId: string,
+  ): Promise<ProductRevisionAdminReadDto> {
+    const result = await this.readRevision.execute(context, { productId, revisionId });
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as ProductRevisionAdminReadDto)
+      : refusalWith(PRODUCT_REVIEW_STATUS, result.error, response, context);
+    return this.settle('catalog.revision-review-read', context, outcome);
+  }
 
   @Post('products/:productId/revisions/:revisionId/approve')
   @HttpCode(200)

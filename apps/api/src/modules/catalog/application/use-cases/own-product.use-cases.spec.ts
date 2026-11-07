@@ -252,6 +252,7 @@ describe.each(FIXTURES)(
         },
         recordDecision: () => Promise.resolve(),
         latestChangeRequest: () => Promise.resolve(null),
+        history: () => Promise.resolve([]),
         find: (_m, productId, id) => {
           const found = revisions.get(id);
           return Promise.resolve(found?.productId === productId ? found : null);

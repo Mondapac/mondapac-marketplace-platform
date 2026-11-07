@@ -36,6 +36,16 @@ export interface PendingRevisionRow {
   readonly submittedAt: Temporal.Instant;
 }
 
+/**
+ * The review queue filters a product revision row can be read by (product version review B1). An
+ * absent key does not filter. `hasImages` is the row's own: the pending revision has a photo.
+ */
+export interface RevisionQueueFilter {
+  readonly sellerId?: Id<'Seller'>;
+  readonly firstPublication?: boolean;
+  readonly hasImages?: boolean;
+}
+
 /** One field of a product family as the product form shows it: names and option labels per locale. */
 export interface ProductFormField {
   readonly code: string;
@@ -96,16 +106,23 @@ export interface OwnCatalogReader {
   /** How many of the seller's Offers are in each status, deleted ones left out (one count). */
   offerStatusCounts(market: MarketContext, sellerId: Id<'Seller'>): Promise<OfferStatusCounts>;
 
-  /** How many Offers of the Market wait for their first publication (the review queue). */
-  pendingReviewCount(market: MarketContext): Promise<number>;
+  /**
+   * How many Offers of the Market wait for their first publication (the review queue), of one
+   * seller when `filter.sellerId` is given.
+   */
+  pendingReviewCount(
+    market: MarketContext,
+    filter?: { readonly sellerId?: Id<'Seller'> },
+  ): Promise<number>;
 
-  /** How many SELLER products hold a pending revision (the review queue). */
-  pendingRevisionCount(market: MarketContext): Promise<number>;
+  /** How many SELLER products hold a pending revision (the review queue) that `filter` keeps. */
+  pendingRevisionCount(market: MarketContext, filter?: RevisionQueueFilter): Promise<number>;
 
   /**
-   * SELLER products with a pending revision, oldest submit first (then by product id), at most
-   * `limit` after `after` (the submit instant and product id of the last row of the previous
-   * page; null for the first). The name is the pending revision's, in `locale`, else null.
+   * SELLER products with a pending revision that `filter` keeps, oldest submit first (then by
+   * product id), at most `limit` after `after` (the submit instant and product id of the last row
+   * of the previous page; null for the first). The name is the pending revision's, in `locale`,
+   * else null.
    */
   listPendingRevisions(
     market: MarketContext,
@@ -114,6 +131,7 @@ export interface OwnCatalogReader {
       readonly limit: number;
     },
     locale: string,
+    filter?: RevisionQueueFilter,
   ): Promise<readonly PendingRevisionRow[]>;
 
   /**

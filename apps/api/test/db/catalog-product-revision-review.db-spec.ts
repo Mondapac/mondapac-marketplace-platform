@@ -17,6 +17,7 @@ import type { CatalogMarketPolicy } from '../../src/modules/catalog/application/
 import { FreezeRevision } from '../../src/modules/catalog/application/revisions/freeze-revision.service';
 import { SubmitProduct } from '../../src/modules/catalog/application/revisions/submit-product.service';
 import { OwnOfferAddTag } from '../../src/modules/catalog/application/use-cases/own-offer-add-tag.use-case';
+import { ProductRevisionAdminRead } from '../../src/modules/catalog/application/use-cases/product-revision-admin-read.use-case';
 import { ProductRevisionApprove } from '../../src/modules/catalog/application/use-cases/product-revision-approve.use-case';
 import { ProductRevisionRequestChanges } from '../../src/modules/catalog/application/use-cases/product-revision-request-changes.use-case';
 import { Product } from '../../src/modules/catalog/domain/product';
@@ -74,6 +75,7 @@ describe.each(TEST_MARKETS)(
     let submit: SubmitProduct;
     let approve: ProductRevisionApprove;
     let requestChanges: ProductRevisionRequestChanges;
+    let readRevision: ProductRevisionAdminRead;
     let offerStore: PrismaOfferRepository;
     let evaluator: FakeClaimEvaluator;
     const certificate = {
@@ -256,6 +258,13 @@ describe.each(TEST_MARKETS)(
         revisions,
         outbox,
         clock: reviewClock,
+      });
+      readRevision = new ProductRevisionAdminRead(gate, {
+        unitOfWork: persistence.unitOfWork,
+        products,
+        revisions,
+        sellerNames: { storeNames: () => Promise.resolve(new Map([[SELLER, 'Dates Co']])) },
+        gtinRegistry: { duplicatesOf: () => Promise.resolve([]) },
       });
     });
     beforeEach(() => {
@@ -534,7 +543,7 @@ describe.each(TEST_MARKETS)(
         decided_by_kind: 'admin',
         decided_by_account_id: ADMIN,
       });
-      expect(appended).toEqual(['catalog.product-revision-changes-requested.v1']);
+      expect(appended).toEqual(['catalog.product-revision-changes-requested.v2']);
       const view = await inUnit(() => revisions.latestChangeRequest(market, productId), true);
       expect(view).toMatchObject({
         revisionId,
@@ -550,6 +559,95 @@ describe.each(TEST_MARKETS)(
       expect(await inUnit(() => revisions.latestChangeRequest(market, productId), true)).toBeNull();
       const stillThere = await decisionRows(productId);
       expect(stillThere).toHaveLength(1);
+    });
+
+    it('keeps the queue rows the filters ask for, in the list and in the count', async () => {
+      const { productId } = await submitted();
+      const OTHER = uuid7() as Id<'Seller'>;
+      const page = { after: null, limit: 500 };
+      const has = async (filter: Parameters<typeof reader.listPendingRevisions>[3]) => {
+        const rows = await inUnit(
+          () => reader.listPendingRevisions(market, page, 'en', filter),
+          true,
+        );
+        const count = await inUnit(() => reader.pendingRevisionCount(market, filter), true);
+        expect(count).toBeGreaterThanOrEqual(rows.length);
+        return rows.some((row) => row.productId === productId);
+      };
+
+      expect(await has({ sellerId: SELLER })).toBe(true);
+      expect(await has({ sellerId: OTHER })).toBe(false);
+      expect(
+        await inUnit(() => reader.pendingRevisionCount(market, { sellerId: OTHER }), true),
+      ).toBe(0);
+      expect(await has({ firstPublication: true })).toBe(true);
+      expect(await has({ firstPublication: false })).toBe(false);
+      expect(await has({ hasImages: false })).toBe(true);
+      expect(await has({ hasImages: true })).toBe(false);
+      expect(await has({ sellerId: SELLER, firstPublication: true, hasImages: false })).toBe(true);
+      expect(await inUnit(() => reader.pendingReviewCount(market, { sellerId: OTHER }), true)).toBe(
+        0,
+      );
+      expect(
+        await inUnit(() => offerStore.listPendingReview(market, page, { sellerId: OTHER }), true),
+      ).toEqual([]);
+    });
+
+    it('reads a revision for review with its history: decided ones carry the outcome and code', async () => {
+      const { productId, revisionId, version } = await submitted();
+      await requestChanges.execute(adminContext(), {
+        productId,
+        revisionId,
+        version,
+        reasonCode: 'photos',
+      });
+      await saveCopy(productId, 'Dates, new box', null);
+      const again = await submit.execute(sellerContext(), { productId, replacePending: false });
+      if (!again.ok) throw new Error(again.error.code);
+
+      const read = await readRevision.execute(adminContext(), {
+        productId,
+        revisionId: again.value.revisionId,
+      });
+
+      expect(read.ok).toBe(true);
+      if (!read.ok) return;
+      expect(read.value).toMatchObject({
+        productId,
+        sellerId: SELLER,
+        storeName: 'Dates Co',
+        state: 'pending',
+        firstPublication: true,
+        requiredChecks: ALL_CHECKS,
+        published: null,
+        revision: {
+          revisionId: again.value.revisionId,
+          revisionNo: 2,
+          texts: { en: { name: 'Dates, new box', description: 'Sweet and soft' } },
+          categoryIds: [categoryId],
+          taxCategoryCode: 't1',
+        },
+      });
+      expect(read.value.history).toEqual([
+        expect.objectContaining({ revisionNo: 2, decision: null }),
+        expect.objectContaining({ revisionId, revisionNo: 1, authorKind: 'seller' }),
+      ]);
+      expect(read.value.history[1]!.decision).toEqual({
+        outcome: 'changes-requested',
+        publishKind: null,
+        supersededCause: null,
+        reasonCode: 'photos',
+        decidedByKind: 'admin',
+        decidedAt: T1.toString(),
+      });
+      const closed = await readRevision.execute(adminContext(), { productId, revisionId });
+      expect(closed).toMatchObject({ ok: true, value: { state: 'closed', requiredChecks: [] } });
+      expect(
+        await readRevision.execute(adminContext(), {
+          productId: uuid7(),
+          revisionId,
+        }),
+      ).toEqual({ ok: false, error: { code: 'product.not-found' } });
     });
 
     it('publishes a later revision over the first one, with no check for a name-only change', async () => {

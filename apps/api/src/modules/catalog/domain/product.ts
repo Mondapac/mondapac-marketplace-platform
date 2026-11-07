@@ -4,8 +4,8 @@ import {
   ProductPaused,
   ProductResumed,
   ProductRetired,
-  ProductRevisionChangesRequested,
-  type OfferChangeReason,
+  ProductRevisionChangesRequestedV2,
+  type ProductChangeReason,
   ProductRevisionPublished,
   ProductRevisionSubmitted,
   ProductWithdrawn,
@@ -490,12 +490,12 @@ export class Product {
   /**
    * The reviewer sends the pending revision back (catalog design 4.2 row 5): the revision named
    * must be the pending one, else `review.not-current-revision`. The pending pointer clears; the
-   * published revision, the status and the working copy stay. The reason is a code of the Market
-   * list. Only a SELLER product has a review; the decision row is the store's.
+   * published revision, the status and the working copy stay. The reason is a code of the product
+   * list (D2). Only a SELLER product has a review; the decision row is the store's.
    */
   requestRevisionChanges(input: {
     readonly revisionId: Id<'ProductRevision'>;
-    readonly reasonCode: OfferChangeReason;
+    readonly reasonCode: ProductChangeReason;
     readonly now: Temporal.Instant;
   }): Result<void, ProductRefusal> {
     const state = this.#state;
@@ -506,7 +506,7 @@ export class Product {
     }
     this.#applyRecords(input.now, { pendingRevisionId: null, pendingSubmittedAt: null }, [
       {
-        definition: ProductRevisionChangesRequested,
+        definition: ProductRevisionChangesRequestedV2,
         payload: {
           productId: state.id,
           revisionId: input.revisionId,
