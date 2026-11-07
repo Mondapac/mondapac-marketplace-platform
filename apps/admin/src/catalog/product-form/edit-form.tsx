@@ -61,6 +61,7 @@ import {
   type ProductImage,
   type ProductView,
   type Submitted,
+  TOPIC_READ_PERMISSION,
 } from './types.ts';
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -136,8 +137,8 @@ export function ProductEdit({
   marketName,
   timeZone,
   canPause,
-  canReadTags,
   permissionKeys = [],
+  canReadTags = permissionKeys.includes(TOPIC_READ_PERMISSION),
 }: {
   readonly productId: string;
   readonly csrfToken: string;
@@ -146,8 +147,11 @@ export function ProductEdit({
   readonly timeZone: string;
   /** The admin holds `catalog.product.pause`: the Active switch is shown. */
   readonly canPause: boolean;
-  /** The admin holds `catalog.topic.read`: the Tags field can search; otherwise it only lists. */
-  readonly canReadTags: boolean;
+  /**
+   * The admin holds `catalog.topic.read`: the Tags field can search; otherwise it only lists.
+   * Defaults to reading `permissionKeys`.
+   */
+  readonly canReadTags?: boolean;
   /** The admin's permission keys: the certificates card reads its own (view, edit). */
   readonly permissionKeys?: readonly string[];
 }) {

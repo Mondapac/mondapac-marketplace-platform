@@ -40,7 +40,7 @@ const product: ProductView = {
   variantModel: 'single',
   status: 'published',
   pausedAt: null,
-  variants: [{ variantId: id(21), state: 'published' }],
+  variants: [{ variantId: id(21), state: 'published', variantCode: 'P-000001-01' }],
   maxVariants: 100,
   sensitiveFields: ['platform-categories', 'tax-category', 'name', 'topics', 'images'],
   lastChangedAt: '2026-11-05T01:00:00.000Z',

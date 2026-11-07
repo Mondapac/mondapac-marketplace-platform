@@ -4,13 +4,25 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
 
-vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
+import type { callApi } from '../../api/client.ts';
 
-import { callApi } from '../../api/client.ts';
+// The form also reads the photo library of the product; that call goes to its own mock, so
+// `call` sees only the product read, the tag search and the save.
+const mocks = vi.hoisted(() => ({
+  call: vi.fn<typeof callApi>(),
+  images: vi.fn<typeof callApi>(),
+}));
+vi.mock('../../api/client.ts', () => ({
+  callApi: ((...args: Parameters<typeof callApi>) =>
+    args[0] === 'GET' && args[1].endsWith('/images')
+      ? mocks.images(...args)
+      : mocks.call(...args)) as typeof callApi,
+}));
+
 import { ProductEdit } from './edit-form.tsx';
 import type { ProductView, TopicRef } from './types.ts';
 
-const call = vi.mocked(callApi);
+const call = mocks.call;
 const ID = '0190a000-0000-7000-8000-0000000000c1';
 const VARIANT = '0190a000-0000-7000-8000-0000000000e1';
 const id = (n: number) => `0197a1b2-0000-7000-8000-${String(n).padStart(12, '0')}`;
@@ -75,6 +87,8 @@ describe.each([
     vi.clearAllMocks();
     call.mockReset();
     call.mockResolvedValueOnce(ok(view()));
+    mocks.images.mockReset();
+    mocks.images.mockResolvedValue(ok({ images: [] }));
     Object.defineProperty(window, 'location', {
       value: { assign: vi.fn(), href: 'http://admin.localhost/catalog/products/x/edit' },
       writable: true,
