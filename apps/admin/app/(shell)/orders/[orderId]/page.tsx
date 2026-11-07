@@ -45,7 +45,13 @@ export default async function OrderPage({
   if (!gate.session.permissionKeys.includes(VIEW_PERMISSION)) return message('no-access');
   const result = await serverGet<AdminOrder>(`ordering/admin/orders/${orderId}`);
   if (result.kind === 'signed-out') redirect('/session-ended');
-  if (result.kind === 'ok') return shell(<OrderDetail order={result.body} />);
+  if (result.kind === 'ok')
+    return shell(
+      <OrderDetail
+        order={result.body}
+        canViewCustomer={gate.session.permissionKeys.includes('identity.customer-account.view')}
+      />,
+    );
   if (result.kind === 'forbidden') return message('no-access');
   if (result.kind === 'not-found') return message('not-found');
   return shell(<LoadError message={t('orders.error.unavailable')} retryLabel={t('load.retry')} />);
