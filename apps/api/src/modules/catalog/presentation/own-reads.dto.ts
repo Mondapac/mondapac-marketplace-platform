@@ -109,6 +109,8 @@ export class OwnWorkingCopyView {
 export class OwnVariantView {
   @ApiProperty({ format: 'uuid' }) variantId!: string;
   @ApiProperty({ description: 'proposed, published or retired.' }) state!: string;
+  @ApiProperty({ description: 'The variant code, `{productCode}-{nn}` (design 2, M-7).' })
+  variantCode!: string;
 }
 
 const LOCALE_MAP = { type: 'object', additionalProperties: { type: 'string' } } as const;
@@ -307,6 +309,12 @@ export class OwnOfferTagView {
   badge!: OwnOfferTagBadge | null;
 }
 
+export class OwnOfferSellUnitDto {
+  @ApiProperty({ format: 'uuid' }) variantId!: string;
+  @ApiProperty({ nullable: true, type: String }) variantSku!: string | null;
+  @ApiProperty() selling!: boolean;
+}
+
 export class OwnOfferViewDto {
   @ApiProperty({ format: 'uuid' }) offerId!: string;
   @ApiProperty({ format: 'uuid' }) productId!: string;
@@ -333,6 +341,14 @@ export class OwnOfferViewDto {
     description: 'The open tags of the Offer; on the single-Offer read only.',
   })
   tags?: OwnOfferTagView[];
+  @ApiProperty({
+    type: [OwnOfferSellUnitDto],
+    required: false,
+    description:
+      'The stored sell-unit rows (variant SKU, selling switch); a variant with no row sells and ' +
+      'has no SKU. On the single-Offer read only.',
+  })
+  sellUnits?: OwnOfferSellUnitDto[];
 }
 
 export class OwnOfferStatusCounts {

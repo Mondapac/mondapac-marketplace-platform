@@ -1596,6 +1596,64 @@ and a product type list such as "Fresh meat"; the domain has the brand required 
 the types `simple` and `configurable`, so the page follows the domain; (5) the notice goes to every
 admin with the key.
 
+## 14b. Variant files (variants V9c; plan section 15)
+
+One row per variant. Columns, in this order: `product_code`, `variant_code` (`{productCode}-{nn}`,
+M-7), one `option[<attribute code>]` per axis of the product (the option's label in the Market's
+default locale; a code is accepted on import), `gtin`, `variant_sku`, `selling` (`yes` / `no`),
+`price`, `stock[<source code>]` per stock location of the seller, and for each source
+`stock_exported[<source code>]` (the level when the file was written). `catalog` writes only catalog
+columns; prices stay `pricing`'s and stock `inventory`'s (9). `variant_sku` and `selling` are the V5
+sell-unit columns (`own-offer.set-sell-units`, PR #688, merged; per-sell-unit SKU, plan t4).
+
+| Part | Design |
+|---|---|
+| Admin export (Catalogue > Variants, V6) | **One export, V6's** (`admin-variants.export`, `GET catalog/admin/variants/export?format=csv\|xlsx`) with the Variants tab's filters (`q`, `typeCode`, `issue`); key `catalog.variant.view`. Columns `product_code`, `variant_code`, `product_type`, `option[...]` (union of the axes of the exported products, empty where a product has no such axis), `gtin`, `offer_count` (Offers are `catalog`'s own aggregate; it counts the product's non-deleted Offers, while "Sellers selling" counts its listed Offers; the cell is empty when the compare detail is missing), then the tab's own columns (Product, Variant, Status, Sellers selling, Issues). Rows: the live variants the tab lists (a product's **published** revision); a product never published is not exported, and a `proposed` variant that exists only in a pending revision or the working copy is not exported. No price, stock or seller-identity column. At most **10,000** rows, as 9.2c (`batch.too-large` with `max`, refused whole before the first byte); formula guard on every CSV cell (AC 41, shared code); every XLSX cell written as text by the same `SheetWriter` as 9.2c; no audit row (a read, as 9.2c) |
+| Seller export (offer Variants tab, V3b) | Built in the seller panel from what the tab already reads (catalog own reads, `pricing` and `inventory` views; the module rule binds the API modules, not the panel). **CSV only** in V9c. One file per Offer. `price` is the regular price in force (a pending price and a special price are not exported); `stock_exported[...]` repeats the level read. `gtin` and options are information. A column the seller may not change is **left out** of the export (`variant_sku` and `selling` without `catalog.own-product.edit`, `price` without the price key, `stock[...]` without the stock key), so their own file re-imports cleanly; `stock_exported[...]` stays. Rows are in variant-number order (`-2`, `-9`, `-10`) |
+| Seller import (update only, same tab; CSV only) | Parsed in the seller's browser with the domain CSV rules (UTF-8, BOM accepted, no trim, formulas never evaluated, the formula guard) **shared from one package, not copied** (`packages/platform-import`, which the API's domain CSV parser then uses too). Limits: `maxVariantsPerProduct` data rows (AU 100; refused with `import.too-many-rows` when row `max`+1 is read), 64 columns, 1 MiB, 10,000 characters a cell. **Matching** (each rule a row error with its own code, never a silent match): (a) `product_code` must be this Offer's product (`import.other-product`); (b) when `variant_code` is given it is the only key: no live variant of this product with it is `import.variant-not-found`, a retired one `import.variant-retired`; if `variant_sku` or the option labels in the row name a different live variant, `import.key-conflict`; (c) without `variant_code`, `variant_sku` is the key when it is some live variant's own SKU (exact match); a SKU that is nobody's is a new value for the variant the options name, and a SKU that is another variant's own beside a `variant_code` or options naming a different variant is `import.key-conflict` (reported on `variant_sku`); (d) without either, the option labels: every axis column is required (`import.option-missing`), a label or code that is no option of that axis is `import.option-unknown` (never a new option, plan s15), labels match case- and space-insensitively, and no live variant with that combination is `import.variant-not-found`; (e) two rows resolving to the same variant both fail (`import.duplicate-row`), and so do two rows that ask for the same new SKU (`import.duplicate-row` on `variant_sku`). `variant_sku` must be 1 to 64 printable ASCII characters without a space and `selling` is `yes` or `no` in any case, else `import.invalid-value`; a blank cell leaves the value alone; `selling` changes that would leave no live variant selling are skipped as `import.none-selling`. A row never creates, retires or renames a variant; a variant missing from the file is untouched. `gtin` and options are read-only: a different value is a row warning `import.read-only-column`. Unknown columns are listed and ignored; certification, handling and status columns are refused as in 14. A column whose key the seller lacks (`pricing.price.edit`, `inventory.stock.edit`, and for `variant_sku` and `selling` whatever key the V5 route checks) is refused before the preview (`import.column-not-allowed`) |
+| Preview and stale stock | The preview shows only changed cells, as current value → file value. A stock cell whose **current** level differs from its `stock_exported` value (a sale or another edit since the export) is not applied; it is marked `import.stock-changed` and the seller must confirm it per cell or export again. A stock cell with no `stock_exported` value (column missing or cell empty, e.g. a hand-made file) is treated the same way, also where the location has no current level yet. The tick box of each cell names its variant and location. Export waits while the tab holds unsaved drafts |
+| Save | Through the existing routes, exactly as the tab's own Save (V3b): `pricing` regular price (series version and step-up, so a price jump still goes to review), `inventory` stock level per source (stock version), and V5 `own-offer.set-sell-units` for `variant_sku` and `selling`. **One step-up per Save**, not per cell. Calls run **sequentially**; a `request.throttled` answer stops the run, keeps every unsent and failed cell as a draft with its reason, and says when to resume. Each cell keeps its own answer |
+| Audit | No import audit row: each write is audited by its own module, as from the tab. The file is never sent to the server |
+
+What is **not** built: the seller product import of 14 (new products and variants from a file; P1),
+XLSX on the seller side (later, through a server-side parse-only route reusing the 14a parser and worker;
+a new route, its own decision), and an admin import of variant rows.
+
+**Built (V9c).** The admin variant export is V6's (`admin-variants.export`, key `catalog.variant.view`);
+V9c added to it the compare columns (`product_type`, `option[...]`, `offer_count`, read through
+`AdminVariantsReader`), not a second export. Also built: the shared package `packages/platform-import` (CSV
+reader with its limits, sniff, formula guard; the API's CSV parser and 9.2c export use it), the seller export
+and update-only import in the offer Variants tab (`apps/seller/src/catalog/variant-file*.ts`), and
+the 14b compare columns on the admin Variants page's export. Points where the build differs from the text above:
+(1) the export takes the Variants tab's filters, not the product list's; (2) a stock location has no code in `inventory`, only an id and a name that is not
+unique, so `<source code>` is the location id; (3) a column that would set certification, handling, status,
+approval or a claim is refused whole as `import.column-refused`; a price or stock value that is not valid is
+the row error `import.invalid-value`; a missing `product_code` column is `import.column-missing`; (4) "Apply"
+in the preview fills the tab's drafts and the tab's own Save writes them (one step-up: the proof of the
+first guarded price write covers the rest; a `request.throttled` answer stops the run and keeps every unsent
+and failed cell as a draft); (5) the own product read now carries `variantCode` on each variant.
+(6) `variant_sku` and `selling` are built (V5 is merged). The export writes both after `gtin` (`selling`
+as `yes` / `no`); the import reads them: a SKU in the file is the key of rule (c) when `variant_code` is
+blank and the SKU is some live variant's own (a SKU that is nobody's is a new value for the variant the
+options name); with `variant_code` a SKU that is another variant's own is `import.key-conflict`. A blank
+`variant_sku` or `selling` cell leaves the value alone (a SKU cannot be cleared from a file). A SKU that
+is not 1 to 64 printable ASCII characters without a space, and a `selling` value other than `yes` / `no`
+(any case), are `import.invalid-value`; two rows asking for the same new SKU both fail with
+`import.duplicate-row`; on-sale changes that would leave no live variant selling are skipped with
+`import.none-selling`. The columns need the key `catalog.own-product.edit` (`import.column-not-allowed`
+without it). Save sends every changed SKU and switch in one `own-offer.set-sell-units` call (the route
+is atomic: a refused SKU, `offer.sku-taken`, keeps every sell-unit draft) after the price and stock
+writes. The seller's own Offer read (`own-offer.read`) now carries `sellUnits` (the stored rows: variant
+id, `variantSku`, `selling`) so the tab and the export show the current values.
+
+**Tests (Done when).** Each matching rule (a) to (e); another Offer's `product_code`; read-only `gtin`
+and options; a variant left out of the file stays untouched (never-retire); a column refused for a
+missing key; certification, handling and status columns refused; formula-guard round trip (a CSV export
+re-imported unchanged gives an empty preview); the row cap; per-cell failures keeping drafts; a price
+jump going to review; a stock level changed since export, and one with no `stock_exported` value (`import.stock-changed`); a throttled run that
+stops and keeps drafts; the admin export's columns, row source (published revision only), cap and
+formula guard.
+
 ## 14c. Seller import (build design; the seller counterpart of 14a)
 
 Turns 14 into a buildable slice by reusing what 14a built: the file parser seam
@@ -2097,3 +2155,4 @@ day one (Q1).
 | `docs/modules/README.md`, the board | G2 status; requests of 18 | Orchestrator |
 | `docs/features/02-catalog-inventory.md` OFR-12, OFR-13 | 14c: no `handling` or tag column, no price or stock column in this build, photos through the panel's photo step (owner questions 1 to 3 of 14c) | Product track; Hadi, after the owner answers |
 | `docs/design/data/catalog.md` 3.31 | Seller import tables (14c); 3.24 outline superseded | Done 2026-11-07 (Mohammad; Mojtaba approved) |
+| `apps/api` catalog photo routes (P1 admin product images) | Admin `GET`/`POST catalog/admin/platform-products/:id/images` and `DELETE .../images/:imageId` (key `catalog.platform-product.edit`, live PLATFORM product only); the seller and admin uploads share `application/images/store-product-image.ts`; order and main photo stay the draft `imageIds`; delete records `catalog.product.image-deleted`; admin relay allowlist; no migration | Done 2026-11-07 (PR #774; Hassan, Sajad and Bagher, Reza reviewed) |

@@ -103,6 +103,7 @@ import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.rea
 import { PrismaOfferRepository } from './prisma-offer.repository';
 import { PrismaOwnCatalogReader } from './prisma-own-catalog.reader';
 import { PrismaAdminProductsReader } from './prisma-admin-products.reader';
+import { PrismaAdminVariantsReader } from './prisma-admin-variants.reader';
 import { PrismaCustomVariantLabelsReader } from './prisma-custom-variant-labels.reader';
 import {
   CUSTOM_VARIANT_LABELS_READER,
@@ -117,6 +118,10 @@ import {
   ADMIN_PRODUCTS_READER,
   type AdminProductsReader,
 } from '../application/ports/admin-products.reader';
+import {
+  ADMIN_VARIANTS_READER,
+  type AdminVariantsReader,
+} from '../application/ports/admin-variants.reader';
 import {
   PRODUCT_IMAGE_REPOSITORY,
   type ProductImageRepository,
@@ -281,6 +286,10 @@ import {
 } from '../application/ports/business-activity.reader';
 import { PrismaBusinessActivityRepository } from './prisma-business-activity.repository';
 import { PrismaBusinessActivityReader } from './prisma-business-activity.reader';
+import { TOPIC_REPOSITORY, type TopicRepository } from '../application/ports/topic.repository';
+import { TOPIC_READER, type TopicReader } from '../application/ports/topic.reader';
+import { PrismaTopicRepository } from './prisma-topic.repository';
+import { PrismaTopicReader } from './prisma-topic.reader';
 import { PrismaBrandRepository } from './prisma-brand.repository';
 import { PrismaBrandReader } from './prisma-brand.reader';
 import { PrismaAdminCategoryReader } from './prisma-admin-category.reader';
@@ -443,6 +452,16 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaBusinessActivityReader(prisma),
   },
   {
+    provide: TOPIC_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TopicRepository => new PrismaTopicRepository(prisma),
+  },
+  {
+    provide: TOPIC_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TopicReader => new PrismaTopicReader(prisma),
+  },
+  {
     provide: BRAND_ASSIGNER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BrandAssigner => new PrismaBrandAssigner(prisma),
@@ -528,6 +547,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminProductsReader =>
       new PrismaAdminProductsReader(prisma),
+  },
+  {
+    provide: ADMIN_VARIANTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminVariantsReader =>
+      new PrismaAdminVariantsReader(prisma),
   },
   {
     provide: CUSTOM_VARIANT_LABELS_READER,

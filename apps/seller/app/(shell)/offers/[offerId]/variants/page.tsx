@@ -60,6 +60,7 @@ export default async function OfferVariantsPage({
               : { ...page.units, canEdit: permissionKeys.includes(EDIT_PERMISSION) }
           }
           csrfToken={page.session.csrfToken}
+          fileModel={page.fileModel}
         />
       </div>
     </SellerShell>

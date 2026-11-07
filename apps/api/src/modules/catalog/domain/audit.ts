@@ -32,6 +32,18 @@ export const ProductResumedAudit = defineAuditAction({
   after: { paused: auditField.boolean(), scope, offerCount: auditField.integer() },
 });
 
+/**
+ * An admin deleted an unused photo from the library of a PLATFORM product (P1 admin product
+ * images). The ids only: the picture itself is never in the audit log.
+ */
+export const ProductImageDeletedAudit = defineAuditAction({
+  action: 'catalog.product.image-deleted',
+  targetType: CATALOG_PRODUCT_TARGET,
+  actors: ['authenticated'],
+  before: { imageId: auditField.id() },
+  after: { imageId: auditField.optional(auditField.id()) },
+});
+
 /** A SELLER product was withdrawn by an admin (design 4.1); its Offer was deleted. */
 export const ProductWithdrawnAudit = defineAuditAction({
   action: 'catalog.product.withdrawn',
@@ -668,6 +680,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   PlatformCategorySlugChangedAudit,
   PlatformCategoryDiscardedAudit,
   PlatformCategoryImageChangedAudit,
+  ProductImageDeletedAudit,
   PlatformCategoryMovedAudit,
   PlatformCategoryMergedAudit,
   PlatformCategoryArchivedAudit,

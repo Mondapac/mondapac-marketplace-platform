@@ -7,11 +7,13 @@ import sharp from 'sharp';
 import {
   PRODUCT_CERTIFICATION_REPOSITORY,
   type ProductCertificationRepository,
+  type ProductCertificateForProductRow,
   type ProductCertificationSummary,
   type ProductDocumentWrite,
   type ProductHistoryRow,
   type StoredProductCertification,
 } from '../src/modules/certification/application/ports/product-certification.repository';
+import { CERTIFICATE_TYPE_CATALOG } from '../src/modules/certification/application/ports/certificate-type-catalog';
 import { CERTIFICATION_REGISTRY_REPOSITORY } from '../src/modules/certification/application/ports/registry.repository';
 import type { TypeRevisionContent } from '../src/modules/certification/domain/type-revision';
 import { PRODUCT_CERTIFICATE_STATUS } from '../src/modules/certification/presentation/admin-product-certificate.controller';
@@ -25,7 +27,11 @@ import { OUTBOX_WRITER } from '../src/platform/events/outbox-writer';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { StaleAggregateError } from '../src/platform/unit-of-work/errors';
 import { PLATFORM_DOCUMENT_VAULT } from '../src/modules/certification/application/ports/document-ports';
-import { MemoryOutbox, MemoryPlatformVault } from './support/certification-fakes';
+import {
+  MemoryOutbox,
+  MemoryPlatformVault,
+  MemoryTypeCatalog,
+} from './support/certification-fakes';
 import { MemoryRegistry } from './support/certification-registry-fakes';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp } from './support/test-app';
@@ -55,6 +61,8 @@ const SELF_TYPE = id<'CertificationType'>(0xc402);
 const EDITOR_ROLE = id<'Role'>(0xf411);
 const REVOKER = id<'Account'>(0xa403);
 const REVOKER_ROLE = id<'Role'>(0xf412);
+const EDIT_ONLY = id<'Account'>(0xa404);
+const EDIT_ONLY_ROLE = id<'Role'>(0xf413);
 
 /** The certificate roots only: enough for create, read and list (no revisions here). */
 class MemoryProductCertificates implements ProductCertificationRepository {
@@ -104,6 +112,11 @@ class MemoryProductCertificates implements ProductCertificationRepository {
   }
   revision(): Promise<null> {
     return Promise.resolve(null);
+  }
+  /** What `forProduct` answers per Market (the query itself is in the database suite). */
+  readonly forProductRows = new Map<string, ProductCertificateForProductRow[]>();
+  forProduct(market: MarketContext): Promise<readonly ProductCertificateForProductRow[]> {
+    return Promise.resolve(this.forProductRows.get(market.marketId) ?? []);
   }
   list(market: MarketContext): Promise<readonly ProductCertificationSummary[]> {
     return Promise.resolve(
@@ -210,6 +223,7 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
   let registry: MemoryRegistry;
   let products: MemoryProductCertificates;
   let vault: MemoryPlatformVault;
+  let typeCatalog: MemoryTypeCatalog;
   const http = () => request(app.getHttpServer());
   const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
 
@@ -228,7 +242,9 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
           .overrideProvider(PRODUCT_CERTIFICATION_REPOSITORY)
           .useValue(products)
           .overrideProvider(PLATFORM_DOCUMENT_VAULT)
-          .useValue(vault),
+          .useValue(vault)
+          .overrideProvider(CERTIFICATE_TYPE_CATALOG)
+          .useValue(typeCatalog),
     }));
   }
 
@@ -329,6 +345,20 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
       version: 1,
       createdAt: START,
     });
+    fakes.seedRole({
+      id: EDIT_ONLY_ROLE,
+      marketId,
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      name: 'Manufacturer certificate edit only',
+      permissionKeys: ['certification.product-certificate.edit'],
+      version: 1,
+      createdAt: START,
+    });
+    account(EDIT_ONLY, 'editonly', EDIT_ONLY_ROLE);
     account(MODERATOR, 'moderator', roleOf('catalogue-moderator'));
     account(EDITOR, 'editor', EDITOR_ROLE);
     account(REVOKER, 'revoker', REVOKER_ROLE);
@@ -366,6 +396,7 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
     registry = new MemoryRegistry();
     products = new MemoryProductCertificates();
     vault = new MemoryPlatformVault();
+    typeCatalog = new MemoryTypeCatalog();
   });
   afterEach(async () => {
     await app?.close();
@@ -569,6 +600,104 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
         .set(editor)
         .expect(404);
       expect((gone.body as { code: string }).code).toBe('document.not-found');
+    });
+
+    it('answers the product lookup and the form options before the :certificateId routes, each with its own key', async () => {
+      await boot();
+      seedTypes(code);
+      await seeded(code);
+      const market = marketOf(code);
+      typeCatalog.addType(market, {
+        typeId: TYPE,
+        code: 'qorvane',
+        status: 'active',
+        revisionId: id<'CertificationTypeRevision'>(0xc411),
+        verificationMode: 'THIRD_PARTY_DOCUMENT',
+        requiresIssuerRegistry: true,
+        requiresDocument: true,
+        requiresExpiry: true,
+        names: { en: 'Qorvane' },
+      });
+      typeCatalog.addType(market, {
+        typeId: SELF_TYPE,
+        code: 'plainly',
+        status: 'active',
+        revisionId: id<'CertificationTypeRevision'>(0xc412),
+        verificationMode: 'SELF_DECLARATION',
+        requiresIssuerRegistry: false,
+        requiresDocument: false,
+        requiresExpiry: false,
+        names: { en: 'Plainly' },
+      });
+      typeCatalog.addIssuer(market, {
+        id: id<'Issuer'>(0xc421),
+        typeId: TYPE,
+        displayName: 'Qorvane Council',
+        state: 'active',
+      });
+      const product = id<'Product'>(0xd401);
+      products.forProductRows.set(code, [
+        {
+          id: id<'ProductCertification'>(0xe401),
+          typeId: TYPE,
+          typeCode: 'qorvane',
+          typeNames: {},
+          status: 'draft',
+          lastChangedAt: START,
+          version: 1,
+          draft: { issuerName: null, expiryDate: null, variantIds: [null] },
+          pending: null,
+          approved: null,
+          rejectionReasonCode: null,
+        },
+      ]);
+      const viewer = headersOf(code, MODERATOR, 11);
+      const editor = headersOf(code, EDITOR, 12);
+
+      const found = await http().get(`${base}/for-product/${product}`).set(viewer).expect(200);
+      expect(found.headers['cache-control']).toContain('no-store');
+      expect(found.body).toMatchObject({
+        items: [
+          {
+            id: id(0xe401),
+            typeCode: 'qorvane',
+            typeName: null,
+            status: 'draft',
+            issuerName: null,
+            expiryDate: null,
+            coverage: { whole: true, variantIds: [] },
+            rejectionReasonCode: null,
+            version: 1,
+          },
+        ],
+      });
+      expect(JSON.stringify(found.body)).not.toMatch(/number|cipher|document/i);
+      // The edit key alone does not read the lookup: it needs the view key.
+      const editOnly = headersOf(code, EDIT_ONLY, 13);
+      const noView = await http().get(`${base}/for-product/${product}`).set(editOnly).expect(403);
+      expect((noView.body as { code: string }).code).toBe('access.denied');
+      await http().get(`${base}/options`).set(editOnly).expect(200);
+      const bad = await http().get(`${base}/for-product/nope`).set(viewer).expect(400);
+      expect((bad.body as { code: string }).code).toBe('validation.failed');
+
+      // `options` is the edit key's (protected): the viewer is refused, the editor reads it.
+      const refused = await http().get(`${base}/options`).set(viewer).expect(403);
+      expect((refused.body as { code: string }).code).toBe('access.denied');
+      const options = await http().get(`${base}/options`).set(editor).expect(200);
+      expect(options.headers['cache-control']).toContain('no-store');
+      expect(options.body).toEqual({
+        types: [
+          {
+            typeId: TYPE,
+            code: 'qorvane',
+            name: 'Qorvane',
+            requiresDocument: true,
+            requiresExpiry: true,
+            requiresIssuerRegistry: true,
+            issuers: [{ issuerId: id(0xc421), displayName: 'Qorvane Council' }],
+          },
+        ],
+      });
     });
 
     it('records a draft with the edit key, then reads and lists it; refuses no CSRF, a bad body, an unknown or self-declared type', async () => {

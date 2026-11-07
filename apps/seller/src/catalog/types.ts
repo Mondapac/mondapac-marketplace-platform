@@ -101,7 +101,12 @@ export interface ProductView {
   readonly status: string;
   /** When an admin paused the product (the seller's offers are off sale); null when not paused. */
   readonly pausedAt: string | null;
-  readonly variants: readonly { readonly variantId: string; readonly state: string }[];
+  readonly variants: readonly {
+    readonly variantId: string;
+    readonly state: string;
+    /** `{productCode}-{nn}` (design 2, M-7). */
+    readonly variantCode: string;
+  }[];
   readonly maxVariants: number;
   readonly sensitiveFields: readonly string[];
   readonly lastChangedAt: string;
@@ -139,6 +144,12 @@ export interface OfferView {
   readonly firstPublishedAt: string | null;
   readonly createdAt: string;
   readonly version: number;
+  /** Stored sell-unit rows (V5); a variant with no row sells and has no SKU. Single read only. */
+  readonly sellUnits?: readonly {
+    variantId: string;
+    variantSku: string | null;
+    selling: boolean;
+  }[];
 }
 
 /** One sell unit (variant) of an offer: `GET catalog/seller/offers/:id/sell-units` -> `units`. */

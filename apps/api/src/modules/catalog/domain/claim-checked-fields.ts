@@ -8,6 +8,7 @@ import type { OfferState } from './offer';
 import type { CategorySeo, CategoryText } from './category-edit';
 import type { CategoryName, PlatformCategoryState } from './platform-category';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
+import type { TopicContent, TopicState, TopicTerm } from './topic';
 
 /**
  * The claim-checked fields (catalog design 6.2, AC 21): every customer- or search-visible text
@@ -36,6 +37,9 @@ export const CLAIM_CHECKED_FIELD_IDS = [
   'product.name',
   'product.short-description',
   'product.variant-label',
+  'topic.intro',
+  'topic.slug',
+  'topic.term',
 ] as const;
 export type ClaimCheckedFieldId = (typeof CLAIM_CHECKED_FIELD_IDS)[number];
 
@@ -230,6 +234,36 @@ export const FEATURE_SET_FIELDS: Record<keyof AttributeFamilyState, FieldDisposi
   createdAt: exempt('timestamp'),
 };
 
+// Topics (product tags package T1): names, synonyms, the intro and the slug are read by buyers on
+// the topic page and in search, so every one of them is claim-checked (john 24 Oct: claim words
+// are refused). The normalised key is derived from the checked text.
+export const TOPIC_TERM_FIELDS: Record<keyof TopicTerm, FieldDisposition> = {
+  locale: exempt('internal-code'),
+  kind: exempt('internal-code'),
+  text: checked('topic.term'),
+  key: exempt('internal-code'),
+};
+
+export const TOPIC_CONTENT_FIELDS: Record<keyof TopicContent, FieldDisposition> = {
+  group: exempt('internal-code'),
+  terms: nested('TOPIC_TERM_FIELDS'),
+  intro: checked('topic.intro'),
+};
+
+export const TOPIC_FIELDS: Record<keyof TopicState, FieldDisposition> = {
+  id: exempt('identifier'),
+  // The slug is the address of the topic page, so it is a customer-visible text.
+  slug: checked('topic.slug'),
+  group: exempt('internal-code'),
+  status: exempt('internal-code'),
+  terms: nested('TOPIC_TERM_FIELDS'),
+  intro: checked('topic.intro'),
+  createdBy: exempt('identifier'),
+  createdAt: exempt('timestamp'),
+  updatedAt: exempt('timestamp'),
+  version: exempt('number'),
+};
+
 /** Every table above by name, so the schema test can walk them and follow `nested`. */
 export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, FieldDisposition>>>> = {
   REVISION_TEXT_FIELDS,
@@ -246,6 +280,9 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
   CATEGORY_SEO_FIELDS,
   PLATFORM_CATEGORY_FIELDS,
   OFFER_FIELDS,
+  TOPIC_TERM_FIELDS,
+  TOPIC_CONTENT_FIELDS,
+  TOPIC_FIELDS,
 };
 
 /**
@@ -382,6 +419,11 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText:
       'panel-only names and description of a business activity (admin and seller panels); refused when they assert a certification; see BusinessActivityState',
   },
+  TopicContent: { table: 'TOPIC_CONTENT_FIELDS' },
+  TopicFieldProblem: { noCustomerText: 'field path and a problem code' },
+  TopicLocales: { noCustomerText: 'locale codes' },
+  TopicState: { table: 'TOPIC_FIELDS' },
+  TopicTerm: { table: 'TOPIC_TERM_FIELDS' },
   BusinessActivityState: {
     noCustomerText: 'a business activity as stored; panel-only text, see BusinessActivityContent',
   },
