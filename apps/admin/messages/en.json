@@ -2290,6 +2290,7 @@
       "add": "Add product",
       "variants-export": {
         "button": "Export variants",
+        "filters-note": "Filters are not applied; only the search text is",
         "title": "Export variants",
         "body": "One row per live variant that matches the search text, with its product type, options and Offer count. The file has no prices or stock.",
         "legend": "File format",

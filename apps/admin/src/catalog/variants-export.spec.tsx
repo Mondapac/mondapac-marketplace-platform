@@ -32,6 +32,14 @@ describe('variantExportQuery', () => {
 });
 
 describe('Export variants on the product list', () => {
+  it('notes that list filters are not applied, only when some are active', () => {
+    mount({ ...DEFAULT_QUERY, filters: { scope: 'SELLER' } });
+    expect(screen.getByText('Filters are not applied; only the search text is')).toBeTruthy();
+    cleanup();
+    mount();
+    expect(screen.queryByText(/Filters are not applied/)).toBeNull();
+  });
+
   let fetched: string[];
   let click: { mockRestore: () => void } & ReturnType<typeof vi.fn>;
 

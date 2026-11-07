@@ -2,6 +2,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import ExcelJS from 'exceljs';
 import request from 'supertest';
 import { ADMIN_VARIANTS_READER } from '../src/modules/catalog/application/ports/admin-variants.reader';
 import { CLAIM_TERM_LOCALES } from '../src/modules/catalog/application/ports/claim-term-locales';
@@ -143,9 +144,20 @@ describe('admin Variants routes over HTTP (integration, V6)', () => {
           // covered in test/db/catalog-admin-variants.db-spec.ts.
           .overrideProvider(ADMIN_VARIANTS_READER)
           .useValue({
-            count: () => Promise.resolve(0),
-            axisCodes: () => Promise.resolve([]),
-            rows: () => Promise.resolve([]),
+            count: () => Promise.resolve(1),
+            axisCodes: () => Promise.resolve(['weight']),
+            rows: () =>
+              Promise.resolve([
+                {
+                  productId: id<'Product'>(0xb901),
+                  productCode: 'MP-000901',
+                  typeCode: 'grocery',
+                  variantCode: 'MP-000901-01',
+                  options: [{ attributeCode: 'weight', optionCode: 'kg1', label: '1 kg' }],
+                  gtin: null,
+                  offerCount: 3,
+                },
+              ]),
           })
           .overrideProvider(VARIANT_TYPE_SETTINGS_STORE)
           .useValue(memory)
@@ -368,6 +380,43 @@ describe('admin Variants routes over HTTP (integration, V6)', () => {
       expect(csv.headers['cache-control']).toContain('no-store');
       expect(csv.headers['x-content-type-options']).toBe('nosniff');
       expect(csv.text).toContain(`'=Rice`);
+      const header =
+        'product_code,variant_code,product_type,option[weight],gtin,offer_count,' +
+        'Product,Variant,Status,Sellers selling,Issues';
+      const lines = csv.text
+        .replace(/^\uFEFF/, '')
+        .trim()
+        .split(/\r?\n/);
+      expect(lines[0]).toBe(header);
+      expect(lines[1]).toMatch(/^MP-000901,MP-000901-01,grocery,1 kg,,3,/);
+
+      const xlsx = await http()
+        .get(`${VARIANTS}/export?format=xlsx`)
+        .set(viewer)
+        .buffer(true)
+        .parse((res, callback) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => callback(null, Buffer.concat(chunks)));
+        })
+        .expect(200);
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(xlsx.body as never);
+      const sheet = workbook.worksheets[0]!;
+      const cells = (row: number) => {
+        const values: string[] = [];
+        sheet.getRow(row).eachCell({ includeEmpty: true }, (cell) => values.push(cell.text));
+        return values;
+      };
+      expect(cells(1).join(',')).toBe(header);
+      expect(cells(2).slice(0, 6)).toEqual([
+        'MP-000901',
+        'MP-000901-01',
+        'grocery',
+        '1 kg',
+        '',
+        '3',
+      ]);
       const refused = await http().get(`${VARIANTS}/export?format=pdf`).set(viewer).expect(400);
       expect(refused.body).toMatchObject({ code: 'validation.failed' });
     });

@@ -218,7 +218,7 @@ export class AdminVariantsExport extends UseCase<
             (axis) => detail?.options.find((option) => option.attributeCode === axis)?.label ?? '',
           ),
           view.gtin ?? '',
-          detail?.offerCount ?? 0,
+          detail?.offerCount ?? null,
           view.productName ?? '',
           view.label ?? '',
           view.status === 'paused' ? 'Paused' : 'Live',

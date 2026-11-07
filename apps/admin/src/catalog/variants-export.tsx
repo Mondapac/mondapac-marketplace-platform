@@ -3,7 +3,7 @@
 import { Button, Dialog, Icon, RadioGroup, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
-import type { Query } from './products-types.ts';
+import { filterCount, type Query } from './products-types.ts';
 
 type ExportFormat = 'csv' | 'xlsx';
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -106,10 +106,15 @@ export function VariantsExport({ query }: { readonly query: Query }) {
 
   return (
     <>
-      <Button variant="secondary" className="gap-2" onClick={() => setOpen(true)} disabled={busy}>
-        <Icon name="download" />
-        {t('button')}
-      </Button>
+      <div className="flex flex-col items-start gap-1">
+        <Button variant="secondary" className="gap-2" onClick={() => setOpen(true)} disabled={busy}>
+          <Icon name="download" />
+          {t('button')}
+        </Button>
+        {filterCount(query.filters) > 0 ? (
+          <p className="text-xs text-fg-muted">{t('filters-note')}</p>
+        ) : null}
+      </div>
       <Dialog
         open={open}
         title={t('title')}
