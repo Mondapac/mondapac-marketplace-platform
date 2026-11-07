@@ -62,6 +62,8 @@ describe('seller import over HTTP (integration)', () => {
   let clock: FixedClock;
   let added: unknown[];
   let stored: string[];
+  let finds: { marketId: string; sellerId: string; importId: string }[];
+  let foreign: { id: string; marketId: string; sellerId: string }[];
   const http = () => request(app.getHttpServer());
   const marketOf = (code: string): MarketContext => testMarketContext(code, PLATFORM_TENANT_ID);
 
@@ -122,7 +124,18 @@ describe('seller import over HTTP (integration)', () => {
           })
           .overrideProvider(SELLER_IMPORT_REPOSITORY)
           .useValue({
-            find: () => Promise.resolve(null),
+            // A job is found only for the seller and Market that own it, as the real store does.
+            find: (market: MarketContext, sellerId: Id<'Seller'>, importId: string) => {
+              finds.push({ marketId: market.marketId, sellerId, importId });
+              return Promise.resolve(
+                foreign.find(
+                  (job) =>
+                    job.marketId === market.marketId &&
+                    job.sellerId === sellerId &&
+                    job.id === importId,
+                ) ?? null,
+              );
+            },
             latestOf: () => Promise.resolve(null),
             hasActive: () => Promise.resolve(false),
             discardChecked: () => Promise.resolve([]),
@@ -244,6 +257,8 @@ describe('seller import over HTTP (integration)', () => {
     clock = new FixedClock(START);
     added = [];
     stored = [];
+    finds = [];
+    foreign = [];
   });
   afterEach(async () => {
     await app.close();
@@ -458,6 +473,44 @@ describe('seller import over HTTP (integration)', () => {
         expect(response.body).toMatchObject({ code: 'import.not-found' });
       }
       expect(JSON.stringify(read.body)).toBe(JSON.stringify(discard.body));
+    });
+
+    it('never shows seller B’s job to seller A on any route, and a job of another Market is unknown', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code, MANAGER, 1);
+      const FOREIGN = '01990000-0000-7000-8000-00000000b0b0';
+      const otherMarket = TEST_MARKETS.find((m) => m !== code)!;
+      foreign = [
+        { id: FOREIGN, marketId: code, sellerId: id<'Seller'>(0xb0b0) },
+        { id: UNKNOWN_IMPORT, marketId: otherMarket, sellerId: SELLER },
+      ];
+
+      const photo = await post(
+        code,
+        `/${FOREIGN}/photos`,
+        { name: 'a.jpg', data: Buffer.from('x').toString('base64') },
+        session,
+      );
+      const responses = [
+        await get(code, `/${FOREIGN}`, session),
+        await get(code, `/${FOREIGN}/report?kind=errors`, session),
+        await post(code, `/${FOREIGN}/start`, { skipErrors: false }, session),
+        await post(code, `/${FOREIGN}/resume`, {}, session),
+        await post(code, `/${FOREIGN}/discard`, {}, session),
+        photo,
+        // The seller's own job of another Market is as unknown as an id nobody has.
+        await get(code, `/${UNKNOWN_IMPORT}`, session),
+      ];
+      for (const response of responses) {
+        expect(response.status).toBe(404);
+        expect(response.body).toMatchObject({ code: 'import.not-found' });
+        expect(JSON.stringify(response.body)).not.toContain('b0b0');
+      }
+      // Every lookup used the session's seller, never anything from the request.
+      expect(finds.length).toBeGreaterThanOrEqual(responses.length);
+      expect(new Set(finds.map((find) => find.sellerId))).toEqual(new Set([SELLER]));
+      expect(new Set(finds.map((find) => find.marketId))).toEqual(new Set([code]));
     });
 
     it('answers 400 for a malformed import id and null for no current import', async () => {
