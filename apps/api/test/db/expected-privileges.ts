@@ -1364,6 +1364,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_revision_id', 'version'],
     },
     'catalog.category_attribute_link_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Variants V6: the variant type settings root moves its current revision and version; the
+    // revisions are insert-only.
+    'catalog.variant_type_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['current_revision_id', 'version'],
+    },
+    'catalog.variant_type_setting_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 4): the working copy and the counters are
     // mutable and deleted from; the five revision tables are insert-only (CA3).
     'catalog.product_working_copies': {
