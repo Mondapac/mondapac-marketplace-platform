@@ -14,7 +14,7 @@ export const settingsRedirects = [
 ].map((redirect) => ({ ...redirect, permanent: true as const }));
 
 const config: NextConfig = {
-  transpilePackages: ['@mondapac/ui', '@mondapac/panel-server'],
+  transpilePackages: ['@mondapac/ui', '@mondapac/panel-server', '@mondapac/platform-import'],
   poweredByHeader: false,
   // `next dev` writes an AGENTS.md into the app folder; the repository keeps its agent rules elsewhere.
   agentRules: false,

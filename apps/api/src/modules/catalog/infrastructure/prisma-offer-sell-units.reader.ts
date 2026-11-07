@@ -40,19 +40,35 @@ export class PrismaOfferSellUnitsReader implements OfferSellUnitsReader {
             select: { id: true, productId: true, state: true },
             orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           });
-    const byProduct = new Map<string, SellUnit[]>();
-    for (const variant of variants) {
-      const list = byProduct.get(variant.productId) ?? [];
-      list.push({ variantId: variant.id as Id<'Variant'>, state: variant.state as SellUnitState });
-      byProduct.set(variant.productId, list);
-    }
+    const offerIdsKept = offers.filter((o) => o.status !== 'deleted').map((o) => o.id);
+    const unitRows =
+      offerIdsKept.length === 0 || variants.length === 0
+        ? []
+        : await tx.catalogOfferSellUnit.findMany({
+            where: { marketId: market.marketId, offerId: { in: offerIdsKept } },
+            select: { offerId: true, variantId: true, variantSku: true, selling: true },
+          });
+    const unitOf = new Map(
+      unitRows.map((row) => [`${row.offerId}:${row.variantId}`, row] as const),
+    );
     for (const offer of offers) {
+      const sellUnits: SellUnit[] = variants
+        .filter((variant) => variant.productId === offer.productId)
+        .map((variant) => {
+          const row = unitOf.get(`${offer.id}:${variant.id}`);
+          return {
+            variantId: variant.id as Id<'Variant'>,
+            state: variant.state as SellUnitState,
+            selling: row?.selling ?? true,
+            variantSku: row?.variantSku ?? null,
+          };
+        });
       result.set(offer.id as Id<'Offer'>, {
         sellerId: offer.sellerId as Id<'Seller'>,
         productId: offer.productId as Id<'Product'>,
         status: offer.status as OfferStatus,
         listed: offer.listed,
-        sellUnits: offer.status === 'deleted' ? [] : (byProduct.get(offer.productId) ?? []),
+        sellUnits: offer.status === 'deleted' ? [] : sellUnits,
       });
     }
     return result;

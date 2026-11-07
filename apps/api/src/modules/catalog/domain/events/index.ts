@@ -241,6 +241,16 @@ export const OfferListingChanged = defineEvent({
 });
 
 /**
+ * A seller put one sell unit (Offer, Variant) on sale or off sale (variants V5, plan decision t4).
+ * Reversible; the variant is not retired. Ids and a flag only.
+ */
+export const OfferSellUnitChanged = defineEvent({
+  type: 'catalog.offer-sell-unit-changed.v1',
+  aggregateType: 'offer-sell-unit',
+  payload: { offerId: eventField.id(), variantId: eventField.id(), selling: eventField.boolean() },
+});
+
+/**
  * An admin paused a published product (catalog design 4.1a): the product and all its Offers are
  * off sale until it is resumed. Ids only.
  */
@@ -343,6 +353,7 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   OfferTagRestored,
   OfferTagBasisSwitched,
   OfferListingChanged,
+  OfferSellUnitChanged,
   ProductPaused,
   ProductResumed,
   ProductWithdrawn,

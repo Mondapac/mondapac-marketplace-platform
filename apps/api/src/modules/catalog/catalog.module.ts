@@ -41,6 +41,8 @@ import {
 } from './application/ports/product-type-lookup';
 import { ALLOWED_PRODUCT_TYPES_READER } from './application/ports/allowed-product-types.reader';
 import { OFFER_REPOSITORY } from './application/ports/offer.repository';
+import { OFFER_SELL_UNIT_REPOSITORY } from './application/ports/offer-sell-unit.repository';
+import { OwnOfferSetSellUnits } from './application/use-cases/own-offer-set-sell-units.use-case';
 import { OWN_OFFER_FINDER } from './application/ports/own-offer-finder';
 import { CLAIM_EVALUATOR } from './application/ports/claim-evaluator';
 import { CATEGORY_PATHS_READER } from './application/ports/category-paths.reader';
@@ -392,6 +394,7 @@ const PORT = {
   treeReader: CATEGORY_TREE_READER,
   publicCategories: PUBLIC_CATEGORY_READER,
   offers: OFFER_REPOSITORY,
+  sellUnits: OFFER_SELL_UNIT_REPOSITORY,
   offerFinder: OWN_OFFER_FINDER,
   claims: ClaimQueryBuilder,
   evaluator: CLAIM_EVALUATOR,
@@ -1210,6 +1213,15 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       offers: true,
       eligibility: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnOfferSetSellUnits, {
+      unitOfWork: true,
+      offers: true,
+      sellUnits: true,
+      eligibility: true,
+      save: true,
       outbox: true,
       clock: true,
     }),

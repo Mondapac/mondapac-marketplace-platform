@@ -1459,6 +1459,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'settled_at', 'state'],
     },
+    // docs/design/data/catalog.md 2.4 (variants V5): the per-sell-unit SKU and selling switch move
+    // by column; the owner, Offer and variant never change. No DELETE: a row is never deleted.
+    'catalog.offer_sell_units': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['selling', 'updated_at', 'variant_sku', 'version'],
+    },
     // docs/design/data/catalog.md 3.28: a saved view of an admin list; a filter is a preference, so
     // the application deletes it; only the name and who can use it change.
     'catalog.saved_filters': {

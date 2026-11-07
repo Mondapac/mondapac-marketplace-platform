@@ -62,6 +62,44 @@ export class OwnOfferEdited {
   changedFields!: string[];
 }
 
+export class OwnOfferSellUnitChangeRequest {
+  @ApiProperty({ format: 'uuid', description: "A non-retired variant of the Offer's product." })
+  variantId!: string;
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    description:
+      "The seller's SKU for this sell unit: 1 to 64 printable ASCII characters, no space; unique " +
+      "among the seller's variant SKUs and Offer SKUs. null clears it. Left out keeps it.",
+  })
+  variantSku?: string | null;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'false takes this sell unit off sale (cart, search, product page) without retiring the ' +
+      'variant; true puts it back. Left out keeps it. At least one unit must keep selling.',
+  })
+  selling?: boolean;
+}
+
+export class OwnOfferSetSellUnitsRequest {
+  @ApiProperty({
+    type: [OwnOfferSellUnitChangeRequest],
+    description: 'Up to 100 changes, each naming a different variant and at least one field.',
+  })
+  units!: OwnOfferSellUnitChangeRequest[];
+}
+
+export class OwnOfferSellUnitsSet {
+  @ApiProperty({
+    type: [String],
+    description: 'Variant ids whose SKU or switch changed; empty when nothing differed.',
+  })
+  changedVariantIds!: string[];
+}
+
 export class OwnOfferSetHandlingRequest {
   @ApiProperty({
     enum: ['SEALED_ORIGINAL', 'REPACKED', 'PREPARED', 'FRESH'],

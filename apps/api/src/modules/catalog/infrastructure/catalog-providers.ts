@@ -174,6 +174,11 @@ import { PrismaPublicCategoryReader } from './prisma-public-category.reader';
 import { PrismaSellUnitLabelsReader } from './prisma-sell-unit-labels.reader';
 import { PrismaOfferNamesReader } from './prisma-offer-names.reader';
 import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
+import { PrismaOfferSellUnitRepository } from './prisma-offer-sell-unit.repository';
+import {
+  OFFER_SELL_UNIT_REPOSITORY,
+  type OfferSellUnitRepository,
+} from '../application/ports/offer-sell-unit.repository';
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
 import type { IdGenerator } from '@mondapac/shared-kernel';
 import { CertificationClaimTextMatcher } from './certification-claim-text-matcher';
@@ -419,6 +424,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService, ID_GENERATOR],
     useFactory: (prisma: PrismaService, ids: IdGenerator): OfferRepository =>
       new PrismaOfferRepository(prisma, ids),
+  },
+  {
+    provide: OFFER_SELL_UNIT_REPOSITORY,
+    inject: [PrismaService, ID_GENERATOR],
+    useFactory: (prisma: PrismaService, ids: IdGenerator): OfferSellUnitRepository =>
+      new PrismaOfferSellUnitRepository(prisma, ids),
   },
   {
     provide: OFFER_LISTINGS_READER,
