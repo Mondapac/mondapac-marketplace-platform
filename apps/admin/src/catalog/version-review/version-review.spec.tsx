@@ -24,6 +24,7 @@ function mount(
   canDecide = true,
   nextHref: string | null = '/next',
   photos: readonly RevisionImage[] | null = images,
+  canTakeDown = canDecide,
 ) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages} timeZone="UTC">
@@ -32,6 +33,7 @@ function mount(
         images={photos}
         categoryNames={{ [CATEGORY(1)]: 'Oils', [CATEGORY(2)]: 'Olive oils' }}
         canDecide={canDecide}
+        canTakeDown={canTakeDown}
         csrfToken="csrf-1"
         nextHref={nextHref}
       />
@@ -91,6 +93,13 @@ describe('VersionReview content', () => {
       screen.getByText('This version was decided or replaced. There is nothing to decide.'),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+  });
+
+  it('offers Take down only with the delete key, even to a reviewer who can approve', () => {
+    mount({}, true, '/next', images, false);
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Take down/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'View large: Photo 1' })).toBeTruthy();
   });
 
   it('is view only without the decide permission: no checks and no Take down', () => {

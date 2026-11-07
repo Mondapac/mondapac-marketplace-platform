@@ -22,14 +22,15 @@ export function PhotoTiles({
   productId,
   tiles,
   removed,
-  canDecide,
+  canTakeDown,
   csrfToken,
 }: {
   readonly productId: string;
   readonly tiles: readonly PhotoTile[];
   /** Photos of the published version that this version drops. */
   readonly removed: number;
-  readonly canDecide: boolean;
+  /** Holds catalog.product.delete: may take a photo down. */
+  readonly canTakeDown: boolean;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('catalog.version.photos');
@@ -83,7 +84,7 @@ export function PhotoTiles({
                 >
                   {t('view')}
                 </Button>
-                {canDecide ? (
+                {canTakeDown ? (
                   <Button
                     variant="destructive"
                     onClick={() => setTarget(tile)}

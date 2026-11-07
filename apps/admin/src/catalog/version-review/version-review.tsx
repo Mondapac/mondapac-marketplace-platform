@@ -31,6 +31,7 @@ export function VersionReview({
   images,
   categoryNames,
   canDecide,
+  canTakeDown,
   csrfToken,
   nextHref,
 }: {
@@ -40,6 +41,8 @@ export function VersionReview({
   /** Category id to name in the panel locale; an unknown id shows as the id. */
   readonly categoryNames: Readonly<Record<string, string>>;
   readonly canDecide: boolean;
+  /** Holds catalog.product.delete: the photos offer Take down. */
+  readonly canTakeDown: boolean;
   readonly csrfToken: string;
   readonly nextHref: string | null;
 }) {
@@ -154,7 +157,7 @@ export function VersionReview({
                 productId={read.productId}
                 tiles={tiles}
                 removed={removedPhotos}
-                canDecide={canDecide}
+                canTakeDown={canTakeDown}
                 csrfToken={csrfToken}
               />
             )}
