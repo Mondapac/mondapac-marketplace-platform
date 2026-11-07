@@ -312,8 +312,6 @@ const FORWARDED_REQUEST_HEADERS = [
 /** Response headers that cross back to the browser (Set-Cookie is handled on its own). */
 const FORWARDED_RESPONSE_HEADERS = [
   'content-type',
-  // The Products export arrives as an attachment with a file name the API made.
-  'content-disposition',
   'retry-after',
   'x-content-type-options',
 ] as const;

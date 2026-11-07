@@ -74,6 +74,8 @@ export function ExportDialog({
   );
 }
 
+const REVOKE_DELAY_MS = 4000;
+
 /** Hands a downloaded file to the browser under a name of the page's choice. */
 export function saveFile(blob: Blob, filename: string): void {
   const link = document.createElement('a');
@@ -83,5 +85,6 @@ export function saveFile(blob: Blob, filename: string): void {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  // Revoked a moment later: some browsers cancel a download whose address is freed at once.
+  setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 }

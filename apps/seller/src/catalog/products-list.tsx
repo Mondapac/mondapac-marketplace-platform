@@ -380,6 +380,7 @@ export function ProductsList({
             query={query}
             columns={columns}
             total={answer === null || failure !== null ? null : answer.total}
+            timeZone={timeZone}
             onSelectAll={selection.selectAllMatching}
             onClear={selection.clear}
           />

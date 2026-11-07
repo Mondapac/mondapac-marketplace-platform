@@ -35,6 +35,7 @@ vi.mock('next/navigation', async () => {
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
+import { dayInZone } from './products-export.tsx';
 import { ProductsList } from './products-list.tsx';
 import type { ProductRow, ProductsPage } from './products-list-types.ts';
 import type { SavedFilter, SavedFiltersAnswer } from './products-saved-types.ts';
@@ -286,7 +287,7 @@ describe('row selection and Bulk action', () => {
 });
 
 describe('export', () => {
-  const day = new Date().toISOString().slice(0, 10);
+  const day = dayInZone(new Date(), 'Australia/Brisbane');
   const fetched: string[] = [];
   let saveNames: string[];
   let made: Blob[];
@@ -456,6 +457,32 @@ describe('export', () => {
       expect(screen.getByRole('button', { name: 'Export' }).hasAttribute('disabled')).toBe(false),
     );
     click.mockRestore();
+  });
+
+  it('names the file for the seller’s own day, not the UTC one', () => {
+    // 20:00 UTC on 7 Nov is already 8 Nov in Brisbane (UTC+10), and still 7 Nov in Los Angeles.
+    const instant = new Date('2026-11-07T20:00:00Z');
+    expect(dayInZone(instant, 'Australia/Brisbane')).toBe('2026-11-08');
+    expect(dayInZone(instant, 'America/Los_Angeles')).toBe('2026-11-07');
+  });
+
+  it('sends the seller to sign in again when the session ends during the export', async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', {
+      value: { ...original, assign },
+      configurable: true,
+    });
+    const click = stubDownload(failWith(401, { code: 'session.invalid' }));
+    try {
+      const dialog = await exportFromHeader();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+      expect(click).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, 'location', { value: original, configurable: true });
+      click.mockRestore();
+    }
   });
 
   it('closes the dialog without a request when it is cancelled', async () => {

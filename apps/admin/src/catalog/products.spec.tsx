@@ -896,7 +896,7 @@ describe('admin product bulk action', () => {
       ]);
       expect(create).toHaveBeenCalledTimes(1);
       expect(click).toHaveBeenCalledTimes(1);
-      expect(revoke).toHaveBeenCalledWith('blob:csv');
+      await waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:csv'), { timeout: 6000 });
       // An export changes nothing: no POST and the selection stays.
       expect(posted).toEqual([]);
       expect((rowBox('Beef mince') as HTMLInputElement).checked).toBe(true);

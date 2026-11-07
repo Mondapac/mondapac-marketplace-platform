@@ -266,7 +266,8 @@ describe('ExportDialog', () => {
 });
 
 describe('saveFile', () => {
-  it('hands the blob to the browser under the given name and frees the address', () => {
+  it('hands the blob to the browser under the given name and frees the address later', () => {
+    vi.useFakeTimers();
     const create = vi.fn(() => 'blob:x');
     const revoke = vi.fn();
     Object.assign(URL, { createObjectURL: create, revokeObjectURL: revoke });
@@ -278,9 +279,13 @@ describe('saveFile', () => {
     });
     saveFile(new Blob(['a']), 'products-2026-11-07.csv');
     expect(names).toEqual(['products-2026-11-07.csv']);
-    expect(revoke).toHaveBeenCalledWith('blob:x');
+    // Not at once: a browser may still be starting the download.
+    expect(revoke).not.toHaveBeenCalled();
     expect(document.querySelector('a[download]')).toBeNull();
+    vi.advanceTimersByTime(4000);
+    expect(revoke).toHaveBeenCalledWith('blob:x');
     click.mockRestore();
+    vi.useRealTimers();
   });
 });
 

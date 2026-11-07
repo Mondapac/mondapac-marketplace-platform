@@ -1389,7 +1389,7 @@ describe('relay of the Products export and saved filters (catalog design 9.2c, 9
     expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/seller/products/export');
   });
 
-  it('passes the file back as an attachment, byte for byte, with its name and type', async () => {
+  it('passes the file back byte for byte, with its type and without its internal headers', async () => {
     const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00]);
     const upstream = vi.fn<typeof fetch>(() =>
       Promise.resolve(
@@ -1409,9 +1409,8 @@ describe('relay of the Products export and saved filters (catalog design 9.2c, 9
     expect(response.headers.get('content-type')).toBe(
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
-    expect(response.headers.get('content-disposition')).toBe(
-      'attachment; filename="products-2026-11-07.xlsx"',
-    );
+    // The panel names the file itself, so the API's file name header is not passed on.
+    expect(response.headers.get('content-disposition')).toBeNull();
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('x-internal')).toBeNull();
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);

@@ -12,6 +12,7 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
+import { resolveZone } from '../price/zone-time.ts';
 import { numberFormat } from '../shared/intl.ts';
 import { FILTER_FIELDS, type OptionalColumn, type Query } from './products-list-types.ts';
 
@@ -84,6 +85,15 @@ export function exportQuery(
   return params.toString();
 }
 
+/** The date as YYYY-MM-DD in an IANA zone. */
+export const dayInZone = (instant: Date, zone: string): string =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: zone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(instant);
+
 const MIME: Record<ExportFormat, string> = {
   csv: 'text/csv;charset=utf-8',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -103,6 +113,7 @@ export function ProductsExport({
   query,
   columns,
   total,
+  timeZone,
   onSelectAll,
   onClear,
 }: {
@@ -111,6 +122,8 @@ export function ProductsExport({
   readonly columns: readonly OptionalColumn[];
   /** Products the current list matches; null until the first page loads. */
   readonly total: number | null;
+  /** The seller's own zone, or null when none was chosen (the file's date is then in the fallback zone). */
+  readonly timeZone: string | null;
   readonly onSelectAll: () => void;
   readonly onClear: () => void;
 }) {
@@ -151,7 +164,8 @@ export function ProductsExport({
         );
         throw new ExportFailure(failure.key, failure.values);
       }
-      const day = new Date().toISOString().slice(0, 10);
+      // The file is named for the seller's own day (ADR-0005), not the UTC one.
+      const day = dayInZone(new Date(), resolveZone(timeZone));
       saveFile(
         new Blob([await response.arrayBuffer()], { type: MIME[format] }),
         `products-${day}.${format}`,
