@@ -1,6 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MeasureSettings } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
+import type { Prisma } from '../../../generated/prisma/client';
 import type {
   ListPage,
   OwnCatalogReader,
@@ -8,6 +9,7 @@ import type {
   ProductForm,
   ProductFormField,
   ProductLabel,
+  RevisionQueueFilter,
 } from '../application/ports/own-catalog.reader';
 import type { FamilyGroup } from '../domain/attribute-family';
 import type { Offer } from '../domain/offer';
@@ -21,6 +23,26 @@ const toInstant = (date: Date): Temporal.Instant =>
 
 /** Hard ceiling on a page, whatever the caller asks. */
 const MAX_PAGE = 100;
+
+/**
+ * The SELLER products of the Market with a pending revision that `filter` keeps: one seller (the
+ * owner), a first publication (never published) or an update, a pending revision with or without a
+ * photo. The `pendingRevision` relation is the product's own pointer (same product, same Market).
+ */
+function pendingRevisionsWhere(market: MarketContext, filter: RevisionQueueFilter) {
+  return {
+    marketId: market.marketId,
+    scope: 'SELLER',
+    pendingRevisionId: { not: null },
+    ...(filter.sellerId === undefined ? {} : { ownerSellerId: filter.sellerId }),
+    ...(filter.firstPublication === undefined
+      ? {}
+      : { publishedRevisionId: filter.firstPublication ? null : { not: null } }),
+    ...(filter.hasImages === undefined
+      ? {}
+      : { pendingRevision: { images: filter.hasImages ? { some: {} } : { none: {} } } }),
+  } satisfies Prisma.CatalogProductWhereInput;
+}
 
 /**
  * {@link OwnCatalogReader} on `catalog.products`, `offers` and `product_working_copies`. Every
@@ -85,15 +107,25 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
     };
   }
 
-  async pendingReviewCount(market: MarketContext): Promise<number> {
+  async pendingReviewCount(
+    market: MarketContext,
+    filter: { readonly sellerId?: Id<'Seller'> } = {},
+  ): Promise<number> {
     return this.prisma.tx(market).catalogOffer.count({
-      where: { marketId: market.marketId, status: 'pending-first-publish' },
+      where: {
+        marketId: market.marketId,
+        status: 'pending-first-publish',
+        ...(filter.sellerId === undefined ? {} : { sellerId: filter.sellerId }),
+      },
     });
   }
 
-  async pendingRevisionCount(market: MarketContext): Promise<number> {
+  async pendingRevisionCount(
+    market: MarketContext,
+    filter: RevisionQueueFilter = {},
+  ): Promise<number> {
     return this.prisma.tx(market).catalogProduct.count({
-      where: { marketId: market.marketId, scope: 'SELLER', pendingRevisionId: { not: null } },
+      where: pendingRevisionsWhere(market, filter),
     });
   }
 
@@ -104,6 +136,7 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
       readonly limit: number;
     },
     locale: string,
+    filter: RevisionQueueFilter = {},
   ): Promise<readonly PendingRevisionRow[]> {
     const tx = this.prisma.tx(market);
     const cursor = page.after;
@@ -120,12 +153,7 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
             ],
           };
     const products = await tx.catalogProduct.findMany({
-      where: {
-        marketId: market.marketId,
-        scope: 'SELLER',
-        pendingRevisionId: { not: null },
-        ...after,
-      },
+      where: { ...pendingRevisionsWhere(market, filter), ...after },
       orderBy: [{ pendingSubmittedAt: 'asc' }, { id: 'asc' }],
       take: Math.min(page.limit, MAX_PAGE),
     });

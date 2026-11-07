@@ -1,11 +1,12 @@
 'use client';
 
-import { Badge, Button, EmptyState, LoadError, SkeletonRows, TextField } from '@mondapac/ui';
+import { Badge, Button, EmptyState, LoadError, SkeletonRows, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { When } from '../shared/when.tsx';
 import { API_FEATURE_SETS, textIn, type FeatureSetDetail, type FeatureSetList } from './types.ts';
+import { FeatureSetEditor } from './feature-set-editor.tsx';
 import { useRevealWhenStacked } from './reveal.ts';
 
 type Load<T> =
@@ -23,10 +24,14 @@ const ROW =
  * Attributes tab.
  */
 export function FeatureSetsTab({
+  canEdit = false,
+  csrfToken = '',
   selectedId,
   onSelect,
   onOpenAttribute,
 }: {
+  readonly canEdit?: boolean;
+  readonly csrfToken?: string;
   readonly selectedId: string | null;
   readonly onSelect: (id: string | null) => void;
   readonly onOpenAttribute: (attributeId: string) => void;
@@ -136,6 +141,9 @@ export function FeatureSetsTab({
       </section>
       <FeatureSetDetailPanel
         featureSetId={selectedId}
+        canEdit={canEdit}
+        csrfToken={csrfToken}
+        onSaved={() => void fetchSets()}
         onClose={() => onSelect(null)}
         onOpenAttribute={onOpenAttribute}
       />
@@ -145,9 +153,15 @@ export function FeatureSetsTab({
 
 function FeatureSetDetailPanel({
   featureSetId,
+  canEdit,
+  csrfToken,
+  onSaved,
   onClose,
   onOpenAttribute,
 }: {
+  readonly canEdit: boolean;
+  readonly csrfToken: string;
+  readonly onSaved: () => void;
   readonly featureSetId: string | null;
   readonly onClose: () => void;
   readonly onOpenAttribute: (attributeId: string) => void;
@@ -156,6 +170,7 @@ function FeatureSetDetailPanel({
   const tl = useTranslations('load');
   const [load, setLoad] = useState<Load<FeatureSetDetail>>({ state: 'loading' });
   const latest = useRef(0);
+  const [editing, setEditing] = useState(false);
   const panel = useRef<HTMLElement>(null);
   useRevealWhenStacked(panel, featureSetId, load.state === 'ready');
 
@@ -180,6 +195,7 @@ function FeatureSetDetailPanel({
   }, [featureSetId]);
 
   useEffect(() => {
+    setEditing(false);
     void fetchSet();
   }, [fetchSet]);
 
@@ -220,7 +236,23 @@ function FeatureSetDetailPanel({
           </Button>
         </div>
       ) : null}
-      {load.state === 'ready' ? (
+      {load.state === 'ready' && editing ? (
+        <FeatureSetEditor
+          detail={load.value}
+          csrfToken={csrfToken}
+          onCancel={() => {
+            setEditing(false);
+            void fetchSet();
+          }}
+          onSaved={() => {
+            setEditing(false);
+            toast.success(t('feature-sets.saved'), { id: 'feature-set-saved' });
+            onSaved();
+            void fetchSet();
+          }}
+        />
+      ) : null}
+      {load.state === 'ready' && !editing ? (
         <>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1">
@@ -242,9 +274,14 @@ function FeatureSetDetailPanel({
                 <When iso={load.value.createdAt} missing={t('none')} />
               </span>
             </div>
-            <Button variant="secondary" onClick={onClose}>
-              {t('detail.close')}
-            </Button>
+            <span className="flex gap-2">
+              {canEdit && load.value.status === 'active' ? (
+                <Button onClick={() => setEditing(true)}>{t('feature-sets.edit')}</Button>
+              ) : null}
+              <Button variant="secondary" onClick={onClose}>
+                {t('detail.close')}
+              </Button>
+            </span>
           </div>
           {load.value.groups.length === 0 ? (
             <EmptyState size="compact" icon="columns" title={t('feature-sets.no-groups')} />

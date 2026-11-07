@@ -629,7 +629,7 @@ export class AttributeAdminController {
     summary: 'Products missing required details',
     description:
       `${NEEDS} Published products whose values leave a required attribute of their feature set ` +
-      'empty (the feature set gained it after approval). They stay on sale; the seller is ' +
+      'empty (the feature set gained it after approval, or its category now holds another one). They stay on sale; the seller is ' +
       'refused at the next submit until the field is filled. Keyset-paged by product id: one ' +
       'call reads at most 2000 products, so follow `nextAfterId` until it is null. `limit` is 1 ' +
       'to 100 (default 50).',
@@ -637,7 +637,11 @@ export class AttributeAdminController {
   @ApiQuery({ name: 'sellerId', required: false })
   @ApiQuery({ name: 'familyCode', required: false, description: 'A feature set code.' })
   @ApiQuery({ name: 'afterId', required: false })
-  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+  })
   @ApiOkResponse({ type: MissingDetailsListBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })

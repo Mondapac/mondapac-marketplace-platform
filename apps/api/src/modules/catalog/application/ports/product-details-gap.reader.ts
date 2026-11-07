@@ -6,8 +6,10 @@ export interface PublishedProductValues {
   readonly productCode: string;
   /** The owning seller; null for a PLATFORM product. */
   readonly ownerSellerId: string | null;
-  /** The feature set the product was made under (immutable on the product). */
-  readonly familyCode: string;
+  /** The feature set the published revision was frozen under. */
+  readonly revisionFamilyCode: string;
+  /** The published revision's primary category (the one marked primary); null when it has none. */
+  readonly primaryCategoryId: string | null;
   /** The published revision's name in the asked locale; null when it has none. */
   readonly name: string | null;
   /** The published revision's attribute values, as stored. */
@@ -18,7 +20,6 @@ export interface PublishedProductsFilter {
   /** Products with an id after this one, by id; null for the first page. */
   readonly afterId: string | null;
   readonly sellerId: string | null;
-  readonly familyCode: string | null;
   readonly limit: number;
   /** The locale of the name (the Market's default). */
   readonly locale: string;
