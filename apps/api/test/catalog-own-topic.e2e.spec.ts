@@ -272,6 +272,36 @@ describe('seller topic picker over HTTP (integration)', () => {
       expect(JSON.stringify(denied.body)).not.toContain('ramadan');
     });
 
+    it('refuses a session of another population (admin) with the edit key', async () => {
+      await boot();
+      await seeded(code);
+      stock();
+      const issued = tokens.issue();
+      await fakes.sessionRepository.add(
+        marketOf(code),
+        openSession({
+          id: id<'Session'>(0xfb40),
+          marketId: code as AccountState['marketId'],
+          accountId: OWNER,
+          population: 'admin',
+          sellerId: null,
+          transport: 'cookie',
+          lifetime: LIFETIME,
+          now: clock.now(),
+        }),
+        issued.tokenHash,
+      );
+      const answer = await http()
+        .get(SELLER_ROUTE)
+        .set({
+          'x-market-id': code,
+          ...panelHeaders(code, 'admin'),
+          cookie: `__Host-session-admin-${code}=${issued.token}`,
+        });
+      expect(answer.status).toBe(401);
+      expect(answer.body).toEqual({ statusCode: 401, code: 'access.unauthenticated' });
+    });
+
     it('lists the active topics of the Market by slug, without archived ones or other Markets', async () => {
       await boot();
       await seeded(code);

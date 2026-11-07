@@ -51,6 +51,8 @@ ALTER TABLE "catalog"."product_revisions"
     'platform-categories', 'tax-category', 'name', 'primary-image', 'image-added-or-replaced',
     'variant-removed', 'gtin-changed', 'topics-changed', 'never-published', 'approval-required']::text[])
   NOT VALID;
+-- NOT VALID + VALIDATE only keeps the house pattern: the DROP above already holds the table's
+-- ACCESS EXCLUSIVE lock until commit, and the widened list cannot fail on existing rows.
 ALTER TABLE "catalog"."product_revisions" VALIDATE CONSTRAINT "product_revisions_sensitive_reasons_check";
 
 -- Grants (database-designer): a revision's topics are written once and read.

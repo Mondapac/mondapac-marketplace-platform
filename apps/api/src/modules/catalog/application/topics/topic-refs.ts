@@ -35,7 +35,9 @@ export function refOf(brief: TopicBrief, defaultLocale: string): TopicRef {
 export function draftTopicIds(content: Readonly<Record<string, unknown>> | undefined): string[] {
   const raw = content?.['topicIds'];
   if (!Array.isArray(raw)) return [];
-  return raw.filter((item): item is string => typeof item === 'string' && UUID.test(item));
+  return raw
+    .filter((item): item is string => typeof item === 'string' && UUID.test(item))
+    .map((item) => item.toLowerCase());
 }
 
 /**

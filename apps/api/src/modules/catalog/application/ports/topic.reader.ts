@@ -30,7 +30,7 @@ export interface TopicReader {
   list(market: MarketContext, query: TopicListQuery): Promise<TopicListPage>;
   /**
    * The topics of this Market among `ids` (any status). An id that is unknown or belongs to another
-   * Market is absent from the answer. At most 50 ids; the caller passes valid UUIDs.
+   * Market is absent from the answer. At most 50 ids (more throws, which is a 500): callers cap the list; they pass valid UUIDs.
    */
   briefsOf(market: MarketContext, ids: readonly string[]): Promise<readonly TopicBrief[]>;
 }

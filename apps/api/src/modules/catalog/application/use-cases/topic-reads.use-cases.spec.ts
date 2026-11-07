@@ -345,7 +345,8 @@ describe.each(['AU', 'ZZ'] as const)('topic reads in market %s', (code) => {
       });
       expect(result.value.workingCopy?.content['topicIds']).toEqual([T(2), T(1)]);
       expect(result.value.published?.content.topicIds).toEqual([T(1)]);
-      expect(result.value.sensitiveFields).toContain('topics');
+      // Listed only once the seller panel can name it (PR 4).
+      expect(result.value.sensitiveFields).not.toContain('topics');
     });
 
     it('reads a draft without topicIds, and a malformed one, as none', async () => {

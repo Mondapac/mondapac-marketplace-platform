@@ -7,6 +7,7 @@ import type { ProductStatus, VariantState } from '../../domain/product';
 import type { SensitiveReason } from '../../domain/product-revision-policy';
 import type { RevisionContent } from '../../domain/revision-content';
 import type { StoredRevision } from '../../domain/stored-revision';
+import { MAX_TOPICS_PER_PRODUCT } from '../../domain/topic';
 import type { OwnCatalogReader, ProductForm } from '../ports/own-catalog.reader';
 import type { AttributeDefinitionStore } from '../ports/attribute-definition.store';
 import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
@@ -236,10 +237,11 @@ export class OwnProductRead extends UseCase<
         const topicRefs = await topicRefsOf(
           deps.topicReader,
           market,
+          // Published and pending first, so an oversized draft cannot crowd their names out.
           [
-            ...draftTopicIds(copy?.content),
             ...(publishedRevision?.content.topicIds ?? []),
             ...(pendingRevision?.content.topicIds ?? []),
+            ...draftTopicIds(copy?.content).slice(0, MAX_TOPICS_PER_PRODUCT),
           ],
           deps.policy.locales(market).default,
         );
@@ -337,8 +339,9 @@ export function sensitiveFieldsOf(
   if (policy.primaryImage) fields.push('primary-image');
   if (policy.variantRemoved) fields.push('variant-removed');
   if (policy.gtinChanged) fields.push('gtin-changed');
-  // A change of the topic set is always reviewed, whatever the Market says (tags decision 3).
-  fields.push('topics');
+  // A change of the topic set is always reviewed (tags decision 3). `topics` joins this list in
+  // PR 4, together with the seller panel's message for it; listing it before that would show a
+  // raw message key in the seller's edit form.
   fields.push('images');
   return fields;
 }
