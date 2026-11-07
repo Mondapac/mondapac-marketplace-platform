@@ -2792,6 +2792,28 @@
           "unavailable": "Images are unavailable right now. Try again in a moment.",
           "unknown": "Something went wrong with the image. Try again."
         }
+      },
+      "grid": {
+        "step-axes": "1. What does this product come in?",
+        "axes-help": "Choose one or two options that vary, such as size or colour.",
+        "axes-locked": "This product is published, so what it varies on is locked. You can still tick and untick combinations.",
+        "no-axes": "This product's feature set has no option that can vary. Ask us to add one.",
+        "step-options": "2. Which options do you sell?",
+        "step-grid": "3. Tick the combinations you sell",
+        "empty": "Choose the options above, then tick the combinations here.",
+        "sold": "Sold",
+        "caption": "Variants sold: tick each combination you sell",
+        "locked-no-axes": "{count, plural, one {This published product has 1 variant that was set up before axes existed.} other {This published product has # variants that were set up before axes existed.}} They cannot be edited here.",
+        "near-limit": "You are close to the limit of {max} variants.",
+        "at-limit": "You have reached the limit of {max} variants. Untick a combination to add another.",
+        "keep": "Keep it",
+        "axes-dialog": "Change what the product varies on?",
+        "axes-body": "Your ticked combinations are cleared and you start the grid again. Combinations that were never saved are deleted.",
+        "axes-confirm": "Clear and change",
+        "remove-dialog": "Remove this variant?",
+        "remove-body": "{count, plural, one {This variant may have prices and stock. Removing it ends them. Adding it again later starts from empty.} other {These variants may have prices and stock. Removing them ends them. Adding them again later starts from empty.}}",
+        "remove-confirm": "Remove",
+        "step-labels": "4. Name each variant (optional)"
       }
     },
     "queue": {

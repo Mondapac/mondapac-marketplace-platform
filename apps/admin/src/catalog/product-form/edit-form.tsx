@@ -46,6 +46,7 @@ import {
   StatusBadge,
   StatusCard,
 } from './side-cards.tsx';
+import { axesOf } from './variant-grid.ts';
 import { VariantsSection } from './variants-section.tsx';
 import {
   BASE,
@@ -241,6 +242,7 @@ function EditForm({
     attributeInputsOf(content, attributeFields),
   );
   const [rows, setRows] = useState<VariantRow[]>(() => variantRowsOf(content, product.variants));
+  const [axes, setAxes] = useState<string[]>(() => axesOf(content, rows, form.fields));
   // A photo deleted while the draft still named it (the draft was not saved after) is dropped
   // here, and the form starts unsaved so the next save or publish writes the shorter list.
   const [imageIds, setImageIds] = useState<string[]>(() => knownImageIds(content, images));
@@ -322,6 +324,7 @@ function EditForm({
       taxCategoryCode,
       attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
       variants: configurable ? variantsWith(list) : null,
+      variantAxes: configurable ? axes : null,
     });
     if (imageIds.length > 0) next['imageIds'] = [...imageIds];
     else delete next['imageIds'];
@@ -742,12 +745,14 @@ function EditForm({
             configurable={configurable}
             rows={rows}
             fields={form.fields}
+            axes={axes}
             defaultLocale={defaultLocale}
             max={product.maxVariants}
             published={published}
             refused={refused}
             onChange={(next) => {
-              setRows(next);
+              setRows(next.rows);
+              setAxes(next.axes);
               clearRefused((item) => rows.some((row) => row.variantId === item.ref));
               edited();
             }}
