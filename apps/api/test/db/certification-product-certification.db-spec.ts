@@ -17,6 +17,8 @@ import { ProductCertificateReject } from '../../src/modules/certification/applic
 import { ProductCertificateReviewRead } from '../../src/modules/certification/application/use-cases/product-certificate-review-read.use-case';
 import { ProductCertificateSaveDraft } from '../../src/modules/certification/application/use-cases/product-certificate-save-draft.use-case';
 import { ProductCertificateSubmit } from '../../src/modules/certification/application/use-cases/product-certificate-submit.use-case';
+import { ProductCertificateFormOptions } from '../../src/modules/certification/application/use-cases/product-certificate-form-options.use-case';
+import { ProductCertificatesForProduct } from '../../src/modules/certification/application/use-cases/product-certificates-for-product.use-case';
 import { ProductCertificatesList } from '../../src/modules/certification/application/use-cases/product-certificates-list.use-case';
 import type {
   CertificationTypeCode,
@@ -26,6 +28,7 @@ import { CERTIFICATION_AUDIT_ACTIONS } from '../../src/modules/certification/dom
 import { CERTIFICATION_EVENTS } from '../../src/modules/certification/domain/events';
 import { PrismaCertificationRegistryRepository } from '../../src/modules/certification/infrastructure/prisma-certification-registry.repository';
 import { PrismaClaimFactsReader } from '../../src/modules/certification/infrastructure/prisma-claim-facts.reader';
+import { PrismaCertificateTypeCatalog } from '../../src/modules/certification/infrastructure/prisma-certificate-type-catalog';
 import { PrismaProductCertificationRepository } from '../../src/modules/certification/infrastructure/prisma-product-certification.repository';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
@@ -875,5 +878,151 @@ describe.each(TEST_MARKETS)('manufacturer certificates in market %s (database)',
         );
       expect([table, ownerDelete]).toEqual([table, '23001']);
     }
+  });
+  describe('the product lookup and the form options', () => {
+    const forProduct = () =>
+      new ProductCertificatesForProduct(gate, {
+        unitOfWork: deps.unitOfWork,
+        products: deps.products,
+        marketLocales: (m: MarketContext) => markets.get(m.marketId).supportedLocales,
+      });
+    const locales = markets.get(market.marketId).supportedLocales;
+    const missingLocales = locales.filter((locale) => locale !== 'en');
+
+    it('finds a pending revision by its product only: issuer, expiry, whole coverage, the English type name, no number', async () => {
+      const p = product();
+      const { type, issuerId, created, sent } = await submitted([p]);
+      const found = await unwrap(forProduct().execute(admin(), { productId: p.productId }));
+      expect(found.items).toEqual([
+        {
+          id: created.certificateId,
+          typeId: type.typeId,
+          typeCode: type.code,
+          typeName: 'Manufacturer type',
+          typeNamesMissing: missingLocales,
+          status: 'in-review',
+          issuerName: `Issuer ${issuerId}`,
+          expiryDate: '2027-06-30',
+          coverage: { whole: true, variantIds: [] },
+          rejectionReasonCode: null,
+          lastChangedAt: expect.any(String) as string,
+          version: sent.version,
+        },
+      ]);
+      expect(JSON.stringify(found)).not.toMatch(/MFR-12345|ciphertext|v1\./);
+      const unrelated = await unwrap(forProduct().execute(admin(), { productId: uuid7() }));
+      expect(unrelated.items).toEqual([]);
+    });
+
+    it('finds a draft that names only some variants, and the approved revision after approval; the other Market sees none', async () => {
+      const u = useCases();
+      const p = product(2);
+      const type = await seedType();
+      const issuerId = await seedIssuer(type.typeId);
+      const editor = admin();
+      const created = await unwrap(u.create.execute(admin(), { typeId: type.typeId }));
+      const saved = await unwrap(
+        u.save.execute(editor, {
+          certificateId: created.certificateId,
+          version: created.version,
+          draft: draftOf(issuerId, [{ productId: p.productId, variantIds: [p.variantIds[1]!] }]),
+        }),
+      );
+      const asDraft = await unwrap(forProduct().execute(admin(), { productId: p.productId }));
+      expect(asDraft.items).toMatchObject([
+        {
+          id: created.certificateId,
+          status: 'draft',
+          issuerName: `Issuer ${issuerId}`,
+          expiryDate: '2027-06-30',
+          coverage: { whole: false, variantIds: [p.variantIds[1]] },
+        },
+      ]);
+
+      const sent = await unwrap(
+        u.submit.execute(editor, { certificateId: created.certificateId, version: saved.version }),
+      );
+      await unwrap(
+        u.approve.execute(admin(), {
+          certificateId: created.certificateId,
+          revisionId: sent.revisionId,
+          version: sent.version,
+        }),
+      );
+      const approved = await unwrap(forProduct().execute(admin(), { productId: p.productId }));
+      expect(approved.items).toMatchObject([
+        {
+          id: created.certificateId,
+          status: 'approved',
+          coverage: { whole: false, variantIds: [p.variantIds[1]] },
+          rejectionReasonCode: null,
+        },
+      ]);
+
+      const otherAdmin = testCallContext(
+        other,
+        testAuthenticatedActor(other, {
+          population: 'admin',
+          accountId: uuid7() as Id<'Account'>,
+          sessionId: uuid7() as Id<'Session'>,
+          sellerId: null,
+        }),
+      );
+      const seenByOther = await unwrap(
+        forProduct().execute(otherAdmin, { productId: p.productId }),
+      );
+      expect(seenByOther.items).toEqual([]);
+    });
+
+    it('shows the rejection reason code of a rejected first revision', async () => {
+      const p = product();
+      const { u, created, sent } = await submitted([p]);
+      await unwrap(
+        u.reject.execute(admin(), {
+          certificateId: created.certificateId,
+          revisionId: sent.revisionId,
+          version: sent.version,
+          reasonCode: 'not-genuine',
+        }),
+      );
+      const found = await unwrap(forProduct().execute(admin(), { productId: p.productId }));
+      expect(found.items).toMatchObject([
+        { id: created.certificateId, status: 'rejected', rejectionReasonCode: 'not-genuine' },
+      ]);
+    });
+
+    it('answers newest first and at most 100', async () => {
+      const p = product();
+      const first = await submitted([p]);
+      const second = await submitted([p]);
+      const found = await unwrap(forProduct().execute(admin(), { productId: p.productId }));
+      expect(found.items.map((item) => item.id)).toEqual([
+        second.created.certificateId,
+        first.created.certificateId,
+      ]);
+      expect(found.items.length).toBeLessThanOrEqual(100);
+    });
+
+    it('lists the active third-party types with their active issuers', async () => {
+      const type = await seedType();
+      const active = await seedIssuer(type.typeId);
+      await seedIssuer(type.typeId, 'derecognised');
+      const options = await unwrap(
+        new ProductCertificateFormOptions(gate, {
+          unitOfWork: deps.unitOfWork,
+          types: new PrismaCertificateTypeCatalog(persistence.service),
+        }).execute(admin(), {}),
+      );
+      const mine = options.types.find((t) => t.typeId === type.typeId);
+      expect(mine).toEqual({
+        typeId: type.typeId,
+        code: type.code,
+        name: 'Manufacturer type',
+        requiresDocument: false,
+        requiresExpiry: true,
+        requiresIssuerRegistry: true,
+        issuers: [{ issuerId: active, displayName: `Issuer ${active}` }],
+      });
+    });
   });
 });
