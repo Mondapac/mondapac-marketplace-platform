@@ -797,7 +797,7 @@ describe('the Active switch', () => {
     expect(screen.getByText('Inactive')).toBeTruthy();
   });
 
-  it('turns it on again without a dialog, from the switch or from the banner', async () => {
+  it('turns it on again from the banner without a dialog', async () => {
     call.mockResolvedValueOnce(ok(live({ pausedAt: '2026-10-31T20:00:00.000Z' })));
     mountEdit(true);
     // Brisbane is UTC+10: 31 Oct 20:00 UTC is already 1 Nov there.
@@ -824,17 +824,58 @@ describe('the Active switch', () => {
     expect(screen.getByRole('switch', { name: 'Active' }).getAttribute('aria-checked')).toBe(
       'true',
     );
-    // And off then on through the switch itself: on needs no dialog.
-    call.mockResolvedValueOnce(
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+
+  it('turns it on again from the switch without a dialog, and disables the controls while it runs', async () => {
+    call.mockResolvedValueOnce(ok(live({ pausedAt: '2026-10-31T20:00:00.000Z' })));
+    mountEdit(true);
+    const toggle = await screen.findByRole<HTMLButtonElement>('switch', { name: 'Inactive' });
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    expect(toggle.disabled).toBe(false);
+    let finish: (value: Awaited<ReturnType<typeof callApi>>) => void = () => undefined;
+    call.mockReturnValueOnce(
+      new Promise<Awaited<ReturnType<typeof callApi>>>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    fireEvent.click(toggle);
+    // In flight: no dialog, and neither the switch nor the banner button can be pressed again.
+    await waitFor(() => expect(toggle.disabled).toBe(true));
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Turn on' }).disabled).toBe(true);
+    expect(screen.queryByText('Turn off Sella rice?')).toBeNull();
+    finish(
       ok({
         counts: { done: 1, skipped: 0, failed: 0 },
         results: [{ productId: ID, outcome: 'done' }],
       }),
     );
-    fireEvent.click(screen.getByRole('switch', { name: 'Active' }));
-    await screen.findByText('Turn off Sella rice?');
-    fireEvent.click(inDialog('Turn off Sella rice?', 'Cancel'));
+    await waitFor(() => expectToast('Product turned on.'));
+    expect(call.mock.calls[1]).toEqual([
+      'POST',
+      'catalog/admin/products/bulk',
+      { action: 'resume', productIds: [ID] },
+      'csrf-1',
+    ]);
+    expect(screen.queryByText('This product is inactive')).toBeNull();
+    const active = screen.getByRole<HTMLButtonElement>('switch', { name: 'Active' });
+    expect(active.getAttribute('aria-checked')).toBe('true');
+    expect(active.disabled).toBe(false);
     expect(call).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the inactive banner without a Turn on button or a switch when the admin cannot pause', async () => {
+    call.mockResolvedValueOnce(ok(live({ pausedAt: '2026-10-31T20:00:00.000Z' })));
+    mountEdit(false);
+    expect(await screen.findByText('This product is inactive')).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Buyers can't find it and all 7 offers are off sale. Sellers keep their offers.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Turn on' })).toBeNull();
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(call).toHaveBeenCalledTimes(1);
   });
 
   it('says so and offers a fresh read when the pause was skipped or failed', async () => {

@@ -606,9 +606,11 @@ function EditForm({
           {inactive ? (
             <Banner tone="attention" title={t('active.banner-title')}>
               <p>{t('active.banner-body', { count: product.offers.offerCount })}</p>
-              <Button variant="link" disabled={pending} onClick={() => void setActive(true)}>
-                {t('active.turn-on')}
-              </Button>
+              {canPause ? (
+                <Button variant="link" disabled={pending} onClick={() => void setActive(true)}>
+                  {t('active.turn-on')}
+                </Button>
+              ) : null}
             </Banner>
           ) : null}
           <Card title={t('title-card')}>
