@@ -36,7 +36,7 @@ export function VariantFileTools({
   const [refusal, setRefusal] = useState<FileRefusal | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [confirmed, setConfirmed] = useState<ReadonlySet<string>>(new Set());
-  const canImport = model.canEditPrice || model.canEditStock;
+  const canImport = model.canEditPrice || model.canEditStock || model.canEditSellUnits;
 
   function download() {
     const blob = new Blob([exportVariantFile(model)], { type: 'text/csv;charset=utf-8' });
@@ -79,6 +79,10 @@ export function VariantFileTools({
     [];
   const nameOf = (sourceId: string | undefined) =>
     model.sources.find((source) => source.id === sourceId)?.name ?? '';
+  const shown = (change: CellChange, value: string) =>
+    change.kind === 'selling'
+      ? t(`preview.selling-value.${value === 'yes' ? 'yes' : 'no'}`)
+      : value;
   const where = (column?: string) => (column === undefined ? '' : column);
 
   return (
@@ -168,11 +172,18 @@ export function VariantFileTools({
                         <td className="p-2">
                           {change.kind === 'price'
                             ? t('preview.price')
-                            : t('preview.stock', { location: nameOf(change.sourceId) })}
+                            : change.kind === 'sku'
+                              ? t('preview.sku')
+                              : change.kind === 'selling'
+                                ? t('preview.selling')
+                                : t('preview.stock', { location: nameOf(change.sourceId) })}
                         </td>
                         <td className="p-2">
                           <span>
-                            {t('preview.from-to', { from: change.from || '-', to: change.to })}
+                            {t('preview.from-to', {
+                              from: shown(change, change.from) || '-',
+                              to: shown(change, change.to),
+                            })}
                           </span>
                           {change.code === undefined ? null : (
                             <CheckboxRow

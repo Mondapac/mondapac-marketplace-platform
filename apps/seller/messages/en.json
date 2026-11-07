@@ -1265,6 +1265,23 @@
       "partial": "Saved {done}, {failed} could not be saved. The cells that failed show why.",
       "throttled": "Too many changes at once. Saved {done}; the rest are kept as drafts. Press Save again in {minutes, plural, one {# minute} other {# minutes}}.",
       "throttled-cell": "Not saved yet: too many changes at once. Try again shortly.",
+      "sell-units": {
+        "sku": "Variant SKU",
+        "selling": "Selling",
+        "sku-for": "SKU for {variant}",
+        "selling-for": "{variant} is on sale",
+        "error": {
+          "invalid": "Use 1 to 64 letters, digits or symbols, with no spaces.",
+          "sku-taken": "That SKU is already used by another variant or offer of yours. Nothing in this group was saved.",
+          "none-selling": "At least one variant must stay on sale. The on-sale changes were not saved.",
+          "stale": "This offer changed meanwhile. Reload the page and try again.",
+          "not-found": "This offer no longer exists.",
+          "denied": "Your role can’t change variant SKUs or the on-sale switch.",
+          "not-eligible": "Your account can’t change offers right now.",
+          "csrf": "Your session expired. Reload the page and try again.",
+          "unknown": "The SKU and on-sale changes could not be saved. Try again."
+        }
+      },
       "file": {
         "export": "Export CSV",
         "import": "Import CSV",
@@ -1289,6 +1306,7 @@
           "import-option-unknown": "The option in {column} is not one of this product’s options. Options are never added from a file.",
           "import-duplicate-row": "Another row in the file is for the same variant. Both were skipped.",
           "import-invalid-value": "The value in {column} is not valid.",
+          "import-none-selling": "At least one variant must stay on sale, so the on-sale changes in the file were skipped.",
           "import-read-only-column": "{column} is for information only and was not changed."
         },
         "preview": {
@@ -1300,6 +1318,9 @@
           "variant": "Variant",
           "cell": "Cell",
           "change": "Now, then file",
+          "sku": "Variant SKU",
+          "selling": "On sale",
+          "selling-value": { "yes": "Yes", "no": "No" },
           "price": "Price",
           "stock": "Stock at {location}",
           "from-to": "{from} to {to}",

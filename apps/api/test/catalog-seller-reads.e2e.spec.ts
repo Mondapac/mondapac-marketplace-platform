@@ -42,6 +42,7 @@ const id = <T extends string>(n: number): Id<T> => {
 const OWNER = id<'Account'>(0xa101);
 const SELLER = id<'Seller'>(0xb020);
 const PRODUCT = id<'Product'>(0xc001);
+const VARIANT = id<'Variant'>(0xc101);
 
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
@@ -100,7 +101,8 @@ describe('seller read routes over HTTP (integration)', () => {
             },
             findWorkingCopies: () => Promise.resolve([]),
             productLabels: () => Promise.resolve([]),
-            sellUnitsOf: () => Promise.resolve([]),
+            sellUnitsOf: () =>
+              Promise.resolve([{ variantId: VARIANT, variantSku: 'SKU-1-A', selling: false }]),
             offerStatusCounts: () =>
               Promise.resolve({ draft: 0, pendingFirstPublish: 0, changesNeeded: 0, published: 0 }),
             pendingReviewCount: () => Promise.resolve(0),
@@ -435,7 +437,11 @@ describe('seller read routes over HTTP (integration)', () => {
       });
       const one = await get(code, `/catalog/seller/offers/${offer.state.id}`, session);
       expect(one.status).toBe(200);
-      expect(one.body).toMatchObject({ offerId: offer.state.id, description: { en: 'mine' } });
+      expect(one.body).toMatchObject({
+        offerId: offer.state.id,
+        description: { en: 'mine' },
+        sellUnits: [{ variantId: VARIANT, variantSku: 'SKU-1-A', selling: false }],
+      });
 
       offer = offerOf(code, id<'Seller'>(0xb999));
       const other = await get(code, `/catalog/seller/offers/${offer.state.id}`, session);

@@ -43,6 +43,8 @@ const price = (id: string, amount: string): VariantPrice => ({
 const row = (id: string, label: string, amount: string, onHand: number): TableRow => ({
   variantId: id,
   label,
+  variantSku: '',
+  selling: true,
   price: price(id, amount),
   stock: { s1: { variantId: id, sourceId: 's1', onHand, held: 0, version: 5, retired: false } },
 });
@@ -66,6 +68,8 @@ const MODEL: FileModel = {
       state: 'published',
       options: { size: 'sm' },
       gtin: '',
+      variantSku: '',
+      selling: true,
       price: '1000',
       stock: { s1: { onHand: 4 } },
     },
@@ -75,6 +79,8 @@ const MODEL: FileModel = {
       state: 'published',
       options: { size: 'lg' },
       gtin: '',
+      variantSku: '',
+      selling: true,
       price: '2000',
       stock: { s1: { onHand: 9 } },
     },
@@ -84,6 +90,7 @@ const MODEL: FileModel = {
   showStock: true,
   canEditPrice: true,
   canEditStock: true,
+  canEditSellUnits: true,
   maxRows: 20,
 };
 
@@ -274,7 +281,7 @@ describe('the variant file in the Variants tab', () => {
   });
 
   it('offers no import without a key to change price or stock, and no file tools without a model', () => {
-    mount({ ...MODEL, canEditPrice: false, canEditStock: false });
+    mount({ ...MODEL, canEditPrice: false, canEditStock: false, canEditSellUnits: false });
     expect(screen.getByRole('button', { name: 'Export CSV' })).toBeTruthy();
     expect(screen.queryByText('Import CSV')).toBeNull();
     cleanup();

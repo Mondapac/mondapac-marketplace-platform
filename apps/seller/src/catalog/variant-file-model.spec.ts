@@ -36,6 +36,8 @@ const rows: TableRow[] = [
   {
     variantId: 'v1',
     label: 'One',
+    variantSku: '',
+    selling: true,
     price: { inForce: { amount: '1500' } } as TableRow['price'],
     stock: {
       s1: { variantId: 'v1', sourceId: 's1', onHand: 3, held: 1, version: 2, retired: false },
@@ -56,6 +58,7 @@ describe('fileModelOf', () => {
       locale,
       canEditPrice: true,
       canEditStock: false,
+      canEditSellUnits: false,
     });
     expect(model).toMatchObject({
       productCode: 'ZZ-000007',
@@ -65,6 +68,7 @@ describe('fileModelOf', () => {
       showStock: true,
       canEditPrice: true,
       canEditStock: false,
+      canEditSellUnits: false,
       sources: [{ id: 's1', name: 'Shop' }],
     });
     expect(model.axes).toEqual([
@@ -93,12 +97,14 @@ describe('fileModelOf', () => {
       locale: 'en-AU',
       canEditPrice: true,
       canEditStock: true,
+      canEditSellUnits: false,
     });
     expect(model).toMatchObject({
       showPrice: false,
       showStock: false,
       canEditPrice: false,
       canEditStock: false,
+      canEditSellUnits: false,
     });
   });
 });

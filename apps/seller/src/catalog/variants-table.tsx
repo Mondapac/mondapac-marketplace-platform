@@ -21,6 +21,7 @@ import {
   type TableRow,
 } from './variants-table-logic.ts';
 import { inputOf } from '../price/money.ts';
+import { sellUnitProblemOf } from './sell-unit-errors.ts';
 import { VariantFileTools } from './variant-file-tools.tsx';
 import type { CellChange, FileModel } from './variant-file.ts';
 
@@ -41,6 +42,8 @@ export function VariantsTable({
   canEditStock,
   csrfToken,
   fileModel = null,
+  showSellUnits = false,
+  canEditSellUnits = false,
 }: {
   readonly offerId: string;
   readonly rows: readonly TableRow[];
@@ -52,6 +55,9 @@ export function VariantsTable({
   readonly csrfToken: string;
   /** The variant file (design 14b); null when the seller may not read the product. */
   readonly fileModel?: FileModel | null;
+  /** The SKU and selling columns of the V5 sell units. */
+  readonly showSellUnits?: boolean;
+  readonly canEditSellUnits?: boolean;
 }) {
   const t = useTranslations();
   const showPrice = marketCurrency !== null;
@@ -63,6 +69,8 @@ export function VariantsTable({
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({});
+  const [skuDrafts, setSkuDrafts] = useState<Record<string, string>>({});
+  const [sellingDrafts, setSellingDrafts] = useState<Record<string, boolean>>({});
   const [versions, setVersions] = useState<Record<string, number | null>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [bulk, setBulk] = useState<Bulk | null>(null);
@@ -75,8 +83,20 @@ export function VariantsTable({
   const priceText = (row: TableRow) => priceDrafts[row.variantId] ?? savedPriceText(row, currency);
   const stockText = (row: TableRow, sourceId: string) =>
     stockDrafts[stockKey(row.variantId, sourceId)] ?? savedStockText(row, sourceId);
-  const { writes } = writesOf(rows, sources, currency, priceDrafts, stockDrafts);
+  const sellUnitsEditable = showSellUnits && canEditSellUnits;
+  const { writes } = writesOf(
+    rows,
+    sources,
+    currency,
+    priceDrafts,
+    stockDrafts,
+    skuDrafts,
+    sellingDrafts,
+  );
   const canBulk = canEditPrice || canEditStock;
+  const canSave = canBulk || sellUnitsEditable;
+  const skuText = (row: TableRow) => skuDrafts[row.variantId] ?? row.variantSku;
+  const sellingOf = (row: TableRow) => sellingDrafts[row.variantId] ?? row.selling;
 
   function toggle(variantId: string, on: boolean) {
     const next = new Set(selected);
@@ -89,13 +109,19 @@ export function VariantsTable({
   function applyFile(changes: readonly CellChange[]) {
     const prices = { ...priceDrafts };
     const stocks = { ...stockDrafts };
+    const skus = { ...skuDrafts };
+    const sellings = { ...sellingDrafts };
     for (const change of changes) {
       if (change.kind === 'price') prices[change.variantId] = change.to;
+      else if (change.kind === 'sku') skus[change.variantId] = change.to;
+      else if (change.kind === 'selling') sellings[change.variantId] = change.to === 'yes';
       else if (change.sourceId !== undefined)
         stocks[stockKey(change.variantId, change.sourceId)] = change.to;
     }
     setPriceDrafts(prices);
     setStockDrafts(stocks);
+    setSkuDrafts(skus);
+    setSellingDrafts(sellings);
     setErrors({});
   }
 
@@ -126,17 +152,31 @@ export function VariantsTable({
 
   async function save() {
     if (saving) return;
-    const plan = writesOf(rows, sources, currency, priceDrafts, stockDrafts);
+    const plan = writesOf(
+      rows,
+      sources,
+      currency,
+      priceDrafts,
+      stockDrafts,
+      skuDrafts,
+      sellingDrafts,
+    );
     const found: Record<string, string> = {};
     for (const item of plan.invalid) {
-      found[item.key] =
-        item.kind === 'price' ? t('price.error.invalid') : t('stock.levels.error.invalid');
+      found[item.kind === 'sku' ? `sku:${item.key}` : item.key] =
+        item.kind === 'price'
+          ? t('price.error.invalid')
+          : item.kind === 'sku'
+            ? t('catalog.variants-table.sell-units.error.invalid')
+            : t('stock.levels.error.invalid');
     }
     setErrors(found);
     if (plan.writes.length === 0) return;
     setSaving(true);
     const priceLeft = { ...priceDrafts };
     const stockLeft = { ...stockDrafts };
+    const skuLeft = { ...skuDrafts };
+    const sellingLeft = { ...sellingDrafts };
     const seen = { ...versions };
     let done = 0;
     let stopped = false;
@@ -144,6 +184,7 @@ export function VariantsTable({
     for (const write of plan.writes) {
       const row = rows.find((item) => item.variantId === write.variantId);
       if (row === undefined) continue;
+      if (write.kind === 'sellUnit') continue;
       if (write.kind === 'price') {
         const key = `price:${write.variantId}`;
         const expectedVersion =
@@ -206,11 +247,47 @@ export function VariantsTable({
         done += 1;
       }
     }
+    // The sell units go last, in one call (the route is atomic: a refused SKU keeps all drafts).
+    const unitWrites = stopped ? [] : plan.writes.filter((write) => write.kind === 'sellUnit');
+    if (unitWrites.length > 0) {
+      const result = await callApi<{ changedVariantIds: string[] }>(
+        'PUT',
+        `catalog/seller/offers/${offerId}/sell-units`,
+        {
+          units: unitWrites.map((write) => ({
+            variantId: write.variantId,
+            ...(write.variantSku === undefined ? {} : { variantSku: write.variantSku }),
+            ...(write.selling === undefined ? {} : { selling: write.selling }),
+          })),
+        },
+        csrfToken,
+      );
+      if (result.ok) {
+        for (const write of unitWrites) {
+          delete skuLeft[write.variantId];
+          delete sellingLeft[write.variantId];
+        }
+        done += unitWrites.length;
+      } else if (result.failure.status === 401) {
+        window.location.assign('/session-ended');
+        return;
+      } else if (result.failure.code === 'request.throttled') {
+        waitSeconds = result.failure.details?.retryAfterSeconds ?? 60;
+        found['sell-units'] = t('catalog.variants-table.throttled-cell');
+      } else {
+        const field = result.failure.details?.fields?.[0]?.path.replace('units.', '');
+        found[field === undefined ? 'sell-units' : `sku:${field}`] = t(
+          `catalog.variants-table.sell-units.error.${sellUnitProblemOf(result.failure.code)}`,
+        );
+      }
+    }
     setSaving(false);
     // After a refresh the server's versions are the truth; keep ours only when nothing refreshes.
     setVersions(done > 0 ? {} : seen);
     setPriceDrafts(priceLeft);
     setStockDrafts(stockLeft);
+    setSkuDrafts(skuLeft);
+    setSellingDrafts(sellingLeft);
     setErrors(found);
     const failed = Object.keys(found).length;
     if (waitSeconds !== null) {
@@ -243,6 +320,11 @@ export function VariantsTable({
           </a>
         </Banner>
       ) : null}
+      {errors['sell-units'] === undefined ? null : (
+        <Banner tone="critical">
+          <p>{errors['sell-units']}</p>
+        </Banner>
+      )}
       {fileModel === null ? null : (
         <VariantFileTools model={fileModel} disabled={saving} onApply={applyFile} />
       )}
@@ -329,6 +411,16 @@ export function VariantsTable({
               <th scope="col" className="p-2 text-start font-medium">
                 {t('catalog.variants-table.variant')}
               </th>
+              {showSellUnits ? (
+                <>
+                  <th scope="col" className="p-2 text-start font-medium">
+                    {t('catalog.variants-table.sell-units.sku')}
+                  </th>
+                  <th scope="col" className="p-2 text-start font-medium">
+                    {t('catalog.variants-table.sell-units.selling')}
+                  </th>
+                </>
+              ) : null}
               {showPrice ? (
                 <>
                   <th scope="col" className="p-2 text-start font-medium">
@@ -371,6 +463,45 @@ export function VariantsTable({
                       <span className="block text-fg-muted">{t('price.retired')}</span>
                     ) : null}
                   </th>
+                  {showSellUnits ? (
+                    <>
+                      <td className="p-2 [&_label]:sr-only">
+                        {sellUnitsEditable && !retired ? (
+                          <TextField
+                            name={`sku-${row.variantId}`}
+                            label={t('catalog.variants-table.sell-units.sku')}
+                            aria-label={t('catalog.variants-table.sell-units.sku-for', {
+                              variant: row.label,
+                            })}
+                            value={skuText(row)}
+                            error={errors[`sku:${row.variantId}`]}
+                            onChange={(event) =>
+                              setSkuDrafts({ ...skuDrafts, [row.variantId]: event.target.value })
+                            }
+                          />
+                        ) : (
+                          <span>{row.variantSku === '' ? '-' : row.variantSku}</span>
+                        )}
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="checkbox"
+                          className="size-4 accent-accent"
+                          aria-label={t('catalog.variants-table.sell-units.selling-for', {
+                            variant: row.label,
+                          })}
+                          disabled={!sellUnitsEditable || retired}
+                          checked={sellingOf(row)}
+                          onChange={(event) =>
+                            setSellingDrafts({
+                              ...sellingDrafts,
+                              [row.variantId]: event.target.checked,
+                            })
+                          }
+                        />
+                      </td>
+                    </>
+                  ) : null}
                   {showPrice ? (
                     <>
                       <td className="p-2 [&_label]:sr-only">
@@ -456,7 +587,7 @@ export function VariantsTable({
           </a>
         </p>
       ) : null}
-      {canBulk ? (
+      {canSave ? (
         <div className="flex flex-wrap items-center gap-3">
           <Button
             loading={saving}
@@ -472,6 +603,8 @@ export function VariantsTable({
               onClick={() => {
                 setPriceDrafts({});
                 setStockDrafts({});
+                setSkuDrafts({});
+                setSellingDrafts({});
                 setErrors({});
               }}
             >

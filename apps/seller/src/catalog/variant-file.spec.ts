@@ -53,6 +53,8 @@ function modelOf(fixture: Fixture, over: Partial<FileModel> = {}): FileModel {
     state: 'published',
     options: { colour, size },
     gtin: n === 1 ? '00012345678905' : '',
+    variantSku: n === 1 ? 'RED-S' : '',
+    selling: true,
     price: fixture.price[0],
     stock: { s1: { onHand: 10 }, s2: { onHand: 4 } },
     ...extra,
@@ -90,13 +92,30 @@ function modelOf(fixture: Fixture, over: Partial<FileModel> = {}): FileModel {
     showStock: true,
     canEditPrice: true,
     canEditStock: true,
+    canEditSellUnits: true,
     maxRows: 100,
     ...over,
   };
 }
 
-/** The exported file with the rows replaced by hand-made ones (header kept). */
+/**
+ * The exported file with the rows replaced by hand-made ones (header kept). The rows are edited
+ * in the layout without `variant_sku` and `selling` (the blank cells for them are put back after
+ * `gtin`), so a row of these tests leaves the sell units alone; `sellUnitFileOf` edits them.
+ */
 function fileOf(model: FileModel, edit: (lines: string[][]) => string[][]): Uint8Array {
+  const [header, ...rows] = exportVariantFile(model)
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .split('\r\n')
+    .map((line) => line.split(','));
+  const legacy = rows.map((cells) => cells.filter((_, index) => index !== 5 && index !== 6));
+  const widened = edit(legacy).map((cells) => [...cells.slice(0, 5), '', '', ...cells.slice(5)]);
+  return bytes(`\uFEFF${[header!, ...widened].map((cells) => cells.join(',')).join('\r\n')}\r\n`);
+}
+
+/** The exported file with the cells of each row edited in the real layout (header kept). */
+function sellUnitFileOf(model: FileModel, edit: (lines: string[][]) => string[][]): Uint8Array {
   const [header, ...rows] = exportVariantFile(model)
     .replace(/^\uFEFF/, '')
     .trim()
@@ -124,7 +143,8 @@ describe.each(FIXTURES)('the variant file in the $name fixture', (fixture) => {
   /** A whole-amount price typed in a file, as the tab shows it in the fixture's currency. */
   const shown = (typed: string) => (fixture.currency === 'AUD' ? `${typed}.00` : typed);
   const model = modelOf(fixture);
-  // Columns: product, variant, colour, size, gtin, price, stock x2, exported x2.
+  // Columns of the exported file: product, variant, colour, size, gtin, sku, selling, price,
+  // stock x2, exported x2. `COL` is the layout `fileOf` edits (without sku and selling).
   const COL = {
     variant: 1,
     colour: 2,
@@ -143,21 +163,24 @@ describe.each(FIXTURES)('the variant file in the $name fixture', (fixture) => {
         .trim()
         .split('\r\n');
       expect(lines[0]).toBe(
-        'product_code,variant_code,option[colour],option[size],gtin,price,stock[s1],stock[s2],stock_exported[s1],stock_exported[s2]',
+        'product_code,variant_code,option[colour],option[size],gtin,variant_sku,selling,price,stock[s1],stock[s2],stock_exported[s1],stock_exported[s2]',
       );
       expect(lines).toHaveLength(3);
       expect(lines[1]).toContain(`P-000001,P-000001-01`);
       expect(lines[1]!.endsWith(',10,4,10,4')).toBe(true);
       expect(lines.join('')).not.toContain('-03');
-      // The variant_sku and selling columns wait for V5 (design 14b).
-      expect(lines[0]).not.toMatch(/variant_sku|selling/);
+      // The sell-unit columns: the first variant has a SKU, both are on sale.
+      expect(lines[1]).toContain(',00012345678905,RED-S,yes,');
+      expect(lines[2]).toContain(',,yes,');
     });
 
     it('leaves out the price and stock columns the seller cannot see', () => {
       const header = exportVariantFile(modelOf(fixture, { showPrice: false, showStock: false }))
         .replace(/^\uFEFF/, '')
         .split('\r\n')[0];
-      expect(header).toBe('product_code,variant_code,option[colour],option[size],gtin');
+      expect(header).toBe(
+        'product_code,variant_code,option[colour],option[size],gtin,variant_sku,selling',
+      );
     });
 
     it('re-imported unchanged gives an empty preview, with no row error or warning', () => {
@@ -323,9 +346,157 @@ describe.each(FIXTURES)('the variant file in the $name fixture', (fixture) => {
   describe('columns', () => {
     it('lists unknown columns and ignores them', () => {
       const data = bytes(
-        'product_code,variant_code,price,color,variant_sku,selling\r\nP-000001,P-000001-01,,x,y,yes\r\n',
+        'product_code,variant_code,price,color,variant_sku,selling\r\nP-000001,P-000001-01,,x,RED-S,yes\r\n',
       );
-      expect(read(data, model).ignoredColumns).toEqual(['color', 'variant_sku', 'selling']);
+      // variant_sku and selling are columns of the file (V5), so only `color` is ignored.
+      expect(read(data, model).ignoredColumns).toEqual(['color']);
+    });
+
+    it('refuses the sell-unit columns without the edit key', () => {
+      expect(
+        refusal(bytes(exportVariantFile(model)), modelOf(fixture, { canEditSellUnits: false })),
+      ).toEqual({ code: 'import.column-not-allowed', columns: ['variant_sku', 'selling'] });
+    });
+  });
+
+  describe('sell units (variant_sku and selling)', () => {
+    // Exported layout: product, variant, colour, size, gtin, sku, selling, price, ...
+    const SKU = 5;
+    const SELLING = 6;
+
+    it('changes a SKU and the selling switch, shown as current value to file value', () => {
+      const preview = read(
+        sellUnitFileOf(model, (rows) => {
+          rows[0]![SKU] = 'RED-SMALL';
+          rows[1]![SKU] = 'BLUE-L';
+          rows[1]![SELLING] = 'no';
+          return rows;
+        }),
+        model,
+      );
+      expect(preview.errors).toEqual([]);
+      expect(preview.changes.map((c) => [c.key, c.kind, c.from, c.to])).toEqual([
+        ['sku:v1', 'sku', 'RED-S', 'RED-SMALL'],
+        ['sku:v2', 'sku', '', 'BLUE-L'],
+        ['selling:v2', 'selling', 'yes', 'no'],
+      ]);
+    });
+
+    it('(c) uses a variant SKU as the key when the variant code is blank', () => {
+      const preview = read(
+        sellUnitFileOf(model, () => [
+          ['P-000001', '', '', '', '', 'RED-S', 'no', '', '', '', '', ''],
+        ]),
+        model,
+      );
+      expect(preview.errors).toEqual([]);
+      expect(preview.changes.map((c) => [c.variantId, c.kind, c.to])).toEqual([
+        ['v1', 'selling', 'no'],
+      ]);
+    });
+
+    it('(b) refuses a row whose SKU is another variant’s own as a key conflict', () => {
+      const withSku = modelOf(fixture, {
+        variants: modelOf(fixture).variants.map((v) =>
+          v.variantId === 'v2' ? { ...v, variantSku: 'BLUE-L' } : v,
+        ),
+      });
+      const preview = read(
+        sellUnitFileOf(withSku, () => [
+          ['P-000001', 'P-000001-01', '', '', '', 'BLUE-L', '', '', '', '', '', ''],
+          [
+            'P-000001',
+            '',
+            fixture.colour[0],
+            fixture.size[0],
+            '',
+            'BLUE-L',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+          ],
+        ]),
+        withSku,
+      );
+      expect(codes(preview)).toEqual(['2:import.key-conflict', '3:import.key-conflict']);
+      expect(preview.changes).toEqual([]);
+    });
+
+    it('a SKU that is nobody’s is a new value for the variant the options name', () => {
+      const preview = read(
+        sellUnitFileOf(model, () => [
+          ['P-000001', '', 'blue', 'lg', '', 'NEW-1', '', '', '', '', '', ''],
+        ]),
+        model,
+      );
+      expect(preview.changes.map((c) => [c.variantId, c.to])).toEqual([['v2', 'NEW-1']]);
+    });
+
+    it.each([['has space'], ['x'.repeat(65)], ['café']])(
+      'refuses the SKU %j as an invalid value',
+      (value) => {
+        const preview = read(
+          sellUnitFileOf(model, () => [
+            ['P-000001', 'P-000001-02', '', '', '', value, '', '', '', '', '', ''],
+          ]),
+          model,
+        );
+        expect(preview.errors).toEqual([
+          { rowNumber: 2, code: 'import.invalid-value', column: 'variant_sku' },
+        ]);
+        expect(preview.changes).toEqual([]);
+      },
+    );
+
+    it('refuses a selling value that is not yes or no, and accepts yes in any case', () => {
+      const preview = read(
+        sellUnitFileOf(model, () => [
+          ['P-000001', 'P-000001-01', '', '', '', '', 'maybe', '', '', '', '', ''],
+          ['P-000001', 'P-000001-02', '', '', '', '', 'NO', '', '', '', '', ''],
+        ]),
+        model,
+      );
+      expect(preview.errors).toEqual([
+        { rowNumber: 2, code: 'import.invalid-value', column: 'selling' },
+      ]);
+      expect(preview.changes.map((c) => [c.variantId, c.to])).toEqual([['v2', 'no']]);
+    });
+
+    it('fails both rows that ask for the same new SKU', () => {
+      const preview = read(
+        sellUnitFileOf(model, () => [
+          ['P-000001', 'P-000001-01', '', '', '', 'SAME', '', '', '', '', '', ''],
+          ['P-000001', 'P-000001-02', '', '', '', 'SAME', '', '', '', '', '', ''],
+        ]),
+        model,
+      );
+      expect(codes(preview)).toEqual(['2:import.duplicate-row', '3:import.duplicate-row']);
+      expect(preview.changes).toEqual([]);
+    });
+
+    it('skips the on-sale changes that would leave no variant selling', () => {
+      const preview = read(
+        sellUnitFileOf(model, () => [
+          ['P-000001', 'P-000001-01', '', '', '', '', 'no', '', '', '', '', ''],
+          ['P-000001', 'P-000001-02', '', '', '', '', 'no', '', '', '', '', ''],
+        ]),
+        model,
+      );
+      expect(codes(preview)).toEqual(['2:import.none-selling', '3:import.none-selling']);
+      expect(preview.changes).toEqual([]);
+    });
+
+    it('leaves a blank SKU or selling cell alone', () => {
+      const preview = read(
+        sellUnitFileOf(model, () => [
+          ['P-000001', 'P-000001-01', '', '', '', '', '', '', '', '', '', ''],
+        ]),
+        model,
+      );
+      expect(preview).toMatchObject({ changes: [], errors: [] });
     });
 
     it.each([

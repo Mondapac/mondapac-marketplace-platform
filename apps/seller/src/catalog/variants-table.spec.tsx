@@ -43,6 +43,8 @@ const price = (
 const row = (id: string, label: string, amount: string | null, onHand: number): TableRow => ({
   variantId: id,
   label,
+  variantSku: '',
+  selling: true,
   price: price(id, amount),
   stock: { s1: { variantId: id, sourceId: 's1', onHand, held: 0, version: 5, retired: false } },
 });
@@ -188,6 +190,62 @@ describe('VariantsTable', () => {
     expect(await screen.findByText(/The price changed somewhere else/)).toBeTruthy();
     expect(priceBox('Large').value).toBe('22');
     await expectToast('Saved 1, 1 could not be saved. The cells that failed show why.', 'info');
+  });
+
+  it('saves the SKU and the selling switch of the changed variants in one call', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: { changedVariantIds: ['v1', 'v2'] } });
+    mount({ showSellUnits: true, canEditSellUnits: true });
+    fireEvent.change(screen.getByLabelText('SKU for Small'), { target: { value: 'SM-1' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Large is on sale' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save 2 changes' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call).toHaveBeenCalledWith(
+      'PUT',
+      'catalog/seller/offers/o1/sell-units',
+      {
+        units: [
+          { variantId: 'v1', variantSku: 'SM-1' },
+          { variantId: 'v2', selling: false },
+        ],
+      },
+      'csrf',
+    );
+    await expectToast('Saved 2 changes.');
+  });
+
+  it('refuses an invalid SKU on its cell without a call, and shows a taken SKU from the server', async () => {
+    mount({ showSellUnits: true, canEditSellUnits: true });
+    fireEvent.change(screen.getByLabelText('SKU for Small'), { target: { value: 'has space' } });
+    // An invalid SKU is no write: the button stays off and nothing is sent.
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      true,
+    );
+    expect(call).not.toHaveBeenCalled();
+    cleanup();
+    call.mockResolvedValue({
+      ok: false,
+      failure: {
+        status: 409,
+        code: 'offer.sku-taken',
+        details: { fields: [{ path: 'units.v1', code: 'taken' }] },
+      },
+    });
+    mount({ showSellUnits: true, canEditSellUnits: true });
+    fireEvent.change(screen.getByLabelText('SKU for Small'), { target: { value: 'TAKEN' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
+    expect(await screen.findByText(/already used by another variant/)).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>('SKU for Small').value).toBe('TAKEN');
+  });
+
+  it('shows the SKU and the switch read only without the edit key', () => {
+    mount({
+      showSellUnits: true,
+      canEditSellUnits: false,
+      rows: [{ ...ROWS[0]!, variantSku: 'SM-1', selling: false }],
+    });
+    expect(screen.getByText('SM-1')).toBeTruthy();
+    const box = screen.getByRole<HTMLInputElement>('checkbox', { name: 'Small is on sale' });
+    expect([box.disabled, box.checked]).toEqual([true, false]);
   });
 
   it('is read only without edit permissions', () => {

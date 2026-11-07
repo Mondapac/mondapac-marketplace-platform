@@ -2,7 +2,12 @@ import 'server-only';
 import { redirect } from 'next/navigation';
 import { axesOf, combinationTitle } from '../catalog/variant-grid.ts';
 import { variantRowsOf } from '../catalog/draft-content.ts';
-import { VIEW_PERMISSION, type OfferView, type ProductView } from '../catalog/types.ts';
+import {
+  EDIT_PERMISSION,
+  VIEW_PERMISSION,
+  type OfferView,
+  type ProductView,
+} from '../catalog/types.ts';
 import type { TableRow } from '../catalog/variants-table-logic.ts';
 import { fileModelOf } from '../catalog/variant-file-model.ts';
 import type { FileModel } from '../catalog/variant-file.ts';
@@ -92,9 +97,12 @@ export async function loadVariantsPage(
       if (title !== '' && row.variantId !== null) names.set(row.variantId, title);
     }
   }
+  const unitOf = new Map((offer.body.sellUnits ?? []).map((unit) => [unit.variantId, unit]));
   const rows: TableRow[] = ids.map((id, index) => ({
     variantId: id,
     label: names.get(id) ?? fallbackName(index + 1),
+    variantSku: unitOf.get(id)?.variantSku ?? '',
+    selling: unitOf.get(id)?.selling ?? true,
     price: priceBody?.variants.find((variant) => variant.variantId === id) ?? null,
     stock: Object.fromEntries(
       (stockBody?.variants.find((variant) => variant.variantId === id)?.sources ?? []).map(
@@ -120,6 +128,7 @@ export async function loadVariantsPage(
             locale,
             canEditPrice: keys.includes(PRICE_EDIT_PERMISSION),
             canEditStock: keys.includes(STOCK_EDIT_PERMISSION),
+            canEditSellUnits: keys.includes(EDIT_PERMISSION),
           })
         : null,
   };

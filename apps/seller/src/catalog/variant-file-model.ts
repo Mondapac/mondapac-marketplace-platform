@@ -21,6 +21,7 @@ export function fileModelOf({
   locale,
   canEditPrice,
   canEditStock,
+  canEditSellUnits,
 }: {
   readonly product: ProductView;
   readonly rows: readonly TableRow[];
@@ -30,6 +31,7 @@ export function fileModelOf({
   readonly locale: string;
   readonly canEditPrice: boolean;
   readonly canEditStock: boolean;
+  readonly canEditSellUnits: boolean;
 }): FileModel {
   const stored = product.published?.content['variants'];
   const entries = Array.isArray(stored) ? stored.filter(isObject) : [];
@@ -70,6 +72,8 @@ export function fileModelOf({
         variant.state === 'retired' || variant.state === 'proposed' ? variant.state : 'published',
       options: optionsOf(variant.variantId),
       gtin: typeof gtin === 'string' ? gtin : '',
+      variantSku: row?.variantSku ?? '',
+      selling: row?.selling ?? true,
       price: row?.price?.inForce?.amount ?? null,
       stock: Object.fromEntries(
         Object.entries(row?.stock ?? {}).flatMap(([sourceId, cell]) =>
@@ -89,6 +93,7 @@ export function fileModelOf({
     showStock: sources.length > 0,
     canEditPrice: canEditPrice && currency !== null,
     canEditStock: canEditStock && sources.length > 0,
+    canEditSellUnits,
     maxRows: product.maxVariants,
   };
 }

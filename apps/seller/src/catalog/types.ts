@@ -142,6 +142,12 @@ export interface OfferView {
   readonly firstPublishedAt: string | null;
   readonly createdAt: string;
   readonly version: number;
+  /** Stored sell-unit rows (V5); a variant with no row sells and has no SKU. Single read only. */
+  readonly sellUnits?: readonly {
+    variantId: string;
+    variantSku: string | null;
+    selling: boolean;
+  }[];
 }
 
 /** `GET catalog/seller/products/options`: what the create form offers. */

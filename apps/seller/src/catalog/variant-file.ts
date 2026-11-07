@@ -243,7 +243,9 @@ export function readVariantFile(bytes: Uint8Array, model: FileModel): ImportResu
   const live = model.variants.filter((variant) => variant.state === 'published');
   const byCode = new Map(model.variants.map((variant) => [variant.variantCode, variant]));
   const bySku = new Map(
-    live.filter((variant) => variant.variantSku !== '').map((variant) => [variant.variantSku, variant]),
+    live
+      .filter((variant) => variant.variantSku !== '')
+      .map((variant) => [variant.variantSku, variant]),
   );
   const byCombination = new Map(
     live.map((variant) => [
@@ -498,7 +500,11 @@ export function readVariantFile(bytes: Uint8Array, model: FileModel): ImportResu
     if (group.length < 2) continue;
     for (const change of group) {
       dropped.add(change.key);
-      errors.push({ rowNumber: change.rowNumber, code: 'import.duplicate-row', column: 'variant_sku' });
+      errors.push({
+        rowNumber: change.rowNumber,
+        code: 'import.duplicate-row',
+        column: 'variant_sku',
+      });
     }
   }
   // A new SKU that is another variant's own today is taken (unless that variant gets another).
@@ -508,9 +514,17 @@ export function readVariantFile(bytes: Uint8Array, model: FileModel): ImportResu
   for (const change of changes) {
     if (change.kind !== 'sku' || dropped.has(change.key)) continue;
     const owner = bySku.get(change.to);
-    if (owner !== undefined && owner.variantId !== change.variantId && !movedAway.has(owner.variantId)) {
+    if (
+      owner !== undefined &&
+      owner.variantId !== change.variantId &&
+      !movedAway.has(owner.variantId)
+    ) {
       dropped.add(change.key);
-      errors.push({ rowNumber: change.rowNumber, code: 'import.key-conflict', column: 'variant_sku' });
+      errors.push({
+        rowNumber: change.rowNumber,
+        code: 'import.key-conflict',
+        column: 'variant_sku',
+      });
     }
   }
   // At least one live variant must keep selling.

@@ -1601,10 +1601,8 @@ M-7), one `option[<attribute code>]` per axis of the product (the option's label
 default locale; a code is accepted on import), `gtin`, `variant_sku`, `selling` (`yes` / `no`),
 `price`, `stock[<source code>]` per stock location of the seller, and for each source
 `stock_exported[<source code>]` (the level when the file was written). `catalog` writes only catalog
-columns; prices stay `pricing`'s and stock `inventory`'s (9). **Prerequisite:** `variant_sku` and
-`selling` need the V5 sell-unit route (`own-offer.set-sell-units`, PR #688) and the 2.1 / 17.1 amendment
-it brings (per-sell-unit SKU, plan t4). Until V5 is merged those two columns are left out of the files
-and the parts below that use them wait; nothing else depends on V5.
+columns; prices stay `pricing`'s and stock `inventory`'s (9). `variant_sku` and `selling` are the V5
+sell-unit columns (`own-offer.set-sell-units`, PR #688, merged; per-sell-unit SKU, plan t4).
 
 | Part | Design |
 |---|---|
@@ -1632,7 +1630,19 @@ the row error `import.invalid-value`; a missing `product_code` column is `import
 in the preview fills the tab's drafts and the tab's own Save writes them (one step-up: the proof of the
 first guarded price write covers the rest; a `request.throttled` answer stops the run and keeps every unsent
 and failed cell as a draft); (5) the own product read now carries `variantCode` on each variant.
-`variant_sku` and `selling` are not written or read: TODO until PR #688 (V5).
+(6) `variant_sku` and `selling` are built (V5 is merged). The export writes both after `gtin` (`selling`
+as `yes` / `no`); the import reads them: a SKU in the file is the key of rule (c) when `variant_code` is
+blank and the SKU is some live variant's own (a SKU that is nobody's is a new value for the variant the
+options name); with `variant_code` a SKU that is another variant's own is `import.key-conflict`. A blank
+`variant_sku` or `selling` cell leaves the value alone (a SKU cannot be cleared from a file). A SKU that
+is not 1 to 64 printable ASCII characters without a space, and a `selling` value other than `yes` / `no`
+(any case), are `import.invalid-value`; two rows asking for the same new SKU both fail with
+`import.duplicate-row`; on-sale changes that would leave no live variant selling are skipped with
+`import.none-selling`. The columns need the key `catalog.own-product.edit` (`import.column-not-allowed`
+without it). Save sends every changed SKU and switch in one `own-offer.set-sell-units` call (the route
+is atomic: a refused SKU, `offer.sku-taken`, keeps every sell-unit draft) after the price and stock
+writes. The seller's own Offer read (`own-offer.read`) now carries `sellUnits` (the stored rows: variant
+id, `variantSku`, `selling`) so the tab and the export show the current values.
 
 **Tests (Done when).** Each matching rule (a) to (e); another Offer's `product_code`; read-only `gtin`
 and options; a variant left out of the file stays untouched (never-retire); a column refused for a
