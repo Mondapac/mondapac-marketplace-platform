@@ -116,8 +116,10 @@ export function Dialog({
             {title}
           </h2>
           <div className="mt-2 text-fg-secondary">{children}</div>
-          {/* Sticky: on a long form the buttons stay in view at the bottom of the dialog. */}
-          <div className="sticky bottom-0 -mx-4 -mb-4 mt-6 border-t border-line bg-surface px-4 py-4 sm:-mx-6 sm:-mb-6 sm:px-6">
+          {/* Sticky: on a long form the buttons stay in view at the bottom of the dialog. The
+              offset equals the dialog's padding: sticky keeps an element inside the scroll
+              container's padding, so bottom-0 would lift the footer over the end of the body. */}
+          <div className="sticky -bottom-4 -mx-4 -mb-4 mt-6 sm:-bottom-6 border-t border-line bg-surface px-4 py-4 sm:-mx-6 sm:-mb-6 sm:px-6">
             <div className="flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
               {actions}
             </div>

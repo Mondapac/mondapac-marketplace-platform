@@ -20,11 +20,16 @@ export function CheckboxRow({ label, help, ...rest }: CheckboxRowProps) {
         id={id}
         type="checkbox"
         aria-describedby={help ? helpId : undefined}
-        className="mt-1 size-4 shrink-0 accent-accent"
+        className="mt-1 size-4 shrink-0 accent-accent max-lg:mt-4"
         {...rest}
       />
-      <div className="flex flex-col">
-        <label htmlFor={id} className="text-sm font-medium text-fg">
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Below 1024 px the label is a full-width target 48 px tall (the panels' phone target
+            size); the box is centred on it. */}
+        <label
+          htmlFor={id}
+          className="text-sm font-medium text-fg max-lg:flex max-lg:min-h-12 max-lg:items-center"
+        >
           {label}
         </label>
         {help ? (
