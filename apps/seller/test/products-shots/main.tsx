@@ -107,14 +107,16 @@ const json = (status: number, body: unknown) =>
     }),
   );
 const savedAnswer = { items: savedFilters, canShare: true, limits: { perOwner: 50, shared: 20 } };
-globalThis.fetch = (input) =>
-  String(input).includes('saved-filters')
+globalThis.fetch = (input: string | URL | Request) =>
+  (typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).includes(
+    'saved-filters',
+  )
     ? json(200, savedAnswer)
     : scenario === 'error'
-    ? json(503, { code: 'access.unavailable' })
-    : scenario === 'loading'
-      ? new Promise<Response>(() => undefined)
-      : json(200, answer());
+      ? json(503, { code: 'access.unavailable' })
+      : scenario === 'loading'
+        ? new Promise<Response>(() => undefined)
+        : json(200, answer());
 
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
