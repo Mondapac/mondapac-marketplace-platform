@@ -100,6 +100,34 @@ export class AdminOrdersController {
     description: 'The `nextCursor` of the previous page.',
   })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 100; default 25.' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description:
+      'Page mode (List paging: page numbers): the page from 1. The answer carries `total`, `page` ' +
+      'and `pageSize` and no cursor. page x pageSize may not pass 10,000 (`too-deep`); narrow the ' +
+      'filter instead. `pageSize`, `sort` and `direction` need `page`.',
+  })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 100; default 25.' })
+  @ApiQuery({ name: 'sort', required: false, enum: ['created', 'total'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'paymentState',
+    required: false,
+    enum: ['none', 'authorised', 'captured', 'voided'],
+  })
+  @ApiQuery({ name: 'fulfilment', required: false, enum: ['to-ship', 'shipped', 'delivered'] })
+  @ApiQuery({
+    name: 'sellerId',
+    required: false,
+    description: 'Orders with a part of this seller.',
+  })
+  @ApiQuery({
+    name: 'from',
+    required: false,
+    description: 'ISO instant: placed at or after it. Page and cursor mode.',
+  })
+  @ApiQuery({ name: 'to', required: false, description: 'ISO instant: placed before it.' })
   @ApiOkResponse({ type: AdminOrderPageBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
@@ -111,6 +139,7 @@ export class AdminOrdersController {
     @Query('q') q: unknown,
     @Query('cursor') cursor: unknown,
     @Query('limit') limit: unknown,
+    @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
@@ -119,6 +148,15 @@ export class AdminOrdersController {
       q,
       cursor,
       limit: parseLimit(limit),
+      page: parseLimit(query['page']),
+      pageSize: parseLimit(query['pageSize']),
+      sort: query['sort'],
+      direction: query['direction'],
+      paymentState: query['paymentState'],
+      fulfilment: query['fulfilment'],
+      sellerId: query['sellerId'],
+      from: query['from'],
+      to: query['to'],
     });
     this.log('ordering.admin-list-orders-route', context, result.ok ? 'listed' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);

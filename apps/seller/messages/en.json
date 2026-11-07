@@ -1414,12 +1414,12 @@
   },
   "orders": {
     "title": "Orders",
+    "loading": "Loading orders…",
     "intro": "Paid orders for your store, newest first. Open an order and mark it ready when it is packed. MondaPac arranges the delivery.",
     "not-found": {
       "title": "Order not found",
       "body": "This order does not exist, or it belongs to another store."
     },
-    "more": "Show more orders",
     "optional": "optional",
     "ref": "#{id}",
     "detail-title": "Order #{id}",
@@ -1523,7 +1523,29 @@
         "unavailable": "Orders are not available right now. Try again shortly.",
         "unknown": "Something went wrong. Try again."
       }
-    }
+    },
+    "filters": {
+      "group": "Filters",
+      "from": "Paid from (UTC)",
+      "to": "Paid until (UTC)",
+      "clear": "Clear dates",
+      "backwards": "The end day is before the start day."
+    },
+    "sort": {
+      "label": "Sort by",
+      "newest": "Newest first",
+      "oldest": "Oldest first",
+      "total-high": "Total, high to low",
+      "total-low": "Total, low to high"
+    },
+    "paging": {
+      "nav": "Pages",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {n}"
+    },
+    "range": "{from} to {to} of {total}",
+    "too-many": "Page numbers stop at the first {limit} orders. Narrow the dates to reach the rest, or ask your platform admin to switch List paging to Previous and next."
   },
   "earnings": {
     "title": "Earnings",

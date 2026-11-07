@@ -140,7 +140,18 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Per GET target, the query keys passed on and, where set, the shape each value must have. */
 const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
-  'ordering/seller/orders': { limit: null, cursor: null },
+  // The page mode and the filters of the orders list (the API validates every value).
+  'ordering/seller/orders': {
+    limit: null,
+    cursor: null,
+    page: null,
+    pageSize: null,
+    sort: null,
+    direction: null,
+    status: null,
+    from: null,
+    to: null,
+  },
   'commission-payouts/seller/ledger': { limit: null, cursor: null },
   // The API's own cursor: epoch milliseconds of the creation, a dot and the payout id.
   'commission-payouts/seller/payouts': {

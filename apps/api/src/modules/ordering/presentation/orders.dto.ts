@@ -409,6 +409,16 @@ export class AdminOrderPageBody {
     description: "The Market's orders per status, whatever the page or filter.",
   })
   counts!: OrderStatusCountsBody;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Page mode only: the orders that match the filter. Null in cursor mode.',
+  })
+  total!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: this page, from 1.' })
+  page!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: rows per page.' })
+  pageSize!: number | null;
 }
 
 type SellerOrderLike = OrderView['sellerOrders'][number];
@@ -502,6 +512,16 @@ export class SellerOrderPageBody {
     description: "The shop's paid orders per fulfilment step, whatever the page or filter.",
   })
   counts!: SellerOrderCountsBody;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Page mode only: how many orders match the filter.',
+  })
+  total!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: this page, from 1.' })
+  page!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: rows per page.' })
+  pageSize!: number | null;
 }
 
 export const sellerOrderDetailBody = (
@@ -545,6 +565,9 @@ export const sellerOrderPageBody = (page: LabelledSellerOrderPageView): SellerOr
   sellerOrders: page.sellerOrders.map(sellerOrderDetailBody),
   nextCursor: page.nextCursor,
   counts: { ...page.counts },
+  total: page.paging?.total ?? null,
+  page: page.paging?.page ?? null,
+  pageSize: page.paging?.pageSize ?? null,
 });
 
 export const orderBody = (order: OrderView): OrderBody => ({
@@ -612,6 +635,9 @@ export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody =>
 export const adminOrderPageBody = (page: AdminOrderPageView): AdminOrderPageBody => ({
   ...pageBody(page, adminOrderBody),
   counts: { ...page.counts },
+  total: page.paging?.total ?? null,
+  page: page.paging?.page ?? null,
+  pageSize: page.paging?.pageSize ?? null,
 });
 
 export const pageBody = <V, B>(
