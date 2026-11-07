@@ -831,9 +831,9 @@ describe.each(TEST_MARKETS)(
           first.imageId,
           second.imageId,
         ]);
-        expect(
-          [...store.objects.keys()].filter((key) => key.includes(first.imageId)),
-        ).toHaveLength(3);
+        expect([...store.objects.keys()].filter((key) => key.includes(first.imageId))).toHaveLength(
+          3,
+        );
 
         await saveDraft(product.state.id, [second.imageId, first.imageId]);
         const submitted = await submit.execute(adminContext(), {

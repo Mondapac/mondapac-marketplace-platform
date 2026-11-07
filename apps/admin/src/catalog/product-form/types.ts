@@ -103,3 +103,11 @@ export function readable(code: string): string {
   const text = code.replace(/[-_]+/g, ' ').trim();
   return text === '' ? code : text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+/** One photo of a platform product's library: `GET catalog/admin/platform-products/:id/images`. */
+export interface ProductImage {
+  readonly imageId: string;
+  readonly width: number;
+  readonly height: number;
+  readonly createdAt: string;
+}

@@ -15,7 +15,6 @@ import type {
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
 import { SaveWorkingCopy } from '../src/modules/catalog/application/working-copy/save-working-copy.service';
 import { Product, type ProductState } from '../src/modules/catalog/domain/product';
-import { PRODUCT_IMAGE_STATUS } from '../src/modules/catalog/presentation/product-image.controller';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';

@@ -3,17 +3,29 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
+import type { callApi } from '../../api/client.ts';
 
-vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
+// The form also reads the photo library of the product (P1 images). That call goes to its own
+// mock, so `call` sees the same calls in the same order as before; the images card has its own
+// spec (images-section.spec.tsx).
+const mocks = vi.hoisted(() => ({
+  call: vi.fn<typeof callApi>(),
+  images: vi.fn<typeof callApi>(),
+}));
+vi.mock('../../api/client.ts', () => ({
+  callApi: ((...args: Parameters<typeof callApi>) =>
+    args[0] === 'GET' && args[1].endsWith('/images')
+      ? mocks.images(...args)
+      : mocks.call(...args)) as typeof callApi,
+}));
 
-import { callApi } from '../../api/client.ts';
 import { expectToast } from '../../../test/toast-spy.ts';
 import { ProductCreateForm } from './create-form.tsx';
 import { contentWithTexts, ProductEdit, textsOf } from './edit-form.tsx';
 import { problemOf } from './errors.ts';
 import type { ProductView } from './types.ts';
 
-const call = vi.mocked(callApi);
+const call = mocks.call;
 const ID = '0190a000-0000-7000-8000-0000000000c1';
 const CATEGORY = '0190a000-0000-7000-8000-0000000000d1';
 const CHILD = '0190a000-0000-7000-8000-0000000000d2';
@@ -97,6 +109,8 @@ const lastBody = (index: number) => call.mock.calls[index]?.[2] as Record<string
 beforeEach(() => {
   vi.clearAllMocks();
   call.mockReset();
+  mocks.images.mockReset();
+  mocks.images.mockResolvedValue({ ok: true, status: 200, body: { images: [] } });
   Object.defineProperty(window, 'location', {
     value: { assign, href: `${document.baseURI.replace(/\/$/, '')}/catalog/products/edit` },
     writable: true,
