@@ -93,7 +93,8 @@ describe.each(TEST_MARKETS)('seller-owner invitations in market %s (database, sl
 
   /**
    * Waits until both closing units wait on the invitation's lock, or until one has waited for
-   * 1.5 s (the second may still be hashing), well inside the role's `lock_timeout` of 3 s.
+   * 1 s (the second may still be hashing), well inside the role's `lock_timeout` of 3 s; the
+   * outcome is checked either way.
    */
   async function untilQueuedOnInvitation(key: string, timeoutMs = 10_000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
@@ -109,7 +110,7 @@ describe.each(TEST_MARKETS)('seller-owner invitations in market %s (database, sl
       const n = rows[0]!.n;
       if (n >= 2) return;
       if (n === 1) firstSeen ??= Date.now();
-      if (firstSeen !== null && Date.now() - firstSeen > 1500) return;
+      if (firstSeen !== null && Date.now() - firstSeen > 1000) return;
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
     throw new Error(`no acceptance waited on the invitation lock within ${timeoutMs} ms`);

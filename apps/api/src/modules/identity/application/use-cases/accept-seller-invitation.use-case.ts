@@ -150,8 +150,8 @@ function acceptableInvitation(
  *    hash (6.5).
  * 3. **Closing unit**, SERIALIZABLE (C11: it writes `accounts`, `seller_memberships` and
  *    `role_assignments`), which first takes the invitation's lock (`identity.lock-invitation`,
- *    Hassan M2) so two acceptances of one invitation never run side by side: the invitation read again and still acceptable; its role read again,
- *    still the seller system role of this Market (I-6); the seller's access of this Market, which
+ *    Hassan M2) so two acceptances of one invitation never run side by side. Then the invitation
+ *    read again and still acceptable; its role read again, still the seller system role of this Market (I-6); the seller's access of this Market, which
  *    never had a member (HF5 (a)); the inviter still an active, verified admin holding
  *    `identity.seller-account.create` (Hassan 14.2). Then the account `active` and verified with
  *    the invited address and the given name (its data key with it; an address that already has a
@@ -344,7 +344,8 @@ export class AcceptSellerInvitation extends UseCase<
           }
         }
         // 6.7: an address that already has a seller-side account is refused here, before the
-        // insert, so the unit never meets the unique key ("sign in and join" is not built yet).
+        // insert ("sign in and join" is not built yet). Only an acceptance whose snapshot predates
+        // a racing acceptance's commit still meets the unique key, which then ends the attempt.
         const email = invitation.state.email!;
         if ((await this.deps.accounts.findByEmail(market, 'seller', email.normalized)) !== null) {
           return ok(null);
