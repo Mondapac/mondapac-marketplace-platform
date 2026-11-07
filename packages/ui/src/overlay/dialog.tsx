@@ -68,6 +68,11 @@ export interface DialogProps {
   readonly actionsNote?: ReactNode;
   /** The element that takes focus when the dialog opens (the safe choice of a destructive one). */
   readonly initialFocus?: RefObject<HTMLElement | null>;
+  /**
+   * `form`: a longer form. 520 px wide from 640 px, and a full-screen sheet below it, with the
+   * footer buttons pinned to the bottom of the screen.
+   */
+  readonly size?: 'default' | 'form';
 }
 
 /**
@@ -82,6 +87,7 @@ export function Dialog({
   actions,
   actionsNote,
   initialFocus,
+  size = 'default',
 }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -108,7 +114,11 @@ export function Dialog({
           onClose();
       }}
       // text-start: a dialog opened from a table's end-aligned Actions cell would inherit text-end.
-      className="m-auto max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100%-2rem))] overflow-y-auto rounded-lg border border-line bg-surface p-4 text-start text-fg backdrop:bg-fg/40 sm:p-6"
+      className={`m-auto overflow-y-auto border border-line bg-surface p-4 text-start text-fg backdrop:bg-fg/40 sm:p-6 ${
+        size === 'form'
+          ? 'h-dvh max-h-none w-full max-w-none rounded-none border-0 sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:w-[min(32.5rem,calc(100%-2rem))] sm:rounded-lg sm:border'
+          : 'max-h-[calc(100dvh-2rem)] w-[min(32rem,calc(100%-2rem))] rounded-lg'
+      }`}
     >
       {open ? (
         <>

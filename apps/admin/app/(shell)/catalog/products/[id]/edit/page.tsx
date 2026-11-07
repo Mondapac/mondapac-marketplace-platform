@@ -41,6 +41,7 @@ export default async function EditProductPage({
           marketName={panelConfig().marketName}
           timeZone={displayZone(gate.session.timezone)}
           canPause={gate.session.permissionKeys.includes(PAUSE_PERMISSION)}
+          permissionKeys={gate.session.permissionKeys}
         />
       ) : (
         <>

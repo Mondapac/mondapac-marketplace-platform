@@ -36,6 +36,7 @@ import {
   type AttributeInputs,
   type VariantRow,
 } from './draft-content.ts';
+import { CertificationsSection } from './certifications-section.tsx';
 import { problemOf, type FormProblem } from './errors.ts';
 import { ImagesSection } from './images-section.tsx';
 import { blockersOf, listOf } from './publish-state.ts';
@@ -132,6 +133,7 @@ export function ProductEdit({
   marketName,
   timeZone,
   canPause,
+  permissionKeys = [],
 }: {
   readonly productId: string;
   readonly csrfToken: string;
@@ -140,6 +142,8 @@ export function ProductEdit({
   readonly timeZone: string;
   /** The admin holds `catalog.product.pause`: the Active switch is shown. */
   readonly canPause: boolean;
+  /** The admin's permission keys: the certificates card reads its own (view, edit). */
+  readonly permissionKeys?: readonly string[];
 }) {
   const t = useTranslations('catalog.productForm');
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
@@ -190,6 +194,7 @@ export function ProductEdit({
       marketName={marketName}
       timeZone={timeZone}
       canPause={canPause}
+      permissionKeys={permissionKeys}
       onReload={() => void load()}
     />
   );
@@ -218,6 +223,7 @@ function EditForm({
   marketName,
   timeZone,
   canPause,
+  permissionKeys,
   onReload,
 }: {
   readonly product: ProductView;
@@ -226,6 +232,7 @@ function EditForm({
   readonly marketName: string;
   readonly timeZone: string;
   readonly canPause: boolean;
+  readonly permissionKeys: readonly string[];
   readonly onReload: () => void;
 }) {
   const t = useTranslations('catalog.productForm');
@@ -756,6 +763,14 @@ function EditForm({
               clearRefused((item) => rows.some((row) => row.variantId === item.ref));
               edited();
             }}
+          />
+          <CertificationsSection
+            product={product}
+            csrfToken={csrfToken}
+            permissionKeys={permissionKeys}
+            marketName={marketName}
+            justPublished={status === 'published' && product.published === null}
+            onReload={onReload}
           />
         </div>
         <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-2">
