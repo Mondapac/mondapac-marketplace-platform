@@ -58,6 +58,7 @@ const detail = (over: Partial<ProductView> = {}): ProductView => ({
   familyCode: 'food',
   variantModel: 'single',
   status: 'published',
+  pausedAt: null,
   variants: [
     { variantId: 'a', state: 'published' },
     { variantId: 'b', state: 'retired' },

@@ -11,7 +11,7 @@ import { OWN_CATALOG_READER } from '../src/modules/catalog/application/ports/own
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
 import { PRODUCT_REVISION_REPOSITORY } from '../src/modules/catalog/application/ports/product-revision.repository';
 import { WORKING_COPY_REPOSITORY } from '../src/modules/catalog/application/ports/working-copy.repository';
-import type { Product } from '../src/modules/catalog/domain/product';
+import { Product } from '../src/modules/catalog/domain/product';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
@@ -55,6 +55,8 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
   let schemaSeeded: boolean;
   let saveResult: unknown;
   let submitResult: unknown;
+  // Per Market: what the reader counts on the product (the two fixtures differ, so a mix-up shows).
+  let offerTotals: Record<string, { sellerCount: number; offerCount: number }>;
   const http = () => request(app.getHttpServer());
 
   async function boot(env: Record<string, string> = {}) {
@@ -84,6 +86,8 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
           .useValue({ find: () => Promise.resolve(null) })
           .overrideProvider(OWN_CATALOG_READER)
           .useValue({
+            offerTotalsOfProduct: (market: { marketId: string }) =>
+              Promise.resolve(offerTotals[market.marketId] ?? { sellerCount: 0, offerCount: 0 }),
             productForm: () =>
               Promise.resolve({
                 fields: [],
@@ -176,6 +180,7 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
     fakes.reset();
     clock = new FixedClock(START);
     stored = [];
+    offerTotals = {};
     schemaSeeded = true;
     saveResult = ok({ variantIds: [], refusedFields: [], variantNotices: [] });
     submitResult = ok({ revisionId: PRODUCT, revisionNo: 1, published: true });
@@ -276,7 +281,29 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
         variantModel: 'single',
         workingCopy: null,
         published: null,
+        pausedAt: null,
+        offers: { sellerCount: 0, offerCount: 0 },
         form: { categories: [{ names: { en: 'Pantry' } }] },
+      });
+
+      // Offers of every seller are counted, and an admin pause shows as its instant.
+      offerTotals = {
+        [code]: { sellerCount: 2, offerCount: 3 },
+        [code === 'AU' ? 'ZZ' : 'AU']: { sellerCount: 9, offerCount: 9 },
+      };
+      const pausedAt = Temporal.Instant.from('2026-11-01T01:02:03Z');
+      stored[0] = Product.restore({
+        ...stored[0]!.state,
+        status: 'published',
+        pausedAt,
+        pausedByAccountId: ROOT,
+      });
+      const paused = await get(`/${productId}`, root);
+      expect(paused.status).toBe(200);
+      expect(paused.body).toMatchObject({
+        status: 'published',
+        pausedAt: pausedAt.toString(),
+        offers: { sellerCount: 2, offerCount: 3 },
       });
       expect((read.body as { form: { taxCategoryCodes: string[] } }).form.taxCategoryCodes).toEqual(
         expect.any(Array),
