@@ -456,6 +456,22 @@ describe('the edit form', () => {
     expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
   });
 
+  it('hides Discard once the product was submitted for review, and for a product that is not a draft', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
+    call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
+    call.mockResolvedValueOnce(ok({ revisionId: 'r1', revisionNo: 1, published: false }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    await waitFor(() => expectToast('Product submitted.'));
+    expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
+    cleanup();
+    call.mockResolvedValueOnce(ok(view({ status: 'unpublished' })));
+    mountEdit();
+    await screen.findByRole('button', { name: 'Publish' });
+    expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
+  });
+
   it('says so when the new variants were created but the second save failed', async () => {
     call.mockResolvedValueOnce(
       ok(

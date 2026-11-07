@@ -170,6 +170,8 @@ function EditForm({
   const [status, setStatus] = useState(product.status);
   const busy = useRef(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const keepRef = useRef<HTMLButtonElement>(null);
   // Leaving with edits that are not saved asks first (the same dialog the settings pages use).
   const guard = useUnsavedChangesGuard(dirty, {
     title: t('leave.title'),
@@ -274,6 +276,7 @@ function EditForm({
       return;
     }
     if (result.body.published) setStatus('published');
+    else setSubmitted(true);
     toast.success(t(result.body.published ? 'notice.published' : 'notice.submitted'));
   }
 
@@ -313,9 +316,10 @@ function EditForm({
         open={confirmDiscard}
         title={t('discard.title')}
         onClose={() => setConfirmDiscard(false)}
+        initialFocus={keepRef}
         actions={
           <>
-            <Button variant="secondary" onClick={() => setConfirmDiscard(false)}>
+            <Button ref={keepRef} variant="secondary" onClick={() => setConfirmDiscard(false)}>
               {t('discard.keep')}
             </Button>
             <Button variant="destructive-solid" loading={pending} onClick={() => void discard()}>
@@ -343,7 +347,7 @@ function EditForm({
           >
             {t('save-draft')}
           </Button>
-          {published ? null : (
+          {published || submitted || status !== 'draft' ? null : (
             <Button
               variant="destructive"
               disabled={pending}
