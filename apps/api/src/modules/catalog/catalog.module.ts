@@ -131,6 +131,7 @@ import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.reposi
 import { WORKING_COPY_REPOSITORY } from './application/ports/working-copy.repository';
 import { CheckClaimText } from './application/claim-text/check-claim-text.service';
 import { FreezeRevision } from './application/revisions/freeze-revision.service';
+import { ProductFamilyResolver } from './application/attributes/product-family-resolver';
 import { SubmitProduct } from './application/revisions/submit-product.service';
 import { SaveDraft } from './application/working-copy/save-draft.service';
 import { SaveWorkingCopy } from './application/working-copy/save-working-copy.service';
@@ -445,6 +446,7 @@ const PORT = {
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   impact: ATTRIBUTE_IMPACT_READER,
   detailsGapReader: PRODUCT_DETAILS_GAP_READER,
+  familyResolver: ProductFamilyResolver,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
   featureSetStore: FEATURE_SET_STORE,
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
@@ -622,6 +624,7 @@ const RESTRUCTURE_DEPS = {
         PRODUCT_IMAGE_REPOSITORY,
         ATTRIBUTE_VALUE_SUGGESTION_STORE,
         PRODUCT_REVISION_REPOSITORY,
+        ProductFamilyResolver,
       ],
       useFactory: (
         attributes: AttributeRepository,
@@ -630,9 +633,24 @@ const RESTRUCTURE_DEPS = {
         images: ProductImageRepository,
         suggestions: AttributeValueSuggestionStore,
         revisions: ProductRevisionRepository,
+        familyResolver: ProductFamilyResolver,
       ): FreezeRevision =>
-        new FreezeRevision({ attributes, policy, handlerFor, images, suggestions, revisions }),
+        new FreezeRevision({
+          attributes,
+          familyResolver,
+          policy,
+          handlerFor,
+          images,
+          suggestions,
+          revisions,
+        }),
     },
+    serviceProvider(ProductFamilyResolver, {
+      treeReader: true,
+      linkStore: true,
+      attributeAdminReader: true,
+      policy: true,
+    }),
     serviceProvider(ClaimQueryBuilder, { products: true, revisions: true, categoryPaths: true }),
     serviceProvider(SubmitProduct, {
       unitOfWork: true,
@@ -805,6 +823,8 @@ const RESTRUCTURE_DEPS = {
       attributes: true,
       attributeStore: true,
       suggestions: true,
+      workingCopies: true,
+      familyResolver: true,
       eligibility: true,
       audit: true,
       clock: true,
@@ -922,6 +942,7 @@ const RESTRUCTURE_DEPS = {
       detailsGapReader: true,
       attributes: true,
       policy: true,
+      familyResolver: true,
     }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,
@@ -1430,6 +1451,8 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       products: true,
       revisions: true,
+      attributes: true,
+      policy: true,
       outbox: true,
       clock: true,
     }),
@@ -1530,6 +1553,7 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       suggestions: true,
       attributeStore: true,
+      familyResolver: true,
     }),
     useCaseProvider(OwnOffersList, { unitOfWork: true, ownReader: true, policy: true }),
     useCaseProvider(OwnOfferRead, {

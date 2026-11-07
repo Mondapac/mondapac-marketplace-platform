@@ -17,6 +17,7 @@ import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
+import { ProductFamilyResolver } from '../src/modules/catalog/application/attributes/product-family-resolver';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -69,6 +70,11 @@ describe('products missing required details over HTTP (integration)', () => {
     ],
   };
   const attributes = { loadSchema: () => Promise.resolve(schema) };
+  // Every product's category holds the one feature set of this spec.
+  const resolver = {
+    open: () =>
+      Promise.resolve({ resolve: () => Promise.resolve({ ok: true, familyCode: 'pantry' }) }),
+  };
   const http = () => request(app.getHttpServer());
 
   async function boot(env: Record<string, string> = {}) {
@@ -83,7 +89,9 @@ describe('products missing required details over HTTP (integration)', () => {
           .overrideProvider(PRODUCT_DETAILS_GAP_READER)
           .useValue(gap)
           .overrideProvider(ATTRIBUTE_REPOSITORY)
-          .useValue(attributes),
+          .useValue(attributes)
+          .overrideProvider(ProductFamilyResolver)
+          .useValue(resolver),
     }));
   }
 
@@ -144,7 +152,8 @@ describe('products missing required details over HTTP (integration)', () => {
         productId: id<'Product'>(0x3000 + n),
         productCode: `P${n}`,
         ownerSellerId: null,
-        familyCode: 'pantry',
+        revisionFamilyCode: 'pantry',
+        primaryCategoryId: null,
         name: null,
         attributeValues: n === 2 ? { origin: 'AU' } : {},
       })),

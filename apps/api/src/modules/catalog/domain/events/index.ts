@@ -188,6 +188,23 @@ export const ProductRevisionChangesRequested = defineEvent({
   },
 });
 
+/**
+ * A product's feature set changed with a revision (attributes plan A4, decision ت۱۰; CAT-10): a
+ * submit whose primary category holds another feature set, or the return to the published one
+ * when the pending revision was sent back. Ids and the scope only: a feature set code is an
+ * open Market code, which the event vocabulary has no kind for, so a consumer reads the current
+ * family through catalog.
+ */
+export const ProductFamilyChanged = defineEvent({
+  type: 'catalog.product-family-changed.v1',
+  aggregateType: 'product',
+  payload: {
+    productId: eventField.id(),
+    revisionId: eventField.id(),
+    scope: eventField.enumOf(['platform', 'seller'] as const),
+  },
+});
+
 /** The basis of a tag in an event payload (catalog design 9.4), lower-case as event enums are. */
 const TAG_BASIS_FIELD = eventField.optional(eventField.enumOf(['seller', 'manufacturer'] as const));
 
@@ -346,6 +363,7 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   ProductRevisionSubmitted,
   ProductRevisionPublished,
   ProductRevisionChangesRequested,
+  ProductFamilyChanged,
   ProductImageTakenDown,
   OfferTagAdded,
   OfferTagRemoved,
