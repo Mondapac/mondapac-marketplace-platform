@@ -122,6 +122,7 @@
     "products": "Products",
     "payouts": "Payouts",
     "attributes": "Attributes",
+    "variants": "Variants",
     "brands": "Brands",
     "categories": "Categories",
     "review-moderation": "Buyer reviews",
@@ -5671,6 +5672,131 @@
       "throttled": "Too many attempts. Wait a moment and try again.",
       "unavailable": "The service isn't available right now. Try again.",
       "unknown": "Something went wrong. Try again."
+    }
+  },
+  "variants": {
+    "title": "Variants",
+    "intro": "Sizes, flavours and colours across the Market: how buyers choose each variant type, and every variant of the live products.",
+    "no-access": "You need the catalog.variant.view permission to see variants.",
+    "back-home": "Back to the dashboard",
+    "tabs": "Variant views",
+    "tab": {
+      "types": "Variant types",
+      "variants": "Variants"
+    },
+    "view-only": {
+      "title": "View only",
+      "body": "You can view variants. Ask a Platform Administrator to change them."
+    },
+    "types": {
+      "list-label": "Variant types",
+      "loading": "Loading variant types",
+      "load-error": "The variant types could not be loaded.",
+      "empty": "No variant types yet",
+      "empty-body": "A variant type is an attribute marked Variant in a feature set. Add one in Attributes.",
+      "footnote": "A variant type is an attribute marked Variant in a feature set. Add one in Attributes.",
+      "status": {
+        "draft": "Draft"
+      },
+      "counts": "{options, plural, one {# option} other {# options}} · {products, plural, one {# product} other {# products}} · {variants, plural, one {# live variant} other {# live variants}}",
+      "languages": {
+        "all": "All languages",
+        "missing": "{language}: {count} missing"
+      },
+      "none": "Choose a variant type",
+      "none-body": "Its options and how buyers choose it show here.",
+      "missing": "This variant type is no longer there.",
+      "detail-label": "Variant type details",
+      "detail-error": "This variant type could not be loaded.",
+      "badge": "Variant",
+      "edit-in-attributes": "Edit in Attributes",
+      "intro": "Names and labels are edited in Attributes, so there is one place for them. Here you set how buyers choose.",
+      "display": {
+        "legend": "How buyers choose",
+        "buttons": "Buttons",
+        "buttons-help": "One button per option.",
+        "swatches": "Swatches",
+        "swatches-help": "A colour per option; an option without one shows its label.",
+        "dropdown": "Dropdown",
+        "dropdown-help": "A list, for many options."
+      },
+      "order": {
+        "label": "Option order",
+        "help": "Manual keeps the order set in Attributes.",
+        "manual": "Manual",
+        "alphabetical": "Alphabetical in each language",
+        "by-size": "By size (from the amount and unit)"
+      },
+      "help": {
+        "label": "Help for sellers ({language})",
+        "help": "One sentence above the variant grid. 200 characters at most.",
+        "invalid": "Write one plain sentence of 200 characters at most."
+      },
+      "options": {
+        "title": "Options",
+        "missing": "{language} missing",
+        "inactive": "Inactive",
+        "products": "{count, plural, one {# product} other {# products}}"
+      },
+      "swatch": {
+        "label": "Colour for {option}",
+        "format": "Enter a colour as #RRGGBB, for example #A1B2C3.",
+        "placeholder": "#RRGGBB"
+      },
+      "save": {
+        "label": "Save",
+        "discard": "Discard changes",
+        "done": "Variant type saved",
+        "failed": "Not saved",
+        "stale": "Someone else changed this variant type. Reload it and make your change again.",
+        "claim-word": "Help for sellers can't name a certification such as halal.",
+        "denied": "You can't change variant types.",
+        "unavailable": "The service is unavailable. Try again in a moment.",
+        "invalid": "Check the highlighted fields."
+      }
+    },
+    "list": {
+      "label": "Variants",
+      "filters": "Filter variants",
+      "search": "Search",
+      "search-placeholder": "Product, code, GTIN or SKU",
+      "type": "Variant type",
+      "type-all": "All variant types",
+      "issues": "Issues",
+      "issue-count": "{issue} · {count}",
+      "issue": {
+        "no-seller-selling": "No seller selling",
+        "missing-gtin": "Missing GTIN",
+        "duplicate-gtin": "Duplicate GTIN",
+        "no-image": "No image",
+        "missing-language": "Missing language"
+      },
+      "stock-note": "Stock is not shown here yet.",
+      "loading": "Loading variants",
+      "load-error": "The variants could not be loaded.",
+      "more-error": "More variants could not be loaded.",
+      "empty": "No variants yet",
+      "empty-filtered": "No variants match",
+      "clear": "Clear filters",
+      "col": {
+        "variant": "Product · variant",
+        "code": "Code",
+        "gtin": "GTIN",
+        "sellers": "Sellers",
+        "issues": "Issues"
+      },
+      "no-label": "No label",
+      "paused": "Paused",
+      "shown": "{count, plural, one {# variant shown} other {# variants shown}}",
+      "more": "Show more",
+      "export": {
+        "csv": "Export CSV",
+        "xlsx": "Export XLSX",
+        "pending": "Preparing the file",
+        "done": "File downloaded",
+        "too-large": "More than {max} variants match. Narrow the filter and export again.",
+        "unavailable": "The file could not be made. Try again in a moment."
+      }
     }
   }
 }
