@@ -32,7 +32,7 @@ const product = (content: Record<string, unknown>): ProductView => ({
   variantModel: 'single',
   status: 'draft',
   pausedAt: null,
-  variants: [{ variantId: 'v1', state: 'active' }],
+  variants: [{ variantId: 'v1', state: 'active', variantCode: 'P-000001-0v1' }],
   maxVariants: 5,
   sensitiveFields: [],
   lastChangedAt: '2026-10-01T00:00:00Z',

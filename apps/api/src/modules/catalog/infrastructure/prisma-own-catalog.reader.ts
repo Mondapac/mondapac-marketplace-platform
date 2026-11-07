@@ -5,6 +5,7 @@ import type { Prisma } from '../../../generated/prisma/client';
 import type {
   ListPage,
   OwnCatalogReader,
+  OwnOfferSellUnitView,
   OwnProductRow,
   OwnProductViewTotals,
   OwnProductSort,
@@ -595,6 +596,17 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
       typeCode: row.typeCode,
       name: row.publishedRevisionId === null ? null : (nameOf.get(row.publishedRevisionId) ?? null),
     }));
+  }
+
+  async sellUnitsOf(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+  ): Promise<readonly OwnOfferSellUnitView[]> {
+    return await this.prisma.tx(market).catalogOfferSellUnit.findMany({
+      where: { marketId: market.marketId, offerId },
+      select: { variantId: true, variantSku: true, selling: true },
+      orderBy: { variantId: 'asc' },
+    });
   }
 
   async findWorkingCopies(

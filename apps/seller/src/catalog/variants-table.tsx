@@ -30,6 +30,8 @@ import {
 } from './sell-unit-logic.ts';
 import { CHECKBOX, SkuField } from './sku-field.tsx';
 import { LastSizeHint, SizesYouSell } from './sizes-you-sell.tsx';
+import { VariantFileTools } from './variant-file-tools.tsx';
+import type { CellChange, FileModel } from './variant-file.ts';
 
 type Bulk = 'price' | 'increase' | 'stock';
 
@@ -53,6 +55,7 @@ export function VariantsTable({
   canEditStock,
   units,
   csrfToken,
+  fileModel = null,
 }: {
   readonly offerId: string;
   readonly rows: readonly TableRow[];
@@ -71,6 +74,8 @@ export function VariantsTable({
     readonly sellerSku: string;
   } | null;
   readonly csrfToken: string;
+  /** The variant file (design 14b); null when the seller may not read the product. */
+  readonly fileModel?: FileModel | null;
 }) {
   const t = useTranslations();
   const showPrice = marketCurrency !== null;
@@ -147,6 +152,26 @@ export function VariantsTable({
     setSelected(next);
   }
 
+  /** A confirmed import fills the drafts; the Save below writes them, exactly as typed cells. */
+  function applyFile(changes: readonly CellChange[]) {
+    const prices = { ...priceDrafts };
+    const stocks = { ...stockDrafts };
+    const skus = { ...skuDrafts };
+    const sellings = { ...sellingDrafts };
+    for (const change of changes) {
+      if (change.kind === 'price') prices[change.variantId] = change.to;
+      else if (change.kind === 'sku') skus[change.variantId] = change.to;
+      else if (change.kind === 'selling') sellings[change.variantId] = change.to === 'yes';
+      else if (change.sourceId !== undefined)
+        stocks[stockKey(change.variantId, change.sourceId)] = change.to;
+    }
+    setPriceDrafts(prices);
+    setStockDrafts(stocks);
+    setSkuDrafts(skus);
+    setSellingDrafts(sellings);
+    setErrors({});
+  }
+
   function applyBulk() {
     const chosen = rows.filter((row) => selected.has(row.variantId) && row.price?.retired !== true);
     setBulkNote(null);
@@ -206,6 +231,7 @@ export function VariantsTable({
     const seen = { ...versions };
     let done = 0;
     let stopped = false;
+    let waitSeconds: number | null = null;
     for (const write of plan.writes) {
       const row = rows.find((item) => item.variantId === write.variantId);
       if (row === undefined) continue;
@@ -228,6 +254,13 @@ export function VariantsTable({
             window.location.assign('/session-ended');
             return;
           }
+          if (result.failure.code === 'request.throttled') {
+            // Stop here: this cell and every one after it stay drafts, nothing is retried.
+            waitSeconds = result.failure.details?.retryAfterSeconds ?? 60;
+            found[write.variantId] = t('catalog.variants-table.throttled-cell');
+            stopped = true;
+            break;
+          }
           found[write.variantId] = t(`price.error.${priceProblemOf(result.failure)}`);
           continue;
         }
@@ -249,6 +282,12 @@ export function VariantsTable({
           if (result.failure.status === 401) {
             window.location.assign('/session-ended');
             return;
+          }
+          if (result.failure.code === 'request.throttled') {
+            waitSeconds = result.failure.details?.retryAfterSeconds ?? 60;
+            found[key] = t('catalog.variants-table.throttled-cell');
+            stopped = true;
+            break;
           }
           found[key] = t(`stock.levels.error.${levelsProblemOf(result.failure)}`);
           continue;
@@ -319,7 +358,14 @@ export function VariantsTable({
     setErrors(found);
     const failed = Object.keys(found).length;
     if (failed > 0) setFocusTick((n) => n + 1);
-    if (done > 0 && failed === 0 && !stopped)
+    if (waitSeconds !== null) {
+      toast.warning(
+        t('catalog.variants-table.throttled', {
+          done,
+          minutes: Math.max(1, Math.ceil(waitSeconds / 60)),
+        }),
+      );
+    } else if (done > 0 && failed === 0 && !stopped)
       toast.success(t('catalog.variants-table.saved', { count: done }));
     else if (done > 0) toast.info(t('catalog.variants-table.partial', { done, failed }));
     else if (stopped) toast.info(t('catalog.variants-table.cancelled'));
@@ -361,6 +407,14 @@ export function VariantsTable({
             ) : null}
           </Banner>
         </div>
+      )}
+      {fileModel === null ? null : (
+        <VariantFileTools
+          model={fileModel}
+          disabled={saving}
+          hasDrafts={changeCount > 0}
+          onApply={applyFile}
+        />
       )}
       {showUnits && units.productScope === 'PLATFORM' ? (
         <SizesYouSell

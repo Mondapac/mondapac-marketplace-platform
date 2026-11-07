@@ -25,8 +25,8 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   status: 'draft',
   pausedAt: null,
   variants: [
-    { variantId: 'v1', state: 'active' },
-    { variantId: 'v2', state: 'retired' },
+    { variantId: 'v1', state: 'active', variantCode: 'P-000001-0v1' },
+    { variantId: 'v2', state: 'retired', variantCode: 'P-000001-0v2' },
   ],
   maxVariants: 5,
   sensitiveFields: [],

@@ -3,15 +3,22 @@ import { redirect } from 'next/navigation';
 import { axesOf, combinationTitle } from '../catalog/variant-grid.ts';
 import { variantRowsOf } from '../catalog/draft-content.ts';
 import {
+  EDIT_PERMISSION,
   VIEW_PERMISSION,
   type OfferSellUnitsView,
   type OfferView,
   type ProductView,
 } from '../catalog/types.ts';
+import { fileModelOf } from '../catalog/variant-file-model.ts';
+import type { FileModel } from '../catalog/variant-file.ts';
 import type { TableRow } from '../catalog/variants-table-logic.ts';
-import { PRICE_VIEW_PERMISSION, type OfferPricesView } from '../price/types.ts';
+import {
+  PRICE_EDIT_PERMISSION,
+  PRICE_VIEW_PERMISSION,
+  type OfferPricesView,
+} from '../price/types.ts';
 import { SETUP_ROOT } from '../setup/steps.ts';
-import type { StockLevelsView } from '../stock/levels-types.ts';
+import { STOCK_EDIT_PERMISSION, type StockLevelsView } from '../stock/levels-types.ts';
 import { STOCK_VIEW_PERMISSION, type SourcesView } from '../stock/types.ts';
 import { serverGet } from './server-fetch.ts';
 import { requireSession, type SellerSession } from './session.ts';
@@ -30,6 +37,8 @@ export type VariantsPage =
         readonly productScope: 'PLATFORM' | 'SELLER';
         readonly sellerSku: string;
       } | null;
+      /** What the variant file reads and writes; null without the key to read the product. */
+      readonly fileModel: FileModel | null;
     }
   | { readonly kind: 'no-access'; readonly session: SellerSession }
   | { readonly kind: 'not-found'; readonly session: SellerSession }
@@ -113,16 +122,30 @@ export async function loadVariantsPage(
       ),
     ),
   }));
+  const sourceList = sources?.kind === 'ok' ? sources.body.sources : [];
   return {
     kind: 'ok',
     session,
     offer: offer.body,
     currency: priceBody?.currency ?? null,
     rows,
-    sources: sources?.kind === 'ok' ? sources.body.sources : [],
+    sources: sourceList,
     units:
       unitsBody === null
         ? null
         : { productScope: unitsBody.productScope, sellerSku: unitsBody.sellerSku },
+    fileModel:
+      product?.kind === 'ok'
+        ? fileModelOf({
+            product: product.body,
+            rows,
+            sources: sourceList,
+            currency: priceBody?.currency ?? null,
+            locale,
+            canEditPrice: keys.includes(PRICE_EDIT_PERMISSION),
+            canEditStock: keys.includes(STOCK_EDIT_PERMISSION),
+            canEditSellUnits: keys.includes(EDIT_PERMISSION),
+          })
+        : null,
   };
 }

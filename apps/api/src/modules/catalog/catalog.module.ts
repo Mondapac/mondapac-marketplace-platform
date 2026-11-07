@@ -72,6 +72,7 @@ import { CUSTOM_VARIANT_LABELS_READER } from './application/ports/custom-variant
 import { AdminCustomVariantLabelsController } from './presentation/admin-custom-variant-labels.controller';
 import { AdminProductsList } from './application/use-cases/admin-products-list.use-case';
 import { ADMIN_PRODUCTS_READER } from './application/ports/admin-products.reader';
+import { ADMIN_VARIANTS_READER } from './application/ports/admin-variants.reader';
 import { AdminProductListController } from './presentation/admin-product-list.controller';
 import { AdminProductBulkController } from './presentation/admin-product-bulk.controller';
 import { AdminProductPause } from './application/use-cases/admin-product-pause.use-case';
@@ -465,6 +466,7 @@ const PORT = {
   sellerNames: SELLER_NAMES_READER,
   ownReader: OWN_CATALOG_READER,
   adminProductsReader: ADMIN_PRODUCTS_READER,
+  adminVariantsReader: ADMIN_VARIANTS_READER,
   customVariantLabelsReader: CUSTOM_VARIANT_LABELS_READER,
   images: PRODUCT_IMAGE_REPOSITORY,
   imageProcessor: IMAGE_PROCESSOR,
@@ -1440,6 +1442,7 @@ const RESTRUCTURE_DEPS = {
     useCaseProvider(AdminVariantsExport, {
       unitOfWork: true,
       variantAdminReader: true,
+      adminVariantsReader: true,
       policy: true,
       sheetWriter: true,
       clock: true,
