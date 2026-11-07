@@ -149,6 +149,12 @@ export type OwnProductIdsResult =
   /** Sorting by name needs the matching products in memory (at most 500); a search this wide must narrow. */
   | { readonly kind: 'too-broad' };
 
+/** The Offers on one product, deleted ones left out. */
+export interface ProductOfferTotals {
+  readonly sellerCount: number;
+  readonly offerCount: number;
+}
+
 /**
  * The seller's own catalogue lists (catalog design 8.2, 9.2a): products and Offers of one seller,
  * newest first by id (UUID v7). The owner is in every statement, so another seller's row is never
@@ -218,6 +224,15 @@ export interface OwnCatalogReader {
 
   /** How many of the seller's Offers are in each status, deleted ones left out (one count). */
   offerStatusCounts(market: MarketContext, sellerId: Id<'Seller'>): Promise<OfferStatusCounts>;
+
+  /**
+   * How many Offers (not deleted) stand on one product and how many sellers hold them, every
+   * seller counted (the admin product form's "Sellers selling it"). Market-scoped.
+   */
+  offerTotalsOfProduct(
+    market: MarketContext,
+    productId: Id<'Product'>,
+  ): Promise<ProductOfferTotals>;
 
   /**
    * How many Offers of the Market wait for their first publication (the review queue), of one

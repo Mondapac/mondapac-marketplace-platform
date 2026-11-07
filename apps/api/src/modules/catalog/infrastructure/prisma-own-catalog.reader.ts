@@ -522,6 +522,18 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
     };
   }
 
+  async offerTotalsOfProduct(market: MarketContext, productId: Id<'Product'>) {
+    const groups = await this.prisma.tx(market).catalogOffer.groupBy({
+      by: ['sellerId'],
+      where: { marketId: market.marketId, productId, status: { not: 'deleted' } },
+      _count: { _all: true },
+    });
+    return {
+      sellerCount: groups.length,
+      offerCount: groups.reduce((sum, group) => sum + group._count._all, 0),
+    };
+  }
+
   async pendingReviewCount(
     market: MarketContext,
     filter: { readonly sellerId?: Id<'Seller'> } = {},
