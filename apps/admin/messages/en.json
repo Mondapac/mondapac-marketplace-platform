@@ -1990,6 +1990,7 @@
       "unavailable": "Offer reviews could not be loaded. Try again later.",
       "more": "Next page",
       "empty": "No offers are waiting for review.",
+      "empty-page": "No offers on this page. More of the queue is on the next page.",
       "view-only": "You can view this queue but not decide.",
       "open": "Review",
       "close": "Close",
