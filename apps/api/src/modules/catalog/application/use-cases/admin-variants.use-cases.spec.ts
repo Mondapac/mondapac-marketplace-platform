@@ -26,6 +26,7 @@ import {
   VariantTypeSettings,
 } from '../../domain/variant-type-settings';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
+import type { AdminVariantsReader } from '../ports/admin-variants.reader';
 import type { SheetWriter } from '../ports/sheet-writer';
 import type {
   VariantAdminReader,
@@ -228,6 +229,24 @@ describe.each(['AU', 'ZZ'] as const)('admin Variants page in market %s (V6)', (c
         for await (const group of groups) yield JSON.stringify(group);
       },
     } as SheetWriter;
+    const adminVariantsReader: AdminVariantsReader = {
+      count: () => Promise.resolve(rows.length),
+      axisCodes: () => Promise.resolve(['weight']),
+      rows: (_m, productIds) =>
+        Promise.resolve(
+          rows
+            .filter((r) => productIds.includes(r.productId))
+            .map((r) => ({
+              productId: r.productId,
+              productCode: r.productCode,
+              typeCode: 'grocery',
+              variantCode: r.variantCode,
+              options: [{ attributeCode: 'weight', optionCode: 'kg1', label: '1 kg' }],
+              gtin: r.gtin,
+              offerCount: 2,
+            })),
+        ),
+    };
     const readDeps = { unitOfWork, variantAdminReader: reader, policy };
     const edit = new VariantTypeSettingsEdit(gate, {
       unitOfWork,
@@ -261,7 +280,12 @@ describe.each(['AU', 'ZZ'] as const)('admin Variants page in market %s (V6)', (c
       typeGet: new AdminVariantTypeGet(gate, readDeps),
       list: new AdminVariantsList(gate, readDeps),
       counts: new AdminVariantIssueCounts(gate, readDeps),
-      exporter: new AdminVariantsExport(gate, { ...readDeps, sheetWriter, clock }),
+      exporter: new AdminVariantsExport(gate, {
+        ...readDeps,
+        adminVariantsReader,
+        sheetWriter,
+        clock,
+      }),
       edit,
     };
   }
@@ -558,8 +582,10 @@ describe.each(['AU', 'ZZ'] as const)('admin Variants page in market %s (V6)', (c
       expect(csv.codePointAt(0)).toBe(0xfeff);
       const lines = csv.slice(1).trim().split(/\r?\n/);
       expect(lines[0]).toBe(
-        'Product,Product code,Variant,Variant code,GTIN,Status,Sellers selling,Issues',
+        'product_code,variant_code,product_type,option[weight],gtin,offer_count,' +
+          'Product,Variant,Status,Sellers selling,Issues',
       );
+      expect(lines[1]).toMatch(/^MP-001,MP-001-01,grocery,1 kg,09300000000011,2,/);
       expect(lines[1]).toContain(`'=HYPERLINK`);
       expect(lines[1]).toContain('No seller selling');
       expect(s.queries.every((q) => q.issue === 'no-seller-selling')).toBe(true);
@@ -570,7 +596,7 @@ describe.each(['AU', 'ZZ'] as const)('admin Variants page in market %s (V6)', (c
       const result = await s.exporter.execute(context(), { format: 'xlsx' });
       if (!result.ok) throw new Error(result.error.code);
       expect(result.value.filename).toBe('variants-2026-11-06.xlsx');
-      expect(await text(result.value.chunks)).toContain('Variant code');
+      expect(await text(result.value.chunks)).toContain('variant_code');
     });
 
     it('refuses an export over the cap whole, before the first byte', async () => {

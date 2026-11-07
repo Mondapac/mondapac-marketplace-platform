@@ -53,7 +53,7 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   variantModel: 'configurable',
   status: 'draft',
   pausedAt: null,
-  variants: [{ variantId: 'v1', state: 'proposed' }],
+  variants: [{ variantId: 'v1', state: 'proposed', variantCode: 'P-000001-0v1' }],
   maxVariants: 3,
   sensitiveFields: ['name', 'images'],
   lastChangedAt: '2026-10-01T00:00:00Z',
@@ -364,7 +364,7 @@ describe('EditForm product details', () => {
     call.mockResolvedValueOnce(saved(['v1']));
     mount(
       product({
-        variants: [{ variantId: 'v1', state: 'proposed' }],
+        variants: [{ variantId: 'v1', state: 'proposed', variantCode: 'P-000001-0v1' }],
         workingCopy: {
           content: {
             variantAxes: ['size'],
@@ -390,7 +390,7 @@ describe('EditForm product details', () => {
     mount(
       product({
         maxVariants: 1,
-        variants: [{ variantId: 'v1', state: 'proposed' }],
+        variants: [{ variantId: 'v1', state: 'proposed', variantCode: 'P-000001-0v1' }],
         workingCopy: {
           content: {
             variantAxes: ['size'],
@@ -410,7 +410,7 @@ describe('EditForm product details', () => {
     mount(
       product({
         published: { revisionId: 'r', revisionNo: 1 } as ProductView['published'],
-        variants: [{ variantId: 'v1', state: 'published' }],
+        variants: [{ variantId: 'v1', state: 'published', variantCode: 'P-000001-0v1' }],
         workingCopy: {
           content: {
             variantAxes: ['size'],
@@ -434,7 +434,7 @@ describe('EditForm product details', () => {
   it('also confirms removing a saved but never published variant', () => {
     mount(
       product({
-        variants: [{ variantId: 'v1', state: 'proposed' }],
+        variants: [{ variantId: 'v1', state: 'proposed', variantCode: 'P-000001-0v1' }],
         workingCopy: {
           content: {
             variantAxes: ['size'],
@@ -455,7 +455,7 @@ describe('EditForm product details', () => {
     mount(
       product({
         published: { revisionId: 'r', revisionNo: 1 } as ProductView['published'],
-        variants: [{ variantId: 'v1', state: 'published' }],
+        variants: [{ variantId: 'v1', state: 'published', variantCode: 'P-000001-0v1' }],
         workingCopy: {
           content: { variants: [{ variantId: 'v1', optionValues: {} }] },
           lastSavedAt: '2026-10-01T00:00:00Z',
@@ -508,7 +508,7 @@ describe('EditForm product details', () => {
   it('asks before changing the axes of a draft that has ticked combinations', () => {
     mount(
       product({
-        variants: [{ variantId: 'v1', state: 'proposed' }],
+        variants: [{ variantId: 'v1', state: 'proposed', variantCode: 'P-000001-0v1' }],
         workingCopy: {
           content: {
             variantAxes: ['size'],

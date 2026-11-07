@@ -2938,6 +2938,18 @@
     }
   },
   {
+    "action": "catalog.product.image-deleted",
+    "targetType": "catalog.product",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "imageId": "id"
+    },
+    "after": {
+      "imageId": "optional(id)"
+    }
+  },
+  {
     "action": "catalog.platform-category.merged",
     "targetType": "catalog.platform-category",
     "targetId": "id",

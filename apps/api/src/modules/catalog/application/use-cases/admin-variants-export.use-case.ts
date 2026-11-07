@@ -1,10 +1,11 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CATALOG_VARIANT_VIEW } from '../../contracts/permissions';
+import type { AdminVariantRow, AdminVariantsReader } from '../ports/admin-variants.reader';
 import { invalid } from '../own-reads/own-reads.shared';
 import { XLSX_CONTENT_TYPE, type SheetWriter } from '../ports/sheet-writer';
-import type { VariantIssue, VariantsQuery } from '../ports/variant-admin.reader';
+import type { VariantIssue, VariantRow, VariantsQuery } from '../ports/variant-admin.reader';
 import { CSV_BOM, csvLine } from '../products/products-csv';
 import {
   closedQuery,
@@ -23,6 +24,8 @@ export const VARIANTS_EXPORT_MAX_ROWS = 10_000;
 const CHUNK = 500;
 
 export interface AdminVariantsExportDependencies extends AdminVariantsDependencies {
+  /** Product type, option labels and Offer count of the compare columns (design 14b). */
+  readonly adminVariantsReader: AdminVariantsReader;
   readonly sheetWriter: SheetWriter;
   readonly clock: Clock;
 }
@@ -46,16 +49,13 @@ const ISSUE_LABELS: Readonly<Record<VariantIssue, string>> = Object.freeze({
   'missing-language': 'Missing language',
 });
 
-const HEADER = [
-  'Product',
-  'Product code',
-  'Variant',
-  'Variant code',
-  'GTIN',
-  'Status',
-  'Sellers selling',
-  'Issues',
-] as const;
+/** The header cells before the option columns and after them (design 14b, the compare columns). */
+export const VARIANT_EXPORT_HEAD = ['product_code', 'variant_code', 'product_type'] as const;
+export const VARIANT_EXPORT_TAIL = ['gtin', 'offer_count'] as const;
+/** The cells the Variants tab adds after the compare columns. */
+const TAB_HEADER = ['Product', 'Variant', 'Status', 'Sellers selling', 'Issues'] as const;
+/** The header of the option column of an axis. */
+export const optionHeader = (attributeCode: string): string => `option[${attributeCode}]`;
 
 type Cell = string | number | null;
 
@@ -65,7 +65,10 @@ type Cell = string | number | null;
  * {@link VARIANTS_EXPORT_MAX_ROWS}, as CSV (default) or XLSX. The file streams: each chunk of
  * {@link CHUNK} variants reads its own page in a read-only unit. CSV text cells that a
  * spreadsheet would run as a formula get a leading quote; XLSX cells are all string values,
- * never formulas (the {@link SheetWriter} contract). Rule: the key `catalog.variant.view` and the
+ * never formulas (the {@link SheetWriter} contract). Columns (design 14b, then the tab's own):
+ * `product_code`, `variant_code`, `product_type`, one `option[<attribute code>]` per axis any
+ * exported product varies on (the option label in the default locale, empty where a product has
+ * no such axis), `gtin`, `offer_count`, then Product, Variant, Status, Sellers selling, Issues. Rule: the key `catalog.variant.view` and the
  * admin population.
  */
 export class AdminVariantsExport extends UseCase<
@@ -105,12 +108,20 @@ export class AdminVariantsExport extends UseCase<
     const base = queryOf(filter.value, { after: null, limit: CHUNK }, locales.value);
     const counted = await this.#countUpTo(context, base, VARIANTS_EXPORT_MAX_ROWS + 1);
     if (!counted.ok) return counted;
-    if (counted.value > VARIANTS_EXPORT_MAX_ROWS) {
+    if (counted.value.total > VARIANTS_EXPORT_MAX_ROWS) {
       return err({ code: 'batch.too-large', max: VARIANTS_EXPORT_MAX_ROWS });
     }
+    // The option columns are the union of the axes of the products the file holds.
+    const productIds = [...counted.value.productIds];
+    const axes = await deps.unitOfWork.run(
+      context.market,
+      async () => ok(await deps.adminVariantsReader.axisCodes(context.market, productIds)),
+      { readOnly: true },
+    );
+    if (!axes.ok) return err({ code: 'access.unavailable' });
 
     const day = deps.clock.now().toString().slice(0, 10);
-    const groups = this.#rows(context, base, locales.value.default);
+    const groups = this.#rows(context, base, locales.value.default, axes.value);
     if (format === 'xlsx') {
       return ok({
         filename: `variants-${day}.xlsx`,
@@ -130,10 +141,11 @@ export class AdminVariantsExport extends UseCase<
     context: CallContext,
     base: VariantsQuery,
     cap: number,
-  ): Promise<Result<number, AdminReadFailure>> {
+  ): Promise<Result<{ total: number; productIds: ReadonlySet<Id<'Product'>> }, AdminReadFailure>> {
     const { market } = context;
     let after: string | null = null;
     let total = 0;
+    const productIds = new Set<Id<'Product'>>();
     do {
       const query: VariantsQuery = { ...base, after, limit: CHUNK };
       const page = await this.deps.unitOfWork.run(
@@ -143,18 +155,45 @@ export class AdminVariantsExport extends UseCase<
       );
       if (!page.ok) return err({ code: 'access.unavailable' });
       total += page.value.rows.length;
+      for (const row of page.value.rows) productIds.add(row.productId);
       after = page.value.nextAfter;
     } while (after !== null && total < cap);
-    return ok(total);
+    return ok({ total, productIds });
+  }
+
+  /** The compare columns of one page, by variant code (the products' published variants). */
+  async #details(
+    context: CallContext,
+    rows: readonly VariantRow[],
+    locale: string,
+  ): Promise<ReadonlyMap<string, AdminVariantRow>> {
+    const { market } = context;
+    const read = await this.deps.unitOfWork.run(
+      market,
+      async () =>
+        ok(
+          await this.deps.adminVariantsReader.rows(
+            market,
+            [...new Set(rows.map((row) => row.productId))],
+            locale,
+          ),
+        ),
+      { readOnly: true },
+    );
+    if (!read.ok) throw new Error('catalog.admin-variants-export: the read failed');
+    return new Map(read.value.map((detail) => [detail.variantCode, detail]));
   }
 
   async *#rows(
     context: CallContext,
     base: VariantsQuery,
     locale: string,
+    axes: readonly string[],
   ): AsyncGenerator<readonly (readonly Cell[])[]> {
     const { market } = context;
-    yield [[...HEADER]];
+    yield [
+      [...VARIANT_EXPORT_HEAD, ...axes.map(optionHeader), ...VARIANT_EXPORT_TAIL, ...TAB_HEADER],
+    ];
     let after: string | null = null;
     let written = 0;
     do {
@@ -167,14 +206,21 @@ export class AdminVariantsExport extends UseCase<
       if (!page.ok) throw new Error('catalog.admin-variants-export: the read failed');
       const rows = page.value.rows.slice(0, VARIANTS_EXPORT_MAX_ROWS - written);
       written += rows.length;
+      const details = await this.#details(context, rows, locale);
       yield rows.map((row) => {
         const view = viewOf(row, locale);
+        const detail = details.get(view.variantCode);
         return [
-          view.productName ?? '',
           view.productCode,
-          view.label ?? '',
           view.variantCode,
+          detail?.typeCode ?? '',
+          ...axes.map(
+            (axis) => detail?.options.find((option) => option.attributeCode === axis)?.label ?? '',
+          ),
           view.gtin ?? '',
+          detail?.offerCount ?? null,
+          view.productName ?? '',
+          view.label ?? '',
           view.status === 'paused' ? 'Paused' : 'Live',
           view.sellers,
           view.issues.map((issue) => ISSUE_LABELS[issue]).join('; '),

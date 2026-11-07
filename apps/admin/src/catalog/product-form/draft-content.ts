@@ -222,6 +222,8 @@ export function contentFrom(
     readonly attributeValues: Record<string, unknown>;
     /** `null` for a product whose variants are fixed: its `variants` key is left alone. */
     readonly variants: Record<string, unknown>[] | null;
+    /** The axis codes of a configurable product; `null` leaves the draft's `variantAxes` alone. */
+    readonly variantAxes?: readonly string[] | null;
   },
 ): Record<string, unknown> {
   const next = { ...content };
@@ -236,5 +238,9 @@ export function contentFrom(
   set('taxCategoryCode', parts.taxCategoryCode, parts.taxCategoryCode === '');
   set('attributeValues', parts.attributeValues, Object.keys(parts.attributeValues).length === 0);
   if (parts.variants !== null) set('variants', parts.variants, parts.variants.length === 0);
+  if (parts.variantAxes !== undefined && parts.variantAxes !== null) {
+    // An empty list is kept: an absent key means "every candidate" to the server.
+    next['variantAxes'] = [...parts.variantAxes];
+  }
   return next;
 }
