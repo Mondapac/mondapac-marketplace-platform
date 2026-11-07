@@ -2824,6 +2824,23 @@
     }
   },
   {
+    "action": "catalog.own-import.started",
+    "targetType": "catalog.seller-import",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "state": "enumOf(checked)"
+    },
+    "after": {
+      "errorRows": "integer",
+      "mode": "enumOf(my-products|sell-from-catalogue)",
+      "rows": "integer",
+      "skipErrors": "boolean",
+      "state": "enumOf(queued)",
+      "toImport": "integer"
+    }
+  },
+  {
     "action": "sellers.service-area.change",
     "targetType": "sellers.service-area",
     "targetId": "id",

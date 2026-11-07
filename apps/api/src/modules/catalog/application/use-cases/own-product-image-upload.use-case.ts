@@ -45,7 +45,7 @@ export interface OwnProductImageUploadDependencies {
   readonly imageProcessor: ImageProcessor;
   readonly objectStore: ObjectStore;
   readonly eligibility: SellerEligibilityReader;
-  readonly save: SaveWorkingCopy;
+  readonly save: Pick<SaveWorkingCopy, 'reserveSaves'>;
   readonly clock: Clock;
   readonly ids: IdGenerator;
 }

@@ -1281,5 +1281,18 @@
       "shipping.delivery-settings.view",
       "shipping.fleet-selection.view"
     ]
+  },
+  {
+    "entry": "seller:store-manager@5",
+    "kind": "default",
+    "permissionKeys": [
+      "catalog.own-import.run",
+      "catalog.own-product.edit",
+      "catalog.own-product.view",
+      "certification.own-certificate.manage",
+      "certification.own-certificate.view",
+      "identity.seller-role.view",
+      "identity.team-member.view"
+    ]
   }
 ]
