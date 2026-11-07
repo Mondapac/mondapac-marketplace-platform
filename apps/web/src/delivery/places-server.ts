@@ -1,8 +1,8 @@
 // The server side of the Deliver to lookup: the buyer site's own routes under /api/deliver-to/
 // answer the modal's address search and reverse lookup (the delivery-area check is checkout's
 // server action `deliveryAreaFor`). Mapbox is called from here so the token never reaches the
-// browser; only this site's own pages may ask, each client address (IPv6 by /64) and the whole
-// process are rate limited.
+// browser. Sec-Fetch-Site / Referer keep other sites' pages from using it in a browser (a script
+// can forge those headers: the per-client and per-process limits are the guard against that).
 import 'server-only';
 import type { GeoPoint } from '../storefront/types.ts';
 import { storefrontApiConfig } from '../storefront/config.ts';
@@ -63,7 +63,8 @@ function hostAndCountry(
 
 /**
  * Whether the request came from this site's own page: the browser's `Sec-Fetch-Site`, or else a
- * `Referer` on this host's origin. Scripts elsewhere get no geocoding on our account.
+ * `Referer` on this host's origin. This stops cross-site use in browsers only; a script can send
+ * either header, so the rate limits are what bound direct calls.
  */
 export function fromOwnPage(incoming: Incoming, host: StorefrontHost): boolean {
   const site = incoming.get('sec-fetch-site');
@@ -194,6 +195,8 @@ export function placesDepsOf(
     apiOn,
     limiter: fixedWindowLimiter(REQUESTS_PER_MINUTE, 60_000, {
       total: PROCESS_REQUESTS_PER_MINUTE,
+      // Once per minute at most: an alert rule can watch this message.
+      onTotalSpent: () => log({ msg: 'storefront.places-process-limit' }),
     }),
     fetch: (input, init) => fetch(input, init),
   };

@@ -181,10 +181,18 @@ describe('rate limit', () => {
     expect(limiter.take('a')).toBe(true);
   });
 
-  it('caps all keys together per window', () => {
+  it('caps all keys together per window and reports it', () => {
     let now = 0;
-    const limiter = fixedWindowLimiter(5, 1000, { total: 3, now: () => now });
-    expect(['a', 'b', 'c', 'd'].map((key) => limiter.take(key))).toEqual([true, true, true, false]);
+    const onTotalSpent = vi.fn();
+    const limiter = fixedWindowLimiter(5, 1000, { total: 3, now: () => now, onTotalSpent });
+    expect(['a', 'b', 'c', 'd', 'e'].map((key) => limiter.take(key))).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
+    ]);
+    expect(onTotalSpent).toHaveBeenCalledTimes(1);
     now = 1000;
     expect(limiter.take('d')).toBe(true);
   });
@@ -194,6 +202,10 @@ describe('rate limit', () => {
     expect(clientKey('2001:0db8:0001:0002:ffff:ffff:ffff:ffff')).toBe('2001:db8:1:2::/64');
     expect(clientKey('2001:db8::5')).toBe('2001:db8:0:0::/64');
     expect(clientKey('203.0.113.9')).toBe('203.0.113.9');
+    expect(clientKey('::ffff:203.0.113.9')).toBe('203.0.113.9');
+    expect(clientKey('::FFFF:198.51.100.1')).toBe('198.51.100.1');
+    expect(clientKey('64:ff9b::203.0.113.9')).toBe('64:ff9b:0:0::/64');
+    expect(clientKey('2001:db8:1:2::203.0.113.9')).toBe('2001:db8:1:2::/64');
     expect(clientKey('unknown')).toBe('unknown');
   });
 });
