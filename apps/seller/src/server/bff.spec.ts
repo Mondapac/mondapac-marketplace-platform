@@ -1066,6 +1066,55 @@ describe('relay of the store profile', () => {
   });
 });
 
+describe('relay allowlist for the seller tag list', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const send = (method: string, path: string) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method,
+      headers: sameOrigin,
+      ...(method === 'GET' ? {} : { body: '{}' }),
+    });
+
+  it('relays the read with search, afterId and limit, and drops other query keys', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      send('GET', `catalog/seller/topics?search=eid&afterId=${ID}&limit=100&status=archived&x=1`),
+      ['catalog', 'seller', 'topics'],
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/seller/topics?search=eid&afterId=${ID}&limit=100`,
+    );
+  });
+
+  it('drops a malformed afterId and limit', async () => {
+    const bad = upstreamOk();
+    await relay(
+      config,
+      send('GET', 'catalog/seller/topics?afterId=nope&limit=abc'),
+      ['catalog', 'seller', 'topics'],
+      bad,
+    );
+    expect(bad.mock.calls[0]?.[0]).toBe('http://api.test/catalog/seller/topics');
+  });
+
+  it('relays no write and no id path', async () => {
+    for (const [method, path] of [
+      ['POST', 'catalog/seller/topics'],
+      ['PUT', `catalog/seller/topics/${ID}`],
+      ['GET', `catalog/seller/topics/${ID}`],
+      ['DELETE', 'catalog/seller/topics'],
+    ] as const) {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, path), path.split('/'), upstream);
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(upstream).not.toHaveBeenCalled();
+    }
+  });
+});
+
 describe('relay allowlist for the seller reviews', () => {
   const ID = '0190a000-0000-7000-8000-0000000000a1';
   const send = (method: string, path: string) =>

@@ -1940,6 +1940,7 @@ const RESTRUCTURE_DEPS = {
       workingCopies: true,
       revisions: true,
       ownReader: true,
+      topicReader: true,
       policy: true,
     }),
     useCaseProvider(SeedCategoryTree, {

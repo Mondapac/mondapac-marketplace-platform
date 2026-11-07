@@ -2105,7 +2105,8 @@
           "type": "Product type",
           "scope": "Scope",
           "seller": "Seller",
-          "created": "Created"
+          "created": "Created",
+          "tags": "Tags"
         },
         "up": "Move {column} up",
         "down": "Move {column} down",
@@ -2122,7 +2123,8 @@
         "type": "Product type",
         "scope": "Scope",
         "seller": "Seller",
-        "created": "Created"
+        "created": "Created",
+        "tags": "Tags"
       },
       "status": {
         "published": "Active",
@@ -2286,7 +2288,13 @@
         }
       },
       "import": "Import",
-      "add": "Add product"
+      "add": "Add product",
+      "tags": {
+        "none": "—",
+        "archived": "{name} (archived)",
+        "more": "+{count}",
+        "more-sr": "and {count} more"
+      }
     },
     "import": {
       "title": "Import products",
@@ -2580,7 +2588,7 @@
         "tax-placeholder": "Choose a tax category",
         "name-claim": "Product text can't include certification words like \"halal\". Badges come from seller offers."
       },
-      "category": "Category",
+      "category": "Category and tags",
       "details": "Product details",
       "attribute": {
         "unset": "Not set",
@@ -2740,6 +2748,36 @@
         "texts-value": "{language} · translated when a buyer language is published",
         "cancel": "Cancel",
         "confirm": "Publish"
+      },
+      "tags": {
+        "label": "Tags",
+        "placeholder": "Choose tags",
+        "help": "Optional. Tags help shoppers find this product. Pick up to {max} from the active list.",
+        "readonly": "Your role can't change tags.",
+        "none": "No tags.",
+        "archived-help": "Archived tags can't be added to a product. Remove them before you publish.",
+        "archived-chip": "{name} (archived)",
+        "unknown-chip": "Unavailable tag",
+        "load-error": "Tags can't be loaded right now.",
+        "load-throttled": "Too many requests. Wait a moment and try again.",
+        "too-many": "Pick {max} tags or fewer.",
+        "archived-problem": "{name} is archived. Remove it.",
+        "unknown-problem": "A tag on this product no longer exists. Remove it.",
+        "duplicate-problem": "{name} is picked twice. Remove one.",
+        "group": {
+          "occasion": "Occasion",
+          "cuisine": "Cuisine",
+          "use": "Use"
+        },
+        "labels": {
+          "search": "Search tags",
+          "no-results": "No tags found.",
+          "loading": "Loading…",
+          "retry": "Try again",
+          "remove": "Remove {name}",
+          "limit-reached": "You can pick up to {max} tags. Remove one to add another.",
+          "none": "None"
+        }
       }
     },
     "queue": {
@@ -2791,7 +2829,8 @@
         "variant-removed": "Variant removed",
         "gtin-changed": "GTIN changed",
         "never-published": "First publication",
-        "approval-required": "Approval required"
+        "approval-required": "Approval required",
+        "topics-changed": "Tags"
       },
       "checks": "{count, plural, =0 {No checks} one {# check} other {# checks}}",
       "revision-no": "Revision {number}",
@@ -2838,7 +2877,8 @@
         "categories": "Categories and tax",
         "variants": "Variants",
         "attributes": "Details that changed",
-        "attributes-first": "Details"
+        "attributes-first": "Details",
+        "tags": "Tags"
       },
       "field": {
         "name": "Name",
@@ -2974,7 +3014,8 @@
           "superseded": "Replaced"
         },
         "reason": "reason: {reason}"
-      }
+      },
+      "topic-archived": "{name} (archived)"
     }
   },
   "orders": {

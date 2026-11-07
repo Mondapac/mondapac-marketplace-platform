@@ -134,6 +134,7 @@ createRoot(document.getElementById('root')!).render(
         marketName="Australia"
         timeZone="Australia/Brisbane"
         canPause
+        canReadTags
       />
     </main>
   </NextIntlClientProvider>,

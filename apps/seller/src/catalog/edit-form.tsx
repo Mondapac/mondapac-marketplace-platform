@@ -25,6 +25,7 @@ import {
   contentFrom,
   isMeasureInput,
   taxCategoryOf,
+  topicIdsOf,
   variantRowsOf,
   variantsWith,
   withMintedIds,
@@ -33,6 +34,7 @@ import {
   type VariantRow,
 } from './draft-content.ts';
 import { editProblemOf, type EditProblem } from './edit-errors.ts';
+import { DEFAULT_MAX_TAGS, TagField, topicSentences, useKnownTags } from './tag-field.tsx';
 import { OrganisationCard, StatusBadge, StatusCard, type Blocker } from './product-side.tsx';
 import { VariantsSection } from './variants-section.tsx';
 import { hasProblems, problemsOfRows } from './variant-fields.ts';
@@ -144,6 +146,9 @@ export function EditForm({
   const attributeFields = form.fields.filter((field) => !field.isVariantOption);
   const [categoryIds, setCategoryIds] = useState<string[]>(() => categoryIdsOf(content));
   const [taxCategoryCode, setTaxCategoryCode] = useState(() => taxCategoryOf(content));
+  const [topicIds, setTopicIds] = useState<string[]>(() => topicIdsOf(content));
+  const [maxTags, setMaxTags] = useState(DEFAULT_MAX_TAGS);
+  const knownTags = useKnownTags(product.topicRefs ?? [], defaultLocale);
   const [inputs, setInputs] = useState<AttributeInputs>(() =>
     attributeInputsOf(content, attributeFields),
   );
@@ -208,6 +213,7 @@ export function EditForm({
     if (imageIds.length > 0 || 'imageIds' in withTexts) withTexts['imageIds'] = imageIds;
     return contentFrom(withTexts, {
       categoryIds,
+      topicIds,
       taxCategoryCode,
       attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
       variants: configurable ? variantsWith(list) : null,
@@ -315,6 +321,10 @@ export function EditForm({
     void run('save');
   }
 
+  // What the freeze refused about the tags, in words, until the seller changes the tags.
+  const tagIssues = problem?.topicIssues ?? [];
+  const tagSentences = topicSentences(t, tagIssues, topicIds, knownTags, maxTags);
+
   const refusedAt = (key: TextKey) =>
     refused.find(
       (item) =>
@@ -380,8 +390,11 @@ export function EditForm({
       {problem === null ? null : (
         <Banner tone="critical">
           <p>{t(problem.key, problem.values)}</p>
-          {problem.details.length > 0 ? (
+          {problem.details.length + tagSentences.length > 0 ? (
             <ul className="mt-1 list-disc ps-5 text-sm">
+              {tagSentences.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
               {problem.details.map((line) => (
                 <li key={line}>{line}</li>
               ))}
@@ -454,7 +467,24 @@ export function EditForm({
               setTaxCategoryCode(code);
               edited();
             }}
-          />
+          >
+            <TagField
+              ids={topicIds}
+              known={knownTags}
+              defaultLocale={defaultLocale}
+              issues={tagIssues}
+              max={maxTags}
+              onMax={setMaxTags}
+              onChange={(ids) => {
+                setTopicIds(ids);
+                // The refusals named the old list; they say nothing about this one.
+                setProblem((current) =>
+                  current?.topicIssues === undefined ? current : { ...current, topicIssues: [] },
+                );
+                edited();
+              }}
+            />
+          </ClassificationSection>
           <AttributesSection
             fields={attributeFields}
             units={form.units}

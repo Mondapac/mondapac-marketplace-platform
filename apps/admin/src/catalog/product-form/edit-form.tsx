@@ -29,6 +29,7 @@ import {
   categoryIdsOf,
   contentFrom,
   taxCategoryOf,
+  topicIdsOf,
   variantRowsOf,
   variantsWith,
   withMintedIds,
@@ -37,6 +38,7 @@ import {
   type VariantRow,
 } from './draft-content.ts';
 import { problemOf, type FormProblem } from './errors.ts';
+import { TagField, topicSentences, useKnownTags } from './tag-field.tsx';
 import { blockersOf, listOf } from './publish-state.ts';
 import {
   ActiveRow,
@@ -49,6 +51,7 @@ import { VariantsSection } from './variants-section.tsx';
 import {
   BASE,
   BULK,
+  MAX_TAGS,
   readable,
   type BulkAnswer,
   type DraftSaved,
@@ -107,6 +110,7 @@ export function ProductEdit({
   marketName,
   timeZone,
   canPause,
+  canReadTags,
 }: {
   readonly productId: string;
   readonly csrfToken: string;
@@ -115,6 +119,8 @@ export function ProductEdit({
   readonly timeZone: string;
   /** The admin holds `catalog.product.pause`: the Active switch is shown. */
   readonly canPause: boolean;
+  /** The admin holds `catalog.topic.read`: the Tags field can search; otherwise it only lists. */
+  readonly canReadTags: boolean;
 }) {
   const t = useTranslations('catalog.productForm');
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
@@ -157,6 +163,7 @@ export function ProductEdit({
       marketName={marketName}
       timeZone={timeZone}
       canPause={canPause}
+      canReadTags={canReadTags}
       onReload={() => void load()}
     />
   );
@@ -184,6 +191,7 @@ function EditForm({
   marketName,
   timeZone,
   canPause,
+  canReadTags,
   onReload,
 }: {
   readonly product: ProductView;
@@ -191,6 +199,7 @@ function EditForm({
   readonly marketName: string;
   readonly timeZone: string;
   readonly canPause: boolean;
+  readonly canReadTags: boolean;
   readonly onReload: () => void;
 }) {
   const t = useTranslations('catalog.productForm');
@@ -203,6 +212,8 @@ function EditForm({
   const [texts, setTexts] = useState(() => textsOf(content, defaultLocale));
   const [categoryIds, setCategoryIds] = useState<string[]>(() => categoryIdsOf(content));
   const [taxCategoryCode, setTaxCategoryCode] = useState(() => taxCategoryOf(content));
+  const [topicIds, setTopicIds] = useState<string[]>(() => topicIdsOf(content));
+  const knownTags = useKnownTags(product.topicRefs ?? [], defaultLocale);
   const [inputs, setInputs] = useState<AttributeInputs>(() =>
     attributeInputsOf(content, attributeFields),
   );
@@ -254,6 +265,10 @@ function EditForm({
   };
   const categories = categoryOptions(form.categories, defaultLocale);
 
+  // What the freeze refused about the tags, in words, until the admin changes the tags.
+  const tagIssues = problem?.topicIssues ?? [];
+  const tagSentences = topicSentences(t, tagIssues, topicIds, knownTags, MAX_TAGS);
+
   const missing = blockersOf({
     name: texts.name,
     categoryIds,
@@ -280,6 +295,7 @@ function EditForm({
   function contentOf(list: readonly VariantRow[]): Record<string, unknown> {
     return contentFrom(contentWithTexts(content, defaultLocale, texts), {
       categoryIds,
+      topicIds,
       taxCategoryCode,
       attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
       variants: configurable ? variantsWith(list) : null,
@@ -560,8 +576,11 @@ function EditForm({
           {...(stale ? { title: t('banner.stale-title') } : {})}
         >
           <p>{stale ? t('banner.stale-body') : t(`error.${problem.key}`, problem.values)}</p>
-          {problem.details.length > 0 ? (
+          {problem.details.length + tagSentences.length > 0 ? (
             <ul className="mt-1 list-disc ps-5 text-sm">
+              {tagSentences.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
               {problem.details.map((line) => (
                 <li key={line}>{line}</li>
               ))}
@@ -669,6 +688,22 @@ function EditForm({
               value={taxCategoryCode}
               onChange={(event) => {
                 setTaxCategoryCode(event.target.value);
+                edited();
+              }}
+            />
+            <TagField
+              ids={topicIds}
+              known={knownTags}
+              defaultLocale={defaultLocale}
+              issues={tagIssues}
+              max={MAX_TAGS}
+              canRead={canReadTags}
+              onChange={(ids) => {
+                setTopicIds(ids);
+                // The refusals named the old list; they say nothing about this one.
+                setProblem((current) =>
+                  current?.topicIssues === undefined ? current : { ...current, topicIssues: [] },
+                );
                 edited();
               }}
             />

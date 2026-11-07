@@ -342,9 +342,7 @@ export function sensitiveFieldsOf(
   if (policy.primaryImage) fields.push('primary-image');
   if (policy.variantRemoved) fields.push('variant-removed');
   if (policy.gtinChanged) fields.push('gtin-changed');
-  // A change of the topic set is always reviewed (tags decision 3). `topics` joins this list in
-  // PR 4, together with the seller panel's message for it; listing it before that would show a
-  // raw message key in the seller's edit form.
-  fields.push('images');
+  // A change of the topic set is always reviewed (tags decision 3), whatever the Market policy says.
+  fields.push('topics', 'images');
   return fields;
 }

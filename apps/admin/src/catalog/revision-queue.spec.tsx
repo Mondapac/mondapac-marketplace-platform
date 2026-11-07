@@ -40,6 +40,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('RevisionQueueTable', () => {
+  it('labels a tag change "Tags" and never shows its code', () => {
+    render(
+      wrap(
+        <RevisionQueueTable
+          rows={[row({ reasons: ['topics-changed'] })]}
+          params={parseQueueParams({})}
+        />,
+      ),
+    );
+    const cells = within(screen.getAllByRole('row')[1]!);
+    expect(cells.getByText('Tags')).toBeTruthy();
+    expect(cells.queryByText('topics-changed')).toBeNull();
+  });
+
   it('shows the product, change, seller, reasons, checks and a named Review link', () => {
     const params = parseQueueParams({ change: 'update' });
     render(

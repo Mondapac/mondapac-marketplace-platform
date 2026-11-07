@@ -69,6 +69,35 @@ export interface FormCategory {
   readonly names: Readonly<Record<string, string>>;
 }
 
+/** A tag (catalog topic) as a product read names it (`GET catalog/seller/products/:id` -> `topicRefs`). */
+export interface TopicRef {
+  readonly id: string;
+  readonly slug: string;
+  readonly status: 'active' | 'archived';
+  /** The name in the Market default locale, else any locale; null when it has none. */
+  readonly name: string | null;
+  readonly names: Readonly<Record<string, string>>;
+}
+
+export type TopicGroup = 'occasion' | 'cuisine' | 'use';
+
+/** One active tag of the picker (`GET catalog/seller/topics`). */
+export interface TopicChoice {
+  readonly id: string;
+  readonly slug: string;
+  readonly group: TopicGroup;
+  readonly name: string | null;
+  readonly names: Readonly<Record<string, string>>;
+}
+
+/** `GET catalog/seller/topics`. */
+export interface TopicPage {
+  readonly items: readonly TopicChoice[];
+  readonly nextAfterId: string | null;
+  /** The most tags a product may carry. */
+  readonly maxPerProduct: number;
+}
+
 /** What the product form is drawn from: `GET catalog/seller/products/:id` -> `form`. */
 export interface ProductForm {
   readonly taxCategoryCodes: readonly string[];
@@ -117,6 +146,8 @@ export interface ProductView {
   readonly pending: RevisionView | null;
   /** Newest first. An open one keeps its field empty. */
   readonly suggestions?: readonly ValueSuggestion[];
+  /** The tags named by the draft, the published and the pending version, each once. */
+  readonly topicRefs?: readonly TopicRef[];
 }
 
 export interface OfferView {

@@ -1211,6 +1211,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', `catalog/admin/business-activities/${id}`],
     ['POST', 'catalog/admin/business-activities'],
     ['PUT', `catalog/admin/business-activities/${id}`],
+    ['GET', 'catalog/admin/topics'],
     ['GET', 'catalog/admin/attributes'],
     ['GET', `catalog/admin/attributes/${id}`],
     ['POST', 'catalog/admin/attributes'],
@@ -1375,6 +1376,23 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe(
       'http://api.test/catalog/admin/business-activities',
     );
+  });
+
+  it('passes only status, group, search, afterId and limit of the tag list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/topics?status=active&group=cuisine&search=bbq&afterId=${id}&limit=100&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/topics?status=active&group=cuisine&search=bbq&afterId=${id}&limit=100`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/topics?status=inactive&group=season&afterId=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/topics');
   });
 
   it('passes only the action of the category impact read, in its shape, and no query on the tree', async () => {

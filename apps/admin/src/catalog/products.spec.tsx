@@ -317,6 +317,42 @@ describe('admin product list', () => {
     expect(within(body).getByText('29 Oct 2026')).toBeTruthy();
   });
 
+  it('offers an optional Tags column, hidden by default: two names, then "+N" with words for a reader', async () => {
+    const topic = (n: number, name: string | null, status: 'active' | 'archived' = 'active') => ({
+      id: `0190a000-0000-7000-8000-0000000004${String(n).padStart(2, '0')}`,
+      slug: `tag-${n}`,
+      status,
+      name,
+    });
+    serve(() =>
+      page([
+        row({ topics: [topic(1, 'Eid'), topic(2, 'Ramadan', 'archived'), topic(3, 'Picnic')] }),
+        row({
+          productId: '0190a000-0000-7000-8000-000000000002',
+          name: 'Dates',
+          topics: [topic(4, null)],
+        }),
+        row({ productId: '0190a000-0000-7000-8000-000000000003', name: 'Rice', topics: [] }),
+      ]),
+    );
+    mount();
+    await screen.findByText('Lamb cutlets 500 g');
+    expect(screen.queryByRole('columnheader', { name: 'Tags' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Tags' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    expect(screen.getByRole('columnheader', { name: 'Tags' })).toBeTruthy();
+    const rows = screen.getAllByRole('row').slice(1);
+    const first = within(rows[0]!);
+    expect(first.getByText(/Eid, Ramadan \(archived\)/)).toBeTruthy();
+    expect(first.getByText('+1')).toBeTruthy();
+    expect(first.getByText('and 1 more')).toBeTruthy();
+    // A tag without a name shows its slug; a product without tags shows a dash.
+    expect(within(rows[1]!).getByText('tag-4')).toBeTruthy();
+    expect(within(rows[2]!).getByText('—')).toBeTruthy();
+  });
+
   it('restores a saved choice on load, drops unknown ids, and resets to the default', async () => {
     window.localStorage.setItem(
       'mp:admin:AU:acc-1:products-columns',

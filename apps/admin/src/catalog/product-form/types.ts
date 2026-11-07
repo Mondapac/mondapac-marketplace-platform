@@ -7,6 +7,13 @@ export const BASE = 'catalog/admin/platform-products';
 /** The bulk route; the form calls it with one id to turn a published product off or on. */
 export const BULK = 'catalog/admin/products/bulk';
 export const PAUSE_PERMISSION = 'catalog.product.pause';
+/** Reading the tag list: without it the Tags field shows the saved tags and cannot change them. */
+export const TOPIC_READ_PERMISSION = 'catalog.topic.read';
+export const API_TOPICS = 'catalog/admin/topics';
+/** The most tags a product carries (the API's MAX_TOPICS_PER_PRODUCT). */
+export const MAX_TAGS = 10;
+/** The API's page maximum: the search narrows the list instead of paging it. */
+export const TAG_PAGE = 100;
 
 export interface FormOption {
   readonly code: string;
@@ -35,6 +42,33 @@ export interface ProductForm {
   readonly taxCategoryCodes: readonly string[];
   readonly fields: readonly FormField[];
   readonly categories: readonly FormCategory[];
+}
+
+/** A tag (catalog topic) as a product read names it (`topicRefs`). */
+export interface TopicRef {
+  readonly id: string;
+  readonly slug: string;
+  readonly status: 'active' | 'archived';
+  /** The name in the Market default locale, else any locale; null when it has none. */
+  readonly name: string | null;
+  readonly names: Readonly<Record<string, string>>;
+}
+
+export type TopicGroup = 'occasion' | 'cuisine' | 'use';
+
+/** One row of the tag list the Tags field searches (`GET catalog/admin/topics`). */
+export interface TopicChoice {
+  readonly id: string;
+  readonly slug: string;
+  readonly group: TopicGroup;
+  readonly status: 'active' | 'archived';
+  readonly names: Readonly<Record<string, string>>;
+}
+
+/** `GET catalog/admin/topics`. */
+export interface TopicPage {
+  readonly items: readonly TopicChoice[];
+  readonly nextAfterId: string | null;
 }
 
 export interface Locales {
@@ -85,6 +119,8 @@ export interface ProductView {
     readonly submittedAt: string;
     readonly content: Readonly<Record<string, unknown>>;
   } | null;
+  /** The tags named by the draft and the published version, each once. */
+  readonly topicRefs?: readonly TopicRef[];
 }
 
 /** `PUT catalog/admin/platform-products/:id/draft`. */

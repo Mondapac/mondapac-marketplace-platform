@@ -48,6 +48,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The seller import (catalog design 14c): the templates, and the latest import of the seller.
     'catalog/seller/imports/template',
     'catalog/seller/imports/current',
+    // The tags a product may carry (catalog topics; query: `search`, `afterId`, `limit`).
+    'catalog/seller/topics',
   ]),
   PUT: new Set([
     // The signed-in member's own display name (profile).
@@ -166,6 +168,7 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
   'identity/seller/team': { after: UUID },
+  'catalog/seller/topics': { search: null, afterId: UUID, limit: /^[0-9]{1,3}$/ },
   'notifications/seller/notices': { show: /^(unread|read|all)$/, before: UUID },
   // The API's own opaque cursor (epoch milliseconds of the publication, an underscore, the review id).
   'reviews/seller': { cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/ },

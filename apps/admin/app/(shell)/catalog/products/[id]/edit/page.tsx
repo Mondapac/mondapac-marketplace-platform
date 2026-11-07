@@ -9,6 +9,7 @@ import { ProductEdit } from '../../../../../../src/catalog/product-form/edit-for
 import {
   EDIT_PERMISSION,
   PAUSE_PERMISSION,
+  TOPIC_READ_PERMISSION,
 } from '../../../../../../src/catalog/product-form/types.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,6 +42,7 @@ export default async function EditProductPage({
           marketName={panelConfig().marketName}
           timeZone={displayZone(gate.session.timezone)}
           canPause={gate.session.permissionKeys.includes(PAUSE_PERMISSION)}
+          canReadTags={gate.session.permissionKeys.includes(TOPIC_READ_PERMISSION)}
         />
       ) : (
         <>

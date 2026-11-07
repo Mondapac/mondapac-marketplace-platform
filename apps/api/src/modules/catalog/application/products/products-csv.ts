@@ -9,6 +9,7 @@ export const EXPORT_COLUMNS = [
   'scope',
   'seller',
   'created',
+  'tags',
 ] as const;
 export type ExportColumn = (typeof EXPORT_COLUMNS)[number];
 
@@ -26,6 +27,7 @@ export const EXPORT_HEADERS: Readonly<
   scope: 'Scope',
   seller: 'Seller',
   created: 'Created',
+  tags: 'Tags',
 });
 
 /**
