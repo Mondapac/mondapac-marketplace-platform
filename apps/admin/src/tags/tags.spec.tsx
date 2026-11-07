@@ -515,6 +515,9 @@ describe('tag form rules', () => {
         'en',
       ).languages.map((r) => r.locale),
     ).toEqual(['en', 'ar', 'fa']);
+    expect(fieldsOf([{ path: 'slug', code: 'format' }], emptyForm('en'))).toEqual({
+      slug: 'slug-format',
+    });
     expect(suggestSlug('Café & Brunch')).toBe('cafe-and-brunch');
     expect(suggestSlug('نوروز')).toBe('topic');
   });

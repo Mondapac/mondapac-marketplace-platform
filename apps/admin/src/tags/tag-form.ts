@@ -207,6 +207,8 @@ function why(code: string, onSynonym: boolean): string {
     case 'too-many':
     case 'name-missing':
       return code;
+    // `type` and `locale-unsupported` cannot come from this form (it sends strings and only the
+    // Market's languages), so they fall to the plain refusal.
     default:
       return 'refused';
   }
@@ -236,7 +238,15 @@ export function fieldsOf(fields: readonly TagField[], form: TagFormState): Field
     else if (head === 'intro')
       rest = { ...rest, intro: field.code === 'too-long' ? 'intro-long' : why(field.code, false) };
     else if (head === 'slug')
-      rest = { ...rest, slug: field.code === 'slug-taken' ? 'slug-taken' : why(field.code, false) };
+      rest = {
+        ...rest,
+        slug:
+          field.code === 'slug-taken'
+            ? 'slug-taken'
+            : field.code === 'format'
+              ? 'slug-format'
+              : why(field.code, false),
+      };
   }
   return {
     ...(Object.keys(names).length > 0 ? { names } : {}),
