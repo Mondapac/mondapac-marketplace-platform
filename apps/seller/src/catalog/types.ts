@@ -99,6 +99,8 @@ export interface ProductView {
   /** `single`: one fixed variant; `configurable`: variants defined by option values. */
   readonly variantModel: string;
   readonly status: string;
+  /** When an admin paused the product (the seller's offers are off sale); null when not paused. */
+  readonly pausedAt: string | null;
   readonly variants: readonly {
     readonly variantId: string;
     readonly state: string;

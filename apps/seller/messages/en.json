@@ -1002,19 +1002,19 @@
     },
     "edit": {
       "title": "Edit product",
-      "locale": "Texts ({locale})",
       "field": {
-        "name": "Name",
+        "name": "Title",
+        "name-help": "In English. It is translated when a new buyer language is published.",
         "shortDescription": "Short description",
-        "description": "Description"
+        "description": "Description",
+        "name-claim": "Product text can't include certification words like \"halal\". Badges come from seller offers."
       },
       "save": "Save draft",
       "submit": "Submit for review",
       "back": "Back to product",
       "reload": "Reload the product",
       "replace-pending": "Replace the revision that is waiting for review",
-      "refused": "Some texts were not saved. Change the fields marked below.",
-      "refused-field": "This text was not saved because it makes a claim that needs a matching certificate.",
+      "refused-field": "This text was not saved because it holds a claim or a hidden character.",
       "notice": {
         "saved": "Draft saved.",
         "submitted": "Submitted for review.",
@@ -1039,8 +1039,8 @@
         "partial": "The new variant was created but its details were not saved. Press \"Save draft\" again; do not reload the page.",
         "suggestion-pending": "A value you suggested is still waiting for a reviewer, so a required field is empty. You can submit once it is decided."
       },
-      "attributes": "Details",
-      "classification": "Categories and tax",
+      "attributes": "Product details",
+      "classification": "Category",
       "categories": "Categories",
       "categories-none": "No categories are available yet.",
       "tax-category": "Tax category",
@@ -1181,6 +1181,49 @@
           "approved": "A reviewer added “{label}” to the list. Pick it above.",
           "mapped": "A reviewer matched “{label}” to a value already on the list. Pick that value above."
         }
+      },
+      "product-card": "Product",
+      "page": {
+        "untitled": "Untitled product",
+        "subtitle": "Your product · {market} · {code}"
+      },
+      "bar": {
+        "region": "Unsaved changes",
+        "unsaved": "Unsaved changes",
+        "errors": "{count, plural, one {# field needs fixing} other {# fields need fixing}}",
+        "discard": "Discard",
+        "save-draft": "Save draft",
+        "save-revision": "Save revision"
+      },
+      "status": {
+        "title": "Status",
+        "waiting": "Waiting for review",
+        "draft-help": "We check your product before buyers can find it. Save draft keeps your work.",
+        "published-help": "Changes you submit are checked before they replace what buyers see.",
+        "pending-help": "Your latest version is waiting for review. You can still edit and submit again.",
+        "blockers": "To submit: {items}.",
+        "title-item": "add a title",
+        "category-item": "choose a category",
+        "tax-item": "choose the tax category",
+        "details-item": "fill in the required details"
+      },
+      "organisation": {
+        "title": "Organisation",
+        "market": "Market",
+        "scope": "Scope",
+        "scope-own": "Your product",
+        "type": "Type"
+      },
+      "paused": {
+        "title": "Mondapac paused this product.",
+        "body": "Buyers can't find it and your offers are off sale."
+      },
+      "leave": {
+        "title": "Leave this page?",
+        "message": "Your changes to {title} aren't saved.",
+        "message-untitled": "Your changes aren't saved.",
+        "stay": "Cancel",
+        "leave": "Leave without saving"
       }
     },
     "offer-edit": {

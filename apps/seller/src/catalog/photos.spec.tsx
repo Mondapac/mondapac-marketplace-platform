@@ -31,6 +31,7 @@ const product = (content: Record<string, unknown>): ProductView => ({
   familyCode: 'food',
   variantModel: 'single',
   status: 'draft',
+  pausedAt: null,
   variants: [{ variantId: 'v1', state: 'active', variantCode: 'P-000001-0v1' }],
   maxVariants: 5,
   sensitiveFields: [],
@@ -50,6 +51,7 @@ const mount = (library: readonly ProductPhoto[] | null, content: Record<string, 
         photos={library}
         locales={['en-AU']}
         defaultLocale="en-AU"
+        marketName="Australia"
         csrfToken="csrf"
       />
     </NextIntlClientProvider>,
@@ -119,6 +121,9 @@ describe('photos on the product form', () => {
   it('keeps an untouched draft without photos free of an imageIds key', async () => {
     call.mockResolvedValue(saved);
     mount([]);
+    // Edit and put back: the form is unsaved, the content is what it was.
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Dates 2' } });
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Dates' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call.mock.calls[0]?.[2]).toEqual({

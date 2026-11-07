@@ -10,7 +10,7 @@ import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRepository } from '../ports/product.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
-import { invalid, type ValidationFailure } from '../own-reads/own-reads.shared';
+import { invalid, isoOf, type ValidationFailure } from '../own-reads/own-reads.shared';
 
 export interface PlatformProductReadInput {
   readonly productId: string;
@@ -31,6 +31,10 @@ export interface PlatformProductReadOutput {
   /** `single`: one fixed variant, no options; `configurable`: variants defined by option values. */
   readonly variantModel: string;
   readonly status: ProductStatus;
+  /** When an admin paused the product (offers off sale); null when it is not paused. */
+  readonly pausedAt: string | null;
+  /** The Offers on it (not deleted), every seller; read only, for "Sellers selling it". */
+  readonly offers: { readonly sellerCount: number; readonly offerCount: number };
   readonly variants: readonly { variantId: string; state: VariantState }[];
   /** The Market's cap on non-retired variants. */
   readonly maxVariants: number;
@@ -127,13 +131,14 @@ export class PlatformProductRead extends UseCase<
           form: await deps.ownReader.productForm(market, state.familyCode),
           copy,
           published: await revisionOf(state.publishedRevisionId),
+          offers: await deps.ownReader.offerTotalsOfProduct(market, state.id),
         });
       },
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
     if (read.value === null) return err({ code: 'product.not-found' });
-    const { product, form, copy, published } = read.value;
+    const { product, form, copy, published, offers } = read.value;
     const { state } = product;
     return ok({
       productId: state.id,
@@ -142,6 +147,8 @@ export class PlatformProductRead extends UseCase<
       familyCode: state.familyCode,
       variantModel: state.variantModel,
       status: state.status,
+      pausedAt: isoOf(state.pausedAt),
+      offers,
       variants: state.variants.map((variant) => ({
         variantId: variant.id,
         state: variant.state,

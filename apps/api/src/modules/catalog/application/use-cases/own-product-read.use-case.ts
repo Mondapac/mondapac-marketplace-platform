@@ -39,6 +39,8 @@ export interface OwnProductReadOutput {
   /** `single`: one fixed variant, no options; `configurable`: variants defined by option values. */
   readonly variantModel: string;
   readonly status: ProductStatus;
+  /** When an admin paused the product (the seller's offers are off sale); null when not paused. */
+  readonly pausedAt: string | null;
   /** The seller marked the product as carrying their own brand (it lets them propose a brand). */
   readonly ownBrand: boolean;
   readonly variants: readonly { variantId: string; state: VariantState; variantCode: string }[];
@@ -246,6 +248,7 @@ export class OwnProductRead extends UseCase<
       familyCode: shownFamily,
       variantModel: state.variantModel,
       status: state.status,
+      pausedAt: isoOf(state.pausedAt),
       ownBrand: state.ownBrand,
       variants: state.variants.map((variant) => ({
         variantId: variant.id,

@@ -157,6 +157,13 @@ export class OwnProductView {
   variantModel!: string;
   @ApiProperty() status!: string;
   @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      "When an admin paused the product (ISO 8601, UTC); the seller's offers are off sale. Null when not paused.",
+  })
+  pausedAt!: string | null;
+  @ApiProperty({
     description:
       'The seller marked the product as carrying their own brand (it lets them propose a brand).',
   })

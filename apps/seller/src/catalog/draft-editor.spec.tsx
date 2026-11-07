@@ -52,6 +52,7 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   familyCode: 'food',
   variantModel: 'configurable',
   status: 'draft',
+  pausedAt: null,
   variants: [{ variantId: 'v1', state: 'proposed', variantCode: 'P-000001-0v1' }],
   maxVariants: 3,
   sensitiveFields: ['name', 'images'],
@@ -84,6 +85,7 @@ const mount = (p: ProductView = product(), photos: ProductPhoto[] = []) =>
         photos={photos}
         locales={['en-AU']}
         defaultLocale="en-AU"
+        marketName="Australia"
         csrfToken="csrf"
       />
     </NextIntlClientProvider>,
@@ -621,6 +623,7 @@ describe('EditForm variant details', () => {
       },
     });
     mount(withRow({ gtin: '4006381333931' }));
+    fireEvent.change(screen.getByLabelText(/Short description/), { target: { value: 'Cold' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     expect(await screen.findByText(/Product P00000042 already carries/)).toBeTruthy();
     await expectToast('Draft saved.');
