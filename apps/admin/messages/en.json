@@ -2762,7 +2762,8 @@
         "photos": "Photos",
         "categories": "Categories and tax",
         "variants": "Variants",
-        "attributes": "Details that changed"
+        "attributes": "Details that changed",
+        "attributes-first": "Details"
       },
       "field": {
         "name": "Name",
@@ -2774,7 +2775,8 @@
         "same": "Unchanged",
         "added": "Added",
         "removed": "Removed",
-        "changed": "Changed"
+        "changed": "Changed",
+        "new": "New"
       },
       "unchanged-locale": "{locale}: unchanged",
       "published": "Published",
@@ -2800,7 +2802,7 @@
           "taken-down": "Taken down"
         },
         "view": "View large",
-        "view-named": "View {name} large",
+        "view-named": "View large: {name}",
         "take-down": "Take down",
         "take-down-named": "Take down {name}",
         "removed": "{count, plural, one {# published photo is removed in this version.} other {# published photos are removed in this version.}}",
@@ -2818,7 +2820,8 @@
           "rights": "Rights problem",
           "unsafe-or-illegal": "Unsafe or illegal",
           "other": "Other"
-        }
+        },
+        "load-error": "The photos could not be loaded. Reload the page to see them before you decide."
       },
       "decision": {
         "title": "Decision",
@@ -2858,7 +2861,8 @@
           "tax-category": "Tax category",
           "duplicate": "Duplicate",
           "other": "Other"
-        }
+        },
+        "photos-missing": "Load the photos before you approve."
       },
       "error": {
         "stale": "This version changed since you opened it. Reload to see the current one.",

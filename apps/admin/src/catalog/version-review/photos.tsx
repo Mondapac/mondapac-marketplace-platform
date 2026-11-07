@@ -16,6 +16,8 @@ const imageSrc = (productId: string, imageId: string, size: 'thumb' | 'large') =
  * outline for new ones), opens large, and, for a reviewer who may decide, can be taken down after
  * a required reason and a warning that it cannot be undone. Removed photos are counted.
  */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function PhotoTiles({
   productId,
   tiles,
@@ -165,7 +167,8 @@ function TakeDownDialog({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (tile === null || busy.current) return;
+    // The id is put in the path of a call that cannot be undone: only ever a UUID.
+    if (tile === null || busy.current || !UUID.test(tile.imageId)) return;
     if (reason === '') {
       setMissing(true);
       return;

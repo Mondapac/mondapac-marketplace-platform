@@ -99,6 +99,7 @@ export default async function VersionReviewPage({
         )
       : Promise.resolve(null),
   ]);
+  if (images.kind === 'signed-out') redirect('/session-ended');
   const categoryNames: Record<string, string> = {};
   if (tree?.kind === 'ok') {
     for (const category of tree.body.categories) {
@@ -115,7 +116,7 @@ export default async function VersionReviewPage({
   return shell(
     <VersionReview
       read={read.body}
-      images={images.kind === 'ok' ? images.body.images : []}
+      images={images.kind === 'ok' ? images.body.images : null}
       categoryNames={categoryNames}
       canDecide={keys.includes(DECIDE_PERMISSION)}
       csrfToken={gate.session.csrfToken}

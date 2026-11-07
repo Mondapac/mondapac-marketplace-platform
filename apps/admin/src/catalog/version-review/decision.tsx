@@ -23,6 +23,7 @@ export function DecisionCard({
   requiredChecks,
   canDecide,
   csrfToken,
+  photosMissing = false,
   nextHref,
 }: {
   readonly productId: string;
@@ -31,6 +32,8 @@ export function DecisionCard({
   readonly requiredChecks: readonly string[];
   readonly canDecide: boolean;
   readonly csrfToken: string;
+  /** The photos of the version did not load: Approve waits, since a check is about them. */
+  readonly photosMissing?: boolean;
   /** The next pending version of the queue, if any. */
   readonly nextHref: string | null;
 }) {
@@ -44,6 +47,7 @@ export function DecisionCard({
   const busy = useRef(false);
   const base = `catalog/admin/products/${productId}/revisions/${revisionId}`;
   const allTicked = requiredChecks.every((code) => ticked.has(code));
+  const canApprove = allTicked && !photosMissing;
   const noteId = `${revisionId}-approve-note`;
 
   async function send(action: 'approve' | 'request-changes', body: object): Promise<boolean> {
@@ -65,6 +69,8 @@ export function DecisionCard({
     }
     const next = decisionProblemOf(result.failure);
     setProblem(next);
+    // A stale version is reloaded from the card's banner, which an open dialog would cover.
+    if (next === 'stale') setSendBack(null);
     // A refused claim is fixed by the seller: open Send back with that reason chosen.
     if (next === 'claim-text') setSendBack({ reason: 'description-claim' });
     return false;
@@ -117,7 +123,7 @@ export function DecisionCard({
           {requiredChecks.map((code) => (
             <CheckboxRow
               key={code}
-              label={t(`check.${code}`)}
+              label={t.has(`check.${code}`) ? t(`check.${code}`) : code}
               checked={ticked.has(code)}
               disabled={pending}
               onChange={(event) =>
@@ -136,25 +142,23 @@ export function DecisionCard({
         <div className="grid grid-cols-2 gap-3">
           <Button
             variant="secondary"
-            className="min-h-12 lg:min-h-0"
             disabled={pending}
             onClick={() => setSendBack({ reason: '' })}
           >
             {t('send-back')}
           </Button>
           <Button
-            className="min-h-12 lg:min-h-0"
-            disabled={!allTicked}
+            disabled={!canApprove}
             loading={pending}
-            aria-describedby={allTicked ? undefined : noteId}
+            aria-describedby={canApprove ? undefined : noteId}
             onClick={() => void send('approve', { version, checksConfirmed: [...ticked] })}
           >
             {t('approve')}
           </Button>
         </div>
-        {allTicked ? null : (
+        {canApprove ? null : (
           <p id={noteId} className="text-sm text-fg-muted">
-            {t('tick-all')}
+            {t(photosMissing ? 'photos-missing' : 'tick-all')}
           </p>
         )}
       </div>

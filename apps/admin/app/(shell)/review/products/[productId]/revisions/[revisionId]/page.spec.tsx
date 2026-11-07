@@ -106,6 +106,23 @@ describe('version review page', () => {
     expect(props['nextHref']).toBe(`/review/products/${P}/revisions/${NEXT}`);
   });
 
+  it('passes no photo list when it cannot be read, and sends a signed-out admin away', async () => {
+    const photos = `catalog/admin/products/${P}/revisions/${R}/images`;
+    const answering = (kind: string) => (path: string) =>
+      Promise.resolve(
+        path === photos
+          ? { kind }
+          : path in answers
+            ? { kind: 'ok', body: answers[path] }
+            : { kind: 'not-found' },
+      );
+    mocks.get.mockImplementation(answering('unavailable'));
+    render(await VersionReviewPage(params()));
+    expect((mocks.view.mock.calls[0]![0] as Record<string, unknown>)['images']).toBeNull();
+    mocks.get.mockImplementation(answering('signed-out'));
+    await expect(VersionReviewPage(params())).rejects.toThrow('redirect:/session-ended');
+  });
+
   it('reads no category tree without its key, and no queue for a decided version', async () => {
     mocks.session.mockResolvedValue({ kind: 'ok', session: session(['catalog.product.view']) });
     mocks.get.mockImplementation((path: string) =>

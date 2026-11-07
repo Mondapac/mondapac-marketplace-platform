@@ -23,12 +23,13 @@ function mount(
   over: Partial<RevisionRead> = {},
   canDecide = true,
   nextHref: string | null = '/next',
+  photos: readonly RevisionImage[] | null = images,
 ) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages} timeZone="UTC">
       <VersionReview
         read={{ ...read, ...over }}
-        images={images}
+        images={photos}
         categoryNames={{ [CATEGORY(1)]: 'Oils', [CATEGORY(2)]: 'Olive oils' }}
         canDecide={canDecide}
         csrfToken="csrf-1"
@@ -97,6 +98,43 @@ describe('VersionReview content', () => {
     expect(screen.getByText("View only. You can't decide on product versions.")).toBeTruthy();
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.queryByRole('button', { name: /Take down/ })).toBeNull();
+  });
+});
+
+describe('VersionReview edge cases', () => {
+  it('never shows unread photos as no photos, and holds Approve until they load', () => {
+    mount({ requiredChecks: [] }, true, '/next', null);
+    expect(
+      screen.getByText(
+        'The photos could not be loaded. Reload the page to see them before you decide.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('This version has no photos.')).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Approve' }).disabled).toBe(true);
+    expect(screen.getByText('Load the photos before you approve.')).toBeTruthy();
+  });
+
+  it('calls a first publication New, not Changed, and its details not changed', () => {
+    mount({ published: null });
+    expect(screen.queryByText('Changed')).toBeNull();
+    expect(screen.getAllByText('New').length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: 'Details' })).toBeTruthy();
+  });
+
+  it('shows an unknown check by its code', () => {
+    mount({ requiredChecks: ['future-check'] });
+    expect(screen.getByLabelText('future-check')).toBeTruthy();
+  });
+
+  it('closes Send back on a stale version, so Reload is in reach', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Send back' }));
+    const dialog = dialogTitled('Send this version back?');
+    fireEvent.change(dialog.getByLabelText('Reason'), { target: { value: 'photos' } });
+    fail(409, 'review.not-current-revision');
+    fireEvent.click(dialog.getByRole('button', { name: 'Send back', hidden: true }));
+    await waitFor(() => screen.getByRole('button', { name: 'Reload' }));
+    expect(dialog.queryByLabelText('Reason')).toBeNull();
   });
 });
 

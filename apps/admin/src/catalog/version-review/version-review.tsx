@@ -35,7 +35,8 @@ export function VersionReview({
   nextHref,
 }: {
   readonly read: RevisionRead;
-  readonly images: readonly RevisionImage[];
+  /** The photos of the version, or null when they could not be read. */
+  readonly images: readonly RevisionImage[] | null;
   /** Category id to name in the panel locale; an unknown id shows as the id. */
   readonly categoryNames: Readonly<Record<string, string>>;
   readonly canDecide: boolean;
@@ -49,7 +50,9 @@ export function VersionReview({
   const name =
     revision.texts[locale]?.name ?? Object.values(revision.texts)[0]?.name ?? read.productCode;
   const texts = textDiffs(revision, published, locale);
-  const tiles = photoTiles(images, published?.imageIds ?? null);
+  const tiles = images === null ? [] : photoTiles(images, published?.imageIds ?? null);
+  // Unread photos are never shown as "no photos": a reviewer would tick the photo check unseen.
+  const photosMissing = images === null && revision.imageIds.length > 0;
   const removedPhotos = idDiffs(revision.imageIds, published?.imageIds ?? null).filter(
     (row) => row.change === 'removed',
   ).length;
@@ -127,7 +130,8 @@ export function VersionReview({
               return group.changed ? (
                 <section key={group.locale} className="flex flex-col gap-3">
                   <h3 className="font-medium">
-                    {group.locale} <Badge tone="info">{t('mark.changed')}</Badge>
+                    {group.locale}{' '}
+                    <Badge tone="info">{t(published === null ? 'mark.new' : 'mark.changed')}</Badge>
                   </h3>
                   {body}
                 </section>
@@ -143,13 +147,17 @@ export function VersionReview({
           </Card>
 
           <Card title={t('section.photos')}>
-            <PhotoTiles
-              productId={read.productId}
-              tiles={tiles}
-              removed={removedPhotos}
-              canDecide={canDecide}
-              csrfToken={csrfToken}
-            />
+            {photosMissing ? (
+              <Banner tone="critical">{t('photos.load-error')}</Banner>
+            ) : (
+              <PhotoTiles
+                productId={read.productId}
+                tiles={tiles}
+                removed={removedPhotos}
+                canDecide={canDecide}
+                csrfToken={csrfToken}
+              />
+            )}
           </Card>
 
           <Card title={t('section.categories')}>
@@ -192,7 +200,7 @@ export function VersionReview({
           </Card>
 
           {attributes.length === 0 ? null : (
-            <Card title={t('section.attributes')}>
+            <Card title={t(published === null ? 'section.attributes-first' : 'section.attributes')}>
               <div className="flex flex-col gap-4">
                 {attributes.map((row) => (
                   <DiffPair
@@ -218,6 +226,7 @@ export function VersionReview({
               requiredChecks={read.requiredChecks}
               canDecide={canDecide}
               csrfToken={csrfToken}
+              photosMissing={photosMissing}
               nextHref={nextHref}
             />
           ) : null}
