@@ -1,3 +1,4 @@
+import { boundsJson } from './attribute-bounds-json';
 import type {
   AttributeDataType,
   AttributeSchema,
@@ -132,7 +133,7 @@ export class PrismaAttributeRepository implements AttributeRepository {
         revisionNo: state.revisionNo,
         material: state.material,
         isVariantOption: state.isVariantOption,
-        bounds: { ...state.bounds },
+        bounds: boundsJson(state.bounds),
         names: { ...state.names },
         authorKind: state.createdByKind,
         authorAccountId: null,

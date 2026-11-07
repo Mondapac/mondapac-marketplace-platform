@@ -337,7 +337,7 @@ model CatalogAttributeDefinition {
   tenantId            String                               @map("tenant_id")
   /// Unique per Market, never updated (CA4).
   code                String
-  /// text | long-text | integer | decimal | boolean | select | multi-select | date.
+  /// text | long-text | integer | decimal | boolean | select | multi-select | date | measure.
   dataType            String                               @map("data_type")
   localizable         Boolean
   /// draft | active | archived (attributes A2: a draft is invisible to sellers and buyers).
@@ -389,7 +389,7 @@ model CatalogAttributeDefinitionRevision {
   revisionNo          Int                                        @map("revision_no")
   material            Boolean
   isVariantOption     Boolean                                    @map("is_variant_option")
-  /// Object with maxLength, min, max.
+  /// Object with maxLength, min, max (a measure: in base units) and, for a measure, `measure` (unit settings).
   bounds              Json                                       @db.JsonB
   /// Locale to name (CA6).
   names               Json                                       @db.JsonB

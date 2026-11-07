@@ -279,6 +279,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // docs/design/data/sellers.md 3.2 and 9.5 (slice 5, section 22): one pending and one live
   // approved revision per file, and the reviewer queue by kind and age.
   // Seller health requests: one pending request per seller, and the pick-up order of the job.
+  'search.offer_variant_documents_gtin_idx':
+    'CREATE INDEX offer_variant_documents_gtin_idx ON search.offer_variant_documents USING btree (market_id, gtin) WHERE (gtin IS NOT NULL)',
   'sellers.seller_health_requests_market_id_requested_at_pending_idx':
     "CREATE INDEX seller_health_requests_market_id_requested_at_pending_idx ON sellers.seller_health_requests USING btree (market_id, requested_at) WHERE (status = 'pending'::text)",
   'sellers.seller_health_requests_market_id_seller_id_pending_key':

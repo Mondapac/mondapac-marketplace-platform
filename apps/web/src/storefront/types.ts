@@ -53,7 +53,16 @@ export interface ProductCard {
  * A product card of a home shelf. The price is absent when the shelf read does not carry it (the
  * best-sellers route gives ids and text only): the card then shows no price and no add button.
  */
-export type ShelfCard = Omit<ProductCard, 'price'> & { readonly price?: Money };
+export type ShelfCard = Omit<ProductCard, 'price'> & {
+  readonly price?: Money;
+  /**
+   * True when `price` is the lowest of several (a search result whose matching variants differ in
+   * price, variants V8): the card reads "From {price}".
+   */
+  readonly priceFrom?: boolean;
+  /** The variant the card opens (`/p/<id>?v=<variantId>`): the one a filter or a GTIN chose. */
+  readonly variantId?: string;
+};
 
 export interface SellerSummary {
   readonly id: string;

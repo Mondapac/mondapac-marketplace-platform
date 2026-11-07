@@ -32,6 +32,13 @@ export interface MarketLocales {
   readonly supported: readonly string[];
 }
 
+/** A unit the Market offers, with its label per locale (`catalog.units`; attributes A3). */
+export interface MarketUnit {
+  readonly code: string;
+  readonly dimension: string;
+  readonly labels: { readonly [locale: string]: string };
+}
+
 /** The Market's locales with the default first, as every admin read answers them. */
 export function marketLocalesOf(policy: {
   readonly default: string;
@@ -230,7 +237,11 @@ const scalar = (value: unknown): string | number | boolean | null =>
     ? value
     : null;
 
-const BOUND_KEYS: readonly (keyof AttributeBounds)[] = ['maxLength', 'min', 'max'];
+const BOUND_KEYS = [
+  'maxLength',
+  'min',
+  'max',
+] as const satisfies readonly (keyof AttributeBounds)[];
 
 /**
  * The field-by-field difference between two revisions (plan 15: who, when, what). The first
@@ -257,6 +268,19 @@ export function changesBetween(
   push('material', before.material, after.material);
   push('isVariantOption', before.isVariantOption, after.isVariantOption);
   for (const key of BOUND_KEYS) push(`bounds.${key}`, before.bounds[key], after.bounds[key]);
+  // A measure's unit settings (attributes A3): the units as one comma-joined text, in the order set.
+  push('measure.dimension', before.bounds.measure?.dimension, after.bounds.measure?.dimension);
+  push(
+    'measure.units',
+    before.bounds.measure?.units.join(','),
+    after.bounds.measure?.units.join(','),
+  );
+  push(
+    'measure.defaultUnit',
+    before.bounds.measure?.defaultUnit,
+    after.bounds.measure?.defaultUnit,
+  );
+  push('measure.decimals', before.bounds.measure?.decimals, after.bounds.measure?.decimals);
   for (const locale of localeKeys(before.display.helpText, after.display.helpText)) {
     push(`help.${locale}`, before.display.helpText[locale], after.display.helpText[locale]);
   }

@@ -2,8 +2,18 @@ import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { Icon } from '../icons/icon.tsx';
 import type { ListingFacets } from '../storefront/catalog.ts';
+import type { LiveFilterGroup } from '../storefront/listing-source.ts';
 import type { ListingBanner } from '../storefront/types.ts';
 import { priceBandLabel } from './filter-labels.ts';
+import {
+  NO_LIVE_FILTERS,
+  livePriceBands,
+  samePrice,
+  withChoice,
+  withLiveParams,
+  withLivePrice,
+  type LiveFilters,
+} from './live-filters.ts';
 import {
   listingHref,
   withFlag,
@@ -112,6 +122,86 @@ export function ActiveFilters({
           {t('clear-all')}
         </Link>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The removable chips of the API's filters in use (attributes A7, variants V8) and "Clear all". A
+ * code the listing no longer offers shows as the code itself, so it can still be removed.
+ */
+export function LiveActiveFilters({
+  path,
+  state,
+  filters,
+  groups,
+  currency,
+}: {
+  /** The listing's address without the live filters. */
+  readonly path: string;
+  readonly state: ListingState;
+  readonly filters: LiveFilters;
+  readonly groups: readonly LiveFilterGroup[];
+  readonly currency?: string;
+}) {
+  const t = useTranslations('catalog');
+  const locale = useLocale();
+  const href = (next: LiveFilters) => listingHref(withLiveParams(path, next), withPage(state, 1));
+  const chips: ExtraFilter[] = [];
+  for (const choice of filters.choices) {
+    const group = groups.find((g) => g.code === choice.attr);
+    for (const code of choice.values) {
+      const label =
+        group?.kind === 'toggle'
+          ? group.name
+          : (group?.options.find((o) => o.code === code)?.label ?? code);
+      chips.push({
+        key: `${choice.attr}:${code}`,
+        label,
+        href: href(withChoice(filters, choice.attr, code, false)),
+      });
+    }
+  }
+  const { price } = filters;
+  if (price !== null) {
+    const band =
+      currency === undefined
+        ? undefined
+        : livePriceBands(currency).find((b) => samePrice(b.price, price))?.band;
+    const money = (amount: number) => ({ amount, currency: currency ?? '' });
+    const label =
+      band !== undefined
+        ? priceBandLabel(band, t, locale)
+        : currency === undefined
+          ? t('group-price')
+          : priceBandLabel(
+              price.min === null
+                ? { id: 'max', below: money(price.max ?? 0) }
+                : price.max === null
+                  ? { id: 'min', above: money(price.min) }
+                  : { id: 'range', from: money(price.min), to: money(price.max) },
+              t,
+              locale,
+            );
+    chips.push({ key: 'price', label, href: href(withLivePrice(filters, null)) });
+  }
+  if (chips.length === 0) return null;
+  return (
+    <div className="act" aria-label={t('active-filters')} role="group">
+      {chips.map((chip) => (
+        <Link
+          key={chip.key}
+          href={chip.href}
+          scroll={false}
+          aria-label={t('remove-filter', { name: chip.label })}
+        >
+          <span dir="auto">{chip.label}</span>
+          <Icon name="close" />
+        </Link>
+      ))}
+      <Link className="clr" href={href(NO_LIVE_FILTERS)} scroll={false}>
+        {t('clear-all')}
+      </Link>
     </div>
   );
 }

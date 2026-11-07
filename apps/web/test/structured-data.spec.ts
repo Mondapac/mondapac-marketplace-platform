@@ -404,10 +404,16 @@ describe('Routes', () => {
 
   const productRoute = async (id: string, query?: { v?: string | string[] }) => {
     const { default: route } = await import('../app/p/[id]/page.tsx');
-    return route({
+    const shell = (await route({
       params: Promise.resolve({ id }),
       ...(query === undefined ? {} : { searchParams: Promise.resolve(query) }),
-    });
+    })) as ReactElement<{ children: ReactElement<unknown> }>;
+    // The page decides first and reads the rest inside a Suspense boundary: render that part.
+    const content = shell.props.children as unknown as {
+      type: (props: unknown) => Promise<ReactElement>;
+      props: unknown;
+    };
+    return content.type(content.props);
   };
   const categoryRoute = async (params: { slug: string }, query = {}) => {
     const { default: route } = await import('../app/c/[slug]/page.tsx');
@@ -568,7 +574,7 @@ describe('Routes', () => {
   });
 
   it('gives the home page WebSite and OnlineStore on a listed host only', async () => {
-    const { default: home } = await import('../app/page.tsx');
+    const { default: home } = await import('../app/(home)/page.tsx');
     const data = scriptOf(jsonLdOf(await home()))!;
     expect((data['@graph'] as Node[]).map((n) => n['@type'])).toEqual(['WebSite', 'OnlineStore']);
     expect(JSON.stringify(data)).not.toMatch(/legalName|taxID|address|contactPoint/u);

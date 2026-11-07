@@ -299,6 +299,140 @@ describe('AttributeDefinition drafts and revisions (attributes A2)', () => {
   });
 });
 
+describe('a measure definition (attributes A3)', () => {
+  const settings = {
+    dimension: 'mass',
+    units: ['g', 'kg'],
+    defaultUnit: 'g',
+    decimals: 2,
+  } as const;
+  const measure = (overrides: Partial<Parameters<typeof AttributeDefinition.create>[0]> = {}) =>
+    input({
+      code: 'net-weight',
+      dataType: 'measure',
+      isVariantOption: false,
+      options: [],
+      bounds: { min: 1, max: 5000, measure: settings },
+      ...overrides,
+    });
+  const code = (result: ReturnType<typeof AttributeDefinition.create>) =>
+    result.ok ? 'ok' : result.error.code;
+
+  it('is accepted with unit settings and bounds in base units', () => {
+    const result = AttributeDefinition.create(measure());
+    if (!result.ok) throw new Error(result.error.code);
+    expect(result.value.state.bounds.measure).toEqual(settings);
+  });
+
+  it.each([
+    ['no unit settings', { bounds: { min: 1 } }],
+    ['an unknown dimension', { bounds: { measure: { ...settings, dimension: 'speed' } } }],
+    ['no unit', { bounds: { measure: { ...settings, units: [] } } }],
+    ['a unit of another dimension', { bounds: { measure: { ...settings, units: ['g', 'ml'] } } }],
+    ['an unknown unit', { bounds: { measure: { ...settings, units: ['g', 'oz'] } } }],
+    ['a repeated unit', { bounds: { measure: { ...settings, units: ['g', 'g'] } } }],
+    [
+      'a default unit that is not offered',
+      { bounds: { measure: { ...settings, defaultUnit: 'ml' } } },
+    ],
+    ['negative decimal places', { bounds: { measure: { ...settings, decimals: -1 } } }],
+    ['more than 6 decimal places', { bounds: { measure: { ...settings, decimals: 7 } } }],
+    ['fractional decimal places', { bounds: { measure: { ...settings, decimals: 1.5 } } }],
+  ] as [string, Partial<Parameters<typeof AttributeDefinition.create>[0]>][])(
+    'refuses %s',
+    (_name, overrides) => {
+      expect(code(AttributeDefinition.create(measure(overrides)))).toBe(
+        'attribute-definition.measure-invalid',
+      );
+    },
+  );
+
+  it('refuses a negative min or max, and min above max', () => {
+    for (const bounds of [
+      { min: -1, measure: settings },
+      { max: -1, measure: settings },
+      { min: 10, max: 1, measure: settings },
+    ]) {
+      expect(code(AttributeDefinition.create(measure({ bounds })))).toBe(
+        'attribute-definition.bounds-invalid',
+      );
+    }
+  });
+
+  it('refuses unit settings on any other type', () => {
+    expect(
+      code(
+        AttributeDefinition.create(
+          input({
+            dataType: 'decimal',
+            isVariantOption: false,
+            options: [],
+            bounds: { measure: settings },
+          }),
+        ),
+      ),
+    ).toBe('attribute-definition.measure-invalid');
+  });
+
+  it('is never a variant option (only a select can be)', () => {
+    expect(code(AttributeDefinition.create(measure({ isVariantOption: true })))).toBe(
+      'attribute-definition.variant-option-needs-select',
+    );
+  });
+
+  describe('once published', () => {
+    const published = () => {
+      const created = AttributeDefinition.createDraft({
+        ...measure(),
+        display: {
+          helpText: {},
+          showOnProductPage: true,
+          searchable: false,
+          canBeFilter: false,
+          internalNote: null,
+          position: 0,
+        },
+      });
+      if (!created.ok) throw new Error(created.error.code);
+      const live = created.value.publish('xx');
+      if (!live.ok) throw new Error(live.error.code);
+      return live.value;
+    };
+    const revise = (bounds: Parameters<AttributeDefinition['revise']>[0]['bounds']) =>
+      published().revise({
+        revisionId: 'r2' as Id<'AttributeDefinitionRevision'>,
+        names: { xx: 'Net weight' },
+        material: false,
+        isVariantOption: false,
+        bounds,
+        options: [],
+        display: published().state.display,
+        now: NOW,
+      });
+
+    it('may add a unit, change places and tighten bounds', () => {
+      const next = revise({
+        min: 5,
+        max: 100,
+        measure: { ...settings, decimals: 0, units: ['g', 'kg'] },
+      });
+      expect(next.ok).toBe(true);
+    });
+
+    it('keeps its dimension', () => {
+      const next = revise({
+        measure: { dimension: 'volume', units: ['ml'], defaultUnit: 'ml', decimals: 0 },
+      });
+      expect(next.ok ? 'ok' : next.error.code).toBe('attribute-definition.measure-locked');
+    });
+
+    it('never drops a unit that stored values may use', () => {
+      const next = revise({ measure: { ...settings, units: ['g'] } });
+      expect(next.ok ? 'ok' : next.error.code).toBe('attribute-definition.measure-locked');
+    });
+  });
+});
+
 describe('AttributeDefinition.addOption', () => {
   const published = () => {
     const result = AttributeDefinition.create(

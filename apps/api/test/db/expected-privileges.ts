@@ -350,10 +350,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
-    // Seller health requests: inserted, then finished once (status and finished_at); never
-    // deleted by the app.
+    // Seller health requests: inserted, then finished once (status and finished_at); finished
+    // rows are deleted by the retention purge (30 days).
     'sellers.seller_health_requests': {
-      table: ['INSERT', 'SELECT'],
+      table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['finished_at', 'status'],
     },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
@@ -1108,6 +1108,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Search attribute filters (A7): the measure values of a document, replaced with it; the
     // reindex progress row of a Market, written by the reindex job and never deleted.
     'search.offer_document_numbers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'search.offer_variant_documents': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'search.reindex_state': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
