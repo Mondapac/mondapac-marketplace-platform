@@ -185,12 +185,13 @@ describe('grouped sidebar', () => {
 });
 
 describe('seller menu structure', () => {
-  const ALL = sellerNav.items.flatMap((item) => item.anyOf ?? []);
+  const ALL = [...sellerNav.items.flatMap((item) => item.anyOf ?? []), 'catalog.own-product.edit'];
   const WORK = [
     's_home',
     's_orders',
     's_products',
     's_offers',
+    's_import',
     's_suggestions',
     's_reviews',
     's_earnings',
@@ -202,6 +203,14 @@ describe('seller menu structure', () => {
     expect(ids('approved')).toEqual([...WORK, 's_settings']);
     expect(ids('pending')).toEqual(['s_setup']);
     expect(sellerNavItems('pending', ALL).some((item) => item.placement === 'footer')).toBe(false);
+  });
+
+  it('shows Import only with both the import key and the product edit key', () => {
+    const ids = (keys: string[]) => sellerNavItems('approved', keys).map((item) => item.id);
+    expect(ids(['catalog.own-import.run', 'catalog.own-product.edit'])).toContain('s_import');
+    expect(ids(['catalog.own-import.run'])).not.toContain('s_import');
+    expect(ids(['catalog.own-product.edit'])).not.toContain('s_import');
+    expect(ids(['catalog.own-product.view'])).not.toContain('s_import');
   });
 
   it('moves the set-once pages out of the menu, and personal Security out of the sidebar', () => {
