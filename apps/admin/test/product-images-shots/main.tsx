@@ -49,6 +49,8 @@ const view = {
     baseRevisionId: null,
   },
   published: null,
+  pausedAt: null,
+  offers: { sellerCount: 0, offerCount: 0 },
 };
 
 window.fetch = ((input: string, init?: RequestInit) => {
