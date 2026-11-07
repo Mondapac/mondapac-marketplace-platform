@@ -12,7 +12,11 @@ const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.s
 class ExportFailure extends Error {
   constructor(
     readonly key: 'unavailable' | 'denied' | 'invalid' | 'too-large',
-    readonly values: { max: number; total: number } = { max: 0, total: 0 },
+    readonly values: { max: number; total: number; unit: 'products' | 'rows' } = {
+      max: 0,
+      total: 0,
+      unit: 'rows',
+    },
   ) {
     super(key);
   }
@@ -21,10 +25,14 @@ class ExportFailure extends Error {
 function failureOf(
   status: number,
   code: string,
-  details: { max?: number; total?: number } | undefined,
+  details: { max?: number; total?: number; unit?: string } | undefined,
 ): ExportFailure {
   if (code === 'export.too-large') {
-    return new ExportFailure('too-large', { max: details?.max ?? 0, total: details?.total ?? 0 });
+    return new ExportFailure('too-large', {
+      max: details?.max ?? 0,
+      total: details?.total ?? 0,
+      unit: details?.unit === 'products' ? 'products' : 'rows',
+    });
   }
   if (status === 401 || status === 403) return new ExportFailure('denied');
   if (code === 'validation.failed') return new ExportFailure('invalid');
@@ -68,7 +76,7 @@ export function VariantsExport({ query }: { readonly query: Query }) {
       if (!response.ok) {
         const body = (await response.json().catch((): unknown => null)) as {
           code?: string;
-          details?: { max?: number; total?: number };
+          details?: { max?: number; total?: number; unit?: string };
         } | null;
         throw failureOf(response.status, body?.code ?? 'unknown', body?.details);
       }
@@ -76,7 +84,7 @@ export function VariantsExport({ query }: { readonly query: Query }) {
       const blob =
         chosen === 'xlsx'
           ? new Blob([await response.arrayBuffer()], { type: XLSX_TYPE })
-          : new Blob([await response.text()], { type: 'text/csv;charset=utf-8' });
+          : new Blob([await response.arrayBuffer()], { type: 'text/csv;charset=utf-8' });
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       link.href = url;
@@ -84,7 +92,7 @@ export function VariantsExport({ query }: { readonly query: Query }) {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
     })();
     try {
       await toast.promise(

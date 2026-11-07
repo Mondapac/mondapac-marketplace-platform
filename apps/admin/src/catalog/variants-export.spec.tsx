@@ -96,13 +96,20 @@ describe('Export variants on the product list', () => {
     expect(fetched).toEqual(['/api/catalog/admin/variants/export?format=xlsx&view=active']);
   });
 
-  it('says how wide the filter may be when the file would be too large', async () => {
+  it.each([
+    [
+      'rows',
+      { max: 10000, total: 12345, unit: 'rows' },
+      'The file would have too many rows (12,345). Narrow the filter so it has 10,000 rows or fewer.',
+    ],
+    [
+      'products',
+      { max: 10000, total: 12345, unit: 'products' },
+      'The filter matches too many products (12,345). Narrow it to 10,000 products or fewer.',
+    ],
+  ])('names the unit when the file would be too large (%s)', async (_unit, details, text) => {
     serve(
-      () =>
-        new Response(
-          JSON.stringify({ code: 'export.too-large', details: { max: 10000, total: 12345 } }),
-          { status: 413 },
-        ),
+      () => new Response(JSON.stringify({ code: 'export.too-large', details }), { status: 413 }),
     );
     mount();
 
@@ -110,12 +117,31 @@ describe('Export variants on the product list', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Export variants' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
 
-    expect(
-      await screen.findByText(
-        'The file would be too large (12,345). Narrow the filter so it has 10,000 rows or fewer.',
-      ),
-    ).toBeTruthy();
+    expect(await screen.findByText(text)).toBeTruthy();
     expect(click).not.toHaveBeenCalled();
+  });
+
+  it('keeps the byte order mark of the CSV the server wrote', async () => {
+    const bytes = new Uint8Array([0xef, 0xbb, 0xbf, 0x61, 0x0d, 0x0a]);
+    serve(() => new Response(bytes, { status: 200 }));
+    let blob: Blob | undefined;
+    Object.assign(URL, {
+      createObjectURL: vi.fn((made: Blob) => {
+        blob = made;
+        return 'blob:v';
+      }),
+    });
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Export variants' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Export variants' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+    const read = await new Promise<ArrayBuffer>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.readAsArrayBuffer(blob!);
+    });
+    expect(Array.from(new Uint8Array(read))).toEqual(Array.from(bytes));
   });
 
   it('words a refusal and a network failure without leaking the answer', async () => {

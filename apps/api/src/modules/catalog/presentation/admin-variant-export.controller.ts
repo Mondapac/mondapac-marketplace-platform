@@ -28,7 +28,7 @@ import { writeChunks } from './write-chunks';
 
 /**
  * The HTTP status of each refusal of the variant export (catalog design 14b). A malformed request
- * is 400; a file over the row cap is 413 (`details.max`, `details.total`); a missing dependency
+ * is 400; a file over the row cap is 413 (`details.max`, `details.total`, `details.unit`: `products` or `rows`, what total counts); a missing dependency
  * is 503.
  */
 export const ADMIN_VARIANT_EXPORT_STATUS: Readonly<Record<string, number>> = Object.freeze({
@@ -84,7 +84,7 @@ export class AdminVariantExportController {
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
   @ApiPayloadTooLargeResponse({
     type: ApiErrorBody,
-    description: 'export.too-large (details.max, details.total)',
+    description: 'export.too-large (details.max, details.total, details.unit: products or rows)',
   })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
   async download(

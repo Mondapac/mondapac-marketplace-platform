@@ -2304,7 +2304,7 @@
           "unavailable": "That didn’t work. Try again.",
           "denied": "You don’t have access to do this.",
           "invalid": "That request can’t be done. Reload the page and try again.",
-          "too-large": "The file would be too large ({total, number}). Narrow the filter so it has {max, number} rows or fewer."
+          "too-large": "{unit, select, products {The filter matches too many products ({total, number}). Narrow it to {max, number} products or fewer.} other {The file would have too many rows ({total, number}). Narrow the filter so it has {max, number} rows or fewer.}}"
         }
       }
     },

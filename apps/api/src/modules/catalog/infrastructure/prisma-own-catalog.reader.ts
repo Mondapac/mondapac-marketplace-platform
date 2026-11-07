@@ -4,6 +4,7 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import type {
   ListPage,
   OwnCatalogReader,
+  OwnOfferSellUnitView,
   PendingRevisionRow,
   ProductForm,
   ProductFormField,
@@ -210,7 +211,7 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
   async sellUnitsOf(
     market: MarketContext,
     offerId: Id<'Offer'>,
-  ): Promise<readonly { variantId: string; variantSku: string | null; selling: boolean }[]> {
+  ): Promise<readonly OwnOfferSellUnitView[]> {
     return await this.prisma.tx(market).catalogOfferSellUnit.findMany({
       where: { marketId: market.marketId, offerId },
       select: { variantId: true, variantSku: true, selling: true },

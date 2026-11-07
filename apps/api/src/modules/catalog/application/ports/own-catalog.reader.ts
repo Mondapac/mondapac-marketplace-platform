@@ -3,6 +3,13 @@ import type { Offer } from '../../domain/offer';
 import type { Product } from '../../domain/product';
 import type { WorkingCopy } from '../../domain/working-copy';
 
+/** The stored sell-unit row of an Offer as the seller sees it (V5): a variant with none sells. */
+export interface OwnOfferSellUnitView {
+  readonly variantId: string;
+  readonly variantSku: string | null;
+  readonly selling: boolean;
+}
+
 /** One page request: the last id of the previous page, and at most `limit` rows. */
 export interface ListPage<K extends string> {
   readonly afterId: Id<K> | null;
@@ -133,7 +140,7 @@ export interface OwnCatalogReader {
   sellUnitsOf(
     market: MarketContext,
     offerId: Id<'Offer'>,
-  ): Promise<readonly { variantId: string; variantSku: string | null; selling: boolean }[]>;
+  ): Promise<readonly OwnOfferSellUnitView[]>;
 
   /**
    * What the product form needs to be drawn: the fields of the family (published revisions, active

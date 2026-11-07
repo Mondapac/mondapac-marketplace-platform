@@ -21,7 +21,7 @@ import {
   type TableRow,
 } from './variants-table-logic.ts';
 import { inputOf } from '../price/money.ts';
-import { sellUnitProblemOf } from './sell-unit-errors.ts';
+import { sellUnitFailureOf } from './sell-unit-errors.ts';
 import { VariantFileTools } from './variant-file-tools.tsx';
 import type { CellChange, FileModel } from './variant-file.ts';
 
@@ -275,9 +275,12 @@ export function VariantsTable({
         waitSeconds = result.failure.details?.retryAfterSeconds ?? 60;
         found['sell-units'] = t('catalog.variants-table.throttled-cell');
       } else {
-        const field = result.failure.details?.fields?.[0]?.path.replace('units.', '');
-        found[field === undefined ? 'sell-units' : `sku:${field}`] = t(
-          `catalog.variants-table.sell-units.error.${sellUnitProblemOf(result.failure.code)}`,
+        const refused = sellUnitFailureOf(
+          result.failure,
+          unitWrites.map((write) => write.variantId),
+        );
+        found[refused.variantId === null ? 'sell-units' : `sku:${refused.variantId}`] = t(
+          `catalog.variants-table.sell-units.error.${refused.problem}`,
         );
       }
     }
@@ -326,7 +329,12 @@ export function VariantsTable({
         </Banner>
       )}
       {fileModel === null ? null : (
-        <VariantFileTools model={fileModel} disabled={saving} onApply={applyFile} />
+        <VariantFileTools
+          model={fileModel}
+          disabled={saving}
+          hasDrafts={writes.length > 0}
+          onApply={applyFile}
+        />
       )}
       {canBulk && selected.size > 0 ? (
         <div

@@ -27,6 +27,8 @@ interface Picked {
   readonly ids: readonly Id<'Product'>[];
   readonly rows: number | null;
   readonly total: number;
+  /** What `total` counts when the export is refused: the products matched or the variant rows. */
+  readonly unit: 'products' | 'rows';
   readonly axes: readonly string[];
 }
 
@@ -51,7 +53,12 @@ export interface AdminVariantsExportOutput {
 export type AdminVariantsExportFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'access.unavailable' }
-  | { readonly code: 'export.too-large'; readonly max: number; readonly total?: number }
+  | {
+      readonly code: 'export.too-large';
+      readonly max: number;
+      readonly total?: number;
+      readonly unit?: 'products' | 'rows';
+    }
   | ValidationFailure;
 
 export interface AdminVariantsExportDependencies {
@@ -139,14 +146,22 @@ export class AdminVariantsExport extends UseCase<
         const found = await deps.adminProductsReader.ids(market, filter, EXPORT_MAX_ROWS + 1);
         if (found.length > EXPORT_MAX_ROWS) {
           const [total] = await deps.adminProductsReader.counts(market, [filter]);
-          return ok({ ids: found, rows: null, total: total ?? found.length, axes: [] });
+          return ok({
+            ids: found,
+            rows: null,
+            total: total ?? found.length,
+            unit: 'products',
+            axes: [],
+          });
         }
         const rows = await deps.adminVariantsReader.count(market, found);
-        if (rows > EXPORT_MAX_ROWS) return ok({ ids: found, rows, total: rows, axes: [] });
+        if (rows > EXPORT_MAX_ROWS)
+          return ok({ ids: found, rows, total: rows, unit: 'rows', axes: [] });
         return ok({
           ids: found,
           rows,
           total: rows,
+          unit: 'rows',
           axes: await deps.adminVariantsReader.axisCodes(market, found),
         });
       },
@@ -158,6 +173,7 @@ export class AdminVariantsExport extends UseCase<
         code: 'export.too-large',
         max: EXPORT_MAX_ROWS,
         total: picked.value.total,
+        unit: picked.value.unit,
       });
     }
 

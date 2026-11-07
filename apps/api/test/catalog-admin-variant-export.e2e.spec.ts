@@ -338,7 +338,7 @@ describe('admin variant export over HTTP (integration)', () => {
         expect(response.status).toBe(413);
         expect(response.body).toMatchObject({
           code: 'export.too-large',
-          details: { max: 10_000, total: 10_001 },
+          details: { max: 10_000, total: 10_001, unit: 'rows' },
         });
       }
       expect(readLocales).toEqual([]);
@@ -354,7 +354,7 @@ describe('admin variant export over HTTP (integration)', () => {
       expect(response.status).toBe(413);
       expect(response.body).toMatchObject({
         code: 'export.too-large',
-        details: { max: 10_000, total: 12_345 },
+        details: { max: 10_000, total: 12_345, unit: 'products' },
       });
     });
 

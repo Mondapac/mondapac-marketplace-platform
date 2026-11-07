@@ -196,7 +196,7 @@ describe('VariantsTable', () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { changedVariantIds: ['v1', 'v2'] } });
     mount({ showSellUnits: true, canEditSellUnits: true });
     fireEvent.change(screen.getByLabelText('SKU for Small'), { target: { value: 'SM-1' } });
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Large is on sale' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Selling: Large' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save 2 changes' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call).toHaveBeenCalledWith(
@@ -237,6 +237,39 @@ describe('VariantsTable', () => {
     expect(screen.getByLabelText<HTMLInputElement>('SKU for Small').value).toBe('TAKEN');
   });
 
+  it.each([
+    ['an index path', 'units.1.variantSku', 'format', /Use 1 to 64 letters/],
+    ['a variant path', 'units.v2', 'duplicate', /Two variants have the same SKU/],
+  ])('puts a refusal with %s on the right row', async (_name, path, code, text) => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: { status: 400, code: 'validation.failed', details: { fields: [{ path, code }] } },
+    });
+    mount({ showSellUnits: true, canEditSellUnits: true });
+    fireEvent.change(screen.getByLabelText('SKU for Small'), { target: { value: 'AAA' } });
+    fireEvent.change(screen.getByLabelText('SKU for Large'), { target: { value: 'BBB' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save 2 changes' }));
+    const message = await screen.findByText(text);
+    // The second sent unit is Large; the cell of Large holds the message.
+    expect(within(message.closest('td')!).getByLabelText('SKU for Large')).toBeTruthy();
+  });
+
+  it('shows a refusal that names no sent variant in the banner', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: {
+        status: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'units.9.variantSku', code: 'format' }] },
+      },
+    });
+    mount({ showSellUnits: true, canEditSellUnits: true });
+    fireEvent.change(screen.getByLabelText('SKU for Small'), { target: { value: 'AAA' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
+    expect(await screen.findByText(/Use 1 to 64 letters/)).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>('SKU for Small').value).toBe('AAA');
+  });
+
   it('shows the SKU and the switch read only without the edit key', () => {
     mount({
       showSellUnits: true,
@@ -244,7 +277,7 @@ describe('VariantsTable', () => {
       rows: [{ ...ROWS[0]!, variantSku: 'SM-1', selling: false }],
     });
     expect(screen.getByText('SM-1')).toBeTruthy();
-    const box = screen.getByRole<HTMLInputElement>('checkbox', { name: 'Small is on sale' });
+    const box = screen.getByRole<HTMLInputElement>('checkbox', { name: 'Selling: Small' });
     expect([box.disabled, box.checked]).toEqual([true, false]);
   });
 

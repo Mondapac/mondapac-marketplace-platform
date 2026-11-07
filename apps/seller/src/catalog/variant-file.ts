@@ -74,16 +74,18 @@ const exportedHeader = (sourceId: string) => `stock_exported[${sourceId}]`;
 export function exportVariantFile(model: FileModel): string {
   const live = model.variants
     .filter((variant) => variant.state === 'published')
-    .sort((a, b) => a.variantCode.localeCompare(b.variantCode));
+    .sort((a, b) => a.variantCode.localeCompare(b.variantCode, 'en', { numeric: true }));
   const header = [
     'product_code',
     'variant_code',
     ...model.axes.map((axis) => optionHeader(axis.code)),
     'gtin',
-    'variant_sku',
-    'selling',
-    ...(model.showPrice ? ['price'] : []),
-    ...(model.showStock ? model.sources.map((source) => stockHeader(source.id)) : []),
+    // A column the seller may not change is left out, so the file re-imports cleanly.
+    ...(model.canEditSellUnits ? ['variant_sku', 'selling'] : []),
+    ...(model.showPrice && model.canEditPrice ? ['price'] : []),
+    ...(model.showStock && model.canEditStock
+      ? model.sources.map((source) => stockHeader(source.id))
+      : []),
     ...(model.showStock ? model.sources.map((source) => exportedHeader(source.id)) : []),
   ];
   const stockOf = (variant: FileVariant, sourceId: string) =>
@@ -96,12 +98,13 @@ export function exportVariantFile(model: FileModel): string {
       return axis.options.find((option) => option.code === code)?.label ?? code ?? '';
     }),
     variant.gtin,
-    variant.variantSku,
-    variant.selling ? 'yes' : 'no',
-    ...(model.showPrice
+    ...(model.canEditSellUnits ? [variant.variantSku, variant.selling ? 'yes' : 'no'] : []),
+    ...(model.showPrice && model.canEditPrice
       ? [variant.price === null ? '' : inputOf(variant.price, model.currency)]
       : []),
-    ...(model.showStock ? model.sources.map((source) => stockOf(variant, source.id)) : []),
+    ...(model.showStock && model.canEditStock
+      ? model.sources.map((source) => stockOf(variant, source.id))
+      : []),
     ...(model.showStock ? model.sources.map((source) => stockOf(variant, source.id)) : []),
   ]);
   return CSV_BOM + [header, ...lines].map((cells) => csvLine(cells)).join('');
@@ -322,11 +325,12 @@ export function readVariantFile(bytes: Uint8Array, model: FileModel): ImportResu
         fail('import.variant-retired', 'variant_code');
         continue;
       }
-      if (
-        (named !== 'partial' && named !== null && named.variantId !== found.variantId) ||
-        (skuOwner !== undefined && skuOwner.variantId !== found.variantId)
-      ) {
+      if (named !== 'partial' && named !== null && named.variantId !== found.variantId) {
         fail('import.key-conflict', 'variant_code');
+        continue;
+      }
+      if (skuOwner !== undefined && skuOwner.variantId !== found.variantId) {
+        fail('import.key-conflict', 'variant_sku');
         continue;
       }
       variant = found;
@@ -469,7 +473,9 @@ export function readVariantFile(bytes: Uint8Array, model: FileModel): ImportResu
       const exported = (cell(row.cells, exportedHeader(source.id)) ?? '').trim();
       // A level that moved since the export, or one the file never recorded, is not applied
       // unless the seller confirms it.
-      const stale = exported !== currentText;
+      // A level the file never recorded (no value, e.g. a hand-made file) always needs the tick, also
+      // where the seller has no level yet.
+      const stale = exported === '' || exported !== currentText;
       rowChanges.push({
         key: `stock:${variant.variantId}:${source.id}`,
         rowNumber: row.rowNumber,

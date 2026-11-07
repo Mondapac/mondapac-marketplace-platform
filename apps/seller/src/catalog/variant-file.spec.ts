@@ -183,6 +183,42 @@ describe.each(FIXTURES)('the variant file in the $name fixture', (fixture) => {
       );
     });
 
+    it('leaves out the columns the seller may not change, and the file still re-imports cleanly', () => {
+      const limited = modelOf(fixture, {
+        canEditPrice: false,
+        canEditStock: false,
+        canEditSellUnits: false,
+      });
+      const text = exportVariantFile(limited);
+      const header = text
+        .replace(/^\uFEFF/, '')
+        .split('\r\n')[0]!
+        .split(',');
+      expect(header).not.toContain('price');
+      expect(header).not.toContain('variant_sku');
+      expect(header).not.toContain('selling');
+      expect(header).not.toContain('stock[s1]');
+      expect(read(bytes(text), limited)).toMatchObject({ changes: [], errors: [], warnings: [] });
+    });
+
+    it('sorts the variants by their number, 10 after 9', () => {
+      const many = modelOf(fixture, {
+        variants: [10, 9, 2].map((n) => ({
+          ...model.variants[0]!,
+          variantId: `x${n}`,
+          variantCode: `P-000001-${n}`,
+          variantSku: '',
+        })),
+      });
+      const codesOut = exportVariantFile(many)
+        .replace(/^\uFEFF/, '')
+        .trim()
+        .split('\r\n')
+        .slice(1)
+        .map((line) => line.split(',')[1]);
+      expect(codesOut).toEqual(['P-000001-2', 'P-000001-9', 'P-000001-10']);
+    });
+
     it('re-imported unchanged gives an empty preview, with no row error or warning', () => {
       const preview = read(bytes(exportVariantFile(model)), model);
       expect(preview).toMatchObject({ changes: [], errors: [], warnings: [], ignoredColumns: [] });
@@ -575,6 +611,22 @@ describe.each(FIXTURES)('the variant file in the $name fixture', (fixture) => {
       const stale = preview.changes.filter((change) => change.kind === 'stock');
       expect(stale).toHaveLength(2);
       expect(stale.every((change) => change.code === 'import.stock-changed')).toBe(true);
+    });
+
+    it('needs the tick for a location with no current level and no exported value', () => {
+      const noLevel = modelOf(fixture, {
+        variants: model.variants.map((variant) => ({ ...variant, stock: {} })),
+      });
+      const file = bytes('product_code,variant_code,stock[s1]\r\nP-000001,P-000001-01,5\r\n');
+      expect(read(file, noLevel).changes).toEqual([
+        expect.objectContaining({ kind: 'stock', from: '', to: '5', code: 'import.stock-changed' }),
+      ]);
+      const emptyExported = bytes(
+        'product_code,variant_code,stock[s1],stock_exported[s1]\r\nP-000001,P-000001-01,5,\r\n',
+      );
+      expect(read(emptyExported, noLevel).changes).toEqual([
+        expect.objectContaining({ code: 'import.stock-changed' }),
+      ]);
     });
 
     it('treats a missing or empty stock_exported value the same way', () => {

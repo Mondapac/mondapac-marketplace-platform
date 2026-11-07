@@ -2,7 +2,7 @@
 
 import { Banner, Button, CheckboxRow, Dialog, FileButton } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   exportVariantFile,
   FILE_LIMITS,
@@ -26,16 +26,20 @@ const keyOf = (code: string): string => code.replaceAll('.', '-');
 export function VariantFileTools({
   model,
   disabled,
+  hasDrafts = false,
   onApply,
 }: {
   readonly model: FileModel;
   readonly disabled: boolean;
+  /** Unsaved drafts in the table: the export waits, so the file matches what is saved. */
+  readonly hasDrafts?: boolean;
   readonly onApply: (changes: readonly CellChange[]) => void;
 }) {
   const t = useTranslations('catalog.variants-table.file');
   const [refusal, setRefusal] = useState<FileRefusal | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [confirmed, setConfirmed] = useState<ReadonlySet<string>>(new Set());
+  const inputRef = useRef<HTMLInputElement>(null);
   const canImport = model.canEditPrice || model.canEditStock || model.canEditSellUnits;
 
   function download() {
@@ -47,7 +51,8 @@ export function VariantFileTools({
     document.body.appendChild(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(url);
+    // Some browsers start the download after the click returns.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   }
 
   async function pick(files: FileList | null) {
@@ -59,7 +64,10 @@ export function VariantFileTools({
       setRefusal({ code: 'file.too-large', maxBytes: FILE_LIMITS.bytes });
       return;
     }
-    const result = readVariantFile(new Uint8Array(await file.arrayBuffer()), model);
+    const data = new Uint8Array(await file.arrayBuffer());
+    // The same file can be picked again (the input would not fire for an unchanged choice).
+    if (inputRef.current !== null) inputRef.current.value = '';
+    const result = readVariantFile(data, model);
     if (!result.ok) {
       setRefusal(result.refusal);
       return;
@@ -83,24 +91,31 @@ export function VariantFileTools({
     change.kind === 'selling'
       ? t(`preview.selling-value.${value === 'yes' ? 'yes' : 'no'}`)
       : value;
+  const issueKey = (issue: { code: string; column?: string }) =>
+    issue.column === 'variant_sku' &&
+    (issue.code === 'import.key-conflict' || issue.code === 'import.duplicate-row')
+      ? `${keyOf(issue.code)}-sku`
+      : keyOf(issue.code);
   const where = (column?: string) => (column === undefined ? '' : column);
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" disabled={disabled} onClick={download}>
+        <Button variant="secondary" disabled={disabled || hasDrafts} onClick={download}>
           {t('export')}
         </Button>
         {canImport ? (
           <FileButton
             accept=".csv,text/csv"
             disabled={disabled}
+            inputRef={inputRef}
             onFiles={(files) => void pick(files)}
           >
             {t('import')}
           </FileButton>
         ) : null}
       </div>
+      {hasDrafts ? <p className="text-sm text-fg-muted">{t('export-drafts')}</p> : null}
       {refusal === null ? null : (
         <Banner tone="critical">
           <p>
@@ -188,7 +203,10 @@ export function VariantFileTools({
                           {change.code === undefined ? null : (
                             <CheckboxRow
                               name={`confirm-${change.key}`}
-                              label={t('preview.stock-changed')}
+                              label={t('preview.stock-changed', {
+                                variant: change.variantCode,
+                                location: nameOf(change.sourceId),
+                              })}
                               help={t('preview.stock-changed-help')}
                               checked={confirmed.has(change.key)}
                               onChange={(event) => {
@@ -217,7 +235,7 @@ export function VariantFileTools({
                     <li key={`${issue.rowNumber}-${issue.code}-${index}`}>
                       {t('preview.issue', {
                         row: issue.rowNumber,
-                        message: t(`issue.${keyOf(issue.code)}`, { column: where(issue.column) }),
+                        message: t(`issue.${issueKey(issue)}`, { column: where(issue.column) }),
                       })}
                     </li>
                   ))}
@@ -234,7 +252,7 @@ export function VariantFileTools({
                     <li key={`${issue.rowNumber}-${issue.column ?? ''}-${index}`}>
                       {t('preview.issue', {
                         row: issue.rowNumber,
-                        message: t(`issue.${keyOf(issue.code)}`, { column: where(issue.column) }),
+                        message: t(`issue.${issueKey(issue)}`, { column: where(issue.column) }),
                       })}
                     </li>
                   ))}

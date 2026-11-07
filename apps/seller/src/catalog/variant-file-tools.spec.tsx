@@ -178,7 +178,7 @@ describe('the variant file in the Variants tab', () => {
     mount();
     pickFile(`${HEADER}AU-000001,AU-000001-01,25.00,4,4\r\n`);
     const dialog = await screen.findByRole('dialog', { name: 'Check the changes' });
-    expect(within(dialog).getByText('10.00 to 25.00')).toBeTruthy();
+    expect(within(dialog).getByText('10.00 → 25.00')).toBeTruthy();
     // The stock cell equals the current level: it is not listed.
     expect(within(dialog).queryByText(/Stock at Warehouse/)).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Apply 1 change' }));
@@ -206,15 +206,19 @@ describe('the variant file in the Variants tab', () => {
     // Written when the level was 6; it is 4 now.
     pickFile(`${HEADER}AU-000001,AU-000001-01,,20,6\r\n`);
     const dialog = await screen.findByRole('dialog', { name: 'Check the changes' });
-    expect(within(dialog).getByText('4 to 20')).toBeTruthy();
+    expect(within(dialog).getByText('4 → 20')).toBeTruthy();
     expect(
-      within(dialog).getByText('The stock changed since you exported this file.'),
+      within(dialog).getByText(
+        /The stock changed since you exported this file, or the file has no/,
+      ),
     ).toBeTruthy();
     expect(
       within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Nothing to apply' }).disabled,
     ).toBe(true);
 
-    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Apply anyway' }));
+    fireEvent.click(
+      within(dialog).getByRole('checkbox', { name: 'Apply anyway: AU-000001-01 at Warehouse' }),
+    );
     fireEvent.click(within(dialog).getByRole('button', { name: 'Apply 1 change' }));
     expect(
       screen.getAllByLabelText<HTMLInputElement>('Units in stock at Warehouse')[0]!.value,
@@ -233,7 +237,9 @@ describe('the variant file in the Variants tab', () => {
     mount();
     pickFile('product_code,variant_code,stock[s1]\r\nAU-000001,AU-000001-01,20\r\n');
     const dialog = await screen.findByRole('dialog', { name: 'Check the changes' });
-    expect(within(dialog).getByRole('checkbox', { name: 'Apply anyway' })).toBeTruthy();
+    expect(
+      within(dialog).getByRole('checkbox', { name: 'Apply anyway: AU-000001-01 at Warehouse' }),
+    ).toBeTruthy();
   });
 
   it('stops the run on a throttled answer and keeps every unsent and failed cell as a draft', async () => {
@@ -299,5 +305,23 @@ describe('the variant file in the Variants tab', () => {
       </NextIntlClientProvider>,
     );
     expect(screen.queryByRole('button', { name: 'Export CSV' })).toBeNull();
+  });
+
+  it('waits to export while the table holds unsaved drafts, and says why', () => {
+    mount();
+    const exportButton = () =>
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Export CSV' });
+    expect(exportButton().disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText('Price for Small'), { target: { value: '12' } });
+    expect(exportButton().disabled).toBe(true);
+    expect(screen.getByText(/Save or discard your changes before exporting/)).toBeTruthy();
+  });
+
+  it('clears the file input after a pick, so the same file can be picked again', async () => {
+    mount();
+    pickFile(`${HEADER}AU-000001,AU-000001-01,,,\r\n`);
+    await screen.findByRole('dialog', { name: 'Check the changes' });
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    expect(input.value).toBe('');
   });
 });
