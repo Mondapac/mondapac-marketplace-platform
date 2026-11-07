@@ -37,26 +37,35 @@ const params = new URLSearchParams(location.search);
 const scenario = params.get('s') ?? 'list';
 params.delete('s');
 const filtered = scenario === 'filtered';
+const empty = scenario === 'empty';
 if (filtered) {
   history.replaceState(null, '', '?status=published&paused=true&q=oil');
 }
 
 const answer = (): ProductsPage => ({
-  items: filtered ? rows.slice(1, 3) : rows,
-  total: filtered ? 2 : 143,
+  items: empty ? [] : filtered ? rows.slice(1, 3) : rows,
+  total: empty ? 0 : filtered ? 2 : 143,
   page: 1,
   pageSize: 25,
-  counts: { all: 143, drafts: 12, live: 100, inactive: 31, inReview: 4 },
+  counts: empty
+    ? { all: 0, drafts: 0, live: 0, inactive: 0, inReview: 0 }
+    : { all: 143, drafts: 12, live: 100, inactive: 31, inReview: 4 },
 });
 
 // The relay is mocked: the list's own reads answer with the rows above.
-globalThis.fetch = () =>
+const json = (status: number, body: unknown) =>
   Promise.resolve(
-    new Response(JSON.stringify(answer()), {
-      status: 200,
+    new Response(JSON.stringify(body), {
+      status,
       headers: { 'content-type': 'application/json' },
     }),
   );
+globalThis.fetch = () =>
+  scenario === 'error'
+    ? json(503, { code: 'access.unavailable' })
+    : scenario === 'loading'
+      ? new Promise<Response>(() => undefined)
+      : json(200, answer());
 
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
@@ -65,11 +74,11 @@ createRoot(document.getElementById('root')!).render(
         accountId="acc-1"
         marketId="AU"
         timeZone="Australia/Brisbane"
-        permissionKeys={[
-          'catalog.own-product.view',
-          'catalog.own-product.edit',
-          'catalog.own-import.run',
-        ]}
+        permissionKeys={
+          scenario === 'viewonly'
+            ? ['catalog.own-product.view']
+            : ['catalog.own-product.view', 'catalog.own-product.edit', 'catalog.own-import.run']
+        }
         categories={[{ id: '0190a000-0000-7000-8000-0000000000c1', name: 'Pantry', depth: 0 }]}
         productTypes={['grocery']}
         paging="pages"

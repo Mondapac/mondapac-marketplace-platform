@@ -53,39 +53,70 @@ const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH 
 const browser = await chromium.launch({
   ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
 });
-const plan = [
-  ['list', 1280],
-  ['list', 375],
-  ['filtered', 1280],
-  ['sheet', 375],
-];
-for (const [scenario, width] of plan) {
-  const ctx = await browser.newContext({
-    viewport: { width, height: 900 },
-    colorScheme: 'light',
-    deviceScaleFactor: 2,
-  });
-  const page = await ctx.newPage();
-  page.on('pageerror', (error) => console.log('page error:', error.message));
-  await page.goto(`http://localhost:${port}/?s=${scenario === 'sheet' ? 'list' : scenario}`);
-  await page.evaluate(() =>
-    globalThis.document.documentElement.setAttribute('data-theme', 'light'),
-  );
-  await page.locator('tbody a').first().waitFor();
-  if (scenario === 'sheet') {
-    await page.getByRole('button', { name: 'Filter' }).click();
-    await page.getByRole('dialog', { name: 'Filter products' }).waitFor();
+const states = ['list', 'filtered', 'empty', 'error', 'loading', 'viewonly'];
+const widths = [1280, 768, 375];
+const plan = [...states.flatMap((state) => widths.map((width) => [state, width])), ['sheet', 375]];
+// Each header starts where its cells start (table layout only), and no text is cut off.
+const measure = () => {
+  const doc = globalThis.document.documentElement;
+  const table = globalThis.document.querySelector('table');
+  const misaligned = [];
+  if (table && globalThis.getComputedStyle(table.querySelector('thead')).position !== 'absolute') {
+    const heads = [...table.querySelectorAll('thead th')];
+    const first = table.querySelector('tbody tr:has(td:nth-child(2))');
+    if (first && heads.length > 1) {
+      const cells = [...first.children];
+      heads.forEach((th, i) => {
+        const gap = Math.abs(
+          th.getBoundingClientRect().left - cells[i].getBoundingClientRect().left,
+        );
+        if (cells[i] && gap > 1) misaligned.push(`${th.textContent}:${gap.toFixed(1)}`);
+      });
+    }
   }
-  await page.waitForTimeout(300);
-  const over = await page.evaluate(
-    () => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth,
-  );
-  console.log(scenario, width, 'page horizontal overflow:', over);
-  await page.screenshot({
-    path: join(out, `products-${scenario}-${width}-light.png`),
-    fullPage: scenario !== 'sheet',
-  });
-  await ctx.close();
+  const clipped = [...globalThis.document.querySelectorAll('body *')]
+    .filter(
+      (el) => el.children.length === 0 && el.clientWidth > 2 && el.scrollWidth > el.clientWidth + 1,
+    )
+    .map((el) => el.textContent.slice(0, 30));
+  return { scroll: doc.scrollWidth, client: doc.clientWidth, misaligned, clipped };
+};
+for (const theme of ['light', 'dark']) {
+  for (const [scenario, width] of plan) {
+    const ctx = await browser.newContext({
+      viewport: { width, height: 900 },
+      colorScheme: theme,
+      deviceScaleFactor: 2,
+    });
+    const page = await ctx.newPage();
+    page.on('pageerror', (error) => console.log('page error:', error.message));
+    await page.goto(`http://localhost:${port}/?s=${scenario === 'sheet' ? 'list' : scenario}`);
+    await page.evaluate(
+      (t) => globalThis.document.documentElement.setAttribute('data-theme', t),
+      theme,
+    );
+    const ready = {
+      empty: () => page.getByText('No products yet').first().waitFor(),
+      error: () => page.getByText('Products could not be loaded').first().waitFor(),
+      loading: () => page.getByText('Loading products').first().waitFor({ state: 'attached' }),
+    }[scenario];
+    await (ready ? ready() : page.locator('tbody a').first().waitFor());
+    if (scenario === 'sheet') {
+      await page.getByRole('button', { name: 'Filter' }).click();
+      await page.getByRole('dialog', { name: 'Filter products' }).waitFor();
+    }
+    await page.waitForTimeout(300);
+    const m = await page.evaluate(measure);
+    console.log(
+      `${scenario} ${width} ${theme}: scrollWidth=${m.scroll} clientWidth=${m.client}`,
+      `misaligned=[${m.misaligned}] clipped=[${m.clipped}]`,
+    );
+    await page.screenshot({
+      path: join(out, `products-${scenario}-${width}-${theme}.png`),
+      fullPage: scenario !== 'sheet',
+    });
+    await ctx.close();
+  }
 }
 await browser.close();
 server.close();

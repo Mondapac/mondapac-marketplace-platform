@@ -444,7 +444,8 @@ export function ProductsList({
         closeLabel={t('sheet-close')}
         onClose={() => setSheet(null)}
       >
-        {filterPanel(() => setSheet(null))}
+        {/* The sheet's own title names it; the panel's heading would repeat it. */}
+        <div className="[&_h2]:sr-only">{filterPanel(() => setSheet(null))}</div>
       </BottomSheet>
       <BottomSheet
         open={!desktop && sheet === 'sort'}
