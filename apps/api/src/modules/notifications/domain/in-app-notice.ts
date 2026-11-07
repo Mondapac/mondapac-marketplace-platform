@@ -87,6 +87,18 @@ export const CHANGE_REASONS = [
   'handling-unclear',
   'other',
 ] as const;
+/** The reasons a product revision is sent back for (catalog's product list, D2). */
+export const PRODUCT_CHANGE_REASONS = [
+  'content-unclear',
+  'description-claim',
+  'sku-or-condition',
+  'handling-unclear',
+  'photos',
+  'category',
+  'tax-category',
+  'duplicate',
+  'other',
+] as const;
 export const TAG_CHANGES = ['suspended', 'removed', 'restored'] as const;
 export const IMAGE_TAKEDOWN_REASONS = [
   'certification-mark',
@@ -296,7 +308,7 @@ const PARAM_SHAPES: Readonly<
   [SELLER_PRODUCT_PUBLISHED]: { ids: ['productId', 'revisionId'], enums: {} },
   [SELLER_PRODUCT_CHANGES_REQUESTED]: {
     ids: ['productId', 'revisionId'],
-    enums: { reason: CHANGE_REASONS },
+    enums: { reason: PRODUCT_CHANGE_REASONS },
   },
   [SELLER_OFFER_TAG_CHANGED]: { ids: ['offerId', 'tagId'], enums: { change: TAG_CHANGES } },
   [SELLER_IMAGE_TAKEN_DOWN]: {

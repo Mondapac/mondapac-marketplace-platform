@@ -394,9 +394,14 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
       readonly after: { readonly submittedAt: Temporal.Instant; readonly id: string } | null;
       readonly limit: number;
     },
+    filter: { readonly sellerId?: Id<'Seller'> } = {},
   ): Promise<readonly Offer[]> {
     const tx = this.prisma.tx(market);
-    const where = { marketId: market.marketId, status: 'pending-first-publish' } as const;
+    const where = {
+      marketId: market.marketId,
+      status: 'pending-first-publish',
+      ...(filter.sellerId === undefined ? {} : { sellerId: filter.sellerId }),
+    } as const;
     const cursor = page.after;
     const after =
       cursor === null

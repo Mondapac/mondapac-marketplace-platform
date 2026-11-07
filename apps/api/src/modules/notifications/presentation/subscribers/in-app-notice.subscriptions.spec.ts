@@ -85,6 +85,21 @@ describe('seller notice subscriptions', () => {
     ]);
   });
 
+  it('makes the same notice from v2 of the change request, with a product reason', async () => {
+    const { inputs, named } = subscriptions();
+    const handle = named(SELLER_NOTICE_SUBSCRIBERS.productChangesRequestedV2).handle;
+    const payload = { productId: PRODUCT, revisionId: 'r', reasonCode: 'tax-category' };
+    await handle({ payload: { ...payload, scope: 'platform' } } as never, delivery, context);
+    await handle({ payload: { ...payload, scope: 'seller' } } as never, delivery, context);
+    expect(inputs.map((input) => input.item)).toEqual([
+      {
+        kind: 'seller.product-changes-requested',
+        owner: { by: 'product', productId: PRODUCT },
+        params: { productId: PRODUCT, revisionId: 'r', reason: 'tax-category' },
+      },
+    ]);
+  });
+
   it('keeps the outcome a certificate event stands for', async () => {
     const { inputs, named } = subscriptions();
     const payload = { sellerCertificationId: 'c', sellerId: 's', submissionId: 'x' };
