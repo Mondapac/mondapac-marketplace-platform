@@ -6,6 +6,7 @@ import {
   testAuthenticatedActor,
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
+import type { MarketContext } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { OwnOfferRead } from '../../src/modules/catalog/application/use-cases/own-offer-read.use-case';
 import { OwnOffersList } from '../../src/modules/catalog/application/use-cases/own-offers-list.use-case';
@@ -33,7 +34,12 @@ import { PrismaProductRevisionRepository } from '../../src/modules/catalog/infra
 import { PrismaWorkingCopyRepository } from '../../src/modules/catalog/infrastructure/prisma-working-copy.repository';
 import { TEST_MARKETS } from '../support/test-config';
 import { PrismaTagReevaluationRequests } from '../../src/modules/catalog/infrastructure/prisma-tag-reevaluation-requests';
-import { createPersistence, marketOf, type Persistence } from './persistence-support';
+import {
+  createPersistence,
+  marketOf,
+  otherMarketOf,
+  type Persistence,
+} from './persistence-support';
 import { testDatabaseUrl } from './test-database';
 import { fixedFamilyResolver } from '../support/family-resolver';
 
@@ -218,13 +224,14 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     await persistence.close();
   });
 
-  const inUnit = <T>(work: () => Promise<T>): Promise<T> =>
+  const inUnitOf = <T>(where: MarketContext, work: () => Promise<T>): Promise<T> =>
     persistence.unitOfWork
-      .run(market, async () => ({ ok: true as const, value: await work() }))
+      .run(where, async () => ({ ok: true as const, value: await work() }))
       .then((result) => {
         if (!result.ok) throw new Error('unit failed');
         return result.value;
       });
+  const inUnit = <T>(work: () => Promise<T>): Promise<T> => inUnitOf(market, work);
 
   async function draftedProduct(
     scope: 'SELLER' | 'PLATFORM' = 'SELLER',
@@ -449,6 +456,18 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     const mine = await offerOn(platform.state.id, SELLER, `S-${randomUUID().slice(0, 8)}`);
     const theirs = await offerOn(platform.state.id, OTHER, `T-${randomUUID().slice(0, 8)}`);
 
+    // The admin form's totals count every seller's Offers on the product; another product has none.
+    expect(await inUnit(() => reader.offerTotalsOfProduct(market, platform.state.id))).toEqual({
+      sellerCount: 2,
+      offerCount: 2,
+    });
+    expect(
+      await inUnit(() => reader.offerTotalsOfProduct(market, uuid7() as Id<'Product'>)),
+    ).toEqual({
+      sellerCount: 0,
+      offerCount: 0,
+    });
+
     const own = await readOffer.execute(sellerContext(), { offerId: mine.state.id });
     if (!own.ok) throw new Error(own.error.code);
     expect(own.value).toMatchObject({
@@ -477,5 +496,103 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     expect(listed.value.counts.published).toBe(0);
     const pending = await inUnit(() => reader.pendingReviewCount(market));
     expect(typeof pending).toBe('number');
+  });
+
+  describe('offerTotalsOfProduct', () => {
+    const THIRD = '01990000-0000-7000-8000-00000000c5a3' as Id<'Seller'>;
+    const actorOf = () => ({ kind: 'seller' as const, accountId: uuid7() as Id<'Account'> });
+
+    /** A Product with no Offers yet in the given Market (this one or the other fixture). */
+    async function bareProduct(where: MarketContext): Promise<Id<'Product'>> {
+      const created = Product.create({
+        id: uuid7() as Id<'Product'>,
+        marketId: where.marketId,
+        scope: 'PLATFORM',
+        sellerId: null,
+        handler: simpleProductType,
+        familyCode: 'default',
+        productCode: `X${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`,
+        variantId: uuid7() as Id<'Variant'>,
+        now: T0,
+      });
+      if (!created.ok) throw new Error(created.error.code);
+      await inUnitOf(where, () => products.add(where, created.value));
+      return created.value.state.id;
+    }
+
+    async function offerIn(
+      where: MarketContext,
+      productId: Id<'Product'>,
+      seller: Id<'Seller'>,
+    ): Promise<Offer> {
+      const created = Offer.create({
+        id: uuid7() as Id<'Offer'>,
+        marketId: where.marketId,
+        sellerId: seller,
+        productId,
+        sellerSku: `N-${randomUUID().slice(0, 8)}`,
+        conditionCode: 'new',
+        description: { en: 'totals' },
+        now: T0,
+      });
+      if (!created.ok) throw new Error(created.error.code);
+      const refusal = await inUnitOf(where, () => offers.add(where, created.value, actorOf()));
+      if (refusal !== null) throw new Error(refusal);
+      return created.value;
+    }
+
+    async function remove(where: MarketContext, offer: Offer) {
+      await inUnitOf(where, async () => {
+        const stored = await offers.findById(where, offer.state.id);
+        if (stored === null) throw new Error('offer vanished');
+        const deleted = stored.delete({ now: T0 });
+        if (!deleted.ok) throw new Error(deleted.error.code);
+        const refusal = await offers.save(where, stored, actorOf());
+        if (refusal !== null) throw new Error(refusal);
+      });
+    }
+
+    const totals = (where: MarketContext, productId: Id<'Product'>) =>
+      inUnitOf(where, () => reader.offerTotalsOfProduct(where, productId));
+
+    it('counts one Offer per seller: a second open Offer of a seller on the product is refused', async () => {
+      // OFR-02: one non-deleted Offer per (Market, seller, product), so offerCount equals
+      // sellerCount among open Offers; the totals query cannot see two Offers of one seller.
+      const productId = await bareProduct(market);
+      await offerIn(market, productId, SELLER);
+      await offerIn(market, productId, OTHER);
+      await expect(offerIn(market, productId, SELLER)).rejects.toThrow('offer.exists-for-product');
+      expect(await totals(market, productId)).toEqual({ sellerCount: 2, offerCount: 2 });
+    });
+
+    it('leaves deleted Offers out, and a seller whose only Offer is deleted is not a seller', async () => {
+      const productId = await bareProduct(market);
+      const kept = await offerIn(market, productId, SELLER);
+      const gone = await offerIn(market, productId, OTHER);
+      expect(await totals(market, productId)).toEqual({ sellerCount: 2, offerCount: 2 });
+      await remove(market, gone);
+      expect(await totals(market, productId)).toEqual({ sellerCount: 1, offerCount: 1 });
+      await remove(market, kept);
+      expect(await totals(market, productId)).toEqual({ sellerCount: 0, offerCount: 0 });
+      // A seller with a deleted Offer and a new open one on the same product counts once.
+      await offerIn(market, productId, SELLER);
+      await offerIn(market, productId, THIRD);
+      expect(await totals(market, productId)).toEqual({ sellerCount: 2, offerCount: 2 });
+    });
+
+    it('counts only this Market: the other Market fixture keeps its own numbers', async () => {
+      const there = marketOf(otherMarketOf(code));
+      const mine = await bareProduct(market);
+      const theirs = await bareProduct(there);
+      await offerIn(market, mine, SELLER);
+      await offerIn(there, theirs, SELLER);
+      await offerIn(there, theirs, OTHER);
+      await offerIn(there, theirs, THIRD);
+      expect(await totals(market, mine)).toEqual({ sellerCount: 1, offerCount: 1 });
+      expect(await totals(there, theirs)).toEqual({ sellerCount: 3, offerCount: 3 });
+      // Each Market's reader call sees nothing of the other Market's Product, whatever its Offers.
+      expect(await totals(market, theirs)).toEqual({ sellerCount: 0, offerCount: 0 });
+      expect(await totals(there, mine)).toEqual({ sellerCount: 0, offerCount: 0 });
+    });
   });
 });
