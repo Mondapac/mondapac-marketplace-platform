@@ -7,6 +7,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_TOPIC_MANAGE } from '../../contracts/permissions';
 import { parseTopicContent, type TopicState } from '../../domain/topic';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
 import type { TopicRepository } from '../ports/topic.repository';
 import { termsTakenElsewhere, type TopicTermTaken } from '../topics/topic-terms';
@@ -49,6 +50,7 @@ export interface TopicEditDependencies {
   readonly topics: TopicRepository;
   readonly policy: CatalogMarketPolicy;
   readonly matcher: ClaimTextMatcher;
+  readonly claimLocales: ClaimTermLocales;
   readonly clock: Clock;
 }
 
@@ -119,12 +121,7 @@ export class TopicEdit extends UseCase<
       if (!parsed.ok) return parsed;
       status = parsed.value;
     }
-    const claim = await refuseTopicClaimWords(
-      this.deps.matcher,
-      context,
-      content.value,
-      locales.default,
-    );
+    const claim = await refuseTopicClaimWords(this.deps, context, content.value, locales.default);
     if (claim !== null) return err(claim);
     const { topics } = this.deps;
 

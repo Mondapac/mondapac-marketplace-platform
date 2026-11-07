@@ -221,6 +221,71 @@ describe.each(TEST_MARKETS)('catalog topics in market %s (database integration)'
     expect(foreign.items).toEqual([]);
   });
 
+  it('refuses an edit that takes another topic’s term, and lets a term move in two edits', async () => {
+    const unique = letters(tag());
+    const a = topic(`${unique}-a`, {
+      terms: [term('en', 'name', `Alpha ${unique}`), term('en', 'synonym', `Shared ${unique}`)],
+    });
+    const b = topic(`${unique}-b`, { terms: [term('en', 'name', `Beta ${unique}`)] });
+    await inUnit(() => repository.add(market, a));
+    await inUnit(() => repository.add(market, b));
+    const takes = (state: TopicState, terms: TopicTerm[], version: number): TopicState => ({
+      ...state,
+      terms,
+      updatedAt: T1,
+      version,
+    });
+
+    expect(
+      await inUnit(() =>
+        repository.save(
+          market,
+          takes(
+            b,
+            [term('en', 'name', `Beta ${unique}`), term('en', 'synonym', `shared ${unique}`)],
+            2,
+          ),
+          1,
+        ),
+      ),
+    ).toBe('topic.term-taken');
+    expect(
+      await inUnit(() =>
+        repository.save(market, takes(a, [term('en', 'name', `Alpha ${unique}`)], 2), 1),
+      ),
+    ).toBeNull();
+    expect(
+      await inUnit(() =>
+        repository.save(
+          market,
+          takes(
+            b,
+            [term('en', 'name', `Beta ${unique}`), term('en', 'synonym', `Shared ${unique}`)],
+            2,
+          ),
+          1,
+        ),
+      ),
+    ).toBeNull();
+  });
+
+  it('matches a search with % or _ as typed', async () => {
+    const unique = letters(tag());
+    const plain = topic(`${unique}-p`, { terms: [term('en', 'name', `Fifty off ${unique}`)] });
+    await inUnit(() => repository.add(market, plain));
+    const query = { status: null, group: null, afterId: null, limit: 10 };
+
+    const percent = await inUnit(() =>
+      reader.list(market, { ...query, search: `fifty%${unique}` }),
+    );
+    const underscore = await inUnit(() =>
+      reader.list(market, { ...query, search: `t_${unique}-p` }),
+    );
+
+    expect(percent.items.map((i) => i.id)).not.toContain(plain.id);
+    expect(underscore.items.map((i) => i.id)).not.toContain(plain.id);
+  });
+
   it('enforces the CHECKs of the two tables', async () => {
     const insertTopic = (overrides: Record<string, unknown>) => {
       const row = {
@@ -280,6 +345,7 @@ describe.each(TEST_MARKETS)('catalog topics in market %s (database integration)'
     expect(await insertTerm({ term: 'x' })).toBe('23514');
     expect(await insertTerm({ term: 'x'.repeat(41) })).toBe('23514');
     expect(await insertTerm({ term_key: '' })).toBe('23514');
+    expect(await insertTerm({ term_key: `Upper ${tag()}` })).toBe('23514');
     // A name only at position 0, and position 0 only for a name.
     expect(await insertTerm({ kind: 'name', position: 1 })).toBe('23514');
     expect(await insertTerm({ kind: 'synonym', position: 0 })).toBe('23514');

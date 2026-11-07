@@ -12,6 +12,7 @@ import {
   suggestTopicSlug,
 } from '../../domain/topic';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
 import type { TopicRepository } from '../ports/topic.repository';
 import { termsTakenElsewhere, type TopicTermTaken } from '../topics/topic-terms';
@@ -47,6 +48,7 @@ export interface TopicCreateDependencies {
   readonly topics: TopicRepository;
   readonly policy: CatalogMarketPolicy;
   readonly matcher: ClaimTextMatcher;
+  readonly claimLocales: ClaimTermLocales;
   readonly clock: Clock;
   readonly ids: IdGenerator;
 }
@@ -114,43 +116,51 @@ export class TopicCreate extends UseCase<
     if (givenSlug !== undefined && givenSlug !== null && !isTopicSlug(givenSlug)) {
       return invalid('slug', 'format');
     }
-    // The slug is checked as given, or as the name suggests it (a suffix adds only a number).
     const name = content.value.terms.find(
       (term) => term.locale === locales.default && term.kind === 'name',
     )!;
-    const base = typeof givenSlug === 'string' ? givenSlug : suggestTopicSlug(name.text);
+    const { topics } = this.deps;
+
+    // First the slug that will be saved (as given, or the free form the name suggests) and the
+    // terms other topics use, in a read-only unit; then the claim check of every text including
+    // that exact slug, with no unit open (the matcher opens its own); then the write. A slug or
+    // term taken in between is refused by the unique indexes.
+    const planned = await this.deps.unitOfWork.run<string, TopicCreateFailure>(
+      market,
+      async () => {
+        const taken = await termsTakenElsewhere(market, content.value.terms, topics, null);
+        if (taken !== null) return err(taken);
+        if (typeof givenSlug === 'string') {
+          return (await topics.slugTaken(market, givenSlug))
+            ? err({ code: 'topic.slug-taken' } as const)
+            : ok(givenSlug);
+        }
+        const base = suggestTopicSlug(name.text);
+        for (let n = 1; n <= MAX_SLUG_PROBES; n += 1) {
+          const suffix = n === 1 ? '' : `-${n}`;
+          const candidate = `${base.slice(0, TOPIC_SLUG_MAX - suffix.length).replace(/-+$/u, '')}${suffix}`;
+          if (!(await topics.slugTaken(market, candidate))) return ok(candidate);
+        }
+        return ok(
+          `${base.slice(0, 31).replace(/-+$/u, '')}-${this.deps.ids.next<'Topic'>().slice(-8)}`,
+        );
+      },
+      { readOnly: true },
+    );
+    if (!planned.ok) return planned;
+    const slug = planned.value;
     const claim = await refuseTopicClaimWords(
-      this.deps.matcher,
+      this.deps,
       context,
       content.value,
       locales.default,
-      base,
+      slug,
     );
     if (claim !== null) return err(claim);
 
     return this.deps.unitOfWork.run<{ readonly topic: TopicView }, TopicCreateFailure>(
       market,
       async () => {
-        const { topics } = this.deps;
-        const taken = await termsTakenElsewhere(market, content.value.terms, topics, null);
-        if (taken !== null) return err(taken);
-        let slug: string;
-        if (typeof givenSlug === 'string') {
-          if (await topics.slugTaken(market, givenSlug)) {
-            return err({ code: 'topic.slug-taken' } as const);
-          }
-          slug = givenSlug;
-        } else {
-          let free: string | null = null;
-          for (let n = 1; n <= MAX_SLUG_PROBES && free === null; n += 1) {
-            const suffix = n === 1 ? '' : `-${n}`;
-            const candidate = `${base.slice(0, TOPIC_SLUG_MAX - suffix.length).replace(/-+$/u, '')}${suffix}`;
-            if (!(await topics.slugTaken(market, candidate))) free = candidate;
-          }
-          slug =
-            free ??
-            `${base.slice(0, 31).replace(/-+$/u, '')}-${this.deps.ids.next<'Topic'>().slice(-8)}`;
-        }
         const state = newTopic({
           id: this.deps.ids.next<'Topic'>(),
           slug,

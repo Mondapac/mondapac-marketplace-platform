@@ -18,6 +18,7 @@ import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { TopicState } from '../../domain/topic';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
 import type { TopicListQuery, TopicReader } from '../ports/topic.reader';
 import type { TopicConflict, TopicRepository } from '../ports/topic.repository';
@@ -94,9 +95,23 @@ describe.each(FIXTURES)('topic use cases in market $code', ({ code, locales }) =
     locales: () => ({ default: main, supported: [...locales.supported] }),
   } as unknown as CatalogMarketPolicy;
 
-  const build = (matcher: ClaimTextMatcher = cleanClaimTextMatcher) => ({
-    create: new TopicCreate(gate, { unitOfWork, topics, policy, matcher, clock, ids }),
-    edit: new TopicEdit(gate, { unitOfWork, topics, policy, matcher, clock }),
+  const allCovered: ClaimTermLocales = {
+    covered: () => Promise.resolve(ok([...locales.supported])),
+  };
+  const build = (
+    matcher: ClaimTextMatcher = cleanClaimTextMatcher,
+    claimLocales: ClaimTermLocales = allCovered,
+  ) => ({
+    create: new TopicCreate(gate, {
+      unitOfWork,
+      topics,
+      policy,
+      matcher,
+      claimLocales,
+      clock,
+      ids,
+    }),
+    edit: new TopicEdit(gate, { unitOfWork, topics, policy, matcher, claimLocales, clock }),
     get: new TopicGet(gate, { unitOfWork, topics }),
     list: new TopicList(gate, { unitOfWork, topicReader, policy }),
   });
@@ -297,6 +312,68 @@ describe.each(FIXTURES)('topic use cases in market $code', ({ code, locales }) =
     });
     expect(down).toEqual({ ok: false, error: { code: 'access.unavailable' } });
     expect(rows.size).toBe(0);
+  });
+
+  it('refuses a text in a locale the claim vocabulary does not cover, and checks the saved slug', async () => {
+    const onlyMain: ClaimTermLocales = { covered: () => Promise.resolve(ok([main])) };
+    const uncovered = await build(cleanClaimTextMatcher, onlyMain).create.execute(admin, {
+      group: 'use',
+      names: { [main]: 'Grill', [second]: 'Grill two' },
+      synonyms: { [second]: ['Grill three'] },
+    });
+    expect(uncovered).toEqual({
+      ok: false,
+      error: {
+        code: 'topic.locale-uncheckable',
+        fields: [
+          { path: `names.${second}`, code: 'locale-uncheckable' },
+          { path: `synonyms.${second}.0`, code: 'locale-uncheckable' },
+        ],
+      },
+    });
+  });
+
+  it('fails closed when the matcher throws, answers in the wrong shape or the vocabulary is down', async () => {
+    const throwing: ClaimTextMatcher = { match: () => Promise.reject(new Error('down')) };
+    const malformed: ClaimTextMatcher = {
+      match: (_c, texts) => Promise.resolve(ok(texts.map(() => 'x' as never))),
+    };
+    const vocabularyDown: ClaimTermLocales = {
+      covered: () => Promise.reject(new Error('down')),
+    };
+    const input = { group: 'use', names: { [main]: 'Grill' } };
+
+    for (const result of [
+      await build(throwing).create.execute(admin, input),
+      await build(malformed).create.execute(admin, input),
+      await build(cleanClaimTextMatcher, vocabularyDown).create.execute(admin, input),
+    ]) {
+      expect(result).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+    }
+    expect(rows.size).toBe(0);
+  });
+
+  it('checks the numbered slug it saves when the plain one is taken', async () => {
+    const seen: string[] = [];
+    const recording: ClaimTextMatcher = {
+      match: (_c, texts) => {
+        seen.push(...texts.map((t) => t.text));
+        return Promise.resolve(ok(texts.map(() => [])));
+      },
+    };
+    await build().create.execute(admin, {
+      group: 'occasion',
+      slug: 'ramadan',
+      names: { [main]: 'Ramadan' },
+    });
+
+    const result = await build(recording).create.execute(admin, {
+      group: 'occasion',
+      names: { [main]: 'Ramadán' },
+    });
+
+    expect(result.ok && result.value.topic.slug).toBe('ramadan-2');
+    expect(seen[0]).toBe('ramadan 2');
   });
 
   it('refuses everyone who is not an admin', async () => {

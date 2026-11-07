@@ -50,7 +50,7 @@ import { ApiErrorBody } from './platform-product.dto';
 /**
  * The HTTP status of each refusal of the admin topic routes. A malformed request is 400; an
  * unknown topic is 404; a taken slug or term and a stale version are 409; a name, synonym or intro
- * that asserts a certification is 422; a missing dependency is 503.
+ * that asserts a certification, or that is in a locale the claim check cannot read, is 422; a missing dependency is 503.
  */
 export const TOPIC_ADMIN_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
@@ -59,6 +59,7 @@ export const TOPIC_ADMIN_STATUS: Readonly<Record<string, number>> = Object.freez
   'topic.term-taken': 409,
   'conflict.stale': 409,
   'topic.claim-word': 422,
+  'topic.locale-uncheckable': 422,
   'access.unavailable': 503,
 });
 
@@ -168,7 +169,7 @@ export class TopicAdminController {
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiUnprocessableEntityResponse({
     type: ApiErrorBody,
-    description: 'topic.claim-word (details.fields)',
+    description: 'topic.claim-word or topic.locale-uncheckable (details.fields)',
   })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
   async create(
@@ -213,7 +214,7 @@ export class TopicAdminController {
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiUnprocessableEntityResponse({
     type: ApiErrorBody,
-    description: 'topic.claim-word (details.fields)',
+    description: 'topic.claim-word or topic.locale-uncheckable (details.fields)',
   })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
   async edit(

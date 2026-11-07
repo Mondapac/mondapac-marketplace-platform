@@ -3,6 +3,7 @@ import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
+import { CLAIM_TERM_LOCALES } from '../src/modules/catalog/application/ports/claim-term-locales';
 import {
   CLAIM_TEXT_MATCHER,
   type ClaimTextMatcher,
@@ -151,7 +152,9 @@ describe('admin topic routes over HTTP (integration)', () => {
           .overrideProvider(TOPIC_READER)
           .useValue(topics)
           .overrideProvider(CLAIM_TEXT_MATCHER)
-          .useValue(halalMatcher),
+          .useValue(halalMatcher)
+          .overrideProvider(CLAIM_TERM_LOCALES)
+          .useValue({ covered: () => Promise.resolve(ok(['en-AU', 'ja-JP', 'en-US'])) }),
     }));
   }
 
@@ -257,6 +260,7 @@ describe('admin topic routes over HTTP (integration)', () => {
       'topic.term-taken': 409,
       'conflict.stale': 409,
       'topic.claim-word': 422,
+      'topic.locale-uncheckable': 422,
       'access.unavailable': 503,
     });
   });

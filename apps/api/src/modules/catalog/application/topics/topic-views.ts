@@ -9,7 +9,11 @@ import {
   type TopicTerm,
 } from '../../domain/topic';
 import { invalid, type ValidationFailure } from '../business-activities/business-activity-views';
-import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
+import type { ClaimTermLocales } from '../ports/claim-term-locales';
+import { MAX_MATCH_TEXTS, type ClaimTextMatcher } from '../ports/claim-text-matcher';
+
+/** The language of a slug's words. */
+const SLUG_LOCALE = 'en';
 
 export {
   adminAccountOf,
@@ -92,28 +96,39 @@ export function termPath(terms: readonly TopicTerm[], index: number): string {
 
 export type TopicClaimWordFailure =
   | {
-      readonly code: 'topic.claim-word';
+      readonly code: 'topic.claim-word' | 'topic.locale-uncheckable';
       readonly fields: readonly { readonly path: string; readonly code: string }[];
     }
   | { readonly code: 'access.unavailable' };
 
 /**
- * Refuses a name, synonym, intro or slug that asserts a certification (halal, organic and the like): a
- * topic is a theme, never a claim, and it will be read by buyers on its page. Runs the claim-term
- * matcher outside any unit (it opens its own); an unavailable matcher fails closed.
+ * Refuses a name, synonym, intro or slug that asserts a certification (halal, organic and the
+ * like): a topic is a theme, never a claim, and buyers read it on its page. Fails closed like the
+ * category check (`refuseClaimTexts`): a text in a locale the Market's claim vocabulary does not
+ * cover is `topic.locale-uncheckable`; an unreadable vocabulary, a matcher that throws or answers
+ * in the wrong shape is `access.unavailable`; a hit is `topic.claim-word` with the paths, never the
+ * words. Texts go in batches of the matcher's limit. Call it with no unit of work open: the
+ * certification facade opens its own.
  */
 export async function refuseTopicClaimWords(
-  matcher: ClaimTextMatcher,
+  deps: { readonly matcher: ClaimTextMatcher; readonly claimLocales: ClaimTermLocales },
   context: CallContext,
   content: { readonly terms: readonly TopicTerm[]; readonly intro: string | null },
-  introLocale: string,
+  defaultLocale: string,
   slug: string | null = null,
 ): Promise<TopicClaimWordFailure | null> {
-  const texts = [
-    // The slug is read in the address: its words are matched with the hyphens as spaces.
-    ...(slug === null
-      ? []
-      : [{ path: 'slug', locale: introLocale, text: slug.replaceAll('-', ' ') }]),
+  const covered = await deps.claimLocales.covered(context).catch(() => null);
+  if (covered === null || !covered.ok) {
+    return { code: 'access.unavailable' };
+  }
+  // The slug is ASCII words: it is checked with the Market's English vocabulary (a vocabulary is
+  // kept per full locale, such as en-AU), or with the default locale's when there is none.
+  const english =
+    covered.value.find((locale) => locale === SLUG_LOCALE) ??
+    covered.value.find((locale) => locale.split('-')[0] === SLUG_LOCALE) ??
+    defaultLocale;
+  const places = [
+    ...(slug === null ? [] : [{ path: 'slug', locale: english, text: slug.replaceAll('-', ' ') }]),
     ...content.terms.map((term, index) => ({
       path: termPath(content.terms, index),
       locale: term.locale,
@@ -121,15 +136,32 @@ export async function refuseTopicClaimWords(
     })),
     ...(content.intro === null
       ? []
-      : [{ path: 'intro', locale: introLocale, text: content.intro }]),
+      : [{ path: 'intro', locale: defaultLocale, text: content.intro }]),
   ];
-  const answer = await matcher.match(
-    context,
-    texts.map(({ locale, text }) => ({ locale, text })),
-  );
-  if (!answer.ok || answer.value.length !== texts.length) return { code: 'access.unavailable' };
-  const fields = texts
-    .filter((_, index) => answer.value[index]!.length > 0)
-    .map((t) => ({ path: t.path, code: 'claim-word' }));
-  return fields.length > 0 ? { code: 'topic.claim-word', fields } : null;
+  const uncheckable = places
+    .filter((place) => !covered.value.includes(place.locale))
+    .map((place) => ({ path: place.path, code: 'locale-uncheckable' }));
+  if (uncheckable.length > 0) return { code: 'topic.locale-uncheckable', fields: uncheckable };
+  const found: { path: string; code: string }[] = [];
+  for (let from = 0; from < places.length; from += MAX_MATCH_TEXTS) {
+    const batch = places.slice(from, from + MAX_MATCH_TEXTS);
+    let answer: Awaited<ReturnType<ClaimTextMatcher['match']>>;
+    try {
+      answer = await deps.matcher.match(
+        context,
+        batch.map(({ locale, text }) => ({ locale, text })),
+      );
+    } catch {
+      return { code: 'access.unavailable' };
+    }
+    if (!answer.ok || !Array.isArray(answer.value) || answer.value.length !== batch.length) {
+      return { code: 'access.unavailable' };
+    }
+    for (const [index, place] of batch.entries()) {
+      const hits: unknown = answer.value[index];
+      if (!Array.isArray(hits)) return { code: 'access.unavailable' };
+      if (hits.length > 0) found.push({ path: place.path, code: 'claim-word' });
+    }
+  }
+  return found.length > 0 ? { code: 'topic.claim-word', fields: found } : null;
 }

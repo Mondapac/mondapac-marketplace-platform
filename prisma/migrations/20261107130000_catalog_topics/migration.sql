@@ -37,9 +37,6 @@ CREATE TABLE "catalog"."topic_terms" (
 );
 
 -- CreateIndex
-CREATE INDEX "topics_market_id_status_topic_group_idx" ON "catalog"."topics"("market_id", "status", "topic_group");
-
--- CreateIndex
 CREATE UNIQUE INDEX "topics_market_id_id_key" ON "catalog"."topics"("market_id", "id");
 
 -- CreateIndex
@@ -71,7 +68,8 @@ ALTER TABLE "catalog"."topic_terms"
     "position" BETWEEN 0 AND 10 AND ("kind" = 'name') = ("position" = 0)),
   ADD CONSTRAINT "topic_terms_term_check" CHECK ("term" = btrim("term") AND length("term") BETWEEN 2 AND 40),
   ADD CONSTRAINT "topic_terms_term_key_check" CHECK (
-    "term_key" = btrim("term_key") AND length("term_key") BETWEEN 2 AND 160);
+    "term_key" = btrim("term_key") AND "term_key" = lower("term_key")
+    AND length("term_key") BETWEEN 2 AND 160);
 
 -- Grants (database-designer). A topic row changes in its group, status, intro and version; the
 -- slug and creator never change, and a topic is never deleted (archived instead). Terms are
