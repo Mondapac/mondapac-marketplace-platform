@@ -13,6 +13,14 @@ export type SellUnitState = 'proposed' | 'published';
 export interface SellUnit {
   readonly variantId: Id<'Variant'>;
   readonly state: SellUnitState;
+  /**
+   * The seller's reversible switch for this sell unit (variants V5). `false` takes the unit off
+   * sale (cart, search, product page) without retiring the variant; pricing and inventory may
+   * still hold a price and stock for it. A unit with no stored switch sells.
+   */
+  readonly selling: boolean;
+  /** The seller's optional SKU for this sell unit, or null. */
+  readonly variantSku: string | null;
 }
 
 /**
@@ -109,6 +117,15 @@ export interface OfferListing {
   /** `{productCode}-{nn}`, or null as `variantNo`. */
   readonly variantCode: string | null;
   readonly axes: readonly VariantAxisValue[];
+  /** The seller's switch for this sell unit (V5); `false` means off sale. */
+  readonly selling: boolean;
+  /** The seller's optional SKU for this sell unit, or null. */
+  readonly variantSku: string | null;
+  /**
+   * The SKU for an export or an invoice line: the variant SKU, else `{sellerSku}-{variantNo}`;
+   * null as `variantNo`.
+   */
+  readonly displaySku: string | null;
   readonly primaryImageId: Id | null;
   readonly tags: readonly OfferListingTag[];
 }

@@ -11,6 +11,8 @@ import type { ProductImages } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { SearchPolicy } from './ports/search-policy';
 import type { SellerEligibility } from './ports/seller-eligibility';
+import type { SellUnitStates } from './ports/sell-unit-states';
+import type { OfferVariantReader } from './ports/offer-variant.reader';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
 import type { StoreResolver } from './ports/store-resolver';
 
@@ -27,6 +29,10 @@ export interface SearchDependencies {
   readonly feed: OfferFeed;
   readonly visibility: PublicVisibility;
   readonly sellers: SellerEligibility;
+  /** The stock and price of sell units, for the variant rows of a document (V8). */
+  readonly sellUnits: SellUnitStates;
+  /** The sell units of hits, and the exact-GTIN lookup (V8). */
+  readonly variants: OfferVariantReader;
   readonly clock: Clock;
   /** A store's list is read from the same documents, by seller (Prisma, no raw SQL). */
   readonly shelves: ShelfDocumentsReader;

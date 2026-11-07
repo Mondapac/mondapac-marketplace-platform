@@ -67,6 +67,7 @@
     "show-all-of": "Show all: {title}",
     "including-gst": "including GST",
     "special-price": "Special price",
+    "price-from": "From {price}",
     "regular-price": "Regular price",
     "only-left": "Only {count} left",
     "add": "Add {name} to cart",
@@ -657,6 +658,7 @@
     "price-between": "{from} to {to}",
     "price-above": "Over {price}",
     "show-results": "Show {count, plural, one {# result} other {# results}}",
+    "show-results-any": "Show results",
     "filters-empty": "No products match these filters",
     "filters-empty-hint": "Try removing a filter to see more products.",
     "clear-filters": "Clear all filters",
@@ -1109,7 +1111,6 @@
     "how-we-check": "How we check",
     "how-we-check-body": "Our team reviews each certificate before a seller can use the halal label. A product shows the halal label only while the certificate is approved and has not expired. If it expires or is withdrawn, the label is removed automatically.",
     "no-rulings": "Mondapac does not give religious rulings. We show what the certifier has issued.",
-    "loading": "Loading seller",
     "try-again": "Try again"
   },
   "sellers": {

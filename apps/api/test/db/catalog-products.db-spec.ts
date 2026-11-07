@@ -250,6 +250,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       pendingSubmittedAt: null,
     });
     const published = stored.submitRevision({
+      familyCode: 'default',
       revisionId: revisionIds[0]!,
       baseRevisionId: null,
       outcome: { outcome: 'published', publishKind: 'auto', sensitive: false, reasons: [] },
@@ -269,6 +270,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       pendingRevisionId: null,
     });
     const pending = again.submitRevision({
+      familyCode: 'default',
       revisionId: revisionIds[1]!,
       baseRevisionId: revisionIds[0]!,
       outcome: { outcome: 'pending', publishKind: null, sensitive: true, reasons: ['name'] },
@@ -305,6 +307,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
 
     // Replace the pending revision, then approve it: the pending pair clears together.
     const replaced = overridden.submitRevision({
+      familyCode: 'default',
       revisionId: revisionIds[3]!,
       baseRevisionId: revisionIds[2]!,
       outcome: { outcome: 'pending', publishKind: null, sensitive: true, reasons: ['name'] },

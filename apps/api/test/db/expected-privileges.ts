@@ -350,10 +350,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
-    // Seller health requests: inserted, then finished once (status and finished_at); never
-    // deleted by the app.
+    // Seller health requests: inserted, then finished once (status and finished_at); finished
+    // rows are deleted by the retention purge (30 days).
     'sellers.seller_health_requests': {
-      table: ['INSERT', 'SELECT'],
+      table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['finished_at', 'status'],
     },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
@@ -1108,6 +1108,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Search attribute filters (A7): the measure values of a document, replaced with it; the
     // reindex progress row of a Market, written by the reindex job and never deleted.
     'search.offer_document_numbers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'search.offer_variant_documents': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'search.reindex_state': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
@@ -1464,6 +1465,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.offer_owner_notices': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'settled_at', 'state'],
+    },
+    // docs/design/data/catalog.md 2.4 (variants V5): the per-sell-unit SKU and selling switch move
+    // by column; the owner, Offer and variant never change. No DELETE: a row is never deleted.
+    'catalog.offer_sell_units': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['selling', 'updated_at', 'variant_sku', 'version'],
     },
     // docs/design/data/catalog.md 3.28: a saved view of an admin list; a filter is a preference, so
     // the application deletes it; only the name and who can use it change.

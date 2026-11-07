@@ -94,6 +94,17 @@ export class PrismaSellerHealthRequestStore implements SellerHealthRequestStore 
     return updated.count > 0;
   }
 
+  async purgeFinishedBefore(market: MarketContext, before: Temporal.Instant): Promise<number> {
+    const deleted = await this.prisma.tx(market).sellersSellerHealthRequest.deleteMany({
+      where: {
+        marketId: market.marketId,
+        status: { in: ['done', 'failed'] },
+        requestedAt: { lt: new Date(before.epochMilliseconds) },
+      },
+    });
+    return deleted.count;
+  }
+
   async latest(
     market: MarketContext,
     sellerId: Id<'Seller'>,

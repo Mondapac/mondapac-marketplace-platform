@@ -258,6 +258,12 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
 export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   Record<string, { readonly table: string } | { readonly noCustomerText: string }>
 > = {
+  SellUnitState: {
+    noCustomerText:
+      'a variant id, a printable-ASCII SKU (1 to 64, no space) and a flag; no free text',
+  },
+  SellUnitChange: { noCustomerText: 'the same fields as SellUnitState, as requested' },
+  SellUnitOutcome: { noCustomerText: 'lists of SellUnitState' },
   ImportColumn: { noCustomerText: 'fixed header names of the import template' },
   IgnoredColumn: { noCustomerText: 'a header of the file, shown to the admin only' },
   MappedColumns: { noCustomerText: 'column positions' },
@@ -394,6 +400,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   ClaimFacts: { noCustomerText: 'ids of the revision, its variants and category paths' },
   OfferSearchFacts: {
     noCustomerText: 'read model feed: ids, a flag and OfferSearchText, nothing entered here',
+  },
+  OfferSearchVariant: {
+    noCustomerText:
+      'read copy of a published Variant: ids, a position, a GTIN, facet codes and its label (claim-checked when the revision was frozen); the label is index words only, never shown from the index',
   },
   OfferSearchAttributes: {
     noCustomerText:
