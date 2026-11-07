@@ -94,6 +94,7 @@ function listWhere(
     scope: 'SELLER',
     ownerSellerId: sellerId,
     status: { in: [...filter.statuses] },
+    ...(filter.productIds === undefined ? {} : { id: { in: [...filter.productIds] } }),
     ...(filter.inReview ? { pendingRevisionId: { not: null } } : {}),
     ...(filter.paused === null ? {} : { pausedAt: filter.paused ? { not: null } : null }),
     ...(filter.typeCode === null ? {} : { typeCode: filter.typeCode }),

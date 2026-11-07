@@ -10,8 +10,13 @@ import { Client } from 'pg';
 import { OwnOfferRead } from '../../src/modules/catalog/application/use-cases/own-offer-read.use-case';
 import { OwnOffersList } from '../../src/modules/catalog/application/use-cases/own-offers-list.use-case';
 import { OwnProductRead } from '../../src/modules/catalog/application/use-cases/own-product-read.use-case';
+import {
+  OwnProductsExport,
+  type OwnProductsExportInput,
+} from '../../src/modules/catalog/application/use-cases/own-products-export.use-case';
 import { OwnProductsList } from '../../src/modules/catalog/application/use-cases/own-products-list.use-case';
 import { Offer } from '../../src/modules/catalog/domain/offer';
+import { ExceljsSheetWriter } from '../../src/modules/catalog/infrastructure/xlsx/exceljs-sheet-writer';
 import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
 import { PrismaOwnCatalogReader } from '../../src/modules/catalog/infrastructure/prisma-own-catalog.reader';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
@@ -51,6 +56,8 @@ const SELLER = '01990000-0000-7000-8000-00000000c5a1' as Id<'Seller'>;
 const OTHER = '01990000-0000-7000-8000-00000000c5a2' as Id<'Seller'>;
 // The list-mode test owns this seller, so the rows it counts are its own alone.
 const LISTED = '01990000-0000-7000-8000-00000000c5a3' as Id<'Seller'>;
+// The export test owns this seller too.
+const EXPORTED = '01990000-0000-7000-8000-00000000c5a4' as Id<'Seller'>;
 const uuid7 = (): string =>
   uuidV7(Date.now() + sequence++, crypto.getRandomValues(new Uint8Array(10)));
 
@@ -288,6 +295,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
   let reader: PrismaOwnCatalogReader;
   let offers: PrismaOfferRepository;
   let list: OwnProductsList;
+  let exporter: OwnProductsExport;
   let read: OwnProductRead;
   let listOffers: OwnOffersList;
   let readOffer: OwnOfferRead;
@@ -300,6 +308,13 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       unitOfWork: persistence.unitOfWork,
       ownReader: reader,
       policy,
+    });
+    exporter = new OwnProductsExport(gate, {
+      unitOfWork: persistence.unitOfWork,
+      ownReader: reader,
+      policy,
+      sheetWriter: new ExceljsSheetWriter(),
+      clock,
     });
     read = new OwnProductRead(gate, {
       unitOfWork: persistence.unitOfWork,
@@ -508,6 +523,76 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     const other = await list.execute(sellerContext(uuid7() as Id<'Seller'>), { page: 1 });
     expect(other.ok && 'total' in other.value && other.value.total).toBe(0);
   });
+
+  it('exports the seller’s own products by the list’s selector, in chunks, and only the selected rows', async () => {
+    const ctx = () => sellerContext(EXPORTED);
+    // 103 products: more than one chunk of 100, in a name order that is not the creation order.
+    const made: Product[] = [];
+    for (let n = 0; n < 103; n++) {
+      made.push(
+        await draftedProduct('SELLER', EXPORTED, `Item ${String(102 - n).padStart(3, '0')}`),
+      );
+    }
+    const odd = made[0]!;
+    await offerOn(odd.state.id, EXPORTED, `E-${randomUUID().slice(0, 8)}`);
+    await offerOn(odd.state.id, OTHER, `F-${randomUUID().slice(0, 8)}`);
+    const stranger = await draftedProduct('SELLER', OTHER, 'Item 000 of another');
+    const platform = await draftedProduct('PLATFORM', SELLER, 'Platform item');
+
+    const text = async (input: OwnProductsExportInput): Promise<string[]> => {
+      const answer = await exporter.execute(ctx(), input);
+      if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+      let out = '';
+      for await (const chunk of answer.value.chunks) out += chunk as string;
+      return out.replace('\uFEFF', '').split('\r\n').slice(0, -1);
+    };
+
+    const byName = await text({ sort: 'name', columns: 'offers,code' });
+    expect(byName).toHaveLength(104);
+    expect(byName[0]).toBe('Product,Status,Category,Offers,Product code');
+    expect(byName[1]).toBe(`Item 000,Draft,,0,${made[102]!.state.productCode}`);
+    expect(byName[103]).toBe(`Item 102,Draft,,1,${odd.state.productCode}`);
+    // No product twice and none missing across the chunk boundary, whatever the order.
+    for (const sort of ['name', 'created', 'updated'] as const) {
+      for (const direction of ['asc', 'desc'] as const) {
+        const rows = await text({ sort, direction, columns: 'code' });
+        expect(new Set(rows.slice(1).map((line) => line.split(',')[3])).size).toBe(103);
+        expect(rows).toHaveLength(104);
+      }
+    }
+
+    // The tab, search and filters pick the products like the list does.
+    expect(await text({ q: 'item 05', columns: 'product' })).toHaveLength(1 + 10);
+    expect(await text({ view: 'live', columns: 'product' })).toHaveLength(1);
+    expect(await text({ categoryId: uuid7() })).toHaveLength(1);
+
+    // Selected rows: exactly those, in the order of the sort, whatever the tab and search.
+    const picked = [made[5]!, made[50]!, odd];
+    const selected = await text({
+      productIds: picked.map((product) => product.state.id).join(','),
+      view: 'live',
+      q: 'zzz',
+      sort: 'name',
+      columns: 'code',
+    });
+    expect(selected).toEqual([
+      'Product,Status,Category,Product code',
+      `Item 052,Draft,,${made[50]!.state.productCode}`,
+      `Item 097,Draft,,${made[5]!.state.productCode}`,
+      `Item 102,Draft,,${odd.state.productCode}`,
+    ]);
+
+    // Another seller's product, a PLATFORM product and an unknown id are one answer.
+    for (const foreign of [stranger.state.id, platform.state.id, uuid7() as Id<'Product'>]) {
+      expect(await exporter.execute(ctx(), { productIds: `${odd.state.id},${foreign}` })).toEqual({
+        ok: false,
+        error: { code: 'product.not-found' },
+      });
+    }
+    // The other seller exports none of it.
+    const none = await exporter.execute(sellerContext(uuid7() as Id<'Seller'>), {});
+    expect(none.ok).toBe(true);
+  }, 120_000);
 
   it('reads an own product with its working copy and answers every other id as not found', async () => {
     const product = await draftedProduct('SELLER', SELLER, 'Readable');

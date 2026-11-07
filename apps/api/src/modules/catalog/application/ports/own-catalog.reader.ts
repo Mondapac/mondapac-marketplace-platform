@@ -98,6 +98,8 @@ export interface OwnProductsFilter {
   readonly text: string | null;
   /** The Market's default locale: the language of the name and of the category name. */
   readonly locale: string;
+  /** Keeps only these products (the rows a seller selected for an export); absent: no limit. */
+  readonly productIds?: readonly Id<'Product'>[];
 }
 
 export const OWN_PRODUCT_SORTS = ['name', 'updated', 'created'] as const;

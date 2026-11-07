@@ -54,3 +54,27 @@ export function csvLine(cells: readonly (string | number | null)[]): string {
 
 /** The byte order mark that makes a spreadsheet read the file as UTF-8. */
 export const CSV_BOM = '﻿';
+
+/** One cell of a row before it is written: text, a count or nothing. */
+export type ExportCell = string | number | null;
+
+/** CSV: the byte order mark before the header, then each group of rows as one chunk of lines. */
+export async function* csvChunks(
+  groups: AsyncIterable<readonly (readonly ExportCell[])[]>,
+): AsyncGenerator<string> {
+  let first = true;
+  for await (const group of groups) {
+    const text = group.map((row) => csvLine(row)).join('');
+    yield first ? CSV_BOM + text : text;
+    first = false;
+  }
+}
+
+/** XLSX: every cell as text; a count is written as the digits, nothing is a number or formula. */
+export async function* textRows(
+  groups: AsyncIterable<readonly (readonly ExportCell[])[]>,
+): AsyncGenerator<readonly string[]> {
+  for await (const group of groups) {
+    for (const row of group) yield row.map((cell) => (cell === null ? '' : String(cell)));
+  }
+}

@@ -25,6 +25,7 @@ import {
   ApiExtraModels,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -49,6 +50,13 @@ import { OwnProductSaveDraft } from '../application/use-cases/own-product-save-d
 import { OwnProductSetOwnBrand } from '../application/use-cases/own-product-set-own-brand.use-case';
 import { OwnProductSubmit } from '../application/use-cases/own-product-submit.use-case';
 import { OwnProductRead } from '../application/use-cases/own-product-read.use-case';
+import {
+  EXPORT_FORMATS,
+  OWN_EXPORT_COLUMNS,
+  OWN_EXPORT_MAX_IDS,
+  OWN_EXPORT_MAX_ROWS,
+  OwnProductsExport,
+} from '../application/use-cases/own-products-export.use-case';
 import {
   OWN_LISTED_STATUSES,
   OWN_PAGE_SIZES,
@@ -77,6 +85,7 @@ import {
   OwnProductOwnBrandSet,
 } from './own-offer.dto';
 import { PLATFORM_PRODUCT_STATUS } from './platform-product.controller';
+import { writeChunks } from './write-chunks';
 
 /**
  * The HTTP status of each refusal of the seller product routes (catalog design 4.2, 8.2): the
@@ -99,6 +108,8 @@ export const OWN_PRODUCT_STATUS: Readonly<Record<string, number>> = Object.freez
   'tag.type-unknown': 422,
   'conflict.retry': 409,
   'claim.check-unavailable': 503,
+  // The export of the list: a request over the row cap or the id cap (design 9.2c).
+  'batch.too-large': 413,
 });
 
 function refusal(error: Refusal, response: Response, context?: CallContext): HttpException {
@@ -123,9 +134,12 @@ const WHOLE_NUMBER = /^\d{1,6}$/;
  * `pageSize` become numbers and `paused` a boolean; a value that is not of that shape becomes
  * one the use case refuses (-1 or the text itself), so the answer is a `validation.failed`.
  */
-function productListQuery(query: Record<string, unknown>): Record<string, unknown> {
+function productListQuery(
+  query: Record<string, unknown>,
+  numeric: readonly string[] = ['page', 'pageSize'],
+): Record<string, unknown> {
   const out: Record<string, unknown> = pageQuery(query);
-  for (const key of ['page', 'pageSize']) {
+  for (const key of numeric) {
     const value = out[key];
     if (value !== undefined) {
       out[key] = typeof value === 'string' && WHOLE_NUMBER.test(value) ? Number(value) : -1;
@@ -159,6 +173,7 @@ export class OwnProductController {
     private readonly saveDraft: OwnProductSaveDraft,
     private readonly submitProduct: OwnProductSubmit,
     private readonly listProducts: OwnProductsList,
+    private readonly exportProducts: OwnProductsExport,
     private readonly readProduct: OwnProductRead,
     private readonly productOptions: OwnProductOptionsUseCase,
     private readonly setOwnBrand: OwnProductSetOwnBrand,
@@ -227,6 +242,106 @@ export class OwnProductController {
       ? (JSON.parse(JSON.stringify(result.value)) as OwnProductList | OwnProductPageList)
       : refusal(result.error, response, context);
     return this.settle('catalog.own-products-list', context, outcome);
+  }
+
+  // Declared before `:productId`, so "export" is not read as a product id.
+  @Get('export')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Export the seller’s products of the list as a file',
+    description:
+      'Needs catalog.own-product.view. Only the calling seller’s own products of the Market. ' +
+      'The selector is the list’s: view, q, status, categoryId, paused, typeCode, sort, ' +
+      'direction (page, pageSize, afterId and limit are refused). `productIds` is the ' +
+      `comma-separated rows the seller selected (at most ${OWN_EXPORT_MAX_IDS}): exactly those ` +
+      'products leave, in the order of `sort`; the tab, search and filters are then only ' +
+      'validated, and an id that is not a listed product of the seller is product.not-found. ' +
+      `Without it the selector picks the products, at most ${OWN_EXPORT_MAX_ROWS} (more is ` +
+      'batch.too-large with details.max and details.total). `format` is csv (default) or xlsx, ' +
+      'with the same columns and header row. `columns` is the comma-separated keys in the order ' +
+      'shown; product, status and category are always there, first; absent: code, updated ' +
+      'follow. The header row is in English. The file streams ' +
+      'as an attachment, built like the admin export. CSV: a text cell that starts with = + - @ ' +
+      'is written with a leading quote. XLSX: every cell is a string value, never a formula. ' +
+      'Sorting by name over more than 2000 matches is validation.failed (sort, too-broad).',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({
+    name: 'columns',
+    required: false,
+    description: `Any of: ${OWN_EXPORT_COLUMNS.join(', ')}.`,
+  })
+  @ApiQuery({
+    name: 'productIds',
+    required: false,
+    description: 'Comma-separated product ids of the selected rows.',
+  })
+  @ApiQuery({ name: 'view', required: false, enum: OWN_PRODUCT_VIEWS })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'status', required: false, enum: OWN_LISTED_STATUSES })
+  @ApiQuery({ name: 'categoryId', required: false })
+  @ApiQuery({ name: 'paused', required: false, enum: ['true', 'false'] })
+  @ApiQuery({ name: 'typeCode', required: false })
+  @ApiQuery({ name: 'sort', required: false, enum: OWN_PRODUCT_SORTS })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiOkResponse({
+    description:
+      'text/csv; charset=utf-8 (products-<date>.csv) or ' +
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (products-<date>.xlsx), as an attachment',
+  })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiPayloadTooLargeResponse({ type: ApiErrorBody, description: 'batch.too-large' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async download(
+    @Call() context: CallContext,
+    @Res() response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<void> {
+    // `page` and `pageSize` stay as sent (text): the use case refuses them as unknown keys.
+    const result = await this.exportProducts.execute(context, productListQuery(query, []));
+    if (!result.ok) {
+      const error = refusal(result.error, response, context);
+      this.#logger.log({
+        msg: 'catalog.own-products-export',
+        outcome: (error.getResponse() as { code: string }).code,
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      // Backpressure, and a stop as soon as the client disconnects.
+      await writeChunks(response, chunks);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logger.warn({
+        msg: 'catalog.own-products-export',
+        code: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+      return;
+    }
+    this.#logger.log({
+      msg: 'catalog.own-products-export',
+      outcome: 'ok',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
   }
 
   // Declared before `:productId`, so "options" is not read as a product id.
