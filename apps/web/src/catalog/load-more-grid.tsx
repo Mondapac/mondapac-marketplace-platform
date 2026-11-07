@@ -30,9 +30,12 @@ interface Props {
   readonly children?: ReactNode;
 }
 
-/** The listing's filters and sort as a query string, without the page. */
-function queryOf(state: ListingState): string {
-  const href = listingHref('/', { ...state, page: 1 });
+/**
+ * The listing's filters and sort as a query string, without the page. The address's own query
+ * (the search words, `direct`, the API's attribute and price filters) comes with it.
+ */
+function queryOf(path: string, state: ListingState): string {
+  const href = listingHref(path, { ...state, page: 1 });
   return href.split('?', 2)[1] ?? '';
 }
 
@@ -81,7 +84,7 @@ export function LoadMoreGrid({
     setFailed(false);
     try {
       const next = last + 1;
-      const page = await loadMoreProducts({ scope, query: queryOf(state), page: next });
+      const page = await loadMoreProducts({ scope, query: queryOf(path, state), page: next });
       if (page === null) throw new Error('load-more refused');
       const known = new Set(loaded.map((p) => p.id));
       const added = page.items.filter((p) => !known.has(p.id));
