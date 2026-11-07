@@ -31,9 +31,6 @@ export interface SidebarNavProps {
   readonly activeId: string;
   /** Ids of the open groups from the cookie (the server reads it), so the first paint is right. */
   readonly openGroups?: readonly string[];
-  /** Labels of the button that opens or closes every group; it shows with two or more groups. */
-  readonly expandAll?: string;
-  readonly collapseAll?: string;
 }
 
 // Inside the shell's column the sidebar can be an icon rail (`data-rail` on the `rail` group):
@@ -64,8 +61,6 @@ export function SidebarNav({
   footer = [],
   activeId,
   openGroups = [],
-  expandAll,
-  collapseAll,
 }: SidebarNavProps) {
   const groups = entries.flatMap((entry) => (entry.kind === 'group' ? [entry] : []));
   const groupIds = groups.map((group) => group.id);
@@ -116,8 +111,6 @@ export function SidebarNav({
     save(value ? [...without, id] : without);
   }
 
-  const allOpen = groupIds.every((id) => open.includes(id));
-
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const root = nav.current;
@@ -155,16 +148,6 @@ export function SidebarNav({
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden p-3">
-        {groups.length >= 2 && expandAll !== undefined && collapseAll !== undefined ? (
-          <button
-            type="button"
-            data-nav-stop="control"
-            onClick={() => save(allOpen ? [] : groupIds)}
-            className="mb-1 min-h-(--mp-size-control-sm) self-end rounded-md px-3 text-xs font-medium text-link hover:bg-muted md:min-h-8 group-data-[rail=true]/rail:invisible"
-          >
-            {allOpen ? collapseAll : expandAll}
-          </button>
-        ) : null}
         {/* The account's pinned pages (empty, and so absent, outside a PanelTools). */}
         <PinnedSection />
         {entries.map((entry) => {
