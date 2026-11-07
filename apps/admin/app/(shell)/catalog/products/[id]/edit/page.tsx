@@ -2,6 +2,7 @@ import { LoadError } from '@mondapac/ui';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../../../../src/server/admin-shell.tsx';
+import { panelConfig } from '../../../../../../src/server/config.ts';
 import { requireSession } from '../../../../../../src/server/session.ts';
 import { ProductEdit } from '../../../../../../src/catalog/product-form/edit-form.tsx';
 import { EDIT_PERMISSION } from '../../../../../../src/catalog/product-form/types.ts';
@@ -30,7 +31,12 @@ export default async function EditProductPage({
   return (
     <AdminShell session={gate.session} activeId="products" title={title}>
       {allowed ? (
-        <ProductEdit productId={id} csrfToken={gate.session.csrfToken} />
+        <ProductEdit
+          productId={id}
+          csrfToken={gate.session.csrfToken}
+          permissionKeys={gate.session.permissionKeys}
+          marketName={panelConfig().marketName}
+        />
       ) : (
         <>
           <p className="text-fg-muted">{t('catalog.productForm.no-access')}</p>

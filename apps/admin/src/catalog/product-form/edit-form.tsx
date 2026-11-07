@@ -36,6 +36,7 @@ import {
   type AttributeInputs,
   type VariantRow,
 } from './draft-content.ts';
+import { CertificationsSection } from './certifications-section.tsx';
 import { problemOf, type FormProblem } from './errors.ts';
 import { VariantsSection } from './variants-section.tsx';
 import { BASE, readable, type DraftSaved, type ProductView, type Submitted } from './types.ts';
@@ -88,9 +89,13 @@ type Phase =
 export function ProductEdit({
   productId,
   csrfToken,
+  permissionKeys = [],
+  marketName = '',
 }: {
   readonly productId: string;
   readonly csrfToken: string;
+  readonly permissionKeys?: readonly string[];
+  readonly marketName?: string;
 }) {
   const t = useTranslations('catalog.productForm');
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
@@ -130,6 +135,8 @@ export function ProductEdit({
       key={generation}
       product={phase.product}
       csrfToken={csrfToken}
+      permissionKeys={permissionKeys}
+      marketName={marketName}
       onReload={() => void load()}
     />
   );
@@ -144,10 +151,14 @@ const STATUS_TONE: Readonly<Record<string, 'neutral' | 'success' | 'attention'>>
 function EditForm({
   product,
   csrfToken,
+  permissionKeys,
+  marketName,
   onReload,
 }: {
   readonly product: ProductView;
   readonly csrfToken: string;
+  readonly permissionKeys: readonly string[];
+  readonly marketName: string;
   readonly onReload: () => void;
 }) {
   const t = useTranslations('catalog.productForm');
@@ -460,6 +471,14 @@ function EditForm({
               setRows(next);
               edited();
             }}
+          />
+          <CertificationsSection
+            product={product}
+            csrfToken={csrfToken}
+            permissionKeys={permissionKeys}
+            marketName={marketName}
+            justPublished={status === 'published' && product.published === null}
+            onReload={onReload}
           />
         </div>
         <aside className="flex flex-col gap-4">

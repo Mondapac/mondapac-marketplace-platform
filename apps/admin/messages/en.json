@@ -2671,6 +2671,206 @@
         "message": "You have changes that are not saved. If you leave this page, they are lost.",
         "stay": "Stay on page",
         "leave": "Leave page"
+      },
+      "certs": {
+        "title": "Product certifications",
+        "helper": "Certificates the manufacturer holds for this exact product, e.g. Halal, Vegan or Kosher. Each one is checked by a certification reviewer before sellers can use it.",
+        "add": "Add certificate",
+        "publish-first": "Publish the product first, then add its certificates.",
+        "just-published": "This product was just published. Read it again to add its certificates.",
+        "loading": "Loading the certificates",
+        "load-failed": "The certificates could not be loaded.",
+        "retry": "Try again",
+        "latest": "Showing the latest {count}",
+        "table-caption": "Product certificates",
+        "live": {
+          "sent": "Sent for review"
+        },
+        "col": {
+          "certificate": "Certificate",
+          "expires": "Expires",
+          "covers": "Covers",
+          "status": "Status",
+          "actions": "Actions"
+        },
+        "issuer-unset": "Issuer not set",
+        "empty": {
+          "title": "No product certificates yet",
+          "body": "Add one if the manufacturer certified this product."
+        },
+        "info": {
+          "title": "Badges stay on seller offers",
+          "body": "A seller can show the badge only where {category} allows a manufacturer certificate, the item is sealed and original, and the seller confirms it. The product page never shows a badge on its own.",
+          "category-fallback": "the category"
+        },
+        "status": {
+          "approved": "Approved",
+          "waiting": "Waiting for review",
+          "draft": "Draft",
+          "expiring": "{days, plural, =0 {Expires today} =1 {Expires tomorrow} other {Expires in # days}}",
+          "expired": "Expired",
+          "suspended": "Suspended",
+          "rejected": "Rejected",
+          "revoked": "Revoked"
+        },
+        "covers": {
+          "all": "All variants",
+          "some": "{count} of {total} variants",
+          "whole": "Whole product"
+        },
+        "finish-link": "Finish and send",
+        "menu": {
+          "label": "Actions for {type} certificate",
+          "view": "View details",
+          "finish": "Finish and send"
+        },
+        "banner": {
+          "expired": {
+            "title": "The {type} certificate expired on {date}.",
+            "body": "Offers that used it lost the {type} badge. Add the new certificate to restore it."
+          },
+          "rejected": {
+            "title": "The {type} certificate was rejected.",
+            "body": "Reason from the reviewer: {reason}"
+          },
+          "words": {
+            "title": "{languages} names are missing for {type}.",
+            "body": "Add them in Certifications › Types before {languagesOr} is published.",
+            "body-ask": "Ask a certification admin to add them before {languagesOr} is published."
+          },
+          "view": "View details"
+        },
+        "reason": {
+          "unknown": "see the details.",
+          "unreadable": "the file could not be read.",
+          "holder-name-mismatch": "the name on the certificate does not match the manufacturer.",
+          "location-scope-unclear": "the location or scope on the certificate does not cover this product.",
+          "issuer-unclear": "the certificate could not be matched to the issuer.",
+          "dates-unclear": "the dates do not match the certificate.",
+          "incomplete-file": "the certificate is incomplete: pages or details are missing.",
+          "signs-of-tampering": "the certificate shows signs of having been altered.",
+          "issuer-not-recognised": "the issuer is not one the platform recognises.",
+          "not-confirmed-by-issuer": "the issuer did not confirm the certificate.",
+          "declaration-not-accepted": "the declaration could not be accepted.",
+          "withdrawn-by-issuer": "the issuer has withdrawn or suspended this certificate.",
+          "approved-in-error": "the certificate was approved in error and no longer counts.",
+          "under-investigation": "the certificate is being checked again and does not count until the check ends.",
+          "number-mismatch": "the number doesn’t match the issuer’s register."
+        },
+        "dialog": {
+          "title-add": "Add product certificate",
+          "title-finish": "Finish product certificate",
+          "subtitle": "{title} · checked by a certification reviewer before use.",
+          "loading": "Loading the certification types",
+          "load-failed": "The certification types could not be loaded.",
+          "no-types": "No certification types are available for {market} yet. Ask a certification admin to add one.",
+          "send": "Send for review",
+          "sending": "Sending…",
+          "try-again": "Try again",
+          "cancel": "Cancel",
+          "close": "Close",
+          "choose": "Choose…",
+          "field": {
+            "type": "Certification type",
+            "type-hint": "Types come from Certifications › Types. Names show in English; Persian and Arabic names must be added there before those languages go live.",
+            "issuer": "Issuer",
+            "issuer-hint": "Only approved issuers for {type} in {market}.",
+            "issuer-none": "No approved issuers for {type} in {market} yet.",
+            "manufacturer": "Manufacturer · required",
+            "manufacturer-hint": "The company named on the certificate.",
+            "number": "Certificate number · required",
+            "number-saved": "Certificate number · already saved",
+            "number-placeholder": "Number saved. Type to replace it.",
+            "issue": "Issue date · optional",
+            "expires-required": "Expires · required",
+            "expires-optional": "Expires · optional",
+            "covers": "Covers",
+            "covers-hint": "Or choose the variants the certificate names.",
+            "covers-some": "Some variants",
+            "variants": "Variants covered",
+            "variants-hint": "Only variants in the published revision are listed.",
+            "select-all": "Select all",
+            "clear": "Clear",
+            "document": "Certificate document",
+            "document-hint": "PDF or image, up to 10 MB. Only reviewers can open it.",
+            "choose-file": "Choose a file",
+            "replace": "Replace",
+            "attached": "Attached · {kind} · {size}",
+            "uploaded": "Uploaded · {name}"
+          },
+          "error": {
+            "summary": "{count} fields need fixing.",
+            "type": "Choose a certification type.",
+            "issuer": "Choose an issuer.",
+            "manufacturer": "Enter the manufacturer.",
+            "number": "Enter the certificate number.",
+            "expires": "Enter the expiry date.",
+            "expires-order": "Expires must be after the issue date.",
+            "expired": "This certificate has already expired.",
+            "covers": "Choose at least one variant.",
+            "file": "Add the certificate document.",
+            "file-type": "Use a PDF, JPEG or PNG.",
+            "file-size": "This file is over 10 MB.",
+            "file-rejected": "We couldn’t use this file. Choose another one."
+          },
+          "failed": {
+            "draft": "Saved as a draft. We couldn’t send it for review. Try again.",
+            "create": "We couldn’t save the certificate. Try again.",
+            "invalid": "Some details were not accepted. Check the fields and try again.",
+            "unavailable": "That type or issuer is not available any more. Choose another.",
+            "denied": "You don’t have permission to add certificates.",
+            "throttled": "Too many tries. Wait a moment and try again.",
+            "stale": "Someone changed this certificate. Reload to see it.",
+            "reload": "Reload"
+          },
+          "confirm": {
+            "message": "Sending is still in progress. If you close this, it finishes in the background and the row shows the result.",
+            "keep": "Keep waiting",
+            "close": "Close anyway"
+          }
+        },
+        "details": {
+          "title": "Certificate details",
+          "close": "Close",
+          "loading": "Loading the certificate",
+          "error": "The certificate could not be loaded.",
+          "retry": "Try again",
+          "field": {
+            "status": "Status",
+            "type": "Type",
+            "issuer": "Issuer",
+            "manufacturer": "Manufacturer",
+            "number": "Certificate number",
+            "issued": "Issue date",
+            "expires": "Expires",
+            "covers": "Covers",
+            "document": "Document",
+            "reason": "Latest rejection reason"
+          },
+          "number-recorded": "Number recorded",
+          "document": "Attached · {kind} · {size}",
+          "no-document": "No document",
+          "none": "Not set",
+          "history": "History"
+        },
+        "history": {
+          "title": "Certificate details",
+          "close": "Close",
+          "loading": "Loading the history",
+          "empty-title": "No history yet",
+          "empty-body": "Changes to this certificate show here.",
+          "error": "The history could not be loaded.",
+          "retry": "Try again",
+          "load-more": "Show older",
+          "more-failed": "Older entries could not be loaded.",
+          "who-author": "Author",
+          "who-reviewer": "Reviewer",
+          "who-system": "System",
+          "who-other": "Another admin",
+          "moved": "{from} to {to}",
+          "started": "Started as {to}",
+          "reason": "Reason: {reason}"
+        }
       }
     },
     "queue": {

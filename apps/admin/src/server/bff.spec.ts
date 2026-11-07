@@ -1848,6 +1848,111 @@ describe('relay of the product list', () => {
     });
   });
 
+  describe('the certificates card of the product form', () => {
+    const base = 'certification/admin/product-certificates';
+    const request = (
+      method: string,
+      path: string,
+      body = '{}',
+      headers: Record<string, string> = sameOrigin,
+    ) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers,
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it('relays exactly the routes the card uses, with a UUID where an id stands', async () => {
+      for (const [method, path] of [
+        ['GET', `${base}/for-product/${id}`],
+        ['GET', `${base}/options`],
+        ['GET', `${base}/${id}`],
+        ['GET', `${base}/${id}/history`],
+        ['POST', base],
+        ['PUT', `${base}/${id}/draft`],
+        ['POST', `${base}/${id}/documents`],
+        ['POST', `${base}/${id}/submit`],
+      ] as const) {
+        const upstream = upstreamOk();
+        const response = await relay(config, request(method, path), path.split('/'), upstream);
+        expect(response.status, `${method} ${path}`).toBe(200);
+        expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+      }
+    });
+
+    it('refuses the reviewer routes, other methods, a malformed id and any other shape', async () => {
+      for (const [method, path] of [
+        ['GET', base],
+        ['GET', `${base}/not-a-uuid`],
+        ['GET', `${base}/for-product/not-a-uuid`],
+        ['GET', `${base}/for-product`],
+        ['GET', `${base}/${id}/review`],
+        ['GET', `${base}/${id}/draft`],
+        ['GET', `${base}/${id}/documents`],
+        ['PUT', base],
+        ['PUT', `${base}/options`],
+        ['POST', `${base}/options`],
+        ['POST', `${base}/${id}`],
+        ['POST', `${base}/${id}/approve`],
+        ['POST', `${base}/${id}/reject`],
+        ['POST', `${base}/${id}/suspend`],
+        ['POST', `${base}/${id}/revoke`],
+        ['POST', `${base}/${id}/reinstate`],
+        ['POST', `${base}/${id}/checks`],
+        ['POST', `${base}/${id}/draft`],
+        ['PUT', `${base}/${id}/submit`],
+        ['DELETE', `${base}/${id}/documents/${id}`],
+        ['DELETE', `${base}/${id}`],
+      ] as const) {
+        const upstream = upstreamOk();
+        const response = await relay(config, request(method, path), path.split('/'), upstream);
+        expect(response.status, `${method} ${path}`).toBe(404);
+        expect(upstream).not.toHaveBeenCalled();
+      }
+    });
+
+    it('lets only the document route carry a file of up to 10 MiB as base64 and keeps the rest at 16 KB', async () => {
+      const upstream = upstreamOk();
+      const documents = `${base}/${id}/documents`;
+      const large = JSON.stringify({ version: 2, data: 'A'.repeat(13 * 1024 * 1024) });
+      expect(
+        (await relay(config, request('POST', documents, large), documents.split('/'), upstream))
+          .status,
+      ).toBe(200);
+      const tooLarge = JSON.stringify({ version: 2, data: 'A'.repeat(15 * 1024 * 1024) });
+      expect(
+        (await relay(config, request('POST', documents, tooLarge), documents.split('/'), upstream))
+          .status,
+      ).toBe(413);
+      for (const path of [`${base}/${id}/submit`, base]) {
+        expect(
+          (await relay(config, request('POST', path, large), path.split('/'), upstream)).status,
+        ).toBe(413);
+      }
+      const draft = `${base}/${id}/draft`;
+      expect(
+        (await relay(config, request('PUT', draft, large), draft.split('/'), upstream)).status,
+      ).toBe(413);
+      expect(upstream).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses an unsafe call that is not same-origin', async () => {
+      const upstream = upstreamOk();
+      const submit = `${base}/${id}/submit`;
+      expect(
+        (
+          await relay(
+            config,
+            request('POST', submit, '{}', { host: 'admin.localhost:3002' }),
+            submit.split('/'),
+            upstream,
+          )
+        ).status,
+      ).toBe(403);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+  });
+
   describe('the saved filters of the product list', () => {
     const base = ['catalog', 'admin', 'saved-filters'];
     const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
