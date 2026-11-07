@@ -57,10 +57,10 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.business-activity.read'],
     },
     {
-      id: 'offer-reviews',
+      id: 'review-queue',
       icon: 'inbox',
-      labelKey: 'nav.offer-reviews',
-      href: '/offer-reviews',
+      labelKey: 'nav.review-queue',
+      href: '/review',
       group: 'reviews',
       anyOf: ['catalog.product.view'],
     },

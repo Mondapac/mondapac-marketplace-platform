@@ -102,7 +102,7 @@
     "sellers": "All sellers",
     "orders": "Orders",
     "price-holds": "Held prices",
-    "offer-reviews": "Offer reviews",
+    "review-queue": "Review queue",
     "payout-accounts": "Connected accounts",
     "content": "Content",
     "settings": "Settings",
@@ -2665,6 +2665,68 @@
         "message": "You have changes that are not saved. If you leave this page, they are lost.",
         "stay": "Stay on page",
         "leave": "Leave page"
+      }
+    },
+    "queue": {
+      "title": "Review queue",
+      "tabs": "Review queue",
+      "tab": {
+        "revision": "Product revisions",
+        "offer": "Offers"
+      },
+      "tab-count": "{tab} ({count})",
+      "no-access": "You don't have access to the review queue.",
+      "unavailable": "The review queue could not be loaded. Try again later.",
+      "more": "Next page",
+      "filter": {
+        "change": "Change",
+        "change-all": "All changes",
+        "change-new": "New products",
+        "change-update": "Updates",
+        "photos": "Photos",
+        "photos-any": "Any",
+        "photos-with": "Has photos",
+        "seller-is": "Seller is {name}",
+        "seller-unnamed": "Unnamed store",
+        "seller-picked": "One seller only",
+        "by-seller": "Show only {name}",
+        "remove": "Remove filter {filter}",
+        "clear": "Clear filters"
+      },
+      "col": {
+        "product": "Product",
+        "change": "Change",
+        "seller": "Seller",
+        "reasons": "Reasons",
+        "checks": "Checks",
+        "waiting": "Waiting since (UTC)",
+        "action": "Review"
+      },
+      "change": {
+        "new": "New",
+        "update": "Update"
+      },
+      "reason": {
+        "platform-categories": "Category",
+        "tax-category": "Tax category",
+        "name": "Name",
+        "primary-image": "Main photo",
+        "image-added-or-replaced": "New photos",
+        "variant-removed": "Variant removed",
+        "gtin-changed": "GTIN changed",
+        "never-published": "First publication",
+        "approval-required": "Approval required"
+      },
+      "checks": "{count, plural, =0 {No checks} one {# check} other {# checks}}",
+      "revision-no": "Revision {number}",
+      "unnamed-product": "Unnamed product",
+      "open": "Review",
+      "open-named": "Review {name}",
+      "empty": {
+        "revision": "No product revisions are waiting for review.",
+        "offer": "No offers are waiting for review.",
+        "page": "Nothing on this page. More of the queue is on the next page.",
+        "filtered": "Nothing matches these filters."
       }
     }
   },
