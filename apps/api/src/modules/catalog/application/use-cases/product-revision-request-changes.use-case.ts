@@ -7,6 +7,8 @@ import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_PRODUCT_APPROVE } from '../../contracts/permissions';
 import { PRODUCT_CHANGE_REASONS, type ProductChangeReason } from '../../domain/events';
+import type { AttributeRepository } from '../ports/attribute.repository';
+import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRepository } from '../ports/product.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import {
@@ -38,6 +40,8 @@ export interface ProductRevisionRequestChangesDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly products: ProductRepository;
   readonly revisions: ProductRevisionRepository;
+  readonly attributes: AttributeRepository;
+  readonly policy: CatalogMarketPolicy;
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
 }
@@ -116,9 +120,26 @@ export class ProductRevisionRequestChanges extends UseCase<
           if (!loaded.ok) return err(loaded.error);
           const { product, requiredChecks } = loaded.value;
           const now = deps.clock.now();
+          // The family follows the accepted state only: back to the published revision's, or the
+          // Market default for a product that was never published (decision ت۷).
+          const publishedId = product.state.publishedRevisionId;
+          let revertFamilyCode = deps.policy.defaultFamily(market);
+          if (publishedId !== null) {
+            const published = await deps.revisions.find(market, product.state.id, publishedId);
+            const code =
+              published === null
+                ? null
+                : await deps.attributes.familyCodeOfRevision(
+                    market,
+                    published.content.schemaRef.familyRevisionId,
+                  );
+            if (code === null) return err({ code: 'conflict.stale' });
+            revertFamilyCode = code;
+          }
           const asked = product.requestRevisionChanges({
             revisionId,
             reasonCode: reason as ProductChangeReason,
+            revertFamilyCode,
             now,
           });
           if (!asked.ok) return err(asked.error as ProductReviewRefusal);

@@ -4,6 +4,7 @@ import {
   ProductPaused,
   ProductResumed,
   ProductRetired,
+  ProductFamilyChanged,
   ProductRevisionChangesRequestedV2,
   type ProductChangeReason,
   ProductRevisionPublished,
@@ -107,6 +108,22 @@ export interface ProductState {
   readonly pendingSubmittedAt: Temporal.Instant | null;
 }
 
+/** An event a command records: its definition and payload. */
+interface DomainEventRecord {
+  readonly definition: {
+    record(input: {
+      aggregateId: Id;
+      aggregateVersion: number;
+      occurredAt: Temporal.Instant;
+      payload: never;
+    }): PendingEvent;
+  };
+  readonly payload: unknown;
+}
+
+/** A feature set code (the CHECK of `products.family_code`). */
+const FAMILY_CODE = /^[a-z][a-z0-9_-]{0,63}$/;
+
 /** Why a command was refused: a stable code, never data. */
 export type ProductRefusal =
   | { readonly code: 'product.scope-owner-mismatch' }
@@ -131,7 +148,8 @@ export type ProductRefusal =
   | { readonly code: 'product.already-paused' }
   | { readonly code: 'product.not-paused' }
   | { readonly code: 'product.not-withdrawable' }
-  | { readonly code: 'product.platform-only' };
+  | { readonly code: 'product.platform-only' }
+  | { readonly code: 'product.family-invalid' };
 
 /** `P` and eight digits: the case-sensitive, enumerable-but-meaningless code of data design 3.1. */
 export function formatProductCode(sequence: number): string {
@@ -413,6 +431,12 @@ export class Product {
     readonly baseRevisionId: Id<'ProductRevision'> | null;
     readonly outcome: RevisionOutcome;
     readonly authorKind: AuthorKind;
+    /**
+     * The feature set the revision was frozen under (resolved from its primary category). The
+     * product takes it with the pointer move and raises `catalog.product-family-changed` when
+     * it differs (CAT-10, decision ت۱۰).
+     */
+    readonly familyCode: string;
     readonly replacePending: boolean;
     readonly revisionVariantIds: readonly Id<'Variant'>[];
     readonly maxVariants: number;
@@ -435,6 +459,7 @@ export class Product {
     }
     const variants = this.#checkRevisionVariants(input.revisionVariantIds, input.maxVariants);
     if (!variants.ok) return variants;
+    if (!FAMILY_CODE.test(input.familyCode)) return err({ code: 'product.family-invalid' });
     const submitted = {
       definition: ProductRevisionSubmitted,
       payload: {
@@ -443,19 +468,36 @@ export class Product {
         scope: eventScope(state.scope),
       },
     };
+    const familyChanged = input.familyCode !== state.familyCode;
+    const events: readonly DomainEventRecord[] = familyChanged
+      ? [
+          submitted,
+          {
+            definition: ProductFamilyChanged,
+            payload: {
+              productId: state.id,
+              revisionId: input.revisionId,
+              scope: eventScope(state.scope),
+            },
+          },
+        ]
+      : [submitted];
     if (input.outcome.outcome === 'pending') {
       this.#applyRecords(
         input.now,
         {
           status: state.status === 'draft' ? 'unpublished' : state.status,
+          familyCode: input.familyCode,
           pendingRevisionId: input.revisionId,
           pendingSubmittedAt: input.now,
         },
-        [submitted],
+        events,
       );
       return ok({ published: false });
     }
-    this.#publish(input.revisionId, input.revisionVariantIds, input.now, [submitted]);
+    this.#publish(input.revisionId, input.revisionVariantIds, input.now, events, false, {
+      familyCode: input.familyCode,
+    });
     return ok({ published: true });
   }
 
@@ -496,6 +538,12 @@ export class Product {
   requestRevisionChanges(input: {
     readonly revisionId: Id<'ProductRevision'>;
     readonly reasonCode: ProductChangeReason;
+    /**
+     * The feature set the product had before the pending revision: the published revision's, or
+     * the Market default for a product never published. The family follows the accepted state
+     * only (decision ت۷), so the product goes back to it.
+     */
+    readonly revertFamilyCode: string;
     readonly now: Temporal.Instant;
   }): Result<void, ProductRefusal> {
     const state = this.#state;
@@ -504,17 +552,39 @@ export class Product {
     if (state.pendingRevisionId === null || state.pendingRevisionId !== input.revisionId) {
       return err({ code: 'review.not-current-revision' });
     }
-    this.#applyRecords(input.now, { pendingRevisionId: null, pendingSubmittedAt: null }, [
+    if (!FAMILY_CODE.test(input.revertFamilyCode)) return err({ code: 'product.family-invalid' });
+    const reverted = input.revertFamilyCode !== state.familyCode;
+    this.#applyRecords(
+      input.now,
       {
-        definition: ProductRevisionChangesRequestedV2,
-        payload: {
-          productId: state.id,
-          revisionId: input.revisionId,
-          reasonCode: input.reasonCode,
-          scope: eventScope(state.scope),
-        },
+        familyCode: input.revertFamilyCode,
+        pendingRevisionId: null,
+        pendingSubmittedAt: null,
       },
-    ]);
+      [
+        {
+          definition: ProductRevisionChangesRequestedV2,
+          payload: {
+            productId: state.id,
+            revisionId: input.revisionId,
+            reasonCode: input.reasonCode,
+            scope: eventScope(state.scope),
+          },
+        },
+        ...(reverted
+          ? [
+              {
+                definition: ProductFamilyChanged,
+                payload: {
+                  productId: state.id,
+                  revisionId: input.revisionId,
+                  scope: eventScope(state.scope),
+                },
+              },
+            ]
+          : []),
+      ],
+    );
     return ok(undefined);
   }
 
@@ -582,8 +652,9 @@ export class Product {
     revisionId: Id<'ProductRevision'>,
     named: readonly Id<'Variant'>[],
     now: Temporal.Instant,
-    before: readonly { definition: typeof ProductRevisionSubmitted; payload: unknown }[],
+    before: readonly DomainEventRecord[],
     keepPending = false,
+    extra: Partial<ProductState> = {},
   ): void {
     const state = this.#state;
     const dropped = state.variants.filter(
@@ -598,6 +669,7 @@ export class Product {
     this.#applyRecords(
       now,
       {
+        ...extra,
         status: 'published',
         publishedRevisionId: revisionId,
         ...(keepPending ? {} : { pendingRevisionId: null, pendingSubmittedAt: null }),
@@ -784,17 +856,7 @@ export class Product {
   #applyRecords(
     now: Temporal.Instant,
     changes: Partial<ProductState>,
-    records: readonly {
-      readonly definition: {
-        record(input: {
-          aggregateId: Id;
-          aggregateVersion: number;
-          occurredAt: Temporal.Instant;
-          payload: never;
-        }): PendingEvent;
-      };
-      readonly payload: unknown;
-    }[],
+    records: readonly DomainEventRecord[],
   ): void {
     const base = this.#persistedVersion ?? 0;
     for (const record of records) {

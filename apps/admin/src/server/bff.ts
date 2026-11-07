@@ -207,6 +207,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/offers/:id/request-changes',
     // Submit (publish) a platform product's working copy (catalog).
     'catalog/admin/platform-products/:id/submit',
+    // Discard a platform product that was never submitted (catalog).
+    'catalog/admin/platform-products/:id/discard',
     // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
     // merge other brands into it.
     'catalog/admin/brands/:id/approve',

@@ -37,6 +37,7 @@ import { PrismaCategoryPathsReader } from '../../src/modules/catalog/infrastruct
 import { FakeClaimEvaluator, allowedDecision } from '../support/catalog-tag-fakes';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
+import { fixedFamilyResolver } from '../support/family-resolver';
 
 // Catalog slice 10 (product revision review) on PostgreSQL, for both Market fixtures: the seller's
 // submit, then the reviewer's approve and request-changes use cases end to end over the real
@@ -220,6 +221,7 @@ describe.each(TEST_MARKETS)(
         workingCopies: copies,
         revisions,
         freeze: new FreezeRevision({
+          familyResolver: fixedFamilyResolver(),
           attributes,
           policy,
           handlerFor: (typeCode) => (typeCode === 'simple' ? simpleProductType : undefined),
@@ -256,6 +258,8 @@ describe.each(TEST_MARKETS)(
         unitOfWork: persistence.unitOfWork,
         products,
         revisions,
+        attributes: { familyCodeOfRevision: () => Promise.resolve('default') } as never,
+        policy: { defaultFamily: () => 'default' } as never,
         outbox,
         clock: reviewClock,
       });
