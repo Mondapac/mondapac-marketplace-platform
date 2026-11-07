@@ -303,7 +303,10 @@ export class VariantAdminController {
   @ApiOperation({
     summary: 'Export the variants of the list as a file',
     description:
-      `${NEEDS} ${FILTER_DOC} \`format\` is csv (the default) or xlsx. At most ` +
+      `${NEEDS} ${FILTER_DOC} \`format\` is csv (the default) or xlsx, with the same columns: ` +
+      'product_code, variant_code, product_type, one option[<attribute code>] per axis of the ' +
+      'exported products, gtin, offer_count, then Product, Variant, Status, Sellers selling, ' +
+      'Issues. At most ' +
       `${VARIANTS_EXPORT_MAX_ROWS} variants; more is batch.too-large. The file streams as an ` +
       'attachment. CSV: a text cell that starts with = + - @ is written with a leading quote. ' +
       'XLSX: every cell is a string value, never a formula.',

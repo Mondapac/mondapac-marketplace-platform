@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../form/button.tsx';
 import { EmptyState } from '../form/empty-state.tsx';
 import { Icon } from '../icon/icon.tsx';
@@ -37,6 +37,8 @@ export interface SettingsHistoryDrawerProps {
   readonly state: SettingsHistoryState;
   readonly onLoadMore: () => void;
   readonly onRetry: () => void;
+  /** Read-only details shown above the change list (a record's fields and status). */
+  readonly intro?: ReactNode;
   readonly labels: {
     readonly title: string;
     readonly close: string;
@@ -64,6 +66,7 @@ export function SettingsHistoryDrawer({
   state,
   onLoadMore,
   onRetry,
+  intro,
   labels,
 }: SettingsHistoryDrawerProps) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -99,6 +102,7 @@ export function SettingsHistoryDrawer({
             </button>
           </div>
           <div className="mt-3 min-h-0 flex-1 overflow-y-auto border-t border-line">
+            {intro ?? null}
             {state.kind === 'loading' ? (
               <div role="status">
                 <span className="sr-only">{labels.loading}</span>

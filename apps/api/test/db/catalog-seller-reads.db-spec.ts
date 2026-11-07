@@ -967,6 +967,8 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       status: 'draft',
       listed: false,
       attestationRecorded: false,
+      // No sell-unit row stored: the read lists none (a variant with no row sells, no SKU).
+      sellUnits: [],
       description: { en: 'mine' },
       product: { name: 'Labelled', typeCode: 'simple', productCode: platform.state.productCode },
     });

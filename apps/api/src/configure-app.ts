@@ -133,6 +133,33 @@ export function isCategoryImageUploadRequest(
   );
 }
 
+/** An admin's photo of a PLATFORM product (P1): `POST /catalog/admin/platform-products/<id>/images`. */
+const PLATFORM_PRODUCT_IMAGE_PATH =
+  /^\/catalog\/admin\/platform-products\/[0-9a-fA-F-]{36}\/images\/?(?:\?.*)?$/;
+
+/**
+ * True for an admin platform product photo upload that may carry the photo body: a POST to the
+ * route that holds an admin session cookie and the CSRF header (the category image's pre-filter).
+ * Anything else gets the 64 KiB JSON parser. A cheap pre-filter only: the actor guard still checks
+ * the session and the CSRF token itself.
+ */
+export function isPlatformProductImageUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'POST' || url === undefined || !PLATFORM_PRODUCT_IMAGE_PATH.test(url)) {
+    return false;
+  }
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+
 /** A base64 certificate file of 10 MiB is 14 million characters; the rest is the JSON around it. */
 const CERTIFICATE_DOCUMENT_BODY_LIMIT = '14500kb';
 // The admin platform import's upload (catalog design 14a): a base64 CSV file of at most 10 MiB, read
@@ -262,6 +289,13 @@ export function configureApp(app: NestExpressApplication): void {
   // request that carries an admin session cookie and the CSRF header.
   app.useBodyParser('raw', {
     type: (request) => isCategoryImageUploadRequest(request.method, request.url, request.headers),
+    limit: PRODUCT_IMAGE_BODY_LIMIT,
+    inflate: false,
+  });
+  // An admin's photo of a PLATFORM product takes the same body, under the same pre-filter (P1).
+  app.useBodyParser('raw', {
+    type: (request) =>
+      isPlatformProductImageUploadRequest(request.method, request.url, request.headers),
     limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });

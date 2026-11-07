@@ -1679,3 +1679,56 @@ model CatalogVariantTypeSettingRevision {
   @@map("variant_type_setting_revisions")
   @@schema("catalog")
 }
+
+/// A topic of a Market (product tags package T1): a shopping theme such as Ramadan, Persian cuisine
+/// or BBQ, curated by an admin; products pick topics in package T2. Shown as a "tag" in the panels
+/// and to buyers; named `topic` in code because `tag` is the certification tag on an Offer
+/// (ADR-0028), which a topic never is. The slug is the key and the future page address
+/// (/t/<slug>); it never changes. The CHECKs and the grants are hand-written in the migration.
+model CatalogTopic {
+  id        String             @id @db.Uuid
+  marketId  String             @map("market_id") @db.VarChar(8)
+  tenantId  String             @map("tenant_id")
+  /// Lowercase ASCII words joined by hyphens; unique per Market; never updated.
+  slug      String
+  /// occasion | cuisine | use: how the admin list groups topics.
+  group     String             @map("topic_group")
+  /// active | archived. An archived topic is offered to nobody but keeps its terms.
+  status    String
+  /// The intro of the topic page, written by a person (package T4 indexes a page only with it).
+  intro     String?
+  createdBy String             @map("created_by") @db.Uuid
+  createdAt DateTime           @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime           @map("updated_at") @db.Timestamptz(6)
+  /// Optimistic version (P 10); 1 at insert.
+  version   Int
+  terms     CatalogTopicTerm[]
+
+  @@unique([marketId, id])
+  @@unique([marketId, slug])
+  @@map("topics")
+  @@schema("catalog")
+}
+
+/// A name or a synonym of a topic in one locale. `term_key` is the normalised form
+/// (`normaliseTopicTerm`): unique per Market and locale across every topic, so a synonym never
+/// points at two topics. Position 0 is the name and only the name (a CHECK), so the key gives a
+/// topic at most one name per locale. Replaced as a set when the topic is edited.
+model CatalogTopicTerm {
+  marketId String       @map("market_id") @db.VarChar(8)
+  tenantId String       @map("tenant_id")
+  topicId  String       @map("topic_id") @db.Uuid
+  locale   String
+  /// name | synonym.
+  kind     String
+  term     String
+  termKey  String       @map("term_key")
+  /// The order of the terms of one topic and locale: 0 is the name, synonyms follow.
+  position Int
+  topic    CatalogTopic @relation(fields: [marketId, topicId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, topicId, locale, position])
+  @@unique([marketId, locale, termKey])
+  @@map("topic_terms")
+  @@schema("catalog")
+}

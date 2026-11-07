@@ -3,7 +3,7 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_VIEW } from '../../contracts/permissions';
-import type { ProductStatus, VariantState } from '../../domain/product';
+import { variantCodeOf, type ProductStatus, type VariantState } from '../../domain/product';
 import type { SensitiveReason } from '../../domain/product-revision-policy';
 import type { RevisionContent } from '../../domain/revision-content';
 import type { StoredRevision } from '../../domain/stored-revision';
@@ -43,7 +43,7 @@ export interface OwnProductReadOutput {
   readonly pausedAt: string | null;
   /** The seller marked the product as carrying their own brand (it lets them propose a brand). */
   readonly ownBrand: boolean;
-  readonly variants: readonly { variantId: string; state: VariantState }[];
+  readonly variants: readonly { variantId: string; state: VariantState; variantCode: string }[];
   /** The Market's cap on non-retired variants. */
   readonly maxVariants: number;
   /** Change reasons the Market sends to review, plus `images` which always is (H1). */
@@ -253,6 +253,7 @@ export class OwnProductRead extends UseCase<
       variants: state.variants.map((variant) => ({
         variantId: variant.id,
         state: variant.state,
+        variantCode: variantCodeOf(state.productCode, variant.variantNo),
       })),
       maxVariants,
       sensitiveFields,

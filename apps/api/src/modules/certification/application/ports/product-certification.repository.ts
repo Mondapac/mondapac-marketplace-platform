@@ -122,6 +122,36 @@ export interface ProductCertificationSummary {
   readonly version: number;
 }
 
+/**
+ * What one source of a certificate (its draft, its pending revision or its approved revision) says
+ * about one product: the issuer's display name, the expiry date and the coverage entries that name
+ * the product. Clear fields only (no number, no document).
+ */
+export interface ProductCoverageSource {
+  readonly issuerName: string | null;
+  readonly expiryDate: Temporal.PlainDate | null;
+  /** The variant of each entry that names the product; null is the whole product. */
+  readonly variantIds: readonly (Id<'Variant'> | null)[];
+}
+
+/** One certificate that names a product in its draft, pending or approved coverage. */
+export interface ProductCertificateForProductRow {
+  readonly id: Id<'ProductCertification'>;
+  readonly typeId: Id<'CertificationType'>;
+  readonly typeCode: string;
+  /** The names of the type's published revision per locale; empty without a published revision. */
+  readonly typeNames: Readonly<Record<string, string>>;
+  readonly status: ProductCertificationStatus;
+  readonly lastChangedAt: Temporal.Instant;
+  readonly version: number;
+  /** Each source that names the product; null when it does not. */
+  readonly draft: ProductCoverageSource | null;
+  readonly pending: ProductCoverageSource | null;
+  readonly approved: ProductCoverageSource | null;
+  /** The reason code when the most recent revision's decision is a rejection, else null. */
+  readonly rejectionReasonCode: string | null;
+}
+
 export interface ProductDraftWrite {
   readonly certificateId: Id<'ProductCertification'>;
   readonly manufacturerName: string | null;
@@ -381,6 +411,15 @@ export interface ProductCertificationRepository {
     certificateId: Id<'ProductCertification'>,
     limit: number,
   ): Promise<readonly ProductHistoryRow[]>;
+  /**
+   * The newest `limit` roots of the Market whose draft, pending revision or approved revision
+   * coverage names the product, newest first. Clear fields only; never the number.
+   */
+  forProduct(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    limit: number,
+  ): Promise<readonly ProductCertificateForProductRow[]>;
   /** A page of roots, newest first, optionally of one status and type. */
   list(
     market: MarketContext,

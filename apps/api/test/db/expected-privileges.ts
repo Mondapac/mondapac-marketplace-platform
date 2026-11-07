@@ -1282,6 +1282,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [],
     },
+    // Product tags package T1: a topic's slug and creator never change and a topic is archived,
+    // never deleted; its terms are replaced as a set, so they may be deleted, never updated.
+    'catalog.topics': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['intro', 'status', 'topic_group', 'updated_at', 'version'],
+    },
+    'catalog.topic_terms': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_variants': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['published_at', 'retired_at', 'state'],

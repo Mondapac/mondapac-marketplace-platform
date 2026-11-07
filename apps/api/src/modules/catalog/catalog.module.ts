@@ -72,6 +72,7 @@ import { CUSTOM_VARIANT_LABELS_READER } from './application/ports/custom-variant
 import { AdminCustomVariantLabelsController } from './presentation/admin-custom-variant-labels.controller';
 import { AdminProductsList } from './application/use-cases/admin-products-list.use-case';
 import { ADMIN_PRODUCTS_READER } from './application/ports/admin-products.reader';
+import { ADMIN_VARIANTS_READER } from './application/ports/admin-variants.reader';
 import { AdminProductListController } from './presentation/admin-product-list.controller';
 import { AdminProductBulkController } from './presentation/admin-product-bulk.controller';
 import { AdminProductPause } from './application/use-cases/admin-product-pause.use-case';
@@ -247,6 +248,10 @@ import { OwnProductImageDelete } from './application/use-cases/own-product-image
 import { ProductImageController } from './presentation/product-image.controller';
 import { ProductImageReviewController } from './presentation/product-image-review.controller';
 import { ProductImageAdminRead } from './application/use-cases/product-image-admin-read.use-case';
+import { PlatformProductImageDelete } from './application/use-cases/platform-product-image-delete.use-case';
+import { PlatformProductImageList } from './application/use-cases/platform-product-image-list.use-case';
+import { PlatformProductImageUpload } from './application/use-cases/platform-product-image-upload.use-case';
+import { PlatformProductImageController } from './presentation/platform-product-image.controller';
 import { ProductImageTakeDown } from './application/use-cases/product-image-take-down.use-case';
 import { ProductRevisionImageList } from './application/use-cases/product-revision-image-list.use-case';
 import { SweepOrphanImageFiles } from './application/use-cases/sweep-orphan-image-files.use-case';
@@ -284,6 +289,13 @@ import { BusinessActivityEdit } from './application/use-cases/business-activity-
 import { BusinessActivityGet } from './application/use-cases/business-activity-get.use-case';
 import { BusinessActivityList } from './application/use-cases/business-activity-list.use-case';
 import { BusinessActivityAdminController } from './presentation/business-activity-admin.controller';
+import { TOPIC_READER } from './application/ports/topic.reader';
+import { TOPIC_REPOSITORY } from './application/ports/topic.repository';
+import { TopicCreate } from './application/use-cases/topic-create.use-case';
+import { TopicEdit } from './application/use-cases/topic-edit.use-case';
+import { TopicGet } from './application/use-cases/topic-get.use-case';
+import { TopicList } from './application/use-cases/topic-list.use-case';
+import { TopicAdminController } from './presentation/topic-admin.controller';
 import { BrandCreate } from './application/use-cases/brand-create.use-case';
 import { BrandEdit } from './application/use-cases/brand-edit.use-case';
 import { BrandGet } from './application/use-cases/brand-get.use-case';
@@ -462,6 +474,7 @@ const PORT = {
   sellerNames: SELLER_NAMES_READER,
   ownReader: OWN_CATALOG_READER,
   adminProductsReader: ADMIN_PRODUCTS_READER,
+  adminVariantsReader: ADMIN_VARIANTS_READER,
   customVariantLabelsReader: CUSTOM_VARIANT_LABELS_READER,
   images: PRODUCT_IMAGE_REPOSITORY,
   imageProcessor: IMAGE_PROCESSOR,
@@ -523,6 +536,8 @@ const PORT = {
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
+  topics: TOPIC_REPOSITORY,
+  topicReader: TOPIC_READER,
   contentFilter: ContentFilter,
   variantAdminReader: VARIANT_ADMIN_READER,
   variantTypeSettings: VARIANT_TYPE_SETTINGS_STORE,
@@ -644,6 +659,7 @@ const RESTRUCTURE_DEPS = {
     SellerSavedFilterController,
     ProductReviewController,
     ProductImageReviewController,
+    PlatformProductImageController,
     PublicCategoryController,
     PublicProductImageController,
     BrandAdminController,
@@ -655,6 +671,7 @@ const RESTRUCTURE_DEPS = {
     OwnAttributeSuggestionsController,
     CategoryAdminController,
     BusinessActivityAdminController,
+    TopicAdminController,
     OwnBrandController,
     PublicBrandController,
   ],
@@ -795,6 +812,25 @@ const RESTRUCTURE_DEPS = {
       treeReader: true,
       policy: true,
       matcher: true,
+      clock: true,
+    }),
+    useCaseProvider(TopicList, { unitOfWork: true, topicReader: true, policy: true }),
+    useCaseProvider(TopicGet, { unitOfWork: true, topics: true }),
+    useCaseProvider(TopicCreate, {
+      unitOfWork: true,
+      topics: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(TopicEdit, {
+      unitOfWork: true,
+      topics: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
       clock: true,
     }),
     useCaseProvider(BrandList, { unitOfWork: true, brandReader: true }),
@@ -1417,6 +1453,7 @@ const RESTRUCTURE_DEPS = {
     useCaseProvider(AdminVariantsExport, {
       unitOfWork: true,
       variantAdminReader: true,
+      adminVariantsReader: true,
       policy: true,
       sheetWriter: true,
       clock: true,
@@ -1882,6 +1919,24 @@ const RESTRUCTURE_DEPS = {
       images: true,
     }),
     useCaseProvider(ProductImageAdminRead, { unitOfWork: true, images: true, objectStore: true }),
+    useCaseProvider(PlatformProductImageUpload, {
+      unitOfWork: true,
+      products: true,
+      images: true,
+      imageProcessor: true,
+      objectStore: true,
+      save: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(PlatformProductImageList, { unitOfWork: true, products: true, images: true }),
+    useCaseProvider(PlatformProductImageDelete, {
+      unitOfWork: true,
+      products: true,
+      images: true,
+      objectStore: true,
+      audit: true,
+    }),
     useCaseProvider(ProductImageTakeDown, {
       unitOfWork: true,
       images: true,
@@ -1952,6 +2007,7 @@ const RESTRUCTURE_DEPS = {
       revisions: true,
       ownReader: true,
       policy: true,
+      familyResolver: true,
     }),
     useCaseProvider(SeedCategoryTree, {
       unitOfWork: true,

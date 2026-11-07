@@ -185,6 +185,28 @@ export const CATALOG_BUSINESS_ACTIVITY_EDIT = definePermission('catalog', {
 });
 
 /**
+ * Read the topic list (product tags package T1): the curated tags of the Market with their names,
+ * synonyms and intro. Platform scope; unprotected, so a custom role may grant it; no default role
+ * lists it yet: the Platform Administrator holds every key.
+ */
+export const CATALOG_TOPIC_READ = definePermission('catalog', {
+  key: 'catalog.topic.read',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Create and edit topics, their names, synonyms and intro, and archive or restore them (package
+ * T1). Platform scope; unprotected: a topic moves no money, no access and no certification (a
+ * name or synonym that asserts one is refused by the claim-term matcher).
+ */
+export const CATALOG_TOPIC_MANAGE = definePermission('catalog', {
+  key: 'catalog.topic.manage',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
  * Read the platform category tree, its details, counts, history and the impact of a change
  * (categories package C1; plan section 11). Platform scope; unprotected, so Catalogue Moderator,
  * Operations Support and Viewer receive it by identity's seed. No step-up.
@@ -320,6 +342,8 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_BRAND_EDIT,
   CATALOG_BUSINESS_ACTIVITY_READ,
   CATALOG_BUSINESS_ACTIVITY_EDIT,
+  CATALOG_TOPIC_READ,
+  CATALOG_TOPIC_MANAGE,
   CATALOG_ATTRIBUTE_VIEW,
   CATALOG_ATTRIBUTE_EDIT,
   CATALOG_ATTRIBUTE_RESTRUCTURE,
