@@ -1743,7 +1743,7 @@
           "unavailable-body": "The server did not answer. Continue to try the photos that are left.",
           "throttled-seconds": "{n, plural, one {# second} other {# seconds}} left",
           "throttled-minutes": "{n, plural, one {# minute} other {# minutes}} left",
-          "throttled-hours": "{h, plural, one {# hour} other {# hours}} {m, plural, =0 {} one {# minute} other {# minutes}} left"
+          "throttled-hours": "{h, plural, one {# hour} other {# hours}}{m, plural, =0 {} one { # minute} other { # minutes}} left"
         }
       }
     }

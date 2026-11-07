@@ -276,6 +276,11 @@ export function actionErrorKey(failure: FailureLike): string {
   return ACTION_ERRORS.has(failure.code) ? keyOfCode(failure.code) : 'unavailable';
 }
 
+/** A stop after which nothing more can be added in this import: no resume, no photos. */
+export function stopNeedsNewImport(reason: StopReason | null): boolean {
+  return reason === 'access-lost' || reason === 'seller-not-eligible';
+}
+
 /** Whole seconds of a refusal's `retryAfterSeconds`, at least one; a minute when it has none. */
 export function retryAfterOf(failure: FailureLike): number {
   const seconds = failure.details?.retryAfterSeconds;

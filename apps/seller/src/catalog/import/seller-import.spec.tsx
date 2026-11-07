@@ -595,6 +595,27 @@ describe('seller import page: review fixes', () => {
     expect(await screen.findByText('Showing the first 1 of 1,500 rows')).toBeTruthy();
   });
 
+  it('hides the photo step after a stop for lost access', async () => {
+    serve(
+      view({
+        state: 'stopped',
+        toImport: 100,
+        stopReason: 'access-lost',
+        canResume: true,
+        photoStepOpen: true,
+      }),
+    );
+    mount();
+    expect(await screen.findByText(/The import stopped/)).toBeTruthy();
+    expect(screen.queryByText('Add your photos')).toBeNull();
+  });
+
+  it('counts the ready rows in the all-ready line', async () => {
+    serve(view({ errors: 0, ready: 100, rows: 120, errorLines: [] }));
+    mount();
+    expect(await screen.findByText('All 100 rows are ready to import')).toBeTruthy();
+  });
+
   it('shows no photo step for a stopped job whose step is closed', async () => {
     serve(
       view({
@@ -629,11 +650,10 @@ describe('seller import page: review fixes', () => {
 
   it('ignores the late answer of an upload that was replaced', async () => {
     let releaseFirst: ((value: never) => void) | undefined;
-    let uploads = 0;
-    serve(null, (method, path) => {
+    serve(null, (method, path, body) => {
       if (method !== 'POST' || path !== BASE) return undefined;
-      uploads += 1;
-      if (uploads === 1) {
+      // The first file is told apart by its name: the file reads finish in no fixed order.
+      if ((body as { fileName: string }).fileName === 'first.csv') {
         return new Promise((resolve) => {
           releaseFirst = resolve;
         });
@@ -644,7 +664,9 @@ describe('seller import page: review fixes', () => {
     await screen.findByText('Upload a file');
     pick(container, new File(['a'], 'first.csv'));
     await screen.findByText('Checking your file');
+    await waitFor(() => expect(releaseFirst).toBeDefined(), { timeout: 5000 });
     fireEvent.click(screen.getByRole('button', { name: 'Choose another file' }));
+    await screen.findByText('Upload a file', {}, { timeout: 5000 });
     pick(container, new File(['b'], 'second.csv'));
     expect(await screen.findByText('second.csv')).toBeTruthy();
     await act(async () => {

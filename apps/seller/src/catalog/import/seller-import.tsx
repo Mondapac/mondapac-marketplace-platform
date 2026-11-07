@@ -36,6 +36,7 @@ import {
   actionErrorKey,
   canImport,
   canOfferResume,
+  stopNeedsNewImport,
   isActive,
   stepOf,
   uploadProblemOf,
@@ -548,7 +549,7 @@ export function SellerImport({
             }}
             onReport={() => void report(phase.view, 'full')}
           />
-          {phase.view.photoStepOpen ? (
+          {phase.view.photoStepOpen && !stopNeedsNewImport(phase.view.stopReason) ? (
             <PhotoStep
               importId={phase.view.id}
               csrfToken={csrfToken}
@@ -645,7 +646,7 @@ function CheckResult({
         ]}
       />
       {clean ? (
-        <Banner tone="success" title={t('result.all-ready', { count: view.rows })}>
+        <Banner tone="success" title={t('result.all-ready', { count: view.ready })}>
           <p>{t('result.all-ready-body')}</p>
           {view.warnings > 0 ? <p className="mt-1">{t('result.warnings-clean')}</p> : null}
         </Banner>
