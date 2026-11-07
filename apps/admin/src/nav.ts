@@ -41,6 +41,14 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.attribute.view'],
     },
     {
+      id: 'variants',
+      icon: 'columns',
+      labelKey: 'nav.variants',
+      href: '/catalog/variants',
+      group: 'catalogue',
+      anyOf: ['catalog.variant.view'],
+    },
+    {
       id: 'brands',
       icon: 'tag',
       labelKey: 'nav.brands',

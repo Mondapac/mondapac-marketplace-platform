@@ -61,8 +61,6 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/platform-products/options',
     // The export of the product list as a file (catalog): the chosen ids or the list's own query.
     'catalog/admin/products/export',
-    // The variant export as a file (catalog V6, with the 14b compare columns), read-only.
-    'catalog/admin/variants/export',
     // Import products (catalog): the CSV and XLSX templates and the admin's current import.
     'catalog/admin/platform-imports/template',
     'catalog/admin/platform-imports/current',
@@ -99,6 +97,15 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/attribute-relaxations',
     // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
     'catalog/admin/attribute-archive-requests',
+    // The variant types and the variants of live products, their issue counts and their export
+    // (catalog, variants V6; query of the list: `q`, `typeCode`, `issue`, `after`, `limit`).
+    'catalog/admin/variant-types',
+    'catalog/admin/variants',
+    'catalog/admin/variants/issue-counts',
+    'catalog/admin/variants/export',
+    // The report of published products missing a required detail (catalog, attributes A4;
+    // query: `sellerId`, `familyCode`, `afterId`, `limit`).
+    'catalog/admin/reports/products-missing-details',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -280,6 +287,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'reviews/admin/moderation/:id/dismiss-reports',
   ],
   PUT: [
+    // Change a feature set: names, groups and requirement levels, with the version read
+    // (catalog, attributes A4).
+    'catalog/admin/feature-sets/:id',
     // Set or replace a category's image, with the category version seen (catalog, categories
     // C3c). A base64 picture: the body cap of this path is the larger image one.
     'catalog/admin/categories/:id/image',
@@ -303,6 +313,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/business-activities/:id',
     // The whole content of an attribute, a new revision, with the version seen (attributes A2).
     'catalog/admin/attributes/:id',
+    // How buyers choose a variant type, the whole settings with the version seen (variants V6).
+    'catalog/admin/variant-types/:id/settings',
     // A saved view's name and who can use it (catalog).
     'catalog/admin/saved-filters/:id',
     // The working copy of a platform product, saved as a draft (catalog).
@@ -342,6 +354,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // What merging values or archiving an attribute reaches (catalog, attributes A8).
     'catalog/admin/attributes/:id/impact',
     'catalog/admin/feature-sets/:id',
+    // One variant type with its options and settings (catalog, variants V6).
+    'catalog/admin/variant-types/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',
     // A storefront slide as a package to create in another Market (storefront).
@@ -400,12 +414,15 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'typeCode',
     'sellerId',
   ],
-  'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
   'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
+  'catalog/admin/variants': ['q', 'typeCode', 'issue', 'after', 'limit'],
+  'catalog/admin/variants/issue-counts': ['typeCode'],
+  'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
+  'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -452,9 +469,16 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
   },
+  'catalog/admin/variants': {
+    typeCode: /^[a-z][a-z0-9_-]{0,63}$/,
+    issue: /^(no-seller-selling|missing-gtin|duplicate-gtin|no-image|missing-language)$/,
+    after: UUID,
+    limit: /^([1-9][0-9]?|100)$/,
+  },
+  'catalog/admin/variants/issue-counts': { typeCode: /^[a-z][a-z0-9_-]{0,63}$/ },
   'catalog/admin/variants/export': {
     format: /^(csv|xlsx)$/,
-    typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
+    typeCode: /^[a-z][a-z0-9_-]{0,63}$/,
     issue: /^(no-seller-selling|missing-gtin|duplicate-gtin|no-image|missing-language)$/,
   },
   'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
@@ -483,6 +507,12 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'catalog/admin/business-activities': {
     status: /^(active|inactive)$/,
+    limit: /^[0-9]{1,3}$/,
+    afterId: UUID,
+  },
+  'catalog/admin/reports/products-missing-details': {
+    sellerId: UUID,
+    familyCode: /^[a-z][a-z0-9_-]{0,63}$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
   },

@@ -311,7 +311,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       expect(asked.ok).toBe(true);
       expect(product.state.familyCode).toBe(original);
       expect(events(product).slice(-2)).toEqual([
-        'catalog.product-revision-changes-requested.v1',
+        'catalog.product-revision-changes-requested.v2',
         'catalog.product-family-changed.v1',
       ]);
     });
@@ -356,7 +356,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       });
       expect(product.state.version).toBe(before + 1);
       const event = product.pendingEvents.at(-1);
-      expect(event?.type).toBe('catalog.product-revision-changes-requested.v1');
+      expect(event?.type).toBe('catalog.product-revision-changes-requested.v2');
       expect(event?.payload).toEqual({
         productId,
         revisionId: rev(2),

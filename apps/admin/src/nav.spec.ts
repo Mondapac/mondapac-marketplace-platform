@@ -47,6 +47,7 @@ describe('admin nav: Catalogue', () => {
       'products',
       'categories',
       'attributes',
+      'variants',
       'brands',
       'business-activities',
     ]);
@@ -104,6 +105,7 @@ describe('admin nav: daily work only', () => {
       'products',
       'categories',
       'attributes',
+      'variants',
       'brands',
       'business-activities',
       'offer-reviews',
@@ -253,6 +255,22 @@ describe('admin nav: Attributes', () => {
   it('is hidden without it, also with the protected edit key alone', () => {
     expect(ids([])).not.toContain('attributes');
     expect(ids(['catalog.attribute.edit'])).not.toContain('attributes');
+  });
+});
+
+describe('admin nav: Variants', () => {
+  it('is there for catalog.variant.view, in the Catalogue group', () => {
+    expect(ids(['catalog.variant.view'])).toEqual(['home', 'variants']);
+    expect(adminNav.items.find((item) => item.id === 'variants')).toMatchObject({
+      href: '/catalog/variants',
+      labelKey: 'nav.variants',
+      group: 'catalogue',
+    });
+  });
+
+  it('is hidden without it, also with the edit keys alone', () => {
+    expect(ids([])).not.toContain('variants');
+    expect(ids(['catalog.variant-type.edit', 'catalog.attribute.edit'])).not.toContain('variants');
   });
 });
 
