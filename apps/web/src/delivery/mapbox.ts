@@ -57,17 +57,46 @@ export const MIN_QUERY = 3;
 /** Longest text passed on. */
 export const MAX_QUERY = 120;
 
-/** Forward geocoding while the buyer types: street addresses in the Market's country. */
-export function forwardUrl(token: string, country: string, query: string): string {
+/** Most suburbs (localities) of one answer whose postcode is looked up: each is one more call. */
+export const MAX_LOCALITIES = 2;
+
+/**
+ * Forward geocoding while the buyer types: street addresses and suburbs in the Market's country,
+ * ranked towards `near` (the modal's pin) when given.
+ */
+export function forwardUrl(token: string, country: string, query: string, near?: GeoPoint): string {
   const params = new URLSearchParams({
     q: query,
     country,
-    types: 'address',
+    types: 'address,locality',
     autocomplete: 'true',
     limit: String(MAX_SUGGESTIONS),
     access_token: token,
   });
+  if (near) params.set('proximity', `${near.lng.toFixed(4)},${near.lat.toFixed(4)}`);
   return `${BASE}/forward?${params}`;
+}
+
+/** The postcode at a point: a suburb (locality) answer carries none of its own. */
+export function postcodeUrl(token: string, country: string, point: GeoPoint): string {
+  const params = new URLSearchParams({
+    longitude: point.lng.toFixed(6),
+    latitude: point.lat.toFixed(6),
+    country,
+    types: 'postcode',
+    limit: '1',
+    access_token: token,
+  });
+  return `${BASE}/reverse?${params}`;
+}
+
+/** The postcode of a reverse `types=postcode` answer, or '' when there is none. */
+export function postcodeOf(body: unknown): string {
+  const features = (body as { features?: unknown } | null)?.features;
+  if (!Array.isArray(features)) return '';
+  const first = features[0] as
+    { properties?: { feature_type?: unknown; name?: unknown } } | undefined;
+  return first?.properties?.feature_type === 'postcode' ? text(first.properties.name) : '';
 }
 
 /** Reverse geocoding of a pin or the device location: the nearest street address. */
@@ -87,7 +116,9 @@ interface Named {
   readonly name?: unknown;
 }
 
-const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
+function text(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
 
 /**
  * One Mapbox feature as a `Place`, or null when it lacks a suburb, a postcode or a position: the
@@ -95,12 +126,13 @@ const text = (value: unknown): string => (typeof value === 'string' ? value.trim
  * addresses carry no postcode therefore gets no results: onboarding such a Market needs another
  * area key first.
  */
-export function placeOfFeature(feature: unknown): Place | null {
+export function placeOfFeature(feature: unknown, postcodeFound = ''): Place | null {
   if (typeof feature !== 'object' || feature === null) return null;
   const properties = (feature as { properties?: unknown }).properties;
   if (typeof properties !== 'object' || properties === null) return null;
   const p = properties as {
     mapbox_id?: unknown;
+    feature_type?: unknown;
     name?: unknown;
     coordinates?: { longitude?: unknown; latitude?: unknown };
     context?: {
@@ -115,28 +147,79 @@ export function placeOfFeature(feature: unknown): Place | null {
   if (typeof lng !== 'number' || typeof lat !== 'number') return null;
   if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
   const context = p.context ?? {};
+  const region = text(context.region?.region_code) || text(context.region?.name);
+  if (p.feature_type === 'locality') {
+    // A suburb: its own name, and the postcode looked up at its centre.
+    const suburb = text(p.name);
+    const postcode = text(postcodeFound);
+    if (suburb === '' || postcode === '') return null;
+    return {
+      id: `${postcode}:${suburb}`,
+      street: '',
+      suburb,
+      region,
+      postcode,
+      point: { lat, lng },
+    };
+  }
   const suburb = text(context.locality?.name) || text(context.place?.name);
   const postcode = text(context.postcode?.name);
-  const region = text(context.region?.region_code) || text(context.region?.name);
   const id = text(p.mapbox_id);
   if (suburb === '' || postcode === '' || id === '') return null;
   return { id, street: text(p.name), suburb, region, postcode, point: { lat, lng } };
 }
 
-/** The places of a Mapbox answer, in its order, without duplicates or incomplete features. */
-export function placesOf(body: unknown): readonly Place[] {
+/** The features of an answer, or none. */
+function featuresOf(body: unknown): readonly unknown[] {
   const features = (body as { features?: unknown } | null)?.features;
-  if (!Array.isArray(features)) return [];
+  return Array.isArray(features) ? features : [];
+}
+
+function localityPoint(feature: unknown): GeoPoint | null {
+  const p = (feature as { properties?: Record<string, unknown> } | null)?.properties;
+  if (p?.['feature_type'] !== 'locality') return null;
+  const c = p['coordinates'] as { longitude?: unknown; latitude?: unknown } | undefined;
+  return typeof c?.latitude === 'number' && typeof c.longitude === 'number'
+    ? { lat: c.latitude, lng: c.longitude }
+    : null;
+}
+
+/**
+ * The places of a forward answer with the first suburbs' postcodes looked up (`postcodeAt`, in
+ * parallel; at most MAX_LOCALITIES calls). A suburb whose postcode is not found is left out.
+ */
+export async function placesWithPostcodes(
+  body: unknown,
+  postcodeAt: (point: GeoPoint) => Promise<string>,
+): Promise<readonly Place[]> {
+  const features = featuresOf(body);
+  let localities = 0;
+  const postcodes = await Promise.all(
+    features.map((feature) => {
+      const point = localityPoint(feature);
+      if (point === null || localities >= MAX_LOCALITIES) return Promise.resolve('');
+      localities += 1;
+      return postcodeAt(point).catch(() => '');
+    }),
+  );
+  return dedupe(features.map((feature, i) => placeOfFeature(feature, postcodes[i])));
+}
+
+function dedupe(found: readonly (Place | null)[]): readonly Place[] {
   const seen = new Set<string>();
   const places: Place[] = [];
-  for (const feature of features) {
-    const place = placeOfFeature(feature);
+  for (const place of found) {
     if (place && !seen.has(place.id)) {
       seen.add(place.id);
       places.push(place);
     }
   }
   return places.slice(0, MAX_SUGGESTIONS);
+}
+
+/** The places of a Mapbox answer, in its order, without duplicates or incomplete features. */
+export function placesOf(body: unknown): readonly Place[] {
+  return dedupe(featuresOf(body).map((feature) => placeOfFeature(feature)));
 }
 
 /** A pin or device point, when both numbers are real coordinates. */

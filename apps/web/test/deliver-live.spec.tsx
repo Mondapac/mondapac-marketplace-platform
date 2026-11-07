@@ -10,7 +10,10 @@ import {
   parseMapboxConfig,
   placeOfFeature,
   placesOf,
+  placesWithPostcodes,
   pointOf,
+  postcodeOf,
+  postcodeUrl,
   reverseUrl,
 } from '../src/delivery/mapbox.ts';
 import {
@@ -24,7 +27,7 @@ import { clientKey, fixedWindowLimiter } from '../src/delivery/rate-limit.ts';
 import { Header } from '../src/shell/header.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
 import { SAMPLE_DELIVERY_LOCATOR as SOURCE } from '../src/storefront/sample-delivery.ts';
-import type { DeliveryAreaAnswer } from '../src/storefront/types.ts';
+import type { DeliveryAreaAnswer, GeoPoint } from '../src/storefront/types.ts';
 
 const { deliveryAreaFor } = vi.hoisted(() => ({
   deliveryAreaFor: vi.fn<(postcode: string) => Promise<DeliveryAreaAnswer>>(),
@@ -37,6 +40,20 @@ vi.mock('next/navigation', () => ({
 }));
 
 const TOKEN = 'pk.test-token-not-real-0123456789';
+
+/** A Mapbox Geocoding v6 locality (suburb) feature: no postcode of its own. */
+function locality(name: string, lng: number, lat: number) {
+  return {
+    type: 'Feature',
+    properties: {
+      mapbox_id: `loc-${name}`,
+      feature_type: 'locality',
+      name,
+      coordinates: { longitude: lng, latitude: lat },
+      context: { place: { name: 'Brisbane' }, region: { name: 'Queensland', region_code: 'QLD' } },
+    },
+  };
+}
 
 /** A Mapbox Geocoding v6 address feature, shaped like the API's answer. */
 function feature(
@@ -97,13 +114,55 @@ describe('Mapbox configuration', () => {
 });
 
 describe('Mapbox requests and answers', () => {
-  it('searches street addresses in the Market country only', () => {
+  it('searches street addresses and suburbs in the Market country only', () => {
     const url = new URL(forwardUrl(TOKEN, 'nz', '12 Example St'));
     expect(url.origin + url.pathname).toBe('https://api.mapbox.com/search/geocode/v6/forward');
     expect(url.searchParams.get('q')).toBe('12 Example St');
     expect(url.searchParams.get('country')).toBe('nz');
-    expect(url.searchParams.get('types')).toBe('address');
+    expect(url.searchParams.get('types')).toBe('address,locality');
     expect(url.searchParams.get('autocomplete')).toBe('true');
+    expect(url.searchParams.has('proximity')).toBe(false);
+  });
+
+  it('ranks towards the pin when one is given', () => {
+    const url = new URL(
+      forwardUrl(TOKEN, 'au', '100 Queen St', { lat: -27.46981, lng: 153.02512 }),
+    );
+    expect(url.searchParams.get('proximity')).toBe('153.0251,-27.4698');
+  });
+
+  it('finds the postcode of a suburb at its centre', async () => {
+    const url = new URL(postcodeUrl(TOKEN, 'au', { lat: -27.5424, lng: 153.0727 }));
+    expect(url.pathname).toBe('/search/geocode/v6/reverse');
+    expect(url.searchParams.get('types')).toBe('postcode');
+    expect(
+      postcodeOf({ features: [{ properties: { feature_type: 'postcode', name: '4122' } }] }),
+    ).toBe('4122');
+    expect(postcodeOf({ features: [{ properties: { feature_type: 'place', name: 'x' } }] })).toBe(
+      '',
+    );
+    expect(postcodeOf(null)).toBe('');
+    const asked: GeoPoint[] = [];
+    const places = await placesWithPostcodes(
+      {
+        features: [
+          locality('Mount Gravatt', 153.0727, -27.5424),
+          feature('m1', '1 Logan Rd', 'Mount Gravatt', '4122'),
+          locality('Mount Gravatt East', 153.0839, -27.5328),
+          locality('Upper Mount Gravatt', 153.08, -27.55),
+        ],
+      },
+      (point) => {
+        asked.push(point);
+        return Promise.resolve(point.lng === 153.0839 ? '' : '4122');
+      },
+    );
+    // At most two suburbs are looked up; one without a postcode is left out.
+    expect(asked).toHaveLength(2);
+    expect(places.map((p) => `${p.street}|${p.suburb}|${p.postcode}|${p.id}`)).toEqual([
+      '|Mount Gravatt|4122|4122:Mount Gravatt',
+      '1 Logan Rd|Mount Gravatt|4122|m1',
+    ]);
   });
 
   it('reverse geocodes a point to one address', () => {
@@ -314,6 +373,44 @@ describe('server routes', () => {
     expect(asked.searchParams.get('country')).toBe('au');
   });
 
+  it('answers a suburb with the postcode at its centre, ranked towards the pin', async () => {
+    mapbox.mockImplementation((input) => {
+      const asked = new URL(input as string);
+      return Promise.resolve(
+        Response.json(
+          asked.pathname.endsWith('/forward')
+            ? { features: [locality('Mount Gravatt', 153.0727, -27.5424)] }
+            : { features: [{ properties: { feature_type: 'postcode', name: '4122' } }] },
+        ),
+      );
+    });
+    const url = new URL(
+      'http://storefront.localhost:3003/api/deliver-to/search?q=Mt%20Gravatt&near=-27.47,153.02',
+    );
+    const body = (await (await answerSearch(deps(), incoming(), url)).json()) as {
+      places: { suburb: string; postcode: string; street: string }[];
+    };
+    expect(body.places).toMatchObject([{ suburb: 'Mount Gravatt', postcode: '4122', street: '' }]);
+    expect(new URL(mapbox.mock.calls[0]![0] as string).searchParams.get('proximity')).toBe(
+      '153.0200,-27.4700',
+    );
+    expect(new URL(mapbox.mock.calls[1]![0] as string).searchParams.get('types')).toBe('postcode');
+  });
+
+  it('counts a suburb postcode against the limit and leaves the suburb out over it', async () => {
+    mapbox.mockResolvedValue(
+      Response.json({ features: [locality('Mount Gravatt', 153.0727, -27.5424)] }),
+    );
+    const body = (await (await search('Mt Gravatt', deps(1))).json()) as { places: unknown[] };
+    expect(body.places).toEqual([]);
+    expect(mapbox).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a malformed pin', async () => {
+    const url = new URL('http://storefront.localhost:3003/api/deliver-to/search?q=12%20Ex&near=x');
+    expect((await answerSearch(deps(), incoming(), url)).status).toBe(400);
+  });
+
   it('does not ask Mapbox for a short query and refuses a long one', async () => {
     expect(await (await search('12')).json()).toEqual({ places: [] });
     expect((await search('x'.repeat(121))).status).toBe(400);
@@ -384,11 +481,13 @@ describe('live lookup in the browser', () => {
     );
     const live = lookup();
     void live.search('12 Ex');
-    const last = live.search('12 Example');
+    const last = live.search('12 Example', { lat: -27.46981, lng: 153.02512 });
     await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
     expect((await last).map((p) => p.street)).toEqual(['12 Example Street']);
     expect(browserFetch).toHaveBeenCalledTimes(1);
-    expect(browserFetch.mock.calls[0]![0] as string).toBe('/api/deliver-to/search?q=12%20Example');
+    expect(browserFetch.mock.calls[0]![0] as string).toBe(
+      '/api/deliver-to/search?q=12%20Example&near=-27.4698,153.0251',
+    );
   });
 
   it('says why a search has no list: throttled or failed', async () => {

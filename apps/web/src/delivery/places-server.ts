@@ -12,6 +12,9 @@ import {
   MIN_QUERY,
   forwardUrl,
   parseMapboxConfig,
+  placesWithPostcodes,
+  postcodeOf,
+  postcodeUrl,
   placesOf,
   pointOf,
   reverseUrl,
@@ -135,7 +138,11 @@ async function askMapbox(
   }
 }
 
-/** GET /api/deliver-to/search?q=: street addresses matching what the buyer typed. */
+/**
+ * GET /api/deliver-to/search?q=[&near=lat,lng]: street addresses and suburbs matching what the
+ * buyer typed, ranked towards `near` (the modal's pin). A suburb's postcode costs one more Mapbox
+ * call, counted against the same limits; a suburb over the limit is left out.
+ */
 export async function answerSearch(deps: PlacesDeps, incoming: Incoming, url: URL) {
   const admitted = admit(deps, incoming);
   if ('refused' in admitted) return admitted.refused;
@@ -145,9 +152,23 @@ export async function answerSearch(deps: PlacesDeps, incoming: Incoming, url: UR
   if (query.length < MIN_QUERY) return json({ places: [] });
   const limited = throttled(deps, incoming);
   if (limited) return limited;
-  const answer = await askMapbox(deps, forwardUrl(deps.config!.token, country, query), 'search');
+  const nearText = url.searchParams.get('near');
+  let near: GeoPoint | undefined;
+  if (nearText !== null) {
+    const [lat = null, lng = null] = nearText.split(',');
+    const point = pointOf(lat, lng);
+    if (point === null) return json({ code: 'validation.failed' }, 400);
+    near = point;
+  }
+  const token = deps.config!.token;
+  const answer = await askMapbox(deps, forwardUrl(token, country, query, near), 'search');
   if (answer === null) return json({ code: 'places.unavailable' }, 503);
-  return json({ places: placesOf(answer.body) });
+  const places = await placesWithPostcodes(answer.body, async (point) => {
+    if (!deps.limiter.take(clientKey(clientOf(incoming)))) return '';
+    const found = await askMapbox(deps, postcodeUrl(token, country, point), 'postcode');
+    return found === null ? '' : postcodeOf(found.body);
+  });
+  return json({ places });
 }
 
 /** GET /api/deliver-to/suburb?lat=&lng=: the suburb at a pin or the device location. */

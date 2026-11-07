@@ -13,8 +13,8 @@ import { addressLine } from './geo.ts';
  * sample places when the lookup is not configured (local demo, tests, CI).
  */
 export interface AddressLookup {
-  /** Addresses matching what the buyer typed, best first. */
-  search(query: string): Promise<readonly Place[]>;
+  /** Addresses and suburbs matching what the buyer typed, best first (closer to `near` first). */
+  search(query: string, near?: GeoPoint): Promise<readonly Place[]>;
   /** The suburb at a point (reverse geocoding), or null when there is none. */
   suburbAt(point: GeoPoint): Promise<Place | null>;
   /** The suburb a buyer chose before (a guest keeps only its name and postcode). */
@@ -123,19 +123,21 @@ async function getJson(deps: LiveDeps, path: string): Promise<unknown> {
  */
 export function liveLookup(deps: LiveDeps): AddressLookup {
   let pause: ReturnType<typeof setTimeout> | undefined;
-  const search = async (query: string): Promise<readonly Place[]> => {
-    const body = (await getJson(deps, `/api/deliver-to/search?q=${encodeURIComponent(query)}`)) as {
+  const search = async (query: string, near?: GeoPoint): Promise<readonly Place[]> => {
+    const nearParam = near ? `&near=${near.lat.toFixed(4)},${near.lng.toFixed(4)}` : '';
+    const path = `/api/deliver-to/search?q=${encodeURIComponent(query)}${nearParam}`;
+    const body = (await getJson(deps, path)) as {
       places?: unknown;
     } | null;
     return Array.isArray(body?.places) ? body.places.filter(isPlace) : [];
   };
   return {
-    search(query) {
+    search(query, near) {
       clearTimeout(pause);
       // Only the last call of a typing burst asks; the earlier ones never answer, and the modal's
       // ticket already ignores them.
       return new Promise((resolve, reject) => {
-        pause = setTimeout(() => void search(query).then(resolve, reject), SEARCH_PAUSE_MS);
+        pause = setTimeout(() => void search(query, near).then(resolve, reject), SEARCH_PAUSE_MS);
       });
     },
     async suburbAt(point) {

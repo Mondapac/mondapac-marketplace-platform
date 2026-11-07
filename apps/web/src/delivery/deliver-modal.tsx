@@ -182,7 +182,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
       setSearchNote('short');
       return;
     }
-    lookup.search(value).then(
+    lookup.search(value, pick.point).then(
       (found) => {
         if (ticket === searchTicket.current) setResults(found);
       },
