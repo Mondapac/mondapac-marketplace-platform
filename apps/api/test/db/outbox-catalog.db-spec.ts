@@ -79,6 +79,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // docs/design/data/catalog.md 3.27 (certification slice 15): the sender job's claim order.
   'catalog.offer_owner_notices_market_id_next_attempt_at_pending_idx':
     "CREATE INDEX offer_owner_notices_market_id_next_attempt_at_pending_idx ON catalog.offer_owner_notices USING btree (market_id, next_attempt_at, id) WHERE (state = 'pending'::text)",
+  // docs/design/data/catalog.md 2.4 (variants V5): a variant SKU is unique per seller.
+  'catalog.offer_sell_units_market_id_seller_id_variant_sku_key':
+    'CREATE UNIQUE INDEX offer_sell_units_market_id_seller_id_variant_sku_key ON catalog.offer_sell_units USING btree (market_id, seller_id, variant_sku) WHERE (variant_sku IS NOT NULL)',
   // docs/design/data/catalog.md 3.28: a shared filter name is unique per list among the filters
   // shared with everyone.
   'catalog.saved_filters_shared_name_key':

@@ -153,6 +153,15 @@
     }
   },
   {
+    "type": "catalog.offer-sell-unit-changed.v1",
+    "aggregateType": "offer-sell-unit",
+    "fields": {
+      "offerId": "id",
+      "selling": "boolean",
+      "variantId": "id"
+    }
+  },
+  {
     "type": "catalog.offer-tag-added.v1",
     "aggregateType": "offer",
     "fields": {
@@ -212,6 +221,15 @@
       "outcome": "enumOf(completed|stopped)",
       "added": "integer",
       "failed": "integer"
+    }
+  },
+  {
+    "type": "catalog.product-family-changed.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "revisionId": "id",
+      "scope": "enumOf(platform|seller)"
     }
   },
   {

@@ -148,6 +148,10 @@ export class PlatformProductSubmitted {
   published!: boolean;
 }
 
+export class PlatformProductDiscarded {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+}
+
 export class PlatformProductOptionsView {
   @ApiProperty({ type: [String], description: 'The product types the Market offers.' })
   productTypes!: string[];

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@mondapac/panel-server": "workspace:*",
+    "@mondapac/platform-import": "workspace:*",
     "@mondapac/ui": "workspace:*",
     "next": "16.4.2",
     "next-intl": "4.14.9",

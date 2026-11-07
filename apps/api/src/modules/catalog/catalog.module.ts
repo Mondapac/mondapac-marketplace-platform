@@ -41,6 +41,8 @@ import {
 } from './application/ports/product-type-lookup';
 import { ALLOWED_PRODUCT_TYPES_READER } from './application/ports/allowed-product-types.reader';
 import { OFFER_REPOSITORY } from './application/ports/offer.repository';
+import { OFFER_SELL_UNIT_REPOSITORY } from './application/ports/offer-sell-unit.repository';
+import { OwnOfferSetSellUnits } from './application/use-cases/own-offer-set-sell-units.use-case';
 import { OWN_OFFER_FINDER } from './application/ports/own-offer-finder';
 import { CLAIM_EVALUATOR } from './application/ports/claim-evaluator';
 import { CATEGORY_PATHS_READER } from './application/ports/category-paths.reader';
@@ -151,10 +153,12 @@ import { RATE_COUNTER_REPOSITORY } from './application/ports/rate-counter.reposi
 import { WORKING_COPY_REPOSITORY } from './application/ports/working-copy.repository';
 import { CheckClaimText } from './application/claim-text/check-claim-text.service';
 import { FreezeRevision } from './application/revisions/freeze-revision.service';
+import { ProductFamilyResolver } from './application/attributes/product-family-resolver';
 import { SubmitProduct } from './application/revisions/submit-product.service';
 import { SaveDraft } from './application/working-copy/save-draft.service';
 import { SaveWorkingCopy } from './application/working-copy/save-working-copy.service';
 import { PlatformProductOptions } from './application/use-cases/platform-product-options.use-case';
+import { PlatformProductDiscard } from './application/use-cases/platform-product-discard.use-case';
 import { PlatformProductRead } from './application/use-cases/platform-product-read.use-case';
 import { PlatformProductCreate } from './application/use-cases/platform-product-create.use-case';
 import { PlatformProductSaveDraft } from './application/use-cases/platform-product-save-draft.use-case';
@@ -377,6 +381,16 @@ import { seedCategoryTreeJob } from './presentation/jobs/seed-category-tree.job'
  * The Nest token of each dependency name the use cases of catalog share: a use case's dependency
  * object is built from these by {@link useCaseProvider}, so a name always means the same port.
  */
+import { VARIANT_ADMIN_READER } from './application/ports/variant-admin.reader';
+import { VARIANT_TYPE_SETTINGS_STORE } from './application/ports/variant-type-settings.store';
+import { AdminVariantTypeGet } from './application/use-cases/admin-variant-type-get.use-case';
+import { AdminVariantTypesList } from './application/use-cases/admin-variant-types-list.use-case';
+import { AdminVariantIssueCounts } from './application/use-cases/admin-variant-issue-counts.use-case';
+import { AdminVariantsExport } from './application/use-cases/admin-variants-export.use-case';
+import { AdminVariantsList } from './application/use-cases/admin-variants-list.use-case';
+import { VariantTypeSettingsEdit } from './application/use-cases/variant-type-settings-edit.use-case';
+import { VariantAdminController } from './presentation/variant-admin.controller';
+
 /** The three key probes the category reads use for their allowed actions (categories C1). */
 const CATEGORY_ACTION_PROBES = Symbol('CATEGORY_ACTION_PROBES');
 
@@ -425,6 +439,7 @@ const PORT = {
   treeReader: CATEGORY_TREE_READER,
   publicCategories: PUBLIC_CATEGORY_READER,
   offers: OFFER_REPOSITORY,
+  sellUnits: OFFER_SELL_UNIT_REPOSITORY,
   offerFinder: OWN_OFFER_FINDER,
   claims: ClaimQueryBuilder,
   evaluator: CLAIM_EVALUATOR,
@@ -483,6 +498,7 @@ const PORT = {
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   impact: ATTRIBUTE_IMPACT_READER,
   detailsGapReader: PRODUCT_DETAILS_GAP_READER,
+  familyResolver: ProductFamilyResolver,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
   featureSetStore: FEATURE_SET_STORE,
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
@@ -493,6 +509,8 @@ const PORT = {
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
   contentFilter: ContentFilter,
+  variantAdminReader: VARIANT_ADMIN_READER,
+  variantTypeSettings: VARIANT_TYPE_SETTINGS_STORE,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -603,6 +621,7 @@ const RESTRUCTURE_DEPS = {
     OfferReviewController,
     AdminProductListController,
     AdminCustomVariantLabelsController,
+    VariantAdminController,
     AdminProductBulkController,
     PlatformImportController,
     SellerImportController,
@@ -687,6 +706,7 @@ const RESTRUCTURE_DEPS = {
         PRODUCT_IMAGE_REPOSITORY,
         ATTRIBUTE_VALUE_SUGGESTION_STORE,
         PRODUCT_REVISION_REPOSITORY,
+        ProductFamilyResolver,
       ],
       useFactory: (
         attributes: AttributeRepository,
@@ -695,9 +715,24 @@ const RESTRUCTURE_DEPS = {
         images: ProductImageRepository,
         suggestions: AttributeValueSuggestionStore,
         revisions: ProductRevisionRepository,
+        familyResolver: ProductFamilyResolver,
       ): FreezeRevision =>
-        new FreezeRevision({ attributes, policy, handlerFor, images, suggestions, revisions }),
+        new FreezeRevision({
+          attributes,
+          familyResolver,
+          policy,
+          handlerFor,
+          images,
+          suggestions,
+          revisions,
+        }),
     },
+    serviceProvider(ProductFamilyResolver, {
+      treeReader: true,
+      linkStore: true,
+      attributeAdminReader: true,
+      policy: true,
+    }),
     serviceProvider(ClaimQueryBuilder, { products: true, revisions: true, categoryPaths: true }),
     serviceProvider(SubmitProduct, {
       unitOfWork: true,
@@ -870,6 +905,8 @@ const RESTRUCTURE_DEPS = {
       attributes: true,
       attributeStore: true,
       suggestions: true,
+      workingCopies: true,
+      familyResolver: true,
       eligibility: true,
       audit: true,
       clock: true,
@@ -987,6 +1024,7 @@ const RESTRUCTURE_DEPS = {
       detailsGapReader: true,
       attributes: true,
       policy: true,
+      familyResolver: true,
     }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,
@@ -1281,6 +1319,15 @@ const RESTRUCTURE_DEPS = {
       outbox: true,
       clock: true,
     }),
+    useCaseProvider(OwnOfferSetSellUnits, {
+      unitOfWork: true,
+      offers: true,
+      sellUnits: true,
+      eligibility: true,
+      save: true,
+      outbox: true,
+      clock: true,
+    }),
     useCaseProvider(OwnOfferDelete, {
       unitOfWork: true,
       offers: true,
@@ -1318,6 +1365,45 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       customVariantLabelsReader: true,
       policy: true,
+    }),
+    // Variants V6: the admin Catalogue > Variants page.
+    useCaseProvider(AdminVariantTypesList, {
+      unitOfWork: true,
+      variantAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(AdminVariantTypeGet, {
+      unitOfWork: true,
+      variantAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(VariantTypeSettingsEdit, {
+      unitOfWork: true,
+      variantAdminReader: true,
+      variantTypeSettings: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AdminVariantsList, {
+      unitOfWork: true,
+      variantAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(AdminVariantIssueCounts, {
+      unitOfWork: true,
+      variantAdminReader: true,
+      policy: true,
+    }),
+    useCaseProvider(AdminVariantsExport, {
+      unitOfWork: true,
+      variantAdminReader: true,
+      policy: true,
+      sheetWriter: true,
+      clock: true,
     }),
     useCaseProvider(AdminProductsList, {
       unitOfWork: true,
@@ -1668,6 +1754,8 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       products: true,
       revisions: true,
+      attributes: true,
+      policy: true,
       outbox: true,
       clock: true,
     }),
@@ -1768,6 +1856,7 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       suggestions: true,
       attributeStore: true,
+      familyResolver: true,
     }),
     useCaseProvider(OwnOffersList, { unitOfWork: true, ownReader: true, policy: true }),
     useCaseProvider(OwnOfferRead, {
@@ -1778,6 +1867,12 @@ const RESTRUCTURE_DEPS = {
     }),
     useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),
     useCaseProvider(PlatformProductSubmit, { submit: true }),
+    useCaseProvider(PlatformProductDiscard, {
+      unitOfWork: true,
+      products: true,
+      outbox: true,
+      clock: true,
+    }),
     useCaseProvider(PlatformProductOptions, { policy: true }),
     useCaseProvider(PlatformProductRead, {
       unitOfWork: true,

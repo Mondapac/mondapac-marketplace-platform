@@ -188,6 +188,23 @@ export const ProductRevisionChangesRequested = defineEvent({
   },
 });
 
+/**
+ * A product's feature set changed with a revision (attributes plan A4, decision ت۱۰; CAT-10): a
+ * submit whose primary category holds another feature set, or the return to the published one
+ * when the pending revision was sent back. Ids and the scope only: a feature set code is an
+ * open Market code, which the event vocabulary has no kind for, so a consumer reads the current
+ * family through catalog.
+ */
+export const ProductFamilyChanged = defineEvent({
+  type: 'catalog.product-family-changed.v1',
+  aggregateType: 'product',
+  payload: {
+    productId: eventField.id(),
+    revisionId: eventField.id(),
+    scope: eventField.enumOf(['platform', 'seller'] as const),
+  },
+});
+
 /** The basis of a tag in an event payload (catalog design 9.4), lower-case as event enums are. */
 const TAG_BASIS_FIELD = eventField.optional(eventField.enumOf(['seller', 'manufacturer'] as const));
 
@@ -238,6 +255,16 @@ export const OfferListingChanged = defineEvent({
   type: 'catalog.offer-listing-changed.v1',
   aggregateType: 'offer',
   payload: { offerId: eventField.id(), listed: eventField.boolean() },
+});
+
+/**
+ * A seller put one sell unit (Offer, Variant) on sale or off sale (variants V5, plan decision t4).
+ * Reversible; the variant is not retired. Ids and a flag only.
+ */
+export const OfferSellUnitChanged = defineEvent({
+  type: 'catalog.offer-sell-unit-changed.v1',
+  aggregateType: 'offer-sell-unit',
+  payload: { offerId: eventField.id(), variantId: eventField.id(), selling: eventField.boolean() },
 });
 
 /**
@@ -357,6 +384,7 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   ProductRevisionSubmitted,
   ProductRevisionPublished,
   ProductRevisionChangesRequested,
+  ProductFamilyChanged,
   ProductImageTakenDown,
   OfferTagAdded,
   OfferTagRemoved,
@@ -364,6 +392,7 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   OfferTagRestored,
   OfferTagBasisSwitched,
   OfferListingChanged,
+  OfferSellUnitChanged,
   ProductPaused,
   ProductResumed,
   ProductWithdrawn,

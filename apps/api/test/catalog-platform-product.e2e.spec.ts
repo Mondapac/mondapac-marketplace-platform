@@ -296,6 +296,34 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       expect(malformed.body).toEqual(missing.body);
     });
 
+    it('discards a draft platform product once, and refuses a second discard, a stranger and a missing key', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+      const viewer = sessionOf(code, VIEWER, 2);
+      const created = await send('post', code, '', { typeCode: 'simple' }, root);
+      const productId = (created.body as { productId: string }).productId;
+
+      const denied = await send('post', code, `/${productId}/discard`, {}, viewer);
+      expect(denied.status).toBe(403);
+      expect(stored[0]!.state.status).toBe('draft');
+
+      const first = await send('post', code, `/${productId}/discard`, {}, root);
+      expect(first.status).toBe(200);
+      expect(first.body).toEqual({ productId });
+      expect(stored[0]!.state).toMatchObject({ status: 'discarded' });
+
+      const again = await send('post', code, `/${productId}/discard`, {}, root);
+      expect(again.status).toBe(404);
+      expect(again.body).toEqual({ statusCode: 404, code: 'product.not-found' });
+      const missing = await send('post', code, `/${PRODUCT}/discard`, {}, root);
+      expect(missing.body).toEqual(again.body);
+      const malformed = await send('post', code, '/not-an-id/discard', {}, root);
+      expect(malformed.status).toBe(404);
+      const extra = await send('post', code, `/${productId}/discard`, { force: true }, root);
+      expect(extra.status).toBe(400);
+    });
+
     it('refuses an unknown field, a missing field and a non-JSON body with a 400 or 415', async () => {
       await boot();
       await seeded(code);

@@ -616,6 +616,30 @@ export const CategoryAttributesChangedAudit = defineAuditAction({
   after: linkShape,
 });
 
+/** The audit target type of a variant type's display settings (variants V6): the definition. */
+export const CATALOG_VARIANT_TYPE_TARGET = 'catalog.variant-type';
+
+/** What the audit keeps of variant type settings: codes and counts, never a colour or a text. */
+const variantTypeShape = {
+  revisionNo: auditField.integer(),
+  displayStyle: auditField.enumOf(['buttons', 'swatches', 'dropdown'] as const),
+  optionOrder: auditField.enumOf(['manual', 'alphabetical', 'by-size'] as const),
+  swatchCount: auditField.integer(),
+  sellerHelpCount: auditField.integer(),
+};
+
+/**
+ * An admin changed how buyers choose a variant type (variants V6). `before` is the stored settings
+ * or the defaults (revision 0) when none were stored.
+ */
+export const VariantTypeSettingsChangedAudit = defineAuditAction({
+  action: 'catalog.variant-type.settings-changed',
+  targetType: CATALOG_VARIANT_TYPE_TARGET,
+  actors: ['authenticated'],
+  before: variantTypeShape,
+  after: variantTypeShape,
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -659,4 +683,5 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeValueSuggestedAudit,
   AttributeValueSuggestionDecidedAudit,
   CategoryAttributesChangedAudit,
+  VariantTypeSettingsChangedAudit,
 ] as const;

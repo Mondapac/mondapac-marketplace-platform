@@ -1199,6 +1199,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/attribute-archive-requests/${id}/confirm`],
     ['GET', 'catalog/admin/feature-sets'],
     ['GET', `catalog/admin/feature-sets/${id}`],
+    ['PUT', `catalog/admin/feature-sets/${id}`],
   ])('relays %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1272,6 +1273,9 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', 'catalog/admin/attributes/not-a-uuid'],
     ['POST', 'catalog/admin/feature-sets'],
     ['GET', 'catalog/admin/feature-sets/not-a-uuid'],
+    ['PUT', 'catalog/admin/feature-sets/not-a-uuid'],
+    ['PUT', 'catalog/admin/feature-sets'],
+    ['DELETE', `catalog/admin/feature-sets/${id}`],
   ])('does not relay %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1777,6 +1781,7 @@ describe('relay of the product list', () => {
         ['POST', 'catalog/admin/platform-products'],
         ['PUT', `catalog/admin/platform-products/${id}/draft`],
         ['POST', `catalog/admin/platform-products/${id}/submit`],
+        ['POST', `catalog/admin/platform-products/${id}/discard`],
       ] as const) {
         const ok = upstreamOk();
         expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
@@ -1795,6 +1800,8 @@ describe('relay of the product list', () => {
         ['POST', `catalog/admin/platform-products/${id}`],
         ['DELETE', `catalog/admin/platform-products/${id}`],
         ['PUT', `catalog/admin/platform-products/${id}/submit`],
+        ['GET', `catalog/admin/platform-products/${id}/discard`],
+        ['PUT', `catalog/admin/platform-products/${id}/discard`],
         ['POST', `catalog/admin/platform-products/${id}/retire`],
       ] as const) {
         const fetchImpl = upstreamOk();

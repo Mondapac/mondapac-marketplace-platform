@@ -88,6 +88,8 @@ export function AttributesView({
       ) : null}
       {tab === 'feature-sets' ? (
         <FeatureSetsTab
+          canEdit={canEdit}
+          csrfToken={csrfToken}
           selectedId={selected}
           onSelect={setSelected}
           onOpenAttribute={(id) => {

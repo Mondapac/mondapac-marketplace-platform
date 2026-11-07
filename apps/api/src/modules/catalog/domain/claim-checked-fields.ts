@@ -258,6 +258,12 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
 export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   Record<string, { readonly table: string } | { readonly noCustomerText: string }>
 > = {
+  SellUnitState: {
+    noCustomerText:
+      'a variant id, a printable-ASCII SKU (1 to 64, no space) and a flag; no free text',
+  },
+  SellUnitChange: { noCustomerText: 'the same fields as SellUnitState, as requested' },
+  SellUnitOutcome: { noCustomerText: 'lists of SellUnitState' },
   ImportColumn: { noCustomerText: 'fixed header names of the import template' },
   IgnoredColumn: { noCustomerText: 'a header of the file, shown to the admin only' },
   MappedColumns: { noCustomerText: 'column positions' },
@@ -387,6 +393,17 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   VariantValidationResult: { noCustomerText: 'issue codes with fixed paths' },
   AttributeBounds: { noCustomerText: 'numbers' },
   AttributeMergeOption: { noCustomerText: 'two option codes of a merge; no text' },
+  VariantTypeSettingsContent: {
+    noCustomerText:
+      'display codes, swatch colours and one seller-panel help sentence per locale; the help is shown to sellers only and the settings edit claim-checks it, fail closed',
+  },
+  VariantTypeSettingsState: {
+    noCustomerText: 'the stored settings revision; see VariantTypeSettingsContent',
+  },
+  VariantTypeSettings: { noCustomerText: 'aggregate class around VariantTypeSettingsState' },
+  OrderableOption: {
+    noCustomerText: 'an option code, its position and the labels it is sorted by; no new text',
+  },
   AttributeDefinitionState: { table: 'ATTRIBUTE_DEFINITION_FIELDS' },
   AttributeDisplaySettings: { table: 'ATTRIBUTE_DISPLAY_FIELDS' },
   AttributeFamilyState: { table: 'FEATURE_SET_FIELDS' },

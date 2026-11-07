@@ -207,6 +207,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/offers/:id/request-changes',
     // Submit (publish) a platform product's working copy (catalog).
     'catalog/admin/platform-products/:id/submit',
+    // Discard a platform product that was never submitted (catalog).
+    'catalog/admin/platform-products/:id/discard',
     // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
     // merge other brands into it.
     'catalog/admin/brands/:id/approve',
@@ -276,6 +278,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'reviews/admin/moderation/:id/dismiss-reports',
   ],
   PUT: [
+    // Change a feature set: names, groups and requirement levels, with the version read
+    // (catalog, attributes A4).
+    'catalog/admin/feature-sets/:id',
     // Set or replace a category's image, with the category version seen (catalog, categories
     // C3c). A base64 picture: the body cap of this path is the larger image one.
     'catalog/admin/categories/:id/image',

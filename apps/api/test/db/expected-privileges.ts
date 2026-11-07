@@ -1364,6 +1364,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_revision_id', 'version'],
     },
     'catalog.category_attribute_link_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Variants V6: the variant type settings root moves its current revision and version; the
+    // revisions are insert-only.
+    'catalog.variant_type_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['current_revision_id', 'version'],
+    },
+    'catalog.variant_type_setting_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 4): the working copy and the counters are
     // mutable and deleted from; the five revision tables are insert-only (CA3).
     'catalog.product_working_copies': {
@@ -1458,6 +1465,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.offer_owner_notices': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'settled_at', 'state'],
+    },
+    // docs/design/data/catalog.md 2.4 (variants V5): the per-sell-unit SKU and selling switch move
+    // by column; the owner, Offer and variant never change. No DELETE: a row is never deleted.
+    'catalog.offer_sell_units': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['selling', 'updated_at', 'variant_sku', 'version'],
     },
     // docs/design/data/catalog.md 3.28: a saved view of an admin list; a filter is a preference, so
     // the application deletes it; only the name and who can use it change.

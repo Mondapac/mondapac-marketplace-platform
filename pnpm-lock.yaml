@@ -106,6 +106,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.1161.0
         version: 3.1161.0
+      '@mondapac/platform-import':
+        specifier: workspace:*
+        version: link:../../packages/platform-import
       '@mondapac/shared-kernel':
         specifier: workspace:*
         version: link:../../packages/shared-kernel
@@ -209,6 +212,9 @@ importers:
       '@mondapac/panel-server':
         specifier: workspace:*
         version: link:../../packages/panel-server
+      '@mondapac/platform-import':
+        specifier: workspace:*
+        version: link:../../packages/platform-import
       '@mondapac/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -329,6 +335,15 @@ importers:
       typescript-eslint:
         specifier: ^8.71.0
         version: 8.71.0(eslint@10.11.0(jiti@2.7.0))(typescript@6.0.3)
+      vitest:
+        specifier: ^4.0.0
+        version: 4.1.11(@types/node@24.19.0)(jsdom@30.1.2(@noble/hashes@1.8.0))(vite@8.3.4(@types/node@24.19.0)(jiti@2.7.0))
+
+  packages/platform-import:
+    devDependencies:
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^4.0.0
         version: 4.1.11(@types/node@24.19.0)(jsdom@30.1.2(@noble/hashes@1.8.0))(vite@8.3.4(@types/node@24.19.0)(jiti@2.7.0))
