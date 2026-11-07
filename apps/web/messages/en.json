@@ -1016,6 +1016,8 @@
     "clear": "Clear search",
     "suggestions": "Address suggestions",
     "no-match": "No match. Try the street and suburb.",
+    "suburb-line": "Suburb · {region} {postcode}",
+    "suburb-hint": "Search your street or move the pin to the exact spot.",
     "search-short": "Keep typing: enter at least 3 characters.",
     "search-failed": "We could not search addresses just now. Try again, or tap the map to set your pin.",
     "search-throttled": "Too many searches. Wait a minute, then try again.",

@@ -73,11 +73,16 @@ export function forwardUrl(token: string, country: string, query: string, near?:
     limit: String(MAX_SUGGESTIONS),
     access_token: token,
   });
-  if (near) params.set('proximity', `${near.lng.toFixed(4)},${near.lat.toFixed(4)}`);
+  // About 1 km is enough to rank by distance; a finer pin is not passed on.
+  if (near) params.set('proximity', `${near.lng.toFixed(2)},${near.lat.toFixed(2)}`);
   return `${BASE}/forward?${params}`;
 }
 
-/** The postcode at a point: a suburb (locality) answer carries none of its own. */
+/**
+ * The postcode at a point: a suburb (locality) answer carries none of its own. Asked at the
+ * suburb's centre, so a suburb that spans several postcodes gets the central one; checkout checks
+ * the delivery area again on the buyer's full address.
+ */
 export function postcodeUrl(token: string, country: string, point: GeoPoint): string {
   const params = new URLSearchParams({
     longitude: point.lng.toFixed(6),
@@ -202,7 +207,9 @@ export async function placesWithPostcodes(
       return postcodeAt(point).catch(() => '');
     }),
   );
-  return dedupe(features.map((feature, i) => placeOfFeature(feature, postcodes[i])));
+  const places = dedupe(features.map((feature, i) => placeOfFeature(feature, postcodes[i])));
+  // Suburbs first, then streets, each in Mapbox's order (towards the pin).
+  return [...places.filter((p) => p.street === ''), ...places.filter((p) => p.street !== '')];
 }
 
 function dedupe(found: readonly (Place | null)[]): readonly Place[] {

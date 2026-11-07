@@ -182,7 +182,9 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
       setSearchNote('short');
       return;
     }
-    lookup.search(value, pick.point).then(
+    // Rank towards the pin only once the buyer set it: the start point is the sample area's.
+    const near = pick.point === source.start.point ? undefined : pick.point;
+    lookup.search(value, near).then(
       (found) => {
         if (ticket === searchTicket.current) setResults(found);
       },
@@ -361,7 +363,14 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                         <Icon name="pin" />
                         <span>
                           <b>{place.street || place.suburb}</b>
-                          <small>{locality(place)}</small>
+                          <small>
+                            {place.street
+                              ? locality(place)
+                              : t('suburb-line', {
+                                  region: place.region,
+                                  postcode: place.postcode,
+                                })}
+                          </small>
                         </span>
                       </li>
                     ))}
@@ -417,6 +426,9 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                 )}
                 {unconfirmed && inside ? <small>{t('area-unconfirmed')}</small> : null}
                 {pick.origin === 'device' && inside ? <small>{t('device-note')}</small> : null}
+                {source.live && pick.origin === 'place' && pick.place?.street === '' ? (
+                  <small>{t('suburb-hint')}</small>
+                ) : null}
               </div>
               {customer ? (
                 <fieldset className="lmsv">

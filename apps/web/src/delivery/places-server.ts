@@ -149,17 +149,17 @@ export async function answerSearch(deps: PlacesDeps, incoming: Incoming, url: UR
   const { country } = admitted;
   const query = (url.searchParams.get('q') ?? '').replace(/\s+/gu, ' ').trim();
   if (query.length > MAX_QUERY) return json({ code: 'validation.failed' }, 400);
-  if (query.length < MIN_QUERY) return json({ places: [] });
-  const limited = throttled(deps, incoming);
-  if (limited) return limited;
   const nearText = url.searchParams.get('near');
   let near: GeoPoint | undefined;
   if (nearText !== null) {
-    const [lat = null, lng = null] = nearText.split(',');
-    const point = pointOf(lat, lng);
+    const parts = nearText.split(',');
+    const point = parts.length === 2 ? pointOf(parts[0]!, parts[1]!) : null;
     if (point === null) return json({ code: 'validation.failed' }, 400);
     near = point;
   }
+  if (query.length < MIN_QUERY) return json({ places: [] });
+  const limited = throttled(deps, incoming);
+  if (limited) return limited;
   const token = deps.config!.token;
   const answer = await askMapbox(deps, forwardUrl(token, country, query, near), 'search');
   if (answer === null) return json({ code: 'places.unavailable' }, 503);

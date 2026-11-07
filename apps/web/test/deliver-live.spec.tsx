@@ -128,7 +128,7 @@ describe('Mapbox requests and answers', () => {
     const url = new URL(
       forwardUrl(TOKEN, 'au', '100 Queen St', { lat: -27.46981, lng: 153.02512 }),
     );
-    expect(url.searchParams.get('proximity')).toBe('153.0251,-27.4698');
+    expect(url.searchParams.get('proximity')).toBe('153.03,-27.47');
   });
 
   it('finds the postcode of a suburb at its centre', async () => {
@@ -159,9 +159,23 @@ describe('Mapbox requests and answers', () => {
     );
     // At most two suburbs are looked up; one without a postcode is left out.
     expect(asked).toHaveLength(2);
+    // Suburbs first, then streets.
     expect(places.map((p) => `${p.street}|${p.suburb}|${p.postcode}|${p.id}`)).toEqual([
       '|Mount Gravatt|4122|4122:Mount Gravatt',
       '1 Logan Rd|Mount Gravatt|4122|m1',
+    ]);
+    const reordered = await placesWithPostcodes(
+      {
+        features: [
+          feature('m1', '1 Logan Rd', 'Mount Gravatt', '4122'),
+          locality('Kedron', 153.03, -27.4),
+        ],
+      },
+      () => Promise.resolve('4031'),
+    );
+    expect(reordered.map((p) => p.suburb + (p.street ? ' street' : ''))).toEqual([
+      'Kedron',
+      'Mount Gravatt street',
     ]);
   });
 
@@ -392,7 +406,7 @@ describe('server routes', () => {
     };
     expect(body.places).toMatchObject([{ suburb: 'Mount Gravatt', postcode: '4122', street: '' }]);
     expect(new URL(mapbox.mock.calls[0]![0] as string).searchParams.get('proximity')).toBe(
-      '153.0200,-27.4700',
+      '153.02,-27.47',
     );
     expect(new URL(mapbox.mock.calls[1]![0] as string).searchParams.get('types')).toBe('postcode');
   });
@@ -406,9 +420,23 @@ describe('server routes', () => {
     expect(mapbox).toHaveBeenCalledTimes(1);
   });
 
-  it('refuses a malformed pin', async () => {
-    const url = new URL('http://storefront.localhost:3003/api/deliver-to/search?q=12%20Ex&near=x');
-    expect((await answerSearch(deps(), incoming(), url)).status).toBe(400);
+  it('refuses a malformed pin without using a request of the limit', async () => {
+    mapbox.mockResolvedValue(Response.json({ features: [] }));
+    const limited = deps(1);
+    for (const near of ['x', '1,2,junk', '1', '91,0'])
+      expect(
+        (
+          await answerSearch(
+            limited,
+            incoming(),
+            new URL(
+              `http://storefront.localhost:3003/api/deliver-to/search?q=12%20Ex&near=${near}`,
+            ),
+          )
+        ).status,
+        near,
+      ).toBe(400);
+    expect((await search('12 Example', limited)).status).toBe(200);
   });
 
   it('does not ask Mapbox for a short query and refuses a long one', async () => {
@@ -486,7 +514,7 @@ describe('live lookup in the browser', () => {
     expect((await last).map((p) => p.street)).toEqual(['12 Example Street']);
     expect(browserFetch).toHaveBeenCalledTimes(1);
     expect(browserFetch.mock.calls[0]![0] as string).toBe(
-      '/api/deliver-to/search?q=12%20Example&near=-27.4698,153.0251',
+      '/api/deliver-to/search?q=12%20Example&near=-27.47,153.03',
     );
   });
 
@@ -683,5 +711,31 @@ describe('Deliver to modal with the live lookup', () => {
         'We could not search addresses just now. Try again, or tap the map to set your pin.',
       ),
     ).toBeTruthy();
+  });
+  it('marks a suburb row, hints at the street after picking it, and ranks only by a pin the buyer set', async () => {
+    deliveryAreaFor.mockResolvedValue({ kind: 'in' });
+    browserFetch.mockResolvedValue(
+      Response.json({
+        places: [
+          {
+            id: '4122:Mount Gravatt',
+            street: '',
+            suburb: 'Mount Gravatt',
+            region: 'QLD',
+            postcode: '4122',
+            point: { lat: -27.5424, lng: 153.0727 },
+          },
+        ],
+      }),
+    );
+    await typeLive('Mt Gravatt');
+    // The start pin is the sample area's: no near is sent.
+    expect(browserFetch.mock.calls[0]![0] as string).toBe('/api/deliver-to/search?q=Mt%20Gravatt');
+    expect(screen.getByText('Suburb · QLD 4122')).toBeTruthy();
+    await act(() => {
+      fireEvent.click(screen.getByRole('option', { name: /Mount Gravatt/ }));
+      return Promise.resolve();
+    });
+    expect(screen.getByText('Search your street or move the pin to the exact spot.')).toBeTruthy();
   });
 });

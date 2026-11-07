@@ -124,7 +124,7 @@ async function getJson(deps: LiveDeps, path: string): Promise<unknown> {
 export function liveLookup(deps: LiveDeps): AddressLookup {
   let pause: ReturnType<typeof setTimeout> | undefined;
   const search = async (query: string, near?: GeoPoint): Promise<readonly Place[]> => {
-    const nearParam = near ? `&near=${near.lat.toFixed(4)},${near.lng.toFixed(4)}` : '';
+    const nearParam = near ? `&near=${near.lat.toFixed(2)},${near.lng.toFixed(2)}` : '';
     const path = `/api/deliver-to/search?q=${encodeURIComponent(query)}${nearParam}`;
     const body = (await getJson(deps, path)) as {
       places?: unknown;
