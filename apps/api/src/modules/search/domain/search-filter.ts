@@ -125,3 +125,37 @@ export function matchesChoices(
       choice.values.some((value) => held.has(facetCode(choice.attr, value))),
   );
 }
+
+/**
+ * The price filter (variants V8): `price=<min>..<max>` in the Market currency's minor units (either
+ * end may be left out). It reads the buyer price of the sell units that match the other filters and
+ * are in stock, never a price the product does not sell at now.
+ */
+export interface PriceRange {
+  readonly min: bigint | null;
+  readonly max: bigint | null;
+}
+
+/** The highest price bound accepted, in minor units (ten billion in major units). */
+export const MAX_PRICE_MINOR = 1_000_000_000_000n;
+const MINOR = /^[0-9]{1,13}$/;
+
+/** Checks the `price` parameter (pure); absent or empty is no price filter. */
+export function parsePrice(raw: unknown): Result<PriceRange | null, FilterValidationFailed> {
+  if (raw === undefined || raw === '') return ok(null);
+  if (typeof raw !== 'string') return err({ path: 'price', code: 'format' });
+  const bounds = raw.split('..');
+  if (bounds.length !== 2) return err({ path: 'price', code: 'format' });
+  const [low = '', high = ''] = bounds;
+  if ((low !== '' && !MINOR.test(low)) || (high !== '' && !MINOR.test(high))) {
+    return err({ path: 'price', code: 'format' });
+  }
+  if (low === '' && high === '') return err({ path: 'price', code: 'format' });
+  const min = low === '' ? null : BigInt(low);
+  const max = high === '' ? null : BigInt(high);
+  if ((min !== null && min > MAX_PRICE_MINOR) || (max !== null && max > MAX_PRICE_MINOR)) {
+    return err({ path: 'price', code: 'range' });
+  }
+  if (min !== null && max !== null && min > max) return err({ path: 'price', code: 'order' });
+  return ok({ min, max });
+}

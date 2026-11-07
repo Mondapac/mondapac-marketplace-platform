@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ATTRIBUTE_DATA_TYPES } from '@mondapac/shared-kernel';
+import { ATTRIBUTE_DATA_TYPES, MEASURE_DIMENSIONS } from '@mondapac/shared-kernel';
 
 // Answers of the admin attribute and feature-set reads (attributes plan, package A1). Codes, the
 // names and labels an administrator or the seed typed per locale, counts; never a value a seller
@@ -15,6 +15,12 @@ export class MarketLocalesBody {
   @ApiProperty({ description: 'The default locale (BCP 47).' }) default!: string;
   @ApiProperty({ type: [String], description: 'The default first, then every other locale.' })
   supported!: string[];
+}
+
+export class MarketUnitBody {
+  @ApiProperty() code!: string;
+  @ApiProperty({ enum: MEASURE_DIMENSIONS }) dimension!: string;
+  @ApiProperty(LOCALIZED) labels!: Record<string, string>;
 }
 
 export class AttributeSummaryBody {
@@ -54,6 +60,8 @@ export class AttributeListBody {
   @ApiProperty({ description: 'Every attribute of the Market, whatever the filters.' })
   totalAll!: number;
   @ApiProperty({ type: MarketLocalesBody }) locales!: MarketLocalesBody;
+  @ApiProperty({ type: [MarketUnitBody], description: 'Units a measure attribute may offer.' })
+  units!: MarketUnitBody[];
   @ApiProperty({ type: [FeatureSetRefBody], description: 'The choices of the usedIn filter.' })
   featureSets!: FeatureSetRefBody[];
   @ApiProperty({ description: 'True when the Market holds more attributes than one read loads.' })
@@ -88,6 +96,7 @@ export class AttributeChangeBody {
   @ApiProperty({
     description:
       '`name.{locale}`, `material`, `isVariantOption`, `bounds.{maxLength|min|max}`, ' +
+      '`measure.{dimension|units|defaultUnit|decimals}`, ' +
       '`help.{locale}`, `showOnProductPage`, `searchable`, `canBeFilter`, `position`, ' +
       '`internalNote` (no values: only that it changed), ' +
       '`option.{code}.added`, `option.{code}.label.{locale}`, `option.{code}.active` or ' +
@@ -115,10 +124,31 @@ export class AttributeHistoryBody {
   changes!: AttributeChangeBody[];
 }
 
+export class AttributeMeasureBody {
+  @ApiProperty({ enum: MEASURE_DIMENSIONS }) dimension!: string;
+  @ApiProperty({
+    type: [String],
+    description: 'Unit codes a seller may pick; all of the dimension.',
+  })
+  units!: string[];
+  @ApiProperty() defaultUnit!: string;
+  @ApiProperty({ description: 'Decimal places a seller may type, 0 to 6.' }) decimals!: number;
+}
+
 export class AttributeBoundsBody {
   @ApiProperty({ required: false }) maxLength?: number;
-  @ApiProperty({ required: false }) min?: number;
+  @ApiProperty({
+    required: false,
+    description: 'For a measure, in the dimension base unit (g, ml, mm, count).',
+  })
+  min?: number;
   @ApiProperty({ required: false }) max?: number;
+  @ApiProperty({
+    required: false,
+    type: AttributeMeasureBody,
+    description: 'A measure attribute only: its unit settings.',
+  })
+  measure?: AttributeMeasureBody;
 }
 
 export class AttributeDisplayBody {
@@ -152,6 +182,8 @@ export class AttributeDetailBody extends AttributeSummaryBody {
   history!: AttributeHistoryBody[];
   @ApiProperty() historyTruncated!: boolean;
   @ApiProperty({ type: MarketLocalesBody }) locales!: MarketLocalesBody;
+  @ApiProperty({ type: [MarketUnitBody], description: 'Units a measure attribute may offer.' })
+  units!: MarketUnitBody[];
 }
 
 export class FeatureSetListItemBody {

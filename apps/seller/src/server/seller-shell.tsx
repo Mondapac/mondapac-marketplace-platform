@@ -107,8 +107,6 @@ export async function SellerShell({
             activeId={activeId}
             label={(key) => t(key)}
             openGroups={openGroups}
-            expandAll={t('nav.expandAll')}
-            collapseAll={t('nav.collapseAll')}
           />
         }
         topbar={

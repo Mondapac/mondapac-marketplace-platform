@@ -18,6 +18,24 @@ export class ProductImageRefBody {
   alt!: string;
 }
 
+export class SearchMoneyBody {
+  @ApiProperty({ description: 'Whole minor units, as decimal text (e.g. "1299").' })
+  amount!: string;
+  @ApiProperty({ description: 'ISO 4217 code.' }) currency!: string;
+}
+
+export class SearchItemPriceBody {
+  @ApiProperty({ type: SearchMoneyBody, description: 'The lowest buyer price.' })
+  from!: SearchMoneyBody;
+  @ApiProperty({ description: 'True when the matching variants differ in price: show "From".' })
+  varies!: boolean;
+}
+
+export class SearchExactMatchBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ format: 'uuid' }) variantId!: string;
+}
+
 export class ProductSearchItemBody {
   @ApiProperty({ format: 'uuid' }) offerId!: string;
   @ApiProperty({ format: 'uuid' }) productId!: string;
@@ -34,6 +52,26 @@ export class ProductSearchItemBody {
       'The first public photo of the product (published revision, not taken down), or null.',
   })
   primaryImage!: ProductImageRefBody | null;
+}
+
+export class SearchResultItemBody extends ProductSearchItemBody {
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    type: String,
+    description:
+      'The variant to open (`/p/{productId}?v={variantId}`): the first matching in-stock variant ' +
+      'by the owner order when a variant filter, `price` or an exact GTIN chose it; else null.',
+  })
+  variantId!: string | null;
+  @ApiProperty({
+    type: SearchItemPriceBody,
+    nullable: true,
+    description:
+      'The lowest buyer price of the matching in-stock variants (all in-stock variants when ' +
+      'nothing narrowed to a variant); null when none is in stock and priced.',
+  })
+  price!: SearchItemPriceBody | null;
 }
 
 export class SearchFilterOptionBody {
@@ -79,8 +117,8 @@ export class SearchFilterBody {
 }
 
 export class ProductSearchPageBody {
-  @ApiProperty({ type: [ProductSearchItemBody], description: 'In rank order for a text query.' })
-  items!: ProductSearchItemBody[];
+  @ApiProperty({ type: [SearchResultItemBody], description: 'In rank order for a text query.' })
+  items!: SearchResultItemBody[];
   @ApiProperty() page!: number;
   @ApiProperty() pageSize!: number;
   @ApiProperty({
@@ -105,6 +143,15 @@ export class ProductSearchPageBody {
   filtered!: boolean;
   @ApiProperty({ description: 'False when the scope was too large to count (counts are null).' })
   countsComplete!: boolean;
+  @ApiProperty({
+    type: SearchExactMatchBody,
+    nullable: true,
+    description:
+      '`q` was exactly the GTIN of a published variant of a listed Offer, in stock or not (the ' +
+      'product page shows its stock): go straight to that product page with `?v={variantId}`. ' +
+      'Null otherwise, and on any page after the first.',
+  })
+  exactMatch!: SearchExactMatchBody | null;
 }
 
 export class SearchQueryParams {

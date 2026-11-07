@@ -1,3 +1,4 @@
+import { boundsJson } from './attribute-bounds-json';
 import type {
   AttributeDataType,
   AttributeSchema,
@@ -57,6 +58,17 @@ export class PrismaAttributeRepository implements AttributeRepository {
       select: { id: true },
     });
     return row === null ? null : (row.id as Id<'AttributeFamily'>);
+  }
+
+  async familyCodeOfRevision(
+    market: MarketContext,
+    familyRevisionId: string,
+  ): Promise<string | null> {
+    const row = await this.prisma.tx(market).catalogAttributeFamilyRevision.findFirst({
+      where: { marketId: market.marketId, id: familyRevisionId },
+      select: { family: { select: { code: true } } },
+    });
+    return row?.family.code ?? null;
   }
 
   async loadSchema(market: MarketContext, familyCode: string): Promise<AttributeSchema | null> {
@@ -132,7 +144,7 @@ export class PrismaAttributeRepository implements AttributeRepository {
         revisionNo: state.revisionNo,
         material: state.material,
         isVariantOption: state.isVariantOption,
-        bounds: { ...state.bounds },
+        bounds: boundsJson(state.bounds),
         names: { ...state.names },
         authorKind: state.createdByKind,
         authorAccountId: null,

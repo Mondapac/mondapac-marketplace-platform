@@ -97,6 +97,7 @@ describe.each(['AU', 'ZZ'] as const)('sellers.run-seller-health-requests (%s)', 
         return Promise.resolve(true);
       },
       latest: () => Promise.resolve(null),
+      purgeFinishedBefore: () => Promise.resolve(0),
     };
     const days = new Map<string, SellerHealthDay>();
     const healthStore: SellerHealthStore = {

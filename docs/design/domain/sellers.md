@@ -645,8 +645,21 @@ The click therefore only enqueues: `sellers.request-seller-health-recalculation`
 (every minute) runs `sellers.run-seller-health-requests` as the system actor: for each pending row,
 oldest first, it counts the seller's recent days (the seller's own zone) and replaces the day rows,
 then marks the row `done` (or `failed`, logged). Recounting replaces rows, so overlapping runs are
-safe. The seller's "Refresh now" with a cooldown (HLT-03) will reuse this table with source `seller`.
+safe. The seller's "Refresh now" (HLT-03) reuses this table with source `seller`; see 7.10.
+Retention: the existing purge (`sellers.purge-seller-health`, every six hours) also deletes finished
+(`done` or `failed`) requests older than 30 days; a pending request is never deleted. The app role
+holds DELETE on the table since migration `20261106160000_sellers_health_requests_retention`.
 The key is given to the onboarding-compliance role (seed version 8).
+
+### 7.10 Refresh now: the seller's click with a cooldown (seller health)
+`sellers.refresh-own-seller-health` (rule `own-resources`, approved sellers only; `POST
+/sellers/own-health/refresh`, 202, CSRF header) queues the acting seller's recount through the same
+request table with source `seller`; no route takes a seller id. After a click the seller waits 15
+minutes (owner decision, 6 Nov 2026; the constant `SELLER_HEALTH_REFRESH_COOLDOWN_SECONDS` until
+the settings module can hold it): a click inside the window answers 429 `request.throttled` with
+`Retry-After` (the seconds left) and adds nothing. Only the seller's own requests count, found by
+`latest(market, seller, 'seller')`; an admin's request never locks the seller. A request still
+waiting answers `already-queued`. No migration: the table, index and grants of 7.9 serve it.
 
 ## 8. Personal data
 

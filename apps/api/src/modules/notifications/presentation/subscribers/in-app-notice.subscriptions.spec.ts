@@ -85,6 +85,21 @@ describe('seller notice subscriptions', () => {
     ]);
   });
 
+  it('makes the same notice from v2 of the change request, with a product reason', async () => {
+    const { inputs, named } = subscriptions();
+    const handle = named(SELLER_NOTICE_SUBSCRIBERS.productChangesRequestedV2).handle;
+    const payload = { productId: PRODUCT, revisionId: 'r', reasonCode: 'tax-category' };
+    await handle({ payload: { ...payload, scope: 'platform' } } as never, delivery, context);
+    await handle({ payload: { ...payload, scope: 'seller' } } as never, delivery, context);
+    expect(inputs.map((input) => input.item)).toEqual([
+      {
+        kind: 'seller.product-changes-requested',
+        owner: { by: 'product', productId: PRODUCT },
+        params: { productId: PRODUCT, revisionId: 'r', reason: 'tax-category' },
+      },
+    ]);
+  });
+
   it('keeps the outcome a certificate event stands for', async () => {
     const { inputs, named } = subscriptions();
     const payload = { sellerCertificationId: 'c', sellerId: 's', submissionId: 'x' };
@@ -101,6 +116,39 @@ describe('seller notice subscriptions', () => {
     expect(inputs.map((input) => [input.item.kind, input.item.params])).toEqual([
       ['seller.certificate-decided', { sellerCertificationId: 'c', outcome: 'declined' }],
       ['seller.certificate-ended', { sellerCertificationId: 'c', cause: 'revoked' }],
+    ]);
+  });
+
+  it("tells a seller about its own import's end, with counts only", async () => {
+    const { inputs, named } = subscriptions();
+    await named(SELLER_NOTICE_SUBSCRIBERS.importFinished).handle(
+      {
+        payload: {
+          importId: 'imp-1',
+          sellerId: 'seller-a',
+          outcome: 'completed',
+          created: 3,
+          updated: 2,
+          failed: 1,
+          filename: 'secret.csv',
+        },
+      } as never,
+      delivery,
+      context,
+    );
+    expect(inputs.map((input) => input.item)).toEqual([
+      {
+        kind: 'seller.import-finished',
+        owner: { by: 'seller', sellerId: 'seller-a' },
+        params: {
+          importId: 'imp-1',
+          sellerId: 'seller-a',
+          outcome: 'completed',
+          created: 3,
+          updated: 2,
+          failed: 1,
+        },
+      },
     ]);
   });
 

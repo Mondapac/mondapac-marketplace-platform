@@ -207,3 +207,58 @@ export function buildSearchAttributes(input: {
     numbers,
   };
 }
+
+/** The most variants of one product the index keeps (Market `maxVariantsPerProduct` is 100). */
+export const MAX_INDEXED_VARIANTS = 100;
+
+/**
+ * The facets of one variant's axis values (variants V8, pure): `attribute=<option code>`, with a
+ * merged attribute or option followed to its target (A8), for active single-choice definitions that
+ * can be a filter. A value the definition cannot read is left out, never indexed raw.
+ */
+export function buildVariantFacets(input: {
+  readonly optionValues: Readonly<Record<string, unknown>>;
+  readonly definitions: ReadonlyMap<string, SearchDefinition>;
+}): string[] {
+  const facets = new Set<string>();
+  for (const [code, stored] of Object.entries(input.optionValues)) {
+    const own = input.definitions.get(code);
+    if (own === undefined || stored === undefined || stored === null) continue;
+    let definition: SearchDefinition = own;
+    let value: unknown = stored;
+    let at = code;
+    if (own.mergedInto != null) {
+      const target = input.definitions.get(own.mergedInto.code);
+      if (target === undefined || target.status !== 'active') continue;
+      const mapped = mergedValue(own.mergedInto.options, stored);
+      if (mapped === null) continue;
+      definition = target;
+      value = mapped;
+      at = own.mergedInto.code;
+    } else if (own.status !== 'active') {
+      continue;
+    }
+    if (definition.dataType !== 'select' || !definition.canBeFilter) continue;
+    const resolved = resolveOption(definition, value);
+    if (resolved !== null) facets.add(`${at}=${resolved.code}`);
+  }
+  return [...facets].sort();
+}
+
+/** A variant's automatic label in the locale, else an English one, else null (pure). */
+export function variantLabelOf(labels: unknown, locale: string): string | null {
+  if (!isRecord(labels)) return null;
+  const texts: Record<string, string> = {};
+  for (const [key, text] of Object.entries(labels)) {
+    if (typeof text === 'string') texts[key] = text;
+  }
+  return labelOf(texts, locale);
+}
+
+/** Adds variant labels to an attribute search text as extra words, within the limit (pure). */
+export function withVariantWords(searchText: string, labels: readonly (string | null)[]): string {
+  const words = [searchText, ...labels.flatMap((label) => (label === null ? [] : [label]))]
+    .map((word) => word.trim())
+    .filter((word) => word !== '');
+  return [...[...new Set(words)].join(' ')].slice(0, MAX_SEARCH_TEXT).join('');
+}

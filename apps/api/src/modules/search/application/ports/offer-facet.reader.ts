@@ -1,6 +1,6 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { OfferHit } from '../../domain/offer-document';
-import type { RangeFilter } from '../../domain/search-filter';
+import type { PriceRange, RangeFilter } from '../../domain/search-filter';
 import type { OfferSearchRequest } from './offer-search.reader';
 
 /**
@@ -13,6 +13,11 @@ import type { OfferSearchRequest } from './offer-search.reader';
 export interface FilteredSearchRequest extends OfferSearchRequest {
   readonly choiceGroups: readonly (readonly string[])[];
   readonly ranges: readonly RangeFilter[];
+  /**
+   * The price filter (variants V8), or null. With a price, or with a group only a sell unit's axis
+   * values satisfy, a document matches only through a sell unit that is in stock and priced.
+   */
+  readonly price: PriceRange | null;
 }
 
 /** The scope of a facet read: the text and category of the query, with its range filters. */
@@ -21,10 +26,18 @@ export interface FacetScope {
   readonly text: string | null;
   readonly categoryIds: readonly Id<'Category'>[] | null;
   readonly ranges: readonly RangeFilter[];
+  /** The price filter (V8): only sell units in stock, priced and within it are counted. */
+  readonly price: PriceRange | null;
 }
 
-/** One document of the scope, as counting needs it. */
+/**
+ * One document of the scope, as counting needs it: its own facets alone, or with the axis values
+ * of one in-stock, priced sell unit (variants V8). A product may have several rows; counts are of
+ * products.
+ */
 export interface FacetRow {
+  /** The document the row is of: one document can give several rows (one per sell unit). */
+  readonly offerId: Id<'Offer'>;
   readonly productId: Id<'Product'>;
   readonly facets: readonly string[];
 }
@@ -48,7 +61,10 @@ export interface OfferFacetReader {
     market: MarketContext,
     request: FilteredSearchRequest,
   ): Promise<readonly OfferHit[]>;
-  /** The documents of the scope with their facets, at most `MAX_FACET_ROWS + 1`. */
+  /**
+   * The documents of the scope with their facets, at most `MAX_FACET_ROWS + 1` documents; a
+   * document comes once per in-stock unit (its axis values added) or once without units.
+   */
   facetRows(market: MarketContext, scope: FacetScope): Promise<readonly FacetRow[]>;
   /** The stored numbers of these attributes in the scope, at most `MAX_FACET_ROWS + 1`. */
   numberRows(

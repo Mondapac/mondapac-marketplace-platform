@@ -163,7 +163,7 @@ export class ProductImageReviewController {
   @ApiOperation({
     summary: 'Take a product photo down',
     description:
-      'Needs catalog.product.approve. The photo is never served again, its files are removed ' +
+      'Needs catalog.product.delete. The photo is never served again, its files are removed ' +
       'and it cannot join a new revision; revisions that hold it keep their row. Repeating the ' +
       'call succeeds.',
   })

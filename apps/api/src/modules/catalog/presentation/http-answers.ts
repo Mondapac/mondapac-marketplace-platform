@@ -21,6 +21,7 @@ const DETAIL_KEYS = [
   'tags',
   'brands',
   'total',
+  'unit',
   'currentCount',
   'columns',
   'maxBytes',

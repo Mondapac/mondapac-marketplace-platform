@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  Get,
+  Header,
   HttpCode,
   HttpException,
   Logger,
@@ -37,6 +39,9 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { PlatformProductOptions } from '../application/use-cases/platform-product-options.use-case';
+import { PlatformProductDiscard } from '../application/use-cases/platform-product-discard.use-case';
+import { PlatformProductRead } from '../application/use-cases/platform-product-read.use-case';
 import { PlatformProductCreate } from '../application/use-cases/platform-product-create.use-case';
 import { PlatformProductSaveDraft } from '../application/use-cases/platform-product-save-draft.use-case';
 import { PlatformProductSubmit } from '../application/use-cases/platform-product-submit.use-case';
@@ -45,7 +50,10 @@ import {
   ApiErrorBody,
   PlatformProductCreated,
   PlatformProductCreateRequest,
+  PlatformProductDiscarded,
   PlatformProductDraftSaved,
+  PlatformProductOptionsView,
+  PlatformProductView,
   PlatformProductSaveDraftRequest,
   PlatformProductSubmitRequest,
   PlatformProductSubmitted,
@@ -133,7 +141,66 @@ export class PlatformProductController {
     private readonly createProduct: PlatformProductCreate,
     private readonly saveDraft: PlatformProductSaveDraft,
     private readonly submitProduct: PlatformProductSubmit,
+    private readonly productOptions: PlatformProductOptions,
+    private readonly readProduct: PlatformProductRead,
+    private readonly discardProduct: PlatformProductDiscard,
   ) {}
+
+  // Declared before `:productId`, so "options" is not read as a product id.
+  @Get('options')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Options for the platform product create form',
+    description: "Needs catalog.platform-product.edit. The Market's product types and locales.",
+  })
+  @ApiOkResponse({ type: PlatformProductOptionsView })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async options(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<PlatformProductOptionsView> {
+    const result = await this.productOptions.execute(context, {});
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as PlatformProductOptionsView)
+      : refusal(result.error, response, context);
+    return this.settle('catalog.platform-product-options', context, outcome);
+  }
+
+  @Get(':productId')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Read one PLATFORM product',
+    description:
+      'Needs catalog.platform-product.edit. The product with its variants, working copy and ' +
+      'published revision, and what the form is drawn from. A SELLER product and an unknown id ' +
+      'are one byte-identical product.not-found.',
+  })
+  @ApiParam(PRODUCT_PARAM)
+  @ApiOkResponse({ type: PlatformProductView })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async read(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') rawProductId: string,
+  ): Promise<PlatformProductView> {
+    const productId = productIdOf(rawProductId, response);
+    let outcome: PlatformProductView | HttpException;
+    if (productId instanceof HttpException) outcome = productId;
+    else {
+      const result = await this.readProduct.execute(context, { productId });
+      outcome = result.ok
+        ? (JSON.parse(JSON.stringify(result.value)) as PlatformProductView)
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.platform-product-read', context, outcome);
+  }
 
   @Post()
   @HttpCode(201)
@@ -316,6 +383,46 @@ export class PlatformProductController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.platform-product-submit', context, outcome);
+  }
+
+  @Post(':productId/discard')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Discard a PLATFORM product that was never submitted',
+    description:
+      'Needs catalog.platform-product.edit. Only a draft can be discarded (product.not-a-draft ' +
+      'otherwise). A missing product, a SELLER product and one already discarded all answer ' +
+      'product.not-found. Every live variant is retired.',
+  })
+  @ApiParam(PRODUCT_PARAM)
+  @ApiHeader(CSRF)
+  @ApiOkResponse({ type: PlatformProductDiscarded })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiConflictResponse({ type: ApiErrorBody, description: 'product.not-a-draft or conflict.stale' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async discard(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') rawProductId: string,
+    @Body() body: unknown,
+  ): Promise<PlatformProductDiscarded> {
+    const productId = productIdOf(rawProductId, response);
+    const input = closedBody(request, body, []);
+    let outcome: PlatformProductDiscarded | HttpException;
+    if (productId instanceof HttpException) outcome = productId;
+    else if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.discardProduct.execute(context, { productId });
+      outcome = result.ok
+        ? { productId: result.value.productId }
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.platform-product-discard', context, outcome);
   }
 
   private settle<T extends object>(

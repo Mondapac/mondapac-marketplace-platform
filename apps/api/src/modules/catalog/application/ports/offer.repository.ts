@@ -37,7 +37,7 @@ export interface OfferRepository {
    * The Offers waiting for their first publication (`pending-first-publish`), oldest submit first
    * (then by id), at most `limit` after the position `after` of the previous page (null for the
    * first page). The position is the submit instant and id of the last row shown, so a row decided
-   * since still anchors the page.
+   * since still anchors the page. `filter.sellerId` keeps one seller's Offers.
    */
   listPendingReview(
     market: MarketContext,
@@ -45,6 +45,7 @@ export interface OfferRepository {
       readonly after: { readonly submittedAt: Temporal.Instant; readonly id: string } | null;
       readonly limit: number;
     },
+    filter?: { readonly sellerId?: Id<'Seller'> },
   ): Promise<readonly Offer[]>;
 
   /** The Offer in this Market, or null: another Market's id is not found. */

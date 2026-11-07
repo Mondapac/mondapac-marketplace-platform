@@ -350,10 +350,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
-    // Seller health requests: inserted, then finished once (status and finished_at); never
-    // deleted by the app.
+    // Seller health requests: inserted, then finished once (status and finished_at); finished
+    // rows are deleted by the retention purge (30 days).
     'sellers.seller_health_requests': {
-      table: ['INSERT', 'SELECT'],
+      table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['finished_at', 'status'],
     },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
@@ -1111,6 +1111,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Search attribute filters (A7): the measure values of a document, replaced with it; the
     // reindex progress row of a Market, written by the reindex job and never deleted.
     'search.offer_document_numbers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'search.offer_variant_documents': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'search.reindex_state': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
@@ -1284,6 +1285,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [],
     },
+    // Product tags package T1: a topic's slug and creator never change and a topic is archived,
+    // never deleted; its terms are replaced as a set, so they may be deleted, never updated.
+    'catalog.topics': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['intro', 'status', 'topic_group', 'updated_at', 'version'],
+    },
+    'catalog.topic_terms': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_variants': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['published_at', 'retired_at', 'state'],
@@ -1366,6 +1374,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_revision_id', 'version'],
     },
     'catalog.category_attribute_link_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Variants V6: the variant type settings root moves its current revision and version; the
+    // revisions are insert-only.
+    'catalog.variant_type_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['current_revision_id', 'version'],
+    },
+    'catalog.variant_type_setting_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 4): the working copy and the counters are
     // mutable and deleted from; the five revision tables are insert-only (CA3).
     'catalog.product_working_copies': {
@@ -1461,6 +1476,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'settled_at', 'state'],
     },
+    // docs/design/data/catalog.md 2.4 (variants V5): the per-sell-unit SKU and selling switch move
+    // by column; the owner, Offer and variant never change. No DELETE: a row is never deleted.
+    'catalog.offer_sell_units': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['selling', 'updated_at', 'variant_sku', 'version'],
+    },
     // docs/design/data/catalog.md 3.28: a saved view of an admin list; a filter is a preference, so
     // the application deletes it; only the name and who can use it change.
     'catalog.saved_filters': {
@@ -1491,6 +1512,38 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.platform_import_rows': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['product_code', 'product_id', 'run_code', 'run_state'],
+    },
+    // docs/design/data/catalog.md 3.31: the seller import. Same shape as the admin import's tables;
+    // a photo row is reserved, then its image id is set once (DELETE: a failed upload's reservation
+    // and the purge, with its job).
+    'catalog.seller_import_jobs': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'created_rows',
+        'ended_at',
+        'failed_rows',
+        'file_deleted_at',
+        'finished_at',
+        'last_turn_at',
+        'lease_until',
+        'not_before',
+        'skip_errors',
+        'started_at',
+        'state',
+        'stop_reason',
+        'to_import',
+        'unchanged_rows',
+        'updated_rows',
+        'version',
+      ],
+    },
+    'catalog.seller_import_rows': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['offer_id', 'product_code', 'product_id', 'run_code', 'run_state'],
+    },
+    'catalog.seller_import_photos': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['image_id'],
     },
     // docs/design/data/pricing.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; the inbox gets DELETE with the prune job. A series' Offer, seller

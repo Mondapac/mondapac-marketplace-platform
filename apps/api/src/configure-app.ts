@@ -156,6 +156,33 @@ export function isCategoryImageUploadRequest(
   );
 }
 
+/** An admin's photo of a PLATFORM product (P1): `POST /catalog/admin/platform-products/<id>/images`. */
+const PLATFORM_PRODUCT_IMAGE_PATH =
+  /^\/catalog\/admin\/platform-products\/[0-9a-fA-F-]{36}\/images\/?(?:\?.*)?$/;
+
+/**
+ * True for an admin platform product photo upload that may carry the photo body: a POST to the
+ * route that holds an admin session cookie and the CSRF header (the category image's pre-filter).
+ * Anything else gets the 64 KiB JSON parser. A cheap pre-filter only: the actor guard still checks
+ * the session and the CSRF token itself.
+ */
+export function isPlatformProductImageUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'POST' || url === undefined || !PLATFORM_PRODUCT_IMAGE_PATH.test(url)) {
+    return false;
+  }
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+
 /** A base64 certificate file of 10 MiB is 14 million characters; the rest is the JSON around it. */
 const CERTIFICATE_DOCUMENT_BODY_LIMIT = '14500kb';
 // The admin platform import's upload (catalog design 14a): a base64 CSV file of at most 10 MiB, read
@@ -167,6 +194,49 @@ export function isPlatformImportUploadRequest(
   url: string | undefined,
 ): boolean {
   return method === 'POST' && url !== undefined && PLATFORM_IMPORT_UPLOAD_PATH.test(url);
+}
+// The seller import's upload (catalog design 14c) takes the same body as the admin's, and its photo
+// step (one base64 photo of at most 4 MiB per call) the photo body; both controllers parse the JSON
+// themselves. Only these two routes, and only for a request that carries a seller session cookie and
+// the CSRF header (the pre-filter of the store images): anything else gets the 64 KiB JSON parser.
+const SELLER_IMPORT_UPLOAD_PATH = /^\/catalog\/seller\/imports\/?(?:\?.*)?$/;
+const SELLER_IMPORT_PHOTO_PATH =
+  /^\/catalog\/seller\/imports\/[0-9a-fA-F-]{36}\/photos\/?(?:\?.*)?$/;
+
+function carriesSellerSessionAndCsrf(headers: IncomingHttpHeaders): boolean {
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    SELLER_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+
+export function isSellerImportUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  return (
+    method === 'POST' &&
+    url !== undefined &&
+    SELLER_IMPORT_UPLOAD_PATH.test(url) &&
+    carriesSellerSessionAndCsrf(headers)
+  );
+}
+
+export function isSellerImportPhotoRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  return (
+    method === 'POST' &&
+    url !== undefined &&
+    SELLER_IMPORT_PHOTO_PATH.test(url) &&
+    carriesSellerSessionAndCsrf(headers)
+  );
 }
 const CERTIFICATE_DOCUMENT_PATH =
   /^\/certification\/seller\/certificates\/[0-9a-fA-F-]{36}\/documents\/?(?:\?.*)?$/;
@@ -252,6 +322,13 @@ export function configureApp(app: NestExpressApplication): void {
     limit: STORE_PROFILE_SAVE_BODY_LIMIT,
     inflate: false,
   });
+  // An admin's photo of a PLATFORM product takes the same body, under the same pre-filter (P1).
+  app.useBodyParser('raw', {
+    type: (request) =>
+      isPlatformProductImageUploadRequest(request.method, request.url, request.headers),
+    limit: PRODUCT_IMAGE_BODY_LIMIT,
+    inflate: false,
+  });
   // The whole-profile save takes up to two such pictures in one body, under the same pre-filter.
   app.useBodyParser('raw', {
     type: (request) => isStoreProfileSaveRequest(request.method, request.url, request.headers),
@@ -271,6 +348,16 @@ export function configureApp(app: NestExpressApplication): void {
   app.useBodyParser('raw', {
     type: (request) => isPlatformImportUploadRequest(request.method, request.url),
     limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
+    inflate: false,
+  });
+  app.useBodyParser('raw', {
+    type: (request) => isSellerImportUploadRequest(request.method, request.url, request.headers),
+    limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
+    inflate: false,
+  });
+  app.useBodyParser('raw', {
+    type: (request) => isSellerImportPhotoRequest(request.method, request.url, request.headers),
+    limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });
   app.useBodyParser('json', { limit: '64kb', strict: true, inflate: false });

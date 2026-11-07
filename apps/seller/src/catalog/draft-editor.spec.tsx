@@ -9,9 +9,11 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { callApi } from '../api/client.ts';
 import {
+  attributeInputsOf,
   attributeProblem,
   attributeValuesWith,
   contentFrom,
+  measureProblem,
   NO_VARIANT_FIELDS,
   variantRowsOf,
   variantsWith,
@@ -50,7 +52,8 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   familyCode: 'food',
   variantModel: 'configurable',
   status: 'draft',
-  variants: [{ variantId: 'v1', state: 'proposed' }],
+  pausedAt: null,
+  variants: [{ variantId: 'v1', state: 'proposed', variantCode: 'P-000001-0v1' }],
   maxVariants: 3,
   sensitiveFields: ['name', 'images'],
   lastChangedAt: '2026-10-01T00:00:00Z',
@@ -58,6 +61,7 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   pendingSubmittedAt: null,
   form: {
     taxCategoryCodes: ['gst', 'gst-free'],
+    units: [],
     fields: FIELDS,
     categories: [
       { categoryId: 'c1', parentId: null, names: { 'en-AU': 'Pantry' } },
@@ -81,6 +85,7 @@ const mount = (p: ProductView = product(), photos: ProductPhoto[] = []) =>
         photos={photos}
         locales={['en-AU']}
         defaultLocale="en-AU"
+        marketName="Australia"
         csrfToken="csrf"
       />
     </NextIntlClientProvider>,
@@ -194,6 +199,101 @@ describe('draft content helpers', () => {
   });
 });
 
+describe('a measure field (attributes A3)', () => {
+  const netWeight = field({
+    code: 'net-weight',
+    dataType: 'measure',
+    bounds: { min: 1, max: 5000 },
+    measure: { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 2 },
+  });
+  const UNITS = [
+    { code: 'g', labels: { 'en-AU': 'g' } },
+    { code: 'kg', labels: { 'en-AU': 'kg' } },
+  ];
+
+  it('saves what was typed in base units with the unit picked', () => {
+    expect(
+      attributeValuesWith(
+        undefined,
+        [netWeight],
+        { 'net-weight': { amount: '0.5', unit: 'kg' } },
+        'en-AU',
+      ),
+    ).toEqual({ 'net-weight': { value: '500', unit: 'kg' } });
+    expect(
+      attributeValuesWith(
+        undefined,
+        [netWeight],
+        { 'net-weight': { amount: ' 250 ', unit: 'g' } },
+        'en-AU',
+      ),
+    ).toEqual({ 'net-weight': { value: '250', unit: 'g' } });
+  });
+
+  it('leaves the value out while the amount is empty', () => {
+    expect(
+      attributeValuesWith(
+        { attributeValues: { 'net-weight': { value: '500', unit: 'g' } } },
+        [netWeight],
+        { 'net-weight': { amount: '', unit: 'g' } },
+        'en-AU',
+      ),
+    ).toEqual({});
+  });
+
+  it('reads a saved value back in the unit the seller chose', () => {
+    expect(
+      attributeInputsOf({ attributeValues: { 'net-weight': { value: '1500', unit: 'kg' } } }, [
+        netWeight,
+      ]),
+    ).toEqual({ 'net-weight': { amount: '1.5', unit: 'kg' } });
+  });
+
+  it('names the problem: not a number, too many places, unit, or outside the range in base units', () => {
+    const check = (amount: string, unit = 'g') => measureProblem(netWeight, { amount, unit });
+    expect(check('')).toBeNull();
+    expect(check('250')).toBeNull();
+    expect(check('x')).toBe('decimal');
+    expect(check('1.234', 'kg')).toBe('places');
+    expect(check('1', 'ml')).toBe('unit');
+    expect(check('0.0005', 'kg')).toBe('places');
+    expect(check('0.0001', 'kg')).toBe('places');
+    expect(check('5001')).toBe('range');
+    expect(check('5.01', 'kg')).toBe('range');
+    expect(check('5', 'kg')).toBeNull();
+  });
+
+  it('shows a number box and a unit list, and saves the converted value', async () => {
+    call.mockResolvedValue(saved(['v1']));
+    mount(
+      product({
+        form: { ...product().form, units: UNITS, fields: [...FIELDS, netWeight] },
+      }),
+    );
+    const amount = screen.getByLabelText<HTMLInputElement>(/^net-weight/);
+    expect(amount.getAttribute('inputmode')).toBe('decimal');
+    expect(amount.getAttribute('dir')).toBe('ltr');
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: 'kg' } });
+    fireEvent.change(amount, { target: { value: '1.25' } });
+    fireEvent.change(screen.getByLabelText('weight'), { target: { value: '250' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call.mock.calls[0]?.[2]).toMatchObject({
+      content: { attributeValues: { 'net-weight': { value: '1250', unit: 'kg' } } },
+    });
+  });
+
+  it('tells the seller when the number has more places than the field allows', () => {
+    mount(
+      product({
+        form: { ...product().form, units: UNITS, fields: [...FIELDS, netWeight] },
+      }),
+    );
+    fireEvent.change(screen.getByLabelText(/^net-weight/), { target: { value: '0.12345' } });
+    expect(screen.getByText('Use at most 2 decimal places.')).toBeTruthy();
+  });
+});
+
 describe('EditForm product details', () => {
   it('saves categories, tax category and attribute values', async () => {
     call.mockResolvedValue(saved(['v1']));
@@ -264,7 +364,7 @@ describe('EditForm product details', () => {
     call.mockResolvedValueOnce(saved(['v1']));
     mount(
       product({
-        variants: [{ variantId: 'v1', state: 'proposed' }],
+        variants: [{ variantId: 'v1', state: 'proposed', variantCode: 'P-000001-0v1' }],
         workingCopy: {
           content: {
             variantAxes: ['size'],
@@ -290,7 +390,7 @@ describe('EditForm product details', () => {
     mount(
       product({
         maxVariants: 1,
-        variants: [{ variantId: 'v1', state: 'proposed' }],
+        variants: [{ variantId: 'v1', state: 'proposed', variantCode: 'P-000001-0v1' }],
         workingCopy: {
           content: {
             variantAxes: ['size'],
@@ -310,7 +410,7 @@ describe('EditForm product details', () => {
     mount(
       product({
         published: { revisionId: 'r', revisionNo: 1 } as ProductView['published'],
-        variants: [{ variantId: 'v1', state: 'published' }],
+        variants: [{ variantId: 'v1', state: 'published', variantCode: 'P-000001-0v1' }],
         workingCopy: {
           content: {
             variantAxes: ['size'],
@@ -334,7 +434,7 @@ describe('EditForm product details', () => {
   it('also confirms removing a saved but never published variant', () => {
     mount(
       product({
-        variants: [{ variantId: 'v1', state: 'proposed' }],
+        variants: [{ variantId: 'v1', state: 'proposed', variantCode: 'P-000001-0v1' }],
         workingCopy: {
           content: {
             variantAxes: ['size'],
@@ -355,7 +455,7 @@ describe('EditForm product details', () => {
     mount(
       product({
         published: { revisionId: 'r', revisionNo: 1 } as ProductView['published'],
-        variants: [{ variantId: 'v1', state: 'published' }],
+        variants: [{ variantId: 'v1', state: 'published', variantCode: 'P-000001-0v1' }],
         workingCopy: {
           content: { variants: [{ variantId: 'v1', optionValues: {} }] },
           lastSavedAt: '2026-10-01T00:00:00Z',
@@ -408,7 +508,7 @@ describe('EditForm product details', () => {
   it('asks before changing the axes of a draft that has ticked combinations', () => {
     mount(
       product({
-        variants: [{ variantId: 'v1', state: 'proposed' }],
+        variants: [{ variantId: 'v1', state: 'proposed', variantCode: 'P-000001-0v1' }],
         workingCopy: {
           content: {
             variantAxes: ['size'],
@@ -523,6 +623,7 @@ describe('EditForm variant details', () => {
       },
     });
     mount(withRow({ gtin: '4006381333931' }));
+    fireEvent.change(screen.getByLabelText(/Short description/), { target: { value: 'Cold' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     expect(await screen.findByText(/Product P00000042 already carries/)).toBeTruthy();
     await expectToast('Draft saved.');

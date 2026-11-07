@@ -1,6 +1,12 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { parseMarketId, POPULATIONS } from '@mondapac/shared-kernel';
+import {
+  MEASURE_BASE_UNITS,
+  MEASURE_UNITS,
+  measureUnit,
+  parseMarketId,
+  POPULATIONS,
+} from '@mondapac/shared-kernel';
 import type { MarketId, Population } from '@mondapac/shared-kernel';
 import { z } from 'zod';
 
@@ -1211,6 +1217,25 @@ const catalogSchema = z
      */
     maxVariantAttributes: z.number().int().min(1).max(5),
     /**
+     * The units a number-with-unit attribute may offer in this Market (attributes A3, plan
+     * decision ت۱): a code the platform knows (shared-kernel MEASURE_UNITS) and its label per
+     * locale. Not editable by an administrator. Required: a Market never defaults it. The base
+     * units (g, ml, mm, count) are the stored form, so the Market must offer each of them.
+     */
+    units: z
+      .array(
+        z.strictObject({
+          code: z.string().refine((code) => measureUnit(code) !== undefined, {
+            message: 'not a unit the platform knows',
+          }),
+          labels: z
+            .record(locale, z.string().min(1).max(20))
+            .refine((labels) => Object.keys(labels).length > 0, { message: 'a label is required' }),
+        }),
+      )
+      .min(1)
+      .max(MEASURE_UNITS.length),
+    /**
      * Whether a new product revision waits for review (true) or publishes at once when the
      * change is minor (false) (catalog design 4.2 row 1). The interim home of the ADR-0026
      * setting `catalog.approval-required` until that store lands (catalog slice 10).
@@ -1260,6 +1285,19 @@ const catalogSchema = z
         path: ['conditions'],
         message: 'a condition code must not repeat',
       });
+    }
+    const unitCodes = catalog.units.map((unit) => unit.code);
+    if (new Set(unitCodes).size !== unitCodes.length) {
+      context.addIssue({ code: 'custom', path: ['units'], message: 'a unit must not repeat' });
+    }
+    for (const base of Object.values(MEASURE_BASE_UNITS)) {
+      if (!unitCodes.includes(base)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['units'],
+          message: `the base unit ${base} must be offered`,
+        });
+      }
     }
     const seen = new Set<string>();
     catalog.taxCategories.forEach((category, index) => {

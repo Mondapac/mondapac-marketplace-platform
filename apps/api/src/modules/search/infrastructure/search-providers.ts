@@ -36,6 +36,11 @@ import {
   type OfferDocumentRepository,
 } from '../application/ports/offer-document.repository';
 import { OFFER_FEED, type OfferFeed } from '../application/ports/offer-feed';
+import { SELL_UNIT_STATES, type SellUnitStates } from '../application/ports/sell-unit-states';
+import {
+  OFFER_VARIANT_READER,
+  type OfferVariantReader,
+} from '../application/ports/offer-variant.reader';
 import {
   OFFER_SEARCH_READER,
   type OfferSearchReader,
@@ -86,6 +91,8 @@ import {
 import { PrismaShelfDocumentsReader } from './prisma-shelf-documents.reader';
 import { ConfigSearchPolicy } from './config-search-policy';
 import { FacadeOfferFeed } from './facade-offer-feed';
+import { FacadeSellUnitStates } from './facade-sell-unit-states';
+import { PrismaOfferVariantReader } from './prisma-offer-variant.reader';
 import { FacadePublicVisibility } from './facade-public-visibility';
 import { FacadeSellerEligibility } from './facade-seller-eligibility';
 import { PrismaOfferDocumentRepository } from './prisma-offer-document.repository';
@@ -137,6 +144,17 @@ export const searchProviders: readonly FactoryProvider[] = [
     provide: SEARCH_POLICY,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): SearchPolicy => new ConfigSearchPolicy(markets),
+  },
+  {
+    provide: SELL_UNIT_STATES,
+    inject: [INVENTORY_FACADE, PRICING_FACADE],
+    useFactory: (inventory: InventoryFacade, pricing: PricingFacade): SellUnitStates =>
+      new FacadeSellUnitStates(inventory, pricing),
+  },
+  {
+    provide: OFFER_VARIANT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferVariantReader => new PrismaOfferVariantReader(prisma),
   },
   {
     provide: OFFER_FEED,

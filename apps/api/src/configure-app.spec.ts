@@ -1,6 +1,7 @@
 import {
   isCategoryImageUploadRequest,
   isSlideImageUploadRequest,
+  isPlatformProductImageUploadRequest,
   isStoreImageUploadRequest,
   isStoreProfileSaveRequest,
 } from './configure-app';
@@ -159,5 +160,46 @@ describe('isCategoryImageUploadRequest', () => {
     ['PUT', undefined],
   ])('is false for %s %s even with a session', (method, url) => {
     expect(isCategoryImageUploadRequest(method, url, ADMIN_OK)).toBe(false);
+  });
+});
+
+describe('isPlatformProductImageUploadRequest', () => {
+  const ID = '0193b2c4-1111-7222-8333-444455556666';
+  const ADMIN = '__Host-session-admin-AU=abc123_-XYZ';
+  const ADMIN_OK = { cookie: ADMIN, 'x-csrf-token': 'token' };
+  const PATH = `/catalog/admin/platform-products/${ID}/images`;
+
+  it('takes the photo body of a POST with an admin session and CSRF header', () => {
+    expect(isPlatformProductImageUploadRequest('POST', PATH, ADMIN_OK)).toBe(true);
+    expect(
+      isPlatformProductImageUploadRequest('POST', `${PATH}/?x=1`, {
+        cookie: `theme=dark; ${ADMIN}`,
+        'x-csrf-token': 'token',
+      }),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['no headers at all', undefined],
+    ['no cookie', { 'x-csrf-token': 'token' }],
+    ['no CSRF header', { cookie: ADMIN }],
+    ['an empty CSRF header', { cookie: ADMIN, 'x-csrf-token': '' }],
+    ['a seller cookie', { cookie: COOKIE, 'x-csrf-token': 't' }],
+    ['an empty admin cookie value', { cookie: '__Host-session-admin-AU=', 'x-csrf-token': 't' }],
+  ])('keeps the 64 KiB parser for %s', (_, headers) => {
+    expect(isPlatformProductImageUploadRequest('POST', PATH, headers)).toBe(false);
+  });
+
+  it.each([
+    ['PUT', PATH],
+    ['GET', PATH],
+    ['DELETE', `${PATH}/${ID}`],
+    ['POST', `${PATH}/${ID}`],
+    ['POST', '/catalog/admin/platform-products/not-a-uuid/images'],
+    ['POST', `/catalog/admin/products/${ID}/images`],
+    [undefined, PATH],
+    ['POST', undefined],
+  ])('is false for %s %s even with a session', (method, url) => {
+    expect(isPlatformProductImageUploadRequest(method, url, ADMIN_OK)).toBe(false);
   });
 });

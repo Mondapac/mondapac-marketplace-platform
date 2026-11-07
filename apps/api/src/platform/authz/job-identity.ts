@@ -23,6 +23,23 @@ export interface JobIdentity {
  */
 export interface JobIdentityResolver {
   resumeAdmin(market: MarketContext, identity: JobIdentity): Promise<AuthenticatedActor | null>;
+  /**
+   * The seller counterpart (catalog design 14c): an authenticated seller actor of the kept seller
+   * only while, in one read-only unit, the session is the account's, of this Market, of the seller
+   * population and of **this** seller, carries no acting-as marker, was not revoked for any reason
+   * but a sign-out and was not followed by a bulk end of the account's sessions; and the account is
+   * an active seller account and still an active member of that seller. It does not read the
+   * seller's access state: that is the gate's and the per-row eligibility check's.
+   */
+  resumeSeller(
+    market: MarketContext,
+    identity: SellerJobIdentity,
+  ): Promise<AuthenticatedActor | null>;
+}
+
+/** The identity of a job a seller's account started: the account and session ids and the seller. */
+export interface SellerJobIdentity extends JobIdentity {
+  readonly sellerId: Id<'Seller'>;
 }
 
 /** Nest token of the {@link JobIdentityResolver}; `IdentityModule` provides and exports it. */
@@ -47,7 +64,29 @@ export class JobCallContexts {
     if (actor === null || actor.population !== 'admin') return null;
     return createCallContext(job.market, actor, job.correlationId);
   }
+
+  /**
+   * The seller's context (catalog design 14c), or null when the identity is no longer that seller's
+   * active member with a session of theirs. The actor holds no permission: the gate asks identity
+   * for each use case the job calls.
+   */
+  async asSeller(job: CallContext, identity: SellerJobIdentity): Promise<SellerJobContext | null> {
+    if (job.actor.kind !== 'system') return null;
+    const actor = await this.resolver.resumeSeller(job.market, identity);
+    if (
+      actor === null ||
+      actor.population !== 'seller' ||
+      actor.sellerId !== identity.sellerId ||
+      actor.accountId !== identity.accountId
+    ) {
+      return null;
+    }
+    return createCallContext(job.market, actor, job.correlationId);
+  }
 }
+
+/** The context of a job that runs as the seller account that started it. */
+export type SellerJobContext = CallContext & { readonly actor: AuthenticatedActor };
 
 /** Nest token of the {@link JobCallContexts} that `IdentityModule` provides and exports. */
 export const JOB_CALL_CONTEXTS = Symbol('JOB_CALL_CONTEXTS');

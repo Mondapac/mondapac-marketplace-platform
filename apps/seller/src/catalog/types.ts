@@ -44,9 +44,23 @@ export interface FormField {
   readonly localizable: boolean;
   readonly required: boolean;
   readonly isVariantOption: boolean;
+  /** For a `measure` field, `min` and `max` are in base units (g, ml, mm, count). */
   readonly bounds: { readonly maxLength?: number; readonly min?: number; readonly max?: number };
+  /** A `measure` field only: dimension, the unit codes offered, the default and decimal places. */
+  readonly measure?: {
+    readonly dimension: string;
+    readonly units: readonly string[];
+    readonly defaultUnit: string;
+    readonly decimals: number;
+  };
   readonly names: Readonly<Record<string, string>>;
   readonly options: readonly FormOption[];
+}
+
+/** A unit of the Market with its label per locale (apps/api OwnFormUnit). */
+export interface FormUnit {
+  readonly code: string;
+  readonly labels: Readonly<Record<string, string>>;
 }
 
 export interface FormCategory {
@@ -58,6 +72,8 @@ export interface FormCategory {
 /** What the product form is drawn from: `GET catalog/seller/products/:id` -> `form`. */
 export interface ProductForm {
   readonly taxCategoryCodes: readonly string[];
+  /** The Market's units; a measure field names the ones it offers by code. */
+  readonly units: readonly FormUnit[];
   readonly fields: readonly FormField[];
   readonly categories: readonly FormCategory[];
 }
@@ -83,7 +99,14 @@ export interface ProductView {
   /** `single`: one fixed variant; `configurable`: variants defined by option values. */
   readonly variantModel: string;
   readonly status: string;
-  readonly variants: readonly { readonly variantId: string; readonly state: string }[];
+  /** When an admin paused the product (the seller's offers are off sale); null when not paused. */
+  readonly pausedAt: string | null;
+  readonly variants: readonly {
+    readonly variantId: string;
+    readonly state: string;
+    /** `{productCode}-{nn}` (design 2, M-7). */
+    readonly variantCode: string;
+  }[];
   readonly maxVariants: number;
   readonly sensitiveFields: readonly string[];
   readonly lastChangedAt: string;
@@ -121,6 +144,33 @@ export interface OfferView {
   readonly firstPublishedAt: string | null;
   readonly createdAt: string;
   readonly version: number;
+  /** Stored sell-unit rows (V5); a variant with no row sells and has no SKU. Single read only. */
+  readonly sellUnits?: readonly {
+    variantId: string;
+    variantSku: string | null;
+    selling: boolean;
+  }[];
+}
+
+/** One sell unit (variant) of an offer: `GET catalog/seller/offers/:id/sell-units` -> `units`. */
+export interface SellUnitView {
+  readonly variantId: string;
+  readonly variantNo: number;
+  readonly variantCode: string;
+  readonly state: 'proposed' | 'published';
+  /** The published variant label in the Market's default locale, else null. */
+  readonly label: string | null;
+  readonly selling: boolean;
+  readonly variantSku: string | null;
+  /** What exports and invoices show: the variant SKU, else `{sellerSku}-{variantNo}`. */
+  readonly displaySku: string;
+}
+
+/** `GET catalog/seller/offers/:id/sell-units`. */
+export interface OfferSellUnitsView {
+  readonly productScope: 'PLATFORM' | 'SELLER';
+  readonly sellerSku: string;
+  readonly units: readonly SellUnitView[];
 }
 
 /** `GET catalog/seller/products/options`: what the create form offers. */

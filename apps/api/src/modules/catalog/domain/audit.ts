@@ -32,6 +32,18 @@ export const ProductResumedAudit = defineAuditAction({
   after: { paused: auditField.boolean(), scope, offerCount: auditField.integer() },
 });
 
+/**
+ * An admin deleted an unused photo from the library of a PLATFORM product (P1 admin product
+ * images). The ids only: the picture itself is never in the audit log.
+ */
+export const ProductImageDeletedAudit = defineAuditAction({
+  action: 'catalog.product.image-deleted',
+  targetType: CATALOG_PRODUCT_TARGET,
+  actors: ['authenticated'],
+  before: { imageId: auditField.id() },
+  after: { imageId: auditField.optional(auditField.id()) },
+});
+
 /** A SELLER product was withdrawn by an admin (design 4.1); its Offer was deleted. */
 export const ProductWithdrawnAudit = defineAuditAction({
   action: 'catalog.product.withdrawn',
@@ -82,17 +94,46 @@ export const PlatformImportStartedAudit = defineAuditAction({
   },
 });
 
+/** The audit target type of a seller import job. */
+export const CATALOG_SELLER_IMPORT_TARGET = 'catalog.seller-import';
+
+/**
+ * A seller's member confirmed an import (design 14c): the file was checked, the choice made and the
+ * run queued. Counts and the mode only; the file's SHA-256 is on the job row (`file_sha256`), which
+ * the audit target id points to, because the audit vocabulary has no text field.
+ */
+export const OwnImportStartedAudit = defineAuditAction({
+  action: 'catalog.own-import.started',
+  targetType: CATALOG_SELLER_IMPORT_TARGET,
+  actors: ['authenticated'],
+  before: { state: auditField.enumOf(['checked'] as const) },
+  after: {
+    state: auditField.enumOf(['queued'] as const),
+    mode: auditField.enumOf(['my-products', 'sell-from-catalogue'] as const),
+    skipErrors: auditField.boolean(),
+    rows: auditField.integer(),
+    toImport: auditField.integer(),
+    errorRows: auditField.integer(),
+  },
+});
+
 /** The audit target type of a saved filter. */
 export const CATALOG_SAVED_FILTER_TARGET = 'catalog.saved-filter';
 
 const savedFilterVisibility = auditField.enumOf(['me', 'everyone'] as const);
 
 /** The lists a saved filter can belong to (the keys of `SAVED_FILTER_LISTS`). */
-export const SAVED_FILTER_AUDIT_LISTS = ['admin.catalog.products'] as const;
+export const SAVED_FILTER_AUDIT_LISTS = [
+  'admin.catalog.products',
+  'seller.catalog.products',
+] as const;
 export type SavedFilterAuditList = (typeof SAVED_FILTER_AUDIT_LISTS)[number];
 const savedFilterList = auditField.enumOf(SAVED_FILTER_AUDIT_LISTS);
 
-/** An admin saved a filter for everyone (design 9.2d). The name is not audited: ids and codes only. */
+/**
+ * An admin or a seller member saved a filter for everyone (design 9.2d, 9.2e). The name is not
+ * audited: ids and codes only.
+ */
 export const SavedFilterSharedAudit = defineAuditAction({
   action: 'catalog.saved-filter.shared',
   targetType: CATALOG_SAVED_FILTER_TARGET,
@@ -593,12 +634,37 @@ export const CategoryAttributesChangedAudit = defineAuditAction({
   after: linkShape,
 });
 
+/** The audit target type of a variant type's display settings (variants V6): the definition. */
+export const CATALOG_VARIANT_TYPE_TARGET = 'catalog.variant-type';
+
+/** What the audit keeps of variant type settings: codes and counts, never a colour or a text. */
+const variantTypeShape = {
+  revisionNo: auditField.integer(),
+  displayStyle: auditField.enumOf(['buttons', 'swatches', 'dropdown'] as const),
+  optionOrder: auditField.enumOf(['manual', 'alphabetical', 'by-size'] as const),
+  swatchCount: auditField.integer(),
+  sellerHelpCount: auditField.integer(),
+};
+
+/**
+ * An admin changed how buyers choose a variant type (variants V6). `before` is the stored settings
+ * or the defaults (revision 0) when none were stored.
+ */
+export const VariantTypeSettingsChangedAudit = defineAuditAction({
+  action: 'catalog.variant-type.settings-changed',
+  targetType: CATALOG_VARIANT_TYPE_TARGET,
+  actors: ['authenticated'],
+  before: variantTypeShape,
+  after: variantTypeShape,
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
   ProductWithdrawnAudit,
   ProductRetiredAudit,
   PlatformImportStartedAudit,
+  OwnImportStartedAudit,
   SavedFilterSharedAudit,
   SavedFilterChangedAudit,
   SavedFilterRemovedAudit,
@@ -620,6 +686,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   PlatformCategorySlugChangedAudit,
   PlatformCategoryDiscardedAudit,
   PlatformCategoryImageChangedAudit,
+  ProductImageDeletedAudit,
   PlatformCategoryMovedAudit,
   PlatformCategoryMergedAudit,
   PlatformCategoryArchivedAudit,
@@ -635,4 +702,5 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeValueSuggestedAudit,
   AttributeValueSuggestionDecidedAudit,
   CategoryAttributesChangedAudit,
+  VariantTypeSettingsChangedAudit,
 ] as const;

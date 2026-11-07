@@ -316,6 +316,7 @@ export class SubmitProduct {
             baseRevisionId: publishedId,
             outcome,
             authorKind: author.kind,
+            familyCode: frozen.value.familyCode,
             replacePending: input.replacePending,
             revisionVariantIds: frozen.value.content.variants.map(
               (variant) => variant.variantId as Id<'Variant'>,

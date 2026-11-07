@@ -28,6 +28,13 @@ export type PendingStaffInvitation = PendingAdminInvitation;
  * its SHA-256. The invited address is personal data: it is never logged here.
  */
 export interface InvitationRepository {
+  /**
+   * Takes this invitation's lock (`identity.lock-invitation`) until the unit ends, so two
+   * acceptances of one invitation run one after the other (Hassan M2). The first statement of
+   * the acceptance's closing unit, before the invitation is read.
+   */
+  lockForAcceptance(market: MarketContext, id: Id<'Invitation'>): Promise<void>;
+
   findById(market: MarketContext, id: Id<'Invitation'>): Promise<Invitation | null>;
 
   /** The invitation whose stored hash is this one, in this Market, or null. */

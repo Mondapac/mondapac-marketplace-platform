@@ -547,6 +547,24 @@ describe('relay allowlist for stock locations', () => {
       expect((await relay(config, put(path.join('/')), path, upstream)).status).toBe(404);
     }
   });
+  it('relays a sell-units write by UUID, and refuses other shapes', async () => {
+    const upstream = upstreamOk();
+    const units = ['catalog', 'seller', 'offers', ID, 'sell-units'];
+    expect((await relay(config, put(units.join('/')), units, upstream)).status).toBe(200);
+    const bad = [
+      ['catalog', 'seller', 'offers', 'x', 'sell-units'],
+      ['catalog', 'seller', 'offers', ID, 'sell-units', 'x'],
+    ];
+    for (const path of bad) {
+      expect((await relay(config, put(path.join('/')), path, upstream)).status).toBe(404);
+    }
+    // The page reads the units on the server; the browser relay carries only the write.
+    const read = new Request(`http://seller.localhost:3001/api/${units.join('/')}`, {
+      method: 'GET',
+      headers: sameOrigin,
+    });
+    expect((await relay(config, read, units, upstream)).status).toBe(404);
+  });
   it('relays a regular price write by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     const price = ['pricing', 'seller', 'offers', ID, 'variants', ID, 'regular-price'];
@@ -1119,5 +1137,181 @@ describe('relay allowlist for the seller reviews', () => {
     });
     const response = await relay(config, request, ['reviews', 'seller', ID, 'reply'], upstreamOk());
     expect(response.status).toBe(403);
+  });
+});
+
+describe('relay of the seller import routes (catalog design 14c)', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000b1';
+  const BASE = 'catalog/seller/imports';
+  const send = (method: string, path: string, body = '{}') =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method,
+      headers: sameOrigin,
+      ...(method === 'GET' || method === 'HEAD' ? {} : { body }),
+    });
+  const run = async (method: string, path: string, body?: string) => {
+    const upstream = upstreamOk();
+    const segments = (path.split('?')[0] ?? '').split('/');
+    const response = await relay(config, send(method, path, body), segments, upstream);
+    return { response, upstream };
+  };
+
+  it.each([
+    ['GET', `${BASE}/template`],
+    ['GET', `${BASE}/current`],
+    ['GET', `${BASE}/${ID}`],
+    ['GET', `${BASE}/${ID}/report?kind=errors`],
+    ['POST', BASE],
+    ['POST', `${BASE}/${ID}/start`],
+    ['POST', `${BASE}/${ID}/resume`],
+    ['POST', `${BASE}/${ID}/discard`],
+    ['POST', `${BASE}/${ID}/photos`],
+  ])('relays %s %s', async (method, path) => {
+    const { response, upstream } = await run(method, path);
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['PUT', BASE],
+    ['DELETE', BASE],
+    ['PATCH', `${BASE}/${ID}`],
+    ['PUT', `${BASE}/${ID}`],
+    ['DELETE', `${BASE}/${ID}`],
+    ['POST', `${BASE}/${ID}`],
+    ['POST', `${BASE}/template`],
+    ['POST', `${BASE}/current`],
+    ['GET', BASE],
+    ['GET', `${BASE}/${ID}/start`],
+    ['GET', `${BASE}/${ID}/resume`],
+    ['GET', `${BASE}/${ID}/discard`],
+    ['GET', `${BASE}/${ID}/photos`],
+    ['POST', `${BASE}/${ID}/report`],
+    ['PUT', `${BASE}/${ID}/photos`],
+    ['DELETE', `${BASE}/${ID}/photos`],
+    ['PUT', `${BASE}/${ID}/start`],
+    ['GET', `${BASE}/not-a-uuid`],
+    ['POST', `${BASE}/not-a-uuid/start`],
+    ['POST', `${BASE}/${ID}/photos/extra`],
+    ['POST', `${BASE}/${ID}/other`],
+  ])('refuses %s %s', async (method, path) => {
+    const { response, upstream } = await run(method, path);
+    expect(response.status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('forwards only a valid report kind', async () => {
+    for (const kind of ['errors', 'full']) {
+      const { upstream } = await run('GET', `${BASE}/${ID}/report?kind=${kind}&x=1`);
+      expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${BASE}/${ID}/report?kind=${kind}`);
+    }
+    const bad = await run('GET', `${BASE}/${ID}/report?kind=everything`);
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${BASE}/${ID}/report`);
+    const poll = await run('GET', `${BASE}/${ID}?kind=full`);
+    expect(poll.upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${BASE}/${ID}`);
+  });
+
+  it('takes the file upload up to its cap and the photo body up to 5.8 MiB, and no other body above 16 KB', async () => {
+    const file = JSON.stringify({ mode: 'my-products', data: 'A'.repeat(13 * 1024 * 1024) });
+    const uploaded = await run('POST', BASE, file);
+    expect(uploaded.response.status).toBe(200);
+    const over = await run('POST', BASE, 'A'.repeat(14500 * 1024 + 1));
+    expect(over.response.status).toBe(413);
+    expect(over.upstream).not.toHaveBeenCalled();
+
+    const photo = await run(
+      'POST',
+      `${BASE}/${ID}/photos`,
+      JSON.stringify({ data: 'A'.repeat(5 * 1024 * 1024) }),
+    );
+    expect(photo.response.status).toBe(200);
+    const tooBig = await run('POST', `${BASE}/${ID}/photos`, 'A'.repeat(5800 * 1024 + 1));
+    expect(tooBig.response.status).toBe(413);
+
+    const start = await run('POST', `${BASE}/${ID}/start`, 'A'.repeat(17 * 1024));
+    expect(start.response.status).toBe(413);
+    expect(start.upstream).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unsafe import request that is not same-origin', async () => {
+    const upstream = upstreamOk();
+    const cross = new Request(`http://seller.localhost:3001/api/${BASE}/${ID}/start`, {
+      method: 'POST',
+      headers: { ...sameOrigin, 'sec-fetch-site': 'cross-site' },
+      body: '{}',
+    });
+    const response = await relay(config, cross, [...BASE.split('/'), ID, 'start'], upstream);
+    expect(response.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('passes the CSV report back with its type and nosniff', async () => {
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response('row,code\n1,ok\n', {
+          status: 200,
+          headers: { 'content-type': 'text/csv; charset=utf-8' },
+        }),
+      ),
+    );
+    const response = await relay(
+      config,
+      send('GET', `${BASE}/${ID}/report?kind=full`),
+      [...BASE.split('/'), ID, 'report'],
+      upstream,
+    );
+    expect(response.headers.get('content-type')).toContain('text/csv');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(await response.text()).toBe('row,code\n1,ok\n');
+  });
+});
+
+describe('relay of the seller product list', () => {
+  const CATEGORY = '0190a000-0000-7000-8000-0000000000c1';
+  const list = ['catalog', 'seller', 'products'];
+  const get = (query: string) =>
+    new Request(`http://seller.localhost:3001/api/catalog/seller/products${query}`, {
+      method: 'GET',
+      headers: { host: 'seller.localhost:3001' },
+    });
+
+  it('forwards the list parameters and drops everything else, keyset ones included', async () => {
+    const upstream = upstreamOk();
+    const query =
+      `?view=in-review&q=olive%20oil&status=draft&categoryId=${CATEGORY}&paused=true` +
+      '&typeCode=grocery&sort=name&direction=asc&page=2&pageSize=50&afterId=x&limit=5&extra=1';
+    expect((await relay(config, get(query), list, upstream)).status).toBe(200);
+    const sent = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(sent.pathname).toBe('/catalog/seller/products');
+    expect(Object.fromEntries(sent.searchParams)).toEqual({
+      view: 'in-review',
+      q: 'olive oil',
+      status: 'draft',
+      categoryId: CATEGORY,
+      paused: 'true',
+      typeCode: 'grocery',
+      sort: 'name',
+      direction: 'asc',
+      page: '2',
+      pageSize: '50',
+    });
+  });
+
+  it('drops a parameter with a value of the wrong shape, so the API never sees it', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      get('?view=everything&status=withdrawn&categoryId=x&paused=1&sort=price&page=-1&pageSize=30'),
+      list,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/seller/products');
+  });
+
+  it('still relays a product photo thumbnail for the list', async () => {
+    const upstream = upstreamOk();
+    const path = ['catalog', 'seller', 'products', CATEGORY, 'images', CATEGORY, 'thumb'];
+    const request = get(`/${CATEGORY}/images/${CATEGORY}/thumb`);
+    expect((await relay(config, request, path, upstream)).status).toBe(200);
   });
 });
