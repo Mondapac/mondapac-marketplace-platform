@@ -485,7 +485,20 @@ describe('seller read routes over HTTP (integration)', () => {
         published: null,
         pending: null,
         changeRequest: null,
+        pausedAt: null,
       });
+
+      // An admin pause shows as the instant it happened (the seller's banner "Mondapac paused this product").
+      product = Product.restore({
+        ...state(code),
+        status: 'published',
+        pausedAt: START,
+        pausedByAccountId: id<'Account'>(0xa001),
+      });
+      const paused = await get(code, `/catalog/seller/products/${PRODUCT}`, session);
+      expect(paused.status).toBe(200);
+      expect(paused.body).toMatchObject({ status: 'published', pausedAt: START.toString() });
+      product = Product.restore(state(code));
 
       changeRequest = {
         revisionId: id<'ProductRevision'>(0xd001),
