@@ -38,6 +38,7 @@ export type OwnImportResumeFailure =
   | SellerImportCommonFailure
   | { readonly code: 'seller.not-eligible' }
   | { readonly code: 'import.not-resumable' }
+  | { readonly code: 'import.access-lost' }
   | { readonly code: 'import.already-running' };
 
 export interface OwnImportResumeDependencies {
@@ -96,6 +97,9 @@ export class OwnImportResume extends UseCase<
         if (job.state !== 'stopped' || job.fileDeletedAt !== null) {
           return err({ code: 'import.not-resumable' } as const);
         }
+        // The job's identity (session or membership) is gone: it cannot be run again as that
+        // seller. The seller starts a new import from the file; the update key makes it safe.
+        if (job.stopReason === 'access-lost') return err({ code: 'import.access-lost' } as const);
         if (await deps.sellerJobs.hasActive(market, who.sellerId)) {
           return err({ code: 'import.already-running' } as const);
         }

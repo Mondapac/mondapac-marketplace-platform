@@ -28,6 +28,7 @@ import {
   sellerImportIdOf,
   type SellerImportCommonFailure,
 } from '../seller-import/seller-import-support';
+import type { OwnProductImageDelete } from './own-product-image-delete.use-case';
 import type {
   OwnProductImageUpload,
   OwnProductImageUploadFailure,
@@ -66,6 +67,8 @@ export interface OwnImportAddPhotoDependencies {
   readonly saveDraft: SaveDraft;
   /** `own-product.upload-image` built without the interactive save budget. */
   readonly ownImageUpload: OwnProductImageUpload;
+  /** `own-product.delete-image`: takes back an upload whose draft save or record failed. */
+  readonly ownImageDelete: OwnProductImageDelete;
   readonly eligibility: SellerEligibilityReader;
   readonly counters: RateCounterRepository;
   readonly counterKeys: RateCounterKeys;
@@ -278,12 +281,54 @@ export class OwnImportAddPhoto extends UseCase<
       },
       { spendSavesLimit: false },
     );
-    if (!saved.ok) return err(saved.error);
+    if (!saved.ok) {
+      // The image is in no gallery yet: take it back, so a retry uploads one photo, not two.
+      await this.#takeBack(context, productId, uploaded.value.imageId, null);
+      return err(saved.error);
+    }
 
     const recorded = await deps.unitOfWork.run(market, async () =>
       ok(await deps.sellerJobs.setPhotoImage(market, importId, nameKey, uploaded.value.imageId)),
     );
-    if (!recorded.ok || !recorded.value) return err({ code: 'access.unavailable' });
+    if (!recorded.ok || !recorded.value) {
+      // The image is in the draft's gallery but the name will be released: remove it from the
+      // gallery and delete it, so the retry does not leave a duplicate behind.
+      await this.#takeBack(context, productId, uploaded.value.imageId, {
+        content: base.value.content,
+        variantIds: base.value.variantIds,
+      });
+      return err({ code: 'access.unavailable' });
+    }
     return ok({ productId, image: uploaded.value });
+  }
+
+  /** Best effort: never throws, because the caller is already answering a failure. */
+  async #takeBack(
+    context: CallContext,
+    productId: Id<'Product'>,
+    imageId: string,
+    draft: {
+      readonly content: Readonly<Record<string, unknown>>;
+      readonly variantIds: readonly Id<'Variant'>[];
+    } | null,
+  ): Promise<void> {
+    const { deps } = this;
+    try {
+      if (draft !== null) {
+        const restored = await deps.saveDraft.execute(
+          context,
+          { productId, content: { ...draft.content }, variantIds: draft.variantIds },
+          { spendSavesLimit: false },
+        );
+        // The photo stays in the gallery when the draft cannot be put back: not deleted then.
+        if (!restored.ok) return;
+      }
+      await deps.ownImageDelete.execute(context, { productId, imageId });
+    } catch (error) {
+      this.#logger.warn({
+        msg: 'catalog.own-import-add-photo.take-back-failed',
+        error: String(error),
+      });
+    }
   }
 }

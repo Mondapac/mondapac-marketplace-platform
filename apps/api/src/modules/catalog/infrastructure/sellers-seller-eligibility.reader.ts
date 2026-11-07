@@ -30,7 +30,12 @@ export class SellersSellerEligibilityReader
     try {
       const answer = await this.sellers.sellingEligibility(context, [sellerId]);
       if (!answer.ok) {
-        return answer.error.code === 'sellers.unavailable' ? 'unavailable' : 'not-eligible';
+        // A read that failed, or a gate that could not decide, is "wait and retry"; only a
+        // plain denial or refusal is "not eligible".
+        const code: string = answer.error.code;
+        return code === 'sellers.unavailable' || code === 'access.unavailable'
+          ? 'unavailable'
+          : 'not-eligible';
       }
       return answer.value.get(sellerId)?.eligible === true ? 'eligible' : 'not-eligible';
     } catch {

@@ -37,7 +37,11 @@ describe.each(['AU', 'ZZ'])('SaveDraft in market %s', (code) => {
     }),
   );
 
-  function rig(stored: Record<string, unknown> | null = null, blocked: readonly string[] = []) {
+  function rig(
+    stored: Record<string, unknown> | null = null,
+    blocked: readonly string[] = [],
+    unavailable = false,
+  ) {
     const saves: { content: unknown; placeholders?: readonly string[] }[] = [];
     let reserved = 0;
     const check = {
@@ -48,13 +52,15 @@ describe.each(['AU', 'ZZ'])('SaveDraft in market %s', (code) => {
         Promise.resolve({
           ok: true as const,
           value: fields.map((field): ClaimTextVerdict =>
-            field.text.includes(BAD)
-              ? ({
-                  ...field,
-                  code: 'claim-text.found',
-                  hits: [{ term: 'cures', start: 0, end: 5 }],
-                } as unknown as ClaimTextVerdict)
-              : ({ ...field, code: 'clean' } as unknown as ClaimTextVerdict),
+            unavailable
+              ? ({ ...field, code: 'claim-text.check-unavailable' } as unknown as ClaimTextVerdict)
+              : field.text.includes(BAD)
+                ? ({
+                    ...field,
+                    code: 'claim-text.found',
+                    hits: [{ term: 'cures', start: 0, end: 5 }],
+                  } as unknown as ClaimTextVerdict)
+                : ({ ...field, code: 'clean' } as unknown as ClaimTextVerdict),
           ),
         }),
     } as unknown as CheckClaimText;
@@ -152,6 +158,16 @@ describe.each(['AU', 'ZZ'])('SaveDraft in market %s', (code) => {
       ok: false,
       error: { code: 'claim-text.refused', fields: [{ field }] },
     });
+    expect(r.saves).toHaveLength(0);
+  });
+
+  it('answers access.unavailable, not a refusal, when the matcher is unavailable', async () => {
+    const r = rig(null, [], true);
+    const result = await r.draft.executeAllOrNothing(context, {
+      ...input(),
+      content: content('Lamb'),
+    });
+    expect(result).toEqual({ ok: false, error: { code: 'access.unavailable' } });
     expect(r.saves).toHaveLength(0);
   });
 

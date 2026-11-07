@@ -218,6 +218,10 @@ export class SaveDraft {
       });
       refused = list;
       if (options.refuseAll === true && list.length > 0) {
+        // Only an unavailable matcher refused: nothing is wrong with the text, so the caller waits.
+        if (list.every((field) => field.code === 'claim-text.check-unavailable')) {
+          return err({ code: 'access.unavailable' });
+        }
         return err({ code: 'claim-text.refused', fields: list });
       }
       const restored = restoreRefused(content, stored?.content ?? null, refusedPaths);

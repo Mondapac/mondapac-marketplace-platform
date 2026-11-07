@@ -109,6 +109,7 @@ describe.each(['AU', 'ZZ'] as const)('own-import.add-photo in market %s', (code)
     readonly reserveRefused?: boolean;
     readonly uploadFails?: boolean;
     readonly saveFails?: boolean;
+    readonly recordFails?: boolean;
     readonly eligible?: boolean;
     readonly count?: number;
   }
@@ -145,7 +146,7 @@ describe.each(['AU', 'ZZ'] as const)('own-import.add-photo in market %s', (code)
       },
       setPhotoImage: (_m: unknown, _id: unknown, key: string, imageId: string) => {
         log.push(`set:${key}:${imageId}`);
-        return Promise.resolve(true);
+        return Promise.resolve(options.recordFails !== true);
       },
       releasePhoto: (_m: unknown, _id: unknown, key: string) => {
         log.push(`release:${key}`);
@@ -177,6 +178,12 @@ describe.each(['AU', 'ZZ'] as const)('own-import.add-photo in market %s', (code)
               ? { ok: false as const, error: { code: 'access.unavailable' as const } }
               : { ok: true as const, value: { variantIds: [], refusedFields: [] } },
           );
+        },
+      } as never,
+      ownImageDelete: {
+        execute: (_c: unknown, input: { imageId: string }) => {
+          log.push(`delete:${input.imageId}`);
+          return Promise.resolve({ ok: true as const, value: { deleted: true as const } });
         },
       } as never,
       ownImageUpload: {
@@ -256,6 +263,32 @@ describe.each(['AU', 'ZZ'] as const)('own-import.add-photo in market %s', (code)
     const save = rig({ saveFails: true });
     await add(save);
     expect(save.log.at(-1)).toBe('release:lamb.jpg');
+  });
+
+  it('takes the uploaded image back when the draft save fails, so a retry leaves no duplicate', async () => {
+    const r = rig({ saveFails: true });
+    await add(r);
+    expect(r.log).toEqual([
+      `reserve:lamb.jpg:${PRODUCT}`,
+      `upload:${PRODUCT}`,
+      `delete:${IMAGE}`,
+      'release:lamb.jpg',
+    ]);
+  });
+
+  it('puts the gallery back and deletes the image when the image id cannot be recorded', async () => {
+    const r = rig({ recordFails: true });
+    expect(await add(r)).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+    expect(r.log).toEqual([
+      `reserve:lamb.jpg:${PRODUCT}`,
+      `upload:${PRODUCT}`,
+      `set:lamb.jpg:${IMAGE}`,
+      `delete:${IMAGE}`,
+      'release:lamb.jpg',
+    ]);
+    // Two draft saves: the gallery with the image, then the gallery as it was.
+    expect(r.saves).toHaveLength(2);
+    expect(r.saves[1]).toMatchObject({ input: { content: { imageIds: ['img-0'] } } });
   });
 
   it('refuses a second request for a name that is reserved or added, uploading nothing', async () => {

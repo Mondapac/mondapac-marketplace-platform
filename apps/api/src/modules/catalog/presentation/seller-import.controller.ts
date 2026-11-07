@@ -81,6 +81,7 @@ export const SELLER_IMPORT_STATUS: Readonly<Record<string, number>> = Object.fre
   'import.nothing-to-import': 409,
   'import.already-running': 409,
   'import.not-resumable': 409,
+  'import.access-lost': 409,
   'import.not-discardable': 409,
   'import.report-unavailable': 409,
   'import.daily-rows-reached': 429,
@@ -330,7 +331,7 @@ export class SellerImportController {
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'import.not-found' })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description: 'import.not-resumable or import.already-running',
+    description: 'import.not-resumable, import.access-lost or import.already-running',
   })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
   async resumeImport(
