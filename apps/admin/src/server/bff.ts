@@ -232,6 +232,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // with the record version read. Approve, reject, suspend and revoke are not reachable here.
     'certification/admin/product-certificates/:id/documents',
     'certification/admin/product-certificates/:id/submit',
+    // Add a photo to a platform product's library (catalog, P1): a base64 photo, so the body cap
+    // of this path is the larger image one.
+    'catalog/admin/platform-products/:id/images',
     // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
     // merge other brands into it.
     'catalog/admin/brands/:id/approve',
@@ -347,6 +350,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/deletion-requests/:id',
     // A saved view of the product list (catalog).
     'catalog/admin/saved-filters/:id',
+    // Delete an unused photo of a platform product (catalog, P1).
+    'catalog/admin/platform-products/:id/images/:id',
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
@@ -361,6 +366,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/product-certificates/for-product/:id',
     'certification/admin/product-certificates/:id',
     'certification/admin/product-certificates/:id/history',
+    // The photo library of a platform product, for the form's images card (catalog, P1).
+    'catalog/admin/platform-products/:id/images',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
     // A product version's photo opened large, for its review (catalog).
@@ -670,12 +677,15 @@ const MAX_IMAGE_BODY_BYTES = 5_800 * 1024;
  */
 const CERT_DOCUMENT_PATH =
   /^certification\/admin\/product-certificates\/[0-9a-f-]{36}\/documents$/i;
+/** A platform product photo upload (catalog, P1): the same base64 photo cap. */
+const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/images$/i;
 
 /** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
 function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
   if (method === 'POST' && CERT_DOCUMENT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
+  if (method === 'POST' && PRODUCT_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
   return MAX_BODY_BYTES;
 }
 

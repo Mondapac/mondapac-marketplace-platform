@@ -164,6 +164,12 @@ const ICONS = {
       <path d="M4 18h16" />
     </>
   ),
+  plus: (
+    <>
+      <path d="M5 12h14" />
+      <path d="M12 5v14" />
+    </>
+  ),
   x: (
     <>
       <path d="M18 6 6 18" />
@@ -297,12 +303,6 @@ const ICONS = {
     <>
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6" />
-    </>
-  ),
-  plus: (
-    <>
-      <path d="M12 5v14" />
-      <path d="M5 12h14" />
     </>
   ),
   trash: (
