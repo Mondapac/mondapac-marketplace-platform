@@ -161,6 +161,8 @@ export interface UploadProblem {
   readonly tone: 'critical' | 'attention';
   readonly key: string;
   readonly values: Readonly<Record<string, string | number>>;
+  /** Column keys of the refused file (`columns.missing`, `columns.duplicate`), all of them. */
+  readonly columns?: readonly string[];
 }
 
 export interface FailureLike {
@@ -210,13 +212,15 @@ export function uploadProblemOf(failure: FailureLike): UploadProblem {
       return {
         tone: 'critical',
         key: 'columns-missing',
-        values: { column: details.columns?.[0] ?? '' },
+        values: {},
+        columns: details.columns ?? [],
       };
     case 'columns.duplicate':
       return {
         tone: 'critical',
         key: 'columns-duplicate',
-        values: { column: details.columns?.[0] ?? '' },
+        values: {},
+        columns: details.columns ?? [],
       };
     case 'file.empty':
     case 'file.no-rows':

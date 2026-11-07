@@ -9,7 +9,7 @@ vi.mock('../photo-prepare.ts', () => ({ preparePhoto: vi.fn() }));
 
 import { callApi } from '../../api/client.ts';
 import { preparePhoto } from '../photo-prepare.ts';
-import { PhotoStep } from './photo-step.tsx';
+import { PhotoStep, leftText } from './photo-step.tsx';
 import { classifyPhotoFailure, pickPhotos, runPhotoQueue } from './photo-queue.ts';
 
 const call = vi.mocked(callApi);
@@ -81,6 +81,23 @@ describe('picking photos', () => {
     expect(
       screen.getByText(/Left out: 1 file that is not a JPEG, PNG or WebP picture/),
     ).toBeTruthy();
+  });
+
+  it('prints counts of 1,000 or more in the left-out line', () => {
+    mount();
+    const junk = Array.from({ length: 1200 }, (_, index) => new File(['x'], `n${index}.txt`));
+    pick('Choose photos', [jpg('a.jpg'), ...junk]);
+    expect(
+      screen.getByText(/Left out: 1,200 files that are not JPEG, PNG or WebP pictures/),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toContain('NaN');
+  });
+
+  it('shows long waits in minutes or hours', () => {
+    const words = (key: string, v: Record<string, number>) => `${key}:${JSON.stringify(v)}`;
+    expect(leftText(30_000, words)).toBe('throttled-seconds:{"n":30}');
+    expect(leftText(300_000, words)).toBe('throttled-minutes:{"n":5}');
+    expect(leftText(5_400_000 + 1_800_000, words)).toBe('throttled-hours:{"h":2,"m":0}');
   });
 
   it('says how to use a ZIP without taking one', () => {
@@ -180,7 +197,8 @@ describe('sending photos', () => {
     expect(await screen.findByText('Too many photos for now')).toBeTruthy();
     // a was sent, b was refused, c was never tried.
     expect(call).toHaveBeenCalledTimes(2);
-    expect(screen.getByText(/You can go on at .*in 90 seconds/)).toBeTruthy();
+    expect(screen.getByText(/You can go on at/)).toBeTruthy();
+    expect(screen.getByText('90 seconds left')).toBeTruthy();
     const wait = screen.getByRole('button', { name: 'Continue with 2 photos' });
     expect(wait).toHaveProperty('disabled', true);
 

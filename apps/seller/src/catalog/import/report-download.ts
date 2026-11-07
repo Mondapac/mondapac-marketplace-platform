@@ -15,7 +15,7 @@ export function saveBlob(blob: Blob, filename: string): void {
   document.body.append(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 /**

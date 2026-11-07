@@ -1434,7 +1434,8 @@
         "has-errors": "{count, plural, one {# row has errors} other {# rows have errors}}",
         "has-errors-body": "Fix them in your file and upload it again, or import the valid rows now and add the rest later.",
         "back": "Back",
-        "import": "{mode, select, catalogue {Import {count} offers} other {Import {count} rows}}"
+        "import": "{mode, select, catalogue {Import {count} offers} other {Import {count} rows}}",
+        "warnings-clean": "Some rows have warnings; see the full report after the import."
       },
       "tiles": {
         "rows": "Rows in the file",
@@ -1458,7 +1459,7 @@
         "value": "Value in the file",
         "problem": "Problem",
         "empty": "(empty)",
-        "showing": "Showing {shown} of {total} errors. The report has all of them.",
+        "showing": "Showing {shown, number} of {total, number} errors. The report has all of them.",
         "download": "Download error report (CSV)"
       },
       "problem": {
@@ -1470,41 +1471,41 @@
         "category-unknown": "No category with this name",
         "category-ambiguous": "More than one category has this name",
         "product-type-unknown": "No product type with this name",
-        "type-not-allowed": "Your store may not sell this product type",
-        "import-type-locked": "The product type of an existing product can’t be changed",
+        "type-not-allowed": "Your account is not set up to sell this product type",
+        "import-type-locked": "The product type of an existing product cannot be changed",
         "import-wrong-mode": "This row belongs to the other kind of import",
         "condition-unknown": "No condition with this name",
-        "gtin-invalid": "Not a valid barcode: the check digit is wrong",
-        "gtin-length": "Not a valid barcode length",
-        "gtin-duplicate": "This barcode is already used by another product",
+        "gtin-invalid": "Not a valid barcode (8, 12, 13 or 14 digits with a correct check digit)",
+        "gtin-duplicate": "Another product already has this barcode",
         "image-url-not-fetched": "Image links are not fetched: add the photo in the photo step",
         "column-not-stored": "Checked, not stored: this catalogue has no attribute for it",
         "tax-category-unknown": "No tax category with this code",
         "tax-category-default-used": "No tax category given: the market default is used",
         "text-invalid-characters": "Contains a character that can’t be stored",
-        "sku-invalid": "The SKU can’t be used: use letters, digits and - _ . only",
-        "import-duplicate-row": "Same SKU as row {row}",
+        "sku-invalid": "The Seller SKU has a character that is not allowed",
+        "import-duplicate-row": "Same options as row {row}",
         "duplicate-in-file": "Same value as row {row}",
-        "import-group-mismatch": "Does not match the first row of this product (row {row})",
-        "import-group-split": "The rows of one product must be next to each other",
-        "import-key-conflict": "This SKU is used for another product in the file",
-        "import-option-missing": "A variant needs a value for this option",
-        "import-option-not-allowed": "This product type has no such option",
-        "import-option-unknown": "No option value with this name",
-        "import-group-error": "Another row of this product has an error",
-        "variant-limit-reached": "This product has more variants than the limit",
-        "offer-exists-for-product": "You already have an offer on this product",
-        "product-not-found": "No product with this code",
+        "import-group-mismatch": "A cell of this product differs from the first row of the same Seller SKU",
+        "import-group-split": "Rows of this Seller SKU must be together",
+        "import-key-conflict": "This Seller SKU is already used by another product of yours",
+        "import-option-missing": "Fill the same option columns on every row of this product",
+        "import-option-not-allowed": "This product has no options: leave the option cells empty",
+        "import-option-unknown": "No option with this name",
+        "import-group-error": "Another row of this product has an error, so none of its rows is imported",
+        "variant-limit-reached": "This product would have more variants than the market allows",
+        "offer-exists-for-product": "You already sell this product",
+        "product-not-found": "No product with this code can be sold from the catalogue",
         "attribute-type": "{column} has the wrong kind of value",
         "attribute-option-unknown": "{column} is not one of the allowed values",
         "attribute-required": "{column} is required for this product type",
-        "claim-text-found": "The text mentions a certification. Certification belongs to an offer and is set there.",
-        "claim-text-refused": "The text mentions a certification. Certification belongs to an offer and is set there.",
-        "other": "{column} is not valid"
+        "claim-text-found": "The text mentions a certification. Certification belongs to an offer you tag, not to the text",
+        "claim-text-refused": "The text mentions a certification. Certification belongs to an offer you tag, not to the text",
+        "other": "{column} is not valid",
+        "text-blocked-term": "The text holds a word the platform does not allow"
       },
       "preview": {
         "caption": "The first rows of the file",
-        "first": "Showing the first {shown} of {total} rows",
+        "first": "Showing the first {shown, number} of {total, number} rows",
         "none": "–",
         "options": "Options"
       },
@@ -1551,25 +1552,30 @@
         "reason": "Reason"
       },
       "failure": {
-        "claim-text-found": "The text mentions a certification. Certification belongs to an offer, not to the product.",
-        "claim-text-refused": "The text mentions a certification. Certification belongs to an offer, not to the product.",
+        "claim-text-found": "The text mentions a certification. Certification belongs to an offer you tag, not to the text",
+        "claim-text-refused": "The text mentions a certification. Certification belongs to an offer you tag, not to the text",
+        "claim-text-check-unavailable": "The certification-wording check was unavailable",
+        "text-blocked-term": "The text holds a word the platform does not allow",
         "row-changed": "The row no longer passes the check",
-        "group-failed": "Another row of this product could not be added",
-        "type-not-allowed": "Your store may no longer sell this product type",
-        "product-not-found": "The product is no longer yours or no longer there",
-        "offer-exists-for-product": "You already have an offer on this product",
-        "variant-limit-reached": "This product has more variants than the limit",
-        "revision-not-ready": "The product did not pass the catalogue checks",
-        "validation-failed": "A value in the row is not valid",
-        "access-denied": "You no longer have access to add this row",
-        "seller-not-eligible": "Your store can’t sell right now",
-        "row-failed": "The row could not be added",
-        "other": "The row could not be added"
+        "import-group-error": "Another row of this product has an error, so none of its rows is imported",
+        "import-key-conflict": "This Seller SKU is already used by another product of yours",
+        "import-type-locked": "The product type of an existing product cannot be changed",
+        "import-wrong-mode": "This row belongs to the other kind of import",
+        "offer-sku-taken": "This Seller SKU was taken meanwhile",
+        "offer-exists-for-product": "You already sell this product",
+        "product-not-found": "No product with this code can be sold from the catalogue",
+        "type-not-allowed": "Your account is not set up to sell this product type",
+        "variant-limit-reached": "This product would have more variants than the market allows",
+        "setting-product-creation-off": "This kind of import is switched off in this market",
+        "setting-sell-from-catalogue-off": "This kind of import is switched off in this market",
+        "seller-not-eligible": "Your account can no longer sell",
+        "row-failed": "The row could not be imported",
+        "other": "The row could not be imported"
       },
       "stop": {
         "rate-limited": {
-          "label": "Hourly limit reached",
-          "help": "The import saved as many drafts as the hourly limit allows. Retry the rest in a while."
+          "label": "Paused by a rate limit",
+          "help": "The import was paused by a rate limit. Retry the rest in a while."
         },
         "access-lost": {
           "label": "Your access changed",
@@ -1629,11 +1635,11 @@
           "body": "Shorten the longest cells (descriptions are the usual cause), then upload the file again."
         },
         "columns-missing": {
-          "title": "The column {column} is missing",
+          "title": "{count, plural, one {The column {columns} is missing} other {These columns are missing: {columns}}}",
           "body": "Use the template, or rename the column in your file. Columns we don’t know are ignored and listed after the check."
         },
         "columns-duplicate": {
-          "title": "The column {column} appears twice",
+          "title": "{count, plural, one {The column {columns} appears twice} other {These columns appear more than once: {columns}}}",
           "body": "Keep one column of each kind, then upload the file again."
         },
         "formula": {
@@ -1702,7 +1708,7 @@
         "choose-photos": "Choose photos",
         "choose-folder": "Choose a folder",
         "picked": "{count, plural, =0 {No photos found in your choice} one {# photo ready to send} other {# photos ready to send}}",
-        "left-out": "Left out: {notPhotos, plural, =0 {} one {# file that is not a JPEG, PNG or WebP picture. } other {# files that are not JPEG, PNG or WebP pictures. }}{sameName, plural, =0 {} one {# file with a name already picked. } other {# files with names already picked. }}{overLimit, plural, =0 {} one {# file over the limit of {max} per step.} other {# files over the limit of {max} per step.}}",
+        "left-out": "Left out: {notPhotos, plural, =0 {} one {# file that is not a JPEG, PNG or WebP picture. } other {# files that are not JPEG, PNG or WebP pictures. }}{sameName, plural, =0 {} one {# file with a name already picked. } other {# files with names already picked. }}{overLimit, plural, =0 {} one {# file over the limit of {max, number} per step.} other {# files over the limit of {max, number} per step.}}",
         "meter": "Photo upload progress",
         "progress": "{done} of {total} photos done",
         "tile": {
@@ -1727,14 +1733,17 @@
         "continue": "{count, plural, one {Continue with # photo} other {Continue with # photos}}",
         "paused": {
           "throttled-title": "Too many photos for now",
-          "throttled-wait": "The upload is paused. You can go on at {time}, in {seconds, plural, one {# second} other {# seconds}}.",
+          "throttled-wait": "The upload is paused. You can go on at {time}.",
           "throttled-ready": "You can go on now.",
           "closed-title": "The photo step is over",
           "closed-body": "Photos can only be added for seven days after an import ends. Add the rest on each product.",
           "access-title": "You can’t add photos right now",
           "access-body": "Your access changed or your session ended. Reload the page, then try again.",
           "unavailable-title": "The upload was interrupted",
-          "unavailable-body": "The server did not answer. Continue to try the photos that are left."
+          "unavailable-body": "The server did not answer. Continue to try the photos that are left.",
+          "throttled-seconds": "{n, plural, one {# second} other {# seconds}} left",
+          "throttled-minutes": "{n, plural, one {# minute} other {# minutes}} left",
+          "throttled-hours": "{h, plural, one {# hour} other {# hours}} {m, plural, =0 {} one {# minute} other {# minutes}} left"
         }
       }
     }

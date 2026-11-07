@@ -21,6 +21,7 @@ import {
   FileRow,
   IgnoredColumns,
   ImportFooter,
+  LINK_CLASS,
   ImportSection,
   ImportSteps,
   ImportTiles,
@@ -84,6 +85,16 @@ function kindOf(mode: ImportMode): 'catalogue' | 'mine' {
   return mode === 'sell-from-catalogue' ? 'catalogue' : 'mine';
 }
 
+/** The values of an upload problem; column keys read as the template's column names. */
+function problemValues(
+  problem: UploadProblem,
+  t: ReturnType<typeof useTranslations>,
+): Record<string, string | number> {
+  if (problem.columns === undefined) return { ...problem.values };
+  const names = problem.columns.map((key) => (t.has(`column.${key}`) ? t(`column.${key}`) : key));
+  return { ...problem.values, count: names.length, columns: names.join(', ') };
+}
+
 function percent(done: number, total: number): number {
   return total <= 0 ? 0 : Math.min(100, Math.round((done / total) * 100));
 }
@@ -120,7 +131,9 @@ export function SellerImport({
   const [busy, setBusy] = useState(false);
   const [actionFailed, setActionFailed] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const cancelled = useRef(false);
+  // Each upload takes a number; an answer is used only while its number is the latest, so a late
+  // answer of a cancelled or replaced upload is ignored.
+  const uploadToken = useRef(0);
   const number = (value: number) => numberFormat(locale, {}).format(value);
   const maxBytes = template?.limits.fileBytes ?? FALLBACK_MAX_BYTES;
   const templateOfMode = template?.modes.find((entry) => entry.mode === mode) ?? null;
@@ -159,11 +172,20 @@ export function SellerImport({
     if (watched === null) return undefined;
     const timer = setInterval(() => {
       void callApi<ImportView>('GET', `${IMPORT_BASE}/${watched}`).then((result) => {
-        if (result.ok) setPhase({ kind: 'job', view: result.body });
+        if (result.ok) {
+          setPhase({ kind: 'job', view: result.body });
+          return;
+        }
+        // A session that ended or an import that is gone will not come back by asking again.
+        if (['session.invalid', 'request.csrf', 'import.not-found'].includes(result.failure.code)) {
+          clearInterval(timer);
+          setActionFailed(actionErrorKey(result.failure));
+          if (result.failure.code === 'import.not-found') void load();
+        }
       });
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [watched]);
+  }, [watched, load]);
 
   const discard = useCallback(
     async (id: string) => {
@@ -174,7 +196,7 @@ export function SellerImport({
 
   const upload = useCallback(
     async (file: File) => {
-      cancelled.current = false;
+      const token = ++uploadToken.current;
       setActionFailed(null);
       if (file.size > maxBytes) {
         setPhase({
@@ -185,6 +207,7 @@ export function SellerImport({
       }
       setPhase({ kind: 'checking', name: file.name, bytes: file.size });
       const data = await readAsBase64(file);
+      if (token !== uploadToken.current) return;
       if (data === null) {
         setPhase({
           kind: 'upload',
@@ -198,7 +221,7 @@ export function SellerImport({
         { mode, fileName: file.name, data },
         csrfToken,
       );
-      if (cancelled.current) {
+      if (token !== uploadToken.current) {
         if (result.ok) await discard(result.body.id);
         return;
       }
@@ -223,7 +246,7 @@ export function SellerImport({
 
   const cancelCheck = async () => {
     if (phase.kind === 'job' && phase.view.state === 'checked') await discard(phase.view.id);
-    cancelled.current = true;
+    uploadToken.current += 1;
     goToList();
   };
 
@@ -283,7 +306,7 @@ export function SellerImport({
     document.body.append(link);
     link.click();
     link.remove();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
   };
 
   const active =
@@ -321,8 +344,11 @@ export function SellerImport({
           {phase.problem === null ? null : (
             <ProblemBanner
               tone={phase.problem.tone}
-              title={t(`upload-problem.${phase.problem.key}.title`, phase.problem.values)}
-              body={t(`upload-problem.${phase.problem.key}.body`, phase.problem.values)}
+              title={t(
+                `upload-problem.${phase.problem.key}.title`,
+                problemValues(phase.problem, t),
+              )}
+              body={t(`upload-problem.${phase.problem.key}.body`, problemValues(phase.problem, t))}
             />
           )}
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,32rem)]">
@@ -435,7 +461,7 @@ export function SellerImport({
                 <Button
                   variant="link"
                   onClick={() => {
-                    cancelled.current = true;
+                    uploadToken.current += 1;
                     setPhase({ kind: 'upload', problem: null });
                   }}
                 >
@@ -453,7 +479,7 @@ export function SellerImport({
               <Button
                 variant="secondary"
                 onClick={() => {
-                  cancelled.current = true;
+                  uploadToken.current += 1;
                   goToList();
                 }}
               >
@@ -621,6 +647,7 @@ function CheckResult({
       {clean ? (
         <Banner tone="success" title={t('result.all-ready', { count: view.rows })}>
           <p>{t('result.all-ready-body')}</p>
+          {view.warnings > 0 ? <p className="mt-1">{t('result.warnings-clean')}</p> : null}
         </Banner>
       ) : (
         <Banner tone="attention" title={t('result.has-errors', { count: view.errors })}>
@@ -734,11 +761,11 @@ function Finished({
           },
         ]}
       />
-      <p className="text-sm text-fg-muted">
-        {t('finished.time', {
-          time: view.durationSeconds === null ? '–' : durationText(view.durationSeconds, t),
-        })}
-      </p>
+      {view.durationSeconds === null ? null : (
+        <p className="text-sm text-fg-muted">
+          {t('finished.time', { time: durationText(view.durationSeconds, t) })}
+        </p>
+      )}
       {view.failureLines.length > 0 ? <FailureTable lines={view.failureLines} /> : null}
       <ImportFooter
         start={
@@ -749,10 +776,7 @@ function Finished({
         }
         end={
           <>
-            <a
-              className="inline-flex min-h-(--mp-size-control-sm) items-center gap-1.5 text-sm font-medium text-link underline-offset-2 hover:underline"
-              href={LIST_PATH}
-            >
+            <a className={LINK_CLASS} href={LIST_PATH}>
               <Icon name="link" className="size-4" />
               {t('finished.view')}
             </a>

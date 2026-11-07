@@ -161,10 +161,10 @@ export function PhotoStep({
           {picked.notPhotos + picked.sameName + picked.overLimit === 0 ? null : (
             <p className="text-sm text-fg-muted">
               {t('left-out', {
-                notPhotos: number(picked.notPhotos),
-                sameName: number(picked.sameName),
-                overLimit: number(picked.overLimit),
-                max: number(MAX_PICKED_PHOTOS),
+                notPhotos: picked.notPhotos,
+                sameName: picked.sameName,
+                overLimit: picked.overLimit,
+                max: MAX_PICKED_PHOTOS,
               })}
             </p>
           )}
@@ -280,10 +280,9 @@ function PausedBanner({
     return (
       <Banner tone="attention" title={t('throttled-title')}>
         <p role="status">
-          {waitingMs > 0
-            ? t('throttled-wait', { time: when, seconds: Math.ceil(waitingMs / 1000) })
-            : t('throttled-ready')}
+          {waitingMs > 0 ? t('throttled-wait', { time: when }) : t('throttled-ready')}
         </p>
+        {waitingMs > 0 ? <p className="text-sm">{leftText(waitingMs, t)}</p> : null}
       </Banner>
     );
   }
@@ -295,4 +294,16 @@ function PausedBanner({
       <p>{t(`${stop.kind}-body`)}</p>
     </Banner>
   );
+}
+
+/** The time left, in the largest unit that reads well: seconds, minutes, or hours and minutes. */
+export function leftText(
+  waitingMs: number,
+  t: (key: string, values: Record<string, number>) => string,
+): string {
+  const seconds = Math.max(1, Math.ceil(waitingMs / 1000));
+  if (seconds <= 120) return t('throttled-seconds', { n: seconds });
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 120) return t('throttled-minutes', { n: minutes });
+  return t('throttled-hours', { h: Math.floor(minutes / 60), m: minutes % 60 });
 }

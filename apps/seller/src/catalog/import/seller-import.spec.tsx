@@ -215,7 +215,7 @@ describe('seller import page', () => {
     expect(rows[0]?.textContent).toContain('No category with this name');
     expect(rows[1]?.textContent).toContain('Title is required');
     expect(rows[2]?.textContent).toContain('Option (colour)');
-    expect(rows[3]?.textContent).toContain('Same SKU as row 89');
+    expect(rows[3]?.textContent).toContain('Same options as row 89');
     expect(rows[4]?.textContent).toContain('is not valid');
     expect(screen.getByText('Showing 5 of 20 errors. The report has all of them.')).toBeTruthy();
     // Ignored columns, with the "set in Prices and Stock" mark.
@@ -304,8 +304,13 @@ describe('seller import page', () => {
     ['file.empty', 'The file has no product rows', undefined],
     ['file.no-rows', 'The file has no product rows', undefined],
     ['file.unreadable', 'The file can’t be read', undefined],
-    ['columns.missing', 'The column sku is missing', { columns: ['sku'] }],
-    ['columns.duplicate', 'The column title appears twice', { columns: ['title'] }],
+    ['columns.missing', 'The column Seller SKU is missing', { columns: ['sku'] }],
+    [
+      'columns.missing',
+      'These columns are missing: Seller SKU, Title, mystery',
+      { columns: ['sku', 'title', 'mystery'] },
+    ],
+    ['columns.duplicate', 'The column Title appears twice', { columns: ['title'] }],
     ['setting.product-creation-off', 'Importing your own products is switched off', undefined],
     ['setting.sell-from-catalogue-off', 'Selling from the catalogue is switched off', undefined],
     ['request.throttled', 'Too many files checked', { retryAfterSeconds: 600 }],
@@ -392,7 +397,7 @@ describe('seller import page', () => {
     );
     mount();
     expect(await screen.findByText('The import stopped after 40 rows')).toBeTruthy();
-    expect(screen.getByText('Hourly limit reached')).toBeTruthy();
+    expect(screen.getByText('Paused by a rate limit')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry the rest' }));
     expect(await screen.findByText('Importing')).toBeTruthy();
     expect(call).toHaveBeenCalledWith('POST', `${BASE}/${ID}/resume`, {}, 'csrf-1');
@@ -502,6 +507,153 @@ describe('seller import page', () => {
     expect(within(steps).getByText('Check file').closest('li')?.getAttribute('aria-current')).toBe(
       'step',
     );
+  });
+});
+
+describe('seller import page: review fixes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.defineProperty(window, 'location', { value: { assign }, writable: true });
+  });
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it('words the failure table with the codes a run really reports', async () => {
+    const codes = [
+      'import.group-error',
+      'import.key-conflict',
+      'import.type-locked',
+      'import.wrong-mode',
+      'offer.sku-taken',
+      'setting.product-creation-off',
+      'setting.sell-from-catalogue-off',
+      'text.blocked-term',
+      'claim-text.check-unavailable',
+      'claim-text.refused',
+      'row.changed',
+    ];
+    serve(
+      view({
+        state: 'finished',
+        toImport: 100,
+        created: 89,
+        photoStepOpen: true,
+        failed: codes.length,
+        failureLines: codes.map((code, index) => ({
+          rowNumber: index + 2,
+          sku: `S-${index}`,
+          code,
+        })),
+      }),
+    );
+    mount();
+    expect(await screen.findByText('This Seller SKU was taken meanwhile')).toBeTruthy();
+    const table = screen.getByRole('table', { name: 'Rows that were not imported' });
+    expect(table.textContent).not.toContain('The row could not be imported');
+    expect(table.textContent).toContain('The certification-wording check was unavailable');
+    expect(table.textContent).toContain('The text holds a word the platform does not allow');
+    expect(table.textContent).toContain('This kind of import is switched off in this market');
+    expect(table.textContent).toContain('cannot be changed');
+  });
+
+  it('shows the rate-limit stop copy', async () => {
+    serve(view({ state: 'stopped', toImport: 100, stopReason: 'rate-limited', canResume: true }));
+    mount();
+    expect(
+      await screen.findByText('The import was paused by a rate limit. Retry the rest in a while.'),
+    ).toBeTruthy();
+  });
+
+  it('hides the time taken when there is no duration', async () => {
+    serve(
+      view({ state: 'stopped', toImport: 100, stopReason: 'unexpected', durationSeconds: null }),
+    );
+    mount();
+    await screen.findByText(/The import stopped/);
+    expect(screen.queryByText(/Time taken/)).toBeNull();
+  });
+
+  it('says so on a clean check with warnings', async () => {
+    serve(view({ errors: 0, ready: 120, errorLines: [], warnings: 4 }));
+    mount();
+    expect(
+      await screen.findByText('Some rows have warnings; see the full report after the import.'),
+    ).toBeTruthy();
+  });
+
+  it('formats the counts of the error and preview captions for the locale', async () => {
+    serve(view({ errors: 1500 }));
+    mount();
+    expect(
+      await screen.findByText('Showing 5 of 1,500 errors. The report has all of them.'),
+    ).toBeTruthy();
+    cleanup();
+    serve(view({ errors: 0, ready: 1500, rows: 1500, errorLines: [] }));
+    mount();
+    expect(await screen.findByText('Showing the first 1 of 1,500 rows')).toBeTruthy();
+  });
+
+  it('shows no photo step for a stopped job whose step is closed', async () => {
+    serve(
+      view({
+        state: 'stopped',
+        toImport: 100,
+        stopReason: 'unexpected',
+        canResume: true,
+        photoStepOpen: false,
+      }),
+    );
+    mount();
+    expect(await screen.findByText(/The import stopped/)).toBeTruthy();
+    expect(screen.queryByText('Add your photos')).toBeNull();
+  });
+
+  it.each([
+    ['session.invalid', /session expired/],
+    ['import.not-found', /no longer there/],
+  ])('shows a poll failure %s instead of ignoring it', async (code, text) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const running = view({ state: 'running', skipErrors: true, toImport: 100, created: 20 });
+    serve(running, (method, path) =>
+      method === 'GET' && path === `${BASE}/${ID}` ? fail(401, code) : undefined,
+    );
+    mount();
+    await screen.findByText('20 of 100 rows done');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    expect(await screen.findByText(text)).toBeTruthy();
+  });
+
+  it('ignores the late answer of an upload that was replaced', async () => {
+    let releaseFirst: ((value: never) => void) | undefined;
+    let uploads = 0;
+    serve(null, (method, path) => {
+      if (method !== 'POST' || path !== BASE) return undefined;
+      uploads += 1;
+      if (uploads === 1) {
+        return new Promise((resolve) => {
+          releaseFirst = resolve;
+        });
+      }
+      return ok(view({ fileLabel: 'second.csv', errors: 0, ready: 10, rows: 10, errorLines: [] }));
+    });
+    const { container } = mount();
+    await screen.findByText('Upload a file');
+    pick(container, new File(['a'], 'first.csv'));
+    await screen.findByText('Checking your file');
+    fireEvent.click(screen.getByRole('button', { name: 'Choose another file' }));
+    pick(container, new File(['b'], 'second.csv'));
+    expect(await screen.findByText('second.csv')).toBeTruthy();
+    await act(async () => {
+      releaseFirst?.(await ok(view({ fileLabel: 'first.csv' })));
+    });
+    expect(screen.getByText('second.csv')).toBeTruthy();
+    expect(screen.queryByText('first.csv')).toBeNull();
+    // The stale check is dropped on the server.
+    expect(call).toHaveBeenCalledWith('POST', `${BASE}/${ID}/discard`, {}, 'csrf-1');
   });
 });
 

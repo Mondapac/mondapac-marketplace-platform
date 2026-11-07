@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, CARD_TABLE, Card, Icon } from '@mondapac/ui';
+import { Banner, Button, CARD_TABLE, Card, Icon } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import {
@@ -271,10 +271,10 @@ export function ErrorTable({
         <p className="text-sm text-fg-muted">
           {t('errors.showing', { shown: lines.length, total })}
         </p>
-        <button type="button" className={LINK_CLASS} onClick={onReport}>
-          <Icon name="download" className="size-4" />
+        <Button variant="link" onClick={onReport}>
+          <Icon name="download" className="me-1.5 size-4" />
           {t('errors.download')}
-        </button>
+        </Button>
       </div>
     </Card>
   );
