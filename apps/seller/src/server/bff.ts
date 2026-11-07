@@ -45,6 +45,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // the unread count it polls.
     'notifications/seller/notices',
     'notifications/seller/notices/unread-count',
+    // The seller import (catalog design 14c): the templates, and the latest import of the seller.
+    'catalog/seller/imports/template',
+    'catalog/seller/imports/current',
   ]),
   PUT: new Set([
     // The signed-in member's own display name (profile).
@@ -92,6 +95,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/withdraw',
     'inventory/seller/sources',
     'catalog/seller/products',
+    // The import's upload: a base64 CSV or XLSX file in a JSON body, checked and saved as nothing but a record.
+    'catalog/seller/imports',
     // Each asks for a second-factor code in the body and answers with a one-time Stripe address.
     'payments/seller/payout-account',
     'payments/seller/payout-account/link',
@@ -122,6 +127,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/products/:id/attribute-suggestions',
     'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
+    // The seller import: confirm, retry the rest, cancel a check, and one photo of the photo step.
+    'catalog/seller/imports/:id/start',
+    'catalog/seller/imports/:id/resume',
+    'catalog/seller/imports/:id/discard',
+    'catalog/seller/imports/:id/photos',
     'ordering/seller/orders/:id/ship',
     'ordering/seller/orders/:id/deliver',
     'pricing/seller/offers/:id/variants/:id/special-price/withdraw',
@@ -133,7 +143,13 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   PATCH: ['reviews/seller/:id/reply'],
   DELETE: ['catalog/seller/offers/:id', 'catalog/seller/products/:id/images/:id'],
   // A product photo for the panel's <img> tags: the API serves a JPEG it wrote itself.
-  GET: ['catalog/seller/products/:id/images/:id/:size', 'sellers/store-profile/images/:id/:size'],
+  GET: [
+    'catalog/seller/products/:id/images/:id/:size',
+    'sellers/store-profile/images/:id/:size',
+    // An import (polled) and its CSV report (query: `kind`).
+    'catalog/seller/imports/:id',
+    'catalog/seller/imports/:id/report',
+  ],
 };
 
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
@@ -152,11 +168,19 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   // The API's own opaque cursor (epoch milliseconds of the publication, an underscore, the review id).
   'reviews/seller': { cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/ },
 };
+/** Per GET template with ids, the query keys passed on (same rules as {@link QUERY_KEYS}). */
+const QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
+  'catalog/seller/imports/:id/report': { kind: /^(errors|full)$/ },
+};
 const QUERY_VALUE_MAX = 512;
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
-function upstreamQuery(method: string, target: string, requestUrl: string): string {
-  const keys = method === 'GET' ? QUERY_KEYS[target] : undefined;
+function upstreamQuery(method: string, path: readonly string[], requestUrl: string): string {
+  const keys =
+    method !== 'GET'
+      ? undefined
+      : (QUERY_KEYS[path.join('/')] ??
+        Object.entries(QUERY_KEYS_WITH_ID).find(([template]) => matches(template, path))?.[1]);
   if (keys === undefined) return '';
   const source = new URL(requestUrl).searchParams;
   const kept = new URLSearchParams();
@@ -195,6 +219,11 @@ function isAllowed(method: string, path: readonly string[]): boolean {
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_PHOTO_BODY_BYTES = 5800 * 1024;
 const PHOTO_UPLOAD = 'catalog/seller/products/:id/images';
+/** The import upload carries a base64 file of at most 10 MiB (14 MiB of text), the API's own limit. */
+const MAX_IMPORT_UPLOAD_BODY_BYTES = 14500 * 1024;
+const IMPORT_UPLOAD = 'catalog/seller/imports';
+/** One photo of the import's photo step is a product photo: the same base64 body. */
+const IMPORT_PHOTO = 'catalog/seller/imports/:id/photos';
 /** The whole-profile save carries the text and up to two such pictures: twice the photo body. */
 const MAX_PROFILE_SAVE_BODY_BYTES = 2 * MAX_PHOTO_BODY_BYTES;
 const STORE_PROFILE_SAVE = 'sellers/store-profile';
@@ -206,7 +235,11 @@ const STORE_IMAGE_UPLOADS: ReadonlySet<string> = new Set([
 function bodyLimitFor(method: string, path: readonly string[]): number {
   if (method === 'PUT' && path.join('/') === STORE_PROFILE_SAVE) return MAX_PROFILE_SAVE_BODY_BYTES;
   if (method === 'PUT' && STORE_IMAGE_UPLOADS.has(path.join('/'))) return MAX_PHOTO_BODY_BYTES;
-  return method === 'POST' && matches(PHOTO_UPLOAD, path) ? MAX_PHOTO_BODY_BYTES : MAX_BODY_BYTES;
+  if (method === 'POST' && path.join('/') === IMPORT_UPLOAD) return MAX_IMPORT_UPLOAD_BODY_BYTES;
+  if (method === 'POST' && (matches(PHOTO_UPLOAD, path) || matches(IMPORT_PHOTO, path))) {
+    return MAX_PHOTO_BODY_BYTES;
+  }
+  return MAX_BODY_BYTES;
 }
 
 /** Request headers that cross to the API. Everything else is dropped. */
@@ -352,7 +385,7 @@ export async function relay(
   let upstream: Response;
   try {
     upstream = await fetchImpl(
-      `${config.apiBaseUrl}/${target}${upstreamQuery(request.method, target, request.url)}`,
+      `${config.apiBaseUrl}/${target}${upstreamQuery(request.method, path, request.url)}`,
       {
         method: request.method,
         headers: outgoing,

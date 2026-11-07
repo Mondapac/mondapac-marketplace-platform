@@ -1121,3 +1121,129 @@ describe('relay allowlist for the seller reviews', () => {
     expect(response.status).toBe(403);
   });
 });
+
+describe('relay of the seller import routes (catalog design 14c)', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000b1';
+  const BASE = 'catalog/seller/imports';
+  const send = (method: string, path: string, body = '{}') =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method,
+      headers: sameOrigin,
+      ...(method === 'GET' || method === 'HEAD' ? {} : { body }),
+    });
+  const run = async (method: string, path: string, body?: string) => {
+    const upstream = upstreamOk();
+    const segments = (path.split('?')[0] ?? '').split('/');
+    const response = await relay(config, send(method, path, body), segments, upstream);
+    return { response, upstream };
+  };
+
+  it.each([
+    ['GET', `${BASE}/template`],
+    ['GET', `${BASE}/current`],
+    ['GET', `${BASE}/${ID}`],
+    ['GET', `${BASE}/${ID}/report?kind=errors`],
+    ['POST', BASE],
+    ['POST', `${BASE}/${ID}/start`],
+    ['POST', `${BASE}/${ID}/resume`],
+    ['POST', `${BASE}/${ID}/discard`],
+    ['POST', `${BASE}/${ID}/photos`],
+  ])('relays %s %s', async (method, path) => {
+    const { response, upstream } = await run(method, path);
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['PUT', BASE],
+    ['DELETE', BASE],
+    ['PATCH', `${BASE}/${ID}`],
+    ['PUT', `${BASE}/${ID}`],
+    ['DELETE', `${BASE}/${ID}`],
+    ['POST', `${BASE}/${ID}`],
+    ['POST', `${BASE}/template`],
+    ['POST', `${BASE}/current`],
+    ['GET', BASE],
+    ['GET', `${BASE}/${ID}/start`],
+    ['GET', `${BASE}/${ID}/resume`],
+    ['GET', `${BASE}/${ID}/discard`],
+    ['GET', `${BASE}/${ID}/photos`],
+    ['POST', `${BASE}/${ID}/report`],
+    ['PUT', `${BASE}/${ID}/photos`],
+    ['DELETE', `${BASE}/${ID}/photos`],
+    ['PUT', `${BASE}/${ID}/start`],
+    ['GET', `${BASE}/not-a-uuid`],
+    ['POST', `${BASE}/not-a-uuid/start`],
+    ['POST', `${BASE}/${ID}/photos/extra`],
+    ['POST', `${BASE}/${ID}/other`],
+  ])('refuses %s %s', async (method, path) => {
+    const { response, upstream } = await run(method, path);
+    expect(response.status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('forwards only a valid report kind', async () => {
+    for (const kind of ['errors', 'full']) {
+      const { upstream } = await run('GET', `${BASE}/${ID}/report?kind=${kind}&x=1`);
+      expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${BASE}/${ID}/report?kind=${kind}`);
+    }
+    const bad = await run('GET', `${BASE}/${ID}/report?kind=everything`);
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${BASE}/${ID}/report`);
+    const poll = await run('GET', `${BASE}/${ID}?kind=full`);
+    expect(poll.upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${BASE}/${ID}`);
+  });
+
+  it('takes the file upload up to its cap and the photo body up to 5.8 MiB, and no other body above 16 KB', async () => {
+    const file = JSON.stringify({ mode: 'my-products', data: 'A'.repeat(13 * 1024 * 1024) });
+    const uploaded = await run('POST', BASE, file);
+    expect(uploaded.response.status).toBe(200);
+    const over = await run('POST', BASE, 'A'.repeat(14500 * 1024 + 1));
+    expect(over.response.status).toBe(413);
+    expect(over.upstream).not.toHaveBeenCalled();
+
+    const photo = await run(
+      'POST',
+      `${BASE}/${ID}/photos`,
+      JSON.stringify({ data: 'A'.repeat(5 * 1024 * 1024) }),
+    );
+    expect(photo.response.status).toBe(200);
+    const tooBig = await run('POST', `${BASE}/${ID}/photos`, 'A'.repeat(5800 * 1024 + 1));
+    expect(tooBig.response.status).toBe(413);
+
+    const start = await run('POST', `${BASE}/${ID}/start`, 'A'.repeat(17 * 1024));
+    expect(start.response.status).toBe(413);
+    expect(start.upstream).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unsafe import request that is not same-origin', async () => {
+    const upstream = upstreamOk();
+    const cross = new Request(`http://seller.localhost:3001/api/${BASE}/${ID}/start`, {
+      method: 'POST',
+      headers: { ...sameOrigin, 'sec-fetch-site': 'cross-site' },
+      body: '{}',
+    });
+    const response = await relay(config, cross, [...BASE.split('/'), ID, 'start'], upstream);
+    expect(response.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('passes the CSV report back with its type and nosniff', async () => {
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response('row,code\n1,ok\n', {
+          status: 200,
+          headers: { 'content-type': 'text/csv; charset=utf-8' },
+        }),
+      ),
+    );
+    const response = await relay(
+      config,
+      send('GET', `${BASE}/${ID}/report?kind=full`),
+      [...BASE.split('/'), ID, 'report'],
+      upstream,
+    );
+    expect(response.headers.get('content-type')).toContain('text/csv');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(await response.text()).toBe('row,code\n1,ok\n');
+  });
+});
