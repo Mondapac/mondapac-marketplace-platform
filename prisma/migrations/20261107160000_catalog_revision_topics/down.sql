@@ -1,4 +1,4 @@
--- Reverses 20261107140000_catalog_revision_topics. A revision that carries the reason
+-- Reverses 20261107160000_catalog_revision_topics. A revision that carries the reason
 -- `topics-changed` keeps its other reasons (and its `sensitive` flag); the topic rows are dropped
 -- with their table.
 SET lock_timeout = '5s';

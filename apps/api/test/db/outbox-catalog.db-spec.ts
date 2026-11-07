@@ -82,10 +82,17 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // docs/design/data/catalog.md 2.4 (variants V5): a variant SKU is unique per seller.
   'catalog.offer_sell_units_market_id_seller_id_variant_sku_key':
     'CREATE UNIQUE INDEX offer_sell_units_market_id_seller_id_variant_sku_key ON catalog.offer_sell_units USING btree (market_id, seller_id, variant_sku) WHERE (variant_sku IS NOT NULL)',
-  // docs/design/data/catalog.md 3.28: a shared filter name is unique per list among the filters
-  // shared with everyone.
+  // docs/design/data/catalog.md 3.28: a filter name is unique per owner, and a shared filter name
+  // per list among the filters shared with everyone; each in an admin form (no store) and a seller
+  // form (per store).
+  'catalog.saved_filters_owner_name_key':
+    'CREATE UNIQUE INDEX saved_filters_owner_name_key ON catalog.saved_filters USING btree (market_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NULL)',
   'catalog.saved_filters_shared_name_key':
-    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON catalog.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
+    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON catalog.saved_filters USING btree (market_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NULL))",
+  'catalog.saved_filters_seller_owner_name_key':
+    'CREATE UNIQUE INDEX saved_filters_seller_owner_name_key ON catalog.saved_filters USING btree (market_id, seller_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NOT NULL)',
+  'catalog.saved_filters_seller_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_seller_shared_name_key ON catalog.saved_filters USING btree (market_id, seller_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NOT NULL))",
   // docs/design/data/catalog.md 3.29: the admin product import. One queued or running import per
   // admin, the worker's claim order, and the purge's reach for files still stored.
   'catalog.platform_import_jobs_market_id_file_purge_idx':

@@ -1265,3 +1265,53 @@ describe('relay of the seller import routes (catalog design 14c)', () => {
     expect(await response.text()).toBe('row,code\n1,ok\n');
   });
 });
+
+describe('relay of the seller product list', () => {
+  const CATEGORY = '0190a000-0000-7000-8000-0000000000c1';
+  const list = ['catalog', 'seller', 'products'];
+  const get = (query: string) =>
+    new Request(`http://seller.localhost:3001/api/catalog/seller/products${query}`, {
+      method: 'GET',
+      headers: { host: 'seller.localhost:3001' },
+    });
+
+  it('forwards the list parameters and drops everything else, keyset ones included', async () => {
+    const upstream = upstreamOk();
+    const query =
+      `?view=in-review&q=olive%20oil&status=draft&categoryId=${CATEGORY}&paused=true` +
+      '&typeCode=grocery&sort=name&direction=asc&page=2&pageSize=50&afterId=x&limit=5&extra=1';
+    expect((await relay(config, get(query), list, upstream)).status).toBe(200);
+    const sent = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(sent.pathname).toBe('/catalog/seller/products');
+    expect(Object.fromEntries(sent.searchParams)).toEqual({
+      view: 'in-review',
+      q: 'olive oil',
+      status: 'draft',
+      categoryId: CATEGORY,
+      paused: 'true',
+      typeCode: 'grocery',
+      sort: 'name',
+      direction: 'asc',
+      page: '2',
+      pageSize: '50',
+    });
+  });
+
+  it('drops a parameter with a value of the wrong shape, so the API never sees it', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      get('?view=everything&status=withdrawn&categoryId=x&paused=1&sort=price&page=-1&pageSize=30'),
+      list,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/seller/products');
+  });
+
+  it('still relays a product photo thumbnail for the list', async () => {
+    const upstream = upstreamOk();
+    const path = ['catalog', 'seller', 'products', CATEGORY, 'images', CATEGORY, 'thumb'];
+    const request = get(`/${CATEGORY}/images/${CATEGORY}/thumb`);
+    expect((await relay(config, request, path, upstream)).status).toBe(200);
+  });
+});
