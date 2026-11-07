@@ -155,7 +155,7 @@ describe.each(MARKETS)('TagField in market $code', ({ locale, names }) => {
     expect(screen.getByRole('button', { name: 'Remove Unavailable tag' })).toBeTruthy();
     expect(
       screen.getByText(
-        /Archived tags can't be added\. One the live product already has can stay\./,
+        /Archived tags can't be added\. A tag the live product already has can stay\./,
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/retired/i)).toBeNull();
