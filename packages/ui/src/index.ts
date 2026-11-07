@@ -249,7 +249,7 @@ export {
 } from './palette/panel-prefs.ts';
 export { panelToolsLabels } from './palette/palette-labels.ts';
 export { BottomSheet, type BottomSheetProps } from './overlay/bottom-sheet.tsx';
-export { useDesktop, DESKTOP_QUERY } from './list/use-desktop.ts';
+export { useDesktop, useMediaQuery, DESKTOP_QUERY, WIDE_QUERY } from './list/use-desktop.ts';
 export { ListThumb } from './list/list-thumb.tsx';
 export {
   ListColumnsPanel,

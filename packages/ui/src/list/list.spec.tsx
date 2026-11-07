@@ -51,6 +51,23 @@ const pagination = (over: Partial<ListPaginationProps> = {}) =>
     />,
   );
 
+describe('pageItems on a phone', () => {
+  it('keeps the first, the last and the current page with one on each side', () => {
+    expect(pageItems(1, 497, true)).toEqual([1, 2, 'gap', 497]);
+    expect(pageItems(2, 497, true)).toEqual([1, 2, 3, 'gap', 497]);
+    expect(pageItems(6, 497, true)).toEqual([1, 'gap', 5, 6, 7, 'gap', 497]);
+    expect(pageItems(497, 497, true)).toEqual([1, 'gap', 496, 497]);
+    expect(pageItems(3, 6, true)).toEqual([1, 2, 3, 4, 'gap', 6]);
+  });
+
+  it('lists every page up to five, and never more than seven entries', () => {
+    expect(pageItems(2, 5, true)).toEqual([1, 2, 3, 4, 5]);
+    for (let current = 1; current <= 50; current++) {
+      expect(pageItems(current, 50, true).length).toBeLessThanOrEqual(7);
+    }
+  });
+});
+
 describe('ListPagination', () => {
   it('shows the range, the rows per page and page numbers with the current one marked', () => {
     const html = pagination();

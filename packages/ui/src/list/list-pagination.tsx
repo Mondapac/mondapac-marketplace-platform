@@ -4,6 +4,7 @@ import { Banner } from '../form/banner.tsx';
 import { Button } from '../form/button.tsx';
 import { IconButton } from '../form/icon-button.tsx';
 import { Select } from '../form/select.tsx';
+import { WIDE_QUERY, useMediaQuery } from './use-desktop.ts';
 
 /** One entry of the page number row: a page, or the gap "…" between far pages. */
 export type PageItem = number | 'gap';
@@ -12,7 +13,17 @@ export type PageItem = number | 'gap';
  * The page numbers to show: all of them up to seven pages, else the first, the last and a window
  * around the current page (1 2 3 4 5 … 497, then 1 … 6 7 8 … 497, then 1 … 493 494 495 496 497).
  */
-export function pageItems(current: number, last: number): PageItem[] {
+export function pageItems(current: number, last: number, compact = false): PageItem[] {
+  if (compact) {
+    // A phone: the first, the last and the current page with one on each side, gaps between.
+    if (last <= 5) return Array.from({ length: last }, (_, index) => index + 1);
+    const shown = [...new Set([1, current - 1, current, current + 1, last])]
+      .filter((page) => page >= 1 && page <= last)
+      .sort((a, b) => a - b);
+    return shown.flatMap((page, index) =>
+      index > 0 && page - shown[index - 1]! > 1 ? (['gap', page] as PageItem[]) : [page],
+    );
+  }
   if (last <= 7) return Array.from({ length: last }, (_, index) => index + 1);
   if (current <= 4) return [1, 2, 3, 4, 5, 'gap', last];
   if (current >= last - 3) return [1, 'gap', last - 4, last - 3, last - 2, last - 1, last];
@@ -67,6 +78,7 @@ export function ListPagination({
   onPage,
   onPageSize,
 }: ListPaginationProps) {
+  const wide = useMediaQuery(WIDE_QUERY);
   const reachable = Math.min(total, maxRows);
   const last = Math.max(1, Math.ceil(reachable / pageSize));
   const atEnd = page >= last;
@@ -111,14 +123,14 @@ export function ListPagination({
               </Button>
             </div>
           ) : (
-            <nav aria-label={labels.pages} className="flex flex-wrap items-center gap-1">
+            <nav aria-label={labels.pages} className="flex flex-nowrap items-center gap-1">
               <IconButton
                 icon="chevron-left"
                 label={labels.previous}
                 disabled={disabled || page <= 1}
                 onClick={() => onPage(page - 1)}
               />
-              {pageItems(page, last).map((item, index) =>
+              {pageItems(page, last, !wide).map((item, index) =>
                 item === 'gap' ? (
                   <span key={`gap-${index}`} aria-hidden="true" className="px-1 text-fg-muted">
                     …
