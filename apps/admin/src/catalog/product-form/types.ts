@@ -4,6 +4,9 @@
 
 export const EDIT_PERMISSION = 'catalog.platform-product.edit';
 export const BASE = 'catalog/admin/platform-products';
+/** The bulk route; the form calls it with one id to turn a published product off or on. */
+export const BULK = 'catalog/admin/products/bulk';
+export const PAUSE_PERMISSION = 'catalog.product.pause';
 
 export interface FormOption {
   readonly code: string;
@@ -61,6 +64,10 @@ export interface ProductView {
   /** `single`: one fixed variant; `configurable`: variants defined by option values. */
   readonly variantModel: string;
   readonly status: string;
+  /** When an admin paused the product (offers off sale); null when it is not paused. */
+  readonly pausedAt: string | null;
+  /** The offers on it (not deleted), every seller; read only. */
+  readonly offers: { readonly sellerCount: number; readonly offerCount: number };
   readonly variants: readonly { readonly variantId: string; readonly state: string }[];
   readonly maxVariants: number;
   readonly lastChangedAt: string;
@@ -110,4 +117,14 @@ export interface ProductImage {
   readonly width: number;
   readonly height: number;
   readonly createdAt: string;
+}
+
+/** `POST catalog/admin/products/bulk` with one product id. */
+export interface BulkAnswer {
+  readonly counts: { readonly done: number; readonly skipped: number; readonly failed: number };
+  readonly results: readonly {
+    readonly productId: string;
+    readonly outcome: 'done' | 'skipped' | 'failed';
+    readonly reason?: string;
+  }[];
 }
