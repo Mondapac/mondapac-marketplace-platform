@@ -164,6 +164,12 @@ const ICONS = {
       <path d="M4 18h16" />
     </>
   ),
+  plus: (
+    <>
+      <path d="M5 12h14" />
+      <path d="M12 5v14" />
+    </>
+  ),
   x: (
     <>
       <path d="M18 6 6 18" />

@@ -7,6 +7,7 @@ import type { ProductStatus, VariantState } from '../../domain/product';
 import type { StoredRevision } from '../../domain/stored-revision';
 import type { OwnCatalogReader, ProductForm } from '../ports/own-catalog.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { ProductRepository } from '../ports/product.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
@@ -64,6 +65,8 @@ export interface PlatformProductReadDependencies {
   readonly revisions: ProductRevisionRepository;
   readonly ownReader: OwnCatalogReader;
   readonly policy: CatalogMarketPolicy;
+  /** The feature set follows the draft's primary category (A4 CAT-10); absent: the stored one. */
+  readonly familyResolver?: ProductFamilyResolver;
 }
 
 /**
@@ -126,9 +129,23 @@ export class PlatformProductRead extends UseCase<
         const copy = await deps.workingCopies.find(market, state.id);
         const revisionOf = async (id: Id<'ProductRevision'> | null) =>
           id === null ? null : await deps.revisions.find(market, state.id, id);
+        // The form shows the feature set the draft's primary category holds now; nothing is stored.
+        // When it cannot be resolved the stored one is shown (the submit fails closed on its own).
+        const rawCategories = copy?.content['categoryIds'];
+        const primaryCategoryId =
+          Array.isArray(rawCategories) && typeof rawCategories[0] === 'string'
+            ? rawCategories[0]
+            : null;
+        const resolved =
+          deps.familyResolver === undefined || copy === null
+            ? null
+            : await deps.familyResolver.resolve(market, primaryCategoryId);
+        const shownFamily =
+          resolved !== null && resolved.ok ? resolved.familyCode : state.familyCode;
         return ok({
           product,
-          form: await deps.ownReader.productForm(market, state.familyCode),
+          shownFamily,
+          form: await deps.ownReader.productForm(market, shownFamily),
           copy,
           published: await revisionOf(state.publishedRevisionId),
           offers: await deps.ownReader.offerTotalsOfProduct(market, state.id),
@@ -138,13 +155,13 @@ export class PlatformProductRead extends UseCase<
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
     if (read.value === null) return err({ code: 'product.not-found' });
-    const { product, form, copy, published, offers } = read.value;
+    const { product, shownFamily, form, copy, published, offers } = read.value;
     const { state } = product;
     return ok({
       productId: state.id,
       productCode: state.productCode,
       typeCode: state.typeCode,
-      familyCode: state.familyCode,
+      familyCode: shownFamily,
       variantModel: state.variantModel,
       status: state.status,
       pausedAt: isoOf(state.pausedAt),

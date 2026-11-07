@@ -1818,6 +1818,9 @@ describe('relay of the product list', () => {
         ['PUT', `catalog/admin/platform-products/${id}/draft`],
         ['POST', `catalog/admin/platform-products/${id}/submit`],
         ['POST', `catalog/admin/platform-products/${id}/discard`],
+        ['GET', `catalog/admin/platform-products/${id}/images`],
+        ['POST', `catalog/admin/platform-products/${id}/images`],
+        ['DELETE', `catalog/admin/platform-products/${id}/images/${id}`],
       ] as const) {
         const ok = upstreamOk();
         expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
@@ -1839,6 +1842,12 @@ describe('relay of the product list', () => {
         ['GET', `catalog/admin/platform-products/${id}/discard`],
         ['PUT', `catalog/admin/platform-products/${id}/discard`],
         ['POST', `catalog/admin/platform-products/${id}/retire`],
+        ['PUT', `catalog/admin/platform-products/${id}/images`],
+        ['DELETE', `catalog/admin/platform-products/${id}/images`],
+        ['GET', `catalog/admin/platform-products/${id}/images/${id}`],
+        ['POST', `catalog/admin/platform-products/${id}/images/${id}`],
+        ['DELETE', `catalog/admin/platform-products/${id}/images/not-a-uuid`],
+        ['GET', `catalog/admin/products/${id}/images/${id}/original`],
       ] as const) {
         const fetchImpl = upstreamOk();
         const response = await relay(config, request(method, path), path.split('/'), fetchImpl);
@@ -1846,6 +1855,30 @@ describe('relay of the product list', () => {
         expect(fetchImpl).not.toHaveBeenCalled();
       }
     });
+  });
+
+  it('lets a platform product photo carry up to 5.8 MB and keeps the draft save at 16 KB', async () => {
+    const send = (method: string, path: string, body: string) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        body,
+      });
+    const images = `catalog/admin/platform-products/${id}/images`;
+    const large = JSON.stringify({ data: 'A'.repeat(5 * 1024 * 1024) });
+    const tooLarge = JSON.stringify({ data: 'A'.repeat(6 * 1024 * 1024) });
+    const upstream = upstreamOk();
+    expect(
+      (await relay(config, send('POST', images, large), images.split('/'), upstream)).status,
+    ).toBe(200);
+    expect(
+      (await relay(config, send('POST', images, tooLarge), images.split('/'), upstream)).status,
+    ).toBe(413);
+    const draft = `catalog/admin/platform-products/${id}/draft`;
+    expect(
+      (await relay(config, send('PUT', draft, large), draft.split('/'), upstream)).status,
+    ).toBe(413);
+    expect(upstream).toHaveBeenCalledTimes(1);
   });
 
   describe('the saved filters of the product list', () => {

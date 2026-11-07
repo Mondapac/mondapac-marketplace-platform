@@ -286,6 +286,10 @@ import {
 } from '../application/ports/business-activity.reader';
 import { PrismaBusinessActivityRepository } from './prisma-business-activity.repository';
 import { PrismaBusinessActivityReader } from './prisma-business-activity.reader';
+import { TOPIC_REPOSITORY, type TopicRepository } from '../application/ports/topic.repository';
+import { TOPIC_READER, type TopicReader } from '../application/ports/topic.reader';
+import { PrismaTopicRepository } from './prisma-topic.repository';
+import { PrismaTopicReader } from './prisma-topic.reader';
 import { PrismaBrandRepository } from './prisma-brand.repository';
 import { PrismaBrandReader } from './prisma-brand.reader';
 import { PrismaAdminCategoryReader } from './prisma-admin-category.reader';
@@ -446,6 +450,16 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BusinessActivityReader =>
       new PrismaBusinessActivityReader(prisma),
+  },
+  {
+    provide: TOPIC_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TopicRepository => new PrismaTopicRepository(prisma),
+  },
+  {
+    provide: TOPIC_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TopicReader => new PrismaTopicReader(prisma),
   },
   {
     provide: BRAND_ASSIGNER,
