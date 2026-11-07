@@ -196,6 +196,8 @@ export class IdentityFakes {
   /** Sign-in challenges by id, with the hex of their token hash (slice 7). */
   readonly challenges = new Map<string, { challenge: SignInChallenge; tokenHash: string }>();
   readonly invitations = new Map<string, InvitationState>();
+  /** The invitations whose acceptance lock was taken, in order (Hassan M2). */
+  readonly invitationLocks: string[] = [];
   /** Seller step-up rules by "market|seller|action", and proofs by "market|session|action". */
   readonly stepUpPolicies = new Map<string, { required: boolean; updatedAt: Temporal.Instant }>();
   readonly stepUpProofs = new Map<string, Temporal.Instant>();
@@ -1643,6 +1645,11 @@ export class IdentityFakes {
   };
 
   readonly invitationRepository: InvitationRepository = {
+    // The in-memory store runs one unit at a time, so the lock only records that it was taken.
+    lockForAcceptance: (_market, id) => {
+      this.invitationLocks.push(id);
+      return Promise.resolve();
+    },
     findById: (market, id) => {
       const state = this.invitations.get(id);
       return Promise.resolve(

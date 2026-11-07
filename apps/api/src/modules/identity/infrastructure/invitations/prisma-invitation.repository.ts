@@ -82,6 +82,10 @@ interface SelectedRow {
 export class PrismaInvitationRepository implements InvitationRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  async lockForAcceptance(market: MarketContext, id: Id<'Invitation'>): Promise<void> {
+    await this.prisma.namedQuery(market, 'identity.lock-invitation', { invitationId: id });
+  }
+
   async findById(market: MarketContext, id: Id<'Invitation'>): Promise<Invitation | null> {
     const row = await this.prisma.tx(market).identityInvitation.findFirst({
       where: { marketId: market.marketId, id },
