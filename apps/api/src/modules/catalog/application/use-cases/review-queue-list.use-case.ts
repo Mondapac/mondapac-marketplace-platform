@@ -15,7 +15,19 @@ import { invalid, parsePage, isoOf, type ValidationFailure } from '../own-reads/
 export interface ReviewQueueListInput {
   readonly afterId?: unknown;
   readonly limit?: unknown;
+  /** `product-revision` or `offer-first-publication`: one kind of row only. */
+  readonly kind?: unknown;
+  /** One seller's rows only. */
+  readonly sellerId?: unknown;
+  /** Product revisions only: a first publication (true) or an update (false). */
+  readonly firstPublication?: unknown;
+  /** Product revisions only: the pending revision has a photo (true) or none (false). */
+  readonly hasImages?: unknown;
 }
+
+/** The two kinds of row in the queue. */
+export const REVIEW_QUEUE_KINDS = ['product-revision', 'offer-first-publication'] as const;
+export type ReviewQueueKind = (typeof REVIEW_QUEUE_KINDS)[number];
 
 /** One Offer waiting for its first publication (catalog design 9.2 `review-queue.list`). */
 export interface OfferReviewRow {
@@ -78,8 +90,10 @@ export interface ReviewQueueListOutput {
   readonly items: readonly ReviewQueueRow[];
   /** The `afterId` of the next page; null on the last page. */
   readonly nextAfterId: string | null;
-  /** Every Offer and every pending product revision of the Market in the queue. */
+  /** The rows the filters keep, over every page. With no filter, the whole queue. */
   readonly total: number;
+  /** Every row of each kind in the Market's queue, whatever the filters (the tab counts). */
+  readonly totals: Readonly<Record<ReviewQueueKind, number>>;
 }
 
 export type ReviewQueueListFailure =
@@ -100,6 +114,49 @@ interface Position {
 }
 
 const CURSOR = /^(\d{1,15})_([0-9a-f-]{36})$/;
+
+interface QueueFilter {
+  readonly kind: ReviewQueueKind | null;
+  readonly sellerId?: Id<'Seller'>;
+  readonly firstPublication?: boolean;
+  readonly hasImages?: boolean;
+}
+
+const FILTER_KEYS = ['kind', 'sellerId', 'firstPublication', 'hasImages'] as const;
+
+/**
+ * The filters of the queue. `firstPublication` and `hasImages` are product revision fields: given,
+ * they keep revisions only, and asking them of Offers is refused.
+ */
+function parseFilter(record: Record<string, unknown>): Result<QueueFilter, ValidationFailure> {
+  const kind = record['kind'];
+  if (
+    kind !== undefined &&
+    (typeof kind !== 'string' || !(REVIEW_QUEUE_KINDS as readonly string[]).includes(kind))
+  ) {
+    return invalid('kind', 'unknown');
+  }
+  let sellerId: Id<'Seller'> | undefined;
+  if (record['sellerId'] !== undefined) {
+    const parsed =
+      typeof record['sellerId'] === 'string' ? parseId<'Seller'>(record['sellerId']) : null;
+    if (parsed === null || !parsed.ok) return invalid('sellerId', 'format');
+    sellerId = parsed.value;
+  }
+  const flags: { firstPublication?: boolean; hasImages?: boolean } = {};
+  for (const key of ['firstPublication', 'hasImages'] as const) {
+    const value = record[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'boolean') return invalid(key, 'type');
+    if (kind === 'offer-first-publication') return invalid(key, 'not-allowed');
+    flags[key] = value;
+  }
+  return ok({
+    kind: (kind as ReviewQueueKind | undefined) ?? null,
+    ...(sellerId === undefined ? {} : { sellerId }),
+    ...flags,
+  });
+}
 
 /** The cursor of a page: the submit instant (ms) and id of its last row. */
 const cursorOf = (position: Position): string =>
@@ -123,7 +180,9 @@ function parseCursor(value: unknown): Result<Position | null, ValidationFailure>
  * (`sellerSummaries`; absent when `sellers` cannot say) and the label of its product; a product
  * revision row also carries what changed and the checks an approval must confirm. Rule: the key
  * `catalog.product.view` and the admin population. `afterId` is the opaque `nextAfterId` of the
- * previous page. One read-only unit (ADR-0025); the store-name call follows it.
+ * previous page; the filters (`kind`, `sellerId`, and for revisions `firstPublication` and
+ * `hasImages`) keep the same order, so a cursor stays valid under the same filters. `total` counts
+ * what the filters keep, `totals` the whole queue per kind. One read-only unit (ADR-0025); the store-name call follows it.
  */
 export class ReviewQueueList extends UseCase<
   ReviewQueueListInput,
@@ -153,15 +212,35 @@ export class ReviewQueueList extends UseCase<
     const cursor =
       typeof input === 'object' && input !== null ? parseCursor(input.afterId) : ok(null);
     if (!cursor.ok) return cursor;
-    // The shared page parser checks the size and the keys; the cursor is this queue's own.
-    const page = parsePage<'Offer'>(
+    const record: Record<string, unknown> =
       typeof input === 'object' && input !== null && !Array.isArray(input)
-        ? { ...input, afterId: undefined }
-        : input,
-    );
+        ? (input as Record<string, unknown>)
+        : {};
+    // The shared page parser checks the size and the keys; the cursor and filters are this queue's.
+    const pageInput: unknown =
+      typeof input === 'object' && input !== null && !Array.isArray(input)
+        ? Object.fromEntries(
+            Object.entries(record).filter(
+              ([key]) => key !== 'afterId' && !(FILTER_KEYS as readonly string[]).includes(key),
+            ),
+          )
+        : input;
+    const page = parsePage<'Offer'>(pageInput);
     if (!page.ok) return page;
+    const filter = parseFilter(record);
+    if (!filter.ok) return filter;
     const { limit } = page.value;
     const after = cursor.value;
+    const { kind, sellerId, firstPublication, hasImages } = filter.value;
+    const revisionOnly = firstPublication !== undefined || hasImages !== undefined;
+    const withOffers = kind !== 'product-revision' && !revisionOnly;
+    const withRevisions = kind !== 'offer-first-publication';
+    const offerFilter = sellerId === undefined ? {} : { sellerId };
+    const revisionFilter = {
+      ...offerFilter,
+      ...(firstPublication === undefined ? {} : { firstPublication }),
+      ...(hasImages === undefined ? {} : { hasImages }),
+    };
     let locale: string;
     try {
       locale = this.deps.policy.locales(market).default;
@@ -171,15 +250,21 @@ export class ReviewQueueList extends UseCase<
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
-        const offers = await this.deps.offers.listPendingReview(market, {
-          after,
-          limit: limit + 1,
-        });
-        const revisions = await this.deps.ownReader.listPendingRevisions(
-          market,
-          { after, limit: limit + 1 },
-          locale,
-        );
+        const offers = withOffers
+          ? await this.deps.offers.listPendingReview(
+              market,
+              { after, limit: limit + 1 },
+              offerFilter,
+            )
+          : [];
+        const revisions = withRevisions
+          ? await this.deps.ownReader.listPendingRevisions(
+              market,
+              { after, limit: limit + 1 },
+              locale,
+              revisionFilter,
+            )
+          : [];
         const labels = await this.deps.ownReader.productLabels(
           market,
           [...new Set(offers.slice(0, limit).map((offer) => offer.state.productId))],
@@ -204,15 +289,28 @@ export class ReviewQueueList extends UseCase<
                 ],
           );
         }
+        const totals = {
+          'product-revision': await this.deps.ownReader.pendingRevisionCount(market),
+          'offer-first-publication': await this.deps.ownReader.pendingReviewCount(market),
+        };
+        const filtered = sellerId !== undefined || revisionOnly;
         const total =
-          (await this.deps.ownReader.pendingReviewCount(market)) +
-          (await this.deps.ownReader.pendingRevisionCount(market));
-        return ok({ offers, revisions, labels, total, warnings });
+          (withOffers
+            ? filtered
+              ? await this.deps.ownReader.pendingReviewCount(market, offerFilter)
+              : totals['offer-first-publication']
+            : 0) +
+          (withRevisions
+            ? filtered
+              ? await this.deps.ownReader.pendingRevisionCount(market, revisionFilter)
+              : totals['product-revision']
+            : 0);
+        return ok({ offers, revisions, labels, total, totals, warnings });
       },
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
-    const { offers, revisions, labels, total, warnings } = read.value;
+    const { offers, revisions, labels, total, totals, warnings } = read.value;
     const labelOf = new Map(labels.map((label) => [label.productId, label]));
 
     // Merge the two sources into one order: submit instant, then id.
@@ -293,6 +391,7 @@ export class ReviewQueueList extends UseCase<
       nextAfterId:
         merged.length > shown.length && last !== undefined ? cursorOf(last.position) : null,
       total,
+      totals,
     });
   }
 }

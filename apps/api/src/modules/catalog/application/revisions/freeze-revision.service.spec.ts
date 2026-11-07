@@ -9,6 +9,7 @@ import type { AttributeValueSuggestionStore } from '../ports/attribute-value-sug
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import { FreezeRevision } from './freeze-revision.service';
+import { fixedFamilyResolver } from '../../../../../test/support/family-resolver';
 
 const T0 = Temporal.Instant.from('2026-10-08T00:00:00Z');
 const v = (n: number): Id<'Variant'> => `v${n}` as Id<'Variant'>;
@@ -76,6 +77,8 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     schema = schemaOf();
     const attributes = {
       loadSchema: () => Promise.resolve(schema),
+      activeDefinitionCodes: (_m: MarketContext, codes: readonly string[]) =>
+        Promise.resolve(new Set(codes.filter((c) => c !== 'stray'))),
     } as unknown as AttributeRepository;
     const policy: CatalogMarketPolicy = {
       taxCategoryCodes: () => tax,
@@ -96,6 +99,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       approvalRequired: () => Promise.resolve(true),
     };
     service = new FreezeRevision({
+      familyResolver: fixedFamilyResolver(),
       attributes,
       policy,
       handlerFor: (type) =>
@@ -153,6 +157,169 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       definitionRevisionIds: ['def-rev-1', 'def-rev-2'],
     });
     expect(result.value.contentHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  describe('the feature set follows the primary category (CAT-10, decision ت۱۰)', () => {
+    const codesOf = (result: Awaited<ReturnType<FreezeRevision['freeze']>>): string[] =>
+      !result.ok && result.error.code === 'revision.not-ready'
+        ? result.error.issues.map((issue) => issue.code)
+        : [];
+    const only = (...fields: string[]): AttributeSchema => {
+      const base = schemaOf();
+      return { ...base, fields: base.fields.filter((field) => fields.includes(field.code)) };
+    };
+
+    function following(
+      resolve: () => Promise<{ ok: true; familyCode: string } | { ok: false; code: string }>,
+      loaded: string[] = [],
+    ): FreezeRevision {
+      const deps = (service as unknown as { deps: Record<string, unknown> }).deps;
+      return new FreezeRevision({
+        ...deps,
+        familyResolver: { resolve } as never,
+        attributes: {
+          activeDefinitionCodes: (_m: MarketContext, codes: readonly string[]) =>
+            Promise.resolve(new Set(codes.filter((c) => c !== 'stray'))),
+          loadSchema: (_m: MarketContext, familyCode: string) => {
+            loaded.push(familyCode);
+            return Promise.resolve(familyCode === 'frozen' ? only('origin') : schemaOf());
+          },
+        } as unknown as AttributeRepository,
+      } as never);
+    }
+
+    it('freezes under the resolved family, resolved from the first category listed', async () => {
+      const asked: unknown[] = [];
+      const loaded: string[] = [];
+      const follow = following(() => Promise.resolve({ ok: true, familyCode: 'frozen' }), loaded);
+      (
+        follow as unknown as { deps: { familyResolver: { resolve: unknown } } }
+      ).deps.familyResolver = {
+        resolve: (_m: unknown, categoryId: unknown) => {
+          asked.push(categoryId);
+          return Promise.resolve({ ok: true, familyCode: 'frozen' });
+        },
+      };
+      const result = await follow.freeze(
+        market,
+        product('simple'),
+        copyOf(ready({ categoryIds: ['c9', 'c1'] })),
+      );
+      expect(asked).toEqual(['c9']);
+      expect(loaded).toEqual(['frozen']);
+      expect(result.ok && result.value.familyCode).toBe('frozen');
+    });
+
+    it('leaves out values the new feature set has no field for, and keeps the shared ones', async () => {
+      const follow = following(() => Promise.resolve({ ok: true, familyCode: 'frozen' }));
+      const result = await follow.freeze(market, product('simple'), copyOf(ready()));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.content.attributeValues).toEqual({ origin: 'AU' });
+    });
+
+    it('still refuses an unknown value when the family did not change', async () => {
+      const result = await service.freeze(
+        market,
+        product('simple'),
+        copyOf(
+          ready({ attributeValues: { origin: 'AU', tagline: { [locale]: 'x' }, stray: 'y' } }),
+        ),
+      );
+      expect(codesOf(result)).toContain('attribute.unknown');
+    });
+
+    it('asks for a required field the new family adds', async () => {
+      const follow = following(() => Promise.resolve({ ok: true, familyCode: 'frozen' }));
+      const result = await follow.freeze(
+        market,
+        product('simple'),
+        copyOf(ready({ attributeValues: { tagline: { [locale]: 'Sweet' } } })),
+      );
+      expect(codesOf(result)).toContain('attribute.required');
+    });
+
+    it('names an option the new feature set does not hold, and leaves the working copy as it was', async () => {
+      const follow = following(() => Promise.resolve({ ok: true, familyCode: 'frozen' }));
+      const copy = copyOf(
+        ready({
+          variantAxes: ['size'],
+          variants: [{ variantId: v(1), optionValues: { size: 'l' } }],
+        }),
+      );
+      const before = JSON.stringify(copy.content);
+      const result = await follow.freeze(market, product('configurable'), copy);
+      expect(codesOf(result)).toContain('variants.option-not-in-family');
+      expect(codesOf(result)).not.toContain('variants.axes-unknown');
+      // A move back finds every value the seller had entered.
+      expect(JSON.stringify(copy.content)).toBe(before);
+    });
+
+    it('does not refuse the values of another feature set when the product moves back to its own', async () => {
+      // After a reject the column is back on the old set while the working copy still holds the
+      // new set's values: they are left out, never met as unknown (CAT-10).
+      const deps = (service as unknown as { deps: Record<string, unknown> }).deps;
+      const back = new FreezeRevision({
+        ...deps,
+        familyResolver: { resolve: () => Promise.resolve({ ok: true, familyCode: 'default' }) },
+        attributes: {
+          activeDefinitionCodes: (_m: MarketContext, codes: readonly string[]) =>
+            Promise.resolve(new Set(codes.filter((c) => c !== 'stray'))),
+          loadSchema: () => Promise.resolve(only('origin')),
+        } as unknown as AttributeRepository,
+      } as never);
+      const result = await back.freeze(market, product('simple'), copyOf(ready()));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.content.attributeValues).toEqual({ origin: 'AU' });
+      const stray = await back.freeze(
+        market,
+        product('simple'),
+        copyOf(ready({ attributeValues: { origin: 'AU', stray: 'y' } })),
+      );
+      expect(codesOf(stray)).toContain('attribute.unknown');
+    });
+
+    it('a dropped material attribute is no relaxation: the revision just does not carry it', async () => {
+      const deps = (service as unknown as { deps: Record<string, unknown> }).deps;
+      const moved = new FreezeRevision({
+        ...deps,
+        familyResolver: { resolve: () => Promise.resolve({ ok: true, familyCode: 'frozen' }) },
+        attributes: {
+          activeDefinitionCodes: (_m: MarketContext, codes: readonly string[]) =>
+            Promise.resolve(new Set(codes)),
+          loadSchema: () => Promise.resolve(only('origin')),
+        } as unknown as AttributeRepository,
+      } as never);
+      const result = await moved.freeze(
+        market,
+        product('simple'),
+        copyOf(ready({ attributeValues: { origin: 'AU', cert: 'x' } })),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.content.attributeValues).toEqual({ origin: 'AU' });
+      expect(result.value.familyCode).toBe('frozen');
+    });
+
+    it('fails closed when the family cannot be resolved, and gives a product without a category the default', async () => {
+      const failed = following(() => Promise.resolve({ ok: false, code: 'family.unavailable' }));
+      expect(await failed.freeze(market, product('simple'), copyOf(ready()))).toEqual({
+        ok: false,
+        error: { code: 'revision.schema-unavailable' },
+      });
+      const asked: unknown[] = [];
+      const none = following(() => Promise.resolve({ ok: true, familyCode: 'default' }));
+      (none as unknown as { deps: { familyResolver: { resolve: unknown } } }).deps.familyResolver =
+        {
+          resolve: (_m: unknown, categoryId: unknown) => {
+            asked.push(categoryId);
+            return Promise.resolve({ ok: true, familyCode: 'default' });
+          },
+        };
+      await none.freeze(market, product('simple'), copyOf(ready({ categoryIds: [] })));
+      expect(asked).toEqual([null]);
+    });
   });
 
   it('ignores a schema ref the draft claims', async () => {
@@ -306,6 +473,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
           Promise.resolve({ content: { variants: [{ optionValues: { colour: 'red' } }] } }),
       } as unknown as ProductRevisionRepository;
       const locked = new FreezeRevision({
+        familyResolver: fixedFamilyResolver(),
         attributes: { loadSchema: () => Promise.resolve(schema) } as unknown as AttributeRepository,
         policy: (service as unknown as { deps: { policy: CatalogMarketPolicy } }).deps.policy,
         handlerFor: () => configurableProductType,
@@ -368,6 +536,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       }),
     ).rejects.toThrow(/do not belong together/);
     const mismatched = new FreezeRevision({
+      familyResolver: fixedFamilyResolver(),
       attributes: {
         loadSchema: () => Promise.resolve(schemaOf()),
       } as unknown as AttributeRepository,
@@ -397,6 +566,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       error: { code: 'revision.schema-unavailable' },
     });
     const unknown = new FreezeRevision({
+      familyResolver: fixedFamilyResolver(),
       attributes: {
         loadSchema: () => Promise.resolve(schemaOf()),
       } as unknown as AttributeRepository,
@@ -410,6 +580,7 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
   });
   it('reports a required field whose value suggestion is open as pending, not as missing', async () => {
     const withSuggestions = new FreezeRevision({
+      familyResolver: fixedFamilyResolver(),
       attributes: { loadSchema: () => Promise.resolve(schema) } as unknown as AttributeRepository,
       policy: {
         taxCategoryCodes: () => tax,

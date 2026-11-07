@@ -164,6 +164,8 @@ export class PrismaProductRepository implements ProductRepository {
     const { count } = await tx.catalogProduct.updateMany({
       where: { marketId: market.marketId, id: state.id, version: expected },
       data: {
+        // Changes only with a revision-pointer move in the same statement (the guard of #709).
+        familyCode: state.familyCode,
         status: state.status,
         discardedAt: state.discardedAt === null ? null : toDate(state.discardedAt),
         withdrawnAt: state.withdrawnAt === null ? null : toDate(state.withdrawnAt),

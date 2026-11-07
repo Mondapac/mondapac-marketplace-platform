@@ -249,6 +249,31 @@ export const CATALOG_ATTRIBUTE_SUGGESTION_DECIDE = definePermission('catalog', {
   protected: false,
 });
 
+/**
+ * Read the Catalogue > Variants page (variants V6; plan section 9, decision tn1): the variant types
+ * with their buyer display settings, every variant of the Market with its issues, and the export.
+ * Platform scope; unprotected, so Catalogue Moderator, Operations Support and Viewer receive it by
+ * identity's seed (the products-only pattern of `catalog.attribute.view`). No step-up.
+ */
+export const CATALOG_VARIANT_VIEW = definePermission('catalog', {
+  key: 'catalog.variant.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Change how buyers choose a variant type (variants V6): the display style, the option order, the
+ * swatch colours and the help sellers see above the variant grid. Platform scope; **protected**,
+ * and the use case also needs `catalog.attribute.edit` (protected): a variant type is an attribute,
+ * so a role that cannot edit attributes cannot change how one is shown. No default role lists it;
+ * the Platform Administrator grants it in a custom role.
+ */
+export const CATALOG_VARIANT_TYPE_EDIT = definePermission('catalog', {
+  key: 'catalog.variant-type.edit',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
@@ -272,4 +297,6 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_CATEGORY_TREE_EDIT,
   CATALOG_CATEGORY_TREE_RESTRUCTURE,
   CATALOG_CATEGORY_TREE_IMPORT,
+  CATALOG_VARIANT_VIEW,
+  CATALOG_VARIANT_TYPE_EDIT,
 ]);

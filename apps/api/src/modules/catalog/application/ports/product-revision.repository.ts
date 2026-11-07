@@ -54,6 +54,30 @@ export interface ChangeRequestView {
   readonly decidedAt: Temporal.Instant;
 }
 
+/**
+ * One revision of a product with its decision, as the reviewer's history shows it (product version
+ * review B1). Codes and instants only: the reviewer's words (`reason_text`, VER-13) and account ids
+ * are not carried.
+ */
+export interface RevisionHistoryEntry {
+  readonly revisionId: Id<'ProductRevision'>;
+  readonly revisionNo: number;
+  readonly kind: 'submission' | 'revert' | 'tax-override';
+  readonly authorKind: 'seller' | 'admin';
+  readonly submittedAt: Temporal.Instant;
+  /** null while the revision has no decision (it is pending, or nothing decided it). */
+  readonly decision: {
+    readonly outcome: 'published' | 'changes-requested' | 'superseded';
+    /** reviewed | auto | admin-authored; set for a published outcome. */
+    readonly publishKind: string | null;
+    /** resubmitted | withdrawn | promoted | matched; set for a superseded outcome. */
+    readonly supersededCause: string | null;
+    readonly reasonCode: string | null;
+    readonly decidedByKind: 'admin' | 'seller' | 'system';
+    readonly decidedAt: Temporal.Instant;
+  } | null;
+}
+
 export interface ProductRevisionDecisions {
   /**
    * Stores the decision of a reviewer (`published`/`reviewed` or `changes-requested`) in the open
@@ -69,6 +93,13 @@ export interface ProductRevisionDecisions {
     market: MarketContext,
     productId: Id<'Product'>,
   ): Promise<ChangeRequestView | null>;
+
+  /** The product's revisions with their decisions, newest first, at most `limit` (1 to 100). */
+  history(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    limit: number,
+  ): Promise<readonly RevisionHistoryEntry[]>;
 }
 
 export const PRODUCT_REVISION_REPOSITORY = Symbol('PRODUCT_REVISION_REPOSITORY');

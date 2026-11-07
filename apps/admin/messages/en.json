@@ -2660,6 +2660,13 @@
         "unknown": "Something went wrong. Try again.",
         "partial": "The new variants were created but the draft wasn't saved with them. Save again."
       },
+      "discard": {
+        "button": "Discard product",
+        "title": "Discard this product?",
+        "message": "The product and its draft are removed from the catalog. This can't be undone.",
+        "keep": "Keep product",
+        "confirm": "Discard product"
+      },
       "leave": {
         "title": "Leave without saving?",
         "message": "You have changes that are not saved. If you leave this page, they are lost.",
@@ -5215,6 +5222,37 @@
       "title": "View only",
       "body": "You can view attributes. Ask a Platform Administrator to change them."
     },
+    "missing-details": {
+      "label": "Products missing required details",
+      "loading": "Loading products",
+      "load-error": "We could not load the report.",
+      "info": {
+        "title": "These products stay on sale",
+        "body": "A feature set gained a required detail after these products were approved. The seller is refused at the next submit until it is filled."
+      },
+      "unreadable": {
+        "title": "Some feature sets could not be read",
+        "body": "Products of these feature sets are not judged: {codes}."
+      },
+      "empty": "No products are missing required details.",
+      "empty-body": "Every published product has a value for each required detail of its feature set.",
+      "search-label": "Search loaded products",
+      "search-placeholder": "Search product, code or seller",
+      "feature-set": "Feature set",
+      "all-feature-sets": "All feature sets",
+      "export": "Export CSV",
+      "export-selected": "Export {count} selected",
+      "totals": "Showing {shown} of {loaded} loaded products; {scanned} products read.",
+      "no-match": "No loaded product matches.",
+      "no-match-body": "Clear the search or the feature set, or load more products.",
+      "select-row": "Select {code}",
+      "unnamed": "Unnamed product",
+      "platform-product": "Platform product",
+      "seller": "Seller {id}",
+      "feature-set-named": "Feature set {code}",
+      "missing": "Missing details",
+      "load-more": "Load more"
+    },
     "waiting": {
       "label": "Requests waiting for a second administrator",
       "loading": "Loading requests",
@@ -5465,13 +5503,62 @@
       "no-groups": "This feature set has no groups.",
       "group": "Group: {group}",
       "unknown": "{code} · not found in this Market",
-      "truncated": "Only the first 500 feature sets are shown."
+      "truncated": "Only the first 500 feature sets are shown.",
+      "edit": "Edit feature set",
+      "saved": "Feature set saved.",
+      "editor": {
+        "label": "Feature set editor",
+        "title": "Edit {code}",
+        "language": "Language",
+        "name": "Name in {language}",
+        "missing": "Missing: {languages}",
+        "no-groups": "This feature set has no groups yet.",
+        "group-name": "Group {group}: name in {language}",
+        "core": "Core group (fixed)",
+        "group-up": "Move group {group} up",
+        "group-down": "Move group {group} down",
+        "group-remove": "Remove group {group}",
+        "level-of": "Requirement for {attribute}",
+        "level": {
+          "required": "Required",
+          "recommended": "Recommended",
+          "optional": "Optional"
+        },
+        "entry-up": "Move {attribute} up",
+        "entry-down": "Move {attribute} down",
+        "entry-remove": "Remove {attribute}",
+        "add-attribute-to": "Add attribute to {group}",
+        "choose": "Choose an attribute",
+        "add-attribute": "Add attribute",
+        "new-group": "New group name in {language}",
+        "add-group": "Add group",
+        "impact": {
+          "title": "Sellers will be asked for more",
+          "body": "{count, plural, =0 {No live products use} one {# live product uses} other {# live products use}} this feature set. They stay on sale, and are asked for {attributes} at their next submit."
+        },
+        "material": {
+          "title": "Material attribute removed",
+          "body": "{attributes} can't be removed here. Removing a Material attribute needs a request that a second administrator approves. Put it back to save."
+        },
+        "cancel": "Cancel",
+        "save": "Save changes",
+        "error": {
+          "name-required": "Add a name in the Market's default language.",
+          "stale": "Someone else changed this feature set. Cancel to load the latest version.",
+          "material-removal": "A Material attribute can only be removed through a request that a second administrator approves.",
+          "invalid": "Check the names and attributes. Something isn't accepted.",
+          "refused": "The feature set could not be saved. Check the names and attributes.",
+          "unavailable": "We could not save right now. Try again.",
+          "unknown": "The feature set could not be saved."
+        }
+      }
     },
     "tab": {
       "attributes": "Attributes",
       "feature-sets": "Feature sets",
       "brands": "Brands",
-      "waiting": "Waiting for you"
+      "waiting": "Waiting for you",
+      "missing-details": "Missing details"
     },
     "add": {
       "open": "Add attribute",
