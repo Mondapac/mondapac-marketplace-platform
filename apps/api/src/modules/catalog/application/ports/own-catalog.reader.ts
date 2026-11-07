@@ -1,6 +1,6 @@
 import type { Id, MarketContext, MeasureSettings, Temporal } from '@mondapac/shared-kernel';
 import type { Offer } from '../../domain/offer';
-import type { Product } from '../../domain/product';
+import type { Product, ProductStatus } from '../../domain/product';
 import type { WorkingCopy } from '../../domain/working-copy';
 
 /** One page request: the last id of the previous page, and at most `limit` rows. */
@@ -84,6 +84,55 @@ export interface OfferStatusCounts {
   readonly published: number;
 }
 
+/** The filters of the seller's product list; `statuses` is already narrowed by view and status. */
+export interface OwnProductsFilter {
+  /** A product matches when its status is any of these (none: no product matches). */
+  readonly statuses: readonly ProductStatus[];
+  /** True keeps only products with a pending revision (the In review view). */
+  readonly inReview: boolean;
+  /** True keeps paused products, false the ones not paused, null both. */
+  readonly paused: boolean | null;
+  readonly categoryId: Id<'Category'> | null;
+  readonly typeCode: string | null;
+  /** A case-insensitive part of the name (in `locale`) or of the product code; null for none. */
+  readonly text: string | null;
+  /** The Market's default locale: the language of the name and of the category name. */
+  readonly locale: string;
+}
+
+export const OWN_PRODUCT_SORTS = ['name', 'updated', 'created'] as const;
+export type OwnProductSort = (typeof OWN_PRODUCT_SORTS)[number];
+export type OwnSortDirection = 'asc' | 'desc';
+
+/** One row of the seller's product list. */
+export interface OwnProductRow {
+  readonly productId: Id<'Product'>;
+  readonly productCode: string;
+  readonly typeCode: string;
+  readonly status: ProductStatus;
+  /** The name the seller sees: the draft's in `locale`, else the shown revision's; else null. */
+  readonly name: string | null;
+  /** The draft's name in `locale` alone (kept for the keyset list's field of the same name). */
+  readonly draftName: string | null;
+  /** The first photo that is not taken down (the draft's, else the shown revision's). */
+  readonly primaryImageId: Id<'ProductImage'> | null;
+  readonly categoryId: Id<'Category'> | null;
+  readonly categoryName: string | null;
+  /** The seller's own Offers on the product that are not deleted. */
+  readonly offerCount: number;
+  readonly pausedAt: Temporal.Instant | null;
+  readonly hasPublishedRevision: boolean;
+  readonly hasPendingRevision: boolean;
+  readonly pendingSubmittedAt: Temporal.Instant | null;
+  readonly lastChangedAt: Temporal.Instant;
+  readonly createdAt: Temporal.Instant;
+}
+
+export type OwnProductsPageResult =
+  | { readonly kind: 'rows'; readonly rows: readonly OwnProductRow[] }
+  /** Sorting by name needs the matching products in memory; a search this wide must narrow. */
+  | { readonly kind: 'too-broad' };
+
 /**
  * The seller's own catalogue lists (catalog design 8.2, 9.2a): products and Offers of one seller,
  * newest first by id (UUID v7). The owner is in every statement, so another seller's row is never
@@ -96,6 +145,25 @@ export interface OwnCatalogReader {
     sellerId: Id<'Seller'>,
     page: ListPage<'Product'>,
   ): Promise<readonly Product[]>;
+
+  /**
+   * One page of the seller's SELLER products (never the discarded or withdrawn ones) that
+   * `filter` keeps, `limit` rows after `offset` rows, in the given order (ties broken by id).
+   */
+  listProductPage(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnProductsFilter,
+    order: { readonly sort: OwnProductSort; readonly direction: OwnSortDirection },
+    page: { readonly offset: number; readonly limit: number },
+  ): Promise<OwnProductsPageResult>;
+
+  /** How many of the seller's products each filter keeps, in the order given. */
+  countProductsBy(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filters: readonly OwnProductsFilter[],
+  ): Promise<readonly number[]>;
 
   /** The seller's Offers that are not deleted. */
   listOffers(

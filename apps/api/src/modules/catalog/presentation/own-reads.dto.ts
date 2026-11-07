@@ -35,6 +35,60 @@ export class OwnProductList {
   nextAfterId!: string | null;
 }
 
+export class OwnProductPageItemView extends OwnProductListItemView {
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The name shown: the draft name in the default locale, else the shown revision’s.',
+  })
+  name!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description:
+      'The thumbnail. Serve it with GET catalog/seller/products/{productId}/images/{primaryImageId}/thumb.',
+  })
+  primaryImageId!: string | null;
+  @ApiProperty({ nullable: true, type: String, format: 'uuid' }) categoryId!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The first category, in the Market default locale.',
+  })
+  categoryName!: string | null;
+  @ApiProperty({ description: 'The seller’s own Offers on the product that are not deleted.' })
+  offerCount!: number;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'date-time',
+    description: 'Set while the product is paused; it stays in the live view.',
+  })
+  pausedAt!: string | null;
+}
+
+export class OwnProductViewCountsDto {
+  @ApiProperty() all!: number;
+  @ApiProperty() drafts!: number;
+  @ApiProperty() live!: number;
+  @ApiProperty() inactive!: number;
+  @ApiProperty() inReview!: number;
+}
+
+export class OwnProductPageList {
+  @ApiProperty({ type: [OwnProductPageItemView] }) items!: OwnProductPageItemView[];
+  @ApiProperty({ description: 'Products matching the view and the filters, over all pages.' })
+  total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({
+    type: OwnProductViewCountsDto,
+    description: 'Per tab, for the same search and filters.',
+  })
+  counts!: OwnProductViewCountsDto;
+}
+
 export class OwnRevisionViewDto {
   @ApiProperty({ format: 'uuid' }) revisionId!: string;
   @ApiProperty() revisionNo!: number;

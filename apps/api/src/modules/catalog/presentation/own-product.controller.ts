@@ -22,6 +22,7 @@ import {
   ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiExtraModels,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -31,6 +32,7 @@ import {
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
   ApiUnsupportedMediaTypeResponse,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { parseId } from '@mondapac/shared-kernel';
 import type { CallContext } from '@mondapac/shared-kernel';
@@ -47,9 +49,20 @@ import { OwnProductSaveDraft } from '../application/use-cases/own-product-save-d
 import { OwnProductSetOwnBrand } from '../application/use-cases/own-product-set-own-brand.use-case';
 import { OwnProductSubmit } from '../application/use-cases/own-product-submit.use-case';
 import { OwnProductRead } from '../application/use-cases/own-product-read.use-case';
-import { OwnProductsList } from '../application/use-cases/own-products-list.use-case';
+import {
+  OWN_LISTED_STATUSES,
+  OWN_PAGE_SIZES,
+  OWN_PRODUCT_SORTS,
+  OWN_PRODUCT_VIEWS,
+  OwnProductsList,
+} from '../application/use-cases/own-products-list.use-case';
 import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
-import { OwnProductList, OwnProductOptions, OwnProductView } from './own-reads.dto';
+import {
+  OwnProductList,
+  OwnProductOptions,
+  OwnProductPageList,
+  OwnProductView,
+} from './own-reads.dto';
 import {
   ApiErrorBody,
   PlatformProductDraftSaved,
@@ -103,6 +116,27 @@ function productIdOf(raw: string, response: Response): string | HttpException {
   return parsed.ok ? parsed.value : refusal({ code: 'product.not-found' }, response);
 }
 
+const WHOLE_NUMBER = /^\d{1,6}$/;
+
+/**
+ * The query of the product list as the use case reads it: `limit` (keyset mode), `page` and
+ * `pageSize` become numbers and `paused` a boolean; a value that is not of that shape becomes
+ * one the use case refuses (-1 or the text itself), so the answer is a `validation.failed`.
+ */
+function productListQuery(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = pageQuery(query);
+  for (const key of ['page', 'pageSize']) {
+    const value = out[key];
+    if (value !== undefined) {
+      out[key] = typeof value === 'string' && WHOLE_NUMBER.test(value) ? Number(value) : -1;
+    }
+  }
+  const paused = out['paused'];
+  if (paused === 'true') out['paused'] = true;
+  else if (paused === 'false') out['paused'] = false;
+  return out;
+}
+
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
 const PRODUCT_PARAM = { name: 'productId', description: 'The product. A UUID v7.' };
@@ -133,20 +167,52 @@ export class OwnProductController {
   @Get()
   @Header('Cache-Control', 'no-store')
   @ReadsSession()
+  @ApiExtraModels(OwnProductList, OwnProductPageList)
   @ApiOperation({
     summary: 'List the products of the seller',
     description:
-      'Needs catalog.own-product.view. Newest first, keyset-paged: send `nextAfterId` of the ' +
-      'previous page as `afterId`. `limit` is 1 to 50 (default 25). Discarded and withdrawn ' +
-      'products are not listed.',
+      'Needs catalog.own-product.view. Only the seller’s own products of the Market are listed; ' +
+      'discarded and withdrawn products are not. Two modes. Keyset mode (no list parameter): ' +
+      'newest first, send `nextAfterId` of the previous page as `afterId`; `limit` is 1 to 50 ' +
+      '(default 25); the answer is { items, nextAfterId }. List mode (any of view, q, status, ' +
+      'categoryId, paused, typeCode, sort, direction, page, pageSize; send `page=1` for the first ' +
+      'page): `view` is a tab, all (default), drafts (draft), live (published or matched, a ' +
+      'paused product stays live), inactive (unpublished or retired) or in-review (has a pending ' +
+      'revision; overlaps the others). `q` matches a part of the name (Market default locale) or ' +
+      'of the product code. Filters: status, categoryId, paused (true or false), typeCode. ' +
+      '`sort` is name, updated or created (default updated), `direction` asc or desc (default ' +
+      'asc for name, desc otherwise). `pageSize` is 25, 50 or 100 (default 25); page numbers stop ' +
+      'at row 10,000 (a later page is validation.failed on page). `counts` holds the five tab ' +
+      'counts for the same search and filters. Sorting by name over more than 2000 matches is ' +
+      'refused with validation.failed (sort, too-broad). Do not mix afterId or limit with the ' +
+      'list parameters. No price and no stock.',
   })
   @ApiQuery({
     name: 'afterId',
     required: false,
-    description: 'The last product id of the previous page.',
+    description: 'Keyset mode: the last product id of the previous page.',
   })
-  @ApiQuery({ name: 'limit', required: false, description: '1 to 50, default 25.' })
-  @ApiOkResponse({ type: OwnProductList })
+  @ApiQuery({ name: 'limit', required: false, description: 'Keyset mode: 1 to 50, default 25.' })
+  @ApiQuery({ name: 'view', required: false, enum: OWN_PRODUCT_VIEWS })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description: 'Up to 100 characters, no control characters.',
+  })
+  @ApiQuery({ name: 'status', required: false, enum: OWN_LISTED_STATUSES })
+  @ApiQuery({ name: 'categoryId', required: false, description: 'A platform category id.' })
+  @ApiQuery({ name: 'paused', required: false, enum: ['true', 'false'] })
+  @ApiQuery({ name: 'typeCode', required: false, description: 'A product type code.' })
+  @ApiQuery({ name: 'sort', required: false, enum: OWN_PRODUCT_SORTS })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false, description: '1 or more, default 1.' })
+  @ApiQuery({ name: 'pageSize', required: false, enum: OWN_PAGE_SIZES.map(String) })
+  @ApiOkResponse({
+    description: 'OwnProductList in keyset mode, OwnProductPageList in list mode.',
+    schema: {
+      oneOf: [{ $ref: getSchemaPath(OwnProductList) }, { $ref: getSchemaPath(OwnProductPageList) }],
+    },
+  })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
@@ -155,10 +221,10 @@ export class OwnProductController {
     @Call() context: CallContext,
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
-  ): Promise<OwnProductList> {
-    const result = await this.listProducts.execute(context, pageQuery(query));
+  ): Promise<OwnProductList | OwnProductPageList> {
+    const result = await this.listProducts.execute(context, productListQuery(query));
     const outcome = result.ok
-      ? (JSON.parse(JSON.stringify(result.value)) as OwnProductList)
+      ? (JSON.parse(JSON.stringify(result.value)) as OwnProductList | OwnProductPageList)
       : refusal(result.error, response, context);
     return this.settle('catalog.own-products-list', context, outcome);
   }
