@@ -53,7 +53,10 @@ const DECISIONS: readonly CertStatus[] = ['approved', 'rejected', 'suspended', '
  * use; here it carries a details block as its `intro`. The number is never shown (only that it is
  * recorded) and the document has no link: only reviewers can open it.
  */
-export function useCertificateDetails(variants: readonly PublishedVariant[]) {
+export function useCertificateDetails(
+  variants: readonly PublishedVariant[],
+  onClosed?: () => void,
+) {
   const t = useTranslations('catalog.productForm.certs');
   const locale = useLocale();
   const [item, setItem] = useState<CertListItem | null>(null);
@@ -156,7 +159,10 @@ export function useCertificateDetails(variants: readonly PublishedVariant[]) {
   const drawer = (
     <SettingsHistoryDrawer
       open={history.open}
-      onClose={history.close}
+      onClose={() => {
+        history.close();
+        onClosed?.();
+      }}
       onLoadMore={() => void history.more()}
       onRetry={() => void history.retry()}
       intro={intro}

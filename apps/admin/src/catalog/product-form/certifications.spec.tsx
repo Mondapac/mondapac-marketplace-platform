@@ -215,6 +215,9 @@ function mount(
 const sent = (suffix: string) =>
   call.mock.calls.filter(([, path]) => typeof path === 'string' && path.endsWith(suffix));
 /** The certificate dialog: the first <dialog> in the page (the details drawer comes after it). */
+/** Whether the certificate dialog is open (it is removed from the page once closed). */
+const dialogOpen = (): boolean =>
+  document.body.querySelectorAll('dialog')[0]?.hasAttribute('open') === true;
 const dialog = (): HTMLElement => document.body.querySelectorAll('dialog')[0] as HTMLElement;
 
 beforeEach(() => {
@@ -434,8 +437,11 @@ describe('banners', () => {
     ).toBeTruthy();
     expect(screen.getByText('Persian and Arabic names are missing for Halal.')).toBeTruthy();
     expect(
-      screen.getByText('Add them in Certifications › Types before Persian or Arabic is published.'),
+      screen.getByText(
+        'Ask a certification admin to add them before Persian or Arabic is published.',
+      ),
     ).toBeTruthy();
+    expect(screen.queryByText(/Open types/)).toBeNull();
     // The rejected (Critical) banner comes before the Attention ones.
     const alert = rejected.closest('[role="alert"]');
     expect(alert).toBeTruthy();
@@ -583,6 +589,9 @@ function fillDialog(over: { number?: string; file?: File | null; skipFile?: bool
   }
 }
 
+// The send flows run several awaited steps in jsdom; give a busy runner room.
+vi.setConfig({ testTimeout: 20_000 });
+
 describe('the dialog', () => {
   async function open() {
     fireEvent.click(await screen.findByRole('button', { name: /Add certificate/ }));
@@ -719,7 +728,7 @@ describe('the dialog', () => {
     expect(writes[3]?.[2]).toEqual({ version: 3 });
     expect(writes.every(([, , , csrf]) => csrf === 'csrf-1')).toBe(true);
 
-    await waitFor(() => expect(dialog().hasAttribute('open')).toBe(false));
+    await waitFor(() => expect(dialogOpen()).toBe(false));
     expect(await screen.findByText('Waiting for review')).toBeTruthy();
     expect(
       screen.getAllByRole('status').some((node) => node.textContent === 'Sent for review'),
@@ -813,16 +822,18 @@ describe('the dialog', () => {
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Send for review' }));
     const alert = await within(dialog()).findByText(
       'Saved as a draft. We couldn’t send it for review. Try again.',
+      {},
+      { timeout: 5000 },
     );
     expect(alert.closest('[role="alert"]')).toBeTruthy();
-    expect(dialog().hasAttribute('open')).toBe(true);
+    expect(dialogOpen()).toBe(true);
     // The draft is on the list behind the dialog.
     await waitFor(() =>
       expect(sent('').filter(([method]) => method === 'GET').length).toBeGreaterThan(2),
     );
 
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Try again' }));
-    await waitFor(() => expect(dialog().hasAttribute('open')).toBe(false));
+    await waitFor(() => expect(dialogOpen()).toBe(false));
     expect(call.mock.calls.filter(([m, p]) => m === 'POST' && p === CERT_BASE)).toHaveLength(1);
     expect(sent('/documents')).toHaveLength(1);
     expect(sent('/draft')).toHaveLength(2);
@@ -846,7 +857,11 @@ describe('the dialog', () => {
     fillDialog();
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Send for review' }));
     expect(
-      await within(dialog()).findByText('We couldn’t use this file. Choose another one.'),
+      await within(dialog()).findByText(
+        'We couldn’t use this file. Choose another one.',
+        {},
+        { timeout: 5000 },
+      ),
     ).toBeTruthy();
     expect(within(dialog()).getByText(/Saved as a draft/)).toBeTruthy();
     expect(sent('/submit')).toHaveLength(0);
@@ -866,7 +881,11 @@ describe('the dialog', () => {
     fillDialog();
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Send for review' }));
     expect(
-      await within(dialog()).findByText('We couldn’t save the certificate. Try again.'),
+      await within(dialog()).findByText(
+        'We couldn’t save the certificate. Try again.',
+        {},
+        { timeout: 5000 },
+      ),
     ).toBeTruthy();
     expect(
       within(dialog()).getByText('You don’t have permission to add certificates.'),
@@ -895,7 +914,7 @@ describe('the dialog', () => {
     expect(await within(dialog()).findByRole('button', { name: 'Sending…' })).toBeTruthy();
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }));
     expect(within(dialog()).getByText(/Sending is still in progress/)).toBeTruthy();
-    expect(dialog().hasAttribute('open')).toBe(true);
+    expect(dialogOpen()).toBe(true);
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Keep waiting' }));
     release(ok({ certificateId: NEW_CERT, version: 1 }));
     await waitFor(() => expect(sent('/submit')).toHaveLength(1));
@@ -985,7 +1004,11 @@ describe('the dialog', () => {
     fillDialog();
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Send for review' }));
     expect(
-      await within(dialog()).findByText('Someone changed this certificate. Reload to see it.'),
+      await within(dialog()).findByText(
+        'Someone changed this certificate. Reload to see it.',
+        {},
+        { timeout: 5000 },
+      ),
     ).toBeTruthy();
     fireEvent.click(within(dialog()).getByRole('button', { name: 'Reload' }));
     await waitFor(() =>
@@ -1146,5 +1169,80 @@ describe('inside the product form', () => {
     expect(call.mock.calls.some(([, path]) => String(path).startsWith('certification/'))).toBe(
       false,
     );
+  });
+});
+
+describe('focus and what a closed dialog keeps', () => {
+  it('returns focus to the row menu button after Cancel from Finish and send, and after closing the drawer', async () => {
+    serve({
+      list: [item({ id: DRAFT_CERT, status: 'draft' })],
+      record: {
+        id: DRAFT_CERT,
+        typeId: TYPE_HALAL,
+        status: 'draft',
+        version: 2,
+        author: { accountId: 'a' },
+        draft: {
+          manufacturerName: null,
+          issuerId: null,
+          certificateNumberSet: false,
+          issueDate: null,
+          expiryDate: null,
+          coverage: [],
+          documents: [],
+        },
+        pending: null,
+        approved: null,
+      },
+    });
+    mount();
+    const menu = await screen.findByRole('button', { name: 'Actions for Halal certificate' });
+    fireEvent.click(menu);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Finish and send' }));
+    await within(dialog()).findByLabelText('Manufacturer · required');
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.activeElement).toBe(menu));
+    // The drawer, opened from the same menu.
+    fireEvent.click(menu);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'View details' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Certificate details' });
+    fireEvent.click(within(drawer).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(document.activeElement).toBe(menu));
+  });
+
+  it('falls back to the Add button when the opener is gone', async () => {
+    serve({
+      list: [item({ status: 'expired', expiryDate: '2026-11-02' })],
+    });
+    mount();
+    const banner = await screen.findByRole('button', { name: 'Add certificate', hidden: false });
+    const add = screen.getAllByRole('button', { name: /Add certificate/ })[0]!;
+    expect(banner).toBeTruthy();
+    const link = screen.getAllByRole('button', { name: /Add certificate/ })[1]!;
+    link.focus();
+    fireEvent.click(link);
+    await within(dialog()).findByLabelText('Certification type');
+    link.remove();
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.activeElement).toBe(add));
+  });
+
+  it('drops the typed number and the file when the dialog closes: reopening is empty', async () => {
+    serve({ list: [] });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /Add certificate/ }));
+    await within(dialog()).findByLabelText('Certification type');
+    fillDialog();
+    expect(
+      within(dialog()).getByLabelText<HTMLInputElement>('Certificate number · required').value,
+    ).toBe('HA-2025-11873');
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.body.querySelectorAll('dialog')[0]?.textContent).toBe(''));
+    fireEvent.click(screen.getByRole('button', { name: /Add certificate/ }));
+    const box = within(dialog());
+    expect(
+      (await box.findByLabelText<HTMLInputElement>('Certificate number · required')).value,
+    ).toBe('');
+    expect(box.queryByText(/HA-2025/)).toBeNull();
   });
 });

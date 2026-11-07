@@ -2735,7 +2735,6 @@
           },
           "words": {
             "title": "{languages} names are missing for {type}.",
-            "body": "Add them in Certifications › Types before {languagesOr} is published.",
             "body-ask": "Ask a certification admin to add them before {languagesOr} is published."
           },
           "view": "View details"

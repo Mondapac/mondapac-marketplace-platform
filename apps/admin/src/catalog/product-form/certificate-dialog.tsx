@@ -87,16 +87,14 @@ function failureKey(failure: ApiFailure): string {
   }
 }
 
-function toBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = typeof reader.result === 'string' ? reader.result : '';
-      resolve(text.slice(text.indexOf(',') + 1));
-    };
-    reader.onerror = () => reject(reader.error ?? new Error('unreadable'));
-    reader.readAsDataURL(file);
-  });
+async function toBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = '';
+  // In slices, so a 10 MiB file does not overflow the argument list of fromCharCode.
+  for (let at = 0; at < bytes.length; at += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  }
+  return btoa(binary);
 }
 
 export interface CertificateDialogProps {

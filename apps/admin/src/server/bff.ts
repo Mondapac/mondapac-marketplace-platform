@@ -791,6 +791,15 @@ export async function relay(
       return jsonError(403, 'request.csrf');
     if (request.headers.get('origin') !== host.origin) return jsonError(403, 'request.csrf');
   }
+  // The large document body is read only for a request that carries a session cookie: an
+  // anonymous caller cannot make the relay buffer 14.5 MB. The API still checks the session.
+  if (
+    request.method === 'POST' &&
+    CERT_DOCUMENT_PATH.test(target) &&
+    !/(?:^|;\s*)__Host-session-admin-[^=;]*=/.test(request.headers.get('cookie') ?? '')
+  ) {
+    return jsonError(401, 'session.invalid');
+  }
   const bodyCap = bodyCapOf(request.method, target);
   const declared = Number(request.headers.get('content-length') ?? 0);
   if (declared > bodyCap) return jsonError(413, 'request.too-large');

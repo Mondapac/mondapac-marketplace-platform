@@ -1854,7 +1854,7 @@ describe('relay of the product list', () => {
       method: string,
       path: string,
       body = '{}',
-      headers: Record<string, string> = sameOrigin,
+      headers: Record<string, string> = { ...sameOrigin, cookie: '__Host-session-admin-AU=abc' },
     ) =>
       new Request(`http://admin.localhost:3002/api/${path}`, {
         method,
@@ -1934,6 +1934,27 @@ describe('relay of the product list', () => {
         (await relay(config, request('PUT', draft, large), draft.split('/'), upstream)).status,
       ).toBe(413);
       expect(upstream).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a document upload without a session cookie before reading its body', async () => {
+      const upstream = upstreamOk();
+      const documents = `${base}/${id}/documents`;
+      const large = JSON.stringify({ version: 2, data: 'A'.repeat(13 * 1024 * 1024) });
+      for (const cookie of [undefined, 'theme=dark', '__Host-session-seller-AU=abc']) {
+        const headers: Record<string, string> = {
+          ...sameOrigin,
+          ...(cookie === undefined ? {} : { cookie }),
+        };
+        const response = await relay(
+          config,
+          request('POST', documents, large, headers),
+          documents.split('/'),
+          upstream,
+        );
+        expect(response.status, String(cookie)).toBe(401);
+        expect(((await response.json()) as { code: string }).code).toBe('session.invalid');
+      }
+      expect(upstream).not.toHaveBeenCalled();
     });
 
     it('refuses an unsafe call that is not same-origin', async () => {

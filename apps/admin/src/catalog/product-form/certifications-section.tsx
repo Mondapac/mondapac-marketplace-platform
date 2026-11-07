@@ -22,7 +22,6 @@ import {
   CERT_BASE,
   CERT_EDIT_PERMISSION,
   CERT_LIST_MAX,
-  CERT_TYPE_VIEW_PERMISSION,
   CERT_VIEW_PERMISSION,
   categoryNameOf,
   coverageCount,
@@ -93,21 +92,39 @@ export function CertificationsSection({
   const locale = useLocale();
   const canView = permissionKeys.includes(CERT_VIEW_PERMISSION);
   const canEdit = permissionKeys.includes(CERT_EDIT_PERMISSION);
-  const canViewTypes = permissionKeys.includes(CERT_TYPE_VIEW_PERMISSION);
   const hasPublished = product.published !== null;
 
   const [phase, setPhase] = useState<ListPhase>({ kind: 'loading' });
+  // Null when closed: the dialog unmounts, so what was typed (the number, the file) is dropped.
   const [dialog, setDialog] = useState<{
     readonly key: number;
     readonly mode: CertDialogMode;
-    readonly open: boolean;
   } | null>(null);
   const [live, setLive] = useState('');
   const addRef = useRef<HTMLButtonElement>(null);
   const opened = useRef(0);
 
   const variants = useMemo(() => publishedVariants(product), [product]);
-  const details = useCertificateDetails(variants);
+  const opener = useRef<HTMLElement | null>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  /** Remembers what opened a dialog or the drawer: the row's menu button or a banner button. */
+  const remember = () => {
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  };
+  /** Gives focus back to the opener; if it is gone, to the Add button, else the card heading. */
+  const restoreFocus = useCallback(() => {
+    setTimeout(() => {
+      const back = opener.current;
+      const target =
+        back !== null && back.isConnected ? back : (addRef.current ?? headingRef.current);
+      target?.focus();
+    }, 0);
+  }, []);
+  const details = useCertificateDetails(variants, restoreFocus);
+  const viewDetails = (item: CertListItem) => {
+    remember();
+    details.open(item);
+  };
 
   const load = useCallback(async () => {
     const result = await callApi<CertList>('GET', `${CERT_BASE}/for-product/${product.productId}`);
@@ -145,8 +162,9 @@ export function CertificationsSection({
   const items = phase.kind === 'ready' ? phase.items : [];
 
   function openDialog(mode: CertDialogMode): void {
+    remember();
     opened.current += 1;
-    setDialog({ key: opened.current, mode, open: true });
+    setDialog({ key: opened.current, mode });
   }
 
   // ---- The banners: rejected first (Critical), then expired and missing names (Attention).
@@ -196,7 +214,9 @@ export function CertificationsSection({
       <div className="@container">
         <Card>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-fg">{t('title')}</h2>
+            <h2 ref={headingRef} tabIndex={-1} className="text-lg font-semibold text-fg">
+              {t('title')}
+            </h2>
             {addButton}
           </div>
           <p className="text-sm text-fg-secondary">{t('helper')}</p>
@@ -211,7 +231,7 @@ export function CertificationsSection({
                   reason: t(`reason.${reasonKey(item.rejectionReasonCode)}`),
                 })}
               </p>
-              <Button variant="link" onClick={() => details.open(item)}>
+              <Button variant="link" onClick={() => viewDetails(item)}>
                 {t('banner.view')}
               </Button>
             </Banner>
@@ -245,7 +265,7 @@ export function CertificationsSection({
                 })}
               >
                 <p>
-                  {t(canViewTypes ? 'banner.words.body' : 'banner.words.body-ask', {
+                  {t('banner.words.body-ask', {
                     languagesOr: joinWords(words, 'disjunction'),
                   })}
                 </p>
@@ -277,7 +297,7 @@ export function CertificationsSection({
               today={today}
               locale={locale}
               canEdit={canEdit}
-              onView={details.open}
+              onView={viewDetails}
               onFinish={(item) => openDialog({ kind: 'finish', item })}
             />
           )}
@@ -299,17 +319,20 @@ export function CertificationsSection({
               {dialog === null ? null : (
                 <CertificateDialog
                   key={dialog.key}
-                  open={dialog.open}
+                  open
                   mode={dialog.mode}
                   productId={product.productId}
                   productTitle={publishedTitle(product)}
                   variants={variants}
                   csrfToken={csrfToken}
                   marketName={marketName}
-                  onClose={() => setDialog((current) => current && { ...current, open: false })}
+                  onClose={() => {
+                    setDialog(null);
+                    restoreFocus();
+                  }}
                   onCreated={() => void load()}
                   onSent={() => {
-                    setDialog((current) => current && { ...current, open: false });
+                    setDialog(null);
                     setLive(t('live.sent'));
                     void load();
                     setTimeout(() => addRef.current?.focus(), 0);
