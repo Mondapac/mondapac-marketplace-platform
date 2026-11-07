@@ -215,6 +215,25 @@ describe('admin dashboard', () => {
     expect(screen.getByRole('link', { name: /Offers to review/ }).textContent).toContain('0');
   });
 
+  it('counts only the Offers of a full first page as a lower bound', () => {
+    const offers = full.offers?.kind === 'ok' ? full.offers.value.items : [];
+    const mixed: AdminDashboardData = {
+      ...none,
+      offers: ok({
+        items: [
+          { kind: 'product-revision' as const },
+          ...offers,
+          { kind: 'product-revision' as const },
+        ],
+        nextAfterId: 'next',
+      }),
+    };
+    render(wrap(<AdminDashboard data={mixed} permissionKeys={[]} />));
+    const figure = screen.getByRole('link', { name: /Offers to review/ });
+    expect(figure.textContent).toContain('1+');
+    expect(figure.textContent).toContain('First 50 only; more are waiting');
+  });
+
   it('fails one widget in place and still renders the others', () => {
     const partly: AdminDashboardData = {
       ...full,

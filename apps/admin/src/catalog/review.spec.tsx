@@ -32,10 +32,10 @@ const row = (over: Partial<ReviewRow> = {}): ReviewRow => ({
   ...over,
 });
 
-function mount(canDecide = true, rows: ReviewRow[] = [row()]) {
+function mount(canDecide = true, rows: ReviewRow[] = [row()], morePages = false) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <ReviewQueue rows={rows} canDecide={canDecide} csrfToken="csrf-1" />
+      <ReviewQueue rows={rows} canDecide={canDecide} csrfToken="csrf-1" morePages={morePages} />
     </NextIntlClientProvider>,
   );
 }
@@ -52,6 +52,14 @@ describe('ReviewQueue', () => {
   it('shows the empty state', () => {
     mount(true, []);
     expect(screen.getByText('No offers are waiting for review.')).toBeTruthy();
+  });
+
+  it('does not call the queue empty when a next page exists', () => {
+    mount(true, [], true);
+    expect(
+      screen.getByText('No offers on this page. More of the queue is on the next page.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('No offers are waiting for review.')).toBeNull();
   });
 
   it('opens a card to show the seller texts, without a table', () => {

@@ -69,6 +69,7 @@ export default async function OfferReviewsPage({
         rows={offerRowsOf(result.body.items)}
         canDecide={gate.session.permissionKeys.includes(DECIDE_PERMISSION)}
         csrfToken={gate.session.csrfToken}
+        morePages={result.body.nextAfterId !== null}
       />
       {result.body.nextAfterId === null ? null : (
         <p>

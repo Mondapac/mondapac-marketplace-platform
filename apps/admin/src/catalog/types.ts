@@ -33,7 +33,8 @@ export interface ReviewRow {
 
 /**
  * A pending product revision. The same queue answer carries these next to the Offer rows; this
- * page does not show them yet (the product version review screen does), so only the kind is read.
+ * page leaves them out (the planned product version review screen will show them), so only the
+ * kind is read.
  */
 export interface RevisionQueueRow {
   readonly kind: 'product-revision';
