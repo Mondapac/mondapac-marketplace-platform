@@ -88,8 +88,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // protected `.restructure` and `.import` are not listed. Version 14 adds
     // `catalog.attribute-suggestion.decide` (attributes package A5: approve, map or reject a
     // seller's suggested value; unprotected, it adds one value to a published attribute that is not
-    // `material` and nothing else).
-    seedVersion: 14,
+    // `material` and nothing else). Version 15 adds `catalog.variant.view` (variants V6: the
+    // read-only Catalogue > Variants page); the protected `catalog.variant-type.edit` is not listed.
+    seedVersion: 15,
     nameKey: 'identity.role.catalogue-moderator',
     permissionKeys: [
       'identity.seller-access.view',
@@ -104,6 +105,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.category-tree.view',
       'catalog.category-tree.edit',
       'catalog.attribute-suggestion.decide',
+      'catalog.variant.view',
       'sellers.seller.view',
       'pricing.price-hold.view',
       'certification.type.view',
@@ -119,8 +121,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 2 adds `sellers.seller.view` (the admin seller list, sellers slice 6). Version 3
     // adds `certification.type.view` (certification slice 12). Version 4 adds
     // `catalog.attribute.view` (attributes package A1: the read-only Attributes page). Version 5 adds
-    // `catalog.category-tree.view` (categories package C1).
-    seedVersion: 5,
+    // `catalog.category-tree.view` (categories package C1). Version 6 adds `catalog.variant.view`
+    // (variants V6: the read-only Variants page).
+    seedVersion: 6,
     nameKey: 'identity.role.operations-support',
     permissionKeys: [
       'identity.seller-access.view',
@@ -131,6 +134,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'certification.type.view',
       'catalog.attribute.view',
       'catalog.category-tree.view',
+      'catalog.variant.view',
     ],
   },
   {
@@ -198,7 +202,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // audited `removedKeys` entry; a custom role that lists it is never touched (R10).
     // Version 29 adds `sellers.business-activity.view`, likewise unprotected (seller business
     // activities, ADR-0040); the `.manage` key is not a viewer key.
-    seedVersion: 29,
+    // Version 30 adds `catalog.variant.view`, likewise unprotected (variants V6); the protected
+    // `catalog.variant-type.edit` is not a viewer key.
+    seedVersion: 30,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -229,6 +235,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.category-tree.view',
       'settings.list-paging.view',
       'sellers.business-activity.view',
+      'catalog.variant.view',
     ],
   },
   {

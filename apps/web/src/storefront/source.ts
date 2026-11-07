@@ -34,6 +34,7 @@ import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { sampleDeliveryOptions } from './sample-delivery-options.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
+import { lookupIsLive, placesDeps } from '../delivery/places-server.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 import { SAMPLE_SELLER_SIGN_UP } from './sample-seller-sign-up.ts';
@@ -258,11 +259,13 @@ function samplePayment(request: PayRequest): PayAnswer {
 }
 
 /**
- * The Deliver to modal's service area and, until the map and address-lookup provider is chosen,
- * the sample places of its stubbed lookup (handoffs/deliver-to-modal.md).
+ * The Deliver to modal's service area and map extent (sample until the map provider PR), and
+ * whether its address lookup is live: Mapbox is configured for this host's Market
+ * (MAPBOX_SEARCH_TOKEN, MAPBOX_COUNTRIES). Otherwise the stubbed lookup on sample places.
  */
 export async function loadDeliveryLocator(): Promise<DeliveryLocatorSource> {
-  return Promise.resolve(SAMPLE_DELIVERY_LOCATOR);
+  const live = lookupIsLive(placesDeps(), await headers());
+  return live ? { ...SAMPLE_DELIVERY_LOCATOR, live } : SAMPLE_DELIVERY_LOCATOR;
 }
 
 /** The display name of a ServiceArea code ("greater-brisbane"); the code itself when unnamed. */

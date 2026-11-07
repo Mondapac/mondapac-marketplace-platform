@@ -1,6 +1,7 @@
 import {
   IMAGE_TAKEDOWN_REASONS as CATALOG_IMAGE_REASONS,
   OFFER_CHANGE_REASONS,
+  PRODUCT_CHANGE_REASONS as CATALOG_PRODUCT_REASONS,
 } from '../../catalog';
 import { ISSUER_REQUEST_OUTCOME_VALUES } from '../../certification';
 import { TEAM_MEMBER_INVITE } from '../../identity';
@@ -11,6 +12,7 @@ import {
   IMAGE_TAKEDOWN_REASONS,
   ISSUER_REQUEST_OUTCOMES,
   PRICE_KINDS,
+  PRODUCT_CHANGE_REASONS,
 } from './in-app-notice';
 
 // The seller notices (package 4) copy the enum vocabulary of the events they consume. A value
@@ -20,6 +22,9 @@ import {
 describe('seller notice vocabulary', () => {
   it('matches the vocabulary of each consumed event', () => {
     expect([...CHANGE_REASONS]).toEqual([...OFFER_CHANGE_REASONS]);
+    expect([...PRODUCT_CHANGE_REASONS]).toEqual([...CATALOG_PRODUCT_REASONS]);
+    // A v1 change request still in an outbox carries an Offer reason: each one stays valid.
+    expect(OFFER_CHANGE_REASONS.every((code) => PRODUCT_CHANGE_REASONS.includes(code))).toBe(true);
     expect([...IMAGE_TAKEDOWN_REASONS]).toEqual([...CATALOG_IMAGE_REASONS]);
     expect([...ISSUER_REQUEST_OUTCOMES]).toEqual([...ISSUER_REQUEST_OUTCOME_VALUES]);
     expect([...PRICE_KINDS]).toEqual([...PRICE_RECORD_KINDS]);

@@ -97,8 +97,6 @@
     "orders": "Orders",
     "reviews": "Reviews",
     "earnings": "Earnings",
-    "expandAll": "Expand all",
-    "collapseAll": "Collapse all",
     "group": {
       "orders": "Orders",
       "catalogue": "Catalogue",
@@ -1262,7 +1260,35 @@
       "discard": "Discard changes",
       "saved": "{count, plural, one {Saved # change.} other {Saved # changes.}}",
       "partial": "Saved {done}, {failed} could not be saved. The cells that failed show why.",
-      "cancelled": "Nothing was saved. The confirmation was cancelled."
+      "cancelled": "Nothing was saved. The confirmation was cancelled.",
+      "units": {
+        "sku": "SKU",
+        "selling": "On sale",
+        "sku-for": "SKU for {variant}",
+        "selling-for": "On sale: {variant}",
+        "off-sale": "Off sale",
+        "sizes": "Sizes you sell",
+        "sizes-help": "Untick a size to take it off sale. You keep its price and stock and can put it back any time.",
+        "last-hint": "At least one size must stay on sale.",
+        "sku-help": "Empty SKU uses your offer SKU plus the variant number, e.g. {example}.",
+        "error": {
+          "format": "Use 1 to 64 letters, digits or symbols, with no spaces.",
+          "duplicate": "This SKU is typed on more than one variant. Each SKU must be different.",
+          "sku-taken": "You already use this SKU. Pick a different one.",
+          "sku-taken-table": "One of the SKUs you entered is already in use. Check the fields marked below.",
+          "none-selling": "At least one size must stay on sale. Turn one on before you save.",
+          "invalid": "The SKU or Selling changes were not accepted. Check the SKU fields and try again.",
+          "stale": "The sizes changed somewhere else. Reload the page and try again.",
+          "not-found": "This offer was not found. Reload the page.",
+          "denied": "You don't have permission to change SKUs or what you sell.",
+          "not-eligible": "Your seller account can't change this right now.",
+          "csrf": "Your session expired. Reload the page and try again.",
+          "unavailable": "SKUs and Selling are unavailable right now. Try again later.",
+          "unknown": "Something went wrong. Try again.",
+          "sku-maybe": "You may already use this SKU. Change it if so."
+        },
+        "reload": "Reload"
+      }
     },
     "suggestions": {
       "title": "Value suggestions",
@@ -2001,7 +2027,7 @@
       "offer-published": "Your <strong>offer</strong> is published",
       "offer-changes-requested": "Your <strong>offer</strong> needs changes: {reason, select, content_unclear {the content is unclear} description_claim {the description makes a claim} sku_or_condition {check the SKU or condition} handling_unclear {the handling is unclear} other {see the offer}}",
       "product-published": "Your <strong>product</strong> changes are published",
-      "product-changes-requested": "Your <strong>product</strong> changes were sent back: {reason, select, content_unclear {the content is unclear} description_claim {the description makes a claim} sku_or_condition {check the SKU or condition} handling_unclear {the handling is unclear} other {see the product}}",
+      "product-changes-requested": "Your <strong>product</strong> changes were sent back: {reason, select, content_unclear {the content is unclear} description_claim {the description makes a claim} sku_or_condition {check the SKU or condition} handling_unclear {the handling is unclear} photos {check the photos} category {check the category} tax_category {check the tax category} duplicate {it looks like a product that is already listed} other {see the product}}",
       "offer-tag-changed": "{change, select, suspended {A <strong>certification tag</strong> was suspended and the offer is off sale} removed {A <strong>certification tag</strong> was removed from an offer} restored {A <strong>certification tag</strong> is active again} other {A <strong>certification tag</strong> changed}}",
       "image-taken-down": "A <strong>product image</strong> was taken down {reason, select, certification_mark {because it shows a certification mark} misleading {because it is misleading} rights {after a rights claim} unsafe_or_illegal {because it is unsafe or illegal} other {by the platform}}",
       "price-hold-decided": "{outcome, select, approved {Your <strong>{priceKind, select, special {special price} other {price}}</strong> change was approved} rejected {Your <strong>{priceKind, select, special {special price} other {price}}</strong> change was rejected} other {Your <strong>price</strong> change was reviewed}}",

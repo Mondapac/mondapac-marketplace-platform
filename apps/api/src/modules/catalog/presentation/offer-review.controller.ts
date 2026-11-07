@@ -39,7 +39,10 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { OfferApprove } from '../application/use-cases/offer-approve.use-case';
 import { OfferRequestChanges } from '../application/use-cases/offer-request-changes.use-case';
-import { ReviewQueueList } from '../application/use-cases/review-queue-list.use-case';
+import {
+  REVIEW_QUEUE_KINDS,
+  ReviewQueueList,
+} from '../application/use-cases/review-queue-list.use-case';
 import { closedBody, pageQuery, refusalWith } from './http-answers';
 import {
   OfferApproveRequest,
@@ -69,6 +72,16 @@ export const OFFER_REVIEW_STATUS: Readonly<Record<string, number>> = Object.free
   'claim.check-unavailable': 503,
 });
 
+/** The boolean filters of the queue arrive as text; any other text reaches the use case and fails. */
+function flagQuery(query: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...query };
+  for (const key of ['firstPublication', 'hasImages']) {
+    if (out[key] === 'true') out[key] = true;
+    else if (out[key] === 'false') out[key] = false;
+  }
+  return out;
+}
+
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
 
@@ -94,10 +107,14 @@ export class OfferReviewController {
   @Header('Cache-Control', 'no-store')
   @ReadsSession()
   @ApiOperation({
-    summary: 'List the Offers waiting for their first publication',
+    summary: 'List the review queue: Offers and product revisions',
     description:
-      'Needs catalog.product.view. Oldest submit first, keyset-paged: send `nextAfterId` of ' +
-      'the previous page as `afterId`. `limit` is 1 to 50 (default 25).',
+      'Needs catalog.product.view. Offers waiting for their first publication and pending ' +
+      'product revisions, oldest submit first, keyset-paged: send `nextAfterId` of the previous ' +
+      'page as `afterId`, with the same filters. `limit` is 1 to 50 (default 25). `kind` keeps ' +
+      'one kind; `sellerId` one seller; `firstPublication` and `hasImages` keep product ' +
+      'revisions only (refused with kind=offer-first-publication). `total` counts what the ' +
+      'filters keep; `totals` is the whole queue per kind.',
   })
   @ApiQuery({
     name: 'afterId',
@@ -105,6 +122,22 @@ export class OfferReviewController {
     description: 'The last Offer id of the previous page.',
   })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 50, default 25.' })
+  @ApiQuery({ name: 'kind', required: false, enum: REVIEW_QUEUE_KINDS })
+  @ApiQuery({ name: 'sellerId', required: false, description: "One seller's rows only (uuid)." })
+  @ApiQuery({
+    name: 'firstPublication',
+    required: false,
+    enum: ['true', 'false'],
+    description: 'Product revisions only: a first publication or an update.',
+  })
+  @ApiQuery({
+    name: 'hasImages',
+    required: false,
+    enum: ['true', 'false'],
+    description:
+      'Product revisions only: the pending revision lists a photo (any state, as the row field) ' +
+      'or none.',
+  })
   @ApiOkResponse({ type: ReviewQueueListDto })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -115,7 +148,7 @@ export class OfferReviewController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<ReviewQueueListDto> {
-    const result = await this.queue.execute(context, pageQuery(query));
+    const result = await this.queue.execute(context, flagQuery(pageQuery(query)));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as ReviewQueueListDto)
       : refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);

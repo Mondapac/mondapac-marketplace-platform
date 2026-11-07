@@ -1,6 +1,7 @@
 import { inputOf, minorOf } from '../price/money.ts';
 import type { VariantPrice } from '../price/types.ts';
 import type { StockCell } from '../stock/levels-types.ts';
+import type { SellUnitView } from './types.ts';
 
 // The pure half of the offer's variants table (variants V3b): the draft values of a bulk action
 // and the writes a save has to send. Money stays in minor units as exact integers.
@@ -29,6 +30,8 @@ export interface TableRow {
   readonly price: VariantPrice | null;
   /** Stock cell per location id. */
   readonly stock: Readonly<Record<string, StockCell | undefined>>;
+  /** The variant's sell unit (SKU and Selling); null or missing when the page did not read one. */
+  readonly unit?: SellUnitView | null;
 }
 
 export const stockKey = (variantId: string, sourceId: string): string => `${variantId}:${sourceId}`;

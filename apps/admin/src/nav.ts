@@ -41,6 +41,14 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.attribute.view'],
     },
     {
+      id: 'variants',
+      icon: 'columns',
+      labelKey: 'nav.variants',
+      href: '/catalog/variants',
+      group: 'catalogue',
+      anyOf: ['catalog.variant.view'],
+    },
+    {
       id: 'brands',
       icon: 'tag',
       labelKey: 'nav.brands',
@@ -57,10 +65,10 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.business-activity.read'],
     },
     {
-      id: 'offer-reviews',
+      id: 'review-queue',
       icon: 'inbox',
-      labelKey: 'nav.offer-reviews',
-      href: '/offer-reviews',
+      labelKey: 'nav.review-queue',
+      href: '/review',
       group: 'reviews',
       anyOf: ['catalog.product.view'],
     },

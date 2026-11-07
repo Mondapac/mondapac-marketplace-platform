@@ -13,6 +13,7 @@ import type { AttributeValueSuggestionStore } from '../ports/attribute-value-sug
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRepository } from '../ports/product.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import { invalid, isoOf, sellerOf, type ValidationFailure } from '../own-reads/own-reads.shared';
 
@@ -110,6 +111,8 @@ export interface OwnProductReadDependencies {
   readonly policy: CatalogMarketPolicy;
   readonly suggestions?: AttributeValueSuggestionStore;
   readonly attributeStore?: AttributeDefinitionStore;
+  /** Shows the feature set of the draft's current primary category (CAT-10); display only. */
+  readonly familyResolver?: ProductFamilyResolver;
 }
 
 /**
@@ -179,6 +182,19 @@ export class OwnProductRead extends UseCase<
         const copy = await deps.workingCopies.find(market, state.id);
         const revisionOf = async (id: Id<'ProductRevision'> | null) =>
           id === null ? null : await deps.revisions.find(market, state.id, id);
+        // The form shows the feature set the draft's primary category holds now; nothing is stored.
+        // When it cannot be resolved the stored one is shown (the submit fails closed on its own).
+        const rawCategories = copy?.content['categoryIds'];
+        const primaryCategoryId =
+          Array.isArray(rawCategories) && typeof rawCategories[0] === 'string'
+            ? rawCategories[0]
+            : null;
+        const resolved =
+          deps.familyResolver === undefined || copy === null
+            ? null
+            : await deps.familyResolver.resolve(market, primaryCategoryId);
+        const shownFamily =
+          resolved !== null && resolved.ok ? resolved.familyCode : state.familyCode;
         const suggestions: OwnSuggestionView[] = [];
         if (deps.suggestions !== undefined && deps.attributeStore !== undefined) {
           const codes = new Map<string, string | null>();
@@ -208,8 +224,9 @@ export class OwnProductRead extends UseCase<
         return ok({
           product,
           suggestions,
-          form: await deps.ownReader.productForm(market, state.familyCode),
+          form: await deps.ownReader.productForm(market, shownFamily),
           copy,
+          shownFamily,
           published: await revisionOf(state.publishedRevisionId),
           pending: await revisionOf(state.pendingRevisionId),
           changeRequest: await deps.revisions.latestChangeRequest(market, state.id),
@@ -219,13 +236,14 @@ export class OwnProductRead extends UseCase<
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
     if (read.value === null) return err({ code: 'product.not-found' });
-    const { product, form, copy, published, pending, changeRequest, suggestions } = read.value;
+    const { product, form, copy, shownFamily, published, pending, changeRequest, suggestions } =
+      read.value;
     const { state } = product;
     return ok({
       productId: state.id,
       productCode: state.productCode,
       typeCode: state.typeCode,
-      familyCode: state.familyCode,
+      familyCode: shownFamily,
       variantModel: state.variantModel,
       status: state.status,
       ownBrand: state.ownBrand,

@@ -171,9 +171,19 @@ import {
   type PublicCategoryReader,
 } from '../application/ports/public-category.reader';
 import { PrismaPublicCategoryReader } from './prisma-public-category.reader';
+import {
+  PRODUCT_SELL_UNIT_FACTS_READER,
+  type ProductSellUnitFactsReader,
+} from '../application/ports/product-sell-unit-facts.reader';
+import { PrismaProductSellUnitFactsReader } from './prisma-product-sell-unit-facts.reader';
 import { PrismaSellUnitLabelsReader } from './prisma-sell-unit-labels.reader';
 import { PrismaOfferNamesReader } from './prisma-offer-names.reader';
 import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
+import { PrismaOfferSellUnitRepository } from './prisma-offer-sell-unit.repository';
+import {
+  OFFER_SELL_UNIT_REPOSITORY,
+  type OfferSellUnitRepository,
+} from '../application/ports/offer-sell-unit.repository';
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
 import type { IdGenerator } from '@mondapac/shared-kernel';
 import { CertificationClaimTextMatcher } from './certification-claim-text-matcher';
@@ -286,6 +296,17 @@ const CATALOG_SECRET = Symbol('CATALOG_SECRET');
  * Binds the ports of slices 1 to 3. They live in `infrastructure/` because only this layer may reach
  * `PrismaService` (dependency-cruiser `persistence-internals-are-private`).
  */
+import {
+  VARIANT_ADMIN_READER,
+  type VariantAdminReader,
+} from '../application/ports/variant-admin.reader';
+import {
+  VARIANT_TYPE_SETTINGS_STORE,
+  type VariantTypeSettingsStore,
+} from '../application/ports/variant-type-settings.store';
+import { PrismaVariantAdminReader } from './prisma-variant-admin.reader';
+import { PrismaVariantTypeSettingsStore } from './prisma-variant-type-settings.store';
+
 export const catalogProviders: readonly Provider[] = [
   // ADR-0031 decision 3: the binding of `certification.matchClaimTerms` (the placeholder is gone).
   {
@@ -419,6 +440,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService, ID_GENERATOR],
     useFactory: (prisma: PrismaService, ids: IdGenerator): OfferRepository =>
       new PrismaOfferRepository(prisma, ids),
+  },
+  {
+    provide: OFFER_SELL_UNIT_REPOSITORY,
+    inject: [PrismaService, ID_GENERATOR],
+    useFactory: (prisma: PrismaService, ids: IdGenerator): OfferSellUnitRepository =>
+      new PrismaOfferSellUnitRepository(prisma, ids),
   },
   {
     provide: OFFER_LISTINGS_READER,
@@ -561,6 +588,12 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaPublicCategoryReader(prisma),
   },
   {
+    provide: PRODUCT_SELL_UNIT_FACTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ProductSellUnitFactsReader =>
+      new PrismaProductSellUnitFactsReader(prisma),
+  },
+  {
     provide: SELL_UNIT_LABELS_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellUnitLabelsReader =>
@@ -661,5 +694,16 @@ export const catalogProviders: readonly Provider[] = [
     provide: RATE_COUNTER_KEYS,
     inject: [CATALOG_SECRET],
     useFactory: (secret: Uint8Array): RateCounterKeys => new HmacRateCounterKeys(secret),
+  },
+  {
+    provide: VARIANT_ADMIN_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantAdminReader => new PrismaVariantAdminReader(prisma),
+  },
+  {
+    provide: VARIANT_TYPE_SETTINGS_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantTypeSettingsStore =>
+      new PrismaVariantTypeSettingsStore(prisma),
   },
 ];

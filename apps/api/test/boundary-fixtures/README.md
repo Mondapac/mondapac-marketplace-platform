@@ -8,6 +8,8 @@ are excluded from the normal lint, typecheck and build.
 - `src/` mirrors `apps/api/src/`; dependency-cruiser runs on it from this folder, as
   `pnpm boundaries` runs on `apps/api/src/`. Each file says whether it is a violation or an
   allowed case.
+- `packages/platform-import/src/` is a one-function stand-in for the CSV package, mapped in
+  `tsconfig.json` (positive fixture: `domain/uses-platform-import.ts`).
 - `packages/shared-kernel/src/` is a miniature shared kernel. `tsconfig.json` maps
   `@mondapac/shared-kernel`, `@mondapac/shared-kernel/testing` and
   `@mondapac/shared-kernel/contexts` to it, as

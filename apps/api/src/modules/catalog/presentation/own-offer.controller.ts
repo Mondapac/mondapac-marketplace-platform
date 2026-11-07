@@ -48,8 +48,10 @@ import { OwnOfferDelete } from '../application/use-cases/own-offer-delete.use-ca
 import { OwnOfferSubmit } from '../application/use-cases/own-offer-submit.use-case';
 import { OwnOfferSetHandling } from '../application/use-cases/own-offer-set-handling.use-case';
 import { OwnOfferRecordAttestation } from '../application/use-cases/own-offer-record-attestation.use-case';
+import { OwnOfferSetSellUnits } from '../application/use-cases/own-offer-set-sell-units.use-case';
 import { OwnOfferEdit } from '../application/use-cases/own-offer-edit.use-case';
 import { OwnOfferCreateOnPlatformProduct } from '../application/use-cases/own-offer-create-on-platform-product.use-case';
+import { OwnOfferReadSellUnits } from '../application/use-cases/own-offer-read-sell-units.use-case';
 import { OwnOfferRead } from '../application/use-cases/own-offer-read.use-case';
 import { OwnOffersList } from '../application/use-cases/own-offers-list.use-case';
 import { closedBody, optionalClosedBody, pageQuery, refusalWith } from './http-answers';
@@ -66,6 +68,9 @@ import {
   OwnOfferHandlingSet,
   OwnOfferRecordAttestationRequest,
   OwnOfferSetHandlingRequest,
+  OwnOfferSellUnitsSet,
+  OwnOfferSellUnitsView,
+  OwnOfferSetSellUnitsRequest,
   OwnOfferSubmitRequest,
   OwnOfferSubmitted,
   OwnOfferAddTagRequest,
@@ -96,6 +101,7 @@ export const OWN_OFFER_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'seller.not-eligible': 403,
   'offer.exists-for-product': 409,
   'offer.sku-taken': 409,
+  'offer.none-selling': 422,
   'type.not-allowed': 422,
   'setting.sell-from-catalogue-off': 422,
   'claim-text.refused': 422,
@@ -136,11 +142,13 @@ export class OwnOfferController {
     private readonly createOffer: OwnOfferCreateOnPlatformProduct,
     private readonly editOffer: OwnOfferEdit,
     private readonly setOfferHandling: OwnOfferSetHandling,
+    private readonly setSellUnits: OwnOfferSetSellUnits,
     private readonly recordOfferAttestation: OwnOfferRecordAttestation,
     private readonly submitOffer: OwnOfferSubmit,
     private readonly deleteOffer: OwnOfferDelete,
     private readonly listOffers: OwnOffersList,
     private readonly readOffer: OwnOfferRead,
+    private readonly readSellUnits: OwnOfferReadSellUnits,
     private readonly addOfferTag: OwnOfferAddTag,
     private readonly removeOfferTag: OwnOfferRemoveTag,
     private readonly removeSuspendedOfferTag: OwnOfferRemoveSuspendedTag,
@@ -217,6 +225,46 @@ export class OwnOfferController {
           ? (JSON.parse(JSON.stringify(result.value)) as OwnOfferViewDto)
           : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
     return this.settleRead('catalog.own-offer-read', context, outcome);
+  }
+
+  @Get(':offerId/sell-units')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Read the SKU and the selling switch of the sell units of an own Offer',
+    description:
+      "Needs catalog.own-product.view. The non-retired variants of the Offer's product ordered by " +
+      'variant number, each with its code, published label (Market default locale, else null), ' +
+      "the selling switch and the seller's variant SKU. Also the product scope and the Offer SKU, " +
+      'so a panel can show the fallback SKU. An Offer of another seller, a deleted one and an ' +
+      'unknown id are one byte-identical offer.not-found.',
+  })
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiOkResponse({ type: OwnOfferSellUnitsView })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async readUnits(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+  ): Promise<OwnOfferSellUnitsView> {
+    const parsed = parseId<'Offer'>(offerId);
+    // A malformed id answers as an unknown Offer, byte-identical to a missing one.
+    const result = parsed.ok
+      ? await this.readSellUnits.execute(context, { offerId: parsed.value })
+      : null;
+    const outcome =
+      result === null
+        ? refusalWith(OWN_OFFER_STATUS, { code: 'offer.not-found' }, response, context)
+        : result.ok
+          ? (JSON.parse(JSON.stringify(result.value)) as OwnOfferSellUnitsView)
+          : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    return this.settleRead('catalog.own-offer-read-sell-units', context, outcome);
   }
 
   private settleRead<T extends object>(
@@ -385,6 +433,72 @@ export class OwnOfferController {
     if (outcome instanceof HttpException) throw outcome;
     return outcome;
   }
+  @Put(':offerId/sell-units')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Set the SKU and the selling switch of the sell units of an own Offer',
+    description:
+      'Needs catalog.own-product.edit. Per sell unit (variant): an optional variant SKU and a ' +
+      'reversible `selling` switch. selling=false takes the unit off sale in the cart, search and ' +
+      'the product page without retiring the variant; true puts it back. At least one unit must ' +
+      'keep selling (offer.none-selling). A SKU already used by the seller, in another unit or an ' +
+      'open Offer, is offer.sku-taken. Only changed units are stored. An Offer of another seller, a ' +
+      'deleted one and an unknown id are one byte-identical offer.not-found. Shares the save budget ' +
+      'of draft saves and Offer edits: 60 a minute and 1,000 a day per account.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
+  @ApiBody({ type: OwnOfferSetSellUnitsRequest })
+  @ApiOkResponse({ type: OwnOfferSellUnitsSet })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf or seller.not-eligible',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
+  @ApiConflictResponse({ type: ApiErrorBody, description: 'offer.sku-taken' })
+  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: 'offer.none-selling' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async setUnits(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+    @Body() body: unknown,
+  ): Promise<OwnOfferSellUnitsSet> {
+    const input = closedBody(request, body, ['units']);
+    let outcome: OwnOfferSellUnitsSet | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.setSellUnits.execute(context, {
+        offerId,
+        units: input.units as never,
+      });
+      outcome = result.ok
+        ? { changedVariantIds: [...result.value.changedVariantIds] }
+        : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    }
+    this.#logger.log({
+      msg: 'catalog.own-offer-set-sell-units',
+      outcome:
+        outcome instanceof HttpException ? (outcome.getResponse() as { code: string }).code : 'ok',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (outcome instanceof HttpException) throw outcome;
+    return outcome;
+  }
+
   @Put(':offerId/handling')
   @HttpCode(200)
   @ReadsSession()
