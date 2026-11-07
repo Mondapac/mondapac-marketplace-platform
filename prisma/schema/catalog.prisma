@@ -1410,19 +1410,25 @@ model CatalogSellerImportPhoto {
   @@schema("catalog")
 }
 
-/// A saved filter (saved view) of an admin list (catalog design 9.2d; data design 3.28): the tab,
-/// search, filters and sort of the list under a name, for one admin ("me") or for every admin of
-/// the Market who can see that list ("everyone"). `list_key` names the list (`admin.catalog.products`
-/// today) so another admin list can reuse the table. The payload is a closed document validated on
-/// write by the application (`v`, `view`, `q`, `filters`, `sort`, `direction`); the CHECKs only
-/// bound its type and size. `owner_account_id` is an identity account id with no foreign key (the
-/// tables of another module are never joined). The CHECKs, the two name uniques (case-insensitive,
-/// expression indexes) and the grants are hand-written in the migration.
+/// A saved filter (saved view) of an admin list or of the seller Products list (catalog design
+/// 9.2d; data design 3.28): the tab, search, filters and sort of the list under a name, for one
+/// account ("me") or for everyone who can see that list ("everyone": every admin of the Market, or
+/// every member of one store for a seller list). `list_key` names the list (`admin.catalog.products`
+/// and `seller.catalog.products` today) so another list can reuse the table. A `seller.` list key
+/// carries `seller_id` and an admin key does not (CHECK). The payload is a closed document validated
+/// on write by the application (the admin list: `v`, `view`, `q`, `filters`, `sort`, `direction`;
+/// the seller list: `v`, `view`, `q`, `status`, `categoryId`, `paused`, `typeCode`, `sort`,
+/// `direction`); the CHECKs only bound its type and size. `owner_account_id` is an identity account id with no foreign key (the
+/// tables of another module are never joined). The CHECKs, the four name uniques (case-insensitive,
+/// partial expression indexes: admin and seller twins) and the grants are hand-written in the migration.
 model CatalogSavedFilter {
   id             String   @id @db.Uuid
   marketId       String   @map("market_id") @db.VarChar(8)
   tenantId       String   @map("tenant_id")
   ownerAccountId String   @map("owner_account_id") @db.Uuid
+  /// The store a seller-list filter belongs to (an id of the sellers module, no foreign key); null
+  /// for admin lists. Never changes after the insert.
+  sellerId       String?  @map("seller_id") @db.Uuid
   /// me | everyone.
   visibility     String
   listKey        String   @map("list_key")
@@ -1435,6 +1441,7 @@ model CatalogSavedFilter {
   updatedAt      DateTime @map("updated_at") @db.Timestamptz(6)
 
   @@unique([marketId, id])
+  @@index([marketId, sellerId, listKey])
   @@map("saved_filters")
   @@schema("catalog")
 }
