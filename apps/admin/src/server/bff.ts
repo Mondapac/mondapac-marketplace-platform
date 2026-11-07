@@ -53,6 +53,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'shipping/admin/delivery-settings',
     // The service areas with their names (sellers, ADR-0041), read-only.
     'sellers/admin/service-areas',
+    // The product form's certificates card (certification): what the form's dialog offers (types
+    // with their issuers). The certificates of one product and one certificate are read by id below.
+    'certification/admin/product-certificates/options',
     // The marketplace product list (catalog), read-only (query: `view`, `q`, the filters, `sort`,
     // `direction`, `page`, `pageSize`); and the public category tree, which names its filter.
     'catalog/admin/products',
@@ -185,6 +188,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/platform-products',
     // Save the product list's current view as a tab (catalog): a closed body, for me or everyone.
     'catalog/admin/saved-filters',
+    // A new manufacturer certificate, as a draft (certification): the body names the type only.
+    'certification/admin/product-certificates',
   ]),
 };
 
@@ -223,6 +228,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/platform-products/:id/submit',
     // Discard a platform product that was never submitted (catalog).
     'catalog/admin/platform-products/:id/discard',
+    // A manufacturer certificate (certification): add its document, then send it for review, each
+    // with the record version read. Approve, reject, suspend and revoke are not reachable here.
+    'certification/admin/product-certificates/:id/documents',
+    'certification/admin/product-certificates/:id/submit',
     // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
     // merge other brands into it.
     'catalog/admin/brands/:id/approve',
@@ -324,6 +333,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/saved-filters/:id',
     // The working copy of a platform product, saved as a draft (catalog).
     'catalog/admin/platform-products/:id/draft',
+    // The draft of a manufacturer certificate, with the record version read (certification).
+    'certification/admin/product-certificates/:id/draft',
   ],
   // The details of one platform category (catalog, categories C3), with the version seen.
   PATCH: ['catalog/admin/categories/:id'],
@@ -345,6 +356,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/impact',
     // One platform product with its working copy, for the product form (catalog).
     'catalog/admin/platform-products/:id',
+    // The manufacturer certificates that name one product, one certificate, and its status history
+    // (certification), read by the product form's certificates card.
+    'certification/admin/product-certificates/for-product/:id',
+    'certification/admin/product-certificates/:id',
+    'certification/admin/product-certificates/:id/history',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
     // A product version's photo opened large, for its review (catalog).
@@ -648,11 +664,18 @@ const MAX_UPLOAD_BODY_BYTES = 14_500 * 1024;
  */
 const CATEGORY_IMAGE_PATH = /^catalog\/admin\/categories\/[0-9a-f-]{36}\/image$/i;
 const MAX_IMAGE_BODY_BYTES = 5_800 * 1024;
+/**
+ * A manufacturer certificate's document (certification) is a file of at most 10 MiB as base64
+ * (about 14 MB). The API accepts 14500 kB for this one route and checks the real size itself.
+ */
+const CERT_DOCUMENT_PATH =
+  /^certification\/admin\/product-certificates\/[0-9a-f-]{36}\/documents$/i;
 
 /** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
 function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
+  if (method === 'POST' && CERT_DOCUMENT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   return MAX_BODY_BYTES;
 }
 
