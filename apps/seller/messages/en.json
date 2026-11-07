@@ -1954,9 +1954,27 @@
         "sub": "Pick the photos your file names. Each one is sent on its own and added to the product that lists its file name.",
         "rule-names": "The file name must be the same as in the Images column of your file, including the ending, for example dates-500g.jpg.",
         "rule-limits": "JPEG, PNG or WebP, up to {max} photos per product. This step stays open for seven days after the import ends.",
-        "rule-zip": "Have a ZIP file? Unzip it on your computer first, then choose the folder.",
+        "rule-zip": "Have your photos in one ZIP file? Choose the ZIP. It is opened on your computer and only the pictures are sent. Folders inside it don’t matter, only the file names.",
         "choose-photos": "Choose photos",
         "choose-folder": "Choose a folder",
+        "choose-zip": "Choose a ZIP file",
+        "zip": {
+          "opening": "Opening your ZIP file…",
+          "error-title": "The ZIP file can’t be used",
+          "errors": {
+            "too-big": "The ZIP file is too large. It can be up to {maxZip} MB. Split the photos into two ZIP files.",
+            "total-too-big": "The pictures in the ZIP file are too large together. Split them into two ZIP files.",
+            "too-many-entries": "The ZIP file holds too many files. It can hold up to {maxEntries} photos. Split them into two ZIP files.",
+            "unsupported-compression": "The ZIP file uses a kind of compression we can’t open. Make it again with the normal ZIP option of your computer.",
+            "encrypted": "The ZIP file is protected with a password. Make it again without a password.",
+            "zip64": "The ZIP file is in a format we can’t open because it is too large or has too many files. Split the photos into smaller ZIP files.",
+            "multi-disk": "The ZIP file is one part of a split archive. Make a single ZIP file instead.",
+            "broken": "The ZIP file is damaged or isn’t a ZIP file. Make it again and try once more.",
+            "duplicate-name": "Two files in the ZIP file are both called {name}. Every photo needs its own file name.",
+            "not-image": "{name} is not a JPEG, PNG or WebP picture. Take it out of the ZIP file and try again.",
+            "entry-too-big": "{name} is too large. A photo can be up to {maxPhoto} MB."
+          }
+        },
         "picked": "{count, plural, =0 {No photos found in your choice} one {# photo ready to send} other {# photos ready to send}}",
         "left-out": "Left out: {notPhotos, plural, =0 {} one {# file that is not a JPEG, PNG or WebP picture. } other {# files that are not JPEG, PNG or WebP pictures. }}{sameName, plural, =0 {} one {# file with a name already picked. } other {# files with names already picked. }}{overLimit, plural, =0 {} one {# file over the limit of {max, number} per step.} other {# files over the limit of {max, number} per step.}}",
         "meter": "Photo upload progress",

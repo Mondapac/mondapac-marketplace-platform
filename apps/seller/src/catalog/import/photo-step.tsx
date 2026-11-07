@@ -16,13 +16,16 @@ import {
   type PhotoStop,
   type PickedPhotos,
 } from './photo-queue.ts';
+import { PHOTO_ZIP_LIMITS, unzipPhotos, ZIP_ACCEPT } from './photo-zip.ts';
+import { ZipError } from './zip-reader.ts';
 
 // The photo step of a finished or stopped my-products import (catalog design 14c, "Photos"). The
-// seller picks photos or a folder; the panel sends each one as its own request, one at a time, and
+// seller picks photos, a folder or one ZIP (opened here in the browser, never sent); the panel sends each one as its own request, one at a time, and
 // stops when the server says too many. The server matches the file name to the rows' Images cell;
 // the page never says which product a photo belongs to.
 
 const PROBLEM_LIST_MAX = 50;
+const MIB = 1024 * 1024;
 const NO_COUNTS: Readonly<Record<PhotoOutcome, number>> = {
   added: 0,
   'not-named': 0,
@@ -63,11 +66,15 @@ export function PhotoStep({
   const [counts, setCounts] = useState<Readonly<Record<PhotoOutcome, number>>>(NO_COUNTS);
   const [problems, setProblems] = useState<readonly PhotoResult[]>([]);
   const [tick, setTick] = useState(() => now());
+  const [unzipping, setUnzipping] = useState(false);
+  const [zipError, setZipError] = useState<ZipError | null>(null);
   const cancelled = useRef(false);
+  const zipInput = useRef<HTMLInputElement>(null);
 
   const total = picked?.items.length ?? 0;
   const done = Object.values(counts).reduce((sum, value) => sum + value, 0);
-  const busy = phase.kind === 'sending';
+  const sending = phase.kind === 'sending';
+  const busy = sending || unzipping;
 
   // While paused for a throttle, the page counts down to the time the seller can go on.
   const waitingUntil = phase.kind === 'paused' ? phase.resumeAt : null;
@@ -77,14 +84,33 @@ export function PhotoStep({
     return () => clearInterval(timer);
   }, [waitingUntil, now]);
 
-  const onPick = (files: FileList | null) => {
-    if (files === null || files.length === 0 || busy) return;
-    const next = pickPhotos(Array.from(files));
+  const take = (files: readonly File[]) => {
+    const next = pickPhotos(files);
     setPicked(next);
     setQueue(next.items);
     setCounts(NO_COUNTS);
     setProblems([]);
     setPhase({ kind: 'idle' });
+  };
+
+  const onPick = (files: FileList | null) => {
+    if (files === null || files.length === 0 || busy) return;
+    setZipError(null);
+    take(Array.from(files));
+  };
+
+  // A ZIP is opened here and its pictures go the same way as files picked one by one.
+  const onPickZip = async (zip: File | undefined) => {
+    if (zip === undefined || busy) return;
+    setZipError(null);
+    setUnzipping(true);
+    try {
+      take(await unzipPhotos(zip));
+    } catch (error) {
+      setZipError(error instanceof ZipError ? error : new ZipError('broken'));
+    } finally {
+      setUnzipping(false);
+    }
   };
 
   const record = (result: PhotoResult) => {
@@ -151,7 +177,39 @@ export function PhotoStep({
         >
           {t('choose-folder')}
         </FileButton>
+        <FileButton
+          accept={ZIP_ACCEPT}
+          inputRef={zipInput}
+          onFiles={(files) => {
+            // Take the file before the input is cleared: the list is live.
+            const zip = files?.[0];
+            void onPickZip(zip);
+            // Clear the choice so the same file can be chosen again after it was fixed.
+            if (zipInput.current !== null) zipInput.current.value = '';
+          }}
+          disabled={busy}
+        >
+          {t('choose-zip')}
+        </FileButton>
       </div>
+
+      {unzipping ? (
+        <p role="status" className="text-sm text-fg-secondary">
+          {t('zip.opening')}
+        </p>
+      ) : null}
+      {zipError === null ? null : (
+        <Banner tone="critical" title={t('zip.error-title')}>
+          <p>
+            {t(`zip.errors.${zipError.code}`, {
+              name: zipError.entry ?? '',
+              maxZip: number(PHOTO_ZIP_LIMITS.maxZipBytes / MIB),
+              maxEntries: number(PHOTO_ZIP_LIMITS.maxEntries),
+              maxPhoto: number(PHOTO_ZIP_LIMITS.maxEntryBytes / MIB),
+            })}
+          </p>
+        </Banner>
+      )}
 
       {picked === null ? null : (
         <div className="flex flex-col gap-3">
@@ -237,7 +295,7 @@ export function PhotoStep({
       )}
 
       <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
-        {busy ? (
+        {sending ? (
           <Button
             variant="secondary"
             onClick={() => {

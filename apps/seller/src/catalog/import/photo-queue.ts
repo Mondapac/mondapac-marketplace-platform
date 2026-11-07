@@ -48,7 +48,7 @@ export type PhotoStop =
   | { readonly kind: 'unavailable' };
 
 /** Extensions the picker offers; the server decides by the content, not the name. */
-const PHOTO_EXTENSION = /\.(jpe?g|png|webp)$/i;
+export const PHOTO_EXTENSION = /\.(jpe?g|png|webp)$/i;
 export const PHOTO_ACCEPT = 'image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp';
 /** The most photos one picking is asked to hold, so a whole drive picked by mistake is refused. */
 export const MAX_PICKED_PHOTOS = 2000;
@@ -69,9 +69,8 @@ export interface PickedPhotos {
  * A picking as the queue takes it: pictures only, the first of each name (the server matches names
  * without case, so `A.jpg` and `a.JPG` are one name), at most {@link MAX_PICKED_PHOTOS}.
  *
- * ZIP seam: the step takes a `PhotoItem[]` and nothing else, so a ZIP source (an archive reader that
- * yields `{ name, file }` per entry, bounded as design 14c asks) needs only another picker that ends
- * in this function. No ZIP library is part of this build (owner decision pending).
+ * ZIP seam: the step takes a `PhotoItem[]` and nothing else. A ZIP is opened in the browser by
+ * `unzipPhotos` (photo-zip.ts, no library) and its pictures come here like any picked files.
  */
 export function pickPhotos(files: Iterable<File>): PickedPhotos {
   const items: PhotoItem[] = [];

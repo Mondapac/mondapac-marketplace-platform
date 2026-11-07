@@ -10,6 +10,8 @@ vi.mock('../photo-prepare.ts', () => ({ preparePhoto: vi.fn() }));
 import { callApi } from '../../api/client.ts';
 import { preparePhoto } from '../photo-prepare.ts';
 import { PhotoStep, leftText } from './photo-step.tsx';
+import { buildZip, JPEG, PNG, WEBP, zipFile } from './zip-fixture.ts';
+import type { ZipErrorCode } from './zip-reader.ts';
 import { classifyPhotoFailure, pickPhotos, runPhotoQueue } from './photo-queue.ts';
 
 const call = vi.mocked(callApi);
@@ -100,13 +102,100 @@ describe('picking photos', () => {
     expect(leftText(5_400_000 + 1_800_000, words)).toBe('throttled-hours:{"h":2,"m":0}');
   });
 
-  it('says how to use a ZIP without taking one', () => {
+  it('offers a single-file ZIP picker next to the others', () => {
     mount();
-    expect(screen.getByText(/Have a ZIP file\? Unzip it on your computer first/)).toBeTruthy();
-    const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
-    expect(inputs.every((input) => !(input.getAttribute('accept') ?? '').includes('zip'))).toBe(
-      true,
+    const zip = screen.getByLabelText<HTMLInputElement>('Choose a ZIP file');
+    expect(zip.multiple).toBe(false);
+    expect(zip.hasAttribute('webkitdirectory')).toBe(false);
+    expect(zip.getAttribute('accept')).toContain('.zip');
+    expect(screen.getByText(/Have your photos in one ZIP file\?/)).toBeTruthy();
+  });
+});
+
+describe('a ZIP of photos', () => {
+  const zipOf = (entries: Parameters<typeof buildZip>[0]) => zipFile(buildZip(entries));
+
+  it('flows into the same list and the same requests as picked files', async () => {
+    call.mockImplementation(() => ok());
+    mount();
+    pick('Choose a ZIP file', [
+      zipOf([
+        { name: 'shop/dates-500g.jpg', data: JPEG(30) },
+        { name: 'shop/honey.png', data: PNG(), method: 0 },
+        { name: '__MACOSX/shop/._honey.png', data: new Uint8Array([1]) },
+      ]),
+    ]);
+    expect(await screen.findByText('2 photos ready to send')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Upload 2 photos' }));
+    expect(await screen.findByText('2 photos added')).toBeTruthy();
+    expect(call.mock.calls.map((c) => (c[2] as { name: string }).name)).toEqual([
+      'dates-500g.jpg',
+      'honey.png',
+    ]);
+    // Each one went through the browser's photo preparation, as a picked file does.
+    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(prepare.mock.calls.map((c) => c[0].name)).toEqual(['dates-500g.jpg', 'honey.png']);
+    for (const url of call.mock.calls.map((c) => c[1])) expect(url).toBe(URL_OF);
+  });
+
+  it('shares the duplicate and left-out rules with picking: names already picked are replaced by the ZIP', async () => {
+    mount();
+    pick('Choose photos', [jpg('old.jpg')]);
+    expect(screen.getByText('1 photo ready to send')).toBeTruthy();
+    pick('Choose a ZIP file', [
+      zipOf([
+        { name: 'a.jpg', data: JPEG() },
+        { name: 'b.webp', data: WEBP() },
+      ]),
+    ]);
+    expect(await screen.findByText('2 photos ready to send')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('says why a ZIP is refused, names the file, and sends nothing', async () => {
+    mount();
+    pick('Choose a ZIP file', [
+      zipOf([
+        { name: 'x/a.jpg', data: JPEG() },
+        { name: 'y/A.jpg', data: JPEG(3) },
+      ]),
+    ]);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain(
+      'Two files in the ZIP file are both called A.jpg. Every photo needs its own file name.',
     );
+    expect(screen.getByText('The ZIP file can’t be used')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Upload/ })).toBeNull();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('has one message for every refusal code', () => {
+    const codes: ZipErrorCode[] = [
+      'too-big',
+      'total-too-big',
+      'too-many-entries',
+      'unsupported-compression',
+      'encrypted',
+      'zip64',
+      'multi-disk',
+      'broken',
+      'duplicate-name',
+      'not-image',
+      'entry-too-big',
+    ];
+    expect(Object.keys(messages.catalog.import.photos.zip.errors).sort()).toEqual(
+      [...codes].sort(),
+    );
+  });
+
+  it('words a damaged file and clears the message on the next pick', async () => {
+    mount();
+    pick('Choose a ZIP file', [
+      zipFile(new TextEncoder().encode('not a zip, only some words in a file')),
+    ]);
+    expect((await screen.findByRole('alert')).textContent).toMatch(/damaged or isn’t a ZIP file/);
+    pick('Choose photos', [jpg('a.jpg')]);
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
 

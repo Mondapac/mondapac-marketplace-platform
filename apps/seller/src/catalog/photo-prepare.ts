@@ -4,8 +4,9 @@
 
 /** The longest side sent, in pixels. */
 export const PHOTO_MAX_SIDE = 2048;
-/** Files larger than this are not even decoded. */
-export const PHOTO_MAX_INPUT_BYTES = 25 * 1024 * 1024;
+import { PHOTO_MAX_INPUT_BYTES } from './photo-limits.ts';
+
+export { PHOTO_MAX_INPUT_BYTES };
 const JPEG_QUALITY = 0.85;
 
 export type PreparedPhoto =
