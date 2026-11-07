@@ -448,6 +448,18 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     const mine = await offerOn(platform.state.id, SELLER, `S-${randomUUID().slice(0, 8)}`);
     const theirs = await offerOn(platform.state.id, OTHER, `T-${randomUUID().slice(0, 8)}`);
 
+    // The admin form's totals count every seller's Offers on the product; another product has none.
+    expect(await inUnit(() => reader.offerTotalsOfProduct(market, platform.state.id))).toEqual({
+      sellerCount: 2,
+      offerCount: 2,
+    });
+    expect(
+      await inUnit(() => reader.offerTotalsOfProduct(market, uuid7() as Id<'Product'>)),
+    ).toEqual({
+      sellerCount: 0,
+      offerCount: 0,
+    });
+
     const own = await readOffer.execute(sellerContext(), { offerId: mine.state.id });
     if (!own.ok) throw new Error(own.error.code);
     expect(own.value).toMatchObject({
