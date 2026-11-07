@@ -140,6 +140,11 @@ interface StoreState {
   /** The confirmed delivery location; null shows the storefront's default area. */
   readonly deliverTo: DeliverTo | null;
   readonly setDeliverTo: (to: DeliverTo) => void;
+  /**
+   * The approximate area guessed from the connection (edge location headers) on a visit with no
+   * confirmed location; null when there is none. Shown as "Near …", never stored.
+   */
+  readonly deliverGuess: DeliverTo | null;
   /** The log-in dialog (header Log in, the rail's My Account, the Account tab when signed out). */
   readonly loginOpen: boolean;
   readonly setLoginOpen: (open: boolean) => void;
@@ -174,6 +179,7 @@ export function StoreProvider({
   initialLiveCart = null,
   photoBase = null,
   initialDeliverTo = null,
+  deliverGuess = null,
   initialCustomer = null,
   live = false,
   children,
@@ -189,6 +195,8 @@ export function StoreProvider({
   readonly photoBase?: PhotoBase | null;
   /** The location kept in this browser (the delivery cookie). */
   readonly initialDeliverTo?: DeliverTo | null;
+  /** The approximate area guessed from the connection (see the context's `deliverGuess`). */
+  readonly deliverGuess?: DeliverTo | null;
   /** The signed-in customer to start with (tests; the session once it is read). */
   readonly initialCustomer?: CheckoutCustomer | null;
   /** The storefront talks to the API (`API_BASE_URL` is set). */
@@ -527,6 +535,7 @@ export function StoreProvider({
       setDeliverOpen,
       deliverTo,
       setDeliverTo,
+      deliverGuess,
       loginOpen,
       setLoginOpen,
       accountOpen,
@@ -569,6 +578,7 @@ export function StoreProvider({
       dialogOpen,
       deliverOpen,
       deliverTo,
+      deliverGuess,
       loginOpen,
       accountOpen,
       online,

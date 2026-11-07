@@ -59,6 +59,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     setDeliverOpen,
     deliverTo,
     setDeliverTo,
+    deliverGuess,
     customer,
     setLoginOpen,
   } = useStore();
@@ -88,6 +89,8 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   /** Why the live search shows no list: typed too little, too many searches, or it failed. */
   const [searchNote, setSearchNote] = useState<'short' | SearchProblem['kind'] | null>(null);
   const confirmed = useRef<Pick | null>(null);
+  /** The pick made from the guessed area on opening; the guess note shows while it stands. */
+  const guessPick = useRef<Pick | null>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const opener = useRef<Element | null>(null);
@@ -115,11 +118,14 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     setLocating('idle');
     setSearchNote(null);
     if (confirmed.current) setPick(confirmed.current);
-    else if (deliverTo) {
+    else if (deliverTo ?? deliverGuess) {
       const ticket = ++placeTicket.current;
-      void lookup.locate(deliverTo).then((place) => {
-        if (place && ticket === placeTicket.current)
-          setPick({ point: place.point, origin: 'place', place });
+      // A confirmed location, or else the area guessed from the connection: the buyer confirms it.
+      void lookup.locate((deliverTo ?? deliverGuess)!).then((place) => {
+        if (!place || ticket !== placeTicket.current) return;
+        const next: Pick = { point: place.point, origin: 'place', place };
+        guessPick.current = deliverTo ? null : next;
+        setPick(next);
       });
     }
     const narrow = typeof window.matchMedia === 'function' && window.matchMedia(NARROW).matches;
@@ -248,6 +254,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     saveDeliverTo(to);
     setDeliverTo(to);
     confirmed.current = pick;
+    guessPick.current = null;
     close();
     router.refresh();
   };
@@ -426,7 +433,9 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                 )}
                 {unconfirmed && inside ? <small>{t('area-unconfirmed')}</small> : null}
                 {pick.origin === 'device' && inside ? <small>{t('device-note')}</small> : null}
-                {source.live && pick.origin === 'place' && pick.place?.street === '' ? (
+                {pick === guessPick.current ? (
+                  <small>{t('guess-note')}</small>
+                ) : source.live && pick.origin === 'place' && pick.place?.street === '' ? (
                   <small>{t('suburb-hint')}</small>
                 ) : null}
               </div>
@@ -473,6 +482,9 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
               )}
               <p className="lmpriv">{t(customer ? 'privacy-account' : 'privacy-guest')}</p>
               {source.live ? <p className="lmpriv">{t('privacy-provider')}</p> : null}
+              {!deliverTo && deliverGuess ? (
+                <p className="lmpriv">{t('privacy-estimate')}</p>
+              ) : null}
             </div>
             <div className="lmf">
               <button className="btn ghost" type="button" onClick={close}>

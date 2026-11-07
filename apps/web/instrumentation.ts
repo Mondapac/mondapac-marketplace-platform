@@ -7,6 +7,9 @@ export async function register(): Promise<void> {
     // Deliver to lookup (MAPBOX_*): a malformed value stops the site here, not on every page.
     const { placesDeps } = await import('./src/delivery/places-server.ts');
     placesDeps();
+    // First-visit area guess (EDGE_GEO_*): a malformed header name stops the site here.
+    const { geoGuessConfig } = await import('./src/delivery/geo-guess.ts');
+    geoGuessConfig();
     // Stripe stays in test mode: a live key stops the site here, before any page is served.
     cardSetup();
   }
