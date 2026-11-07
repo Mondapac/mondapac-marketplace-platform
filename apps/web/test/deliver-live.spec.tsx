@@ -4,7 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { DeliverModal } from '../src/delivery/deliver-modal.tsx';
-import { SEARCH_PAUSE_MS, liveLookup } from '../src/delivery/lookup.ts';
+import { SEARCH_PAUSE_MS, SearchProblem, liveLookup } from '../src/delivery/lookup.ts';
 import {
   forwardUrl,
   parseMapboxConfig,
@@ -17,9 +17,10 @@ import {
   answerSearch,
   answerSuburb,
   lookupIsLive,
+  placesDepsOf,
   type PlacesDeps,
 } from '../src/delivery/places-server.ts';
-import { fixedWindowLimiter } from '../src/delivery/rate-limit.ts';
+import { clientKey, fixedWindowLimiter } from '../src/delivery/rate-limit.ts';
 import { Header } from '../src/shell/header.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
 import { SAMPLE_DELIVERY_LOCATOR as SOURCE } from '../src/storefront/sample-delivery.ts';
@@ -161,7 +162,7 @@ describe('Mapbox requests and answers', () => {
 describe('rate limit', () => {
   it('allows the limit per key per window, then refuses until the next window', () => {
     let now = 0;
-    const limiter = fixedWindowLimiter(2, 1000, () => now);
+    const limiter = fixedWindowLimiter(2, 1000, { now: () => now });
     expect([limiter.take('a'), limiter.take('a'), limiter.take('a'), limiter.take('b')]).toEqual([
       true,
       true,
@@ -172,20 +173,47 @@ describe('rate limit', () => {
     expect(limiter.take('a')).toBe(true);
   });
 
-  it('refuses new keys once it holds the most it keeps', () => {
-    const limiter = fixedWindowLimiter(5, 1000, () => 0, 2);
-    expect([limiter.take('a'), limiter.take('b'), limiter.take('c'), limiter.take('a')]).toEqual([
+  it('puts new keys in one shared bucket once the table is full, without locking out known keys', () => {
+    const limiter = fixedWindowLimiter(2, 1000, { maxKeys: 2, now: () => 0 });
+    expect([limiter.take('a'), limiter.take('b')]).toEqual([true, true]);
+    // c and d share the overflow bucket of 2.
+    expect([limiter.take('c'), limiter.take('d'), limiter.take('e')]).toEqual([true, true, false]);
+    expect(limiter.take('a')).toBe(true);
+  });
+
+  it('caps all keys together per window', () => {
+    let now = 0;
+    const limiter = fixedWindowLimiter(5, 1000, { total: 3, now: () => now });
+    expect(['a', 'b', 'c', 'd'].map((key) => limiter.take(key))).toEqual([true, true, true, false]);
+    now = 1000;
+    expect(limiter.take('d')).toBe(true);
+  });
+
+  it('counts IPv6 clients by their /64 and IPv4 by address', () => {
+    expect(clientKey('2001:db8:1:2:aaaa::1')).toBe('2001:db8:1:2::/64');
+    expect(clientKey('2001:0db8:0001:0002:ffff:ffff:ffff:ffff')).toBe('2001:db8:1:2::/64');
+    expect(clientKey('2001:db8::5')).toBe('2001:db8:0:0::/64');
+    expect(clientKey('203.0.113.9')).toBe('203.0.113.9');
+    expect(clientKey('unknown')).toBe('unknown');
+  });
+});
+
+describe('lookup configuration from the environment', () => {
+  it('needs STOREFRONT_HOSTS with Mapbox, and names it', () => {
+    const env = { MAPBOX_SEARCH_TOKEN: TOKEN, MAPBOX_COUNTRIES: 'AU=au' };
+    expect(() => placesDepsOf(env, false)).toThrow(/STOREFRONT_HOSTS is required with MAPBOX/);
+    expect(placesDepsOf({}, false).config).toBeNull();
+    const deps = placesDepsOf(
+      { ...env, STOREFRONT_HOSTS: 'http://storefront.localhost:3003=AU' },
       true,
-      true,
-      false,
-      true,
-    ]);
+    );
+    expect(lookupIsLive(deps, new Headers({ host: 'storefront.localhost:3003' }))).toBe(true);
   });
 });
 
 describe('server routes', () => {
   const incoming = (host = 'storefront.localhost:3003') =>
-    new Headers({ host, 'x-mp-client-address': '203.0.113.9' });
+    new Headers({ host, 'x-mp-client-address': '203.0.113.9', 'sec-fetch-site': 'same-origin' });
   const mapbox = vi.fn<typeof fetch>();
   const deps = (limit = 10): PlacesDeps => ({
     config: parseMapboxConfig({ MAPBOX_SEARCH_TOKEN: TOKEN, MAPBOX_COUNTRIES: 'AU=au' }),
@@ -196,6 +224,7 @@ describe('server routes', () => {
         marketId: 'AU',
       },
     ],
+    apiOn: true,
     limiter: fixedWindowLimiter(limit, 60_000),
     fetch: mapbox,
   });
@@ -219,6 +248,42 @@ describe('server routes', () => {
     expect((await search('12 Example', deps(), incoming('other.localhost:3003'))).status).toBe(404);
     expect(lookupIsLive(deps(), incoming())).toBe(true);
     expect(mapbox).not.toHaveBeenCalled();
+  });
+
+  it('stays on sample places while the API is off: the sample boundary fits only them', async () => {
+    const apiOff: PlacesDeps = { ...deps(), apiOn: false };
+    expect(lookupIsLive(apiOff, incoming())).toBe(false);
+    expect((await search('12 Example', apiOff)).status).toBe(404);
+  });
+
+  it("answers only this site's own pages", async () => {
+    mapbox.mockImplementation(() => Promise.resolve(Response.json({ features: [] })));
+    const from = (extra: Record<string, string>) =>
+      new Headers({
+        host: 'storefront.localhost:3003',
+        'x-mp-client-address': '203.0.113.9',
+        ...extra,
+      });
+    expect(
+      (await search('12 Example', deps(), from({ 'sec-fetch-site': 'cross-site' }))).status,
+    ).toBe(403);
+    expect((await search('12 Example', deps(), from({ 'sec-fetch-site': 'none' }))).status).toBe(
+      403,
+    );
+    expect((await search('12 Example', deps(), from({}))).status).toBe(403);
+    expect(
+      (await search('12 Example', deps(), from({ referer: 'https://evil.example/' }))).status,
+    ).toBe(403);
+    expect(
+      (
+        await search(
+          '12 Example',
+          deps(),
+          from({ referer: 'http://storefront.localhost:3003/c/x' }),
+        )
+      ).status,
+    ).toBe(200);
+    expect(mapbox).toHaveBeenCalledTimes(1);
   });
 
   it('answers places for what was typed and never returns the token', async () => {
@@ -278,6 +343,7 @@ describe('server routes', () => {
     );
     const body = (await (await answerSuburb(deps(), incoming(), url)).json()) as { place: unknown };
     expect(body.place).toMatchObject({
+      id: '4031:Kedron',
       street: '',
       suburb: 'Kedron',
       postcode: '4031',
@@ -313,7 +379,23 @@ describe('live lookup in the browser', () => {
     expect(browserFetch.mock.calls[0]![0] as string).toBe('/api/deliver-to/search?q=12%20Example');
   });
 
-  it('reads a failed or malformed answer as no result', async () => {
+  it('says why a search has no list: throttled or failed', async () => {
+    vi.useFakeTimers();
+    const live = lookup();
+    browserFetch.mockResolvedValueOnce(new Response('', { status: 429 }));
+    const throttled = live.search('12 Example');
+    const caught = throttled.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+    expect(await caught).toEqual(new SearchProblem('throttled'));
+    browserFetch.mockResolvedValueOnce(new Response('', { status: 503 }));
+    const failed = live
+      .search('12 Example')
+      .catch((error: unknown) => (error as SearchProblem).kind);
+    await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+    expect(await failed).toBe('failed');
+  });
+
+  it('reads a failed or malformed reverse answer as no result', async () => {
     browserFetch.mockResolvedValueOnce(new Response('', { status: 429 }));
     expect(await lookup().suburbAt({ lat: -27.4, lng: 153 })).toBeNull();
     browserFetch.mockResolvedValueOnce(Response.json({ place: { id: 1 } }));
@@ -404,7 +486,7 @@ describe('Deliver to modal with the live lookup', () => {
     await pickAddress('Kedron', '4031');
     expect(deliveryAreaFor).toHaveBeenCalledWith('4031');
     expect(screen.getByText('We deliver to this area')).toBeTruthy();
-    expect(screen.getByText(/sent to Mapbox/)).toBeTruthy();
+    expect(screen.getByText(/come from Mapbox/)).toBeTruthy();
     const confirm = screen.getByRole('button', { name: 'Confirm location' });
     expect(confirm.getAttribute('aria-disabled')).toBe('false');
     await act(() => {
@@ -429,8 +511,66 @@ describe('Deliver to modal with the live lookup', () => {
   it('waits for the answer before Confirm works', async () => {
     deliveryAreaFor.mockReturnValue(new Promise(() => undefined));
     await pickAddress('Kedron', '4031');
+    const confirm = screen.getByRole('button', { name: 'Confirm location' });
+    expect(confirm.getAttribute('aria-disabled')).toBe('true');
+    // A neutral status, not the boundary preview's "We deliver to this area".
+    expect(screen.getByText('Checking delivery to this area')).toBeTruthy();
+    expect(screen.queryByText('We deliver to this area')).toBeNull();
+    expect(confirm.getAttribute('aria-describedby')).toBeTruthy();
+  });
+
+  it('keeps the preview but says so when the API could not answer', async () => {
+    deliveryAreaFor.mockResolvedValue({ kind: 'failed' });
+    await pickAddress('Kedron', '4031');
+    expect(
+      screen.getByText('We could not confirm this area. Checkout will check again.'),
+    ).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Confirm location' }).getAttribute('aria-disabled'),
-    ).toBe('true');
+    ).toBe('false');
+  });
+
+  async function typeLive(value: string) {
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider initialDeliverTo={null}>
+          <Header delivery={{ label: 'Brisbane 4000' }} />
+          <DeliverModal source={{ ...SOURCE, live: true }} />
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+    await act(() => {
+      fireEvent.click(screen.getByRole('button', { name: /^Delivery area/ }));
+      return Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByRole('combobox', { name: 'Search your address' }), {
+        target: { value },
+      });
+      await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+    });
+  }
+
+  it('asks for 3 characters before searching', async () => {
+    await typeLive('12');
+    expect(screen.getByText('Keep typing: enter at least 3 characters.')).toBeTruthy();
+    expect(browserFetch).not.toHaveBeenCalled();
+  });
+
+  it('tells a failed or throttled search apart from no match', async () => {
+    browserFetch.mockResolvedValue(new Response('', { status: 429 }));
+    await typeLive('12 Example');
+    expect(screen.getByText('Too many searches. Wait a minute, then try again.')).toBeTruthy();
+    expect(screen.queryByText('No match. Try the street and suburb.')).toBeNull();
+  });
+
+  it('says when the search service failed', async () => {
+    browserFetch.mockResolvedValue(new Response('', { status: 503 }));
+    await typeLive('12 Example');
+    expect(
+      screen.getByText(
+        'We could not search addresses just now. Try again, or tap the map to set your pin.',
+      ),
+    ).toBeTruthy();
   });
 });

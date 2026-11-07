@@ -91,7 +91,9 @@ const text = (value: unknown): string => (typeof value === 'string' ? value.trim
 
 /**
  * One Mapbox feature as a `Place`, or null when it lacks a suburb, a postcode or a position: the
- * header label and the delivery-area check need the suburb and the postcode.
+ * header label and the delivery-area check need the suburb and the postcode. A Market whose
+ * addresses carry no postcode therefore gets no results: onboarding such a Market needs another
+ * area key first.
  */
 export function placeOfFeature(feature: unknown): Place | null {
   if (typeof feature !== 'object' || feature === null) return null;

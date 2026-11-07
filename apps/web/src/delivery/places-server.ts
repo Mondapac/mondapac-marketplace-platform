@@ -1,9 +1,11 @@
 // The server side of the Deliver to lookup: the buyer site's own routes under /api/deliver-to/
 // answer the modal's address search and reverse lookup (the delivery-area check is checkout's
-// server action `deliveryAreaFor`). Mapbox is called from here
-// so the token never reaches the browser and each client address is rate limited.
+// server action `deliveryAreaFor`). Mapbox is called from here so the token never reaches the
+// browser; only this site's own pages may ask, each client address (IPv6 by /64) and the whole
+// process are rate limited.
 import 'server-only';
 import type { GeoPoint } from '../storefront/types.ts';
+import { storefrontApiConfig } from '../storefront/config.ts';
 import { hostFor, parseStorefrontHosts, type StorefrontHost } from '../storefront/hosts.ts';
 import {
   MAX_QUERY,
@@ -15,7 +17,7 @@ import {
   reverseUrl,
   type MapboxConfig,
 } from './mapbox.ts';
-import { fixedWindowLimiter, type RateLimiter } from './rate-limit.ts';
+import { clientKey, fixedWindowLimiter, type RateLimiter } from './rate-limit.ts';
 
 interface Incoming {
   get(name: string): string | null;
@@ -24,12 +26,19 @@ interface Incoming {
 export interface PlacesDeps {
   readonly config: MapboxConfig | null;
   readonly hosts: readonly StorefrontHost[];
+  /**
+   * Whether the API is configured: the live lookup needs its delivery-area answer, since the
+   * sample boundary only fits sample places.
+   */
+  readonly apiOn: boolean;
   readonly limiter: RateLimiter;
   readonly fetch: typeof fetch;
 }
 
 /** Requests per client address per minute, search and reverse together. */
 export const REQUESTS_PER_MINUTE = 60;
+/** Requests per process per minute, all clients together: the cost ceiling of one instance. */
+export const PROCESS_REQUESTS_PER_MINUTE = 1200;
 const TIMEOUT_MS = 4000;
 const HEADERS = { 'cache-control': 'no-store' } as const;
 
@@ -39,9 +48,50 @@ function log(fields: Record<string, unknown>) {
 
 /** The Mapbox country of the Market this request came to, or null when the lookup is off. */
 export function countryFor(deps: PlacesDeps, incoming: Incoming): string | null {
-  if (deps.config === null) return null;
+  return hostAndCountry(deps, incoming)?.country ?? null;
+}
+
+function hostAndCountry(
+  deps: PlacesDeps,
+  incoming: Incoming,
+): { readonly host: StorefrontHost; readonly country: string } | null {
+  if (deps.config === null || !deps.apiOn) return null;
   const host = hostFor(deps.hosts, incoming.get('host'));
-  return host ? (deps.config.countries.get(host.marketId) ?? null) : null;
+  const country = host ? deps.config.countries.get(host.marketId) : undefined;
+  return host && country ? { host, country } : null;
+}
+
+/**
+ * Whether the request came from this site's own page: the browser's `Sec-Fetch-Site`, or else a
+ * `Referer` on this host's origin. Scripts elsewhere get no geocoding on our account.
+ */
+export function fromOwnPage(incoming: Incoming, host: StorefrontHost): boolean {
+  const site = incoming.get('sec-fetch-site');
+  if (site !== null) return site === 'same-origin';
+  const referer = incoming.get('referer');
+  if (referer === null) return false;
+  try {
+    return new URL(referer).origin === host.origin;
+  } catch {
+    return false;
+  }
+}
+
+/** The checks every lookup route runs first: on, own page, under the limits. */
+function admit(
+  deps: PlacesDeps,
+  incoming: Incoming,
+): { readonly country: string } | { readonly refused: Response } {
+  const found = hostAndCountry(deps, incoming);
+  if (found === null) return { refused: json({ code: 'places.disabled' }, 404) };
+  if (!fromOwnPage(incoming, found.host))
+    return { refused: json({ code: 'request.forbidden' }, 403) };
+  return { country: found.country };
+}
+
+function throttled(deps: PlacesDeps, incoming: Incoming): Response | null {
+  if (deps.limiter.take(clientKey(clientOf(incoming)))) return null;
+  return json({ code: 'request.throttled' }, 429, { 'retry-after': '60' });
 }
 
 /** Whether the live lookup serves this request; false keeps the modal on sample places. */
@@ -86,14 +136,14 @@ async function askMapbox(
 
 /** GET /api/deliver-to/search?q=: street addresses matching what the buyer typed. */
 export async function answerSearch(deps: PlacesDeps, incoming: Incoming, url: URL) {
-  const country = countryFor(deps, incoming);
-  if (country === null) return json({ code: 'places.disabled' }, 404);
+  const admitted = admit(deps, incoming);
+  if ('refused' in admitted) return admitted.refused;
+  const { country } = admitted;
   const query = (url.searchParams.get('q') ?? '').replace(/\s+/gu, ' ').trim();
   if (query.length > MAX_QUERY) return json({ code: 'validation.failed' }, 400);
   if (query.length < MIN_QUERY) return json({ places: [] });
-  if (!deps.limiter.take(clientOf(incoming))) {
-    return json({ code: 'request.throttled' }, 429, { 'retry-after': '60' });
-  }
+  const limited = throttled(deps, incoming);
+  if (limited) return limited;
   const answer = await askMapbox(deps, forwardUrl(deps.config!.token, country, query), 'search');
   if (answer === null) return json({ code: 'places.unavailable' }, 503);
   return json({ places: placesOf(answer.body) });
@@ -101,34 +151,59 @@ export async function answerSearch(deps: PlacesDeps, incoming: Incoming, url: UR
 
 /** GET /api/deliver-to/suburb?lat=&lng=: the suburb at a pin or the device location. */
 export async function answerSuburb(deps: PlacesDeps, incoming: Incoming, url: URL) {
-  const country = countryFor(deps, incoming);
-  if (country === null) return json({ code: 'places.disabled' }, 404);
+  const admitted = admit(deps, incoming);
+  if ('refused' in admitted) return admitted.refused;
+  const { country } = admitted;
   const point: GeoPoint | null = pointOf(url.searchParams.get('lat'), url.searchParams.get('lng'));
   if (point === null) return json({ code: 'validation.failed' }, 400);
-  if (!deps.limiter.take(clientOf(incoming))) {
-    return json({ code: 'request.throttled' }, 429, { 'retry-after': '60' });
-  }
+  const limited = throttled(deps, incoming);
+  if (limited) return limited;
   const answer = await askMapbox(deps, reverseUrl(deps.config!.token, country, point), 'suburb');
   if (answer === null) return json({ code: 'places.unavailable' }, 503);
   const place = placesOf(answer.body)[0];
-  // Only the suburb is answered: the modal shows "Near <suburb>" and keeps no street address.
-  return json({ place: place ? { ...place, street: '', point } : null });
+  // Only the suburb is answered, under an id of its own: no street address or address id.
+  return json({
+    place: place ? { ...place, id: `${place.postcode}:${place.suburb}`, street: '', point } : null,
+  });
 }
 
 let deps: PlacesDeps | undefined;
 
-/** This process's dependencies, read once; throws when the configuration is malformed. */
-export function placesDeps(): PlacesDeps {
-  if (deps === undefined) {
-    const config = parseMapboxConfig(process.env);
-    let hosts: readonly StorefrontHost[] = [];
-    if (config !== null) hosts = parseStorefrontHosts(process.env['STOREFRONT_HOSTS']);
-    deps = {
-      config,
-      hosts,
-      limiter: fixedWindowLimiter(REQUESTS_PER_MINUTE, 60_000),
-      fetch: (input, init) => fetch(input, init),
-    };
+/**
+ * The lookup's dependencies from the environment. Throws when MAPBOX_* is malformed, or set
+ * without STOREFRONT_HOSTS (the Market of each host picks the country searched).
+ */
+export function placesDepsOf(
+  env: Readonly<Record<string, string | undefined>>,
+  apiOn: boolean,
+): PlacesDeps {
+  const config = parseMapboxConfig(env);
+  let hosts: readonly StorefrontHost[] = [];
+  if (config !== null) {
+    if ((env['STOREFRONT_HOSTS']?.trim() ?? '') === '') {
+      throw new Error(
+        "STOREFRONT_HOSTS is required with MAPBOX_SEARCH_TOKEN: each host's Market picks the " +
+          'country searched (MAPBOX_COUNTRIES)',
+      );
+    }
+    hosts = parseStorefrontHosts(env['STOREFRONT_HOSTS']);
   }
+  return {
+    config,
+    hosts,
+    apiOn,
+    limiter: fixedWindowLimiter(REQUESTS_PER_MINUTE, 60_000, {
+      total: PROCESS_REQUESTS_PER_MINUTE,
+    }),
+    fetch: (input, init) => fetch(input, init),
+  };
+}
+
+/**
+ * This process's dependencies, read once. instrumentation.ts calls it at start-up, so a malformed
+ * configuration stops the server before any page is served.
+ */
+export function placesDeps(): PlacesDeps {
+  deps ??= placesDepsOf(process.env, storefrontApiConfig() !== null);
   return deps;
 }

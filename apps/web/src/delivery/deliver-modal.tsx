@@ -19,7 +19,8 @@ import type { DeliveryLocatorSource, GeoPoint, Place } from '../storefront/types
 import { saveDeliverTo } from './deliver-to.ts';
 import { addressLine, insideArea, locality } from './geo.ts';
 import { deliveryAreaFor } from '../checkout/actions.ts';
-import { liveLookup, sampleLookup } from './lookup.ts';
+import { SearchProblem, liveLookup, sampleLookup } from './lookup.ts';
+import { MIN_QUERY } from './mapbox.ts';
 import { StubMap } from './stub-map.tsx';
 
 /** How the pin got where it is: an address picked, the pin moved, or the device location. */
@@ -84,6 +85,8 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   const [results, setResults] = useState<readonly Place[] | null>(null);
   const [active, setActive] = useState(-1);
   const [locating, setLocating] = useState<Locating>('idle');
+  /** Why the live search shows no list: typed too little, too many searches, or it failed. */
+  const [searchNote, setSearchNote] = useState<'short' | SearchProblem['kind'] | null>(null);
   const confirmed = useRef<Pick | null>(null);
   const dialog = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -110,6 +113,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     setResults(null);
     setActive(-1);
     setLocating('idle');
+    setSearchNote(null);
     if (confirmed.current) setPick(confirmed.current);
     else if (deliverTo) {
       const ticket = ++placeTicket.current;
@@ -144,6 +148,8 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   const inside =
     typeof answered === 'boolean' ? answered : insideArea(pick.point, source.area.boundary);
   const checking = source.live === true && postcode !== undefined && answered === undefined;
+  /** The API did not answer for this postcode: the boundary preview stands, unconfirmed. */
+  const unconfirmed = source.live === true && answered === null;
   const ready = inside && pick.place !== null && !pick.pending && !checking;
   const area = source.area.name;
 
@@ -166,13 +172,26 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     setQuery(value);
     setActive(-1);
     const ticket = ++searchTicket.current;
+    setSearchNote(null);
     if (!value.trim()) {
       setResults(null);
       return;
     }
-    void lookup.search(value).then((found) => {
-      if (ticket === searchTicket.current) setResults(found);
-    });
+    if (source.live && value.trim().length < MIN_QUERY) {
+      setResults(null);
+      setSearchNote('short');
+      return;
+    }
+    lookup.search(value).then(
+      (found) => {
+        if (ticket === searchTicket.current) setResults(found);
+      },
+      (error: unknown) => {
+        if (ticket !== searchTicket.current) return;
+        setResults(null);
+        setSearchNote(error instanceof SearchProblem ? error.kind : 'failed');
+      },
+    );
   };
   const pickResult = (place: Place) => {
     choose(place);
@@ -181,6 +200,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   };
   const clear = () => {
     searchTicket.current++;
+    setSearchNote(null);
     setQuery('');
     setResults(null);
     setActive(-1);
@@ -209,13 +229,16 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     );
   };
   const chooseSaved = (id: string, line: string) => {
-    void lookup.search(line).then((found) => {
-      const place = found.find((p) => addressLine(p) === line) ?? found[0];
-      if (place) {
-        setQuery('');
-        choose(place, id);
-      }
-    });
+    lookup.search(line).then(
+      (found) => {
+        const place = found.find((p) => addressLine(p) === line) ?? found[0];
+        if (place) {
+          setQuery('');
+          choose(place, id);
+        }
+      },
+      () => setSearchNote('failed'),
+    );
   };
   const confirm = () => {
     if (!ready || !pick.place) return;
@@ -345,7 +368,11 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                   </ul>
                 ) : null}
                 <p className="lmnone" role="status">
-                  {results?.length === 0 ? t('no-match') : null}
+                  {searchNote
+                    ? t(`search-${searchNote}`)
+                    : results?.length === 0
+                      ? t('no-match')
+                      : null}
                 </p>
               </div>
               <button
@@ -372,7 +399,12 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
               <div className="lmsel" aria-live="polite">
                 <small>{t('delivering-to')}</small>
                 <b>{summary}</b>
-                {inside ? (
+                {checking ? (
+                  <span className="lmst" id={`${ids}-checking`}>
+                    <span className="spin" aria-hidden="true" />
+                    {t('checking')}
+                  </span>
+                ) : inside ? (
                   <span className="lmst ok">
                     <Icon name="check" />
                     {t('in-area')}
@@ -383,6 +415,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                     <span>{t('out-of-area', { area })}</span>
                   </span>
                 )}
+                {unconfirmed && inside ? <small>{t('area-unconfirmed')}</small> : null}
                 {pick.origin === 'device' && inside ? <small>{t('device-note')}</small> : null}
               </div>
               {customer ? (
@@ -433,7 +466,13 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
               <button className="btn ghost" type="button" onClick={close}>
                 {t('cancel')}
               </button>
-              <button className="btn" type="button" aria-disabled={!ready} onClick={confirm}>
+              <button
+                className="btn"
+                type="button"
+                aria-disabled={!ready}
+                aria-describedby={checking ? `${ids}-checking` : undefined}
+                onClick={confirm}
+              >
                 {t('confirm')}
               </button>
             </div>

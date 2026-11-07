@@ -92,19 +92,34 @@ function isPlace(value: unknown): value is Place {
   );
 }
 
+/** Why a live search has no list: too many searches from this buyer, or the search failed. */
+export class SearchProblem extends Error {
+  constructor(readonly kind: 'throttled' | 'failed') {
+    super(`address search ${kind}`);
+  }
+}
+
 async function getJson(deps: LiveDeps, path: string): Promise<unknown> {
+  let response: Response;
   try {
-    const response = await deps.fetch(path, { headers: { accept: 'application/json' } });
-    return response.ok ? ((await response.json()) as unknown) : null;
+    response = await deps.fetch(path, { headers: { accept: 'application/json' } });
   } catch {
-    return null;
+    throw new SearchProblem('failed');
+  }
+  if (response.status === 429) throw new SearchProblem('throttled');
+  if (!response.ok) throw new SearchProblem('failed');
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    throw new SearchProblem('failed');
   }
 }
 
 /**
  * The live lookup: /api/deliver-to/search and /suburb (Mapbox on the server) and the API's
- * delivery area. A failed or throttled answer reads as no result, so the modal shows "No match"
- * or keeps the place found before; the buyer can still search again or move the pin.
+ * delivery area. `search` rejects with a SearchProblem when it could not search, so the modal
+ * says so instead of "No match"; a failed reverse lookup or locate answers null and the modal
+ * keeps the place found before.
  */
 export function liveLookup(deps: LiveDeps): AddressLookup {
   let pause: ReturnType<typeof setTimeout> | undefined;
@@ -119,25 +134,25 @@ export function liveLookup(deps: LiveDeps): AddressLookup {
       clearTimeout(pause);
       // Only the last call of a typing burst asks; the earlier ones never answer, and the modal's
       // ticket already ignores them.
-      return new Promise((resolve) => {
-        pause = setTimeout(() => void search(query).then(resolve), SEARCH_PAUSE_MS);
+      return new Promise((resolve, reject) => {
+        pause = setTimeout(() => void search(query).then(resolve, reject), SEARCH_PAUSE_MS);
       });
     },
     async suburbAt(point) {
       const body = (await getJson(
         deps,
         `/api/deliver-to/suburb?lat=${point.lat.toFixed(6)}&lng=${point.lng.toFixed(6)}`,
-      )) as { place?: unknown } | null;
+      ).catch(() => null)) as { place?: unknown } | null;
       return isPlace(body?.place) ? body.place : null;
     },
     async locate({ suburb, postcode }) {
       const name = suburb.toLowerCase();
-      const found = await search(`${suburb} ${postcode}`);
+      const found = await search(`${suburb} ${postcode}`).catch(() => []);
       const place =
         found.find((p) => p.postcode === postcode && p.suburb.toLowerCase() === name) ??
         found.find((p) => p.postcode === postcode);
       // Only the suburb was kept: answer the suburb, not the street address Mapbox matched.
-      return place ? { ...place, id: `${place.id}:suburb`, street: '' } : null;
+      return place ? { ...place, id: `${place.postcode}:${place.suburb}`, street: '' } : null;
     },
     async delivers(postcode) {
       try {
