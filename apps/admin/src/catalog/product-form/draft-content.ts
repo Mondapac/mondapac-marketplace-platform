@@ -239,8 +239,8 @@ export function contentFrom(
   set('attributeValues', parts.attributeValues, Object.keys(parts.attributeValues).length === 0);
   if (parts.variants !== null) set('variants', parts.variants, parts.variants.length === 0);
   if (parts.variantAxes !== undefined && parts.variantAxes !== null) {
-    if (parts.variantAxes.length > 0) next['variantAxes'] = [...parts.variantAxes];
-    else delete next['variantAxes'];
+    // An empty list is kept: an absent key means "every candidate" to the server.
+    next['variantAxes'] = [...parts.variantAxes];
   }
   return next;
 }
