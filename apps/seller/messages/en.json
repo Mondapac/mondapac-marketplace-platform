@@ -966,8 +966,7 @@
         "unknown": "Unknown reason"
       },
       "tab": {
-        "details": "Details",
-        "variants": "Variants"
+        "details": "Details"
       },
       "tabs": "Offer sections"
     },
@@ -1065,7 +1064,7 @@
         "axes-body": "Your ticked combinations are cleared and you start the grid again. Combinations that were never saved are deleted.",
         "axes-confirm": "Clear and change",
         "remove-dialog": "Remove this variant?",
-        "remove-body": "{count, plural, one {This variant has live prices and stock. Removing it ends them. Adding it again later starts from empty.} other {These variants have live prices and stock. Removing them ends them. Adding them again later starts from empty.}}",
+        "remove-body": "{count, plural, one {This variant may have prices and stock. Removing it ends them. Adding it again later starts from empty.} other {These variants may have prices and stock. Removing them ends them. Adding them again later starts from empty.}}",
         "remove-confirm": "Remove",
         "step-details": "4. Barcode, shipping and photos for each variant",
         "details-help": "All optional. Shipping left empty uses the product's own values. Photos come from the product's photos above.",
@@ -1262,7 +1261,8 @@
       "save": "{count, plural, =0 {Save changes} one {Save # change} other {Save # changes}}",
       "discard": "Discard changes",
       "saved": "{count, plural, one {Saved # change.} other {Saved # changes.}}",
-      "partial": "Saved {done}, {failed} could not be saved. The cells that failed show why."
+      "partial": "Saved {done}, {failed} could not be saved. The cells that failed show why.",
+      "cancelled": "Nothing was saved. The confirmation was cancelled."
     },
     "suggestions": {
       "title": "Value suggestions",
