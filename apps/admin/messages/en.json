@@ -124,7 +124,8 @@
     "brands": "Brands",
     "categories": "Categories",
     "review-moderation": "Buyer reviews",
-    "business-activities": "Business activities"
+    "business-activities": "Business activities",
+    "tags": "Tags"
   },
   "home": {
     "title": "Dashboard",
@@ -5549,6 +5550,132 @@
         "categories-refused": "One of these categories cannot be used. Pick level 1 or 2 categories.",
         "claim-word": "Names cannot claim a certification such as halal.",
         "code-taken": "This code is already used.",
+        "refused": "This value was not accepted."
+      }
+    }
+  },
+  "tags": {
+    "title": "Tags",
+    "intro": "Shopping themes that group products across categories, such as Ramadan or BBQ. Sellers pick from this list.",
+    "new": "New tag",
+    "search": "Search by name, synonym or address",
+    "search-label": "Search tags",
+    "status-filter": "Status",
+    "group-filter": "Group",
+    "loading": "Loading tags",
+    "load-error": "The tags could not be loaded. Check your connection and try again.",
+    "retry": "Try again",
+    "more": "Load more",
+    "more-error": "More tags could not be loaded. Try again.",
+    "stale": "Someone else changed that tag. The list is up to date now; nothing was saved.",
+    "no-access": "Your role cannot see tags.",
+    "back-home": "Back to the dashboard",
+    "empty": "No tags yet. Create the first one with New tag.",
+    "empty-reader": "No tags yet.",
+    "empty-filtered": "No tag matches these filters.",
+    "not-set": "Not set",
+    "and-more": "and {count} more",
+    "col": {
+      "name": "Name",
+      "group": "Group",
+      "synonyms": "Synonyms",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "status": {
+      "all": "All",
+      "active": "Active",
+      "archived": "Archived"
+    },
+    "group": {
+      "all": "All",
+      "occasion": "Occasion",
+      "cuisine": "Cuisine",
+      "use": "Use"
+    },
+    "action": {
+      "edit": "Edit",
+      "edit-name": "Edit {name}"
+    },
+    "done": {
+      "created": "{name} was created.",
+      "saved": "{name} was saved."
+    },
+    "error": {
+      "invalid": "Some values were not accepted. Check the fields and try again.",
+      "claim-word": "Certification words such as halal or organic cannot be used in a tag.",
+      "locale-uncheckable": "One of these languages cannot be checked for certification words yet. Remove it and try again.",
+      "slug-taken": "Another tag already has this address.",
+      "term-taken": "Another tag already uses one of these words.",
+      "gone": "This tag no longer exists.",
+      "stale": "Someone else changed this tag. Reload to see the latest.",
+      "retry": "Another change was in progress. Try again.",
+      "denied": "Your role cannot do this.",
+      "throttled": "Too many requests. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "unavailable": "The service is unavailable. Nothing was saved. Try again in a moment.",
+      "unknown": "Something went wrong. Nothing was saved."
+    },
+    "form": {
+      "new-title": "New tag",
+      "edit-title": "Edit {name}",
+      "names": "Names",
+      "names-help": "A name in {language} is required. Add other languages if you need them.",
+      "name-default": "{language} (required)",
+      "named-in": "Names in: {languages}",
+      "add-language": "Add language",
+      "add-language-placeholder": "Choose a language",
+      "remove": "Remove",
+      "remove-language": "Remove the {language} name and its synonyms",
+      "group": "Group",
+      "group-placeholder": "Choose a group",
+      "synonyms": "Synonyms",
+      "synonyms-help": "Other words buyers search for, such as barbecue for BBQ.",
+      "synonyms-in": "Synonyms in {language}",
+      "synonym-label": "Synonym {n} ({language})",
+      "remove-synonym": "Remove synonym {n}",
+      "remove-synonym-in": "Remove synonym {n} ({language})",
+      "add-synonym": "Add synonym",
+      "add-synonym-in": "Add synonym in {language}",
+      "synonyms-count": "{count} / {max}",
+      "synonyms-limit": "Up to {max} synonyms per language.",
+      "intro": "Intro",
+      "intro-help": "Shown on the tag's page. Written in {language} by a person; no links.",
+      "optional": "optional",
+      "slug": "Address",
+      "slug-help": "Part of the page address. Leave empty to build it from the name. It cannot be changed later.",
+      "slug-locked": "The address is fixed after creation.",
+      "active": "Active",
+      "active-help": "An archived tag is not offered to sellers.",
+      "cancel": "Cancel",
+      "create": "Create tag",
+      "save": "Save",
+      "reload": "Reload the list",
+      "select": {
+        "search": "Search",
+        "no-results": "No results",
+        "loading": "Loading...",
+        "retry": "Try again",
+        "remove": "Remove {name}",
+        "limit": "You can pick up to {max}"
+      },
+      "error": {
+        "name-required": "Enter a name.",
+        "group-required": "Choose a group.",
+        "short": "Use at least 2 characters.",
+        "long": "Use at most {max} characters.",
+        "intro-long": "Use at most 1000 characters.",
+        "slug-format": "Use lower case letters and digits, joined by hyphens (at most 40 characters).",
+        "slug-taken": "Another tag already has this address.",
+        "chars": "Remove hidden or control characters.",
+        "link": "Links cannot be used.",
+        "duplicate": "This word is already in the list.",
+        "name-taken": "Another tag already has this name.",
+        "synonym-taken": "Another tag already uses this word.",
+        "claim-word": "Certification words such as halal or organic cannot be used in a tag.",
+        "locale-uncheckable": "This language cannot be checked for certification words yet.",
+        "too-many": "Use at most {maxSynonyms} synonyms per language.",
+        "name-missing": "Add a name in this language before its synonyms.",
         "refused": "This value was not accepted."
       }
     }

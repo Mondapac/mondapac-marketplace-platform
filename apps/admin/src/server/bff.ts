@@ -90,6 +90,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/categories',
     // The business activities (catalog; query: `status`, `search`, `afterId`, `limit`).
     'catalog/admin/business-activities',
+    // The product tags (catalog topics; query: `status`, `group`, `search`, `afterId`, `limit`).
+    'catalog/admin/topics',
     // The attributes (catalog; query: `search`, `type`, `status`, `usedIn`, `missing`, `afterId`,
     // `limit`) and the feature sets (attribute families), read only (attributes package A1).
     'catalog/admin/attributes',
@@ -174,6 +176,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/brands/merge-queue/dismiss',
     // A new business activity (catalog).
     'catalog/admin/business-activities',
+    // A new product tag (catalog topics).
+    'catalog/admin/topics',
     // A new platform category, as a hidden one (catalog, categories C3).
     'catalog/admin/categories',
     // Add an attribute as a draft (catalog, attributes package A2).
@@ -328,6 +332,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/brands/:id',
     // The whole content of a business activity, with the version seen (catalog).
     'catalog/admin/business-activities/:id',
+    // The whole content of a product tag, with the version seen (catalog topics).
+    'catalog/admin/topics/:id',
     // The whole content of an attribute, a new revision, with the version seen (attributes A2).
     'catalog/admin/attributes/:id',
     // How buyers choose a variant type, the whole settings with the version seen (variants V6).
@@ -379,6 +385,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/platform-imports/:id/report',
     // One business activity (catalog), read again after a conflict.
     'catalog/admin/business-activities/:id',
+    // One product tag (catalog topics).
+    'catalog/admin/topics/:id',
     // One attribute with its values, uses and history, and one feature set (catalog, package A1).
     'catalog/admin/attributes/:id',
     // What merging values or archiving an attribute reaches (catalog, attributes A8).
@@ -448,6 +456,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
   'catalog/admin/variants': ['q', 'typeCode', 'issue', 'after', 'limit'],
   'catalog/admin/variants/issue-counts': ['typeCode'],
@@ -537,6 +546,12 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'catalog/admin/business-activities': {
     status: /^(active|inactive)$/,
+    limit: /^[0-9]{1,3}$/,
+    afterId: UUID,
+  },
+  'catalog/admin/topics': {
+    status: /^(active|archived)$/,
+    group: /^(occasion|cuisine|use)$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
   },
