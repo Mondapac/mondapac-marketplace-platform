@@ -43,6 +43,7 @@ export default async function EditProductPage({
           timeZone={displayZone(gate.session.timezone)}
           canPause={gate.session.permissionKeys.includes(PAUSE_PERMISSION)}
           canReadTags={gate.session.permissionKeys.includes(TOPIC_READ_PERMISSION)}
+          permissionKeys={gate.session.permissionKeys}
         />
       ) : (
         <>

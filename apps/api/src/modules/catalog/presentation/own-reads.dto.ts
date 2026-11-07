@@ -36,6 +36,60 @@ export class OwnProductList {
   nextAfterId!: string | null;
 }
 
+export class OwnProductPageItemView extends OwnProductListItemView {
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The name shown: the draft name in the default locale, else the shown revision’s.',
+  })
+  name!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description:
+      'The thumbnail. Serve it with GET catalog/seller/products/{productId}/images/{primaryImageId}/thumb.',
+  })
+  primaryImageId!: string | null;
+  @ApiProperty({ nullable: true, type: String, format: 'uuid' }) categoryId!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The first category, in the Market default locale.',
+  })
+  categoryName!: string | null;
+  @ApiProperty({ description: 'The seller’s own Offers on the product that are not deleted.' })
+  offerCount!: number;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'date-time',
+    description: 'Set while the product is paused; it stays in the live view.',
+  })
+  pausedAt!: string | null;
+}
+
+export class OwnProductViewCountsDto {
+  @ApiProperty() all!: number;
+  @ApiProperty() drafts!: number;
+  @ApiProperty() live!: number;
+  @ApiProperty() inactive!: number;
+  @ApiProperty() inReview!: number;
+}
+
+export class OwnProductPageList {
+  @ApiProperty({ type: [OwnProductPageItemView] }) items!: OwnProductPageItemView[];
+  @ApiProperty({ description: 'Products matching the view and the filters, over all pages.' })
+  total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({
+    type: OwnProductViewCountsDto,
+    description: 'Per tab, for the same search and filters.',
+  })
+  counts!: OwnProductViewCountsDto;
+}
+
 export class OwnRevisionViewDto {
   @ApiProperty({ format: 'uuid' }) revisionId!: string;
   @ApiProperty() revisionNo!: number;
@@ -56,6 +110,8 @@ export class OwnWorkingCopyView {
 export class OwnVariantView {
   @ApiProperty({ format: 'uuid' }) variantId!: string;
   @ApiProperty({ description: 'proposed, published or retired.' }) state!: string;
+  @ApiProperty({ description: 'The variant code, `{productCode}-{nn}` (design 2, M-7).' })
+  variantCode!: string;
 }
 
 const LOCALE_MAP = { type: 'object', additionalProperties: { type: 'string' } } as const;
@@ -261,6 +317,12 @@ export class OwnOfferTagView {
   badge!: OwnOfferTagBadge | null;
 }
 
+export class OwnOfferSellUnitDto {
+  @ApiProperty({ format: 'uuid' }) variantId!: string;
+  @ApiProperty({ nullable: true, type: String }) variantSku!: string | null;
+  @ApiProperty() selling!: boolean;
+}
+
 export class OwnOfferViewDto {
   @ApiProperty({ format: 'uuid' }) offerId!: string;
   @ApiProperty({ format: 'uuid' }) productId!: string;
@@ -287,6 +349,14 @@ export class OwnOfferViewDto {
     description: 'The open tags of the Offer; on the single-Offer read only.',
   })
   tags?: OwnOfferTagView[];
+  @ApiProperty({
+    type: [OwnOfferSellUnitDto],
+    required: false,
+    description:
+      'The stored sell-unit rows (variant SKU, selling switch); a variant with no row sells and ' +
+      'has no SKU. On the single-Offer read only.',
+  })
+  sellUnits?: OwnOfferSellUnitDto[];
 }
 
 export class OwnOfferStatusCounts {

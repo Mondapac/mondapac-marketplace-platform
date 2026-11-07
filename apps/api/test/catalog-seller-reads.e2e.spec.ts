@@ -42,6 +42,7 @@ const id = <T extends string>(n: number): Id<T> => {
 const OWNER = id<'Account'>(0xa101);
 const SELLER = id<'Seller'>(0xb020);
 const PRODUCT = id<'Product'>(0xc001);
+const VARIANT = id<'Variant'>(0xc101);
 
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
@@ -55,6 +56,8 @@ describe('seller read routes over HTTP (integration)', () => {
   let offer: Offer | null;
   let listed: { products: Product[]; offers: Offer[] };
   let pageCalls: unknown[];
+  let listCalls: { sellerId: unknown; filter: unknown; order: unknown; page: unknown }[];
+  let countCalls: { sellerId: unknown; filters: unknown }[];
   let allowed: AllowedProductTypes | null;
   let allowedAsked: unknown[];
   const http = () => request(app.getHttpServer());
@@ -94,12 +97,31 @@ describe('seller read routes over HTTP (integration)', () => {
               pageCalls.push(page);
               return Promise.resolve(listed.products);
             },
+            countProductViews: (_m: unknown, sellerId: unknown, filters: unknown) => {
+              countCalls.push({ sellerId, filters });
+              return Promise.resolve({
+                byStatus: { draft: 3, published: 1, matched: 1, retired: 1 },
+                inReview: 1,
+              });
+            },
+            listProductPage: (
+              _m: unknown,
+              sellerId: unknown,
+              filter: unknown,
+              order: unknown,
+              page: unknown,
+            ) => {
+              listCalls.push({ sellerId, filter, order, page });
+              return Promise.resolve({ kind: 'rows', rows: [] });
+            },
             listOffers: (_m: unknown, _s: unknown, page: unknown) => {
               pageCalls.push(page);
               return Promise.resolve(listed.offers);
             },
             findWorkingCopies: () => Promise.resolve([]),
             productLabels: () => Promise.resolve([]),
+            sellUnitsOf: () =>
+              Promise.resolve([{ variantId: VARIANT, variantSku: 'SKU-1-A', selling: false }]),
             offerStatusCounts: () =>
               Promise.resolve({ draft: 0, pendingFirstPublish: 0, changesNeeded: 0, published: 0 }),
             pendingReviewCount: () => Promise.resolve(0),
@@ -238,6 +260,8 @@ describe('seller read routes over HTTP (integration)', () => {
     offer = null;
     listed = { products: [], offers: [] };
     pageCalls = [];
+    listCalls = [];
+    countCalls = [];
     allowed = 'all';
     allowedAsked = [];
   });
@@ -305,6 +329,82 @@ describe('seller read routes over HTTP (integration)', () => {
         });
       }
       expect(pageCalls).toHaveLength(0);
+    });
+
+    it('lists in list mode with views, counts and a parsed query, scoped to the calling seller', async () => {
+      await boot();
+      await seeded(code);
+
+      const answer = await get(
+        code,
+        '/catalog/seller/products?view=live&q=dates&paused=false&sort=name&page=2&pageSize=50&typeCode=simple',
+        sessionOf(code),
+      );
+
+      expect(answer.status).toBe(200);
+      expect(answer.headers['cache-control']).toBe('no-store');
+      expect(answer.body).toEqual({
+        items: [],
+        total: 2,
+        page: 2,
+        pageSize: 50,
+        counts: { all: 6, drafts: 3, live: 2, inactive: 1, inReview: 1 },
+      });
+      expect(countCalls).toHaveLength(1);
+      expect(countCalls[0]!.sellerId).toBe(SELLER);
+      expect(pageCalls).toHaveLength(0);
+      expect(
+        logLines.find((l) => l.msg === 'catalog.own-products-list' && l.outcome),
+      ).toMatchObject({ outcome: 'ok', marketId: code });
+    });
+
+    it('reads the list from the first page when only page is given, and reads past the end as empty', async () => {
+      await boot();
+      await seeded(code);
+
+      const first = await get(code, '/catalog/seller/products?page=1', sessionOf(code));
+      expect(first.status).toBe(200);
+      expect(first.body).toMatchObject({ page: 1, pageSize: 25, total: 6 });
+      expect(listCalls[0]).toMatchObject({
+        sellerId: SELLER,
+        order: { sort: 'updated', direction: 'desc' },
+        page: { offset: 0, limit: 25 },
+        filter: { inReview: false, paused: null, text: null },
+      });
+      const past = await get(code, '/catalog/seller/products?page=3', sessionOf(code));
+      expect(past.status).toBe(200);
+      expect(listCalls).toHaveLength(1);
+    });
+
+    it('refuses a bad list query with validation.failed and without touching the store', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      for (const [query, path] of [
+        ['view=active', 'view'],
+        ['page=0', 'page'],
+        ['page=abc', 'page'],
+        ['page=201&pageSize=50', 'page'],
+        ['page=1&pageSize=30', 'pageSize'],
+        ['page=1&paused=yes', 'paused'],
+        ['page=1&status=withdrawn', 'status'],
+        ['page=1&sort=price', 'sort'],
+        ['page=1&categoryId=nope', 'categoryId'],
+        ['page=1&q=' + 'x'.repeat(101), 'q'],
+        ['page=1&q=a%00b', 'q'],
+        ['page=1&limit=5', 'limit'],
+        ['page=1&afterId=' + id<'Product'>(0xc999), 'afterId'],
+        ['page=1&sellerId=x', 'sellerId'],
+      ] as const) {
+        const answer = await get(code, `/catalog/seller/products?${query}`, session);
+        expect(answer.status).toBe(400);
+        expect(answer.body).toMatchObject({
+          code: 'validation.failed',
+          details: { fields: [{ path }] },
+        });
+      }
+      expect(countCalls).toHaveLength(0);
+      expect(listCalls).toHaveLength(0);
     });
 
     it('serves the product form options from the Market configuration, before any product id', async () => {
@@ -447,7 +547,11 @@ describe('seller read routes over HTTP (integration)', () => {
       });
       const one = await get(code, `/catalog/seller/offers/${offer.state.id}`, session);
       expect(one.status).toBe(200);
-      expect(one.body).toMatchObject({ offerId: offer.state.id, description: { en: 'mine' } });
+      expect(one.body).toMatchObject({
+        offerId: offer.state.id,
+        description: { en: 'mine' },
+        sellUnits: [{ variantId: VARIANT, variantSku: 'SKU-1-A', selling: false }],
+      });
 
       offer = offerOf(code, id<'Seller'>(0xb999));
       const other = await get(code, `/catalog/seller/offers/${offer.state.id}`, session);

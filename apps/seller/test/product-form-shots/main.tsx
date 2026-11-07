@@ -31,7 +31,7 @@ const product: ProductView = {
   variantModel: 'single',
   status: 'draft',
   pausedAt: null,
-  variants: [{ variantId: id(21), state: 'proposed' }],
+  variants: [{ variantId: id(21), state: 'proposed', variantCode: 'MP-004127-01' }],
   maxVariants: 100,
   sensitiveFields: [],
   lastChangedAt: '2026-11-05T01:00:00.000Z',

@@ -1333,6 +1333,8 @@
       "discard": "Discard changes",
       "saved": "{count, plural, one {Saved # change.} other {Saved # changes.}}",
       "partial": "Saved {done}, {failed} could not be saved. The cells that failed show why.",
+      "throttled": "Too many changes at once. Saved {done}; the rest are kept as drafts. Press Save again in {minutes, plural, one {# minute} other {# minutes}}.",
+      "throttled-cell": "Not saved yet: too many changes at once. Try again shortly.",
       "cancelled": "Nothing was saved. The confirmation was cancelled.",
       "units": {
         "sku": "SKU",
@@ -1361,6 +1363,62 @@
           "sku-maybe": "You may already use this SKU. Change it if so."
         },
         "reload": "Reload"
+      },
+      "file": {
+        "export": "Export CSV",
+        "export-drafts": "Save or discard your changes before exporting, so the file matches what is saved.",
+        "import": "Import CSV",
+        "refusal": {
+          "file-too-large": "That file is larger than {maxMb} MB.",
+          "file-unsupported-type": "That is not a CSV text file.",
+          "file-unreadable": "The file could not be read. Save it as UTF-8 CSV and try again.",
+          "file-too-many-columns": "The file has more than {max} columns.",
+          "file-cell-too-long": "A cell in the file is longer than {max} characters.",
+          "file-no-rows": "The file has no variant rows.",
+          "import-too-many-rows": "The file has more than {max} variants, the most a product may have.",
+          "import-column-missing": "The file needs the column {columns}.",
+          "import-column-refused": "These columns can’t be imported: {columns}. Approvals, certifications, handling and status are never set from a file.",
+          "import-column-not-allowed": "Your role can’t change these columns: {columns}. Remove them from the file."
+        },
+        "issue": {
+          "import-other-product": "This row is for another product. It was skipped.",
+          "import-variant-not-found": "No variant of this product matches this row. Variants are never added from a file.",
+          "import-variant-retired": "This variant was retired and can’t be changed.",
+          "import-key-conflict": "The variant code and the options in this row name different variants.",
+          "import-option-missing": "The option {column} is missing.",
+          "import-option-unknown": "The option in {column} is not one of this product’s options. Options are never added from a file.",
+          "import-key-conflict-sku": "The SKU in this row belongs to a different variant than the variant code or options in this row.",
+          "import-duplicate-row-sku": "Another row asks for the same SKU. Both were skipped.",
+          "import-duplicate-row": "Another row in the file is for the same variant. Both were skipped.",
+          "import-invalid-value": "The value in {column} is not valid.",
+          "import-none-selling": "At least one variant must keep selling, so the Selling changes in the file were skipped.",
+          "import-read-only-column": "{column} is for information only and was not changed."
+        },
+        "preview": {
+          "title": "Check the changes",
+          "help": "Only cells that differ from what you have now are listed. Nothing is saved until you apply them and press Save.",
+          "none": "The file has no changes.",
+          "changes": "Changes from the file",
+          "row": "Row",
+          "variant": "Variant",
+          "cell": "Cell",
+          "change": "Current → File",
+          "sku": "Variant SKU",
+          "selling": "Selling",
+          "selling-value": { "yes": "Yes", "no": "No" },
+          "price": "Price",
+          "stock": "Stock at {location}",
+          "from-to": "{from} → {to}",
+          "stock-changed": "Apply anyway: {variant} at {location}",
+          "stock-changed-help": "The stock changed since you exported this file, or the file has no exported stock level (for example a file made by hand).",
+          "stale-help": "A change with a tick box is not applied unless you tick it. Export the file again to start from today’s stock.",
+          "errors": "{count, plural, one {# row has a problem and was skipped} other {# rows have a problem and were skipped}}",
+          "warnings": "{count, plural, one {# note} other {# notes}}",
+          "issue": "Row {row}: {message}",
+          "ignored": "These columns are not used: {columns}.",
+          "cancel": "Cancel",
+          "apply": "{count, plural, =0 {Nothing to apply} one {Apply # change} other {Apply # changes}}"
+        }
       }
     },
     "suggestions": {
