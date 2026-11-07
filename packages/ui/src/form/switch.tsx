@@ -36,7 +36,7 @@ export function Switch({
       onClick={() => onCheckedChange(!checked)}
       className={[
         'inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 disabled:cursor-not-allowed disabled:opacity-50',
-        checked ? 'justify-end bg-accent' : 'justify-start bg-line-control',
+        checked ? 'justify-end bg-accent' : 'justify-start bg-fg-muted',
         className ?? '',
       ]
         .filter(Boolean)

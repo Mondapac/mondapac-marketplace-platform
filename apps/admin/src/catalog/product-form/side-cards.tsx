@@ -97,7 +97,9 @@ export function ActiveRow({
   return (
     <div className="flex items-center gap-3 border-t border-line-row pt-3">
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <p className="text-sm font-semibold">{inactive ? t('inactive') : t('title')}</p>
+        <p id="product-active-label" className="text-sm font-semibold">
+          {inactive ? t('inactive') : t('title')}
+        </p>
         <p className="text-xs text-fg-muted">
           {inactive
             ? t('inactive-help', { date: dayInZone(pausedAt, locale, timeZone), count: offerCount })
@@ -107,7 +109,7 @@ export function ActiveRow({
       <Switch
         checked={!inactive}
         disabled={pending}
-        aria-label={t('title')}
+        aria-labelledby="product-active-label"
         onCheckedChange={onChange}
       />
     </div>

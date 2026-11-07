@@ -790,7 +790,8 @@ describe('the Active switch', () => {
         "Buyers can't find it and all 7 offers are off sale. Sellers keep their offers.",
       ),
     ).toBeTruthy();
-    expect(screen.getByRole('switch', { name: 'Active' }).getAttribute('aria-checked')).toBe(
+    // The switch takes its name from the visible row title, which now reads Inactive.
+    expect(screen.getByRole('switch', { name: 'Inactive' }).getAttribute('aria-checked')).toBe(
       'false',
     );
     expect(screen.getByText('Inactive')).toBeTruthy();

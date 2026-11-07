@@ -78,7 +78,20 @@ window.fetch = () => Promise.resolve(new Response(JSON.stringify({ images: [] })
 const scenario = new URLSearchParams(location.search).get('s') ?? 'edit';
 const shown: ProductView =
   scenario === 'paused'
-    ? { ...product, status: 'published', pausedAt: '2026-11-01T01:00:00.000Z' }
+    ? {
+        ...product,
+        status: 'published',
+        pausedAt: '2026-11-01T01:00:00.000Z',
+        published: {
+          revisionId: id(90),
+          revisionNo: 1,
+          submittedAt: '2026-11-04T01:00:00.000Z',
+          authorKind: 'seller',
+          sensitive: false,
+          sensitiveReasons: [],
+          content: product.workingCopy?.content ?? {},
+        },
+      }
     : product;
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
