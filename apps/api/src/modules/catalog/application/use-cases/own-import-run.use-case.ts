@@ -53,7 +53,7 @@ import type {
   OwnImportRowOfferEdit,
   OwnImportRowCreate,
   OwnImportRowSave,
-} from './own-import-row.use-cases';
+} from './own-import-row.use-case';
 
 export interface OwnImportRunInput {
   /** How long one turn may take (milliseconds). */

@@ -94,19 +94,19 @@ import {
   OwnImportDiscard,
   OwnImportResume,
   OwnImportStart,
-} from './application/use-cases/own-import-control.use-cases';
+} from './application/use-cases/own-import-control.use-case';
 import { OwnImportPurge } from './application/use-cases/own-import-purge.use-case';
 import {
   OwnImportRead,
   OwnImportReport,
   OwnImportTemplate,
-} from './application/use-cases/own-import-reads.use-cases';
+} from './application/use-cases/own-import-reads.use-case';
 import {
   OwnImportRowCreate,
   OwnImportRowOfferCreate,
   OwnImportRowOfferEdit,
   OwnImportRowSave,
-} from './application/use-cases/own-import-row.use-cases';
+} from './application/use-cases/own-import-row.use-case';
 import { OwnImportRun } from './application/use-cases/own-import-run.use-case';
 import { platformImportRunJob } from './presentation/jobs/platform-import-run.job';
 import { purgePlatformImportsJob } from './presentation/jobs/purge-platform-imports.job';

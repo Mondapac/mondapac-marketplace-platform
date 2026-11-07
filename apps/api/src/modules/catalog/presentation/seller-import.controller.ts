@@ -45,12 +45,12 @@ import {
   OwnImportDiscard,
   OwnImportResume,
   OwnImportStart,
-} from '../application/use-cases/own-import-control.use-cases';
+} from '../application/use-cases/own-import-control.use-case';
 import {
   OwnImportRead,
   OwnImportReport,
   OwnImportTemplate,
-} from '../application/use-cases/own-import-reads.use-cases';
+} from '../application/use-cases/own-import-reads.use-case';
 import { closedBody, refusalWith } from './http-answers';
 import { PRODUCT_IMAGE_STATUS } from './product-image.controller';
 import { ApiErrorBody } from './platform-product.dto';
