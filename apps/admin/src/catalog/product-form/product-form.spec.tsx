@@ -247,6 +247,24 @@ describe('the create form', () => {
   });
 });
 
+const SIZE_FIELD = {
+  code: 'size',
+  dataType: 'select',
+  localizable: false,
+  required: true,
+  isVariantOption: true,
+  bounds: {},
+  names: { en: 'Size' },
+  options: [{ code: 'l', labels: { en: 'Large' } }],
+};
+
+/** Ticks the Size axis, its Large option and the Large combination of the variant grid. */
+function tickLarge() {
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Size' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Large' }));
+  fireEvent.click(screen.getAllByRole('checkbox', { name: 'Large' })[1]!);
+}
+
 describe('the edit form', () => {
   it('shows the saved English title as the page title, no language picker, and the lock note', async () => {
     call.mockResolvedValueOnce(ok(view()));
@@ -532,17 +550,16 @@ describe('the edit form', () => {
     );
     mountEdit();
     expect(await screen.findByText('Different sizes or flavours')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Add variant' }));
-    fireEvent.change(screen.getByLabelText('Size'), { target: { value: 'l' } });
+    tickLarge();
     call.mockResolvedValueOnce(ok({ variantIds: [minted], refusedFields: [] }));
     call.mockResolvedValueOnce(ok({ variantIds: [minted], refusedFields: [] }));
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
     expect(lastBody(1)['variantIds']).toEqual([null]);
     expect(lastBody(2)['variantIds']).toEqual([minted]);
-    expect((lastBody(2)['content'] as { variants: unknown[] }).variants).toEqual([
-      { variantId: minted, optionValues: { size: 'l' } },
-    ]);
+    const written = lastBody(2)['content'] as { variants: unknown[]; variantAxes: string[] };
+    expect(written.variants).toEqual([{ variantId: minted, optionValues: { size: 'l' } }]);
+    expect(written.variantAxes).toEqual(['size']);
   });
 
   it('shows the unsaved bar only after an edit, and asks before leaving with unsaved edits', async () => {
@@ -665,12 +682,13 @@ describe('the edit form', () => {
         view({
           variantModel: 'configurable',
           variants: [],
-          form: { ...view().form, fields: [] },
+          form: { ...view().form, fields: [SIZE_FIELD] },
         }),
       ),
     );
     mountEdit();
-    fireEvent.click(await screen.findByRole('button', { name: 'Add variant' }));
+    await screen.findByText('Different sizes or flavours');
+    tickLarge();
     call.mockResolvedValueOnce(
       ok({ variantIds: ['0190a000-0000-7000-8000-0000000000e9'], refusedFields: [] }),
     );
