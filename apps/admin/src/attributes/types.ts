@@ -9,6 +9,7 @@ export const ATTRIBUTES_PATH = '/catalog/attributes';
 export const BRANDS_PATH = '/catalog/brands';
 export const API_ATTRIBUTES = 'catalog/admin/attributes';
 export const API_FEATURE_SETS = 'catalog/admin/feature-sets';
+export const API_MISSING_DETAILS = 'catalog/admin/reports/products-missing-details';
 export const PAGE_SIZE = 50;
 
 /** What a write answers (attributes A2): enough to read the attribute again. */
@@ -205,7 +206,7 @@ export interface FeatureSetDetail {
 }
 
 /** The page's tabs; Brands is a link to its own page. */
-export const TABS = ['attributes', 'feature-sets', 'brands', 'waiting'] as const;
+export const TABS = ['attributes', 'feature-sets', 'brands', 'waiting', 'missing-details'] as const;
 export type Tab = (typeof TABS)[number];
 
 /** The sub-tabs of one attribute (plan 16). */
@@ -352,4 +353,23 @@ export interface SuggestionDecided {
     readonly version: number;
     readonly optionCode: string | null;
   };
+}
+
+/** One row of the report "Products missing required details" (A4; apps/api attribute-admin.dto.ts). */
+export interface MissingDetailsItem {
+  readonly productId: string;
+  readonly productCode: string;
+  readonly name: string | null;
+  readonly sellerId: string | null;
+  readonly featureSetCode: string;
+  /** Codes of the required attributes with no value. */
+  readonly missing: readonly string[];
+}
+
+export interface MissingDetailsPage {
+  readonly items: readonly MissingDetailsItem[];
+  /** The `afterId` of the next call; null when the whole Market has been read. */
+  readonly nextAfterId: string | null;
+  readonly scanned: number;
+  readonly unreadableFeatureSets: readonly string[];
 }
