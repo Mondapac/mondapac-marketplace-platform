@@ -7,8 +7,6 @@ import { toast, Toaster } from '@mondapac/ui';
 import { DEFAULT_QUERY, type Query } from './products-types.ts';
 import { VariantsExport, variantExportQuery } from './variants-export.tsx';
 
-const CATEGORY = '0190a000-0000-7000-8000-0000000000c1';
-
 function mount(query: Query = DEFAULT_QUERY) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
@@ -19,19 +17,17 @@ function mount(query: Query = DEFAULT_QUERY) {
 }
 
 describe('variantExportQuery', () => {
-  it('carries the tab, the search and the filters of the list, and nothing else', () => {
+  it('carries the search text of the list, and nothing else', () => {
     const query: Query = {
       ...DEFAULT_QUERY,
       view: 'all',
       q: '  shirt ',
-      filters: { scope: 'SELLER', status: 'published', categoryId: CATEGORY },
+      filters: { scope: 'SELLER', status: 'published' },
       sort: 'name',
       page: 3,
     };
-    expect(variantExportQuery(query, 'xlsx').toString()).toBe(
-      `format=xlsx&view=all&q=shirt&scope=SELLER&status=published&categoryId=${CATEGORY}`,
-    );
-    expect(variantExportQuery(DEFAULT_QUERY, 'csv').toString()).toBe('format=csv&view=active');
+    expect(variantExportQuery(query, 'xlsx').toString()).toBe('format=xlsx&q=shirt');
+    expect(variantExportQuery(DEFAULT_QUERY, 'csv').toString()).toBe('format=csv');
   });
 });
 
@@ -79,7 +75,7 @@ describe('Export variants on the product list', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
 
     expect(await screen.findByText('The variant file was downloaded.')).toBeTruthy();
-    expect(fetched).toEqual(['/api/catalog/admin/variants/export?format=csv&view=all&q=shirt']);
+    expect(fetched).toEqual(['/api/catalog/admin/variants/export?format=csv&q=shirt']);
     expect(click).toHaveBeenCalledTimes(1);
   });
 
@@ -93,23 +89,15 @@ describe('Export variants on the product list', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
 
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
-    expect(fetched).toEqual(['/api/catalog/admin/variants/export?format=xlsx&view=active']);
+    expect(fetched).toEqual(['/api/catalog/admin/variants/export?format=xlsx']);
   });
 
-  it.each([
-    [
-      'rows',
-      { max: 10000, total: 12345, unit: 'rows' },
-      'The file would have too many rows (12,345). Narrow the filter so it has 10,000 rows or fewer.',
-    ],
-    [
-      'products',
-      { max: 10000, total: 12345, unit: 'products' },
-      'The filter matches too many products (12,345). Narrow it to 10,000 products or fewer.',
-    ],
-  ])('names the unit when the file would be too large (%s)', async (_unit, details, text) => {
+  it('says how many rows the most is when the file would be too large', async () => {
     serve(
-      () => new Response(JSON.stringify({ code: 'export.too-large', details }), { status: 413 }),
+      () =>
+        new Response(JSON.stringify({ code: 'batch.too-large', details: { max: 10000 } }), {
+          status: 413,
+        }),
     );
     mount();
 
@@ -117,7 +105,11 @@ describe('Export variants on the product list', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Export variants' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
 
-    expect(await screen.findByText(text)).toBeTruthy();
+    expect(
+      await screen.findByText(
+        'The file would have too many rows. Narrow the search so it has 10,000 rows or fewer.',
+      ),
+    ).toBeTruthy();
     expect(click).not.toHaveBeenCalled();
   });
 

@@ -61,7 +61,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/platform-products/options',
     // The export of the product list as a file (catalog): the chosen ids or the list's own query.
     'catalog/admin/products/export',
-    // The export of the variants of the listed products as a file (catalog design 14b), read-only.
+    // The variant export as a file (catalog V6, with the 14b compare columns), read-only.
     'catalog/admin/variants/export',
     // Import products (catalog): the CSV and XLSX templates and the admin's current import.
     'catalog/admin/platform-imports/template',
@@ -209,6 +209,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/offers/:id/request-changes',
     // Submit (publish) a platform product's working copy (catalog).
     'catalog/admin/platform-products/:id/submit',
+    // Discard a platform product that was never submitted (catalog).
+    'catalog/admin/platform-products/:id/discard',
     // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
     // merge other brands into it.
     'catalog/admin/brands/:id/approve',
@@ -398,16 +400,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'typeCode',
     'sellerId',
   ],
-  'catalog/admin/variants/export': [
-    'format',
-    'view',
-    'q',
-    'scope',
-    'status',
-    'categoryId',
-    'typeCode',
-    'sellerId',
-  ],
+  'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
   'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
@@ -461,12 +454,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'catalog/admin/variants/export': {
     format: /^(csv|xlsx)$/,
-    view: /^(active|all|inactive)$/,
-    scope: /^(PLATFORM|SELLER)$/,
-    status: /^(published|paused|unpublished|withdrawn|retired|matched)$/,
-    categoryId: UUID,
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
-    sellerId: UUID,
+    issue: /^(no-seller-selling|missing-gtin|duplicate-gtin|no-image|missing-language)$/,
   },
   'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'commission-payouts/admin/payouts': {

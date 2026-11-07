@@ -1990,6 +1990,7 @@
       "unavailable": "Offer reviews could not be loaded. Try again later.",
       "more": "Next page",
       "empty": "No offers are waiting for review.",
+      "empty-page": "No offers on this page. More of the queue is on the next page.",
       "view-only": "You can view this queue but not decide.",
       "open": "Review",
       "close": "Close",
@@ -2290,7 +2291,7 @@
       "variants-export": {
         "button": "Export variants",
         "title": "Export variants",
-        "body": "One row per variant of the live version of each product in this list, with the search and filters kept. The file has no prices, stock or sellers.",
+        "body": "One row per live variant that matches the search text, with its product type, options and Offer count. The file has no prices or stock.",
         "legend": "File format",
         "csv": "CSV",
         "csv-help": "Plain text. Opens in any spreadsheet or tool.",
@@ -2304,7 +2305,7 @@
           "unavailable": "That didn’t work. Try again.",
           "denied": "You don’t have access to do this.",
           "invalid": "That request can’t be done. Reload the page and try again.",
-          "too-large": "{unit, select, products {The filter matches too many products ({total, number}). Narrow it to {max, number} products or fewer.} other {The file would have too many rows ({total, number}). Narrow the filter so it has {max, number} rows or fewer.}}"
+          "too-large": "The file would have too many rows. Narrow the search so it has {max, number} rows or fewer."
         }
       }
     },
@@ -2678,6 +2679,13 @@
         "unavailable": "The product service is unavailable. Try again shortly.",
         "unknown": "Something went wrong. Try again.",
         "partial": "The new variants were created but the draft wasn't saved with them. Save again."
+      },
+      "discard": {
+        "button": "Discard product",
+        "title": "Discard this product?",
+        "message": "The product and its draft are removed from the catalog. This can't be undone.",
+        "keep": "Keep product",
+        "confirm": "Discard product"
       },
       "leave": {
         "title": "Leave without saving?",

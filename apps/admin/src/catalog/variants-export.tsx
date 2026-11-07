@@ -12,11 +12,7 @@ const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.s
 class ExportFailure extends Error {
   constructor(
     readonly key: 'unavailable' | 'denied' | 'invalid' | 'too-large',
-    readonly values: { max: number; total: number; unit: 'products' | 'rows' } = {
-      max: 0,
-      total: 0,
-      unit: 'rows',
-    },
+    readonly values: { max: number } = { max: 0 },
   ) {
     super(key);
   }
@@ -25,35 +21,29 @@ class ExportFailure extends Error {
 function failureOf(
   status: number,
   code: string,
-  details: { max?: number; total?: number; unit?: string } | undefined,
+  details: { max?: number } | undefined,
 ): ExportFailure {
-  if (code === 'export.too-large') {
-    return new ExportFailure('too-large', {
-      max: details?.max ?? 0,
-      total: details?.total ?? 0,
-      unit: details?.unit === 'products' ? 'products' : 'rows',
-    });
-  }
+  if (code === 'batch.too-large') return new ExportFailure('too-large', { max: details?.max ?? 0 });
   if (status === 401 || status === 403) return new ExportFailure('denied');
   if (code === 'validation.failed') return new ExportFailure('invalid');
   return new ExportFailure('unavailable');
 }
 
-/** The list's tab, search and filters as the query of the export (what the Variants file keeps). */
+/**
+ * The query of the export: the list's search text. The variant export takes the Variants tab's
+ * filters (`q`, `typeCode` = a variant type, `issue`); the list's tab, scope, status, category and
+ * product type are not among them and are not sent.
+ */
 export function variantExportQuery(query: Query, format: ExportFormat): URLSearchParams {
-  const params = new URLSearchParams({ format, view: query.view });
+  const params = new URLSearchParams({ format });
   if (query.q.trim() !== '') params.set('q', query.q.trim());
-  if (query.filters.scope !== undefined) params.set('scope', query.filters.scope);
-  if (query.filters.status !== undefined) params.set('status', query.filters.status);
-  if (query.filters.categoryId !== undefined) params.set('categoryId', query.filters.categoryId);
   return params;
 }
 
 /**
  * "Export variants" on the product list (catalog design 14b): a CSV or XLSX file with one row per
- * variant of the live version of every product the current tab, search and filters match. A read,
- * so it needs only the view key the page already requires. The server caps the file at 10,000
- * rows and says so when the filter is too wide.
+ * live variant that the list's search text matches, from the one admin variant export (V6). A
+ * read. The server caps the file at 10,000 rows and says so when the search is too wide.
  */
 export function VariantsExport({ query }: { readonly query: Query }) {
   const t = useTranslations('catalog.products.variants-export');
@@ -76,7 +66,7 @@ export function VariantsExport({ query }: { readonly query: Query }) {
       if (!response.ok) {
         const body = (await response.json().catch((): unknown => null)) as {
           code?: string;
-          details?: { max?: number; total?: number; unit?: string };
+          details?: { max?: number };
         } | null;
         throw failureOf(response.status, body?.code ?? 'unknown', body?.details);
       }

@@ -7,6 +7,7 @@ import { requireSession } from '../../../src/server/session.ts';
 import { ReviewQueue } from '../../../src/catalog/review-queue.tsx';
 import {
   DECIDE_PERMISSION,
+  offerRowsOf,
   PAGE_SIZE,
   VIEW_PERMISSION,
   type ReviewPage,
@@ -65,9 +66,10 @@ export default async function OfferReviewsPage({
   return shell(
     <div className="flex flex-col gap-4">
       <ReviewQueue
-        rows={result.body.items}
+        rows={offerRowsOf(result.body.items)}
         canDecide={gate.session.permissionKeys.includes(DECIDE_PERMISSION)}
         csrfToken={gate.session.csrfToken}
+        morePages={result.body.nextAfterId !== null}
       />
       {result.body.nextAfterId === null ? null : (
         <p>

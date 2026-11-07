@@ -1,108 +1,84 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
-import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { CATALOG_PRODUCT_VIEW } from '../../contracts/permissions';
-import { invalid, type ValidationFailure } from '../own-reads/own-reads.shared';
-import type { AdminProductsReader } from '../ports/admin-products.reader';
-import type { AdminVariantsReader } from '../ports/admin-variants.reader';
-import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import { CATALOG_VARIANT_VIEW } from '../../contracts/permissions';
+import type { AdminVariantRow, AdminVariantsReader } from '../ports/admin-variants.reader';
+import { invalid } from '../own-reads/own-reads.shared';
 import { XLSX_CONTENT_TYPE, type SheetWriter } from '../ports/sheet-writer';
+import type { VariantIssue, VariantRow, VariantsQuery } from '../ports/variant-admin.reader';
 import { CSV_BOM, csvLine } from '../products/products-csv';
-import { filterOfSelector, parseSelector } from './admin-products-list.use-case';
 import {
-  EXPORT_FORMATS,
-  EXPORT_MAX_ROWS,
-  type ExportFormat,
-} from './admin-products-export.use-case';
+  closedQuery,
+  FILTER_KEYS,
+  isAdmin,
+  localesOf,
+  parseFilter,
+  queryOf,
+  type AdminReadFailure,
+} from '../variants/variant-admin.shared';
+import { viewOf, type AdminVariantsDependencies } from '../variants/variant-views';
 
-export { EXPORT_FORMATS, EXPORT_MAX_ROWS };
-export type { ExportFormat };
-
-/** Products read per chunk while the file streams. */
+/** Variants one export may hold; more is refused whole and the admin narrows the filter. */
+export const VARIANTS_EXPORT_MAX_ROWS = 10_000;
+/** Variants read per chunk while the file streams. */
 const CHUNK = 500;
 
-/** What the first read settles: the products, the row count (null: too many products) and axes. */
-interface Picked {
-  readonly ids: readonly Id<'Product'>[];
-  readonly rows: number | null;
-  readonly total: number;
-  /** What `total` counts when the export is refused: the products matched or the variant rows. */
-  readonly unit: 'products' | 'rows';
-  readonly axes: readonly string[];
-}
-
-/** The header cells before the option columns and after them (design 14b). */
-export const VARIANT_EXPORT_HEAD = ['product_code', 'variant_code', 'product_type'] as const;
-export const VARIANT_EXPORT_TAIL = ['gtin', 'offer_count'] as const;
-/** The header of the option column of an axis. */
-export const optionHeader = (attributeCode: string): string => `option[${attributeCode}]`;
-
-export interface AdminVariantsExportInput {
-  readonly format?: unknown;
-  readonly [selectorKey: string]: unknown;
+export interface AdminVariantsExportDependencies extends AdminVariantsDependencies {
+  /** Product type, option labels and Offer count of the compare columns (design 14b). */
+  readonly adminVariantsReader: AdminVariantsReader;
+  readonly sheetWriter: SheetWriter;
+  readonly clock: Clock;
 }
 
 export interface AdminVariantsExportOutput {
   readonly filename: string;
   readonly contentType: string;
-  /** The file, in chunks: the first holds the header. Text for a CSV, bytes for an XLSX. */
+  /** The file in chunks, the header first; each chunk reads its own page. */
   readonly chunks: AsyncIterable<string | Uint8Array>;
 }
 
 export type AdminVariantsExportFailure =
-  | { readonly code: 'access.denied' }
-  | { readonly code: 'access.unavailable' }
-  | {
-      readonly code: 'export.too-large';
-      readonly max: number;
-      readonly total?: number;
-      readonly unit?: 'products' | 'rows';
-    }
-  | ValidationFailure;
+  | AdminReadFailure
+  | { readonly code: 'batch.too-large'; readonly max: number; readonly total?: number };
 
-export interface AdminVariantsExportDependencies {
-  readonly unitOfWork: UnitOfWork;
-  readonly adminProductsReader: AdminProductsReader;
-  readonly adminVariantsReader: AdminVariantsReader;
-  readonly policy: CatalogMarketPolicy;
-  readonly sheetWriter: SheetWriter;
-  readonly clock: Clock;
-}
+const ISSUE_LABELS: Readonly<Record<VariantIssue, string>> = Object.freeze({
+  'no-seller-selling': 'No seller selling',
+  'missing-gtin': 'Missing GTIN',
+  'duplicate-gtin': 'Duplicate GTIN',
+  'no-image': 'No image',
+  'missing-language': 'Missing language',
+});
 
-const SELECTOR_KEYS = new Set([
-  'view',
-  'q',
-  'scope',
-  'status',
-  'categoryId',
-  'typeCode',
-  'sellerId',
-]);
+/** The header cells before the option columns and after them (design 14b, the compare columns). */
+export const VARIANT_EXPORT_HEAD = ['product_code', 'variant_code', 'product_type'] as const;
+export const VARIANT_EXPORT_TAIL = ['gtin', 'offer_count'] as const;
+/** The cells the Variants tab adds after the compare columns. */
+const TAB_HEADER = ['Product', 'Variant', 'Status', 'Sellers selling', 'Issues'] as const;
+/** The header of the option column of an axis. */
+export const optionHeader = (attributeCode: string): string => `option[${attributeCode}]`;
+
+type Cell = string | number | null;
 
 /**
- * `admin-variants.export` (catalog design 14b; Catalogue > Variants): one row per variant of the
- * products the list filters match, read from each product's **published** revision (a product never
- * published has no row, a `proposed` variant that exists only in a pending revision or the working
- * copy has none). Columns: `product_code`, `variant_code`, `product_type`, one `option[<attribute
- * code>]` per axis any exported product varies on (empty where a product has no such axis; the
- * option's label in the Market's default locale), `gtin`, `offer_count`. No price, stock or seller
- * column. At most {@link EXPORT_MAX_ROWS} rows: more is refused whole as `export.too-large` with
- * `max` (and `total`). Rule: the key `catalog.product.view` and the admin population. The answer is
- * a stream: each chunk of {@link CHUNK} products reads its own page (a read-only unit).
- *
- * CSV: a text cell that a spreadsheet would run as a formula gets a leading quote (the shared
- * guard, `@mondapac/platform-import`). XLSX: every cell is written as a string value by the
- * {@link SheetWriter}. A read: no audit row.
+ * `admin-variants.export` (variants V6; the products export pattern, catalog design 9.2c): the
+ * variants the Variants tab's filter matches (`q`, `typeCode`, `issue`), at most
+ * {@link VARIANTS_EXPORT_MAX_ROWS}, as CSV (default) or XLSX. The file streams: each chunk of
+ * {@link CHUNK} variants reads its own page in a read-only unit. CSV text cells that a
+ * spreadsheet would run as a formula get a leading quote; XLSX cells are all string values,
+ * never formulas (the {@link SheetWriter} contract). Columns (design 14b, then the tab's own):
+ * `product_code`, `variant_code`, `product_type`, one `option[<attribute code>]` per axis any
+ * exported product varies on (the option label in the default locale, empty where a product has
+ * no such axis), `gtin`, `offer_count`, then Product, Variant, Status, Sellers selling, Issues. Rule: the key `catalog.variant.view` and the
+ * admin population.
  */
 export class AdminVariantsExport extends UseCase<
-  AdminVariantsExportInput,
+  Record<string, unknown>,
   AdminVariantsExportOutput,
   AdminVariantsExportFailure
 > {
   static override readonly access: AccessDeclaration = {
     name: 'catalog.admin-variants-export',
-    rule: { kind: 'permissions', allOf: [CATALOG_PRODUCT_VIEW.key] },
+    rule: { kind: 'permissions', allOf: [CATALOG_VARIANT_VIEW.key] },
   };
 
   constructor(
@@ -114,120 +90,150 @@ export class AdminVariantsExport extends UseCase<
 
   protected async handle(
     context: CallContext,
-    input: AdminVariantsExportInput,
+    input: Record<string, unknown>,
   ): Promise<Result<AdminVariantsExportOutput, AdminVariantsExportFailure>> {
-    const { actor, market } = context;
-    if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
-      return err({ code: 'access.denied' });
-    }
-    if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-      return invalid('query', 'type');
-    }
-    for (const key of Object.keys(input)) {
-      if (key !== 'format' && !SELECTOR_KEYS.has(key)) return invalid(key, 'unknown');
-    }
-    const format = input.format ?? 'csv';
+    if (!isAdmin(context)) return err({ code: 'access.denied' });
+    const query = closedQuery(input, [...FILTER_KEYS, 'format']);
+    if (!query.ok) return query;
+    const format = query.value['format'] ?? 'csv';
     if (format !== 'csv' && format !== 'xlsx') return invalid('format', 'value');
-    const selector = parseSelector(input);
-    if (!selector.ok) return selector;
-
-    let locale: string;
-    try {
-      locale = this.deps.policy.locales(market).default;
-    } catch {
-      return err({ code: 'access.unavailable' });
-    }
+    const filter = parseFilter(query.value);
+    if (!filter.ok) return filter;
+    const locales = localesOf(this.deps.policy, context);
+    if (!locales.ok) return locales;
     const { deps } = this;
-    const filter = filterOfSelector(selector.value, selector.value.view, locale);
 
-    const picked = await deps.unitOfWork.run<Picked, never>(
-      market,
-      async (): Promise<Result<Picked, never>> => {
-        const found = await deps.adminProductsReader.ids(market, filter, EXPORT_MAX_ROWS + 1);
-        if (found.length > EXPORT_MAX_ROWS) {
-          const [total] = await deps.adminProductsReader.counts(market, [filter]);
-          return ok({
-            ids: found,
-            rows: null,
-            total: total ?? found.length,
-            unit: 'products',
-            axes: [],
-          });
-        }
-        const rows = await deps.adminVariantsReader.count(market, found);
-        if (rows > EXPORT_MAX_ROWS)
-          return ok({ ids: found, rows, total: rows, unit: 'rows', axes: [] });
-        return ok({
-          ids: found,
-          rows,
-          total: rows,
-          unit: 'rows',
-          axes: await deps.adminVariantsReader.axisCodes(market, found),
-        });
-      },
+    // Refused whole before the first byte: the matching variants are counted up to one past the
+    // cap (pages of ids and facts only, no file is built).
+    const base = queryOf(filter.value, { after: null, limit: CHUNK }, locales.value);
+    const counted = await this.#countUpTo(context, base, VARIANTS_EXPORT_MAX_ROWS + 1);
+    if (!counted.ok) return counted;
+    if (counted.value.total > VARIANTS_EXPORT_MAX_ROWS) {
+      return err({ code: 'batch.too-large', max: VARIANTS_EXPORT_MAX_ROWS });
+    }
+    // The option columns are the union of the axes of the products the file holds.
+    const productIds = [...counted.value.productIds];
+    const axes = await deps.unitOfWork.run(
+      context.market,
+      async () => ok(await deps.adminVariantsReader.axisCodes(context.market, productIds)),
       { readOnly: true },
     );
-    if (!picked.ok) return err({ code: 'access.unavailable' });
-    if (picked.value.rows === null || picked.value.rows > EXPORT_MAX_ROWS) {
-      return err({
-        code: 'export.too-large',
-        max: EXPORT_MAX_ROWS,
-        total: picked.value.total,
-        unit: picked.value.unit,
-      });
-    }
+    if (!axes.ok) return err({ code: 'access.unavailable' });
 
     const day = deps.clock.now().toString().slice(0, 10);
-    const rows = this.#rows(context, picked.value.ids, picked.value.axes, locale);
+    const groups = this.#rows(context, base, locales.value.default, axes.value);
     if (format === 'xlsx') {
       return ok({
         filename: `variants-${day}.xlsx`,
         contentType: XLSX_CONTENT_TYPE,
-        chunks: deps.sheetWriter.xlsx('Variants', textRows(rows)),
+        chunks: deps.sheetWriter.xlsx('Variants', textRows(groups)),
       });
     }
     return ok({
       filename: `variants-${day}.csv`,
       contentType: 'text/csv; charset=utf-8',
-      chunks: csvChunks(rows),
+      chunks: csvChunks(groups),
     });
   }
 
-  /** The rows of the file, a group per page of products: the header group first. */
-  async *#rows(
+  /** Counts matching variants page by page, stopping at `cap`. */
+  async #countUpTo(
     context: CallContext,
-    ids: readonly Id<'Product'>[],
-    axes: readonly string[],
-    locale: string,
-  ): AsyncGenerator<readonly (readonly string[])[]> {
+    base: VariantsQuery,
+    cap: number,
+  ): Promise<Result<{ total: number; productIds: ReadonlySet<Id<'Product'>> }, AdminReadFailure>> {
     const { market } = context;
-    const { deps } = this;
-    yield [[...VARIANT_EXPORT_HEAD, ...axes.map(optionHeader), ...VARIANT_EXPORT_TAIL]];
-    for (let start = 0; start < ids.length; start += CHUNK) {
-      const chunk = ids.slice(start, start + CHUNK);
-      const read = await deps.unitOfWork.run(
+    let after: string | null = null;
+    let total = 0;
+    const productIds = new Set<Id<'Product'>>();
+    do {
+      const query: VariantsQuery = { ...base, after, limit: CHUNK };
+      const page = await this.deps.unitOfWork.run(
         market,
-        async () => ok(await deps.adminVariantsReader.rows(market, chunk, locale)),
+        async () => ok(await this.deps.variantAdminReader.variantsPage(market, query)),
         { readOnly: true },
       );
-      if (!read.ok) throw new Error('catalog.admin-variants-export: the read failed');
-      yield read.value.map((row) => [
-        row.productCode,
-        row.variantCode,
-        row.typeCode,
-        ...axes.map(
-          (axis) => row.options.find((option) => option.attributeCode === axis)?.label ?? '',
+      if (!page.ok) return err({ code: 'access.unavailable' });
+      total += page.value.rows.length;
+      for (const row of page.value.rows) productIds.add(row.productId);
+      after = page.value.nextAfter;
+    } while (after !== null && total < cap);
+    return ok({ total, productIds });
+  }
+
+  /** The compare columns of one page, by variant code (the products' published variants). */
+  async #details(
+    context: CallContext,
+    rows: readonly VariantRow[],
+    locale: string,
+  ): Promise<ReadonlyMap<string, AdminVariantRow>> {
+    const { market } = context;
+    const read = await this.deps.unitOfWork.run(
+      market,
+      async () =>
+        ok(
+          await this.deps.adminVariantsReader.rows(
+            market,
+            [...new Set(rows.map((row) => row.productId))],
+            locale,
+          ),
         ),
-        row.gtin ?? '',
-        String(row.offerCount),
-      ]);
-    }
+      { readOnly: true },
+    );
+    if (!read.ok) throw new Error('catalog.admin-variants-export: the read failed');
+    return new Map(read.value.map((detail) => [detail.variantCode, detail]));
+  }
+
+  async *#rows(
+    context: CallContext,
+    base: VariantsQuery,
+    locale: string,
+    axes: readonly string[],
+  ): AsyncGenerator<readonly (readonly Cell[])[]> {
+    const { market } = context;
+    yield [
+      [...VARIANT_EXPORT_HEAD, ...axes.map(optionHeader), ...VARIANT_EXPORT_TAIL, ...TAB_HEADER],
+    ];
+    let after: string | null = null;
+    let written = 0;
+    do {
+      const query: VariantsQuery = { ...base, after, limit: CHUNK };
+      const page = await this.deps.unitOfWork.run(
+        market,
+        async () => ok(await this.deps.variantAdminReader.variantsPage(market, query)),
+        { readOnly: true },
+      );
+      if (!page.ok) throw new Error('catalog.admin-variants-export: the read failed');
+      const rows = page.value.rows.slice(0, VARIANTS_EXPORT_MAX_ROWS - written);
+      written += rows.length;
+      const details = await this.#details(context, rows, locale);
+      yield rows.map((row) => {
+        const view = viewOf(row, locale);
+        const detail = details.get(view.variantCode);
+        return [
+          view.productCode,
+          view.variantCode,
+          detail?.typeCode ?? '',
+          ...axes.map(
+            (axis) => detail?.options.find((option) => option.attributeCode === axis)?.label ?? '',
+          ),
+          view.gtin ?? '',
+          detail?.offerCount ?? 0,
+          view.productName ?? '',
+          view.label ?? '',
+          view.status === 'paused' ? 'Paused' : 'Live',
+          view.sellers,
+          view.issues.map((issue) => ISSUE_LABELS[issue]).join('; '),
+        ];
+      });
+      after = page.value.nextAfter;
+    } while (after !== null && written < VARIANTS_EXPORT_MAX_ROWS);
   }
 }
 
 /** CSV: the byte order mark before the header, then each group of rows as one chunk of lines. */
 async function* csvChunks(
-  groups: AsyncIterable<readonly (readonly string[])[]>,
+  groups: AsyncIterable<readonly (readonly Cell[])[]>,
 ): AsyncGenerator<string> {
   let first = true;
   for await (const group of groups) {
@@ -237,11 +243,11 @@ async function* csvChunks(
   }
 }
 
-/** XLSX: every cell as text. */
+/** XLSX: every cell as text; a count is written as the digits. */
 async function* textRows(
-  groups: AsyncIterable<readonly (readonly string[])[]>,
+  groups: AsyncIterable<readonly (readonly Cell[])[]>,
 ): AsyncGenerator<readonly string[]> {
   for await (const group of groups) {
-    for (const row of group) yield row;
+    for (const row of group) yield row.map((cell) => (cell === null ? '' : String(cell)));
   }
 }

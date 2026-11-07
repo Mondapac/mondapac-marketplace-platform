@@ -12,8 +12,8 @@ import { Product } from '../../src/modules/catalog/domain/product';
 import { configurableProductType } from '../../src/modules/catalog/domain/product-types/configurable';
 import { simpleProductType } from '../../src/modules/catalog/domain/product-types/simple';
 import { ConfigCatalogMarketPolicy } from '../../src/modules/catalog/infrastructure/config-catalog-market-policy';
-import { PrismaAdminProductsReader } from '../../src/modules/catalog/infrastructure/prisma-admin-products.reader';
 import { PrismaAdminVariantsReader } from '../../src/modules/catalog/infrastructure/prisma-admin-variants.reader';
+import { PrismaVariantAdminReader } from '../../src/modules/catalog/infrastructure/prisma-variant-admin.reader';
 import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
 import { ExceljsSheetWriter } from '../../src/modules/catalog/infrastructure/xlsx/exceljs-sheet-writer';
@@ -68,7 +68,7 @@ describe.each(TEST_MARKETS)('catalog admin variants reader in market %s (databas
       createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) }),
       {
         unitOfWork: db.unitOfWork,
-        adminProductsReader: new PrismaAdminProductsReader(db.service),
+        variantAdminReader: new PrismaVariantAdminReader(db.service),
         adminVariantsReader: reader,
         policy,
         sheetWriter: new ExceljsSheetWriter(),
@@ -442,23 +442,26 @@ describe.each(TEST_MARKETS)('catalog admin variants reader in market %s (databas
       [market.marketId, simple.value.state.id, shown],
     );
 
-    const result = await exporter.execute(adminContext(), { q: marker, view: 'all' });
+    const result = await exporter.execute(adminContext(), { q: marker });
     if (!result.ok) throw new Error(JSON.stringify(result.error));
     const text = (await collect(result.value.chunks)).replace(/^\uFEFF/, '');
     const lines = text.trim().split('\r\n');
 
     expect(result.value.filename).toBe('variants-2026-11-07.csv');
     expect(lines[0]).toBe(
-      `product_code,variant_code,product_type,option[${size}],gtin,offer_count`,
+      `product_code,variant_code,product_type,option[${size}],gtin,offer_count,` +
+        'Product,Variant,Status,Sellers selling,Issues',
     );
-    expect(lines.slice(1).sort()).toEqual(
+    // The compare columns first (design 14b); the tab's own columns follow them.
+    const compare = lines.slice(1).map((line) => line.split(',').slice(0, 6).join(','));
+    expect(compare.sort()).toEqual(
       [
         `${shirt.productCode},${shirt.productCode}-01,configurable,'=Small,,0`,
         `${simple.value.state.productCode},${simple.value.state.productCode}-01,simple,,,0`,
       ].sort(),
     );
 
-    const xlsx = await exporter.execute(adminContext(), { q: marker, view: 'all', format: 'xlsx' });
+    const xlsx = await exporter.execute(adminContext(), { q: marker, format: 'xlsx' });
     expect(xlsx.ok && xlsx.value.contentType).toContain('spreadsheetml');
   });
 });

@@ -61,6 +61,9 @@ class MemoryAttributes implements AttributeRepository {
   loadSchema() {
     return Promise.resolve(null);
   }
+  familyCodeOfRevision() {
+    return Promise.resolve(null);
+  }
 
   definitionIdByCode(_m: MarketContext, code: string) {
     return Promise.resolve(this.definitions.get(code) ?? null);

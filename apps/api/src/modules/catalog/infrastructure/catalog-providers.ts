@@ -296,6 +296,17 @@ const CATALOG_SECRET = Symbol('CATALOG_SECRET');
  * Binds the ports of slices 1 to 3. They live in `infrastructure/` because only this layer may reach
  * `PrismaService` (dependency-cruiser `persistence-internals-are-private`).
  */
+import {
+  VARIANT_ADMIN_READER,
+  type VariantAdminReader,
+} from '../application/ports/variant-admin.reader';
+import {
+  VARIANT_TYPE_SETTINGS_STORE,
+  type VariantTypeSettingsStore,
+} from '../application/ports/variant-type-settings.store';
+import { PrismaVariantAdminReader } from './prisma-variant-admin.reader';
+import { PrismaVariantTypeSettingsStore } from './prisma-variant-type-settings.store';
+
 export const catalogProviders: readonly Provider[] = [
   // ADR-0031 decision 3: the binding of `certification.matchClaimTerms` (the placeholder is gone).
   {
@@ -683,5 +694,16 @@ export const catalogProviders: readonly Provider[] = [
     provide: RATE_COUNTER_KEYS,
     inject: [CATALOG_SECRET],
     useFactory: (secret: Uint8Array): RateCounterKeys => new HmacRateCounterKeys(secret),
+  },
+  {
+    provide: VARIANT_ADMIN_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantAdminReader => new PrismaVariantAdminReader(prisma),
+  },
+  {
+    provide: VARIANT_TYPE_SETTINGS_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantTypeSettingsStore =>
+      new PrismaVariantTypeSettingsStore(prisma),
   },
 ];

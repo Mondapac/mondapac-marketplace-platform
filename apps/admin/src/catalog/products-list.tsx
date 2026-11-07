@@ -324,7 +324,9 @@ export function ProductsList({
               void loadSaved();
             }}
           />
-          <VariantsExport query={query} />
+          {permissionKeys.includes('catalog.variant.view') ? (
+            <VariantsExport query={query} />
+          ) : null}
           {permissionKeys.includes('catalog.platform-product.edit') ? (
             <LinkButton href="/catalog/products/new">{t('add')}</LinkButton>
           ) : null}
