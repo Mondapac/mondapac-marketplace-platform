@@ -47,7 +47,10 @@ import { CATEGORY_PATHS_READER } from './application/ports/category-paths.reader
 import { ClaimQueryBuilder } from './application/tags/claim-query-builder';
 import { OwnOfferAddTag } from './application/use-cases/own-offer-add-tag.use-case';
 import { OwnOfferRemoveTag } from './application/use-cases/own-offer-remove-tag.use-case';
-import { SELLER_ELIGIBILITY_READER } from './application/ports/seller-eligibility.reader';
+import {
+  SELLER_ELIGIBILITY_READER,
+  SELLER_ELIGIBILITY_STATUS_READER,
+} from './application/ports/seller-eligibility.reader';
 import { SELLER_NAMES_READER } from './application/ports/seller-names.reader';
 import { ProductRevisionApprove } from './application/use-cases/product-revision-approve.use-case';
 import { ProductRevisionRequestChanges } from './application/use-cases/product-revision-request-changes.use-case';
@@ -427,6 +430,7 @@ const PORT = {
   evaluator: CLAIM_EVALUATOR,
   categoryPaths: CATEGORY_PATHS_READER,
   eligibility: SELLER_ELIGIBILITY_READER,
+  eligibilityStatus: SELLER_ELIGIBILITY_STATUS_READER,
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
   sellerNames: SELLER_NAMES_READER,
   ownReader: OWN_CATALOG_READER,
@@ -1544,7 +1548,7 @@ const RESTRUCTURE_DEPS = {
       importFiles: true,
       importParsers: true,
       importFacts: true,
-      eligibility: true,
+      eligibilityStatus: true,
       allowedTypes: true,
       offers: true,
       outbox: true,

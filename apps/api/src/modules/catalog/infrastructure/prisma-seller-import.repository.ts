@@ -2,12 +2,13 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type {
-  NewSellerImportJob,
-  NewSellerImportPhoto,
-  SellerGroupOutcome,
-  SellerImportRepository,
-  SellerRowFilter,
+import {
+  SellerImportAlreadyRunningError,
+  type NewSellerImportJob,
+  type NewSellerImportPhoto,
+  type SellerGroupOutcome,
+  type SellerImportRepository,
+  type SellerRowFilter,
 } from '../application/ports/seller-import.repository';
 import type { ImportJobState } from '../domain/import-jobs/import-job-core';
 import type { ImportFormat } from '../domain/platform-import/import-file';
@@ -63,6 +64,7 @@ function jobOf(row: JobRow): SellerImportJob {
     checkedAt: toInstant(row.checkedAt),
     startedAt: instantOrNull(row.startedAt),
     finishedAt: instantOrNull(row.finishedAt),
+    endedAt: instantOrNull(row.endedAt),
   };
 }
 
@@ -230,16 +232,18 @@ export class PrismaSellerImportRepository implements SellerImportRepository {
     },
   ): Promise<boolean> {
     const tx = this.prisma.tx(market);
-    const { count } = await tx.catalogSellerImportJob.updateMany({
-      where: { marketId: market.marketId, id, state: 'checked' },
-      data: {
-        state: 'queued',
-        skipErrors: choice.skipErrors,
-        toImport: choice.toImport,
-        startedAt: toDate(choice.now),
-        version: { increment: 1 },
-      },
-    });
+    const { count } = await tx.catalogSellerImportJob
+      .updateMany({
+        where: { marketId: market.marketId, id, state: 'checked' },
+        data: {
+          state: 'queued',
+          skipErrors: choice.skipErrors,
+          toImport: choice.toImport,
+          startedAt: toDate(choice.now),
+          version: { increment: 1 },
+        },
+      })
+      .catch(rethrowAlreadyRunning);
     if (count !== 1) return false;
     await tx.catalogSellerImportRow.updateMany({
       where: { marketId: market.marketId, jobId: id, checkState: 'error' },
@@ -249,17 +253,21 @@ export class PrismaSellerImportRepository implements SellerImportRepository {
   }
 
   async resume(market: MarketContext, id: Id<'SellerImport'>): Promise<boolean> {
-    const { count } = await this.prisma.tx(market).catalogSellerImportJob.updateMany({
-      where: { marketId: market.marketId, id, state: 'stopped' },
-      data: {
-        state: 'queued',
-        stopReason: null,
-        notBefore: null,
-        leaseUntil: null,
-        finishedAt: null,
-        version: { increment: 1 },
-      },
-    });
+    const { count } = await this.prisma
+      .tx(market)
+      .catalogSellerImportJob.updateMany({
+        where: { marketId: market.marketId, id, state: 'stopped' },
+        data: {
+          state: 'queued',
+          stopReason: null,
+          notBefore: null,
+          leaseUntil: null,
+          finishedAt: null,
+          endedAt: null,
+          version: { increment: 1 },
+        },
+      })
+      .catch(rethrowAlreadyRunning);
     return count === 1;
   }
 
@@ -296,7 +304,13 @@ export class PrismaSellerImportRepository implements SellerImportRepository {
           { state: 'running', leaseUntil: { lt: nowDate } },
         ],
       },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      // Round-robin: the job whose last turn is the oldest (one that never had a turn first), so a
+      // seller with a long file does not hold back the others.
+      orderBy: [
+        { lastTurnAt: { sort: 'asc', nulls: 'first' } },
+        { createdAt: 'asc' },
+        { id: 'asc' },
+      ],
     });
     if (due === null) return null;
     const { count } = await tx.catalogSellerImportJob.updateMany({
@@ -304,6 +318,7 @@ export class PrismaSellerImportRepository implements SellerImportRepository {
       data: {
         state: 'running',
         leaseUntil: toDate(leaseUntil),
+        lastTurnAt: nowDate,
         notBefore: null,
         version: { increment: 1 },
       },
@@ -437,7 +452,11 @@ export class PrismaSellerImportRepository implements SellerImportRepository {
     next:
       | { readonly state: 'queued'; readonly notBefore: Temporal.Instant | null }
       | { readonly state: 'finished'; readonly now: Temporal.Instant }
-      | { readonly state: 'stopped'; readonly reason: SellerStopReason },
+      | {
+          readonly state: 'stopped';
+          readonly reason: SellerStopReason;
+          readonly now: Temporal.Instant;
+        },
   ): Promise<number | null> {
     const tx = this.prisma.tx(market);
     const data: Prisma.CatalogSellerImportJobUpdateManyMutationInput =
@@ -459,6 +478,7 @@ export class PrismaSellerImportRepository implements SellerImportRepository {
           : {
               state: 'stopped',
               stopReason: next.reason,
+              endedAt: toDate(next.now),
               leaseUntil: null,
               notBefore: null,
               version: { increment: 1 },
@@ -570,53 +590,62 @@ export class PrismaSellerImportRepository implements SellerImportRepository {
     return count;
   }
 
-  async rowsStartedSince(
+  async startsSince(
     market: MarketContext,
     sellerId: Id<'Seller'>,
     since: Temporal.Instant,
-  ): Promise<number> {
-    const sum = await this.prisma.tx(market).catalogSellerImportJob.aggregate({
-      where: {
-        marketId: market.marketId,
-        sellerId,
-        startedAt: { gte: toDate(since) },
-      },
-      _sum: { toImport: true },
+  ): Promise<readonly { readonly startedAt: Temporal.Instant; readonly toImport: number }[]> {
+    // At most five starts a day pass the start limit, so this is a few rows (the partial index).
+    const found = await this.prisma.tx(market).catalogSellerImportJob.findMany({
+      where: { marketId: market.marketId, sellerId, startedAt: { gte: toDate(since) } },
+      orderBy: { startedAt: 'asc' },
+      select: { startedAt: true, toImport: true },
+      take: 100,
     });
-    return sum._sum.toImport ?? 0;
+    return found.flatMap((job) =>
+      job.startedAt === null || job.toImport === null
+        ? []
+        : [{ startedAt: toInstant(job.startedAt), toImport: job.toImport }],
+    );
   }
 
-  async photoTargets(
+  async photoTarget(
     market: MarketContext,
     id: Id<'SellerImport'>,
-  ): Promise<ReadonlyMap<string, string>> {
-    const found = await this.prisma.tx(market).catalogSellerImportRow.findMany({
+    nameKey: string,
+  ): Promise<string | null> {
+    // The names are listed on the first row of a group only, as lower-case keys.
+    const found = await this.prisma.tx(market).catalogSellerImportRow.findFirst({
       where: {
         marketId: market.marketId,
         jobId: id,
         productId: { not: null },
         runState: { in: ['created', 'updated', 'unchanged'] },
+        summary: { path: ['images'], array_contains: nameKey },
       },
       orderBy: { rowNumber: 'asc' },
-      select: { rowNumber: true, groupRow: true, productId: true, summary: true },
+      select: { productId: true },
     });
-    const targets = new Map<string, string>();
-    for (const row of found) {
-      // The names are listed on the first row of a group only.
-      if (row.rowNumber !== row.groupRow || row.productId === null) continue;
-      const images = (row.summary as { images?: unknown }).images;
-      if (!Array.isArray(images)) continue;
-      for (const name of images as unknown[]) {
-        if (typeof name !== 'string') continue;
-        const key = name.toLowerCase();
-        if (!targets.has(key)) targets.set(key, row.productId);
-      }
-    }
-    return targets;
+    return found?.productId ?? null;
   }
 
-  async addPhoto(market: MarketContext, photo: NewSellerImportPhoto): Promise<boolean> {
-    const { count } = await this.prisma.tx(market).catalogSellerImportPhoto.createMany({
+  async reservePhoto(
+    market: MarketContext,
+    photo: NewSellerImportPhoto,
+    staleBefore: Temporal.Instant,
+  ): Promise<boolean> {
+    const photos = this.prisma.tx(market).catalogSellerImportPhoto;
+    // A reservation that never got its image and is old is the leftover of a crash: free the name.
+    await photos.deleteMany({
+      where: {
+        marketId: market.marketId,
+        jobId: photo.jobId,
+        nameKey: photo.nameKey,
+        imageId: null,
+        addedAt: { lt: toDate(staleBefore) },
+      },
+    });
+    const { count } = await photos.createMany({
       data: [
         {
           marketId: market.marketId,
@@ -624,13 +653,36 @@ export class PrismaSellerImportRepository implements SellerImportRepository {
           jobId: photo.jobId,
           nameKey: photo.nameKey,
           productId: photo.productId,
-          imageId: photo.imageId,
+          imageId: null,
           addedAt: toDate(photo.addedAt),
         },
       ],
       skipDuplicates: true,
     });
     return count === 1;
+  }
+
+  async setPhotoImage(
+    market: MarketContext,
+    id: Id<'SellerImport'>,
+    nameKey: string,
+    imageId: string,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.tx(market).catalogSellerImportPhoto.updateMany({
+      where: { marketId: market.marketId, jobId: id, nameKey, imageId: null },
+      data: { imageId },
+    });
+    return count === 1;
+  }
+
+  async releasePhoto(
+    market: MarketContext,
+    id: Id<'SellerImport'>,
+    nameKey: string,
+  ): Promise<void> {
+    await this.prisma.tx(market).catalogSellerImportPhoto.deleteMany({
+      where: { marketId: market.marketId, jobId: id, nameKey, imageId: null },
+    });
   }
 
   async photoNames(market: MarketContext, id: Id<'SellerImport'>): Promise<ReadonlySet<string>> {
@@ -640,4 +692,14 @@ export class PrismaSellerImportRepository implements SellerImportRepository {
     });
     return new Set(found.map((photo) => photo.nameKey));
   }
+}
+
+/** The running-key unique index refused the write: a second queued or running import of the seller. */
+function rethrowAlreadyRunning(error: unknown): never {
+  const code = (error as { code?: unknown }).code;
+  const original = (error as { cause?: { originalCode?: unknown } }).cause?.originalCode;
+  if (code === 'P2002' || code === '23505' || original === '23505') {
+    throw new SellerImportAlreadyRunningError();
+  }
+  throw error;
 }

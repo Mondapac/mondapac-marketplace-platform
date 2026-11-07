@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -14,7 +14,10 @@ import { reserveForAccount, type ReserveFailure } from '../platform-import/reser
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
-import type { SellerImportRepository } from '../ports/seller-import.repository';
+import {
+  SellerImportAlreadyRunningError,
+  type SellerImportRepository,
+} from '../ports/seller-import.repository';
 import {
   EMPTY_SELLER_PARTS,
   sellerImportIdOf,
@@ -38,6 +41,28 @@ function sellerActor(context: CallContext): {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long until `toImport` more rows fit in the 24-hour sum: null when they fit now, else the
+ * seconds until enough of the earlier starts (oldest first) are more than 24 hours old.
+ */
+export function dailyRowsWaitSeconds(
+  starts: readonly { readonly startedAt: Temporal.Instant; readonly toImport: number }[],
+  toImport: number,
+  now: Temporal.Instant,
+): number | null {
+  let total = starts.reduce((sum, start) => sum + start.toImport, 0);
+  if (total + toImport <= SELLER_IMPORT_DAILY_ROWS) return null;
+  for (const start of starts) {
+    total -= start.toImport;
+    if (total + toImport <= SELLER_IMPORT_DAILY_ROWS) {
+      const ready = start.startedAt.epochMilliseconds + DAY_MS;
+      return Math.max(1, Math.ceil((ready - now.epochMilliseconds) / 1000));
+    }
+  }
+  // The file alone is over the cap: no wait helps; the whole window is the honest answer.
+  return DAY_MS / 1000;
+}
 
 export interface OwnImportStartInput {
   readonly importId: unknown;
@@ -153,11 +178,21 @@ export class OwnImportStart extends UseCase<
         }
         const toImport = job.readyRows;
         const since = now.subtract({ milliseconds: DAY_MS });
-        const started = await deps.sellerJobs.rowsStartedSince(market, who.sellerId, since);
-        if (started + toImport > SELLER_IMPORT_DAILY_ROWS) {
-          return err({ code: 'import.daily-rows-reached', retryAfterSeconds: 3600 } as const);
+        const starts = await deps.sellerJobs.startsSince(market, who.sellerId, since);
+        const wait = dailyRowsWaitSeconds(starts, toImport, now);
+        if (wait !== null) {
+          return err({ code: 'import.daily-rows-reached', retryAfterSeconds: wait } as const);
         }
-        const applied = await deps.sellerJobs.confirm(market, id, { skipErrors, toImport, now });
+        let applied: boolean;
+        try {
+          applied = await deps.sellerJobs.confirm(market, id, { skipErrors, toImport, now });
+        } catch (error) {
+          // Two starts at once: the index of one queued or running import per seller refused ours.
+          if (error instanceof SellerImportAlreadyRunningError) {
+            return err({ code: 'import.already-running' } as const);
+          }
+          throw error;
+        }
         if (!applied) return err({ code: 'import.not-confirmable' } as const);
         await deps.audit.record(
           context,

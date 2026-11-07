@@ -27,6 +27,8 @@ export interface SaveDraftInput {
   /** Opaque JSON object from the request; this service checks its shape and its texts. */
   readonly content: unknown;
   readonly variantIds: readonly (Id<'Variant'> | null)[];
+  /** The seller import's placeholder ids for new variants; see {@link SaveWorkingCopyInput}. */
+  readonly placeholders?: readonly string[];
 }
 
 /** A checked text that was not written, and why (catalog design 6.1, ux.md 7.2). */
@@ -75,6 +77,18 @@ export interface SaveDraftOptions {
    * interactive use case leaves it unset.
    */
   readonly spendSavesLimit?: boolean;
+  /**
+   * The seller import (design 14c): when any changed text is refused, nothing is written and the
+   * answer is `claim-text.refused` with the list, so a row group that fails leaves the draft as
+   * it was. Interactive callers leave it unset and keep the per-field behaviour.
+   */
+  readonly refuseAll?: boolean;
+}
+
+/** The whole save refused because a text was (only under {@link SaveDraftOptions.refuseAll}). */
+export interface SaveDraftRefused {
+  readonly code: 'claim-text.refused';
+  readonly fields: readonly RefusedField[];
 }
 
 export interface SaveDraftDependencies {
@@ -116,6 +130,26 @@ export class SaveDraft {
     input: SaveDraftInput,
     options?: SaveDraftOptions,
   ): Promise<Result<SaveDraftOutput, SaveDraftFailure>> {
+    return (await this.run(context, input, { ...options, refuseAll: false })) as Result<
+      SaveDraftOutput,
+      SaveDraftFailure
+    >;
+  }
+
+  /** All or nothing: as {@link execute}, but a refused text refuses the whole save. */
+  executeAllOrNothing(
+    context: CallContext,
+    input: SaveDraftInput,
+    options?: Omit<SaveDraftOptions, 'refuseAll'>,
+  ): Promise<Result<SaveDraftOutput, SaveDraftFailure | SaveDraftRefused>> {
+    return this.run(context, input, { ...options, refuseAll: true });
+  }
+
+  private async run(
+    context: CallContext,
+    input: SaveDraftInput,
+    options: SaveDraftOptions,
+  ): Promise<Result<SaveDraftOutput, SaveDraftFailure | SaveDraftRefused>> {
     if (!isStorableContent(input.content)) return err({ code: 'working-copy.invalid-content' });
     // A variant label is built by the server (V2): one a client still sends is dropped, not stored.
     const content = withoutVariantLabels(input.content);
@@ -183,6 +217,9 @@ export class SaveDraft {
         refusedPaths.push(changed[index]!.path);
       });
       refused = list;
+      if (options.refuseAll === true && list.length > 0) {
+        return err({ code: 'claim-text.refused', fields: list });
+      }
       const restored = restoreRefused(content, stored?.content ?? null, refusedPaths);
       if (restored === null) return err({ code: 'working-copy.invalid-content' });
       amended = restored;
@@ -190,7 +227,12 @@ export class SaveDraft {
 
     const saved = await this.deps.save.execute(
       context,
-      { productId: input.productId, content: amended, variantIds: input.variantIds },
+      {
+        productId: input.productId,
+        content: amended,
+        variantIds: input.variantIds,
+        ...(input.placeholders === undefined ? {} : { placeholders: input.placeholders }),
+      },
       { savesReserved: true },
     );
     if (!saved.ok) return saved;

@@ -88,7 +88,9 @@ import {
 } from '../application/ports/allowed-product-types.reader';
 import {
   SELLER_ELIGIBILITY_READER,
+  SELLER_ELIGIBILITY_STATUS_READER,
   type SellerEligibilityReader,
+  type SellerEligibilityStatusReader,
 } from '../application/ports/seller-eligibility.reader';
 import {
   SELLER_NAMES_READER,
@@ -516,6 +518,12 @@ export const catalogProviders: readonly Provider[] = [
     provide: SELLER_ELIGIBILITY_READER,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): SellerEligibilityReader =>
+      new SellersSellerEligibilityReader(sellers),
+  },
+  {
+    provide: SELLER_ELIGIBILITY_STATUS_READER,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerEligibilityStatusReader =>
       new SellersSellerEligibilityReader(sellers),
   },
   {

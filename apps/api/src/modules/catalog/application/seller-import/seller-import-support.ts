@@ -98,13 +98,15 @@ export interface SellerImportView {
 export const EMPTY_SELLER_PARTS = { errorRows: [], failedRows: [], previewRows: [] } as const;
 
 export function photoWindowOpen(
-  job: Pick<SellerImportJob, 'mode' | 'state' | 'finishedAt' | 'fileDeletedAt'>,
+  job: Pick<SellerImportJob, 'mode' | 'state' | 'finishedAt' | 'endedAt' | 'fileDeletedAt'>,
   now: Temporal.Instant,
 ): boolean {
   if (job.mode !== 'my-products') return false;
   if (job.state !== 'finished' && job.state !== 'stopped') return false;
-  if (job.finishedAt === null) return job.state === 'stopped';
-  return now.epochMilliseconds - job.finishedAt.epochMilliseconds <= PHOTO_WINDOW_DAYS * 86_400_000;
+  // The window runs from the end of the job: its finish, or the time it stopped.
+  const ended = job.state === 'finished' ? job.finishedAt : job.endedAt;
+  if (ended === null) return false;
+  return now.epochMilliseconds - ended.epochMilliseconds <= PHOTO_WINDOW_DAYS * 86_400_000;
 }
 
 export function errorLinesOf(rows: readonly SellerRowRecord[]): SellerErrorLine[] {

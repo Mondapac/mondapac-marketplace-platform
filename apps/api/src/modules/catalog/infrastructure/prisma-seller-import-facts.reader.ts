@@ -88,6 +88,7 @@ export class PrismaSellerImportFactsReader implements SellerImportFactsReader {
             where: { marketId, id: { in: offerProductIds } },
             select: {
               id: true,
+              productCode: true,
               scope: true,
               typeCode: true,
               publishedRevisionId: true,
@@ -134,6 +135,7 @@ export class PrismaSellerImportFactsReader implements SellerImportFactsReader {
       const draft = draftOptions.get(product.id);
       factOf.set(product.id, {
         productId: product.id,
+        productCode: product.productCode,
         productScope: product.scope as 'PLATFORM' | 'SELLER',
         productTypeCode: product.typeCode,
         variants:

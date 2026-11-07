@@ -44,7 +44,7 @@ import type { AllowedProductTypesReader } from '../ports/allowed-product-types.r
 import type { ImportFileParsers } from '../ports/import-file-parsers';
 import type { ImportFileStore } from '../ports/import-file-store';
 import type { OfferRepository } from '../ports/offer.repository';
-import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
+import type { SellerEligibilityStatusReader } from '../ports/seller-eligibility.reader';
 import type { SellerImportFactsReader } from '../ports/seller-import-facts.reader';
 import type { SellerImportRepository } from '../ports/seller-import.repository';
 import { readSellerCheckEnvironment } from '../seller-import/seller-import-support';
@@ -76,7 +76,7 @@ export interface OwnImportRunDependencies extends CheckEnvironmentDependencies {
   readonly importFiles: ImportFileStore;
   readonly importParsers: ImportFileParsers;
   readonly importFacts: SellerImportFactsReader;
-  readonly eligibility: SellerEligibilityReader;
+  readonly eligibilityStatus: SellerEligibilityStatusReader;
   readonly allowedTypes: AllowedProductTypesReader;
   readonly offers: OfferRepository;
   readonly outbox: OutboxWriter;
@@ -90,7 +90,12 @@ export interface OwnImportRunDependencies extends CheckEnvironmentDependencies {
 
 /** What happened to one group. */
 type GroupOutcome =
-  | { readonly kind: 'done'; readonly state: 'created' | 'updated' | 'unchanged' }
+  | {
+      readonly kind: 'done';
+      readonly state: 'created' | 'updated' | 'unchanged';
+      /** What the settled rows keep: a done row always has its Offer (the table checks it). */
+      readonly ids: Ids;
+    }
   | { readonly kind: 'failed'; readonly code: string }
   | { readonly kind: 'wait'; readonly seconds: number }
   | { readonly kind: 'transient' }
@@ -169,10 +174,15 @@ export class OwnImportRun extends UseCase<
         marketId: market.marketId,
         correlationId: context.correlationId,
       });
-      await this.#end(context, claimed, {
-        state: 'queued',
-        notBefore: deps.clock.now().add({ seconds: RETRY_SECONDS }),
-      }).catch(() => undefined);
+      // A fault that keeps coming back ends the job (the 14a bound), never an endless requeue.
+      const age = deps.clock.now().epochMilliseconds - (claimed.startedAt?.epochMilliseconds ?? 0);
+      await this.#end(
+        context,
+        claimed,
+        age > GIVE_UP_AFTER_HOURS * 3_600_000
+          ? { state: 'stopped', reason: 'unexpected' }
+          : { state: 'queued', notBefore: deps.clock.now().add({ seconds: RETRY_SECONDS }) },
+      ).catch(() => undefined);
       return ok({
         ran: true,
         outcome: 'queued',
@@ -217,7 +227,11 @@ export class OwnImportRun extends UseCase<
       const version = await deps.sellerJobs.endTurn(
         market,
         job.id,
-        next.state === 'finished' ? { state: 'finished', now } : next,
+        next.state === 'finished'
+          ? { state: 'finished', now }
+          : next.state === 'stopped'
+            ? { ...next, now }
+            : next,
       );
       if (version === null || next.state === 'queued') return;
       const current = await deps.sellerJobs.find(market, job.sellerId, job.id);
@@ -275,13 +289,14 @@ export class OwnImportRun extends UseCase<
       return done('queued');
     };
 
-    // The seller account that started it, if it is still an active member of that seller.
-    const seller = await deps.jobContexts.asSeller(context, {
-      accountId: job.startedByAccountId,
-      sessionId: job.startedBySessionId,
-      sellerId: job.sellerId,
-    });
-    if (seller === null) return stop('access-lost');
+    // The seller account that started it, if it is still an active member of that seller. A
+    // suspension revokes the session, so the answer to "who" alone would read as a lost account:
+    // the seller's own state is asked first (a suspended seller is `seller-not-eligible`).
+    const first = await this.#identity(context, job);
+    if (first.kind === 'ineligible') return this.#ineligible(context, job, stop);
+    if (first.kind === 'wait') return wait(RETRY_SECONDS);
+    if (first.kind === 'lost') return stop('access-lost');
+    let seller = first.seller;
 
     // The file: it must still be the one that was checked.
     let bytes: Buffer | null;
@@ -332,10 +347,17 @@ export class OwnImportRun extends UseCase<
       // Another runner took the job over (our lease had run out): leave it to them.
       if (!leased) return done('queued');
 
-      // A seller who can no longer sell fails the rest and stops the job.
-      if (!(await deps.eligibility.isEligible(seller, job.sellerId))) {
-        return this.#ineligible(context, job, stop);
-      }
+      // The identity and the right to sell are asked again at every batch: a seller suspended
+      // or an account removed since the last one fails or stops the job here, not at the end.
+      const again = await this.#identity(context, job);
+      if (again.kind === 'ineligible') return this.#ineligible(context, job, stop);
+      if (again.kind === 'wait') return wait(RETRY_SECONDS);
+      if (again.kind === 'lost') return stop('access-lost');
+      seller = again.seller;
+      const status = await deps.eligibilityStatus.status(seller, job.sellerId);
+      if (status === 'not-eligible') return this.#ineligible(context, job, stop);
+      // The answer could not be read: wait and try again, never a permanent stop.
+      if (status === 'unavailable') return wait(RETRY_SECONDS);
 
       const byGroup = new Map<number, SellerRowRecord[]>();
       for (const row of pending) {
@@ -358,9 +380,9 @@ export class OwnImportRun extends UseCase<
           await this.#write(context, () =>
             deps.sellerJobs.settleGroup(market, job.id, groupRow, {
               state: outcome.state,
-              productId: null,
-              offerId: null,
-              productCode: null,
+              productId: outcome.ids.productId,
+              offerId: outcome.ids.offerId,
+              productCode: outcome.ids.productCode,
             }),
           );
         } else if (outcome.kind === 'failed') {
@@ -378,10 +400,44 @@ export class OwnImportRun extends UseCase<
           const age = deps.clock.now().epochMilliseconds - (job.startedAt?.epochMilliseconds ?? 0);
           return age > GIVE_UP_AFTER_HOURS * 3_600_000 ? stop('unexpected') : wait(RETRY_SECONDS);
         } else {
+          // A refusal of the gate reads as a lost account, but a suspension revokes the sessions
+          // and takes the keys with them: the seller's own state is asked before the reason is set.
+          if (outcome.reason === 'access-lost') {
+            const why = await deps.eligibilityStatus.status(context, job.sellerId);
+            if (why === 'not-eligible') return this.#ineligible(context, job, stop);
+            if (why === 'unavailable') return wait(RETRY_SECONDS);
+          }
           return stop(outcome.reason);
         }
       }
     }
+  }
+
+  /**
+   * Who the job runs as, now. A seller account that is gone from the seller is `lost`; but when the
+   * identity cannot be resumed, the seller's own state decides first: a seller who may not sell is
+   * `ineligible` (their sessions were revoked by the suspension), one whose state cannot be read
+   * is `wait`.
+   */
+  async #identity(
+    context: CallContext,
+    job: SellerImportJob,
+  ): Promise<
+    | { readonly kind: 'ok'; readonly seller: SellerJobContext }
+    | { readonly kind: 'ineligible' }
+    | { readonly kind: 'wait' }
+    | { readonly kind: 'lost' }
+  > {
+    const seller = await this.deps.jobContexts.asSeller(context, {
+      accountId: job.startedByAccountId,
+      sessionId: job.startedBySessionId,
+      sellerId: job.sellerId,
+    });
+    if (seller !== null) return { kind: 'ok', seller };
+    const status = await this.deps.eligibilityStatus.status(context, job.sellerId);
+    if (status === 'not-eligible') return { kind: 'ineligible' };
+    if (status === 'unavailable') return { kind: 'wait' };
+    return { kind: 'lost' };
   }
 
   async #ineligible(
@@ -449,7 +505,7 @@ export class OwnImportRun extends UseCase<
     if (checked.plan === null) {
       // A group whose Offer a former attempt already made would now read as a repeat: it is done.
       if (map.mode === 'sell-from-catalogue' && recorded.offerId !== null) {
-        return { kind: 'done', state: 'created' };
+        return { kind: 'done', state: 'created', ids: recorded };
       }
       return { kind: 'failed', code: 'row.changed' };
     }
@@ -516,7 +572,15 @@ export class OwnImportRun extends UseCase<
     const saved = await deps.ownRowSave.execute(seller, { productId, plan });
     if (!saved.ok) return failureOf(saved.error.code, saved.error);
     if (state === 'unchanged' && !saved.value.unchanged) state = 'updated';
-    return { kind: 'done', state };
+    return {
+      kind: 'done',
+      state,
+      ids: {
+        productId,
+        offerId,
+        productCode: recorded.productCode ?? plan.existing?.productCode ?? null,
+      },
+    };
   }
 
   async #catalogueRow(
@@ -530,9 +594,17 @@ export class OwnImportRun extends UseCase<
     if (plan.kind === 'update' && plan.existing !== null) {
       const edited = await this.#editOffer(seller, plan.existing.offerId, plan, env);
       if (edited.kind === 'failed') return edited.outcome;
-      return { kind: 'done', state: edited.changed ? 'updated' : 'unchanged' };
+      return {
+        kind: 'done',
+        state: edited.changed ? 'updated' : 'unchanged',
+        ids: {
+          productId: plan.existing.productId,
+          offerId: plan.existing.offerId,
+          productCode: plan.existing.productCode,
+        },
+      };
     }
-    if (recorded.offerId !== null) return { kind: 'done', state: 'created' };
+    if (recorded.offerId !== null) return { kind: 'done', state: 'created', ids: recorded };
     const productId = plan.catalogueProduct?.productId;
     if (productId === undefined) return { kind: 'failed', code: 'row.changed' };
     const created = await deps.ownRowOfferCreate.execute(seller, {
@@ -548,7 +620,11 @@ export class OwnImportRun extends UseCase<
       offerId: created.value.offerId,
       productCode: null,
     });
-    return { kind: 'done', state: 'created' };
+    return {
+      kind: 'done',
+      state: 'created',
+      ids: { productId, offerId: created.value.offerId, productCode: null },
+    };
   }
 
   /** Edits the Offer with the cells the file gave; an empty cell keeps the stored value. */

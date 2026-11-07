@@ -1,7 +1,10 @@
 import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
-import type { NewSellerImportJob } from '../../src/modules/catalog/application/ports/seller-import.repository';
+import {
+  SellerImportAlreadyRunningError,
+  type NewSellerImportJob,
+} from '../../src/modules/catalog/application/ports/seller-import.repository';
 import type { SellerRowRecord } from '../../src/modules/catalog/domain/seller-import/seller-import-job';
 import { PrismaSellerImportRepository } from '../../src/modules/catalog/infrastructure/prisma-seller-import.repository';
 import { TEST_MARKETS } from '../support/test-config';
@@ -200,7 +203,7 @@ describe.each(TEST_MARKETS)('seller import store in market %s (database integrat
     // The second import of the same seller cannot be queued while the first is.
     await expect(
       inUnit(market, () => repository.confirm(market, second.id, choice)),
-    ).rejects.toBeDefined();
+    ).rejects.toBeInstanceOf(SellerImportAlreadyRunningError);
 
     expect(await inUnit(market, () => repository.find(market, seller, job.id))).toMatchObject({
       state: 'queued',
@@ -208,10 +211,8 @@ describe.each(TEST_MARKETS)('seller import store in market %s (database integrat
       toImport: 3,
     });
     expect(
-      await inUnit(market, () =>
-        repository.rowsStartedSince(market, seller, T0.subtract({ hours: 1 })),
-      ),
-    ).toBe(3);
+      await inUnit(market, () => repository.startsSince(market, seller, T0.subtract({ hours: 1 }))),
+    ).toEqual([{ startedAt: T0, toImport: 3 }]);
   });
 
   it('claims a due job once and never splits a group across a batch', async () => {
@@ -287,7 +288,7 @@ describe.each(TEST_MARKETS)('seller import store in market %s (database integrat
     // A finished job cannot end a turn again.
     expect(
       await inUnit(market, () =>
-        repository.endTurn(market, job.id, { state: 'stopped', reason: 'unexpected' }),
+        repository.endTurn(market, job.id, { state: 'stopped', reason: 'unexpected', now: T0 }),
       ),
     ).toBeNull();
   });
@@ -307,14 +308,24 @@ describe.each(TEST_MARKETS)('seller import store in market %s (database integrat
       await inUnit(market, () => repository.failRemaining(market, job.id, 'seller.not-eligible')),
     ).toBe(3);
     await inUnit(market, () =>
-      repository.endTurn(market, job.id, { state: 'stopped', reason: 'seller-not-eligible' }),
+      repository.endTurn(market, job.id, {
+        state: 'stopped',
+        reason: 'seller-not-eligible',
+        now: T0,
+      }),
     );
+    // The time it stopped is kept: the photo window is counted from it.
     expect(await inUnit(market, () => repository.find(market, seller, job.id))).toMatchObject({
       state: 'stopped',
       stopReason: 'seller-not-eligible',
       failedRows: 3,
+      endedAt: T0,
     });
     expect(await inUnit(market, () => repository.resume(market, job.id))).toBe(true);
+    expect(await inUnit(market, () => repository.find(market, seller, job.id))).toMatchObject({
+      state: 'queued',
+      endedAt: null,
+    });
     expect(await inUnit(market, () => repository.resume(market, job.id))).toBe(false);
   });
 
@@ -338,20 +349,150 @@ describe.each(TEST_MARKETS)('seller import store in market %s (database integrat
       }),
     );
 
-    const targets = await inUnit(market, () => repository.photoTargets(market, job.id));
-    expect(targets.get('lamb.jpg')).toBe(productId);
-    const photo = {
-      jobId: job.id,
-      nameKey: 'lamb.jpg',
+    // One indexed lookup of the name: the product of the group that listed it, else null.
+    expect(await inUnit(market, () => repository.photoTarget(market, job.id, 'lamb.jpg'))).toBe(
       productId,
-      imageId: uuid7(),
-      addedAt: T0,
-    };
-    expect(await inUnit(market, () => repository.addPhoto(market, photo))).toBe(true);
-    expect(await inUnit(market, () => repository.addPhoto(market, photo))).toBe(false);
+    );
+    expect(
+      await inUnit(market, () => repository.photoTarget(market, job.id, 'other.jpg')),
+    ).toBeNull();
+    // The group of row 4 is not settled as created here, and lists no photo.
+    const photo = { jobId: job.id, nameKey: 'lamb.jpg', productId, addedAt: T0 };
+    const stale = T0.subtract({ minutes: 10 });
+    // The name is reserved before the upload; a second reservation is refused while it is live.
+    expect(await inUnit(market, () => repository.reservePhoto(market, photo, stale))).toBe(true);
+    expect(await inUnit(market, () => repository.reservePhoto(market, photo, stale))).toBe(false);
+    // A failed upload drops the reservation, and the name can be reserved again.
+    await inUnit(market, () => repository.releasePhoto(market, job.id, 'lamb.jpg'));
+    expect(await inUnit(market, () => repository.reservePhoto(market, photo, stale))).toBe(true);
+    // The image id is set once.
+    const imageId = uuid7();
+    expect(
+      await inUnit(market, () => repository.setPhotoImage(market, job.id, 'lamb.jpg', imageId)),
+    ).toBe(true);
+    expect(
+      await inUnit(market, () => repository.setPhotoImage(market, job.id, 'lamb.jpg', uuid7())),
+    ).toBe(false);
+    // A name with its image is never released or taken over, however old.
+    await inUnit(market, () => repository.releasePhoto(market, job.id, 'lamb.jpg'));
+    expect(
+      await inUnit(market, () =>
+        repository.reservePhoto(market, { ...photo, addedAt: T0 }, T0.add({ hours: 24 })),
+      ),
+    ).toBe(false);
     expect([...(await inUnit(market, () => repository.photoNames(market, job.id)))]).toEqual([
       'lamb.jpg',
     ]);
+  });
+
+  it('takes over a reservation that never got its image once it is stale', async () => {
+    const seller = uuid7() as Id<'Seller'>;
+    const job = jobOf(seller, uuid7() as Id<'Account'>, T0.subtract({ hours: 5 }));
+    await inUnit(market, () => repository.add(market, job, rowsOf()));
+    const photo = { jobId: job.id, nameKey: 'lamb.jpg', productId: uuid7(), addedAt: T0 };
+    expect(
+      await inUnit(market, () =>
+        repository.reservePhoto(market, photo, T0.subtract({ minutes: 10 })),
+      ),
+    ).toBe(true);
+    // Eleven minutes later the reservation is the leftover of a crash.
+    const later = { ...photo, addedAt: T0.add({ minutes: 11 }) };
+    expect(
+      await inUnit(market, () => repository.reservePhoto(market, later, T0.add({ minutes: 1 }))),
+    ).toBe(true);
+  });
+
+  it('settles updated and unchanged rows with their Offer and product, keeping what was recorded', async () => {
+    const seller = uuid7() as Id<'Seller'>;
+    const job = jobOf(seller, uuid7() as Id<'Account'>, T0.subtract({ hours: 6 }));
+    await inUnit(market, async () => {
+      await repository.add(market, job, rowsOf());
+      await repository.confirm(market, job.id, choice);
+    });
+    await inUnit(market, () =>
+      repository.claim(market, T0.subtract({ hours: 5 }), T0.add({ seconds: 120 })),
+    );
+    // An update settles with the ids of the product and Offer it found (the table checks the Offer).
+    const productId = uuid7();
+    const offerId = uuid7();
+    await inUnit(market, async () => {
+      await repository.settleGroup(market, job.id, 2, {
+        state: 'updated',
+        productId,
+        offerId,
+        productCode: 'P00000042',
+      });
+      await repository.settleGroup(market, job.id, 4, {
+        state: 'unchanged',
+        productId: uuid7(),
+        offerId: uuid7(),
+        productCode: 'P00000043',
+      });
+    });
+    const rows = await inUnit(market, () =>
+      repository.rows(market, job.id, {}, { offset: 0, limit: 10 }),
+    );
+    expect(rows.filter((row) => row.groupRow === 2).map((row) => row.runState)).toEqual([
+      'updated',
+      'updated',
+    ]);
+    expect(rows.find((row) => row.rowNumber === 4)).toMatchObject({
+      runState: 'unchanged',
+      productCode: 'P00000043',
+    });
+    expect(rows.find((row) => row.rowNumber === 2)).toMatchObject({ productId, offerId });
+    expect(await inUnit(market, () => repository.find(market, seller, job.id))).toMatchObject({
+      updatedRows: 2,
+      unchangedRows: 1,
+    });
+    // A done row without its Offer is refused by the table, never written.
+    const other = jobOf(seller, uuid7() as Id<'Account'>, T0.subtract({ hours: 7 }));
+    await inUnit(market, () => repository.add(market, other, rowsOf()));
+    await owner.query('BEGIN');
+    await expect(
+      owner.query(
+        `UPDATE catalog.seller_import_rows SET run_state = 'updated'
+           WHERE job_id = $1 AND row_number = 2`,
+        [other.id],
+      ),
+    ).rejects.toMatchObject({ code: '23514' });
+    await owner.query('ROLLBACK');
+  });
+
+  it('claims the job whose last turn is the oldest, so one seller does not hold back the others', async () => {
+    const a = uuid7() as Id<'Seller'>;
+    const b = uuid7() as Id<'Seller'>;
+    const first = jobOf(a, uuid7() as Id<'Account'>, T0.subtract({ hours: 720 }));
+    const second = jobOf(b, uuid7() as Id<'Account'>, T0.subtract({ hours: 696 }));
+    await inUnit(market, async () => {
+      await repository.add(market, first, rowsOf());
+      await repository.add(market, second, rowsOf());
+      await repository.confirm(market, first.id, choice);
+      await repository.confirm(market, second.id, choice);
+    });
+    // Park every other due job of this Market so only these two compete.
+    await owner.query(
+      `UPDATE catalog.seller_import_jobs SET not_before = $1
+         WHERE market_id = $2 AND state = 'queued' AND id NOT IN ($3, $4)`,
+      [T0.add({ hours: 24000 }).toString(), market.marketId, first.id, second.id],
+    );
+    const t1 = await inUnit(market, () => repository.claim(market, T0, T0.add({ seconds: 120 })));
+    expect(t1?.id).toBe(first.id);
+    // Its turn ends and it is queued again: the other seller is next, not the first one again.
+    await inUnit(market, () =>
+      repository.endTurn(market, first.id, { state: 'queued', notBefore: null }),
+    );
+    const t2 = await inUnit(market, () =>
+      repository.claim(market, T0.add({ seconds: 1 }), T0.add({ seconds: 121 })),
+    );
+    expect(t2?.id).toBe(second.id);
+    await inUnit(market, () =>
+      repository.endTurn(market, second.id, { state: 'queued', notBefore: null }),
+    );
+    const t3 = await inUnit(market, () =>
+      repository.claim(market, T0.add({ seconds: 2 }), T0.add({ seconds: 122 })),
+    );
+    expect(t3?.id).toBe(first.id);
   });
 
   it('purges files by age, then settled jobs by age, and nothing of a job still running', async () => {

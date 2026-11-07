@@ -8,7 +8,10 @@ import { CATALOG_OWN_IMPORT_RUN, CATALOG_OWN_PRODUCT_EDIT } from '../../contract
 import { isActingAsSession } from '../acting-as';
 
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
-import type { SellerImportRepository } from '../ports/seller-import.repository';
+import {
+  SellerImportAlreadyRunningError,
+  type SellerImportRepository,
+} from '../ports/seller-import.repository';
 import {
   EMPTY_SELLER_PARTS,
   sellerImportIdOf,
@@ -96,9 +99,17 @@ export class OwnImportResume extends UseCase<
         if (await deps.sellerJobs.hasActive(market, who.sellerId)) {
           return err({ code: 'import.already-running' } as const);
         }
-        if (!(await deps.sellerJobs.resume(market, id))) {
-          return err({ code: 'import.not-resumable' } as const);
+        let resumed: boolean;
+        try {
+          resumed = await deps.sellerJobs.resume(market, id);
+        } catch (error) {
+          // A start that raced ours holds the seller's one queued or running place.
+          if (error instanceof SellerImportAlreadyRunningError) {
+            return err({ code: 'import.already-running' } as const);
+          }
+          throw error;
         }
+        if (!resumed) return err({ code: 'import.not-resumable' } as const);
         return ok(
           sellerViewOf(
             {
@@ -106,6 +117,7 @@ export class OwnImportResume extends UseCase<
               state: 'queued',
               stopReason: null,
               finishedAt: null,
+              endedAt: null,
               version: job.version + 1,
             },
             EMPTY_SELLER_PARTS,

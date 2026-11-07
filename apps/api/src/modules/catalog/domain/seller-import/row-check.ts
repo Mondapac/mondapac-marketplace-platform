@@ -29,6 +29,8 @@ import { headerOfKey, type SellerColumnKey, type SellerColumnMap } from './colum
 export interface ExistingOfferFact {
   readonly offerId: string;
   readonly productId: string;
+  /** The public product code of the Offer's product (kept on the row of an update). */
+  readonly productCode: string;
   readonly sellerSku: string;
   readonly productScope: 'PLATFORM' | 'SELLER';
   readonly productTypeCode: string;
@@ -409,6 +411,11 @@ function imageNamesOf(
   return names;
 }
 
+/** The key of a photo name, on both sides of the photo step: the file label cleaning, lower case. */
+export function photoKeyOf(name: string): string {
+  return fileLabelOf(name).toLowerCase();
+}
+
 function summaryOf(
   cells: Cells,
   typeCode: string,
@@ -421,7 +428,8 @@ function summaryOf(
     productCode: displayValue(cells.text.productCode),
     typeCode: displayValue(typeCode),
     options: displayValue(options),
-    images: images.slice(0, MAX_IMAGE_NAMES).map((name) => displayValue(name)),
+    // The key the photo step looks a name up by: the same cleaning as the request side, lower case.
+    images: images.slice(0, MAX_IMAGE_NAMES).map((name) => photoKeyOf(name)),
   };
 }
 

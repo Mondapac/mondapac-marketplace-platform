@@ -177,30 +177,20 @@ export class OwnImportRowSave extends UseCase<
       const variant = parseId<'Variant'>(id);
       return variant.ok ? variant.value : null;
     });
-    const first = await deps.saveDraft.execute(
+    // One save, all or nothing: a refused text refuses the whole group before anything is written,
+    // and the ids the save mints replace the placeholders inside the same unit.
+    const saved = await deps.saveDraft.executeAllOrNothing(
       context,
-      { productId, content: merged.content, variantIds },
+      {
+        productId,
+        content: merged.content,
+        variantIds,
+        placeholders: merged.placeholders,
+      },
       { spendSavesLimit: false },
     );
-    if (!first.ok) return first;
-    if (first.value.refusedFields.length > 0) {
-      return err({ code: 'claim-text.refused', fields: first.value.refusedFields });
-    }
-    let finalIds: readonly string[] = first.value.variantIds;
-    if (merged.placeholders.length > 0) {
-      const minted = first.value.variantIds.slice(base.liveVariantIds.length);
-      const content = withMintedIds(merged.content, merged.placeholders, minted);
-      const second = await deps.saveDraft.execute(
-        context,
-        { productId, content, variantIds: first.value.variantIds },
-        { spendSavesLimit: false },
-      );
-      if (!second.ok) return second;
-      if (second.value.refusedFields.length > 0) {
-        return err({ code: 'claim-text.refused', fields: second.value.refusedFields });
-      }
-      finalIds = second.value.variantIds;
-    }
+    if (!saved.ok) return saved;
+    const finalIds: readonly string[] = saved.value.variantIds;
     return ok({ variantIds: finalIds, unchanged: false });
   }
 }

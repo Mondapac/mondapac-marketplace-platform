@@ -1298,11 +1298,16 @@ model CatalogSellerImportJob {
   stopReason         String?                    @map("stop_reason")
   notBefore          DateTime?                  @map("not_before") @db.Timestamptz(6)
   leaseUntil         DateTime?                  @map("lease_until") @db.Timestamptz(6)
+  /// When the runner last claimed the job: the claim takes the oldest last turn first (round-robin).
+  lastTurnAt         DateTime?                  @map("last_turn_at") @db.Timestamptz(6)
   version            Int
   createdAt          DateTime                   @map("created_at") @db.Timestamptz(6)
   checkedAt          DateTime                   @map("checked_at") @db.Timestamptz(6)
   startedAt          DateTime?                  @map("started_at") @db.Timestamptz(6)
   finishedAt         DateTime?                  @map("finished_at") @db.Timestamptz(6)
+  /// When the job stopped (set exactly while `stopped`; a resume clears it): the photo window closes
+  /// seven days after it.
+  endedAt            DateTime?                  @map("ended_at") @db.Timestamptz(6)
   rows               CatalogSellerImportRow[]
   photos             CatalogSellerImportPhoto[]
 
@@ -1355,7 +1360,8 @@ model CatalogSellerImportPhoto {
   /// The cleaned label in lower case, 1 to 80 characters.
   nameKey   String                 @map("name_key")
   productId String                 @map("product_id") @db.Uuid
-  imageId   String                 @map("image_id") @db.Uuid
+  /// null while the name is reserved and the upload runs; set once.
+  imageId   String?                @map("image_id") @db.Uuid
   addedAt   DateTime               @map("added_at") @db.Timestamptz(6)
   job       CatalogSellerImportJob @relation(fields: [marketId, jobId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
 

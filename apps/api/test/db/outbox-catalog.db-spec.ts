@@ -100,7 +100,7 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'catalog.seller_import_jobs_market_id_seller_started_at_idx':
     'CREATE INDEX seller_import_jobs_market_id_seller_started_at_idx ON catalog.seller_import_jobs USING btree (market_id, seller_id, started_at) WHERE (started_at IS NOT NULL)',
   'catalog.seller_import_jobs_market_id_queue_idx':
-    "CREATE INDEX seller_import_jobs_market_id_queue_idx ON catalog.seller_import_jobs USING btree (market_id, created_at, id) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))",
+    "CREATE INDEX seller_import_jobs_market_id_queue_idx ON catalog.seller_import_jobs USING btree (market_id, last_turn_at NULLS FIRST, created_at, id) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))",
   'catalog.seller_import_jobs_market_id_file_purge_idx':
     'CREATE INDEX seller_import_jobs_market_id_file_purge_idx ON catalog.seller_import_jobs USING btree (market_id, checked_at, id) WHERE (file_deleted_at IS NULL)',
   // docs/design/data/catalog.md 3.18 (slice 11): one pending fan-out request per product, one

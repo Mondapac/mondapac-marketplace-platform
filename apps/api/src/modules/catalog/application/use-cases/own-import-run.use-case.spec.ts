@@ -53,22 +53,49 @@ describe.each(['AU', 'ZZ'] as const)('own-import.run in market %s', (code) => {
   const market: MarketContext = testMarketContext(code, 'default');
   const locale = policy.locales(market).default;
   const condition = policy.conditions(market)[0]!;
-  const FILE = [
-    'Seller SKU,Condition,Title,Main category,Product type,Price,Stock',
-    `SKU-1,${condition},Lamb,Meat,simple,9.99,5`,
-  ].join('\n');
+  const fileOf = (groups: number): string =>
+    [
+      'Seller SKU,Condition,Title,Main category,Product type,Price,Stock',
+      ...Array.from(
+        { length: groups },
+        (_, index) => `SKU-${index + 1},${condition},Lamb ${index + 1},Meat,simple,9.99,5`,
+      ),
+    ].join('\n');
+  const FILE = fileOf(1);
 
   function rig(
     options: {
       sellerGone?: boolean;
-      eligible?: boolean;
+      /** What `sellers` answers about the seller (default `eligible`). */
+      eligibility?: 'eligible' | 'not-eligible' | 'unavailable';
+      /**
+       * The seller is suspended once the job has resumed its identity this many times: the session
+       * is revoked (the resume answers null) and `sellers` answers not-eligible, as a real suspension.
+       */
+      suspendedAfterResumes?: number;
+      /** The file lists this many groups (default one); more than a batch spans turns. */
+      groups?: number;
+      /** The seller already has an Offer on the SKUs (an update, not a create). */
+      existing?: boolean;
+      /** What the row save reports for an update: nothing changed, or something did. */
+      saveUnchanged?: boolean;
+      /** The gate refuses the row use cases (the account lost a key, or the session is revoked). */
+      rowGateDenied?: boolean;
+      /** The job started this long ago (the bound on a fault that keeps coming back). */
+      startedHoursAgo?: number;
+      /** The store fails when the batch is read (a fault outside any group). */
+      throwOnPending?: boolean;
+      /** Rows already carry the ids a former attempt remembered. */
+      recorded?: boolean;
       fileBytes?: Buffer | null;
       storedHash?: string;
       claimed?: boolean;
     } = {},
   ) {
     const clock = new FixedClock(T0);
-    const bytes = options.fileBytes === undefined ? Buffer.from(FILE) : options.fileBytes;
+    const groupCount = options.groups ?? 1;
+    const file = fileOf(groupCount);
+    const bytes = options.fileBytes === undefined ? Buffer.from(file) : options.fileBytes;
     const sellerId = idOf<'Seller'>(0xb1);
     const accountId = idOf<'Account'>(0xa1);
     const sessionId = idOf<'Session'>(0xa2);
@@ -82,16 +109,16 @@ describe.each(['AU', 'ZZ'] as const)('own-import.run in market %s', (code) => {
       format: 'csv',
       fileLabel: 'a.csv',
       fileKey: 'catalog/seller-imports/x',
-      fileSha256: options.storedHash ?? createHash('sha256').update(FILE).digest('hex'),
-      fileBytes: FILE.length,
-      totalRows: 1,
-      readyRows: 1,
+      fileSha256: options.storedHash ?? createHash('sha256').update(file).digest('hex'),
+      fileBytes: file.length,
+      totalRows: groupCount,
+      readyRows: groupCount,
       errorRows: 0,
       warningRows: 0,
-      groupCount: 1,
+      groupCount,
       ignoredColumns: [],
       skipErrors: false,
-      toImport: 1,
+      toImport: groupCount,
       createdRows: 0,
       updatedRows: 0,
       unchangedRows: 0,
@@ -101,33 +128,36 @@ describe.each(['AU', 'ZZ'] as const)('own-import.run in market %s', (code) => {
       leaseUntil: null,
       createdAt: T0,
       checkedAt: T0,
-      startedAt: T0,
+      startedAt: T0.subtract({ hours: options.startedHoursAgo ?? 0 }),
       finishedAt: null,
+      endedAt: null,
       fileDeletedAt: null,
       version: 2,
     } as unknown as SellerImportJob;
-    const rows: SellerRowRecord[] = [
-      {
-        rowNumber: 2,
-        groupRow: 2,
-        checkState: 'ready',
-        plan: 'create',
-        issues: [],
-        summary: {
-          sku: 'SKU-1',
-          title: 'Lamb',
-          productCode: '',
-          typeCode: 'simple',
-          options: '',
-          images: [],
-        },
-        runState: 'pending',
-        runCode: null,
-        productId: null,
-        offerId: null,
-        productCode: null,
+    const rows: SellerRowRecord[] = Array.from({ length: groupCount }, (_, index) => ({
+      rowNumber: index + 2,
+      groupRow: index + 2,
+      checkState: 'ready' as const,
+      plan: options.existing === true ? ('update' as const) : ('create' as const),
+      issues: [],
+      summary: {
+        sku: `SKU-${index + 1}`,
+        title: `Lamb ${index + 1}`,
+        productCode: '',
+        typeCode: 'simple',
+        options: '',
+        images: [],
       },
-    ];
+      runState: 'pending' as const,
+      runCode: null,
+      productId: options.recorded === true ? uuid(101 + index * 10) : null,
+      offerId: options.recorded === true ? uuid(102 + index * 10) : null,
+      productCode: options.recorded === true ? `P${index + 1}` : null,
+    }));
+    const settled: {
+      groupRow: number;
+      outcome: { state: string; productId?: string | null; offerId?: string | null };
+    }[] = [];
     const events: unknown[] = [];
     let end: { state: string; reason?: SellerStopReason } | null = null;
     let failedRemaining: string | null = null;
@@ -137,19 +167,38 @@ describe.each(['AU', 'ZZ'] as const)('own-import.run in market %s', (code) => {
     const sellerJobs = {
       claim: () => Promise.resolve(options.claimed === false ? null : job),
       renewLease: () => Promise.resolve(true),
-      pendingRows: () =>
-        Promise.resolve(
-          rows.filter((row) => row.runState === 'pending' && row.checkState === 'ready'),
-        ),
+      pendingRows: (_m: unknown, _id: unknown, limit: number) =>
+        options.throwOnPending === true
+          ? Promise.reject(new Error('store down'))
+          : Promise.resolve(
+              rows
+                .filter((row) => row.runState === 'pending' && row.checkState === 'ready')
+                .slice(0, limit),
+            ),
       recordGroup: () => Promise.resolve(),
       settleGroup: (
         _m: MarketContext,
         _id: unknown,
-        _group: number,
-        outcome: { state: SellerRowRecord['runState']; code?: string },
+        group: number,
+        outcome: {
+          state: SellerRowRecord['runState'];
+          code?: string;
+          productId?: string | null;
+          offerId?: string | null;
+          productCode?: string | null;
+        },
       ) => {
-        for (const row of rows)
-          Object.assign(row, { runState: outcome.state, runCode: outcome.code ?? null });
+        settled.push({ groupRow: group, outcome });
+        for (const row of rows.filter((candidate) => candidate.groupRow === group)) {
+          Object.assign(row, {
+            runState: outcome.state,
+            runCode: outcome.code ?? null,
+            // As the store does: a null id keeps what was recorded.
+            productId: outcome.productId ?? row.productId,
+            offerId: outcome.offerId ?? row.offerId,
+            productCode: outcome.productCode ?? row.productCode,
+          });
+        }
         return Promise.resolve();
       },
       failRemaining: (_m: MarketContext, _id: unknown, reason: string) => {
@@ -209,7 +258,13 @@ describe.each(['AU', 'ZZ'] as const)('own-import.run in market %s', (code) => {
       execute: (_c: unknown, input: unknown) => {
         calls.push('save');
         saveInputs.push(input);
-        return Promise.resolve({ ok: true, value: { variantIds: [uuid(103)], unchanged: false } });
+        if (options.rowGateDenied === true) {
+          return Promise.resolve({ ok: false, error: { code: 'access.denied' } });
+        }
+        return Promise.resolve({
+          ok: true,
+          value: { variantIds: [uuid(103)], unchanged: options.saveUnchanged === true },
+        });
       },
     };
     const outbox: OutboxWriter = {
@@ -228,10 +283,13 @@ describe.each(['AU', 'ZZ'] as const)('own-import.run in market %s', (code) => {
       }),
     ) as unknown as SellerJobContext;
     const asSellerCalls: unknown[] = [];
+    const suspended = (): boolean =>
+      options.suspendedAfterResumes !== undefined &&
+      asSellerCalls.length > options.suspendedAfterResumes;
     const jobContexts = {
       asSeller: (_c: unknown, identity: unknown) => {
         asSellerCalls.push(identity);
-        return Promise.resolve(options.sellerGone === true ? null : sellerContext);
+        return Promise.resolve(options.sellerGone === true || suspended() ? null : sellerContext);
       },
     } as unknown as JobCallContexts;
     const useCase = new OwnImportRun(gate, {
@@ -242,14 +300,40 @@ describe.each(['AU', 'ZZ'] as const)('own-import.run in market %s', (code) => {
       importFacts: {
         load: () =>
           Promise.resolve({
-            offersBySku: new Map(),
+            offersBySku:
+              options.existing === true
+                ? new Map(
+                    Array.from({ length: groupCount }, (_, index) => [
+                      `SKU-${index + 1}`,
+                      {
+                        offerId: uuid(202 + index * 10),
+                        productId: uuid(201 + index * 10),
+                        productCode: `E${index + 1}`,
+                        sellerSku: `SKU-${index + 1}`,
+                        productScope: 'SELLER' as const,
+                        productTypeCode: 'simple',
+                        variants: [{ variantId: uuid(203 + index * 10), optionKey: '' }],
+                        publishedAxes: null,
+                      },
+                    ]),
+                  )
+                : new Map(),
             ownSkuByProductId: new Map(),
             catalogueByCode: new Map(),
           }),
       },
-      eligibility: { isEligible: () => Promise.resolve(options.eligible !== false) },
+      eligibilityStatus: {
+        status: () =>
+          Promise.resolve(suspended() ? 'not-eligible' : (options.eligibility ?? 'eligible')),
+      },
       allowedTypes: { allowedFor: () => Promise.resolve('all') },
-      offers: { findById: () => Promise.resolve(null) } as never,
+      offers: {
+        // The stored Offer has the condition and no description the file would change.
+        findById: () =>
+          Promise.resolve({
+            state: { sellerSku: 'SKU-1', conditionCode: condition, description: {} },
+          }),
+      } as never,
       outbox,
       clock,
       jobContexts,
@@ -280,6 +364,7 @@ describe.each(['AU', 'ZZ'] as const)('own-import.run in market %s', (code) => {
       createInputs,
       saveInputs,
       asSellerCalls,
+      settled,
       systemContext: testCallContext(market, 'system'),
       ended: () => end,
       failedRemaining: () => failedRemaining,
@@ -300,13 +385,13 @@ describe.each(['AU', 'ZZ'] as const)('own-import.run in market %s', (code) => {
     const result = await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
     expect(result).toMatchObject({ ok: true, value: { ran: true, outcome: 'finished' } });
     // The kept identity of the job is what is resumed, nothing else.
-    expect(r.asSellerCalls).toEqual([
-      {
-        accountId: idOf<'Account'>(0xa1),
-        sessionId: idOf<'Session'>(0xa2),
-        sellerId: idOf<'Seller'>(0xb1),
-      },
-    ]);
+    const kept = {
+      accountId: idOf<'Account'>(0xa1),
+      sessionId: idOf<'Session'>(0xa2),
+      sellerId: idOf<'Seller'>(0xb1),
+    };
+    // At the start of the turn and for the batch.
+    expect(r.asSellerCalls).toEqual([kept, kept]);
     // Only create and save: no submit, no publish, no tag, no price or stock.
     expect(r.calls).toEqual(['create', 'save']);
     expect(Object.keys(r.createInputs[0] as object).sort()).toEqual([
@@ -329,26 +414,137 @@ describe.each(['AU', 'ZZ'] as const)('own-import.run in market %s', (code) => {
     const r = rig({ sellerGone: true });
     const result = await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
     expect(result).toMatchObject({ ok: true, value: { ran: true, outcome: 'stopped' } });
-    expect(r.ended()).toEqual({ state: 'stopped', reason: 'access-lost' });
+    expect(r.ended()).toMatchObject({ state: 'stopped', reason: 'access-lost' });
     expect(r.calls).toEqual([]);
     expect(r.events[0]).toMatchObject({ payload: { outcome: 'stopped' } });
   });
 
-  it('fails the rest and stops when the seller can no longer sell (suspended mid-job)', async () => {
-    const r = rig({ eligible: false });
+  it('stops with seller-not-eligible, not access-lost, when a suspension revoked the session', async () => {
+    // Realistic: the suspension revokes the sessions, so the identity cannot be resumed at all, and
+    // `sellers` says the seller may not sell. The reason is the seller's state, not a lost account.
+    const r = rig({ sellerGone: true, eligibility: 'not-eligible' });
     const result = await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
     expect(result).toMatchObject({ ok: true, value: { ran: true, outcome: 'stopped' } });
     expect(r.failedRemaining()).toBe('seller.not-eligible');
-    expect(r.ended()).toEqual({ state: 'stopped', reason: 'seller-not-eligible' });
+    expect(r.ended()).toMatchObject({ state: 'stopped', reason: 'seller-not-eligible' });
     expect(r.calls).toEqual([]);
     expect(r.rows[0]).toMatchObject({ runState: 'failed', runCode: 'seller.not-eligible' });
+  });
+
+  it('fails the rest and stops when the seller is suspended in the middle of a job', async () => {
+    // 25 groups are two batches: the first runs, then the suspension revokes the session.
+    const r = rig({ groups: 25, suspendedAfterResumes: 2 });
+    await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    expect(r.rows.filter((row) => row.runState === 'created')).toHaveLength(20);
+    expect(r.rows.filter((row) => row.runCode === 'seller.not-eligible')).toHaveLength(5);
+    expect(r.ended()).toMatchObject({ state: 'stopped', reason: 'seller-not-eligible' });
+  });
+
+  it('stops with seller-not-eligible when a row use case is refused for a suspended seller', async () => {
+    // The session is still good when the batch starts; the gate refuses the row save as the keys go.
+    const r = rig({ existing: true, rowGateDenied: true, suspendedAfterResumes: 1 });
+    // The first resume works and the refusal then arrives from the gate; `sellers` says not-eligible.
+    await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    expect(r.ended()).toMatchObject({ state: 'stopped', reason: 'seller-not-eligible' });
+    expect(r.failedRemaining()).toBe('seller.not-eligible');
+  });
+
+  it('stops with access-lost when only the account is gone and the seller may sell', async () => {
+    const r = rig({ sellerGone: true, eligibility: 'eligible' });
+    await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    expect(r.ended()).toMatchObject({ state: 'stopped', reason: 'access-lost' });
+  });
+
+  it('keeps access-lost for a refused row use case when the seller may still sell', async () => {
+    const r = rig({ existing: true, rowGateDenied: true });
+    await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    expect(r.ended()).toMatchObject({ state: 'stopped', reason: 'access-lost' });
+    expect(r.failedRemaining()).toBeNull();
+  });
+
+  it('waits and tries again, never stops, when the eligibility cannot be read', async () => {
+    // At the start (no identity to resume), and with the identity resumed.
+    for (const options of [
+      { sellerGone: true, eligibility: 'unavailable' as const },
+      { eligibility: 'unavailable' as const },
+    ]) {
+      const r = rig(options);
+      const result = await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+      expect(result).toMatchObject({ ok: true, value: { ran: true, outcome: 'queued' } });
+      expect(r.ended()).toMatchObject({ state: 'queued' });
+      expect(r.failedRemaining()).toBeNull();
+      expect(r.calls).toEqual([]);
+    }
+  });
+
+  it('asks who the job runs as again at every batch', async () => {
+    const r = rig({ groups: 45 });
+    await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    expect(r.ended()).toMatchObject({ state: 'finished' });
+    // One at the start of the turn and one for each of the three batches (20 + 20 + 5 groups).
+    expect(r.asSellerCalls).toHaveLength(4);
+  });
+
+  it('settles an updated row with the product, Offer and code it found', async () => {
+    const r = rig({ existing: true });
+    await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    // Update path: no create, the draft is saved over the stored one.
+    expect(r.calls).toEqual(['save']);
+    expect(r.settled).toEqual([
+      {
+        groupRow: 2,
+        outcome: {
+          state: 'updated',
+          productId: uuid(201),
+          offerId: uuid(202),
+          productCode: 'E1',
+        },
+      },
+    ]);
+    expect(r.rows[0]).toMatchObject({ runState: 'updated', offerId: uuid(202) });
+    expect(r.ended()).toMatchObject({ state: 'finished' });
+  });
+
+  it('settles an unchanged row with its ids too, and counts nothing as changed', async () => {
+    const r = rig({ existing: true, saveUnchanged: true });
+    await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    expect(r.settled[0]!.outcome).toEqual({
+      state: 'unchanged',
+      productId: uuid(201),
+      offerId: uuid(202),
+      productCode: 'E1',
+    });
+  });
+
+  it('settles a crash-recovered group with the ids a former attempt remembered', async () => {
+    const r = rig({ recorded: true });
+    await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    // The product exists already: no second create, only the save, and the ids ride along.
+    expect(r.calls).toEqual(['save']);
+    expect(r.settled[0]!.outcome).toMatchObject({
+      state: 'created',
+      productId: uuid(101),
+      offerId: uuid(102),
+    });
+  });
+
+  it('ends a job that keeps failing unexpectedly after the bound, and requeues it before', async () => {
+    for (const [ageHours, expected] of [
+      [1, { state: 'queued' }],
+      [25, { state: 'stopped', reason: 'unexpected' }],
+    ] as const) {
+      const r = rig({ startedHoursAgo: ageHours, throwOnPending: true });
+      const result = await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+      expect(result).toMatchObject({ ok: true, value: { ran: true } });
+      expect(r.ended()).toMatchObject(expected);
+    }
   });
 
   it('stops with file-missing when the stored file is gone or is not the one that was checked', async () => {
     for (const options of [{ fileBytes: null }, { fileBytes: Buffer.from(`${FILE}\nSKU-2`) }]) {
       const r = rig(options);
       await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
-      expect(r.ended()).toEqual({ state: 'stopped', reason: 'file-missing' });
+      expect(r.ended()).toMatchObject({ state: 'stopped', reason: 'file-missing' });
       expect(r.calls).toEqual([]);
     }
   });

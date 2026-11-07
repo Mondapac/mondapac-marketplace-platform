@@ -39,11 +39,13 @@ CREATE TABLE "catalog"."seller_import_jobs" (
     "stop_reason" TEXT,
     "not_before" TIMESTAMPTZ(6),
     "lease_until" TIMESTAMPTZ(6),
+    "last_turn_at" TIMESTAMPTZ(6),
     "version" INTEGER NOT NULL,
     "created_at" TIMESTAMPTZ(6) NOT NULL,
     "checked_at" TIMESTAMPTZ(6) NOT NULL,
     "started_at" TIMESTAMPTZ(6),
     "finished_at" TIMESTAMPTZ(6),
+    "ended_at" TIMESTAMPTZ(6),
 
     CONSTRAINT "seller_import_jobs_pkey" PRIMARY KEY ("id")
 );
@@ -75,7 +77,7 @@ CREATE TABLE "catalog"."seller_import_photos" (
     "job_id" UUID NOT NULL,
     "name_key" TEXT NOT NULL,
     "product_id" UUID NOT NULL,
-    "image_id" UUID NOT NULL,
+    "image_id" UUID,
     "added_at" TIMESTAMPTZ(6) NOT NULL,
 
     CONSTRAINT "seller_import_photos_pkey" PRIMARY KEY ("market_id","job_id","name_key")
@@ -140,6 +142,10 @@ ALTER TABLE "catalog"."seller_import_jobs"
   -- Finished and discarded jobs have an end time; no other job has.
   ADD CONSTRAINT "seller_import_jobs_finished_check" CHECK (
     ("state" IN ('finished', 'discarded')) = ("finished_at" IS NOT NULL)),
+  -- A stopped job has the time it stopped (the photo window closes seven days after it); no other
+  -- job has one (a resume clears it).
+  ADD CONSTRAINT "seller_import_jobs_ended_check" CHECK (
+    ("state" = 'stopped') = ("ended_at" IS NOT NULL)),
   -- The lease is held exactly while a turn runs; a delayed start (`not_before`) belongs to a queued
   -- job only. Every write of the repository keeps both (claim, end of turn, resume, discard).
   ADD CONSTRAINT "seller_import_jobs_lease_check" CHECK (
@@ -182,6 +188,10 @@ ALTER TABLE "catalog"."seller_import_photos"
   ADD CONSTRAINT "seller_import_photos_name_key_check" CHECK (
     char_length("name_key") BETWEEN 1 AND 80 AND "name_key" = lower("name_key")
     AND "name_key" !~ '[[:cntrl:]]');
+-- The name is reserved first (no image yet) and the image id is set once, after the upload; a
+-- reservation that never got its image is taken over after ten minutes (the use case).
+COMMENT ON COLUMN "catalog"."seller_import_photos"."image_id" IS
+  'null while the name is reserved and the upload runs; set once';
 
 -- At most one queued or running import per seller (design 14c): a second start while one is queued
 -- or running is refused by this index, which also serialises two starts, so the daily row sum is
@@ -201,10 +211,11 @@ CREATE INDEX "seller_import_jobs_market_id_seller_started_at_idx"
   ON "catalog"."seller_import_jobs" ("market_id", "seller_id", "started_at")
   WHERE "started_at" IS NOT NULL;
 
--- The runner's claim order: the jobs that are due, earliest first. Not CONCURRENTLY: the table is
--- new and empty (8.2).
+-- The runner's claim order: the jobs that are due, the one whose last turn is the oldest first (a
+-- job that never had a turn first of all), so a seller with a long file does not hold back the
+-- others. Not CONCURRENTLY: the table is new and empty (8.2).
 CREATE INDEX "seller_import_jobs_market_id_queue_idx"
-  ON "catalog"."seller_import_jobs" ("market_id", "created_at", "id")
+  ON "catalog"."seller_import_jobs" ("market_id", "last_turn_at" NULLS FIRST, "created_at", "id")
   WHERE "state" IN ('queued', 'running');
 
 -- The purge's range: jobs whose file is still stored.
@@ -229,13 +240,15 @@ ALTER TABLE "catalog"."rate_counters"
 
 -- Grants (section 7). The job row moves through its states by column; the rows' results are set as
 -- the run goes. DELETE belongs to the purge of 10.4 (old jobs and, with them, their rows and photos).
--- The photo rows are insert-only by the missing UPDATE grant (Mojtaba M5). No TRUNCATE.
+-- A photo row is written once and its image id is set once (the only UPDATE grant is that column; the
+-- repository's update is conditional on the id being null). No TRUNCATE.
 GRANT SELECT, INSERT, DELETE,
   UPDATE ("state", "file_deleted_at", "skip_errors", "to_import", "created_rows", "updated_rows",
-    "unchanged_rows", "failed_rows", "stop_reason", "not_before", "lease_until", "version",
-    "started_at", "finished_at")
+    "unchanged_rows", "failed_rows", "stop_reason", "not_before", "lease_until", "last_turn_at", "version",
+    "started_at", "finished_at", "ended_at")
   ON TABLE "catalog"."seller_import_jobs" TO "mondapac_app";
 GRANT SELECT, INSERT, DELETE,
   UPDATE ("run_state", "run_code", "product_id", "offer_id", "product_code")
   ON TABLE "catalog"."seller_import_rows" TO "mondapac_app";
-GRANT SELECT, INSERT, DELETE ON TABLE "catalog"."seller_import_photos" TO "mondapac_app";
+GRANT SELECT, INSERT, DELETE, UPDATE ("image_id")
+  ON TABLE "catalog"."seller_import_photos" TO "mondapac_app";

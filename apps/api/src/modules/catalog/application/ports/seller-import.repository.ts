@@ -11,6 +11,7 @@ export type NewSellerImportJob = Omit<
   SellerImportJob,
   | 'startedAt'
   | 'finishedAt'
+  | 'endedAt'
   | 'skipErrors'
   | 'toImport'
   | 'createdRows'
@@ -39,11 +40,21 @@ export type SellerGroupOutcome =
     }
   | { readonly state: 'failed'; readonly code: string };
 
+/**
+ * Thrown by `confirm` and `resume` when the one-queued-or-running-import-per-seller index refuses
+ * the write (two starts at once): the use case answers `import.already-running`.
+ */
+export class SellerImportAlreadyRunningError extends Error {
+  constructor() {
+    super('seller import already queued or running');
+    this.name = 'SellerImportAlreadyRunningError';
+  }
+}
+
 export interface NewSellerImportPhoto {
   readonly jobId: Id<'SellerImport'>;
   readonly nameKey: string;
   readonly productId: string;
-  readonly imageId: string;
   readonly addedAt: Temporal.Instant;
 }
 
@@ -163,7 +174,11 @@ export interface SellerImportRepository {
     next:
       | { readonly state: 'queued'; readonly notBefore: Temporal.Instant | null }
       | { readonly state: 'finished'; readonly now: Temporal.Instant }
-      | { readonly state: 'stopped'; readonly reason: SellerStopReason },
+      | {
+          readonly state: 'stopped';
+          readonly reason: SellerStopReason;
+          readonly now: Temporal.Instant;
+        },
   ): Promise<number | null>;
 
   filesDue(
@@ -189,21 +204,47 @@ export interface SellerImportRepository {
     scope: { readonly ids: readonly Id<'SellerImport'>[] } | { readonly limit: number },
   ): Promise<number>;
 
-  /** The rows the seller's imports confirmed since an instant (the daily row cap, design 14c). */
-  rowsStartedSince(
+  /**
+   * The imports the seller confirmed since an instant, oldest first, each with its start and its
+   * row count (the daily row cap, design 14c: their sum, and when enough of them age out).
+   */
+  startsSince(
     market: MarketContext,
     sellerId: Id<'Seller'>,
     since: Temporal.Instant,
-  ): Promise<number>;
+  ): Promise<readonly { readonly startedAt: Temporal.Instant; readonly toImport: number }[]>;
 
   /**
-   * The photo names the job's settled groups list, each with the product of its group: the
-   * lower-cased name to the product id (a name two groups list belongs to the first).
+   * The product of the settled group that listed this photo name (the lower-cased key), or null: one
+   * indexed lookup of the name, never a read of every row.
    */
-  photoTargets(market: MarketContext, id: Id<'SellerImport'>): Promise<ReadonlyMap<string, string>>;
+  photoTarget(
+    market: MarketContext,
+    id: Id<'SellerImport'>,
+    nameKey: string,
+  ): Promise<string | null>;
 
-  /** Records one photo; false when the name already has one in this job. */
-  addPhoto(market: MarketContext, photo: NewSellerImportPhoto): Promise<boolean>;
+  /**
+   * Reserves the name for one photo before the upload (no image yet): false when the name already
+   * has a photo or a live reservation. A reservation older than `staleBefore` that never got its
+   * image (a crash between the reservation and the upload) is taken over.
+   */
+  reservePhoto(
+    market: MarketContext,
+    photo: NewSellerImportPhoto,
+    staleBefore: Temporal.Instant,
+  ): Promise<boolean>;
+
+  /** Sets the image of a reserved name, once; false when the name has no open reservation. */
+  setPhotoImage(
+    market: MarketContext,
+    id: Id<'SellerImport'>,
+    nameKey: string,
+    imageId: string,
+  ): Promise<boolean>;
+
+  /** Drops a reservation that got no image (the upload or the save failed). */
+  releasePhoto(market: MarketContext, id: Id<'SellerImport'>, nameKey: string): Promise<void>;
 
   /** The name keys already added in the job. */
   photoNames(market: MarketContext, id: Id<'SellerImport'>): Promise<ReadonlySet<string>>;

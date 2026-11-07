@@ -5,13 +5,14 @@
 -- rolling back in an environment that has uploads.
 SET lock_timeout = '5s';
 
-REVOKE SELECT, INSERT, DELETE ON TABLE "catalog"."seller_import_photos" FROM "mondapac_app";
+REVOKE SELECT, INSERT, DELETE, UPDATE ("image_id")
+  ON TABLE "catalog"."seller_import_photos" FROM "mondapac_app";
 REVOKE SELECT, INSERT, DELETE, UPDATE ("run_state", "run_code", "product_id", "offer_id", "product_code")
   ON TABLE "catalog"."seller_import_rows" FROM "mondapac_app";
 REVOKE SELECT, INSERT, DELETE,
   UPDATE ("state", "file_deleted_at", "skip_errors", "to_import", "created_rows", "updated_rows",
-    "unchanged_rows", "failed_rows", "stop_reason", "not_before", "lease_until", "version",
-    "started_at", "finished_at")
+    "unchanged_rows", "failed_rows", "stop_reason", "not_before", "lease_until", "last_turn_at", "version",
+    "started_at", "finished_at", "ended_at")
   ON TABLE "catalog"."seller_import_jobs" FROM "mondapac_app";
 
 -- The four seller counter kinds go back out of the list: their counters are deleted first, so the

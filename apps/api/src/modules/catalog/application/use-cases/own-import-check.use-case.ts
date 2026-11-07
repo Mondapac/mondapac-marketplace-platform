@@ -329,6 +329,7 @@ export class OwnImportCheck extends UseCase<
           version: 1,
           startedAt: null,
           finishedAt: null,
+          endedAt: null,
         },
         {
           ...EMPTY_SELLER_PARTS,

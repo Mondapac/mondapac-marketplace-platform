@@ -55,6 +55,8 @@ export interface SellerImportJob {
   readonly checkedAt: Temporal.Instant;
   readonly startedAt: Temporal.Instant | null;
   readonly finishedAt: Temporal.Instant | null;
+  /** When a stopped job stopped (null otherwise): the photo window closes seven days after it. */
+  readonly endedAt: Temporal.Instant | null;
 }
 
 /** One row of the job as stored: the check result and, once run, its outcome. */

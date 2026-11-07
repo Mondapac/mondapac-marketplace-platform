@@ -8,15 +8,34 @@ import {
 // and its photo step, only as POST, and never the other routes under the same prefix.
 
 const IMPORT = '01990000-0000-7000-8000-00000000c001';
+// The pre-filter of the store images: a seller session cookie and a CSRF header must be present.
+const SELLER = {
+  cookie: '__Host-session-seller-AU=abc123',
+  'x-csrf-token': 'token',
+};
 
 describe('seller import body routes', () => {
   it('gives the large body to the upload and to the photo step only', () => {
-    expect(isSellerImportUploadRequest('POST', '/catalog/seller/imports')).toBe(true);
-    expect(isSellerImportUploadRequest('POST', '/catalog/seller/imports/')).toBe(true);
-    expect(isSellerImportUploadRequest('POST', '/catalog/seller/imports?x=1')).toBe(true);
-    expect(isSellerImportPhotoRequest('POST', `/catalog/seller/imports/${IMPORT}/photos`)).toBe(
-      true,
-    );
+    expect(isSellerImportUploadRequest('POST', '/catalog/seller/imports', SELLER)).toBe(true);
+    expect(isSellerImportUploadRequest('POST', '/catalog/seller/imports/', SELLER)).toBe(true);
+    expect(isSellerImportUploadRequest('POST', '/catalog/seller/imports?x=1', SELLER)).toBe(true);
+    expect(
+      isSellerImportPhotoRequest('POST', `/catalog/seller/imports/${IMPORT}/photos`, SELLER),
+    ).toBe(true);
+  });
+
+  it.each([
+    ['no cookie and no header', {}],
+    ['no cookie', { 'x-csrf-token': 'token' }],
+    ['no CSRF header', { cookie: '__Host-session-seller-AU=abc123' }],
+    ['an empty CSRF header', { cookie: '__Host-session-seller-AU=abc123', 'x-csrf-token': '' }],
+    ['an admin cookie', { cookie: '__Host-session-admin-AU=abc123', 'x-csrf-token': 'token' }],
+    ['a customer cookie', { cookie: '__Host-session-customer-AU=abc', 'x-csrf-token': 'token' }],
+  ])('keeps the large body from a request with %s', (_label, headers) => {
+    expect(isSellerImportUploadRequest('POST', '/catalog/seller/imports', headers)).toBe(false);
+    expect(
+      isSellerImportPhotoRequest('POST', `/catalog/seller/imports/${IMPORT}/photos`, headers),
+    ).toBe(false);
   });
 
   it.each([
@@ -30,7 +49,7 @@ describe('seller import body routes', () => {
     ['POST', '/catalog/seller/imports/extra/path'],
     ['POST', '/catalog/admin/platform-imports'],
   ])('does not give the upload parser to %s %s', (method, url) => {
-    expect(isSellerImportUploadRequest(method, url)).toBe(false);
+    expect(isSellerImportUploadRequest(method, url, SELLER)).toBe(false);
   });
 
   it.each([
@@ -40,11 +59,13 @@ describe('seller import body routes', () => {
     ['POST', '/catalog/seller/imports'],
     ['POST', `/catalog/admin/platform-imports/${IMPORT}/photos`],
   ])('does not give the photo parser to %s %s', (method, url) => {
-    expect(isSellerImportPhotoRequest(method, url)).toBe(false);
+    expect(isSellerImportPhotoRequest(method, url, SELLER)).toBe(false);
   });
 
   it('keeps the admin and seller upload routes apart', () => {
     expect(isPlatformImportUploadRequest('POST', '/catalog/seller/imports')).toBe(false);
-    expect(isSellerImportUploadRequest('POST', '/catalog/admin/platform-imports')).toBe(false);
+    expect(isSellerImportUploadRequest('POST', '/catalog/admin/platform-imports', SELLER)).toBe(
+      false,
+    );
   });
 });

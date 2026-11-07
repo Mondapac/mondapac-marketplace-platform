@@ -1491,14 +1491,17 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['product_code', 'product_id', 'run_code', 'run_state'],
     },
     // docs/design/data/catalog.md 3.31: the seller import. Same shape as the admin import's tables;
-    // a photo is insert-only (DELETE belongs to the purge, with its job).
+    // a photo row is reserved, then its image id is set once (DELETE: a failed upload's reservation
+    // and the purge, with its job).
     'catalog.seller_import_jobs': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [
         'created_rows',
+        'ended_at',
         'failed_rows',
         'file_deleted_at',
         'finished_at',
+        'last_turn_at',
         'lease_until',
         'not_before',
         'skip_errors',
@@ -1515,7 +1518,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['offer_id', 'product_code', 'product_id', 'run_code', 'run_state'],
     },
-    'catalog.seller_import_photos': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.seller_import_photos': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['image_id'],
+    },
     // docs/design/data/pricing.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; the inbox gets DELETE with the prune job. A series' Offer, seller
     // and currency never change; a regular record's content never changes (only its status,

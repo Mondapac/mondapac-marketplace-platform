@@ -12,6 +12,7 @@ import {
   type WorkingCopy,
 } from '../../domain/working-copy';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import { withMintedIds } from '../../domain/seller-import/merge-import-row';
 import type { ProductRepository } from '../ports/product.repository';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
@@ -23,6 +24,12 @@ export interface SaveWorkingCopyInput {
   readonly content: unknown;
   /** The draft's variant list in order: an id the server minted, or null for a new variant. */
   readonly variantIds: readonly (Id<'Variant'> | null)[];
+  /**
+   * The seller import only (design 14c): the placeholder ids the content uses for the new
+   * variants, in the order of the null entries of `variantIds`. They are replaced by the ids the
+   * save mints, inside the same unit, so a new variant needs one save and never two.
+   */
+  readonly placeholders?: readonly string[];
 }
 
 export interface SaveWorkingCopyOutput {
@@ -127,9 +134,16 @@ export class SaveWorkingCopy {
           });
           if (!result.ok) return err(result.error);
           const previous = await workingCopies.find(market, product.state.id);
+          const minted = result.value.variantIds.filter(
+            (_, index) => input.variantIds[index] === null,
+          );
+          const stored =
+            input.placeholders !== undefined && input.placeholders.length > 0
+              ? withMintedIds(content as Record<string, unknown>, input.placeholders, minted)
+              : content;
           const copy: WorkingCopy = {
             productId: product.state.id,
-            content,
+            content: stored,
             contentSchemaVersion: WORKING_COPY_CONTENT_SCHEMA_VERSION,
             baseRevisionId: previous?.baseRevisionId ?? null,
             lastSavedAt: now,

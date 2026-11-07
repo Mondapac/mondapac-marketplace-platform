@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import {
   UseCase,
   type AccessDeclaration,
@@ -10,6 +10,7 @@ import {
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_IMPORT_RUN, CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
 import { IMPORT_PHOTO_LIMITS } from '../../domain/rate-limits';
+import { photoKeyOf } from '../../domain/seller-import/row-check';
 import { draftContentOfRevision } from '../../domain/seller-import/merge-import-row';
 import { isActingAsSession } from '../acting-as';
 import { reserveForAccount, type ReserveFailure } from '../platform-import/reserve';
@@ -71,12 +72,18 @@ export interface OwnImportAddPhotoDependencies {
   readonly clock: Clock;
 }
 
-/** The cleaned label of a photo name: NFC, trimmed, lower case, at most 80 characters. */
+/**
+ * The key of a photo name: the file label cleaning and lower case, the same on the file's side (the
+ * names a row lists) and on the request's, so a name matches exactly when the file listed it.
+ */
 export function photoNameKey(name: unknown): string | null {
-  if (typeof name !== 'string') return null;
-  const key = name.normalize('NFC').trim().toLowerCase();
+  if (typeof name !== 'string' || name.trim() === '') return null;
+  const key = photoKeyOf(name);
   return key.length >= 1 && key.length <= 80 ? key : null;
 }
+
+/** A reservation with no image after this long is the leftover of a crash and may be taken over. */
+const RESERVATION_STALE_SECONDS = 600;
 
 const BASE64_HEAD = /^[A-Za-z0-9+/]/;
 
@@ -168,8 +175,8 @@ export class OwnImportAddPhoto extends UseCase<
           return err({ code: 'import.not-found' } as const);
         }
         if (!photoWindowOpen(job, now)) return err({ code: 'import.photos-closed' } as const);
-        const target = (await deps.sellerJobs.photoTargets(market, importId)).get(nameKey);
-        if (target === undefined) return err({ code: 'import.photo-not-named' } as const);
+        const target = await deps.sellerJobs.photoTarget(market, importId, nameKey);
+        if (target === null) return err({ code: 'import.photo-not-named' } as const);
         if ((await deps.sellerJobs.photoNames(market, importId)).has(nameKey)) {
           return err({ code: 'import.photo-already-added' } as const);
         }
@@ -183,29 +190,73 @@ export class OwnImportAddPhoto extends UseCase<
     const productId = parseId<'Product'>(read.value);
     if (!productId.ok) return err({ code: 'access.unavailable' });
 
+    // The name is reserved before any photo work, in a unit of its own, so a second request for the
+    // same name stops here and never uploads a second image; any failure below drops the reservation.
+    const reserved = await deps.unitOfWork.run(market, async () =>
+      ok(
+        await deps.sellerJobs.reservePhoto(
+          market,
+          { jobId: importId, nameKey, productId: productId.value, addedAt: now },
+          now.subtract({ seconds: RESERVATION_STALE_SECONDS }),
+        ),
+      ),
+    );
+    if (!reserved.ok) return err({ code: 'access.unavailable' });
+    if (!reserved.value) return err({ code: 'import.photo-already-added' });
+
+    const release = async (): Promise<void> => {
+      await deps.unitOfWork
+        .run(market, async () => ok(await deps.sellerJobs.releasePhoto(market, importId, nameKey)))
+        .catch(() => undefined);
+    };
+    try {
+      const added = await this.#upload(
+        context,
+        sellerId,
+        productId.value,
+        importId,
+        nameKey,
+        input.data,
+      );
+      if (!added.ok) await release();
+      return added;
+    } catch (error) {
+      await release();
+      throw error;
+    }
+  }
+
+  /** The upload, the draft save and the image id of the reserved name. */
+  async #upload(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    productId: Id<'Product'>,
+    importId: Id<'SellerImport'>,
+    nameKey: string,
+    data: string,
+  ): Promise<Result<OwnImportAddPhotoOutput, OwnImportAddPhotoFailure>> {
+    const { market } = context;
+    const { deps } = this;
     const throttled = await reserveForAccount(deps, context, IMPORT_PHOTO_LIMITS, sellerId);
     if (throttled !== null) return err(throttled);
 
-    const uploaded = await deps.ownImageUpload.execute(context, {
-      productId: productId.value,
-      data: input.data,
-    });
+    const uploaded = await deps.ownImageUpload.execute(context, { productId, data });
     if (!uploaded.ok) return err(uploaded.error);
 
     // The photo joins the draft's gallery; the seller submits as ever.
     const base = await deps.unitOfWork.run(
       market,
       async () => {
-        const product = await deps.products.findById(market, productId.value);
+        const product = await deps.products.findById(market, productId);
         if (product === null || product.state.ownerSellerId !== sellerId) {
           return ok(null);
         }
-        const stored = await deps.workingCopies.find(market, productId.value);
+        const stored = await deps.workingCopies.find(market, productId);
         let content: Readonly<Record<string, unknown>> = stored?.content ?? {};
         if (stored === null && product.state.publishedRevisionId !== null) {
           const revision = await deps.revisions.find(
             market,
-            productId.value,
+            productId,
             product.state.publishedRevisionId,
           );
           if (revision !== null) content = draftContentOfRevision(revision.content);
@@ -221,7 +272,7 @@ export class OwnImportAddPhoto extends UseCase<
     const saved = await deps.saveDraft.execute(
       context,
       {
-        productId: productId.value,
+        productId,
         content: { ...base.value.content, imageIds: [...imageIds, uploaded.value.imageId] },
         variantIds: base.value.variantIds,
       },
@@ -230,18 +281,9 @@ export class OwnImportAddPhoto extends UseCase<
     if (!saved.ok) return err(saved.error);
 
     const recorded = await deps.unitOfWork.run(market, async () =>
-      ok(
-        await deps.sellerJobs.addPhoto(market, {
-          jobId: importId,
-          nameKey,
-          productId: productId.value,
-          imageId: uploaded.value.imageId,
-          addedAt: now,
-        }),
-      ),
+      ok(await deps.sellerJobs.setPhotoImage(market, importId, nameKey, uploaded.value.imageId)),
     );
-    if (!recorded.ok) return err({ code: 'access.unavailable' });
-    if (!recorded.value) return err({ code: 'import.photo-already-added' });
-    return ok({ productId: productId.value, image: uploaded.value });
+    if (!recorded.ok || !recorded.value) return err({ code: 'access.unavailable' });
+    return ok({ productId, image: uploaded.value });
   }
 }

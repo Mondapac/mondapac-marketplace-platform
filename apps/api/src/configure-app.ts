@@ -147,23 +147,46 @@ export function isPlatformImportUploadRequest(
 }
 // The seller import's upload (catalog design 14c) takes the same body as the admin's, and its photo
 // step (one base64 photo of at most 4 MiB per call) the photo body; both controllers parse the JSON
-// themselves. Only these two routes.
+// themselves. Only these two routes, and only for a request that carries a seller session cookie and
+// the CSRF header (the pre-filter of the store images): anything else gets the 64 KiB JSON parser.
 const SELLER_IMPORT_UPLOAD_PATH = /^\/catalog\/seller\/imports\/?(?:\?.*)?$/;
 const SELLER_IMPORT_PHOTO_PATH =
   /^\/catalog\/seller\/imports\/[0-9a-fA-F-]{36}\/photos\/?(?:\?.*)?$/;
 
+function carriesSellerSessionAndCsrf(headers: IncomingHttpHeaders): boolean {
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    SELLER_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+
 export function isSellerImportUploadRequest(
   method: string | undefined,
   url: string | undefined,
+  headers: IncomingHttpHeaders = {},
 ): boolean {
-  return method === 'POST' && url !== undefined && SELLER_IMPORT_UPLOAD_PATH.test(url);
+  return (
+    method === 'POST' &&
+    url !== undefined &&
+    SELLER_IMPORT_UPLOAD_PATH.test(url) &&
+    carriesSellerSessionAndCsrf(headers)
+  );
 }
 
 export function isSellerImportPhotoRequest(
   method: string | undefined,
   url: string | undefined,
+  headers: IncomingHttpHeaders = {},
 ): boolean {
-  return method === 'POST' && url !== undefined && SELLER_IMPORT_PHOTO_PATH.test(url);
+  return (
+    method === 'POST' &&
+    url !== undefined &&
+    SELLER_IMPORT_PHOTO_PATH.test(url) &&
+    carriesSellerSessionAndCsrf(headers)
+  );
 }
 const CERTIFICATE_DOCUMENT_PATH =
   /^\/certification\/seller\/certificates\/[0-9a-fA-F-]{36}\/documents\/?(?:\?.*)?$/;
@@ -264,12 +287,12 @@ export function configureApp(app: NestExpressApplication): void {
     inflate: false,
   });
   app.useBodyParser('raw', {
-    type: (request) => isSellerImportUploadRequest(request.method, request.url),
+    type: (request) => isSellerImportUploadRequest(request.method, request.url, request.headers),
     limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
     inflate: false,
   });
   app.useBodyParser('raw', {
-    type: (request) => isSellerImportPhotoRequest(request.method, request.url),
+    type: (request) => isSellerImportPhotoRequest(request.method, request.url, request.headers),
     limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });
