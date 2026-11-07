@@ -133,6 +133,7 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
     content: {
       texts: { [locale]: { name: 'Dates', shortDescription: null, description: null } },
       categoryIds: [],
+      topicIds: [],
       taxCategoryCode: taxCode,
       attributeValues: {},
       variants: [

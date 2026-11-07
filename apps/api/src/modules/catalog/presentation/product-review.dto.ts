@@ -1,6 +1,7 @@
 import { ApiExtraModels, ApiProperty } from '@nestjs/swagger';
 import { PRODUCT_CHANGE_REASONS } from '../domain/events';
 import { REVIEW_CHECK_CODES } from '../domain/review-check-codes';
+import { TopicRefBody } from './topic.dto';
 
 // Bodies and answers of the admin product revision review routes (catalog design 4.2, 8.2, 8.3a).
 // Ids and codes only.
@@ -81,6 +82,11 @@ export class AdminRevisionContentDto {
   texts!: Record<string, RevisionTextDto>;
   @ApiProperty({ type: [String], description: 'Platform category ids, in order.' })
   categoryIds!: string[];
+  @ApiProperty({
+    type: [String],
+    description: 'Topic ids in the order entered (empty when none); named in `topicRefs`.',
+  })
+  topicIds!: string[];
   @ApiProperty() taxCategoryCode!: string;
   @ApiProperty({
     type: 'object',
@@ -151,6 +157,22 @@ export class ProductRevisionAdminReadDto {
   })
   warnings!: string[];
   @ApiProperty({ type: AdminRevisionContentDto }) revision!: AdminRevisionContentDto;
+  @ApiProperty({
+    type: [TopicRefBody],
+    description: 'The topics of the revision and of the published one, each once.',
+  })
+  topicRefs!: TopicRefBody[];
+  @ApiProperty({
+    type: 'object',
+    properties: {
+      added: { type: 'array', items: { type: 'string', format: 'uuid' } },
+      removed: { type: 'array', items: { type: 'string', format: 'uuid' } },
+    },
+    description:
+      'Topic ids the revision adds to and removes from the published set (all added before the ' +
+      'first publication). A reorder is neither.',
+  })
+  topicDiff!: { added: string[]; removed: string[] };
   @ApiProperty({
     type: AdminRevisionContentDto,
     nullable: true,

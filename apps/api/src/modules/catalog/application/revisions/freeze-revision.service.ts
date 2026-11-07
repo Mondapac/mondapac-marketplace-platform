@@ -19,6 +19,7 @@ import type { AttributeValueSuggestionStore } from '../ports/attribute-value-sug
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductImageRepository } from '../ports/product-image.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
+import type { TopicBrief, TopicReader } from '../ports/topic.reader';
 import { revisionContentHash } from './revision-content-hash';
 
 /** A place the draft is not ready, from any of the checks. Codes and paths only, never a value. */
@@ -58,6 +59,11 @@ export interface FreezeRevisionDependencies {
    * suggestion is still open is reported as `attribute.suggestion-pending`, not `attribute.required`.
    */
   readonly suggestions?: AttributeValueSuggestionStore;
+  /**
+   * The topics, to check that each chosen topic exists in the Market and may be added (product tags
+   * T2). Without it a draft that lists topics is not ready (fail closed).
+   */
+  readonly topics?: Pick<TopicReader, 'briefsOf'>;
 }
 
 /**
@@ -214,12 +220,48 @@ export class FreezeRevision {
         if (!usable.has(imageId)) issues.push({ path: `imageIds.${index}`, code: 'unavailable' });
       });
     }
+    if (frozen.ok && frozen.value.topicIds.length > 0) {
+      issues.push(...(await this.#topicIssues(market, product, frozen.value.topicIds)));
+    }
     if (issues.length > 0 || !frozen.ok) return err({ code: 'revision.not-ready', issues });
     return ok({
       content: frozen.value,
       contentHash: revisionContentHash(frozen.value),
       familyCode,
     });
+  }
+
+  /**
+   * A topic must exist in this Market (`unknown`: another Market's id is the same answer, never a
+   * foreign key fault) and must not be archived, unless the published revision already carries it
+   * (`archived`). Approval does not look again: the content hash ties the review to the content.
+   */
+  async #topicIssues(
+    market: MarketContext,
+    product: Product,
+    topicIds: readonly string[],
+  ): Promise<RevisionIssue[]> {
+    if (this.deps.topics === undefined) {
+      return topicIds.map((_, index) => ({ path: `topicIds.${index}`, code: 'unavailable' }));
+    }
+    const briefs = new Map<string, TopicBrief>(
+      (await this.deps.topics.briefsOf(market, topicIds)).map((brief) => [brief.id, brief]),
+    );
+    const publishedId = product.state.publishedRevisionId;
+    const published =
+      publishedId === null || this.deps.revisions === undefined
+        ? null
+        : await this.deps.revisions.find(market, product.state.id, publishedId);
+    const kept = new Set(published?.content.topicIds ?? []);
+    const issues: RevisionIssue[] = [];
+    topicIds.forEach((topicId, index) => {
+      const brief = briefs.get(topicId);
+      if (brief === undefined) issues.push({ path: `topicIds.${index}`, code: 'unknown' });
+      else if (brief.status === 'archived' && !kept.has(topicId)) {
+        issues.push({ path: `topicIds.${index}`, code: 'archived' });
+      }
+    });
+    return issues;
   }
 
   /** The content with the values of other feature sets' attributes taken out (CAT-10). */

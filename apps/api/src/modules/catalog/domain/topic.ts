@@ -27,6 +27,9 @@ export const TOPIC_TERM_MIN = 2;
 export const TOPIC_TERM_MAX = 40;
 /** The most synonyms one topic may carry in one locale. */
 export const TOPIC_SYNONYMS_MAX = 10;
+
+/** The most topics one product carries (product tags T2); the database position CHECK repeats it. */
+export const MAX_TOPICS_PER_PRODUCT = 10;
 /** The intro text of the topic page (package T4); written by a person. */
 export const TOPIC_INTRO_MAX = 1000;
 

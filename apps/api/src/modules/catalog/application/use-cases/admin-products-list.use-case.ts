@@ -83,6 +83,12 @@ export interface AdminProductListItem {
   readonly ownerStoreName: string | null;
   readonly categoryId: string | null;
   readonly categoryName: string | null;
+  /** The topics of the shown revision in the order entered, named in the default locale. */
+  readonly topics: readonly {
+    readonly id: string;
+    readonly slug: string;
+    readonly name: string | null;
+  }[];
   readonly typeCode: string;
   readonly status: AdminProductStatus;
   readonly offerCount: number;
@@ -381,6 +387,7 @@ export class AdminProductsList extends UseCase<
       ownerStoreName: row.ownerSellerId === null ? null : (names.get(row.ownerSellerId) ?? null),
       categoryId: row.categoryId,
       categoryName: row.categoryName,
+      topics: row.topics.map((topic) => ({ id: topic.id, slug: topic.slug, name: topic.name })),
       typeCode: row.typeCode,
       status: row.status,
       offerCount: row.offerCount,

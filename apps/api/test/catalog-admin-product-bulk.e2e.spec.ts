@@ -97,6 +97,7 @@ describe('admin product bulk action and export over HTTP (integration)', () => {
     ownerSellerId: SELLER,
     categoryId: null,
     categoryName: 'Meat',
+    topics: [],
     typeCode: 'simple',
     status: 'published',
     offerCount: 6,

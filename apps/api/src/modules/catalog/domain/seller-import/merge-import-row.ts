@@ -205,6 +205,8 @@ export function draftContentOfRevision(revision: RevisionContent): Draft {
     imageIds: [...revision.imageIds],
     variants,
   };
+  // Topics ride along, or an update by file would drop them and look like a tag change.
+  if (revision.topicIds.length > 0) draft['topicIds'] = [...revision.topicIds];
   if (axes.size > 0) draft['variantAxes'] = [...axes];
   return draft;
 }

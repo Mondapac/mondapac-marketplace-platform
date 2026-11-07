@@ -6,6 +6,9 @@ import { CATALOG_PRODUCT_VIEW } from '../../contracts/permissions';
 import type { ProductState, ProductStatus } from '../../domain/product';
 import type { RevisionKind, StoredRevision } from '../../domain/stored-revision';
 import { parseAdminImageIds } from '../images/admin-image-input';
+import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { TopicReader } from '../ports/topic.reader';
+import { topicRefsOf, type TopicRef } from '../topics/topic-refs';
 import type { ProductRepository } from '../ports/product.repository';
 import type {
   ProductRevisionRepository,
@@ -58,6 +61,8 @@ export interface AdminRevisionContentView {
     >
   >;
   readonly categoryIds: readonly string[];
+  /** Topic ids in the order entered; named in `topicRefs` of the output (product tags T2). */
+  readonly topicIds: readonly string[];
   readonly taxCategoryCode: string;
   readonly attributeValues: Readonly<Record<string, unknown>>;
   readonly variants: readonly AdminRevisionVariantView[];
@@ -102,6 +107,13 @@ export interface ProductRevisionAdminReadOutput {
   /** The duplicate-GTIN advice of the queue row (V4); empty unless pending. */
   readonly warnings: readonly string[];
   readonly revision: AdminRevisionContentView;
+  /** The topics of both contents, each once, with slug, state and name; empty if unreadable. */
+  readonly topicRefs: readonly TopicRef[];
+  /**
+   * What the revision changes in the topic set against the published one (all added before the
+   * first publication). Order is not a change. Ids; look them up in `topicRefs`.
+   */
+  readonly topicDiff: { readonly added: readonly string[]; readonly removed: readonly string[] };
   /** The published revision's content; null when the product was never published. */
   readonly published: AdminRevisionContentView | null;
   /** The product's revisions with their decisions, newest first, at most {@link HISTORY_LIMIT}. */
@@ -121,6 +133,10 @@ export interface ProductRevisionAdminReadDependencies {
   readonly revisions: ProductRevisionRepository;
   readonly sellerNames: SellerNamesReader;
   readonly gtinRegistry: VariantGtinRegistry;
+  /** The topics, to name the ids of the two contents; without it the names are left out. */
+  readonly topicReader?: Pick<TopicReader, 'briefsOf'>;
+  /** The Market's default locale names a topic. Without it the names are left out. */
+  readonly policy?: Pick<CatalogMarketPolicy, 'locales'>;
 }
 
 type Loaded =
@@ -150,6 +166,7 @@ function contentView(revision: StoredRevision): AdminRevisionContentView {
     submittedAt: revision.submittedAt.toString(),
     texts: content.texts,
     categoryIds: content.categoryIds,
+    topicIds: content.topicIds,
     taxCategoryCode: content.taxCategoryCode,
     attributeValues: content.attributeValues,
     variants: content.variants.map((variant) => ({
@@ -264,6 +281,35 @@ export class ProductRevisionAdminRead extends UseCase<
     const { state, revision, published, history, pending, duplicates, sellerId } = value;
     const names = await deps.sellerNames.storeNames(context, [sellerId]);
     const firstPublication = state.publishedRevisionId === null;
+    const before = published?.content.topicIds ?? [];
+    const after = revision.content.topicIds;
+    const topicDiff = {
+      added: after.filter((id) => !before.includes(id)),
+      removed: before.filter((id) => !after.includes(id)),
+    };
+    let topicRefs: readonly TopicRef[] = [];
+    const { topicReader, policy } = deps;
+    if (topicReader !== undefined && policy !== undefined) {
+      // The names are a convenience: a failed read leaves the ids, never the review.
+      const refs = await deps.unitOfWork
+        .run<readonly TopicRef[], never>(
+          market,
+          async () =>
+            ok([
+              ...(
+                await topicRefsOf(
+                  topicReader,
+                  market,
+                  [...before, ...after],
+                  policy.locales(market).default,
+                )
+              ).values(),
+            ]),
+          { readOnly: true },
+        )
+        .catch(() => null);
+      if (refs !== null && refs.ok) topicRefs = refs.value;
+    }
     return ok({
       productId: state.id,
       productCode: state.productCode,
@@ -291,6 +337,8 @@ export class ProductRevisionAdminRead extends UseCase<
                 : 'gtin.duplicate',
             ],
       revision: contentView(revision),
+      topicRefs,
+      topicDiff,
       published: published === null ? null : contentView(published),
       history: history.map(historyView),
     });

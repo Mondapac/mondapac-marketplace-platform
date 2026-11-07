@@ -361,6 +361,7 @@ describe('admin product revision review over HTTP (integration)', () => {
       content: {
         texts: { [defaultLocale]: { name: 'Dates', shortDescription: null, description: null } },
         categoryIds: [],
+        topicIds: [],
         taxCategoryCode: 'gst',
         attributeValues: {},
         variants: [
@@ -808,6 +809,7 @@ describe('admin product revision review over HTTP (integration)', () => {
           submittedAt: START.toString(),
           texts: { [defaultLocale]: { name: 'Dates', shortDescription: null, description: null } },
           categoryIds: [],
+          topicIds: [],
           taxCategoryCode: 'gst',
           attributeValues: {},
           variants: [
@@ -826,6 +828,8 @@ describe('admin product revision review over HTTP (integration)', () => {
           ],
           imageIds: [],
         },
+        topicRefs: [],
+        topicDiff: { added: [], removed: [] },
         published: null,
         history: [
           {

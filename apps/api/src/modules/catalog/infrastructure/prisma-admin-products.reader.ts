@@ -281,6 +281,18 @@ export class PrismaAdminProductsReader implements AdminProductsReader {
               id: true,
               texts: { where: { locale }, select: { name: true } },
               categories: { orderBy: { position: 'asc' }, take: 1, select: { categoryId: true } },
+              topics: {
+                orderBy: { position: 'asc' },
+                select: {
+                  topicId: true,
+                  topic: {
+                    select: {
+                      slug: true,
+                      terms: { where: { kind: 'name', locale }, select: { term: true } },
+                    },
+                  },
+                },
+              },
               images: {
                 where: { image: { state: 'clean' } },
                 orderBy: { position: 'asc' },
@@ -334,6 +346,11 @@ export class PrismaAdminProductsReader implements AdminProductsReader {
           ownerSellerId: row.ownerSellerId as Id<'Seller'> | null,
           categoryId: categoryId as Id<'Category'> | null,
           categoryName: categoryId === null ? null : (categoryName.get(categoryId) ?? null),
+          topics: (revision?.topics ?? []).map((entry) => ({
+            id: entry.topicId as Id<'Topic'>,
+            slug: entry.topic.slug,
+            name: entry.topic.terms[0]?.term ?? null,
+          })),
           typeCode: row.typeCode,
           status: (row.status === 'published' && row.pausedAt !== null
             ? 'paused'

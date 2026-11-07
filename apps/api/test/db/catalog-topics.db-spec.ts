@@ -109,6 +109,36 @@ describe.each(TEST_MARKETS)('catalog topics in market %s (database integration)'
     expect(await inUnit(() => repository.slugTaken(market, `${state.slug}-x`))).toBe(false);
   });
 
+  it('names topics by id for a product read: names only, any status, this Market only', async () => {
+    const unique = letters(tag());
+    const active = topic(unique, {
+      terms: [
+        term('en', 'name', `Grill ${unique}`),
+        term('ar', 'name', `شواء ${unique}`),
+        term('en', 'synonym', `Barbecue ${unique}`),
+      ],
+    });
+    const archived = topic(`${unique}x`, { status: 'archived' });
+    const foreign = topic(`${unique}y`);
+    await inUnit(() => repository.add(market, active));
+    await inUnit(() => repository.add(market, archived));
+    await inUnitOf(other)(() => repository.add(other, foreign));
+
+    const ids = [active.id, archived.id, foreign.id, uuid7()];
+    const briefs = await inUnit(() => reader.briefsOf(market, ids));
+
+    expect(briefs.map((brief) => brief.id).sort()).toEqual([active.id, archived.id].sort());
+    expect(briefs.find((brief) => brief.id === active.id)).toEqual({
+      id: active.id,
+      slug: active.slug,
+      status: 'active',
+      names: { en: `Grill ${unique}`, ar: `شواء ${unique}` },
+    });
+    expect(briefs.find((brief) => brief.id === archived.id)?.status).toBe('archived');
+    expect(await inUnit(() => reader.briefsOf(market, []))).toEqual([]);
+    expect(await inUnitOf(other)(() => reader.briefsOf(other, [active.id]))).toEqual([]);
+  });
+
   it('keeps a topic inside its Market, where the other Market may reuse slug and terms', async () => {
     const unique = letters(tag());
     const state = topic(unique);

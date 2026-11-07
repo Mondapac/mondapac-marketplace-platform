@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { TopicRefBody } from './topic.dto';
 
 // Answers of the seller read routes (catalog design 8.2, 9.2a). Ids, codes and the seller's own
 // content only; instants are ISO 8601 strings in UTC.
@@ -188,6 +189,13 @@ export class OwnProductView {
       '(a required field then holds back the submit: attribute.suggestion-pending).',
   })
   suggestions!: OwnSuggestionView[];
+  @ApiProperty({
+    type: [TopicRefBody],
+    description:
+      'The topics named by the draft, the published and the pending revision (`topicIds`), each ' +
+      'once. A topic that no longer exists is absent.',
+  })
+  topicRefs!: TopicRefBody[];
 }
 
 export class OwnOfferProductLabel {

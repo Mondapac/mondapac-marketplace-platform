@@ -31,6 +31,13 @@ export const ADMIN_PRODUCT_SORTS = ['name', 'updated', 'created'] as const;
 export type AdminProductSort = (typeof ADMIN_PRODUCT_SORTS)[number];
 export type SortDirection = 'asc' | 'desc';
 
+/** A topic on a listed product: its key and its name in the filter's locale (null without one). */
+export interface AdminProductTopic {
+  readonly id: Id<'Topic'>;
+  readonly slug: string;
+  readonly name: string | null;
+}
+
 export interface AdminProductRow {
   readonly productId: Id<'Product'>;
   readonly productCode: string;
@@ -42,6 +49,8 @@ export interface AdminProductRow {
   readonly ownerSellerId: Id<'Seller'> | null;
   readonly categoryId: Id<'Category'> | null;
   readonly categoryName: string | null;
+  /** The topics of the same revision, in the order entered (product tags T2). */
+  readonly topics: readonly AdminProductTopic[];
   readonly typeCode: string;
   readonly status: AdminProductStatus;
   /** Offers of the product that are not deleted, of every seller. */

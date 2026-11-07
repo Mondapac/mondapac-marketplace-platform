@@ -1387,6 +1387,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.product_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_texts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_categories': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.product_revision_topics': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_variants': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Photos (slice 13): a photo is inserted, read and deleted while no revision uses it; its

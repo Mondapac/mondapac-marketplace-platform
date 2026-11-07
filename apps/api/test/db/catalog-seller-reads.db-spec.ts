@@ -397,6 +397,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       'primary-image',
       'variant-removed',
       'gtin-changed',
+      'topics',
       'images',
     ]);
     expect(own.value.workingCopy?.content).toMatchObject({

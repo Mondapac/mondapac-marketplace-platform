@@ -14,6 +14,7 @@ export const SENSITIVE_REASONS = [
   'image-added-or-replaced',
   'variant-removed',
   'gtin-changed',
+  'topics-changed',
   'never-published',
   'approval-required',
 ] as const;
@@ -37,6 +38,8 @@ export interface RevisionSummary {
   /** Product name per locale. */
   readonly names: Readonly<Record<string, string>>;
   readonly categoryIds: readonly string[];
+  /** Topic ids in the order entered (product tags T2). */
+  readonly topicIds: readonly string[];
   readonly taxCategoryCode: string;
   /** Image ids in position order; position 1 is the primary image. Empty until slice 13. */
   readonly imageIds: readonly string[];
@@ -79,6 +82,8 @@ export function classify(
     // Every first revision carries its images, so it goes to review even with approval off (H1).
     const reasons: SensitiveReason[] = ['never-published'];
     if (candidate.imageIds.length > 0) reasons.push('image-added-or-replaced');
+    // Topics of a first revision are reviewed with it, and force review like an image does.
+    if (candidate.topicIds.length > 0) reasons.push('topics-changed');
     return { sensitive: true, reasons };
   }
   const reasons: SensitiveReason[] = [];
@@ -112,6 +117,9 @@ export function classify(
   ) {
     reasons.push('gtin-changed');
   }
+  // Any difference between the two topic sets is a tag change and is always reviewed: not a Market
+  // flag (decision 3 of the tags design). The order is not a tag change, so a reorder alone is minor.
+  if (!sameSet(published.topicIds, candidate.topicIds)) reasons.push('topics-changed');
   return { sensitive: reasons.length > 0, reasons };
 }
 
@@ -145,7 +153,7 @@ export type RevisionOutcome =
 /**
  * Published at once or pending (design 4.2 rows 1 and 4, 4.3). An admin's PLATFORM revision and
  * a tax override publish at once. For a seller: a revision that adds or replaces an image is
- * always reviewed (H1); with approval off everything else publishes at once; with approval on a
+ * always reviewed (H1), and so is a topic change; with approval off everything else publishes at once; with approval on a
  * never-published product and a sensitive change wait, and so does any change while a sensitive
  * revision is pending (the next submit supersedes it and stays pending, AC 26). A revision that
  * waits for no field reason carries `approval-required`.
@@ -160,9 +168,12 @@ export function decideOutcome(input: OutcomeInput): RevisionOutcome {
       reasons: classification.reasons,
     };
   }
-  const imageChange = classification.reasons.includes('image-added-or-replaced');
+  // A photo change and a topic change are reviewed whatever the Market says (H1, tags decision 3).
+  const alwaysReviewed =
+    classification.reasons.includes('image-added-or-replaced') ||
+    classification.reasons.includes('topics-changed');
   const published =
-    !imageChange &&
+    !alwaysReviewed &&
     (!input.approvalRequired || (!classification.sensitive && !input.sensitiveRevisionPending));
   if (published) {
     return {

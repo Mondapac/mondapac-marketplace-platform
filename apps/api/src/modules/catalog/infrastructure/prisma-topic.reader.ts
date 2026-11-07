@@ -1,12 +1,19 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { TopicListPage, TopicListQuery, TopicReader } from '../application/ports/topic.reader';
-import { normaliseTopicTerm } from '../domain/topic';
+import type {
+  TopicBrief,
+  TopicListPage,
+  TopicListQuery,
+  TopicReader,
+} from '../application/ports/topic.reader';
+import { normaliseTopicTerm, type TopicStatus } from '../domain/topic';
 import { TOPIC_INCLUDE, topicStateOf } from './prisma-topic.repository';
 
 /** Escapes `\`, `%` and `_`, so a search term is matched as typed (LIKE patterns). */
 const literal = (term: string): string => term.replace(/[\\%_]/g, (char) => `\\${char}`);
+
+const BRIEFS_MAX = 50;
 
 /** {@link TopicReader} on the topic tables; every statement carries the Market. */
 export class PrismaTopicReader implements TopicReader {
@@ -50,5 +57,25 @@ export class PrismaTopicReader implements TopicReader {
       items: page.map(topicStateOf),
       nextAfterId: rows.length > query.limit ? (page[page.length - 1]!.id as Id<'Topic'>) : null,
     };
+  }
+
+  async briefsOf(market: MarketContext, ids: readonly string[]): Promise<readonly TopicBrief[]> {
+    if (ids.length === 0) return [];
+    if (ids.length > BRIEFS_MAX) throw new RangeError('briefsOf: too many ids');
+    const rows = await this.prisma.tx(market).catalogTopic.findMany({
+      where: { marketId: market.marketId, id: { in: [...ids] } },
+      select: {
+        id: true,
+        slug: true,
+        status: true,
+        terms: { where: { kind: 'name' }, select: { locale: true, term: true } },
+      },
+    });
+    return rows.map((row) => ({
+      id: row.id as Id<'Topic'>,
+      slug: row.slug,
+      status: row.status as TopicStatus,
+      names: Object.fromEntries(row.terms.map((term) => [term.locale, term.term])),
+    }));
   }
 }

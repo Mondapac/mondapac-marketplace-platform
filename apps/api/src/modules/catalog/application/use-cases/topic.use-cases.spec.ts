@@ -80,6 +80,7 @@ describe.each(FIXTURES)('topic use cases in market $code', ({ code, locales }) =
   };
   let lastQuery: TopicListQuery | null = null;
   const topicReader: TopicReader = {
+    briefsOf: () => Promise.resolve([]),
     list: (_m, query) => {
       lastQuery = query;
       return Promise.resolve({

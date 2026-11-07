@@ -2,7 +2,12 @@ import type { AttributeField, AttributeSchema, Id } from '@mondapac/shared-kerne
 import { configurableProductType } from '../product-types/configurable';
 import { simpleProductType } from '../product-types/simple';
 import { mapSellerColumns, type SellerImportMode } from './columns';
-import { mergeImportRow, withMintedIds, placeholderOf } from './merge-import-row';
+import {
+  draftContentOfRevision,
+  mergeImportRow,
+  withMintedIds,
+  placeholderOf,
+} from './merge-import-row';
 import {
   attributeColumnCodes,
   checkSellerFile,
@@ -417,5 +422,28 @@ describe('mergeImportRow', () => {
       'va',
       'vb',
     ]);
+  });
+});
+
+describe('draftContentOfRevision topics (product tags T2)', () => {
+  const revision = {
+    texts: { en: { name: 'Dates', shortDescription: null, description: null } },
+    categoryIds: ['c1'],
+    topicIds: [] as string[],
+    taxCategoryCode: 'standard',
+    attributeValues: {},
+    variants: [],
+    imageIds: [],
+    schemaRef: { familyRevisionId: 'f1', definitionRevisionIds: [] },
+    contentSchemaVersion: 1,
+  };
+
+  it('carries the published topics into the draft, so an update by file does not drop them', () => {
+    const ids = ['0197a1b2-0000-7000-8000-000000000002', '0197a1b2-0000-7000-8000-000000000001'];
+    expect(draftContentOfRevision({ ...revision, topicIds: ids })['topicIds']).toEqual(ids);
+  });
+
+  it('leaves the key out when there are none', () => {
+    expect(Object.hasOwn(draftContentOfRevision(revision), 'topicIds')).toBe(false);
   });
 });

@@ -103,6 +103,20 @@ class MemoryTopics implements TopicRepository, TopicReader {
     this.rows.set(this.#key(market, state.id), state);
     return Promise.resolve(null);
   }
+  briefsOf(market: MarketContext, ids: readonly string[]) {
+    return Promise.resolve(
+      this.#inMarket(market)
+        .filter((row) => ids.includes(row.id))
+        .map((row) => ({
+          id: row.id,
+          slug: row.slug,
+          status: row.status,
+          names: Object.fromEntries(
+            row.terms.filter((t) => t.kind === 'name').map((t) => [t.locale, t.text]),
+          ),
+        })),
+    );
+  }
   list(market: MarketContext, query: Parameters<TopicReader['list']>[1]) {
     const items = this.#inMarket(market)
       .filter((row) => query.status === null || row.status === query.status)

@@ -70,6 +70,7 @@
   },
   { "name": "catalog.own-product-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.own-products-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  { "name": "catalog.own-topic-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.pending-product-revisions", "rule": "system" },
   { "name": "catalog.platform-import-purge", "rule": "system" },
   { "name": "catalog.platform-import-run", "rule": "system" },
