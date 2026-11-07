@@ -166,6 +166,13 @@ export class PlatformRevisionView {
   content!: Record<string, unknown>;
 }
 
+export class PlatformProductOffers {
+  @ApiProperty({ description: 'Sellers that hold at least one Offer on the product.' })
+  sellerCount!: number;
+  @ApiProperty({ description: 'Offers on the product that are not deleted, every seller.' })
+  offerCount!: number;
+}
+
 export class PlatformProductView {
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty({ example: 'P00000001' }) productCode!: string;
@@ -174,6 +181,13 @@ export class PlatformProductView {
   @ApiProperty({ description: 'single (one fixed variant) or configurable.' })
   variantModel!: string;
   @ApiProperty() status!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'When an admin paused the product (ISO 8601, UTC); null when it is not paused.',
+  })
+  pausedAt!: string | null;
+  @ApiProperty({ type: PlatformProductOffers }) offers!: PlatformProductOffers;
   @ApiProperty({ type: [OwnVariantView] }) variants!: OwnVariantView[];
   @ApiProperty({ description: "The Market's cap on non-retired variants." }) maxVariants!: number;
   @ApiProperty() lastChangedAt!: string;

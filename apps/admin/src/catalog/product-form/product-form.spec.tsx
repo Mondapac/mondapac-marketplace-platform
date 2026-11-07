@@ -26,6 +26,8 @@ const view = (over: Partial<ProductView> = {}): ProductView => ({
   familyCode: 'default',
   variantModel: 'single',
   status: 'draft',
+  pausedAt: null,
+  offers: { sellerCount: 0, offerCount: 0 },
   variants: [{ variantId: '0190a000-0000-7000-8000-0000000000e1', state: 'proposed' }],
   maxVariants: 100,
   lastChangedAt: '2026-11-05T01:00:00.000Z',
@@ -78,20 +80,60 @@ const view = (over: Partial<ProductView> = {}): ProductView => ({
   ...over,
 });
 
-function mountEdit() {
+function mountEdit(canPause = false) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <ProductEdit productId={ID} csrfToken="csrf-1" />
+      <ProductEdit
+        productId={ID}
+        csrfToken="csrf-1"
+        marketName="Australia"
+        timeZone="Australia/Brisbane"
+        canPause={canPause}
+      />
     </NextIntlClientProvider>,
   );
 }
+
+/** A saved draft that holds everything Publish needs: title, category, tax category, grain. */
+const ready = (over: Partial<ProductView> = {}): ProductView => {
+  const base = view();
+  return view({
+    workingCopy: {
+      content: {
+        ...base.workingCopy!.content,
+        categoryIds: [CHILD],
+        taxCategoryCode: 'gst-free',
+        attributeValues: { grain: 'Extra long' },
+      },
+      lastSavedAt: '2026-11-05T01:00:00.000Z',
+      baseRevisionId: null,
+    },
+    ...over,
+  });
+};
+/** A published product with a revision 1 and a newer saved draft. */
+const live = (over: Partial<ProductView> = {}): ProductView =>
+  ready({
+    status: 'published',
+    offers: { sellerCount: 3, offerCount: 7 },
+    published: {
+      revisionId: 'r1',
+      revisionNo: 1,
+      submittedAt: '2026-11-03T01:00:00.000Z',
+      content: {},
+    },
+    ...over,
+  });
+const headings = () => Array.from(document.querySelectorAll('h2')).map((h) => h.textContent);
+const dialogOf = (title: string): HTMLElement =>
+  screen.getByText(title).closest('dialog') as HTMLElement;
+const inDialog = (title: string, name: string): HTMLElement =>
+  Array.from(dialogOf(title).querySelectorAll('button')).find((b) => b.textContent === name)!;
 const ok = <T,>(body: T) => ({ ok: true as const, status: 200, body });
 const fail = (status: number, code: string, details?: object) => ({
   ok: false as const,
   failure: { status, code, ...(details === undefined ? {} : { details }) },
 });
-const discardDialog = (): HTMLElement =>
-  screen.getByText('Discard this product?').closest('dialog') as HTMLElement;
 const lastBody = (index: number) => call.mock.calls[index]?.[2] as Record<string, unknown>;
 
 beforeEach(() => {
@@ -184,20 +226,64 @@ describe('the create form', () => {
 });
 
 describe('the edit form', () => {
-  it('shows the saved English title and description, no language picker, and the lock note', async () => {
+  it('shows the saved English title as the page title, no language picker, and the lock note', async () => {
     call.mockResolvedValueOnce(ok(view()));
     mountEdit();
     expect((await screen.findByLabelText<HTMLInputElement>('Title')).value).toBe('Sella rice');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Sella rice');
+    expect(screen.getByText('Platform product · Australia · P00000001')).toBeTruthy();
     expect(screen.getByLabelText<HTMLTextAreaElement>(/Description/).value).toBe('Long grain');
     expect(screen.queryByRole('combobox', { name: /language/i })).toBeNull();
     expect(screen.getByText('One size')).toBeTruthy();
     expect(screen.getByText(/can't switch between these after the first publish/)).toBeTruthy();
-    expect(screen.getByText('Draft')).toBeTruthy();
+    expect(screen.getAllByText('Draft').length).toBe(2);
     expect(screen.getByText('Platform product')).toBeTruthy();
+    expect(screen.getByText('Australia')).toBeTruthy();
     expect(call.mock.calls[0]?.slice(0, 2)).toEqual([
       'GET',
       `catalog/admin/platform-products/${ID}`,
     ]);
+  });
+
+  it('lands an untouched draft as "Add product": empty state, no unsaved bar, Publish off', async () => {
+    call.mockResolvedValueOnce(
+      ok(view({ workingCopy: null, form: { ...view().form, fields: [] } })),
+    );
+    mountEdit();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Add product' })).toBeTruthy();
+    expect(screen.getByText('Platform product · Australia')).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Publish' }).disabled).toBe(true);
+    expect(
+      screen.getByText('To publish: add a title, choose a category and choose the tax category.'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('Choose a category first. Its feature set lists what to fill in here.'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Only a category or subcategory (levels 3 and 4). It decides the product details and variant types.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Choose a category or subcategory')).toBeTruthy();
+    expect(screen.getByText('Choose a tax category')).toBeTruthy();
+    expect(screen.getByText(/Sellers can't find it until you publish/)).toBeTruthy();
+  });
+
+  it('orders the cards: Status first on a phone, then Product, Category, details, Variants, the rest', async () => {
+    call.mockResolvedValueOnce(ok(live()));
+    mountEdit(true);
+    await screen.findByLabelText('Title');
+    expect(headings()).toEqual([
+      'Status',
+      'Product',
+      'Category',
+      'Product details',
+      'Variants',
+      'Organisation',
+      'Sellers selling it',
+    ]);
+    expect(screen.queryByLabelText(/^(price|stock|sku|cost)/i)).toBeNull();
   });
 
   it('saves the draft writing the default language only and keeping every other key', async () => {
@@ -241,13 +327,22 @@ describe('the edit form', () => {
     expect((lastBody(1)['content'] as Record<string, unknown>)['categoryIds']).toEqual([CHILD]);
   });
 
-  it('publishes: saves first, then submits without replacing anything, and shows Published', async () => {
-    call.mockResolvedValueOnce(ok(view()));
-    mountEdit();
+  it('publishes after a confirm: saves first, then submits without replacing anything', async () => {
+    call.mockResolvedValueOnce(ok(ready()));
+    mountEdit(true);
     fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
+    fireEvent.click(screen.getByRole<HTMLButtonElement>('button', { name: 'Publish' }));
+    expect(await screen.findByText('Publish Rice?')).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
+    const dialog = dialogOf('Publish Rice?');
+    expect(dialog.textContent).toContain(
+      'Sellers in Australia can find it and add their offers. Buyers see it once at least one offer is on sale.',
+    );
+    expect(dialog.textContent).toContain('Variants1');
+    expect(dialog.textContent).toContain('English · translated when a buyer language is published');
     call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
     call.mockResolvedValueOnce(ok({ revisionId: 'r1', revisionNo: 1, published: true }));
-    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    fireEvent.click(inDialog('Publish Rice?', 'Publish'));
     await waitFor(() => expectToast('Product published.'));
     expect(call.mock.calls[1]?.[0]).toBe('PUT');
     expect(call.mock.calls[2]).toEqual([
@@ -256,12 +351,15 @@ describe('the edit form', () => {
       { replacePending: false },
       'csrf-1',
     ]);
-    expect(screen.getByText('Published')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Publish changes' })).toBeTruthy();
+    expect(screen.getAllByText('Published').length).toBeGreaterThan(0);
+    expect(screen.getByText('Rice is published.')).toBeTruthy();
+    expect(screen.getByText('Sellers can now add their offers.')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Active' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
   });
 
-  it('does not submit when a text kept its last value, and marks the field', async () => {
-    call.mockResolvedValueOnce(ok(view()));
+  it('shows the claim words error under the title, counts it in the bar and keeps Save off', async () => {
+    call.mockResolvedValueOnce(ok(ready()));
     mountEdit();
     fireEvent.change(await screen.findByLabelText('Title'), {
       target: { value: 'Certified halal rice' },
@@ -274,34 +372,70 @@ describe('the edit form', () => {
         ],
       }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
-    expect(await screen.findByText(/Not saved: this text holds a claim/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(
+      await screen.findByText(
+        'Product text can\'t include certification words like "halal". Badges come from seller offers.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('1 field needs fixing')).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' }).disabled).toBe(
+      true,
+    );
     expect(call).toHaveBeenCalledTimes(2);
+    // Editing the title clears the error and puts the bar back to unsaved.
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Certified rice' } });
+    expect(screen.queryByText('1 field needs fixing')).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' }).disabled).toBe(
+      false,
+    );
   });
 
-  it('lists what a draft still lacks when the submit says it is not ready', async () => {
-    call.mockResolvedValueOnce(ok(view()));
+  it('lists what the server says is missing when it refuses a publish', async () => {
+    call.mockResolvedValueOnce(ok(ready()));
     mountEdit();
     await screen.findByLabelText('Title');
     // Nothing was edited, so Publish submits the saved draft without saving again.
     call.mockResolvedValueOnce(
-      fail(422, 'revision.not-ready', { issues: [{ path: 'taxCategoryCode', code: 'required' }] }),
+      fail(422, 'revision.not-ready', { issues: [{ path: 'variants', code: 'variants.none' }] }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    fireEvent.click(inDialog('Publish Sella rice?', 'Publish'));
     expect(await screen.findByText("The product isn't ready to publish yet:")).toBeTruthy();
-    expect(screen.getByText('taxCategoryCode: required')).toBeTruthy();
+    expect(screen.getByText('variants: variants.none')).toBeTruthy();
   });
 
-  it('reads the product again after a stale save', async () => {
+  it('names what is missing in the order title, category, tax category, required details', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    await screen.findByLabelText('Title');
+    expect(
+      screen.getByText(
+        'To publish: choose a category, choose the tax category and fill in the required details.',
+      ),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: '' } });
+    expect(
+      screen.getByText(
+        'To publish: add a title, choose a category, choose the tax category and fill in the required details.',
+      ),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Tax category'), { target: { value: 'gst' } });
+    fireEvent.change(screen.getByLabelText('Grain length'), { target: { value: 'Long' } });
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Rice' } });
+    expect(screen.getByText('To publish: choose a category.')).toBeTruthy();
+  });
+
+  it('reads the product again after a stale save, with the newer-revision banner', async () => {
     call.mockResolvedValueOnce(ok(view()));
     mountEdit();
     fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
     call.mockResolvedValueOnce(fail(409, 'conflict.stale'));
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
-    expect(await screen.findByText(/Someone else changed this product/)).toBeTruthy();
+    expect(await screen.findByText('Someone published a newer revision.')).toBeTruthy();
     call.mockResolvedValueOnce(ok(view({ status: 'published' })));
-    fireEvent.click(screen.getByRole('button', { name: 'Read the product again' }));
-    expect(await screen.findByText('Published')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+    expect((await screen.findAllByText('Published')).length).toBeGreaterThan(0);
   });
 
   it('edits the attributes: a searchable list and a text with its bounds', async () => {
@@ -363,42 +497,63 @@ describe('the edit form', () => {
     ]);
   });
 
-  it('keeps Save draft off until something changes, then asks before leaving with unsaved edits', async () => {
+  it('shows the unsaved bar only after an edit, and asks before leaving with unsaved edits', async () => {
     call.mockResolvedValueOnce(ok(view()));
     mountEdit();
-    const saveDraft = await screen.findByRole('button', { name: 'Save draft' });
-    expect((saveDraft as HTMLButtonElement).disabled).toBe(true);
+    await screen.findByLabelText('Title');
+    expect(screen.queryByRole('button', { name: 'Save draft' })).toBeNull();
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Rice' } });
-    expect((saveDraft as HTMLButtonElement).disabled).toBe(false);
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(bar.textContent).toContain('Unsaved product');
+    const saveDraft = screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' });
+    expect(saveDraft.disabled).toBe(false);
     fireEvent.click(screen.getByRole('link', { name: 'Back to products' }));
-    expect(await screen.findByText('Leave without saving?')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Stay on page' }));
+    expect(await screen.findByText('Leave this page?')).toBeTruthy();
+    expect(screen.getByText("Your changes to Sella rice aren't saved.")).toBeTruthy();
+    const leave = dialogOf('Leave this page?');
+    expect(document.activeElement).toBe(inDialog('Leave this page?', 'Cancel'));
+    expect(inDialog('Leave this page?', 'Leave without saving')).toBeTruthy();
+    expect(leave.querySelector('button.bg-critical-solid')).not.toBeNull();
+    fireEvent.click(inDialog('Leave this page?', 'Cancel'));
     call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
     fireEvent.click(saveDraft);
     await waitFor(() => expectToast('Draft saved.'));
-    expect((saveDraft as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
-  it('lets the admin leave after choosing Leave page, and not ask again after a save', async () => {
+  it('lets the admin leave after choosing Leave without saving, and not ask again after a save', async () => {
     call.mockResolvedValueOnce(ok(view()));
     mountEdit();
     fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
     const back = screen.getByRole('link', { name: 'Back to products' });
     fireEvent.click(back);
-    fireEvent.click(await screen.findByRole('button', { name: 'Leave page' }));
-    await waitFor(() => expect(screen.queryByText('Leave without saving?')).toBeNull());
+    fireEvent.click(await screen.findByRole('button', { name: 'Leave without saving' }));
+    await waitFor(() => expect(screen.queryByText('Leave this page?')).toBeNull());
     call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expectToast('Draft saved.'));
     fireEvent.click(back);
-    expect(screen.queryByText('Leave without saving?')).toBeNull();
+    expect(screen.queryByText('Leave this page?')).toBeNull();
   });
 
-  it('keeps Save draft on for a product that has no draft yet', async () => {
+  it('falls back to a plain leave message when the product has no title', async () => {
     call.mockResolvedValueOnce(ok(view({ workingCopy: null })));
     mountEdit();
-    const saveDraft = await screen.findByRole('button', { name: 'Save draft' });
-    expect((saveDraft as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
+    fireEvent.click(screen.getByRole('link', { name: 'Back to products' }));
+    expect(await screen.findByText("Your changes aren't saved.")).toBeTruthy();
+  });
+
+  it('throws the edits away with Discard in the bar by reading the product again', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
+    call.mockResolvedValueOnce(ok(view()));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect(call.mock.calls[1]?.[0]).toBe('GET');
+    expect((await screen.findByLabelText<HTMLInputElement>('Title')).value).toBe('Sella rice');
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
   it('discards an unpublished product after asking, then goes back to the list', async () => {
@@ -409,12 +564,7 @@ describe('the edit form', () => {
     expect(await screen.findByText('Discard this product?')).toBeTruthy();
     expect(call).toHaveBeenCalledTimes(1);
     call.mockResolvedValueOnce(ok({ productId: ID }));
-    const dialog = discardDialog();
-    fireEvent.click(
-      Array.from(dialog.querySelectorAll('button')).find(
-        (b) => b.textContent === 'Discard product',
-      )!,
-    );
+    fireEvent.click(inDialog('Discard this product?', 'Discard product'));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/catalog/products'));
     expect(call.mock.calls[1]).toEqual([
       'POST',
@@ -432,41 +582,30 @@ describe('the edit form', () => {
     expect(call).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Discard product' }));
     call.mockResolvedValueOnce(fail(409, 'product.not-a-draft'));
-    const dialog = discardDialog();
-    fireEvent.click(
-      Array.from(dialog.querySelectorAll('button')).find(
-        (b) => b.textContent === 'Discard product',
-      )!,
-    );
+    fireEvent.click(inDialog('Discard this product?', 'Discard product'));
     expect(
       await screen.findByText("This product can't be edited in its current state."),
     ).toBeTruthy();
     expect(assign).not.toHaveBeenCalledWith('/catalog/products');
     cleanup();
-    call.mockResolvedValueOnce(
-      ok(
-        view({
-          status: 'published',
-          published: { revisionId: 'r', revisionNo: 1, publishedAt: '2026-11-05T01:00:00.000Z' },
-        } as unknown as Partial<ProductView>),
-      ),
-    );
+    call.mockResolvedValueOnce(ok(live()));
     mountEdit();
-    await screen.findByRole('button', { name: 'Publish changes' });
+    await screen.findByRole('button', { name: 'Publish revision 2' });
     expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
   });
 
   it('hides Discard once the product was submitted for review, and for a product that is not a draft', async () => {
-    call.mockResolvedValueOnce(ok(view()));
+    call.mockResolvedValueOnce(ok(ready()));
     mountEdit();
     fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
     call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
     call.mockResolvedValueOnce(ok({ revisionId: 'r1', revisionNo: 1, published: false }));
     fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    fireEvent.click(inDialog('Publish Rice?', 'Publish'));
     await waitFor(() => expectToast('Product submitted.'));
     expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
     cleanup();
-    call.mockResolvedValueOnce(ok(view({ status: 'unpublished' })));
+    call.mockResolvedValueOnce(ok(ready({ status: 'unpublished' })));
     mountEdit();
     await screen.findByRole('button', { name: 'Publish' });
     expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
@@ -501,6 +640,230 @@ describe('the edit form', () => {
     expect(screen.getByRole('link', { name: 'Back to products' }).getAttribute('href')).toBe(
       '/catalog/products',
     );
+  });
+});
+
+describe('a published product', () => {
+  it('shows the revision badge, the next revision to publish, and saves as a revision', async () => {
+    call.mockResolvedValueOnce(ok(live()));
+    mountEdit();
+    await screen.findByLabelText('Title');
+    expect(screen.getByText('Revision 2 · unpublished changes')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Changes are saved as a new revision. Buyers keep seeing revision 1 until you publish.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Publish revision 2' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Rice 2' } });
+    expect(screen.getByRole('region', { name: 'Unsaved changes' }).textContent).toContain(
+      'Unsaved changes',
+    );
+    call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save revision' }));
+    await waitFor(() => expectToast('Revision saved.'));
+  });
+
+  it('shows no revision badge when nothing was saved after the publish, and Publish stays off', async () => {
+    call.mockResolvedValueOnce(
+      ok(
+        live({
+          workingCopy: {
+            content: {},
+            lastSavedAt: '2026-11-03T00:59:00.000Z',
+            baseRevisionId: 'r1',
+          },
+        }),
+      ),
+    );
+    mountEdit();
+    await screen.findByLabelText('Title');
+    expect(screen.queryByText(/unpublished changes/)).toBeNull();
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Publish revision 2' }).disabled,
+    ).toBe(true);
+  });
+
+  it('confirms "Publish revision N of <title>?" and submits the revision', async () => {
+    call.mockResolvedValueOnce(ok(live()));
+    mountEdit();
+    await screen.findByLabelText('Title');
+    fireEvent.click(screen.getByRole('button', { name: 'Publish revision 2' }));
+    expect(await screen.findByText('Publish revision 2 of Sella rice?')).toBeTruthy();
+    call.mockResolvedValueOnce(ok({ revisionId: 'r2', revisionNo: 2, published: true }));
+    fireEvent.click(inDialog('Publish revision 2 of Sella rice?', 'Publish'));
+    await waitFor(() => expectToast('Product published.'));
+    expect(call.mock.calls[1]?.slice(0, 2)).toEqual([
+      'POST',
+      `catalog/admin/platform-products/${ID}/submit`,
+    ]);
+    expect(screen.queryByText(/unpublished changes/)).toBeNull();
+    expect(
+      screen.getByText(
+        'Changes are saved as a new revision. Buyers keep seeing revision 2 until you publish.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows "Sellers selling it" with two tiles only on a published product', async () => {
+    call.mockResolvedValueOnce(ok(live()));
+    mountEdit();
+    await screen.findByLabelText('Title');
+    const card = screen.getByRole('heading', { name: 'Sellers selling it' }).closest('section')!;
+    expect(card.textContent).toContain('Sellers3');
+    expect(card.textContent).toContain('Offers7');
+    expect(card.textContent).toContain(
+      'Read only. Each seller sets price and stock on their own offer.',
+    );
+    expect(card.textContent).not.toContain('No offers yet');
+    expect(screen.queryByRole('link', { name: /Open the/ })).toBeNull();
+    cleanup();
+    call.mockResolvedValueOnce(ok(ready()));
+    mountEdit();
+    await screen.findByLabelText('Title');
+    expect(screen.queryByText('Sellers selling it')).toBeNull();
+  });
+
+  it('says so when nobody has an offer yet', async () => {
+    call.mockResolvedValueOnce(ok(live({ offers: { sellerCount: 0, offerCount: 0 } })));
+    mountEdit();
+    await screen.findByLabelText('Title');
+    expect(
+      screen.getByText('No offers yet. Sellers can add theirs now that it is published.'),
+    ).toBeTruthy();
+  });
+});
+
+describe('the Active switch', () => {
+  it('is shown only to an admin with the pause key, and only on a published product', async () => {
+    call.mockResolvedValueOnce(ok(live()));
+    mountEdit(true);
+    const toggle = await screen.findByRole<HTMLButtonElement>('switch', { name: 'Active' });
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(
+      screen.getByText(
+        'Turn off to stop all sales at once. Sellers keep their offers and nothing is deleted.',
+      ),
+    ).toBeTruthy();
+    cleanup();
+    call.mockResolvedValueOnce(ok(live()));
+    mountEdit(false);
+    await screen.findByLabelText('Title');
+    expect(screen.queryByRole('switch')).toBeNull();
+    cleanup();
+    call.mockResolvedValueOnce(ok(ready()));
+    mountEdit(true);
+    await screen.findByLabelText('Title');
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
+
+  it('asks before turning off, with the offer count and Cancel focused, then pauses with one id', async () => {
+    call.mockResolvedValueOnce(ok(live()));
+    mountEdit(true);
+    fireEvent.click(await screen.findByRole('switch', { name: 'Active' }));
+    expect(await screen.findByText('Turn off Sella rice?')).toBeTruthy();
+    const dialog = dialogOf('Turn off Sella rice?');
+    expect(dialog.textContent).toContain(
+      "Buyers can't find it and every offer stops selling at once. Sellers keep their offers and you can turn it on again.",
+    );
+    expect(dialog.textContent).toContain('Offers that stop selling7');
+    expect(document.activeElement).toBe(inDialog('Turn off Sella rice?', 'Cancel'));
+    // No call yet: the dialog only asks.
+    expect(call).toHaveBeenCalledTimes(1);
+    call.mockResolvedValueOnce(
+      ok({
+        counts: { done: 1, skipped: 0, failed: 0 },
+        results: [{ productId: ID, outcome: 'done' }],
+      }),
+    );
+    fireEvent.click(inDialog('Turn off Sella rice?', 'Turn off'));
+    await waitFor(() => expectToast('Product turned off.'));
+    expect(call.mock.calls[1]).toEqual([
+      'POST',
+      'catalog/admin/products/bulk',
+      { action: 'pause', productIds: [ID] },
+      'csrf-1',
+    ]);
+    expect(screen.getByText('This product is inactive')).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Buyers can't find it and all 7 offers are off sale. Sellers keep their offers.",
+      ),
+    ).toBeTruthy();
+    // The switch takes its name from the visible row title, which now reads Inactive.
+    expect(screen.getByRole('switch', { name: 'Inactive' }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    expect(screen.getByText('Inactive')).toBeTruthy();
+  });
+
+  it('turns it on again without a dialog, from the switch or from the banner', async () => {
+    call.mockResolvedValueOnce(ok(live({ pausedAt: '2026-10-31T20:00:00.000Z' })));
+    mountEdit(true);
+    // Brisbane is UTC+10: 31 Oct 20:00 UTC is already 1 Nov there.
+    expect(
+      await screen.findByText(
+        'Paused 1 Nov 2026. All 7 offers are off sale; sellers keep them. Turn on to sell again.',
+      ),
+    ).toBeTruthy();
+    call.mockResolvedValueOnce(
+      ok({
+        counts: { done: 1, skipped: 0, failed: 0 },
+        results: [{ productId: ID, outcome: 'done' }],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
+    await waitFor(() => expectToast('Product turned on.'));
+    expect(call.mock.calls[1]).toEqual([
+      'POST',
+      'catalog/admin/products/bulk',
+      { action: 'resume', productIds: [ID] },
+      'csrf-1',
+    ]);
+    expect(screen.queryByText('This product is inactive')).toBeNull();
+    expect(screen.getByRole('switch', { name: 'Active' }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    // And off then on through the switch itself: on needs no dialog.
+    call.mockResolvedValueOnce(
+      ok({
+        counts: { done: 1, skipped: 0, failed: 0 },
+        results: [{ productId: ID, outcome: 'done' }],
+      }),
+    );
+    fireEvent.click(screen.getByRole('switch', { name: 'Active' }));
+    await screen.findByText('Turn off Sella rice?');
+    fireEvent.click(inDialog('Turn off Sella rice?', 'Cancel'));
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+
+  it('says so and offers a fresh read when the pause was skipped or failed', async () => {
+    call.mockResolvedValueOnce(ok(live()));
+    mountEdit(true);
+    fireEvent.click(await screen.findByRole('switch', { name: 'Active' }));
+    await screen.findByText('Turn off Sella rice?');
+    call.mockResolvedValueOnce(
+      ok({
+        counts: { done: 0, skipped: 1, failed: 0 },
+        results: [{ productId: ID, outcome: 'skipped', reason: 'product.already-paused' }],
+      }),
+    );
+    fireEvent.click(inDialog('Turn off Sella rice?', 'Turn off'));
+    expect(
+      await screen.findByText(
+        'The product could not be turned on or off. Read it again, then retry.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Active' }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+  });
+
+  it('shows no inactive banner for a draft that carries no pause', async () => {
+    call.mockResolvedValueOnce(ok(ready()));
+    mountEdit(true);
+    await screen.findByLabelText('Title');
+    expect(screen.queryByText('This product is inactive')).toBeNull();
   });
 });
 

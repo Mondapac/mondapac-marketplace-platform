@@ -17,6 +17,8 @@ export interface LeaveLabels {
   /** Closes the dialog and keeps the page (the secondary button, focused). */
   readonly stay: string;
   readonly leave: string;
+  /** The leave button is the red filled one (a form whose edits are lost for good). */
+  readonly destructive?: boolean;
 }
 
 export interface ClickInfo {
@@ -124,7 +126,12 @@ export function useUnsavedChangesGuard(
           <Button ref={stay} variant="secondary" onClick={() => setTarget(null)}>
             {labels.stay}
           </Button>
-          <Button onClick={leave}>{labels.leave}</Button>
+          <Button
+            variant={labels.destructive === true ? 'destructive-solid' : 'primary'}
+            onClick={leave}
+          >
+            {labels.leave}
+          </Button>
         </>
       }
     >
