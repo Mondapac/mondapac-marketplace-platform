@@ -832,7 +832,16 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       const all = JSON.stringify(logLines);
       expect(all).not.toContain(TOKEN);
       expect(all).not.toContain('_secret_');
-      expect(all).not.toMatch(/ctoken_|visa|4242/i);
+      // The card patterns run on what was logged, without the logger's own changing fields: a
+      // millisecond timestamp or a random correlation id can contain "4242" by chance.
+      const logged = JSON.stringify(
+        logLines.map((line) => {
+          const { time, pid, hostname, correlationId, ...rest } = line;
+          void [time, pid, hostname, correlationId];
+          return rest;
+        }),
+      );
+      expect(logged).not.toMatch(/ctoken_|visa|4242/i);
     });
   });
 
