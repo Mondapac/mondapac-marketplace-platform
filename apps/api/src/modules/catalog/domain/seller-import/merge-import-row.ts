@@ -75,7 +75,7 @@ export function mergeImportRow(
   plan: SellerGroupPlan,
   env: MergeEnvironment,
 ): MergedRow {
-  const content: Draft = structuredClone(base.content) as Draft;
+  const content: Draft = structuredClone(base.content);
   const patch = plan.product;
   if (patch !== null) {
     const texts: Draft = isObject(content['texts']) ? { ...content['texts'] } : {};
@@ -201,7 +201,7 @@ export function draftContentOfRevision(revision: RevisionContent): Draft {
     texts,
     categoryIds: [...revision.categoryIds],
     taxCategoryCode: revision.taxCategoryCode,
-    attributeValues: structuredClone(revision.attributeValues) as Draft,
+    attributeValues: structuredClone(revision.attributeValues),
     imageIds: [...revision.imageIds],
     variants,
   };

@@ -2,7 +2,7 @@ import { ok, parseId } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, Result, Temporal } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { SellerIgnoredColumn, SellerImportMode } from '../../domain/seller-import/columns';
-import type { SellerCheckEnvironment, SellerRowIssue } from '../../domain/seller-import/row-check';
+import type { SellerCheckEnvironment } from '../../domain/seller-import/row-check';
 import {
   PHOTO_WINDOW_DAYS,
   type SellerImportJob,
@@ -111,7 +111,7 @@ export function errorLinesOf(rows: readonly SellerRowRecord[]): SellerErrorLine[
   const lines: SellerErrorLine[] = [];
   for (const row of rows) {
     if (row.checkState !== 'error') continue;
-    for (const issue of row.issues as readonly SellerRowIssue[]) {
+    for (const issue of row.issues) {
       if (issue.severity !== 'error') continue;
       lines.push({
         rowNumber: row.rowNumber,

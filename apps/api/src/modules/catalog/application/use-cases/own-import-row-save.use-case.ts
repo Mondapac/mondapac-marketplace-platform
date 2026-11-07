@@ -147,7 +147,7 @@ export class OwnImportRowSave extends UseCase<
           if (revision !== null) content = draftContentOfRevision(revision.content);
         }
         return ok({
-          typeCode: product.state.typeCode as string,
+          typeCode: product.state.typeCode,
           content: content ?? {},
           liveVariantIds: product.liveVariants.map((variant) => variant.id as string),
         });

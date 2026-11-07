@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import {
   UseCase,
   type AccessDeclaration,
@@ -210,7 +210,7 @@ export class OwnImportAddPhoto extends UseCase<
           );
           if (revision !== null) content = draftContentOfRevision(revision.content);
         }
-        return ok({ content, variantIds: product.liveVariants.map((v) => v.id as Id<'Variant'>) });
+        return ok({ content, variantIds: product.liveVariants.map((v) => v.id) });
       },
       { readOnly: true },
     );
