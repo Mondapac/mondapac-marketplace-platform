@@ -17,7 +17,7 @@ import type { CatalogMarketPolicy } from '../../src/modules/catalog/application/
 import { FreezeRevision } from '../../src/modules/catalog/application/revisions/freeze-revision.service';
 import { SubmitProduct } from '../../src/modules/catalog/application/revisions/submit-product.service';
 import { OwnOfferAddTag } from '../../src/modules/catalog/application/use-cases/own-offer-add-tag.use-case';
-import { ProductRevisionAdminRead } from '../../src/modules/catalog/application/use-cases/product-revision-admin-read.use-case';
+import { ProductRevisionAdminRead } from '../../src/modules/catalog/application/use-cases/revision-review-read.use-case';
 import { ProductRevisionApprove } from '../../src/modules/catalog/application/use-cases/product-revision-approve.use-case';
 import { ProductRevisionRequestChanges } from '../../src/modules/catalog/application/use-cases/product-revision-request-changes.use-case';
 import { Product } from '../../src/modules/catalog/domain/product';

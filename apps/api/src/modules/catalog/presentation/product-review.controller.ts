@@ -35,7 +35,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
-import { ProductRevisionAdminRead } from '../application/use-cases/product-revision-admin-read.use-case';
+import { ProductRevisionAdminRead } from '../application/use-cases/revision-review-read.use-case';
 import { ProductRevisionApprove } from '../application/use-cases/product-revision-approve.use-case';
 import { ProductRevisionRequestChanges } from '../application/use-cases/product-revision-request-changes.use-case';
 import { closedBody, refusalWith } from './http-answers';

@@ -53,7 +53,7 @@ import { SELLER_ELIGIBILITY_READER } from './application/ports/seller-eligibilit
 import { SELLER_NAMES_READER } from './application/ports/seller-names.reader';
 import { ProductRevisionApprove } from './application/use-cases/product-revision-approve.use-case';
 import { ProductRevisionRequestChanges } from './application/use-cases/product-revision-request-changes.use-case';
-import { ProductRevisionAdminRead } from './application/use-cases/product-revision-admin-read.use-case';
+import { ProductRevisionAdminRead } from './application/use-cases/revision-review-read.use-case';
 import { ProductReviewController } from './presentation/product-review.controller';
 import { OwnOfferCreateOnPlatformProduct } from './application/use-cases/own-offer-create-on-platform-product.use-case';
 import { OfferApprove } from './application/use-cases/offer-approve.use-case';
