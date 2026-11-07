@@ -43,8 +43,6 @@ const price = (id: string, amount: string): VariantPrice => ({
 const row = (id: string, label: string, amount: string, onHand: number): TableRow => ({
   variantId: id,
   label,
-  variantSku: '',
-  selling: true,
   price: price(id, amount),
   stock: { s1: { variantId: id, sourceId: 's1', onHand, held: 0, version: 5, retired: false } },
 });

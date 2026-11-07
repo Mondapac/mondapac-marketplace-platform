@@ -72,8 +72,8 @@ export function fileModelOf({
         variant.state === 'retired' || variant.state === 'proposed' ? variant.state : 'published',
       options: optionsOf(variant.variantId),
       gtin: typeof gtin === 'string' ? gtin : '',
-      variantSku: row?.variantSku ?? '',
-      selling: row?.selling ?? true,
+      variantSku: row?.unit?.variantSku ?? '',
+      selling: row?.unit?.selling ?? true,
       price: row?.price?.inForce?.amount ?? null,
       stock: Object.fromEntries(
         Object.entries(row?.stock ?? {}).flatMap(([sourceId, cell]) =>

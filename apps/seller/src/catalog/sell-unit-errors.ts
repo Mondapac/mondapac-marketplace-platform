@@ -1,43 +1,26 @@
-// The message key (under `catalog.variants-table.sell-units.error`) of a refused
-// `own-offer.set-sell-units` call.
+import type { ApiFailure } from '../api/client.ts';
+
 const BY_CODE: Readonly<Record<string, string>> = {
   'offer.sku-taken': 'sku-taken',
   'offer.none-selling': 'none-selling',
-  'validation.failed': 'invalid',
-  'conflict.stale': 'stale',
   'offer.not-found': 'not-found',
+  'conflict.stale': 'stale',
+  'request.throttled': 'throttled',
+  'request.csrf': 'csrf',
   'access.denied': 'denied',
   'seller.not-eligible': 'not-eligible',
-  'request.csrf': 'csrf',
 };
 
-export function sellUnitProblemOf(code: string): string {
-  return BY_CODE[code] ?? 'unknown';
+/** The message key (under `catalog.variants-table.units.error`) for a failed sell-units write. */
+export function unitProblemOf(failure: ApiFailure): string {
+  const named = BY_CODE[failure.code];
+  if (named !== undefined) return named;
+  if (failure.code === 'validation.failed') return 'invalid';
+  return failure.status === 503 || failure.status === 0 ? 'unavailable' : 'unknown';
 }
 
-/**
- * Where a refused `set-sell-units` call points and what to say. A field path is `units.<variantId>`
- * or `units.<index>[.field]` (the index counts the units that were sent); a path that names no sent
- * variant has no cell, so `variantId` is null and the message goes to the banner.
- */
-export function sellUnitFailureOf(
-  failure: {
-    readonly code: string;
-    readonly details?: { readonly fields?: readonly { path: string; code: string }[] };
-  },
-  sent: readonly string[],
-): { readonly variantId: string | null; readonly problem: string } {
-  const field = failure.details?.fields?.[0];
-  if (failure.code !== 'validation.failed' || field === undefined) {
-    return { variantId: null, problem: sellUnitProblemOf(failure.code) };
-  }
-  const problem = field.code === 'duplicate' ? 'duplicate' : 'invalid';
-  const segment = /^units\.([^.]+)/.exec(field.path)?.[1];
-  const variantId =
-    segment === undefined
-      ? null
-      : /^\d+$/.test(segment)
-        ? (sent[Number(segment)] ?? null)
-        : (sent.find((id) => id === segment) ?? null);
-  return { variantId, problem };
+/** The variant a refused field names (`units.<variantId>[.field]`), when the path has one. */
+export function variantOfPath(path: string, variantIds: readonly string[]): string | null {
+  const [head, id] = path.split('.');
+  return head === 'units' && id !== undefined && variantIds.includes(id) ? id : null;
 }

@@ -19,7 +19,7 @@ describe('admin nav: Content', () => {
 
 describe('admin nav: Catalogue', () => {
   it('shows Products for catalog.product.view, with the package icon, in the catalogue group', () => {
-    expect(ids(['catalog.product.view'])).toEqual(['home', 'products', 'offer-reviews']);
+    expect(ids(['catalog.product.view'])).toEqual(['home', 'products', 'review-queue']);
     const item = adminNav.items.find((entry) => entry.id === 'products');
     expect(item).toMatchObject({
       icon: 'package',
@@ -53,9 +53,9 @@ describe('admin nav: Catalogue', () => {
     ]);
   });
 
-  it('is hidden without the key, and the Offer reviews item stays in Reviews', () => {
+  it('is hidden without the key, and the Review queue item stays in Reviews', () => {
     expect(ids(['catalog.product.approve'])).not.toContain('products');
-    expect(adminNav.items.find((entry) => entry.id === 'offer-reviews')?.group).toBe('reviews');
+    expect(adminNav.items.find((entry) => entry.id === 'review-queue')?.group).toBe('reviews');
   });
 });
 
@@ -108,7 +108,7 @@ describe('admin nav: daily work only', () => {
       'variants',
       'brands',
       'business-activities',
-      'offer-reviews',
+      'review-queue',
       'review-moderation',
       'price-holds',
       'content',

@@ -150,6 +150,27 @@ export interface OfferView {
   }[];
 }
 
+/** One sell unit (variant) of an offer: `GET catalog/seller/offers/:id/sell-units` -> `units`. */
+export interface SellUnitView {
+  readonly variantId: string;
+  readonly variantNo: number;
+  readonly variantCode: string;
+  readonly state: 'proposed' | 'published';
+  /** The published variant label in the Market's default locale, else null. */
+  readonly label: string | null;
+  readonly selling: boolean;
+  readonly variantSku: string | null;
+  /** What exports and invoices show: the variant SKU, else `{sellerSku}-{variantNo}`. */
+  readonly displaySku: string;
+}
+
+/** `GET catalog/seller/offers/:id/sell-units`. */
+export interface OfferSellUnitsView {
+  readonly productScope: 'PLATFORM' | 'SELLER';
+  readonly sellerSku: string;
+  readonly units: readonly SellUnitView[];
+}
+
 /** `GET catalog/seller/products/options`: what the create form offers. */
 export interface ProductOptions {
   readonly productTypes: readonly string[];

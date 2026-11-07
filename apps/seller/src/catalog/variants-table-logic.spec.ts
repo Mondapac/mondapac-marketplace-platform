@@ -21,8 +21,6 @@ const price = (amount: string | null, retired = false): VariantPrice => ({
 const row = (id: string, amount: string | null, onHand?: number, retired = false): TableRow => ({
   variantId: id,
   label: id,
-  variantSku: '',
-  selling: true,
   price: price(amount, retired),
   stock:
     onHand === undefined

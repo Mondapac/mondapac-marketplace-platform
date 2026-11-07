@@ -36,8 +36,6 @@ const rows: TableRow[] = [
   {
     variantId: 'v1',
     label: 'One',
-    variantSku: '',
-    selling: true,
     price: { inForce: { amount: '1500' } } as TableRow['price'],
     stock: {
       s1: { variantId: 'v1', sourceId: 's1', onHand: 3, held: 1, version: 2, retired: false },

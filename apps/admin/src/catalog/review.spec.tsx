@@ -167,7 +167,7 @@ describe('reviewProblemOf and nav', () => {
   });
   it('shows the nav item only with catalog.product.view', () => {
     const ids = (keys: string[]) => visibleNavItems(adminNav, new Set(keys)).map((i) => i.id);
-    expect(ids(['catalog.product.view'])).toContain('offer-reviews');
-    expect(ids([])).not.toContain('offer-reviews');
+    expect(ids(['catalog.product.view'])).toContain('review-queue');
+    expect(ids([])).not.toContain('review-queue');
   });
 });

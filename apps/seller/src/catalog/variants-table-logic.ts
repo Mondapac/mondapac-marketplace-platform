@@ -1,7 +1,7 @@
 import { inputOf, minorOf } from '../price/money.ts';
 import type { VariantPrice } from '../price/types.ts';
 import type { StockCell } from '../stock/levels-types.ts';
-import { VARIANT_SKU } from './variant-file.ts';
+import type { SellUnitView } from './types.ts';
 
 // The pure half of the offer's variants table (variants V3b): the draft values of a bulk action
 // and the writes a save has to send. Money stays in minor units as exact integers.
@@ -30,10 +30,8 @@ export interface TableRow {
   readonly price: VariantPrice | null;
   /** Stock cell per location id. */
   readonly stock: Readonly<Record<string, StockCell | undefined>>;
-  /** The variant SKU of the sell unit (V5); empty when it has none. */
-  readonly variantSku: string;
-  /** The sell unit is on sale. */
-  readonly selling: boolean;
+  /** The variant's sell unit (SKU and Selling); null or missing when the page did not read one. */
+  readonly unit?: SellUnitView | null;
 }
 
 export const stockKey = (variantId: string, sourceId: string): string => `${variantId}:${sourceId}`;
@@ -59,19 +57,12 @@ export interface StockWrite {
   readonly sourceId: string;
   readonly onHand: number;
 }
-/** One sell unit's change; sent with the others in a single `set-sell-units` call. */
-export interface SellUnitWrite {
-  readonly kind: 'sellUnit';
-  readonly variantId: string;
-  readonly variantSku?: string;
-  readonly selling?: boolean;
-}
-export type Write = PriceWrite | StockWrite | SellUnitWrite;
+export type Write = PriceWrite | StockWrite;
 
 /** A line a save cannot send because its text is not a valid value. */
 export interface Invalid {
   readonly key: string;
-  readonly kind: 'price' | 'stock' | 'sku';
+  readonly kind: 'price' | 'stock';
 }
 
 const WHOLE = /^\d{1,7}$/;
@@ -87,8 +78,6 @@ export function writesOf(
   currency: string,
   priceDrafts: Readonly<Record<string, string>>,
   stockDrafts: Readonly<Record<string, string>>,
-  skuDrafts: Readonly<Record<string, string>> = {},
-  sellingDrafts: Readonly<Record<string, boolean>> = {},
 ): { readonly writes: Write[]; readonly invalid: Invalid[] } {
   const writes: Write[] = [];
   const invalid: Invalid[] = [];
@@ -101,18 +90,6 @@ export function writesOf(
       // "10" for a saved "10.00" is the same price: nothing to send.
       else if (String(amount) !== String(row.price?.inForce?.amount ?? ''))
         writes.push({ kind: 'price', variantId: row.variantId, amount });
-    }
-    const sku = skuDrafts[row.variantId]?.trim();
-    const selling = sellingDrafts[row.variantId];
-    const skuChanged = sku !== undefined && sku !== '' && sku !== row.variantSku;
-    if (skuChanged && !VARIANT_SKU.test(sku)) invalid.push({ key: row.variantId, kind: 'sku' });
-    else if (skuChanged || (selling !== undefined && selling !== row.selling)) {
-      writes.push({
-        kind: 'sellUnit',
-        variantId: row.variantId,
-        ...(skuChanged ? { variantSku: sku } : {}),
-        ...(selling !== undefined && selling !== row.selling ? { selling } : {}),
-      });
     }
     for (const source of sources) {
       const key = stockKey(row.variantId, source.id);

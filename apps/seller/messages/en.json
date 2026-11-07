@@ -1265,23 +1265,33 @@
       "partial": "Saved {done}, {failed} could not be saved. The cells that failed show why.",
       "throttled": "Too many changes at once. Saved {done}; the rest are kept as drafts. Press Save again in {minutes, plural, one {# minute} other {# minutes}}.",
       "throttled-cell": "Not saved yet: too many changes at once. Try again shortly.",
-      "sell-units": {
-        "sku": "Variant SKU",
-        "selling": "Selling",
+      "units": {
+        "sku": "SKU",
+        "selling": "On sale",
         "sku-for": "SKU for {variant}",
-        "selling-for": "Selling: {variant}",
+        "selling-for": "On sale: {variant}",
+        "off-sale": "Off sale",
+        "sizes": "Sizes you sell",
+        "sizes-help": "Untick a size to take it off sale. You keep its price and stock and can put it back any time.",
+        "last-hint": "At least one size must stay on sale.",
+        "sku-help": "Empty SKU uses your offer SKU plus the variant number, e.g. {example}.",
         "error": {
-          "invalid": "Use 1 to 64 letters, digits or symbols, with no spaces.",
-          "duplicate": "Two variants have the same SKU. Each variant needs its own.",
-          "sku-taken": "That SKU is already used by another variant or offer of yours. Nothing in this group was saved.",
-          "none-selling": "At least one variant must keep selling. The Selling changes were not saved.",
-          "stale": "This offer changed meanwhile. Reload the page and try again.",
-          "not-found": "This offer no longer exists.",
-          "denied": "Your role can’t change variant SKUs or Selling.",
-          "not-eligible": "Your account can’t change offers right now.",
+          "format": "Use 1 to 64 letters, digits or symbols, with no spaces.",
+          "duplicate": "This SKU is typed on more than one variant. Each SKU must be different.",
+          "sku-taken": "You already use this SKU. Pick a different one.",
+          "sku-taken-table": "One of the SKUs you entered is already in use. Check the fields marked below.",
+          "none-selling": "At least one size must stay on sale. Turn one on before you save.",
+          "invalid": "The SKU or Selling changes were not accepted. Check the SKU fields and try again.",
+          "stale": "The sizes changed somewhere else. Reload the page and try again.",
+          "not-found": "This offer was not found. Reload the page.",
+          "denied": "You don't have permission to change SKUs or what you sell.",
+          "not-eligible": "Your seller account can't change this right now.",
           "csrf": "Your session expired. Reload the page and try again.",
-          "unknown": "The SKU and Selling changes could not be saved. Try again."
-        }
+          "unavailable": "SKUs and Selling are unavailable right now. Try again later.",
+          "unknown": "Something went wrong. Try again.",
+          "sku-maybe": "You may already use this SKU. Change it if so."
+        },
+        "reload": "Reload"
       },
       "file": {
         "export": "Export CSV",
