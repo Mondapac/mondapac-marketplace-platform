@@ -238,8 +238,9 @@ jobs:
         env:
           MIGRATION_DATABASE_URL: postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac
 
-  # The tests of every workspace package except the API (`pnpm test:packages`: admin, seller, web,
-  # ui, panel-server, shared-kernel), the rest of `pnpm test`. Same environment as the verify job.
+  # The tests of every workspace package except the API (`pnpm test:packages`: the admin, seller
+  # and web apps, ui, panel-server, shared-kernel and platform-import), the rest of `pnpm test`.
+  # Same environment as the verify job.
   package-tests:
     name: Package tests (region ${{ matrix.region.name }}, Node ${{ matrix.node.label }})
     runs-on: ubuntu-latest
