@@ -57,7 +57,7 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
 | `product_url_keys` | URL key per Market (CAT-12) | Held / retired keys | 22 (Q-K9) |
 | `attribute_value_suggestions` | A seller's request for a value a select attribute lacks (attributes A5) | One-way status, guard trigger | 30 |
 | `seller_categories`, `seller_category_names`, `category_proposals` | `SellerCategory`, `CategoryProposal` | Roots | 23 |
-| `import_jobs`, `import_job_errors` | `ImportJob` (outline) | Root; errors insert-only | 24 |
+| `seller_import_jobs`, `seller_import_rows`, `seller_import_photos` | The seller import (3.31; replaces the 3.24 outline `import_jobs`, `import_job_errors`) | Job root; rows and photos cascade | 24 (domain 14c) |
 | `ai_listing_suggestions`, `ai_claim_flags` | AIS-03, AIA-03 (outline) | Purged with the draft; insert-only | 25, 26 |
 | `saved_filters` | A named saved view of an admin list (3.28) | Preference; physical delete | Catalogue > Products |
 | `platform_import_jobs`, `platform_import_rows` | The admin import of PLATFORM products and one result per data row (3.29) | Job root; rows cascade | Catalogue > Products |
@@ -83,7 +83,7 @@ D 2.2). A catalog test of `pnpm test:db` fails if any column of schema `catalog`
            |--< offer_history          |--< offer_publication_decisions
            |--< offer_tags --< offer_tag_history
  tag_reevaluation_requests, claim_text_rescans, rate_counters, product_url_keys,
- category_proposals, import_jobs --< import_job_errors, ai_*, outbox, inbox
+ category_proposals, seller_import_jobs --< seller_import_rows, seller_import_photos, ai_*, outbox, inbox
 ```
 
 Every table carries `market_id` and `tenant_id`. No table holds money: ADR-0007 has nothing to apply
@@ -102,7 +102,7 @@ same-parent FKs carry the discriminating column (CE4); contract enums keep the d
 
 | # | Convention |
 |---|---|
-| CA1 | **Version (PM5, D 2.1).** Every root of D 2.1 has `version integer NOT NULL` CHECK `>= 1`: `products`, `offers`, `platform_categories`, `attribute_definitions`, `attribute_families`, `seller_categories`, `category_proposals`, `product_images`, `import_jobs`. Entities (variants, working copy, revisions, tags) have none: a change to them raises the root's version (P 10) |
+| CA1 | **Version (PM5, D 2.1).** Every root of D 2.1 has `version integer NOT NULL` CHECK `>= 1`: `products`, `offers`, `platform_categories`, `attribute_definitions`, `attribute_families`, `seller_categories`, `category_proposals`, `product_images`, `seller_import_jobs`. Entities (variants, working copy, revisions, tags) have none: a change to them raises the root's version (P 10) |
 | CA2 | **Model names start with `Catalog`** (C9): `CatalogProduct`, `CatalogOfferTag`, `CatalogOutbox`, with `@@map` |
 | CA3 | **Insert-only tables** (D 11.4, 17.1): revisions and their content children, decisions, Offer history, tag history, publication decisions, revision images, renditions, category and attribute revisions, AI claim flags (relaxation requests carry a one-way status, 3.21). The application holds `SELECT, INSERT` only, **and** the CE-data 6.1 triggers refuse `UPDATE`, `DELETE` (row) and `TRUNCATE` (statement) for every role, the owner included, through one function `catalog.reject_mutation()` (5.1). No product, variant or Offer row is ever physically deleted (D 4.1, Q-K2): a discarded draft keeps its product row (`discarded`), its Offer (`deleted`) and its variants (`retired`); only the working copy, the draft image rows and AI suggestions are deleted (10.1) |
 | CA4 | **Codes.** Product type codes, condition codes, tax category codes, review reason codes, review check codes, family and attribute codes are Market or registry configuration: `text` CHECK `^[a-z][a-z0-9_-]{0,63}$` (S8). Certification type codes in tags: the same pattern (a validated vocabulary code, D 19.2 item 10). Locales: the CE-data 3.3 BCP 47 CHECK |
@@ -864,7 +864,10 @@ The SL-data 3.5 shape: `id`; `url_key text COLLATE "C"` (pattern of slugs, 2 to 
 `(market_id, product_id) WHERE state = 'held'`; `version`; `created_at`, `retired_at`. A retired key is
 never reused. Migration 14 (slice 22; Q-K9 answered).
 
-### 3.24 Import (slice 24; outline)
+### 3.24 Import (slice 24; outline, superseded by 3.31)
+
+**Superseded (2026-11-07, domain 14c):** the tables below were never migrated; the seller import is
+built on 3.31. Kept for the record.
 
 `import_jobs` (root): `id`; `seller_id`; `started_by_account_id`; `mode` CHECK `my-products`,
 `sell-from-catalogue`; `error_strategy` CHECK `stop`, `skip`; `file_sha256 bytea` (32); `file_object_key`
@@ -900,7 +903,7 @@ module's rate-counter key, fixed window, `count >= 0`, reserve before the work, 
 `draft-save.account.day`, `claim-text-check.account.minute`, `claim-text-check.account.day` (30 and
 1,000, Hassan L6; D 17.1 item 8), `submit.seller.hour`, `photo-upload.seller.day`,
 `search.account.minute`, `import-start.seller.day`, `ai-suggest.seller.day`,
-`reviewer-mail.market.hour`, `platform-import-check.account.hour`, `platform-import-check.account.day`, `platform-import-start.account.day` (domain 14a). The bulk-approve cap of 50 (D 17.1 item 11) and the facade batch
+`reviewer-mail.market.hour`, `platform-import-check.account.hour`, `platform-import-check.account.day`, `platform-import-start.account.day` (domain 14a), `seller-import-check.seller.hour`, `seller-import-check.seller.day`, `import-photo.seller.minute`, `import-photo.seller.day` (domain 14c, 3.31). The bulk-approve cap of 50 (D 17.1 item 11) and the facade batch
 limits are request validation: **no storage**.
 
 ### 3.27 `offer_owner_notices` (certification slice 15; request C-6; Hassan M1, Mojtaba N2)
@@ -1079,6 +1082,73 @@ account, no FK) and `decided_at`; `notice_state`, `notice_attempts` (0 to 10),
 - Reversible: `pnpm db:check-reversible` passes (`down.sql` drops the trigger functions and the
   table).
 
+### 3.31 `seller_import_jobs`, `seller_import_rows`, `seller_import_photos` (seller Import; domain 14c)
+
+The seller import of 14 as built by domain 14c. It **replaces the outline of 3.24** (`import_jobs`,
+`import_job_errors`, never migrated). Same shape and conventions as 3.29, keyed by seller. One
+migration `<timestamp>_catalog_seller_import` with `down.sql` (drops the three tables and restores the
+`rate_counters` CHECK after deleting the new kinds' rows). `seller_id` has no FK (other schema, ids
+only); `product_id`, `offer_id` and `image_id` have **no FK**, for 3.29's reason (a draft product
+delete, 10.1, and a photo delete must never conflict with a row that remembers what the run did).
+
+- `seller_import_jobs`: `id`, `market_id`, `tenant_id`, `seller_id`, `started_by_account_id`,
+  `started_by_session_id` (the identity `resumeSeller` resumes; no credential), `mode` CHECK
+  (`my-products`, `sell-from-catalogue`), `state` (as 3.29: `checked`, `queued`, `running`,
+  `finished`, `stopped`, `discarded`), `format` (`csv`, `xlsx`), `file_label`, `file_key`
+  (`catalog/seller-imports/<MARKET>/<id>`, built by code), `file_sha256` (32 bytes), `file_bytes`
+  (1 to 10,485,760), `file_deleted_at`, `total_rows` (1 to 5,000), `ready_rows`, `error_rows`,
+  `warning_rows` (`ready + error = total`), `group_count` (1 to `total_rows`), `ignored_columns`
+  (jsonb: header and a mark `certification`, `elsewhere` or none), `skip_errors`, `to_import` (set
+  together at the start), `created_rows`, `updated_rows`, `unchanged_rows`, `failed_rows` (CHECK
+  `>= 0`), `stop_reason` CHECK (`rate-limited`, `access-lost`, `seller-not-eligible`, `file-missing`,
+  `unexpected`; set exactly when `stopped`), `not_before` (only on `queued`), `lease_until` (exactly
+  when `running`), `version`, `created_at`, `checked_at`, `started_at`, `finished_at` (exactly when
+  `finished` or `discarded`). No price, cost or stock column (the "no money or stock column" name
+  test of section 1 covers these tables).
+- `seller_import_rows`: PK `(market_id, job_id, row_number)` (as 3.29), `tenant_id`,
+  `group_row` (the row number of its group's first row, `<= row_number`), `check_state` (`ready`,
+  `error`), `plan` (`create`, `update`; NULL iff `error`), `issues` (jsonb array, at most 12, as
+  3.29), `summary` (jsonb object: SKU, title, product code, type and option labels, each cut and
+  cleaned as 3.29; **never an ignored or price cell**), `run_state` (`pending`, `created`,
+  `updated`, `unchanged`, `failed`, `skipped`), `run_code`, `product_id`, `offer_id`,
+  `product_code` (set the moment the product or Offer exists, on every row of the group in one
+  statement). CHECK: `run_state IN ('created','updated','unchanged')` implies `offer_id IS NOT
+  NULL`. Composite FK to the job, `ON DELETE CASCADE`.
+- `seller_import_photos`: PK `(market_id, job_id, name_key)` (`name_key` the cleaned label in lower
+  case, 1 to 80 characters), `tenant_id`, `product_id`, `image_id`, `added_at`. Insert-only: one
+  row per photo added by the photo step (the `import.photo-already-added` guard and the per-job
+  count). Composite FK to the job, `ON DELETE CASCADE`. No bytes and no object key: the photo is an
+  ordinary `product_images` row (3.19).
+- Indexes: unique `(market_id, id)`; `seller_import_jobs_market_id_seller_created_at_idx (market_id,
+  seller_id, created_at DESC)` (the seller's list and latest job); `seller_import_jobs_market_id_account_created_at_idx
+  (market_id, started_by_account_id, created_at DESC)`; partial unique
+  `seller_import_jobs_market_id_seller_running_key (market_id, seller_id) WHERE state IN
+  ('queued','running')` (one running import per seller; it also serialises two starts, so the daily
+  row sum is read under it); partial unique `seller_import_jobs_market_id_account_checked_key
+  (market_id, started_by_account_id) WHERE state = 'checked'` (one unconfirmed check per account,
+  enforced by the database and not only by the discard in the check's unit; Mojtaba M1);
+  `seller_import_jobs_market_id_seller_started_at_idx (market_id, seller_id, started_at) WHERE
+  started_at IS NOT NULL` (the 24-hour sum of `to_import`, at most 5 starts a day, so a few rows;
+  Mojtaba M2); `seller_import_jobs_market_id_queue_idx` and `..._file_purge_idx` as 3.29. Rows are
+  read by primary-key range, as 3.29.
+- Grants (app role): `SELECT, INSERT, DELETE` on the three tables; `UPDATE` on jobs only `(state,
+  file_deleted_at, skip_errors, to_import, created_rows, updated_rows, unchanged_rows, failed_rows,
+  stop_reason, not_before, lease_until, version, started_at, finished_at)` and on rows only
+  `(run_state, run_code, product_id, offer_id, product_code)`; none on photos. No `TRUNCATE`.
+- `rate_counters` kinds `seller-import-check.seller.hour`, `seller-import-check.seller.day`,
+  `import-photo.seller.minute`, `import-photo.seller.day` join the CHECK (`import-start.seller.day`
+  is already there).
+- Growth and retention (Mojtaba M4). About 500 bytes a row (3.29's measure). The daily cap of
+  10,000 rows per seller and the 90-day retention bound one seller at about 900,000 rows (about
+  450 MB) in the worst case, and only for a seller who really imports that much every day; an
+  unconfirmed check is at most one per account and is deleted as soon as its file is gone (7 days,
+  or at once when discarded or replaced). Photos rows: at most 2,000 a day per seller, tens of
+  bytes each. The purge `catalog.purge-seller-imports` works in units of 5 jobs within 30 s
+  (10.3, 10.4).
+- `seller_import_photos` is not on the insert-only trigger list (5.1): the purge removes it by the
+  job's cascade, and the missing `UPDATE` grant is its guard (Mojtaba M5).
+- Reversible: `pnpm db:check-reversible` passes (up, down newest-first, up, no drift).
+
 ## 4. What is never stored
 
 | Never | Instead |
@@ -1131,7 +1201,7 @@ Insert-only tables: `platform_category_revisions`, `platform_category_revision_n
 `product_revision_categories`, `product_revision_variants`, `product_revision_images`,
 `product_revision_decisions`, `offer_history`, `offer_tag_history`, `offer_publication_decisions`,
 `product_image_renditions`,
-`import_job_errors`, `ai_claim_flags`.
+`ai_claim_flags`.
 
 Other trigger functions (no grant, platform.md 10.2). **Rules for every catalog function** (Ali's
 Q-K8 ruling, applied to all of them): `SECURITY INVOKER`; `SET search_path = pg_catalog, pg_temp` on
@@ -1396,7 +1466,9 @@ No sequence; no function gets a grant.
 | `seller_category_names` | `SELECT, INSERT, UPDATE, DELETE` | 23 | Mutable names |
 | `attribute_relaxation_requests` | `SELECT, INSERT`, `UPDATE (status, confirmed_by_account_id, closed_at, cancel_reason, version)` | Never (the guard refuses it) | One-way status (3.21) |
 | `product_url_keys` | `SELECT, INSERT`, `UPDATE (state, retired_at, version)` | 22 (never-public keys, SL-data 3.5) | |
-| `import_jobs` | `SELECT, INSERT, UPDATE` | 24 (retention) | |
+| `seller_import_jobs` | `SELECT, INSERT, DELETE`, `UPDATE (state, file_deleted_at, skip_errors, to_import, created_rows, updated_rows, unchanged_rows, failed_rows, stop_reason, not_before, lease_until, version, started_at, finished_at)` | Purge (10.3, 10.4), as `platform_import_jobs` | Seller import (3.31) |
+| `seller_import_rows` | `SELECT, INSERT, DELETE`, `UPDATE (run_state, run_code, product_id, offer_id, product_code)` | With the job (cascade) | Seller import (3.31); the check result never changes |
+| `seller_import_photos` | `SELECT, INSERT, DELETE` | With the job (cascade) | Seller import (3.31) |
 | `ai_listing_suggestions` | `SELECT, INSERT, DELETE` | 25 | Purged with the draft |
 | `rate_counters` | `SELECT, INSERT, UPDATE, DELETE` | 4 | Counters |
 | `platform_category_revision_texts`, `platform_category_slug_history` | `SELECT, INSERT` | Never | Categories C2; insert-only (CA3) |
@@ -1450,7 +1522,7 @@ seller's category (`23503`), and a child row in the other Market (PM6, `23503`).
 | 13 | 21 | `catalog_attribute_relaxation` | `attribute_relaxation_requests` with its CHECKs, the two FK-target uniques, the status index, the open partial unique and the guard trigger; `attribute_definitions.archived_by_request_id` with its FK, unique and CHECK; the same-definition and same-family FKs from the revisions' `relaxation_request_id` and their uniques (`NOT VALID`, then `VALIDATE`); `relaxation_confirmed()` and the three M2 triggers. `down.sql`: drop the M2 triggers and functions, the FKs, uniques and the root column, then the guard trigger, its function and the table. **Built in part (2026-11-02, attributes A2 part 3, `20261102200000_catalog_attribute_relaxation`):** the table with every CHECK, the definition FK-target unique, the status index, the open partial unique, the guard and TRUNCATE triggers, the revisions' same-definition FK and its unique, `relaxation_confirmed()` and the definition-revision M2 trigger (a draft clears `material` freely; the clearing revision's author must be the confirmer). After the A2 reviews (Mojtaba M1 and M2, Hassan M1 to M3): the guard also runs on INSERT and admits only an `open` row at version 1; `attribute_definitions_guard` refuses any status move into `draft` or out of `archived` and any move of `published_revision_id` to a lower `revision_no` or to NULL. The status index is named `attribute_relaxation_requests_market_id_status_expires_at_idx`. `archived_by_request_id`, the same-family FK-target unique and FK, and the archive and family M2 triggers come with the use cases that archive a published definition and change a family's members |
 | 14 | 22 | `catalog_url_keys` | `product_url_keys` (Q-K9) |
 | 15 | 23 | `catalog_seller_categories` | The tables of 3.22; `offers.shelf_category_id` and its FK (`NOT VALID`, `VALIDATE`) |
-| 16 | 24 | `catalog_import` | 3.24 |
+| 16 | 24 | `catalog_seller_import` | 3.31 (replaces the 3.24 outline; domain 14c) |
 | 17 | 25, 26 | `catalog_ai_listing`, `catalog_ai_claim_flags` | 3.25 |
 
 **As built in migration 5** (`20261009030000_catalog_offers`, Mojtaba 2026-10-09): (a) the Offer
@@ -1604,7 +1676,8 @@ may run in the file. The categories C2 migration is that case (six seed rows); i
   `tag_reevaluation_requests_market_id_created_at_pending_idx`,
   `product_images_market_id_created_at_raw_idx`, `attribute_relaxation_requests_open_definition_key`,
   `category_proposals_market_id_seller_id_pending_idx`,
-  `category_proposals_market_id_created_at_pending_idx`, `import_jobs_market_id_seller_id_running_key`,
+  `category_proposals_market_id_created_at_pending_idx`, `seller_import_jobs_market_id_seller_running_key`,
+  `seller_import_jobs_market_id_account_checked_key`, `seller_import_jobs_market_id_seller_started_at_idx` (3.31),
   `saved_filters_shared_name_key` (3.28), `platform_import_jobs_market_id_account_running_key`,
   `platform_import_jobs_market_id_queue_idx`, `platform_import_jobs_market_id_file_purge_idx` (3.29),
   `product_url_keys_market_id_product_id_held_key`, `outbox_market_id_event_id_unpublished_idx`,
@@ -1674,6 +1747,7 @@ delete and the sweep both fail.
 | Abandoned drafts | `catalog.prune-abandoned-drafts`, 180 days (10.1, 10.4) |
 | Platform import files | `catalog.purge-platform-imports`: 7 days after the check (a discarded job's file at once; never while queued or running) |
 | Platform import jobs and rows | Same job: a discarded or unconfirmed check as soon as its file is gone; finished and stopped jobs 90 days after creation. Units of 5 jobs, looped within 30 s (3.29) |
+| Seller import files, jobs, rows and photo rows | `catalog.purge-seller-imports`, the same rules as the platform import (3.31) |
 
 ### 10.4 Jobs
 
@@ -1687,6 +1761,8 @@ delete and the sweep both fail.
 | `catalog.purge-expired` | Hourly | `1158342076693420958` | 10.3 |
 | `catalog.prune-abandoned-drafts` | Daily, per hosted Market | `8836021957413306627` | A22, 10.1: one product per unit, keyset by `(last_saved_at, product_id)` |
 | `catalog.purge-platform-imports` | Hourly, per hosted Market | `-5101961643104699775` (`jobLockKey`) | 10.3, 3.29: files by retention, discarded checks at once, finished and stopped jobs after 90 days; units of 5 jobs within a 30 s budget |
+| `catalog.run-seller-imports` | 5 s, per hosted Market | none (a claimed job with a lease, as the platform import run) | Domain 14c: one job's turn, as the seller who started it |
+| `catalog.purge-seller-imports` | Hourly, per hosted Market | a new `jobLockKey` (the registered-keys test) | 10.3, 3.31 |
 | `catalog.expire-relaxation-requests` | 15 min, per hosted Market | `5307714682290153049` | A21: each `open` row past `expires_at` → `expired` in its own unit (expected `version`), audit and `catalog.material-request-expired.v1` |
 
 None equals Prisma Migrate's `72707369` or a key of identity, sellers or certification (a test
