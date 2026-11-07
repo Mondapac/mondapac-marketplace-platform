@@ -42,6 +42,11 @@ export function categoryIdsOf(content: Readonly<Record<string, unknown>> | undef
   return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : [];
 }
 
+export function imageIdsOf(content: Readonly<Record<string, unknown>> | undefined): string[] {
+  const raw = content?.['imageIds'];
+  return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : [];
+}
+
 export function taxCategoryOf(content: Readonly<Record<string, unknown>> | undefined): string {
   const raw = content?.['taxCategoryCode'];
   return typeof raw === 'string' ? raw : '';

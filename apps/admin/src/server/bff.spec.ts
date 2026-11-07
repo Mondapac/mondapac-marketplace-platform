@@ -1825,6 +1825,54 @@ describe('relay of the product list', () => {
       }
     });
 
+    it('relays the pictures: list, add, thumbnail, medium and removal, with a larger body for the add only', async () => {
+      const images = `catalog/admin/platform-products/${id}/images`;
+      const imageId = '0190a000-0000-7000-8000-0000000000f1';
+      for (const [method, path] of [
+        ['GET', images],
+        ['POST', images],
+        ['GET', `${images}/${imageId}/thumb`],
+        ['GET', `${images}/${imageId}/medium`],
+        ['DELETE', `${images}/${imageId}`],
+      ] as const) {
+        const ok = upstreamOk();
+        expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+        expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+      }
+      const large = JSON.stringify({ data: 'A'.repeat(5 * 1024 * 1024) });
+      const post = (path: string, body: string) =>
+        new Request(`http://admin.localhost:3002/api/${path}`, {
+          method: 'POST',
+          headers: sameOrigin,
+          body,
+        });
+      const upstream = upstreamOk();
+      expect((await relay(config, post(images, large), images.split('/'), upstream)).status).toBe(
+        200,
+      );
+      const tooLarge = JSON.stringify({ data: 'A'.repeat(6 * 1024 * 1024) });
+      expect(
+        (await relay(config, post(images, tooLarge), images.split('/'), upstream)).status,
+      ).toBe(413);
+      const discard = `catalog/admin/platform-products/${id}/discard`;
+      expect((await relay(config, post(discard, large), discard.split('/'), upstream)).status).toBe(
+        413,
+      );
+      for (const [method, path] of [
+        ['PUT', images],
+        ['DELETE', images],
+        ['POST', `${images}/${imageId}`],
+        ['GET', `${images}/${imageId}/large`],
+        ['GET', `${images}/not-a-uuid/thumb`],
+        ['PUT', `${images}/${imageId}`],
+      ] as const) {
+        const fetchImpl = upstreamOk();
+        const response = await relay(config, request(method, path), path.split('/'), fetchImpl);
+        expect(response.status, `${method} ${path}`).toBe(404);
+        expect(fetchImpl).not.toHaveBeenCalled();
+      }
+    });
+
     it('refuses other methods, other shapes of id and other paths', async () => {
       for (const [method, path] of [
         ['GET', 'catalog/admin/platform-products'],

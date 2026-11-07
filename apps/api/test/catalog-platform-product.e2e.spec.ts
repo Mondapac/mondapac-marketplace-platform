@@ -1,12 +1,24 @@
+import { randomBytes } from 'node:crypto';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
+import sharp from 'sharp';
 import { PLATFORM_PRODUCT_STATUS } from '../src/modules/catalog/presentation/platform-product.controller';
 import { SaveDraft } from '../src/modules/catalog/application/working-copy/save-draft.service';
 import { SubmitProduct } from '../src/modules/catalog/application/revisions/submit-product.service';
 import { ATTRIBUTE_REPOSITORY } from '../src/modules/catalog/application/ports/attribute.repository';
+import { IMAGE_PROCESSOR } from '../src/modules/catalog/application/ports/image-processor';
+import { SharpImageProcessor } from '../src/modules/catalog/infrastructure/sharp-image-processor';
+import { PRODUCT_IMAGE_REPOSITORY } from '../src/modules/catalog/application/ports/product-image.repository';
+import type {
+  ProductImage,
+  ProductImageRepository,
+} from '../src/modules/catalog/application/ports/product-image.repository';
+import { SaveWorkingCopy } from '../src/modules/catalog/application/working-copy/save-working-copy.service';
+import { MemoryObjectStore } from '../src/platform/storage/disk-object-store';
+import { OBJECT_STORE } from '../src/platform/storage/object-store';
 import { OWN_CATALOG_READER } from '../src/modules/catalog/application/ports/own-catalog.reader';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
 import { PRODUCT_REVISION_REPOSITORY } from '../src/modules/catalog/application/ports/product-revision.repository';
@@ -48,6 +60,41 @@ const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 let clock: FixedClock;
 
+class MemoryImages implements ProductImageRepository {
+  readonly rows: ProductImage[] = [];
+  add(_m: unknown, image: ProductImage) {
+    this.rows.push(image);
+    return Promise.resolve();
+  }
+  list() {
+    return Promise.resolve(this.rows);
+  }
+  find(_m: unknown, _p: unknown, imageId: string) {
+    return Promise.resolve(this.rows.find((row) => row.id === imageId) ?? null);
+  }
+  cleanIdsOf() {
+    return Promise.resolve(new Set<string>());
+  }
+  listForRevision() {
+    return Promise.resolve([]);
+  }
+  takeDown() {
+    return Promise.resolve(false);
+  }
+  unreferencedObjectKeys() {
+    return Promise.resolve([]);
+  }
+  listUnattached() {
+    return Promise.resolve([]);
+  }
+  deleteUnused(_m: unknown, _p: unknown, imageId: string) {
+    const index = this.rows.findIndex((row) => row.id === imageId);
+    if (index < 0) return Promise.resolve(false);
+    this.rows.splice(index, 1);
+    return Promise.resolve(true);
+  }
+}
+
 describe('platform product routes over HTTP (integration, slice 6)', () => {
   let app: NestExpressApplication;
   let logLines: LogLine[];
@@ -55,6 +102,8 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
   let schemaSeeded: boolean;
   let saveResult: unknown;
   let submitResult: unknown;
+  let images: MemoryImages;
+  let objects: MemoryObjectStore;
   // Per Market: what the reader counts on the product (the two fixtures differ, so a mix-up shows).
   let offerTotals: Record<string, { sellerCount: number; offerCount: number }>;
   const http = () => request(app.getHttpServer());
@@ -101,7 +150,15 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
           .overrideProvider(SaveDraft)
           .useValue({ execute: () => Promise.resolve(saveResult) })
           .overrideProvider(SubmitProduct)
-          .useValue({ execute: () => Promise.resolve(submitResult) }),
+          .useValue({ execute: () => Promise.resolve(submitResult) })
+          .overrideProvider(PRODUCT_IMAGE_REPOSITORY)
+          .useValue(images)
+          .overrideProvider(OBJECT_STORE)
+          .useValue(objects)
+          .overrideProvider(IMAGE_PROCESSOR)
+          .useValue(new SharpImageProcessor())
+          .overrideProvider(SaveWorkingCopy)
+          .useValue({ reserveSaves: () => Promise.resolve(null) }),
     }));
   }
 
@@ -180,6 +237,8 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
     fakes.reset();
     clock = new FixedClock(START);
     stored = [];
+    images = new MemoryImages();
+    objects = new MemoryObjectStore();
     offerTotals = {};
     schemaSeeded = true;
     saveResult = ok({ variantIds: [], refusedFields: [], variantNotices: [] });
@@ -349,6 +408,76 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       expect(malformed.status).toBe(404);
       const extra = await send('post', code, `/${productId}/discard`, { force: true }, root);
       expect(extra.status).toBe(400);
+    });
+
+    it('adds, lists, serves and deletes pictures of a platform product, with the larger body on that route only', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionOf(code, ROOT, 1);
+      const viewer = sessionOf(code, VIEWER, 2);
+      const created = await send('post', code, '', { typeCode: 'simple' }, root);
+      const productId = (created.body as { productId: string }).productId;
+      const route = `/catalog/admin/platform-products/${productId}/images`;
+      const call = (method: 'get' | 'post' | 'delete', path: string, headers: object) =>
+        http()
+          [method](path)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...headers });
+      // Noise does not compress, so the base64 body is well past the 64 KiB JSON limit.
+      const data = (
+        await sharp(randomBytes(1600 * 1200 * 3), {
+          raw: { width: 1600, height: 1200, channels: 3 },
+        })
+          .jpeg({ quality: 90 })
+          .toBuffer()
+      ).toString('base64');
+      expect(data.length).toBeGreaterThan(64 * 1024);
+
+      expect((await call('post', route, viewer).send({ data })).status).toBe(403);
+      const noCsrf = { cookie: root.cookie };
+      // Without the CSRF header the pre-filter keeps the 64 KiB parser: a large body is refused
+      // as too large, a small one as a CSRF failure.
+      expect((await call('post', route, noCsrf).send({ data })).status).toBe(413);
+      expect((await call('post', route, noCsrf).send({ data: 'AAAA' })).status).toBe(403);
+      expect((await call('post', route, root).send({ data, extra: 1 })).status).toBe(400);
+      expect(images.rows).toHaveLength(0);
+
+      const added = await call('post', route, root).send({ data });
+      expect(added.status).toBe(201);
+      expect(added.body).toMatchObject({ width: 1600, height: 1200 });
+      const imageId = (added.body as { imageId: string }).imageId;
+
+      const listed = await call('get', route, root);
+      expect((listed.body as { images: unknown[] }).images).toHaveLength(1);
+      expect((await call('get', route, viewer)).status).toBe(403);
+      const served = await call('get', `${route}/${imageId}/thumb`, root);
+      expect(served.status).toBe(200);
+      expect(served.headers['content-type']).toBe('image/jpeg');
+      expect(served.headers['x-content-type-options']).toBe('nosniff');
+      expect(served.headers['content-security-policy']).toContain('sandbox');
+      expect((await call('get', `${route}/${imageId}/huge`, root)).status).toBe(400);
+
+      expect((await call('delete', `${route}/${imageId}`, viewer)).status).toBe(403);
+      const removed = await call('delete', `${route}/${imageId}`, root);
+      expect(removed.status).toBe(200);
+      expect(images.rows).toHaveLength(0);
+      expect((await call('delete', `${route}/${imageId}`, root)).status).toBe(404);
+
+      const unknown = `/catalog/admin/platform-products/${PRODUCT}/images`;
+      expect((await call('post', unknown, root).send({ data })).status).toBe(404);
+      expect((await call('get', unknown, root)).status).toBe(404);
+      const tooBig = await call('post', route, root).send({ data: 'A'.repeat(6_200_000) });
+      expect(tooBig.status).toBe(413);
+      const otherRoute = await send(
+        'put',
+        code,
+        `/${productId}/draft`,
+        {
+          content: { filler: 'x'.repeat(70_000) },
+          variantIds: [],
+        },
+        root,
+      );
+      expect(otherRoute.status).toBe(413);
     });
 
     it('refuses an unknown field, a missing field and a non-JSON body with a 400 or 415', async () => {

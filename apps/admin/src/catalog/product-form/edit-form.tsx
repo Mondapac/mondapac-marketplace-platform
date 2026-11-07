@@ -28,6 +28,7 @@ import {
   attributeValuesWith,
   categoryIdsOf,
   contentFrom,
+  imageIdsOf,
   taxCategoryOf,
   variantRowsOf,
   variantsWith,
@@ -45,6 +46,7 @@ import {
   StatusBadge,
   StatusCard,
 } from './side-cards.tsx';
+import { ProductPhotos } from './photos-section.tsx';
 import { VariantsSection } from './variants-section.tsx';
 import {
   BASE,
@@ -203,6 +205,7 @@ function EditForm({
   const [texts, setTexts] = useState(() => textsOf(content, defaultLocale));
   const [categoryIds, setCategoryIds] = useState<string[]>(() => categoryIdsOf(content));
   const [taxCategoryCode, setTaxCategoryCode] = useState(() => taxCategoryOf(content));
+  const [imageIds, setImageIds] = useState<string[]>(() => imageIdsOf(content));
   const [inputs, setInputs] = useState<AttributeInputs>(() =>
     attributeInputsOf(content, attributeFields),
   );
@@ -278,7 +281,10 @@ function EditForm({
   }
 
   function contentOf(list: readonly VariantRow[]): Record<string, unknown> {
-    return contentFrom(contentWithTexts(content, defaultLocale, texts), {
+    const withTexts = contentWithTexts(content, defaultLocale, texts);
+    // `imageIds` stays out of a draft that never had pictures, so it is sent back as it was.
+    if (imageIds.length > 0 || 'imageIds' in withTexts) withTexts['imageIds'] = imageIds;
+    return contentFrom(withTexts, {
       categoryIds,
       taxCategoryCode,
       attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
@@ -683,6 +689,15 @@ function EditForm({
             onChange={(code: string, value: AttributeInput | undefined) => {
               setInputs({ ...inputs, [code]: value });
               clearRefused((item) => item.ref === code);
+              edited();
+            }}
+          />
+          <ProductPhotos
+            productId={product.productId}
+            csrfToken={csrfToken}
+            imageIds={imageIds}
+            onImageIds={(ids) => {
+              setImageIds(ids);
               edited();
             }}
           />

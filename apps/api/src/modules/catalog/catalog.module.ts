@@ -159,6 +159,10 @@ import { SubmitProduct } from './application/revisions/submit-product.service';
 import { SaveDraft } from './application/working-copy/save-draft.service';
 import { SaveWorkingCopy } from './application/working-copy/save-working-copy.service';
 import { PlatformProductOptions } from './application/use-cases/platform-product-options.use-case';
+import { PlatformProductImageDelete } from './application/use-cases/platform-product-image-delete.use-case';
+import { PlatformProductImageList } from './application/use-cases/platform-product-image-list.use-case';
+import { PlatformProductImageRead } from './application/use-cases/platform-product-image-read.use-case';
+import { PlatformProductImageUpload } from './application/use-cases/platform-product-image-upload.use-case';
 import { PlatformProductDiscard } from './application/use-cases/platform-product-discard.use-case';
 import { PlatformProductRead } from './application/use-cases/platform-product-read.use-case';
 import { PlatformProductCreate } from './application/use-cases/platform-product-create.use-case';
@@ -236,6 +240,7 @@ import { OwnProductImageUpload } from './application/use-cases/own-product-image
 import { OwnProductImageList } from './application/use-cases/own-product-image-list.use-case';
 import { OwnProductImageRead } from './application/use-cases/own-product-image-read.use-case';
 import { OwnProductImageDelete } from './application/use-cases/own-product-image-delete.use-case';
+import { PlatformProductImageController } from './presentation/platform-product-image.controller';
 import { ProductImageController } from './presentation/product-image.controller';
 import { ProductImageReviewController } from './presentation/product-image-review.controller';
 import { ProductImageAdminRead } from './application/use-cases/product-image-admin-read.use-case';
@@ -632,6 +637,7 @@ const RESTRUCTURE_DEPS = {
     OwnOfferController,
     OwnProductController,
     ProductImageController,
+    PlatformProductImageController,
     OfferReviewController,
     AdminProductListController,
     AdminCustomVariantLabelsController,
@@ -1917,6 +1923,29 @@ const RESTRUCTURE_DEPS = {
     }),
     useCaseProvider(PlatformProductSaveDraft, { saveDraft: true }),
     useCaseProvider(PlatformProductSubmit, { submit: true }),
+    useCaseProvider(PlatformProductImageUpload, {
+      unitOfWork: true,
+      products: true,
+      images: true,
+      imageProcessor: true,
+      objectStore: true,
+      save: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(PlatformProductImageList, { unitOfWork: true, products: true, images: true }),
+    useCaseProvider(PlatformProductImageRead, {
+      unitOfWork: true,
+      products: true,
+      images: true,
+      objectStore: true,
+    }),
+    useCaseProvider(PlatformProductImageDelete, {
+      unitOfWork: true,
+      products: true,
+      images: true,
+      objectStore: true,
+    }),
     useCaseProvider(PlatformProductDiscard, {
       unitOfWork: true,
       products: true,

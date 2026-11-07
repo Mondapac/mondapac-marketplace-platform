@@ -223,6 +223,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/platform-products/:id/submit',
     // Discard a platform product that was never submitted (catalog).
     'catalog/admin/platform-products/:id/discard',
+    // Add a picture to a platform product (catalog). A base64 picture, the larger image body cap.
+    'catalog/admin/platform-products/:id/images',
     // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
     // merge other brands into it.
     'catalog/admin/brands/:id/approve',
@@ -336,6 +338,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/deletion-requests/:id',
     // A saved view of the product list (catalog).
     'catalog/admin/saved-filters/:id',
+    // Remove a picture of a platform product that no revision holds (catalog).
+    'catalog/admin/platform-products/:id/images/:id',
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
@@ -345,6 +349,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/impact',
     // One platform product with its working copy, for the product form (catalog).
     'catalog/admin/platform-products/:id',
+    // The pictures of a platform product and one of them, thumbnail or medium (catalog).
+    'catalog/admin/platform-products/:id/images',
+    'catalog/admin/platform-products/:id/images/:id/thumb',
+    'catalog/admin/platform-products/:id/images/:id/medium',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
     // A product version's photo opened large, for its review (catalog).
@@ -648,11 +656,14 @@ const MAX_UPLOAD_BODY_BYTES = 14_500 * 1024;
  */
 const CATEGORY_IMAGE_PATH = /^catalog\/admin\/categories\/[0-9a-f-]{36}\/image$/i;
 const MAX_IMAGE_BODY_BYTES = 5_800 * 1024;
+/** A picture of a platform product: the same cap, on `POST platform-products/<id>/images`. */
+const PLATFORM_PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/images$/i;
 
 /** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
 function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
+  if (method === 'POST' && PLATFORM_PRODUCT_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
   return MAX_BODY_BYTES;
 }
 

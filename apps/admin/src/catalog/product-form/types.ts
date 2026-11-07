@@ -120,3 +120,16 @@ export interface BulkAnswer {
     readonly reason?: string;
   }[];
 }
+
+/** One picture of a platform product, `GET catalog/admin/platform-products/:id/images`. */
+export interface ProductPhoto {
+  readonly imageId: string;
+  readonly width: number;
+  readonly height: number;
+  readonly createdAt: string;
+}
+
+/** `GET catalog/admin/platform-products/:id/images`. */
+export interface ProductPhotoList {
+  readonly images: readonly ProductPhoto[];
+}

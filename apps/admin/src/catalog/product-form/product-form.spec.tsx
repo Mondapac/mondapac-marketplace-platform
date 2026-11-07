@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
 
 vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
+vi.mock('./photo-prepare.ts', () => ({
+  preparePhoto: vi.fn(() => Promise.resolve({ kind: 'ready', data: 'QUJD' })),
+}));
 
 import { callApi } from '../../api/client.ts';
 import { expectToast } from '../../../test/toast-spy.ts';
@@ -134,11 +137,19 @@ const fail = (status: number, code: string, details?: object) => ({
   ok: false as const,
   failure: { status, code, ...(details === undefined ? {} : { details }) },
 });
-const lastBody = (index: number) => call.mock.calls[index]?.[2] as Record<string, unknown>;
+/** The calls the form made, without the read of the picture list it does when it opens. */
+const calls = () =>
+  call.mock.calls.filter(
+    ([method, path]) => !(method === 'GET' && String(path).endsWith('/images')),
+  );
+const lastBody = (index: number) => calls()[index]?.[2] as Record<string, unknown>;
 
 beforeEach(() => {
   vi.clearAllMocks();
   call.mockReset();
+  // The pictures are read when the form opens; a test that wants some sets its own answer.
+  call.mockImplementation(((_method: string, path: string) =>
+    Promise.resolve(path.endsWith('/images') ? ok({ images: [] }) : undefined)) as never);
   Object.defineProperty(window, 'location', {
     value: { assign, href: `${document.baseURI.replace(/\/$/, '')}/catalog/products/edit` },
     writable: true,
@@ -175,21 +186,18 @@ describe('the create form', () => {
     );
     mount();
     expect(await screen.findByRole('heading', { name: 'Add product' })).toBeTruthy();
-    expect(call.mock.calls[0]?.slice(0, 2)).toEqual([
-      'GET',
-      'catalog/admin/platform-products/options',
-    ]);
+    expect(calls()[0]?.slice(0, 2)).toEqual(['GET', 'catalog/admin/platform-products/options']);
 
     // The heading shows while the options load; the form (and its button) only after the read.
     fireEvent.click(await screen.findByRole('button', { name: 'Create draft' }));
     expect(screen.getByText('Choose a product type.')).toBeTruthy();
-    expect(call).toHaveBeenCalledTimes(1);
+    expect(calls()).toHaveLength(1);
 
     fireEvent.change(screen.getByLabelText('Product type'), { target: { value: 'configurable' } });
     call.mockResolvedValueOnce(ok({ productId: ID, productCode: 'P1', variantIds: [] }));
     fireEvent.click(screen.getByRole('button', { name: 'Create draft' }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith(`/catalog/products/${ID}/edit`));
-    expect(call.mock.calls[1]).toEqual([
+    expect(calls()[1]).toEqual([
       'POST',
       'catalog/admin/platform-products',
       { typeCode: 'configurable' },
@@ -240,10 +248,7 @@ describe('the edit form', () => {
     expect(screen.getAllByText('Draft').length).toBe(2);
     expect(screen.getByText('Platform product')).toBeTruthy();
     expect(screen.getByText('Australia')).toBeTruthy();
-    expect(call.mock.calls[0]?.slice(0, 2)).toEqual([
-      'GET',
-      `catalog/admin/platform-products/${ID}`,
-    ]);
+    expect(calls()[0]?.slice(0, 2)).toEqual(['GET', `catalog/admin/platform-products/${ID}`]);
   });
 
   it('lands an untouched draft as "Add product": empty state, no unsaved bar, Publish off', async () => {
@@ -275,11 +280,13 @@ describe('the edit form', () => {
     call.mockResolvedValueOnce(ok(live()));
     mountEdit(true);
     await screen.findByLabelText('Title');
+    await screen.findByRole('heading', { name: 'Photos' });
     expect(headings()).toEqual([
       'Status',
       'Product',
       'Category',
       'Product details',
+      'Photos',
       'Variants',
       'Organisation',
       'Sellers selling it',
@@ -299,10 +306,7 @@ describe('the edit form', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expectToast('Draft saved.'));
-    expect(call.mock.calls[1]?.slice(0, 2)).toEqual([
-      'PUT',
-      `catalog/admin/platform-products/${ID}/draft`,
-    ]);
+    expect(calls()[1]?.slice(0, 2)).toEqual(['PUT', `catalog/admin/platform-products/${ID}/draft`]);
     expect(lastBody(1)).toEqual({
       content: {
         texts: {
@@ -324,7 +328,7 @@ describe('the edit form', () => {
     fireEvent.click(await screen.findByRole('option', { name: 'Pantry › Rice' }));
     call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
-    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(calls()).toHaveLength(2));
     expect((lastBody(1)['content'] as Record<string, unknown>)['categoryIds']).toEqual([CHILD]);
   });
 
@@ -334,7 +338,7 @@ describe('the edit form', () => {
     fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
     fireEvent.click(screen.getByRole<HTMLButtonElement>('button', { name: 'Publish' }));
     expect(await screen.findByText('Publish Rice?')).toBeTruthy();
-    expect(call).toHaveBeenCalledTimes(1);
+    expect(calls()).toHaveLength(1);
     const dialog = dialogOf('Publish Rice?');
     expect(dialog.textContent).toContain(
       'Sellers in Australia can find it and add their offers. Buyers see it once at least one offer is on sale.',
@@ -345,8 +349,8 @@ describe('the edit form', () => {
     call.mockResolvedValueOnce(ok({ revisionId: 'r1', revisionNo: 1, published: true }));
     fireEvent.click(inDialog('Publish Rice?', 'Publish'));
     await waitFor(() => expectToast('Product published.'));
-    expect(call.mock.calls[1]?.[0]).toBe('PUT');
-    expect(call.mock.calls[2]).toEqual([
+    expect(calls()[1]?.[0]).toBe('PUT');
+    expect(calls()[2]).toEqual([
       'POST',
       `catalog/admin/platform-products/${ID}/submit`,
       { replacePending: false },
@@ -383,7 +387,7 @@ describe('the edit form', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' }).disabled).toBe(
       true,
     );
-    expect(call).toHaveBeenCalledTimes(2);
+    expect(calls()).toHaveLength(2);
     // Editing the title clears the error and puts the bar back to unsaved.
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Certified rice' } });
     expect(screen.queryByText('1 field needs fixing')).toBeNull();
@@ -451,7 +455,7 @@ describe('the edit form', () => {
     fireEvent.change(screen.getByLabelText('Grain length'), { target: { value: 'Extra long' } });
     call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
-    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(calls()).toHaveLength(2));
     expect((lastBody(1)['content'] as Record<string, unknown>)['attributeValues']).toEqual({
       origin: 'in',
       grain: 'Extra long',
@@ -490,7 +494,7 @@ describe('the edit form', () => {
     call.mockResolvedValueOnce(ok({ variantIds: [minted], refusedFields: [] }));
     call.mockResolvedValueOnce(ok({ variantIds: [minted], refusedFields: [] }));
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
-    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(calls()).toHaveLength(3));
     expect(lastBody(1)['variantIds']).toEqual([null]);
     expect(lastBody(2)['variantIds']).toEqual([minted]);
     expect((lastBody(2)['content'] as { variants: unknown[] }).variants).toEqual([
@@ -551,8 +555,8 @@ describe('the edit form', () => {
     fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
     call.mockResolvedValueOnce(ok(view()));
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
-    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
-    expect(call.mock.calls[1]?.[0]).toBe('GET');
+    await waitFor(() => expect(calls()).toHaveLength(2));
+    expect(calls()[1]?.[0]).toBe('GET');
     expect((await screen.findByLabelText<HTMLInputElement>('Title')).value).toBe('Sella rice');
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
@@ -563,11 +567,11 @@ describe('the edit form', () => {
     fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Rice' } });
     fireEvent.click(screen.getByRole('button', { name: 'Discard product' }));
     expect(await screen.findByText('Discard this product?')).toBeTruthy();
-    expect(call).toHaveBeenCalledTimes(1);
+    expect(calls()).toHaveLength(1);
     call.mockResolvedValueOnce(ok({ productId: ID }));
     fireEvent.click(inDialog('Discard this product?', 'Discard product'));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/catalog/products'));
-    expect(call.mock.calls[1]).toEqual([
+    expect(calls()[1]).toEqual([
       'POST',
       `catalog/admin/platform-products/${ID}/discard`,
       {},
@@ -580,7 +584,7 @@ describe('the edit form', () => {
     mountEdit();
     fireEvent.click(await screen.findByRole('button', { name: 'Discard product' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Keep product' }));
-    expect(call).toHaveBeenCalledTimes(1);
+    expect(calls()).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Discard product' }));
     call.mockResolvedValueOnce(fail(409, 'product.not-a-draft'));
     fireEvent.click(inDialog('Discard this product?', 'Discard product'));
@@ -610,6 +614,74 @@ describe('the edit form', () => {
     mountEdit();
     await screen.findByRole('button', { name: 'Publish' });
     expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
+  });
+
+  it('shows the product pictures from the library and keeps the picked ones in the draft', async () => {
+    const photo = { imageId: 'img-1', width: 800, height: 600, createdAt: '2026-11-05T01:00:00Z' };
+    const spare = { imageId: 'img-2', width: 400, height: 400, createdAt: '2026-11-05T01:00:00Z' };
+    call.mockResolvedValueOnce(ok(view()));
+    call.mockImplementation((_m: string, path: string) =>
+      Promise.resolve(
+        path.endsWith('/images')
+          ? ok({ images: [photo, spare] })
+          : ok({ variantIds: [], refusedFields: [] }),
+      ),
+    );
+    mountEdit();
+    expect(await screen.findByText('Main photo')).toBeTruthy();
+    expect(screen.getByText('Not on the product')).toBeTruthy();
+    const sources = screen.getAllByRole('img').map((img) => img.getAttribute('src'));
+    expect(sources[0]).toBe(`/api/catalog/admin/platform-products/${ID}/images/img-1/medium`);
+    fireEvent.click(screen.getByRole('button', { name: 'Add back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expectToast('Draft saved.'));
+    const saved = calls().find((c) => c[0] === 'PUT');
+    expect((saved?.[2] as { content: { imageIds: string[] } }).content.imageIds).toEqual([
+      'img-1',
+      'img-2',
+    ]);
+  });
+
+  it('uploads a picture, adds it to the draft, and deletes one after asking', async () => {
+    call.mockResolvedValueOnce(ok(view({ workingCopy: null })));
+    const added = { imageId: 'img-9', width: 800, height: 600, createdAt: '2026-11-05T01:00:00Z' };
+    call.mockImplementation(((method: string, path: string) =>
+      Promise.resolve(
+        path.endsWith('/images') && method === 'GET'
+          ? ok({ images: [] })
+          : method === 'POST'
+            ? ok(added)
+            : method === 'DELETE'
+              ? ok({ deleted: true })
+              : undefined,
+      )) as never);
+    mountEdit();
+    const input = await screen.findByLabelText<HTMLInputElement>('Add photos');
+    fireEvent.change(input, {
+      target: { files: [new File(['x'], 'rice.jpg', { type: 'image/jpeg' })] },
+    });
+    expect(await screen.findByText('Main photo')).toBeTruthy();
+    const post = calls().find((c) => c[0] === 'POST');
+    expect(post?.[1]).toBe(`catalog/admin/platform-products/${ID}/images`);
+    expect(post?.[2]).toEqual({ data: 'QUJD' });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(calls().some((c) => c[0] === 'DELETE')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, delete' }));
+    await waitFor(() => expect(screen.queryByText('Main photo')).toBeNull());
+    expect(calls().find((c) => c[0] === 'DELETE')?.[1]).toBe(
+      `catalog/admin/platform-products/${ID}/images/img-9`,
+    );
+  });
+
+  it('says the pictures are unavailable when they cannot be read, and the rest of the form works', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    call.mockImplementation(((_m: string, path: string) =>
+      Promise.resolve(
+        path.endsWith('/images') ? fail(503, 'access.unavailable') : undefined,
+      )) as never);
+    mountEdit();
+    expect(await screen.findByText(/Photos are unavailable right now/)).toBeTruthy();
+    expect(screen.getByLabelText('Title')).toBeTruthy();
   });
 
   it('says so when the new variants were created but the second save failed', async () => {
@@ -694,7 +766,7 @@ describe('a published product', () => {
     call.mockResolvedValueOnce(ok({ revisionId: 'r2', revisionNo: 2, published: true }));
     fireEvent.click(inDialog('Publish revision 2 of Sella rice?', 'Publish'));
     await waitFor(() => expectToast('Product published.'));
-    expect(call.mock.calls[1]?.slice(0, 2)).toEqual([
+    expect(calls()[1]?.slice(0, 2)).toEqual([
       'POST',
       `catalog/admin/platform-products/${ID}/submit`,
     ]);
@@ -770,7 +842,7 @@ describe('the Active switch', () => {
     expect(dialog.textContent).toContain('Offers that stop selling7');
     expect(document.activeElement).toBe(inDialog('Turn off Sella rice?', 'Cancel'));
     // No call yet: the dialog only asks.
-    expect(call).toHaveBeenCalledTimes(1);
+    expect(calls()).toHaveLength(1);
     call.mockResolvedValueOnce(
       ok({
         counts: { done: 1, skipped: 0, failed: 0 },
@@ -779,7 +851,7 @@ describe('the Active switch', () => {
     );
     fireEvent.click(inDialog('Turn off Sella rice?', 'Turn off'));
     await waitFor(() => expectToast('Product turned off.'));
-    expect(call.mock.calls[1]).toEqual([
+    expect(calls()[1]).toEqual([
       'POST',
       'catalog/admin/products/bulk',
       { action: 'pause', productIds: [ID] },
@@ -815,7 +887,7 @@ describe('the Active switch', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: 'Turn on' }));
     await waitFor(() => expectToast('Product turned on.'));
-    expect(call.mock.calls[1]).toEqual([
+    expect(calls()[1]).toEqual([
       'POST',
       'catalog/admin/products/bulk',
       { action: 'resume', productIds: [ID] },
@@ -825,7 +897,7 @@ describe('the Active switch', () => {
     expect(screen.getByRole('switch', { name: 'Active' }).getAttribute('aria-checked')).toBe(
       'true',
     );
-    expect(call).toHaveBeenCalledTimes(2);
+    expect(calls()).toHaveLength(2);
   });
 
   it('turns it on again from the switch without a dialog, and disables the controls while it runs', async () => {
@@ -852,7 +924,7 @@ describe('the Active switch', () => {
       }),
     );
     await waitFor(() => expectToast('Product turned on.'));
-    expect(call.mock.calls[1]).toEqual([
+    expect(calls()[1]).toEqual([
       'POST',
       'catalog/admin/products/bulk',
       { action: 'resume', productIds: [ID] },
@@ -862,7 +934,7 @@ describe('the Active switch', () => {
     const active = screen.getByRole<HTMLButtonElement>('switch', { name: 'Active' });
     expect(active.getAttribute('aria-checked')).toBe('true');
     expect(active.disabled).toBe(false);
-    expect(call).toHaveBeenCalledTimes(2);
+    expect(calls()).toHaveLength(2);
   });
 
   it('shows the inactive banner without a Turn on button or a switch when the admin cannot pause', async () => {
@@ -876,7 +948,7 @@ describe('the Active switch', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Turn on' })).toBeNull();
     expect(screen.queryByRole('switch')).toBeNull();
-    expect(call).toHaveBeenCalledTimes(1);
+    expect(calls()).toHaveLength(1);
   });
 
   it('says so and offers a fresh read when the pause was skipped or failed', async () => {

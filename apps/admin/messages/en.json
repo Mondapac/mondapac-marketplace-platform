@@ -2740,6 +2740,40 @@
         "texts-value": "{language} · translated when a buyer language is published",
         "cancel": "Cancel",
         "confirm": "Publish"
+      },
+      "photos": {
+        "title": "Photos",
+        "help": "{count} of {max} photos. The first photo is the main photo.",
+        "empty": "No photos yet. Add the first one.",
+        "unavailable": "Photos are unavailable right now. Reload the page to try again.",
+        "add": "Add photos",
+        "uploading": "Uploading…",
+        "formats": "JPEG, PNG or WebP.",
+        "alt": "Photo {n} of the product",
+        "main": "Main photo",
+        "position": "Photo {n}",
+        "not-in-product": "Not on the product",
+        "make-main": "Make main",
+        "take-off": "Take off",
+        "add-back": "Add back",
+        "delete": "Delete",
+        "delete-yes": "Yes, delete",
+        "cancel": "Cancel",
+        "error": {
+          "limit": "A product can have at most 8 photos.",
+          "in-use": "This photo is part of a published version, so it can't be deleted. Take it off the product instead.",
+          "not-found": "This photo was not found. Reload the page.",
+          "too-large": "A photo is too large. Choose a smaller one.",
+          "unsupported": "Only JPEG, PNG and WebP photos are accepted.",
+          "too-many-pixels": "A photo has too many pixels. Choose a smaller one.",
+          "too-small": "A photo is too small. Use one at least 200 pixels wide.",
+          "unreadable": "A photo could not be read. Choose another file.",
+          "denied": "You don't have access to edit products.",
+          "csrf": "Your session has changed. Reload the page.",
+          "throttled": "Too many requests. Wait a moment and try again.",
+          "unavailable": "Photos are unavailable right now. Try again later.",
+          "unknown": "Something went wrong. Try again."
+        }
       }
     },
     "queue": {
