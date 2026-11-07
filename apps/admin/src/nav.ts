@@ -65,6 +65,14 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.business-activity.read'],
     },
     {
+      id: 'tags',
+      icon: 'star',
+      labelKey: 'nav.tags',
+      href: '/catalog/tags',
+      group: 'catalogue',
+      anyOf: ['catalog.topic.read'],
+    },
+    {
       id: 'review-queue',
       icon: 'inbox',
       labelKey: 'nav.review-queue',
