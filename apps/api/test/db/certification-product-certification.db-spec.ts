@@ -188,10 +188,10 @@ describe.each(TEST_MARKETS)('manufacturer certificates in market %s (database)',
     list: new ProductCertificatesList(gate, deps),
   });
 
-  const admin = (accountId: string = uuid7()): CallContext =>
+  const admin = (accountId: string = uuid7(), m: MarketContext = market): CallContext =>
     testCallContext(
-      market,
-      testAuthenticatedActor(market, {
+      m,
+      testAuthenticatedActor(m, {
         population: 'admin',
         accountId: accountId as Id<'Account'>,
         sessionId: uuid7() as Id<'Session'>,
@@ -200,11 +200,13 @@ describe.each(TEST_MARKETS)('manufacturer certificates in market %s (database)',
     );
 
   /** An active third-party type without a document requirement (documents come later). */
-  async function seedType(): Promise<{ typeId: string; revisionId: string; code: string }> {
+  async function seedType(
+    m: MarketContext = market,
+  ): Promise<{ typeId: string; revisionId: string; code: string }> {
     const typeId = uuid7();
     const revisionId = uuid7();
     const typeCode = `pc${typeId.slice(-10)}`;
-    const scope = [market.marketId, market.tenantId];
+    const scope = [m.marketId, m.tenantId];
     await sql.query(
       `INSERT INTO certification.certification_types
          (id, market_id, tenant_id, code, verification_mode, status, published_revision_id, version, created_at)
@@ -240,7 +242,11 @@ describe.each(TEST_MARKETS)('manufacturer certificates in market %s (database)',
     return { typeId, revisionId, code: typeCode };
   }
 
-  async function seedIssuer(typeId: string, state = 'active'): Promise<string> {
+  async function seedIssuer(
+    typeId: string,
+    state = 'active',
+    m: MarketContext = market,
+  ): Promise<string> {
     const issuerId = uuid7();
     await sql.query(
       `INSERT INTO certification.issuers
@@ -249,8 +255,8 @@ describe.each(TEST_MARKETS)('manufacturer certificates in market %s (database)',
        VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, 'seed', 1, $8)`,
       [
         issuerId,
-        market.marketId,
-        market.tenantId,
+        m.marketId,
+        m.tenantId,
         typeId,
         `Issuer ${issuerId}`,
         state,
@@ -262,11 +268,10 @@ describe.each(TEST_MARKETS)('manufacturer certificates in market %s (database)',
   }
 
   /** A product published in catalog's fake at a revision, with variants. */
-  function product(variants = 0) {
-    const productId = uuid7() as Id<'Product'>;
+  function product(variants = 0, m: MarketContext = market, productId = uuid7() as Id<'Product'>) {
     const revisionId = uuid7() as Id<'ProductRevision'>;
     const variantIds = Array.from({ length: variants }, () => uuid7() as Id<'Variant'>);
-    catalog.publish(market, productId, revisionId, variantIds);
+    catalog.publish(m, productId, revisionId, variantIds);
     return { productId, revisionId, variantIds };
   }
 
@@ -1001,6 +1006,55 @@ describe.each(TEST_MARKETS)('manufacturer certificates in market %s (database)',
         first.created.certificateId,
       ]);
       expect(found.items.length).toBeLessThanOrEqual(100);
+    });
+
+    it('each Market sees only its own certificate, types and issuers, even for the same product id', async () => {
+      const u = useCases();
+      const productId = uuid7() as Id<'Product'>;
+      const certificateIn = async (m: MarketContext) => {
+        const p = product(0, m, productId);
+        const type = await seedType(m);
+        const issuerId = await seedIssuer(type.typeId, 'active', m);
+        const editor = admin(uuid7(), m);
+        const created = await unwrap(u.create.execute(admin(uuid7(), m), { typeId: type.typeId }));
+        const saved = await unwrap(
+          u.save.execute(editor, {
+            certificateId: created.certificateId,
+            version: created.version,
+            draft: draftOf(issuerId, [{ productId: p.productId }]),
+          }),
+        );
+        await unwrap(
+          u.submit.execute(editor, {
+            certificateId: created.certificateId,
+            version: saved.version,
+          }),
+        );
+        return { certificateId: created.certificateId, type, issuerId };
+      };
+      const mine = await certificateIn(market);
+      const theirs = await certificateIn(other);
+      const options = (m: MarketContext) =>
+        unwrap(
+          new ProductCertificateFormOptions(gate, {
+            unitOfWork: deps.unitOfWork,
+            types: new PrismaCertificateTypeCatalog(persistence.service),
+          }).execute(admin(uuid7(), m), {}),
+        );
+      for (const [m, own, foreign] of [
+        [market, mine, theirs],
+        [other, theirs, mine],
+      ] as const) {
+        const found = await unwrap(forProduct().execute(admin(uuid7(), m), { productId }));
+        expect(found.items.map((item) => item.id)).toEqual([own.certificateId]);
+        const seen = await options(m);
+        const typeIds = seen.types.map((t) => t.typeId);
+        expect(typeIds).toContain(own.type.typeId);
+        expect(typeIds).not.toContain(foreign.type.typeId);
+        const issuerIds = seen.types.flatMap((t) => t.issuers.map((i) => i.issuerId));
+        expect(issuerIds).toContain(own.issuerId);
+        expect(issuerIds).not.toContain(foreign.issuerId);
+      }
     });
 
     it('lists the active third-party types with their active issuers', async () => {

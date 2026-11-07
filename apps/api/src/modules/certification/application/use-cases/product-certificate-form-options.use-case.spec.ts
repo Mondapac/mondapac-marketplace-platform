@@ -12,6 +12,7 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CERTIFICATION_PRODUCT_CERTIFICATE_EDIT } from '../../contracts/permissions';
+import { adminOf } from '../product/product-certification.shared';
 import { ProductCertificateFormOptions } from './product-certificate-form-options.use-case';
 
 // The manufacturer certificate form's options without a database, on both Market fixtures.
@@ -95,6 +96,17 @@ describe.each(['AU', 'ZZ'] as const)('product-certificates.form-options in marke
         state,
       });
     }
+  });
+
+  it('allows a Login as Seller session to read, as the list and the read do: only writes refuse it', () => {
+    // The gate mints contexts, so a marked actor cannot reach the use case in a unit test (the
+    // gate answers context-not-minted, as review/review.shared.spec.ts notes). Both reads call
+    // `adminOf(context, { write: false })`; this pins what that answers for an acting-as admin.
+    const base = contextOf('admin');
+    const marked = { ...base.actor, actingAs: { accountId: ID, sellerId: ID } };
+    const actingAs: CallContext = { ...base, actor: marked };
+    expect(adminOf(actingAs, { write: false })).not.toBeNull();
+    expect(adminOf(actingAs, { write: true })).toBeNull();
   });
 
   it('refuses a seller before any read', async () => {

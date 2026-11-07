@@ -61,6 +61,8 @@ const SELF_TYPE = id<'CertificationType'>(0xc402);
 const EDITOR_ROLE = id<'Role'>(0xf411);
 const REVOKER = id<'Account'>(0xa403);
 const REVOKER_ROLE = id<'Role'>(0xf412);
+const EDIT_ONLY = id<'Account'>(0xa404);
+const EDIT_ONLY_ROLE = id<'Role'>(0xf413);
 
 /** The certificate roots only: enough for create, read and list (no revisions here). */
 class MemoryProductCertificates implements ProductCertificationRepository {
@@ -343,6 +345,20 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
       version: 1,
       createdAt: START,
     });
+    fakes.seedRole({
+      id: EDIT_ONLY_ROLE,
+      marketId,
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      name: 'Manufacturer certificate edit only',
+      permissionKeys: ['certification.product-certificate.edit'],
+      version: 1,
+      createdAt: START,
+    });
+    account(EDIT_ONLY, 'editonly', EDIT_ONLY_ROLE);
     account(MODERATOR, 'moderator', roleOf('catalogue-moderator'));
     account(EDITOR, 'editor', EDITOR_ROLE);
     account(REVOKER, 'revoker', REVOKER_ROLE);
@@ -656,6 +672,11 @@ describe('manufacturer certificate admin routes over HTTP (integration)', () => 
         ],
       });
       expect(JSON.stringify(found.body)).not.toMatch(/number|cipher|document/i);
+      // The edit key alone does not read the lookup: it needs the view key.
+      const editOnly = headersOf(code, EDIT_ONLY, 13);
+      const noView = await http().get(`${base}/for-product/${product}`).set(editOnly).expect(403);
+      expect((noView.body as { code: string }).code).toBe('access.denied');
+      await http().get(`${base}/options`).set(editOnly).expect(200);
       const bad = await http().get(`${base}/for-product/nope`).set(viewer).expect(400);
       expect((bad.body as { code: string }).code).toBe('validation.failed');
 

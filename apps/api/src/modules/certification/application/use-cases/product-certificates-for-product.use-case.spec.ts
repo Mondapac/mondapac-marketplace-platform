@@ -17,6 +17,7 @@ import type {
   ProductCertificationRepository,
   ProductCoverageSource,
 } from '../ports/product-certification.repository';
+import { adminOf } from '../product/product-certification.shared';
 import {
   englishNameOf,
   ProductCertificatesForProduct,
@@ -131,6 +132,17 @@ describe.each(['AU', 'ZZ'] as const)('product-certificates.for-product in market
     products.byMarket.clear();
     products.calls.length = 0;
     unreadable = false;
+  });
+
+  it('allows a Login as Seller session to read, as the list and the read do: only writes refuse it', () => {
+    // The gate mints contexts, so a marked actor cannot reach the use case in a unit test (the
+    // gate answers context-not-minted, as review/review.shared.spec.ts notes). Both reads call
+    // `adminOf(context, { write: false })`; this pins what that answers for an acting-as admin.
+    const base = contextOf('admin');
+    const marked = { ...base.actor, actingAs: { accountId: ID, sellerId: ID } };
+    const actingAs: CallContext = { ...base, actor: marked };
+    expect(adminOf(actingAs, { write: false })).not.toBeNull();
+    expect(adminOf(actingAs, { write: true })).toBeNull();
   });
 
   it('refuses a seller before any read', async () => {
