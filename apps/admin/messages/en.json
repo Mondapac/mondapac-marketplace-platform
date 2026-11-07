@@ -2692,7 +2692,8 @@
           "move-right": "Move right",
           "remove": "Remove from product",
           "add-back": "Add to product",
-          "delete": "Delete"
+          "delete": "Delete",
+          "wait": "Wait for the upload to finish."
         },
         "delete": {
           "title": "Delete this image?",

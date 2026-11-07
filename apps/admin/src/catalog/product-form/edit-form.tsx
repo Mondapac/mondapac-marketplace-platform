@@ -92,6 +92,17 @@ export function imageIdsOf(content: Readonly<Record<string, unknown>> | undefine
   return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
 }
 
+/** The draft's photo ids that are still in the library; all of them when the library is unknown. */
+export function knownImageIds(
+  content: Readonly<Record<string, unknown>> | undefined,
+  library: readonly ProductImage[] | null,
+): string[] {
+  const ids = imageIdsOf(content);
+  if (library === null) return ids;
+  const known = new Set(library.map((image) => image.imageId));
+  return ids.filter((id) => known.has(id));
+}
+
 type Phase =
   | { readonly kind: 'loading' }
   | { readonly kind: 'failed' }
@@ -192,8 +203,12 @@ function EditForm({
     attributeInputsOf(content, attributeFields),
   );
   const [rows, setRows] = useState<VariantRow[]>(() => variantRowsOf(content, product.variants));
-  const [imageIds, setImageIds] = useState<string[]>(() => imageIdsOf(content));
-  const [dirty, setDirty] = useState(false);
+  // A photo deleted while the draft still named it (the draft was not saved after) is dropped
+  // here, and the form starts unsaved so the next save or publish writes the shorter list.
+  const [imageIds, setImageIds] = useState<string[]>(() => knownImageIds(content, images));
+  const [dirty, setDirty] = useState(
+    () => knownImageIds(content, images).length !== imageIdsOf(content).length,
+  );
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<FormProblem | null>(null);
   const [refused, setRefused] = useState<DraftSaved['refusedFields']>([]);

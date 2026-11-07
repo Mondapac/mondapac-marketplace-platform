@@ -1,9 +1,11 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { ObjectStore } from '../../../../platform/storage/object-store';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_PLATFORM_PRODUCT_EDIT } from '../../contracts/permissions';
+import { ProductImageDeletedAudit } from '../../domain/audit';
 import { parseAdminImageIds } from '../images/admin-image-input';
 import { editablePlatformProduct } from '../images/platform-product-access';
 import type { ProductImage, ProductImageRepository } from '../ports/product-image.repository';
@@ -27,6 +29,7 @@ export interface PlatformProductImageDeleteDependencies {
   readonly products: ProductRepository;
   readonly images: ProductImageRepository;
   readonly objectStore: ObjectStore;
+  readonly audit: AuditWriter;
 }
 
 /**
@@ -34,7 +37,8 @@ export interface PlatformProductImageDeleteDependencies {
  * PLATFORM product. A photo that a revision (pending or published) holds stays (`image.in-use`);
  * it leaves the product only by a new revision without it. A taken-down photo is the takedown's
  * record and cannot be deleted. The files are deleted after the row is gone; a file that cannot be
- * deleted is left, unreachable, for the sweep. Rule: key `catalog.platform-product.edit` and the
+ * deleted is left, unreachable, for the sweep. The unit records `catalog.product.image-deleted`
+ * (ids only). Rule: key `catalog.platform-product.edit` and the
  * admin population. Any other product, photo or state answers one `image.not-found`.
  */
 export class PlatformProductImageDelete extends UseCase<
@@ -79,6 +83,13 @@ export class PlatformProductImageDelete extends UseCase<
       if (!(await deps.images.deleteUnused(market, productId, imageId))) {
         return err({ code: 'image.in-use' as const });
       }
+      await deps.audit.record(
+        context,
+        ProductImageDeletedAudit.entry(productId, {
+          before: { imageId },
+          after: { imageId: null },
+        }),
+      );
       return ok(found);
     });
     if (!outcome.ok) {

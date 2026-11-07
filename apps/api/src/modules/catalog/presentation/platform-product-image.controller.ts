@@ -75,6 +75,7 @@ function jsonOf(body: unknown): unknown {
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
 const PRODUCT_PARAM = { name: 'productId', description: 'The PLATFORM product. A UUID v7.' };
+const IMAGE_PARAM = { name: 'imageId', description: 'The photo. A UUID v7.' };
 
 /**
  * Photos of PLATFORM products for the admin form (P1 admin product images). The same pipeline as
@@ -185,6 +186,7 @@ export class PlatformProductImageController {
       'a taken-down photo cannot be deleted.',
   })
   @ApiParam(PRODUCT_PARAM)
+  @ApiParam(IMAGE_PARAM)
   @ApiHeader(CSRF)
   @ApiOkResponse({ description: '{ deleted: true }' })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })

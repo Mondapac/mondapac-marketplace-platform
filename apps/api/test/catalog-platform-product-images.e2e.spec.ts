@@ -392,6 +392,62 @@ describe('admin platform product photo routes over HTTP (integration)', () => {
       expect(images.rows).toHaveLength(8);
     });
 
+    it('answers 401 without a session or with a seller cookie, and 403 on a DELETE without CSRF', async () => {
+      await boot();
+      await seeded(code);
+      await http().get(base(PRODUCT)).set(headers(code, {})).expect(401);
+      await http()
+        .get(base(PRODUCT))
+        .set(headers(code, { cookie: `__Host-session-seller-${code}=not-a-session` }))
+        .expect(401);
+      const session = sessionOf(code, EDITOR, 1);
+      images.rows.push({
+        id: id<'ProductImage'>(0xd300),
+        productId: PRODUCT,
+        uploaderAccountId: EDITOR,
+        state: 'clean',
+        width: 400,
+        height: 400,
+        uploadedBytes: 1,
+        createdAt: START,
+        renditions: [],
+      } as unknown as ProductImage);
+      await http()
+        .delete(`${base(PRODUCT)}/${id<'ProductImage'>(0xd300)}`)
+        .set(headers(code, { cookie: session.cookie }))
+        .expect(403);
+      expect(images.rows).toHaveLength(1);
+    });
+
+    it('refuses a body over the photo limit with 413 and a picture too small with 422', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code, EDITOR, 1);
+      await http()
+        .post(base(PRODUCT))
+        .set(headers(code, session))
+        .send({ data: 'A'.repeat(6_200_000) })
+        .expect(413);
+      const tiny = await http()
+        .post(base(PRODUCT))
+        .set(headers(code, session))
+        .send({ data: await photo(64, 64) })
+        .expect(422);
+      expect(tiny.body).toMatchObject({ code: 'file.too-small' });
+      expect(store.objects.size).toBe(0);
+    });
+
+    it('answers a discarded product as 404', async () => {
+      await boot();
+      await seeded(code);
+      product = Product.restore(state(code, { status: 'discarded', discardedAt: START }));
+      await http()
+        .post(base(PRODUCT))
+        .set(headers(code, sessionOf(code, EDITOR, 1)))
+        .send({ data: 'AAAA' })
+        .expect(404);
+    });
+
     it('will not delete a taken-down photo', async () => {
       await boot();
       await seeded(code);

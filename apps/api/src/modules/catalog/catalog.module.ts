@@ -1860,6 +1860,7 @@ const RESTRUCTURE_DEPS = {
       products: true,
       images: true,
       objectStore: true,
+      audit: true,
     }),
     useCaseProvider(ProductImageTakeDown, {
       unitOfWork: true,

@@ -2,7 +2,7 @@
 
 import { Badge, Banner, Button, Dialog, FileButton, Icon, Menu, type MenuItem } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
 import { prepareImage } from '../../categories/image-prepare.ts';
 import { imageProblemOf } from './image-errors.ts';
@@ -53,7 +53,19 @@ export function ImagesSection({
   const [announcement, setAnnouncement] = useState('');
   const input = useRef<HTMLInputElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  // After a move the tile is drawn at its new place; focus goes back to its menu button there.
+  const refocus = useRef<string | null>(null);
   const base = `${BASE}/${productId}/images`;
+
+  useEffect(() => {
+    const imageId = refocus.current;
+    if (imageId === null) return;
+    refocus.current = null;
+    root.current
+      ?.querySelector<HTMLButtonElement>(`[data-image-id="${imageId}"] button[aria-haspopup]`)
+      ?.focus();
+  }, [imageIds]);
 
   if (library === null) {
     return (
@@ -130,6 +142,7 @@ export function ImagesSection({
 
   function reorder(imageId: string, to: number) {
     const next = moved(draftIds, imageId, to);
+    refocus.current = imageId;
     onImageIds(next);
     setAnnouncement(
       to === 0
@@ -141,10 +154,13 @@ export function ImagesSection({
   function itemsOf(photo: ProductImage): MenuItem[] {
     const position = draftIds.indexOf(photo.imageId);
     const items: MenuItem[] = [];
+    // While photos upload, the draft list is being appended to: changes wait until they finish.
+    const locked = uploading > 0 ? { disabled: true, reason: t('menu.wait') } : {};
     if (position < 0) {
       items.push({
         id: 'add-back',
         label: t('menu.add-back'),
+        ...locked,
         onSelect: () => {
           onImageIds([...draftIds, photo.imageId]);
           setAnnouncement(t('announce.added', { n: draftIds.length + 1 }));
@@ -155,11 +171,13 @@ export function ImagesSection({
         items.push({
           id: 'main',
           label: t('menu.make-main'),
+          ...locked,
           onSelect: () => reorder(photo.imageId, 0),
         });
         items.push({
           id: 'left',
           label: t('menu.move-left'),
+          ...locked,
           onSelect: () => reorder(photo.imageId, position - 1),
         });
       }
@@ -167,12 +185,14 @@ export function ImagesSection({
         items.push({
           id: 'right',
           label: t('menu.move-right'),
+          ...locked,
           onSelect: () => reorder(photo.imageId, position + 1),
         });
       }
       items.push({
         id: 'remove',
         label: t('menu.remove'),
+        ...locked,
         onSelect: () => {
           onImageIds(draftIds.filter((id) => id !== photo.imageId));
           setAnnouncement(t('announce.removed'));
@@ -182,6 +202,7 @@ export function ImagesSection({
     items.push({
       id: 'delete',
       label: t('menu.delete'),
+      ...locked,
       tone: 'critical',
       onSelect: () => setDeleting(photo.imageId),
     });
@@ -191,7 +212,11 @@ export function ImagesSection({
   function tile(photo: ProductImage, index: number) {
     const main = draftIds.indexOf(photo.imageId) === 0;
     return (
-      <li key={photo.imageId} className={`flex flex-col gap-1 ${main ? 'w-full sm:w-42' : 'w-20'}`}>
+      <li
+        key={photo.imageId}
+        data-image-id={photo.imageId}
+        className={`flex flex-col gap-1 ${main ? 'w-full sm:w-42' : 'w-20'}`}
+      >
         <img
           src={imageUrl(productId, photo.imageId)}
           alt={t('alt', { n: index + 1, total: tiles.length })}
@@ -204,7 +229,7 @@ export function ImagesSection({
         />
         <div className={`flex items-center gap-1 ${main ? 'w-42 justify-between' : ''}`}>
           {main ? <Badge tone="success">{t('main')}</Badge> : null}
-          <Menu label={t('menu.label', { n: index + 1 })} items={itemsOf(photo)} />
+          <Menu label={t('menu.label', { n: index + 1 })} items={itemsOf(photo)} align="start" />
         </div>
       </li>
     );
@@ -224,7 +249,12 @@ export function ImagesSection({
   );
 
   return (
-    <div className="flex flex-col gap-2" role="group" aria-labelledby="product-images-label">
+    <div
+      ref={root}
+      className="flex flex-col gap-2"
+      role="group"
+      aria-labelledby="product-images-label"
+    >
       <span id="product-images-label" className="font-medium">
         {t('label')}
       </span>
@@ -294,7 +324,7 @@ export function ImagesSection({
                   aria-label={t('add')}
                   title={t('add')}
                   onClick={() => input.current?.click()}
-                  className="flex size-20 items-center justify-center rounded-md border border-line-control bg-subtle text-icon-muted enabled:hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed"
+                  className="flex size-20 items-center justify-center rounded-md border border-line-control bg-subtle text-icon-muted enabled:hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Icon name="plus" />
                 </button>

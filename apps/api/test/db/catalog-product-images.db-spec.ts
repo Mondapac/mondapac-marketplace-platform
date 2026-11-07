@@ -98,6 +98,7 @@ describe.each(TEST_MARKETS)(
     let adminUpload: PlatformProductImageUpload;
     let adminList: PlatformProductImageList;
     let adminRemove: PlatformProductImageDelete;
+    let adminAudit: unknown[];
     let list: OwnProductImageList;
     let read: OwnProductImageRead;
     let remove: OwnProductImageDelete;
@@ -265,7 +266,16 @@ describe.each(TEST_MARKETS)(
         products,
         images,
       });
-      adminRemove = new PlatformProductImageDelete(gate, common);
+      adminAudit = [];
+      adminRemove = new PlatformProductImageDelete(gate, {
+        ...common,
+        audit: {
+          record: (_context: unknown, entry: unknown) => {
+            adminAudit.push(entry);
+            return Promise.resolve();
+          },
+        },
+      });
       list = new OwnProductImageList(gate, {
         unitOfWork: persistence.unitOfWork,
         products,
@@ -862,6 +872,12 @@ describe.each(TEST_MARKETS)(
         });
         expect(removed.ok).toBe(true);
         expect([...store.objects.keys()].some((key) => key.includes(photoOf.imageId))).toBe(false);
+        expect(adminAudit).toEqual([
+          expect.objectContaining({
+            action: 'catalog.product.image-deleted',
+            targetId: product.state.id,
+          }),
+        ]);
         const listed = await adminList.execute(adminContext(), { productId: product.state.id });
         expect(listed.ok && listed.value).toEqual([]);
       });
@@ -879,6 +895,19 @@ describe.each(TEST_MARKETS)(
           productId: sellerProduct.state.id,
         });
         expect(!listed.ok && listed.error.code).toBe('product.not-found');
+      });
+
+      it('answers a photo of another product as image.not-found and keeps it', async () => {
+        const mine = await platformProduct();
+        const other = await platformProduct();
+        const theirs = await adminUploaded(other.state.id);
+        const result = await adminRemove.execute(adminContext(), {
+          productId: mine.state.id,
+          imageId: theirs.imageId,
+        });
+        expect(!result.ok && result.error.code).toBe('image.not-found');
+        const listed = await adminList.execute(adminContext(), { productId: other.state.id });
+        expect(listed.ok && listed.value.map((image) => image.imageId)).toEqual([theirs.imageId]);
       });
 
       it('refuses a seller actor', async () => {

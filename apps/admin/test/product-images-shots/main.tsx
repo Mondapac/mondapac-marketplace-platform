@@ -51,8 +51,17 @@ const view = {
   published: null,
 };
 
-window.fetch = ((input: string) => {
+window.fetch = ((input: string, init?: RequestInit) => {
   const path = input.replace(/^\/api\//, '').split('?')[0]!;
+  if (init?.method === 'POST' && path.endsWith('/images')) {
+    // `post=hang` keeps the upload in flight; `post=fail` refuses it as not an image.
+    if (q.get('post') === 'hang') return new Promise<Response>(() => undefined);
+    return Promise.resolve(
+      new Response(JSON.stringify({ statusCode: 415, code: 'file.unsupported-type' }), {
+        status: 415,
+      }),
+    );
+  }
   let body: unknown = { code: 'not-found' };
   if (path === `catalog/admin/platform-products/${PRODUCT}`) body = view;
   else if (path === `catalog/admin/platform-products/${PRODUCT}/images`) body = { images: library };

@@ -30,6 +30,12 @@ const ID = '0190a000-0000-7000-8000-0000000000c1';
 const CATEGORY = '0190a000-0000-7000-8000-0000000000d1';
 const CHILD = '0190a000-0000-7000-8000-0000000000d2';
 const assign = vi.fn();
+const LIBRARY_PHOTO = {
+  imageId: 'img-1',
+  width: 1600,
+  height: 1200,
+  createdAt: '2026-11-05T01:00:00.000Z',
+};
 
 const view = (over: Partial<ProductView> = {}): ProductView => ({
   productId: ID,
@@ -110,7 +116,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   call.mockReset();
   mocks.images.mockReset();
-  mocks.images.mockResolvedValue({ ok: true, status: 200, body: { images: [] } });
+  // The library holds the photo the saved draft names, as it does after an upload.
+  mocks.images.mockResolvedValue({ ok: true, status: 200, body: { images: [LIBRARY_PHOTO] } });
   Object.defineProperty(window, 'location', {
     value: { assign, href: `${document.baseURI.replace(/\/$/, '')}/catalog/products/edit` },
     writable: true,
@@ -241,6 +248,31 @@ describe('the edit form', () => {
       },
       variantIds: ['0190a000-0000-7000-8000-0000000000e1'],
     });
+  });
+
+  it('drops a photo the library no longer holds from the draft and starts unsaved', async () => {
+    mocks.images.mockResolvedValueOnce({ ok: true, status: 200, body: { images: [] } });
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    await screen.findByLabelText('Title');
+    const save = screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' });
+    expect(save.disabled).toBe(false);
+    call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
+    fireEvent.click(save);
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect((lastBody(1)['content'] as Record<string, unknown>)['imageIds']).toBeUndefined();
+  });
+
+  it('keeps the image card working when the library cannot be read', async () => {
+    mocks.images.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 503, code: 'access.unavailable' },
+    } as never);
+    call.mockResolvedValueOnce(ok(view()));
+    mountEdit();
+    expect(await screen.findByText(/Images could not be loaded/)).toBeTruthy();
+    const save = screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' });
+    expect(save.disabled).toBe(true);
   });
 
   it('files a product in categories picked by their full path from a searchable list', async () => {

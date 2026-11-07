@@ -54,7 +54,15 @@ const views = [
   ['menu', '?images=4', 'menu'],
   ['delete-dialog', '?images=4', 'delete'],
   ['full', '?images=8', null],
+  ['uploading', '?images=3&post=hang', 'upload'],
+  ['upload-error', '?images=3&post=fail', 'upload'],
+  ['moved-unsaved', '?images=3', 'move'],
 ];
+// A 2x2 PNG: the browser shrinks and re-encodes it before the (mocked) upload.
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==',
+  'base64',
+);
 for (const scheme of ['light', 'dark']) {
   for (const width of [1280, 768, 375]) {
     for (const [name, query, action] of views) {
@@ -70,9 +78,14 @@ for (const scheme of ['light', 'dark']) {
         scheme,
       );
       await page.getByText('Images', { exact: true }).first().waitFor();
-      if (action !== null) {
+      if (action === 'upload') {
+        await page
+          .locator('input[type="file"]')
+          .setInputFiles({ name: 'photo.png', mimeType: 'image/png', buffer: PNG });
+      } else if (action !== null) {
         await page.getByRole('button', { name: 'Image 2 options' }).click();
         if (action === 'delete') await page.getByRole('menuitem', { name: 'Delete' }).click();
+        if (action === 'move') await page.getByRole('menuitem', { name: 'Move left' }).click();
       }
       await page.waitForTimeout(400);
       const over = await page.evaluate(
