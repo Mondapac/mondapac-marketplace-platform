@@ -397,7 +397,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       'primary-image',
       'variant-removed',
       'gtin-changed',
-      'topics',
+      // `topics` joins this list in PR 4, with the seller panel's message for it.
       'images',
     ]);
     expect(own.value.workingCopy?.content).toMatchObject({
