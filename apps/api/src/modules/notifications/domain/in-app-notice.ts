@@ -49,6 +49,8 @@ export const SELLER_OFFER_CHANGES_REQUESTED = 'seller.offer-changes-requested';
 export const SELLER_PRODUCT_PUBLISHED = 'seller.product-published';
 /** A reviewer sent a product revision of the seller back. */
 export const SELLER_PRODUCT_CHANGES_REQUESTED = 'seller.product-changes-requested';
+/** A seller import finished or stopped part way (catalog design 14c). Ids, an enum and counts. */
+export const SELLER_IMPORT_FINISHED = 'seller.import-finished';
 /** A certification tag of an Offer was suspended, removed or restored. */
 export const SELLER_OFFER_TAG_CHANGED = 'seller.offer-tag-changed';
 /** An image of the seller's product was taken down. */
@@ -74,6 +76,7 @@ export const SELLER_REVIEW_RESTORED = 'seller.review-restored';
  */
 export const SELLER_DELIVERY_PROBLEM = 'seller.delivery-problem';
 
+export const IMPORT_FINISH_OUTCOMES = ['completed', 'stopped'] as const;
 export const CERTIFICATE_OUTCOMES = ['approved', 'changes-requested', 'declined'] as const;
 export const CERTIFICATE_END_CAUSES = ['expired', 'revoked'] as const;
 export const ISSUER_REQUEST_OUTCOMES = ['issuer-added', 'not-accepted'] as const;
@@ -117,7 +120,8 @@ export type SellerNoticeKind =
   | typeof SELLER_REVIEW_POSTED
   | typeof SELLER_REVIEW_HIDDEN
   | typeof SELLER_REVIEW_RESTORED
-  | typeof SELLER_DELIVERY_PROBLEM;
+  | typeof SELLER_DELIVERY_PROBLEM
+  | typeof SELLER_IMPORT_FINISHED;
 export const SELLER_NOTICE_KINDS: readonly SellerNoticeKind[] = [
   SELLER_ORDER_PAID,
   SELLER_LOW_STOCK,
@@ -139,6 +143,7 @@ export const SELLER_NOTICE_KINDS: readonly SellerNoticeKind[] = [
   SELLER_REVIEW_HIDDEN,
   SELLER_REVIEW_RESTORED,
   SELLER_DELIVERY_PROBLEM,
+  SELLER_IMPORT_FINISHED,
 ];
 
 /** The seller kinds that ring the new-order sound (plan 6b): orders only. */
@@ -309,6 +314,11 @@ const PARAM_SHAPES: Readonly<
   [SELLER_REVIEW_HIDDEN]: { ids: ['reviewId', 'productId'], enums: {} },
   [SELLER_REVIEW_RESTORED]: { ids: ['reviewId', 'productId'], enums: {} },
   [SELLER_DELIVERY_PROBLEM]: { ids: [], enums: {} },
+  [SELLER_IMPORT_FINISHED]: {
+    ids: ['importId', 'sellerId'],
+    enums: { outcome: IMPORT_FINISH_OUTCOMES },
+    counts: ['created', 'updated', 'failed'],
+  },
   [ADMIN_REVIEW_HELD]: { ids: ['reviewId'], enums: {} },
   [ADMIN_REVIEW_REPORTED]: { ids: ['reviewId'], enums: {} },
   [ADMIN_SELLER_REINSTATED_HOLD_REMAINS]: { ids: ['sellerId'], enums: {} },

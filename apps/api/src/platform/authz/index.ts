@@ -25,6 +25,8 @@ export {
   type AdminJobContext,
   type JobIdentity,
   type JobIdentityResolver,
+  type SellerJobContext,
+  type SellerJobIdentity,
 } from './job-identity';
 export type {
   AccessDeclaration,

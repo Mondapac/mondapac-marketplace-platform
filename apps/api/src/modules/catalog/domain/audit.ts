@@ -82,6 +82,29 @@ export const PlatformImportStartedAudit = defineAuditAction({
   },
 });
 
+/** The audit target type of a seller import job. */
+export const CATALOG_SELLER_IMPORT_TARGET = 'catalog.seller-import';
+
+/**
+ * A seller's member confirmed an import (design 14c): the file was checked, the choice made and the
+ * run queued. Counts and the mode only; the file's SHA-256 is on the job row (`file_sha256`), which
+ * the audit target id points to, because the audit vocabulary has no text field.
+ */
+export const OwnImportStartedAudit = defineAuditAction({
+  action: 'catalog.own-import.started',
+  targetType: CATALOG_SELLER_IMPORT_TARGET,
+  actors: ['authenticated'],
+  before: { state: auditField.enumOf(['checked'] as const) },
+  after: {
+    state: auditField.enumOf(['queued'] as const),
+    mode: auditField.enumOf(['my-products', 'sell-from-catalogue'] as const),
+    skipErrors: auditField.boolean(),
+    rows: auditField.integer(),
+    toImport: auditField.integer(),
+    errorRows: auditField.integer(),
+  },
+});
+
 /** The audit target type of a saved filter. */
 export const CATALOG_SAVED_FILTER_TARGET = 'catalog.saved-filter';
 
@@ -599,6 +622,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   ProductWithdrawnAudit,
   ProductRetiredAudit,
   PlatformImportStartedAudit,
+  OwnImportStartedAudit,
   SavedFilterSharedAudit,
   SavedFilterChangedAudit,
   SavedFilterRemovedAudit,

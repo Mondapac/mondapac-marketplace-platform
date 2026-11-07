@@ -33,6 +33,20 @@ export const CATALOG_OWN_PRODUCT_VIEW = definePermission('catalog', {
 });
 
 /**
+ * Upload, confirm and manage a seller import file (catalog design 14c, OFR-10 to OFR-12). Seller scope;
+ * **not protected**: it adds no power over what a row may contain, only volume, and every row still
+ * needs `catalog.own-product.edit` at the gate of each use case it calls. The volume is bounded
+ * (5,000 rows a file, 20 checks an hour, 5 starts and 10,000 rows a day, one running import per
+ * seller) and the result is drafts only. The Seller Owner holds every seller key by definition;
+ * the Store Manager receives it by identity's seed.
+ */
+export const CATALOG_OWN_IMPORT_RUN = definePermission('catalog', {
+  key: 'catalog.own-import.run',
+  scope: 'seller',
+  protected: false,
+});
+
+/**
  * Read the marketplace review queue and the Offers waiting in it (catalog design 8.1, 8.2). Platform
  * scope; unprotected, so Catalogue Moderator and Viewer receive it by identity's seed.
  */
@@ -253,6 +267,7 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
   CATALOG_OWN_PRODUCT_EDIT,
+  CATALOG_OWN_IMPORT_RUN,
   CATALOG_PRODUCT_VIEW,
   CATALOG_PRODUCT_APPROVE,
   CATALOG_PRODUCT_PAUSE,
