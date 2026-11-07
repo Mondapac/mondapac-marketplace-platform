@@ -2771,7 +2771,7 @@
           "choose": "Choose…",
           "field": {
             "type": "Certification type",
-            "type-hint": "Types come from Certifications › Types. Names show in English; Persian and Arabic names must be added there before those languages go live.",
+            "type-hint": "Names show in English. A certification admin must add Persian and Arabic names before those languages go live.",
             "issuer": "Issuer",
             "issuer-hint": "Only approved issuers for {type} in {market}.",
             "issuer-none": "No approved issuers for {type} in {market} yet.",

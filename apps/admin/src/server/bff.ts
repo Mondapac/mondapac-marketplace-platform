@@ -791,8 +791,9 @@ export async function relay(
       return jsonError(403, 'request.csrf');
     if (request.headers.get('origin') !== host.origin) return jsonError(403, 'request.csrf');
   }
-  // The large document body is read only for a request that carries a session cookie: an
-  // anonymous caller cannot make the relay buffer 14.5 MB. The API still checks the session.
+  // A cheap filter, not an authentication check: the large document body is read only for a
+  // request that carries an admin session cookie, so a caller with no cookie at all cannot make
+  // the relay buffer 14.5 MB. A forged cookie still passes here; the API checks the session.
   if (
     request.method === 'POST' &&
     CERT_DOCUMENT_PATH.test(target) &&
