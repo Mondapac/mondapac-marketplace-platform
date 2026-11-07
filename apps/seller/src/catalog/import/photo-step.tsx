@@ -156,7 +156,7 @@ export function PhotoStep({
       {picked === null ? null : (
         <div className="flex flex-col gap-3">
           <p role="status" className="text-sm text-fg">
-            {t('picked', { count: number(total) })}
+            {t('picked', { count: total })}
           </p>
           {picked.notPhotos + picked.sameName + picked.overLimit === 0 ? null : (
             <p className="text-sm text-fg-muted">
@@ -230,7 +230,7 @@ export function PhotoStep({
           </ul>
           {done - counts.added > problems.length ? (
             <p className="text-xs text-fg-muted">
-              {t('problems.more', { count: number(done - counts.added - problems.length) })}
+              {t('problems.more', { count: done - counts.added - problems.length })}
             </p>
           ) : null}
         </div>
@@ -249,14 +249,14 @@ export function PhotoStep({
         ) : null}
         {goesOn ? (
           <Button disabled={!canContinue} onClick={() => void run(queue)}>
-            {t('continue', { count: number(queue.length) })}
+            {t('continue', { count: queue.length })}
           </Button>
         ) : null}
         {phase.kind === 'idle' && queue.length > 0 ? (
           <Button onClick={() => void run(queue)}>
             {done > 0
-              ? t('continue', { count: number(queue.length) })
-              : t('upload', { count: number(queue.length) })}
+              ? t('continue', { count: queue.length })
+              : t('upload', { count: queue.length })}
           </Button>
         ) : null}
       </div>

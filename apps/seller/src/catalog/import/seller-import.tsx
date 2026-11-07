@@ -536,7 +536,7 @@ export function SellerImport({
       {phase.kind === 'job' && phase.view.state === 'checked' ? (
         <Dialog
           open={confirming}
-          title={t('confirm.title', { count: number(phase.view.ready) })}
+          title={t('confirm.title', { count: phase.view.ready })}
           onClose={() => (busy ? undefined : setConfirming(false))}
           actions={
             <>
@@ -593,7 +593,7 @@ function CheckResult({
     <>
       <FileRow
         name={view.fileLabel}
-        meta={t('result.checked-at', { time: checked, rows: number(view.rows) })}
+        meta={t('result.checked-at', { time: checked, rows: view.rows })}
         action={
           <FileButton accept={IMPORT_ACCEPT} onFiles={onReplace} disabled={busy}>
             {clean ? t('result.choose-another') : t('result.upload-corrected')}
@@ -705,7 +705,7 @@ function Finished({
         >
           <p>
             {t('finished.stopped-body', {
-              remaining: number(notImported),
+              remaining: notImported,
               next: offerResume ? 'resume' : 'new',
             })}
           </p>
