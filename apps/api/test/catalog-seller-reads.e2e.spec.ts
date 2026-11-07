@@ -2,13 +2,17 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import ExcelJS from 'exceljs';
 import request from 'supertest';
 import {
   ALLOWED_PRODUCT_TYPES_READER,
   type AllowedProductTypes,
 } from '../src/modules/catalog/application/ports/allowed-product-types.reader';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
-import { OWN_CATALOG_READER } from '../src/modules/catalog/application/ports/own-catalog.reader';
+import {
+  OWN_CATALOG_READER,
+  type OwnProductRow,
+} from '../src/modules/catalog/application/ports/own-catalog.reader';
 import { PRODUCT_REVISION_REPOSITORY } from '../src/modules/catalog/application/ports/product-revision.repository';
 import { WORKING_COPY_REPOSITORY } from '../src/modules/catalog/application/ports/working-copy.repository';
 import { Offer } from '../src/modules/catalog/domain/offer';
@@ -43,6 +47,30 @@ const OWNER = id<'Account'>(0xa101);
 const SELLER = id<'Seller'>(0xb020);
 const PRODUCT = id<'Product'>(0xc001);
 
+const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Collects a binary answer for supertest. */
+function binary(
+  res: request.Response,
+  callback: (error: Error | null, body: Buffer) => void,
+): void {
+  const chunks: Buffer[] = [];
+  res.on('data', (chunk: Buffer) => chunks.push(chunk));
+  res.on('end', () => callback(null, Buffer.concat(chunks)));
+}
+
+async function firstSheet(bytes: Buffer): Promise<ExcelJS.Worksheet> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(bytes as never);
+  return workbook.worksheets[0]!;
+}
+
+function cellsOf(sheet: ExcelJS.Worksheet, row: number): string[] {
+  const values: string[] = [];
+  sheet.getRow(row).eachCell({ includeEmpty: true }, (cell) => values.push(cell.text));
+  return values;
+}
+
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 let clock: FixedClock;
@@ -57,8 +85,13 @@ describe('seller read routes over HTTP (integration)', () => {
   let pageCalls: unknown[];
   let listCalls: { sellerId: unknown; filter: unknown; order: unknown; page: unknown }[];
   let countCalls: { sellerId: unknown; filters: unknown }[];
+  let pageRows: OwnProductRow[];
+  let idCalls: { sellerId: unknown; filter: unknown; order: unknown; limit: unknown }[];
+  let rowCalls: { sellerId: unknown; ids: unknown }[];
+  let viewTotals: Record<string, number>;
   let allowed: AllowedProductTypes | null;
   let allowedAsked: unknown[];
+  const pageIds = () => pageRows.map((row) => row.productId);
   const http = () => request(app.getHttpServer());
 
   async function boot(env: Record<string, string> = {}) {
@@ -98,10 +131,25 @@ describe('seller read routes over HTTP (integration)', () => {
             },
             countProductViews: (_m: unknown, sellerId: unknown, filters: unknown) => {
               countCalls.push({ sellerId, filters });
-              return Promise.resolve({
-                byStatus: { draft: 3, published: 1, matched: 1, retired: 1 },
-                inReview: 1,
-              });
+              return Promise.resolve({ byStatus: viewTotals, inReview: 1 });
+            },
+            listProductIds: (
+              _m: unknown,
+              sellerId: unknown,
+              filter: unknown,
+              order: unknown,
+              limit: unknown,
+            ) => {
+              idCalls.push({ sellerId, filter, order, limit });
+              const total = Object.values(viewTotals).reduce((sum, n) => sum + n, 0);
+              // The snapshot is capped at the limit the use case asks for.
+              const ids =
+                total > 1000 ? Array.from({ length: Number(limit) }, () => PRODUCT) : pageIds();
+              return Promise.resolve({ kind: 'ids', ids });
+            },
+            listProductRowsByIds: (_m: unknown, sellerId: unknown, ids: unknown) => {
+              rowCalls.push({ sellerId, ids });
+              return Promise.resolve(pageRows);
             },
             listProductPage: (
               _m: unknown,
@@ -111,7 +159,7 @@ describe('seller read routes over HTTP (integration)', () => {
               page: unknown,
             ) => {
               listCalls.push({ sellerId, filter, order, page });
-              return Promise.resolve({ kind: 'rows', rows: [] });
+              return Promise.resolve({ kind: 'rows', rows: pageRows });
             },
             listOffers: (_m: unknown, _s: unknown, page: unknown) => {
               pageCalls.push(page);
@@ -259,6 +307,10 @@ describe('seller read routes over HTTP (integration)', () => {
     pageCalls = [];
     listCalls = [];
     countCalls = [];
+    pageRows = [];
+    idCalls = [];
+    rowCalls = [];
+    viewTotals = { draft: 3, published: 1, matched: 1, retired: 1 };
     allowed = 'all';
     allowedAsked = [];
   });
@@ -266,13 +318,14 @@ describe('seller read routes over HTTP (integration)', () => {
     await app.close();
   });
 
-  it('documents the four read routes in OpenAPI', async () => {
+  it('documents the read routes and the export in OpenAPI', async () => {
     await boot({ API_DOCS_ENABLED: 'true' });
     const document = (await http().get('/docs-json').expect(200)).body as {
       paths: Record<string, Record<string, { responses: Record<string, unknown> }>>;
     };
     for (const [path, statuses] of [
       ['/catalog/seller/products', ['200', '400', '403', '503']],
+      ['/catalog/seller/products/export', ['200', '400', '401', '403', '404', '413', '503']],
       ['/catalog/seller/products/{productId}', ['200', '403', '404', '503']],
       ['/catalog/seller/offers', ['200', '400', '403', '503']],
       ['/catalog/seller/offers/{offerId}', ['200', '403', '404', '503']],
@@ -402,6 +455,203 @@ describe('seller read routes over HTTP (integration)', () => {
       }
       expect(countCalls).toHaveLength(0);
       expect(listCalls).toHaveLength(0);
+      expect(idCalls).toHaveLength(0);
+      expect(rowCalls).toHaveLength(0);
+    });
+
+    const exportRow = (overrides: Partial<OwnProductRow> = {}): OwnProductRow => ({
+      productId: PRODUCT,
+      productCode: `${code}-000184`,
+      typeCode: 'simple',
+      status: 'published',
+      name: 'Lamb cutlets 500 g',
+      draftName: null,
+      primaryImageId: null,
+      categoryId: null,
+      categoryName: 'Meat',
+      offerCount: 6,
+      pausedAt: null,
+      hasPublishedRevision: true,
+      hasPendingRevision: false,
+      pendingSubmittedAt: null,
+      lastChangedAt: START,
+      createdAt: START,
+      ...overrides,
+    });
+
+    it('streams the CSV of the filter as a no-store attachment, scoped to the calling seller', async () => {
+      await boot();
+      await seeded(code);
+      pageRows = [exportRow(), exportRow({ name: '=1+1', pausedAt: START })];
+
+      const answer = await get(
+        code,
+        '/catalog/seller/products/export?view=live&q=lamb&paused=false&sort=name&direction=desc&columns=offers,code',
+        sessionOf(code),
+      ).buffer(true);
+
+      expect(answer.status).toBe(200);
+      expect(answer.headers['content-type']).toBe('text/csv; charset=utf-8');
+      expect(answer.headers['content-disposition']).toBe(
+        'attachment; filename="products-2026-10-09.csv"',
+      );
+      expect(answer.headers['cache-control']).toBe('no-store');
+      expect(answer.headers['x-content-type-options']).toBe('nosniff');
+      expect(answer.text).toBe(
+        '\uFEFFProduct,Status,Category,Offers,Product code\r\n' +
+          `Lamb cutlets 500 g,Live,Meat,6,${code}-000184\r\n` +
+          `'=1+1,Live (paused),Meat,6,${code}-000184\r\n`,
+      );
+      expect(countCalls).toHaveLength(0);
+      expect(idCalls[0]).toMatchObject({
+        sellerId: SELLER,
+        order: { sort: 'name', direction: 'desc' },
+        limit: 10_001,
+        filter: { statuses: ['published', 'matched'], paused: false, text: 'lamb' },
+      });
+      expect(rowCalls[0]).toMatchObject({ sellerId: SELLER, ids: [PRODUCT, PRODUCT] });
+      expect(
+        logLines.find((l) => l.msg === 'catalog.own-products-export' && l.outcome),
+      ).toMatchObject({ outcome: 'ok', marketId: code });
+    });
+
+    it('streams an XLSX with the same header and every cell as a string', async () => {
+      await boot();
+      await seeded(code);
+      pageRows = [exportRow({ name: '=SUM(A1)' })];
+
+      const answer = await get(
+        code,
+        '/catalog/seller/products/export?format=xlsx&columns=offers,type,created',
+        sessionOf(code),
+      )
+        .buffer(true)
+        .parse(binary);
+
+      expect(answer.status).toBe(200);
+      expect(answer.headers['content-type']).toBe(XLSX_TYPE);
+      expect(answer.headers['content-disposition']).toBe(
+        'attachment; filename="products-2026-10-09.xlsx"',
+      );
+      expect(answer.headers['cache-control']).toBe('no-store');
+      const bytes = answer.body as Buffer;
+      expect(bytes.subarray(0, 4).toString('hex')).toBe('504b0304');
+      const sheet = await firstSheet(bytes);
+      expect(sheet.name).toBe('Products');
+      expect(sheet.rowCount).toBe(2);
+      expect(cellsOf(sheet, 1)).toEqual([
+        'Product',
+        'Status',
+        'Category',
+        'Offers',
+        'Product type',
+        'Created',
+      ]);
+      expect(cellsOf(sheet, 2)).toEqual([
+        '=SUM(A1)',
+        'Live',
+        'Meat',
+        '6',
+        'simple',
+        '2026-10-09T10:00:00Z',
+      ]);
+    });
+
+    it('exports the selected rows and answers product.not-found when one is not the seller’s', async () => {
+      await boot();
+      await seeded(code);
+      pageRows = [exportRow()];
+
+      const mine = await get(
+        code,
+        `/catalog/seller/products/export?productIds=${PRODUCT}`,
+        sessionOf(code),
+      ).buffer(true);
+      expect(mine.status).toBe(200);
+      expect(idCalls[0]).toMatchObject({ filter: { productIds: [PRODUCT] } });
+
+      // The store keeps only the seller's products: a stranger's id lowers the count.
+      const other = id<'Product'>(0xc777);
+      const refused = await get(
+        code,
+        `/catalog/seller/products/export?productIds=${PRODUCT},${other}`,
+        sessionOf(code),
+      );
+      expect(refused.status).toBe(404);
+      expect(refused.headers['cache-control']).toBe('no-store');
+      expect(refused.body).toEqual({ statusCode: 404, code: 'product.not-found' });
+      expect(idCalls).toHaveLength(2);
+      expect(rowCalls).toHaveLength(1);
+    });
+
+    it('refuses a request over the row cap or the id cap with 413 and writes nothing', async () => {
+      await boot();
+      await seeded(code);
+      viewTotals = { published: 10_001 };
+
+      const rows = await get(code, '/catalog/seller/products/export', sessionOf(code));
+      expect(rows.status).toBe(413);
+      expect(rows.body).toEqual({
+        statusCode: 413,
+        code: 'batch.too-large',
+        details: { max: 10_000, total: 10_001 },
+      });
+      const idList = Array.from({ length: 101 }, (_, n) => id<'Product'>(0xd000 + n)).join(',');
+      const idsOver = await get(
+        code,
+        `/catalog/seller/products/export?productIds=${idList}`,
+        sessionOf(code),
+      );
+      expect(idsOver.status).toBe(413);
+      expect(idsOver.body).toMatchObject({ code: 'batch.too-large', details: { max: 100 } });
+      expect(listCalls).toHaveLength(0);
+      // Only the oversized row request reads ids (it is refused before any row is read); the id
+      // cap is refused before any read.
+      expect(idCalls).toHaveLength(1);
+      expect(rowCalls).toHaveLength(0);
+    });
+
+    it('refuses a bad export query with validation.failed and without touching the store', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+      for (const [query, path] of [
+        ['format=pdf', 'format'],
+        ['columns=product,price', 'columns'],
+        ['view=active', 'view'],
+        ['paused=yes', 'paused'],
+        ['sort=price', 'sort'],
+        ['page=1', 'page'],
+        ['pageSize=25', 'pageSize'],
+        ['limit=5', 'limit'],
+        ['afterId=' + id<'Product'>(0xc999), 'afterId'],
+        ['sellerId=' + SELLER, 'sellerId'],
+        ['scope=PLATFORM', 'scope'],
+        ['ids=' + PRODUCT, 'ids'],
+        ['productIds=nope', 'productIds'],
+        [`productIds=${PRODUCT},${PRODUCT}`, 'productIds'],
+      ] as const) {
+        const answer = await get(code, `/catalog/seller/products/export?${query}`, session);
+        expect(answer.status).toBe(400);
+        expect(answer.headers['cache-control']).toBe('no-store');
+        expect(answer.body).toMatchObject({
+          code: 'validation.failed',
+          details: { fields: [{ path }] },
+        });
+      }
+      expect(countCalls).toHaveLength(0);
+      expect(listCalls).toHaveLength(0);
+      expect(idCalls).toHaveLength(0);
+      expect(rowCalls).toHaveLength(0);
+    });
+
+    it('needs a seller session for the export', async () => {
+      await boot();
+      await seeded(code);
+
+      const anonymous = await get(code, '/catalog/seller/products/export', {});
+      expect(anonymous.status).toBe(401);
+      expect(countCalls).toHaveLength(0);
     });
 
     it('serves the product form options from the Market configuration, before any product id', async () => {
