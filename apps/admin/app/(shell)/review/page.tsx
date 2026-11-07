@@ -108,7 +108,7 @@ export default async function ReviewQueuePage({
       <Tabs label={t('catalog.queue.tabs')} activeId={params.tab} items={tabs} />
       {params.tab === 'revision' ? (
         <>
-          <RevisionFilters params={params} sellerName={sellerName} />
+          <RevisionFilters params={params} sellerName={sellerName} empty={revisions.length === 0} />
           {revisions.length === 0 ? (
             <QueueEmpty params={params} morePages={morePages} />
           ) : (
@@ -117,7 +117,7 @@ export default async function ReviewQueuePage({
         </>
       ) : (
         <>
-          <SellerChip params={params} sellerName={sellerName} />
+          <SellerChip params={params} sellerName={sellerName} hideClear={offers.length === 0} />
           {offers.length === 0 ? (
             <QueueEmpty params={params} morePages={morePages} />
           ) : (

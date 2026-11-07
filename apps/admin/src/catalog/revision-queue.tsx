@@ -1,16 +1,17 @@
 'use client';
 
-import { Badge, CARD_TABLE, EmptyState, FilterChip, LinkButton, Select } from '@mondapac/ui';
+import {
+  Badge,
+  Button,
+  CARD_TABLE,
+  EmptyState,
+  FilterChip,
+  LinkButton,
+  Select,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { shortInstant } from '../shared/format.ts';
-import {
-  clearedHref,
-  isFiltered,
-  queueHref,
-  type ChangeFilter,
-  type PhotoFilter,
-  type QueueParams,
-} from './review-queue-params.ts';
+import { clearedHref, isFiltered, queueHref, type QueueParams } from './review-queue-params.ts';
 import { REVISION_REASONS, type RevisionRow } from './types.ts';
 
 const COLUMNS = ['product', 'change', 'seller', 'reasons', 'checks', 'waiting', 'action'] as const;
@@ -23,28 +24,35 @@ export const revisionHref = (row: Pick<RevisionRow, 'productId' | 'revisionId'>)
   `/review/products/${row.productId}/revisions/${row.revisionId}`;
 
 /**
- * The filters of the Product revisions tab: change (new or update), photos, and the seller picked
- * from a row (a chip with the store name). Each choice opens the first page with that filter.
+ * The filters of the Product revisions tab: change (new or update) and photos, sent with Apply as
+ * a plain GET form (no page change while a keyboard user moves through the options; works without
+ * script), and the seller picked from a row (a chip with the store name). Apply opens the first
+ * page with the filters.
  */
 export function RevisionFilters({
   params,
   sellerName,
+  empty = false,
 }: {
   readonly params: QueueParams;
   /** The store name of the filtered seller, when a row of the page names it. */
   readonly sellerName: string | null;
+  /** The list below is empty and offers its own Clear filters. */
+  readonly empty?: boolean;
 }) {
   const t = useTranslations('catalog.queue');
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
+      <form
+        method="get"
+        action="/review"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end lg:flex lg:flex-wrap"
+      >
         <div className="lg:w-56">
           <Select
+            name="change"
             label={t('filter.change')}
-            value={params.change}
-            onChange={(event) =>
-              go(queueHref(params, { change: event.target.value as ChangeFilter }))
-            }
+            defaultValue={params.change}
             options={(['all', 'new', 'update'] as const).map((value) => ({
               value,
               label: t(`filter.change-${value}`),
@@ -53,19 +61,23 @@ export function RevisionFilters({
         </div>
         <div className="lg:w-56">
           <Select
+            name="photos"
             label={t('filter.photos')}
-            value={params.photos}
-            onChange={(event) =>
-              go(queueHref(params, { photos: event.target.value as PhotoFilter }))
-            }
+            defaultValue={params.photos}
             options={(['any', 'with'] as const).map((value) => ({
               value,
               label: t(`filter.photos-${value}`),
             }))}
           />
         </div>
-      </div>
-      <SellerChip params={params} sellerName={sellerName} />
+        {params.seller === null ? null : (
+          <input type="hidden" name="seller" value={params.seller} />
+        )}
+        <Button type="submit" variant="secondary" className="max-sm:w-full">
+          {t('filter.apply')}
+        </Button>
+      </form>
+      <SellerChip params={params} sellerName={sellerName} hideClear={empty} />
     </div>
   );
 }
@@ -74,12 +86,15 @@ export function RevisionFilters({
 export function SellerChip({
   params,
   sellerName,
+  hideClear = false,
 }: {
   readonly params: QueueParams;
   readonly sellerName: string | null;
+  /** The empty list below already offers Clear filters. */
+  readonly hideClear?: boolean;
 }) {
   const t = useTranslations('catalog.queue');
-  if (!isFiltered(params)) return null;
+  if (!isFiltered(params) || (hideClear && params.seller === null)) return null;
   // No row of the page names the seller (an empty filtered page): say a seller filter is on
   // without guessing its name.
   const sellerLabel =
@@ -97,12 +112,14 @@ export function SellerChip({
           onRemove={() => go(queueHref(params, { seller: null }))}
         />
       )}
-      <a
-        className="min-h-8 content-center text-sm font-medium text-link underline"
-        href={clearedHref(params)}
-      >
-        {t('filter.clear')}
-      </a>
+      {hideClear ? null : (
+        <a
+          className="inline-flex min-h-12 items-center text-sm font-medium text-link underline lg:min-h-8"
+          href={clearedHref(params)}
+        >
+          {t('filter.clear')}
+        </a>
+      )}
     </div>
   );
 }

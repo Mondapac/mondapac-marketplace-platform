@@ -102,14 +102,25 @@ describe('RevisionQueueTable', () => {
 });
 
 describe('RevisionFilters', () => {
-  it('opens the first page with the chosen change and photos filter', () => {
-    const params = parseQueueParams({ after: '1_a' });
-    render(wrap(<RevisionFilters params={params} sellerName={null} />));
-    fireEvent.change(screen.getByLabelText('Change'), { target: { value: 'new' } });
-    expect(assign).toHaveBeenLastCalledWith('/review?change=new');
-    fireEvent.change(screen.getByLabelText('Photos'), { target: { value: 'with' } });
-    expect(assign).toHaveBeenLastCalledWith('/review?photos=with');
-    expect(screen.queryByRole('link', { name: 'Clear filters' })).toBeNull();
+  it('sends change and photos with Apply as a GET form, not on each change', () => {
+    const params = parseQueueParams({ change: 'update', photos: 'with', seller: SELLER });
+    const { container } = render(wrap(<RevisionFilters params={params} sellerName="Cedar Lane" />));
+    const form = container.querySelector('form')!;
+    expect(form.getAttribute('method')).toBe('get');
+    expect(form.getAttribute('action')).toBe('/review');
+    const change = screen.getByLabelText<HTMLSelectElement>('Change');
+    const photos = screen.getByLabelText<HTMLSelectElement>('Photos');
+    expect([change.name, change.value]).toEqual(['change', 'update']);
+    expect([photos.name, photos.value]).toEqual(['photos', 'with']);
+    fireEvent.change(change, { target: { value: 'new' } });
+    expect(assign).not.toHaveBeenCalled();
+    // The seller filter rides along; the page cursor does not (Apply starts on page one).
+    const hidden = [...form.querySelectorAll('input[type=hidden]')].map((input) => [
+      input.getAttribute('name'),
+      input.getAttribute('value'),
+    ]);
+    expect(hidden).toEqual([['seller', SELLER]]);
+    expect(within(form).getByRole('button', { name: 'Apply' }).getAttribute('type')).toBe('submit');
   });
 
   it('shows the seller filter as a chip that can be removed, and Clear filters', () => {
@@ -120,6 +131,15 @@ describe('RevisionFilters', () => {
     expect(screen.getByRole('link', { name: 'Clear filters' }).getAttribute('href')).toBe(
       '/review',
     );
+  });
+
+  it('leaves Clear filters to the empty list when the list is empty', () => {
+    render(
+      wrap(
+        <RevisionFilters params={parseQueueParams({ change: 'new' })} sellerName={null} empty />,
+      ),
+    );
+    expect(screen.queryByRole('link', { name: 'Clear filters' })).toBeNull();
   });
 });
 

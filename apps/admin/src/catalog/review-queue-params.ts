@@ -20,7 +20,8 @@ export interface QueueParams {
 export const QUEUE_PAGE_SIZE = 25;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const CURSOR = /^[0-9A-Za-z_-]{1,80}$/;
+// The API's cursor: the submit instant (ms) and the id of the page's last row.
+const CURSOR = /^\d{1,15}_[0-9a-f-]{36}$/;
 
 type Raw = Readonly<Record<string, string | readonly string[] | undefined>>;
 
