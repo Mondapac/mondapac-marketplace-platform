@@ -3395,7 +3395,9 @@
       "delivered": "Delivered",
       "subtotal": "Goods",
       "shipping": "Delivery",
-      "part-total": "Seller total"
+      "part-total": "Seller total",
+      "delivery-method": "Delivery",
+      "delivery-window": "Customer window"
     },
     "line": {
       "variant": "Variant {id}",
@@ -3407,10 +3409,53 @@
     "detail": {
       "page-title": "Order",
       "back": "Back to orders",
-      "summary": "Summary",
-      "parts": "{count, plural, one {# seller} other {# sellers}}",
       "seller": "Seller {id}",
-      "no-parts": "This order has no seller parts."
+      "no-parts": "This order has no seller parts.",
+      "copy-id": "Copy order ID",
+      "copied": "Copied",
+      "copy-failed": "Couldn't copy. Select the ID and copy it.",
+      "meta": "Placed {placed} · {sellers, plural, one {# seller} other {# sellers}} · {total}",
+      "payment": "Payment",
+      "customer": "Customer",
+      "no-customer": "Customer details are hidden for your role.",
+      "activity": "Activity",
+      "part-of": "Seller order {index} of {count}",
+      "steps": "Progress",
+      "step-pending": "Waiting",
+      "step-done": "Done",
+      "attention": {
+        "title": "Delivery needs a look",
+        "carrier-unknown": "The carrier may already hold a booking. Check before booking again.",
+        "cancel-unknown": "A courier cancellation was not confirmed.",
+        "other": "Check the delivery with the carrier.",
+        "no-carrier": "No courier could take this delivery."
+      },
+      "cancelled-banner": "This order was cancelled: {reason}.",
+      "customer-unavailable": "Customer details couldn't be loaded. Reload the page to try again."
+    },
+    "delivery-method": {
+      "pickup": "Pickup",
+      "instant": "Instant delivery",
+      "same_day": "Same-day delivery",
+      "scheduled": "Scheduled delivery",
+      "unknown": "Not recorded"
+    },
+    "step": {
+      "ready": "Ready",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "ready-pickup": "Ready for pickup",
+      "collected": "Collected"
+    },
+    "event": {
+      "placed": "Order placed",
+      "paid": "Payment confirmed",
+      "cancelled": "Order cancelled",
+      "ready": "{seller} marked ready",
+      "shipped": "{seller} shipped",
+      "delivered": "{seller} delivered",
+      "collected": "{seller} handed over for pickup",
+      "ready-pickup": "{seller} marked ready for pickup"
     }
   },
   "load": {

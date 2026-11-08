@@ -1,8 +1,8 @@
 'use client';
 
-import { Badge, CARD_TABLE, Icon, SelectBox, type BadgeTone } from '@mondapac/ui';
+import { Badge, CARD_TABLE, ListThumb, SelectBox, type BadgeTone } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { dayInZone } from '../shared/format.ts';
 import { numberFormat } from '../shared/intl.ts';
 import type { OptionalColumn, ProductRow, Status } from './products-types.ts';
@@ -15,33 +15,6 @@ const TONE: Record<Status, BadgeTone> = {
   retired: 'neutral',
   matched: 'info',
 };
-
-/** The primary photo, or a package tile when there is none or it cannot be shown. */
-function Thumb({ row }: { readonly row: ProductRow }) {
-  const [failed, setFailed] = useState(false);
-  if (row.primaryImageId === null || failed) {
-    return (
-      <span
-        aria-hidden="true"
-        className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-icon"
-      >
-        <Icon name="package" />
-      </span>
-    );
-  }
-  return (
-    // The relay serves the photo from the same origin, with the admin session.
-    <img
-      src={`/api/catalog/admin/products/${row.productId}/images/${row.primaryImageId}/thumb`}
-      alt=""
-      width={40}
-      height={40}
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className="size-10 shrink-0 rounded-md bg-muted object-cover"
-    />
-  );
-}
 
 /** What the table needs to select rows (the Bulk action menu acts on the selection). */
 export interface RowSelection {
@@ -205,7 +178,14 @@ export function ProductsTable({
               </td>
               <td className={`${cell} lg:min-w-72 max-lg:ps-8`}>
                 <div className="flex min-w-0 items-center gap-3">
-                  <Thumb row={row} />
+                  {/* The relay serves the photo from the same origin, with the admin session. */}
+                  <ListThumb
+                    src={
+                      row.primaryImageId === null
+                        ? null
+                        : `/api/catalog/admin/products/${row.productId}/images/${row.primaryImageId}/thumb`
+                    }
+                  />
                   <div className="min-w-0">
                     <div className="break-words font-medium text-fg">
                       {row.name ?? <span className="text-fg-muted">{t('unnamed')}</span>}

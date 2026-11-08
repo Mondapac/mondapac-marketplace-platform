@@ -965,6 +965,18 @@ filter shared with a whole Market needs a server-side home, so this is a new tab
   personal data on its own); a sweep of filters owned by erased accounts is open (14, O8).
 - Migration `20261031110000_catalog_saved_filters` (reviewed by Mojtaba, 2026-10-31: signed off), with `down.sql`. A new,
   empty table; no lock beyond `CREATE TABLE`.
+- Seller scope (migration `20261107150000_catalog_saved_filters_seller_scope`, domain 9.2e): nullable
+  `seller_id uuid` (a sellers id, no foreign key; never changes after the insert, so no column
+  grant) and `saved_filters_scope_check`: `(list_key LIKE 'seller.%') = (seller_id IS NOT NULL)`.
+  The two name uniques gain a seller twin and the original two become partial on `seller_id IS NULL`:
+  `saved_filters_seller_owner_name_key (market_id, seller_id, list_key, owner_account_id,
+  lower(name)) WHERE seller_id IS NOT NULL` and `saved_filters_seller_shared_name_key (market_id,
+  seller_id, list_key, lower(name)) WHERE visibility = 'everyone' AND seller_id IS NOT NULL`, so
+  two stores never clash on a shared name. Index `(market_id, seller_id, list_key)` is the access
+  path of a store's list. Existing rows are admin filters and keep NULL; the table is tiny, so the
+  index swap is instant. `down.sql` deletes the seller rows, restores the two original uniques and
+  drops the column. Seller document: `{v, view, q?, status?, categoryId?, paused?, typeCode?, sort,
+  direction}` (the application validates it).
 
 ### 3.29 `platform_import_jobs`, `platform_import_rows` (admin Import products; domain 14a)
 

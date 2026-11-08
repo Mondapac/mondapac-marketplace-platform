@@ -117,6 +117,13 @@ import { PlatformProductRetire } from './application/use-cases/platform-product-
 import { AdminProductsBulk } from './application/use-cases/admin-products-bulk.use-case';
 import { AdminProductsExport } from './application/use-cases/admin-products-export.use-case';
 import { SAVED_FILTER_REPOSITORY } from './application/ports/saved-filter.repository';
+import { SELLER_SAVED_FILTER_REPOSITORY } from './application/ports/seller-saved-filter.repository';
+import { OwnSavedFilterCreate } from './application/use-cases/own-saved-filter-create.use-case';
+import { OwnSavedFilterDelete } from './application/use-cases/own-saved-filter-delete.use-case';
+import { OwnSavedFilterShareCheck } from './application/use-cases/own-saved-filter-share-check.use-case';
+import { OwnSavedFilterUpdate } from './application/use-cases/own-saved-filter-update.use-case';
+import { OwnSavedFiltersList } from './application/use-cases/own-saved-filters-list.use-case';
+import { SellerSavedFilterController } from './presentation/seller-saved-filter.controller';
 import { SavedFilterCreate } from './application/use-cases/saved-filter-create.use-case';
 import { SavedFilterDelete } from './application/use-cases/saved-filter-delete.use-case';
 import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
@@ -193,6 +200,7 @@ import { simpleProductType } from './domain/product-types/simple';
 import { PlatformProductController } from './presentation/platform-product.controller';
 import { OfferReviewController } from './presentation/offer-review.controller';
 import { OwnOfferController } from './presentation/own-offer.controller';
+import { OwnProductsExport } from './application/use-cases/own-products-export.use-case';
 import { OwnProductsList } from './application/use-cases/own-products-list.use-case';
 import { OwnProductRead } from './application/use-cases/own-product-read.use-case';
 import { OwnOffersList } from './application/use-cases/own-offers-list.use-case';
@@ -507,6 +515,8 @@ const PORT = {
   rowSubmit: PlatformImportRowSubmit,
   savedFilters: SAVED_FILTER_REPOSITORY,
   shareCheck: SavedFilterShareCheck,
+  sellerSavedFilters: SELLER_SAVED_FILTER_REPOSITORY,
+  ownShareCheck: OwnSavedFilterShareCheck,
   brands: BRAND_REPOSITORY,
   brandReader: BRAND_READER,
   adminCategoryReader: ADMIN_CATEGORY_READER,
@@ -649,6 +659,7 @@ const RESTRUCTURE_DEPS = {
     PlatformImportController,
     SellerImportController,
     SavedFilterController,
+    SellerSavedFilterController,
     ProductReviewController,
     ProductImageReviewController,
     PlatformProductImageController,
@@ -1734,6 +1745,38 @@ const RESTRUCTURE_DEPS = {
       shareCheck: true,
       audit: true,
     }),
+    {
+      provide: OwnSavedFilterShareCheck,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate): OwnSavedFilterShareCheck =>
+        new OwnSavedFilterShareCheck(gate),
+    },
+    useCaseProvider(OwnSavedFiltersList, {
+      unitOfWork: true,
+      sellerSavedFilters: true,
+      ownShareCheck: true,
+    }),
+    useCaseProvider(OwnSavedFilterCreate, {
+      unitOfWork: true,
+      sellerSavedFilters: true,
+      ownShareCheck: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnSavedFilterUpdate, {
+      unitOfWork: true,
+      sellerSavedFilters: true,
+      ownShareCheck: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnSavedFilterDelete, {
+      unitOfWork: true,
+      sellerSavedFilters: true,
+      ownShareCheck: true,
+      audit: true,
+    }),
     useCaseProvider(AdminProductPause, {
       unitOfWork: true,
       products: true,
@@ -1924,6 +1967,13 @@ const RESTRUCTURE_DEPS = {
       clock: true,
     }),
     useCaseProvider(OwnProductsList, { unitOfWork: true, ownReader: true, policy: true }),
+    useCaseProvider(OwnProductsExport, {
+      unitOfWork: true,
+      ownReader: true,
+      policy: true,
+      sheetWriter: true,
+      clock: true,
+    }),
     useCaseProvider(OwnProductRead, {
       unitOfWork: true,
       products: true,

@@ -875,13 +875,99 @@
       "unnamed": "Unnamed product",
       "pending": "Waiting for review",
       "back": "Back to products",
-      "empty": {
-        "title": "No products yet",
-        "body": "Products you add will appear here with their review status."
+      "subtitle": "{count, plural, one {# product} other {# products}} in your store",
+      "add": "Add product",
+      "import": "Import",
+      "view-only": {
+        "title": "View only",
+        "body": "Your role can see products but not add or change them."
+      },
+      "tabs": "Product views",
+      "tab": {
+        "all": "All",
+        "drafts": "Drafts",
+        "live": "Live",
+        "inactive": "Inactive",
+        "in-review": "In review"
+      },
+      "search": {
+        "label": "Search products",
+        "placeholder": "Search by product name or code"
+      },
+      "filter": {
+        "button": "Filter",
+        "title": "Filter products",
+        "match-all": "Match all conditions",
+        "field": "Field",
+        "field-placeholder": "Field",
+        "is": "is",
+        "value": "Value",
+        "value-placeholder": "Value",
+        "remove": "Remove condition",
+        "add": "Add condition",
+        "cancel": "Cancel",
+        "apply": "Apply",
+        "name": {
+          "status": "Status",
+          "categoryId": "Category",
+          "paused": "Paused",
+          "typeCode": "Product type"
+        },
+        "paused": {
+          "true": "Yes",
+          "false": "No"
+        }
+      },
+      "sort": {
+        "button": "Sort",
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "name": "Name",
+          "updated": "Last changed",
+          "created": "Created"
+        },
+        "name": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "columns": {
+        "button": "Columns",
+        "title": "Columns",
+        "help": "Choose what the table shows. Saved for you only, in this browser.",
+        "always": "Always shown",
+        "fixed": {
+          "product": "Product",
+          "status": "Status",
+          "category": "Category"
+        },
+        "optional": {
+          "code": "Product code",
+          "updated": "Last changed",
+          "created": "Created",
+          "offers": "Offers",
+          "type": "Product type"
+        },
+        "up": "Move {column} up",
+        "down": "Move {column} down",
+        "reset": "Reset to default",
+        "save": "Save"
       },
       "col": {
         "product": "Product",
-        "code": "Product code"
+        "category": "Category",
+        "status": "Status",
+        "code": "Product code",
+        "updated": "Last changed",
+        "created": "Created",
+        "offers": "Offers",
+        "type": "Product type"
       },
       "status": {
         "draft": "Draft",
@@ -891,7 +977,44 @@
         "retired": "Retired",
         "unknown": "Unknown"
       },
-      "new": "New product"
+      "paused": "Paused",
+      "in-review": "In review",
+      "no-category": "No category",
+      "chip": "{field} is {value}",
+      "chip-remove": "Remove filter {filter}",
+      "clear-all": "Clear all",
+      "match": "{count, plural, one {# product matches} other {# products match}}",
+      "range": "{from}–{to} of {total} products",
+      "paging": {
+        "rows-per-page": "Rows per page",
+        "previous": "Previous",
+        "next": "Next",
+        "pages": "Pages",
+        "page": "Page {page}",
+        "narrow": "Narrow the list to see more.",
+        "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other products."
+      },
+      "sheet-close": "Close",
+      "loading": "Loading products",
+      "error": {
+        "title": "Products could not be loaded",
+        "unavailable": "Try again. If it keeps happening, check your connection.",
+        "denied": "You don’t have access to products.",
+        "too-broad": "Too many products to sort by name. Narrow the search or sort by date."
+      },
+      "empty": {
+        "none": "No products yet",
+        "none-help": "Add a product or import a list to start your store.",
+        "no-match": "No products match",
+        "no-match-help": "Try another search or remove a filter.",
+        "view": {
+          "all": "No products",
+          "drafts": "No drafts",
+          "live": "No live products",
+          "inactive": "No inactive products",
+          "in-review": "No products in review"
+        }
+      }
     },
     "product": {
       "type": "Type",
