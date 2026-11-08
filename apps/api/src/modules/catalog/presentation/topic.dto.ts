@@ -34,6 +34,42 @@ export class TopicBody {
   @ApiProperty({ description: 'The version a change must name.' }) version!: number;
 }
 
+/** A topic as a product read names it (product tags T2). */
+export class TopicRefBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() slug!: string;
+  @ApiProperty({ enum: ['active', 'archived'] }) status!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The name in the Market default locale, else any locale; null without one.',
+  })
+  name!: string | null;
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' } })
+  names!: Record<string, string>;
+}
+
+/** An active topic in the seller's picker. */
+export class OwnTopicItemBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() slug!: string;
+  @ApiProperty({ enum: ['occasion', 'cuisine', 'use'] }) group!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The name in the Market default locale, else any locale.',
+  })
+  name!: string | null;
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' } })
+  names!: Record<string, string>;
+}
+
+export class OwnTopicListBody {
+  @ApiProperty({ type: [OwnTopicItemBody] }) items!: OwnTopicItemBody[];
+  @ApiProperty({ nullable: true, type: String, format: 'uuid' }) nextAfterId!: string | null;
+  @ApiProperty({ description: 'The most topics a product may carry.' }) maxPerProduct!: number;
+}
+
 export class TopicWrapBody {
   @ApiProperty({ type: TopicBody }) topic!: TopicBody;
 }

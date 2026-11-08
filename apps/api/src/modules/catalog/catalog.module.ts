@@ -272,6 +272,8 @@ import { PublishedImageRead } from './application/use-cases/published-image-read
 import { PublicProductImageController } from './presentation/public-product-image.controller';
 import { reevaluateTagsJob } from './presentation/jobs/reevaluate-tags.job';
 import { OwnProductController } from './presentation/own-product.controller';
+import { OwnTopicController } from './presentation/own-topic.controller';
+import { OwnTopicList } from './application/use-cases/own-topic-list.use-case';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
 import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from './application/use-cases/own-product-save-draft.use-case';
@@ -289,7 +291,7 @@ import { BusinessActivityEdit } from './application/use-cases/business-activity-
 import { BusinessActivityGet } from './application/use-cases/business-activity-get.use-case';
 import { BusinessActivityList } from './application/use-cases/business-activity-list.use-case';
 import { BusinessActivityAdminController } from './presentation/business-activity-admin.controller';
-import { TOPIC_READER } from './application/ports/topic.reader';
+import { TOPIC_READER, type TopicReader } from './application/ports/topic.reader';
 import { TOPIC_REPOSITORY } from './application/ports/topic.repository';
 import { TopicCreate } from './application/use-cases/topic-create.use-case';
 import { TopicEdit } from './application/use-cases/topic-edit.use-case';
@@ -647,6 +649,7 @@ const RESTRUCTURE_DEPS = {
     PlatformProductController,
     OwnOfferController,
     OwnProductController,
+    OwnTopicController,
     ProductImageController,
     OfferReviewController,
     AdminProductListController,
@@ -740,6 +743,7 @@ const RESTRUCTURE_DEPS = {
         ATTRIBUTE_VALUE_SUGGESTION_STORE,
         PRODUCT_REVISION_REPOSITORY,
         ProductFamilyResolver,
+        TOPIC_READER,
       ],
       useFactory: (
         attributes: AttributeRepository,
@@ -749,6 +753,7 @@ const RESTRUCTURE_DEPS = {
         suggestions: AttributeValueSuggestionStore,
         revisions: ProductRevisionRepository,
         familyResolver: ProductFamilyResolver,
+        topics: TopicReader,
       ): FreezeRevision =>
         new FreezeRevision({
           attributes,
@@ -758,6 +763,7 @@ const RESTRUCTURE_DEPS = {
           images,
           suggestions,
           revisions,
+          topics,
         }),
     },
     serviceProvider(ProductFamilyResolver, {
@@ -815,6 +821,7 @@ const RESTRUCTURE_DEPS = {
       clock: true,
     }),
     useCaseProvider(TopicList, { unitOfWork: true, topicReader: true, policy: true }),
+    useCaseProvider(OwnTopicList, { unitOfWork: true, topicReader: true, policy: true }),
     useCaseProvider(TopicGet, { unitOfWork: true, topics: true }),
     useCaseProvider(TopicCreate, {
       unitOfWork: true,
@@ -1851,6 +1858,8 @@ const RESTRUCTURE_DEPS = {
       revisions: true,
       sellerNames: true,
       gtinRegistry: true,
+      topicReader: true,
+      policy: true,
     }),
     useCaseProvider(OwnProductCreate, {
       unitOfWork: true,
@@ -1975,6 +1984,7 @@ const RESTRUCTURE_DEPS = {
       suggestions: true,
       attributeStore: true,
       familyResolver: true,
+      topicReader: true,
     }),
     useCaseProvider(OwnOffersList, { unitOfWork: true, ownReader: true, policy: true }),
     useCaseProvider(OwnOfferRead, {

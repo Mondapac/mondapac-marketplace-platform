@@ -653,6 +653,7 @@ model CatalogProductRevision {
   workingCopies          CatalogProductWorkingCopy[]
   texts                  CatalogProductRevisionText[]
   categories             CatalogProductRevisionCategory[]
+  topics                 CatalogProductRevisionTopic[]
   variants               CatalogProductRevisionVariant[]
   images                 CatalogProductRevisionImage[]
   decision               CatalogProductRevisionDecision?
@@ -700,6 +701,26 @@ model CatalogProductRevisionCategory {
   /// The category re-ask and the impact count (A9, A10).
   @@index([marketId, categoryId, revisionId])
   @@map("product_revision_categories")
+  @@schema("catalog")
+}
+
+/// The topics a revision carries (product tags T2): at most 10, order as entered. Insert-only.
+/// The topic key is the pair (market, topic), so a topic of another Market is refused by the
+/// foreign key. Topics are never deleted, hence RESTRICT. Position 0 to 9 is a hand-written CHECK.
+model CatalogProductRevisionTopic {
+  marketId   String                 @map("market_id") @db.VarChar(8)
+  tenantId   String                 @map("tenant_id")
+  revisionId String                 @map("revision_id") @db.Uuid
+  topicId    String                 @map("topic_id") @db.Uuid
+  position   Int                    @db.SmallInt
+  revision   CatalogProductRevision @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  topic      CatalogTopic           @relation(fields: [marketId, topicId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, revisionId, topicId])
+  @@unique([marketId, revisionId, position])
+  /// Products with this topic (T3 search, the 8-product page rule).
+  @@index([marketId, topicId, revisionId])
+  @@map("product_revision_topics")
   @@schema("catalog")
 }
 
@@ -1703,6 +1724,7 @@ model CatalogTopic {
   /// Optimistic version (P 10); 1 at insert.
   version   Int
   terms     CatalogTopicTerm[]
+  revisions CatalogProductRevisionTopic[]
 
   @@unique([marketId, id])
   @@unique([marketId, slug])

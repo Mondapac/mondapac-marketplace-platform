@@ -318,6 +318,36 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
     });
   });
 
+  describe('topics (product tags T2)', () => {
+    const T = Array.from(
+      { length: 11 },
+      (_, n) => `0197a1b2-0000-7000-8000-${String(n + 1).padStart(12, '0')}`,
+    );
+    const withTopics = (topicIds: unknown) => base({ content: { ...base().content, topicIds } });
+
+    it('reads an absent list as none and keeps the order entered', () => {
+      const none = freezeWorkingCopy(base());
+      expect(none.ok && none.value.topicIds).toEqual([]);
+      const some = freezeWorkingCopy(withTopics([T[2], T[0], T[1]]));
+      expect(some.ok && some.value.topicIds).toEqual([T[2], T[0], T[1]]);
+    });
+
+    it('accepts ten topics and refuses an eleventh at topicIds', () => {
+      expect(freezeWorkingCopy(withTopics(T.slice(0, 10))).ok).toBe(true);
+      expect(issues(withTopics(T))).toContainEqual({ path: 'topicIds', code: 'too-many' });
+    });
+
+    it('refuses a repeat, a non-id and a non-list at their places', () => {
+      expect(issues(withTopics([T[0], T[0]]))).toEqual([{ path: 'topicIds.1', code: 'duplicate' }]);
+      expect(issues(withTopics([T[0], 'x', 7]))).toEqual([
+        { path: 'topicIds.1', code: 'invalid' },
+        { path: 'topicIds.2', code: 'invalid' },
+      ]);
+      expect(issues(withTopics('t'))).toEqual([{ path: 'topicIds', code: 'invalid' }]);
+      expect(issues(withTopics({ 0: T[0] }))).toEqual([{ path: 'topicIds', code: 'invalid' }]);
+    });
+  });
+
   describe('tax override content (AC 36)', () => {
     const published = (): RevisionContent => {
       const result = freezeWorkingCopy(base());
@@ -330,6 +360,15 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
       expect(result.ok).toBe(true);
       if (!result.ok) return;
       expect(result.value).toEqual({ ...published(), taxCategoryCode: tax[1] });
+    });
+
+    it('keeps the topics of the published content', () => {
+      const topics = [
+        '0197a1b2-0000-7000-8000-000000000001',
+        '0197a1b2-0000-7000-8000-000000000002',
+      ];
+      const result = buildTaxOverrideContent({ ...published(), topicIds: topics }, tax[1], tax);
+      expect(result.ok && result.value.topicIds).toEqual(topics);
     });
 
     it('refuses an unknown or unchanged code', () => {

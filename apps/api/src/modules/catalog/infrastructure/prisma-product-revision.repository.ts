@@ -98,6 +98,16 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         isPrimary: index === 0,
       })),
     });
+    if (content.topicIds.length > 0) {
+      await tx.catalogProductRevisionTopic.createMany({
+        data: content.topicIds.map((topicId, index) => ({
+          ...base,
+          revisionId: revision.id,
+          topicId,
+          position: index,
+        })),
+      });
+    }
     // The images first: a variant's picks are checked against them by the database.
     if (content.imageIds.length > 0) {
       await tx.catalogProductRevisionImage.createMany({
@@ -140,6 +150,7 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
       include: {
         texts: { orderBy: { locale: 'asc' } },
         categories: { orderBy: { position: 'asc' } },
+        topics: { orderBy: { position: 'asc' } },
         variants: { orderBy: { position: 'asc' } },
         images: { orderBy: { position: 'asc' } },
       },
@@ -157,6 +168,7 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         ]),
       ),
       categoryIds: row.categories.map((category) => category.categoryId),
+      topicIds: row.topics.map((topic) => topic.topicId),
       taxCategoryCode: row.taxCategoryCode,
       attributeValues: row.attributeValues as Record<string, unknown>,
       variants: row.variants.map((variant) => ({

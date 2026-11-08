@@ -187,6 +187,40 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
     return { id, name: names[locale] ?? '' };
   }
 
+  interface TopicSeed {
+    readonly id: string;
+    readonly slug: string;
+    readonly name: string | null;
+  }
+  /** A topic of `target` with a name in that Market's default locale (none when `name` is null). */
+  async function topic(target: typeof market, name: string | null): Promise<TopicSeed> {
+    const id = uuid7();
+    const slug = `t-${uuid7().slice(-12)}`;
+    await insert('topics', {
+      id,
+      ...base(target),
+      slug,
+      topic_group: 'use',
+      status: 'active',
+      created_by: uuid7(),
+      created_at: T0.toString(),
+      updated_at: T0.toString(),
+      version: 1,
+    });
+    if (name !== null) {
+      await insert('topic_terms', {
+        ...base(target),
+        topic_id: id,
+        locale: policy.locales(target).default,
+        kind: 'name',
+        term: name,
+        term_key: `${name.toLowerCase()}-${slug}`,
+        position: 0,
+      });
+    }
+    return { id, slug, name };
+  }
+
   interface Made {
     readonly productId: Id<'Product'>;
     readonly productCode: string;
@@ -200,6 +234,8 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
     readonly name?: string | null;
     readonly code?: string;
     readonly categories?: readonly Category[];
+    /** The topics of the revision, in the order entered. */
+    readonly topics?: readonly TopicSeed[];
     /** Never published: the revision is only pending. */
     readonly pendingOnly?: boolean;
     /** A published product the admin paused (catalog design 4.1a). */
@@ -268,6 +304,14 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
         revision_id: revisionId,
         category_id: entry.id,
         position: index + 1,
+      });
+    }
+    for (const [index, entry] of (options.topics ?? []).entries()) {
+      await insert('product_revision_topics', {
+        ...base(target),
+        revision_id: revisionId,
+        topic_id: entry.id,
+        position: index,
       });
     }
     const extra: Record<string, string> = {
@@ -715,6 +759,29 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
       primaryImageId: null,
       offerCount: 0,
     });
+  });
+
+  it('shows the topics of the shown revision in the order entered, named in the Market locale', async () => {
+    const mine = seller();
+    const second = await topic(market, 'Ramadan');
+    const first = await topic(market, 'Barbecue');
+    const unnamed = await topic(market, null);
+    const tagged = await make({ sellerId: mine, topics: [second, first, unnamed] });
+    const plain = await make({ sellerId: mine, name: 'Plain' });
+    // A topic of the other Market on a product there never reaches this Market's answer.
+    const foreign = await topic(other, 'Canary');
+    await make({ target: other, sellerId: mine, topics: [foreign] });
+
+    const answer = await ask({ sellerId: mine, view: 'all' });
+
+    const row = answer.items.find((i) => i.productId === tagged.productId)!;
+    expect(row.topics).toEqual([
+      { id: second.id, slug: second.slug, name: 'Ramadan' },
+      { id: first.id, slug: first.slug, name: 'Barbecue' },
+      { id: unnamed.id, slug: unnamed.slug, name: null },
+    ]);
+    expect(answer.items.find((i) => i.productId === plain.productId)!.topics).toEqual([]);
+    expect(JSON.stringify(answer)).not.toContain('Canary');
   });
 
   it('shows a never-published product with the name, category and photo of its pending revision', async () => {

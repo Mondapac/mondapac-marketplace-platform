@@ -100,6 +100,8 @@ export const REVISION_VARIANT_FIELDS: Record<keyof RevisionVariantContent, Field
 export const REVISION_CONTENT_FIELDS: Record<keyof RevisionContent, FieldDisposition> = {
   texts: nested('REVISION_TEXT_FIELDS'),
   categoryIds: exempt('reference'),
+  // Ids of curated topics; the names were claim-checked when the admin wrote them (T1).
+  topicIds: exempt('reference'),
   taxCategoryCode: exempt('internal-code'),
   attributeValues: checked('product.attribute-text-value'),
   variants: nested('REVISION_VARIANT_FIELDS'),

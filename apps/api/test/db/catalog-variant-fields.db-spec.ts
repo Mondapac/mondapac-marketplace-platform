@@ -233,6 +233,7 @@ describe.each(TEST_MARKETS)('catalog variant fields in market %s (database)', (c
       content: {
         texts: { en: { name: 'Dates', shortDescription: null, description: null } },
         categoryIds: [categoryId],
+        topicIds: [],
         taxCategoryCode: 'standard',
         attributeValues: {},
         variants: variants.map((fields, index) => ({
