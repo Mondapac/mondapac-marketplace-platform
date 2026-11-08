@@ -55,7 +55,47 @@ const browser = await chromium.launch({
 });
 const states = ['list', 'filtered', 'empty', 'error', 'loading', 'viewonly'];
 const widths = [1280, 768, 375];
-const plan = [...states.flatMap((state) => widths.map((width) => [state, width])), ['sheet', 375]];
+// F2 states (saved filters, selection, Export): shot name -> [page scenario, steps before the shot].
+const f2 = {
+  'saved-tabs': ['list', async () => {}],
+  'save-dialog': [
+    'saved-dialogs',
+    async (page) => {
+      await page.getByRole('button', { name: 'Save filter…' }).click();
+      await page.getByRole('dialog', { name: 'Save this filter' }).waitFor();
+      await page.getByLabel('Name').fill('Live oils');
+    },
+  ],
+  'manage-dialog': [
+    'list',
+    async (page) => {
+      await page.getByRole('button', { name: 'Manage filters' }).click();
+      await page.getByRole('dialog', { name: 'Manage filters' }).waitFor();
+    },
+  ],
+  'selection-bulk': [
+    'list',
+    async (page) => {
+      await page.getByRole('checkbox', { name: 'Select Extra virgin olive oil 1 L' }).click();
+      await page.getByRole('checkbox', { name: 'Select Medjool dates 1 kg' }).click();
+      await page.getByRole('button', { name: 'Bulk action' }).click();
+      await page.getByRole('menu', { name: 'Bulk action' }).waitFor();
+    },
+  ],
+  'export-dialog': [
+    'list',
+    async (page) => {
+      await page.getByRole('button', { name: 'Export', exact: true }).click();
+      await page.getByRole('dialog', { name: 'Export 143 products' }).waitFor();
+    },
+  ],
+};
+const plan = [
+  ...states.flatMap((state) => widths.map((width) => [state, width])),
+  ['sheet', 375],
+  ...Object.keys(f2).flatMap((state) => widths.map((width) => [state, width])),
+];
+const only = process.env.SHOTS_ONLY?.split(',');
 // Each header starts where its cells start (table layout only), and no text is cut off.
 const measure = () => {
   const doc = globalThis.document.documentElement;
@@ -83,6 +123,8 @@ const measure = () => {
 };
 for (const theme of ['light', 'dark']) {
   for (const [scenario, width] of plan) {
+    const isF2 = scenario in f2;
+    if (only && !only.some((name) => scenario === name || (name === 'f2' && isF2))) continue;
     const ctx = await browser.newContext({
       viewport: { width, height: 900 },
       colorScheme: theme,
@@ -90,7 +132,9 @@ for (const theme of ['light', 'dark']) {
     });
     const page = await ctx.newPage();
     page.on('pageerror', (error) => console.log('page error:', error.message));
-    await page.goto(`http://localhost:${port}/?s=${scenario === 'sheet' ? 'list' : scenario}`);
+    await page.goto(
+      `http://localhost:${port}/?s=${isF2 ? f2[scenario][0] : scenario === 'sheet' ? 'list' : scenario}`,
+    );
     await page.evaluate(
       (t) => globalThis.document.documentElement.setAttribute('data-theme', t),
       theme,
@@ -105,15 +149,20 @@ for (const theme of ['light', 'dark']) {
       await page.getByRole('button', { name: 'Filter' }).click();
       await page.getByRole('dialog', { name: 'Filter products' }).waitFor();
     }
+    if (isF2) {
+      await page.getByRole('button', { name: 'Paused pantry' }).waitFor();
+      await f2[scenario][1](page);
+    }
     await page.waitForTimeout(300);
     const m = await page.evaluate(measure);
     console.log(
       `${scenario} ${width} ${theme}: scrollWidth=${m.scroll} clientWidth=${m.client}`,
       `misaligned=[${m.misaligned}] clipped=[${m.clipped}]`,
     );
+    // A dialog or a menu is a layer over the page: the shot is the viewport, not the whole page.
     await page.screenshot({
-      path: join(out, `products-${scenario}-${width}-${theme}.png`),
-      fullPage: scenario !== 'sheet',
+      path: join(out, `products-${isF2 ? 'f2-' : ''}${scenario}-${width}-${theme}.png`),
+      fullPage: scenario === 'saved-tabs' || (!isF2 && scenario !== 'sheet'),
     });
     await ctx.close();
   }

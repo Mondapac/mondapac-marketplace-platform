@@ -10,14 +10,15 @@ import {
   IconButton,
   LinkButton,
   ListPagination,
+  ListViewsBar,
   Popover,
   SearchField,
   SkeletonRows,
-  Tabs,
   browserStorage,
   prefsKey,
   readIds,
   useDesktop,
+  useRowSelection,
   writeIds,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -31,12 +32,24 @@ import {
   ProductsFilterPanel,
   ProductsSortPanel,
 } from './products-panels.tsx';
+import { ProductsExport } from './products-export.tsx';
+import { ManageFiltersDialog, SaveFilterDialog } from './products-saved.tsx';
+import {
+  DEFAULT_LIMITS,
+  LIST_KEY,
+  SHARE_PERMISSION,
+  isPlainView,
+  queryOf,
+  sameList,
+  type SavedFiltersAnswer,
+} from './products-saved-types.ts';
 import { ProductsTable } from './products-table.tsx';
 import { EDIT_PERMISSION } from './types.ts';
 import {
   FILTER_FIELDS,
   MAX_LIST_ROWS,
   PAGE_SIZES,
+  SELECTION_MAX,
   SEARCH_MAX,
   VIEWS,
   addressOf,
@@ -86,6 +99,7 @@ export function ProductsList({
   marketId,
   timeZone,
   permissionKeys,
+  csrfToken,
   categories,
   productTypes,
   paging,
@@ -95,6 +109,8 @@ export function ProductsList({
   /** The seller's own zone, or null when none was chosen. */
   readonly timeZone: string | null;
   readonly permissionKeys: readonly string[];
+  /** The session's CSRF token, sent with the saved-filter writes. */
+  readonly csrfToken: string;
   /** The platform category tree for the Category filter; empty when it did not load. */
   readonly categories: CategoryTree['categories'];
   /** The Market's product types for the Product type filter; empty when they did not load. */
@@ -123,6 +139,10 @@ export function ProductsList({
   const [storeTotal, setStoreTotal] = useState<number | null>(null);
   const [columns, setColumns] = useState<readonly OptionalColumn[]>(cleanColumns(undefined));
   const [sheet, setSheet] = useState<'filter' | 'sort' | null>(null);
+  // The saved filters (catalog design 9.2d): null until they load, and when they cannot (the page
+  // then has the built-in tabs only, and no Save filter or Manage filters).
+  const [saved, setSaved] = useState<SavedFiltersAnswer | null>(null);
+  const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
   const latest = useRef(0);
   const askedTotal = useRef(false);
   const storageKey = prefsKey('seller', marketId, accountId, 'products-columns');
@@ -131,6 +151,18 @@ export function ProductsList({
   useEffect(() => {
     setColumns(cleanColumns(readIds(browserStorage(), storageKey)));
   }, [storageKey]);
+
+  const loadSaved = useCallback(async () => {
+    const result = await callApi<SavedFiltersAnswer>(
+      'GET',
+      `catalog/seller/saved-filters?listKey=${LIST_KEY}`,
+    );
+    if (result.ok) setSaved(result.body);
+  }, []);
+
+  useEffect(() => {
+    void loadSaved();
+  }, [loadSaved]);
 
   /** Moves the address to another list; the page is the first unless the patch names one. */
   const go = useCallback(
@@ -239,6 +271,43 @@ export function ProductsList({
     return label === null ? [] : [{ field, label }];
   });
 
+  // Another tab, search, filter or sort is another list: the selection does not follow it. Paging
+  // keeps it, so rows can be ticked on several pages (up to the cap of one export).
+  const listKey = JSON.stringify([query.view, query.q, query.filters, query.sort, query.direction]);
+  const pageIds = useMemo(() => answer?.items.map((item) => item.productId) ?? [], [answer]);
+  const selection = useRowSelection(pageIds, SELECTION_MAX, listKey);
+
+  const canShare = saved?.canShare ?? permissionKeys.includes(SHARE_PERMISSION);
+  const limits = saved?.limits ?? DEFAULT_LIMITS;
+  // The saved filter on show is the one whose list this address is (a tab on its own wins).
+  const activeSaved = isPlainView(query)
+    ? undefined
+    : saved?.items.find((item) => sameList(queryOf(item.payload, query.pageSize), query));
+  // "Save filter" is offered when the list differs from every view, built in or saved.
+  const canSave = saved !== null && !isPlainView(query) && activeSaved === undefined;
+  const openSaved = (id: string) => {
+    const filter = saved?.items.find((item) => item.id === id);
+    if (filter === undefined) return;
+    // `v` is the document's version; it never reaches the address.
+    const next = queryOf(filter.payload, queryRef.current.pageSize);
+    router.replace(addressOf(next) === '' ? pathname : `${pathname}?${addressOf(next)}`, {
+      scroll: false,
+    });
+  };
+  const summary = [
+    t(`tab.${query.view}`),
+    ...(query.q === '' ? [] : [t('saved.summary-search', { q: query.q })]),
+    ...chips.map((chip) => chip.label),
+    ...(query.sort === 'updated' && query.direction === 'desc'
+      ? []
+      : [
+          t('saved.summary-sort', {
+            field: t(`sort.field.${query.sort}`),
+            order: t(`sort.${orderKey(query.sort, query.direction)}`),
+          }),
+        ]),
+  ].join(' · ');
+
   const start = answer === null ? 0 : (answer.page - 1) * answer.pageSize;
   const sortName = t(`sort.field.${query.sort}`);
   const sortOrder = t(`sort.${orderKey(query.sort, query.direction)}`);
@@ -302,6 +371,19 @@ export function ProductsList({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <ProductsExport
+            selection={{
+              ids: [...selection.selected],
+              allMatching: selection.allMatching,
+              total: answer?.total ?? 0,
+            }}
+            query={query}
+            columns={columns}
+            total={answer === null || failure !== null ? null : answer.total}
+            timeZone={timeZone}
+            onSelectAll={selection.selectAllMatching}
+            onClear={selection.clear}
+          />
           {canRunImport(permissionKeys) ? (
             <LinkButton variant="secondary" href="/products/import" className="gap-2">
               <Icon name="file" />
@@ -317,14 +399,25 @@ export function ProductsList({
           <p>{t('view-only.body')}</p>
         </Banner>
       )}
-      <Tabs
+      <ListViewsBar
         label={t('tabs')}
-        activeId={query.view}
-        onSelect={(id) => go({ view: id as View })}
-        items={VIEWS.map((view) => ({
-          id: view,
-          label: `${t(`tab.${view}`)}${counts === null ? '' : ` (${number(countOf(counts, view))})`}`,
-        }))}
+        activeId={activeSaved?.id ?? query.view}
+        onSelect={(id) => {
+          if (saved?.items.some((item) => item.id === id)) openSaved(id);
+          else go({ view: id as View });
+        }}
+        items={[
+          ...VIEWS.map((view) => ({
+            id: view,
+            label: `${t(`tab.${view}`)}${counts === null ? '' : ` (${number(countOf(counts, view))})`}`,
+          })),
+          ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
+        ]}
+        manage={
+          saved === null
+            ? null
+            : { label: t('saved.manage-link'), onClick: () => setDialog('manage') }
+        }
       />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <SearchField
@@ -374,7 +467,7 @@ export function ProductsList({
           {t('sorted', { field: sortName, order: sortOrder })}
         </p>
       </div>
-      {filtered ? (
+      {filtered || canSave ? (
         <div className="flex flex-wrap items-center gap-2">
           {chips.map((chip) => (
             <FilterChip
@@ -384,11 +477,25 @@ export function ProductsList({
               onRemove={() => go({ filters: withoutFilter(chip.field) })}
             />
           ))}
-          <Button variant="link" className="min-h-(--mp-size-control-sm)" onClick={clearAll}>
-            {t('clear-all')}
-          </Button>
+          {filtered ? (
+            <Button variant="link" className="min-h-(--mp-size-control-sm)" onClick={clearAll}>
+              {t('clear-all')}
+            </Button>
+          ) : null}
+          {canSave ? (
+            <Button
+              variant="link"
+              className="min-h-(--mp-size-control-sm)"
+              onClick={() => setDialog('save')}
+            >
+              <Icon name="star" />
+              {t('saved.save-link')}
+            </Button>
+          ) : null}
           <p role="status" className="text-sm font-medium text-fg-secondary sm:ms-auto">
-            {answer === null || failure !== null ? '' : t('match', { count: answer.total })}
+            {!filtered || answer === null || failure !== null
+              ? ''
+              : t('match', { count: answer.total })}
           </p>
         </div>
       ) : null}
@@ -409,7 +516,19 @@ export function ProductsList({
       ) : null}
       {answer !== null && failure === null ? (
         <div className={loading ? 'opacity-60' : undefined} aria-busy={loading}>
-          <ProductsTable rows={answer.items} columns={columns} timeZone={timeZone} empty={empty} />
+          <ProductsTable
+            rows={answer.items}
+            columns={columns}
+            timeZone={timeZone}
+            empty={empty}
+            selection={{
+              selected: selection.selected,
+              allMatching: selection.allMatching,
+              full: selection.full,
+              onToggle: selection.toggleRow,
+              onTogglePage: selection.togglePage,
+            }}
+          />
         </div>
       ) : null}
       {answer !== null && failure === null && answer.total > 0 ? (
@@ -439,6 +558,25 @@ export function ProductsList({
           onPageSize={(pageSize) => go({ pageSize })}
         />
       ) : null}
+      <SaveFilterDialog
+        open={dialog === 'save'}
+        onClose={() => setDialog(null)}
+        query={query}
+        summary={summary}
+        canShare={canShare}
+        limits={limits}
+        csrfToken={csrfToken}
+        onSaved={() => void loadSaved()}
+      />
+      <ManageFiltersDialog
+        open={dialog === 'manage'}
+        onClose={() => setDialog(null)}
+        filters={saved?.items ?? []}
+        canShare={canShare}
+        limits={limits}
+        csrfToken={csrfToken}
+        onChanged={() => void loadSaved()}
+      />
       <BottomSheet
         open={!desktop && sheet === 'filter'}
         title={t('filter.title')}

@@ -87,6 +87,11 @@ const tree: CategoryTree = {
 /** The list answers by URL, so the order of the calls does not matter. */
 function serve(answer: (url: string) => ProductsPage | 'fail' | 'denied' | 'range' | 'broad') {
   call.mockImplementation((_method, path) => {
+    // The saved filters have their own spec: here they are not available, so the list has its
+    // built-in tabs only.
+    if (path.startsWith('catalog/seller/saved-filters')) {
+      return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
+    }
     const result = answer(path);
     if (result === 'fail') {
       return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
@@ -113,7 +118,10 @@ function serve(answer: (url: string) => ProductsPage | 'fail' | 'denied' | 'rang
     return Promise.resolve({ ok: true, status: 200, body: result } as never);
   });
 }
-const listCalls = () => call.mock.calls.map((entry) => entry[1]);
+const listCalls = () =>
+  call.mock.calls
+    .map((entry) => entry[1])
+    .filter((path) => !path.startsWith('catalog/seller/saved-filters'));
 // The one-off read of the whole store's size (the subtitle on a filtered address) is not a list read.
 const STORE_SIZE = 'catalog/seller/products?view=all&page=1';
 const lastList = () =>
@@ -140,6 +148,7 @@ function mount(
         marketId={options.market ?? 'AU'}
         timeZone="Australia/Brisbane"
         permissionKeys={options.keys ?? ALL_KEYS}
+        csrfToken="csrf-1"
         categories={options.categories ?? tree.categories}
         productTypes={options.types ?? ['grocery', 'electronics']}
         paging={options.paging ?? 'pages'}
@@ -213,9 +222,8 @@ describe('seller product list', () => {
       '/products/import',
     );
     expect(screen.queryByText('View only')).toBeNull();
-    // Export is the next PR's (F2): no header Export, no selection, no Bulk action.
-    expect(screen.queryByRole('button', { name: /Export|Bulk action/ })).toBeNull();
-    expect(screen.queryByRole('checkbox')).toBeNull();
+    // Export and Bulk action are the next feature's: the products-saved-export spec covers them.
+    expect(screen.getAllByRole('button', { name: /Export|Bulk action/ })).toHaveLength(2);
     cleanup();
     mount({ keys: ['catalog.own-product.view', 'catalog.own-product.edit'] });
     await screen.findByText('Olive oil 1L');
@@ -238,7 +246,7 @@ describe('seller product list', () => {
     mount();
     await screen.findByText('Olive oil 1L');
     const headers = screen.getAllByRole('columnheader').map((header) => header.textContent);
-    expect(headers).toEqual(['Product', 'Status', 'Category', 'Product code', 'Last changed']);
+    expect(headers).toEqual(['', 'Product', 'Status', 'Category', 'Product code', 'Last changed']);
     const cells = within(screen.getAllByRole('row')[1]!);
     expect(cells.getByRole('link', { name: 'Olive oil 1L' }).getAttribute('href')).toBe(
       `/products/${ID}`,
@@ -493,6 +501,7 @@ describe('seller product list', () => {
       JSON.parse(window.localStorage.getItem('mp:seller:AU:acc-1:products-columns') ?? 'null'),
     ).toEqual(['offers', 'updated']);
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      '',
       'Product',
       'Status',
       'Category',
@@ -514,6 +523,7 @@ describe('seller product list', () => {
     mount({ market: 'ZZ' });
     await screen.findByText('Olive oil 1L');
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      '',
       'Product',
       'Status',
       'Category',
@@ -525,6 +535,7 @@ describe('seller product list', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Reset to default' }));
     fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      '',
       'Product',
       'Status',
       'Category',

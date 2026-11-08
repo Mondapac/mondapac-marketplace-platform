@@ -4,6 +4,7 @@ import messages from '../../messages/en.json';
 import '../../app/globals.css';
 import { ProductsList } from '../../src/catalog/products-list.tsx';
 import type { ProductRow, ProductsPage } from '../../src/catalog/products-list-types.ts';
+import type { SavedFilter } from '../../src/catalog/products-saved-types.ts';
 
 const NAMES = [
   ['Extra virgin olive oil 1 L', 'Pantry', 'published', true, false, false],
@@ -41,6 +42,51 @@ const empty = scenario === 'empty';
 if (filtered) {
   history.replaceState(null, '', '?status=published&paused=true&q=oil');
 }
+// The Save filter dialog opens on a list that is not a saved one.
+if (scenario === 'saved-dialogs') {
+  history.replaceState(null, '', '?view=live&q=oil&status=published&sort=name');
+}
+
+// The saved filters (F2): two of the member's own and one a colleague shared.
+const filterOf = (
+  id: string,
+  name: string,
+  visibility: 'me' | 'everyone',
+  mine: boolean,
+  payload: SavedFilter['payload'],
+): SavedFilter => ({
+  id,
+  listKey: 'seller.catalog.products',
+  name,
+  visibility,
+  payload,
+  ownedByMe: mine,
+  canManage: mine,
+  createdAt: '2026-10-01T01:00:00.000Z',
+  updatedAt: '2026-10-01T01:00:00.000Z',
+});
+const savedFilters: SavedFilter[] = [
+  filterOf('0190a000-0000-7000-8000-0000000000f1', 'Paused pantry', 'me', true, {
+    v: 1,
+    view: 'live',
+    paused: true,
+    sort: 'updated',
+    direction: 'desc',
+  }),
+  filterOf('0190a000-0000-7000-8000-0000000000f2', 'Needs a photo', 'everyone', true, {
+    v: 1,
+    view: 'drafts',
+    sort: 'name',
+    direction: 'asc',
+  }),
+  filterOf('0190a000-0000-7000-8000-0000000000f3', 'Spring range', 'everyone', false, {
+    v: 1,
+    view: 'all',
+    q: 'spring',
+    sort: 'created',
+    direction: 'desc',
+  }),
+];
 
 const answer = (): ProductsPage => ({
   items: empty ? [] : filtered ? rows.slice(1, 3) : rows,
@@ -60,12 +106,17 @@ const json = (status: number, body: unknown) =>
       headers: { 'content-type': 'application/json' },
     }),
   );
-globalThis.fetch = () =>
-  scenario === 'error'
-    ? json(503, { code: 'access.unavailable' })
-    : scenario === 'loading'
-      ? new Promise<Response>(() => undefined)
-      : json(200, answer());
+const savedAnswer = { items: savedFilters, canShare: true, limits: { perOwner: 50, shared: 20 } };
+globalThis.fetch = (input: string | URL | Request) =>
+  (typeof input === 'string' ? input : input instanceof URL ? input.href : input.url).includes(
+    'saved-filters',
+  )
+    ? json(200, savedAnswer)
+    : scenario === 'error'
+      ? json(503, { code: 'access.unavailable' })
+      : scenario === 'loading'
+        ? new Promise<Response>(() => undefined)
+        : json(200, answer());
 
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
@@ -79,6 +130,7 @@ createRoot(document.getElementById('root')!).render(
             ? ['catalog.own-product.view']
             : ['catalog.own-product.view', 'catalog.own-product.edit', 'catalog.own-import.run']
         }
+        csrfToken="csrf-1"
         categories={[{ id: '0190a000-0000-7000-8000-0000000000c1', name: 'Pantry', depth: 0 }]}
         productTypes={['grocery']}
         paging="pages"

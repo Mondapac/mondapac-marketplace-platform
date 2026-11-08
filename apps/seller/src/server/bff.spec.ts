@@ -1315,3 +1315,213 @@ describe('relay of the seller product list', () => {
     expect((await relay(config, request, path, upstream)).status).toBe(200);
   });
 });
+
+describe('relay of the Products export and saved filters (catalog design 9.2c, 9.2d)', () => {
+  const PRODUCT = '0190a000-0000-7000-8000-0000000000b1';
+  const CATEGORY = '0190a000-0000-7000-8000-0000000000c1';
+  const FILTER = '0190a000-0000-7000-8000-0000000000f1';
+  const EXPORT = ['catalog', 'seller', 'products', 'export'];
+  const FILTERS = ['catalog', 'seller', 'saved-filters'];
+  const get = (query: string, path = 'catalog/seller/products/export') =>
+    new Request(`http://seller.localhost:3001/api/${path}${query}`, {
+      method: 'GET',
+      headers: { host: 'seller.localhost:3001' },
+    });
+  const write = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method,
+      headers,
+      ...(method === 'DELETE' ? {} : { body: '{"name":"x"}' }),
+    });
+
+  it('forwards the export selector, format, columns and ids, and drops the page and everything else', async () => {
+    const upstream = upstreamOk();
+    const ids = `${PRODUCT},${CATEGORY}`;
+    const query =
+      `?format=xlsx&columns=product,code,offers&productIds=${ids}&view=in-review&q=olive%20oil` +
+      `&status=draft&categoryId=${CATEGORY}&paused=true&typeCode=grocery&sort=name&direction=asc` +
+      '&page=2&pageSize=50&afterId=x&limit=5&extra=1';
+    expect((await relay(config, get(query), EXPORT, upstream)).status).toBe(200);
+    const sent = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(sent.pathname).toBe('/catalog/seller/products/export');
+    expect(Object.fromEntries(sent.searchParams)).toEqual({
+      format: 'xlsx',
+      columns: 'product,code,offers',
+      productIds: ids,
+      view: 'in-review',
+      q: 'olive oil',
+      status: 'draft',
+      categoryId: CATEGORY,
+      paused: 'true',
+      typeCode: 'grocery',
+      sort: 'name',
+      direction: 'asc',
+    });
+  });
+
+  it('passes 100 product ids and drops 101, or a malformed one', async () => {
+    const ids = (count: number) =>
+      Array.from(
+        { length: count },
+        (_, index) => `0190a000-0000-7000-8000-${String(index).padStart(12, '0')}`,
+      ).join(',');
+    const upstream = upstreamOk();
+    await relay(config, get(`?productIds=${ids(100)}`), EXPORT, upstream);
+    expect(new URL(upstream.mock.calls[0]?.[0] as string).searchParams.get('productIds')).toBe(
+      ids(100),
+    );
+    await relay(config, get(`?productIds=${ids(101)}`), EXPORT, upstream);
+    await relay(config, get(`?productIds=${PRODUCT},not-an-id`), EXPORT, upstream);
+    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/seller/products/export');
+    expect(upstream.mock.calls[2]?.[0]).toBe('http://api.test/catalog/seller/products/export');
+  });
+
+  it('drops a parameter with a value of the wrong shape, so the API never sees it', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      get(
+        '?format=pdf&columns=product,price&view=everything&status=withdrawn&categoryId=x&paused=1&sort=price&direction=up',
+      ),
+      EXPORT,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/seller/products/export');
+  });
+
+  it('passes the file back byte for byte, with its type and without its internal headers', async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00]);
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(bytes, {
+          status: 200,
+          headers: {
+            'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'content-disposition': 'attachment; filename="products-2026-11-07.xlsx"',
+            'cache-control': 'no-store',
+            'x-internal': 'secret',
+          },
+        }),
+      ),
+    );
+    const response = await relay(config, get('?format=xlsx'), EXPORT, upstream);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    // The panel names the file itself, so the API's file name header is not passed on.
+    expect(response.headers.get('content-disposition')).toBeNull();
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('x-internal')).toBeNull();
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
+
+  it('passes the export refusals back with their status and code', async () => {
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response('{"code":"batch.too-large","details":{"max":10000,"total":12500}}', {
+          status: 413,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    );
+    const response = await relay(config, get(''), EXPORT, upstream);
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      code: 'batch.too-large',
+      details: { max: 10000, total: 12500 },
+    });
+  });
+
+  it('refuses a write to the export, and the export of another population', async () => {
+    const upstream = upstreamOk();
+    expect(
+      (await relay(config, write('POST', 'catalog/seller/products/export'), EXPORT, upstream))
+        .status,
+    ).toBe(404);
+    expect(
+      (
+        await relay(
+          config,
+          get('', 'catalog/admin/products/export'),
+          ['catalog', 'admin', 'products', 'export'],
+          upstream,
+        )
+      ).status,
+    ).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('forwards the list of saved filters with its listKey only', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get('?listKey=seller.catalog.products&extra=1', 'catalog/seller/saved-filters'),
+      FILTERS,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/seller/saved-filters?listKey=seller.catalog.products',
+    );
+    await relay(
+      config,
+      get('?listKey=Bad Key!', 'catalog/seller/saved-filters'),
+      FILTERS,
+      upstream,
+    );
+    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/seller/saved-filters');
+  });
+
+  it.each([
+    ['POST', 'catalog/seller/saved-filters'],
+    ['PUT', `catalog/seller/saved-filters/${FILTER}`],
+    ['DELETE', `catalog/seller/saved-filters/${FILTER}`],
+  ])('relays %s %s as a seller write: same origin, with the CSRF token', async (method, path) => {
+    const upstream = upstreamOk();
+    const headers = { ...sameOrigin, 'x-csrf-token': 'tok' };
+    const response = await relay(config, write(method, path, headers), path.split('/'), upstream);
+    expect(response.status).toBe(200);
+    const sent = upstream.mock.calls[0]?.[1]?.headers as Headers;
+    expect(sent.get('x-csrf-token')).toBe('tok');
+    expect(upstream.mock.calls[0]?.[1]?.method).toBe(method);
+  });
+
+  it.each([
+    ['POST', 'catalog/seller/saved-filters'],
+    ['PUT', `catalog/seller/saved-filters/${FILTER}`],
+    ['DELETE', `catalog/seller/saved-filters/${FILTER}`],
+  ])('refuses %s %s from another origin, before the API', async (method, path) => {
+    const upstream = upstreamOk();
+    const headers = {
+      ...sameOrigin,
+      origin: 'http://evil.example',
+      'sec-fetch-site': 'cross-site',
+    };
+    const response = await relay(config, write(method, path, headers), path.split('/'), upstream);
+    expect(response.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['PUT', 'catalog/seller/saved-filters'],
+    ['DELETE', 'catalog/seller/saved-filters'],
+    ['PATCH', `catalog/seller/saved-filters/${FILTER}`],
+    ['POST', `catalog/seller/saved-filters/${FILTER}`],
+    ['GET', `catalog/seller/saved-filters/${FILTER}`],
+    ['PUT', 'catalog/seller/saved-filters/not-a-uuid'],
+    ['DELETE', 'catalog/seller/saved-filters/not-a-uuid'],
+    ['PUT', `catalog/seller/saved-filters/${FILTER}/extra`],
+    ['POST', 'catalog/admin/saved-filters'],
+    ['GET', 'catalog/admin/saved-filters'],
+  ])('refuses %s %s', async (method, path) => {
+    const upstream = upstreamOk();
+    const request =
+      method === 'GET'
+        ? get('', path)
+        : write(method, path, { ...sameOrigin, 'x-csrf-token': 'tok' });
+    const response = await relay(config, request, path.split('/'), upstream);
+    expect(response.status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});

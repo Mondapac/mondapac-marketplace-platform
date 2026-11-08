@@ -18,6 +18,8 @@ export const DEFAULT_PAGE_SIZE = 25;
 /** The rows past which the API refuses a page (it answers validation.failed on `page`). */
 export const MAX_LIST_ROWS = 10_000;
 export const SEARCH_MAX = 100;
+/** Rows that can be ticked one by one: one request's cap (the export takes 100 product ids). */
+export const SELECTION_MAX = 100;
 
 export interface ProductRow {
   readonly productId: string;
