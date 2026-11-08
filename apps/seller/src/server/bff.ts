@@ -50,6 +50,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/seller/imports/current',
     // The tags a product may carry (catalog topics; query: `search`, `afterId`, `limit`).
     'catalog/seller/topics',
+    // The Products list (list mode; query: view, q, status, categoryId, paused, typeCode, sort,
+    // direction, page, pageSize). The keyset parameters (`afterId`, `limit`) are read by the
+    // panel's server pages only and do not cross.
+    'catalog/seller/products',
   ]),
   PUT: new Set([
     // The signed-in member's own display name (profile).
@@ -169,6 +173,19 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   'identity/seller/team': { after: UUID },
   'catalog/seller/topics': { search: null, afterId: UUID, limit: /^[0-9]{1,3}$/ },
+  'catalog/seller/products': {
+    view: /^(all|drafts|live|inactive|in-review)$/,
+    // Free text up to the API's 100 characters (it refuses control characters itself).
+    q: null,
+    status: /^(draft|unpublished|published|matched|retired)$/,
+    categoryId: UUID,
+    paused: /^(true|false)$/,
+    typeCode: /^[A-Za-z0-9_.-]{1,64}$/,
+    sort: /^(name|updated|created)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[0-9]{1,5}$/,
+    pageSize: /^(25|50|100)$/,
+  },
   'notifications/seller/notices': { show: /^(unread|read|all)$/, before: UUID },
   // The API's own opaque cursor (epoch milliseconds of the publication, an underscore, the review id).
   'reviews/seller': { cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/ },
