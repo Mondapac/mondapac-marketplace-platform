@@ -69,7 +69,9 @@
       "assistant-enabled-words": "smart assistant, on, off, chat",
       "assistant-audience-words": "smart assistant, who sees, visitors, rollout",
       "assistant-model-words": "smart assistant, tier",
-      "assistant-welcome-words": "smart assistant, greeting"
+      "assistant-welcome-words": "smart assistant, greeting",
+      "promotions-switch": "Promotions switched on",
+      "promotions-switch-words": "discounts, offers, codes, campaigns, turn off"
     },
     "empty-hint": "Check the spelling or try a shorter word."
   },
@@ -113,6 +115,7 @@
       "reviews": "Reviews",
       "content": "Content",
       "sellers": "Sellers",
+      "marketing": "Marketing",
       "orders": "Orders & customers",
       "money": "Money"
     },
@@ -1763,7 +1766,8 @@
         "tax": "Tax",
         "admins": "Admins",
         "roles": "Roles & permissions",
-        "lists": "Lists"
+        "lists": "Lists",
+        "promotions": "Promotions"
       }
     },
     "sub": {
@@ -4286,6 +4290,11 @@
         },
         "review": {
           "moderate": "moderate a buyer review"
+        }
+      },
+      "promotions": {
+        "platform-funding": {
+          "approve": "approve platform promotion funding"
         }
       }
     },
@@ -6914,6 +6923,88 @@
         "too-large": "More than {max} variants match. Narrow the filter and export again.",
         "unavailable": "The file could not be made. Try again in a moment."
       }
+    }
+  },
+  "promotionsSettings": {
+    "title": "Promotions",
+    "permission-view": "View promotions settings",
+    "intro": "Whether discounts reach carts in this market, the first-order discount and the free-delivery threshold per zone.",
+    "last-changed": "Switch last changed {when}",
+    "optional": "optional",
+    "loading": "Loading promotions settings",
+    "load-failed": "The first-order and free-delivery settings could not be loaded.",
+    "view-only-cards": "You can change the market switch. The first-order discount and the free-delivery thresholds need the promotions manage permission, so they are not shown.",
+    "state": {
+      "on": "On",
+      "off": "Off"
+    },
+    "notice": {
+      "saved": "Promotions settings saved. They apply to orders placed from now on."
+    },
+    "switch": {
+      "title": "Promotions in this market",
+      "intro": "Discounts reach carts only while this is on. Turning it off keeps every promotion; carts just stop getting discounts.",
+      "label": "Promotions",
+      "help": "Needs a fresh sign-in code. Not available while acting as a seller."
+    },
+    "off": {
+      "title": "First-order discount and free delivery",
+      "body": "Promotions are off in this market. Turn them on to set the first-order discount and the free-delivery thresholds."
+    },
+    "first-order": {
+      "title": "First-order discount",
+      "intro": "Give new customers a discount on their first order. Changes apply to orders placed after you save. One per customer; repeat delivery addresses and cards are checked.",
+      "field": {
+        "enabled": "First-order discount",
+        "kind": "Discount",
+        "percent": "Percentage off",
+        "amount": "Amount off",
+        "cap": "Largest discount",
+        "minSpend": "Minimum spend",
+        "budget": "Monthly budget"
+      },
+      "kind": {
+        "PERCENT": "Percentage",
+        "FIXED": "Fixed amount"
+      },
+      "help": {
+        "percent": "From 0.01 to 100, up to two decimals.",
+        "cap": "Leave empty for no limit per order.",
+        "minSpend": "The cart must reach this amount. 0 means no minimum.",
+        "budget": "What the platform spends on this discount each month. 0 means it pays nothing. A budget above the market threshold needs a fresh sign-in code."
+      },
+      "invalid": {
+        "percent": "Enter a percentage from 0.01 to 100, for example 10 or 12.5.",
+        "amount": "Enter an amount above zero, for example 8.00.",
+        "cap": "Enter an amount above zero, or leave it empty.",
+        "minSpend": "Enter an amount, for example 30.00. Use 0 for no minimum.",
+        "budget": "Enter an amount, for example 1000.00. 0 means the discount pays nothing."
+      }
+    },
+    "zones": {
+      "title": "Free delivery threshold",
+      "intro": "Orders at or above the threshold get free delivery. A zone uses the market default unless it has its own.",
+      "default": "Market default",
+      "default-help": "Set in the market configuration.",
+      "uses-default": "Uses the market default.",
+      "use-default": "Use default",
+      "set-own": "Set own",
+      "threshold-for": "Free delivery threshold for {zone}",
+      "invalid": "Enter an amount above zero, for example 60.00.",
+      "add": "Add a zone",
+      "add-help": "The zone code, as in Service areas.",
+      "add-button": "Add",
+      "code-invalid": "Use letters, numbers, dashes and underscores only (up to 64)."
+    },
+    "error": {
+      "invalid": "Some values were not accepted. Check the fields and try again.",
+      "disabled": "Promotions are off in this market. Turn them on first.",
+      "unavailable": "Promotions can't be saved right now. Try again in a minute.",
+      "enrol": "Set up two-step verification in your profile before changing this setting.",
+      "throttled": "Too many attempts. Wait a minute and try again.",
+      "csrf": "The page expired. Reload it and try again.",
+      "denied": "You can't change this. You may be acting as a seller; this setting is not available then.",
+      "unknown": "The change could not be saved. Try again."
     }
   }
 }
