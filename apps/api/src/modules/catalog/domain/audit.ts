@@ -515,6 +515,65 @@ export const PlatformCategoryArchivedAudit = defineAuditAction({
   },
 });
 
+/** The audit target type of a culture (multi-culture package 1; ADR-0047). */
+export const CATALOG_CULTURE_TARGET = 'catalog.culture';
+
+const cultureStatus = auditField.enumOf(['draft', 'active', 'inactive'] as const);
+/** `inherit` is a mark left to the nearest ancestor (or the default, "required"). */
+const cultureMark = auditField.enumOf(['required', 'neutral', 'inherit'] as const);
+
+/** An admin defined a culture (a draft). Whether it names a required certification type, never the text. */
+export const CultureCreatedAudit = defineAuditAction({
+  action: 'catalog.culture.created',
+  targetType: CATALOG_CULTURE_TARGET,
+  actors: ['authenticated'],
+  after: { status: cultureStatus, requiresCertification: auditField.boolean() },
+});
+
+/**
+ * An admin edited a culture. Which parts changed, never the text. The required certification type
+ * decides which Offers a certified culture shows (ADR-0047 decision 12), so a change of it and a
+ * change of the default are recorded as their own flags.
+ */
+export const CultureEditedAudit = defineAuditAction({
+  action: 'catalog.culture.edited',
+  targetType: CATALOG_CULTURE_TARGET,
+  actors: ['authenticated'],
+  before: {
+    status: cultureStatus,
+    isDefault: auditField.boolean(),
+    requiresCertification: auditField.boolean(),
+  },
+  after: {
+    status: cultureStatus,
+    isDefault: auditField.boolean(),
+    requiresCertification: auditField.boolean(),
+    namesChanged: auditField.boolean(),
+    orderChanged: auditField.boolean(),
+    badgeChanged: auditField.boolean(),
+    requiredCertificationTypeChanged: auditField.boolean(),
+  },
+});
+
+/** An admin set or cleared a culture's mark on a category branch (visibility and certification mark). */
+export const CultureCategoryMarkChangedAudit = defineAuditAction({
+  action: 'catalog.culture.category-mark-changed',
+  targetType: CATALOG_CULTURE_TARGET,
+  actors: ['authenticated'],
+  before: {
+    categoryId: auditField.id(),
+    hadRow: auditField.boolean(),
+    visible: auditField.boolean(),
+    certificationMark: cultureMark,
+  },
+  after: {
+    categoryId: auditField.id(),
+    hasRow: auditField.boolean(),
+    visible: auditField.boolean(),
+    certificationMark: cultureMark,
+  },
+});
+
 /** The audit target type of a brand (catalog brand package; attributes package A5). */
 export const CATALOG_BRAND_TARGET = 'catalog.brand';
 
@@ -765,6 +824,9 @@ export const CATALOG_AUDIT_ACTIONS = [
   BrandCreatedAudit,
   BrandProposedAudit,
   BrandEditedAudit,
+  CultureCreatedAudit,
+  CultureEditedAudit,
+  CultureCategoryMarkChangedAudit,
   BrandApprovedAudit,
   BrandArchivedAudit,
   BrandMergedAudit,

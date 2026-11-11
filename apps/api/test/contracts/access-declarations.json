@@ -121,6 +121,7 @@
   { "name": "catalog.search-index-stamp", "rule": "system" },
   { "name": "catalog.seed-attributes", "rule": "system" },
   { "name": "catalog.seed-category-tree", "rule": "system" },
+  { "name": "catalog.seed-cultures", "rule": "system" },
   { "name": "catalog.sell-unit-labels", "rule": "anonymous" },
   { "name": "catalog.seller-product-owners", "rule": "system" },
   { "name": "catalog.send-attribute-suggestion-notices", "rule": "system" },

@@ -102,6 +102,22 @@
       ]
     }
   ],
+  "cultures": [
+    {
+      "code": "muslim-halal",
+      "displayOrder": 0,
+      "requiredCertificationType": "halal",
+      "badgeColour": null,
+      "isDefault": true,
+      "names": [
+        {
+          "locale": "en-AU",
+          "name": "Muslim community \u00b7 Halal",
+          "description": "Products for the Muslim community, with halal certification shown where it applies."
+        }
+      ]
+    }
+  ],
   "attributes": {
     "definitions": [
       {

@@ -295,6 +295,19 @@ import { BusinessActivityCreate } from './application/use-cases/business-activit
 import { BusinessActivityEdit } from './application/use-cases/business-activity-edit.use-case';
 import { BusinessActivityGet } from './application/use-cases/business-activity-get.use-case';
 import { BusinessActivityList } from './application/use-cases/business-activity-list.use-case';
+import { CULTURE_READER } from './application/ports/culture.reader';
+import { CULTURE_REPOSITORY } from './application/ports/culture.repository';
+import { CULTURE_SEED } from './application/ports/culture-seed';
+import { CultureCreate } from './application/use-cases/culture-create.use-case';
+import { CultureEdit } from './application/use-cases/culture-edit.use-case';
+import { CultureGet } from './application/use-cases/culture-get.use-case';
+import { CultureList } from './application/use-cases/culture-list.use-case';
+import { CultureCategoryMarks } from './application/use-cases/culture-category-marks.use-case';
+import { CultureCategoryMarkSet } from './application/use-cases/culture-category-mark-set.use-case';
+import { CultureCategoryMarkClear } from './application/use-cases/culture-category-mark-clear.use-case';
+import { SeedCultures } from './application/use-cases/seed-cultures.use-case';
+import { CultureAdminController } from './presentation/culture-admin.controller';
+import { seedCulturesJob } from './presentation/jobs/seed-cultures.job';
 import { BusinessActivityAdminController } from './presentation/business-activity-admin.controller';
 import { TOPIC_READER, type TopicReader } from './application/ports/topic.reader';
 import { TOPIC_REPOSITORY } from './application/ports/topic.repository';
@@ -554,6 +567,9 @@ const PORT = {
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
+  cultures: CULTURE_REPOSITORY,
+  cultureReader: CULTURE_READER,
+  cultureSeed: CULTURE_SEED,
   topics: TOPIC_REPOSITORY,
   topicReader: TOPIC_READER,
   contentFilter: ContentFilter,
@@ -692,6 +708,7 @@ const RESTRUCTURE_DEPS = {
     CategoryAdminController,
     CategoryImportController,
     BusinessActivityAdminController,
+    CultureAdminController,
     TopicAdminController,
     OwnBrandController,
     PublicBrandController,
@@ -857,6 +874,51 @@ const RESTRUCTURE_DEPS = {
       matcher: true,
       claimLocales: true,
       clock: true,
+    }),
+    useCaseProvider(CultureList, { unitOfWork: true, cultureReader: true }),
+    useCaseProvider(CultureGet, { unitOfWork: true, cultures: true }),
+    useCaseProvider(CultureCreate, {
+      unitOfWork: true,
+      cultures: true,
+      policy: true,
+      matcher: true,
+      evaluator: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CultureEdit, {
+      unitOfWork: true,
+      cultures: true,
+      policy: true,
+      matcher: true,
+      evaluator: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(CultureCategoryMarks, {
+      unitOfWork: true,
+      cultures: true,
+      treeReader: true,
+      policy: true,
+    }),
+    useCaseProvider(CultureCategoryMarkSet, {
+      unitOfWork: true,
+      cultures: true,
+      treeReader: true,
+      policy: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(CultureCategoryMarkClear, { unitOfWork: true, cultures: true, audit: true }),
+    useCaseProvider(SeedCultures, {
+      unitOfWork: true,
+      cultures: true,
+      cultureSeed: true,
+      policy: true,
+      evaluator: true,
+      clock: true,
+      ids: true,
     }),
     useCaseProvider(BrandList, { unitOfWork: true, brandReader: true }),
     useCaseProvider(AttributeAdminList, {
@@ -2178,6 +2240,7 @@ const RESTRUCTURE_DEPS = {
       [
         SeedCategoryTree,
         SeedAttributes,
+        SeedCultures,
         SweepOrphanImages,
         SweepOrphanImageFiles,
         ReevaluateTags,
@@ -2193,6 +2256,7 @@ const RESTRUCTURE_DEPS = {
       (
         categories: SeedCategoryTree,
         attributes: SeedAttributes,
+        cultures: SeedCultures,
         sweep: SweepOrphanImages,
         sweepFiles: SweepOrphanImageFiles,
         reevaluate: ReevaluateTags,
@@ -2207,6 +2271,7 @@ const RESTRUCTURE_DEPS = {
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
+        seedCulturesJob(cultures),
         sweepOrphanImagesJob(sweep),
         sweepOrphanImageFilesJob(sweepFiles),
         reevaluateTagsJob(reevaluate),

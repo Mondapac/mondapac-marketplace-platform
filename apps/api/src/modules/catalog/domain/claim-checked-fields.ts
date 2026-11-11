@@ -431,6 +431,20 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   BrandContent: { noCustomerText: 'the editable text of a brand; see BrandState' },
   BrandFieldProblem: { noCustomerText: 'field path and a problem code' },
   ActivityFieldProblem: { noCustomerText: 'field path and a problem code' },
+  CultureFieldProblem: { noCustomerText: 'field path and a problem code' },
+  CultureLocales: { noCustomerText: 'locale codes' },
+  CultureCategoryRow: { noCustomerText: 'ids, a visibility flag and a mark code' },
+  EffectiveCategoryMarks: { noCustomerText: 'flags, mark codes and category ids' },
+  MarkedCategoryNode: { noCustomerText: 'category ids' },
+  CultureName: {
+    noCustomerText:
+      'the name and short description of a culture in one locale; checked by the claim-term matcher on every admin write (a changed text is refused when it asserts a certification); see CultureState',
+  },
+  CultureContent: { noCustomerText: 'the names of a culture; see CultureName' },
+  CultureChange: { noCustomerText: 'the fields an admin edit may change; see CultureState' },
+  CultureState: {
+    noCustomerText: 'a culture as stored; its text is claim-checked on write, see CultureName',
+  },
   ActivityLocales: { noCustomerText: 'locale codes' },
   BusinessActivityContent: {
     noCustomerText:
