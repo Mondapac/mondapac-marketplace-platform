@@ -102,7 +102,7 @@ export class CategoryMoveProductsRun extends UseCase<
   { readonly code: 'access.denied' }
 > {
   static override readonly access: AccessDeclaration = {
-    name: 'catalog.run-category-product-moves',
+    name: 'catalog.category-move-products-run',
     rule: { kind: 'system' },
   };
 
@@ -290,14 +290,28 @@ export class CategoryMoveProductsRun extends UseCase<
             if (!family.ok) return fail();
 
             const revisionId = deps.ids.next<'ProductRevision'>();
+            // The item first, before the aggregate changes: a second turn on the same product
+            // stops here. A refusal below throws, which rolls this unit (and the item) back; the
+            // catch records the product as failed in a unit of its own.
+            if (
+              !(await deps.moveStore.recordItem(
+                market,
+                job.id,
+                productId,
+                { state: 'moved', revisionId },
+                now,
+              ))
+            ) {
+              return ok('handled');
+            }
             const revisionNo = await deps.revisions.nextRevisionNo(market, productId);
-            const published2 = product.publishCategoryOverride({
+            const overridden = product.publishCategoryOverride({
               revisionId,
               fromRevisionId: publishedId,
               familyCode: family.familyCode,
               now,
             });
-            if (!published2.ok) return fail();
+            if (!overridden.ok) throw new Error('category-move-products: the publish was refused');
             const revision: StoredRevision = {
               id: revisionId,
               productId,
@@ -314,18 +328,6 @@ export class CategoryMoveProductsRun extends UseCase<
               submittedAt: now,
               content: built.value,
             };
-            // The item first: a second turn on the same product stops here.
-            if (
-              !(await deps.moveStore.recordItem(
-                market,
-                job.id,
-                productId,
-                { state: 'moved', revisionId },
-                now,
-              ))
-            ) {
-              return ok('handled');
-            }
             await deps.revisions.add(market, revision);
             await deps.products.save(market, product);
             // Lock order: the product row (saved above), then its Offers.
