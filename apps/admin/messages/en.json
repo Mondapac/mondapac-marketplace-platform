@@ -673,10 +673,22 @@
         "store": "Store",
         "owner": "Owner",
         "status": "Status",
+        "health": "Health",
         "kind": "Submission",
         "area": "Service area",
         "submitted": "Submitted",
         "changed": "Last change"
+      },
+      "health": {
+        "band": {
+          "healthy": "Healthy",
+          "at-risk": "At risk",
+          "unhealthy": "Unhealthy"
+        },
+        "new": "New",
+        "no-data": "No data",
+        "none": "Not measured yet",
+        "unavailable": "Unavailable"
       },
       "unnamed": "No store name yet",
       "invited": "Invited by MondaPac",
