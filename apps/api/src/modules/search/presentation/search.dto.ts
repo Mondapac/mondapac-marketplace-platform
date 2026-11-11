@@ -122,6 +122,30 @@ export class SearchFilterBody {
   picked!: SearchFilterPickedBody | null;
 }
 
+export class SearchCategoryCountBody {
+  @ApiProperty({ description: 'A platform category right below the asked one.' })
+  categoryId!: string;
+  @ApiProperty({ description: 'Its public name.' }) name!: string;
+  @ApiProperty({ description: 'Products of the scope in it or under it.' }) count!: number;
+}
+
+export class SearchCountsBody {
+  @ApiProperty({ description: 'Products (one per product, never Offers) in the scope.' })
+  total!: number;
+  @ApiProperty({
+    description: 'True when the scope was too large to count: `total` is then a lower bound.',
+  })
+  totalIsCapped!: boolean;
+  @ApiProperty({
+    type: [SearchCategoryCountBody],
+    description:
+      'The "In categories" lines: the categories right below the asked one (the top level when ' +
+      'none), most products first, at most 12.',
+  })
+  categories!: SearchCategoryCountBody[];
+  @ApiProperty({ description: 'Stores that have a product in the scope.' }) storeCount!: number;
+}
+
 export class ProductSearchPageBody {
   @ApiProperty({ type: [SearchResultItemBody], description: 'In rank order for a text query.' })
   items!: SearchResultItemBody[];
@@ -149,6 +173,16 @@ export class ProductSearchPageBody {
   filtered!: boolean;
   @ApiProperty({ description: 'False when the scope was too large to count (counts are null).' })
   countsComplete!: boolean;
+  @ApiProperty({
+    type: SearchCountsBody,
+    nullable: true,
+    description:
+      'The size of the query scope (text and category, before attribute filters and price), from ' +
+      'the index without the query-time visibility check, so it can briefly include an Offer that ' +
+      'just became unsellable. Null for a store or brand list, an exact GTIN hit, and when the ' +
+      'category tree cannot be read.',
+  })
+  counts!: SearchCountsBody | null;
   @ApiProperty({
     type: SearchExactMatchBody,
     nullable: true,
@@ -399,4 +433,28 @@ export class ProductDetailBody {
     description: 'At least one Offer, lowest unit price first.',
   })
   offers!: ProductDetailOfferBody[];
+}
+
+export class StoreSearchItemBody {
+  @ApiProperty({ description: 'The store address (`/s/<slug>` on the buyer site).' }) slug!: string;
+  @ApiProperty({ description: 'The public store name of the approved revision.' }) name!: string;
+  @ApiProperty({
+    description:
+      'Indexed (sellable) Offers of the store, one per product it sells; from the index, not ' +
+      're-checked one by one.',
+  })
+  productCount!: number;
+}
+
+export class StoreSearchPageBody {
+  @ApiProperty({ type: [StoreSearchItemBody], description: 'In rank order.' })
+  items!: StoreSearchItemBody[];
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({
+    description:
+      'True when the next store is visible; hidden matches never change it, so it can be false ' +
+      'while a later page still has items.',
+  })
+  hasMore!: boolean;
 }

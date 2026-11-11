@@ -742,7 +742,7 @@ trigger `product_images_delete_guard` (`BEFORE DELETE`, SQL in 5.1) refuses a `D
 is `received`, `scanning`, `clean` or `refused` (`23001`): a `public` or `taken-down` image is never
 deleted (measured).
 
-`product_image_renditions` (insert-only): PK `(market_id, image_id, size_code)`; `size_code` CHECK
+`product_image_renditions` (insert-only): PK `(market_id, image_id, size_code, format_code)`; `format_code` (migration `20261111030000_catalog_image_formats`, SEO 6B-2) is `jpeg` (default, every older row), `webp` or `avif` by CHECK, and an object key has no dot, so the WebP of `large` is `<product>/<image>/large-webp`; `size_code` CHECK
 closed list (`thumb`, `medium`, `large`; final with ADR-0029); `object_key text NOT NULL` with
 **CHECK `object_key LIKE product_id::text || '/%'`** where `product_id` is copied and bound by FK
 `(market_id, image_id, product_id)` → `product_images` (per-product key prefix, Hassan L2); `sha256

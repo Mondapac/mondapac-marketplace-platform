@@ -254,6 +254,7 @@ import { PlatformProductImageUpload } from './application/use-cases/platform-pro
 import { PlatformProductImageController } from './presentation/platform-product-image.controller';
 import { ProductImageTakeDown } from './application/use-cases/product-image-take-down.use-case';
 import { ProductRevisionImageList } from './application/use-cases/product-revision-image-list.use-case';
+import { ReprocessImageFormats } from './application/use-cases/reprocess-image-formats.use-case';
 import { SweepOrphanImageFiles } from './application/use-cases/sweep-orphan-image-files.use-case';
 import { SweepOrphanImages } from './application/use-cases/sweep-orphan-images.use-case';
 import { sweepOrphanImageFilesJob } from './presentation/jobs/sweep-orphan-image-files.job';
@@ -1959,6 +1960,11 @@ const RESTRUCTURE_DEPS = {
       workingCopies: true,
       objectStore: true,
       clock: true,
+    }),
+    useCaseProvider(ReprocessImageFormats, {
+      unitOfWork: true,
+      images: true,
+      objectStore: true,
     }),
     useCaseProvider(SweepOrphanImageFiles, {
       unitOfWork: true,

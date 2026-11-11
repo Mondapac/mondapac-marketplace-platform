@@ -23,6 +23,9 @@ export {
   OfferTagRestored,
   OfferTagSuspended,
   ProductImageTakenDown,
+  // Consumed by search: a renamed or moved category changes the names its products are found by.
+  PlatformCategoryChanged,
+  PlatformCategoryMoved,
   // Consumed by search: a paused product's Offers leave the index, a resumed one's return.
   ProductPaused,
   ProductResumed,

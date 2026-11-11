@@ -11,9 +11,31 @@ describe('admin nav: Content', () => {
     expect(item).toMatchObject({ icon: 'layout', href: '/content', labelKey: 'nav.content' });
   });
 
+  it('is there for storefront.page.read too', () => {
+    expect(ids(['storefront.page.read'])).toContain('content');
+  });
+
   it('is hidden without it, also for the other slide keys', () => {
     expect(ids([])).not.toContain('content');
     expect(ids(['storefront.slide.edit', 'storefront.slide.publish'])).not.toContain('content');
+  });
+});
+
+describe('admin nav: Blog', () => {
+  it('is there for blog.post.read, in the content group, beside Slides', () => {
+    expect(ids(['blog.post.read'])).toContain('blog');
+    const item = adminNav.items.find((entry) => entry.id === 'blog');
+    expect(item).toMatchObject({
+      icon: 'file',
+      href: '/content/blog',
+      labelKey: 'nav.blog',
+      group: 'content',
+    });
+  });
+
+  it('is hidden without it, also for the other blog keys', () => {
+    expect(ids([])).not.toContain('blog');
+    expect(ids(['blog.post.edit', 'blog.post.publish'])).not.toContain('blog');
   });
 });
 
@@ -111,9 +133,11 @@ describe('admin nav: daily work only', () => {
       'business-activities',
       'tags',
       'review-queue',
+      'certificates',
       'review-moderation',
       'price-holds',
       'content',
+      'blog',
       'sellers',
       'orders',
       'customers',
