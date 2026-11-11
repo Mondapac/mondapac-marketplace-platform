@@ -9,6 +9,7 @@ import { AccountEmpty, AccountFrame } from './account-area.tsx';
 import { addressLine, recipientName } from './address-line.ts';
 import { useAccount, type SaveOutcome } from './account-state.tsx';
 import { AcField } from './fields.tsx';
+import { takeAddressPrefill, type AddressPrefill } from '../delivery/address-prefill.ts';
 
 interface Draft {
   readonly firstName: string;
@@ -19,13 +20,13 @@ interface Draft {
   readonly phone: string;
 }
 
-function draftOf(address: SavedAddress | null): Draft {
+function draftOf(address: SavedAddress | null, prefill: AddressPrefill | null = null): Draft {
   return {
     firstName: address?.firstName ?? '',
     lastName: address?.lastName ?? '',
-    street: address?.street ?? '',
-    suburb: address?.suburb ?? '',
-    postcode: address?.postcode ?? '',
+    street: address?.street ?? prefill?.street ?? '',
+    suburb: address?.suburb ?? prefill?.suburb ?? '',
+    postcode: address?.postcode ?? prefill?.postcode ?? '',
     phone: address?.phone ?? '',
   };
 }
@@ -49,6 +50,15 @@ export function AccountAddresses() {
   const { addresses, source, makeDefault, deleteAddress } = useAccount();
   const area = source.serviceArea;
   const [editing, setEditing] = useState<string | null>(null);
+  // An address the buyer chose to save from the Deliver to modal opens the Add form, filled in.
+  const [prefill, setPrefill] = useState<AddressPrefill | null>(null);
+  useEffect(() => {
+    const waiting = takeAddressPrefill();
+    if (waiting) {
+      setPrefill(waiting);
+      setEditing('new');
+    }
+  }, []);
   const [deleting, setDeleting] = useState<string | null>(null);
   // A delete or make-default the API could not do.
   const [failed, setFailed] = useState(false);
@@ -79,7 +89,11 @@ export function AccountAddresses() {
         <AddressForm
           area={area}
           address={addresses.find((a) => a.id === editing) ?? null}
-          onDone={() => setEditing(null)}
+          prefill={editing === 'new' ? prefill : null}
+          onDone={() => {
+            setPrefill(null);
+            setEditing(null);
+          }}
         />
       </AccountFrame>
     );
@@ -204,15 +218,18 @@ export function AccountAddresses() {
 function AddressForm({
   area,
   address,
+  prefill = null,
   onDone,
 }: {
   readonly area: ServiceArea;
   readonly address: SavedAddress | null;
+  /** Street, suburb and postcode chosen in the Deliver to modal, for a new address. */
+  readonly prefill?: AddressPrefill | null;
   readonly onDone: () => void;
 }) {
   const t = useTranslations('account.addresses');
   const { saveAddress } = useAccount();
-  const [draft, setDraft] = useState<Draft>(() => draftOf(address));
+  const [draft, setDraft] = useState<Draft>(() => draftOf(address, prefill));
   const [tries, setTries] = useState(0);
   const tried = tries > 0;
   const form = useRef<HTMLFormElement>(null);

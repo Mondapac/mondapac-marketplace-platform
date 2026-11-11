@@ -11,6 +11,7 @@ import {
   MAX_QUERY,
   MIN_QUERY,
   forwardUrl,
+  keepUrl,
   parseMapboxConfig,
   placesWithPostcodes,
   postcodeOf,
@@ -35,6 +36,8 @@ export interface PlacesDeps {
    */
   readonly apiOn: boolean;
   readonly limiter: RateLimiter;
+  /** The tighter limit of permanent (storable, dearer) answers: one per address saved. */
+  readonly keepLimiter: RateLimiter;
   readonly fetch: typeof fetch;
 }
 
@@ -42,6 +45,10 @@ export interface PlacesDeps {
 export const REQUESTS_PER_MINUTE = 60;
 /** Requests per process per minute, all clients together: the cost ceiling of one instance. */
 export const PROCESS_REQUESTS_PER_MINUTE = 1200;
+/** Permanent answers per client address per minute: a buyer saves an address now and then. */
+export const KEEPS_PER_MINUTE = 5;
+/** Permanent answers per process per minute, all clients together. */
+export const PROCESS_KEEPS_PER_MINUTE = 100;
 const TIMEOUT_MS = 4000;
 const HEADERS = { 'cache-control': 'no-store' } as const;
 
@@ -189,6 +196,30 @@ export async function answerSuburb(deps: PlacesDeps, incoming: Incoming, url: UR
   });
 }
 
+/**
+ * GET /api/deliver-to/keep?q=: the street address the buyer is saving to their address book, asked
+ * once more with `permanent=true` so it may be stored. Only a street address; no suburb lookups.
+ */
+export async function answerKeep(deps: PlacesDeps, incoming: Incoming, url: URL) {
+  const admitted = admit(deps, incoming);
+  if ('refused' in admitted) return admitted.refused;
+  const query = (url.searchParams.get('q') ?? '').replace(/\s+/gu, ' ').trim();
+  if (query.length < MIN_QUERY || query.length > MAX_QUERY) {
+    return json({ code: 'validation.failed' }, 400);
+  }
+  if (!deps.keepLimiter.take(clientKey(clientOf(incoming)))) {
+    return json({ code: 'request.throttled' }, 429, { 'retry-after': '60' });
+  }
+  const answer = await askMapbox(
+    deps,
+    keepUrl(deps.config!.token, admitted.country, query),
+    'keep',
+  );
+  if (answer === null) return json({ code: 'places.unavailable' }, 503);
+  const place = placesOf(answer.body).find((found) => found.street !== '') ?? null;
+  return json({ place });
+}
+
 let deps: PlacesDeps | undefined;
 
 /**
@@ -218,6 +249,10 @@ export function placesDepsOf(
       total: PROCESS_REQUESTS_PER_MINUTE,
       // Once per minute at most: an alert rule can watch this message.
       onTotalSpent: () => log({ msg: 'storefront.places-process-limit' }),
+    }),
+    keepLimiter: fixedWindowLimiter(KEEPS_PER_MINUTE, 60_000, {
+      total: PROCESS_KEEPS_PER_MINUTE,
+      onTotalSpent: () => log({ msg: 'storefront.places-keep-process-limit' }),
     }),
     fetch: (input, init) => fetch(input, init),
   };

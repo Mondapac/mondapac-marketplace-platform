@@ -6274,6 +6274,10 @@ svg {
 .lmst.no {
   color: var(--sf-error-ink);
 }
+.lmkeep {
+  justify-self: start;
+  font-weight: 700;
+}
 .lmsv {
   min-width: 0;
   margin: 0;
@@ -6293,7 +6297,7 @@ svg {
 .lmpriv .lnk {
   min-height: 32px;
 }
-.lmpriv,
+/* The privacy lines stay start-aligned: justified, their long words leave wide gaps at 320px. */
 .lmsel > small,
 .lmst.no > span,
 .lmerr span,
@@ -6301,6 +6305,7 @@ svg {
   text-align: justify;
   hyphens: auto;
 }
+
 .lmmap {
   position: relative;
   min-width: 0;
