@@ -12,7 +12,7 @@ has a strict CSP (`worker-src 'self'`, no `blob:`), and the map library is large
 
 ## Decision
 1. The real map is `mapbox-gl` v3 (pinned version), behind the same `DeliveryMapProps` as the stub.
-2. It is loaded only when the modal opens (`next/dynamic`, `ssr: false`), as one separate chunk.
+2. It is loaded only when the modal opens (`React.lazy` in a client-only modal), as one separate chunk.
 3. We use the library's CSP build. Its worker is copied from the package to `public/vendor/` when
    `server.mjs` starts and served from our own origin, so `worker-src 'self'` stays and no `blob:`
    is added. `connect-src` gains `https://api.mapbox.com https://events.mapbox.com` only when a

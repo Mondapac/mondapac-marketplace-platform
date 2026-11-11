@@ -206,6 +206,8 @@ describe('the Mapbox map', () => {
     expect(map.options['style']).toBe(DEFAULT_MAP_STYLE);
     expect(map.options['center']).toEqual([153.02, -27.47]);
     expect(map.options['dragRotate']).toBe(false);
+    expect(map.options['minZoom']).toBe(8);
+    expect(map.options['maxZoom']).toBe(18);
     expect(gl.module.workerUrl).toBe(WORKER_URL);
     expect(screen.getByRole('group', { name: /Map of Greater Brisbane/ })).toBeTruthy();
   });
@@ -245,6 +247,20 @@ describe('the Mapbox map', () => {
     const moved = onMove.mock.calls.at(-1)![0];
     expect(moved.lat).toBeCloseTo(-27.47);
     expect(moved.lng).toBeCloseTo(153.044);
+    // The fake projects 1 degree to 1000 px, so a 24 px step is 0.024 degrees.
+    for (const [key, dLng, dLat] of [
+      ['ArrowLeft', -0.024, 0],
+      ['ArrowUp', 0, 0.024],
+      ['ArrowDown', 0, -0.024],
+    ] as const) {
+      fireEvent.keyDown(pin, { key });
+      const step = onMove.mock.calls.at(-1)![0];
+      expect(step.lng).toBeCloseTo(153.02 + dLng);
+      expect(step.lat).toBeCloseTo(-27.47 + dLat);
+    }
+    const calls = onMove.mock.calls.length;
+    fireEvent.keyDown(pin, { key: 'Enter' });
+    expect(onMove.mock.calls.length).toBe(calls);
   });
 
   it('follows a new pick, marks it outside, and shows the ring for a device location', async () => {
@@ -273,6 +289,16 @@ describe('the Mapbox map', () => {
     expect(screen.getByRole('button', { name: 'Zoom out' }).getAttribute('aria-disabled')).toBe(
       'false',
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }));
+    expect(map.zoomOut).toHaveBeenCalled();
+    map.zoom = 8;
+    act(() => map.fire('zoomend'));
+    expect(screen.getByRole('button', { name: 'Zoom out' }).getAttribute('aria-disabled')).toBe(
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Zoom in' }).getAttribute('aria-disabled')).toBe(
+      'false',
+    );
     view.unmount();
     expect(map.removed).toBe(true);
   });
@@ -280,9 +306,13 @@ describe('the Mapbox map', () => {
   it('gives way to the drawn map when its style or token fails, but not after it loads', async () => {
     await open();
     const failing = gl.FakeMap.last!;
+    const remove = vi.spyOn(failing, 'remove');
     act(() => failing.fire('error'));
     expect(screen.getByRole('img', { name: /Map of Greater Brisbane/ })).toBeTruthy();
     expect(failing.removed).toBe(true);
+    // A second error before load (the style and a tile) removes it only once.
+    act(() => failing.fire('error'));
+    expect(remove).toHaveBeenCalledTimes(1);
     cleanup();
     await open();
     const map = gl.FakeMap.last!;

@@ -47,3 +47,15 @@ export function mapConfig(): MapConfig | null {
   cached ??= { config: parseMapConfig(process.env) };
   return cached.config;
 }
+
+/**
+ * Whether the map is configured, for the policy: a malformed configuration (start-up already
+ * refused it) reads as off, so the Content-Security-Policy stays strict.
+ */
+export function mapIsOn(): boolean {
+  try {
+    return mapConfig() !== null;
+  } catch {
+    return false;
+  }
+}

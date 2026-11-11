@@ -165,8 +165,10 @@ export function MapboxMap(props: MapboxMapProps) {
         // A bad token or style fails before the map loads: the drawn map takes its place. Later
         // errors (one tile) leave the map as it is.
         let started = false;
+        let given = false;
         live.on('error', () => {
-          if (started || gone) return;
+          if (started || given || gone) return;
+          given = true;
           // Free the WebGL context before the drawn map takes its place.
           live.remove();
           created = null;
