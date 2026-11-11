@@ -9,6 +9,8 @@ import { ConfigSearchPolicy } from '../../src/modules/search/infrastructure/conf
 import { PrismaOfferDocumentRepository } from '../../src/modules/search/infrastructure/prisma-offer-document.repository';
 import { PrismaShelfDocumentsReader } from '../../src/modules/search/infrastructure/prisma-shelf-documents.reader';
 import { PrismaOfferVariantReader } from '../../src/modules/search/infrastructure/prisma-offer-variant.reader';
+import { PostgresOfferSearchIndex } from '../../src/modules/search/infrastructure/postgres-offer-search-index';
+import { RawOfferScopeReader } from '../../src/modules/search/infrastructure/raw-offer-scope.reader';
 import { RawOfferFacetReader } from '../../src/modules/search/infrastructure/raw-offer-facet.reader';
 import { RawOfferSearchReader } from '../../src/modules/search/infrastructure/raw-offer-search.reader';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
@@ -402,8 +404,12 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
     const deps: SearchDependencies = {
       unitOfWork: db.unitOfWork,
       documents,
-      reader,
-      facets: facetReader,
+      index: new PostgresOfferSearchIndex(
+        reader,
+        facetReader,
+        new RawOfferScopeReader(new PrismaRawReadPort(db.root).forModule('search')),
+      ),
+      categoryTree: { tree: () => Promise.resolve([]) },
       filterSource: { filters: () => Promise.resolve([]) },
       policy,
       feed: { facts: () => Promise.resolve(null), publishedIds: () => Promise.resolve(null) },

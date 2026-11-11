@@ -11,6 +11,9 @@ import { ConfigSearchPolicy } from '../infrastructure/config-search-policy';
 import type { OfferDocumentRepository } from './ports/offer-document.repository';
 import type { FeedFacts, OfferFeed } from './ports/offer-feed';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
+import type { OfferFacetReader } from './ports/offer-facet.reader';
+import type { OfferSearchIndex } from './ports/offer-search-index';
+import type { NamedCategory, ScopeRow } from '../domain/scope-counts';
 import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { SellerEligibility } from './ports/seller-eligibility';
@@ -46,6 +49,7 @@ const id = <T extends string>(n: number): Id<T> => {
 };
 const offer = (n: number): Id<'Offer'> => id<'Offer'>(0x1000 + n);
 const SELLER = id<'Seller'>(0x51);
+const OTHER_SELLER = id<'Seller'>(0x52);
 const SUSPENDED = id<'Seller'>(0x52);
 const PRODUCT = id<'Product'>(0x91);
 const CATEGORY = id<'Category'>(0xca);
@@ -224,6 +228,29 @@ class StubReader implements OfferSearchReader {
   }
 }
 
+/** The scope rows the stub index answers (reset by each test's setup). */
+const scopeRowsOf: { rows: readonly ScopeRow[] } = { rows: [] };
+
+const treeOf: { nodes: readonly NamedCategory[] | null } = { nodes: [] };
+
+const noFacets: OfferFacetReader = {
+  searchFiltered: () => Promise.resolve([]),
+  facetRows: () => Promise.resolve([]),
+  numberRows: () => Promise.resolve([]),
+};
+
+/** The index port over the stub reader and the given facet reader (no scope rows). */
+const indexOf = (
+  reader: OfferSearchReader,
+  facets: OfferFacetReader = noFacets,
+): OfferSearchIndex => ({
+  search: (market, request) => reader.search(market, request),
+  searchFiltered: (market, request) => facets.searchFiltered(market, request),
+  facetRows: (market, scope) => facets.facetRows(market, scope),
+  numberRows: (market, scope, attrs) => facets.numberRows(market, scope, attrs),
+  scopeRows: () => Promise.resolve(scopeRowsOf.rows),
+});
+
 class StubVisibility implements PublicVisibility {
   hidden = new Set<Id<'Offer'>>();
   failing = false;
@@ -394,15 +421,13 @@ describe.each([
     shelves = new StubShelves();
     categories = new StubCategories();
     sellUnits = new StubSellUnits();
+    scopeRowsOf.rows = [];
+    treeOf.nodes = [];
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       documents,
-      reader,
-      facets: {
-        searchFiltered: () => Promise.resolve([]),
-        facetRows: () => Promise.resolve([]),
-        numberRows: () => Promise.resolve([]),
-      },
+      index: indexOf(reader),
+      categoryTree: { tree: () => Promise.resolve(treeOf.nodes) },
       filterSource: { filters: () => Promise.resolve([]) },
       policy: new ConfigSearchPolicy(markets),
       feed,
@@ -630,6 +655,44 @@ describe.each([
     const search = (input: Parameters<SearchProducts['execute']>[1]) =>
       new SearchProducts(gate, deps).execute(anonymous, input);
 
+    describe('counts of the scope (search 1a)', () => {
+      const parent = '00000000-0000-7000-8000-0000000000c1' as Id<'Category'>;
+      const child = '00000000-0000-7000-8000-0000000000c2' as Id<'Category'>;
+      const rows = (): ScopeRow[] => [
+        { productId: PRODUCT, sellerId: SELLER, categoryIds: [child] },
+        { productId: PRODUCT, sellerId: OTHER_SELLER, categoryIds: [child] },
+      ];
+
+      it('counts products once, the stores and the categories right below the asked one', async () => {
+        treeOf.nodes = [
+          { id: parent, parentId: null, name: 'Meat' },
+          { id: child, parentId: parent, name: 'Beef' },
+        ];
+        scopeRowsOf.rows = rows();
+        reader.hits = [hit(1)];
+
+        const result = await search({ q: 'beef' });
+
+        expect(result.ok && result.value.counts).toEqual({
+          total: 1,
+          totalIsCapped: false,
+          categories: [{ categoryId: parent, name: 'Meat', count: 1 }],
+          storeCount: 2,
+        });
+      });
+
+      it('leaves the counts out, not the list, when the tree cannot be read', async () => {
+        treeOf.nodes = null;
+        scopeRowsOf.rows = rows();
+        reader.hits = [hit(1)];
+
+        const result = await search({ q: 'beef' });
+
+        expect(result.ok && result.value.items).toHaveLength(1);
+        expect(result.ok && result.value.counts).toBeNull();
+      });
+    });
+
     it("asks the index with the Market's configuration and returns ids, text and categories", async () => {
       reader.hits = [hit(1), hit(2)];
 
@@ -670,6 +733,7 @@ describe.each([
           filters: [],
           filtered: false,
           countsComplete: true,
+          counts: { total: 0, totalIsCapped: false, categories: [], storeCount: 0 },
           exactMatch: null,
         },
       });
@@ -985,6 +1049,7 @@ describe.each([
             filters: [],
             filtered: false,
             countsComplete: true,
+            counts: null,
             exactMatch: null,
           },
         });
@@ -1106,6 +1171,7 @@ describe.each([
             filters: [],
             filtered: false,
             countsComplete: true,
+            counts: null,
             exactMatch: null,
           },
         });
@@ -1321,14 +1387,14 @@ describe.each([
               },
             ]),
         },
-        facets: {
+        index: indexOf(reader, {
           searchFiltered: (_market, request) => {
             narrowed.push(request);
             return Promise.resolve([hit(1)]);
           },
           facetRows: () => Promise.resolve([]),
           numberRows: () => Promise.resolve([]),
-        },
+        }),
       };
 
       const result = await search({ category: CATEGORY, filter: 'weight:10kg', price: '1000..' });

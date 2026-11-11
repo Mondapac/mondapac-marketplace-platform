@@ -16,7 +16,8 @@ import { SellersModule } from '../sellers';
 import { CATEGORY_SUBTREE_SOURCE } from './application/ports/category-subtree';
 import { OFFER_DOCUMENT_REPOSITORY } from './application/ports/offer-document.repository';
 import { OFFER_FEED } from './application/ports/offer-feed';
-import { OFFER_FACET_READER } from './application/ports/offer-facet.reader';
+import { OFFER_SEARCH_INDEX } from './application/ports/offer-search-index';
+import { CATEGORY_TREE_SOURCE } from './application/ports/category-tree';
 import { OFFER_SEARCH_READER } from './application/ports/offer-search.reader';
 import { SEARCH_FILTER_SOURCE } from './application/ports/search-filters';
 import { PRODUCT_IMAGES } from './application/ports/product-images';
@@ -76,8 +77,7 @@ type UseCaseClass<U> = new (gate: UseCaseGate, deps: SearchDependencies) => U;
 const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['documents', OFFER_DOCUMENT_REPOSITORY],
-  ['reader', OFFER_SEARCH_READER],
-  ['facets', OFFER_FACET_READER],
+  ['index', OFFER_SEARCH_INDEX],
   ['filterSource', SEARCH_FILTER_SOURCE],
   ['policy', SEARCH_POLICY],
   ['feed', OFFER_FEED],
@@ -91,6 +91,7 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['brands', BRAND_PRODUCTS],
   ['images', PRODUCT_IMAGES],
   ['categories', CATEGORY_SUBTREE_SOURCE],
+  ['categoryTree', CATEGORY_TREE_SOURCE],
 ];
 
 /** Every search use case shares one dependency object, built from the same ports. */

@@ -125,8 +125,8 @@ describe('SearchProducts with attribute filters', () => {
   const deps = (): SearchDependencies =>
     ({
       unitOfWork: new FakeUnitOfWork(),
-      reader,
-      facets,
+      index: { ...reader, ...facets, scopeRows: () => Promise.resolve([]) },
+      categoryTree: { tree: () => Promise.resolve([]) },
       filterSource,
       policy: new ConfigSearchPolicy(markets),
       visibility: {
