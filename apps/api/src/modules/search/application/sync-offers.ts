@@ -14,6 +14,7 @@ import { categoryNamesOf, composeSearchText } from '../domain/index-names';
 import type { NamedCategory } from '../domain/scope-counts';
 import type { StoreDocument } from '../domain/store-document';
 import type { FeedFacts } from './ports/offer-feed';
+import type { PublicStore } from './ports/store-directory';
 import { sellUnitRefKey, type SellUnitRef, type SellUnitState } from './ports/sell-unit-states';
 import type { SearchDependencies } from './search-dependencies';
 
@@ -145,9 +146,9 @@ export async function syncOffers(
     const sellersOfDocuments = [
       ...new Set([...facts.values()].filter((f) => indexable(f, eligible)).map((f) => f.sellerId)),
     ];
-    const stores =
+    const stores: ReadonlyMap<Id<'Seller'>, PublicStore> | null =
       sellersOfDocuments.length === 0
-        ? new Map()
+        ? new Map<Id<'Seller'>, PublicStore>()
         : await deps.storeDirectory.publicStores(context, sellersOfDocuments);
     if (stores === null) throw new Error('search: store names unavailable');
     const tree = await deps.categoryTree.tree(context);
