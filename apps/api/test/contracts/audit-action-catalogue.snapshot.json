@@ -2388,13 +2388,13 @@
   {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(list-paging)",
+    "targetId": "enumOf(list-paging|cart-mode)",
     "actors": ["authenticated"],
     "before": {
-      "value": "enumOf(pages|prev-next)"
+      "value": "enumOf(pages|prev-next|multi-store|single-store)"
     },
     "after": {
-      "value": "enumOf(pages|prev-next)",
+      "value": "enumOf(pages|prev-next|multi-store|single-store)",
       "version": "integer"
     }
   },
