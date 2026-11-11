@@ -203,6 +203,10 @@ export default async function SellerReviewPage({
             canEdit={
               permissionKeys.includes(ACTIVITIES_MANAGE_PERMISSION) && activities.options.length > 0
             }
+            editNote={
+              permissionKeys.includes(ACTIVITIES_MANAGE_PERMISSION) &&
+              activities.options.length === 0
+            }
             csrfToken={csrfToken}
           />
         )}

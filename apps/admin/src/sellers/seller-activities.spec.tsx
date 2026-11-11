@@ -49,7 +49,7 @@ describe('SellerActivitiesCard', () => {
     mount(seller());
     expect(screen.getByText('Butcher')).toBeTruthy();
     expect(screen.getByText('Grocer')).toBeTruthy();
-    expect(screen.getByText('Main activity')).toBeTruthy();
+    expect(screen.getByText('Other activities:')).toBeTruthy();
   });
 
   it('says so when no activity is set, and shows an unknown id without a name', () => {
@@ -119,5 +119,39 @@ describe('SellerActivitiesCard', () => {
     fireEvent.change(screen.getByLabelText(/Reason for the change/), { target: { value: 'x' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save activities' }));
     expect(await screen.findByText(/no longer available|not available any more/)).toBeTruthy();
+  });
+
+  it('starts the edit form without an inactive activity the seller carries', async () => {
+    mount(seller({ extraActivityIds: [A3] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Change activities' }));
+    fireEvent.change(screen.getByLabelText(/Reason for the change/), { target: { value: 'x' } });
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { mainActivityId: A1, extraActivityIds: [], changed: false },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save activities' }));
+    await waitFor(() => expect(call).toHaveBeenCalled());
+    expect(call.mock.calls[0]?.[2]).toEqual({
+      mainActivityId: A1,
+      extraActivityIds: [],
+      reason: 'x',
+    });
+  });
+
+  it('explains the missing edit button when the names could not be loaded', () => {
+    render(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <SellerActivitiesCard
+          sellerId={SELLER}
+          initial={seller()}
+          activities={[]}
+          canEdit={false}
+          editNote
+          csrfToken="csrf"
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText(/could not be loaded/)).toBeTruthy();
   });
 });

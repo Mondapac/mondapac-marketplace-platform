@@ -978,8 +978,7 @@
       "intro": "What this seller does. The main activity decides which review checks apply; the others widen what the seller may offer.",
       "none": "No activity set yet.",
       "main": "Main",
-      "main-badge": "Main activity",
-      "extra": "Also",
+      "extra": "Other activities",
       "unknown-activity": "Unknown activity",
       "last-change": "Last changed {when}. Reason: {reason}",
       "edit": "Change activities",
@@ -1003,7 +1002,8 @@
         "csrf": "Your session changed. Reload the page and try again.",
         "unavailable": "The service is not available. Try again in a moment.",
         "unknown": "The change could not be saved."
-      }
+      },
+      "names-unavailable": "Activities can't be changed here because the activity names could not be loaded. Reload the page, or ask for the catalog activity read permission."
     }
   },
   "pricing": {

@@ -50,12 +50,15 @@ export function SellerActivitiesCard({
   initial,
   activities,
   canEdit,
+  editNote = false,
   csrfToken,
 }: {
   readonly sellerId: string;
   readonly initial: SellerActivities;
   readonly activities: readonly ActivityOption[];
   readonly canEdit: boolean;
+  /** The role may change activities but the names could not be loaded: say why there is no button. */
+  readonly editNote?: boolean;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('sellers.activities');
@@ -80,8 +83,14 @@ export function SellerActivitiesCard({
     .map((a) => ({ value: a.id, label: a.name }));
 
   function startEdit() {
-    setMain(current.mainActivityId === null ? null : toOption(current.mainActivityId));
-    setExtras(current.extraActivityIds.map(toOption));
+    // An inactive activity cannot be saved again, so the form starts without it.
+    const pickable = (id: string) => options.some((o) => o.value === id);
+    setMain(
+      current.mainActivityId === null || !pickable(current.mainActivityId)
+        ? null
+        : toOption(current.mainActivityId),
+    );
+    setExtras(current.extraActivityIds.filter(pickable).map(toOption));
     setReason('');
     setErrors({});
     setProblem(null);
@@ -146,7 +155,6 @@ export function SellerActivitiesCard({
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-fg-muted">{t('main')}:</span>
               <strong>{nameOf(current.mainActivityId)}</strong>
-              <Badge tone="info">{t('main-badge')}</Badge>
             </div>
             {current.extraActivityIds.length === 0 ? null : (
               <div className="flex flex-wrap items-center gap-2">
@@ -169,6 +177,9 @@ export function SellerActivitiesCard({
           </p>
         )}
         {problem === null ? null : <Banner tone="critical">{t(`error.${problem}`)}</Banner>}
+        {!canEdit && editNote ? (
+          <p className="text-sm text-fg-muted">{t('names-unavailable')}</p>
+        ) : null}
         {canEdit && !editing ? (
           <ActionRow>
             <Button variant="secondary" onClick={startEdit}>
@@ -182,7 +193,11 @@ export function SellerActivitiesCard({
               label={t('field.main')}
               options={options}
               value={main}
-              onChange={setMain}
+              onChange={(next) => {
+                setMain(next);
+                // The main activity is not also one of the others.
+                setExtras((previous) => previous.filter((e) => e.value !== next?.value));
+              }}
               alwaysSearch
               required
               error={errors.main}
@@ -210,7 +225,15 @@ export function SellerActivitiesCard({
               <Button type="submit" loading={pending}>
                 {t('save')}
               </Button>
-              <Button variant="secondary" disabled={pending} onClick={() => setEditing(false)}>
+              <Button
+                variant="secondary"
+                disabled={pending}
+                onClick={() => {
+                  setErrors({});
+                  setProblem(null);
+                  setEditing(false);
+                }}
+              >
                 {t('cancel')}
               </Button>
             </ActionRow>
