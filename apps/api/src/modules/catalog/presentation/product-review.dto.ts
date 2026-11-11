@@ -71,7 +71,7 @@ class RevisionVariantDto {
 export class AdminRevisionContentDto {
   @ApiProperty({ format: 'uuid' }) revisionId!: string;
   @ApiProperty() revisionNo!: number;
-  @ApiProperty({ enum: ['submission', 'revert', 'tax-override'] }) kind!: string;
+  @ApiProperty({ enum: ['submission', 'revert', 'tax-override', 'category-override'] }) kind!: string;
   @ApiProperty({ enum: ['seller', 'admin'] }) authorKind!: string;
   @ApiProperty({ description: 'ISO instant.' }) submittedAt!: string;
   @ApiProperty({
@@ -121,7 +121,7 @@ class RevisionDecisionDto {
 class RevisionHistoryDto {
   @ApiProperty({ format: 'uuid' }) revisionId!: string;
   @ApiProperty() revisionNo!: number;
-  @ApiProperty({ enum: ['submission', 'revert', 'tax-override'] }) kind!: string;
+  @ApiProperty({ enum: ['submission', 'revert', 'tax-override', 'category-override'] }) kind!: string;
   @ApiProperty({ enum: ['seller', 'admin'] }) authorKind!: string;
   @ApiProperty({ description: 'ISO instant.' }) submittedAt!: string;
   @ApiProperty({ type: RevisionDecisionDto, nullable: true })
