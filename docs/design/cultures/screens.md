@@ -26,9 +26,9 @@ the Multi-culture switch is on (ADR-0047 decision 2); with it off the site looks
 | # | Screen | Template | Content and behaviour |
 |---|---|---|---|
 | A1 | Catalog › Cultures | T2 Index, T6 Form | List: name, code, status, order, required certificate, sellers, products. Add or edit form: code (fixed after creation), names per locale chosen from a language dropdown (English required, a locale publishes only when complete), required certificate type, badge, status, order. A culture is deleted only with no sellers; otherwise made Inactive. The default culture cannot be made Inactive. |
-| A2 | Settings › Storefront › Multi-culture | T7 Settings (`SettingRow`) | Switch (default off), default cultures for a guest with no choice, "Show the chooser on first visit". Turning on checks the preconditions (two Active cultures, each with an approved seller), shows the effect, asks confirmation and is audited. Turning off says nothing is deleted. |
+| A2 | Settings › Multi-culture (settings store, ADR-0042) | T7 Settings (`SettingRow`) | Switch (default off), default cultures for a guest with no choice, "Show the chooser on first visit". Turning on checks the preconditions (two Active cultures, each with an approved seller; when one fails the page names it and links to where it is fixed), shows the effect (Offers and sellers shown or hidden per culture), asks confirmation and is audited. Turning off says nothing is deleted. |
 | A3 | Catalog › Categories, column "Cultures" | existing table | Restrict a branch to chosen cultures; for a certified culture mark it "Certification required" or "Neutral". Children inherit from the parent unless changed. |
-| A4 | Report "Hidden in the halal view" | T2 Index | Products hidden because their category needs a certificate and the claim is not allowed, each with a link to its category. |
+| A4 | Report "Hidden in the <culture> view" | T2 Index | Products hidden because their category needs a certificate and the claim is not allowed, each with a link to its category. |
 | A5 | Sellers › Review, section "Cultures" | existing review | Approve or reject each membership request, with a reason. |
 
 ## 3. Seller panel (`apps/seller`, package 5)
@@ -36,15 +36,74 @@ the Multi-culture switch is on (ADR-0047 decision 2); with it off the site looks
 | # | Screen | Template | Content and behaviour |
 |---|---|---|---|
 | S1 | Store profile › Cultures | T6 Form | The seller's cultures and the status of each (requested, approved, rejected with reason); request another; changes are change requests. |
-| S2 | Product list label | existing table | A product hidden in a certified culture shows "Hidden in the halal view: this category needs a certificate" with the reason. |
+| S2 | Product list label | existing table | A product hidden in a certified culture shows "Hidden in the <culture> view: this category needs a certificate" (the culture name comes from data, not from code) with the reason. |
 
-## 4. Accessibility and states
+## 4. States, accessibility and right-to-left
+
+### States
+
+| Screen                              | Loading                | Empty                                                                                                        | Error                                                                                                    |
+| ----------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| B1 chooser                          | skeleton cards         | no Active culture: the dialog is not shown                                                                   | Save fails: dialog stays open, inline "We could not save your choice. Try again." with Retry             |
+| B2 bar                              | none                   | none                                                                                                         | adding the culture fails: the bar stays with a Retry button                                              |
+| B4 search hint                      | none                   | no hit anywhere: the normal empty search page, no hint                                                       | hint omitted                                                                                             |
+| B5 landing page                     | skeleton shelves       | no visible products: "Nothing here yet" and a link to the home page                                          | T9 error page with Retry                                                                                 |
+| Home, categories, shelves, sellers  | existing skeletons     | a category or shelf with no products in the chosen cultures is hidden, not shown empty                       | existing error states                                                                                    |
+| A1, A4                              | table skeleton         | A1 "No cultures yet" with the Add button; A4 "No hidden products"                                            | T9 error with Retry                                                                                      |
+| A5, S1                              | section skeleton       | S1 "No culture yet. Request one."                                                                            | inline error with Retry                                                                                  |
+
+Switch off: `/c/<code>` returns not found; B1 to B7 are not rendered; A1, A3 (column), A4, A5 and S1
+are hidden from navigation and routes.
+
+### Behaviour not covered above
+
+- Filtering applies to the home page, categories, shelves, slides, seller list and "others also
+  bought" (B3 covers only header and cards). A category with no products in the chosen cultures is
+  hidden.
+- When a guest signs in or signs up, the cookie choice moves to the profile; if the profile already
+  has a choice the buyer is asked once which to keep.
+- Closing B1 with Esc without saving applies the default cultures of A2 and asks again at the next
+  visit.
+- B6: if a certificate behind a line expires before payment, payment is refused with "<product> can
+  no longer be sold in <culture>. Remove it to continue." Whether a free-shipping threshold applies
+  to the whole cart or to each delivery is open until package 7.
+- A seller with no approved culture is not visible anywhere (ADR-0047 decision 3). In S1 and A5 a
+  request for a culture with a required certificate shows "Needs a valid <certificate> certificate"
+  until the seller has one.
+
+### Wording and trust
+
+- B1 says: "Your choice only filters what you see. It is not a statement about you." The inline
+  error "Choose at least one culture" sits under the cards and is announced with `aria-live`.
+- B4 reads "Add <culture> to my view"; the count uses an ICU plural.
+- B2 links the reason beside the disabled Add to cart button with `aria-describedby`.
+- Culture is separate from site language; the chooser is shown in the site language.
+- The culture badge on cards (B3) is text plus an icon in the existing badge component and is
+  visibly distinct from the certificate seal. Only the seal means a certificate was verified
+  (CERT-24); a culture badge never implies it.
+- Status labels in A1 and S1 (Active, Inactive, Draft, Requested, Approved, Rejected) have a text
+  label and an icon, never colour alone.
+
+### Accessibility
+
 - Every control has a text label; status is never shown by colour alone.
-- B1 and B2 are keyboard operable; changes of view are announced politely.
-- States to design per screen before build: empty (no culture selected, no results), loading,
-  error (choice could not be saved: keep the dialog open and say so), and the switch-off state.
-- Persian and Arabic render B1 to B7 right to left; culture names fall back to English when a
-  locale is not published.
+- B1 and B2 are keyboard operable. Focus returns to the header button when B1 closes. After Save or
+  Add, a polite live region says "Your view now shows <cultures>".
+- At 375 px: B2 is a full-width bar above the title with the button on its own row; B4 is one line
+  with the button below it.
+- A1 form focus order: code, names (language dropdown, then the name fields), certificate type,
+  badge, status, order, Save.
+
+### Right to left
+
+Buyer pages mirror in Persian and Arabic. Culture names are wrapped in `<bdi>` so names in another
+script keep their direction. A locale that is not published for a culture falls back to the English
+name. The admin and seller panels stay English and left to right.
+
+### SEO (B5)
+
+`/c/<code>` has a self-referencing canonical URL, a title and description from the culture's names,
+and appears in the sitemap only while the culture is Active and the switch is on.
 
 ## 5. Open before build
 Wording of B1, B2 and B4 is reviewed by the UI/UX owner and, for the legal points L1 to L3 of the
