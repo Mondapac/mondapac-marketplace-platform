@@ -74,36 +74,38 @@ export function OrderDocumentView({
             <h2 className="font-semibold">
               {part?.storeName?.trim() || to('detail.seller', { id: shortId(section.sellerId) })}
             </h2>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-fg-muted">
-                  <th className="py-1 text-start font-medium">{t('item')}</th>
-                  <th className="py-1 text-end font-medium">{t('quantity')}</th>
-                  <th className="py-1 text-end font-medium">{t('unit-price')}</th>
-                  <th className="py-1 text-end font-medium">{t('amount')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {section.lines.map((line) => (
-                  <tr key={line.lineId} className="border-t border-line-row">
-                    <td className="py-1 break-words">
-                      {names.get(line.lineId)?.trim() ||
-                        to('line.variant', { id: shortId(line.variantId) })}
-                      {line.taxInclusive ? (
-                        <span className="text-fg-muted"> · {t('tax-included')}</span>
-                      ) : null}
-                    </td>
-                    <td className="py-1 text-end tabular-nums">{line.quantity}</td>
-                    <td className="py-1 text-end tabular-nums">
-                      {formatMoney(line.unitPrice, locale)}
-                    </td>
-                    <td className="py-1 text-end tabular-nums">
-                      {formatMoney(line.lineAmount, locale)}
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-fg-muted">
+                    <th className="py-1 text-start font-medium">{t('item')}</th>
+                    <th className="py-1 text-end font-medium">{t('quantity')}</th>
+                    <th className="py-1 text-end font-medium">{t('unit-price')}</th>
+                    <th className="py-1 text-end font-medium">{t('amount')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {section.lines.map((line) => (
+                    <tr key={line.lineId} className="border-t border-line-row">
+                      <td className="py-1 break-words">
+                        {names.get(line.lineId)?.trim() ||
+                          to('line.variant', { id: shortId(line.variantId) })}
+                        {line.taxInclusive ? (
+                          <span className="text-fg-muted"> · {t('tax-included')}</span>
+                        ) : null}
+                      </td>
+                      <td className="py-1 text-end tabular-nums">{line.quantity}</td>
+                      <td className="py-1 text-end tabular-nums">
+                        {formatMoney(line.unitPrice, locale)}
+                      </td>
+                      <td className="py-1 text-end tabular-nums">
+                        {formatMoney(line.lineAmount, locale)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-line pt-2 text-sm">
               <dt className="text-fg-muted">{to('field.subtotal')}</dt>
               <dd className="text-end tabular-nums">{formatMoney(section.subtotal, locale)}</dd>
