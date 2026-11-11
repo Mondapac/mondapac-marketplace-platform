@@ -97,10 +97,17 @@ export class SendTopicSuggestionNotices extends UseCase<
           SUGGESTION_NOTICE_BATCH_SIZE,
         );
         const notices: DueNotice[] = [];
+        const topicIds = [
+          ...new Set(due.flatMap(({ state }) => (state.topicId === null ? [] : [state.topicId]))),
+        ];
+        const briefs = new Map(
+          (topicIds.length === 0 ? [] : await deps.topicReader.briefsOf(market, topicIds)).map(
+            (brief) => [brief.id as string, brief],
+          ),
+        );
         for (const suggestion of due) {
-          const topicId = suggestion.state.topicId;
           const brief =
-            topicId === null ? undefined : (await deps.topicReader.briefsOf(market, [topicId]))[0];
+            suggestion.state.topicId === null ? undefined : briefs.get(suggestion.state.topicId);
           notices.push({
             suggestion,
             topicName: brief === undefined ? null : (brief.names[locale] ?? brief.slug),

@@ -1343,8 +1343,6 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['cancel_reason', 'closed_at', 'confirmed_by_account_id', 'status', 'version'],
     },
-    // Attributes A5: a decision and a notice move are the only updates, in these columns (data
-    // design 3.30); a suggestion is never deleted.
     // Product tags T5: same shape as the value suggestions: a decision and a notice move only.
     'catalog.topic_suggestions': {
       table: ['INSERT', 'SELECT'],
@@ -1360,6 +1358,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'version',
       ],
     },
+    // Attributes A5: a decision and a notice move are the only updates, in these columns (data
+    // design 3.30); a suggestion is never deleted.
     'catalog.attribute_value_suggestions': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [

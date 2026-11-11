@@ -45,7 +45,7 @@ ALTER TABLE "catalog"."topic_suggestions" ADD CONSTRAINT "topic_suggestions_mark
 ALTER TABLE "catalog"."topic_suggestions"
   ADD CONSTRAINT "topic_suggestions_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
   ADD CONSTRAINT "topic_suggestions_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
-  -- The seller's own text: trimmed, 1 to 120 characters, no control character.
+  -- The seller's own text: trimmed, 2 to 40 characters, no control character.
   ADD CONSTRAINT "topic_suggestions_label_check" CHECK (
     "label" = btrim("label") AND char_length("label") BETWEEN 2 AND 40 AND "label" !~ '[[:cntrl:]]'),
   ADD CONSTRAINT "topic_suggestions_status_check" CHECK (
@@ -53,7 +53,7 @@ ALTER TABLE "catalog"."topic_suggestions"
   -- The comparison key of the label (normaliseTopicTerm), repeated here only by length.
   ADD CONSTRAINT "topic_suggestions_label_key_check" CHECK (
     "label_key" = btrim("label_key") AND "label_key" = lower("label_key")
-    AND char_length("label_key") BETWEEN 1 AND 160),
+    AND char_length("label_key") BETWEEN 2 AND 160),
   ADD CONSTRAINT "topic_suggestions_reject_reason_check" CHECK (
     "reject_reason" IS NULL OR (
       "reject_reason" = btrim("reject_reason") AND char_length("reject_reason") BETWEEN 1 AND 300
