@@ -1094,6 +1094,30 @@ account, no FK) and `decided_at`; `notice_state`, `notice_attempts` (0 to 10),
 - Reversible: `pnpm db:check-reversible` passes (`down.sql` drops the trigger functions and the
   table).
 
+### 3.30a `topic_suggestions` (product tags package T5)
+
+One row per seller's request for a tag (topic) the curated list does not have (john's decision 1,
+24 Oct 2026). Same lifecycle and guard as 3.30: born `open` at version 1; an admin moves it once to
+`approved` (a topic was created from it; `topic_id` names it), `mapped` (an existing active topic
+was chosen; `topic_id`) or `rejected` (`reject_reason`); then one mail, with the `notice_*` send
+marker. Only the decision and the notice marker change (guard trigger); nothing is deleted.
+Approving or mapping never adds the tag to the product: the seller picks it, and the change goes to
+review like every tag change. Audit rows: `catalog.topic-suggestion.suggested` and `.decided`
+(ids and the outcome only: never the seller's text or the reason).
+
+`(market_id, id)` primary key; `tenant_id`; `seller_id` (no FK across modules); `product_id` with
+`(market_id, product_id)` → `products`; `label` (the seller's text, 2 to 40 characters) and
+`label_key` (its `normaliseTopicTerm` form); `status`; `topic_id` with `(market_id, topic_id)` →
+`topics`; `reject_reason`; `decided_by_account_id`, `decided_at`; `notice_*`; `version`;
+`created_at`.
+
+- **Partial unique** `topic_suggestions_open_seller_label_key` `(market_id, seller_id, label_key)
+  WHERE status = 'open'`: a seller's second request for the same text is `suggestion.already-open`.
+- At most 10 open per seller and no text a topic already uses (`takenTermKeys`) are use-case rules.
+- Indexes: `(market_id, status, created_at, id)` for the admin queue; `(market_id, seller_id,
+  status)`; `(market_id, product_id)`; the notice-due partial index. Grants as 3.30, with `topic_id`
+  in place of `option_code`.
+
 ### 3.31 `seller_import_jobs`, `seller_import_rows`, `seller_import_photos` (seller Import; domain 14c)
 
 The seller import of 14 as built by domain 14c. It **replaces the outline of 3.24** (`import_jobs`,

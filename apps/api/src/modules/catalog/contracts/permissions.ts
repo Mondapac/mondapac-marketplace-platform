@@ -207,6 +207,18 @@ export const CATALOG_TOPIC_MANAGE = definePermission('catalog', {
 });
 
 /**
+ * Review the tags sellers suggest (product tags package T5): read the open queue and approve, map
+ * or reject a suggestion. Platform scope; unprotected. Approving also creates a topic, so it needs
+ * `catalog.topic.manage` as well (no escalation through this key); no default role lists either
+ * key yet: the Platform Administrator holds every key.
+ */
+export const CATALOG_TOPIC_SUGGESTION_REVIEW = definePermission('catalog', {
+  key: 'catalog.topic-suggestion.review',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
  * Read the platform category tree, its details, counts, history and the impact of a change
  * (categories package C1; plan section 11). Platform scope; unprotected, so Catalogue Moderator,
  * Operations Support and Viewer receive it by identity's seed. No step-up.
@@ -344,6 +356,7 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_BUSINESS_ACTIVITY_EDIT,
   CATALOG_TOPIC_READ,
   CATALOG_TOPIC_MANAGE,
+  CATALOG_TOPIC_SUGGESTION_REVIEW,
   CATALOG_ATTRIBUTE_VIEW,
   CATALOG_ATTRIBUTE_EDIT,
   CATALOG_ATTRIBUTE_RESTRUCTURE,
