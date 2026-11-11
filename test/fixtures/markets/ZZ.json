@@ -339,7 +339,8 @@
       "primaryImage": false,
       "anyImage": true,
       "variantRemoved": false,
-      "gtinChanged": false
+      "gtinChanged": false,
+      "axisAdded": false
     },
     "maxVariantsPerProduct": 3,
     "maxCategoryDepth": 3,

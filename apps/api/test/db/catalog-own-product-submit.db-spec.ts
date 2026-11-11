@@ -63,6 +63,7 @@ describe.each(TEST_MARKETS)(
         anyImage: false,
         variantRemoved: true,
         gtinChanged: true,
+        axisAdded: true,
       }),
       maxVariantsPerProduct: () => 10,
       maxVariantAttributes: () => 2,
@@ -177,6 +178,7 @@ describe.each(TEST_MARKETS)(
         workingCopies: copies,
         revisions,
         freeze: new FreezeRevision({
+          revisions,
           familyResolver: fixedFamilyResolver(),
           attributes,
           policy,

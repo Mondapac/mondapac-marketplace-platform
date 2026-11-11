@@ -1189,6 +1189,8 @@ const catalogSchema = z
       variantRemoved: z.boolean(),
       /** A GTIN set, changed or cleared on an already published variant (variants V4). */
       gtinChanged: z.boolean(),
+      /** A second variant axis added to a published product (variants V9b). */
+      axisAdded: z.boolean(),
     }),
     /**
      * The most non-retired variants one product may hold (catalog design 2.1; AU 100). Bounded
