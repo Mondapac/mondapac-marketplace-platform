@@ -600,9 +600,8 @@ model CatalogVariantRequest {
 
   @@id([marketId, id])
   /// The admin queue: open requests, oldest first.
-  @@index([marketId, status, createdAt, id], map: "variant_requests_market_id_status_created_at_idx")
   /// A seller's requests and their open count.
-  @@index([marketId, sellerId, status], map: "variant_requests_market_id_seller_id_status_idx")
+  @@index([marketId, sellerId, status, id], map: "variant_requests_market_id_seller_id_status_id_idx")
   @@index([marketId, productId], map: "variant_requests_market_id_product_id_idx")
   @@map("variant_requests")
   @@schema("catalog")

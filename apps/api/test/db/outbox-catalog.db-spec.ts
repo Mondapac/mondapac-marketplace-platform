@@ -51,6 +51,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // Variants V7: one open request per offer and combination; the due-notice scan.
   'catalog.variant_requests_open_offer_option_key':
     "CREATE UNIQUE INDEX variant_requests_open_offer_option_key ON catalog.variant_requests USING btree (market_id, offer_id, option_key) WHERE (status = 'open'::text)",
+  'catalog.variant_requests_open_queue_idx':
+    "CREATE INDEX variant_requests_open_queue_idx ON catalog.variant_requests USING btree (market_id, created_at, id) WHERE (status = 'open'::text)",
   'catalog.variant_requests_notice_due_idx':
     "CREATE INDEX variant_requests_notice_due_idx ON catalog.variant_requests USING btree (market_id, notice_next_attempt_at, id) WHERE (notice_state = 'pending'::text)",
   'catalog.outbox_market_id_event_id_unpublished_idx':

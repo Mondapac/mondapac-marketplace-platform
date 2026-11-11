@@ -149,6 +149,9 @@ export class OwnVariantRequestCreate extends UseCase<
         ) {
           return err({ code: 'offer.not-found' } as const);
         }
+        // The two caps below are soft: they are counted, then the row is inserted, under READ
+        // COMMITTED, so parallel requests of one seller can pass a cap by a few. The admin queue
+        // and the unique index on open combinations bound the damage (same as value suggestions).
         const facts = await loadProductVariantFacts(this.deps, market, offer.state.productId);
         if (!facts.ok) return err(facts.error);
         // Exactly the axes of the product, each an active option of its attribute.

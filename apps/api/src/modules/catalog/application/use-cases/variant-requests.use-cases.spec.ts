@@ -94,6 +94,8 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
   let saveFails: boolean;
   let productStatus: string;
   let gainedXl: boolean;
+  /** The draft save of an approval mints the new variant: it is live afterwards. */
+  let savedNew: boolean;
 
   const clock = new FixedClock(T0);
   let ids: SequenceIdGenerator;
@@ -138,7 +140,7 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
   });
   const platformProduct = () => {
     const variants = [variant(V_SMALL, 1), variant(V_LARGE, 2)];
-    if (gainedXl) variants.push(variant(V_NEW, 3));
+    if (gainedXl || savedNew) variants.push(variant(V_NEW, 3));
     return {
       state: {
         id: PRODUCT,
@@ -245,6 +247,7 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
       if (saveFails)
         return Promise.resolve(err({ code: 'request.throttled', retryAfterSeconds: 5 }));
       draftSaves.push(input);
+      savedNew = true;
       return Promise.resolve(
         ok({ variantIds: [V_SMALL, V_LARGE, V_NEW], refusedFields: [], variantNotices: [] }),
       );
@@ -351,6 +354,7 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
     saveFails = false;
     productStatus = 'published';
     gainedXl = false;
+    savedNew = false;
     definitions.rows.set(SIZE, sizeDefinition());
   });
 
