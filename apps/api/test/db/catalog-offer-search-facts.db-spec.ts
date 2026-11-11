@@ -117,7 +117,6 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
       revision_no: 1,
       revision_kind: 'submission',
       type_code: 'simple',
-      type_code: 'simple',
       base_revision_id: null,
       reverted_from_revision_id: null,
       family_revision_id: familyRevisionId,
