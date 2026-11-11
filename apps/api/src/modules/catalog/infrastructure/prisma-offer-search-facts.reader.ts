@@ -25,13 +25,15 @@ import { loadSearchDefinitions } from './search-definitions.loader';
 
 /**
  * {@link OfferSearchFactsReader}: the Offers by `(market_id, id)`, then the published revisions
- * of their products, then the texts and categories of those revisions. Four statements, no join.
+ * of their products, then the texts and categories of those revisions, each its own statement, no
+ * join.
  * An Offer whose product has no published revision, or no text in the asked locale, has
  * `text: null`. The attributes (A7) come from the revisions' attribute values, the product's
  * ACTIVE brand with its aliases (brands are shared by every Market) and the PUBLISHED revisions
  * of the definitions the values name. The variants (V8) are the published revision's variants whose
  * registry state is `published`, with their axis facets, label and GTIN; their labels are added to
- * the search text.
+ * the search text. A variant the seller switched off for an Offer (V5 `selling = false`) is left out
+ * of that Offer's variants, so it gives no facet, price, label word or GTIN match.
  */
 export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
   constructor(private readonly prisma: PrismaService) {}
@@ -88,6 +90,22 @@ export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
       locale,
     );
     const variantsByRevision = await this.variantsOf(tx, market.marketId, revisionIds, locale);
+    // The seller's per-variant switch (V5): a sell unit switched off is not indexed for its Offer.
+    // Only `selling = false` rows matter; a unit with no stored row sells.
+    const offUnits = new Set(
+      offers.length === 0
+        ? []
+        : (
+            await tx.catalogOfferSellUnit.findMany({
+              where: {
+                marketId: market.marketId,
+                offerId: { in: offers.map((offer) => offer.id) },
+                selling: false,
+              },
+              select: { offerId: true, variantId: true },
+            })
+          ).map((row) => `${row.offerId}:${row.variantId}`),
+    );
     const textByRevision = new Map(texts.map((row) => [row.revisionId, row]));
     const categoriesByRevision = new Map<string, Id<'Category'>[]>();
     for (const row of categories) {
@@ -100,7 +118,11 @@ export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
       const text = revisionId === undefined ? undefined : textByRevision.get(revisionId);
       const sellable = offer.status === 'published' && offer.listed;
       const variants =
-        revisionId === undefined || !sellable ? [] : (variantsByRevision.get(revisionId) ?? []);
+        revisionId === undefined || !sellable
+          ? []
+          : (variantsByRevision.get(revisionId) ?? []).filter(
+              (variant) => !offUnits.has(`${offer.id}:${variant.variantId}`),
+            );
       const attributes =
         revisionId === undefined
           ? NO_SEARCH_ATTRIBUTES

@@ -19,6 +19,8 @@ export {
   OFFER_CHANGE_REASONS,
   PRODUCT_CHANGE_REASONS,
   OfferListingChanged,
+  // Consumed by search: a sell unit switched off or on leaves or rejoins its Offer's document.
+  OfferSellUnitChanged,
   OfferTagRemoved,
   OfferTagRestored,
   OfferTagSuspended,
