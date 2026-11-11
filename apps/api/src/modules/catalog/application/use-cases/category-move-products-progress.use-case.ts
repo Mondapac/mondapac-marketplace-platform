@@ -27,7 +27,8 @@ export type CategoryMoveProductsProgressFailure =
 /**
  * `platform-category.move-products-progress`: the state and counts of the newest jobs that move
  * the products of a category (queued, running, done, failed; total, moved, skipped, failed).
- * Codes, ids and numbers only: no reason note and no seller. Rule: `catalog.category-tree.view`.
+ * Codes, ids and numbers only: no reason note and no seller. The total shown is never below the
+ * handled counts (see the mapping). Rule: `catalog.category-tree.view`.
  */
 export class CategoryMoveProductsProgress extends UseCase<
   CategoryMoveProductsProgressInput,
@@ -76,7 +77,10 @@ export class CategoryMoveProductsProgress extends UseCase<
         createdAt: job.createdAt,
         startedAt: job.startedAt,
         finishedAt: job.finishedAt,
-        total: job.total,
+        // The total is the count at the start (a display snapshot); products published into the
+        // source since are moved too, so the shown total grows to what was handled and the
+        // counts never exceed it.
+        total: Math.max(job.total, job.moved + job.skipped + job.failed),
         moved: job.moved,
         skipped: job.skipped,
         failed: job.failed,

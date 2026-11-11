@@ -7,6 +7,10 @@ import type {
   MoveJobRecord,
   MoveJobState,
 } from '../application/ports/category-product-move.store';
+import type { ProductCategoryNode } from '../domain/product-category-rules';
+
+/** At most this many categories up a chain (the tree is at most a few levels deep). */
+const CHAIN_MAX = 16;
 
 type JobRow = Prisma.CatalogCategoryProductMoveJobGetPayload<Record<string, never>>;
 
@@ -182,25 +186,59 @@ export class PrismaCategoryProductMoveStore implements CategoryProductMoveStore 
     outcome: Parameters<CategoryProductMoveStore['recordItem']>[3],
     now: Temporal.Instant,
   ): Promise<boolean> {
-    try {
-      await this.prisma.tx(market).catalogCategoryProductMoveItem.create({
-        data: {
+    // ON CONFLICT DO NOTHING (N6): a duplicate is a count of 0, never a failed statement, so the
+    // caller's interactive transaction is not aborted (25P02) and its later statements still run.
+    const written = await this.prisma.tx(market).catalogCategoryProductMoveItem.createMany({
+      data: [
+        {
           marketId: market.marketId,
           tenantId: market.tenantId,
           jobId,
           productId,
           state: outcome.state,
-          revisionId: outcome.state === 'moved' ? outcome.revisionId : null,
+          revisionId: null,
           createdAt: toDate(now),
         },
-      });
-      return true;
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        return false;
-      }
-      throw error;
+      ],
+      skipDuplicates: true,
+    });
+    return written.count === 1;
+  }
+
+  async markMoved(
+    market: MarketContext,
+    jobId: Id<'CategoryMoveJob'>,
+    productId: Id<'Product'>,
+    revisionId: Id<'ProductRevision'>,
+  ): Promise<boolean> {
+    const done = await this.prisma.tx(market).catalogCategoryProductMoveItem.updateMany({
+      where: { marketId: market.marketId, jobId, productId, state: 'pending' },
+      data: { state: 'moved', revisionId },
+    });
+    return done.count === 1;
+  }
+
+  async categoryChain(
+    market: MarketContext,
+    categoryId: Id<'Category'>,
+  ): Promise<readonly ProductCategoryNode[]> {
+    const tx = this.prisma.tx(market);
+    const chain: ProductCategoryNode[] = [];
+    const seen = new Set<string>();
+    let cursor: string | null = categoryId;
+    // The tree is a few levels deep; the bound only stops a broken (looping) chain.
+    while (cursor !== null && !seen.has(cursor) && chain.length < CHAIN_MAX) {
+      seen.add(cursor);
+      const row: { id: string; parentId: string | null; status: string } | null =
+        await tx.catalogPlatformCategory.findFirst({
+          where: { marketId: market.marketId, id: cursor },
+          select: { id: true, parentId: true, status: true },
+        });
+      if (row === null) break;
+      chain.push(row);
+      cursor = row.parentId;
     }
+    return chain;
   }
 
   async unnotified(
@@ -233,7 +271,7 @@ export class PrismaCategoryProductMoveStore implements CategoryProductMoveStore 
     market: MarketContext,
     id: Id<'CategoryMoveJob'>,
     holder: string,
-    step: Parameters<CategoryProductMoveStore['advance']>[3],
+    cursor: Id<'Product'>,
   ): Promise<boolean> {
     const tx = this.prisma.tx(market);
     const row = await tx.catalogCategoryProductMoveJob.findFirst({
@@ -243,14 +281,27 @@ export class PrismaCategoryProductMoveStore implements CategoryProductMoveStore 
     const done = await tx.catalogCategoryProductMoveJob.updateMany({
       where: { marketId: market.marketId, id, leaseHolder: holder, version: row.version },
       data: {
-        cursorProductId: step.cursor,
-        movedCount: row.movedCount + step.moved,
-        skippedCount: row.skippedCount + step.skipped,
-        failedCount: row.failedCount + step.failed,
+        cursorProductId: cursor,
+        ...(await this.#counts(market, id)),
         version: row.version + 1,
       },
     });
     return done.count === 1;
+  }
+
+  /** The job's counters from its items, by state (L2): the items are the truth. */
+  async #counts(
+    market: MarketContext,
+    jobId: Id<'CategoryMoveJob'>,
+  ): Promise<{ movedCount: number; skippedCount: number; failedCount: number }> {
+    const groups = await this.prisma.tx(market).catalogCategoryProductMoveItem.groupBy({
+      by: ['state'],
+      where: { marketId: market.marketId, jobId },
+      _count: { _all: true },
+    });
+    const of = (state: string): number =>
+      groups.find((group) => group.state === state)?._count._all ?? 0;
+    return { movedCount: of('moved'), skippedCount: of('skipped'), failedCount: of('failed') };
   }
 
   async finish(
@@ -269,6 +320,7 @@ export class PrismaCategoryProductMoveStore implements CategoryProductMoveStore 
       where: { marketId: market.marketId, id, leaseHolder: holder, version: row.version },
       data: {
         state,
+        ...(await this.#counts(market, id)),
         finishedAt: toDate(now),
         leaseHolder: null,
         leaseExpiresAt: null,

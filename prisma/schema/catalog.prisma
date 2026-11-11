@@ -1803,7 +1803,9 @@ model CatalogCategoryProductMoveJob {
 
 /// One product of a Move products job (insert-only but for its outcome): the guard that a product is
 /// moved, and its seller emailed, once per job. `revision_id` names the `category-override` revision
-/// the move published; `seller_notified_at` is set once the seller's email is queued.
+/// the move published (the item is written `pending` first and turned `moved` once that revision row
+/// exists, in the same unit); `seller_notified_at` is set once the seller's email is queued. The
+/// partial index of the not-yet-notified moved items is hand-written in the migration.
 model CatalogCategoryProductMoveItem {
   marketId         String                        @map("market_id") @db.VarChar(8)
   tenantId         String                        @map("tenant_id")

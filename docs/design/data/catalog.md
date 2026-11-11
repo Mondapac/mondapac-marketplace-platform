@@ -1163,6 +1163,36 @@ delete, 10.1, and a photo delete must never conflict with a row that remembers w
   job's cascade, and the narrow `UPDATE (image_id)` grant is its guard (Mojtaba M5).
 - Reversible: `pnpm db:check-reversible` passes (up, down newest-first, up, no drift).
 
+### 3.32 `category_product_move_jobs`, `category_product_move_items` (Move products; categories C5a)
+
+Migration `20261111100000_catalog_move_products_job`. One job moves every published product of a
+platform category to another; one item per product of the job. Notes from the C5a review:
+
+- Item write order. An item is inserted `pending` with `revision_id` NULL (the once-per-product
+  guard, `ON CONFLICT DO NOTHING` so a duplicate never aborts the unit), and turned `moved` with
+  the revision id after the `category-override` revision row is written, in the same unit. The
+  composite FK to `product_revisions` is not deferrable, so the revision must exist first.
+- Counters. `moved/skipped/failed_count` are counted from the items by state whenever the cursor
+  moves and at the end; each is `>= 0`. There is no bound by `total_count`: the total is the count
+  at the start (a display snapshot), and a product published into the source later is handled too.
+  The progress read shows `max(total, moved + skipped + failed)` as the total.
+- Keyset cursor (N3). The scan reads products with `id > cursor_product_id`. A product published
+  into the source during a run with an id below the cursor is not seen by that job; the admin
+  starts another job for it (the impact read still counts it).
+- No indexes on the item FKs to `products` and `product_revisions` (N4): items are never deleted
+  and neither are those parents (RESTRICT, insert-only revisions), so no delete has to find items
+  by them. The partial index `..._market_id_job_id_unnotified_idx` serves the seller-notice scan.
+- Seller email is at-least-once: the send comes before the mark. A job stays `running` until every
+  moved item is marked, so a failed send is retried on the next turn (after the lease ran out). A
+  send that keeps failing keeps the job open, and blocks a new job on that source, until it
+  succeeds.
+- Retention (N7). Jobs and items are kept as the audit trail of a bulk publish (no DELETE grant).
+  They grow by one row per moved product. If that becomes material, a later change archives old
+  finished jobs.
+- Lock note (N1). The `product_revisions` kind-CHECK swap runs its VALIDATEs in the migration's one
+  implicit transaction, under the ACCESS EXCLUSIVE lock of the DROP/ADD CONSTRAINT. This is fine at
+  today's size. A large environment would move the VALIDATEs to a second migration file (8.2).
+
 ## 4. What is never stored
 
 | Never | Instead |

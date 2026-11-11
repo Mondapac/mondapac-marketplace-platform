@@ -1,4 +1,5 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { ProductCategoryNode } from '../../domain/product-category-rules';
 
 // The store behind "Move products" (categories package C5a, decision 8): one job moves every
 // published product of category X to category Y, one item per product. Every method runs in the
@@ -103,17 +104,39 @@ export interface CategoryProductMoveStore {
 
   /**
    * Writes the item of a product once. False when the job already has an item for it (a product
-   * handled by an earlier turn): the caller then does not touch the product again.
+   * handled by an earlier turn): the caller then does not touch the product again. A duplicate is
+   * not an error (no failed statement), so the caller's unit stays usable after a false.
+   * A product about to be moved is recorded `pending` (no revision yet: the item's foreign key
+   * names a revision that must exist) and turned `moved` by {@link markMoved} in the same unit.
    */
   recordItem(
     market: MarketContext,
     jobId: Id<'CategoryMoveJob'>,
     productId: Id<'Product'>,
-    outcome:
-      | { readonly state: 'moved'; readonly revisionId: Id<'ProductRevision'> }
-      | { readonly state: 'skipped' | 'failed' },
+    outcome: { readonly state: 'pending' | 'skipped' | 'failed' },
     now: Temporal.Instant,
   ): Promise<boolean>;
+
+  /**
+   * Turns the `pending` item of a product `moved`, naming the revision the move published (written
+   * before this call in the same unit). False when there is no pending item.
+   */
+  markMoved(
+    market: MarketContext,
+    jobId: Id<'CategoryMoveJob'>,
+    productId: Id<'Product'>,
+    revisionId: Id<'ProductRevision'>,
+  ): Promise<boolean>;
+
+  /**
+   * The category and its ancestors as they are now (status and parent), read fresh in the
+   * caller's unit; empty when the category is not in this Market. Used to re-check the target
+   * for every product, so a target archived or moved mid-job fails the item, not the job.
+   */
+  categoryChain(
+    market: MarketContext,
+    categoryId: Id<'Category'>,
+  ): Promise<readonly ProductCategoryNode[]>;
 
   /** Moved items whose seller has not been told yet, at most `limit`. */
   unnotified(
@@ -131,22 +154,21 @@ export interface CategoryProductMoveStore {
   ): Promise<void>;
 
   /**
-   * Moves the cursor and adds the batch's counts under the lease. False when the holder no
-   * longer holds the job.
+   * Moves the cursor under the lease and sets the counters from the job's items (counted by
+   * state, never accumulated by the runner, so a turn that lost its lease cannot under- or
+   * over-count). False when the holder no longer holds the job.
    */
   advance(
     market: MarketContext,
     id: Id<'CategoryMoveJob'>,
     holder: string,
-    step: {
-      readonly cursor: Id<'Product'>;
-      readonly moved: number;
-      readonly skipped: number;
-      readonly failed: number;
-    },
+    cursor: Id<'Product'>,
   ): Promise<boolean>;
 
-  /** Ends the job (`done`, or `failed` after an unrecoverable fault), releasing the lease. */
+  /**
+   * Ends the job (`done`, or `failed` after an unrecoverable fault), releasing the lease; the
+   * counters are set from the items, as in {@link advance}.
+   */
   finish(
     market: MarketContext,
     id: Id<'CategoryMoveJob'>,

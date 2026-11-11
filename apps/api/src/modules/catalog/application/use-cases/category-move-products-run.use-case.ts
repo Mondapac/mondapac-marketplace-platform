@@ -11,7 +11,10 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { ProductCategoryOverriddenAudit, scopeCode } from '../../domain/audit';
 import { categoryMoveNoticeMail } from '../../domain/category-move-notice';
 import { MAX_TREE_NODES } from '../../domain/category-tree';
-import { checkProductCategories } from '../../domain/product-category-rules';
+import {
+  checkProductCategories,
+  type ProductCategoryNode,
+} from '../../domain/product-category-rules';
 import { buildCategoryOverrideContent } from '../../domain/revision-freeze';
 import type { StoredRevision } from '../../domain/stored-revision';
 import type {
@@ -49,7 +52,11 @@ export type CategoryMoveProductsRunOutput =
   | {
       readonly ran: true;
       readonly jobId: Id<'CategoryMoveJob'>;
-      readonly outcome: 'done' | 'failed' | 'budget' | 'lease-lost';
+      /**
+       * `notices-pending`: every product is handled but a seller email could not be sent; the job
+       * stays running and the next turn (after the lease ran out) tries the email again.
+       */
+      readonly outcome: 'done' | 'failed' | 'budget' | 'lease-lost' | 'notices-pending';
       readonly moved: number;
       readonly skipped: number;
       readonly failed: number;
@@ -74,7 +81,10 @@ export interface CategoryMoveProductsRunDependencies {
   readonly mailTransport: MailTransport;
 }
 
-/** What a batch reads once: the tree, the Market's depth and the family resolution. */
+/**
+ * What a batch reads once: the tree, the Market's depth and the family resolution. The target is
+ * re-read fresh in every product unit (see `#moveOne`).
+ */
 interface MoveEnvironment {
   readonly nodes: Awaited<ReturnType<AdminCategoryReader['categories']>>;
   readonly maxLevel: number;
@@ -82,6 +92,7 @@ interface MoveEnvironment {
 }
 
 type ItemOutcome = 'moved' | 'skipped' | 'failed' | 'handled';
+type TurnOutcome = 'done' | 'failed' | 'budget' | 'lease-lost' | 'notices-pending';
 
 /**
  * `catalog.run-category-product-moves` (categories package C5a, decision 8): the job behind
@@ -93,8 +104,13 @@ type ItemOutcome = 'moved' | 'skipped' | 'failed' | 'handled';
  * `rechecking` and asks the fan-out again, audits, and records the product's item. The item row is
  * unique per job and product, so a product is never moved twice and a resumed job (a crashed
  * runner, an expired lease) skips what an earlier turn did. After each batch the seller of each
- * moved product gets one email, marked on the item. The runner is the system; the audit names the
- * admin who started the job. A target that is no longer a valid product category fails the job.
+ * moved product gets one email, marked on the item; the job is done only once every moved
+ * product's email is marked. The mail is at-least-once: a crash between the send and the mark
+ * sends that email again next turn. The lease is renewed after every product, and the job's
+ * counters are counted from its items, never accumulated. The target is re-checked against fresh
+ * rows in every product unit: a target archived or moved off levels 3..depth mid-job fails that
+ * product, not the job. The runner is the system; the audit names the admin who started the job.
+ * A tree that cannot be read fails the job.
  */
 export class CategoryMoveProductsRun extends UseCase<
   CategoryMoveProductsRunInput,
@@ -130,7 +146,7 @@ export class CategoryMoveProductsRun extends UseCase<
     if (job === null) return ok({ ran: false });
 
     const totals = { moved: 0, skipped: 0, failed: 0 };
-    const end = async (outcome: 'done' | 'failed' | 'budget' | 'lease-lost') => {
+    const end = async (outcome: TurnOutcome) => {
       if (outcome === 'done' || outcome === 'failed') {
         await this.#write(context, () =>
           deps.moveStore.finish(market, job.id, holder, outcome, deps.clock.now()),
@@ -147,49 +163,53 @@ export class CategoryMoveProductsRun extends UseCase<
       return ok<CategoryMoveProductsRunOutput>({ ran: true, jobId: job.id, outcome, ...totals });
     };
 
+    const overBudget = (): boolean =>
+      deps.clock.now().epochMilliseconds - started.epochMilliseconds >= input.budgetMs;
     let current: MoveJobRecord = job;
     for (;;) {
-      const now = deps.clock.now();
-      if (now.epochMilliseconds - started.epochMilliseconds >= input.budgetMs) {
-        return end('budget');
-      }
+      if (overBudget()) return end('budget');
       const batch = await this.#read(context, () =>
         deps.moveStore.nextProducts(market, current, MOVE_BATCH_SIZE),
       );
       if (batch.length === 0) {
-        await this.#notifySellers(context, current);
-        return end('done');
+        // Done only once every moved product's seller email is marked (L3).
+        const drained = await this.#notifySellers(context, current, overBudget);
+        return end(drained ? 'done' : 'notices-pending');
       }
-      const environment = await this.#environment(context, current);
+      const environment = await this.#environment(context);
       if (environment === null) {
-        // The target is gone or no longer a product category: nothing more can be moved.
+        // The tree cannot be read (over the cap): nothing can be checked, so nothing is moved.
         this.#logger.error({
-          msg: 'catalog.run-category-product-moves.target-invalid',
+          msg: 'catalog.run-category-product-moves.tree-unavailable',
           jobId: current.id,
           marketId: market.marketId,
           correlationId: context.correlationId,
         });
-        return end('failed');
+        const drained = await this.#notifySellers(context, current, overBudget);
+        return end(drained ? 'failed' : 'notices-pending');
       }
-      let moved = 0;
-      let skipped = 0;
-      let failed = 0;
+      let handled: Id<'Product'> | null = null;
       for (const productId of batch) {
         const outcome = await this.#moveOne(context, current, productId, environment);
-        if (outcome === 'moved') moved += 1;
-        else if (outcome === 'skipped') skipped += 1;
-        else if (outcome === 'failed') failed += 1;
+        if (outcome === 'moved') totals.moved += 1;
+        else if (outcome === 'skipped') totals.skipped += 1;
+        else if (outcome === 'failed') totals.failed += 1;
+        handled = productId;
+        // Renew after every product (L2): a slow batch never outlives the lease unnoticed.
+        const kept = await this.#write(context, () =>
+          deps.moveStore.renew(
+            market,
+            current.id,
+            holder,
+            deps.clock.now().add({ milliseconds: MOVE_LEASE_MS }),
+          ),
+        );
+        if (!kept) return end('lease-lost');
+        if (overBudget()) break;
       }
-      totals.moved += moved;
-      totals.skipped += skipped;
-      totals.failed += failed;
+      const cursor = handled!;
       const advanced = await this.#write(context, async () => {
-        const kept = await deps.moveStore.advance(market, current.id, holder, {
-          cursor: batch[batch.length - 1]!,
-          moved,
-          skipped,
-          failed,
-        });
+        const kept = await deps.moveStore.advance(market, current.id, holder, cursor);
         if (kept) {
           await deps.moveStore.renew(
             market,
@@ -201,24 +221,19 @@ export class CategoryMoveProductsRun extends UseCase<
         return kept;
       });
       if (!advanced) return end('lease-lost');
-      await this.#notifySellers(context, current);
-      current = {
-        ...current,
-        cursorProductId: batch[batch.length - 1]!,
-      };
+      await this.#notifySellers(context, current, overBudget);
+      current = { ...current, cursorProductId: cursor };
     }
   }
 
-  /** The tree and the family resolution, read once per batch; null when the target no longer fits. */
-  async #environment(context: CallContext, job: MoveJobRecord): Promise<MoveEnvironment | null> {
+  /** The tree and the family resolution, read once per batch; null when the tree cannot be read. */
+  async #environment(context: CallContext): Promise<MoveEnvironment | null> {
     const { deps } = this;
     const { market } = context;
     return this.#read(context, async () => {
       const nodes = await deps.adminCategoryReader.categories(market, MAX_TREE_NODES + 1);
       if (nodes.length > MAX_TREE_NODES) return null;
       const maxLevel = deps.policy.maxCategoryDepth(market);
-      const issues = checkProductCategories(nodes, [job.targetCategoryId], maxLevel);
-      if (issues.length > 0) return null;
       const family = await deps.familyResolver.open(market);
       return { nodes, maxLevel, family };
     });
@@ -277,9 +292,17 @@ export class CategoryMoveProductsRun extends UseCase<
             // The source is no longer on the published revision: an earlier turn or a seller
             // submit already took the product off it.
             if (!built.ok) return skip();
+            // The target as it is now (L4): its row and its ancestors, read in this unit, over the
+            // batch's tree. Archived, merged, gone or off levels 3..depth fails this product only.
+            const chain = await deps.moveStore.categoryChain(market, job.targetCategoryId);
+            const fresh = new Map<string, ProductCategoryNode>(
+              environment.nodes.map((node) => [node.id, node]),
+            );
+            if (chain.length === 0) fresh.delete(job.targetCategoryId);
+            for (const node of chain) fresh.set(node.id, node);
             if (
               checkProductCategories(
-                environment.nodes,
+                [...fresh.values()],
                 built.value.categoryIds,
                 environment.maxLevel,
               ).length > 0
@@ -291,14 +314,16 @@ export class CategoryMoveProductsRun extends UseCase<
 
             const revisionId = deps.ids.next<'ProductRevision'>();
             // The item first, before the aggregate changes: a second turn on the same product
-            // stops here. A refusal below throws, which rolls this unit (and the item) back; the
-            // catch records the product as failed in a unit of its own.
+            // stops here. It is `pending` with no revision: the item's foreign key names a
+            // revision row, which does not exist yet; `markMoved` below names it once written.
+            // A refusal below throws, which rolls this unit (and the item) back; the catch
+            // records the product as failed in a unit of its own.
             if (
               !(await deps.moveStore.recordItem(
                 market,
                 job.id,
                 productId,
-                { state: 'moved', revisionId },
+                { state: 'pending' },
                 now,
               ))
             ) {
@@ -329,6 +354,9 @@ export class CategoryMoveProductsRun extends UseCase<
               content: built.value,
             };
             await deps.revisions.add(market, revision);
+            if (!(await deps.moveStore.markMoved(market, job.id, productId, revisionId))) {
+              throw new Error('category-move-products: the pending item is gone');
+            }
             await deps.products.save(market, product);
             // Lock order: the product row (saved above), then its Offers.
             await markProductForReevaluation(deps, market, {
@@ -382,55 +410,74 @@ export class CategoryMoveProductsRun extends UseCase<
     return 'failed';
   }
 
-  /** One email per moved product whose seller has not been told; a failed send is tried next turn. */
-  async #notifySellers(context: CallContext, job: MoveJobRecord): Promise<void> {
+  /**
+   * One email per moved product whose seller has not been told, in pages until none is left.
+   * True when every moved item is marked; false when a send failed (tried again next turn) or the
+   * turn's budget ran out. At-least-once: the mark is written after the send, so a crash between
+   * the two sends that email again.
+   */
+  async #notifySellers(
+    context: CallContext,
+    job: MoveJobRecord,
+    overBudget: () => boolean,
+  ): Promise<boolean> {
     const { deps } = this;
     const { market } = context;
-    const pending = await this.#read(context, () =>
-      deps.moveStore.unnotified(market, job.id, NOTICE_BATCH),
-    );
-    if (pending.length === 0) return;
-    const names = await this.#read(context, async () => {
-      const nodes = await deps.adminCategoryReader.categories(market, MAX_TREE_NODES + 1);
-      const locale = deps.policy.locales(market).default;
-      const nameOf = (id: string): string => {
-        const node = nodes.find((entry) => entry.id === id);
-        return (node?.names.find((n) => n.locale === locale) ?? node?.names[0])?.name ?? '';
-      };
-      return { from: nameOf(job.sourceCategoryId), to: nameOf(job.targetCategoryId) };
-    });
-    for (const { productId } of pending) {
-      try {
-        const product = await this.#read(context, () => deps.products.findById(market, productId));
-        const sellerId = product?.state.ownerSellerId ?? null;
-        if (product !== null && sellerId !== null) {
-          const to = await deps.ownerContacts.emailOf(context, sellerId);
-          if (to !== null) {
-            const mail = categoryMoveNoticeMail({
-              productCode: product.state.productCode,
-              fromName: names.from,
-              toName: names.to,
-            });
-            await deps.mailTransport.send({
-              to,
-              from: deps.mailSettings.sender(market),
-              subject: mail.subject,
-              text: mail.text,
-            });
+    let names: { readonly from: string; readonly to: string } | null = null;
+    for (;;) {
+      const pending = await this.#read(context, () =>
+        deps.moveStore.unnotified(market, job.id, NOTICE_BATCH),
+      );
+      if (pending.length === 0) return true;
+      names ??= await this.#read(context, async () => {
+        const nodes = await deps.adminCategoryReader.categories(market, MAX_TREE_NODES + 1);
+        const locale = deps.policy.locales(market).default;
+        const nameOf = (id: string): string => {
+          const node = nodes.find((entry) => entry.id === id);
+          return (node?.names.find((n) => n.locale === locale) ?? node?.names[0])?.name ?? '';
+        };
+        return { from: nameOf(job.sourceCategoryId), to: nameOf(job.targetCategoryId) };
+      });
+      let marked = 0;
+      for (const { productId } of pending) {
+        try {
+          const product = await this.#read(context, () =>
+            deps.products.findById(market, productId),
+          );
+          const sellerId = product?.state.ownerSellerId ?? null;
+          if (product !== null && sellerId !== null) {
+            const to = await deps.ownerContacts.emailOf(context, sellerId);
+            if (to !== null) {
+              const mail = categoryMoveNoticeMail({
+                productCode: product.state.productCode,
+                fromName: names.from,
+                toName: names.to,
+              });
+              // At-least-once: sent before the mark below is committed.
+              await deps.mailTransport.send({
+                to,
+                from: deps.mailSettings.sender(market),
+                subject: mail.subject,
+                text: mail.text,
+              });
+            }
           }
+          // No owner (a PLATFORM product) or no usable address: nothing to send, nothing to retry.
+          await this.#write(context, () =>
+            deps.moveStore.markNotified(market, job.id, productId, deps.clock.now()),
+          );
+          marked += 1;
+        } catch {
+          this.#logger.warn({
+            msg: 'catalog.run-category-product-moves.notice-deferred',
+            jobId: job.id,
+            marketId: market.marketId,
+            correlationId: context.correlationId,
+          });
         }
-        // No owner (a PLATFORM product) or no usable address: nothing to send, nothing to retry.
-        await this.#write(context, () =>
-          deps.moveStore.markNotified(market, job.id, productId, deps.clock.now()),
-        );
-      } catch {
-        this.#logger.warn({
-          msg: 'catalog.run-category-product-moves.notice-deferred',
-          jobId: job.id,
-          marketId: market.marketId,
-          correlationId: context.correlationId,
-        });
       }
+      // A failed send stays unmarked: stop here (the page would only return it again).
+      if (marked < pending.length || overBudget()) return false;
     }
   }
 

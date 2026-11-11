@@ -70,10 +70,14 @@ ALTER TABLE "catalog"."category_product_move_items" ADD CONSTRAINT "category_pro
 -- Hand-written.
 
 -- The new revision kind. A category override is, like a tax override, always built on the published
--- revision and written by an admin. The kind list is a CHECK, so a new kind is this swap: the wider
--- CHECK and the two new ones are added NOT VALID (a short ACCESS EXCLUSIVE lock, no scan), then
--- validated under SHARE UPDATE EXCLUSIVE, which lets reads and writes go on (8.2). Every existing row
--- holds a narrower kind, so the validation cannot fail.
+-- revision and written by an admin. The kind list is a CHECK, so a new kind is this swap: the old
+-- CHECK is dropped and the wider CHECK and the two new ones are added NOT VALID, then validated.
+-- Every existing row holds a narrower kind, so the validation cannot fail. Lock note: this file runs
+-- in one implicit transaction, so the ACCESS EXCLUSIVE lock the DROP CONSTRAINT / ADD CONSTRAINT
+-- take is held through the three VALIDATEs, which therefore scan `product_revisions` under it (reads
+-- and writes of the table wait for the scan). Acceptable here: the table is small in every
+-- environment today. A large environment would need the VALIDATEs in a second migration file (its
+-- own transaction, SHARE UPDATE EXCLUSIVE, reads and writes go on; 8.2).
 ALTER TABLE "catalog"."product_revisions" DROP CONSTRAINT "product_revisions_kind_check";
 ALTER TABLE "catalog"."product_revisions"
   ADD CONSTRAINT "product_revisions_kind_check" CHECK (
@@ -99,9 +103,11 @@ ALTER TABLE "catalog"."category_product_move_jobs"
     AND "reason" !~ '[\x01-\x09\x0B\x0C\x0E-\x1F\x7F]'),
   ADD CONSTRAINT "category_product_move_jobs_state_check" CHECK (
     "state" IN ('queued', 'running', 'done', 'failed')),
+  -- Each counter is non-negative. No bound by the total: the total is the count at the start (a
+  -- display snapshot) and a product published into the source after the start is moved too, so the
+  -- handled counts may pass it; a bound would wedge such a job (its counters could not advance).
   ADD CONSTRAINT "category_product_move_jobs_counts_check" CHECK (
-    "total_count" >= 0 AND "moved_count" >= 0 AND "skipped_count" >= 0 AND "failed_count" >= 0
-    AND "moved_count" + "skipped_count" + "failed_count" <= "total_count"),
+    "total_count" >= 0 AND "moved_count" >= 0 AND "skipped_count" >= 0 AND "failed_count" >= 0),
   -- A queued job has not started; every other job has. Done and failed jobs have an end time; no
   -- other job has.
   ADD CONSTRAINT "category_product_move_jobs_started_check" CHECK (
@@ -137,6 +143,16 @@ CREATE UNIQUE INDEX "category_product_move_jobs_market_id_source_open_key"
 CREATE INDEX "category_product_move_jobs_market_id_queue_idx"
   ON "catalog"."category_product_move_jobs" ("market_id", "created_at", "id")
   WHERE "state" IN ('queued', 'running');
+
+-- The runner's seller-notice scan: the moved items of a job whose seller has not been emailed yet,
+-- by product (the order it pages in). Partial, so it holds only the not-yet-notified rows.
+CREATE INDEX "category_product_move_items_market_id_job_id_unnotified_idx"
+  ON "catalog"."category_product_move_items" ("market_id", "job_id", "product_id")
+  WHERE "state" = 'moved' AND "seller_notified_at" IS NULL;
+
+-- No index on the item foreign keys to products and product_revisions: item rows are never deleted
+-- and those parents are never deleted either (RESTRICT, insert-only revisions), so no delete has to
+-- look items up by them.
 
 -- Grants (section 7). The job moves through its states by column; its source, target, reason and
 -- author are written once. An item is written once and only its outcome changes (state, the
