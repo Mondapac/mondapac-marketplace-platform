@@ -123,6 +123,7 @@
   { "name": "catalog.sell-unit-labels", "rule": "anonymous" },
   { "name": "catalog.seller-product-owners", "rule": "system" },
   { "name": "catalog.send-attribute-suggestion-notices", "rule": "system" },
+  { "name": "catalog.send-missing-details-emails", "rule": "system" },
   { "name": "catalog.send-offer-owner-notices", "rule": "system" },
   { "name": "catalog.sweep-orphan-image-files", "rule": "system" },
   { "name": "catalog.sweep-orphan-images", "rule": "system" },

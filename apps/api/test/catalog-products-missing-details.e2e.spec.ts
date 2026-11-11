@@ -46,6 +46,7 @@ describe('products missing required details over HTTP (integration)', () => {
   let app: NestExpressApplication;
   const rows = new Map<string, PublishedProductValues[]>();
   const gap: ProductDetailsGapReader = {
+    publishedByIds: () => Promise.resolve([]),
     published: (market, filter) =>
       Promise.resolve(
         (rows.get(market.marketId) ?? [])

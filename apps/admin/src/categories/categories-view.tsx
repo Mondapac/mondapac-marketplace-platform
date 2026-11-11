@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import type { AttributeAccess } from './attribute-links-model.ts';
 import { CategoryDetails } from './category-details.tsx';
 import { CreateCategoryDialog } from './category-dialogs.tsx';
 import { CategoryTree } from './category-tree.tsx';
@@ -31,11 +32,14 @@ const WIDE = '(min-width: 1024px)';
 export function CategoriesView({
   canEdit,
   canRestructure = false,
+  attributeAccess = 'none',
   csrfToken = '',
 }: {
   readonly canEdit: boolean;
   /** `catalog.category-tree.restructure`: Move, Merge and Archive. */
   readonly canRestructure?: boolean;
+  /** What the person may do with attribute links (`catalog.attribute.view` / `.edit`). */
+  readonly attributeAccess?: AttributeAccess;
   readonly csrfToken?: string;
 }) {
   const t = useTranslations('categories');
@@ -280,6 +284,7 @@ export function CategoriesView({
               tree={tree}
               canEdit={canEdit}
               canRestructure={canRestructure}
+              attributeAccess={attributeAccess}
               csrfToken={csrfToken}
               onChanged={changed}
               onCreated={created}

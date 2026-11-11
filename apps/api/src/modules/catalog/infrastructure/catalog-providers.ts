@@ -239,6 +239,11 @@ import {
 } from '../application/ports/offer-owner-notice.repository';
 import { PrismaOfferOwnerNotices } from './prisma-offer-owner-notices';
 import {
+  MISSING_DETAILS_EMAIL_STORE,
+  type MissingDetailsEmailStore,
+} from '../application/ports/missing-details-email.store';
+import { PrismaMissingDetailsEmailStore } from './prisma-missing-details-email.store';
+import {
   TAG_SELECTION_READER,
   type TagSelectionReader,
 } from '../application/ports/tag-selection.reader';
@@ -520,6 +525,13 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferOwnerNoticeRepository =>
       new PrismaOfferOwnerNotices(prisma),
+  },
+  // The "Email sellers" requests of the Missing details report (attributes package A4-4).
+  {
+    provide: MISSING_DETAILS_EMAIL_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): MissingDetailsEmailStore =>
+      new PrismaMissingDetailsEmailStore(prisma),
   },
   // The tag selections of the certification-event re-ask and the reconciliation (design 5.5, 5.6).
   {

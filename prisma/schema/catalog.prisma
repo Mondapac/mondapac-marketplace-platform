@@ -1754,3 +1754,34 @@ model CatalogTopicTerm {
   @@map("topic_terms")
   @@schema("catalog")
 }
+
+/// One "Email sellers" request for one product of one seller (attributes package A4-4, report
+/// "Missing details"). The primary key is the throttle: a seller and a product are asked for at
+/// most once in 7 days, claimed by a guarded update. The row holds what the mail will say (the
+/// product name and the English names of the missing details) so the job needs no catalog read.
+/// No address is stored. The CHECKs and the grants are hand-written in the migration.
+model CatalogMissingDetailsEmail {
+  marketId      String    @map("market_id") @db.VarChar(8)
+  tenantId      String    @map("tenant_id")
+  sellerId      String    @map("seller_id") @db.Uuid
+  productId     String    @map("product_id") @db.Uuid
+  /// The seller's public store name when the request was made; null when it had none.
+  sellerName    String?   @map("seller_name")
+  productName   String    @map("product_name")
+  /// A JSON array of the English names of the missing details.
+  missingLabels Json      @map("missing_labels") @db.JsonB
+  /// pending | sent | skipped | failed.
+  state         String
+  /// no-address | send-failed; NULL while pending and when sent.
+  outcome       String?
+  attempts      Int
+  requestedAt   DateTime  @map("requested_at") @db.Timestamptz(6)
+  /// The admin account that asked (a plain id, no foreign key).
+  requestedBy   String    @map("requested_by") @db.Uuid
+  settledAt     DateTime? @map("settled_at") @db.Timestamptz(6)
+
+  @@id([marketId, sellerId, productId])
+  @@index([marketId, state, requestedAt])
+  @@map("missing_details_emails")
+  @@schema("catalog")
+}

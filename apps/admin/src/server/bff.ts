@@ -138,6 +138,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set([]),
   POST: new Set([
+    // "Email sellers" from the Missing details report: the picked product ids, 'dryRun' for the
+    // preview (catalog, attributes A4-4).
+    'catalog/admin/reports/products-missing-details/email-sellers',
     // The signed-in admin's other sessions are ended; this one stays (profile).
     'identity/admin/profile/sessions/sign-out-others',
     'identity/admin/sign-in',
@@ -308,6 +311,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'reviews/admin/moderation/:id/dismiss-reports',
   ],
   PUT: [
+    // A category's feature set and filter list, with the version read (catalog, categories C8).
+    'catalog/admin/categories/:id/attribute-links',
     // Change a feature set: names, groups and requirement levels, with the version read
     // (catalog, attributes A4).
     'catalog/admin/feature-sets/:id',
@@ -361,6 +366,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
+    // What a category holds and inherits: feature set and filters (catalog, categories C8).
+    'catalog/admin/categories/:id/attribute-links',
     // One category with its path and history, and the impact of a change on its subtree
     // (catalog, read-only; the impact takes the `action`).
     'catalog/admin/categories/:id',

@@ -158,6 +158,7 @@
     "supportEmail": "jnamazi@gmail.com",
     "customerOrderPage": "https://storefront.au.mondapac.test/account/orders",
     "unsubscribePage": "https://storefront.au.mondapac.test/email/unsubscribe",
+    "sellerMissingDetailsPage": "https://seller.au.mondapac.test/products",
     "oneClickUnsubscribeUrl": "https://api.au.mondapac.test/notifications/unsubscribe/AU",
     "cartReminders": {
       "mode": "test",

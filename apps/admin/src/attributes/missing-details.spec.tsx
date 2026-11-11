@@ -8,7 +8,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi, type ApiResult } from '../api/client.ts';
 import { csvCell, csvOf, MissingDetailsTab } from './missing-details-tab.tsx';
-import type { MissingDetailsItem, MissingDetailsPage } from './types.ts';
+import type { EmailSellersAnswer, MissingDetailsItem, MissingDetailsPage } from './types.ts';
 
 const call = vi.mocked(callApi);
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
@@ -122,3 +122,161 @@ describe('Missing details tab', () => {
     expect(text.split('\r\n')[1]).toBe(`"P1","'=cmd","${id(901)}","pantry","a b"`);
   });
 });
+
+describe('Email sellers', () => {
+  beforeEach(() => {
+    call.mockReset();
+    HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+  });
+  afterEach(cleanup);
+
+  const answer = (over: Partial<EmailSellersAnswer> = {}): EmailSellersAnswer => ({
+    dryRun: true,
+    throttleDays: 7,
+    sellers: [
+      {
+        sellerId: id(901),
+        sellerName: 'Fresh Co',
+        products: [
+          {
+            productId: id(1),
+            productCode: 'P1',
+            name: 'Product 1',
+            missing: ['Country of origin', 'Storage'],
+            status: 'will-send',
+            lastRequestedAt: null,
+          },
+        ],
+      },
+      {
+        sellerId: id(902),
+        sellerName: 'Dates Ltd',
+        products: [
+          {
+            productId: id(2),
+            productCode: 'P2',
+            name: 'Product 2',
+            missing: ['Storage'],
+            status: 'recently-emailed',
+            lastRequestedAt: '2026-11-08T03:00:00.000Z',
+          },
+        ],
+      },
+    ],
+    ignored: [],
+    ...over,
+  });
+
+  function mountEditable() {
+    return render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <MissingDetailsTab canEdit csrfToken="csrf" />
+      </NextIntlClientProvider>,
+    );
+  }
+
+  it('is not offered to a reader', async () => {
+    call.mockResolvedValueOnce(ok(page([item(1)])));
+    mount();
+    await screen.findByText('Product 1');
+    expect(screen.queryByRole('button', { name: 'Email sellers' })).toBeNull();
+  });
+
+  it('stays off until a seller product is selected', async () => {
+    call.mockResolvedValueOnce(ok(page([item(1), item(2, { sellerId: null })])));
+    mountEditable();
+    await screen.findByText('Product 1');
+    const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Email sellers' });
+    expect(button.disabled).toBe(true);
+    expect(screen.getByText('Select products to email their sellers.')).toBeTruthy();
+    // A platform product has no seller to ask.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P2' }));
+    expect(button.disabled).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P1' }));
+    expect(button.disabled).toBe(false);
+    expect(screen.getByText('1 product selected for email.')).toBeTruthy();
+  });
+
+  it('previews who is emailed, then sends and tells how many sellers', async () => {
+    call.mockResolvedValueOnce(ok(page([item(1), item(2)])));
+    mountEditable();
+    await screen.findByText('Product 1');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P1' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P2' }));
+    call.mockResolvedValueOnce(ok(answer()));
+    fireEvent.click(screen.getByRole('button', { name: 'Email sellers' }));
+    expect(await screen.findByRole('heading', { name: 'Email 2 sellers?' })).toBeTruthy();
+    expect(call).toHaveBeenLastCalledWith(
+      'POST',
+      'catalog/admin/reports/products-missing-details/email-sellers',
+      { productIds: [id(1), id(2)], dryRun: true },
+      'csrf',
+    );
+    expect(await screen.findByText('Will be emailed')).toBeTruthy();
+    expect(screen.getByText('Skipped: emailed 2026-11-08')).toBeTruthy();
+    expect(screen.getByText('1 of your products needs more details')).toBeTruthy();
+    expect(screen.getByText(/- Product 1: Country of origin, Storage/)).toBeTruthy();
+    expect(screen.getByText(/Sent in English/)).toBeTruthy();
+    call.mockResolvedValueOnce(
+      ok(
+        answer({
+          dryRun: false,
+          sellers: answer().sellers.map((s, i) => ({
+            ...s,
+            products: s.products.map((p) => ({
+              ...p,
+              status: i === 0 ? ('queued' as const) : ('recently-emailed' as const),
+            })),
+          })),
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Email 1 seller' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'POST',
+        'catalog/admin/reports/products-missing-details/email-sellers',
+        { productIds: [id(1), id(2)] },
+        'csrf',
+      ),
+    );
+    expect(await screen.findByText('1 seller will get an email within a minute.')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('cannot send when every seller was emailed in the last 7 days', async () => {
+    call.mockResolvedValueOnce(ok(page([item(1)])));
+    mountEditable();
+    await screen.findByText('Product 1');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P1' }));
+    call.mockResolvedValueOnce(
+      ok(
+        answer({
+          sellers: answer().sellers.slice(1),
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Email sellers' }));
+    const send = await screen.findByRole<HTMLButtonElement>('button', {
+      name: 'Email 0 sellers',
+    });
+    expect(send.disabled).toBe(true);
+  });
+
+  it('explains a Market without the seller panel link', async () => {
+    call.mockResolvedValueOnce(ok(page([item(1)])));
+    mountEditable();
+    await screen.findByText('Product 1');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P1' }));
+    call.mockResolvedValueOnce(fail503('missing-details-email.unconfigured'));
+    fireEvent.click(screen.getByRole('button', { name: 'Email sellers' }));
+    expect(await screen.findByText(/no seller panel link set/)).toBeTruthy();
+  });
+});
+
+const fail503 = (code: string): ApiResult<never> => ({ ok: false, failure: { status: 503, code } });

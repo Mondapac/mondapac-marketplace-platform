@@ -1979,6 +1979,12 @@ const marketSchema = z
          */
         unsubscribePage: pageUrl.optional(),
         /**
+         * The seller panel's Products page filtered to "Missing details": the link of the "Email
+         * sellers" mail of the attributes report (package A4-4). Without it the Market sends no
+         * such mail.
+         */
+        sellerMissingDetailsPage: pageUrl.optional(),
+        /**
          * The API's one-click unsubscribe route of this Market
          * (`.../notifications/unsubscribe/<MARKET>`), sent in the `List-Unsubscribe` header
          * (RFC 8058) as `<url>?token=<token>`. Without it or `unsubscribePage` the Market sends no

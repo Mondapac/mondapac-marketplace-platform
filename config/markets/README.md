@@ -285,6 +285,9 @@ and an audit row. A Market without the section shows no address until an admin s
 `<page>?token=<token>` (same URL rules). `oneClickUnsubscribeUrl`: the API's one-click route of this
 Market, `.../notifications/unsubscribe/<MARKET>`, sent in the `List-Unsubscribe` header (RFC 8058)
 as `<url>?token=<token>`. A Market without both sends no marketing mail (personalization 1b).
+`sellerMissingDetailsPage`: the seller panel's Products page the "Email sellers" mail of the
+attributes report links to (same URL rules; the mail adds `?filter=missing-details`). A Market
+without it sends no such mail (attributes package A4-4).
 
 ## `customers` section (optional)
 
