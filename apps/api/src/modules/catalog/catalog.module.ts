@@ -172,6 +172,10 @@ import { PlatformProductRead } from './application/use-cases/platform-product-re
 import { PlatformProductCreate } from './application/use-cases/platform-product-create.use-case';
 import { PlatformProductSaveDraft } from './application/use-cases/platform-product-save-draft.use-case';
 import { PlatformProductSubmit } from './application/use-cases/platform-product-submit.use-case';
+import { AddSizes } from './application/products/add-sizes.service';
+import { PlatformProductAddSizes } from './application/use-cases/platform-product-add-sizes.use-case';
+import { PlatformProductAddSizesImpact } from './application/use-cases/platform-product-add-sizes-impact.use-case';
+import { OwnProductAddSizes } from './application/use-cases/own-product-add-sizes.use-case';
 import { CATALOG_PERMISSIONS } from './contracts/permissions';
 import { CATALOG_STEP_UP_ACTIONS } from './contracts/step-up';
 import { CATEGORY_SEED } from './application/ports/category-seed';
@@ -457,6 +461,7 @@ const PORT = {
   revisions: PRODUCT_REVISION_REPOSITORY,
   freeze: FreezeRevision,
   submit: SubmitProduct,
+  addSizes: AddSizes,
   reader: OFFER_SELL_UNITS_READER,
   searchReader: OFFER_SEARCH_FACTS_READER,
   filterReader: SEARCH_FILTER_READER,
@@ -2062,6 +2067,26 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       familyResolver: true,
     }),
+    serviceProvider(AddSizes, {
+      unitOfWork: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      offers: true,
+      offerFinder: true,
+      attributes: true,
+      familyResolver: true,
+      policy: true,
+      allowedTypes: true,
+      counters: true,
+      counterKeys: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnProductAddSizes, { addSizes: true, eligibility: true }),
+    useCaseProvider(PlatformProductAddSizes, { addSizes: true }),
+    useCaseProvider(PlatformProductAddSizesImpact, { addSizes: true }),
     useCaseProvider(SeedCategoryTree, {
       unitOfWork: true,
       categories: true,

@@ -38,6 +38,8 @@ export interface FrozenRevision {
   readonly contentHash: ContentHash;
   /** The feature set the content was frozen under: the one its primary category holds (CAT-10). */
   readonly familyCode: string;
+  /** The product type the content was frozen with: the row's, whose handler validated it (M-9). */
+  readonly typeCode: string;
 }
 
 export interface FreezeRevisionDependencies {
@@ -228,6 +230,7 @@ export class FreezeRevision {
       content: frozen.value,
       contentHash: revisionContentHash(frozen.value),
       familyCode,
+      typeCode: state.typeCode,
     });
   }
 
