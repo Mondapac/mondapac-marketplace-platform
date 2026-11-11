@@ -173,6 +173,9 @@ export function PostsView({ zone }: { readonly zone: string }) {
         </div>
       </div>
       <p className="text-sm text-fg-muted">{t('zone-note', { zone })}</p>
+      <p role="status" className="sr-only">
+        {load === 'ready' ? t('result-count', { count: rows.length }) : ''}
+      </p>
       {load === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
       {load === 'failed' ? (
         <LoadError
@@ -216,7 +219,10 @@ export function PostsView({ zone }: { readonly zone: string }) {
                     <td className={CARD_TABLE.labelled} data-label={t('col.kind')}>
                       {t(`kind.${row.kind}`)}
                     </td>
-                    <td className={CARD_TABLE.labelled} data-label={t('col.author')}>
+                    <td
+                      className={`${CARD_TABLE.labelled} whitespace-nowrap`}
+                      data-label={t('col.author')}
+                    >
                       {authorOf(row)}
                     </td>
                     <td className={CARD_TABLE.corner}>
@@ -228,7 +234,7 @@ export function PostsView({ zone }: { readonly zone: string }) {
                       ) : null}
                     </td>
                     <td
-                      className={`${CARD_TABLE.labelled} whitespace-nowrap`}
+                      className={`${CARD_TABLE.labelled} whitespace-nowrap text-fg-muted`}
                       data-label={t('col.updated')}
                     >
                       {when(row)}

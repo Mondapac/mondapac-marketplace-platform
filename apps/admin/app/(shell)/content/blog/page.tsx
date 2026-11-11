@@ -3,7 +3,6 @@ import { getTranslations } from 'next-intl/server';
 import { PostsView } from '../../../../src/blog/posts-view.tsx';
 import { BLOG_READ_PERMISSION } from '../../../../src/blog/types.ts';
 import { ContentNoAccess } from '../../../../src/content/content-no-access.tsx';
-import { ContentTabs } from '../../../../src/content/content-tabs.tsx';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
 import { displayZone } from '../../../../src/shared/format.ts';
@@ -30,15 +29,6 @@ export default async function BlogPage() {
         <h1 className="text-2xl font-semibold">{title}</h1>
         <p className="text-fg-muted">{t('blog.intro')}</p>
       </div>
-      <ContentTabs
-        active="blog"
-        permissionKeys={permissionKeys}
-        labels={{
-          nav: t('content.tabs.label'),
-          slides: t('content.tabs.slides'),
-          blog: t('content.tabs.blog'),
-        }}
-      />
       <PostsView zone={displayZone(timezone)} />
     </AdminShell>
   );

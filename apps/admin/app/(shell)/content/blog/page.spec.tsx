@@ -27,7 +27,11 @@ vi.mock('../../../../src/server/admin-shell.tsx', () => ({
   }: {
     readonly children: ReactNode;
     readonly activeId: string;
-  }) => <div data-active={activeId}>{children}</div>,
+  }) => (
+    <div data-testid="shell" data-active={activeId}>
+      {children}
+    </div>
+  ),
 }));
 vi.mock('../../../../src/content/content-no-access.tsx', () => ({
   ContentNoAccess: () => <h1>No access to content</h1>,
@@ -44,14 +48,12 @@ describe('admin blog page', () => {
   beforeEach(() => mocks.session.mockReset());
   afterEach(cleanup);
 
-  it('shows the list in the Market zone, with the Blog tab current, to a reader', async () => {
+  it('shows the list in the Market zone, with Blog current in the menu, to a reader', async () => {
     mocks.session.mockResolvedValue({ kind: 'ok', session: session(['blog.post.read']) });
     await open();
     expect(screen.getByRole('heading', { name: 'Blog' })).toBeTruthy();
     expect(screen.getByTestId('view').getAttribute('data-zone')).toBe('Australia/Sydney');
-    expect(screen.getByRole('link', { name: 'Blog' }).getAttribute('aria-current')).toBe('page');
-    // The Slides tab needs its own key.
-    expect(screen.queryByRole('link', { name: 'Slides' })).toBeNull();
+    expect(screen.getByTestId('shell').getAttribute('data-active')).toBe('blog');
   });
 
   it('falls back to UTC for an unknown zone', async () => {

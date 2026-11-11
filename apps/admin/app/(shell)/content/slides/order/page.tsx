@@ -49,14 +49,7 @@ export default async function SlideOrderPage({
         <h1 className="text-2xl font-semibold">{title}</h1>
         <p className="text-fg-muted">{t('content.intro')}</p>
       </div>
-      <ContentTabs
-        permissionKeys={permissionKeys}
-        labels={{
-          nav: t('content.tabs.label'),
-          slides: t('content.tabs.slides'),
-          blog: t('content.tabs.blog'),
-        }}
-      />
+      <ContentTabs labels={{ nav: t('content.tabs.label'), slides: t('content.tabs.slides') }} />
       <div className="mb-4">
         <SlidesViewSwitch
           active="order"

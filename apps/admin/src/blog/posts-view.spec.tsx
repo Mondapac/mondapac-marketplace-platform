@@ -89,6 +89,7 @@ describe('admin blog posts list', () => {
     expect(within(rows[1]!).getByText('Brand')).toBeTruthy();
     expect(within(rows[1]!).getByText('Seller')).toBeTruthy();
     expect(within(rows[1]!).getByText('In review')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('2 posts shown');
   });
 
   it.each(ZONES)('writes times in $zone, not the browser zone', async ({ zone, stamp }) => {

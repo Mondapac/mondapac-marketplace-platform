@@ -1041,8 +1041,7 @@
     "intro": "Slides on the buyer site, for this Market.",
     "tabs": {
       "label": "Content sections",
-      "slides": "Slides",
-      "blog": "Blog"
+      "slides": "Slides"
     },
     "no-access": {
       "title": "You don't have access to this page",
@@ -5650,6 +5649,7 @@
     "kind-filter": "Type",
     "owner-filter": "Author",
     "zone-note": "Times are shown in {zone}.",
+    "result-count": "{count, plural, one {# post shown} other {# posts shown}}",
     "loading": "Loading posts",
     "load-error": "The posts could not be loaded. Check your connection and try again.",
     "retry": "Try again",
