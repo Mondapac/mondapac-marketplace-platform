@@ -19,8 +19,10 @@ export const INDEX_ON_SELLER_APPROVED_SUBSCRIBER = 'search.index-approved-seller
  * category under it; a seller approved re-syncs the seller's Offers, so a store name that came with
  * the approval is indexed. Each event only names what to look at; `SyncOfferDocuments` re-reads the
  * names, so repeated and out-of-order deliveries converge. A refusal throws, so the delivery is
- * retried. A store name changed by a later revision has no event of its own: the six-hourly
- * rebuild repairs it.
+ * retried. Today a public store name or address is set only by the onboarding approval (covered by
+ * the approval event). When sellers builds the identity-change approval, the admin identity edit and
+ * the admin address change (sellers design 7.4), their events are subscribed here; until then the
+ * six-hourly rebuild is the repair.
  */
 export function namesIndexSubscriptions(sync: SyncOfferDocuments): RegisteredSubscription[] {
   const run = async (

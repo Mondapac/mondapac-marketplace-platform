@@ -13,7 +13,10 @@ import type { FeedFacts, OfferFeed } from './ports/offer-feed';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
 import type { OfferFacetReader } from './ports/offer-facet.reader';
 import type { OfferSearchIndex } from './ports/offer-search-index';
-import type { StoreDocumentRepository } from './ports/store-document.repository';
+import {
+  StoreRowConflictError,
+  type StoreDocumentRepository,
+} from './ports/store-document.repository';
 import type { StoreDocument, StoreHit } from '../domain/store-document';
 import type { StoreSearchRequest } from './ports/store-search.reader';
 import { SearchStores } from './use-cases/search-stores.use-case';
@@ -279,7 +282,17 @@ const indexOf = (
 
 class MemoryStores implements StoreDocumentRepository {
   readonly rows = new Map<Id<'Seller'>, StoreDocument>();
+  /** Writes that meet a concurrent sync (a handed-over address) before one goes through. */
+  conflicts = 0;
+  writes = 0;
+  onConflict: () => void = () => undefined;
   upsertMany(_market: MarketContext, documents: readonly StoreDocument[]) {
+    this.writes += 1;
+    if (this.conflicts > 0) {
+      this.conflicts -= 1;
+      this.onConflict();
+      return Promise.reject(new StoreRowConflictError());
+    }
     for (const document of documents) this.rows.set(document.sellerId, document);
     return Promise.resolve();
   }
@@ -766,6 +779,38 @@ describe.each([
       expect([...storeRows.rows.values()]).toEqual([
         { sellerId: SELLER, slug: 'alis-butcher', name: "Ali's Butcher", textSearchConfig: config },
       ]);
+    });
+
+    it('reads sellers again and writes again when a concurrent sync took the address', async () => {
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      feed.facts_.set(offer(1), sellable());
+      storeRows.conflicts = 1;
+      // The address moved on while the first write waited: the second read sees the new one.
+      storeRows.onConflict = () =>
+        storeNames.set(SELLER, { slug: 'alis-new-butcher', name: "Ali's Butcher" });
+
+      const result = await run();
+
+      expect(result.ok).toBe(true);
+      expect(storeRows.writes).toBe(2);
+      expect([...storeRows.rows.values()]).toEqual([
+        {
+          sellerId: SELLER,
+          slug: 'alis-new-butcher',
+          name: "Ali's Butcher",
+          textSearchConfig: config,
+        },
+      ]);
+    });
+
+    it('gives up after three conflicting attempts and throws, so the delivery is retried', async () => {
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      feed.facts_.set(offer(1), sellable());
+      storeRows.conflicts = 3;
+
+      await expect(run()).rejects.toBeInstanceOf(StoreRowConflictError);
+      expect(storeRows.writes).toBe(3);
+      expect(storeRows.rows.size).toBe(0);
     });
 
     it('removes the row of a seller that has no public store any more', async () => {

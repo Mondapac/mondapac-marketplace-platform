@@ -106,6 +106,7 @@
   "requestLimits": {
     "anonymousIdentityPerMinute": 10,
     "publicMediaPerMinute": 600,
+    "publicSearchPerMinute": 90,
     "defaultPerMinute": 200
   },
   "notifications": {

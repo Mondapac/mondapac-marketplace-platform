@@ -12,6 +12,7 @@ import { PrismaOfferVariantReader } from '../../src/modules/search/infrastructur
 import { PostgresOfferSearchIndex } from '../../src/modules/search/infrastructure/postgres-offer-search-index';
 import { RawStoreSearchReader } from '../../src/modules/search/infrastructure/raw-store-search.reader';
 import { PrismaStoreDocumentRepository } from '../../src/modules/search/infrastructure/prisma-store-document.repository';
+import { StoreRowConflictError } from '../../src/modules/search/application/ports/store-document.repository';
 import { RawOfferScopeReader } from '../../src/modules/search/infrastructure/raw-offer-scope.reader';
 import { RawOfferFacetReader } from '../../src/modules/search/infrastructure/raw-offer-facet.reader';
 import { RawOfferSearchReader } from '../../src/modules/search/infrastructure/raw-offer-search.reader';
@@ -681,6 +682,38 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
         [market.marketId, 'same-address'],
       );
       expect(rows.rows.map((row) => row.seller_id)).toEqual([second]);
+    });
+
+    it('throws StoreRowConflictError when a concurrent sync hands the address over first', async () => {
+      const [mine, theirs] = [id<'Seller'>(), id<'Seller'>()];
+      // Another sync holds an uncommitted row of the same address for another seller.
+      await sql.query('BEGIN');
+      try {
+        await sql.query(
+          `INSERT INTO "search"."store_documents"
+             (market_id, tenant_id, seller_id, slug, name, text_search_config, indexed_at)
+           VALUES ($1, $2, $3, 'race-address', 'Theirs', $4, now())`,
+          [market.marketId, market.tenantId, theirs, settings.textSearchConfig],
+        );
+        const write = seedStores(market, store(mine, 'race-address', 'Mine'));
+        const settled = write.then(
+          () => 'written',
+          (error: unknown) => error,
+        );
+        // This write waits on the other row's unique key until that sync commits.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await sql.query('COMMIT');
+
+        expect(await settled).toBeInstanceOf(StoreRowConflictError);
+      } catch (error) {
+        await sql.query('ROLLBACK');
+        throw error;
+      }
+      const rows = await sql.query<{ seller_id: string }>(
+        'SELECT seller_id FROM "search"."store_documents" WHERE market_id = $1 AND slug = $2',
+        [market.marketId, 'race-address'],
+      );
+      expect(rows.rows.map((row) => row.seller_id)).toEqual([theirs]);
     });
 
     it('counts the indexed Offers of sellers, deletes by seller and deletes stale rows', async () => {

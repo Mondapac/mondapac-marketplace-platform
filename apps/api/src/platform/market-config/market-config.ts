@@ -123,6 +123,8 @@ const requestLimitsSchema = z.strictObject({
   anonymousIdentityPerMinute: perMinute,
   /** Routes marked `@RateLimit('public-media')`: the anonymous buyer photo route. */
   publicMediaPerMinute: perMinute,
+  /** Routes marked `@RateLimit('public-search')`: the storefront product and store search. */
+  publicSearchPerMinute: perMinute,
   /** Every other market-scoped route. */
   defaultPerMinute: perMinute,
 });
