@@ -62,7 +62,7 @@ export interface ChangeRequestView {
 export interface RevisionHistoryEntry {
   readonly revisionId: Id<'ProductRevision'>;
   readonly revisionNo: number;
-  readonly kind: 'submission' | 'revert' | 'tax-override';
+  readonly kind: 'submission' | 'revert' | 'tax-override' | 'category-override';
   readonly authorKind: 'seller' | 'admin';
   readonly submittedAt: Temporal.Instant;
   /** null while the revision has no decision (it is pending, or nothing decided it). */
