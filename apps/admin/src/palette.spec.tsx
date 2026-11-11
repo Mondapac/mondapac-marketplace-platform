@@ -383,7 +383,7 @@ describe('PanelTools', () => {
       JSON.stringify([
         'page:sellers',
         'page:customers',
-        'page:offer-reviews',
+        'page:review-queue',
         'page:content',
         'page:settings/support',
       ]),

@@ -59,56 +59,56 @@ model CatalogInbox {
 /// grants). The CHECKs, the case-sensitive product-code collation and the grants are
 /// hand-written in the migration.
 model CatalogProduct {
-  id                   String                     @id @db.Uuid
-  marketId             String                     @map("market_id") @db.VarChar(8)
-  tenantId             String                     @map("tenant_id")
+  id                   String                            @id @db.Uuid
+  marketId             String                            @map("market_id") @db.VarChar(8)
+  tenantId             String                            @map("tenant_id")
   /// PLATFORM | SELLER (ADR-0010).
   scope                String
   /// The owning seller of a SELLER product; null for PLATFORM (CHECK products_owner_check).
-  ownerSellerId        String?                    @map("owner_seller_id") @db.Uuid
+  ownerSellerId        String?                           @map("owner_seller_id") @db.Uuid
   /// The seller who created it; never updated, so the origin survives promotion.
-  createdBySellerId    String?                    @map("created_by_seller_id") @db.Uuid
-  typeCode             String                     @map("type_code")
+  createdBySellerId    String?                           @map("created_by_seller_id") @db.Uuid
+  typeCode             String                            @map("type_code")
   /// single | options: the handler's variantModel; the target of the variant foreign key.
-  variantModel         String                     @map("variant_model")
-  familyCode           String                     @map("family_code")
+  variantModel         String                            @map("variant_model")
+  familyCode           String                            @map("family_code")
   /// Minted from product_code_counters, never from input. Collation "C" is set in the migration.
-  productCode          String                     @map("product_code")
+  productCode          String                            @map("product_code")
   /// draft | discarded | unpublished | published | matched | withdrawn | retired.
   status               String
-  discardedAt          DateTime?                  @map("discarded_at") @db.Timestamptz(6)
-  ownBrand             Boolean                    @map("own_brand")
+  discardedAt          DateTime?                         @map("discarded_at") @db.Timestamptz(6)
+  ownBrand             Boolean                           @map("own_brand")
   /// The brand entity this product's published `brand` attribute resolved to; null when the value
   /// names no active brand. A plain column, not a Prisma relation: `catalog.brands` is exempt from
   /// the market scope and the schema checks forbid relating it to this scoped model, so no foreign
   /// key exists: a hand-written trigger refuses a value that names no brand, and brands are never
   /// deleted.
-  brandId              String?                    @map("brand_id") @db.Uuid
-  matchedIntoProductId String?                    @map("matched_into_product_id") @db.Uuid
-  promotedAt           DateTime?                  @map("promoted_at") @db.Timestamptz(6)
-  retiredAt            DateTime?                  @map("retired_at") @db.Timestamptz(6)
-  withdrawnAt          DateTime?                  @map("withdrawn_at") @db.Timestamptz(6)
+  brandId              String?                           @map("brand_id") @db.Uuid
+  matchedIntoProductId String?                           @map("matched_into_product_id") @db.Uuid
+  promotedAt           DateTime?                         @map("promoted_at") @db.Timestamptz(6)
+  retiredAt            DateTime?                         @map("retired_at") @db.Timestamptz(6)
+  withdrawnAt          DateTime?                         @map("withdrawn_at") @db.Timestamptz(6)
   /// The reversible admin pause (catalog design 4.1a): set only on a published product, with the
   /// admin who paused it; both or neither (CHECKs). Cleared by resume, retire and withdraw.
-  pausedAt             DateTime?                  @map("paused_at") @db.Timestamptz(6)
-  pausedByAccountId    String?                    @map("paused_by_account_id") @db.Uuid
+  pausedAt             DateTime?                         @map("paused_at") @db.Timestamptz(6)
+  pausedByAccountId    String?                           @map("paused_by_account_id") @db.Uuid
   /// The published revision (V1 pointer); only a revision of this product (CE4). Null until first publish.
-  publishedRevisionId  String?                    @map("published_revision_id") @db.Uuid
+  publishedRevisionId  String?                           @map("published_revision_id") @db.Uuid
   /// The one pending revision (VER-01), a single column so the rule holds by construction.
-  pendingRevisionId    String?                    @map("pending_revision_id") @db.Uuid
+  pendingRevisionId    String?                           @map("pending_revision_id") @db.Uuid
   /// Queue sort key, written with the pending pointer in the same statement.
-  pendingSubmittedAt   DateTime?                  @map("pending_submitted_at") @db.Timestamptz(6)
+  pendingSubmittedAt   DateTime?                         @map("pending_submitted_at") @db.Timestamptz(6)
   /// Every save of the root.
-  lastChangedAt        DateTime                   @map("last_changed_at") @db.Timestamptz(6)
+  lastChangedAt        DateTime                          @map("last_changed_at") @db.Timestamptz(6)
   /// Optimistic version of the aggregate (P 10); 1 at insert.
   version              Int
-  createdAt            DateTime                   @map("created_at") @db.Timestamptz(6)
+  createdAt            DateTime                          @map("created_at") @db.Timestamptz(6)
   variants             CatalogProductVariant[]
-  matchedInto          CatalogProduct?            @relation("ProductMatch", fields: [marketId, matchedIntoProductId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  duplicates           CatalogProduct[]           @relation("ProductMatch")
-  revisions            CatalogProductRevision[]   @relation("ProductRevisions")
-  publishedRevision    CatalogProductRevision?    @relation("ProductPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
-  pendingRevision      CatalogProductRevision?    @relation("ProductPending", fields: [marketId, id, pendingRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  matchedInto          CatalogProduct?                   @relation("ProductMatch", fields: [marketId, matchedIntoProductId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  duplicates           CatalogProduct[]                  @relation("ProductMatch")
+  revisions            CatalogProductRevision[]          @relation("ProductRevisions")
+  publishedRevision    CatalogProductRevision?           @relation("ProductPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  pendingRevision      CatalogProductRevision?           @relation("ProductPending", fields: [marketId, id, pendingRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
   workingCopy          CatalogProductWorkingCopy?
   images               CatalogProductImage[]
   offers               CatalogOffer[]
@@ -149,6 +149,7 @@ model CatalogProductVariant {
   retiredAt        DateTime?                       @map("retired_at") @db.Timestamptz(6)
   product          CatalogProduct                  @relation(fields: [marketId, productId, variantModel], references: [marketId, id, variantModel], onDelete: Restrict, onUpdate: Restrict)
   revisionVariants CatalogProductRevisionVariant[]
+  offerSellUnits   CatalogOfferSellUnit[]
 
   @@unique([marketId, id])
   /// The count path of the variant limit and the target of a same-product foreign key (3.10).
@@ -336,7 +337,7 @@ model CatalogAttributeDefinition {
   tenantId            String                               @map("tenant_id")
   /// Unique per Market, never updated (CA4).
   code                String
-  /// text | long-text | integer | decimal | boolean | select | multi-select | date.
+  /// text | long-text | integer | decimal | boolean | select | multi-select | date | measure.
   dataType            String                               @map("data_type")
   localizable         Boolean
   /// draft | active | archived (attributes A2: a draft is invisible to sellers and buyers).
@@ -356,6 +357,7 @@ model CatalogAttributeDefinition {
   publishedRevision   CatalogAttributeDefinitionRevision?  @relation("DefinitionPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, definitionId, id], onDelete: Restrict, onUpdate: Restrict)
   relaxationRequests  CatalogAttributeRelaxationRequest[]  @relation("DefinitionRelaxationRequests")
   valueSuggestions    CatalogAttributeValueSuggestion[]    @relation("DefinitionValueSuggestions")
+  variantTypeSetting  CatalogVariantTypeSetting[]          @relation("VariantTypeSetting")
 
   @@unique([marketId, id])
   @@unique([marketId, code])
@@ -366,12 +368,12 @@ model CatalogAttributeDefinition {
 /// Where a value of a merged attribute goes (attributes A8, insert-only): the source's option code
 /// and the target's option code. A source of a type without options has no rows.
 model CatalogAttributeMergeOption {
-  marketId     String                     @map("market_id") @db.VarChar(8)
-  tenantId     String                     @map("tenant_id")
-  sourceId     String                     @map("source_id") @db.Uuid
-  sourceCode   String                     @map("source_code")
-  targetCode   String                     @map("target_code")
-  source       CatalogAttributeDefinition @relation("MergeOptionSource", fields: [marketId, sourceId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  marketId   String                     @map("market_id") @db.VarChar(8)
+  tenantId   String                     @map("tenant_id")
+  sourceId   String                     @map("source_id") @db.Uuid
+  sourceCode String                     @map("source_code")
+  targetCode String                     @map("target_code")
+  source     CatalogAttributeDefinition @relation("MergeOptionSource", fields: [marketId, sourceId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, sourceId, sourceCode])
   @@map("attribute_merge_options")
@@ -388,7 +390,7 @@ model CatalogAttributeDefinitionRevision {
   revisionNo          Int                                        @map("revision_no")
   material            Boolean
   isVariantOption     Boolean                                    @map("is_variant_option")
-  /// Object with maxLength, min, max.
+  /// Object with maxLength, min, max (a measure: in base units) and, for a measure, `measure` (unit settings).
   bounds              Json                                       @db.JsonB
   /// Locale to name (CA6).
   names               Json                                       @db.JsonB
@@ -651,6 +653,7 @@ model CatalogProductRevision {
   workingCopies          CatalogProductWorkingCopy[]
   texts                  CatalogProductRevisionText[]
   categories             CatalogProductRevisionCategory[]
+  topics                 CatalogProductRevisionTopic[]
   variants               CatalogProductRevisionVariant[]
   images                 CatalogProductRevisionImage[]
   decision               CatalogProductRevisionDecision?
@@ -701,6 +704,26 @@ model CatalogProductRevisionCategory {
   @@schema("catalog")
 }
 
+/// The topics a revision carries (product tags T2): at most 10, order as entered. Insert-only.
+/// The topic key is the pair (market, topic), so a topic of another Market is refused by the
+/// foreign key. Topics are never deleted, hence RESTRICT. Position 0 to 9 is a hand-written CHECK.
+model CatalogProductRevisionTopic {
+  marketId   String                 @map("market_id") @db.VarChar(8)
+  tenantId   String                 @map("tenant_id")
+  revisionId String                 @map("revision_id") @db.Uuid
+  topicId    String                 @map("topic_id") @db.Uuid
+  position   Int                    @db.SmallInt
+  revision   CatalogProductRevision @relation(fields: [marketId, revisionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  topic      CatalogTopic           @relation(fields: [marketId, topicId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, revisionId, topicId])
+  @@unique([marketId, revisionId, position])
+  /// Products with this topic (T3 search, the 8-product page rule).
+  @@index([marketId, topicId, revisionId])
+  @@map("product_revision_topics")
+  @@schema("catalog")
+}
+
 /// The variants a revision carries (data design 3.10): only variants of its own product.
 /// Insert-only; the not-retired trigger refuses a retired variant.
 model CatalogProductRevisionVariant {
@@ -715,11 +738,23 @@ model CatalogProductRevisionVariant {
   optionValues Json                   @map("option_values") @db.JsonB
   /// Locale to label (CA6).
   labels       Json                   @db.JsonB
+  /// The GTIN as 14 digits, check digit validated by the domain; null = none (variants V4).
+  gtin                String?  @db.VarChar(14)
+  /// Shipping values of this variant; null takes the product's value (V4).
+  shippingWeightGrams Int?     @map("shipping_weight_grams")
+  shippingLengthMm    Int?     @map("shipping_length_mm")
+  shippingWidthMm     Int?     @map("shipping_width_mm")
+  shippingHeightMm    Int?     @map("shipping_height_mm")
+  /// Ordered subset of the revision's images; the first is the variant's primary image (V4).
+  imageIds            String[] @default([]) @map("image_ids") @db.Uuid
   revision     CatalogProductRevision @relation(fields: [marketId, productId, revisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
   variant      CatalogProductVariant  @relation(fields: [marketId, productId, variantId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, revisionId, variantId])
   @@unique([marketId, revisionId, optionKey])
+  /// The admin Variants page pages variants newest first by variant id (V6).
+  @@index([marketId, variantId])
+  /// The duplicate-GTIN lookup of a draft save (V4); a partial index, hand-written.
   @@map("product_revision_variants")
   @@schema("catalog")
 }
@@ -776,55 +811,91 @@ model CatalogRateCounter {
 /// the two partial indexes and the grants are hand-written in the migration. The shelf column
 /// (`shelf_category_id`) arrives with seller categories in slice 23.
 model CatalogOffer {
-  id                          String                @id @db.Uuid
-  marketId                    String                @map("market_id") @db.VarChar(8)
-  tenantId                    String                @map("tenant_id")
+  id                          String                 @id @db.Uuid
+  marketId                    String                 @map("market_id") @db.VarChar(8)
+  tenantId                    String                 @map("tenant_id")
   /// Never updated (no column grant; PRC 2.3).
-  sellerId                    String                @map("seller_id") @db.Uuid
+  sellerId                    String                 @map("seller_id") @db.Uuid
   /// Changed only by a CAT-45 match (the Offer moves, D 4.5).
-  productId                   String                @map("product_id") @db.Uuid
+  productId                   String                 @map("product_id") @db.Uuid
   /// 1 to 64 printable ASCII characters, no space (CHECK); collation "C" is set in the migration.
   /// Unique per seller among non-deleted Offers.
-  sellerSku                   String                @map("seller_sku")
+  sellerSku                   String                 @map("seller_sku")
   /// A Market `conditions` code (CA4).
-  conditionCode               String                @map("condition_code")
+  conditionCode               String                 @map("condition_code")
   /// Locale to text, an object (CHECK, CA6); nothing queries inside it.
-  description                 Json                  @db.JsonB
+  description                 Json                   @db.JsonB
   /// SEALED_ORIGINAL | REPACKED | PREPARED | FRESH; null only while `draft` or `deleted`.
   handling                    String?
   /// Both or neither (CHECK); written only by own-offer.record-attestation.
-  attestationRecordedAt       DateTime?             @map("attestation_recorded_at") @db.Timestamptz(6)
-  attestationAccountId        String?               @map("attestation_account_id") @db.Uuid
+  attestationRecordedAt       DateTime?              @map("attestation_recorded_at") @db.Timestamptz(6)
+  attestationAccountId        String?                @map("attestation_account_id") @db.Uuid
   /// draft | pending-first-publish | changes-needed | published | deleted.
   status                      String
   /// The stored off-sale causes (M-5): type-not-allowed, product-retired, product-not-listed,
   /// product-paused, tag-suspended, description-claim-text.
-  offSaleTypeNotAllowed       Boolean               @map("off_sale_type_not_allowed")
-  offSaleProductRetired       Boolean               @map("off_sale_product_retired")
-  offSaleProductNotListed     Boolean               @map("off_sale_product_not_listed")
+  offSaleTypeNotAllowed       Boolean                @map("off_sale_type_not_allowed")
+  offSaleProductRetired       Boolean                @map("off_sale_product_retired")
+  offSaleProductNotListed     Boolean                @map("off_sale_product_not_listed")
   /// The admin paused the product (catalog design 4.1a); added on pause, cleared on resume.
-  offSaleProductPaused        Boolean               @map("off_sale_product_paused")
-  offSaleTagSuspended         Boolean               @map("off_sale_tag_suspended")
-  offSaleDescriptionClaimText Boolean               @map("off_sale_description_claim_text")
+  offSaleProductPaused        Boolean                @map("off_sale_product_paused")
+  offSaleTagSuspended         Boolean                @map("off_sale_tag_suspended")
+  offSaleDescriptionClaimText Boolean                @map("off_sale_description_claim_text")
   /// Exactly `status = 'published'` and no cause (CHECK offers_listed_check).
   listed                      Boolean
   /// The last submit for review; required while `pending-first-publish` (CHECK); queue sort key.
-  submittedAt                 DateTime?             @map("submitted_at") @db.Timestamptz(6)
-  firstPublishedAt            DateTime?             @map("first_published_at") @db.Timestamptz(6)
+  submittedAt                 DateTime?              @map("submitted_at") @db.Timestamptz(6)
+  firstPublishedAt            DateTime?              @map("first_published_at") @db.Timestamptz(6)
   /// Set exactly when `status = 'deleted'` (CHECK).
-  deletedAt                   DateTime?             @map("deleted_at") @db.Timestamptz(6)
+  deletedAt                   DateTime?              @map("deleted_at") @db.Timestamptz(6)
   /// Optimistic version of the aggregate (P 10); 1 at insert.
   version                     Int
-  createdAt                   DateTime              @map("created_at") @db.Timestamptz(6)
-  product                     CatalogProduct        @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  createdAt                   DateTime               @map("created_at") @db.Timestamptz(6)
+  product                     CatalogProduct         @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   history                     CatalogOfferHistory[]
   tags                        CatalogOfferTag[]
+  sellUnits                   CatalogOfferSellUnit[]
 
   /// The target of composite foreign keys (C3); the A1 batch read.
   @@unique([marketId, id])
   /// The target of the same-seller tag foreign key (3.15).
   @@unique([marketId, id, sellerId])
   @@map("offers")
+  @@schema("catalog")
+}
+
+/// The per (Offer, Variant) sell-unit record (variants V5, plan decisions t4 and t14): an optional
+/// variant SKU and the reversible `selling` switch. Sparse: no row means selling with no variant
+/// SKU, so nothing is backfilled and an existing Offer is unchanged. A row is never deleted; the
+/// SKU unique per seller, the SKU shape CHECK, the cross-check against the Offer SKUs (trigger),
+/// the same-seller foreign key and the grants are hand-written in the migration.
+model CatalogOfferSellUnit {
+  /// The aggregate id of the row's events (version = `version`); minted by the server.
+  id         String                @db.Uuid
+  marketId   String                @map("market_id") @db.VarChar(8)
+  tenantId   String                @map("tenant_id")
+  offerId    String                @map("offer_id") @db.Uuid
+  /// A copy bound to the Offer's seller by the composite foreign key; never updated.
+  sellerId   String                @map("seller_id") @db.Uuid
+  /// The Offer's product, bound to the variant by the composite foreign key (the variant is of this
+  /// product). The Offer-move slice (CAT-45) must re-key the rows (catalog design 2.4).
+  productId  String                @map("product_id") @db.Uuid
+  variantId  String                @map("variant_id") @db.Uuid
+  /// 1 to 64 printable ASCII characters, no space (CHECK); collation "C" is set in the migration.
+  variantSku String?               @map("variant_sku")
+  selling    Boolean
+  /// Optimistic version of the row; 1 at insert.
+  version    Int
+  createdAt  DateTime              @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime              @map("updated_at") @db.Timestamptz(6)
+  offer      CatalogOffer          @relation(fields: [marketId, offerId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  variant    CatalogProductVariant @relation(fields: [marketId, productId, variantId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, offerId, variantId])
+  @@unique([marketId, id])
+  /// The read by seller for the SKU checks.
+  @@index([marketId, sellerId])
+  @@map("offer_sell_units")
   @@schema("catalog")
 }
 
@@ -1246,19 +1317,140 @@ model CatalogPlatformImportRow {
   @@schema("catalog")
 }
 
-/// A saved filter (saved view) of an admin list (catalog design 9.2d; data design 3.28): the tab,
-/// search, filters and sort of the list under a name, for one admin ("me") or for every admin of
-/// the Market who can see that list ("everyone"). `list_key` names the list (`admin.catalog.products`
-/// today) so another admin list can reuse the table. The payload is a closed document validated on
-/// write by the application (`v`, `view`, `q`, `filters`, `sort`, `direction`); the CHECKs only
-/// bound its type and size. `owner_account_id` is an identity account id with no foreign key (the
-/// tables of another module are never joined). The CHECKs, the two name uniques (case-insensitive,
-/// expression indexes) and the grants are hand-written in the migration.
+/// One seller's import file, from its check to its report (catalog design 14c; data design 3.31). It
+/// keeps the identity of the account and session that started it (ids only) and the seller, from the
+/// starting ActorContext; the worker resumes them as that seller. No price, cost or stock column.
+/// `seller_id`, `product_id`, `offer_id` and `image_id` have no foreign key (other schema, or a
+/// delete must never conflict with a row that remembers what the run did). The CHECKs, the partial
+/// indexes and the column grants are hand-written.
+model CatalogSellerImportJob {
+  id                 String                     @id @db.Uuid
+  marketId           String                     @map("market_id") @db.VarChar(8)
+  tenantId           String                     @map("tenant_id")
+  sellerId           String                     @map("seller_id") @db.Uuid
+  startedByAccountId String                     @map("started_by_account_id") @db.Uuid
+  startedBySessionId String                     @map("started_by_session_id") @db.Uuid
+  /// my-products | sell-from-catalogue.
+  mode               String
+  /// checked | queued | running | finished | stopped | discarded.
+  state              String
+  /// csv | xlsx.
+  format             String
+  fileLabel          String                     @map("file_label")
+  /// The object key, built by code from the Market and the job id.
+  fileKey            String                     @map("file_key")
+  fileSha256         Bytes                      @map("file_sha256")
+  fileBytes          Int                        @map("file_bytes")
+  fileDeletedAt      DateTime?                  @map("file_deleted_at") @db.Timestamptz(6)
+  totalRows          Int                        @map("total_rows")
+  readyRows          Int                        @map("ready_rows")
+  errorRows          Int                        @map("error_rows")
+  warningRows        Int                        @map("warning_rows")
+  /// The products (my-products) or Offers (sell-from-catalogue) in the file: groups of rows.
+  groupCount         Int                        @map("group_count")
+  /// [{header, mark}]: columns the check did not read; mark certification | elsewhere | null.
+  ignoredColumns     Json                       @map("ignored_columns") @db.JsonB
+  skipErrors         Boolean?                   @map("skip_errors")
+  toImport           Int?                       @map("to_import")
+  createdRows        Int                        @map("created_rows")
+  updatedRows        Int                        @map("updated_rows")
+  unchangedRows      Int                        @map("unchanged_rows")
+  failedRows         Int                        @map("failed_rows")
+  /// rate-limited | access-lost | seller-not-eligible | file-missing | unexpected; set while stopped.
+  stopReason         String?                    @map("stop_reason")
+  notBefore          DateTime?                  @map("not_before") @db.Timestamptz(6)
+  leaseUntil         DateTime?                  @map("lease_until") @db.Timestamptz(6)
+  /// When the runner last claimed the job: the claim takes the oldest last turn first (round-robin).
+  lastTurnAt         DateTime?                  @map("last_turn_at") @db.Timestamptz(6)
+  version            Int
+  createdAt          DateTime                   @map("created_at") @db.Timestamptz(6)
+  checkedAt          DateTime                   @map("checked_at") @db.Timestamptz(6)
+  startedAt          DateTime?                  @map("started_at") @db.Timestamptz(6)
+  finishedAt         DateTime?                  @map("finished_at") @db.Timestamptz(6)
+  /// When the job stopped (set exactly while `stopped`; a resume clears it): the photo window closes
+  /// seven days after it.
+  endedAt            DateTime?                  @map("ended_at") @db.Timestamptz(6)
+  rows               CatalogSellerImportRow[]
+  photos             CatalogSellerImportPhoto[]
+
+  @@unique([marketId, id])
+  @@index([marketId, sellerId, createdAt(sort: Desc)], map: "seller_import_jobs_market_id_seller_created_at_idx")
+  @@index([marketId, startedByAccountId, createdAt(sort: Desc)], map: "seller_import_jobs_market_id_account_created_at_idx")
+  @@map("seller_import_jobs")
+  @@schema("catalog")
+}
+
+/// One data row of a seller import: its check result, its plan and, once run, what happened to it
+/// (design 14c). Cell values are kept only as the shortened, cleaned `value` of an issue and the
+/// summary; never an ignored or price cell.
+model CatalogSellerImportRow {
+  marketId    String                 @map("market_id") @db.VarChar(8)
+  tenantId    String                 @map("tenant_id")
+  jobId       String                 @map("job_id") @db.Uuid
+  /// The number a spreadsheet shows (the header is row 1).
+  rowNumber   Int                    @map("row_number")
+  /// The row number of the first row of this row's group.
+  groupRow    Int                    @map("group_row")
+  /// ready | error.
+  checkState  String                 @map("check_state")
+  /// create | update; null exactly for an error row.
+  plan        String?
+  /// [{severity, column, code, value, otherRow?}], at most 12.
+  issues      Json                   @db.JsonB
+  /// {sku, title, productCode, typeCode, options}: cleaned and cut.
+  summary     Json                   @db.JsonB
+  /// pending | created | updated | unchanged | failed | skipped.
+  runState    String                 @map("run_state")
+  runCode     String?                @map("run_code")
+  productId   String?                @map("product_id") @db.Uuid
+  offerId     String?                @map("offer_id") @db.Uuid
+  productCode String?                @map("product_code")
+  job         CatalogSellerImportJob @relation(fields: [marketId, jobId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, jobId, rowNumber])
+  @@map("seller_import_rows")
+  @@schema("catalog")
+}
+
+/// One photo added by the photo step of a seller import (design 14c): insert-only, the guard of
+/// `import.photo-already-added` and the per-job count. The photo itself is an ordinary
+/// `product_images` row.
+model CatalogSellerImportPhoto {
+  marketId  String                 @map("market_id") @db.VarChar(8)
+  tenantId  String                 @map("tenant_id")
+  jobId     String                 @map("job_id") @db.Uuid
+  /// The cleaned label in lower case, 1 to 80 characters.
+  nameKey   String                 @map("name_key")
+  productId String                 @map("product_id") @db.Uuid
+  /// null while the name is reserved and the upload runs; set once.
+  imageId   String?                @map("image_id") @db.Uuid
+  addedAt   DateTime               @map("added_at") @db.Timestamptz(6)
+  job       CatalogSellerImportJob @relation(fields: [marketId, jobId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, jobId, nameKey])
+  @@map("seller_import_photos")
+  @@schema("catalog")
+}
+
+/// A saved filter (saved view) of an admin list or of the seller Products list (catalog design
+/// 9.2d; data design 3.28): the tab, search, filters and sort of the list under a name, for one
+/// account ("me") or for everyone who can see that list ("everyone": every admin of the Market, or
+/// every member of one store for a seller list). `list_key` names the list (`admin.catalog.products`
+/// and `seller.catalog.products` today) so another list can reuse the table. A `seller.` list key
+/// carries `seller_id` and an admin key does not (CHECK). The payload is a closed document validated
+/// on write by the application (the admin list: `v`, `view`, `q`, `filters`, `sort`, `direction`;
+/// the seller list: `v`, `view`, `q`, `status`, `categoryId`, `paused`, `typeCode`, `sort`,
+/// `direction`); the CHECKs only bound its type and size. `owner_account_id` is an identity account id with no foreign key (the
+/// tables of another module are never joined). The CHECKs, the four name uniques (case-insensitive,
+/// partial expression indexes: admin and seller twins) and the grants are hand-written in the migration.
 model CatalogSavedFilter {
   id             String   @id @db.Uuid
   marketId       String   @map("market_id") @db.VarChar(8)
   tenantId       String   @map("tenant_id")
   ownerAccountId String   @map("owner_account_id") @db.Uuid
+  /// The store a seller-list filter belongs to (an id of the sellers module, no foreign key); null
+  /// for admin lists. Never changes after the insert.
+  sellerId       String?  @map("seller_id") @db.Uuid
   /// me | everyone.
   visibility     String
   listKey        String   @map("list_key")
@@ -1271,6 +1463,7 @@ model CatalogSavedFilter {
   updatedAt      DateTime @map("updated_at") @db.Timestamptz(6)
 
   @@unique([marketId, id])
+  @@index([marketId, sellerId, listKey])
   @@map("saved_filters")
   @@schema("catalog")
 }
@@ -1461,5 +1654,104 @@ model CatalogCategoryAttributeLinkRevision {
   @@unique([marketId, categoryId, id])
   @@index([marketId, familyId])
   @@map("category_attribute_link_revisions")
+  @@schema("catalog")
+}
+
+/// How buyers choose a variant type (variants V6; plan section 9): one root per variant attribute,
+/// holding the pointer to the current revision and the version a write names, like a category's
+/// attribute links. A variant type without a root uses the defaults (buttons, manual order). The
+/// CHECKs, the insert-only triggers and the grants are hand-written in the migration.
+model CatalogVariantTypeSetting {
+  marketId          String                              @map("market_id") @db.VarChar(8)
+  tenantId          String                              @map("tenant_id")
+  definitionId      String                              @map("definition_id") @db.Uuid
+  currentRevisionId String?                             @map("current_revision_id") @db.Uuid
+  version           Int
+  createdAt         DateTime                            @map("created_at") @db.Timestamptz(6)
+  definition        CatalogAttributeDefinition          @relation("VariantTypeSetting", fields: [marketId, definitionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  currentRevision   CatalogVariantTypeSettingRevision?  @relation("VariantTypeSettingCurrent", fields: [marketId, definitionId, currentRevisionId], references: [marketId, definitionId, id], onDelete: Restrict, onUpdate: Restrict)
+  revisions         CatalogVariantTypeSettingRevision[] @relation("VariantTypeSettingRevisions")
+
+  @@id([marketId, definitionId])
+  @@map("variant_type_settings")
+  @@schema("catalog")
+}
+
+/// A revision of a variant type's settings (insert-only). `swatches` maps an option code to a
+/// colour `#RRGGBB`; `sellerHelp` maps a locale to one sentence shown above the variant grid.
+model CatalogVariantTypeSettingRevision {
+  id              String                      @id @db.Uuid
+  marketId        String                      @map("market_id") @db.VarChar(8)
+  tenantId        String                      @map("tenant_id")
+  definitionId    String                      @map("definition_id") @db.Uuid
+  revisionNo      Int                         @map("revision_no")
+  /// buttons | swatches | dropdown.
+  displayStyle    String                      @map("display_style")
+  /// manual | alphabetical | by-size.
+  optionOrder     String                      @map("option_order")
+  swatches        Json                        @db.JsonB
+  sellerHelp      Json                        @map("seller_help") @db.JsonB
+  authorAccountId String                      @map("author_account_id") @db.Uuid
+  createdAt       DateTime                    @map("created_at") @db.Timestamptz(6)
+  setting         CatalogVariantTypeSetting   @relation("VariantTypeSettingRevisions", fields: [marketId, definitionId], references: [marketId, definitionId], onDelete: Restrict, onUpdate: Restrict)
+  current         CatalogVariantTypeSetting[] @relation("VariantTypeSettingCurrent")
+
+  @@unique([marketId, definitionId, revisionNo])
+  @@unique([marketId, definitionId, id])
+  @@map("variant_type_setting_revisions")
+  @@schema("catalog")
+}
+
+/// A topic of a Market (product tags package T1): a shopping theme such as Ramadan, Persian cuisine
+/// or BBQ, curated by an admin; products pick topics in package T2. Shown as a "tag" in the panels
+/// and to buyers; named `topic` in code because `tag` is the certification tag on an Offer
+/// (ADR-0028), which a topic never is. The slug is the key and the future page address
+/// (/t/<slug>); it never changes. The CHECKs and the grants are hand-written in the migration.
+model CatalogTopic {
+  id        String             @id @db.Uuid
+  marketId  String             @map("market_id") @db.VarChar(8)
+  tenantId  String             @map("tenant_id")
+  /// Lowercase ASCII words joined by hyphens; unique per Market; never updated.
+  slug      String
+  /// occasion | cuisine | use: how the admin list groups topics.
+  group     String             @map("topic_group")
+  /// active | archived. An archived topic is offered to nobody but keeps its terms.
+  status    String
+  /// The intro of the topic page, written by a person (package T4 indexes a page only with it).
+  intro     String?
+  createdBy String             @map("created_by") @db.Uuid
+  createdAt DateTime           @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime           @map("updated_at") @db.Timestamptz(6)
+  /// Optimistic version (P 10); 1 at insert.
+  version   Int
+  terms     CatalogTopicTerm[]
+  revisions CatalogProductRevisionTopic[]
+
+  @@unique([marketId, id])
+  @@unique([marketId, slug])
+  @@map("topics")
+  @@schema("catalog")
+}
+
+/// A name or a synonym of a topic in one locale. `term_key` is the normalised form
+/// (`normaliseTopicTerm`): unique per Market and locale across every topic, so a synonym never
+/// points at two topics. Position 0 is the name and only the name (a CHECK), so the key gives a
+/// topic at most one name per locale. Replaced as a set when the topic is edited.
+model CatalogTopicTerm {
+  marketId String       @map("market_id") @db.VarChar(8)
+  tenantId String       @map("tenant_id")
+  topicId  String       @map("topic_id") @db.Uuid
+  locale   String
+  /// name | synonym.
+  kind     String
+  term     String
+  termKey  String       @map("term_key")
+  /// The order of the terms of one topic and locale: 0 is the name, synonyms follow.
+  position Int
+  topic    CatalogTopic @relation(fields: [marketId, topicId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, topicId, locale, position])
+  @@unique([marketId, locale, termKey])
+  @@map("topic_terms")
   @@schema("catalog")
 }

@@ -2,6 +2,7 @@
 
 import type { ProductPage } from '../storefront/catalog.ts';
 import { LISTING_PAGE_SIZE, findProducts } from '../storefront/catalog.ts';
+import { liveFiltersOf } from './live-filters.ts';
 import { listingStateOf } from './listing-state.ts';
 
 // The server action behind a phone listing's "Load more": the next page of the same listing.
@@ -16,7 +17,7 @@ export interface LoadMoreRequest {
     /** Only the products on the category itself ("Other {name}"). */
     readonly direct?: boolean;
   };
-  /** The listing's query string (filters and sort), as `listingHref` writes it. */
+  /** The listing's query string (filters and sort), as `listingHref` writes it on its address. */
   readonly query: string;
   readonly page: number;
 }
@@ -30,7 +31,7 @@ export async function loadMoreProducts(raw: unknown): Promise<ProductPage | null
   if (typeof page !== 'number' || !Number.isInteger(page) || page < 2 || page > 100) return null;
   if (
     typeof query !== 'string' ||
-    query.length > 400 ||
+    query.length > 2000 ||
     typeof scope !== 'object' ||
     scope === null
   )
@@ -41,13 +42,17 @@ export async function loadMoreProducts(raw: unknown): Promise<ProductPage | null
   for (const code of [category, subcategory])
     if (code !== undefined && (typeof code !== 'string' || !CODE.test(code))) return null;
   const params = new URLSearchParams(query);
-  const state = listingStateOf(Object.fromEntries(params));
+  const record: Record<string, string | string[]> = Object.fromEntries(params);
+  // `filter` comes once per attribute: all of them, not the last one.
+  record.filter = params.getAll('filter');
+  const state = listingStateOf(record);
   return findProducts({
     ...(q === undefined ? {} : { q }),
     ...(category === undefined ? {} : { category }),
     ...(subcategory === undefined ? {} : { subcategory }),
     ...(direct === true ? { direct } : {}),
     ...state,
+    live: liveFiltersOf(record),
     page,
     pageSize: LISTING_PAGE_SIZE,
   });

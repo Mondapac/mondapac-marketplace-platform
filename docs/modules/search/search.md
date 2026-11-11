@@ -104,7 +104,7 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   count) and the seller's public store name and minimum order. Units without a price and Offers
   without a priced unit are left out, Offers come lowest unit price first (ties by Offer id), and at
   most 200 (Offer, Variant) keys are asked. 404 `search.product-not-found` when nothing is left; a
-  failed source or check is 503 `search.unavailable`. Adds `images` (at most 8 public photos in the published revision's order: `imageId`, `width`, `height`, `alt`). Each Offer adds `badges` (certification badges: `typeCode`, `typeName`, `basis`, `sellerClaim`, `issuerName`, `validUntilLocalDate`, `verifiedWithIssuer`), read in one call of catalog's `offerBadges` for the Offers on the page (rule anonymous, at most 20). Search decides nothing: catalog asks certification's `evaluateClaims` live in the request and copies the badge of the decision (see `catalog.offer-badges` in docs/design/domain/catalog.md, 9.1 "Offer badges"). Badges fail closed and the page does not: a badge source that fails gives `badges: []` on every Offer and a 200. No attribute or tag yet.
+  failed source or check is 503 `search.unavailable`. Adds `images` (at most 8 public photos in the published revision's order: `imageId`, `width`, `height`, `alt`). Adds `variantImages` (for each sold Variant that picked photos: `variantId` and `imageIds`, the picks that are public photos of the product now, main photo first; a Variant not listed shows the product's photos; variants V4). Each Offer adds `badges` (certification badges: `typeCode`, `typeName`, `basis`, `sellerClaim`, `issuerName`, `validUntilLocalDate`, `verifiedWithIssuer`), read in one call of catalog's `offerBadges` for the Offers on the page (rule anonymous, at most 20). Search decides nothing: catalog asks certification's `evaluateClaims` live in the request and copies the badge of the decision (see `catalog.offer-badges` in docs/design/domain/catalog.md, 9.1 "Offer badges"). Badges fail closed and the page does not: a badge source that fails gives `badges: []` on every Offer and a 200. No attribute or tag yet.
 - **Photos:** each item of `search/products`, `bestsellers` and `specials` has `primaryImage` (the same
   `{imageId, width, height, alt}` or `null`). The refs come from catalog's `publishedProductImages`
   (rule anonymous, published revision only, taken-down photos skipped), read for the shown items only;
@@ -172,3 +172,40 @@ What a buyer can narrow a list by, and how the index keeps it.
 - **Not in this package.** The storefront web screens, the measure type (waits for A3), and the
   conversion of the Country of origin attribute to an ISO choice (the indexer already maps a
   select code or free text to an ISO code; the seed and Convert tool wait for A3).
+
+## Variant filters, price on the matching variant, GTIN search (variants V8, 7 Nov 2026)
+
+Plan section 12, decision تن۱۰: the result is the product, once; a variant filter, the price filter
+and the card price read only the variants that are in stock.
+
+- **Index.** `search.offer_variant_documents`: one row per published variant of a sellable Offer
+  (axis facets as `attribute=<option code>`, merges followed; GTIN as 14 digits; `in_stock` from
+  inventory's public status, `in-stock` or `low`; the buyer price from pricing, both price columns
+  null when none is in force). Replaced as a set with the document and deleted with it. Catalog's
+  index facade gives the variants (`variants` in the facts, published registry state only) and adds
+  their labels to `search_text`, so "rice 10kg" finds the 10 kg label. Stock and price come from the
+  inventory and pricing facades (system use cases); the exact stock count is never stored.
+- **Events.** `inventory.availability-changed.v1` and `pricing.effective-price-changed.v1` re-sync
+  that Offer (the payload names it; stock and price are re-read). A variant added or retired comes
+  with a revision publish. The six-hourly rebuild repairs a lost delivery.
+- **Matching.** A product matches when its own facets satisfy every choice group and no price is
+  asked (product attributes keep the A7 behaviour, stock not asked), or when one of its in-stock,
+  priced variants satisfies every group together with the product's facets, at a price within
+  `price=<min>..<max>` (minor units). Two axes must be held by the same variant. A variant axis is a
+  filter of a category the same way as any attribute (the category filter settings of A7).
+- **Counts.** Products, never variants: the facet read returns one row per document (its own
+  facets, only when no price is asked) and one per in-stock, priced variant within the price, with
+  the variant's axis values beside the document's.
+- **Result.** Each item has `variantId` (the first matching variant by the owner's order when a
+  variant filter or the price narrowed the list, else null: the product page shows its default)
+  and `price: { from, varies }` (the lowest price of the matching variants, of all in-stock ones
+  when nothing narrowed; null when none). The storefront links to `/p/{productId}?v={variantId}`.
+- **GTIN.** A `q` that is exactly a GTIN-8, 12, 13 or 14 with a valid check digit is looked up
+  first: when a visible document has a variant with it, the page has `exactMatch` and the storefront
+  goes straight to that variant (even out of stock: the page shows it disabled); otherwise the text
+  is searched as usual.
+- **Raw SQL.** `search.offer-filtered` and `search.offer-facet-rows` read the new table (an
+  `EXISTS` and a `UNION ALL` arm, `$1`-bound like every relation); the GTIN lookup and the hits'
+  sell units are Prisma reads.
+- **Waits for V5 (#688).** The seller's Selling switch: a variant switched off must leave the index.
+  Added to the catalog facts when #688 is on main.

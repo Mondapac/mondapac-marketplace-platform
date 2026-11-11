@@ -12,6 +12,7 @@ describe.each(FIXTURES)('revision texts in market $code', ({ supported, defaultL
       [defaultLocale]: { name: 'Dates', shortDescription: null, description: 'Sweet' },
     },
     categoryIds: ['c1'],
+    topicIds: [],
     taxCategoryCode: 'taxable',
     attributeValues: { origin: 'Iran', note: { [defaultLocale]: 'fresh' }, weight: 3 },
     variants: [
@@ -21,6 +22,12 @@ describe.each(FIXTURES)('revision texts in market $code', ({ supported, defaultL
         optionKey: 'size=l',
         optionValues: { size: 'l' },
         labels: { [defaultLocale]: 'Large' },
+        gtin: null,
+        shippingWeightGrams: null,
+        shippingLengthMm: null,
+        shippingWidthMm: null,
+        shippingHeightMm: null,
+        imageIds: [],
       },
     ],
     imageIds: [],
@@ -44,9 +51,11 @@ describe.each(FIXTURES)('revision texts in market $code', ({ supported, defaultL
     expect(summaryOf(content())).toEqual({
       names: { [defaultLocale]: 'Dates' },
       categoryIds: ['c1'],
+      topicIds: [],
       taxCategoryCode: 'taxable',
       imageIds: [],
       variantIds: ['v1'],
+      variantGtins: { v1: null },
     });
   });
 });

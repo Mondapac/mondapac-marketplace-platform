@@ -1,6 +1,15 @@
 'use client';
 
-import { ActionMenu, Button, Dialog, RadioGroup, toast, type ActionMenuItem } from '@mondapac/ui';
+import {
+  ActionMenu,
+  Button,
+  Dialog,
+  ExportDialog,
+  saveFile,
+  toast,
+  type ActionMenuItem,
+  type ExportFormat,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -15,8 +24,6 @@ import {
 
 export type BulkAction = 'pause' | 'resume' | 'delete';
 
-/** The file formats of the export. */
-type ExportFormat = 'csv' | 'xlsx';
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 /** The answer of POST catalog/admin/products/bulk (catalog design 9.2c). */
@@ -111,7 +118,6 @@ export function ProductsBulk({
   const t = useTranslations('catalog.products.bulk');
   const locale = useLocale();
   const [dialog, setDialog] = useState<'pause' | 'delete' | 'export' | null>(null);
-  const [format, setFormat] = useState<ExportFormat>('csv');
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<
     | { readonly state: 'loading' }
@@ -248,16 +254,8 @@ export function ProductsBulk({
         throw bulkFailure(response.status, body?.code ?? 'unknown', body?.details);
       }
       const day = new Date().toISOString().slice(0, 10);
-      const save = (blob: Blob, extension: string) => {
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.href = url;
-        link.download = `products-${day}.${extension}`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-      };
+      const save = (blob: Blob, extension: string) =>
+        saveFile(blob, `products-${day}.${extension}`);
       if (chosen === 'xlsx') {
         save(new Blob([await response.arrayBuffer()], { type: XLSX_TYPE }), 'xlsx');
         // The file is a workbook, not text: the count is the number of products asked for.
@@ -395,41 +393,26 @@ export function ProductsBulk({
       >
         <p>{t('pause.body')}</p>
       </Dialog>
-      <Dialog
+      <ExportDialog
         open={dialog === 'export'}
-        title={t('export.title', { count })}
         onClose={() => setDialog(null)}
-        actions={
-          <>
-            <Button variant="secondary" onClick={() => setDialog(null)}>
-              {t('cancel')}
-            </Button>
-            <Button
-              disabled={busy}
-              onClick={() => {
-                setDialog(null);
-                void exportFile(format);
-              }}
-            >
-              {t('export.confirm')}
-            </Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-3">
-          <p>{t('export.body')}</p>
-          <RadioGroup
-            legend={t('export.legend')}
-            name="products-export-format"
-            value={format}
-            onChange={(next) => setFormat(next === 'xlsx' ? 'xlsx' : 'csv')}
-            options={[
-              { value: 'csv', label: t('export.csv'), help: t('export.csv-help') },
-              { value: 'xlsx', label: t('export.xlsx'), help: t('export.xlsx-help') },
-            ]}
-          />
-        </div>
-      </Dialog>
+        busy={busy}
+        labels={{
+          title: t('export.title', { count }),
+          body: t('export.body'),
+          legend: t('export.legend'),
+          csv: t('export.csv'),
+          csvHelp: t('export.csv-help'),
+          xlsx: t('export.xlsx'),
+          xlsxHelp: t('export.xlsx-help'),
+          confirm: t('export.confirm'),
+          cancel: t('cancel'),
+        }}
+        onConfirm={(format) => {
+          setDialog(null);
+          void exportFile(format);
+        }}
+      />
       <Dialog
         open={dialog === 'delete'}
         title={t('delete.title', { count })}

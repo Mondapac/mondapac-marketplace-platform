@@ -6755,9 +6755,6 @@ svg {
   margin-top: 1px;
   color: var(--sf-teal);
 }
-.skel.shop-skel-head {
-  height: clamp(240px, 32vw, 320px);
-}
 @media (min-width: 900px) {
   .shop-boxes {
     grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);

@@ -14,6 +14,13 @@ import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search
 import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { SellerEligibility } from './ports/seller-eligibility';
+import {
+  sellUnitRefKey,
+  type SellUnitRef,
+  type SellUnitState,
+  type SellUnitStates,
+} from './ports/sell-unit-states';
+import type { OfferVariantReader } from './ports/offer-variant.reader';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
 import type { CategorySubtreeSource } from './ports/category-subtree';
 import type { StoreResolver } from './ports/store-resolver';
@@ -43,6 +50,70 @@ const SUSPENDED = id<'Seller'>(0x52);
 const PRODUCT = id<'Product'>(0x91);
 const CATEGORY = id<'Category'>(0xca);
 const SUBCATEGORY = id<'Category'>(0xcb);
+
+/** Stock and price per `offerId/variantId`; an unlisted unit is out of stock and unpriced. */
+class StubSellUnits implements SellUnitStates {
+  readonly states_ = new Map<string, SellUnitState>();
+  readonly asked: SellUnitRef[][] = [];
+  failing = false;
+  states(_context: CallContext, units: readonly SellUnitRef[]) {
+    this.asked.push([...units]);
+    if (this.failing) return Promise.resolve(null);
+    return Promise.resolve(
+      new Map(
+        units.flatMap((unit) => {
+          const state = this.states_.get(sellUnitRefKey(unit));
+          return state === undefined ? [] : [[sellUnitRefKey(unit), state] as const];
+        }),
+      ),
+    );
+  }
+}
+
+/** The variant reads over the memory documents (the hits' sell units and the GTIN lookup). */
+class MemoryVariants implements OfferVariantReader {
+  constructor(private readonly documents: MemoryDocuments) {}
+  private docs(market: MarketContext): OfferDocument[] {
+    return [...this.documents.rows.entries()]
+      .filter(([key]) => key.startsWith(`${market.marketId}:`))
+      .map(([, row]) => row.document);
+  }
+  sellUnitsOf(market: MarketContext, offerIds: readonly Id<'Offer'>[]) {
+    const wanted = new Set(offerIds);
+    return Promise.resolve(
+      new Map(
+        this.docs(market)
+          .filter((doc) => wanted.has(doc.offerId))
+          .map((doc) => [doc.offerId, { facetCodes: doc.facetCodes, variants: doc.variants }]),
+      ),
+    );
+  }
+  unitsWithGtin(market: MarketContext, gtin: string) {
+    return Promise.resolve(
+      this.docs(market).flatMap((doc) =>
+        doc.variants
+          .filter((variant) => variant.gtin === gtin)
+          .map((variant) => ({ offerId: doc.offerId, variantId: variant.variantId })),
+      ),
+    );
+  }
+  hitsOf(market: MarketContext, offerIds: readonly Id<'Offer'>[]) {
+    const wanted = new Set(offerIds);
+    return Promise.resolve(
+      this.docs(market)
+        .filter((doc) => wanted.has(doc.offerId))
+        .map((doc) => ({
+          offerId: doc.offerId,
+          productId: doc.productId,
+          sellerId: doc.sellerId,
+          name: doc.name,
+          shortText: doc.shortText,
+          categoryIds: doc.categoryIds,
+          rank: 0,
+        })),
+    );
+  }
+}
 
 class MemoryDocuments implements OfferDocumentRepository {
   readonly rows = new Map<string, { document: OfferDocument; indexedAt: Temporal.Instant }>();
@@ -273,6 +344,7 @@ const sellable = (overrides: Partial<FeedFacts> = {}): FeedFacts => ({
   shortText: 'Twelve sausages',
   categoryIds: [CATEGORY],
   attributes: { searchText: '', facets: [], numbers: {} },
+  variants: [],
   ...overrides,
 });
 
@@ -307,6 +379,7 @@ describe.each([
   let brands: StubBrands;
   let shelves: StubShelves;
   let categories: StubCategories;
+  let sellUnits: StubSellUnits;
   let deps: SearchDependencies;
 
   beforeEach(() => {
@@ -320,6 +393,7 @@ describe.each([
     brands = new StubBrands();
     shelves = new StubShelves();
     categories = new StubCategories();
+    sellUnits = new StubSellUnits();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       documents,
@@ -340,6 +414,8 @@ describe.each([
       brands,
       images,
       categories,
+      sellUnits,
+      variants: new MemoryVariants(documents),
     };
   });
 
@@ -376,6 +452,7 @@ describe.each([
           searchText: null,
           facetCodes: [],
           numbers: {},
+          variants: [],
         },
       ]);
       expect(documents.markets).toEqual(new Set([code]));
@@ -570,6 +647,9 @@ describe.each([
               shortText: null,
               categoryIds: [CATEGORY],
               primaryImage: null,
+              images: [],
+              variantId: null,
+              price: null,
             },
             {
               offerId: offer(2),
@@ -579,6 +659,9 @@ describe.each([
               shortText: null,
               categoryIds: [CATEGORY],
               primaryImage: null,
+              images: [],
+              variantId: null,
+              price: null,
             },
           ],
           page: 1,
@@ -587,6 +670,7 @@ describe.each([
           filters: [],
           filtered: false,
           countsComplete: true,
+          exactMatch: null,
         },
       });
       expect(reader.requests).toEqual([
@@ -781,6 +865,40 @@ describe.each([
         expect(images.asked).toEqual([[PRODUCT]]);
       });
 
+      it('lists every public photo of the product in `images`, main one first, alt = the name', async () => {
+        reader.hits = [hit(1)];
+        const second = id<'ProductImage'>(0x702);
+        images.images_.set(PRODUCT, [
+          { imageId: PHOTO, width: 1600, height: 1200 },
+          { imageId: second, width: 800, height: 800 },
+        ]);
+
+        const result = await search({ q: 'product' });
+
+        const item = result.ok ? result.value.items[0] : undefined;
+        expect(item?.images).toEqual([
+          { imageId: PHOTO, width: 1600, height: 1200, alt: 'Product 1' },
+          { imageId: second, width: 800, height: 800, alt: 'Product 1' },
+        ]);
+        expect(item?.primaryImage).toEqual(item?.images[0]);
+      });
+
+      it('lists at most 8 photos', async () => {
+        reader.hits = [hit(1)];
+        images.images_.set(
+          PRODUCT,
+          Array.from({ length: 10 }, (_, n) => ({
+            imageId: id<'ProductImage'>(0x710 + n),
+            width: 100,
+            height: 100,
+          })),
+        );
+
+        const result = await search({ q: 'product' });
+
+        expect(result.ok && result.value.items[0]?.images).toHaveLength(8);
+      });
+
       it('asks for the photos of the shown items only, never of a hidden or extra hit', async () => {
         reader.hits = [hit(1), hit(2), hit(3)];
         visibility.hidden = new Set([offer(2)]);
@@ -801,6 +919,7 @@ describe.each([
         const result = await search({ q: 'product' });
 
         expect(result.ok && result.value.items.map((item) => item.primaryImage)).toEqual([null]);
+        expect(result.ok && result.value.items[0]?.images).toEqual([]);
       });
     });
 
@@ -866,6 +985,7 @@ describe.each([
             filters: [],
             filtered: false,
             countsComplete: true,
+            exactMatch: null,
           },
         });
         expect(shelves.browsed).toEqual([]);
@@ -986,6 +1106,7 @@ describe.each([
             filters: [],
             filtered: false,
             countsComplete: true,
+            exactMatch: null,
           },
         });
         expect(shelves.browsedProducts).toEqual([]);
@@ -1067,6 +1188,213 @@ describe.each([
     });
   });
 
+  describe('variants (V8)', () => {
+    const V1 = id<'Variant'>(0xa1);
+    const V2 = id<'Variant'>(0xa2);
+    const V3 = id<'Variant'>(0xa3);
+    const money = (amount: bigint) => ({ amount, currency });
+    const search = (input: Parameters<SearchProducts['execute']>[1]) =>
+      new SearchProducts(gate, deps).execute(anonymous, input);
+    const riceFacts = () =>
+      sellable({
+        variants: [
+          { variantId: V1, position: 0, label: '1 kg', gtin: null, facets: ['weight=1kg'] },
+          {
+            variantId: V2,
+            position: 1,
+            label: '5 kg',
+            gtin: '09300633603366',
+            facets: ['weight=5kg'],
+          },
+          { variantId: V3, position: 2, label: '10 kg', gtin: null, facets: ['weight=10kg'] },
+        ],
+      });
+    const indexRice = async () => {
+      feed.facts_.set(offer(1), riceFacts());
+      sellUnits.states_.set(`${offer(1)}/${V1}`, { inStock: true, price: money(500n) });
+      sellUnits.states_.set(`${offer(1)}/${V2}`, { inStock: false, price: money(2000n) });
+      sellUnits.states_.set(`${offer(1)}/${V3}`, { inStock: true, price: money(3500n) });
+      const result = await new SyncOfferDocuments(gate, deps).execute(system, {
+        offerIds: [offer(1)],
+      });
+      expect(result.ok).toBe(true);
+    };
+
+    it('indexes each published variant with its stock state and buyer price', async () => {
+      await indexRice();
+
+      expect(sellUnits.asked).toEqual([
+        [
+          { offerId: offer(1), variantId: V1 },
+          { offerId: offer(1), variantId: V2 },
+          { offerId: offer(1), variantId: V3 },
+        ],
+      ]);
+      const stored = [...documents.rows.values()][0]!.document;
+      expect(stored.variants).toEqual([
+        {
+          variantId: V1,
+          position: 0,
+          facetCodes: ['weight=1kg'],
+          gtin: null,
+          inStock: true,
+          price: money(500n),
+        },
+        {
+          variantId: V2,
+          position: 1,
+          facetCodes: ['weight=5kg'],
+          gtin: '09300633603366',
+          inStock: false,
+          price: money(2000n),
+        },
+        {
+          variantId: V3,
+          position: 2,
+          facetCodes: ['weight=10kg'],
+          gtin: null,
+          inStock: true,
+          price: money(3500n),
+        },
+      ]);
+    });
+
+    it('a unit stock or price did not answer is out of stock and unpriced', async () => {
+      feed.facts_.set(offer(1), riceFacts());
+      await new SyncOfferDocuments(gate, deps).execute(system, { offerIds: [offer(1)] });
+
+      const stored = [...documents.rows.values()][0]!.document;
+      expect(stored.variants.map((v) => [v.inStock, v.price])).toEqual([
+        [false, null],
+        [false, null],
+        [false, null],
+      ]);
+    });
+
+    it('asks nothing of a document it will not write, and throws when stock or price fails', async () => {
+      feed.facts_.set(offer(1), riceFacts());
+      feed.facts_.set(offer(2), sellable({ sellable: false, variants: riceFacts().variants }));
+      sellUnits.failing = true;
+
+      await expect(
+        new SyncOfferDocuments(gate, deps).execute(system, { offerIds: [offer(1), offer(2)] }),
+      ).rejects.toThrow('stock or price unavailable');
+      expect(sellUnits.asked).toEqual([
+        [
+          { offerId: offer(1), variantId: V1 },
+          { offerId: offer(1), variantId: V2 },
+          { offerId: offer(1), variantId: V3 },
+        ],
+      ]);
+      expect(documents.rows.size).toBe(0);
+    });
+
+    it('a plain list shows the lowest in-stock price and opens no variant', async () => {
+      await indexRice();
+      reader.hits = [{ ...hit(1), productId: PRODUCT }];
+
+      const result = await search({ q: 'rice' });
+
+      expect(result.ok && result.value.items.map((i) => [i.variantId, i.price])).toEqual([
+        [null, { from: money(500n), varies: true }],
+      ]);
+    });
+
+    it('a variant filter opens the matching in-stock variant at its price', async () => {
+      await indexRice();
+      const narrowed: unknown[] = [];
+      deps = {
+        ...deps,
+        filterSource: {
+          filters: () =>
+            Promise.resolve([
+              {
+                code: 'weight',
+                name: 'Weight',
+                kind: 'choice' as const,
+                options: [
+                  { code: '1kg', label: '1 kg' },
+                  { code: '5kg', label: '5 kg' },
+                  { code: '10kg', label: '10 kg' },
+                ],
+                redirects: {},
+              },
+            ]),
+        },
+        facets: {
+          searchFiltered: (_market, request) => {
+            narrowed.push(request);
+            return Promise.resolve([hit(1)]);
+          },
+          facetRows: () => Promise.resolve([]),
+          numberRows: () => Promise.resolve([]),
+        },
+      };
+
+      const result = await search({ category: CATEGORY, filter: 'weight:10kg', price: '1000..' });
+
+      expect(narrowed).toEqual([
+        expect.objectContaining({
+          choiceGroups: [['weight=10kg']],
+          price: { min: 1000n, max: null },
+        }),
+      ]);
+      expect(result.ok && result.value.filtered).toBe(true);
+      expect(result.ok && result.value.items.map((i) => [i.variantId, i.price])).toEqual([
+        [V3, { from: money(3500n), varies: false }],
+      ]);
+    });
+
+    it('an exact GTIN goes straight to its variant, even out of stock', async () => {
+      await indexRice();
+
+      const result = await search({ q: '9300633603366' });
+
+      expect(result).toMatchObject({
+        ok: true,
+        value: {
+          exactMatch: { productId: PRODUCT, variantId: V2 },
+          items: [{ offerId: offer(1), variantId: V2, price: null }],
+        },
+      });
+      expect(reader.requests).toEqual([]);
+    });
+
+    it('stores a unit price in another currency than the Market currency as no price', async () => {
+      feed.facts_.set(offer(1), riceFacts());
+      const other = currency === 'AUD' ? 'NZD' : 'AUD';
+      sellUnits.states_.set(`${offer(1)}/${V1}`, { inStock: true, price: money(500n) });
+      sellUnits.states_.set(`${offer(1)}/${V2}`, {
+        inStock: true,
+        price: { amount: 700n, currency: other },
+      });
+      await new SyncOfferDocuments(gate, deps).execute(system, { offerIds: [offer(1)] });
+
+      const stored = [...documents.rows.values()][0]!.document;
+      expect(stored.variants.map((v) => v.price)).toEqual([money(500n), null, null]);
+    });
+
+    it('an exact GTIN has items and the exact match on page 1 only', async () => {
+      await indexRice();
+
+      const second = await search({ q: '9300633603366', page: 2 });
+
+      expect(second).toMatchObject({ ok: true, value: { items: [], exactMatch: null } });
+    });
+
+    it('a GTIN no visible document has is searched as text', async () => {
+      await indexRice();
+      visibility.hidden.add(offer(1));
+
+      const unknown = await search({ q: '96385074' });
+      const hidden = await search({ q: '9300633603366' });
+
+      expect(unknown.ok && unknown.value.exactMatch).toBe(null);
+      expect(hidden.ok && hidden.value.exactMatch).toBe(null);
+      expect(reader.requests).toHaveLength(2);
+    });
+  });
+
   function documentOf(offerId: Id<'Offer'>): OfferDocument {
     return {
       offerId,
@@ -1080,6 +1408,7 @@ describe.each([
       searchText: null,
       facetCodes: [],
       numbers: {},
+      variants: [],
     };
   }
 });

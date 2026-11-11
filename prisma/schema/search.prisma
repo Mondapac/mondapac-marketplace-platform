@@ -30,7 +30,8 @@ model SearchOfferDocument {
   /// The last write of this row; a rebuild deletes the rows it did not touch.
   indexedAt        DateTime                 @map("indexed_at") @db.Timestamptz(6)
 
-  numbers SearchOfferDocumentNumber[]
+  numbers  SearchOfferDocumentNumber[]
+  variants SearchOfferVariantDocument[]
 
   @@id([marketId, offerId])
   @@index([marketId, productId])
@@ -108,5 +109,33 @@ model SearchOfferDocumentNumber {
   @@id([marketId, offerId, attr])
   @@index([marketId, attr, value])
   @@map("offer_document_numbers")
+  @@schema("search")
+}
+
+/// One sell unit of a document (variants V8): a published variant of the Offer's product with its
+/// axis facets, GTIN, public stock state and buyer price, written with the document and deleted with
+/// it. A variant filter, the price filter and a card's "From" price read only the units that are in
+/// stock and priced; the product is still one result. Never a source of truth.
+model SearchOfferVariantDocument {
+  marketId      String              @map("market_id") @db.VarChar(8)
+  tenantId      String              @map("tenant_id")
+  offerId       String              @map("offer_id") @db.Uuid
+  variantId     String              @map("variant_id") @db.Uuid
+  /// The owner's order (0 first): the default variant is the first in-stock one in this order.
+  position      Int                 @db.SmallInt
+  /// The axis values as `attribute=<option code>` (merges followed). At most 4 (CHECK).
+  facetCodes    String[]            @default([]) @map("facet_codes")
+  /// 14 digits (CHECK), or null. The exact-GTIN lookup has a hand-written partial index.
+  gtin          String?             @db.VarChar(14)
+  /// Inventory's public status is `in-stock` or `low` (never the exact count).
+  inStock       Boolean             @map("in_stock")
+  /// Pricing's effective buyer price in minor units, with its currency; both null when no price is
+  /// in force (CHECK: both or neither).
+  priceAmount   BigInt?             @map("price_amount")
+  priceCurrency String?             @map("price_currency") @db.Char(3)
+  document      SearchOfferDocument @relation(fields: [marketId, offerId], references: [marketId, offerId], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, offerId, variantId])
+  @@map("offer_variant_documents")
   @@schema("search")
 }

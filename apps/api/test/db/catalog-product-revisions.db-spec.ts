@@ -174,6 +174,7 @@ describe.each(TEST_MARKETS)(
             ar: { name: 'تمر', shortDescription: null, description: null },
           },
           categoryIds: [categoryId],
+          topicIds: [],
           taxCategoryCode: 'standard',
           attributeValues: { origin: 'AU' },
           variants: [
@@ -183,6 +184,12 @@ describe.each(TEST_MARKETS)(
               optionKey: 'size=l',
               optionValues: { size: 'l' },
               labels: { en: 'Large' },
+              gtin: null,
+              shippingWeightGrams: null,
+              shippingLengthMm: null,
+              shippingWidthMm: null,
+              shippingHeightMm: null,
+              imageIds: [],
             },
             {
               variantId: second!.id,
@@ -190,6 +197,12 @@ describe.each(TEST_MARKETS)(
               optionKey: 'size=s',
               optionValues: { size: 's' },
               labels: {},
+              gtin: null,
+              shippingWeightGrams: null,
+              shippingLengthMm: null,
+              shippingWidthMm: null,
+              shippingHeightMm: null,
+              imageIds: [],
             },
           ],
           imageIds: [],
@@ -393,6 +406,93 @@ describe.each(TEST_MARKETS)(
       const found = await inUnit(market, () => revisions.find(market, p.state.id, stored.id));
       expect(found?.content.categoryIds).toEqual([c2, c1]);
       expect(found?.content.variants.map((variant) => variant.position)).toEqual([1, 2]);
+    });
+
+    async function topic(target = market): Promise<string> {
+      const id = uuid7();
+      await insert('topics', {
+        id,
+        market_id: target.marketId,
+        tenant_id: target.tenantId,
+        slug: `t-${randomUUID().replaceAll('-', '').slice(0, 14)}`,
+        topic_group: 'use',
+        status: 'active',
+        created_by: uuid7(),
+        created_at: T0.toString(),
+        updated_at: T0.toString(),
+        version: 1,
+      });
+      return id;
+    }
+    const withTopics = (stored: StoredRevision, topicIds: string[]): StoredRevision => ({
+      ...stored,
+      content: { ...stored.content, topicIds },
+    });
+
+    it('stores the topics of a revision and reads them back in the order entered', async () => {
+      const p = await product(2);
+      const f = await familyRevision();
+      const c = await category();
+      const [a, b, d] = [await topic(), await topic(), await topic()] as [string, string, string];
+      // Neither creation order nor id order: the position decides.
+      const stored = withTopics(revision(p, f, c), [d, a, b]);
+      await inUnit(market, () => revisions.add(market, stored));
+
+      const found = await inUnit(market, () => revisions.find(market, p.state.id, stored.id));
+      expect(found?.content.topicIds).toEqual([d, a, b]);
+      expect(found).toEqual(stored);
+      const rows = await app.query<{ position: number }>(
+        'SELECT position FROM catalog.product_revision_topics WHERE revision_id = $1 ORDER BY position',
+        [stored.id],
+      );
+      expect(rows.rows.map((row) => row.position)).toEqual([0, 1, 2]);
+    });
+
+    it('reads a revision without topics as an empty list, and the other Market sees none', async () => {
+      const p = await product(2);
+      const f = await familyRevision();
+      const c = await category();
+      const stored = revision(p, f, c);
+      await inUnit(market, () => revisions.add(market, stored));
+      const found = await inUnit(market, () => revisions.find(market, p.state.id, stored.id));
+      expect(found?.content.topicIds).toEqual([]);
+      expect(await inUnit(other, () => revisions.find(other, p.state.id, stored.id))).toBeNull();
+    });
+
+    it('refuses a topic of another Market and leaves nothing behind', async () => {
+      const p = await product(2);
+      const f = await familyRevision();
+      const c = await category();
+      const foreign = await topic(other);
+      const stored = withTopics(revision(p, f, c), [await topic(), foreign]);
+      expect(await failure(inUnit(market, () => revisions.add(market, stored)))).toMatch(
+        /^23503 product_revision_topics_market_id_topic_id_fkey/,
+      );
+      expect(await inUnit(market, () => revisions.find(market, p.state.id, stored.id))).toBeNull();
+    });
+
+    it('refuses an eleventh topic, a repeated topic and an unknown topic', async () => {
+      const p = await product(2);
+      const f = await familyRevision();
+      const c = await category();
+      const eleven = await Promise.all(Array.from({ length: 11 }, () => topic()));
+      expect(
+        await failure(
+          inUnit(market, () => revisions.add(market, withTopics(revision(p, f, c), eleven))),
+        ),
+      ).toBe('23514 product_revision_topics_position_check');
+      const t = await topic();
+      expect(
+        await failure(
+          inUnit(market, () => revisions.add(market, withTopics(revision(p, f, c), [t, t]))),
+        ),
+      ).toMatch(/^23505 /);
+      expect(
+        await failure(
+          inUnit(market, () => revisions.add(market, withTopics(revision(p, f, c), [uuid7()]))),
+        ),
+      ).toMatch(/^23503 /);
+      expect(await inUnit(market, () => revisions.nextRevisionNo(market, p.state.id))).toBe(1);
     });
 
     it('refuses a retired variant in a new revision', async () => {

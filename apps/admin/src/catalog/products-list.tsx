@@ -10,14 +10,15 @@ import {
   Popover,
   SearchField,
   SkeletonRows,
-  Tabs,
+  ListViewsBar,
   browserStorage,
   prefsKey,
   readIds,
+  useRowSelection,
   writeIds,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { numberFormat } from '../shared/intl.ts';
 import { ProductsBulk } from './products-bulk.tsx';
@@ -100,8 +101,6 @@ export function ProductsList({
   const [failure, setFailure] = useState<Failure | null>(null);
   const [categories, setCategories] = useState<CategoryTree['categories']>([]);
   const [columns, setColumns] = useState<readonly OptionalColumn[]>(DEFAULT_COLUMNS);
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [allMatching, setAllMatching] = useState(false);
   // The saved views (catalog design 9.2d): null until they load, and when they cannot (the page
   // then has the three fixed tabs only). `savedId` is the saved tab the page is showing.
   const [saved, setSaved] = useState<SavedFiltersAnswer | null>(null);
@@ -178,47 +177,10 @@ export function ProductsList({
   // A new tab, search, filter or sort is another list: the selection does not follow it. Paging
   // keeps it, so rows can be ticked on several pages.
   const listKey = JSON.stringify([query.view, query.q, query.filters, query.sort, query.direction]);
-  useEffect(() => {
-    setSelected(new Set());
-    setAllMatching(false);
-  }, [listKey]);
-
-  const pageIds = answer?.items.map((item) => item.productId) ?? [];
-  const toggleRow = (productId: string) => {
-    if (allMatching) {
-      // Leaving "all in this filter": the rows of this page stay ticked, except this one.
-      setAllMatching(false);
-      setSelected(new Set(pageIds.filter((id) => id !== productId)));
-      return;
-    }
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(productId)) next.delete(productId);
-      else if (next.size < BULK_MAX_IDS) next.add(productId);
-      return next;
-    });
-  };
-  const togglePage = (checked: boolean) => {
-    if (allMatching) {
-      if (!checked) {
-        setAllMatching(false);
-        setSelected(new Set());
-      }
-      return;
-    }
-    setSelected((current) => {
-      const next = new Set(current);
-      for (const id of pageIds) {
-        if (!checked) next.delete(id);
-        else if (next.size < BULK_MAX_IDS) next.add(id);
-      }
-      return next;
-    });
-  };
-  const clearSelection = () => {
-    setSelected(new Set());
-    setAllMatching(false);
-  };
+  const pageIds = useMemo(() => answer?.items.map((item) => item.productId) ?? [], [answer]);
+  const selection = useRowSelection(pageIds, BULK_MAX_IDS, listKey);
+  const { selected, allMatching } = selection;
+  const clearSelection = selection.clear;
 
   // Any change of the tab, search, filters or sort leaves the saved view (it is no longer it).
   const change = (patch: Partial<Query>) => {
@@ -315,7 +277,7 @@ export function ProductsList({
             columns={columns}
             permissionKeys={permissionKeys}
             csrfToken={csrfToken}
-            onSelectAll={() => setAllMatching(true)}
+            onSelectAll={selection.selectAllMatching}
             onClear={clearSelection}
             onChanged={() => {
               clearSelection();
@@ -323,6 +285,9 @@ export function ProductsList({
               void loadSaved();
             }}
           />
+          {permissionKeys.includes('catalog.platform-product.edit') ? (
+            <LinkButton href="/catalog/products/new">{t('add')}</LinkButton>
+          ) : null}
           {permissionKeys.includes('catalog.platform-import.run') ? (
             <LinkButton variant="secondary" href="/catalog/products/import" className="gap-2">
               <Icon name="file" />
@@ -331,43 +296,32 @@ export function ProductsList({
           ) : null}
         </div>
       </div>
-      <div className="flex items-stretch">
-        <div className="min-w-0 flex-1">
-          <Tabs
-            label={t('tabs')}
-            activeId={savedId ?? query.view}
-            onSelect={(id) => {
-              if (saved?.items.some((item) => item.id === id)) openSaved(id);
-              else change({ view: id as View });
-            }}
-            items={[
-              ...VIEWS.map((view) => ({
-                id: view,
-                label: `${t(`tab.${view}`)}${counts === null ? '' : ` (${number(counts[view])})`}`,
-              })),
-              ...(saved?.items ?? []).map((item) => {
-                const count = item.id === savedId ? (answer?.total ?? item.count) : item.count;
-                return {
-                  id: item.id,
-                  label: `${item.name}${count === null ? '' : ` (${number(count)})`}`,
-                };
-              }),
-            ]}
-          />
-        </div>
-        {saved === null ? null : (
-          <div className="flex shrink-0 items-center border-b border-line ps-3">
-            <Button
-              variant="link"
-              className="min-h-(--mp-size-control-sm)"
-              onClick={() => setDialog('manage')}
-            >
-              <Icon name="sliders" />
-              <span className="sr-only sm:not-sr-only">{t('saved.manage-link')}</span>
-            </Button>
-          </div>
-        )}
-      </div>
+      <ListViewsBar
+        label={t('tabs')}
+        activeId={savedId ?? query.view}
+        onSelect={(id) => {
+          if (saved?.items.some((item) => item.id === id)) openSaved(id);
+          else change({ view: id as View });
+        }}
+        items={[
+          ...VIEWS.map((view) => ({
+            id: view,
+            label: `${t(`tab.${view}`)}${counts === null ? '' : ` (${number(counts[view])})`}`,
+          })),
+          ...(saved?.items ?? []).map((item) => {
+            const count = item.id === savedId ? (answer?.total ?? item.count) : item.count;
+            return {
+              id: item.id,
+              label: `${item.name}${count === null ? '' : ` (${number(count)})`}`,
+            };
+          }),
+        ]}
+        manage={
+          saved === null
+            ? null
+            : { label: t('saved.manage-link'), onClick: () => setDialog('manage') }
+        }
+      />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <SearchField
           label={t('search.label')}
@@ -468,9 +422,9 @@ export function ProductsList({
             selection={{
               selected,
               allMatching,
-              full: !allMatching && selected.size >= BULK_MAX_IDS,
-              onToggle: toggleRow,
-              onTogglePage: togglePage,
+              full: selection.full,
+              onToggle: selection.toggleRow,
+              onTogglePage: selection.togglePage,
             }}
           />
         </div>

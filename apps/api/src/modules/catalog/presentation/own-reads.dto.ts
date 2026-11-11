@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { TopicRefBody } from './topic.dto';
 
 // Answers of the seller read routes (catalog design 8.2, 9.2a). Ids, codes and the seller's own
 // content only; instants are ISO 8601 strings in UTC.
@@ -35,6 +36,60 @@ export class OwnProductList {
   nextAfterId!: string | null;
 }
 
+export class OwnProductPageItemView extends OwnProductListItemView {
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The name shown: the draft name in the default locale, else the shown revision’s.',
+  })
+  name!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description:
+      'The thumbnail. Serve it with GET catalog/seller/products/{productId}/images/{primaryImageId}/thumb.',
+  })
+  primaryImageId!: string | null;
+  @ApiProperty({ nullable: true, type: String, format: 'uuid' }) categoryId!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The first category, in the Market default locale.',
+  })
+  categoryName!: string | null;
+  @ApiProperty({ description: 'The seller’s own Offers on the product that are not deleted.' })
+  offerCount!: number;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'date-time',
+    description: 'Set while the product is paused; it stays in the live view.',
+  })
+  pausedAt!: string | null;
+}
+
+export class OwnProductViewCountsDto {
+  @ApiProperty() all!: number;
+  @ApiProperty() drafts!: number;
+  @ApiProperty() live!: number;
+  @ApiProperty() inactive!: number;
+  @ApiProperty() inReview!: number;
+}
+
+export class OwnProductPageList {
+  @ApiProperty({ type: [OwnProductPageItemView] }) items!: OwnProductPageItemView[];
+  @ApiProperty({ description: 'Products matching the view and the filters, over all pages.' })
+  total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({
+    type: OwnProductViewCountsDto,
+    description: 'Per tab, for the same search and filters.',
+  })
+  counts!: OwnProductViewCountsDto;
+}
+
 export class OwnRevisionViewDto {
   @ApiProperty({ format: 'uuid' }) revisionId!: string;
   @ApiProperty() revisionNo!: number;
@@ -55,6 +110,8 @@ export class OwnWorkingCopyView {
 export class OwnVariantView {
   @ApiProperty({ format: 'uuid' }) variantId!: string;
   @ApiProperty({ description: 'proposed, published or retired.' }) state!: string;
+  @ApiProperty({ description: 'The variant code, `{productCode}-{nn}` (design 2, M-7).' })
+  variantCode!: string;
 }
 
 const LOCALE_MAP = { type: 'object', additionalProperties: { type: 'string' } } as const;
@@ -70,16 +127,37 @@ export class OwnFormBounds {
   @ApiProperty({ required: false }) max?: number;
 }
 
+export class OwnFormMeasure {
+  @ApiProperty({ enum: ['mass', 'volume', 'length', 'count'] }) dimension!: string;
+  @ApiProperty({ type: [String], description: 'Unit codes the seller may pick.' }) units!: string[];
+  @ApiProperty() defaultUnit!: string;
+  @ApiProperty({ description: 'Decimal places the seller may type in the unit picked.' })
+  decimals!: number;
+}
+
+export class OwnFormUnit {
+  @ApiProperty() code!: string;
+  @ApiProperty(LOCALE_MAP) labels!: Record<string, string>;
+}
+
 export class OwnFormField {
   @ApiProperty() code!: string;
   @ApiProperty({
-    description: 'text, long-text, integer, decimal, boolean, select, multi-select or date.',
+    description:
+      'text, long-text, integer, decimal, boolean, select, multi-select, date or measure.',
   })
   dataType!: string;
   @ApiProperty() localizable!: boolean;
   @ApiProperty() required!: boolean;
   @ApiProperty() isVariantOption!: boolean;
   @ApiProperty({ type: OwnFormBounds }) bounds!: OwnFormBounds;
+  @ApiProperty({
+    type: OwnFormMeasure,
+    required: false,
+    description:
+      'A measure field only. Min and max in bounds are in base units (g, ml, mm, count).',
+  })
+  measure?: OwnFormMeasure;
   @ApiProperty(LOCALE_MAP) names!: Record<string, string>;
   @ApiProperty({ type: [OwnFormOption] }) options!: OwnFormOption[];
 }
@@ -92,6 +170,12 @@ export class OwnFormCategory {
 
 export class OwnProductForm {
   @ApiProperty({ type: [String] }) taxCategoryCodes!: string[];
+  @ApiProperty({
+    type: [OwnFormUnit],
+    description:
+      "The Market's units with a label per locale (a measure field names units by code).",
+  })
+  units!: OwnFormUnit[];
   @ApiProperty({ type: [OwnFormField], description: 'The fields of the product family.' })
   fields!: OwnFormField[];
   @ApiProperty({ type: [OwnFormCategory], description: 'Active platform categories.' })
@@ -128,6 +212,13 @@ export class OwnProductView {
   variantModel!: string;
   @ApiProperty() status!: string;
   @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      "When an admin paused the product (ISO 8601, UTC); the seller's offers are off sale. Null when not paused.",
+  })
+  pausedAt!: string | null;
+  @ApiProperty({
     description:
       'The seller marked the product as carrying their own brand (it lets them propose a brand).',
   })
@@ -161,6 +252,13 @@ export class OwnProductView {
       '(a required field then holds back the submit: attribute.suggestion-pending).',
   })
   suggestions!: OwnSuggestionView[];
+  @ApiProperty({
+    type: [TopicRefBody],
+    description:
+      'The topics named by the draft, the published and the pending revision (`topicIds`), each ' +
+      'once. A topic that no longer exists is absent.',
+  })
+  topicRefs!: TopicRefBody[];
 }
 
 export class OwnOfferProductLabel {
@@ -219,6 +317,12 @@ export class OwnOfferTagView {
   badge!: OwnOfferTagBadge | null;
 }
 
+export class OwnOfferSellUnitDto {
+  @ApiProperty({ format: 'uuid' }) variantId!: string;
+  @ApiProperty({ nullable: true, type: String }) variantSku!: string | null;
+  @ApiProperty() selling!: boolean;
+}
+
 export class OwnOfferViewDto {
   @ApiProperty({ format: 'uuid' }) offerId!: string;
   @ApiProperty({ format: 'uuid' }) productId!: string;
@@ -245,6 +349,14 @@ export class OwnOfferViewDto {
     description: 'The open tags of the Offer; on the single-Offer read only.',
   })
   tags?: OwnOfferTagView[];
+  @ApiProperty({
+    type: [OwnOfferSellUnitDto],
+    required: false,
+    description:
+      'The stored sell-unit rows (variant SKU, selling switch); a variant with no row sells and ' +
+      'has no SKU. On the single-Offer read only.',
+  })
+  sellUnits?: OwnOfferSellUnitDto[];
 }
 
 export class OwnOfferStatusCounts {

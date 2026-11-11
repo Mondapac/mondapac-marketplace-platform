@@ -1,4 +1,4 @@
-import { parseFilters } from './search-filter';
+import { parseFilters, parsePrice } from './search-filter';
 
 const value = (request: Parameters<typeof parseFilters>[0]) => {
   const result = parseFilters(request);
@@ -86,6 +86,30 @@ describe('parseFilters', () => {
     expect(refused({ filter: { a: 'b' } as unknown as string })).toEqual({
       path: 'filter',
       code: 'format',
+    });
+  });
+});
+
+describe('parsePrice (variants V8)', () => {
+  it('reads whole minor units with either end open', () => {
+    expect(parsePrice(undefined)).toEqual({ ok: true, value: null });
+    expect(parsePrice('')).toEqual({ ok: true, value: null });
+    expect(parsePrice('500..2000')).toEqual({ ok: true, value: { min: 500n, max: 2000n } });
+    expect(parsePrice('500..')).toEqual({ ok: true, value: { min: 500n, max: null } });
+    expect(parsePrice('..2000')).toEqual({ ok: true, value: { min: null, max: 2000n } });
+  });
+
+  it('refuses a bad shape, a fraction, a sign, a reversed or too large range', () => {
+    for (const raw of ['..', '5', '5.5..10', '-1..10', 'a..b', '1..2..3', ['1..2']]) {
+      expect(parsePrice(raw)).toMatchObject({
+        ok: false,
+        error: { path: 'price', code: 'format' },
+      });
+    }
+    expect(parsePrice('20..10')).toEqual({ ok: false, error: { path: 'price', code: 'order' } });
+    expect(parsePrice('..9999999999999')).toEqual({
+      ok: false,
+      error: { path: 'price', code: 'range' },
     });
   });
 });

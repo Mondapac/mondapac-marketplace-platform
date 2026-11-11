@@ -10,7 +10,9 @@ import {
   OfferTagSuspended,
   PlatformImportFinished,
   ProductImageTakenDown,
+  SellerImportFinished,
   ProductRevisionChangesRequested,
+  ProductRevisionChangesRequestedV2,
   ProductRevisionPublished,
   ProductRevisionSubmitted,
 } from '../../../catalog';
@@ -49,6 +51,7 @@ import {
   SELLER_OFFER_TAG_CHANGED,
   SELLER_PRICE_HOLD_DECIDED,
   SELLER_PRODUCT_CHANGES_REQUESTED,
+  SELLER_IMPORT_FINISHED,
   SELLER_PRODUCT_PUBLISHED,
 } from '../../domain/in-app-notice';
 import type {
@@ -90,6 +93,7 @@ export const SELLER_NOTICE_SUBSCRIBERS = {
   offerChangesRequested: 'notifications.seller-offer-changes-notice',
   productPublished: 'notifications.seller-product-published-notice',
   productChangesRequested: 'notifications.seller-product-changes-notice',
+  productChangesRequestedV2: 'notifications.seller-product-changes-v2-notice',
   tagSuspended: 'notifications.seller-tag-suspended-notice',
   tagRemoved: 'notifications.seller-tag-removed-notice',
   tagRestored: 'notifications.seller-tag-restored-notice',
@@ -97,6 +101,7 @@ export const SELLER_NOTICE_SUBSCRIBERS = {
   priceHoldDecided: 'notifications.seller-price-hold-notice',
   accessApproved: 'notifications.seller-access-approved-notice',
   accessReinstated: 'notifications.seller-access-reinstated-notice',
+  importFinished: 'notifications.seller-import-finished-notice',
 } as const;
 
 /**
@@ -162,6 +167,27 @@ export function inAppNoticeSubscriptions(
               offerId: event.payload.offerId,
               variantId: event.payload.variantId,
               onlyLeft: event.payload.onlyLeft,
+            },
+          },
+          delivery,
+          context,
+        ),
+    }),
+    subscription({
+      name: names.importFinished,
+      event: SellerImportFinished,
+      handle: (event, delivery, context) =>
+        seller(names.importFinished)(
+          {
+            kind: SELLER_IMPORT_FINISHED,
+            owner: bySeller(event.payload.sellerId),
+            params: {
+              importId: event.payload.importId,
+              sellerId: event.payload.sellerId,
+              outcome: event.payload.outcome,
+              created: event.payload.created,
+              updated: event.payload.updated,
+              failed: event.payload.failed,
             },
           },
           delivery,
@@ -298,26 +324,35 @@ export function inAppNoticeSubscriptions(
         );
       },
     }),
-    subscription({
-      name: names.productChangesRequested,
-      event: ProductRevisionChangesRequested,
-      handle: async (event, delivery, context) => {
-        if (event.payload.scope !== 'seller') return;
-        await seller(names.productChangesRequested)(
-          {
-            kind: SELLER_PRODUCT_CHANGES_REQUESTED,
-            owner: byProduct(event.payload.productId),
-            params: {
-              productId: event.payload.productId,
-              revisionId: event.payload.revisionId,
-              reason: event.payload.reasonCode,
+    // v1 (the Offer reasons) stays subscribed for an event still in an outbox; v2 carries the
+    // product reasons (D2). Both make the same notice.
+    ...(
+      [
+        [names.productChangesRequested, ProductRevisionChangesRequested],
+        [names.productChangesRequestedV2, ProductRevisionChangesRequestedV2],
+      ] as const
+    ).map(([name, event]) =>
+      subscription({
+        name,
+        event,
+        handle: async (received, delivery, context) => {
+          if (received.payload.scope !== 'seller') return;
+          await seller(name)(
+            {
+              kind: SELLER_PRODUCT_CHANGES_REQUESTED,
+              owner: byProduct(received.payload.productId),
+              params: {
+                productId: received.payload.productId,
+                revisionId: received.payload.revisionId,
+                reason: received.payload.reasonCode,
+              },
             },
-          },
-          delivery,
-          context,
-        );
-      },
-    }),
+            delivery,
+            context,
+          );
+        },
+      }),
+    ),
     subscription({
       name: names.tagSuspended,
       event: OfferTagSuspended,

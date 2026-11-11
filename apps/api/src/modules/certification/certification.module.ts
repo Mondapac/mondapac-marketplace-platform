@@ -71,6 +71,8 @@ import { ExpireSellerCertificates } from './application/use-cases/expire-seller-
 import { ExpireProductCertificates } from './application/use-cases/expire-product-certificates.use-case';
 import { SendExpiryMail } from './application/use-cases/send-expiry-mail.use-case';
 import { expiryProviders } from './infrastructure/expiry-providers';
+import { sweepOrphanDocumentFilesJob } from './presentation/jobs/sweep-orphan-document-files.job';
+import { SweepOrphanDocumentFiles } from './application/use-cases/sweep-orphan-document-files.use-case';
 import { expiryAndWarningsJob } from './presentation/jobs/expiry-and-warnings.job';
 import { expiryMailSubscriptions } from './presentation/subscribers/expiry-mail.subscriptions';
 import { SendDerecognitionMail } from './application/use-cases/send-derecognition-mail.use-case';
@@ -229,12 +231,22 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     },
     registerJobsFrom(
       'certification',
-      [SeedCertificationTypes, ExpireSellerCertificates, ExpireProductCertificates],
+      [
+        SeedCertificationTypes,
+        ExpireSellerCertificates,
+        ExpireProductCertificates,
+        SweepOrphanDocumentFiles,
+      ],
       (
         seed: SeedCertificationTypes,
         expire: ExpireSellerCertificates,
         expireProducts: ExpireProductCertificates,
-      ) => [seedCertificationTypesJob(seed), expiryAndWarningsJob(expire, expireProducts)],
+        sweepFiles: SweepOrphanDocumentFiles,
+      ) => [
+        seedCertificationTypesJob(seed),
+        expiryAndWarningsJob(expire, expireProducts),
+        sweepOrphanDocumentFilesJob(sweepFiles),
+      ],
     ),
     ...readerUseCases,
     ...evaluateUseCases,

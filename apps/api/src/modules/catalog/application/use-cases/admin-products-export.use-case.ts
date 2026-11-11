@@ -5,10 +5,11 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_PRODUCT_VIEW } from '../../contracts/permissions';
 import { productIdOf } from '../products/product-lifecycle';
 import {
-  CSV_BOM,
-  csvLine,
+  csvChunks,
   EXPORT_COLUMNS,
   EXPORT_HEADERS,
+  textRows,
+  type ExportCell as Cell,
   type ExportColumn,
 } from '../products/products-csv';
 import { invalid, type ValidationFailure } from '../own-reads/own-reads.shared';
@@ -62,9 +63,6 @@ export interface AdminProductsExportDependencies {
   readonly sheetWriter: SheetWriter;
   readonly clock: Clock;
 }
-
-/** One cell of a row before it is written: text, a count or nothing. */
-type Cell = string | number | null;
 
 const OWN_KEYS = new Set(['format', 'columns', 'ids']);
 const SELECTOR_KEYS = new Set([
@@ -264,27 +262,6 @@ export class AdminProductsExport extends UseCase<
   }
 }
 
-/** CSV: the byte order mark before the header, then each group of rows as one chunk of lines. */
-async function* csvChunks(
-  groups: AsyncIterable<readonly (readonly Cell[])[]>,
-): AsyncGenerator<string> {
-  let first = true;
-  for await (const group of groups) {
-    const text = group.map((row) => csvLine(row)).join('');
-    yield first ? CSV_BOM + text : text;
-    first = false;
-  }
-}
-
-/** XLSX: every cell as text; a count is written as the digits, nothing is a number or formula. */
-async function* textRows(
-  groups: AsyncIterable<readonly (readonly Cell[])[]>,
-): AsyncGenerator<readonly string[]> {
-  for await (const group of groups) {
-    for (const row of group) yield row.map((cell) => (cell === null ? '' : String(cell)));
-  }
-}
-
 function cellOf(
   column: ExportColumn,
   row: AdminProductRow,
@@ -303,6 +280,9 @@ function cellOf(
       return row.typeCode;
     case 'scope':
       return row.scope === 'PLATFORM' ? 'Platform' : 'Seller';
+    case 'tags':
+      // The names in the Market default language, in the order entered; a spreadsheet cell.
+      return row.topics.map((topic) => topic.name ?? topic.slug).join('; ');
     case 'seller':
       return row.ownerSellerId === null ? 'Platform' : (names.get(row.ownerSellerId) ?? '');
   }

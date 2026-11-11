@@ -25,6 +25,7 @@ import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/
 import { PrismaTagReevaluationRequests } from '../../src/modules/catalog/infrastructure/prisma-tag-reevaluation-requests';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
+import { fixedFamilyResolver } from '../support/family-resolver';
 
 // Catalog slice 7 (own-product.submit: the SubmitProduct service as a seller) on PostgreSQL, for both Market fixtures: the submit
 // service end to end over the real stores (freeze, claim check, revision rows, product pointer,
@@ -61,9 +62,11 @@ describe.each(TEST_MARKETS)(
         primaryImage: true,
         anyImage: false,
         variantRemoved: true,
+        gtinChanged: true,
       }),
       maxVariantsPerProduct: () => 10,
       maxVariantAttributes: () => 2,
+      units: () => [],
       maxCategoryDepth: () => 4,
       maxCategoryChangeTags: () => 50_000,
       productTypes: () => ['simple', 'configurable'],
@@ -174,6 +177,7 @@ describe.each(TEST_MARKETS)(
         workingCopies: copies,
         revisions,
         freeze: new FreezeRevision({
+          familyResolver: fixedFamilyResolver(),
           attributes,
           policy,
           handlerFor: (typeCode) => (typeCode === 'simple' ? simpleProductType : undefined),

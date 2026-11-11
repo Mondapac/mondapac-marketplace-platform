@@ -11,6 +11,7 @@ export type StatusFilter = (typeof STATUSES)[number] | 'all';
 export const FILTERS: readonly StatusFilter[] = ['all', ...STATUSES];
 
 export const FULFILMENTS = ['to-ship', 'shipped', 'delivered'] as const;
+export const DELIVERY_METHODS = ['pickup', 'instant', 'same_day', 'scheduled'] as const;
 export const PAYMENT_STATES = ['none', 'authorised', 'captured', 'voided'] as const;
 export const CANCEL_REASONS = [
   'expired',
@@ -58,6 +59,15 @@ export interface SellerPart {
   readonly trackingRef: string | null;
   readonly shippedAt: string | null;
   readonly deliveredAt: string | null;
+  /** How the customer chose to receive this part, at checkout. */
+  readonly deliveryMethod: string;
+  /** The customer's window (scheduled delivery only), UTC instants. */
+  readonly deliveryWindowStart: string | null;
+  readonly deliveryWindowEnd: string | null;
+  /** When the seller marked the part ready; null until then. */
+  readonly readyAt: string | null;
+  /** A delivery problem the platform must look at (carrier trouble); null when none. */
+  readonly deliveryAttention: string | null;
   readonly lines: readonly OrderLine[];
 }
 

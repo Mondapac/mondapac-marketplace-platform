@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { MEASURE_DIMENSIONS } from '@mondapac/shared-kernel';
 import { z } from 'zod';
 import type { SeededDefinition, SeededFamily } from '../../application/ports/attribute-seed';
 import type { SeededCategory } from '../../application/ports/category-seed';
@@ -32,6 +33,14 @@ const definition = z.strictObject({
     maxLength: z.number().int().optional(),
     min: z.number().optional(),
     max: z.number().optional(),
+    measure: z
+      .strictObject({
+        dimension: z.enum(MEASURE_DIMENSIONS),
+        units: z.array(text),
+        defaultUnit: text,
+        decimals: z.number().int(),
+      })
+      .optional(),
   }),
   names: localized,
   options: z.array(

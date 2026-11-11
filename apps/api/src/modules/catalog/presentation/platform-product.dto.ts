@@ -1,4 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  OwnProductForm,
+  OwnProductOptionsLocales,
+  OwnVariantView,
+  OwnWorkingCopyView,
+} from './own-reads.dto';
+import { TopicRefBody } from './topic.dto';
 
 // Bodies and answers of the platform product routes (catalog design 4.2, 8.2; CAT-10, CAT-41;
 // slice 6). Ids and codes only: an answer never carries a text the admin typed, except in the
@@ -88,6 +95,23 @@ export class RefusedFieldView {
   character?: string;
 }
 
+export class VariantNoticeView {
+  @ApiProperty({ format: 'uuid' })
+  variantId!: string;
+
+  @ApiProperty({ enum: ['gtin.duplicate'] })
+  code!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The public code of the PLATFORM product that already carries this GTIN, so the seller can ' +
+      'sell on it; null when the GTIN is on any other product (no name, id or seller is given).',
+  })
+  sellOnProductCode!: string | null;
+}
+
 export class PlatformProductDraftSaved {
   @ApiProperty({ type: [String], description: 'The draft variant list, in order.' })
   variantIds!: string[];
@@ -97,6 +121,13 @@ export class PlatformProductDraftSaved {
     description: 'Texts that kept their last saved value; everything else was saved.',
   })
   refusedFields!: RefusedFieldView[];
+
+  @ApiProperty({
+    type: [VariantNoticeView],
+    description:
+      'Advice about the saved variants (a GTIN another product carries). Never a refusal.',
+  })
+  variantNotices!: VariantNoticeView[];
 }
 
 export class PlatformProductSubmitRequest {
@@ -116,6 +147,65 @@ export class PlatformProductSubmitted {
 
   @ApiProperty({ description: "An admin's revision publishes at once." })
   published!: boolean;
+}
+
+export class PlatformProductDiscarded {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+}
+
+export class PlatformProductOptionsView {
+  @ApiProperty({ type: [String], description: 'The product types the Market offers.' })
+  productTypes!: string[];
+  @ApiProperty({ type: OwnProductOptionsLocales }) locales!: OwnProductOptionsLocales;
+}
+
+export class PlatformRevisionView {
+  @ApiProperty({ format: 'uuid' }) revisionId!: string;
+  @ApiProperty() revisionNo!: number;
+  @ApiProperty() submittedAt!: string;
+  @ApiProperty({ type: 'object', additionalProperties: true, description: 'The frozen content.' })
+  content!: Record<string, unknown>;
+}
+
+export class PlatformProductOffers {
+  @ApiProperty({ description: 'Sellers that hold at least one Offer on the product.' })
+  sellerCount!: number;
+  @ApiProperty({ description: 'Offers on the product that are not deleted, every seller.' })
+  offerCount!: number;
+}
+
+export class PlatformProductView {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ example: 'P00000001' }) productCode!: string;
+  @ApiProperty() typeCode!: string;
+  @ApiProperty() familyCode!: string;
+  @ApiProperty({ description: 'single (one fixed variant) or configurable.' })
+  variantModel!: string;
+  @ApiProperty() status!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'When an admin paused the product (ISO 8601, UTC); null when it is not paused.',
+  })
+  pausedAt!: string | null;
+  @ApiProperty({ type: PlatformProductOffers }) offers!: PlatformProductOffers;
+  @ApiProperty({ type: [OwnVariantView] }) variants!: OwnVariantView[];
+  @ApiProperty({ description: "The Market's cap on non-retired variants." }) maxVariants!: number;
+  @ApiProperty() lastChangedAt!: string;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty({ type: OwnProductForm }) form!: OwnProductForm;
+  @ApiProperty({ type: OwnProductOptionsLocales }) locales!: OwnProductOptionsLocales;
+  @ApiProperty({ nullable: true, type: OwnWorkingCopyView })
+  workingCopy!: OwnWorkingCopyView | null;
+  @ApiProperty({ nullable: true, type: PlatformRevisionView })
+  published!: PlatformRevisionView | null;
+  @ApiProperty({
+    type: [TopicRefBody],
+    description:
+      'The topics named by the draft and the published revision (`topicIds`), each once. A topic ' +
+      'that no longer exists is absent.',
+  })
+  topicRefs!: TopicRefBody[];
 }
 
 /** The error format `{ statusCode, code, details? }`: codes only, never a text of the request. */

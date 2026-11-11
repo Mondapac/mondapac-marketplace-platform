@@ -24,6 +24,15 @@ import {
   readCheckEnvironment,
   type CheckEnvironmentDependencies,
 } from '../platform-import/check-environment';
+import {
+  BATCH,
+  failureActionOf,
+  GIVE_UP_AFTER_HOURS,
+  LEASE_SECONDS,
+  MAX_WAIT_SECONDS,
+  reasonOf,
+  RETRY_SECONDS,
+} from '../import-jobs/run-policy';
 import type { ImportFileParsers } from '../ports/import-file-parsers';
 import type { ImportFileStore } from '../ports/import-file-store';
 import type { PlatformImportRepository } from '../ports/platform-import.repository';
@@ -63,17 +72,6 @@ export interface PlatformImportRunDependencies extends CheckEnvironmentDependenc
   readonly rowSubmit: PlatformImportRowSubmit;
 }
 
-/** How long a runner holds a job before another may take it over (it renews the lease per batch). */
-const LEASE_SECONDS = 120;
-/** Rows read from the store at a time. */
-const BATCH = 20;
-/** A wait of this length or shorter is a rate window of a minute: the job waits it out. */
-const MAX_WAIT_SECONDS = 120;
-/** A transient fault is retried after this long. */
-const RETRY_SECONDS = 60;
-/** A job that keeps meeting transient faults for this long stops instead (stop reason `unexpected`). */
-const GIVE_UP_AFTER_HOURS = 24;
-
 /** What happened to one row. */
 type RowOutcome =
   | { readonly kind: 'added'; readonly productId: string; readonly productCode: string }
@@ -81,11 +79,6 @@ type RowOutcome =
   | { readonly kind: 'wait'; readonly seconds: number }
   | { readonly kind: 'transient' }
   | { readonly kind: 'stop'; readonly reason: StopReason };
-
-/** The use-case failure codes a row may be reported with: codes only, never a message. */
-function reasonOf(code: string): string {
-  return /^[a-z][a-z0-9_.-]{0,63}$/.test(code) ? code : 'row.failed';
-}
 
 /**
  * `platform-import.run` (catalog design 14a; handoff steps 6 and 7): the worker's turn on one
@@ -415,28 +408,19 @@ export class PlatformImportRun extends UseCase<
   }
 }
 
-/** Maps a use case's refusal to what the run does about it. */
+/** Maps a use case's refusal to what the run does about it (the policy both imports share). */
 function failureOf(code: string, detail?: unknown): RowOutcome {
-  switch (code) {
-    case 'request.throttled':
-      return {
-        kind: 'wait',
-        seconds: Math.max(
-          1,
-          Number(
-            (detail as { retryAfterSeconds?: number } | undefined)?.retryAfterSeconds ??
-              RETRY_SECONDS,
-          ),
-        ),
-      };
+  const action = failureActionOf(code, detail);
+  switch (action.kind) {
+    case 'wait':
+      return { kind: 'wait', seconds: action.seconds };
     // The gate refused: the admin lost the permission (or the account) since the start.
-    case 'access.denied':
+    case 'access-lost':
       return { kind: 'stop', reason: 'access-lost' };
     // A store, the matcher or the rate counters could not answer: wait and try the row again.
-    case 'access.unavailable':
-    case 'conflict.stale':
+    case 'transient':
       return { kind: 'transient' };
-    default:
-      return { kind: 'failed', code };
+    case 'failed':
+      return { kind: 'failed', code: action.code };
   }
 }

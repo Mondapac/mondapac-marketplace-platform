@@ -91,6 +91,7 @@ describe('category redirects in the proxy', () => {
 
   it('does not read the resolver outside /c/', async () => {
     await proxy(request('/p/0b5e1c3a-0000-4000-8000-0000000000c1'));
-    expect(asked).toEqual([]);
+    // The product path makes its own existence read (test/miss.spec.ts), never the resolver's.
+    expect(asked.filter((path) => path.startsWith('catalog/categories/resolve'))).toEqual([]);
   });
 });

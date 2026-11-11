@@ -345,7 +345,14 @@ describe('StoreProfile pictures', () => {
   const pick = async (name: string, data = 'QUJD') => {
     prepare.mockResolvedValueOnce({ kind: 'ready', data });
     fireEvent.change(chooseIn(name), { target: { files: [file()] } });
-    await waitFor(() => expect(within(row(name)).getByRole('img')).toBeTruthy());
+    // Wait for this pick's preview, not just any <img>: on a second pick the earlier
+    // preview is already in the row, so waiting for an <img> would return before the
+    // new file is staged.
+    await waitFor(() =>
+      expect(within(row(name)).getByRole('img').getAttribute('src')).toBe(
+        `data:image/jpeg;base64,${data}`,
+      ),
+    );
   };
 
   it('has a Pictures section with a Logo and a Banner row, and the spec help text', () => {
