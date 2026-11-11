@@ -213,6 +213,12 @@ export class VariantRequestApprove extends UseCase<
       >(market, async () => {
         const loaded = await loadOpenRequest(this.deps, market, id, version.value);
         if (!loaded.ok) return err(loaded.error);
+        // A save of another admin (or a second approval) between steps 2 and 3 may have retired
+        // the variant just added: the request is then not decided and the admin reloads.
+        const product = await this.deps.products.findById(market, loaded.value.state.productId);
+        if (!product?.liveVariants.some((variant) => variant.id === variantId)) {
+          return err({ code: 'variant-request.stale' } as const);
+        }
         const decided = loaded.value.approve({
           accountId,
           variantId,

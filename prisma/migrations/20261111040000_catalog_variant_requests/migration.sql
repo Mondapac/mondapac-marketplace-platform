@@ -25,12 +25,15 @@ CREATE TABLE "catalog"."variant_requests" (
 );
 
 -- CreateIndex
-CREATE INDEX "variant_requests_market_id_status_created_at_idx" ON "catalog"."variant_requests"("market_id", "status", "created_at", "id");
+-- The admin queue reads only open requests, oldest first: a partial index, written by hand
+-- (Prisma cannot express it), replaces the full one.
+CREATE INDEX "variant_requests_open_queue_idx" ON "catalog"."variant_requests"("market_id", "created_at", "id") WHERE "status" = 'open';
 
 -- CreateIndex
-CREATE INDEX "variant_requests_market_id_seller_id_status_idx" ON "catalog"."variant_requests"("market_id", "seller_id", "status");
+CREATE INDEX "variant_requests_market_id_seller_id_status_id_idx" ON "catalog"."variant_requests"("market_id", "seller_id", "status", "id");
 
 -- CreateIndex
+-- Backs the foreign key checks on product deletes and updates; no store query reads it.
 CREATE INDEX "variant_requests_market_id_product_id_idx" ON "catalog"."variant_requests"("market_id", "product_id");
 
 -- AddForeignKey
@@ -53,7 +56,10 @@ ALTER TABLE "catalog"."variant_requests"
   -- The option values: a non-empty object of option codes by attribute code (the use case keeps
   -- them to the product's axes, at most 2).
   ADD CONSTRAINT "variant_requests_option_values_check" CHECK (
-    jsonb_typeof("option_values") = 'object' AND "option_values" <> '{}'::jsonb),
+    jsonb_typeof("option_values") = 'object' AND "option_values" <> '{}'::jsonb
+    AND pg_column_size("option_values") <= 1024),
+  ADD CONSTRAINT "variant_requests_decided_at_check" CHECK (
+    "decided_at" IS NULL OR "decided_at" >= "created_at"),
   ADD CONSTRAINT "variant_requests_option_key_check" CHECK (
     char_length("option_key") BETWEEN 3 AND 400 AND "option_key" !~ '[[:cntrl:]]'),
   ADD CONSTRAINT "variant_requests_status_check" CHECK (
