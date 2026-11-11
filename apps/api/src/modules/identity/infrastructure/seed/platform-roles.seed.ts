@@ -204,7 +204,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // activities, ADR-0040); the `.manage` key is not a viewer key.
     // Version 30 adds `catalog.variant.view`, likewise unprotected (variants V6); the protected
     // `catalog.variant-type.edit` is not a viewer key.
-    seedVersion: 30,
+    // Version 31 adds `ordering.refund-limits.view`, likewise unprotected (seller refund caps,
+    // owner decision 2026-11-11); the protected `ordering.refund-limits.manage` is not a viewer key.
+    seedVersion: 31,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -236,6 +238,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'settings.list-paging.view',
       'sellers.business-activity.view',
       'catalog.variant.view',
+      'ordering.refund-limits.view',
     ],
   },
   {
