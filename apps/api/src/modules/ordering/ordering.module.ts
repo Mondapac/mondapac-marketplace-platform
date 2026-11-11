@@ -34,6 +34,16 @@ import { REFUND_REPOSITORY } from './application/ports/refund.repository';
 import { ORDERING_POLICY } from './application/ports/ordering-policy';
 import { SHIP_TO_CIPHER } from './application/ports/ship-to-cipher';
 import { AdminRefundOrder } from './application/use-cases/admin-refund-order.use-case';
+import { AdminCancelOrder } from './application/use-cases/admin-cancel-order.use-case';
+import {
+  AdminAddOrderNote,
+  AdminListOrderNotes,
+} from './application/use-cases/admin-order-notes.use-case';
+import type { AdminNoteDependencies } from './application/admin-note-flow';
+import {
+  ADMIN_NOTE_CIPHER,
+  ADMIN_ORDER_NOTE_REPOSITORY,
+} from './application/ports/admin-order-notes';
 import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
@@ -242,8 +252,32 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CancelCarrierAfterRefund,
       RecordDeliveryAnchor,
       AdminRefundOrder,
+      AdminCancelOrder,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    ...[AdminListOrderNotes, AdminAddOrderNote].map((type) => ({
+      provide: type,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        ADMIN_ORDER_NOTE_REPOSITORY,
+        ADMIN_NOTE_CIPHER,
+        AUDIT_WRITER,
+        ID_GENERATOR,
+        CLOCK,
+        ORDER_LABELS,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: AdminNoteDependencies['unitOfWork'],
+        notes: AdminNoteDependencies['notes'],
+        cipher: AdminNoteDependencies['cipher'],
+        audit: AdminNoteDependencies['audit'],
+        ids: AdminNoteDependencies['ids'],
+        clock: AdminNoteDependencies['clock'],
+        labels: AdminNoteDependencies['labels'],
+      ) => new type(gate, { unitOfWork, notes, cipher, audit, ids, clock, labels }),
+    })),
     {
       provide: ORDERING_FACADE,
       inject: [

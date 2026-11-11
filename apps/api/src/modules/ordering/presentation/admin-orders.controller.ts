@@ -34,19 +34,36 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { AdminCancelOrder } from '../application/use-cases/admin-cancel-order.use-case';
 import { AdminListOrders } from '../application/use-cases/admin-list-orders.use-case';
+import {
+  AdminAddOrderNote,
+  AdminListOrderNotes,
+} from '../application/use-cases/admin-order-notes.use-case';
 import { AdminRefundOrder } from '../application/use-cases/admin-refund-order.use-case';
 import { AdminViewOrderDocument } from '../application/use-cases/admin-view-order-document.use-case';
 import { AdminViewOrder } from '../application/use-cases/admin-view-order.use-case';
+import { AdminOrderDetailBody, adminOrderDetailBody } from './admin-order-detail.dto';
+import {
+  AdminNoteBody,
+  AdminNoteListBody,
+  AdminNoteRequestBody,
+  NOTE_BODY_KEYS,
+  adminNoteBody,
+} from './admin-order-notes.dto';
 import { OrderDocumentBody, orderDocumentBody } from './documents.dto';
 import { closedBody, refusal } from './http-answers';
-import { REFUND_BODY_KEYS, RefundBody, RefundRequestBody, refundBody } from './refunds.dto';
 import {
-  AdminOrderBody,
-  AdminOrderPageBody,
-  adminOrderBody,
-  adminOrderPageBody,
-} from './orders.dto';
+  CANCEL_BODY_KEYS,
+  CancelBody,
+  CancelRequestBody,
+  REFUND_BODY_KEYS,
+  RefundBody,
+  RefundRequestBody,
+  cancelBody,
+  refundBody,
+} from './refunds.dto';
+import { AdminOrderPageBody, adminOrderPageBody } from './orders.dto';
 
 const ERROR = { type: Object };
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -77,6 +94,9 @@ export class AdminOrdersController {
     private readonly view: AdminViewOrder,
     private readonly refund: AdminRefundOrder,
     private readonly documentOf: AdminViewOrderDocument,
+    private readonly cancel: AdminCancelOrder,
+    private readonly notesOf: AdminListOrderNotes,
+    private readonly addNote: AdminAddOrderNote,
   ) {}
 
   @Get()
@@ -126,9 +146,12 @@ export class AdminOrdersController {
   }
 
   @Get(':orderId')
-  @ApiOperation({ summary: 'One order (admin)', description: 'Needs ordering.order.view.' })
+  @ApiOperation({
+    summary: 'One order (admin), with its refunds',
+    description: 'Needs ordering.order.view.',
+  })
   @ApiParam({ name: 'orderId', format: 'uuid' })
-  @ApiOkResponse({ type: AdminOrderBody })
+  @ApiOkResponse({ type: AdminOrderDetailBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
@@ -143,7 +166,7 @@ export class AdminOrdersController {
     const result = await this.view.execute(context, { orderId });
     this.log('ordering.admin-view-order-route', context, result.ok ? 'read' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return adminOrderBody(result.value);
+    return adminOrderDetailBody(result.value);
   }
 
   @Get(':orderId/document')
@@ -248,6 +271,138 @@ export class AdminOrdersController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return refundBody(result.value);
+  }
+
+  @Post(':orderId/cancel')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Cancel a paid order and refund all of it (admin; Stripe test mode only)',
+    description:
+      'Needs ordering.order.refund (protected). Off until the Market switch ' +
+      'tax.refundCredit.enabled is on: 409 ordering.refund-disabled. Allowed only while no ' +
+      'seller has marked its part ready (409 ordering.cancel-too-late: refund per seller ' +
+      'instead). Writes one refund per seller order of everything left (units and shipping), ' +
+      'all in one step, then settles each with Stripe; a seller order refunded in full can no ' +
+      'longer be marked ready. The order stays confirmed; each refund answers its own state.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'orderId', format: 'uuid' })
+  @ApiBody({ type: CancelRequestBody })
+  @ApiOkResponse({ type: CancelBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.order-not-found' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description:
+      'ordering.refund-disabled, ordering.refund-not-allowed, ordering.cancel-too-late, ' +
+      'ordering.refund-in-progress, ordering.cancel-nothing-left or conflict.retry',
+  })
+  @ApiUnprocessableEntityResponse({ ...ERROR, description: 'ordering.refund-tax-unknown' })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'ordering.refund-tax-unavailable or access.unavailable',
+  })
+  async cancelOrder(
+    @Call() context: CallContext,
+    @Param('orderId') orderId: string,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, CANCEL_BODY_KEYS);
+    if (invalid !== null) throw invalid;
+    const { reason, lossBearer, lossReasonCode } = body as Record<string, unknown>;
+    const result = await this.cancel.execute(context, {
+      orderId,
+      reason,
+      lossBearer,
+      lossReasonCode,
+    });
+    this.log(
+      'ordering.admin-cancel-order-route',
+      context,
+      result.ok ? `cancelled-${result.value.refunds.length}` : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return cancelBody(result.value);
+  }
+
+  @Get(':orderId/notes')
+  @ApiOperation({
+    summary: "An order's internal notes, newest first (admin)",
+    description:
+      'Needs ordering.order.view. Admins only: never shown to the customer or the seller. ' +
+      'The newest 100.',
+  })
+  @ApiParam({ name: 'orderId', format: 'uuid' })
+  @ApiOkResponse({ type: AdminNoteListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.order-not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async notes(
+    @Call() context: CallContext,
+    @Param('orderId') orderId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.notesOf.execute(context, { orderId });
+    this.log(
+      'ordering.admin-list-order-notes-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return { notes: result.value.map(adminNoteBody) };
+  }
+
+  @Post(':orderId/notes')
+  @HttpCode(201)
+  @ApiOperation({
+    summary: 'Write an internal note on an order (admin)',
+    description:
+      'Needs ordering.order.view and ordering.order.note. Plain text, 1 to 2000 characters ' +
+      'after trimming; written once, never changed or removed. Stored sealed under the ' +
+      "customer's account key (never in clear).",
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'orderId', format: 'uuid' })
+  @ApiBody({ type: AdminNoteRequestBody })
+  @ApiOkResponse({ type: AdminNoteBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.order-not-found' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description: "ordering.customer-erased (the customer's account was erased)",
+  })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async writeNote(
+    @Call() context: CallContext,
+    @Param('orderId') orderId: string,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, NOTE_BODY_KEYS);
+    if (invalid !== null) throw invalid;
+    const result = await this.addNote.execute(context, {
+      orderId,
+      body: (body as Record<string, unknown>).body,
+    });
+    this.log(
+      'ordering.admin-add-order-note-route',
+      context,
+      result.ok ? 'written' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return adminNoteBody(result.value);
   }
 
   private log(msg: string, context: CallContext, outcome: string): void {

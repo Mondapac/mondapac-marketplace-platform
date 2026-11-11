@@ -34,6 +34,8 @@ export interface OrderLineView {
 }
 
 export interface SellerOrderView {
+  /** The seller order's own id (the reference in the order emails). */
+  readonly sellerOrderId: Id<'SellerOrder'>;
   readonly sellerId: Id<'Seller'>;
   readonly subtotal: Money;
   readonly shipping: Money;
@@ -293,6 +295,7 @@ export function orderView(order: OrderState): OrderView {
     sellerOrders: order.sellerOrders.map((seller) => {
       const lines = order.lines.filter((line) => line.sellerOrderId === seller.id);
       return {
+        sellerOrderId: seller.id,
         sellerId: seller.sellerId,
         subtotal: money(seller.subtotal),
         shipping: money(seller.shipping),

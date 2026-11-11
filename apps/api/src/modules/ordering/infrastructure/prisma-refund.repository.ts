@@ -171,6 +171,28 @@ export class PrismaRefundRepository implements RefundRepository {
     };
   }
 
+  async listForOrder(market: MarketContext, orderId: Id<'Order'>) {
+    const tx = this.prisma.tx(market);
+    // Through the order's seller orders, so the read uses the (market_id, seller_order_id) index.
+    const sellerOrders = await tx.orderingSellerOrder.findMany({
+      where: { marketId: market.marketId, orderId },
+      select: { id: true },
+    });
+    if (sellerOrders.length === 0) return [];
+    const rows = await tx.orderingRefund.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerOrderId: { in: sellerOrders.map((s) => s.id) },
+      },
+      include: { lines: true, creditNote: { select: { id: true } } },
+      orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map((row) => ({
+      refund: toRefund(row),
+      creditNoteId: (row.creditNote?.id ?? null) as Id<'CreditNote'> | null,
+    }));
+  }
+
   async reserve(
     market: MarketContext,
     refund: Refund,

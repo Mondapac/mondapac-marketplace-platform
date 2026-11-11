@@ -1777,6 +1777,31 @@
     }
   },
   {
+    "action": "ordering.order.cancel-requested",
+    "targetType": "ordering.order",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "lossBearer": "enumOf(seller|platform)",
+      "lossReasonCode": "optional(enumOf(platform-error|carrier-loss|seller-unrecoverable|fraud-loss|goodwill|other))",
+      "reason": "enumOf(not-received|damaged|wrong-item|not-as-described|seller-cancelled|other)",
+      "refundCount": "integer"
+    }
+  },
+  {
+    "action": "ordering.order.note-added",
+    "targetType": "ordering.order",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "length": "integer",
+      "noteId": "id"
+    }
+  },
+  {
     "action": "ordering.refund.requested",
     "targetType": "ordering.refund",
     "targetId": "id",

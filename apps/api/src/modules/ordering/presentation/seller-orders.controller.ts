@@ -195,7 +195,9 @@ export class SellerOrdersController {
   @ApiNotFoundResponse({ ...ERROR, description: 'ordering.seller-order-not-found' })
   @ApiConflictResponse({
     ...ERROR,
-    description: 'ordering.fulfilment-conflict (the order has already shipped)',
+    description:
+      'ordering.fulfilment-conflict (the order has already shipped) or ' +
+      'ordering.seller-order-refunded (every unit was refunded: the order was cancelled)',
   })
   async readyOrder(
     @Call() context: CallContext,

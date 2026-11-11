@@ -42,6 +42,17 @@ export interface RefundRepository {
   ): Promise<RefundTarget | null>;
 
   /**
+   * Every refund of the order's seller orders (any state), oldest first, each with its credit note
+   * id when it succeeded. Empty for an unknown or another Market's order.
+   */
+  listForOrder(
+    market: MarketContext,
+    orderId: Id<'Order'>,
+  ): Promise<
+    readonly { readonly refund: Refund; readonly creditNoteId: Id<'CreditNote'> | null }[]
+  >;
+
+  /**
    * Raises the seller order's refunded sum by the refund's gross only if it still is
    * `expectedRefunded` and the order is still confirmed and captured (Hassan L4), then inserts
    * the refund with its lines. `stale` writes nothing, also when another refund of the seller

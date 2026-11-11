@@ -24,6 +24,7 @@ import { labelSellerOrders } from './order-labels';
 import type { SellerOrderPage, SellerOrderRecord } from './ports/order.repository';
 import type { IssuedPickupCode } from './ports/pickup-code-vault';
 import { pickupStatusFor } from './pickup-flow';
+import { refundedInFull } from '../domain/refund';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, openShipTo } from './read-flow';
 
 // The seller's side of an order once it is paid: see it and tell the platform it is ready; the
@@ -52,6 +53,8 @@ export type FulfilmentFailure =
   | { readonly code: 'ordering.seller-order-not-found' }
   /** The seller order is not at the step the request needs (already shipped, not yet shipped). */
   | { readonly code: 'ordering.fulfilment-conflict' }
+  /** Every unit of the seller order was refunded (an admin cancelled it): nothing to prepare. */
+  | { readonly code: 'ordering.seller-order-refunded' }
   /** The pickup code typed was wrong; `attemptsLeft` tries remain before the order is locked. */
   | { readonly code: 'ordering.pickup-code-invalid'; readonly attemptsLeft: number }
   /** Too many wrong pickup codes: only the buyer asking for a new code opens the order again. */
@@ -270,6 +273,15 @@ export async function markSellerOrderReady(
       if (fresh !== null && fresh.sellerOrder.readyAt !== null) return already(fresh);
       outcome = 'ordering.fulfilment-conflict';
       return err({ code: 'ordering.fulfilment-conflict' } as const);
+    }
+    // The ready time holds the seller order's row lock: a refund that committed before it is
+    // seen here, and an admin cancellation that comes after it sees this ready mark (refund-flow
+    // adminCancelOrder). A seller order whose every unit is refunded (or on its way back) was
+    // cancelled: nothing is left to prepare, and the refusal rolls the ready time back.
+    const target = await deps.refunds.findTarget(context.market, ready.id, record.orderId);
+    if (target !== null && refundedInFull(target, 'not-failed')) {
+      outcome = 'ordering.seller-order-refunded';
+      return err({ code: 'ordering.seller-order-refunded' } as const);
     }
     let pickup: PickupStatus | null = null;
     if (ready.deliveryMethod === 'pickup') {

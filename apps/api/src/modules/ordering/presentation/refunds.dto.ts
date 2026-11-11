@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import type { CancelView } from '../application/use-cases/admin-cancel-order.use-case';
 import type { RefundView } from '../application/use-cases/admin-refund-order.use-case';
 import { LOSS_BEARERS, LOSS_REASON_CODES } from '../domain/reason-codes';
 import { REFUND_REASONS } from '../domain/refund';
@@ -62,8 +63,11 @@ export class RefundBody {
   @ApiProperty({ format: 'uuid' }) orderId!: string;
   @ApiProperty({ format: 'uuid' }) sellerOrderId!: string;
   @ApiProperty({
-    enum: ['pending', 'succeeded'],
-    description: 'pending: Stripe did not answer yet; the worker retries with the same key.',
+    enum: ['pending', 'succeeded', 'failed'],
+    description:
+      'pending: Stripe did not answer yet; the worker retries with the same key. failed: ' +
+      'Stripe refused it and nothing went back (only in lists and in a cancellation: a refund ' +
+      'by hand answers 422 ordering.refund-rejected instead).',
   })
   state!: string;
   @ApiProperty({ enum: REFUND_REASONS }) reason!: string;
@@ -113,4 +117,38 @@ export const refundBody = (refund: RefundView): RefundBody => ({
   requestedAt: refund.requestedAt.toString(),
   settledAt: refund.settledAt === null ? null : refund.settledAt.toString(),
   creditNoteId: refund.creditNoteId,
+});
+
+export class CancelRequestBody {
+  @ApiProperty({ enum: REFUND_REASONS, description: 'Why the order is cancelled.' })
+  reason!: string;
+  @ApiProperty({
+    enum: LOSS_BEARERS,
+    required: false,
+    default: 'seller',
+    description: 'Who bears the loss, as for a refund.',
+  })
+  lossBearer?: string;
+  @ApiProperty({
+    enum: LOSS_REASON_CODES,
+    required: false,
+    description: 'Required when lossBearer is platform, and refused otherwise.',
+  })
+  lossReasonCode?: string;
+}
+
+export class CancelBody {
+  @ApiProperty({ format: 'uuid' }) orderId!: string;
+  @ApiProperty({
+    type: [RefundBody],
+    description: 'One refund per seller order that had something left to give back.',
+  })
+  refunds!: RefundBody[];
+}
+
+export const CANCEL_BODY_KEYS = ['reason', 'lossBearer', 'lossReasonCode'] as const;
+
+export const cancelBody = (view: CancelView): CancelBody => ({
+  orderId: view.orderId,
+  refunds: view.refunds.map(refundBody),
 });

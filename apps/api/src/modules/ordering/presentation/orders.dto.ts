@@ -353,6 +353,11 @@ export class OwnSellerOrderBody extends SellerOrderBody {
 
 export class AdminSellerOrderBody extends SellerOrderBody {
   @ApiProperty({
+    format: 'uuid',
+    description: "The seller order's id: the reference in the order emails and the refund routes.",
+  })
+  sellerOrderId!: string;
+  @ApiProperty({
     type: String,
     nullable: true,
     description: "The seller's public store name; null when unknown.",
@@ -604,6 +609,7 @@ export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody =>
   taxStrategyId: order.taxStrategyId,
   sellerOrders: order.sellerOrders.map((seller) => ({
     ...sellerOrderBody(seller),
+    sellerOrderId: seller.sellerOrderId,
     storeName: seller.storeName,
     lines: seller.lines.map(labelledLineBody),
   })),

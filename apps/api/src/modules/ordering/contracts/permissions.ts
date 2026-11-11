@@ -50,7 +50,19 @@ export const ORDERING_ORDER_REFUND = definePermission('ordering', {
   protected: true,
 });
 
+/**
+ * Write an internal note on any order of the Market (order detail decision 3). Reading the notes
+ * needs only `ordering.order.view`. Not protected (no money moves); no default role lists it yet,
+ * so the Platform Administrator holds it until a role is given it.
+ */
+export const ORDERING_ORDER_NOTE = definePermission('ordering', {
+  key: 'ordering.order.note',
+  scope: 'platform',
+  protected: false,
+});
+
 export const ORDERING_PERMISSIONS = declarePermissions('ordering', [
+  ORDERING_ORDER_NOTE,
   ORDERING_ORDER_REFUND,
   ORDERING_ORDER_VIEW,
   ORDERING_SELLER_ORDER_CONFIRM_PICKUP,
