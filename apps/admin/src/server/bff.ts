@@ -80,6 +80,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'shipping/admin/delivery-settings/history',
     'shipping/admin/fleet-selection/history',
     'wallet/admin/settings/history',
+    // The promotions settings page (promotions): the Market switch, the first-order discount and
+    // the free-delivery thresholds, read again after a save.
+    'promotions/admin/settings',
+    'promotions/admin/first-order',
+    'promotions/admin/free-shipping',
     // The editable Market settings (settings; List paging), read again after a conflict.
     'settings/admin/market-settings',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
@@ -135,6 +140,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'customers/admin/account-deletion-settings',
     // One editable Market setting (settings): code, value and `expectedVersion`.
     'settings/admin/market-settings',
+    // The promotions Market switch and the first-order discount (promotions); a monthly budget
+    // above the Market threshold asks a fresh two-step code. The zone thresholds are below.
+    'promotions/admin/settings',
+    'promotions/admin/first-order',
   ]),
   DELETE: new Set([]),
   POST: new Set([
@@ -633,8 +642,22 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
   return text === '' ? '' : `?${text}`;
 }
 
+/** A delivery zone code as the API takes it (promotions free-shipping threshold of one zone). */
+const ZONE_CODE = /^[A-Za-z0-9_-]{1,64}$/;
+
 function isAllowed(method: string, path: readonly string[]): boolean {
   if (ALLOWED[method]?.has(path.join('/')) === true) return true;
+  // The free-delivery threshold of one zone (promotions): the code is not a UUID.
+  if (
+    method === 'PUT' &&
+    path.length === 4 &&
+    path[0] === 'promotions' &&
+    path[1] === 'admin' &&
+    path[2] === 'free-shipping' &&
+    ZONE_CODE.test(path[3] ?? '')
+  ) {
+    return true;
+  }
   return (ALLOWED_WITH_ID[method] ?? []).some((template) => {
     const parts = template.split('/');
     return (
