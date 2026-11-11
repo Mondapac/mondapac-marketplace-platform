@@ -425,6 +425,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
+  'blog/admin/posts': ['status', 'kind', 'owner', 'page'],
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
   'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
   'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
@@ -575,6 +576,13 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'storefront/admin/slides': {
     state: /^(draft|pending|scheduled|live|ended|paused|archived)$/,
     position: /^[a-z]+(?:\.[a-z-]+)+$/,
+  },
+  'blog/admin/posts': {
+    status:
+      /^(draft|in_review|changes_requested|approved|scheduled|published|unpublished|archived)$/,
+    kind: /^(product|brand|event|news)$/,
+    owner: /^(platform|seller)$/,
+    page: /^[0-9]{1,4}$/,
   },
   'storefront/admin/slides/order': {
     position: /^[a-z]+(?:\.[a-z-]+)+$/,
