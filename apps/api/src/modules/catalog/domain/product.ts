@@ -620,6 +620,57 @@ export class Product {
     return ok(undefined);
   }
 
+  /**
+   * An admin's category override (categories package C5a, decision 8; john 11 Nov: a revision kind
+   * of its own, like the tax override): a revision built from the published one with the category
+   * list changed, published at once, for a SELLER or a PLATFORM product. A pending seller revision
+   * stays pending and is rebased by its seller. The product takes the feature set of the new
+   * primary category (`familyCode`) and raises `catalog.product-family-changed` when it differs.
+   * The variants are the ones the published revision holds.
+   */
+  publishCategoryOverride(input: {
+    readonly revisionId: Id<'ProductRevision'>;
+    /** The revision the override content was built from; it must be the published one. */
+    readonly fromRevisionId: Id<'ProductRevision'>;
+    readonly familyCode: string;
+    readonly now: Temporal.Instant;
+  }): Result<void, ProductRefusal> {
+    const state = this.#state;
+    if (state.status !== 'published' || state.publishedRevisionId === null) {
+      return err({ code: 'product.no-published-revision' });
+    }
+    if (input.fromRevisionId !== state.publishedRevisionId) {
+      return err({ code: 'revision.base-changed' });
+    }
+    if (
+      input.revisionId === state.publishedRevisionId ||
+      input.revisionId === state.pendingRevisionId
+    ) {
+      return err({ code: 'revision.id-taken' });
+    }
+    if (!FAMILY_CODE.test(input.familyCode)) return err({ code: 'product.family-invalid' });
+    const held = this.liveVariants
+      .filter((variant) => variant.state === 'published')
+      .map((variant) => variant.id);
+    const familyChanged = input.familyCode !== state.familyCode;
+    const events: readonly DomainEventRecord[] = familyChanged
+      ? [
+          {
+            definition: ProductFamilyChanged,
+            payload: {
+              productId: state.id,
+              revisionId: input.revisionId,
+              scope: eventScope(state.scope),
+            },
+          },
+        ]
+      : [];
+    this.#publish(input.revisionId, held, input.now, events, true, {
+      familyCode: input.familyCode,
+    });
+    return ok(undefined);
+  }
+
   /** The variants a revision names: at least one, none repeated, all live, within the limit. */
   #checkRevisionVariants(
     ids: readonly Id<'Variant'>[],
