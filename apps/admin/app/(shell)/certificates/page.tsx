@@ -84,6 +84,13 @@ export default async function CertificatesPage({
         {t('certificates.queue.total', { count: result.body.total })}
       </p>
       <CertificateQueue rows={result.body.items} typeNames={names} morePages={next !== null} />
+      {typeof after === 'string' && after !== '' ? (
+        <p>
+          <a className="font-medium text-link underline" href="/certificates">
+            {t('certificates.queue.first-page')}
+          </a>
+        </p>
+      ) : null}
       {next === null ? null : (
         <p>
           <a

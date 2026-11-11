@@ -49,6 +49,9 @@ export function CertificateQueue({
                   title={row.sellerId}
                 >
                   {row.storeName ?? t('seller-fallback')}
+                  <span className="sr-only">
+                    {t('seller-id-sr', { id: shortId(row.sellerId) })}
+                  </span>
                 </a>
                 <span className="block text-xs text-fg-muted">{shortId(row.sellerId)}</span>
               </td>

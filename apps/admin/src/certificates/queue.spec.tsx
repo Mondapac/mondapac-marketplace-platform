@@ -16,7 +16,7 @@ const row = (over: Partial<QueueRow> = {}): QueueRow => ({
   submissionNo: 2,
   kind: 'resubmission',
   typeCode: 'halal',
-  sellerId: '0190a000-0000-7000-8000-0000000000f1',
+  sellerId: '0190a000-0000-7000-8000-000000000300',
   storeName: 'Logan Road Grocer',
   issuerName: 'Halal Certification Authority',
   submittedAt: '2026-10-14T01:00:00.000Z',
@@ -40,9 +40,9 @@ describe('admin certificate review queue', () => {
 
   it('shows a submission with seller, type name, kind, issuer and submission number', () => {
     mount([row()]);
-    expect(screen.getByRole('link', { name: 'Logan Road Grocer' }).getAttribute('href')).toBe(
-      '/sellers/0190a000-0000-7000-8000-0000000000f1',
-    );
+    expect(
+      screen.getByRole('link', { name: 'Logan Road Grocer, seller 00000300' }).getAttribute('href'),
+    ).toBe('/sellers/0190a000-0000-7000-8000-000000000300');
     expect(screen.getByText('Halal')).toBeTruthy();
     expect(screen.getByText('Resubmitted')).toBeTruthy();
     expect(screen.getByText('Submission 2')).toBeTruthy();
@@ -62,7 +62,7 @@ describe('admin certificate review queue', () => {
     expect(screen.getByText('No certificates are waiting for a decision.')).toBeTruthy();
     cleanup();
     mount([], new Map(), true);
-    expect(screen.getByText('No more certificates on this page.')).toBeTruthy();
+    expect(screen.getByText('Nothing on this page. Go back to the first page.')).toBeTruthy();
   });
 
   it('renders seller-entered text as plain text', () => {
@@ -93,10 +93,10 @@ describe('certificate type names', () => {
 });
 
 describe('certificates menu item', () => {
-  it('shows for a reviewer who may view the queue or the types, and for nobody else', () => {
+  it('shows for a reviewer who may view the queue, and for nobody else', () => {
     const ids = (keys: string[]) => visibleNavItems(adminNav, new Set(keys)).map((item) => item.id);
     expect(ids(['certification.seller-certificate.view'])).toContain('certificates');
-    expect(ids(['certification.type.view'])).toContain('certificates');
+    expect(ids(['certification.type.view'])).not.toContain('certificates');
     expect(ids(['catalog.product.view'])).not.toContain('certificates');
   });
 });
