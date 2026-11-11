@@ -2014,6 +2014,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           ...deps,
           refunds: {
             findTarget: (_m: unknown, so: string) => Promise.resolve(refundTargets.get(so) ?? null),
+            listOfSellerOrder: () => Promise.resolve([]),
           } as never,
         };
       });

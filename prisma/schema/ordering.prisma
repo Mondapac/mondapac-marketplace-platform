@@ -194,9 +194,11 @@ model OrderingRefund {
   /// The shipping tax rate and price basis frozen on the seller order; null when no shipping.
   shippingTaxRateBps   Int?                 @map("shipping_tax_rate_bps")
   shippingTaxInclusive Boolean?             @map("shipping_tax_inclusive")
-  /// not-received, damaged, wrong-item, not-as-described, seller-cancelled or other (CHECK).
+  /// not-received, damaged, wrong-item, not-as-described, seller-cancelled or other for an admin;
+  /// item-unavailable, and only that, for a seller (CHECK).
   reason               String
-  /// Always admin (CHECK; no seller refund path): who asked for the refund, with their account.
+  /// admin, or seller when the seller marked units unavailable before the order was ready; a
+  /// seller refund is always borne by the seller (CHECK). Who asked, with their account.
   actorPopulation      String               @map("actor_population")
   actorAccountId       String               @map("actor_account_id") @db.Uuid
   /// pending, succeeded or failed (CHECK). Moves only from pending (trigger).

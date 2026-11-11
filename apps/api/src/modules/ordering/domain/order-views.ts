@@ -164,8 +164,29 @@ export interface LabelledSellerOrderDetailView extends Omit<SellerOrderDetailVie
  * One seller order as its seller handles it: the detail plus where to send it (recipient name,
  * phone and address only; never the customer's email). Null as in {@link OwnOrderView}.
  */
+/**
+ * One refund of the seller's own seller order, as its page shows it: who asked (an admin, or the
+ * seller for unavailable units), the state, the money and the units. No account id, Stripe id or
+ * loss reason code.
+ */
+export interface SellerOrderRefundView {
+  readonly refundId: Id<'Refund'>;
+  readonly requestedBy: 'admin' | 'seller';
+  readonly state: 'pending' | 'succeeded' | 'failed';
+  readonly reason: string;
+  /** What goes back to the customer, tax included (lines plus shipping). */
+  readonly amount: Money;
+  /** The shipping part of `amount`; null when none. */
+  readonly shipping: Money | null;
+  readonly lines: readonly { readonly orderLineId: Id<'OrderLine'>; readonly quantity: number }[];
+  readonly requestedAt: Temporal.Instant;
+  readonly settledAt: Temporal.Instant | null;
+}
+
 export interface LabelledSellerOrderShipView extends LabelledSellerOrderDetailView {
   readonly shipTo: ShipTo | null;
+  /** Every refund of the seller order, oldest first (failed ones too: nothing went back). */
+  readonly refunds: readonly SellerOrderRefundView[];
   /**
    * For a ready pickup order not yet collected: the tries left and the lock, never the code.
    * Null for every other order.

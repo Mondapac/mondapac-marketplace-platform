@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { RefundView } from '../application/use-cases/admin-refund-order.use-case';
 import { LOSS_BEARERS, LOSS_REASON_CODES } from '../domain/reason-codes';
-import { REFUND_REASONS } from '../domain/refund';
+import { ADMIN_REFUND_REASONS, REFUND_REASONS } from '../domain/refund';
 import { moneyBody } from './http-answers';
 import { MoneyView } from './orders.dto';
 
@@ -23,7 +23,7 @@ export class RefundRequestBody {
     example: '550',
   })
   shippingAmount?: string;
-  @ApiProperty({ enum: REFUND_REASONS }) reason!: string;
+  @ApiProperty({ enum: ADMIN_REFUND_REASONS }) reason!: string;
   @ApiProperty({
     enum: LOSS_BEARERS,
     required: false,
@@ -79,6 +79,19 @@ export class RefundBody {
   @ApiProperty({ format: 'uuid', nullable: true, description: 'Set once the refund succeeded.' })
   creditNoteId!: string | null;
 }
+
+export class UnavailableRequestBody {
+  @ApiProperty({
+    type: [RefundLineRequest],
+    description:
+      'The lines with the units that are unavailable (quantity 1 up to what is left), at most ' +
+      '200, no line twice. No amount, shipping or reason: the units go back at their frozen ' +
+      'price, and the rest of the shipping fee too once nothing is left to send.',
+  })
+  lines!: RefundLineRequest[];
+}
+
+export const UNAVAILABLE_BODY_KEYS = ['lines'] as const;
 
 export const REFUND_BODY_KEYS = [
   'lines',

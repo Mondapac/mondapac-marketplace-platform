@@ -7,8 +7,12 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import type { OrderingDependencies } from '../../src/modules/ordering/application/checkout-flow';
-import { adminRefund } from '../../src/modules/ordering/application/refund-flow';
+import {
+  adminRefund,
+  sellerUnavailableRefund,
+} from '../../src/modules/ordering/application/refund-flow';
 import { AdminRefundOrder } from '../../src/modules/ordering/application/use-cases/admin-refund-order.use-case';
+import { SellerMarkUnavailable } from '../../src/modules/ordering/application/use-cases/seller-mark-unavailable.use-case';
 import type { CommissionPayoutsDependencies } from '../../src/modules/commission-payouts/application/commission-payouts-dependencies';
 import { RecordRefund } from '../../src/modules/commission-payouts/application/use-cases/record-refund.use-case';
 import { RecordSellerOrderPaid } from '../../src/modules/commission-payouts/application/use-cases/record-seller-order-paid.use-case';
@@ -27,6 +31,7 @@ import { RecordRefundLedger } from '../../src/modules/ordering/application/use-c
 import { ConfirmPayment } from '../../src/modules/ordering/application/use-cases/confirm-payment.use-case';
 import { SettleRefunds } from '../../src/modules/ordering/application/use-cases/settle-refunds.use-case';
 import { LOSS_BEARERS, LOSS_REASON_CODES } from '../../src/modules/ordering/domain/reason-codes';
+import { REFUND_REASONS } from '../../src/modules/ordering/domain/refund';
 import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
 import type { OrderState } from '../../src/modules/ordering/domain/order';
 import { ConfigOrderingPolicy } from '../../src/modules/ordering/infrastructure/config-ordering-policy';
@@ -694,6 +699,210 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       ),
     ).rejects.toThrow(/refunded_amount differs from its refunds/);
   });
+  describe('units the seller marks unavailable (decision 6)', () => {
+    const sellerOf = (sellerId: Id<'Seller'>, actingAs = false) => {
+      const context = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: ids.next<'Account'>(),
+          sessionId: ids.next<'Session'>(),
+          sellerId,
+        }),
+      );
+      return actingAs
+        ? ({
+            ...context,
+            actor: {
+              ...context.actor,
+              actingAs: { accountId: ids.next<'Account'>(), sellerId },
+            },
+          } as unknown as CallContext)
+        : context;
+    };
+    const unavailable = (
+      o: { sellerOrderId: Id<'SellerOrder'>; sellerId: Id<'Seller'>; lineId: Id<'OrderLine'> },
+      quantity: number,
+      as: CallContext = sellerOf(o.sellerId),
+    ) =>
+      new SellerMarkUnavailable(gate, deps).execute(as, {
+        sellerOrderId: o.sellerOrderId,
+        lines: [{ orderLineId: o.lineId, quantity }],
+      });
+    const storedOf = async (refundId: string) =>
+      (
+        await sql.query<{
+          actor_population: string;
+          reason: string;
+          loss_bearer: string;
+          shipping_gross_amount: string;
+        }>(
+          `SELECT actor_population, reason, loss_bearer, shipping_gross_amount FROM ordering.refunds
+            WHERE market_id = $1 AND id = $2`,
+          [market.marketId, refundId],
+        )
+      ).rows[0];
+
+    it('refunds the units at once, borne by the seller, and keeps the shipping while some is left', async () => {
+      const o = await paidOrder();
+
+      const result = await unavailable(o, 1);
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value).toMatchObject({
+        state: 'succeeded',
+        reason: 'item-unavailable',
+        lossBearer: 'seller',
+        lossReasonCode: null,
+        shipping: null,
+        amount: money(inclusive ? 1100n : 1100n + 151n, currency),
+        lines: [{ orderLineId: o.lineId, quantity: 1 }],
+      });
+      expect(result.value.creditNoteId).not.toBeNull();
+      expect(gateway.refunds).toHaveLength(1);
+      expect(await storedOf(result.value.refundId)).toEqual({
+        actor_population: 'seller',
+        reason: 'item-unavailable',
+        loss_bearer: 'seller',
+        shipping_gross_amount: '0',
+      });
+      // The seller order's page lists it.
+      const listed = await db.unitOfWork.run(
+        market,
+        async () => ok(await deps.refunds.listOfSellerOrder(market, o.sellerOrderId)),
+        { readOnly: true },
+      );
+      expect(listed.ok && listed.value.map((r) => [r.actor.population, r.reason])).toEqual([
+        ['seller', 'item-unavailable'],
+      ]);
+    });
+
+    it('gives the whole seller order back, shipping included, once nothing is left to send', async () => {
+      const o = await paidOrder();
+      expect((await unavailable(o, 1)).ok).toBe(true);
+
+      const rest = await unavailable(o, 2);
+
+      expect(rest.ok).toBe(true);
+      if (!rest.ok) return;
+      const shippingGross = inclusive ? shipping : shipping + shippingTax;
+      expect(rest.value.shipping?.amount).toEqual(money(shippingGross, currency));
+      const rows = await rowsOf(o.sellerOrderId);
+      expect(rows.refunded).toBe(total.toString());
+      const taxBack = rows.notes.reduce((sum, n) => sum + BigInt(n.tax_amount), 0n);
+      expect(taxBack).toBe(lineTax + shippingTax);
+      // Nothing is left: more units are refused.
+      expect(await unavailable(o, 1)).toMatchObject({
+        ok: false,
+        error: { code: 'ordering.refund-exceeds' },
+      });
+    });
+
+    it("finds another shop's seller order exactly as an unknown one, and writes nothing", async () => {
+      const o = await paidOrder();
+
+      const result = await unavailable(o, 1, sellerOf(ids.next<'Seller'>()));
+
+      expect(result).toEqual({ ok: false, error: { code: 'ordering.seller-order-not-found' } });
+      expect(gateway.refunds).toHaveLength(0);
+      expect((await rowsOf(o.sellerOrderId)).refunds).toEqual([]);
+    });
+
+    it('refuses once the order is ready, also when it became ready after it was read', async () => {
+      const ready = await paidOrder();
+      await sql.query(
+        'UPDATE ordering.seller_orders SET ready_at = now() WHERE market_id = $1 AND id = $2',
+        [market.marketId, ready.sellerOrderId],
+      );
+      expect(await unavailable(ready, 1)).toEqual({
+        ok: false,
+        error: { code: 'ordering.fulfilment-conflict' },
+      });
+
+      // The ready signal lands between the read and the write: the guarded write refuses it.
+      const racing = await paidOrder();
+      const late = Object.create(deps.refunds) as PrismaRefundRepository;
+      late.findSellerTarget = async (m, so, seller) => {
+        const target = await deps.refunds.findSellerTarget(m, so, seller);
+        await sql.query(
+          'UPDATE ordering.seller_orders SET ready_at = now() WHERE market_id = $1 AND id = $2',
+          [market.marketId, racing.sellerOrderId],
+        );
+        return target;
+      };
+      const result = await sellerUnavailableRefund(
+        { ...deps, refunds: late },
+        sellerOf(racing.sellerId),
+        {
+          sellerOrderId: racing.sellerOrderId,
+          lines: [{ orderLineId: racing.lineId, quantity: 1 }],
+        },
+      );
+      expect(result).toEqual({ ok: false, error: { code: 'conflict.retry' } });
+      expect(gateway.refunds).toHaveLength(0);
+      expect(await rowsOf(racing.sellerOrderId)).toMatchObject({ refunded: '0', refunds: [] });
+    });
+
+    it('refuses an acting-as session, an admin, and while the Market switch is off', async () => {
+      const o = await paidOrder();
+      const input = {
+        sellerOrderId: o.sellerOrderId,
+        lines: [{ orderLineId: o.lineId, quantity: 1 }],
+      };
+      const denied = { ok: false, error: { code: 'access.denied' } };
+
+      expect(await sellerUnavailableRefund(deps, sellerOf(o.sellerId, true), input)).toEqual(
+        denied,
+      );
+      expect(await sellerUnavailableRefund(deps, admin, input)).toEqual(denied);
+      const off = { ...deps, policy: new ConfigOrderingPolicy(markets) };
+      expect(await sellerUnavailableRefund(off, sellerOf(o.sellerId), input)).toEqual({
+        ok: false,
+        error: { code: 'ordering.refund-disabled' },
+      });
+      expect(gateway.refunds).toHaveLength(0);
+    });
+
+    it('is closed in the database: a seller refund only for unavailable units on the seller', async () => {
+      const o = await paidOrder();
+      const done = await refund(o, 1);
+      if (!done.ok) throw new Error('refund');
+      const insert = (actor: string, reason: string, bearer: string, code: string | null) =>
+        sql.query(
+          `INSERT INTO ordering.refunds (id, market_id, tenant_id, order_id, seller_order_id, seller_id,
+             currency, gross_amount, tax_amount, shipping_gross_amount, shipping_tax_amount, reason,
+             actor_population, actor_account_id, state, stripe_idempotency_key, requested_at,
+             loss_bearer, loss_reason_code)
+           SELECT $1, market_id, tenant_id, order_id, seller_order_id, seller_id, currency, 1, 0, 0, 0,
+                  $2, $3, actor_account_id, 'failed', $4, now(), $5, $6
+             FROM ordering.refunds WHERE market_id = $7 AND id = $8`,
+          [
+            ids.next(),
+            reason,
+            actor,
+            `k-${ids.next()}`,
+            bearer,
+            code,
+            market.marketId,
+            done.value.refundId,
+          ],
+        );
+      await expect(insert('seller', 'damaged', 'seller', null)).rejects.toThrow(
+        /refunds_seller_actor_check/,
+      );
+      await expect(insert('seller', 'item-unavailable', 'platform', 'goodwill')).rejects.toThrow(
+        /refunds_seller_actor_check/,
+      );
+      await expect(insert('admin', 'item-unavailable', 'seller', null)).rejects.toThrow(
+        /refunds_seller_actor_check/,
+      );
+      await expect(insert('customer', 'item-unavailable', 'seller', null)).rejects.toThrow(
+        /refunds_actor_population_check/,
+      );
+    });
+  });
+
   describe('who bears the loss', () => {
     it('stores the seller by default, and the platform with its reason code, both audited', async () => {
       const o = await paidOrder();
@@ -1111,7 +1320,8 @@ describe('the closed lists of refunds (database catalog)', () => {
         `SELECT c.conname, pg_get_constraintdef(c.oid) AS def FROM pg_constraint c
            JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace
           WHERE n.nspname = 'ordering' AND t.relname = 'refunds'
-            AND c.conname IN ('refunds_loss_bearer_check', 'refunds_loss_reason_code_check')`,
+            AND c.conname IN ('refunds_loss_bearer_check', 'refunds_loss_reason_code_check',
+              'refunds_reason_check')`,
       );
       const listOf = (name: string) =>
         [...(rows.rows.find((r) => r.conname === name)?.def ?? '').matchAll(/'([a-z-]+)'::text/g)]
@@ -1119,6 +1329,7 @@ describe('the closed lists of refunds (database catalog)', () => {
           .sort();
       expect(listOf('refunds_loss_bearer_check')).toEqual([...LOSS_BEARERS].sort());
       expect(listOf('refunds_loss_reason_code_check')).toEqual([...LOSS_REASON_CODES].sort());
+      expect(listOf('refunds_reason_check')).toEqual([...REFUND_REASONS].sort());
     } finally {
       await sql.end();
     }

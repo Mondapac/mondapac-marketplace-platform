@@ -546,6 +546,14 @@ Tax step 3 built a smaller refund model behind the Market switch `tax.refundCred
 
 **Departures from G2 3.12 (for the software-architect to accept or reverse before the switch is turned on):** no `refund_requests` state machine with `submitted`, `not-sent` and `review`, no `payments.refund` call (ordering calls Stripe through its checkout gateway), no loss bearer, no charge rows (shipping is one cumulative range on the refund), no position EXCLUDE (refunded positions are `units_before` counts), and a separate `credit_notes` table in place of adjustment-note invoices (gap-free numbering waits for the tax agent, AG-3, AG-11). Also open: a refund Stripe reports succeeded and later fails (`charge.refund.updated`) has no handler; an admin resolve for a refund left pending past 23 hours (Hassan L1); the reserve checks the order's state without locking the order row, so a cancel committed at the same moment can pass (lock it `FOR SHARE` before go-live; Hassan L-B); commission and seller-ledger reversal.
 
+#### 3.12b Seller "Mark unavailable" (2026-11-11; order detail decision 6; same switch)
+
+Migration `20261111050000_ordering_seller_unavailable_refunds`. Before a paid seller order is ready, its seller can mark units of its lines unavailable (`POST /ordering/seller/orders/:id/unavailable`, key `ordering.seller-order.mark-unavailable`, scope seller, **protected**). The units are refunded at once through the same `refunds` rows and the same Stripe path as an admin refund (3.12a), so every guard there holds. The seller names lines and units only: no amount, shipping or reason. The refund always has `reason = 'item-unavailable'`, `actor_population = 'seller'` and `loss_bearer = 'seller'` (the worker reverses it in the seller ledger), and once these units leave nothing to send, the shipping fee not yet refunded goes back with them.
+
+- `refunds_reason_check` gains `item-unavailable`; `refunds_actor_population_check` becomes `IN ('admin', 'seller')`; new `refunds_seller_actor_check`: an admin refund never carries `item-unavailable`, and a seller refund is only `item-unavailable`, borne by the seller with no loss reason code.
+- "Not ready" is checked on the read and again in the guarded `refunded_amount` update (`fulfilment = 'to-ship' AND ready_at IS NULL`, same row lock), so a ready signal that lands in between makes the write `stale` (`conflict.retry`). Another shop's seller order is not found. No Login-as-Seller session moves money. Off with `tax.refundCredit.enabled`.
+- The seller order's page lists its refunds (who asked, state, amount, units); this replaces "no seller path" of ordering design 97, which Hassan H1 tied to the missing seller ledger reversal, now built.
+
 ### 3.13 `ordering.saved_addresses` (M6; Ali T6 A, own slice after slice 3; PD15)
 
 | Column | Type | Null | Notes |
