@@ -339,6 +339,55 @@
     }
   },
   {
+    "action": "catalog.culture.category-mark-changed",
+    "targetType": "catalog.culture",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "categoryId": "id",
+      "certificationMark": "enumOf(required|neutral|inherit)",
+      "hadRow": "boolean",
+      "visible": "boolean"
+    },
+    "after": {
+      "categoryId": "id",
+      "certificationMark": "enumOf(required|neutral|inherit)",
+      "hasRow": "boolean",
+      "visible": "boolean"
+    }
+  },
+  {
+    "action": "catalog.culture.created",
+    "targetType": "catalog.culture",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "requiresCertification": "boolean",
+      "status": "enumOf(draft|active|inactive)"
+    }
+  },
+  {
+    "action": "catalog.culture.edited",
+    "targetType": "catalog.culture",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "isDefault": "boolean",
+      "requiresCertification": "boolean",
+      "status": "enumOf(draft|active|inactive)"
+    },
+    "after": {
+      "badgeChanged": "boolean",
+      "isDefault": "boolean",
+      "namesChanged": "boolean",
+      "orderChanged": "boolean",
+      "requiredCertificationTypeChanged": "boolean",
+      "requiresCertification": "boolean",
+      "status": "enumOf(draft|active|inactive)"
+    }
+  },
+  {
     "action": "catalog.product.paused",
     "targetType": "catalog.product",
     "targetId": "id",

@@ -1293,6 +1293,28 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [],
     },
+    // Multi-culture package 1: a culture's code, creator and creation time never change and it is
+    // never deleted (made inactive); names are deleted and re-inserted as a set; a mark row is upserted or deleted.
+    'catalog.cultures': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'badge_colour',
+        'display_order',
+        'is_default',
+        'required_certification_type',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
+    'catalog.culture_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'catalog.culture_categories': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['certification_mark', 'updated_at', 'updated_by', 'visible'],
+    },
     // Product tags package T1: a topic's slug and creator never change and a topic is archived,
     // never deleted; its terms are replaced as a set, so they may be deleted, never updated.
     'catalog.topics': {

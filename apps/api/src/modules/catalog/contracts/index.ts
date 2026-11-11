@@ -45,6 +45,8 @@ export type { OfferMovedPayloadRefused } from '../domain/events/offer-moved-payl
 export {
   CATALOG_BUSINESS_ACTIVITY_EDIT,
   CATALOG_BUSINESS_ACTIVITY_READ,
+  CATALOG_CULTURE_EDIT,
+  CATALOG_CULTURE_READ,
   CATALOG_BRAND_EDIT,
   CATALOG_BRAND_READ,
   CATALOG_OWN_IMPORT_RUN,
