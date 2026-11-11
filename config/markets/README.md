@@ -227,6 +227,10 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
   move, merge or archive of platform categories marks `rechecking` in its unit (catalog design
   4.6, Q-K4). Above it the change is refused with `category.impact-too-large`, and the admin moves
   the subcategories in parts.
+- `maxCategoryImportRows` (required, 1 to 5,000; AU 2,000): the most data rows one category tree
+  import file may hold (categories C7). More is refused before any row is read.
+- `maxCategoryImportBytes` (required, 1 KiB to 10 MiB; AU 5 MiB): the largest category tree import
+  file. The platform-wide import ceiling (10 MiB, 5,000 rows) still applies above it.
 - `maxVariantAttributes` (required, 1 to 5; AU 2): the most variant (option) attributes one
   configurable product may vary on (attributes plan A2). A product whose feature set marks more
   option attributes is refused by the configurable type's variant check

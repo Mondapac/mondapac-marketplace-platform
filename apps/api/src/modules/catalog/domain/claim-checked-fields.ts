@@ -398,6 +398,21 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'editor read model; its texts and search-result fields are CategoryText and CategorySeo',
   },
   FieldIssue: { noCustomerText: 'field path and a problem code' },
+  // The category tree import (C7a): file cells are read, claim-checked (and content-filtered)
+  // in every locale before any plan is made, then written through the editor's own functions.
+  ImportRowTexts: {
+    noCustomerText:
+      'cells of an import file row; every cell is claim-checked before the plan and written as CategoryText',
+  },
+  ParsedImportRow: {
+    noCustomerText:
+      'one import file row; its cells are claim-checked before the plan (category import)',
+  },
+  ParsedImport: { noCustomerText: 'the rows of an import file; see ParsedImportRow' },
+  ColumnsRefusal: { noCustomerText: 'column positions and problem codes of an import header' },
+  ImportRowResult: {
+    noCustomerText: 'row number, slug, action and problem codes of a dry run; no text cell',
+  },
   RestructureChange: {
     noCustomerText: 'ids, a position, a status and a change kind of a move, merge or archive',
   },

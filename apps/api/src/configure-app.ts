@@ -109,11 +109,39 @@ export function isStoreImageUploadRequest(
 /** An admin's category image (categories package C3c): `PUT /catalog/admin/categories/<id>/image`. */
 const CATEGORY_IMAGE_PATH = /^\/catalog\/admin\/categories\/[0-9a-fA-F-]{36}\/image\/?(?:\?.*)?$/;
 
+/**
+ * An admin's category tree import (categories C7a): `POST /catalog/admin/category-tree/import/dry-run`
+ * and `.../apply`, a base64 file of at most 10 MiB (the Market's own cap is lower and checked by
+ * the use case).
+ */
+const CATEGORY_IMPORT_PATH =
+  /^\/catalog\/admin\/category-tree\/import\/(?:dry-run|apply)\/?(?:\?.*)?$/;
+
 /** An admin's slide image (file storage pilot F9): `POST /storefront/admin/slide-images`. */
 const SLIDE_IMAGE_PATH = /^\/storefront\/admin\/slide-images\/?(?:\?.*)?$/;
 
 /** An admin session cookie of any Market: `__Host-session-admin-<MARKET>=...`. */
 const ADMIN_SESSION_COOKIE = /(?:^|;\s*)__Host-session-admin-[A-Z][A-Z0-9_]{1,7}=[^;\s]/;
+
+/**
+ * True for a category tree import upload that may carry the large body: a POST to one of the two
+ * routes that holds an admin session cookie and the CSRF header (the same pre-filter as the
+ * category images). A cheap pre-filter only: the actor guard still checks the session and token.
+ */
+export function isCategoryImportUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'POST' || url === undefined || !CATEGORY_IMPORT_PATH.test(url)) return false;
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
 
 /**
  * True for a slide image upload that may carry the large body (up to two pictures): a POST to the
@@ -313,6 +341,13 @@ export function configureApp(app: NestExpressApplication): void {
   app.useBodyParser('raw', {
     type: (request) => isCategoryImageUploadRequest(request.method, request.url, request.headers),
     limit: PRODUCT_IMAGE_BODY_LIMIT,
+    inflate: false,
+  });
+  // An admin's category tree import takes a base64 file of at most 10 MiB (categories C7a), only
+  // for a request that carries an admin session cookie and the CSRF header.
+  app.useBodyParser('raw', {
+    type: (request) => isCategoryImportUploadRequest(request.method, request.url, request.headers),
+    limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
     inflate: false,
   });
   // An admin's slide image takes up to two such pictures in one body (file storage pilot F9), only

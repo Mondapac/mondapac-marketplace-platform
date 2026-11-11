@@ -387,6 +387,10 @@ import { CategoryDiscard } from './application/use-cases/category-discard.use-ca
 import type { CategoryActionProbes } from './application/categories/category-admin-views';
 import { CategoryEditProbe } from './application/use-cases/category-edit-probe.use-case';
 import { CategoryImportProbe } from './application/use-cases/category-import-probe.use-case';
+import { CategoryImportDryRun } from './application/use-cases/category-import-dry-run.use-case';
+import { CategoryImportApply } from './application/use-cases/category-import-apply.use-case';
+import { CategoryTreeExport } from './application/use-cases/category-tree-export.use-case';
+import { CategoryImportController } from './presentation/category-import.controller';
 import { CategoryRestructureProbe } from './application/use-cases/category-restructure-probe.use-case';
 import { CategoryAdminGet } from './application/use-cases/category-admin-get.use-case';
 import { CategoryAdminTree } from './application/use-cases/category-admin-tree.use-case';
@@ -673,6 +677,7 @@ const RESTRUCTURE_DEPS = {
     OwnAttributeSuggestionController,
     OwnAttributeSuggestionsController,
     CategoryAdminController,
+    CategoryImportController,
     BusinessActivityAdminController,
     TopicAdminController,
     OwnBrandController,
@@ -1122,6 +1127,43 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       adminCategoryReader: true,
       linkStore: true,
+    }),
+    useCaseProvider(CategoryImportDryRun, {
+      adminCategoryReader: true,
+      contentFilter: true,
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      importParsers: true,
+    }),
+    useCaseProvider(CategoryImportApply, {
+      adminCategoryReader: true,
+      contentFilter: true,
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      importParsers: true,
+    }),
+    useCaseProvider(CategoryTreeExport, {
+      unitOfWork: true,
+      store: true,
+      policy: true,
+      sheetWriter: true,
+      clock: true,
     }),
     useCaseProvider(CategoryCreate, {
       contentFilter: true,

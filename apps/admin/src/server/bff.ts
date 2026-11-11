@@ -88,6 +88,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/brands/merge-queue',
     // The category tree and one category with its path and history (catalog), read-only.
     'catalog/admin/categories',
+    // The export of the category tree as a file (catalog, categories C7a; query: `format`,
+    // `status`, `q`).
+    'catalog/admin/category-tree/export',
     // The business activities (catalog; query: `status`, `search`, `afterId`, `limit`).
     'catalog/admin/business-activities',
     // The product tags (catalog topics; query: `status`, `group`, `search`, `afterId`, `limit`).
@@ -180,6 +183,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/topics',
     // A new platform category, as a hidden one (catalog, categories C3).
     'catalog/admin/categories',
+    // The category tree import (catalog, categories C7a): check a file, then apply it. Both carry
+    // the file as base64 and take the larger upload cap.
+    'catalog/admin/category-tree/import/dry-run',
+    'catalog/admin/category-tree/import/apply',
     // Add an attribute as a draft (catalog, attributes package A2).
     'catalog/admin/attributes',
     // The Bulk action menu of the product list (catalog): Activate, Deactivate and Delete over
@@ -440,6 +447,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'pageSize',
   ],
   'catalog/admin/saved-filters': ['listKey'],
+  'catalog/admin/category-tree/export': ['format', 'status', 'q'],
   'catalog/admin/products/export': [
     'format',
     'columns',
@@ -507,6 +515,10 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     categoryId: UUID,
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
+  },
+  'catalog/admin/category-tree/export': {
+    format: /^(csv|xlsx)$/,
+    status: /^(active|hidden|merged|archived)(,(active|hidden|merged|archived)){0,3}$/,
   },
   'catalog/admin/variants': {
     typeCode: /^[a-z][a-z0-9_-]{0,63}$/,
@@ -684,6 +696,7 @@ const MAX_UPLOAD_BODY_BYTES = 14_500 * 1024;
  * A category image (categories C3c) is a picture of at most 4 MiB as base64 (about 5.6 MB). The API
  * accepts 5800 kB for this one route and checks the real size itself.
  */
+const CATEGORY_IMPORT_PATH = /^catalog\/admin\/category-tree\/import\/(?:dry-run|apply)$/;
 const CATEGORY_IMAGE_PATH = /^catalog\/admin\/categories\/[0-9a-f-]{36}\/image$/i;
 const MAX_IMAGE_BODY_BYTES = 5_800 * 1024;
 /**
@@ -698,6 +711,7 @@ const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/i
 /** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
 function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
+  if (method === 'POST' && CATEGORY_IMPORT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
   if (method === 'POST' && CERT_DOCUMENT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'POST' && PRODUCT_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
