@@ -160,7 +160,7 @@ export function SizeRequests({
             ))}
           </div>
           <div className="flex flex-wrap gap-3">
-            <Button type="submit" loading={pending} disabled={pending || !complete}>
+            <Button type="submit" loading={pending} disabled={!complete}>
               {t('send')}
             </Button>
             <Button

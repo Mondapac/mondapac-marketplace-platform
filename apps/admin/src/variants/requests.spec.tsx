@@ -8,7 +8,7 @@ import { expectToast } from '../../test/toast-spy.ts';
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi, type ApiResult } from '../api/client.ts';
-import { RequestsTab } from './requests-tab.tsx';
+import { BY_CODE, RequestsTab } from './requests-tab.tsx';
 import type { RequestItem, RequestList } from './types.ts';
 
 const call = vi.mocked(callApi);
@@ -67,6 +67,15 @@ function mount() {
 }
 
 afterEach(() => cleanup());
+
+describe('refusal messages', () => {
+  it('has a message in the catalogue for every mapped refusal', () => {
+    for (const [code, { key }] of Object.entries(BY_CODE)) {
+      const error = messages.variants.requests.error as Record<string, string>;
+      expect(error[key], code).toBeTruthy();
+    }
+  });
+});
 
 describe.each(MARKETS)('size requests queue ($name)', (m) => {
   beforeEach(() => {

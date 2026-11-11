@@ -32,7 +32,7 @@ type Load =
   | { readonly state: 'failed' };
 
 /** A message key under `variants.requests.error` for a refused decision. */
-const BY_CODE: Readonly<Record<string, { key: string; reload: boolean }>> = {
+export const BY_CODE: Readonly<Record<string, { key: string; reload: boolean }>> = {
   'validation.failed': { key: 'invalid', reload: false },
   'variant-request.stale': { key: 'stale', reload: true },
   'variant-request.not-open': { key: 'stale', reload: true },
@@ -53,6 +53,12 @@ const BY_CODE: Readonly<Record<string, { key: string; reload: boolean }>> = {
   'variant.limit-reached': { key: 'variant-limit', reload: false },
   'claim-text.refused': { key: 'draft-unavailable', reload: false },
   'gtin.duplicate': { key: 'draft-unavailable', reload: false },
+  'variant.id-taken': { key: 'draft-unavailable', reload: false },
+  'variant.unknown': { key: 'draft-unavailable', reload: false },
+  'variant.fixed': { key: 'draft-unavailable', reload: false },
+  'text.blocked-term': { key: 'draft-unavailable', reload: false },
+  'text.invisible-character': { key: 'draft-unavailable', reload: false },
+  'claim-text.check-unavailable': { key: 'unavailable', reload: false },
   'access.denied': { key: 'denied', reload: false },
   'request.throttled': { key: 'throttled', reload: false },
   'request.csrf': { key: 'csrf', reload: false },
@@ -233,7 +239,7 @@ function RequestCard({
       card.current?.querySelector<HTMLElement>('form select, form textarea, form button')?.focus();
     } else if (opened.current) {
       opened.current = false;
-      card.current?.querySelector<HTMLElement>('button')?.focus();
+      card.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus();
     }
   }, [mode]);
 
@@ -389,7 +395,7 @@ function Actions({
   const t = useTranslations('variants.requests');
   return (
     <div className="flex flex-wrap gap-3">
-      <Button type="submit" loading={busy} disabled={busy || disabled}>
+      <Button type="submit" loading={busy} disabled={disabled}>
         {confirm}
       </Button>
       <Button type="button" variant="secondary" disabled={busy} onClick={onCancel}>
