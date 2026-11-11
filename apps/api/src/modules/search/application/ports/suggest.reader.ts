@@ -16,7 +16,7 @@ export interface SuggestOfferHit {
   readonly sellerId: Id<'Seller'>;
   readonly name: string;
   readonly categoryIds: readonly Id<'Category'>[];
-  /** 0: the name starts with the query, 1: the name contains it, 2: seller or category only. */
+  /** 0: the name starts with the query, 1: the name has every word, 2: seller or category only. */
   readonly tier: number;
   readonly rank: number;
 }
@@ -26,7 +26,7 @@ export interface SuggestStoreHit {
   readonly sellerId: Id<'Seller'>;
   readonly slug: string;
   readonly name: string;
-  /** 0: the store name starts with the query, 1: contains it, 2: one of its products matches. */
+  /** 0: the store name starts with the query, 1: it has every word, 2: one of its products matches. */
   readonly tier: number;
   readonly rank: number;
 }
@@ -36,13 +36,13 @@ export interface SuggestStoreHit {
  * All run in the caller's read-only unit, for the context's Market only.
  */
 export interface SuggestReader {
-  /** Offers in order (tier, rank, name, Offer id), at most `limit`. */
+  /** One Offer per product (its best), in order (tier, rank, name, product id), at most `limit`. */
   suggestOffers(
     market: MarketContext,
     request: SuggestRequest,
     limit: number,
   ): Promise<readonly SuggestOfferHit[]>;
-  /** One row per matching Offer, at most `MAX_SCOPE_ROWS + 1` (one more so a cut is known). */
+  /** One row per matching product, at most `MAX_SUGGEST_SCOPE_PRODUCTS + 1` (one more so a cut is known). */
   suggestScopeRows(market: MarketContext, request: SuggestRequest): Promise<readonly ScopeRow[]>;
   /** Stores with an indexed Offer that matches, in order (tier, rank, name, seller id). */
   suggestStores(

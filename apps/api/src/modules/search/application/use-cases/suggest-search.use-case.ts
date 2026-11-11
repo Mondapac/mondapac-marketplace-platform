@@ -2,12 +2,13 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { ImageRef } from '../../domain/image-ref';
-import { countScope } from '../../domain/scope-counts';
+import type { NamedCategory } from '../../domain/scope-counts';
 import type { SearchValidationFailed } from '../../domain/search-query';
 import {
   MAX_SUGGEST_CANDIDATE_OFFERS,
   MAX_SUGGEST_CANDIDATE_STORES,
   MAX_SUGGEST_PRODUCTS,
+  MAX_SUGGEST_SCOPE_PRODUCTS,
   MAX_SUGGEST_STORES,
   parseSuggestQuery,
   type SuggestQuery,
@@ -51,6 +52,47 @@ export interface SuggestAnswer {
 
 export type SuggestSearchFailure = SearchValidationFailed | { readonly code: 'search.unavailable' };
 
+/** How deep a category sits in the live tree (a cycle or a missing parent ends the walk). */
+function depthOf(node: NamedCategory, nodes: ReadonlyMap<Id<'Category'>, NamedCategory>): number {
+  let depth = 0;
+  const seen = new Set<Id<'Category'>>([node.id]);
+  let current = node.parentId === null ? undefined : nodes.get(node.parentId);
+  while (current !== undefined && !seen.has(current.id)) {
+    depth += 1;
+    seen.add(current.id);
+    current = current.parentId === null ? undefined : nodes.get(current.parentId);
+  }
+  return depth;
+}
+
+/**
+ * The category line of a product: the category whose name has a typed word (so "tea" shows Tea, not
+ * an unrelated second category), else the deepest category, ties by name then id: never the
+ * order the document happens to list them in. Null when the tree knows none of them.
+ */
+export function categoryNameOf(
+  categoryIds: readonly Id<'Category'>[],
+  nodes: ReadonlyMap<Id<'Category'>, NamedCategory>,
+  words: readonly string[],
+): string | null {
+  const known = categoryIds.flatMap((id) => {
+    const node = nodes.get(id);
+    return node === undefined ? [] : [node];
+  });
+  const matched = known.filter((node) => {
+    const name = node.name.toLowerCase();
+    return words.some((word) => name.includes(word));
+  });
+  const pool = matched.length > 0 ? matched : known;
+  const best = [...pool].sort(
+    (a, b) =>
+      depthOf(b, nodes) - depthOf(a, nodes) ||
+      a.name.localeCompare(b.name) ||
+      (a.id < b.id ? -1 : 1),
+  )[0];
+  return best?.name ?? null;
+}
+
 const EMPTY: SuggestAnswer = { products: [], stores: [], total: 0, totalIsCapped: false };
 
 /**
@@ -59,7 +101,8 @@ const EMPTY: SuggestAnswer = { products: [], stores: [], total: 0, totalIsCapped
  * call; longer than 100 characters, with a control character or with more than 8 words it is
  * `validation.failed`. Every typed word must match (product name, store name or category, all in the
  * index text), the last one as a prefix. Products come one per product, in the order name starts
- * with the query, name contains it, seller or category only (`ts_rank` breaks ties), at most 5;
+ * with the query, name has every word (stems, punctuation and word order do not matter), seller or
+ * category only (`ts_rank` breaks ties), at most 5;
  * stores at most 3 in the same order, with their indexed Offer count; `total` is the product count of
  * the scope. The index side (Offer candidates, total, store candidates and counts) is cached for
  * a few seconds by Market and query; what is shown never is: catalog and sellers re-check every
@@ -95,7 +138,8 @@ export class SuggestSearch extends UseCase<
     const { market } = context;
     const { textSearchConfig } = this.deps.policy.settings(market);
 
-    const key = `${market.marketId}|${query.text}`;
+    // The canonical query text: punctuation and case variants of a query share an entry.
+    const key = `${market.marketId}|${query.tsQuery}`;
     let candidates = await this.deps.cache.get(key);
     if (candidates === undefined) {
       const read = await this.#readIndex(context, textSearchConfig, query);
@@ -142,14 +186,12 @@ export class SuggestSearch extends UseCase<
       withPrimaryImages(this.deps.images, context, picked),
       picked.length === 0 ? Promise.resolve(null) : this.deps.categoryTree.tree(context),
     ]);
-    const categoryNames = new Map((tree ?? []).map((node) => [node.id, node.name]));
+    const nodes = new Map((tree ?? []).map((node) => [node.id, node]));
     const products = withImages.map((item): SuggestProduct => ({
       productId: item.productId,
       name: item.name,
       sellerName: item.sellerName,
-      categoryName:
-        item.categoryIds.map((id) => categoryNames.get(id)).find((name) => name !== undefined) ??
-        null,
+      categoryName: categoryNameOf(item.categoryIds, nodes, query.words),
       image: item.primaryImage,
     }));
     const stores = candidates.stores.flatMap(({ hit, productCount }): SuggestStore[] => {
@@ -192,11 +234,12 @@ export class SuggestSearch extends UseCase<
           market,
           hits.map((hit) => hit.sellerId),
         );
-        const scope = countScope(rows, [], null);
+        // One row per product: the count is the rows, a floor when the cap was passed.
+        const capped = rows.length > MAX_SUGGEST_SCOPE_PRODUCTS;
         const candidates: SuggestCandidates = {
           offers,
-          total: scope.total,
-          totalIsCapped: scope.totalIsCapped,
+          total: capped ? MAX_SUGGEST_SCOPE_PRODUCTS : rows.length,
+          totalIsCapped: capped,
           stores: hits.map((hit) => ({ hit, productCount: counts.get(hit.sellerId) ?? 0 })),
         };
         return ok(candidates);

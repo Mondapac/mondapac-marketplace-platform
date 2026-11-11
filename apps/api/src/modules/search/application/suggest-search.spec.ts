@@ -151,9 +151,12 @@ describe.each([
         request: {
           textSearchConfig: config,
           query: {
+            words: ['green', 'te'],
             text: 'green te',
             tsQuery: 'green & te:*',
+            nameQuery: 'green:A & te:*A',
             startsWith: 'green te%',
+            firstWordStarts: 'green%',
             contains: '%green te%',
           },
         },
@@ -296,17 +299,59 @@ describe.each([
     ]);
   });
 
-  it('counts products once, however many sellers offer them, and says when the count is cut', async () => {
-    const [a, b] = [id<'Product'>(0x2001), id<'Product'>(0x2002)];
-    scope = [
-      { productId: a, sellerId: SELLER, categoryIds: [] },
-      { productId: a, sellerId: SELLER_B, categoryIds: [] },
-      { productId: b, sellerId: SELLER, categoryIds: [] },
+  it('answers the product count of the scope, and says when it is cut at 1000', async () => {
+    const row = (n: number): ScopeRow => ({
+      productId: id<'Product'>(0x3000 + n),
+      sellerId: SELLER,
+      categoryIds: [],
+    });
+    scope = [row(1), row(2)];
+    const small = await suggest('tea');
+    expect(small.ok && [small.value.total, small.value.totalIsCapped]).toEqual([2, false]);
+
+    cache = new InMemorySuggestCache(new FixedClock(T0));
+    deps = { ...deps, cache };
+    scope = Array.from({ length: 1001 }, (_, n) => row(n));
+    const big = await suggest('tea');
+    expect(big.ok && [big.value.total, big.value.totalIsCapped]).toEqual([1000, true]);
+  });
+
+  it('shows the category the query matched, else the deepest, in a stable order', async () => {
+    const parent = id<'Category'>(0xc1);
+    const child = id<'Category'>(0xc2);
+    const other = id<'Category'>(0xc3);
+    tree = [
+      { id: parent, parentId: null, name: 'Drinks' },
+      { id: child, parentId: parent, name: 'Tea' },
+      { id: other, parentId: null, name: 'Gifts' },
+    ];
+    offers = [
+      hit(1, { categoryIds: [other, parent, child] }),
+      hit(2, { categoryIds: [child, other] }),
+      hit(3, { categoryIds: [parent, other] }),
     ];
 
-    const result = await suggest('tea');
+    const matched = await suggest('tea');
+    expect(matched.ok && matched.value.products.map((p) => p.categoryName)).toEqual([
+      'Tea',
+      'Tea',
+      'Drinks',
+    ]);
+    const deepest = await suggest('product');
+    expect(deepest.ok && deepest.value.products.map((p) => p.categoryName)).toEqual([
+      'Tea',
+      'Tea',
+      'Drinks',
+    ]);
+  });
 
-    expect(result.ok && [result.value.total, result.value.totalIsCapped]).toEqual([2, false]);
+  it('shares one cache entry between punctuation and case variants of a query', async () => {
+    offers = [hit(1)];
+
+    await suggest('Green Tea');
+    await suggest('green-tea!');
+
+    expect(requests).toHaveLength(1);
   });
 
   it('leaves out a store with no indexed Offer', async () => {

@@ -779,10 +779,10 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       textSearchConfig: markets.get(on.marketId).search?.textSearchConfig ?? 'simple',
       query: queryOf(text),
     });
-    const suggestOffers = (text: string, on: MarketContext = market, limit = 60) =>
+    const suggestOffers = (text: string, on: MarketContext = market, limit = 15) =>
       inUnit(on, () => suggestReader.suggestOffers(on, requestOf(text, on), limit), true);
     const suggestStores = (text: string, on: MarketContext = market) =>
-      inUnit(on, () => suggestReader.suggestStores(on, requestOf(text, on), 12), true);
+      inUnit(on, () => suggestReader.suggestStores(on, requestOf(text, on), 6), true);
     const suggestScope = (text: string, on: MarketContext = market) =>
       inUnit(on, () => suggestReader.suggestScopeRows(on, requestOf(text, on)), true);
 
@@ -864,19 +864,129 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       expect(await suggestScope('tea', other)).toHaveLength(2);
     });
 
-    it('lists the scope with one row per Offer, for the product count', async () => {
+    it('lists the scope with one row per product, for the product count', async () => {
       const product = id<'Product'>();
       await seed(
         market,
         doc({ name: 'Green tea', productId: product }),
         doc({ name: 'Green tea', productId: product }),
+        doc({ name: 'Green tea' }),
         doc({ name: 'Coffee' }),
       );
 
       const rows = await suggestScope('gre');
 
       expect(rows).toHaveLength(2);
-      expect(new Set(rows.map((row) => row.productId))).toEqual(new Set([product]));
+      expect(rows.map((row) => row.productId)).toContain(product);
+    });
+
+    it('takes one Offer per product, so the candidates cover distinct products', async () => {
+      const products = [id<'Product'>(), id<'Product'>(), id<'Product'>()];
+      const many: OfferDocument[] = [];
+      for (const [index, productId] of products.entries()) {
+        for (let n = 0; n < 20; n += 1) {
+          many.push(doc({ name: `Tea ${index}`, productId, sellerId: id<'Seller'>() }));
+        }
+      }
+      await seed(market, ...many);
+
+      const hits = await suggestOffers('tea', market, 15);
+
+      expect(hits.map((hit) => hit.name)).toEqual(['Tea 0', 'Tea 1', 'Tea 2']);
+      expect(new Set(hits.map((hit) => hit.productId)).size).toBe(3);
+    });
+
+    describe('the tier of a name', () => {
+      const tiers = async (text: string) =>
+        Object.fromEntries((await suggestOffers(text)).map((hit) => [hit.name, hit.tier]));
+
+      it('counts a name with every word as a name match, whatever the punctuation or word order', async () => {
+        await seed(
+          market,
+          doc({ name: 'Tea, green' }),
+          doc({ name: 'Green-tea sampler' }),
+          doc({ name: 'Mug', searchText: 'Green Tea Shop' }),
+          doc({ name: 'Tea green box' }),
+        );
+
+        expect(await tiers('green tea')).toEqual({
+          'Tea, green': 1,
+          'Green-tea sampler': 0,
+          Mug: 2,
+          'Tea green box': 1,
+        });
+        // The first word starts the name, with the rest in any order: tier 0.
+        expect(await tiers('tea green')).toMatchObject({ 'Tea, green': 0, 'Tea green box': 0 });
+      });
+
+      it('counts a prefix of the last word inside the name', async () => {
+        await seed(
+          market,
+          doc({ name: 'Big green teapot' }),
+          doc({ name: 'Mug', searchText: 'teapot' }),
+        );
+
+        expect(await tiers('green te')).toEqual({ 'Big green teapot': 1 });
+        expect(await tiers('teap')).toEqual({ 'Big green teapot': 1, Mug: 2 });
+      });
+
+      it("uses the Market's stemming: tomatoes finds Tomato where the configuration stems", async () => {
+        await seed(
+          market,
+          doc({ name: 'Tomato' }),
+          doc({ name: 'Mug', searchText: 'tomatoes shop' }),
+        );
+
+        const found = await tiers('tomatoes');
+
+        if (settings.textSearchConfig === 'english') {
+          expect(found).toEqual({ Tomato: 1, Mug: 2 });
+        } else {
+          // `simple` does not stem: the name is not a match, the exact word still is.
+          expect(found).toEqual({ Mug: 2 });
+          expect(await tiers('tomato')).toEqual({ Tomato: 0, Mug: 2 });
+        }
+      });
+
+      it('orders stores by the same tiers, with a stem or punctuation in the name', async () => {
+        const [first, second] = [id<'Seller'>(), id<'Seller'>()];
+        await inUnit(market, () =>
+          storeDocs.upsertMany(
+            market,
+            [
+              {
+                sellerId: first,
+                slug: 'the-tea-house',
+                name: 'The Tea, House',
+                textSearchConfig: settings.textSearchConfig,
+              },
+              {
+                sellerId: second,
+                slug: 'house-of-tea',
+                name: 'Tea House',
+                textSearchConfig: settings.textSearchConfig,
+              },
+            ],
+            T0,
+          ),
+        );
+        await seed(
+          market,
+          doc({ name: 'Cup', sellerId: first, searchText: 'The Tea, House' }),
+          doc({ name: 'Cup', sellerId: second, searchText: 'Tea House' }),
+        );
+
+        const stores = await suggestStores('house tea');
+
+        expect(stores.map((row) => `${row.slug}:${row.tier}`).sort()).toEqual([
+          'house-of-tea:1',
+          'the-tea-house:1',
+        ]);
+        // The name starts with the first word: tier 0 (the stop word "the" is not the first word).
+        expect(
+          (await suggestStores('tea house')).find((r) => r.slug === 'house-of-tea')?.tier,
+        ).toBe(0);
+      });
     });
 
     it('finds a store by its name or by a product, in the order name starts with, contains, product', async () => {

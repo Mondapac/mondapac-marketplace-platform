@@ -329,7 +329,9 @@ export interface RawReadStatements {
     readonly params: {
       readonly textSearchConfig: string;
       readonly query: string;
+      readonly nameQuery: string;
       readonly startsWith: string;
+      readonly firstWordStarts: string;
       readonly contains: string;
       readonly limit: string;
     };
@@ -347,7 +349,9 @@ export interface RawReadStatements {
     readonly params: {
       readonly textSearchConfig: string;
       readonly query: string;
+      readonly nameQuery: string;
       readonly startsWith: string;
+      readonly firstWordStarts: string;
       readonly contains: string;
       readonly limit: string;
     };
@@ -736,28 +740,39 @@ const OFFER_NUMBER_ROWS_SQL = `SELECT n.attr, n.value::text AS value
  LIMIT $6::text::int4`;
 
 // The suggest route (search 1b). `$3` is the prefix query text the application built from letters and
-// digits only (`word & word:*`), `$4` and `$5` are ILIKE patterns it built and escaped (name starts
-// with the typed text, name contains it). All bound; the visitor's text is never part of the SQL.
-// Tier 0 name starts with, 1 name contains, 2 seller or category only; ts_rank breaks ties.
-const OFFER_SUGGEST_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name,
-       d.category_ids::text[] AS category_ids,
-       CASE WHEN d.name ~~* $4::text THEN 0 WHEN d.name ~~* $5::text THEN 1 ELSE 2 END AS tier,
-       ts_rank(d.search_vector, to_tsquery($2::regconfig, $3::text)) AS rank
-  FROM "search"."offer_documents" d
- WHERE d.market_id = $1
-   AND d.search_vector @@ to_tsquery($2::regconfig, $3::text)
- ORDER BY tier ASC, rank DESC, d.name ASC, d.offer_id ASC
- LIMIT $6::text::int4`;
+// digits only (`word & word:*`), `$4` the same words restricted to weight A, the name (`word:A`), `$5`,
+// `$6` and `$7` are ILIKE patterns it built from the words (name starts with the text, with the first
+// word, contains the text). All bound; the visitor's text is never part of the SQL.
+// Tier 0: the name starts with the query (literally, or it has every word and starts with the first
+// word); 1: the name has every word (stems, punctuation and word order do not matter) or contains
+// the text; 2: seller or category only. ts_rank breaks ties. One Offer per product (the best one).
+const SUGGEST_TIER = (alias: string): string => `CASE
+         WHEN ${alias}.name ~~* $5::text
+           OR (${alias}.search_vector @@ to_tsquery($2::regconfig, $4::text) AND ${alias}.name ~~* $6::text) THEN 0
+         WHEN ${alias}.search_vector @@ to_tsquery($2::regconfig, $4::text) OR ${alias}.name ~~* $7::text THEN 1
+         ELSE 2 END`;
 
-const OFFER_SUGGEST_SCOPE_ROWS_SQL = `SELECT d.product_id, d.seller_id, d.category_ids::text[] AS category_ids
+const OFFER_SUGGEST_SQL = `SELECT m.offer_id, m.product_id, m.seller_id, m.name, m.category_ids, m.tier, m.rank
+  FROM (SELECT DISTINCT ON (d.product_id) d.offer_id, d.product_id, d.seller_id, d.name,
+               d.category_ids::text[] AS category_ids,
+               ${SUGGEST_TIER('d')} AS tier,
+               ts_rank(d.search_vector, to_tsquery($2::regconfig, $3::text)) AS rank
+          FROM "search"."offer_documents" d
+         WHERE d.market_id = $1
+           AND d.search_vector @@ to_tsquery($2::regconfig, $3::text)
+         ORDER BY d.product_id ASC, tier ASC, rank DESC, d.offer_id ASC) m
+ ORDER BY m.tier ASC, m.rank DESC, m.name ASC, m.product_id ASC
+ LIMIT $8::text::int4`;
+
+const OFFER_SUGGEST_SCOPE_ROWS_SQL = `SELECT DISTINCT ON (d.product_id) d.product_id, d.seller_id, d.category_ids::text[] AS category_ids
   FROM "search"."offer_documents" d
  WHERE d.market_id = $1
    AND d.search_vector @@ to_tsquery($2::regconfig, $3::text)
- ORDER BY d.offer_id ASC
+ ORDER BY d.product_id ASC, d.offer_id ASC
  LIMIT $4::text::int4`;
 
 const STORE_SUGGEST_SQL = `SELECT s.seller_id, s.slug, s.name,
-       CASE WHEN s.name ~~* $4::text THEN 0 WHEN s.name ~~* $5::text THEN 1 ELSE 2 END AS tier,
+       ${SUGGEST_TIER('s')} AS tier,
        ts_rank(s.search_vector, to_tsquery($2::regconfig, $3::text)) AS rank
   FROM "search"."store_documents" s
  WHERE s.market_id = $1
@@ -765,7 +780,7 @@ const STORE_SUGGEST_SQL = `SELECT s.seller_id, s.slug, s.name,
                 WHERE d.market_id = $1 AND d.seller_id = s.seller_id
                   AND d.search_vector @@ to_tsquery($2::regconfig, $3::text))
  ORDER BY tier ASC, rank DESC, s.name ASC, s.seller_id ASC
- LIMIT $6::text::int4`;
+ LIMIT $8::text::int4`;
 
 /**
  * The list. `certification` holds S1 (with the badge columns of slice 10), S2 with the policy
@@ -1048,13 +1063,15 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
     id: 'search.offer-suggest',
     owner: 'search',
     reason:
-      'the suggest route: prefix full-text match (to_tsquery with :* on the last word) over offer_documents, ordered name-starts-with, name-contains, other, then ts_rank; Prisma has no ranked text search',
+      'the suggest route: prefix full-text match (to_tsquery with :* on the last word) over offer_documents, one Offer per product, ordered by name tier (starts with, has every word, other) then ts_rank; Prisma has no ranked text search',
     design: 'docs/modules/search/search.md',
     sql: OFFER_SUGGEST_SQL,
     params: [
       { name: 'textSearchConfig', type: 'text' },
       { name: 'query', type: 'text' },
+      { name: 'nameQuery', type: 'text' },
       { name: 'startsWith', type: 'text' },
+      { name: 'firstWordStarts', type: 'text' },
       { name: 'contains', type: 'text' },
       { name: 'limit', type: 'text' },
     ],
@@ -1064,7 +1081,7 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
     id: 'search.offer-suggest-scope-rows',
     owner: 'search',
     reason:
-      'the documents of a prefix query with product, seller and category ids, counted by the caller for the suggest total; full-text search is not in Prisma',
+      'one row per matching product (its first Offer) with seller and category ids, counted by the caller for the suggest total; full-text search is not in Prisma',
     design: 'docs/modules/search/search.md',
     sql: OFFER_SUGGEST_SCOPE_ROWS_SQL,
     params: [
@@ -1084,7 +1101,9 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
     params: [
       { name: 'textSearchConfig', type: 'text' },
       { name: 'query', type: 'text' },
+      { name: 'nameQuery', type: 'text' },
       { name: 'startsWith', type: 'text' },
+      { name: 'firstWordStarts', type: 'text' },
       { name: 'contains', type: 'text' },
       { name: 'limit', type: 'text' },
     ],

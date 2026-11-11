@@ -204,12 +204,14 @@ needs none (data catalog 6.3). Its cycle trigger is migration SQL, ruled outside
   operand of `@@` and of `ts_rank`). It serves the header suggestions (prefix match on the last typed
   word, `word & word:*`). The application builds the text from letters and digits only (no operator,
   quote or space is left in a word), so it cannot raise a syntax error, and it travels as a bound
-  value like every other. Three statements, in shapes the list already holds: `search.offer-suggest`
-  (one row per Offer, a `CASE` of two `~~*` comparisons of the name with bound, escaped patterns as the
-  order tier, then `ts_rank`), `search.offer-suggest-scope-rows` (the same rows as
-  `search.offer-scope-rows`, counted by the caller) and `search.store-suggest` (like
-  `search.store-search`, with the same `EXISTS`). `~~*` was already an allowed operator. No aggregate,
-  no other function, no new cast.
+  value like every other. Building safe text is a caller obligation, not something the helper checks:
+  the only builder is `parseSuggestQuery` (`modules/search/domain/suggest-query.ts`), and a spec fails
+  when a statement other than the three below contains `to_tsquery`. Three statements: `search.offer-suggest`
+  (one Offer per product by `DISTINCT ON`, a `CASE` of `~~*` comparisons of the name with bound
+  patterns and `@@` against a weight-A copy of the query as the order tier, then `ts_rank`), `search.offer-suggest-scope-rows` (one row per product,
+  counted by the caller, capped at 1000) and `search.store-suggest` (like
+  `search.store-search`, with the same `EXISTS`). `~~*` was already an allowed operator, and `DISTINCT ON` is a select clause, not a function. No
+  aggregate, no other function, no new cast.
 
 ## Alternatives considered
 - **Prisma with `relationLoadStrategy: 'join'` (option B):** no raw SQL, but one statement is

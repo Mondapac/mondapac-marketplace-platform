@@ -12,9 +12,9 @@ interface Entry {
 }
 
 /**
- * {@link SuggestCache} in the process memory: a bounded map with a time to live. Expired entries
- * are dropped when read and, when the map is full, before the oldest entry is evicted (a `Map`
- * keeps insertion order). Each process has its own cache: a short life makes that harmless.
+ * {@link SuggestCache} in the process memory: a bounded map with a time to live. An expired entry
+ * is dropped when read; when the map is full the oldest entry is evicted (a `Map` keeps insertion
+ * order, and every entry has the same time to live, so the oldest is the first to expire). Each process has its own cache: a short life makes that harmless.
  */
 export class InMemorySuggestCache implements SuggestCache {
   readonly #entries = new Map<string, Entry>();
@@ -42,15 +42,11 @@ export class InMemorySuggestCache implements SuggestCache {
   set(key: string, value: SuggestCandidates): Promise<void> {
     const now = this.#nowMs();
     this.#entries.delete(key);
-    if (this.#entries.size >= this.maxEntries) {
-      for (const [other, entry] of this.#entries) {
-        if (entry.expiresAt <= now) this.#entries.delete(other);
-      }
-      while (this.#entries.size >= this.maxEntries) {
-        const oldest = this.#entries.keys().next();
-        if (oldest.done === true) break;
-        this.#entries.delete(oldest.value);
-      }
+    // Every entry lives the same time, so insertion order is expiry order: the oldest goes first.
+    while (this.#entries.size >= this.maxEntries) {
+      const oldest = this.#entries.keys().next();
+      if (oldest.done === true) break;
+      this.#entries.delete(oldest.value);
     }
     this.#entries.set(key, { value, expiresAt: now + this.ttlMs });
     return Promise.resolve();

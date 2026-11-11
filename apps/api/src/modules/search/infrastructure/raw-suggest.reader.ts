@@ -9,8 +9,9 @@ import type {
 import {
   MAX_SUGGEST_CANDIDATE_OFFERS,
   MAX_SUGGEST_CANDIDATE_STORES,
+  MAX_SUGGEST_SCOPE_PRODUCTS,
 } from '../domain/suggest-query';
-import { MAX_SCOPE_ROWS, type ScopeRow } from '../domain/scope-counts';
+import type { ScopeRow } from '../domain/scope-counts';
 
 const limitOf = (value: number, max: number): string => {
   if (!Number.isSafeInteger(value) || value < 1 || value > max) {
@@ -20,7 +21,7 @@ const limitOf = (value: number, max: number): string => {
 };
 
 /**
- * {@link SuggestReader} over the module's raw read port: three listed statements, bound parameters
+ * {@link SuggestReader} over the module's raw read port: three listed statements (one Offer per product in the first two), bound parameters
  * only (the prefix query text `$3` and both name patterns are built from the visitor's words by
  * `parseSuggestQuery`, and travel as values, never as SQL).
  */
@@ -35,7 +36,9 @@ export class RawSuggestReader implements SuggestReader {
     const rows = await this.rawReads.rawRead(market, 'search.offer-suggest', {
       textSearchConfig: request.textSearchConfig,
       query: request.query.tsQuery,
+      nameQuery: request.query.nameQuery,
       startsWith: request.query.startsWith,
+      firstWordStarts: request.query.firstWordStarts,
       contains: request.query.contains,
       limit: limitOf(limit, MAX_SUGGEST_CANDIDATE_OFFERS),
     });
@@ -57,7 +60,7 @@ export class RawSuggestReader implements SuggestReader {
     const rows = await this.rawReads.rawRead(market, 'search.offer-suggest-scope-rows', {
       textSearchConfig: request.textSearchConfig,
       query: request.query.tsQuery,
-      limit: String(MAX_SCOPE_ROWS + 1),
+      limit: String(MAX_SUGGEST_SCOPE_PRODUCTS + 1),
     });
     return rows.map((row) => ({
       productId: row.productId as Id<'Product'>,
@@ -74,7 +77,9 @@ export class RawSuggestReader implements SuggestReader {
     const rows = await this.rawReads.rawRead(market, 'search.store-suggest', {
       textSearchConfig: request.textSearchConfig,
       query: request.query.tsQuery,
+      nameQuery: request.query.nameQuery,
       startsWith: request.query.startsWith,
+      firstWordStarts: request.query.firstWordStarts,
       contains: request.query.contains,
       limit: limitOf(limit, MAX_SUGGEST_CANDIDATE_STORES),
     });
