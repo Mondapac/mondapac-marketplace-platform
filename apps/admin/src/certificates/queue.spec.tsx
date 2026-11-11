@@ -93,10 +93,11 @@ describe('certificate type names', () => {
 });
 
 describe('certificates menu item', () => {
-  it('shows for a reviewer who may view the queue, and for nobody else', () => {
+  it('shows for a reviewer who may view the queue or the issuers, and for nobody else', () => {
     const ids = (keys: string[]) => visibleNavItems(adminNav, new Set(keys)).map((item) => item.id);
     expect(ids(['certification.seller-certificate.view'])).toContain('certificates');
     expect(ids(['certification.type.view'])).not.toContain('certificates');
+    expect(ids(['certification.issuer.view'])).toContain('certificates');
     expect(ids(['catalog.product.view'])).not.toContain('certificates');
   });
 });

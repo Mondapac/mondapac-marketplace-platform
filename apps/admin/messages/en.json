@@ -1004,6 +1004,115 @@
         "resubmission": "Resubmitted",
         "renewal": "Renewal"
       }
+    },
+    "tabs": {
+      "label": "Certificates sections",
+      "queue": "Review queue",
+      "issuers": "Issuers"
+    },
+    "issuers": {
+      "title": "Certificate issuers",
+      "no-access": "You don't have access to certificate issuers.",
+      "unavailable": "Issuers could not be loaded.",
+      "none-active": "No issuer is active yet, so no certificate that needs an issuer can be approved. Activate one with the expert's approval.",
+      "empty": "No issuers yet. Add one, then activate it with the expert's approval.",
+      "empty-page": "Nothing on this page. Go back to the first page.",
+      "col": {
+        "name": "Issuer",
+        "type": "Type",
+        "state": "State",
+        "accreditation": "Accreditation number",
+        "changed": "State changed (UTC)"
+      },
+      "filter": {
+        "label": "Filter by state",
+        "all": "All"
+      },
+      "state": {
+        "proposed": "Proposed",
+        "active": "Active",
+        "closed-to-new": "Closed to new",
+        "derecognised": "Not recognised"
+      },
+      "new": {
+        "button": "New issuer",
+        "title": "New issuer",
+        "type": "Certificate type",
+        "type-placeholder": "Choose a type",
+        "type-required": "Choose a certificate type.",
+        "name": "Name",
+        "name-help": "Customers see this name on badges. 1 to 200 characters.",
+        "name-required": "Enter a name.",
+        "name-long": "Use 200 characters or fewer.",
+        "accreditation": "Accreditation number (optional)",
+        "accreditation-help": "At most 64 characters.",
+        "accreditation-long": "Use 64 characters or fewer.",
+        "proposed-note": "The issuer starts as Proposed. A seller can't choose it until it's activated.",
+        "cancel": "Cancel",
+        "create": "Create issuer"
+      },
+      "activate": {
+        "button": "Activate",
+        "title": "Activate issuer",
+        "expert-note": "Add the expert's approval before activating this issuer.",
+        "name-label": "Name customers will see",
+        "name-help": "This can't be changed after activation. Check the spelling.",
+        "by": "Confirmed by",
+        "by-help": "1 to 120 characters.",
+        "by-required": "Enter who confirmed the issuer.",
+        "by-long": "Use 120 characters or fewer.",
+        "reference": "Reference",
+        "reference-help": "A document or note reference, 1 to 300 characters.",
+        "reference-required": "Enter a reference.",
+        "reference-long": "Use 300 characters or fewer.",
+        "cancel": "Cancel",
+        "confirm": "Activate",
+        "reload": "Reload"
+      },
+      "expert": {
+        "not-recorded": "Not recorded",
+        "recorded": "Recorded",
+        "view": "View",
+        "confirmed-by": "Confirmed by",
+        "reference": "Reference",
+        "audited": "Viewing is recorded."
+      },
+      "detail": {
+        "title": "Certificate issuer",
+        "back": "Back to issuers",
+        "no-access": "You don't have access to certificate issuers.",
+        "not-found": "This issuer was not found.",
+        "unavailable": "This issuer could not be loaded.",
+        "type": "Type",
+        "accreditation": "Accreditation number",
+        "changed": "State changed (UTC)",
+        "expert": "Expert approval",
+        "affected": "Approved certificates naming this issuer",
+        "by": {
+          "admin": " by an admin",
+          "seed": " by seed"
+        },
+        "name-note": "Customers see this name on badges. Check it before activating: an active issuer can't be renamed.",
+        "reactivation-waiting": "A reactivation is waiting for a second admin.",
+        "view-only": "Your role can't change issuers."
+      },
+      "error": {
+        "invalid": "Check the highlighted fields and try again.",
+        "name-taken": "An issuer with this name already exists for this type.",
+        "accreditation-taken": "An issuer with this accreditation number already exists.",
+        "expert-required": "Add the expert's approval to activate this issuer.",
+        "transition": "This issuer's state changed. Reload the page.",
+        "gone": "This issuer no longer exists. Reload the page.",
+        "type-gone": "This certificate type is not available. Reload the page.",
+        "stale": "This issuer changed while you were looking. Reload the page.",
+        "retry": "Something changed at the same time. Try again.",
+        "denied": "Your role can't change issuers.",
+        "acting-as": "This can't be done while you're signed in as the seller.",
+        "throttled": "Too many requests. Try again in a minute.",
+        "csrf": "Your session needs a refresh. Reload the page.",
+        "unavailable": "The service is not available right now. Try again in a few minutes.",
+        "unknown": "Something went wrong. Try again."
+      }
     }
   },
   "pricing": {

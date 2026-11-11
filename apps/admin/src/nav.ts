@@ -86,7 +86,7 @@ export const adminNav: NavConfig = {
       labelKey: 'nav.certificates',
       href: '/certificates',
       group: 'reviews',
-      anyOf: ['certification.seller-certificate.view'],
+      anyOf: ['certification.seller-certificate.view', 'certification.issuer.view'],
     },
     {
       id: 'review-moderation',
