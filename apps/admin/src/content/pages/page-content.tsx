@@ -79,7 +79,15 @@ export function PageContent({
     body?: Record<string, unknown>,
   ): Promise<boolean> {
     const result = await command.run(method, path, body);
-    if (result === null || !result.ok) return false;
+    if (result === null) return false;
+    if (!result.ok) {
+      // The page changed under the editor: the dialog closes and the banner offers the reload.
+      if (STALE_CODES.has(result.problem.code)) {
+        setEditing(null);
+        setRemoving(null);
+      }
+      return false;
+    }
     setPage(result.page);
     setSaved(true);
     return true;

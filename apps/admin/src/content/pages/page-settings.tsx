@@ -64,8 +64,12 @@ interface CategoryTree {
 function Counter({ value, max }: { readonly value: string; readonly max: number }) {
   const t = useTranslations('content.pages.settings');
   const count = [...value.trim()].length;
+  const over = count > max;
   return (
-    <span className={count > max ? 'text-critical-fg' : ''}>{t('counter', { count, max })}</span>
+    <span className={`shrink-0 whitespace-nowrap ${over ? 'text-critical-fg' : ''}`}>
+      {t('counter', { count, max })}
+      {over ? <span className="sr-only"> {t('over', { n: count - max })}</span> : null}
+    </span>
   );
 }
 
@@ -212,7 +216,7 @@ export function PageSettings({
     const result = await command.run(
       'PUT',
       pageApiPath(ref),
-      requestOf(form, page, (local) => localToInstant(local, zone)),
+      requestOf(form, page, (local) => localToInstant(local, zone), toLocal),
     );
     if (result === null) return;
     if (result.ok) {
@@ -279,12 +283,13 @@ export function PageSettings({
                   dir="ltr"
                   prefix="/l/"
                   error={errorOf('slug')}
-                  help={slugChanged ? t('slug-redirect') : t('slug-help', { max: SLUG_MAX })}
+                  help={t('slug-help', { max: SLUG_MAX })}
                   onChange={(event) => {
                     setTaken(null);
                     change({ slug: event.target.value }, 'slug');
                   }}
                 />
+                {slugChanged ? <Banner tone="attention">{t('slug-redirect')}</Banner> : null}
                 {linkable && categories.length > 0 ? (
                   <Select
                     label={t('linked')}

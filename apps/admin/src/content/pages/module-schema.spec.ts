@@ -45,7 +45,7 @@ describe('what is sent', () => {
         items: [{ icon: 'tax', text: '', href: '' }],
         spans: [{ text: '' }],
       }),
-    ).toEqual({ title: 'Hello', items: [{ icon: 'tax' }] });
+    ).toEqual({ title: 'Hello', items: [{ icon: 'tax' }], spans: [{}] });
   });
 
   it('keeps a half-filled image so the API names what is missing', () => {
@@ -58,6 +58,12 @@ describe('what is sent', () => {
       on: false,
       categoryIds: ['a'],
       productId: 'p',
+    });
+  });
+
+  it('trims texts and keeps empty rows in place so error paths stay on their rows', () => {
+    expect(prune({ items: [{ text: ' a ' }, { text: '' }, { text: 'c' }] })).toEqual({
+      items: [{ text: 'a' }, {}, { text: 'c' }],
     });
   });
 

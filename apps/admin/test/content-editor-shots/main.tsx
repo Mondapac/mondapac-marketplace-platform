@@ -155,7 +155,6 @@ window.fetch = ((input: string, init?: RequestInit) => {
     if (view === 'edit-errors') {
       return refuse('validation.failed', 400, [
         { path: 'config.title', code: 'required' },
-        { path: 'config.image.alt', code: 'required' },
         { path: 'config.href', code: 'format' },
       ]);
     }

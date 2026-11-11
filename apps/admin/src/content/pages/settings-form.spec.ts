@@ -133,6 +133,20 @@ describe('what the API refused', () => {
 });
 
 describe('the body of a save', () => {
+  it('sends a live window that was not touched exactly as it was, seconds included', () => {
+    const timed = page({ startsAt: '2026-12-01T00:00:30Z', endsAt: '2026-12-08T00:00:00Z' });
+    const body = requestOf({ ...formOf(timed, toLocal), title: 'New' }, timed, toInstant, toLocal);
+    expect(body.startsAt).toBe('2026-12-01T00:00:30Z');
+    expect(body.endsAt).toBe('2026-12-08T00:00:00Z');
+    const moved = requestOf(
+      { ...formOf(timed, toLocal), startsAt: '2026-12-02T09:00' },
+      timed,
+      toInstant,
+      toLocal,
+    );
+    expect(moved.startsAt).toBe('2026-12-01T23:00:00.000Z');
+  });
+
   it('replaces all the settings of a landing page, with instants for the window', () => {
     const form = {
       ...base(),

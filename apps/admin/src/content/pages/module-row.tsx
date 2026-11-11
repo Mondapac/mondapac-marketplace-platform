@@ -75,6 +75,8 @@ export function ModuleRow({
           <Switch
             checked={placement.enabled}
             disabled={busy}
+            // A larger hit area for touch (the switch itself is 24 px tall).
+            className="relative after:absolute after:-inset-2.5 after:content-['']"
             aria-label={t('show-switch', { name })}
             onCheckedChange={onToggle}
           />

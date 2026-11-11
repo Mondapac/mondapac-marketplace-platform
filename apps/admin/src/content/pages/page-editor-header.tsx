@@ -41,13 +41,14 @@ export function PageEditorHeader({
     : isKnownTemplate(page.templateKey)
       ? templates(page.templateKey)
       : page.templateKey;
-  const note = !canEdit
-    ? t('read-only')
-    : page.status === 'archived'
+  const note =
+    page.status === 'archived'
       ? t('archived-note')
-      : page.editLevel === 'locked'
-        ? t('locked-note')
-        : null;
+      : !canEdit
+        ? t('read-only')
+        : page.editLevel === 'locked'
+          ? t('locked-note')
+          : null;
   return (
     <>
       <div className="flex min-w-0 flex-col items-start gap-1">

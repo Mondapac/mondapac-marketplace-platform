@@ -59,7 +59,7 @@ function useErrorText() {
   return (code: string | undefined, max?: number, kind?: string): string | undefined => {
     if (code === undefined) return undefined;
     if (code === 'required') return t('required');
-    if (code === 'length') return t('length', { max: max ?? 0 });
+    if (code === 'length') return kind === 'link' ? t('link') : t('length', { max: max ?? 0 });
     if (code === 'format') return t(kind === 'link' ? 'link' : 'format');
     return t('other');
   };

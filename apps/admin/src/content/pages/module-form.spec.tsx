@@ -210,6 +210,27 @@ describe('the settings forms', () => {
 });
 
 describe('refusals', () => {
+  it('draws the refusal of an empty part on that part, not on its neighbour', () => {
+    const last = mount(
+      'faq',
+      {
+        items: [{ question: 'q1', answer: [{ text: '' }, { text: 'b', href: 'bad url' }] }],
+      },
+      new Map([['config.items[0].answer[1].href', 'format']]),
+    );
+    expect(screen.getAllByLabelText(/^Link/)[1]?.getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getAllByLabelText(/^Link/)[0]?.getAttribute('aria-invalid')).toBeNull();
+    type(/^Question/, 'q1!');
+    expect(last()).toEqual({
+      items: [{ question: 'q1!', answer: [{}, { text: 'b', href: 'bad url' }] }],
+    });
+  });
+
+  it('says a too-long link in the link words', () => {
+    mount('banner', {}, new Map([['config.href', 'length']]));
+    expect(screen.getByText('Use a site path such as /offers, or an https link.')).toBeTruthy();
+  });
+
   it('shows each code in words on the field its path names', () => {
     mount(
       'banner',

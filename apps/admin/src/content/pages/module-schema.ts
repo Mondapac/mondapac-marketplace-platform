@@ -158,12 +158,16 @@ export function setAt<T>(value: T, path: Path, next: unknown): T {
   return { ...record, [head]: setAt(record[head], rest, next) } as T;
 }
 
-/** What is sent: no empty text, no empty object or list, so an optional setting left blank is absent. */
+/**
+ * What is sent: texts trimmed, no empty text, object or list, so an optional setting left blank
+ * is absent. A row of a list that is left empty stays as an empty row, so the API's refusal of it
+ * is drawn on the row the person sees (rows are never renumbered).
+ */
 export function prune(value: unknown): unknown {
-  if (typeof value === 'string') return value.trim() === '' ? undefined : value;
+  if (typeof value === 'string') return value.trim() === '' ? undefined : value.trim();
   if (Array.isArray(value)) {
-    const kept = value.map(prune).filter((entry) => entry !== undefined);
-    return kept.length === 0 ? undefined : kept;
+    if (value.length === 0) return undefined;
+    return value.map((entry) => prune(entry) ?? (Array.isArray(entry) ? [] : {}));
   }
   if (typeof value === 'object' && value !== null) {
     const kept = Object.entries(value)

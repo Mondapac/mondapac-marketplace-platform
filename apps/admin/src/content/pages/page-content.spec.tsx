@@ -281,6 +281,15 @@ describe('changes to the draft', () => {
     expect(router.refresh).toHaveBeenCalled();
   });
 
+  it('closes a dialog and offers the reload when the page changed under it', async () => {
+    call.mockResolvedValue(refused('storefront.placement-not-found', 404));
+    mount();
+    fireEvent.click(within(slot('Hero')).getByRole('button', { name: /Edit/ }));
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Save to draft' }));
+    await screen.findByRole('button', { name: 'Reload the page' });
+    expect(screen.queryByText('Edit Banner')).toBeNull();
+  });
+
   it.each([
     ['storefront.page-locked', 409, /locked in the app and cannot be changed/],
     ['storefront.page-archived', 409, /archived page cannot be changed/],

@@ -140,11 +140,11 @@ describe('the Settings tab of a landing page', () => {
     mount();
     expect(screen.getByText(/Lower-case letters, digits and hyphens/)).toBeTruthy();
     fireEvent.change(field('Address'), { target: { value: 'eid' } });
-    expect(screen.getByText(/old address keeps sending buyers/)).toBeTruthy();
+    expect(screen.getByText(/Buyers who use the old address/)).toBeTruthy();
     cleanup();
     mount(page({ status: 'draft', publishedVersionNo: null, publishedAt: null }));
     fireEvent.change(field('Address'), { target: { value: 'eid' } });
-    expect(screen.queryByText(/old address keeps sending buyers/)).toBeNull();
+    expect(screen.queryByText(/Buyers who use the old address/)).toBeNull();
   });
 
   it('marks fields that fail the checks and sends nothing', () => {

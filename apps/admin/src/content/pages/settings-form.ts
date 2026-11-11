@@ -153,7 +153,16 @@ export function requestOf(
   form: SettingsForm,
   page: PageDetail,
   toInstant: (local: string) => string | null,
+  toLocal: (instant: string) => string = () => '',
 ): Record<string, unknown> {
+  // A time left as it was is sent as it was (the form drops the seconds).
+  const own = sourceOf(page);
+  const instant = (local: string, original: string | null | undefined) =>
+    local === ''
+      ? null
+      : original != null && toLocal(original) === local
+        ? original
+        : toInstant(local);
   const seo: Record<string, unknown> = {};
   if (form.seoTitle.trim() !== '') seo.title = form.seoTitle.trim();
   if (form.seoDescription.trim() !== '') seo.description = form.seoDescription.trim();
@@ -171,7 +180,7 @@ export function requestOf(
     slug: form.slug,
     seo,
     linked,
-    startsAt: form.startsAt === '' ? null : toInstant(form.startsAt),
-    endsAt: form.endsAt === '' ? null : toInstant(form.endsAt),
+    startsAt: instant(form.startsAt, own.startsAt),
+    endsAt: instant(form.endsAt, own.endsAt),
   };
 }
