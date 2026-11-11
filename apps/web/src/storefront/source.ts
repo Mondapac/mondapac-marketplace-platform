@@ -43,6 +43,7 @@ import { sellerSignInUrls } from './seller-sign-in.ts';
 import { callSellerSignUp, type SellerSignUpCall } from './seller-sign-up-api.ts';
 import { sampleSellers } from './sample-sellers.ts';
 import { sampleClosedStore, sampleUnavailableProduct } from './sample-unavailable.ts';
+import { keepProductAnswer, keepStoreAnswer } from './page-read-cache.ts';
 import { accountOrderOf, accountOrdersOf, isOrderId, shipToLine } from '../account/live-orders.ts';
 import type {
   AccountOrder,
@@ -115,8 +116,10 @@ export async function loadSlides(position: string, scope?: SlideScope): Promise<
 export async function loadProduct(id: string): Promise<ProductDetail | undefined> {
   // Only the sample has paths that are not product ids; with the API on they are no product.
   if (!isProductId(id)) return storefrontApiConfig() === null ? sampleProduct(id) : undefined;
+  // Shared with the proxy's existence check through the page-read cache: one API read per view.
   const read = await apiGet<ProductDetailBody>(
     `search/product-detail/${encodeURIComponent(id.toLowerCase())}`,
+    { share: keepProductAnswer },
   );
   if (read.kind === 'off') return sampleProduct(id);
   if (read.kind === 'failed') {
@@ -294,7 +297,10 @@ const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 export async function loadSeller(slug: string, page = 1): Promise<SellerShop | undefined> {
   // No sample or real store has any other slug; nothing else reaches the API path.
   if (slug.length > 50 || !STORE_SLUG.test(slug)) return undefined;
-  const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`);
+  // Shared with the proxy's existence check through the page-read cache: one API read per view.
+  const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`, {
+    share: keepStoreAnswer,
+  });
   if (answer.kind === 'off') return sampleSeller(slug);
   if (answer.kind === 'failed') {
     // Only the store module's own answer means "no such store"; a bare 404 is a missing route.
