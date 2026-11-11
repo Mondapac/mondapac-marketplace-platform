@@ -347,6 +347,32 @@ export const CATALOG_PLATFORM_CATEGORY_TARGET = 'catalog.platform-category';
 
 const categoryEditStatus = auditField.enumOf(['active', 'hidden', 'archived'] as const);
 
+/**
+ * The audit target type of a category tree import (categories package C7a). The target id is
+ * derived from the file's SHA-256 (see `importFileTargetId`), because the audit vocabulary has no
+ * text field and the file hash is what the entry must carry.
+ */
+export const CATALOG_CATEGORY_TREE_IMPORT_TARGET = 'catalog.category-tree-import';
+
+/**
+ * An admin applied a category tree import file: counts and the format only. The file's SHA-256 is
+ * the target id (its first 122 bits in a UUID v7 layout). No cell, name or slug is recorded; each
+ * created or changed category has its own audit entry from the editor's use cases.
+ */
+export const CategoryTreeImportedAudit = defineAuditAction({
+  action: 'catalog.category-tree.imported',
+  targetType: CATALOG_CATEGORY_TREE_IMPORT_TARGET,
+  actors: ['authenticated'],
+  after: {
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rows: auditField.integer(),
+    created: auditField.integer(),
+    updated: auditField.integer(),
+    unchanged: auditField.integer(),
+    treeVersion: auditField.integer(),
+  },
+});
+
 /** An admin added a category; it starts hidden (plan decision 5). Counts and flags only: no name, no slug. */
 export const PlatformCategoryCreatedAudit = defineAuditAction({
   action: 'catalog.platform-category.created',
@@ -723,6 +749,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeRelaxationRequestedAudit,
   AttributeRelaxationCancelledAudit,
   AttributeRelaxationExpiredAudit,
+  CategoryTreeImportedAudit,
   PlatformCategoryCreatedAudit,
   PlatformCategoryDetailsChangedAudit,
   PlatformCategoryReorderedAudit,

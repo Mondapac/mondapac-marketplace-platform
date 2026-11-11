@@ -2910,6 +2910,21 @@
     }
   },
   {
+    "action": "catalog.category-tree.imported",
+    "targetType": "catalog.category-tree-import",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "created": "integer",
+      "format": "enumOf(csv|xlsx)",
+      "rows": "integer",
+      "treeVersion": "integer",
+      "unchanged": "integer",
+      "updated": "integer"
+    }
+  },
+  {
     "action": "catalog.platform-category.created",
     "targetType": "catalog.platform-category",
     "targetId": "id",

@@ -345,6 +345,8 @@
     "maxVariantsPerProduct": 3,
     "maxCategoryDepth": 3,
     "maxCategoryChangeTags": 20000,
+    "maxCategoryImportRows": 500,
+    "maxCategoryImportBytes": 1048576,
     "maxVariantAttributes": 3,
     "units": [
       { "code": "g", "labels": { "ja-JP": "g" } },
