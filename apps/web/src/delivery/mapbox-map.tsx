@@ -166,7 +166,12 @@ export function MapboxMap(props: MapboxMapProps) {
         // errors (one tile) leave the map as it is.
         let started = false;
         live.on('error', () => {
-          if (!started && !gone) setFailed(true);
+          if (started || gone) return;
+          // Free the WebGL context before the drawn map takes its place.
+          live.remove();
+          created = null;
+          map.current = null;
+          setFailed(true);
         });
         live.on('load', () => {
           started = true;

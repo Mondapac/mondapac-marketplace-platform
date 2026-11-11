@@ -279,8 +279,10 @@ describe('the Mapbox map', () => {
 
   it('gives way to the drawn map when its style or token fails, but not after it loads', async () => {
     await open();
-    act(() => gl.FakeMap.last!.fire('error'));
+    const failing = gl.FakeMap.last!;
+    act(() => failing.fire('error'));
     expect(screen.getByRole('img', { name: /Map of Greater Brisbane/ })).toBeTruthy();
+    expect(failing.removed).toBe(true);
     cleanup();
     await open();
     const map = gl.FakeMap.last!;
