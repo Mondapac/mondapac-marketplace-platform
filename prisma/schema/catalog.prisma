@@ -1781,7 +1781,6 @@ model CatalogMissingDetailsEmail {
   settledAt     DateTime? @map("settled_at") @db.Timestamptz(6)
 
   @@id([marketId, sellerId, productId])
-  @@index([marketId, state, requestedAt])
   @@map("missing_details_emails")
   @@schema("catalog")
 }

@@ -1485,6 +1485,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     // docs/design/data/catalog.md 3.28: a saved view of an admin list; a filter is a preference, so
     // the application deletes it; only the name and who can use it change.
+    // docs/design/data/catalog.md 3.32: "Email sellers". A pair is claimed again by replacing its
+    // content; the keys and the tenant never change, and rows are never deleted.
+    'catalog.missing_details_emails': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'attempts',
+        'missing_labels',
+        'outcome',
+        'product_name',
+        'requested_at',
+        'requested_by',
+        'seller_name',
+        'settled_at',
+        'state',
+      ],
+    },
     'catalog.saved_filters': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['name', 'updated_at', 'visibility'],

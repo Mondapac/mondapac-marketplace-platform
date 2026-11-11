@@ -111,6 +111,10 @@ export function AttributeLinksTab({
         locale={locale}
         csrfToken={csrfToken}
         onCancel={() => setEditing(false)}
+        onReload={() => {
+          setEditing(false);
+          void fetchLinks();
+        }}
         onSaved={() => {
           setEditing(false);
           setSaved(true);
@@ -237,6 +241,7 @@ function LinksEditor({
   locale,
   csrfToken,
   onCancel,
+  onReload,
   onSaved,
 }: {
   readonly body: DetailBody;
@@ -244,6 +249,7 @@ function LinksEditor({
   readonly locale: string;
   readonly csrfToken: string;
   readonly onCancel: () => void;
+  readonly onReload: () => void;
   readonly onSaved: () => void;
 }) {
   const t = useTranslations('categories.links');
@@ -360,7 +366,7 @@ function LinksEditor({
           {problem === 'stale' ? (
             <>
               {' '}
-              <Button variant="secondary" onClick={onCancel}>
+              <Button variant="secondary" onClick={onReload}>
                 {t('reload')}
               </Button>
             </>

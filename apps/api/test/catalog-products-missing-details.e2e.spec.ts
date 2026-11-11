@@ -18,6 +18,9 @@ import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { ProductFamilyResolver } from '../src/modules/catalog/application/attributes/product-family-resolver';
+import { MISSING_DETAILS_EMAIL_STORE } from '../src/modules/catalog/application/ports/missing-details-email.store';
+import { SELLER_NAMES_READER } from '../src/modules/catalog/application/ports/seller-names.reader';
+import { ATTRIBUTE_ADMIN_READER } from '../src/modules/catalog/application/ports/attribute-admin.reader';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -92,7 +95,19 @@ describe('products missing required details over HTTP (integration)', () => {
           .overrideProvider(ATTRIBUTE_REPOSITORY)
           .useValue(attributes)
           .overrideProvider(ProductFamilyResolver)
-          .useValue(resolver),
+          .useValue(resolver)
+          // The preview reads nothing and claims nothing; these must not reach a database.
+          .overrideProvider(SELLER_NAMES_READER)
+          .useValue({ storeNames: () => Promise.resolve(new Map()) })
+          .overrideProvider(ATTRIBUTE_ADMIN_READER)
+          .useValue({ definitions: () => Promise.resolve([]) })
+          .overrideProvider(MISSING_DETAILS_EMAIL_STORE)
+          .useValue({
+            latest: () => Promise.resolve([]),
+            claim: () => Promise.reject(new Error('a preview must not claim')),
+            pending: () => Promise.resolve([]),
+            settle: () => Promise.resolve(false),
+          }),
     }));
   }
 
@@ -113,7 +128,7 @@ describe('products missing required details over HTTP (integration)', () => {
       seedVersion: null,
       sellerId: null,
       name: 'Attribute editor',
-      permissionKeys: ['catalog.attribute.view'],
+      permissionKeys: ['catalog.attribute.view', 'catalog.attribute.edit'],
       version: 1,
       createdAt: START,
     });
@@ -262,6 +277,44 @@ describe('products missing required details over HTTP (integration)', () => {
         .get(REPORT)
         .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') })
         .expect(401);
+    }, 30_000);
+
+    it('refuses to email sellers without the key, a malformed body or a cross-site call', async () => {
+      await boot();
+      await seeded(code);
+      const url = `${REPORT}/email-sellers`;
+      const editor = adminSession(code, EDITOR, 3);
+      const body = { productIds: [id<'Product'>(0x3001)], dryRun: true };
+      await http()
+        .post(url)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') })
+        .send(body)
+        .expect(401);
+      const noCsrf: Record<string, string> = { ...editor };
+      delete noCsrf['x-csrf-token'];
+      const refusedCsrf = await http().post(url).set(noCsrf).send(body).expect(403);
+      expect(refusedCsrf.body).toMatchObject({ code: 'request.csrf' });
+      for (const bad of [{}, { productIds: [] }, { productIds: ['nope'] }, { ...body, extra: 1 }]) {
+        const refused = await http().post(url).set(editor).send(bad).expect(400);
+        expect(refused.body).toMatchObject({ code: 'validation.failed' });
+      }
+    }, 30_000);
+
+    it('answers a preview of Email sellers and writes nothing', async () => {
+      await boot();
+      await seeded(code);
+      const editor = adminSession(code, EDITOR, 4);
+      const answer = await http()
+        .post(`${REPORT}/email-sellers`)
+        .set(editor)
+        .send({ productIds: [id<'Product'>(0x3001)], dryRun: true });
+      // A Market with no seller page link refuses (503); one with it previews (200).
+      expect([200, 503]).toContain(answer.status);
+      if (answer.status === 200) {
+        expect(answer.body).toMatchObject({ dryRun: true, throttleDays: 7, sellers: [] });
+      } else {
+        expect(answer.body).toMatchObject({ code: 'missing-details-email.unconfigured' });
+      }
     }, 30_000);
   });
 });

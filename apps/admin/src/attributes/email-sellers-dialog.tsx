@@ -1,7 +1,7 @@
 'use client';
 
 import { Badge, Banner, Button, Dialog, SkeletonRows } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import {
@@ -55,6 +55,7 @@ export function EmailSellersDialog({
   readonly onSent: (sellers: number) => void;
 }) {
   const t = useTranslations('attributes.missing-details.email');
+  const format = useFormatter();
   const [preview, setPreview] = useState<Preview>({ state: 'loading' });
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -125,7 +126,7 @@ export function EmailSellersDialog({
   return (
     <Dialog
       open
-      title={t('title', { count: answer === null ? ids.length : answer.sellers.length })}
+      title={t('title', { count: answer === null ? ids.length : count })}
       onClose={onClose}
       actions={
         <>
@@ -179,7 +180,10 @@ export function EmailSellersDialog({
                       ) : (
                         <Badge tone="neutral">
                           {t('skipped', {
-                            date: lastDate === undefined ? '' : lastDate.slice(0, 10),
+                            date:
+                              lastDate === undefined
+                                ? ''
+                                : format.dateTime(new Date(lastDate), { dateStyle: 'medium' }),
                           })}
                         </Badge>
                       )}
@@ -212,6 +216,14 @@ export function EmailSellersDialog({
                         `- ${product.name ?? product.productCode}: ${product.missing.join(', ')}`,
                     )
                     .join('\n')}
+                  {'\n\n'}
+                  {t('preview-close')}
+                  {'\n\n'}
+                  {t('preview-button')}
+                  {'\n\n'}
+                  {t('preview-questions')}
+                  {'\n\n'}
+                  {t('preview-signature')}
                 </p>
                 <p className="m-0 text-sm text-fg-muted">{t('english-only')}</p>
               </div>

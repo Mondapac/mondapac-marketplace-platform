@@ -284,6 +284,11 @@ describe('Attribute links tab', () => {
     serve(ownLinks, fail(409, 'category-links.stale'));
     fireEvent.click(save);
     expect(await screen.findByText(/Someone else changed these links/)).toBeTruthy();
+    // Reload leaves the editor and fetches the links again (it does not just cancel).
+    serve(ownLinks);
+    fireEvent.click(screen.getByRole('button', { name: 'Reload' }));
+    expect(await screen.findByRole('button', { name: 'Edit attribute links' })).toBeTruthy();
+    expect(screen.queryByText(/Someone else changed these links/)).toBeNull();
   });
 
   it('explains a filter the API refuses', async () => {

@@ -218,7 +218,7 @@ describe('Email sellers', () => {
       'csrf',
     );
     expect(await screen.findByText('Will be emailed')).toBeTruthy();
-    expect(screen.getByText('Skipped: emailed 2026-11-08')).toBeTruthy();
+    expect(screen.getByText(/Skipped: emailed .*2026/)).toBeTruthy();
     expect(screen.getByText('1 of your products needs more details')).toBeTruthy();
     expect(screen.getByText(/- Product 1: Country of origin, Storage/)).toBeTruthy();
     expect(screen.getByText(/Sent in English/)).toBeTruthy();

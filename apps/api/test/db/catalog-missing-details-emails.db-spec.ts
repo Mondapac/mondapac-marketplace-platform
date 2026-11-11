@@ -188,6 +188,10 @@ describe.each(TEST_MARKETS)('missing details email requests in market %s (databa
     await expect(
       insert({ state: 'failed', outcome: null, settled_at: T0.toString() }),
     ).rejects.toThrow(/outcome_check/);
+    await expect(insert({ market_id: 'a' })).rejects.toThrow(/market_id_check/);
+    await expect(
+      insert({ state: 'skipped', outcome: 'send-failed', settled_at: T0.toString() }),
+    ).rejects.toThrow(/outcome_check/);
     await expect(insert({ state: 'sent', settled_at: null })).rejects.toThrow(/settled_check/);
     await expect(insert({ product_name: '' })).rejects.toThrow(/product_name_check/);
     await expect(insert({ attempts: 11 })).rejects.toThrow(/attempts_check/);
