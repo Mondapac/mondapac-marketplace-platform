@@ -6,6 +6,8 @@ import { useId, useState, type FormEvent } from 'react';
 import { ACCREDITATION_MAX, API_ISSUERS, NAME_MAX, type TypeChoice } from './types.ts';
 import { useIssuerCall } from './use-issuer-call.ts';
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /** The "New issuer" button and its dialog. The issuer starts as Proposed; its page opens next. */
 export function NewIssuer({
   types,
@@ -76,7 +78,12 @@ function NewIssuerDialog({
       displayName: trimmed,
       ...(acc === '' ? {} : { accreditationNumber: acc }),
     });
-    if (answer.ok) window.location.assign(`/certificates/issuers/${answer.body.issuerId}`);
+    if (answer.ok) {
+      const id = answer.body.issuerId;
+      window.location.assign(
+        UUID.test(id) ? `/certificates/issuers/${id}` : '/certificates/issuers',
+      );
+    }
   }
 
   return (
@@ -106,6 +113,7 @@ function NewIssuerDialog({
         </div>
         <Select
           label={t('type')}
+          required
           value={typeId}
           onChange={(event) => setTypeId(event.target.value)}
           placeholder={t('type-placeholder')}
@@ -117,6 +125,7 @@ function NewIssuerDialog({
         />
         <TextField
           label={t('name')}
+          required
           value={name}
           onChange={(event) => setName(event.target.value)}
           help={t('name-help')}

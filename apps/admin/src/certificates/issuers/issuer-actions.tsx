@@ -10,6 +10,12 @@ import {
   type ExpertReferenceView,
   type IssuerDetail,
 } from './types.ts';
+
+/** The few fields Activate needs: the rest of the issuer is not sent to the browser for it. */
+export type ActivatableIssuer = Pick<
+  IssuerDetail,
+  'issuerId' | 'version' | 'displayName' | 'state'
+>;
 import { useIssuerCall } from './use-issuer-call.ts';
 
 /**
@@ -20,7 +26,7 @@ export function IssuerActions({
   issuer,
   csrfToken,
 }: {
-  readonly issuer: IssuerDetail;
+  readonly issuer: ActivatableIssuer;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('certificates.issuers.activate');
@@ -28,7 +34,9 @@ export function IssuerActions({
   if (issuer.state !== 'proposed') return null;
   return (
     <>
-      <Button onClick={() => setOpen(true)}>{t('button')}</Button>
+      <Button className="max-sm:w-full" onClick={() => setOpen(true)}>
+        {t('button')}
+      </Button>
       {open ? (
         <ActivateDialog issuer={issuer} csrfToken={csrfToken} onClose={() => setOpen(false)} />
       ) : null}
@@ -41,7 +49,7 @@ function ActivateDialog({
   csrfToken,
   onClose,
 }: {
-  readonly issuer: IssuerDetail;
+  readonly issuer: ActivatableIssuer;
   readonly csrfToken: string;
   readonly onClose: () => void;
 }) {
@@ -77,7 +85,7 @@ function ActivateDialog({
       version: issuer.version,
       expertApproval: { confirmedBy: by, reference: ref },
     });
-    if (answer.ok) window.location.reload();
+    if (answer.ok) window.location.assign(`/certificates/issuers/${issuer.issuerId}?activated=1`);
   }
 
   return (
@@ -117,6 +125,7 @@ function ActivateDialog({
         </div>
         <TextField
           label={t('by')}
+          required
           value={confirmedBy}
           onChange={(event) => setConfirmedBy(event.target.value)}
           help={t('by-help')}
@@ -125,6 +134,7 @@ function ActivateDialog({
         />
         <TextField
           label={t('reference')}
+          required
           value={reference}
           onChange={(event) => setReference(event.target.value)}
           help={t('reference-help')}

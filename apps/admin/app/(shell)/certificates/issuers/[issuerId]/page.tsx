@@ -25,10 +25,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** One issuer (certificate issuers design A8): its details, expert approval and Activate. */
 export default async function IssuerPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly issuerId: string }>;
+  readonly searchParams: Promise<{ readonly activated?: string | readonly string[] }>;
 }) {
   const { issuerId } = await params;
+  const { activated } = await searchParams;
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
@@ -43,7 +46,7 @@ export default async function IssuerPage({
     </AdminShell>
   );
   const back = (
-    <p className="mt-4">
+    <p className="mb-4">
       <a className="font-medium text-link underline" href="/certificates/issuers">
         {t('certificates.issuers.detail.back')}
       </a>
@@ -51,6 +54,7 @@ export default async function IssuerPage({
   );
   const message = (key: 'no-access' | 'unavailable' | 'not-found') => (
     <>
+      {back}
       {key === 'unavailable' ? (
         <LoadError
           className="flex flex-col items-start gap-3"
@@ -60,7 +64,6 @@ export default async function IssuerPage({
       ) : (
         <p className="text-fg-muted">{t(`certificates.issuers.detail.${key}`)}</p>
       )}
-      {back}
     </>
   );
   if (!keys.includes(ISSUER_VIEW_PERMISSION)) return shell(message('no-access'));
@@ -80,13 +83,14 @@ export default async function IssuerPage({
   const names = typeNames(types?.kind === 'ok' ? types.body.items : [], locale);
   return shell(
     <>
+      {back}
       <IssuerDetailView
         issuer={result.body}
         typeName={names.get(result.body.typeCode) ?? result.body.typeCode}
         canEdit={keys.includes(ISSUER_EDIT_PERMISSION)}
         csrfToken={gate.session.csrfToken}
+        activated={activated === '1'}
       />
-      {back}
     </>,
   );
 }

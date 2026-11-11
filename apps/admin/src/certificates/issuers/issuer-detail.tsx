@@ -11,7 +11,9 @@ export function IssuerDetailView({
   typeName,
   canEdit,
   csrfToken,
+  activated = false,
 }: {
+  readonly activated?: boolean;
   readonly issuer: IssuerDetail;
   readonly typeName: string;
   readonly canEdit: boolean;
@@ -47,8 +49,23 @@ export function IssuerDetailView({
           <h2 className="text-xl font-semibold wrap-anywhere">{issuer.displayName}</h2>
           <IssuerStateBadge state={issuer.state} />
         </div>
-        {canEdit ? <IssuerActions issuer={issuer} csrfToken={csrfToken} /> : null}
+        {canEdit ? (
+          <IssuerActions
+            issuer={{
+              issuerId: issuer.issuerId,
+              version: issuer.version,
+              displayName: issuer.displayName,
+              state: issuer.state,
+            }}
+            csrfToken={csrfToken}
+          />
+        ) : null}
       </div>
+      {activated ? (
+        <div role="status">
+          <Banner tone="success">{t('activated')}</Banner>
+        </div>
+      ) : null}
       {issuer.state === 'proposed' ? <Banner tone="info">{t('name-note')}</Banner> : null}
       {issuer.pendingReactivation === null ? null : (
         <Banner tone="info">{t('reactivation-waiting')}</Banner>

@@ -161,6 +161,23 @@ describe('new issuer', () => {
   });
 });
 
+describe('new issuer navigation', () => {
+  it('never navigates to an id that is not a UUID', async () => {
+    call.mockResolvedValueOnce({ ok: true, status: 201, body: { issuerId: '../../evil' } });
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign });
+    wrap(<NewIssuer types={types} typeNames={names} csrfToken="c" />);
+    fireEvent.click(screen.getByRole('button', { name: 'New issuer' }));
+    fireEvent.change(screen.getByLabelText(/Certificate type/), {
+      target: { value: types[0]!.typeId },
+    });
+    type(/^Name/, 'X');
+    fireEvent.click(screen.getByRole('button', { name: 'Create issuer' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/certificates/issuers'));
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('activate and expert approval', () => {
   it('offers Activate for a Proposed issuer only', () => {
     wrap(<IssuerActions issuer={detail({ state: 'active' })} csrfToken="c" />);
@@ -169,8 +186,8 @@ describe('activate and expert approval', () => {
 
   it('needs both expert fields, then sends them with the version read', async () => {
     call.mockResolvedValueOnce({ ok: true, status: 200, body: {} });
-    const reload = vi.fn();
-    vi.stubGlobal('location', { reload });
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign });
     wrap(<IssuerActions issuer={detail()} csrfToken="csrf-1" />);
     fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
     expect(
@@ -190,7 +207,9 @@ describe('activate and expert approval', () => {
       { version: 3, expertApproval: { confirmedBy: 'Dr A. Rahman', reference: 'Email of 6 Nov' } },
       'csrf-1',
     );
-    await waitFor(() => expect(reload).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(`/certificates/issuers/${ID}?activated=1`),
+    );
     vi.unstubAllGlobals();
   });
 
@@ -236,6 +255,19 @@ describe('activate and expert approval', () => {
 });
 
 describe('issuer page', () => {
+  it('says the issuer was activated after the redirect', () => {
+    wrap(
+      <IssuerDetailView
+        issuer={detail({ state: 'active' })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+        activated
+      />,
+    );
+    expect(screen.getByText(/Issuer activated/)).toBeTruthy();
+  });
+
   it('names the actor kind, never a person, and says when the role is view only', () => {
     wrap(
       <IssuerDetailView

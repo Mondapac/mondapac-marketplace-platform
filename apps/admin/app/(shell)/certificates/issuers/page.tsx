@@ -25,6 +25,7 @@ export async function generateMetadata() {
   return { title: t('certificates.issuers.title') };
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type SearchParams = Readonly<Record<string, string | readonly string[] | undefined>>;
 const one = (value: string | readonly string[] | undefined) =>
   typeof value === 'string' && value !== '' ? value : null;
@@ -42,7 +43,8 @@ export default async function IssuersPage({
   const params = await searchParams;
   const stateParam = one(params.state);
   const state = ISSUER_STATES.find((value) => value === stateParam) ?? null;
-  const after = one(params.after);
+  const afterParam = one(params.after);
+  const after = afterParam !== null && UUID.test(afterParam) ? afterParam : null;
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {

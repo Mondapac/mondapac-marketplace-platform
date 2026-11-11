@@ -1094,7 +1094,8 @@
         },
         "name-note": "Customers see this name on badges. Check it before activating: an active issuer can't be renamed.",
         "reactivation-waiting": "A reactivation is waiting for a second admin.",
-        "view-only": "Your role can't change issuers."
+        "view-only": "Your role can't change issuers.",
+        "activated": "Issuer activated. Sellers can now choose it."
       },
       "error": {
         "invalid": "Check the highlighted fields and try again.",
