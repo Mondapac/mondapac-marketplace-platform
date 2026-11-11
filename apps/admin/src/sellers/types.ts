@@ -32,6 +32,17 @@ export interface SellerRow {
   readonly timezone: string | null;
   readonly createdAt: string;
   readonly lastChangedAt: string;
+  /** The latest stored health: band and score only. Null before any night measured the seller. */
+  readonly health?: SellerRowHealth | null;
+}
+
+export const HEALTH_BANDS = ['healthy', 'at-risk', 'unhealthy'] as const;
+export interface SellerRowHealth {
+  readonly day: string;
+  readonly kind: 'scored' | 'new' | 'no-data';
+  readonly band: (typeof HEALTH_BANDS)[number] | null;
+  readonly score: number | null;
+  readonly lowestMetric?: string | null;
 }
 
 export interface SellerListCounts {
@@ -56,6 +67,8 @@ export interface SellerListPage {
   readonly areas: readonly { readonly code: string; readonly name: string }[];
   /** Null when the admin may not see identity's state: the state tabs are then not shown. */
   readonly stateCounts: SellerListStateCounts | null;
+  /** True when the health of this page could not be read: every row's `health` is then null. */
+  readonly healthUnavailable?: boolean;
 }
 
 export const STATUSES = [

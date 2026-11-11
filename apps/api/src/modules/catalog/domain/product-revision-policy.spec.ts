@@ -19,6 +19,7 @@ const AU: SensitiveChangesPolicy = {
   anyImage: true,
   variantRemoved: true,
   gtinChanged: true,
+  axisAdded: true,
 };
 const SYNTHETIC: SensitiveChangesPolicy = {
   platformCategories: false,
@@ -28,6 +29,7 @@ const SYNTHETIC: SensitiveChangesPolicy = {
   anyImage: false,
   variantRemoved: false,
   gtinChanged: false,
+  axisAdded: false,
 };
 
 const published: RevisionSummary = {
@@ -38,6 +40,7 @@ const published: RevisionSummary = {
   imageIds: ['i1', 'i2'],
   variantIds: ['v1', 'v2'],
   variantGtins: { v1: '00012345678905', v2: null },
+  variantAxes: ['size'],
 };
 const change = (patch: Partial<RevisionSummary>): RevisionSummary => ({ ...published, ...patch });
 
@@ -142,6 +145,30 @@ describe('classify', () => {
     });
   });
 
+  describe('second axis (variants V9b)', () => {
+    const twoAxes = change({ variantAxes: ['size', 'colour'] });
+
+    it('is sensitive with the reason axis-added in a Market that lists it', () => {
+      expect(classify(published, twoAxes, AU)).toEqual({
+        sensitive: true,
+        reasons: ['axis-added'],
+      });
+    });
+
+    it('is ignored in a Market that does not list it', () => {
+      expect(classify(published, twoAxes, SYNTHETIC)).toEqual({ sensitive: false, reasons: [] });
+      expect(classify(published, twoAxes, { ...SYNTHETIC, axisAdded: true }).reasons).toEqual([
+        'axis-added',
+      ]);
+    });
+
+    it('is not raised for the same axes or for a published Simple product (M-9)', () => {
+      expect(classify(published, change({}), AU).sensitive).toBe(false);
+      const simple = change({ variantAxes: [] });
+      expect(classify(simple, twoAxes, AU).reasons).toEqual([]);
+    });
+  });
+
   it('reads only the fields the Market lists', () => {
     const candidate = change({ categoryIds: ['c9'], variantIds: [], imageIds: ['i2', 'i1'] });
     expect(classify(published, candidate, SYNTHETIC)).toEqual({ sensitive: false, reasons: [] });
@@ -211,6 +238,7 @@ describe('topics (product tags T2)', () => {
       'image-added-or-replaced',
       'variant-removed',
       'gtin-changed',
+      'axis-added',
       'topics-changed',
       'never-published',
       'approval-required',

@@ -41,6 +41,7 @@ describe('ConfigCatalogMarketPolicy', () => {
       primaryImage: false,
       variantRemoved: false,
       gtinChanged: false,
+      axisAdded: false,
     });
   });
 

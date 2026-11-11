@@ -17,6 +17,11 @@ export interface OfferDocumentRepository {
   ): Promise<readonly Id<'Offer'>[]>;
   /** The Offers of this seller that have a document (so a suspension can drop them). */
   offerIdsOfSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<readonly Id<'Offer'>[]>;
+  /** The Offers whose document names one of these categories (search 1a: a category rename). */
+  offerIdsInCategories(
+    market: MarketContext,
+    categoryIds: readonly Id<'Category'>[],
+  ): Promise<readonly Id<'Offer'>[]>;
   /** Removes up to `limit` documents last written before `before`; returns how many. */
   deleteIndexedBefore(
     market: MarketContext,
