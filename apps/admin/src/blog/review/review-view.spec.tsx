@@ -173,4 +173,21 @@ describe('admin blog review', () => {
     ).toBe(true);
     expect(screen.getByText(/not waiting for review/u)).toBeTruthy();
   });
+
+  it('moves focus to the note field when the form opens', async () => {
+    serve();
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Request changes' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText('Note to the author')),
+    );
+  });
+
+  it('shows the live title and no "in review" line when no version is open', async () => {
+    serve(post({ status: 'published', open: null }));
+    show();
+    expect(await screen.findByRole('heading', { name: 'Spring pantry' })).toBeTruthy();
+    expect(screen.queryByText(/in review/u, { selector: 'p' })).toBeNull();
+    expect(screen.getByText(/not waiting for review/u)).toBeTruthy();
+  });
 });

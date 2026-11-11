@@ -22,8 +22,33 @@ import { changesOf } from './review-model.ts';
 
 const SEVERITY_TONE = { error: 'critical', warning: 'attention', notice: 'info' } as const;
 const NOTE_MAX = 1000;
+const PROBLEM_KEYS: readonly string[] = [
+  'problem.self-approval',
+  'problem.enrolment',
+  'problem.checks-failed',
+  'problem.wrong-state',
+  'problem.stale',
+  'problem.gone',
+  'problem.archived',
+  'problem.invalid',
+  'problem.denied',
+  'problem.throttled',
+  'problem.unavailable',
+  'problem.unreachable',
+  'problem.unknown',
+  'problem.retry',
+  'problem.csrf',
+  'problem.too-large',
+  'problem.version-limit',
+];
 
 type Load = 'loading' | 'ready' | 'failed';
+
+/** The message of a refusal; a code this page has no text for reads as the unknown one. */
+const problemKey = (problem: EditorProblem): string => {
+  const key = problem.key.replace('blog.editor.error.', 'problem.');
+  return PROBLEM_KEYS.includes(key) ? key : 'problem.unknown';
+};
 
 /**
  * The review page of one post (design A3): what changed since the live version, the automatic
@@ -52,9 +77,12 @@ export function ReviewView({
   const [asking, setAsking] = useState(false);
   const [note, setNote] = useState('');
   const working = useRef(false);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const form = useRef<HTMLElement>(null);
 
   const fetchAll = useCallback(async () => {
-    setLoad('loading');
+    // A reload after a decision keeps the page on screen; only the first load shows the skeleton.
+    setLoad((now) => (now === 'ready' ? now : 'loading'));
     const one = await callApi<PostDetail>('GET', `${API_BLOG_POSTS}/${postId}`);
     if (!one.ok) {
       if (one.failure.status === 401) {
@@ -77,6 +105,11 @@ export function ReviewView({
     void fetchAll();
   }, [fetchAll]);
 
+  // The note form opens inline: keyboard focus goes to its field.
+  useEffect(() => {
+    if (asking) form.current?.querySelector('textarea')?.focus();
+  }, [asking]);
+
   if (load === 'loading') return <SkeletonRows rows={6} label={t('loading')} />;
   if (load === 'failed' || post === null) {
     return (
@@ -89,6 +122,7 @@ export function ReviewView({
   }
 
   const open = post.open;
+  const shown = open ?? post.live;
   const waiting = post.status === 'in_review' && open !== null;
   const changes = open === null ? [] : changesOf(open.content, post.live?.content ?? null);
 
@@ -112,6 +146,7 @@ export function ReviewView({
       toast.success(t(kind === 'approve' ? 'approved' : 'sent-back'));
       setAsking(false);
       setNote('');
+      heading.current?.focus();
       void fetchAll();
       return;
     }
@@ -134,10 +169,15 @@ export function ReviewView({
       <BackLink href={BLOG_PATH} label={tc('title')} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <h2 className="text-xl font-semibold">{open?.content.title ?? t('untitled')}</h2>
+          <h2 ref={heading} tabIndex={-1} className="text-xl font-semibold outline-none">
+            {shown?.content.title ?? t('untitled')}
+          </h2>
           <p className="text-sm text-fg-muted">
-            {tc(`kind.${post.kind}`)} · {t('version', { no: open?.versionNo ?? 0 })} ·{' '}
-            {post.live === null ? t('not-live') : t('live-version', { no: post.live.versionNo })}
+            {tc(`kind.${post.kind}`)}
+            {waiting && open !== null ? ` · ${t('version', { no: open.versionNo })}` : ''}
+            {post.live === null
+              ? ` · ${t('not-live')}`
+              : ` · ${t('live-version', { no: post.live.versionNo })}`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -165,14 +205,18 @@ export function ReviewView({
       </div>
       {!canReview ? <Banner tone="info">{t('read-only')}</Banner> : null}
       {!waiting ? <Banner tone="info">{t('not-waiting')}</Banner> : null}
+      {open !== null && open.decisionNote !== null ? (
+        <Banner tone="attention">{te('changes-requested', { note: open.decisionNote })}</Banner>
+      ) : null}
       {open?.editedByReviewer ? <Banner tone="info">{te('edited-by-reviewer')}</Banner> : null}
       {problem !== null ? (
         <Banner tone="critical">
-          <span>{t(problem.key.replace('blog.editor.error.', 'problem.'))}</span>
+          <span>{t(problemKey(problem))}</span>
         </Banner>
       ) : null}
       {asking ? (
         <section
+          ref={form}
           aria-label={t('request-changes')}
           className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4"
         >
@@ -187,7 +231,14 @@ export function ReviewView({
             onChange={(event) => setNote(event.target.value)}
           />
           <div className="flex gap-2">
-            <Button variant="secondary" disabled={busy !== null} onClick={() => setAsking(false)}>
+            <Button
+              variant="secondary"
+              disabled={busy !== null}
+              onClick={() => {
+                setAsking(false);
+                heading.current?.focus();
+              }}
+            >
               {t('cancel')}
             </Button>
             <Button
@@ -247,11 +298,6 @@ export function ReviewView({
               </li>
             ))}
           </ul>
-          {open !== null && open.decisionNote !== null ? (
-            <p className="text-sm text-fg-muted">
-              {te('changes-requested', { note: open.decisionNote })}
-            </p>
-          ) : null}
         </section>
       </div>
     </div>

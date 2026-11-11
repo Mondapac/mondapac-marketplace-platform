@@ -5692,7 +5692,7 @@
       "read-only": "You can read this post but not decide on it.",
       "not-waiting": "This post is not waiting for review.",
       "note": "Note to the author",
-      "note-help": "Say what to change. The author reads this note. Up to 1000 characters.",
+      "note-help": "A note is required. Say what to change; the author reads it.",
       "cancel": "Cancel",
       "send-back": "Send back",
       "changes": "Changes since the live version",
