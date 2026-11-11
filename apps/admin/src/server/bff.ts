@@ -649,8 +649,58 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
   return text === '' ? '' : `?${text}`;
 }
 
+/**
+ * The storefront page editor's routes (storefront): a page is named by its id or, while a system
+ * page was never changed, by its key; a slot by its key; a module by its id. Each segment is
+ * checked on its own, so no other path shape reaches the API. The navigation page has its own
+ * routes and is not a page key here.
+ */
+const PAGE_KEYS = [
+  'home',
+  'offers',
+  'express',
+  'category',
+  'search',
+  'product',
+  'sellers',
+  'seller',
+  'cart',
+  'checkout',
+  'order-confirmation',
+  'account',
+];
+const PAGE_SEGMENTS: Readonly<Record<string, (value: string) => boolean>> = {
+  ':page': (value) => UUID.test(value) || PAGE_KEYS.includes(value),
+  ':slot': (value) => /^[a-z][a-z0-9-]{0,31}$/.test(value),
+  ':placement': (value) => UUID.test(value),
+};
+const PAGE_ROUTES: Readonly<Record<string, readonly string[]>> = {
+  // The page's settings, replaced as a whole (a draft change; publishing is another route).
+  PUT: [
+    'storefront/admin/pages/:page',
+    // One module's settings and switch, and the order of a slot's modules.
+    'storefront/admin/pages/:page/slots/:slot/modules/:placement',
+    'storefront/admin/pages/:page/slots/:slot/order',
+  ],
+  // A module added to a slot.
+  POST: ['storefront/admin/pages/:page/slots/:slot/modules'],
+  // A module removed from a slot.
+  DELETE: ['storefront/admin/pages/:page/slots/:slot/modules/:placement'],
+};
+
 function isAllowed(method: string, path: readonly string[]): boolean {
   if (ALLOWED[method]?.has(path.join('/')) === true) return true;
+  const pageRoute = (PAGE_ROUTES[method] ?? []).some((template) => {
+    const parts = template.split('/');
+    return (
+      parts.length === path.length &&
+      parts.every((part, index) => {
+        const check = PAGE_SEGMENTS[part];
+        return check === undefined ? part === path[index] : check(path[index] ?? '');
+      })
+    );
+  });
+  if (pageRoute) return true;
   return (ALLOWED_WITH_ID[method] ?? []).some((template) => {
     const parts = template.split('/');
     return (
