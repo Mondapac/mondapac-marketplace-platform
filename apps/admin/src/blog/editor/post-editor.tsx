@@ -6,6 +6,7 @@ import {
   BackLink,
   Button,
   CheckboxRow,
+  LinkButton,
   LoadError,
   Select,
   SkeletonRows,
@@ -16,7 +17,7 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
-import { API_BLOG_POSTS, API_BLOG_TAXONOMY, BLOG_PATH } from '../types.ts';
+import { API_BLOG_POSTS, API_BLOG_TAXONOMY, BLOG_PATH, postPath } from '../types.ts';
 import { BlockEditor } from './block-editor.tsx';
 import { contentOf, draftOf, isDirty, type Draft } from './editor-model.ts';
 import { editorProblemOf, reasonFor, type EditorProblem } from './editor-errors.ts';
@@ -248,6 +249,13 @@ export function PostEditor({
           </Button>
         </div>
       </div>
+      {canReview && post.status === 'in_review' ? (
+        <Banner tone="info">
+          <LinkButton variant="secondary" href={`${postPath(postId)}/review`}>
+            {t('go-review')}
+          </LinkButton>
+        </Banner>
+      ) : null}
       {!canEdit ? <Banner tone="info">{t('read-only')}</Banner> : null}
       {locked ? <Banner tone="info">{t(`locked.${post.status}`)}</Banner> : null}
       {post.open?.editedByReviewer ? <Banner tone="info">{t('edited-by-reviewer')}</Banner> : null}
