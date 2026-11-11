@@ -9,6 +9,11 @@ import {
   type OfferView,
   type ProductView,
 } from '../catalog/types.ts';
+import {
+  requestAxesOf,
+  type SizeRequestsData,
+  type SizeRequestsView,
+} from '../catalog/size-request-logic.ts';
 import { fileModelOf } from '../catalog/variant-file-model.ts';
 import type { FileModel } from '../catalog/variant-file.ts';
 import type { TableRow } from '../catalog/variants-table-logic.ts';
@@ -37,6 +42,8 @@ export type VariantsPage =
         readonly productScope: 'PLATFORM' | 'SELLER';
         readonly sellerSku: string;
       } | null;
+      /** Request a size and the seller's requests (variants V7); null when the product cannot take any. */
+      readonly sizeRequests: SizeRequestsData | null;
       /** What the variant file reads and writes; null without the key to read the product. */
       readonly fileModel: FileModel | null;
     }
@@ -68,7 +75,7 @@ export async function loadVariantsPage(
   if (offer.kind === 'signed-out') redirect('/session-ended');
   if (offer.kind === 'not-found') return { kind: 'not-found', session };
   if (offer.kind !== 'ok') return { kind: 'unavailable' };
-  const [prices, stock, sources, product, units] = await Promise.all([
+  const [prices, stock, sources, product, units, requests] = await Promise.all([
     canPrice
       ? serverGet<OfferPricesView>(`pricing/seller/offers/${offerId}/prices`)
       : Promise.resolve(null),
@@ -82,8 +89,13 @@ export async function loadVariantsPage(
     canUnits
       ? serverGet<OfferSellUnitsView>(`catalog/seller/offers/${offerId}/sell-units`)
       : Promise.resolve(null),
+    // The list is a courtesy: when it cannot be read the page still works without it.
+    canUnits
+      ? serverGet<SizeRequestsView>('catalog/seller/variant-requests?limit=50')
+      : Promise.resolve(null),
   ]);
   const reads = [prices, stock, sources, units];
+  if (requests?.kind === 'signed-out') redirect('/session-ended');
   if (reads.some((item) => item?.kind === 'signed-out')) redirect('/session-ended');
   if (reads.some((item) => item?.kind === 'not-found')) return { kind: 'not-found', session };
   if (reads.some((item) => item !== null && item.kind !== 'ok')) return { kind: 'unavailable' };
@@ -134,6 +146,7 @@ export async function loadVariantsPage(
       unitsBody === null
         ? null
         : { productScope: unitsBody.productScope, sellerSku: unitsBody.sellerSku },
+    sizeRequests: sizeRequestsOf(unitsBody?.productScope, product, requests, offerId, locale),
     fileModel:
       product?.kind === 'ok'
         ? fileModelOf({
@@ -147,5 +160,24 @@ export async function loadVariantsPage(
             canEditSellUnits: keys.includes(EDIT_PERMISSION),
           })
         : null,
+  };
+}
+
+/** The "Request a size" data of a PLATFORM product with axes, else null. */
+function sizeRequestsOf(
+  scope: 'PLATFORM' | 'SELLER' | undefined,
+  product: Awaited<ReturnType<typeof serverGet<ProductView>>> | null,
+  requests: Awaited<ReturnType<typeof serverGet<SizeRequestsView>>> | null,
+  offerId: string,
+  locale: string,
+): SizeRequestsData | null {
+  if (scope !== 'PLATFORM' || product?.kind !== 'ok' || requests?.kind !== 'ok') return null;
+  const axes = requestAxesOf(product.body, locale);
+  if (axes.length === 0) return null;
+  return {
+    axes,
+    items: requests.body.items.filter((item) => item.offerId === offerId),
+    openCount: requests.body.openCount,
+    maxOpen: requests.body.maxOpen,
   };
 }

@@ -3,31 +3,39 @@
 import { Banner, Tabs } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
+import { RequestsTab } from './requests-tab.tsx';
 import { VariantTypesTab } from './variant-types-tab.tsx';
 import { VariantsTab } from './variants-tab.tsx';
 import { VARIANTS_PATH, type Tab } from './types.ts';
 
 /**
- * The Variants page (variants V6, plan section 9): two tabs. Variant types lists the types with
+ * The Variants page (variants V6, plan section 9): two tabs (three with the review key). Variant types lists the types with
  * the chosen one's settings beside it (below it on a narrow screen); Variants lists every variant
  * of the live products with its issues. An admin with both `catalog.variant-type.edit` and
  * `catalog.attribute.edit` changes how buyers choose; any other admin sees the view-only notice.
+ * Waiting for you (variants V7) is the third tab, for an admin with `catalog.variant-request.review`.
  */
 export function VariantsView({
   canEdit,
   canOpenAttributes,
+  canReview,
   csrfToken,
   initialTab,
   initialId,
 }: {
   readonly canEdit: boolean;
   readonly canOpenAttributes: boolean;
+  /** May answer the size requests of sellers (`catalog.variant-request.review`). */
+  readonly canReview: boolean;
   readonly csrfToken: string;
   readonly initialTab: Tab;
   readonly initialId: string | null;
 }) {
   const t = useTranslations('variants');
-  const [tab, setTab] = useState<Tab>(initialTab);
+  // A link to the Waiting for you tab opens the first tab for an admin who may not answer.
+  const [tab, setTab] = useState<Tab>(
+    initialTab === 'waiting' && !canReview ? 'types' : initialTab,
+  );
   const [selected, setSelected] = useState<string | null>(initialId);
 
   // The address names the tab and the open type, so a link or a reload opens the same view.
@@ -49,6 +57,7 @@ export function VariantsView({
         items={[
           { id: 'types', label: t('tab.types') },
           { id: 'variants', label: t('tab.variants') },
+          ...(canReview ? [{ id: 'waiting', label: t('tab.waiting') }] : []),
         ]}
         activeId={tab}
         onSelect={(id) => setTab(id as Tab)}
@@ -66,9 +75,9 @@ export function VariantsView({
           canOpenAttributes={canOpenAttributes}
           csrfToken={csrfToken}
         />
-      ) : (
-        <VariantsTab />
-      )}
+      ) : null}
+      {tab === 'variants' ? <VariantsTab /> : null}
+      {tab === 'waiting' ? <RequestsTab csrfToken={csrfToken} /> : null}
     </div>
   );
 }

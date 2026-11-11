@@ -124,12 +124,20 @@ function route(locales: readonly string[], overrides: Record<string, ApiResult<u
   });
 }
 
-function mount(props: { canEdit?: boolean; tab?: 'types' | 'variants'; id?: string | null } = {}) {
+function mount(
+  props: {
+    canEdit?: boolean;
+    canReview?: boolean;
+    tab?: 'types' | 'variants' | 'waiting';
+    id?: string | null;
+  } = {},
+) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <VariantsView
         canEdit={props.canEdit ?? true}
         canOpenAttributes
+        canReview={props.canReview ?? false}
         csrfToken="csrf-1"
         initialTab={props.tab ?? 'types'}
         initialId={props.id === undefined ? TYPE : props.id}
@@ -144,6 +152,22 @@ describe.each(MARKETS)('admin Variants page ($name)', ({ locales }) => {
   beforeEach(() => {
     call.mockReset();
     window.history.replaceState(null, '', '/catalog/variants');
+  });
+
+  it('shows the Waiting for you tab only to an admin who may answer size requests', async () => {
+    route(locales);
+    mount({ id: null });
+    await screen.findByRole('list', { name: 'Variant types' });
+    expect(screen.queryByRole('button', { name: 'Waiting for you' })).toBeNull();
+    cleanup();
+    mount({ id: null, canReview: true });
+    expect(await screen.findByRole('button', { name: 'Waiting for you' })).toBeTruthy();
+  });
+
+  it('opens the first tab when a link names Waiting for you without the review key', async () => {
+    route(locales);
+    mount({ id: null, tab: 'waiting' });
+    expect(await screen.findByRole('list', { name: 'Variant types' })).toBeTruthy();
   });
 
   it('lists the variant types with counts and the languages they lack', async () => {

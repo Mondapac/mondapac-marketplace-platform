@@ -29,6 +29,8 @@ import {
   type UnitRow,
 } from './sell-unit-logic.ts';
 import { CHECKBOX, SkuField } from './sku-field.tsx';
+import { SizeRequests } from './size-requests.tsx';
+import type { SizeRequestsData } from './size-request-logic.ts';
 import { LastSizeHint, SizesYouSell } from './sizes-you-sell.tsx';
 import { VariantFileTools } from './variant-file-tools.tsx';
 import type { CellChange, FileModel } from './variant-file.ts';
@@ -56,6 +58,7 @@ export function VariantsTable({
   units,
   csrfToken,
   fileModel = null,
+  sizeRequests = null,
 }: {
   readonly offerId: string;
   readonly rows: readonly TableRow[];
@@ -76,6 +79,8 @@ export function VariantsTable({
   readonly csrfToken: string;
   /** The variant file (design 14b); null when the seller may not read the product. */
   readonly fileModel?: FileModel | null;
+  /** Request a size and the seller's requests (variants V7); null when the product takes none. */
+  readonly sizeRequests?: SizeRequestsData | null;
 }) {
   const t = useTranslations();
   const showPrice = marketCurrency !== null;
@@ -430,6 +435,17 @@ export function VariantsTable({
           disabled={!canEditUnits}
           hintId={lastHintId}
           onChange={setSelling}
+        />
+      ) : null}
+      {showUnits && units.productScope === 'PLATFORM' && sizeRequests !== null ? (
+        <SizeRequests
+          offerId={offerId}
+          axes={sizeRequests.axes}
+          items={sizeRequests.items}
+          openCount={sizeRequests.openCount}
+          maxOpen={sizeRequests.maxOpen}
+          canRequest={units.canEdit}
+          csrfToken={csrfToken}
         />
       ) : null}
       {canBulk && selected.size > 0 ? (

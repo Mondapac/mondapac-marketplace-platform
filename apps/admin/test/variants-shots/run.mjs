@@ -35,6 +35,8 @@ const views = [
   ['types-swatches', '?id=2', 'Variant type details'],
   ['view-only', '?id=1&edit=0', 'Variant type details'],
   ['variants', '?tab=variants', null],
+  ['waiting', '?tab=waiting', 'list:Size requests'],
+  ['waiting-empty', '?tab=waiting&empty=1', 'text:Nothing is waiting for you.'],
 ];
 for (const scheme of ['light', 'dark']) {
   for (const width of [1280, 768, 375]) {
@@ -50,7 +52,10 @@ for (const scheme of ['light', 'dark']) {
         (s) => globalThis.document.documentElement.setAttribute('data-theme', s),
         scheme,
       );
-      if (region) await page.getByRole('region', { name: region }).waitFor();
+      if (region?.startsWith('list:'))
+        await page.getByRole('list', { name: region.slice(5) }).waitFor();
+      else if (region?.startsWith('text:')) await page.getByText(region.slice(5)).waitFor();
+      else if (region) await page.getByRole('region', { name: region }).waitFor();
       else await page.getByText('Show more').waitFor();
       await page.waitForTimeout(300);
       const over = await page.evaluate(

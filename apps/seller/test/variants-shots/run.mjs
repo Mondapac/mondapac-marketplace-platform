@@ -32,6 +32,7 @@ const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH 
 const browser = await chromium.launch();
 const plan = [
   ...['seller', 'platform', 'taken'].flatMap((s) => [1280, 768, 375].map((w) => [s, w])),
+  ...['requests', 'requests-form'].flatMap((s) => [1280, 768, 375].map((w) => [s, w])),
   ...['platform-last'].flatMap((s) => [1280, 375].map((w) => [s, w])),
 ];
 for (const scheme of ['light', 'dark']) {
@@ -47,6 +48,9 @@ for (const scheme of ['light', 'dark']) {
       (s) => globalThis.document.documentElement.setAttribute('data-theme', s),
       scheme,
     );
+    if (scenario === 'requests-form') {
+      await page.getByRole('combobox').first().waitFor();
+    }
     if (scenario === 'taken') {
       await page.getByLabel('SKU for Mango · 2 L').fill('TAKEN-1');
       await page.getByRole('button', { name: /^Save/ }).click();

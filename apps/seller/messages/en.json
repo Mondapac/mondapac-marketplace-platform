@@ -1513,6 +1513,42 @@
       }
     },
     "not-given": "Not given",
+    "size-requests": {
+      "title": "Sizes you asked for",
+      "help": "Is a size missing? Ask for it. We check the request and tell you by email. You can sell the size once it is added and reviewed.",
+      "request": "Request a size",
+      "choose": "Choose",
+      "send": "Send request",
+      "cancel": "Cancel",
+      "sent": "Request sent.",
+      "none": "You have not asked for a size on this product.",
+      "list-label": "Sizes you asked for",
+      "at-limit": "You have {max} requests waiting. Ask again when one is answered.",
+      "status": {
+        "open": "Waiting",
+        "approved": "Added",
+        "mapped": "Already offered",
+        "declined": "Declined"
+      },
+      "approved-note": "The size was added to the product. It can be sold after review.",
+      "reason": "Reason: {reason}",
+      "error": {
+        "invalid": "Choose a value for every field.",
+        "not-found": "This offer could not be found.",
+        "option-unknown": "One of those values is not available. Reload the page and try again.",
+        "variant-exists": "The product already has this size. Reload the page.",
+        "already-open": "You have already asked for this size.",
+        "limit-reached": "You have {max} requests waiting. Ask again when one is answered.",
+        "daily-limit": "You have sent many requests today. Try again tomorrow.",
+        "not-configurable": "This product cannot take a new size right now.",
+        "not-eligible": "Your store cannot send requests right now.",
+        "denied": "You cannot send requests.",
+        "throttled": "Too many requests. Try again in a moment.",
+        "csrf": "Your session could not be checked. Reload the page and try again.",
+        "unavailable": "The request could not be sent. Try again later.",
+        "unknown": "Something went wrong. Try again."
+      }
+    },
     "variants-table": {
       "title": "Prices and stock by variant",
       "tab": "Variants",
