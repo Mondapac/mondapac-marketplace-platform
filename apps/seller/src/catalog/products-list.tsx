@@ -407,8 +407,7 @@ export function ProductsList({
           if (saved?.items.some((item) => item.id === id)) openSaved(id);
           else if (activeSaved !== undefined) {
             // A saved filter belongs to its own tab: a built-in tab opens as it is, without the
-            // saved filter's search, filters or sort.
-            setDraft('');
+            // saved filter's search, filters or sort. The search box follows the address.
             go({ ...DEFAULT_QUERY, view: id as View, pageSize: query.pageSize });
           } else go({ view: id as View });
         }}
