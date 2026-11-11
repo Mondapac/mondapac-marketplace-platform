@@ -54,9 +54,12 @@ CREATE UNIQUE INDEX "seller_refund_limits_default_key" ON "ordering"."seller_ref
 CREATE UNIQUE INDEX "seller_refund_limits_seller_key" ON "ordering"."seller_refund_limits" ("market_id", "seller_id")
   WHERE "seller_id" IS NOT NULL;
 
--- The 24-hour count of a seller's own refunds, read under the guard's lock on every seller refund.
-CREATE INDEX "refunds_seller_requested_at_idx" ON "ordering"."refunds" ("market_id", "seller_id", "requested_at")
-  WHERE "actor_population" = 'seller';
+-- The 24-hour count and sum of a seller's own refunds not failed, read under the guard's lock on
+-- every seller refund: an index-only scan (Mojtaba). The query repeats both predicate clauses.
+-- No CONCURRENTLY: the table is empty in every environment (the switch is off).
+CREATE INDEX "refunds_market_id_seller_id_requested_at_idx" ON "ordering"."refunds" ("market_id", "seller_id", "requested_at")
+  INCLUDE ("gross_amount")
+  WHERE "actor_population" = 'seller' AND "state" <> 'failed';
 
 GRANT SELECT, INSERT, UPDATE ("max_count", "max_amount", "currency", "version", "updated_at", "updated_by_account_id"), DELETE
   ON TABLE "ordering"."seller_refund_limits" TO "mondapac_app";

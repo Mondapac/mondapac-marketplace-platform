@@ -177,23 +177,28 @@ export class PrismaRefundRepository implements RefundRepository {
     since: Temporal.Instant,
   ): Promise<SellerRefundGuard> {
     const tx = this.prisma.tx(market);
-    // INSERT ... ON CONFLICT DO UPDATE: the row is made or updated, and either way locked until
-    // the unit ends; a second seller refund of the same seller waits here, then counts this one.
-    await tx.orderingSellerRefundGuard.upsert({
-      where: {
-        marketId: market.marketId,
-        marketId_sellerId: { marketId: market.marketId, sellerId },
-      },
-      create: {
-        marketId: market.marketId,
-        tenantId: market.tenantId,
-        sellerId,
-        checkedAt: toDate(at),
-        lastAlertedAt: null,
-        alerts: 0,
-      },
-      update: { checkedAt: toDate(at) },
+    // Made with INSERT ... ON CONFLICT DO NOTHING, which waits for another unit inserting the same
+    // row and never raises a unique violation (an upsert with this where is a read then an
+    // insert in Prisma); then locked by the update until the unit ends. A second seller refund
+    // of the same seller waits here, then counts this one (READ COMMITTED: a fresh snapshot).
+    await tx.orderingSellerRefundGuard.createMany({
+      data: [
+        {
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          sellerId,
+          checkedAt: toDate(at),
+          lastAlertedAt: null,
+          alerts: 0,
+        },
+      ],
+      skipDuplicates: true,
     });
+    const locked = await tx.orderingSellerRefundGuard.updateMany({
+      where: { marketId: market.marketId, sellerId },
+      data: { checkedAt: toDate(at) },
+    });
+    if (locked.count !== 1) throw new Error('ordering: the seller refund guard row is missing');
     const limits = await this.findRefundLimits(market, sellerId);
     const used = await tx.orderingRefund.aggregate({
       where: {

@@ -189,11 +189,12 @@ export const ADMIN_PLATFORM_IMPORT_FINISHED = 'admin.platform-import-finished';
 
 /**
  * A seller's refund (units marked unavailable) was refused because it would pass the seller's cap
- * of refunds or amount in 24 hours (order detail decision 6; Hassan F2). At most one a day per
- * seller. The notice holds the seller id and which cap only.
+ * of refunds or amount in 24 hours (order detail decision 6; Hassan F2), or because no cap is in
+ * force. At most one a day per seller. The notice holds the seller id and which cap only.
  */
 export const ADMIN_SELLER_REFUND_LIMIT_REACHED = 'admin.seller-refund-limit-reached';
-export const REFUND_LIMIT_KINDS = ['count', 'amount'] as const;
+/** `unset`: a seller refund was refused because no cap is in force (the admin must set one). */
+export const REFUND_LIMIT_KINDS = ['count', 'amount', 'unset'] as const;
 
 /** A review waits in the held tab of the moderation queue (buyer reviews, package 4b). */
 export const ADMIN_REVIEW_HELD = 'admin.review-held';

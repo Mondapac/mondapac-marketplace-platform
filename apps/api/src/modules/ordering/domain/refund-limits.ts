@@ -18,6 +18,10 @@ export const REFUND_LIMIT_WINDOW = { hours: 24 } as const;
 export const REFUND_LIMIT_KINDS = ['count', 'amount'] as const;
 export type RefundLimitKind = (typeof REFUND_LIMIT_KINDS)[number];
 
+/** Why the admins are alerted: a cap was reached, or no cap is in force (`unset`; Hassan). */
+export const REFUND_LIMIT_ALERTS = [...REFUND_LIMIT_KINDS, 'unset'] as const;
+export type RefundLimitAlert = (typeof REFUND_LIMIT_ALERTS)[number];
+
 /** One stored cap: the Market's default (`sellerId` null) or one seller's own. */
 export interface RefundLimit {
   readonly id: Id<'SellerRefundLimit'>;

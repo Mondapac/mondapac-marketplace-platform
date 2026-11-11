@@ -22,6 +22,7 @@ import {
   REFUND_LIMIT_WINDOW,
   checkRefundLimit,
   limitInForce,
+  type RefundLimitAlert,
   type RefundLimitKind,
 } from '../domain/refund-limits';
 import { isActingAsSession } from './acting-as';
@@ -358,6 +359,9 @@ async function executeRefund(
   if (!reserved.ok) {
     if (reserved.error.code === 'ordering.refund-limit-reached') {
       await alertRefundLimit(deps, context, priced, reserved.error.limit);
+    } else if (reserved.error.code === 'ordering.refund-limit-unset') {
+      // No cap in force refuses silently otherwise: the admins are told to set one (Hassan).
+      await alertRefundLimit(deps, context, priced, 'unset');
     }
     return reserved;
   }
@@ -370,7 +374,7 @@ async function executeRefund(
 const alertLogger = new Logger('SellerRefundLimits');
 
 /**
- * Tells the admins that a seller reached a cap (an outbox event in a unit of its own, since the
+ * Tells the admins that a seller reached a cap, or that none is in force (an outbox event in a unit of its own, since the
  * refused unit rolled back), at most once in 24 hours per seller. A failure here is logged and
  * the seller still gets the refusal: no money moved either way.
  */
@@ -378,7 +382,7 @@ async function alertRefundLimit(
   deps: OrderingDependencies,
   context: CallContext,
   refused: Refund,
-  limit: RefundLimitKind,
+  limit: RefundLimitAlert,
 ): Promise<void> {
   const at = refused.requestedAt;
   try {

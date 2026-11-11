@@ -4,6 +4,6 @@ SET statement_timeout = '60s';
 
 -- Reverses 20261111060000_ordering_seller_refund_limits: the caps an admin set and the guard
 -- rows go; with no cap in force the seller path refuses every request until they are set again.
-DROP INDEX "ordering"."refunds_seller_requested_at_idx";
+DROP INDEX "ordering"."refunds_market_id_seller_id_requested_at_idx";
 DROP TABLE "ordering"."seller_refund_guards";
 DROP TABLE "ordering"."seller_refund_limits";

@@ -1034,7 +1034,10 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         });
         expect(gateway.refunds).toHaveLength(0);
         expect((await rowsOf(o.sellerOrderId)).refunds).toHaveLength(0);
-        expect(alerts()).toHaveLength(0);
+        // The admins are told to set one (Hassan), once a day.
+        expect((await unavailable(o, 1)).ok).toBe(false);
+        expect(alerts()).toHaveLength(1);
+        expect(alerts()[0]).toMatchObject({ payload: { sellerId: o.sellerId, limit: 'unset' } });
       });
 
       it('refuses a refund past the count in 24 hours and alerts the admins once a day', async () => {
@@ -1102,6 +1105,54 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
 
         expect(both.filter((r) => r.ok)).toHaveLength(1);
         expect(both.find((r) => !r.ok)).toEqual({
+          ok: false,
+          error: { code: 'ordering.refund-limit-reached', limit: 'count' },
+        });
+        expect(gateway.refunds).toHaveLength(1);
+      });
+
+      it('makes a second refund of a new seller wait for the first under the guard, then count it', async () => {
+        const sellerId = ids.next<'Seller'>();
+        await setCap(sellerId, 1, '9999999999');
+        const a = await paidOrder(sellerId);
+        const b = await paidOrder(sellerId);
+        // The first refund stops right after it made and locked the seller's guard row.
+        const real = deps.refunds;
+        let entered!: () => void;
+        const inGuard = new Promise<void>((resolve) => (entered = resolve));
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => (release = resolve));
+        const holding = Object.create(real) as typeof real;
+        holding.guardSellerRefunds = async (...args) => {
+          const guard = await real.guardSellerRefunds(...args);
+          entered();
+          await held;
+          return guard;
+        };
+        const first = new SellerMarkUnavailable(gate, { ...deps, refunds: holding }).execute(
+          sellerOf(sellerId),
+          {
+            sellerOrderId: a.sellerOrderId,
+            lines: [{ orderLineId: a.lineId, quantity: 1 }],
+            expectedRefunds: 0,
+          },
+        );
+        await inGuard;
+        const second = unavailable(b, 1);
+        // Wait until the second is blocked on the guard row the first holds.
+        for (let tries = 0; ; tries += 1) {
+          const blocked = await sql.query<{ n: string }>(
+            `SELECT count(*) AS n FROM pg_stat_activity
+              WHERE cardinality(pg_blocking_pids(pid)) > 0 AND query ILIKE '%seller_refund_guards%'`,
+          );
+          if (blocked.rows[0]!.n !== '0') break;
+          if (tries > 200) throw new Error('the second refund never waited on the guard row');
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        release();
+
+        expect((await first).ok).toBe(true);
+        expect(await second).toEqual({
           ok: false,
           error: { code: 'ordering.refund-limit-reached', limit: 'count' },
         });
