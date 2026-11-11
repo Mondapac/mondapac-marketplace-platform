@@ -1,5 +1,7 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
+import type { AuditTrailReader } from '../../../platform/audit/audit-trail-reader';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { ChangeActorSource } from '../../../platform/audit/change-trail';
 import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { BatchCodeCrypto } from './ports/batch-code-crypto';
@@ -54,6 +56,10 @@ export interface PromotionsDependencies {
   /** Spends an admin's fresh two-step proof inside the use case's own unit. */
   readonly stepUp: StepUpProofConsumer;
   readonly audit: AuditWriter;
+  /** The promotions' own audit rows, for the activity of a promotion (reads only). */
+  readonly auditTrail: AuditTrailReader;
+  /** Names the accounts of those rows (identity's view of who may be named). */
+  readonly actors: ChangeActorSource;
   readonly ids: IdGenerator;
   readonly clock: Clock;
 }

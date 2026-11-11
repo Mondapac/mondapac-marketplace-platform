@@ -25,6 +25,10 @@ export interface ReviewQueueRepository {
   find(market: MarketContext, id: Id<'PromotionReview'>): Promise<ReviewEntry | null>;
   /** Oldest first. */
   listOpen(market: MarketContext, limit: number): Promise<readonly ReviewEntry[]>;
+  /** The promotions that have an OPEN entry, and how many entries are open. */
+  openSummary(
+    market: MarketContext,
+  ): Promise<{ readonly count: number; readonly promotionIds: readonly Id<'Promotion'>[] }>;
   decide(
     market: MarketContext,
     id: Id<'PromotionReview'>,
