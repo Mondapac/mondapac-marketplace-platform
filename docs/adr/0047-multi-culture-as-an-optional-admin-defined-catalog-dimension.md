@@ -40,7 +40,7 @@ carts and admins (ADR-0003 decision 4, ADR-0018) and needs a country-level chang
 2. **One optional switch, in the settings store.** `multi-culture` is a platform-level Market
    setting kept in the `settings` module (ADR-0042 decision 4) with `enabled`, `defaultCultures` and
    `showChooserOnFirstVisit`, and its own keys `settings.multi-culture.view` and
-   `settings.multi-culture.manage` (ADR-0042 decision 2). A missing row means the setting's default, which is off. Its safe value, returned when the store cannot be read, is the restrictive one: the filter on, with the Market's marked default culture only (ADR-0026 decision 5), so a read failure never shows more than the default culture. The setting is reviewed by security-tester because it decides what buyers see (ADR-0026
+   `settings.multi-culture.manage` (ADR-0042 decision 2). Boot seeding writes the default row with the switch off (ADR-0026 decision 4). Its safe value, returned on a missing row or when the store cannot be read, is the restrictive one: the filter on, with the Market's marked default culture only (ADR-0026 decision 5), so a read failure never shows more than the default culture. The setting is reviewed by security-tester because it decides what buyers see (ADR-0026
    decision 9). While the switch is off the culture filter is not applied at all, so what buyers see
    is exactly what they see today: no chooser, no culture badge, and stored buyer choices are
    ignored. It can be turned on only when at least two cultures are Active and each still has an approved seller after the one-time re-check below. The confirmation shows how many Offers and sellers each culture would show or hide.
