@@ -1820,7 +1820,7 @@
       "lineCount": "integer",
       "lossBearer": "enumOf(seller|platform)",
       "lossReasonCode": "optional(enumOf(platform-error|carrier-loss|seller-unrecoverable|fraud-loss|goodwill|other))",
-      "reason": "enumOf(not-received|damaged|wrong-item|not-as-described|seller-cancelled|other)",
+      "reason": "enumOf(not-received|damaged|wrong-item|not-as-described|seller-cancelled|other|item-unavailable)",
       "sellerOrderId": "id",
       "tax": "optional(money)"
     }
