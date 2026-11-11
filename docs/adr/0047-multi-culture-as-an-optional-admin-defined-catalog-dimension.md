@@ -30,7 +30,7 @@ The alternative, a second Market per culture, was compared and rejected: it woul
 carts and admins (ADR-0003 decision 4, ADR-0018) and needs a country-level change to ADR-0002.
 
 ## Decision
-1. **A culture is data owned by `catalog`.** An admin defines it per Market at Catalog › Cultures:
+1. **A culture is data owned by `catalog`** (the membership table of decision 3 is owned by `sellers`). An admin defines it per Market at Catalog › Cultures:
    `catalog.cultures` (fixed English code, status Draft/Active/Inactive, order, optional
    `required_certification_type`, colour or badge) and `catalog.culture_names` (name and short
    description per locale; English required; a locale is published only when all its names exist;
@@ -40,7 +40,7 @@ carts and admins (ADR-0003 decision 4, ADR-0018) and needs a country-level chang
 2. **One optional switch, in the settings store.** `multi-culture` is a platform-level Market
    setting kept in the `settings` module (ADR-0042 decision 4) with `enabled`, `defaultCultures` and
    `showChooserOnFirstVisit`, and its own keys `settings.multi-culture.view` and
-   `settings.multi-culture.manage` (ADR-0042 decision 2). Its safe value, returned on a missing row or a read failure, is the restrictive one: the filter on, with the Market's marked default culture only (ADR-0026 decision 5). A read failure therefore never shows more than the default culture. The setting is reviewed by security-tester because it decides what buyers see (ADR-0026
+   `settings.multi-culture.manage` (ADR-0042 decision 2). A missing row means the setting's default, which is off. Its safe value, returned when the store cannot be read, is the restrictive one: the filter on, with the Market's marked default culture only (ADR-0026 decision 5), so a read failure never shows more than the default culture. The setting is reviewed by security-tester because it decides what buyers see (ADR-0026
    decision 9). While the switch is off the culture filter is not applied at all, so what buyers see
    is exactly what they see today: no chooser, no culture badge, and stored buyer choices are
    ignored. It can be turned on only when at least two cultures are Active and each still has an approved seller after the one-time re-check below. The confirmation shows how many Offers and sellers each culture would show or hide.
@@ -83,7 +83,7 @@ carts and admins (ADR-0003 decision 4, ADR-0018) and needs a country-level chang
    is added. Search that finds nothing in the chosen cultures but something in another shows one
    line with the count and an add button, never the products.
 8. **Search index and events.** The index gets `culture_codes`; every change of membership,
-   certificate, category, Offer tag or "neutral" mark emits an event and re-indexes the Offer. The producers are `sellers` (membership), certification (certificates and Offer tags),
+   certificate, category, Offer tag or "neutral" mark emits an event and re-indexes the Offer. The producers are `sellers` (membership), certification (certificates), `catalog` as owner of the Offer and its tags (ADR-0010, tag changes),
    and `catalog` (category visibility, the "neutral" mark, and a culture's status change); `search`
    consumes them. Until the new
    index arrives, a certified culture's shelf re-checks the certificate at read time, as the halal
