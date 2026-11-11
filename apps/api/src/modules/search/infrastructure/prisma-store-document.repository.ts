@@ -32,7 +32,7 @@ export class PrismaStoreDocumentRepository implements StoreDocumentRepository {
     } catch (error) {
       // A unique key taken by a sync that committed while this one waited (an address handed over
       // to another seller, or the same seller's first row): the caller re-reads and writes again.
-      if (isUniqueViolation(error)) throw new StoreRowConflictError();
+      if (isUniqueViolation(error)) throw new StoreRowConflictError({ cause: error });
       throw error;
     }
   }

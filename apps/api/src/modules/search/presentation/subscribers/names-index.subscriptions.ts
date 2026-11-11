@@ -20,7 +20,8 @@ export const INDEX_ON_SELLER_APPROVED_SUBSCRIBER = 'search.index-approved-seller
  * the approval is indexed. Each event only names what to look at; `SyncOfferDocuments` re-reads the
  * names, so repeated and out-of-order deliveries converge. A refusal throws, so the delivery is
  * retried. Today a public store name or address is set only by the onboarding approval (covered by
- * the approval event). When sellers builds the identity-change approval, the admin identity edit and
+ * the approval event, whose delivery is retried until sellers shows the public store, since sellers
+ * records it after identity's approval commits). When sellers builds the identity-change approval, the admin identity edit and
  * the admin address change (sellers design 7.4), their events are subscribed here; until then the
  * six-hourly rebuild is the repair.
  */
@@ -56,6 +57,8 @@ export function namesIndexSubscriptions(sync: SyncOfferDocuments): RegisteredSub
       handle: (event, _delivery, context) =>
         run(INDEX_ON_SELLER_APPROVED_SUBSCRIBER, context, {
           sellerId: event.payload.sellerId as Id<'Seller'>,
+          // Sellers records the public store after identity's approval commits: wait for it.
+          publicStoreRequired: true,
         }),
     }),
   ];

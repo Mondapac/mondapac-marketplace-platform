@@ -9,8 +9,8 @@ import type { StoreDocument } from '../../domain/store-document';
  */
 export class StoreRowConflictError extends Error {
   override readonly name = 'StoreRowConflictError';
-  constructor() {
-    super('search: a store row was written by a concurrent sync');
+  constructor(options?: { readonly cause?: unknown }) {
+    super('search: a store row was written by a concurrent sync', options);
   }
 }
 

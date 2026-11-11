@@ -274,6 +274,15 @@ index, the answer carries counts, and the use cases talk to a port.
   seller's first row), the write fails `23505`; the repository throws `StoreRowConflictError`, the unit
   rolls back, and the sync reads that batch again from catalog and sellers and writes it again, at most
   three attempts, then throws so the delivery is retried.
+- **Approval before the store is recorded (Mojtaba D4).** Identity's approval commits and raises
+  `identity.seller-access-approved` before sellers records the public store name and address in its
+  own unit, so the event can arrive first. The approval subscription now calls `SyncOfferDocuments`
+  with `publicStoreRequired`: while sellers shows no public store for the seller, it throws and the
+  delivery is retried (dead-lettered after about three hours; the rebuild still repairs).
+- **Limit to watch (Hassan S1).** `public-search` covers every `GET /search/products` call, not only
+  text: category, store and brand lists, home shelves and the sitemap build (about 105 calls, cached
+  10 minutes). Many buyers behind one shared IPv4 address share the limit. Watch the
+  `request.throttled` logs after launch and raise `publicSearchPerMinute` if needed.
 - **Store name changes.** No event is needed today: after the onboarding approval (which raises
   `identity.seller-access-approved`, already consumed) nothing on `main` changes a public store name or
   address. The identity-change approval, the admin edit of an approved identity and the admin address

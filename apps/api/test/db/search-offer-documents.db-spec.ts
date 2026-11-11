@@ -688,7 +688,10 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       const [mine, theirs] = [id<'Seller'>(), id<'Seller'>()];
       // Another sync holds an uncommitted row of the same address for another seller.
       await sql.query('BEGIN');
+      let open = true;
       try {
+        const holder = await sql.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+        const holderPid = holder.rows[0]!.pid;
         await sql.query(
           `INSERT INTO "search"."store_documents"
              (market_id, tenant_id, seller_id, slug, name, text_search_config, indexed_at)
@@ -700,14 +703,30 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
           () => 'written',
           (error: unknown) => error,
         );
-        // This write waits on the other row's unique key until that sync commits.
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        // Wait until this write is really blocked on the other row's unique key (a backend that
+        // the holder blocks), never on a fixed delay; then the holder commits.
+        const watcher = new Client({ connectionString: searchDocumentsTestDatabaseUrl() });
+        await watcher.connect();
+        try {
+          const deadline = Date.now() + 10_000;
+          for (;;) {
+            const blocked = await watcher.query(
+              'SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))',
+              [holderPid],
+            );
+            if (blocked.rowCount !== 0) break;
+            if (Date.now() > deadline) throw new Error('the store write never waited');
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+        } finally {
+          await watcher.end();
+        }
         await sql.query('COMMIT');
+        open = false;
 
         expect(await settled).toBeInstanceOf(StoreRowConflictError);
-      } catch (error) {
-        await sql.query('ROLLBACK');
-        throw error;
+      } finally {
+        if (open) await sql.query('ROLLBACK');
       }
       const rows = await sql.query<{ seller_id: string }>(
         'SELECT seller_id FROM "search"."store_documents" WHERE market_id = $1 AND slug = $2',

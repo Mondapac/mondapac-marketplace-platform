@@ -686,6 +686,24 @@ describe.each([
       );
     });
 
+    it('waits for the public store of a just-approved seller: throws until sellers shows it', async () => {
+      feed.facts_.set(offer(1), sellable());
+      feed.published.push(offer(1));
+      const sync = new SyncOfferDocuments(gate, deps);
+
+      // Sellers has not recorded the store yet (its unit runs after identity's approval commits).
+      await expect(
+        sync.execute(system, { sellerId: SELLER, publicStoreRequired: true }),
+      ).rejects.toThrow('no public store yet');
+      expect(documents.rows.size).toBe(0);
+
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      const result = await sync.execute(system, { sellerId: SELLER, publicStoreRequired: true });
+
+      expect(result).toEqual({ ok: true, value: { upserted: 1, deleted: 0 } });
+      expect([...documents.rows.values()][0]?.document.searchText).toContain("Ali's Butcher");
+    });
+
     it('throws when the may-sell contract cannot answer, writing nothing', async () => {
       feed.facts_.set(offer(1), sellable());
       sellers.failing = true;
