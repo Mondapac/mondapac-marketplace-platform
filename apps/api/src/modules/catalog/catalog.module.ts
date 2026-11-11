@@ -77,6 +77,11 @@ import { AdminProductListController } from './presentation/admin-product-list.co
 import { AdminProductBulkController } from './presentation/admin-product-bulk.controller';
 import { AdminProductPause } from './application/use-cases/admin-product-pause.use-case';
 import { IMPORT_FILE_STORE } from './application/ports/import-file-store';
+import { CATEGORY_PRODUCT_MOVE_STORE } from './application/ports/category-product-move.store';
+import { CategoryMoveProducts } from './application/use-cases/category-move-products.use-case';
+import { CategoryMoveProductsProgress } from './application/use-cases/category-move-products-progress.use-case';
+import { CategoryMoveProductsRun } from './application/use-cases/category-move-products-run.use-case';
+import { runCategoryProductMovesJob } from './presentation/jobs/run-category-product-moves.job';
 import { PLATFORM_IMPORT_REPOSITORY } from './application/ports/platform-import.repository';
 import { PlatformImportDiscard } from './application/use-cases/platform-import-discard.use-case';
 import { PlatformImportResume } from './application/use-cases/platform-import-resume.use-case';
@@ -502,6 +507,7 @@ const PORT = {
   withdraw: AdminProductWithdraw,
   retire: PlatformProductRetire,
   importJobs: PLATFORM_IMPORT_REPOSITORY,
+  moveStore: CATEGORY_PRODUCT_MOVE_STORE,
   sellerJobs: SELLER_IMPORT_REPOSITORY,
   importFacts: SELLER_IMPORT_FACTS_READER,
   ownRowCreate: OwnImportRowCreate,
@@ -1529,6 +1535,34 @@ const RESTRUCTURE_DEPS = {
       rowSave: true,
       rowSubmit: true,
     }),
+    useCaseProvider(CategoryMoveProducts, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      moveStore: true,
+      policy: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryMoveProductsProgress, { unitOfWork: true, moveStore: true }),
+    useCaseProvider(CategoryMoveProductsRun, {
+      unitOfWork: true,
+      moveStore: true,
+      products: true,
+      revisions: true,
+      familyResolver: true,
+      adminCategoryReader: true,
+      policy: true,
+      offers: true,
+      requests: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      ids: true,
+      ownerContacts: true,
+      mailSettings: true,
+      mailTransport: true,
+    }),
     useCaseProvider(PlatformImportRowSave, { saveDraft: true }),
     useCaseProvider(PlatformImportRowSubmit, { submit: true, authorisation: true }),
     useCaseProvider(PlatformImportPurge, {
@@ -2093,6 +2127,7 @@ const RESTRUCTURE_DEPS = {
         ReconcileTags,
         SendOfferOwnerNotices,
         PlatformImportRun,
+        CategoryMoveProductsRun,
         PlatformImportPurge,
         OwnImportRun,
         OwnImportPurge,
@@ -2108,6 +2143,7 @@ const RESTRUCTURE_DEPS = {
         reconcile: ReconcileTags,
         notices: SendOfferOwnerNotices,
         importRun: PlatformImportRun,
+        categoryMoves: CategoryMoveProductsRun,
         importPurge: PlatformImportPurge,
         sellerRun: OwnImportRun,
         sellerPurge: OwnImportPurge,
@@ -2122,6 +2158,7 @@ const RESTRUCTURE_DEPS = {
         reconcileTagsJob(reconcile),
         sendOfferOwnerNoticesJob(notices),
         platformImportRunJob(importRun),
+        runCategoryProductMovesJob(categoryMoves),
         purgePlatformImportsJob(importPurge),
         ownImportRunJob(sellerRun),
         purgeSellerImportsJob(sellerPurge),
