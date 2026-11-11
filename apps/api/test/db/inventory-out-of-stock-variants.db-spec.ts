@@ -161,5 +161,49 @@ describe.each(TEST_MARKETS)(
       expect(second.ok && second.value.variantIds).toEqual(expected.slice(expected.length - 1));
       expect(second.ok && second.value.nextCursor).toBeNull();
     });
+
+    it('walks several batches, and leaves out a live item that has no signal yet', async () => {
+      const small = new AdminOutOfStockVariants(createUseCaseGate(markets, admitAll), {
+        unitOfWork: db.unitOfWork,
+        variantStock: new PrismaVariantStockReader(db.service, 2),
+      });
+      const before = await small.execute(admin(), { limit: 500 });
+      const baseline = before.ok ? before.value.variantIds : [];
+      const s = await seller(code);
+      const matching: string[] = [];
+      // Interleave matching and blocked Variants so that some batches hold no match at all.
+      for (let i = 0; i < 4; i += 1) {
+        const blocked = ids.next<'Variant'>();
+        await unit(s, blocked, 'out');
+        await unit(await seller(code), blocked, 'in-stock');
+      }
+      for (let i = 0; i < 5; i += 1) {
+        const v = ids.next<'Variant'>();
+        await unit(s, v, 'out');
+        matching.push(v);
+      }
+      // A live stock item with no availability signal row: never a candidate.
+      const noSignal = ids.next<'Variant'>();
+      await sql.query(
+        `INSERT INTO inventory.stock_items (id, market_id, tenant_id, offer_id, variant_id, source_id, seller_id, on_hand, version, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 1, $8)`,
+        [
+          ids.next<'StockItem'>(),
+          s.marketId,
+          s.tenantId,
+          ids.next<'Offer'>(),
+          noSignal,
+          s.sourceId,
+          s.sellerId,
+          at,
+        ],
+      );
+      const expected = [...baseline, ...matching].sort();
+      const all = await small.execute(admin(), { limit: 500 });
+      expect(all.ok && all.value.variantIds).toEqual(expected);
+      expect(all.ok && all.value.total).toBe(expected.length);
+      const page = await small.execute(admin(), { limit: 3, cursor: expected[2] });
+      expect(page.ok && page.value.variantIds).toEqual(expected.slice(3, 6));
+    });
   },
 );

@@ -6,7 +6,7 @@ import type {
 } from '../application/ports/variant-stock.reader';
 
 /** Candidate Variants examined per round trip. */
-const BATCH = 500;
+export const DEFAULT_BATCH = 500;
 
 /**
  * {@link VariantStockReader} on `inventory.availability_signals` and `inventory.stock_items`;
@@ -15,7 +15,10 @@ const BATCH = 500;
  * a live stock item, then the walk continues after the last candidate.
  */
 export class PrismaVariantStockReader implements VariantStockReader {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly batchSize: number = DEFAULT_BATCH,
+  ) {}
 
   async listOutOfStockEverywhere(
     market: MarketContext,
@@ -24,13 +27,13 @@ export class PrismaVariantStockReader implements VariantStockReader {
     const found: Id<'Variant'>[] = [];
     let after: string | null = page.after;
     while (found.length < page.limit) {
-      const batch = await this.#batch(market, after, BATCH);
+      const batch = await this.#batch(market, after, this.batchSize);
       if (batch.candidates.length === 0) break;
       for (const id of batch.matching) {
         if (found.length < page.limit) found.push(id);
       }
       after = batch.candidates[batch.candidates.length - 1]!;
-      if (batch.candidates.length < BATCH) break;
+      if (batch.candidates.length < this.batchSize) break;
     }
     return found;
   }
@@ -39,9 +42,9 @@ export class PrismaVariantStockReader implements VariantStockReader {
     let total = 0;
     let after: string | null = null;
     for (;;) {
-      const batch = await this.#batch(market, after, BATCH);
+      const batch = await this.#batch(market, after, this.batchSize);
       total += batch.matching.length;
-      if (batch.candidates.length < BATCH) return total;
+      if (batch.candidates.length < this.batchSize) return total;
       after = batch.candidates[batch.candidates.length - 1]!;
     }
   }

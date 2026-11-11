@@ -1,7 +1,15 @@
-import { Controller, Get, Header, Logger, Query, Res } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Header, Logger, Query } from '@nestjs/common';
+import {
+  ApiBadRequestResponse,
+  ApiForbiddenResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiProperty,
+  ApiQuery,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
-import type { Response } from 'express';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import {
@@ -10,6 +18,17 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { AdminOutOfStockVariants } from '../application/use-cases/admin-out-of-stock-variants.use-case';
 import { fail } from './http-answers';
+
+export class OutOfStockVariantsDto {
+  @ApiProperty({ type: [String], format: 'uuid' })
+  variantIds!: string[];
+
+  @ApiProperty({ type: String, nullable: true, description: 'Pass as `cursor` for the next page.' })
+  nextCursor!: string | null;
+
+  @ApiProperty({ type: 'integer', description: 'All such Variants of the Market.' })
+  total!: number;
+}
 
 /**
  * The platform-wide stock reads of the admin panel. A thin adapter: each use case decides through
@@ -34,24 +53,20 @@ export class AdminInventoryController {
   })
   @ApiQuery({ name: 'cursor', required: false, description: 'The `nextCursor` of the last page.' })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 500; default 100.' })
+  @ApiOkResponse({ type: OutOfStockVariantsDto })
+  @ApiBadRequestResponse({ description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ description: 'Not signed in' })
+  @ApiForbiddenResponse({ description: 'access.denied' })
   async outOfStockEverywhere(
     @Call() context: CallContext,
-    @Res({ passthrough: true }) response: Response,
     @Query('cursor') cursor: unknown,
     @Query('limit') limit: unknown,
   ): Promise<unknown> {
-    response.setHeader('Cache-Control', 'no-store');
     const result = await this.outOfStockVariants.execute(context, {
       cursor,
       limit: typeof limit === 'string' && /^[0-9]{1,4}$/.test(limit) ? Number(limit) : limit,
     });
     if (result.ok) {
-      this.#logger.log({
-        msg: 'inventory.admin-out-of-stock-variants',
-        outcome: 'ok',
-        marketId: context.market.marketId,
-        correlationId: context.correlationId,
-      });
       return {
         variantIds: result.value.variantIds,
         nextCursor: result.value.nextCursor,
