@@ -12,7 +12,9 @@ ALTER TABLE "catalog"."rate_counters"
     'submit.seller.hour', 'photo-upload.seller.day', 'search.account.minute',
     'import-start.seller.day', 'ai-suggest.seller.day', 'reviewer-mail.market.hour',
     'platform-import-check.account.hour', 'platform-import-check.account.day',
-    'platform-import-start.account.day'));
+    'platform-import-start.account.day',
+    'seller-import-check.seller.hour', 'seller-import-check.seller.day',
+    'import-photo.seller.minute', 'import-photo.seller.day'));
 
 DO $$
 BEGIN
@@ -27,7 +29,7 @@ ALTER TABLE "catalog"."product_revisions"
     "sensitive_reasons" IS NOT NULL AND array_position("sensitive_reasons", NULL) IS NULL
     AND "sensitive_reasons" <@ ARRAY[
     'platform-categories', 'tax-category', 'name', 'primary-image', 'image-added-or-replaced',
-    'variant-removed', 'gtin-changed', 'never-published', 'approval-required']::text[]);
+    'variant-removed', 'gtin-changed', 'topics-changed', 'never-published', 'approval-required']::text[]);
 
 ALTER TABLE "catalog"."product_revisions" DROP CONSTRAINT "product_revisions_type_code_check";
 ALTER TABLE "catalog"."product_revisions" DROP COLUMN "type_code";
