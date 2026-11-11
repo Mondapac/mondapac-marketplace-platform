@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { ga4IdFor } from './src/analytics/ga4-config.ts';
 import { DEFAULT_LOCALE, publishedLocales } from './src/i18n/locale.ts';
 import { makeNonce, policyPath, storefrontCsp } from './src/security/storefront-csp.ts';
+import { mapConfig } from './src/delivery/map-config.ts';
 import { NOINDEX_HEADER, indexingOn } from './src/seo/indexing.ts';
 import { apiGetWith } from './src/storefront/api.ts';
 import { categoryRedirect, type ResolveRead } from './src/storefront/category-redirect.ts';
@@ -26,6 +27,15 @@ function imageOrigin(): string | null {
     return parseImageOrigin(process.env.STOREFRONT_IMAGE_ORIGIN);
   } catch {
     return null;
+  }
+}
+
+/** Whether the Deliver to map is configured; start-up already refused a malformed one. */
+function mapOn(): boolean {
+  try {
+    return mapConfig() !== null;
+  } catch {
+    return false;
   }
 }
 
@@ -99,6 +109,7 @@ function pageResponse(request?: NextRequest, missing: string | null = null): Nex
       process.env.NODE_ENV === 'development',
       imageOrigin(),
       ga4IdFor(request.headers.get('host')) !== null,
+      mapOn(),
     );
     const headers = new Headers(request.headers);
     headers.set('content-security-policy', policy);

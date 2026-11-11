@@ -27,18 +27,25 @@ const STRIPE_SCRIPTS = 'https://js.stripe.com https://*.js.stripe.com';
 const GA_CONNECT =
   'https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com';
 const GA_IMG = 'https://*.google-analytics.com https://www.googletagmanager.com';
+// The Deliver to map (ADR-0048), only when MAPBOX_MAP_TOKEN is set: styles, tiles and fonts come
+// from api.mapbox.com, and the SDK reports map loads (Mapbox's billing) to events.mapbox.com. Its
+// worker is served from this site (public/vendor/), so worker-src stays 'self'; its images are
+// blob: and data:, already allowed.
+const MAP_CONNECT = 'https://api.mapbox.com https://events.mapbox.com';
 
 /**
  * The policy for one response. `dev` adds what `next dev` needs (eval and the socket for its
  * refresh) and leaves out the upgrade to https, which a plain-http local site cannot follow.
  * `imageOrigin` is where product photos load from (STOREFRONT_IMAGE_ORIGIN); null: this site only.
  * `analytics`: the Market has a GA4 measurement ID, so the Google hosts may be reached.
+ * `map`: the Deliver to modal draws a Mapbox map, so the Mapbox hosts may be reached.
  */
 export function storefrontCsp(
   nonce: string,
   dev: boolean,
   imageOrigin: string | null,
   analytics = false,
+  map = false,
 ): string {
   return [
     "default-src 'self'",
@@ -47,7 +54,7 @@ export function storefrontCsp(
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob: https://*.stripe.com${imageOrigin ? ` ${imageOrigin}` : ''}${analytics ? ` ${GA_IMG}` : ''}`,
     "font-src 'self' data:",
-    `connect-src 'self' https://api.stripe.com https://merchant-ui-api.stripe.com${analytics ? ` ${GA_CONNECT}` : ''}${dev ? ' ws:' : ''}`,
+    `connect-src 'self' https://api.stripe.com https://merchant-ui-api.stripe.com${analytics ? ` ${GA_CONNECT}` : ''}${map ? ` ${MAP_CONNECT}` : ''}${dev ? ' ws:' : ''}`,
     `frame-src ${STRIPE_SCRIPTS} https://hooks.stripe.com`,
     // PWA (package M5). A service worker is governed by worker-src, which would otherwise fall back
     // to script-src, where 'strict-dynamic' makes the browser ignore 'self': the worker would be

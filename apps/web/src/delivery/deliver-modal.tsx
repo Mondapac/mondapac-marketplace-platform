@@ -21,7 +21,7 @@ import { addressLine, insideArea, locality } from './geo.ts';
 import { deliveryAreaFor } from '../checkout/actions.ts';
 import { SearchProblem, liveLookup, sampleLookup } from './lookup.ts';
 import { MIN_QUERY } from './mapbox.ts';
-import { StubMap } from './stub-map.tsx';
+import { DeliveryMap } from './delivery-map.tsx';
 
 /** How the pin got where it is: an address picked, the pin moved, or the device location. */
 type Origin = 'place' | 'pin' | 'device';
@@ -501,7 +501,8 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
               </button>
             </div>
           </div>
-          <StubMap
+          <DeliveryMap
+            map={source.map}
             areaName={area}
             boundary={source.area.boundary}
             bounds={source.bounds}
@@ -518,7 +519,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
             <button className="iconbtn lmx" type="button" aria-label={t('close')} onClick={close}>
               <Icon name="close" />
             </button>
-          </StubMap>
+          </DeliveryMap>
         </div>
       </div>
     </div>,
