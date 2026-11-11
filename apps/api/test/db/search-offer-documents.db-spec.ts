@@ -23,7 +23,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { testDatabaseUrl } from './test-database';
+import { searchDocumentsTestDatabaseUrl } from './test-database';
 
 // The read model search.offer_documents on PostgreSQL, as the application role, for both Market
 // fixtures: the trigger-built vector, ranked text queries with each Market's configuration,
@@ -103,12 +103,12 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
   const names = (hits: readonly { name: string }[]) => hits.map((hit) => hit.name);
 
   beforeAll(async () => {
-    db = createPersistence();
+    db = createPersistence({ databaseUrl: searchDocumentsTestDatabaseUrl() });
     documents = new PrismaOfferDocumentRepository(db.service);
     shelves = new PrismaShelfDocumentsReader(db.service);
     reader = new RawOfferSearchReader(new PrismaRawReadPort(db.root).forModule('search'));
     facetReader = new RawOfferFacetReader(new PrismaRawReadPort(db.root).forModule('search'));
-    sql = new Client({ connectionString: testDatabaseUrl() });
+    sql = new Client({ connectionString: searchDocumentsTestDatabaseUrl() });
     await sql.connect();
   });
   afterAll(async () => {

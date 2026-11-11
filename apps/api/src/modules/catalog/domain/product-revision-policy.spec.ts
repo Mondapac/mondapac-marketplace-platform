@@ -1,4 +1,5 @@
 import {
+  SENSITIVE_REASONS,
   classify,
   decideOutcome,
   type Classification,
@@ -34,6 +35,7 @@ const SYNTHETIC: SensitiveChangesPolicy = {
 const published: RevisionSummary = {
   names: { en: 'Olive oil', ar: 'زيت زيتون' },
   categoryIds: ['c1', 'c2'],
+  topicIds: [],
   taxCategoryCode: 'standard',
   imageIds: ['i1', 'i2'],
   variantIds: ['v1', 'v2'],
@@ -182,6 +184,105 @@ describe('classify', () => {
       'tax-category',
       'variant-removed',
     ]);
+  });
+});
+
+describe('topics (product tags T2)', () => {
+  const withTopics = (ids: string[]) => change({ topicIds: ids });
+  const tagged = withTopics(['t1', 't2']);
+
+  it('flags an added, a removed and a swapped topic in every Market, not by a Market flag', () => {
+    for (const policy of [AU, SYNTHETIC]) {
+      for (const [before, after] of [
+        [[], ['t1']],
+        [['t1', 't2'], ['t1']],
+        [['t1'], ['t3']],
+      ] as const) {
+        expect(classify(withTopics([...before]), withTopics([...after]), policy)).toEqual({
+          sensitive: true,
+          reasons: ['topics-changed'],
+        });
+      }
+    }
+  });
+
+  it('finds no change when only the order of the topics differs', () => {
+    expect(classify(tagged, withTopics(['t2', 't1']), AU)).toEqual({
+      sensitive: false,
+      reasons: [],
+    });
+  });
+
+  it('adds topics-changed to a first revision that has topics, in every Market', () => {
+    for (const policy of [AU, SYNTHETIC]) {
+      expect(classify(null, change({ imageIds: [], topicIds: ['t1'] }), policy)).toEqual({
+        sensitive: true,
+        reasons: ['never-published', 'topics-changed'],
+      });
+      expect(classify(null, change({ imageIds: [] }), policy).reasons).toEqual(['never-published']);
+    }
+  });
+
+  it('lists topics-changed after the reasons before it', () => {
+    expect(
+      classify(published, change({ taxCategoryCode: 'exempt', topicIds: ['t1'] }), AU).reasons,
+    ).toEqual(['tax-category', 'topics-changed']);
+  });
+
+  it('keeps the reason list in the order of the database CHECK', () => {
+    expect(SENSITIVE_REASONS).toEqual([
+      'platform-categories',
+      'tax-category',
+      'name',
+      'primary-image',
+      'image-added-or-replaced',
+      'variant-removed',
+      'gtin-changed',
+      'topics-changed',
+      'never-published',
+      'approval-required',
+    ]);
+  });
+
+  it('is reviewed even with approval off, like an image, but an admin publishes at once', () => {
+    const topics: Classification = { sensitive: true, reasons: ['topics-changed'] };
+    for (const approvalRequired of [true, false]) {
+      expect(
+        decideOutcome({
+          classification: topics,
+          approvalRequired,
+          sensitiveRevisionPending: false,
+          author: 'seller',
+        }),
+      ).toEqual({
+        outcome: 'pending',
+        publishKind: null,
+        sensitive: true,
+        reasons: ['topics-changed'],
+      });
+    }
+    for (const author of ['admin-platform', 'tax-override'] as const) {
+      expect(
+        decideOutcome({
+          classification: topics,
+          approvalRequired: false,
+          sensitiveRevisionPending: false,
+          author,
+        }),
+      ).toMatchObject({ outcome: 'published', publishKind: 'admin-authored' });
+    }
+  });
+
+  it('holds a never-published product with topics when approval is off', () => {
+    const first = classify(null, change({ imageIds: [], topicIds: ['t1'] }), AU);
+    expect(
+      decideOutcome({
+        classification: first,
+        approvalRequired: false,
+        sensitiveRevisionPending: false,
+        author: 'seller',
+      }),
+    ).toMatchObject({ outcome: 'pending' });
   });
 });
 

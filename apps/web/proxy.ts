@@ -6,7 +6,7 @@ import { NOINDEX_HEADER, indexingOn } from './src/seo/indexing.ts';
 import { apiGetWith } from './src/storefront/api.ts';
 import { categoryRedirect, type ResolveRead } from './src/storefront/category-redirect.ts';
 import { storefrontApiConfig } from './src/storefront/config.ts';
-import { PATH_HEADER } from './src/storefront/path-header.ts';
+import { productIsMissing, storeIsMissing } from './src/storefront/miss.ts';
 import { parseImageOrigin } from './src/storefront/photos.ts';
 
 /**
@@ -61,10 +61,37 @@ export async function proxy(request?: NextRequest): Promise<NextResponse> {
       return response;
     }
   }
-  return pageResponse(request);
+  const missing = request ? await missingRoute(request) : null;
+  return pageResponse(request, missing);
 }
 
-function pageResponse(request?: NextRequest): NextResponse {
+/**
+ * `/p/<segment>` or `/s/<slug>` that has no page: the path of the internal route that renders its
+ * 404 body on the server (`app/missing`). A `notFound()` thrown by the page itself is sent by
+ * Next 16 as an empty shell, filled in by the browser after hydration; a rewrite is not, so the
+ * body is real HTML and the status is set here. Null for any other path, for a page that exists
+ * and for a read that failed (the page then shows its own error state). A client's own request
+ * for `/missing/...` goes to `/missing`, which has no page: the framework's 404.
+ */
+async function missingRoute(request: NextRequest): Promise<string | null> {
+  // Only a page read can be a 404 page: a POST (a server action) goes on to the page untouched.
+  if (request.method !== 'GET' && request.method !== 'HEAD') return null;
+  const path = request.nextUrl.pathname;
+  // The proxy does not run again for the route it rewrites to, so a request for `/missing/...`
+  // here came from a client: it gets the site's own 404 page, never a 200 "not found" page.
+  if (path === '/missing' || path.startsWith('/missing/')) return '/missing';
+  const product = /^\/p\/([^/]+)$/u.exec(path);
+  const store = /^\/s\/([^/]+)$/u.exec(path);
+  if (!product && !store) return null;
+  const config = storefrontApiConfig();
+  const read = (readPath: string) => apiGetWith<unknown>(config, request.headers, readPath);
+  if (product && (await productIsMissing(product[1]!, read, config !== null)))
+    return `/missing${path}`;
+  if (store && (await storeIsMissing(store[1]!, read))) return `/missing${path}`;
+  return null;
+}
+
+function pageResponse(request?: NextRequest, missing: string | null = null): NextResponse {
   let response: NextResponse;
   if (request && policyPath(request.nextUrl.pathname)) {
     const policy = storefrontCsp(
@@ -75,9 +102,12 @@ function pageResponse(request?: NextRequest): NextResponse {
     );
     const headers = new Headers(request.headers);
     headers.set('content-security-policy', policy);
-    // The path asked for, for a not-found page, which Next gives no params (product-route.ts).
-    headers.set(PATH_HEADER, request.nextUrl.pathname);
-    response = NextResponse.next({ request: { headers } });
+    if (missing === null) response = NextResponse.next({ request: { headers } });
+    else {
+      const target = request.nextUrl.clone();
+      target.pathname = missing;
+      response = NextResponse.rewrite(target, { request: { headers }, status: 404 });
+    }
     response.headers.set('Content-Security-Policy', policy);
     if (publishedLocales().some((locale) => locale !== DEFAULT_LOCALE)) {
       response.headers.set('Cache-Control', 'private, no-store');

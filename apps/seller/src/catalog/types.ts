@@ -69,6 +69,35 @@ export interface FormCategory {
   readonly names: Readonly<Record<string, string>>;
 }
 
+/** A tag (catalog topic) as a product read names it (`GET catalog/seller/products/:id` -> `topicRefs`). */
+export interface TopicRef {
+  readonly id: string;
+  readonly slug: string;
+  readonly status: 'active' | 'archived';
+  /** The name in the Market default locale, else any locale; null when it has none. */
+  readonly name: string | null;
+  readonly names: Readonly<Record<string, string>>;
+}
+
+export type TopicGroup = 'occasion' | 'cuisine' | 'use';
+
+/** One active tag of the picker (`GET catalog/seller/topics`). */
+export interface TopicChoice {
+  readonly id: string;
+  readonly slug: string;
+  readonly group: TopicGroup;
+  readonly name: string | null;
+  readonly names: Readonly<Record<string, string>>;
+}
+
+/** `GET catalog/seller/topics`. */
+export interface TopicPage {
+  readonly items: readonly TopicChoice[];
+  readonly nextAfterId: string | null;
+  /** The most tags a product may carry. */
+  readonly maxPerProduct: number;
+}
+
 /** What the product form is drawn from: `GET catalog/seller/products/:id` -> `form`. */
 export interface ProductForm {
   readonly taxCategoryCodes: readonly string[];
@@ -99,7 +128,14 @@ export interface ProductView {
   /** `single`: one fixed variant; `configurable`: variants defined by option values. */
   readonly variantModel: string;
   readonly status: string;
-  readonly variants: readonly { readonly variantId: string; readonly state: string }[];
+  /** When an admin paused the product (the seller's offers are off sale); null when not paused. */
+  readonly pausedAt: string | null;
+  readonly variants: readonly {
+    readonly variantId: string;
+    readonly state: string;
+    /** `{productCode}-{nn}` (design 2, M-7). */
+    readonly variantCode: string;
+  }[];
   readonly maxVariants: number;
   readonly sensitiveFields: readonly string[];
   readonly lastChangedAt: string;
@@ -115,6 +151,8 @@ export interface ProductView {
   readonly pending: RevisionView | null;
   /** Newest first. An open one keeps its field empty. */
   readonly suggestions?: readonly ValueSuggestion[];
+  /** The tags named by the draft, the published and the pending version, each once. */
+  readonly topicRefs?: readonly TopicRef[];
 }
 
 export interface OfferView {
@@ -137,6 +175,33 @@ export interface OfferView {
   readonly firstPublishedAt: string | null;
   readonly createdAt: string;
   readonly version: number;
+  /** Stored sell-unit rows (V5); a variant with no row sells and has no SKU. Single read only. */
+  readonly sellUnits?: readonly {
+    variantId: string;
+    variantSku: string | null;
+    selling: boolean;
+  }[];
+}
+
+/** One sell unit (variant) of an offer: `GET catalog/seller/offers/:id/sell-units` -> `units`. */
+export interface SellUnitView {
+  readonly variantId: string;
+  readonly variantNo: number;
+  readonly variantCode: string;
+  readonly state: 'proposed' | 'published';
+  /** The published variant label in the Market's default locale, else null. */
+  readonly label: string | null;
+  readonly selling: boolean;
+  readonly variantSku: string | null;
+  /** What exports and invoices show: the variant SKU, else `{sellerSku}-{variantNo}`. */
+  readonly displaySku: string;
+}
+
+/** `GET catalog/seller/offers/:id/sell-units`. */
+export interface OfferSellUnitsView {
+  readonly productScope: 'PLATFORM' | 'SELLER';
+  readonly sellerSku: string;
+  readonly units: readonly SellUnitView[];
 }
 
 /** `GET catalog/seller/products/options`: what the create form offers. */

@@ -63,6 +63,7 @@ describe('Add sizes and the working copy (catalog design 4.2a)', () => {
   const revision: RevisionContent = {
     texts: { en: { name: 'Dates', shortDescription: null, description: 'Sweet' } },
     categoryIds: ['c1', 'c2'],
+    topicIds: [],
     taxCategoryCode: 'gst',
     attributeValues: { origin: 'AU', tags: ['a', 'b'] },
     variants: [

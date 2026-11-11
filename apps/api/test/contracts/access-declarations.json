@@ -44,7 +44,14 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "catalog.own-import-purge", "rule": "system" },
+  { "name": "catalog.own-import-run", "rule": "system" },
   { "name": "catalog.own-offer-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  {
+    "name": "catalog.own-offer-read-sell-units",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "catalog.own-offers-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {
     "name": "catalog.own-product-image-list",
@@ -62,7 +69,38 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "catalog.own-product-read", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  {
+    "name": "catalog.own-products-export",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "catalog.own-products-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  {
+    "name": "catalog.own-saved-filter-create",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-saved-filter-delete",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-saved-filter-share-check",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-saved-filter-update",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-saved-filters-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  { "name": "catalog.own-topic-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.pending-product-revisions", "rule": "system" },
   { "name": "catalog.platform-import-purge", "rule": "system" },
   { "name": "catalog.platform-import-run", "rule": "system" },

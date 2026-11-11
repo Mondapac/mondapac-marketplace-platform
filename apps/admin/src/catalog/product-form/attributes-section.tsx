@@ -34,6 +34,7 @@ export function AttributesSection({
   defaultLocale,
   refused,
   labels,
+  categoryChosen,
   onChange,
 }: {
   readonly fields: readonly FormField[];
@@ -41,10 +42,18 @@ export function AttributesSection({
   readonly defaultLocale: string;
   readonly refused: DraftSaved['refusedFields'];
   readonly labels: Partial<SearchSelectLabels>;
+  /** A category is picked: the card is not shown empty while the family has no fields. */
+  readonly categoryChosen: boolean;
   readonly onChange: (code: string, value: AttributeInput | undefined) => void;
 }) {
   const t = useTranslations('catalog.productForm');
-  if (fields.length === 0) return null;
+  if (fields.length === 0) {
+    return categoryChosen ? null : (
+      <Card title={t('details')}>
+        <p className="text-sm text-fg-muted">{t('details-empty')}</p>
+      </Card>
+    );
+  }
 
   function text(field: FormField) {
     const label = pickLabel(field.names, defaultLocale, field.code);

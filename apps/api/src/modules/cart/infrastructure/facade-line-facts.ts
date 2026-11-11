@@ -90,7 +90,8 @@ export class FacadeLineFacts implements LineFactsSource {
         offer.status !== 'published' ||
         !offer.listed ||
         unit === undefined ||
-        unit.state !== 'published'
+        unit.state !== 'published' ||
+        !unit.selling
       ) {
         verdicts.set(verdictKey(ref), unavailable('offer-unavailable', offer.sellerId));
         continue;

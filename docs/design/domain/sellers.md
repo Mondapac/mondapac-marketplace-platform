@@ -646,6 +646,9 @@ The click therefore only enqueues: `sellers.request-seller-health-recalculation`
 oldest first, it counts the seller's recent days (the seller's own zone) and replaces the day rows,
 then marks the row `done` (or `failed`, logged). Recounting replaces rows, so overlapping runs are
 safe. The seller's "Refresh now" (HLT-03) reuses this table with source `seller`; see 7.10.
+Retention: the existing purge (`sellers.purge-seller-health`, every six hours) also deletes finished
+(`done` or `failed`) requests older than 30 days; a pending request is never deleted. The app role
+holds DELETE on the table since migration `20261106160000_sellers_health_requests_retention`.
 The key is given to the onboarding-compliance role (seed version 8).
 
 ### 7.10 Refresh now: the seller's click with a cooldown (seller health)

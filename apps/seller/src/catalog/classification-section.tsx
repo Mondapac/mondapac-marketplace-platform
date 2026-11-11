@@ -2,6 +2,7 @@
 
 import { Card, CheckboxRow, Select } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 import { pickLabel } from './draft-content.ts';
 import type { FormCategory } from './types.ts';
 
@@ -15,7 +16,7 @@ function depthOf(category: FormCategory, byId: ReadonlyMap<string, FormCategory>
   return depth;
 }
 
-/** Where the product is filed (platform categories) and its tax category. */
+/** Where the product is filed (platform categories), its tax category and, below them, its tags. */
 export function ClassificationSection({
   categories,
   taxCategoryCodes,
@@ -24,6 +25,7 @@ export function ClassificationSection({
   defaultLocale,
   onCategories,
   onTax,
+  children,
 }: {
   readonly categories: readonly FormCategory[];
   readonly taxCategoryCodes: readonly string[];
@@ -32,6 +34,8 @@ export function ClassificationSection({
   readonly defaultLocale: string;
   readonly onCategories: (ids: string[]) => void;
   readonly onTax: (code: string) => void;
+  /** The optional fields that follow the tax category (the tags). */
+  readonly children?: ReactNode;
 }) {
   const t = useTranslations();
   const byId = new Map(categories.map((category) => [category.categoryId, category]));
@@ -71,6 +75,7 @@ export function ClassificationSection({
         value={taxCategoryCode}
         onChange={(event) => onTax(event.target.value)}
       />
+      {children}
     </Card>
   );
 }

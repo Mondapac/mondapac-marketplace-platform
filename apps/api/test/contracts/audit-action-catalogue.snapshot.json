@@ -404,7 +404,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -416,7 +416,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -430,7 +430,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -2840,6 +2840,23 @@
     }
   },
   {
+    "action": "catalog.own-import.started",
+    "targetType": "catalog.seller-import",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "state": "enumOf(checked)"
+    },
+    "after": {
+      "errorRows": "integer",
+      "mode": "enumOf(my-products|sell-from-catalogue)",
+      "rows": "integer",
+      "skipErrors": "boolean",
+      "state": "enumOf(queued)",
+      "toImport": "integer"
+    }
+  },
+  {
     "action": "sellers.service-area.change",
     "targetType": "sellers.service-area",
     "targetId": "id",
@@ -2937,6 +2954,18 @@
     }
   },
   {
+    "action": "catalog.product.image-deleted",
+    "targetType": "catalog.product",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "imageId": "id"
+    },
+    "after": {
+      "imageId": "optional(id)"
+    }
+  },
+  {
     "action": "catalog.platform-category.merged",
     "targetType": "catalog.platform-category",
     "targetId": "id",
@@ -3004,6 +3033,26 @@
     },
     "after": {
       "revisionNo": "integer"
+    }
+  },
+  {
+    "action": "catalog.variant-type.settings-changed",
+    "targetType": "catalog.variant-type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "displayStyle": "enumOf(buttons|swatches|dropdown)",
+      "optionOrder": "enumOf(manual|alphabetical|by-size)",
+      "revisionNo": "integer",
+      "sellerHelpCount": "integer",
+      "swatchCount": "integer"
+    },
+    "after": {
+      "displayStyle": "enumOf(buttons|swatches|dropdown)",
+      "optionOrder": "enumOf(manual|alphabetical|by-size)",
+      "revisionNo": "integer",
+      "sellerHelpCount": "integer",
+      "swatchCount": "integer"
     }
   }
 ]

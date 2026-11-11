@@ -11,7 +11,7 @@ import { splitFacet } from '../../domain/search-filter';
 import type { OfferHit } from '../../domain/offer-document';
 import { gtinOfQuery, matchVariants } from '../../domain/variant-match';
 import type { HitSellUnits } from '../ports/offer-variant.reader';
-import { withPrimaryImages } from '../product-images';
+import { withProductImages } from '../product-images';
 import {
   buildFilterViews,
   choiceGroups,
@@ -59,10 +59,12 @@ export interface SearchResultItem extends ProductSearchItem {
    * from the index, refreshed on price and stock events; the cart re-reads the live price.
    */
   readonly price: { readonly from: Money; readonly varies: boolean } | null;
+  /** Every public photo of the product (at most 8, main one first); `primaryImage` is the first. */
+  readonly images: readonly ImageRef[];
 }
 
 /** A search result before its photo is read. */
-type SearchResultFacts = Omit<SearchResultItem, 'primaryImage'>;
+type SearchResultFacts = Omit<SearchResultItem, 'primaryImage' | 'images'>;
 
 export interface ProductSearchPage {
   readonly items: readonly SearchResultItem[];
@@ -316,7 +318,7 @@ export class SearchProducts extends UseCase<
           matchVariants({ ...units, groups, price: priceRange }),
         ),
       );
-    const items = await withPrimaryImages(this.deps.images, context, facts);
+    const items = await withProductImages(this.deps.images, context, facts);
     const views = counted
       ? await this.filterViews(context, definitions, selection, hits.value.rows, hits.value.numbers)
       : null;
@@ -378,7 +380,7 @@ export class SearchProducts extends UseCase<
         };
       }),
     );
-    const items = await withPrimaryImages(this.deps.images, context, facts);
+    const items = await withProductImages(this.deps.images, context, facts);
     const first = shown[0]!;
     return {
       items,

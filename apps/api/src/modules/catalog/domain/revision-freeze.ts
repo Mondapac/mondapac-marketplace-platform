@@ -1,6 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Id, Result } from '@mondapac/shared-kernel';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
+import { MAX_TOPICS_PER_PRODUCT } from './topic';
 import { normalizeGtin } from './variant-gtin';
 import { isPositiveInt, VARIANT_FIELD_LIMITS } from './variant-fields';
 
@@ -138,6 +139,34 @@ function parseIdList(raw: unknown, path: string, issues: FreezeIssue[]): string[
       list.push(item);
     }
   });
+  return list;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The topic ids of a draft (product tags T2): absent is none; a list of unique ids in the order
+ * entered, at most `MAX_TOPICS_PER_PRODUCT`. A malformed value is `invalid` at `topicIds`, an item
+ * that is not an id is `invalid` at `topicIds.<n>`, a repeat is `duplicate`. Whether a topic exists,
+ * belongs to the Market and may be added is for the service that reads the topics.
+ */
+function parseTopicIds(raw: unknown, issues: FreezeIssue[]): string[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    issues.push({ path: 'topicIds', code: 'invalid' });
+    return [];
+  }
+  const list: string[] = [];
+  raw.forEach((item: unknown, index) => {
+    if (typeof item !== 'string' || !UUID.test(item)) {
+      issues.push({ path: `topicIds.${index}`, code: 'invalid' });
+    } else if (list.includes(item.toLowerCase())) {
+      issues.push({ path: `topicIds.${index}`, code: 'duplicate' });
+    } else {
+      list.push(item.toLowerCase());
+    }
+  });
+  if (raw.length > MAX_TOPICS_PER_PRODUCT) issues.push({ path: 'topicIds', code: 'too-many' });
   return list;
 }
 
@@ -326,6 +355,7 @@ export function freezeWorkingCopy(
   if (categoryIds.length === 0 && !issues.some((issue) => issue.path.startsWith('categoryIds'))) {
     issues.push({ path: 'categoryIds', code: 'required' });
   }
+  const topicIds = parseTopicIds(content['topicIds'], issues);
   const tax = content['taxCategoryCode'];
   if (!isNonBlank(tax)) {
     issues.push({ path: 'taxCategoryCode', code: 'required' });
@@ -340,6 +370,7 @@ export function freezeWorkingCopy(
   return ok({
     texts,
     categoryIds,
+    topicIds,
     taxCategoryCode: tax as string,
     attributeValues: attributeValues as Record<string, unknown>,
     variants,

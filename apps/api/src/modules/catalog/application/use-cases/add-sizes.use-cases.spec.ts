@@ -154,6 +154,7 @@ describe.each(['AU', 'ZZ'] as const)('Add sizes in market %s', (code) => {
     content: {
       texts: { [locale]: { name: 'Shirt', shortDescription: null, description: null } },
       categoryIds: ['c1'],
+      topicIds: [],
       taxCategoryCode: taxCode,
       attributeValues: {},
       variants: [

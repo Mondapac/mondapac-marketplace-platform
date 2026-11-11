@@ -29,6 +29,9 @@ import { ProductRevisionImageList } from '../../src/modules/catalog/application/
 import { SweepOrphanImageFiles } from '../../src/modules/catalog/application/use-cases/sweep-orphan-image-files.use-case';
 import { SweepOrphanImages } from '../../src/modules/catalog/application/use-cases/sweep-orphan-images.use-case';
 import { OwnProductImageUpload } from '../../src/modules/catalog/application/use-cases/own-product-image-upload.use-case';
+import { PlatformProductImageDelete } from '../../src/modules/catalog/application/use-cases/platform-product-image-delete.use-case';
+import { PlatformProductImageList } from '../../src/modules/catalog/application/use-cases/platform-product-image-list.use-case';
+import { PlatformProductImageUpload } from '../../src/modules/catalog/application/use-cases/platform-product-image-upload.use-case';
 import type { SaveWorkingCopy } from '../../src/modules/catalog/application/working-copy/save-working-copy.service';
 import { Product } from '../../src/modules/catalog/domain/product';
 import { simpleProductType } from '../../src/modules/catalog/domain/product-types/simple';
@@ -92,6 +95,10 @@ describe.each(TEST_MARKETS)(
     let store: MemoryObjectStore;
     let throttled: boolean;
     let upload: OwnProductImageUpload;
+    let adminUpload: PlatformProductImageUpload;
+    let adminList: PlatformProductImageList;
+    let adminRemove: PlatformProductImageDelete;
+    let adminAudit: unknown[];
     let list: OwnProductImageList;
     let read: OwnProductImageRead;
     let remove: OwnProductImageDelete;
@@ -248,6 +255,28 @@ describe.each(TEST_MARKETS)(
         save,
         clock,
         ids: { next: <K extends string>() => uuid7() as Id<K> },
+      });
+      adminUpload = new PlatformProductImageUpload(gate, {
+        ...common,
+        imageProcessor: new SharpImageProcessor(),
+        save,
+        clock,
+        ids: { next: <K extends string>() => uuid7() as Id<K> },
+      });
+      adminList = new PlatformProductImageList(gate, {
+        unitOfWork: persistence.unitOfWork,
+        products,
+        images,
+      });
+      adminAudit = [];
+      adminRemove = new PlatformProductImageDelete(gate, {
+        ...common,
+        audit: {
+          record: (_context: unknown, entry: unknown) => {
+            adminAudit.push(entry);
+            return Promise.resolve();
+          },
+        },
       });
       list = new OwnProductImageList(gate, {
         unitOfWork: persistence.unitOfWork,
@@ -775,6 +804,132 @@ describe.each(TEST_MARKETS)(
       expect(listed.ok && listed.value.map((i) => [i.imageId, i.state])).toEqual([
         [photo.imageId, 'taken-down'],
       ]);
+    });
+
+    describe('admin photos of a PLATFORM product (P1)', () => {
+      async function platformProduct(): Promise<Product> {
+        const created = Product.create({
+          id: uuid7() as Id<'Product'>,
+          marketId: market.marketId,
+          scope: 'PLATFORM',
+          sellerId: null,
+          handler: simpleProductType,
+          familyCode: 'default',
+          productCode: `X${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`,
+          variantId: uuid7() as Id<'Variant'>,
+          now: T0,
+        });
+        if (!created.ok) throw new Error(created.error.code);
+        await inUnit(() => products.add(market, created.value));
+        await saveDraft(created.value.state.id, []);
+        return created.value;
+      }
+
+      async function adminUploaded(productId: Id<'Product'>) {
+        const result = await adminUpload.execute(adminContext(), {
+          productId,
+          data: await photo(),
+        });
+        if (!result.ok) throw new Error(result.error.code);
+        return result.value;
+      }
+
+      it('stores, lists and orders the photos through the draft, and keeps a published one', async () => {
+        const product = await platformProduct();
+        const first = await adminUploaded(product.state.id);
+        const second = await adminUploaded(product.state.id);
+        const listed = await adminList.execute(adminContext(), { productId: product.state.id });
+        expect(listed.ok && listed.value.map((image) => image.imageId)).toEqual([
+          first.imageId,
+          second.imageId,
+        ]);
+        expect([...store.objects.keys()].filter((key) => key.includes(first.imageId))).toHaveLength(
+          3,
+        );
+
+        await saveDraft(product.state.id, [second.imageId, first.imageId]);
+        const submitted = await submit.execute(adminContext(), {
+          productId: product.state.id,
+          replacePending: false,
+        });
+        if (!submitted.ok) throw new Error(submitted.error.code);
+        const revision = await inUnit(() =>
+          revisions.find(market, product.state.id, submitted.value.revisionId),
+        );
+        expect(revision?.content.imageIds).toEqual([second.imageId, first.imageId]);
+
+        const refused = await adminRemove.execute(adminContext(), {
+          productId: product.state.id,
+          imageId: first.imageId,
+        });
+        expect(!refused.ok && refused.error.code).toBe('image.in-use');
+      });
+
+      it('deletes an unused photo and its files', async () => {
+        const product = await platformProduct();
+        const photoOf = await adminUploaded(product.state.id);
+        const removed = await adminRemove.execute(adminContext(), {
+          productId: product.state.id,
+          imageId: photoOf.imageId,
+        });
+        expect(removed.ok).toBe(true);
+        expect([...store.objects.keys()].some((key) => key.includes(photoOf.imageId))).toBe(false);
+        expect(adminAudit).toEqual([
+          expect.objectContaining({
+            action: 'catalog.product.image-deleted',
+            targetId: product.state.id,
+          }),
+        ]);
+        const listed = await adminList.execute(adminContext(), { productId: product.state.id });
+        expect(listed.ok && listed.value).toEqual([]);
+      });
+
+      it('answers a SELLER product as product.not-found and stores nothing', async () => {
+        const sellerProduct = await draftedProduct();
+        const before = store.objects.size;
+        const result = await adminUpload.execute(adminContext(), {
+          productId: sellerProduct.state.id,
+          data: await photo(),
+        });
+        expect(!result.ok && result.error.code).toBe('product.not-found');
+        expect(store.objects.size).toBe(before);
+        const listed = await adminList.execute(adminContext(), {
+          productId: sellerProduct.state.id,
+        });
+        expect(!listed.ok && listed.error.code).toBe('product.not-found');
+      });
+
+      it('answers a photo of another product as image.not-found and keeps it', async () => {
+        const mine = await platformProduct();
+        const other = await platformProduct();
+        const theirs = await adminUploaded(other.state.id);
+        const result = await adminRemove.execute(adminContext(), {
+          productId: mine.state.id,
+          imageId: theirs.imageId,
+        });
+        expect(!result.ok && result.error.code).toBe('image.not-found');
+        const listed = await adminList.execute(adminContext(), { productId: other.state.id });
+        expect(listed.ok && listed.value.map((image) => image.imageId)).toEqual([theirs.imageId]);
+      });
+
+      it('refuses a seller actor', async () => {
+        const product = await platformProduct();
+        const result = await adminUpload.execute(sellerContext(), {
+          productId: product.state.id,
+          data: await photo(),
+        });
+        expect(!result.ok && result.error.code).toBe('access.denied');
+      });
+
+      it('stops at the library limit', async () => {
+        const product = await platformProduct();
+        for (let n = 0; n < MAX_IMAGES_PER_PRODUCT; n += 1) await adminUploaded(product.state.id);
+        const result = await adminUpload.execute(adminContext(), {
+          productId: product.state.id,
+          data: await photo(),
+        });
+        expect(!result.ok && result.error.code).toBe('image.limit-reached');
+      });
     });
 
     describe('the state guard and the grants', () => {

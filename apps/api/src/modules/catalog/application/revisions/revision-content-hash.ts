@@ -10,7 +10,13 @@ import type { RevisionContent, RevisionVariantContent } from '../../domain/revis
  * lists that carry meaning (categories, variants, images, definition revisions) does.
  */
 export function revisionContentHash(content: RevisionContent): ContentHash {
-  const canonical = canonicalJson({ ...content, variants: content.variants.map(hashedVariant) });
+  // Topics join the hash only when there are some, so a revision stored before them keeps its hash.
+  const { topicIds, ...rest } = content;
+  const canonical = canonicalJson({
+    ...rest,
+    ...(topicIds.length === 0 ? {} : { topicIds }),
+    variants: content.variants.map(hashedVariant),
+  });
   if (!canonical.ok) {
     throw new TypeError(`revisionContentHash: content is not canonical (${canonical.error.code})`);
   }

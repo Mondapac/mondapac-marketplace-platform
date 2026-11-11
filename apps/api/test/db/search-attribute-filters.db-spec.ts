@@ -27,7 +27,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { testDatabaseUrl } from './test-database';
+import { searchFiltersTestDatabaseUrl } from './test-database';
 
 // Attribute filters (search A7) on PostgreSQL, as the application role, for both Market fixtures:
 // searchable attribute text in the vector (weight C), facet groups (OR inside a group, AND between
@@ -114,12 +114,12 @@ describe.each(TEST_MARKETS)('attribute filters in market %s (database)', (code) 
   ];
 
   beforeAll(async () => {
-    db = createPersistence();
+    db = createPersistence({ databaseUrl: searchFiltersTestDatabaseUrl() });
     documents = new PrismaOfferDocumentRepository(db.service);
     const port = new PrismaRawReadPort(db.root).forModule('search');
     reader = new RawOfferSearchReader(port);
     facets = new RawOfferFacetReader(port);
-    sql = new Client({ connectionString: testDatabaseUrl() });
+    sql = new Client({ connectionString: searchFiltersTestDatabaseUrl() });
     await sql.connect();
   });
   afterAll(async () => {
@@ -499,11 +499,11 @@ describe.each(TEST_MARKETS)('variant filters in market %s (database)', (code) =>
   ];
 
   beforeAll(async () => {
-    db = createPersistence();
+    db = createPersistence({ databaseUrl: searchFiltersTestDatabaseUrl() });
     documents = new PrismaOfferDocumentRepository(db.service);
     variants = new PrismaOfferVariantReader(db.service);
     facets = new RawOfferFacetReader(new PrismaRawReadPort(db.root).forModule('search'));
-    sql = new Client({ connectionString: testDatabaseUrl() });
+    sql = new Client({ connectionString: searchFiltersTestDatabaseUrl() });
     await sql.connect();
   });
   afterAll(async () => {

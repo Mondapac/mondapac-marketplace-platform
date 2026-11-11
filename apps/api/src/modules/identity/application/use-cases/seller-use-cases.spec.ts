@@ -288,13 +288,13 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
       ['platform', 'default', 'onboarding-compliance', 12],
-      ['platform', 'default', 'catalogue-moderator', 17],
-      ['platform', 'default', 'operations-support', 8],
+      ['platform', 'default', 'catalogue-moderator', 18],
+      ['platform', 'default', 'operations-support', 9],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 28],
+      ['platform', 'default', 'viewer', 29],
       ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
-      ['seller', 'default', 'store-manager', 6],
+      ['seller', 'default', 'store-manager', 7],
       ['seller', 'default', 'order-fulfilment', 0],
       ['seller', 'default', 'catalogue-stock', 3],
       ['seller', 'default', 'customer-service', 1],
@@ -363,6 +363,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'catalog.product.pause',
       'catalog.product.view',
       'catalog.saved-filter.share',
+      'catalog.variant.view',
       'certification.claim-policy.view',
       'certification.product-certificate.view',
       'certification.type.view',
@@ -373,6 +374,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     expect(keysOf('operations-support')).toEqual([
       'catalog.attribute.view',
       'catalog.category-tree.view',
+      'catalog.variant.view',
       'certification.type.view',
       'identity.customer-account.disable',
       'identity.customer-account.view',
@@ -396,6 +398,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'sellers.seller.view',
     ]);
     expect(keysOf('store-manager')).toEqual([
+      'catalog.own-import.run',
       'catalog.own-product.edit',
       'catalog.own-product.view',
       'certification.own-certificate.manage',

@@ -4,6 +4,7 @@
     "noEmit": true,
     "rootDir": ".",
     "paths": {
+      "@mondapac/platform-import": ["./packages/platform-import/src/index.ts"],
       "@mondapac/shared-kernel": ["./packages/shared-kernel/src/index.ts"],
       "@mondapac/shared-kernel/contexts": ["./packages/shared-kernel/src/contexts.ts"],
       "@mondapac/shared-kernel/authenticated-actor": [

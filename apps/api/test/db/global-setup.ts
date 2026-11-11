@@ -78,6 +78,9 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'PAYOUT_RUN');
   await createCopy(name, 'SELLERS_LIST');
   await createCopy(name, 'ORDERING_ORDERS');
+  await createCopy(name, 'SEARCH_DOCUMENTS');
+  await createCopy(name, 'SEARCH_FILTERS');
+  await createCopy(name, 'SEARCH_RATINGS');
 }
 
 /**
@@ -149,6 +152,10 @@ export default async function globalSetup(): Promise<void> {
  *   Markets (its own and the other fixture) before and after inserting its own orders, and other
  *   files (pickup codes, paid outbox, offer pairs, storefront reads) insert and confirm orders in
  *   both Markets in parallel, so no other file's order lives there.
+ * - `search_documents`, `search_filters`, `search_ratings`: search-offer-documents, search-attribute-filters
+ *   and search-product-ratings db-specs each empty whole search tables (`DELETE FROM search.offer_documents`,
+ *   `search.product_ratings`) in `beforeAll`/`beforeEach` and then expect only their own rows, so one file's
+ *   cleanup removed another's seeded documents (searches returned []). Each keeps its own copy.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -182,7 +189,10 @@ async function createCopy(
     | 'DISPUTES'
     | 'PAYOUT_RUN'
     | 'SELLERS_LIST'
-    | 'ORDERING_ORDERS',
+    | 'ORDERING_ORDERS'
+    | 'SEARCH_DOCUMENTS'
+    | 'SEARCH_FILTERS'
+    | 'SEARCH_RATINGS',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });

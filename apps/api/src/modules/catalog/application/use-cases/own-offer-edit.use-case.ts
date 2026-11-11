@@ -114,6 +114,8 @@ export class OwnOfferEdit extends UseCase<
   constructor(
     gate: UseCaseGate,
     private readonly deps: OwnOfferEditDependencies,
+    /** The entry path kept tags are settled under; `import-row` for the seller import's rows. */
+    private readonly entryPath: 'offer-edit' | 'import-row' = 'offer-edit',
   ) {
     super(gate);
   }
@@ -250,7 +252,7 @@ export class OwnOfferEdit extends UseCase<
         const settled = offer.settleTags({
           facts,
           decisions: asked.value,
-          entryPath: 'offer-edit',
+          entryPath: this.entryPath,
           actor: sellerTagActor(actor),
           hash,
           now,

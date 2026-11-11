@@ -166,6 +166,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       },
       recordDecision: () => Promise.resolve(),
       latestChangeRequest: () => Promise.resolve(null),
+      history: () => Promise.resolve([]),
       find: (_m, productId, id) => {
         const found = revisions.get(id);
         return Promise.resolve(found?.productId === productId ? found : null);

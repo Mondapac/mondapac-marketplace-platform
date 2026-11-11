@@ -1,4 +1,4 @@
-import { visibleNavItems } from '@mondapac/ui';
+import { navSections, visibleNavItems } from '@mondapac/ui';
 import { describe, expect, it } from 'vitest';
 import { adminNav } from './nav.ts';
 
@@ -19,7 +19,7 @@ describe('admin nav: Content', () => {
 
 describe('admin nav: Catalogue', () => {
   it('shows Products for catalog.product.view, with the package icon, in the catalogue group', () => {
-    expect(ids(['catalog.product.view'])).toEqual(['home', 'products', 'offer-reviews']);
+    expect(ids(['catalog.product.view'])).toEqual(['home', 'products', 'review-queue']);
     const item = adminNav.items.find((entry) => entry.id === 'products');
     expect(item).toMatchObject({
       icon: 'package',
@@ -35,9 +35,28 @@ describe('admin nav: Catalogue', () => {
     });
   });
 
-  it('is hidden without the key, and the Offer reviews item stays in Reviews', () => {
+  it('is one group holding every catalogue page, in the menu design order', () => {
+    const everyKey = new Set(adminNav.items.flatMap((item) => item.anyOf ?? []));
+    const sections = navSections(adminNav.groups, visibleNavItems(adminNav, everyKey));
+    const catalogue = sections.filter(
+      (section) => section.kind === 'group' && section.group.icon === 'package',
+    );
+    expect(catalogue).toHaveLength(1);
+    expect(catalogue[0]?.kind === 'group' && catalogue[0].group.id).toBe('catalogue');
+    expect(catalogue[0]?.kind === 'group' && catalogue[0].items.map((item) => item.id)).toEqual([
+      'products',
+      'categories',
+      'attributes',
+      'variants',
+      'brands',
+      'business-activities',
+      'tags',
+    ]);
+  });
+
+  it('is hidden without the key, and the Review queue item stays in Reviews', () => {
     expect(ids(['catalog.product.approve'])).not.toContain('products');
-    expect(adminNav.items.find((entry) => entry.id === 'offer-reviews')?.group).toBe('reviews');
+    expect(adminNav.items.find((entry) => entry.id === 'review-queue')?.group).toBe('reviews');
   });
 });
 
@@ -86,12 +105,14 @@ describe('admin nav: daily work only', () => {
       'home',
       'products',
       'categories',
-      'offer-reviews',
-      'review-moderation',
-      'price-holds',
       'attributes',
+      'variants',
       'brands',
       'business-activities',
+      'tags',
+      'review-queue',
+      'review-moderation',
+      'price-holds',
       'content',
       'sellers',
       'orders',
@@ -201,15 +222,14 @@ describe('admin nav: Settings', () => {
 });
 
 describe('admin nav: Brands', () => {
-  it('is there for catalog.brand.read, in its own Catalog group, with the tag icon', () => {
+  it('is there for catalog.brand.read, in the Catalogue group, with the tag icon', () => {
     expect(ids(['catalog.brand.read'])).toEqual(['home', 'brands']);
     expect(adminNav.items.find((item) => item.id === 'brands')).toMatchObject({
       icon: 'tag',
       href: '/catalog/brands',
       labelKey: 'nav.brands',
-      group: 'catalog',
+      group: 'catalogue',
     });
-    expect((adminNav.groups ?? []).map((group) => group.id)).toContain('catalog');
   });
 
   it('is hidden without it, also with the edit key alone', () => {
@@ -219,7 +239,7 @@ describe('admin nav: Brands', () => {
 });
 
 describe('admin nav: Attributes', () => {
-  it('is there for catalog.attribute.view, in the Catalog group before Brands', () => {
+  it('is there for catalog.attribute.view, in the Catalogue group before Brands', () => {
     expect(ids(['catalog.attribute.view'])).toEqual(['home', 'attributes']);
     expect(ids(['catalog.attribute.view', 'catalog.brand.read'])).toEqual([
       'home',
@@ -230,7 +250,7 @@ describe('admin nav: Attributes', () => {
       icon: 'sliders',
       href: '/catalog/attributes',
       labelKey: 'nav.attributes',
-      group: 'catalog',
+      group: 'catalogue',
     });
   });
 
@@ -240,18 +260,51 @@ describe('admin nav: Attributes', () => {
   });
 });
 
+describe('admin nav: Variants', () => {
+  it('is there for catalog.variant.view, in the Catalogue group', () => {
+    expect(ids(['catalog.variant.view'])).toEqual(['home', 'variants']);
+    expect(adminNav.items.find((item) => item.id === 'variants')).toMatchObject({
+      href: '/catalog/variants',
+      labelKey: 'nav.variants',
+      group: 'catalogue',
+    });
+  });
+
+  it('is hidden without it, also with the edit keys alone', () => {
+    expect(ids([])).not.toContain('variants');
+    expect(ids(['catalog.variant-type.edit', 'catalog.attribute.edit'])).not.toContain('variants');
+  });
+});
+
 describe('admin nav: Business activities', () => {
-  it('is there for catalog.business-activity.read, in the Catalog group', () => {
+  it('is there for catalog.business-activity.read, in the Catalogue group', () => {
     expect(ids(['catalog.business-activity.read'])).toEqual(['home', 'business-activities']);
     expect(adminNav.items.find((item) => item.id === 'business-activities')).toMatchObject({
       href: '/catalog/business-activities',
       labelKey: 'nav.business-activities',
-      group: 'catalog',
+      group: 'catalogue',
     });
   });
 
   it('is hidden without it, also with the edit key alone', () => {
     expect(ids([])).not.toContain('business-activities');
     expect(ids(['catalog.business-activity.edit'])).not.toContain('business-activities');
+  });
+});
+
+describe('admin nav: Tags', () => {
+  it('is there for catalog.topic.read, in the Catalogue group', () => {
+    expect(ids(['catalog.topic.read'])).toEqual(['home', 'tags']);
+    expect(adminNav.items.find((item) => item.id === 'tags')).toMatchObject({
+      href: '/catalog/tags',
+      labelKey: 'nav.tags',
+      group: 'catalogue',
+      icon: 'star',
+    });
+  });
+
+  it('is hidden without it, also with the manage key alone', () => {
+    expect(ids([])).not.toContain('tags');
+    expect(ids(['catalog.topic.manage'])).not.toContain('tags');
   });
 });
