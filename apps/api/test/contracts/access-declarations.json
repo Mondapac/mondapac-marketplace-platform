@@ -767,6 +767,7 @@
   { "name": "shipping.receive-carrier-webhook", "rule": "anonymous" },
   { "name": "shipping.receive-uber-webhook", "rule": "anonymous" },
   { "name": "shipping.record-fleet-fee", "rule": "system" },
+  { "name": "storefront.view-public-seo", "rule": "anonymous" },
   { "name": "storefront.view-published-landing-page", "rule": "anonymous" },
   { "name": "storefront.view-published-navigation", "rule": "anonymous" },
   { "name": "storefront.view-published-page", "rule": "anonymous" },

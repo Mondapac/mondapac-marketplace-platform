@@ -320,6 +320,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // Shipping (SHP-02/03): the relay's claim index of shipping.outbox.
   'shipping.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON shipping.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // Storefront (SEO settings S1): the relay's claim index of storefront.outbox.
+  'storefront.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON storefront.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // Shipping (package 5e): the status poll's order, never-asked first, over the open bookings.
   'shipping.carrier_bookings_market_id_fleet_polled_at_open_idx':
     "CREATE INDEX carrier_bookings_market_id_fleet_polled_at_open_idx ON shipping.carrier_bookings USING btree (market_id, fleet, polled_at NULLS FIRST, created_at) WHERE (progress = ANY (ARRAY['booked'::text, 'picked-up'::text]))",
