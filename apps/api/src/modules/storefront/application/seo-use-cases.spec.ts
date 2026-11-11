@@ -365,6 +365,28 @@ describe.each(TEST_MARKET_IDS)('SEO settings use cases in market %s', (code) => 
       expect(audit.entries).toEqual([]);
     });
 
+    it('never lets the edit route change a protected field, even when a stored value normalises differently', async () => {
+      store.rows.push({
+        market: market.marketId,
+        version: 1,
+        settings: { ...DEFAULT_SEO_SETTINGS, contactEmail: 'Sales@Example.com' },
+        changedAt: T0,
+        changedBy: ADMIN,
+      });
+      held = new Set([VIEW, EDIT]);
+      const result = await setEdit(editPart({ siteName: 'Another' }), 1);
+      expect(result).toEqual(err({ code: 'access.denied' }));
+      expect(stepUp.asked).toEqual([]);
+      expect(store.rows).toHaveLength(1);
+    });
+
+    it('answers a range error, not a database error, for a version beyond the column', async () => {
+      const result = await setEdit(editPart(), 2 ** 31);
+      expect(result).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'expectedVersion', code: 'range' }] }),
+      );
+    });
+
     it('refuses a stale version with the winning save named, and writes nothing', async () => {
       await setEdit(editPart({ siteName: 'First' }));
       audit.entries.length = 0;

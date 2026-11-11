@@ -69,10 +69,12 @@ ALTER TABLE "storefront"."seo_settings"
   ADD CONSTRAINT "seo_settings_contact_email_check" CHECK (("contact_email" IS NULL OR ("contact_email" = lower("contact_email")
     AND "contact_email" ~ '^[a-z0-9._%+-]{1,64}@[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$'))),
   ADD CONSTRAINT "seo_settings_contact_phone_check" CHECK ("contact_phone" IS NULL OR "contact_phone" ~ '^\+[1-9][0-9]{7,14}$'),
-  ADD CONSTRAINT "seo_settings_same_as_check" CHECK (cardinality("same_as") <= 10
+  ADD CONSTRAINT "seo_settings_same_as_check" CHECK ("same_as" IS NOT NULL AND array_position("same_as", NULL) IS NULL
+    AND cardinality("same_as") <= 10
     AND (cardinality("same_as") = 0
-      -- Joined by a space: every entry is an https URL of at most 200 characters, without a space or hidden character.
-      OR (array_to_string("same_as", ' ') ~ '^https://[^ ]+( https://[^ ]+)*$'
+      -- Joined by a space: every entry is an https URL of at most 200 characters (8 for the scheme,
+      -- at most 192 after it), without a space or hidden character.
+      OR (array_to_string("same_as", ' ') ~ '^https://[^ ]{1,192}( https://[^ ]{1,192})*$'
         AND array_to_string("same_as", ' ') !~ E'[\\u0001-\\u001F\\u007F-\\u009F\\u00AD\\u0600-\\u0605\\u061C\\u06DD\\u070F\\u08E2\\u180E\\u200B\\u200D-\\u200F\\u2028-\\u202E\\u2060-\\u2064\\u2066-\\u206F\\uFEFF\\uFFF9-\\uFFFB<>]'
         AND char_length(array_to_string("same_as", ' ')) <= 2009))),
   ADD CONSTRAINT "seo_settings_google_verification_check" CHECK ("google_verification" IS NULL OR "google_verification" ~ '^[A-Za-z0-9_-]{10,100}$'),

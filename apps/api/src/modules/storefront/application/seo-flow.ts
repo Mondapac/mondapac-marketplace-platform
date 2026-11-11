@@ -272,8 +272,13 @@ async function saveChange(
   return done;
 }
 
+/** The column is INT4: a larger number can never be a version, and would only reach the database. */
+const MAX_VERSION = 2_147_483_647;
 const expectedVersionProblem = (expected: unknown): SeoFieldError | null =>
-  typeof expected !== 'number' || !Number.isSafeInteger(expected) || expected < 0
+  typeof expected !== 'number' ||
+  !Number.isSafeInteger(expected) ||
+  expected < 0 ||
+  expected > MAX_VERSION
     ? { path: 'expectedVersion', code: 'range' }
     : null;
 
@@ -338,7 +343,9 @@ export async function setSeoPart(
       }
       return ok({ next: parsed.value, restoredFrom: null });
     },
-    null,
+    // The manage route's own rule holds the key; the edit route never changes a protected field,
+    // so a save that would (a stored value that normalises differently) is refused, not spent.
+    part === 'manage' ? null : false,
   );
 }
 
@@ -353,7 +360,12 @@ export async function restoreSeoVersion(
   const problem = expectedVersionProblem(input?.expectedVersion);
   if (problem !== null) fields.push(problem);
   const target = input?.version;
-  if (typeof target !== 'number' || !Number.isSafeInteger(target) || target < 0) {
+  if (
+    typeof target !== 'number' ||
+    !Number.isSafeInteger(target) ||
+    target < 0 ||
+    target > MAX_VERSION
+  ) {
     fields.push({ path: 'version', code: 'range' });
   }
   if (fields.length > 0) return err({ code: 'validation.failed', fields });

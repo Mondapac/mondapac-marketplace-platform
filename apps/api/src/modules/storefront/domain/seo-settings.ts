@@ -393,6 +393,8 @@ function sameAsOf(value: unknown, errors: Errors): readonly string[] {
       }
       // The canonical form, so two spellings of one page count once.
       const canonical = url.toString();
+      // The stored form can be longer than the typed one (punycode, percent-encoding): bound it.
+      if (canonical.length > BOUNDS.sameAsLength) return fail(errors, path, 'format');
       if (!urls.includes(canonical)) urls.push(canonical);
     } catch {
       fail(errors, path, 'format');

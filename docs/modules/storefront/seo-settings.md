@@ -75,3 +75,18 @@ indexing, changed[], restoredFrom?, stepUpSessionId?, stepUpVerifiedAt?}`. Chang
 - `STOREFRONT_INDEXING` is an off-only ceiling: unset or `off` keeps pages out of the index
   whatever the setting says. It is reported as `envCeiling`; applying the rule is S6.
 - `STOREFRONT_SAMPLE_DATA` locks turning indexing on (`sampleDataLock`).
+
+## Personal data
+
+`legal_name`, `trading_name`, `contact_email`, `contact_phone` and the `address_*` columns hold
+business identity data, which for a sole trader can be personal data. The public read exposes
+them on purpose (organisation markup). Every version keeps a copy and the application role has
+no DELETE, so an erasure request needs a purge run as the migration role.
+
+## Known gaps (tracked)
+
+- The database CHECK for invisible characters lists the common `Cf` ranges by hand; the API's
+  `\p{Cf}` also covers rarer ones (for example the tag characters U+E0000 to U+E007F). The API
+  is the control; widen the list when the next migration touches the table.
+- `page_templates` is checked for its six page types in the database; the keys and text bounds
+  inside each page type are checked by the API only.

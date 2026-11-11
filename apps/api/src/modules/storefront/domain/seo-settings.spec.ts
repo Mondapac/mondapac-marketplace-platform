@@ -233,6 +233,12 @@ describe('parseSeoSettings', () => {
       expect(problems(valid({ sameAs: [url] }))).toEqual([{ path: 'sameAs[0]', code: 'format' }]);
     });
 
+    it('bounds the stored (canonical) form, which can be far longer than the typed one', () => {
+      const typed = `https://fa.wikipedia.org/wiki/${'سلام'.repeat(40)}`;
+      expect(typed.length).toBeLessThanOrEqual(200);
+      expect(problems(valid({ sameAs: [typed] }))).toEqual([{ path: 'sameAs[0]', code: 'format' }]);
+    });
+
     it('refuses more than 10, a non-list and a non-string', () => {
       const many = Array.from({ length: 11 }, (_, n) => `https://x.com/${n}`);
       expect(problems(valid({ sameAs: many }))).toEqual([{ path: 'sameAs', code: 'range' }]);
