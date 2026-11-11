@@ -37,6 +37,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `position`, `scope`, `scopeId`). A fixed path, so `order` is never read as a slide id: the
     // slide route reads a UUID only, and one slide is read by the page server.
     'storefront/admin/slides/order',
+    // The storefront pages (storefront), read-only: the list, and the templates and modules the
+    // new-page form offers. One page is read by the page server.
+    'storefront/admin/pages',
+    'storefront/admin/catalogue',
     // The Market's wallet switch, and the admin credit requests (query: `status`, `cursor`, `limit`).
     'wallet/admin/settings',
     'wallet/admin/credit-requests',
@@ -167,6 +171,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'shipping/admin/fleet-selection/models',
     // A new storefront slide, as a draft (storefront).
     'storefront/admin/slides',
+    // A new storefront page from a template, as a draft (storefront).
+    'storefront/admin/pages',
     // Admin store credit (wallet), behind a fresh two-step code.
     'wallet/admin/credits',
     // A fresh two-step code for one admin action (identity).

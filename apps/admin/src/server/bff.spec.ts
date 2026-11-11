@@ -1016,6 +1016,17 @@ describe('relay of the storefront slides', () => {
     }
   });
 
+  it('reads the page list and the template catalogue, and creates a page with a POST', async () => {
+    for (const [method, path] of [
+      ['GET', 'storefront/admin/pages'],
+      ['GET', 'storefront/admin/catalogue'],
+      ['POST', 'storefront/admin/pages'],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+    }
+  });
+
   it('saves the order of a position with a PUT on the fixed order path, not as a slide id', async () => {
     const path = 'storefront/admin/slides/order';
     const upstream = upstreamOk();

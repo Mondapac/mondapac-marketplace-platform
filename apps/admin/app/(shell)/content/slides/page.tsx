@@ -40,7 +40,15 @@ export default async function SlidesPage() {
           <LinkButton href={NEW_SLIDE_PATH}>{t('content.slides.new')}</LinkButton>
         ) : null}
       </div>
-      <ContentTabs labels={{ nav: t('content.tabs.label'), slides: t('content.tabs.slides') }} />
+      <ContentTabs
+        active="slides"
+        permissionKeys={permissionKeys}
+        labels={{
+          nav: t('content.tabs.label'),
+          pages: t('content.tabs.pages'),
+          slides: t('content.tabs.slides'),
+        }}
+      />
       <div className="mb-4">
         <SlidesViewSwitch
           active="all"

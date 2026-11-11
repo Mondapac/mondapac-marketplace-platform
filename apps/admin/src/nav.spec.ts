@@ -11,6 +11,10 @@ describe('admin nav: Content', () => {
     expect(item).toMatchObject({ icon: 'layout', href: '/content', labelKey: 'nav.content' });
   });
 
+  it('is there for storefront.page.read too', () => {
+    expect(ids(['storefront.page.read'])).toContain('content');
+  });
+
   it('is hidden without it, also for the other slide keys', () => {
     expect(ids([])).not.toContain('content');
     expect(ids(['storefront.slide.edit', 'storefront.slide.publish'])).not.toContain('content');

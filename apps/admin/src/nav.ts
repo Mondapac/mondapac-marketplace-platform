@@ -102,7 +102,7 @@ export const adminNav: NavConfig = {
       labelKey: 'nav.content',
       href: '/content',
       group: 'content',
-      anyOf: ['storefront.slide.read'],
+      anyOf: ['storefront.page.read', 'storefront.slide.read'],
     },
     {
       id: 'sellers',
