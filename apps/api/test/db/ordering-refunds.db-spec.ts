@@ -878,9 +878,19 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           'UPDATE ordering.seller_orders SET ready_at = now() WHERE market_id = $1 AND id = $2',
           [market.marketId, o.sellerOrderId],
         );
+        const holder = (await other.query<{ pid: number }>('SELECT pg_backend_pid() AS pid'))
+          .rows[0]!.pid;
         const pending = unavailable(o, 1);
-        // Give the refund time to read (no lock) and block on the guarded write.
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        // Wait until the refund's write is blocked behind this transaction (it read without a lock).
+        for (let tries = 0; ; tries += 1) {
+          const blocked = await sql.query<{ n: string }>(
+            'SELECT count(*) AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))',
+            [holder],
+          );
+          if (blocked.rows[0]!.n !== '0') break;
+          if (tries > 200) throw new Error('the refund never waited on the row lock');
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
         await other.query('COMMIT');
 
         expect(await pending).toEqual({ ok: false, error: { code: 'conflict.retry' } });
@@ -894,6 +904,22 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         ok: false,
         error: { code: 'ordering.fulfilment-conflict' },
       });
+    });
+
+    it('lets one of two requests sent at once through, never both', async () => {
+      const o = await paidOrder();
+
+      const both = await Promise.all([unavailable(o, 1), unavailable(o, 1)]);
+
+      expect(both.filter((r) => r.ok)).toHaveLength(1);
+      const refused = both.find((r) => !r.ok);
+      expect(refused).toMatchObject({ ok: false });
+      expect(['conflict.retry', 'ordering.refund-in-progress']).toContain(
+        refused && !refused.ok ? refused.error.code : null,
+      );
+      const rows = await rowsOf(o.sellerOrderId);
+      expect(rows.refunds).toHaveLength(1);
+      expect(gateway.refunds).toHaveLength(1);
     });
 
     it('refuses an acting-as session, an admin, and while the Market switch is off', async () => {

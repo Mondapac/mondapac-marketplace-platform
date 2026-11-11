@@ -28,8 +28,8 @@ import type { GatewayFailure, RefundAnswer } from './ports/checkout-gateway';
 // `record-refund-ledger`), and the seller path is narrow: its own seller order only, to ship and
 // not ready (checked again under the row lock), whole units at their frozen price, the reason
 // `item-unavailable` and the loss always on the seller (database CHECK), no amount of its own, and
-// the shipping fee only once nothing is left to send. Built behind the Market switch `tax.refundCredit.enabled`, off: while it is off nothing is read,
-// written or sent to Stripe. The amounts come from the values frozen on the order; `tax` works out
+// the shipping fee only once nothing is left to send. Built behind the Market switch `tax.refundCredit.enabled`, off: while it is off no refund is planned,
+// written or sent to Stripe (the seller order's page still lists refunds; there are none). The amounts come from the values frozen on the order; `tax` works out
 // the tax reversed. The refund is written (and the seller order's refunded sum raised) before
 // Stripe is called with the stored key; then it settles: succeeded with a credit note, failed
 // (the sum goes back down), or still pending when Stripe's answer is not final: the worker reads

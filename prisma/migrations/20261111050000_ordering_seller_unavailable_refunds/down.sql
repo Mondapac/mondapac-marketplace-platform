@@ -1,5 +1,6 @@
 -- Safety: a blocked statement fails instead of queueing.
 SET lock_timeout = '5s';
+SET statement_timeout = '60s';
 
 -- Reverses 20261111050000_ordering_seller_unavailable_refunds. Fails while a seller refund is
 -- stored (the old checks refuse it): such rows are money already given back and are never

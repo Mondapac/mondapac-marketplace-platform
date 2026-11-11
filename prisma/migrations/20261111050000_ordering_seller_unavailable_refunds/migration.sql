@@ -2,8 +2,10 @@
 -- (order detail decision 6): the units are refunded at once, through the same refund rows as an
 -- admin refund. The refund's actor may now be the seller, only with the reason `item-unavailable`
 -- and with the loss on the seller (the seller ledger reverses it). An admin refund keeps its
--- reasons. Nothing is backfilled: every stored refund is an admin's. Safety: a blocked statement
--- fails instead of queueing.
+-- reasons. Nothing is backfilled: every stored refund is an admin's, and satisfies the new checks.
+-- A plain ADD is safe: no deployed environment holds refunds (the switch is off everywhere); a
+-- populated table would need ADD ... NOT VALID, then VALIDATE. Safety: a blocked statement fails
+-- instead of queueing.
 SET lock_timeout = '5s';
 SET statement_timeout = '60s';
 
