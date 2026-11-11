@@ -8,7 +8,7 @@ import { MarketContextFactory } from '../market-context/market-context.factory';
 import { PLATFORM_TENANT_ID } from '../market-context/tenant';
 import { jobLockKey, type JobLock, type JobLockOutcome } from './job-lock';
 import { JobRegistry, type JobContext, type JobDefinition } from './job-registry';
-import { Scheduler, UnknownJobError } from './scheduler';
+import { maxConcurrentJobRunsOf, Scheduler, UnknownJobError } from './scheduler';
 
 /** One lock shared by the schedulers of a test: the advisory lock without a database. */
 class InMemoryJobLock implements JobLock {
@@ -195,5 +195,113 @@ describe('Scheduler.start and stop', () => {
     expect(run).toHaveBeenCalledTimes(4);
 
     await instance.stop(10_000);
+  });
+});
+
+describe('Scheduler: bound on runs in flight (the pool stays free for the relay)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** Jobs that each run until their gate is opened; `log` records starts and ends per job. */
+  function gatedJobs(names: readonly string[], every = Temporal.Duration.from({ hours: 1 })) {
+    const log: string[] = [];
+    const gates = new Map<string, () => void>();
+    const registry = new JobRegistry();
+    registry.register(
+      'identity',
+      names.map((name) => ({
+        name,
+        every,
+        runAtStart: true,
+        run: async (context: JobContext) => {
+          // One record per run: the first Market waits on the gate, the second runs through.
+          if (context.market.marketId !== TEST_MARKET_IDS[0]) return;
+          log.push(`start ${name}`);
+          await new Promise<void>((resolve) => gates.set(name, resolve));
+          log.push(`end ${name}`);
+        },
+      })),
+    );
+    const markets = new MarketRegistry(
+      new Map(TEST_MARKET_IDS.map((id) => [id, {} as MarketConfig])),
+    );
+    const contexts = new MarketContextFactory(markets, PLATFORM_TENANT_ID);
+    const ids = new SequenceIdGenerator(
+      new FixedClock(Temporal.Instant.from('2026-10-07T00:00:00Z')),
+    );
+    const scheduler = (max: number) =>
+      new Scheduler(registry, new InMemoryJobLock(), markets, contexts, ids, () => 0, max);
+    const open = async (name: string) => {
+      gates.get(name)!();
+      gates.delete(name);
+      await jest.advanceTimersByTimeAsync(0);
+    };
+    return { log, scheduler, open };
+  }
+
+  it('gives a third of the pool to job runs, at least one', () => {
+    expect(maxConcurrentJobRunsOf(10)).toBe(3);
+    expect(maxConcurrentJobRunsOf(3)).toBe(1);
+    expect(maxConcurrentJobRunsOf(2)).toBe(1);
+    expect(maxConcurrentJobRunsOf(1)).toBe(1);
+  });
+
+  it('starts at most the bound of runAtStart jobs at once and the rest as runs end, in order', async () => {
+    const { log, scheduler, open } = gatedJobs(['identity.a', 'identity.b', 'identity.c']);
+    const instance = scheduler(2);
+
+    instance.start();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(log).toEqual(['start identity.a', 'start identity.b']);
+
+    await open('identity.b');
+    expect(log).toEqual([
+      'start identity.a',
+      'start identity.b',
+      'end identity.b',
+      'start identity.c',
+    ]);
+
+    await open('identity.a');
+    await open('identity.c');
+    expect(log.filter((line) => line.startsWith('start'))).toHaveLength(3);
+
+    await instance.stop(10_000);
+  });
+
+  it('queues a waiting job once however often it ticks, and stop drops the queue', async () => {
+    const { log, scheduler, open } = gatedJobs(
+      ['identity.a', 'identity.b'],
+      Temporal.Duration.from({ seconds: 5 }),
+    );
+    const instance = scheduler(1);
+
+    instance.start();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(log).toEqual(['start identity.a']);
+
+    // b ticks at once and every 5 s, and a every 5 s, while a holds the only slot: the queue
+    // holds b once and a once, not one run per tick.
+    await jest.advanceTimersByTimeAsync(25_000);
+    await open('identity.a');
+    expect(log).toEqual(['start identity.a', 'end identity.a', 'start identity.b']);
+
+    // stop drops the queued a: when b ends, nothing else starts.
+    const stopped = instance.stop(10_000);
+    await jest.advanceTimersByTimeAsync(10_000);
+    await stopped;
+    await open('identity.b');
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(log).toEqual([
+      'start identity.a',
+      'end identity.a',
+      'start identity.b',
+      'end identity.b',
+    ]);
   });
 });

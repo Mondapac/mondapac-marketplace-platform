@@ -29,6 +29,16 @@ export type JobRunResult =
 export type Jitter = () => number;
 
 /**
+ * The bound on job runs in flight for a pool of `poolMax` connections: a third of the pool,
+ * at least one. Each run holds its lock connection and usually one for its work, so the jobs
+ * keep at most about two thirds of the pool, and the relay and the dispatcher always find a
+ * connection (10 connections: 3 runs).
+ */
+export function maxConcurrentJobRunsOf(poolMax: number): number {
+  return Math.max(1, Math.floor(poolMax / 3));
+}
+
+/**
  * The scheduler runner of platform persistence design, "P", 7, for the `worker` role. Each job
  * ticks every `every`, the first time after a random part of the interval, or at once for a
  * job declared `runAtStart`. A run takes the
@@ -39,11 +49,20 @@ export type Jitter = () => number;
  *
  * Nothing starts on construction: `WorkerRuntime.start()` calls {@link start}, and tests call
  * {@link runJobOnce} themselves (P 8).
+ *
+ * At most `maxConcurrentRuns` ticked runs are in flight at once. A run holds one pooled
+ * connection for its lock for the whole run and takes others for its work, so without a
+ * bound the jobs due together (every `runAtStart` job at start-up, the short-interval jobs)
+ * held most of the worker's pool, and the relay and the dispatcher waited past their
+ * connection wait and failed pass after pass. A tick that finds the bound reached waits in a
+ * queue, once per job, and runs when a run ends; {@link stop} drops the queue.
  */
 export class Scheduler {
   private readonly logger = new Logger('Scheduler');
   private readonly timers = new Set<NodeJS.Timeout>();
   private readonly inFlight = new Set<Promise<unknown>>();
+  /** Jobs whose tick found the bound reached, oldest first; a job is queued at most once. */
+  private readonly waiting: string[] = [];
   private stopping = false;
 
   constructor(
@@ -53,6 +72,7 @@ export class Scheduler {
     private readonly contexts: MarketContextFactory,
     private readonly ids: IdGenerator,
     private readonly jitter: Jitter = Math.random,
+    private readonly maxConcurrentRuns: number = Number.POSITIVE_INFINITY,
   ) {}
 
   async runJobOnce(name: string): Promise<JobRunResult> {
@@ -120,6 +140,10 @@ export class Scheduler {
 
   private tick(name: string): void {
     if (this.stopping) return;
+    if (this.inFlight.size >= this.maxConcurrentRuns) {
+      if (!this.waiting.includes(name)) this.waiting.push(name);
+      return;
+    }
     const run = this.runJobOnce(name)
       .then((result) => {
         if (result.outcome === 'skipped') {
@@ -130,13 +154,18 @@ export class Scheduler {
         // The lock transaction failed or ended at maxRunMs; the next tick picks the work up.
         this.logger.error({ msg: 'job.run-failed', job: name, err: error });
       })
-      .finally(() => this.inFlight.delete(run));
+      .finally(() => {
+        this.inFlight.delete(run);
+        const next = this.waiting.shift();
+        if (next !== undefined) this.tick(next);
+      });
     this.inFlight.add(run);
   }
 
   /** No new tick; waits up to `graceMs` for the runs in flight (P 8). */
   async stop(graceMs: number): Promise<void> {
     this.stopping = true;
+    this.waiting.length = 0;
     for (const timer of this.timers) clearTimeout(timer);
     this.timers.clear();
     let timeout: NodeJS.Timeout | undefined;
