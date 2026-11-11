@@ -8,11 +8,15 @@
 //   The Market comes from the request's listed host, never from the client; two hosts of the same
 //   Market share an entry because the API's answer depends only on `x-market-id` (these reads are
 //   anonymous: no cookie, no session), and two Markets never do.
-// - Only a definite answer is kept: the body of a found page, or the API's own "no such thing".
-//   A failure, a time-out, a fault or a bare 404 of a missing route is never stored.
-// - An entry lives a few seconds and the cache holds at most MAX_ENTRIES; the oldest go first.
-// - A stored body is a copy, and each hit hands out a fresh copy, so a caller cannot change what
-//   the next one reads.
+// - Only a definite answer is kept: the body of a found page, or the API's own "no such thing"
+//   (for a store, the store module's code; for a product, a 404 of the product-detail route, which
+//   is what `loadProduct` already reads as "no such product"). A failure, a time-out, a fault or a
+//   store's bare 404 is never stored.
+// - An entry lives a few seconds and the cache holds at most PAGE_READ_MAX_ENTRIES; the oldest go
+//   first. A body larger than PAGE_READ_MAX_BODY_BYTES is not kept, so the cache stays bounded
+//   in bytes too (500 x 256 KB at most).
+// - A body is kept as its JSON text and each hit parses a fresh copy, so a caller cannot change
+//   what the next one reads.
 // No server-only marker: the proxy imports it too, and it holds no secret.
 import type { ApiRead } from './api.ts';
 
@@ -20,6 +24,8 @@ import type { ApiRead } from './api.ts';
 export const PAGE_READ_TTL_MS = 8_000;
 /** The most entries held; a full cache drops its oldest entry first. */
 export const PAGE_READ_MAX_ENTRIES = 500;
+/** The largest body kept, as JSON text (UTF-16 units); a larger answer is simply read again. */
+export const PAGE_READ_MAX_BODY_BYTES = 256 * 1024;
 
 /** Which answers of a read may be kept: a found page, or the module's own "not found". */
 export type KeepRule = (answer: ApiRead<unknown>) => boolean;
@@ -33,8 +39,11 @@ export const keepStoreAnswer: KeepRule = (answer) =>
   answer.kind === 'ok' ||
   (answer.kind === 'failed' && answer.status === 404 && answer.code === 'sellers.store-not-found');
 
+/** A kept answer: a found body as JSON text, or the "missing" answer as it was. */
+type Kept = { readonly kind: 'ok'; readonly text: string } | ApiRead<unknown>;
+
 interface Entry {
-  readonly answer: ApiRead<unknown>;
+  readonly kept: Kept;
   readonly expires: number;
 }
 
@@ -53,8 +62,8 @@ function entries(): Map<string, Entry> {
 
 const keyOf = (marketId: string, path: string): string => `${marketId}\u0000${path}`;
 
-const copyOf = <T>(answer: ApiRead<T>): ApiRead<T> =>
-  answer.kind === 'ok' ? { kind: 'ok', body: structuredClone(answer.body) } : answer;
+const answerOf = <T>(kept: Kept): ApiRead<T> =>
+  'text' in kept ? { kind: 'ok', body: JSON.parse(kept.text) as T } : (kept as ApiRead<T>);
 
 /** The kept answer for this Market and path, if it has not expired. */
 export function cachedPageRead<T>(
@@ -70,7 +79,7 @@ export function cachedPageRead<T>(
     map.delete(key);
     return undefined;
   }
-  return copyOf(entry.answer as ApiRead<T>);
+  return answerOf<T>(entry.kept);
 }
 
 /** Keeps the answer when the rule allows it; anything else is left out. */
@@ -82,6 +91,12 @@ export function keepPageRead(
   now: number,
 ): void {
   if (answer.kind === 'off' || !keep(answer)) return;
+  let kept: Kept = answer;
+  if (answer.kind === 'ok') {
+    const text = JSON.stringify(answer.body);
+    if (text === undefined || text.length > PAGE_READ_MAX_BODY_BYTES) return;
+    kept = { kind: 'ok', text };
+  }
   const map = entries();
   const key = keyOf(marketId, path);
   map.delete(key);
@@ -94,7 +109,7 @@ export function keepPageRead(
     if (oldest === undefined) break;
     map.delete(oldest);
   }
-  map.set(key, { answer: copyOf(answer), expires: now + PAGE_READ_TTL_MS });
+  map.set(key, { kept, expires: now + PAGE_READ_TTL_MS });
 }
 
 /** How many entries are held, for tests. */

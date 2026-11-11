@@ -165,4 +165,21 @@ describe('navigationTarget', () => {
     expect(navigationTarget(event, new URL(window.location.href))?.pathname).toBe('/s/kedron');
     link.remove();
   });
+
+  it('treats the same page with a trailing slash or a reordered query as no navigation', () => {
+    const here = new URL('http://localhost:3000/search?q=lamb&page=2');
+    const clickOn = (href: string) => {
+      const link = document.createElement('a');
+      link.href = href;
+      document.body.append(link);
+      const event = new MouseEvent('click', { bubbles: true, button: 0 });
+      Object.defineProperty(event, 'target', { value: link });
+      const target = navigationTarget(event, here);
+      link.remove();
+      return target;
+    };
+
+    expect(clickOn('/search/?page=2&q=lamb')).toBeNull();
+    expect(clickOn('/search?q=lamb&page=3')?.search).toBe('?q=lamb&page=3');
+  });
 });

@@ -77,17 +77,18 @@ async function missingRoute(request: NextRequest): Promise<string | null> {
   // Only a page read can be a 404 page: a POST (a server action) goes on to the page untouched.
   if (request.method !== 'GET' && request.method !== 'HEAD') return null;
   const path = request.nextUrl.pathname;
+  // The proxy does not run again for the route it rewrites to, so a request for `/missing/...`
+  // here came from a client: it gets the site's own 404 page, never a 200 "not found" page.
+  if (path === '/missing' || path.startsWith('/missing/')) return '/missing';
   // A router prefetch never shows a 404 page: the navigation that follows asks again, so it costs
   // no API read here. (A client that sends the header itself only gets the page's own not-found.)
+  // After the `/missing` guard, so the header never opens the internal route.
   if (
     request.headers.has('next-router-prefetch') ||
     request.headers.has('next-router-segment-prefetch')
   ) {
     return null;
   }
-  // The proxy does not run again for the route it rewrites to, so a request for `/missing/...`
-  // here came from a client: it gets the site's own 404 page, never a 200 "not found" page.
-  if (path === '/missing' || path.startsWith('/missing/')) return '/missing';
   const product = /^\/p\/([^/]+)$/u.exec(path);
   const store = /^\/s\/([^/]+)$/u.exec(path);
   if (!product && !store) return null;

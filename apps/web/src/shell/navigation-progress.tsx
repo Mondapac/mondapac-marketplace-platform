@@ -39,14 +39,24 @@ export function navigationTarget(event: MouseEvent, here: URL): URL | null {
     return null;
   }
   if (to.origin !== here.origin) return null;
-  if (to.pathname === here.pathname && to.search === here.search) return null;
+  if (addressOf(to) === addressOf(here)) return null;
   return to;
+}
+
+/** A page's address with no trailing slash and its query in a fixed order, to compare two. */
+function addressOf(url: URL): string {
+  const path = url.pathname.length > 1 ? url.pathname.replace(/\/+$/u, '') : url.pathname;
+  const query = new URLSearchParams(url.search);
+  query.sort();
+  return `${path}?${query.toString()}`;
 }
 
 /**
  * A thin bar along the top of the page while a soft navigation is on its way (SEO package 5,
  * follow-up 2): the product and store routes have no loading boundary, because their 404 must be
  * decided before any HTML, so without it a tap on a card gives no sign until the page appears.
+ * A control that opens a panel must be a `<button>`, or a link marked `data-no-progress`: a link
+ * whose click is cancelled would otherwise keep the bar up until {@link PROGRESS_GIVE_UP_MS}.
  * It starts on a click on a same-origin link, shows only after {@link PROGRESS_DELAY_MS}, and ends
  * when the new route renders. Screen readers hear "Loading" politely; with reduced motion the bar
  * is a still line instead of a moving one. Built in-house, no package.

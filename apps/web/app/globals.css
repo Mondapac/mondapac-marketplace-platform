@@ -239,11 +239,11 @@ svg {
   height: 3px;
   overflow: hidden;
   pointer-events: none;
-  background: var(--sf-mist-soft);
 }
+/* Teal: at least 4.5:1 on white in every palette (lagoon is 3:1 in palette D). No track. */
 .nav-progress-bar {
   height: 100%;
-  background: var(--sf-lagoon);
+  background: var(--sf-teal);
   transform-origin: left center;
   transform: scaleX(0.9);
 }

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiRead } from '../src/storefront/api.ts';
 import {
+  PAGE_READ_MAX_BODY_BYTES,
   PAGE_READ_MAX_ENTRIES,
   PAGE_READ_TTL_MS,
   cachedPageRead,
@@ -228,5 +229,12 @@ describe('what the cache keeps', () => {
     if (first?.kind === 'ok') first.body.name = 'changed';
 
     expect(cachedPageRead('AU', 'p', NOW)).toEqual(found);
+  });
+
+  it('does not keep a body larger than its byte limit', () => {
+    const big = { kind: 'ok' as const, body: { text: 'x'.repeat(PAGE_READ_MAX_BODY_BYTES) } };
+    keepPageRead('AU', 'big', big, keepProductAnswer, NOW);
+
+    expect(pageReadCacheSize()).toBe(0);
   });
 });
