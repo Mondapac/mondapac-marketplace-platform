@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
 import { SellerHealthCard } from '../../src/sellers/health-card.tsx';
-import type { SellerHealthRead } from '../../src/sellers/health-types.ts';
+import type { HealthCardRead, SellerHealthRead } from '../../src/sellers/health-types.ts';
 
 const scenario = new URLSearchParams(window.location.search).get('s') ?? 'at-risk';
 const SELLER = '0190a000-0000-7000-8000-000000000001';
@@ -17,7 +17,7 @@ const card = (
   band: 'healthy' | 'at-risk' | 'unhealthy',
   score: number,
   lowest: string,
-): SellerHealthRead['current'] => ({
+): HealthCardRead => ({
   day: '2026-11-10',
   kind: 'scored',
   band,
