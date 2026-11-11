@@ -32,6 +32,7 @@ import { SellerHealthRead } from './application/use-cases/seller-health-read.use
 import { OwnSellerHealthController } from './presentation/own-seller-health.controller';
 import { SellerHealthController } from './presentation/seller-health.controller';
 import { PurgeSellerHealth } from './application/use-cases/purge-seller-health.use-case';
+import { ReadOwnSellerHealth } from './application/use-cases/read-own-seller-health.use-case';
 import { RefreshOwnSellerHealth } from './application/use-cases/refresh-own-seller-health.use-case';
 import { RequestSellerHealthRecalculation } from './application/use-cases/request-seller-health-recalculation.use-case';
 import { RunSellerHealthRequests } from './application/use-cases/run-seller-health-requests.use-case';
@@ -879,6 +880,13 @@ const REVIEW_DECISION_PORTS = {
       healthRoster: true,
       healthRequests: true,
       ids: true,
+      clock: true,
+    }),
+    useCaseProvider(ReadOwnSellerHealth, {
+      unitOfWork: true,
+      healthRoster: true,
+      healthStore: true,
+      healthRequests: true,
       clock: true,
     }),
     useCaseProvider(RefreshOwnSellerHealth, {

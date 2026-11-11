@@ -967,6 +967,40 @@ describe('relay of the admin notice routes', () => {
   });
 });
 
+describe('relay of the blog posts list', () => {
+  const request = (path: string) =>
+    new Request(`http://admin.localhost:3002/api/${path}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const list = ['blog', 'admin', 'posts'];
+
+  it('passes the status, kind, owner and page of the query and nothing else', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      request('blog/admin/posts?status=in_review&kind=event&owner=seller&page=2&sellerId=x&x=1'),
+      list,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/blog/admin/posts?status=in_review&kind=event&owner=seller&page=2',
+    );
+  });
+
+  it('drops a value of another shape', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('blog/admin/posts?status=live%27--&kind=../x&owner=all&page=0x1'),
+      list,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/blog/admin/posts');
+  });
+});
+
 describe('relay of the storefront slides', () => {
   const id = '0190a000-0000-7000-8000-000000000001';
   const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
@@ -1014,6 +1048,42 @@ describe('relay of the storefront slides', () => {
       const ok = upstreamOk();
       expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
     }
+  });
+
+  it('reads the page list and the template catalogue, and creates a page with a POST', async () => {
+    for (const [method, path] of [
+      ['GET', 'storefront/admin/pages'],
+      ['GET', 'storefront/admin/catalogue'],
+      ['POST', 'storefront/admin/pages'],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+    }
+  });
+
+  it('keeps one page, and the other methods on the pages, closed for now', async () => {
+    for (const [method, path] of [
+      ['GET', `storefront/admin/pages/${id}`],
+      ['PUT', `storefront/admin/pages/${id}`],
+      ['DELETE', `storefront/admin/pages/${id}`],
+      ['PUT', 'storefront/admin/pages'],
+      ['POST', 'storefront/admin/catalogue'],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(404);
+      expect(ok).not.toHaveBeenCalled();
+    }
+  });
+
+  it('passes no query to the page list', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'storefront/admin/pages?status=draft', { host: 'admin.localhost:3002' }),
+      ['storefront', 'admin', 'pages'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/storefront/admin/pages');
   });
 
   it('saves the order of a position with a PUT on the fixed order path, not as a slide id', async () => {
@@ -1185,6 +1255,13 @@ describe('relay of the wallet and step-up routes', () => {
   it.each([
     ['GET', 'wallet/admin/settings'],
     ['PUT', 'wallet/admin/settings'],
+    ['GET', 'promotions/admin/settings'],
+    ['PUT', 'promotions/admin/settings'],
+    ['GET', 'promotions/admin/first-order'],
+    ['PUT', 'promotions/admin/first-order'],
+    ['GET', 'promotions/admin/free-shipping'],
+    ['PUT', 'promotions/admin/free-shipping/logan'],
+    ['PUT', 'promotions/admin/free-shipping/Gold_Coast-2'],
     ['GET', 'wallet/admin/credit-requests'],
     ['POST', 'wallet/admin/credits'],
     ['POST', 'identity/admin/step-up/verify'],
@@ -1196,6 +1273,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', 'customers/admin/deletion-requests'],
     ['POST', `customers/admin/buyers/${id}/deletion-requests`],
     ['DELETE', `customers/admin/deletion-requests/${id}`],
+    ['GET', 'blog/admin/posts'],
     ['GET', 'catalog/admin/brands'],
     ['GET', 'catalog/admin/brands/merge-queue'],
     ['POST', 'catalog/admin/brands'],
@@ -1253,6 +1331,15 @@ describe('relay of the wallet and step-up routes', () => {
   it.each([
     ['DELETE', 'wallet/admin/settings'],
     ['POST', 'wallet/admin/settings'],
+    ['POST', 'promotions/admin/settings'],
+    ['DELETE', 'promotions/admin/first-order'],
+    ['GET', 'promotions/admin/free-shipping/logan'],
+    ['PUT', 'promotions/admin/free-shipping'],
+    ['PUT', 'promotions/admin/free-shipping/a.b'],
+    ['PUT', 'promotions/admin/free-shipping/logan/extra'],
+    ['PUT', `promotions/admin/free-shipping/${'z'.repeat(65)}`],
+    ['GET', 'promotions/admin/promotions'],
+    ['PUT', 'promotions/admin/preview-quote'],
     ['PUT', 'wallet/admin/credits'],
     ['GET', 'wallet/admin/credits'],
     ['GET', 'identity/admin/step-up/verify'],
@@ -2224,6 +2311,80 @@ describe('relay of the product import', () => {
       (await relay(config, post(start.join('/'), sameOrigin, large), start, upstream)).status,
     ).toBe(413);
     expect(upstream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('relay of the category tree import and export (categories C7a)', () => {
+  const base = ['catalog', 'admin', 'category-tree'];
+  const dryRun = [...base, 'import', 'dry-run'];
+  const apply = [...base, 'import', 'apply'];
+  const exportPath = [...base, 'export'];
+  const get = (target: string) =>
+    new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+
+  it('relays the dry run and the apply as same-origin POSTs, and the export as a GET, on their exact paths only', async () => {
+    const upstream = upstreamOk();
+    for (const path of [dryRun, apply]) {
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+      expect((await relay(config, get(path.join('/')), path, upstream)).status).toBe(404);
+      expect(
+        (
+          await relay(
+            config,
+            post(path.join('/'), { host: 'admin.localhost:3002' }),
+            path,
+            upstream,
+          )
+        ).status,
+      ).toBe(403);
+      const extra = [...path, 'x'];
+      expect((await relay(config, post(extra.join('/')), extra, upstream)).status).toBe(404);
+    }
+    expect((await relay(config, get(exportPath.join('/')), exportPath, upstream)).status).toBe(200);
+    expect((await relay(config, post(exportPath.join('/')), exportPath, upstream)).status).toBe(
+      404,
+    );
+    const other = [...base, 'import'];
+    expect((await relay(config, post(other.join('/')), other, upstream)).status).toBe(404);
+    expect(upstream).toHaveBeenCalledTimes(3);
+  });
+
+  it('lets only the two import routes carry a large body', async () => {
+    const upstream = upstreamOk();
+    const large = JSON.stringify({ data: 'x'.repeat(2 * 1024 * 1024) });
+    for (const path of [dryRun, apply]) {
+      expect(
+        (await relay(config, post(path.join('/'), sameOrigin, large), path, upstream)).status,
+      ).toBe(200);
+    }
+    const tooLarge = JSON.stringify({ data: 'x'.repeat(15 * 1024 * 1024) });
+    expect(
+      (await relay(config, post(dryRun.join('/'), sameOrigin, tooLarge), dryRun, upstream)).status,
+    ).toBe(413);
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
+
+  it('relays the export query that has the right shape only', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      get(`${exportPath.join('/')}?format=xlsx&status=active,hidden&q=rice&extra=1&format2=x`),
+      exportPath,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/category-tree/export?format=xlsx&status=active%2Chidden&q=rice',
+    );
+    await relay(
+      config,
+      get(`${exportPath.join('/')}?format=pdf&status=gone`),
+      exportPath,
+      upstream,
+    );
+    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/admin/category-tree/export');
   });
 });
 

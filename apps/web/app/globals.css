@@ -10021,6 +10021,10 @@ button.login {
   scroll-snap-align: start;
   scroll-snap-stop: always;
 }
+.gslide picture,
+.tile picture {
+  display: contents;
+}
 .gslide img {
   display: block;
   inline-size: 100%;
