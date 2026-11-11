@@ -1,7 +1,7 @@
 import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { PostsView } from '../../../../src/blog/posts-view.tsx';
-import { BLOG_READ_PERMISSION } from '../../../../src/blog/types.ts';
+import { BLOG_EDIT_PERMISSION, BLOG_READ_PERMISSION } from '../../../../src/blog/types.ts';
 import { ContentNoAccess } from '../../../../src/content/content-no-access.tsx';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
@@ -29,7 +29,10 @@ export default async function BlogPage() {
         <h1 className="text-2xl font-semibold">{title}</h1>
         <p className="text-fg-muted">{t('blog.intro')}</p>
       </div>
-      <PostsView zone={displayZone(timezone)} />
+      <PostsView
+        zone={displayZone(timezone)}
+        canEdit={permissionKeys.includes(BLOG_EDIT_PERMISSION)}
+      />
     </AdminShell>
   );
 }

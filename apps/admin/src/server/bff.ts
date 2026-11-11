@@ -84,6 +84,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'settings/admin/market-settings',
     // The blog posts of the Market (blog; query: `status`, `kind`, `owner`, `page`), read only.
     'blog/admin/posts',
+    // The blog categories and tags the editor offers (blog), read only.
+    'blog/admin/taxonomy',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
@@ -173,6 +175,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'wallet/admin/credits',
     // A fresh two-step code for one admin action (identity).
     'identity/admin/step-up/verify',
+    // A new blog post, as a draft (blog).
+    'blog/admin/posts',
     // A new brand (catalog), and keeping a group of the merge queue apart.
     'catalog/admin/brands',
     'catalog/admin/brands/merge-queue/dismiss',
@@ -283,6 +287,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A storefront slide's approval side and its other changes (storefront): send the draft for
     // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.
     'storefront/admin/slides/:id/submit',
+    // Send a blog post's draft for review (blog); the backend's automatic checks may refuse.
+    'blog/admin/posts/:id/submit',
     'storefront/admin/slides/:id/approve',
     'storefront/admin/slides/:id/pause',
     'storefront/admin/slides/:id/resume',
@@ -330,6 +336,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/sellers/:id/payout-terms',
     // A storefront slide's whole draft (storefront).
     'storefront/admin/slides/:id',
+    // A blog post's whole draft: the content and the address (blog).
+    'blog/admin/posts/:id/draft',
     // The whole content of a brand, with the version seen (catalog).
     'catalog/admin/brands/:id',
     // The whole content of a business activity, with the version seen (catalog).
@@ -367,6 +375,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // (catalog, read-only; the impact takes the `action`).
     'catalog/admin/categories/:id',
     'catalog/admin/categories/:id/impact',
+    // One blog post with its working and live versions, and its automatic checks (blog).
+    'blog/admin/posts/:id',
+    'blog/admin/posts/:id/checks',
     // One platform product with its working copy, for the product form (catalog).
     'catalog/admin/platform-products/:id',
     // The manufacturer certificates that name one product, one certificate, and its status history
@@ -689,6 +700,9 @@ const MAX_BODY_BYTES = 16 * 1024;
  * 14500 kB for this one path and checks the real size itself; every other path keeps 16 KB.
  */
 const UPLOAD_PATH = 'catalog/admin/platform-imports';
+/** A blog post's draft: up to 200 blocks of plain text, so more than the usual cap, still under the API's 64 kB JSON limit (blog). */
+const BLOG_DRAFT_PATH = /^blog\/admin\/posts\/[0-9a-f-]{36}\/draft$/i;
+const MAX_BLOG_DRAFT_BYTES = 60 * 1024;
 const MAX_UPLOAD_BODY_BYTES = 14_500 * 1024;
 /**
  * A category image (categories C3c) is a picture of at most 4 MiB as base64 (about 5.6 MB). The API
@@ -708,6 +722,7 @@ const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/i
 /** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
 function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
+  if (method === 'PUT' && BLOG_DRAFT_PATH.test(target)) return MAX_BLOG_DRAFT_BYTES;
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
   if (method === 'POST' && CERT_DOCUMENT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'POST' && PRODUCT_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
