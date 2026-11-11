@@ -301,7 +301,13 @@ export function ProductsList({
         activeId={savedId ?? query.view}
         onSelect={(id) => {
           if (saved?.items.some((item) => item.id === id)) openSaved(id);
-          else change({ view: id as View });
+          else if (savedId !== null) {
+            // A saved view belongs to its own tab: a built-in tab opens as it is, without the
+            // saved view's search, filters or sort.
+            setSavedId(null);
+            setDraft('');
+            setQuery({ ...DEFAULT_QUERY, view: id as View });
+          } else change({ view: id as View });
         }}
         items={[
           ...VIEWS.map((view) => ({
