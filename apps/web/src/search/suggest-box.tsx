@@ -62,6 +62,8 @@ export function useSuggestBox({ initial = '', inline = false, onPick }: SuggestB
   const [result, setResult] = useState<Result | null>(null);
   const [slow, setSlow] = useState(false);
   const [active, setActive] = useState(-1);
+  // Esc closed the list: it stays closed (on a phone too) until the next change of the words.
+  const [dismissed, setDismissed] = useState(false);
   const q = text.trim().replace(/\s+/gu, ' ');
   const idle = Array.from(q).length < SUGGEST_MIN;
 
@@ -73,6 +75,8 @@ export function useSuggestBox({ initial = '', inline = false, onPick }: SuggestB
       // Skeleton rows only when the answer takes longer than the debounce itself.
       slowTimer = setTimeout(() => setSlow(true), SUGGEST_DEBOUNCE_MS);
       const settle = (next: Result) => {
+        // A read that a newer one replaced may still answer (it ignored the abort): drop it.
+        if (controller.signal.aborted) return;
         clearTimeout(slowTimer);
         setSlow(false);
         setResult(next);
@@ -96,18 +100,22 @@ export function useSuggestBox({ initial = '', inline = false, onPick }: SuggestB
     };
   }, [q, idle]);
 
-  const answer = result !== null && 'answer' in result ? result.answer : null;
+  // Only the answer to the words now in the box counts: for the rows, the skeleton and the keys.
+  const current = result !== null && result.q === q && !idle ? result : null;
+  const answer = current !== null && 'answer' in current ? current.answer : null;
   const rows: Row[] = [];
   if (answer !== null) {
     answer.products.forEach((_, index) => rows.push({ kind: 'product', index }));
     answer.stores.forEach((_, index) => rows.push({ kind: 'store', index }));
     rows.push({ kind: 'all' });
   }
-  const failed = result !== null && 'failed' in result;
+  const failed = current !== null && 'failed' in current;
   // Under two characters nothing shows. A phone's view keeps its panel while the box is blurred.
-  const shown = !idle && (inline || open) && (result !== null || slow);
+  const visible = !idle && !dismissed && (inline || open) && (current !== null || slow);
+  // An error leaves a note and no list to choose from.
+  const expanded = visible && !failed;
   const optionId = (i: number) => `${base}-opt-${i}`;
-  const activeRow = shown && active >= 0 && active < rows.length ? active : -1;
+  const activeRow = expanded && active >= 0 && active < rows.length ? active : -1;
 
   const submit = () => input.current?.form?.requestSubmit();
   const choose = (row: Row | undefined) => {
@@ -128,24 +136,29 @@ export function useSuggestBox({ initial = '', inline = false, onPick }: SuggestB
       setActive(to);
     };
     if (event.key === 'ArrowDown' && rows.length > 0) {
+      setDismissed(false);
       move((activeRow + 1) % rows.length);
     } else if (event.key === 'ArrowUp' && rows.length > 0) {
+      setDismissed(false);
       move(activeRow <= 0 ? rows.length - 1 : activeRow - 1);
-    } else if (event.key === 'Enter' && activeRow >= 0) {
+    } else if (event.key === 'Enter' && !event.nativeEvent.isComposing && activeRow >= 0) {
       event.preventDefault();
       choose(rows[activeRow]);
     } else if (event.key === 'Escape') {
       // First Esc closes the list, the second clears the box; with both done Esc passes on
       // (the search view closes).
-      if (open && shown) {
+      if (visible) {
         event.preventDefault();
         event.stopPropagation();
         setOpen(false);
+        setDismissed(true);
         setActive(-1);
       } else if (text !== '') {
         event.preventDefault();
         event.stopPropagation();
         setText('');
+        setResult(null);
+        setDismissed(false);
         setActive(-1);
       }
     } else if (event.key === 'Tab') {
@@ -158,13 +171,15 @@ export function useSuggestBox({ initial = '', inline = false, onPick }: SuggestB
     value: text,
     role: 'combobox' as const,
     'aria-autocomplete': 'list' as const,
-    'aria-expanded': shown,
+    'aria-expanded': expanded,
     'aria-controls': listId,
     'aria-haspopup': 'listbox' as const,
     ...(activeRow >= 0 ? { 'aria-activedescendant': optionId(activeRow) } : {}),
     autoComplete: 'off',
     onChange: (event: ChangeEvent<HTMLInputElement>) => {
       setText(event.target.value);
+      if (Array.from(event.target.value.trim()).length < SUGGEST_MIN) setResult(null);
+      setDismissed(false);
       setOpen(true);
       setActive(-1);
     },
@@ -173,25 +188,25 @@ export function useSuggestBox({ initial = '', inline = false, onPick }: SuggestB
     onKeyDown,
   };
 
-  const live = !shown
+  const live = !visible
     ? ''
     : failed
       ? t('error')
       : answer === null
         ? t('loading')
         : answer.products.length + answer.stores.length === 0
-          ? t('none', { q: result?.q ?? q })
+          ? t('none', { q })
           : t('found', { products: answer.products.length, stores: answer.stores.length });
 
   const panel = (
     <SuggestPanel
       id={listId}
-      shown={shown}
+      shown={visible}
       inline={inline}
-      result={result}
+      q={q}
       answer={answer}
       failed={failed}
-      loading={slow && answer === null && !failed}
+      loading={slow && current === null}
       activeRow={activeRow}
       optionId={optionId}
       onChoose={(row) => {
@@ -203,14 +218,14 @@ export function useSuggestBox({ initial = '', inline = false, onPick }: SuggestB
     />
   );
 
-  return { text, setText, inputProps, panel, replacing: inline && !idle };
+  return { text, setText, inputProps, panel, replacing: inline && !idle && !dismissed };
 }
 
 interface PanelProps {
   readonly id: string;
   readonly shown: boolean;
   readonly inline: boolean;
-  readonly result: Result | null;
+  readonly q: string;
   readonly answer: SuggestAnswer | null;
   readonly failed: boolean;
   readonly loading: boolean;
@@ -232,8 +247,7 @@ function Marked({ text, q }: { readonly text: string; readonly q: string }) {
 
 function SuggestPanel(props: PanelProps) {
   const t = useTranslations('suggest');
-  const { answer, result, activeRow } = props;
-  const q = result?.q ?? '';
+  const { answer, q, activeRow } = props;
   // Pressing a row must not take the focus from the box (it would close the list first).
   const keepFocus = {
     onMouseDown: (event: { preventDefault: () => void }) => event.preventDefault(),
@@ -243,11 +257,12 @@ function SuggestPanel(props: PanelProps) {
   const none = answer !== null && productCount + storeCount === 0;
   let rowNumber = 0;
 
-  let body: ReactNode;
+  let note: ReactNode;
+  let list: ReactNode;
   if (props.failed) {
-    body = <p className="tanote">{t('error')}</p>;
+    note = <p className="tanote">{t('error')}</p>;
   } else if (answer === null) {
-    body = props.loading ? (
+    note = props.loading ? (
       <div className="tasq-set" aria-hidden="true">
         {[0, 1, 2].map((i) => (
           <div className="tasq" key={i}>
@@ -261,10 +276,9 @@ function SuggestPanel(props: PanelProps) {
       </div>
     ) : null;
   } else {
-    const allCount = `${answer.total.toLocaleString('en-AU')}${answer.totalIsCapped ? '+' : ''}`;
-    body = (
+    note = none ? <p className="tanote">{t('none', { q })}</p> : null;
+    list = (
       <>
-        {none ? <p className="tanote">{t('none', { q })}</p> : null}
         {productCount > 0 ? (
           <div role="group" aria-labelledby={`${props.id}-p`}>
             <div className="tah" id={`${props.id}-p`}>
@@ -360,7 +374,11 @@ function SuggestPanel(props: PanelProps) {
         >
           <Icon name="search" />
           <span className="tat">
-            <b>{t('see-all', { q, count: allCount })}</b>
+            <b>
+              {answer.total === 0
+                ? t('see-all-none', { q })
+                : t('see-all', { q, n: answer.total, capped: String(answer.totalIsCapped) })}
+            </b>
           </span>
         </Link>
       </>
@@ -369,14 +387,11 @@ function SuggestPanel(props: PanelProps) {
 
   return (
     <>
-      <div
-        id={props.id}
-        role="listbox"
-        aria-label={t('label')}
-        className={`tapanel${props.inline ? ' in' : ''}`}
-        hidden={!props.shown}
-      >
-        {props.shown ? body : null}
+      <div className={`tapanel${props.inline ? ' in' : ''}`} hidden={!props.shown}>
+        {props.shown ? note : null}
+        <div id={props.id} role="listbox" aria-label={t('label')} hidden={!props.shown || !list}>
+          {props.shown ? list : null}
+        </div>
       </div>
       <div className="tasr" role="status" aria-live="polite">
         {props.live}

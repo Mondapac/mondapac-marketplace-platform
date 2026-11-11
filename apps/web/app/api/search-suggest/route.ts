@@ -18,7 +18,13 @@ export async function GET(request: Request) {
   }
   const read = await loadSuggestions(q);
   if (read.kind !== 'ok') {
-    return Response.json({ code: 'search.unavailable' }, { status: 502, headers: NO_STORE });
+    // A rate limit is passed on so the browser backs off; no other cause or text goes out.
+    // (The API read does not hand back Retry-After, so none is sent.)
+    const limited = read.status === 429;
+    return Response.json(
+      { code: limited ? 'rate-limited' : 'search.unavailable' },
+      { status: limited ? 429 : 502, headers: NO_STORE },
+    );
   }
   return Response.json(read.answer, { headers: NO_STORE });
 }

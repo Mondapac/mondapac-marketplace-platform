@@ -663,6 +663,10 @@ svg {
   color: var(--sf-slate);
   font-weight: 700;
 }
+.tah:lang(fa),
+[dir='rtl'] .tah {
+  letter-spacing: 0;
+}
 .tarow {
   display: flex;
   align-items: center;
@@ -672,9 +676,23 @@ svg {
   color: var(--sf-ink);
   text-decoration: none;
 }
-.tarow.on,
+.tarow {
+  position: relative;
+}
 .tarow:hover {
   background: var(--sf-mist-soft);
+}
+/* The row the arrow keys are on: a stronger tint and a bar on the inline-start edge (RTL safe). */
+.tarow.on {
+  background: var(--sf-mist);
+}
+.tarow.on::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  background: var(--sf-teal);
 }
 .tath,
 .talg {

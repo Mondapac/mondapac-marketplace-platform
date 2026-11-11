@@ -44,8 +44,8 @@ type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 let fetchMock: Mock<Fetch>;
 let submitted: string[] = [];
 
-function Box({ onPick }: { onPick?: () => void }) {
-  const box = useSuggestBox(onPick ? { onPick } : {});
+function Box({ onPick, inline = false }: { onPick?: () => void; inline?: boolean }) {
+  const box = useSuggestBox({ inline, ...(onPick ? { onPick } : {}) });
   return (
     <form
       role="search"
@@ -221,6 +221,9 @@ describe('suggestions combobox', () => {
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(input.value).toBe('');
     fireEvent.change(input, { target: { value: 'bak' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(130);
+    });
     expect(screen.getByRole('listbox')).toBeTruthy();
     fireEvent.keyDown(input, { key: 'Tab' });
     expect(screen.queryByRole('listbox')).toBeNull();
@@ -261,10 +264,140 @@ describe('suggestions combobox', () => {
     await type('zzz');
     expect(screen.getAllByText('No suggestions for "zzz"').length).toBeGreaterThan(0);
     expect(screen.getAllByRole('option')).toHaveLength(1);
-    expect(screen.getByRole('option').textContent).toContain(
-      'See all results for "zzz" (0 products)',
-    );
+    expect(screen.getByRole('option').textContent).toContain('See all results for "zzz"');
     expect(screen.queryByText(/did you mean/iu)).toBeNull();
+  });
+
+  it('has no active descendant until an arrow key chooses a row', async () => {
+    mount(<Box />);
+    const input = await type('bak');
+    expect(input.hasAttribute('aria-activedescendant')).toBe(false);
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.hasAttribute('aria-activedescendant')).toBe(true);
+    fireEvent.change(input, { target: { value: 'bake' } });
+    expect(input.hasAttribute('aria-activedescendant')).toBe(false);
+  });
+
+  it('ignores Enter while an input method is composing', async () => {
+    mount(<Box />);
+    const input = await type('bak');
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(fireEvent.keyDown(input, { key: 'Enter', isComposing: true })).toBe(true);
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('ignores an older answer that arrives after a newer request started', async () => {
+    const waiting: { q: string; finish: (r: Response) => void }[] = [];
+    // Neither request listens to the abort signal: the older one can still answer.
+    fetchMock.mockImplementation(
+      (url: string) =>
+        new Promise<Response>((resolve) => {
+          waiting.push({
+            q: new URL(url, 'http://x').searchParams.get('q') ?? '',
+            finish: resolve,
+          });
+        }),
+    );
+    mount(<Box />);
+    const input = await type('ba');
+    fireEvent.change(input, { target: { value: 'bak' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(130);
+    });
+    expect(waiting.map((w) => w.q)).toEqual(['ba', 'bak']);
+    const old = { ...ANSWER, total: 99 };
+    await act(async () => {
+      waiting[0]!.finish({ ok: true, json: () => Promise.resolve(old) } as Response);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    // The skeleton is still the answer to "bak": the old rows are not shown and cannot be picked.
+    expect(screen.queryByRole('option')).toBeNull();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(input.hasAttribute('aria-activedescendant')).toBe(false);
+    await act(async () => {
+      waiting[1]!.finish({ ok: true, json: () => Promise.resolve(ANSWER) } as Response);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getAllByRole('option')[3]?.textContent).toContain('(12 products)');
+  });
+
+  it('forgets the answer when the box drops under two characters', async () => {
+    mount(<Box />);
+    const input = await type('bak');
+    expect(screen.getAllByRole('option')).toHaveLength(4);
+    fireEvent.change(input, { target: { value: 'b' } });
+    fireEvent.change(input, { target: { value: 'ba' } });
+    expect(screen.queryByRole('option')).toBeNull();
+  });
+
+  it('in the phone view the first Esc closes the list, the second clears, then Esc passes on', async () => {
+    mount(<Box inline />);
+    const input = (await type('bak')) as HTMLInputElement;
+    expect(screen.getAllByRole('option')).toHaveLength(4);
+    const first = fireEvent.keyDown(input, { key: 'Escape' });
+    expect(first).toBe(false);
+    expect(screen.queryByRole('option')).toBeNull();
+    expect(input.value).toBe('bak');
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(input.value).toBe('');
+    expect(fireEvent.keyDown(input, { key: 'Escape' })).toBe(true);
+    // Typing again brings the list back.
+    fireEvent.change(input, { target: { value: 'bak' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(130);
+    });
+    expect(screen.getAllByRole('option')).toHaveLength(4);
+  });
+
+  it('calls onPick when a row is pressed in the phone view', async () => {
+    const onPick = vi.fn();
+    mount(<Box inline onPick={onPick} />);
+    await type('bak');
+    fireEvent.click(screen.getAllByRole('option')[0]!);
+    expect(onPick).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps notes out of the listbox and is not expanded after an error', async () => {
+    fetchMock.mockImplementation(() => reply({}, false));
+    const { container } = mount(<Box />);
+    const input = await type('bak');
+    expect(input.getAttribute('aria-expanded')).toBe('false');
+    expect(container.querySelector('[role="listbox"] p')).toBeNull();
+    expect(container.querySelector('.tanote')?.textContent).toMatch(/could not load/u);
+    fetchMock.mockImplementation(() =>
+      reply({ products: [], stores: [], total: 0, totalIsCapped: false }),
+    );
+    fireEvent.change(input, { target: { value: 'zzz' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(130);
+    });
+    expect(container.querySelector('[role="listbox"] p')).toBeNull();
+    expect(container.querySelector('.tanote')?.textContent).toBe('No suggestions for "zzz"');
+  });
+
+  it('writes the count in See all in the singular, and leaves it out at zero', async () => {
+    fetchMock.mockImplementation(() =>
+      reply({
+        products: [],
+        stores: [{ slug: 'k', href: '/s/k', name: 'Kedron', productCount: 1 }],
+        total: 1,
+        totalIsCapped: false,
+      }),
+    );
+    mount(<Box />);
+    await type('ked');
+    expect(screen.getByText('1 product')).toBeTruthy();
+    expect(screen.getAllByRole('option')[1]?.textContent).toBe(
+      'See all results for "ked" (1 product)',
+    );
+    fetchMock.mockImplementation(() =>
+      reply({ products: [], stores: [], total: 0, totalIsCapped: false }),
+    );
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'zzz' } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(130);
+    });
+    expect(screen.getByRole('option').textContent).toBe('See all results for "zzz"');
   });
 
   it.each([

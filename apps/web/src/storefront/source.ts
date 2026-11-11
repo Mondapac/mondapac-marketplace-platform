@@ -658,7 +658,7 @@ export async function loadBuyerSession(): Promise<BuyerSession> {
 export type SuggestRead =
   | { readonly kind: 'ok'; readonly answer: SuggestAnswer }
   /** The API refused (429, 503) or answered nothing usable; the panel says so and Enter still searches. */
-  | { readonly kind: 'failed' };
+  | { readonly kind: 'failed'; readonly status?: number };
 
 /**
  * Suggestions for what the buyer has typed (`GET search/suggest?q=`, at least 2 characters; the
@@ -668,7 +668,9 @@ export type SuggestRead =
 export async function loadSuggestions(q: string): Promise<SuggestRead> {
   const read = await apiGet<unknown>(`search/suggest?q=${encodeURIComponent(q)}`);
   if (read.kind === 'off') return { kind: 'ok', answer: await sampleSuggestions(q) };
-  if (read.kind !== 'ok') return { kind: 'failed' };
+  if (read.kind !== 'ok') {
+    return read.status === undefined ? { kind: 'failed' } : { kind: 'failed', status: read.status };
+  }
   const answer = suggestOf(read.body, await photoUrls());
   return answer === undefined ? { kind: 'failed' } : { kind: 'ok', answer };
 }
