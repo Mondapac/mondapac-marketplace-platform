@@ -48,6 +48,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX attribute_value_suggestions_open_product_definition_key ON catalog.attribute_value_suggestions USING btree (market_id, product_id, definition_id) WHERE (status = 'open'::text)",
   'catalog.attribute_value_suggestions_notice_due_idx':
     "CREATE INDEX attribute_value_suggestions_notice_due_idx ON catalog.attribute_value_suggestions USING btree (market_id, notice_next_attempt_at, id) WHERE (notice_state = 'pending'::text)",
+  // Variants V7: one open request per offer and combination; the due-notice scan.
+  'catalog.variant_requests_open_offer_option_key':
+    "CREATE UNIQUE INDEX variant_requests_open_offer_option_key ON catalog.variant_requests USING btree (market_id, offer_id, option_key) WHERE (status = 'open'::text)",
+  'catalog.variant_requests_notice_due_idx':
+    "CREATE INDEX variant_requests_notice_due_idx ON catalog.variant_requests USING btree (market_id, notice_next_attempt_at, id) WHERE (notice_state = 'pending'::text)",
   'catalog.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON catalog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // docs/design/data/catalog.md 3.15 (slice 12): the selection indexes of the certification-event
