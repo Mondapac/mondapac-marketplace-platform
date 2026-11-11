@@ -16,11 +16,12 @@ has a strict CSP (`worker-src 'self'`, no `blob:`), and the map library is large
 3. We use the library's CSP build. Its worker is copied from the package to `public/vendor/` when
    `server.mjs` starts and served from our own origin, so `worker-src 'self'` stays and no `blob:`
    is added. `connect-src` gains `https://api.mapbox.com https://events.mapbox.com` only when a
-   map token is set.
+   map token is set (also while the live search is off and the stub map shows; these are two fixed
+   Mapbox origins, accepted to keep the policy independent of the search settings).
 4. The map uses its own public token (`MAPBOX_MAP_TOKEN`, a `pk.` token with only the styles and
    tiles scopes, URL-restricted to the site's hosts). It is never the server search token, never
    in code, and never a `NEXT_PUBLIC_` variable; the server hands it to the modal. A secret
-   `sk.` token is refused at start-up. The style (`MAPBOX_MAP_STYLE`) is configuration.
+   `sk.` token, or the search token's value, is refused at start-up. The style (`MAPBOX_MAP_STYLE`) is configuration.
 5. The centre, the delivery area and the bounds come from the Market's data, not from code.
 6. The pin is our own button inside the map's marker, so it keeps its accessible name and moves
    with the arrow keys. Rotation and pitch are off.
@@ -30,6 +31,10 @@ has a strict CSP (`worker-src 'self'`, no `blob:`), and the map library is large
 ## Consequences
 - Mapbox GL JS v2+ is under a proprietary licence and every map load counts toward Mapbox usage;
   an operator sets a usage alert in the Mapbox account.
+- `events.mapbox.com` receives the buyer's IP address and map-load events, so the privacy page
+  lists Mapbox as the map's processor.
+- Each Region Stack's deploy checklist checks the token's URL restriction and scopes in the
+  Mapbox account; the code cannot check them.
 - Today there is one map token per deployment (one Region Stack). When one deployment hosts
   several Markets with different Mapbox accounts or styles, the token and style move to Market
   configuration.

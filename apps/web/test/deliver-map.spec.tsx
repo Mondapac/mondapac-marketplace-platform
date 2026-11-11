@@ -34,6 +34,9 @@ describe('map configuration', () => {
       parseMapConfig({ MAPBOX_MAP_TOKEN: PUBLIC, MAPBOX_MAP_STYLE: 'https://evil.example/s.json' }),
     ).toThrow(/mapbox:\/\/styles/);
     expect(() => parseMapConfig({ MAPBOX_MAP_STYLE: DEFAULT_MAP_STYLE })).toThrow(/needs/);
+    expect(() =>
+      parseMapConfig({ MAPBOX_MAP_TOKEN: PUBLIC, MAPBOX_SEARCH_TOKEN: ` ${PUBLIC} ` }),
+    ).toThrow(/own token/);
   });
 });
 
@@ -91,6 +94,10 @@ const gl = vi.hoisted(() => {
     touchZoomRotate = { disableRotation: vi.fn() };
     zoomIn = vi.fn();
     zoomOut = vi.fn();
+    zoom = 14;
+    getZoom() {
+      return this.zoom;
+    }
     constructor(readonly options: Record<string, unknown> & { container: HTMLElement }) {
       this.container = options.container;
       FakeMap.last = this;
@@ -226,8 +233,13 @@ describe('the Mapbox map', () => {
     const marker = gl.FakeMarker.last!;
     expect(marker.options.draggable).toBe(true);
     marker.setLngLat([153.01, -27.4]);
-    marker.handlers.get('dragend')!();
+    marker.handlers.get('drag')!();
     expect(onMove).toHaveBeenLastCalledWith({ lat: -27.4, lng: 153.01 });
+    marker.setLngLat([153.0, -27.45]);
+    marker.handlers.get('dragend')!();
+    expect(onMove).toHaveBeenLastCalledWith({ lat: -27.45, lng: 153.0 });
+    expect(map.options['doubleClickZoom']).toBe(false);
+    expect(map.options['keyboard']).toBe(false);
     const pin = screen.getByRole('button', { name: 'Delivery pin. Use arrow keys to move it.' });
     fireEvent.keyDown(pin, { key: 'ArrowRight' });
     const moved = onMove.mock.calls.at(-1)![0];
@@ -241,7 +253,7 @@ describe('the Mapbox map', () => {
     act(() => map.fire('load'));
     view.rerender(draw({ lat: -27.6, lng: 153.3 }, { outside: true, accuracy: true }));
     expect(gl.FakeMarker.last!.at).toEqual([153.3, -27.6]);
-    expect(map.eased).toEqual([{ center: [153.3, -27.6] }]);
+    expect(map.eased).toEqual([{ center: [153.3, -27.6], offset: [0, 28] }]);
     expect(
       screen.getByRole('button', { name: 'Delivery pin. Use arrow keys to move it.' }).className,
     ).toContain('out');
@@ -253,8 +265,29 @@ describe('the Mapbox map', () => {
     const map = gl.FakeMap.last!;
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
     expect(map.zoomIn).toHaveBeenCalled();
+    map.zoom = 18;
+    act(() => map.fire('zoomend'));
+    expect(screen.getByRole('button', { name: 'Zoom in' }).getAttribute('aria-disabled')).toBe(
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Zoom out' }).getAttribute('aria-disabled')).toBe(
+      'false',
+    );
     view.unmount();
     expect(map.removed).toBe(true);
+  });
+
+  it('gives way to the drawn map when its style or token fails, but not after it loads', async () => {
+    await open();
+    act(() => gl.FakeMap.last!.fire('error'));
+    expect(screen.getByRole('img', { name: /Map of Greater Brisbane/ })).toBeTruthy();
+    cleanup();
+    await open();
+    const map = gl.FakeMap.last!;
+    act(() => map.fire('load'));
+    act(() => map.fire('error'));
+    expect(screen.queryByRole('img', { name: /Map of Greater Brisbane/ })).toBeNull();
+    expect(screen.getByRole('group', { name: /Map of Greater Brisbane/ })).toBeTruthy();
   });
 });
 
@@ -319,8 +352,16 @@ describe('choosing the map', () => {
     expect(screen.getByRole('img', { name: /Map of Greater Brisbane/ })).toBeTruthy();
   });
 
-  it('loads the Mapbox map with one', async () => {
-    show({ token: PUBLIC, style: DEFAULT_MAP_STYLE });
+  it('loads the Mapbox map with one, keeping the close button and a status while it loads', async () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <DeliveryMap {...props} map={{ token: PUBLIC, style: DEFAULT_MAP_STYLE }}>
+          <button type="button">Close</button>
+        </DeliveryMap>
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByRole('status').textContent).toBe('Loading map…');
+    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
     expect(await screen.findByRole('group', { name: /Map of Greater Brisbane/ })).toBeTruthy();
     expect(screen.queryByRole('img', { name: /Map of Greater Brisbane/ })).toBeNull();
   });
