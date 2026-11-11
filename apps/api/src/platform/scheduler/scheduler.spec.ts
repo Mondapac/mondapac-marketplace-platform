@@ -259,10 +259,11 @@ describe('Scheduler: bounded runs in flight (the pool stays free for the relay)'
     expect(jobRunBoundsOf(1)).toEqual({ short: 1, long: 1 });
   });
 
-  it('puts a job declared to run past the default 60 s in the long lane', () => {
+  it('puts a job declared to run past 2 minutes in the long lane', () => {
     expect(laneOf({})).toBe('short');
-    expect(laneOf({ maxRunMs: 60_000 })).toBe('short');
-    expect(laneOf({ maxRunMs: 60_001 })).toBe('long');
+    expect(laneOf({ maxRunMs: 120_000 })).toBe('short');
+    expect(laneOf({ maxRunMs: 120_001 })).toBe('long');
+    expect(laneOf({ maxRunMs: 300_000 })).toBe('long');
   });
 
   it('starts at most the bound of a lane at once and the rest as runs end, in order', async () => {

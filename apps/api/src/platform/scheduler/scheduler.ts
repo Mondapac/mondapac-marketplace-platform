@@ -28,7 +28,7 @@ export type JobRunResult =
 /** Where the first tick of a job falls inside its interval: a fraction from 0 to 1. */
 export type Jitter = () => number;
 
-/** The two lanes of ticked runs: jobs that may run past the default 60 s, and the rest. */
+/** The two lanes of ticked runs: jobs that may run for minutes, and the rest. */
 export type JobLane = 'short' | 'long';
 
 /** How many ticked runs of each lane may be in flight at once in one worker. */
@@ -40,9 +40,16 @@ export const UNBOUNDED_JOB_RUNS: JobRunBounds = {
   long: Number.POSITIVE_INFINITY,
 };
 
-/** A job declared to run longer than the default (imports, reindexes, reconciles) is long. */
+/**
+ * Above this `maxRunMs` a job is long: the imports (10 min) and the 5-minute reindexes,
+ * rebuilds and reconciles. The 2-minute notice and publishing jobs (`blog.publish-due`, the
+ * catalog notices) stay short, so they never wait behind an import.
+ */
+export const LONG_JOB_MAX_RUN_MS = 120_000;
+
+/** The lane of a job, from its declared `maxRunMs`. */
 export function laneOf(job: Pick<JobDefinition, 'maxRunMs'>): JobLane {
-  return (job.maxRunMs ?? DEFAULT_MAX_RUN_MS) > DEFAULT_MAX_RUN_MS ? 'long' : 'short';
+  return (job.maxRunMs ?? DEFAULT_MAX_RUN_MS) > LONG_JOB_MAX_RUN_MS ? 'long' : 'short';
 }
 
 /**
