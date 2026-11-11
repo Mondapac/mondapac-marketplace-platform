@@ -129,6 +129,7 @@ describe('admin nav: daily work only', () => {
       'business-activities',
       'tags',
       'review-queue',
+      'certificates',
       'review-moderation',
       'price-holds',
       'content',

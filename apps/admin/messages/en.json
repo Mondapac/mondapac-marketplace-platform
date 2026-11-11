@@ -103,6 +103,7 @@
     "orders": "Orders",
     "price-holds": "Held prices",
     "review-queue": "Review queue",
+    "certificates": "Certificates",
     "payout-accounts": "Connected accounts",
     "content": "Slides",
     "blog": "Blog",
@@ -972,6 +973,36 @@
         "retry": "Something changed at the same time. Try again.",
         "unavailable": "The service is not available right now. Try again in a few minutes.",
         "unknown": "Something went wrong. Try again."
+      }
+    }
+  },
+  "certificates": {
+    "title": "Certificates",
+    "queue": {
+      "title": "Certificates waiting for a decision",
+      "no-access": "You don't have access to certificates.",
+      "back-home": "Back to dashboard",
+      "unavailable": "Certificates could not be loaded.",
+      "more": "Next page",
+      "total": "{count, plural, =0 {Nothing is waiting for a decision.} one {# submission is waiting for a decision, oldest first.} other {# submissions are waiting for a decision, oldest first.}}",
+      "empty": "No certificates are waiting for a decision.",
+      "empty-page": "Nothing on this page. Go back to the first page.",
+      "first-page": "First page",
+      "seller-id-sr": ", seller {id}",
+      "seller-fallback": "Not yet approved",
+      "submission-no": "Submission {n}",
+      "no-issuer": "Not named",
+      "col": {
+        "seller": "Seller",
+        "type": "Type",
+        "kind": "Kind",
+        "issuer": "Issuer",
+        "waiting": "Waiting since"
+      },
+      "kind": {
+        "initial": "New",
+        "resubmission": "Resubmitted",
+        "renewal": "Renewal"
       }
     }
   },
