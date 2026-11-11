@@ -211,6 +211,7 @@ describe.each(['AU', 'ZZ'] as const)('topic reads in market %s', (code) => {
     id,
     productId,
     revisionNo: no,
+    typeCode: 'simple',
     kind: 'submission',
     baseRevisionId: null,
     revertedFromRevisionId: null,

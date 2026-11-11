@@ -38,6 +38,8 @@ export interface FrozenRevision {
   readonly contentHash: ContentHash;
   /** The feature set the content was frozen under: the one its primary category holds (CAT-10). */
   readonly familyCode: string;
+  /** The product type the content was frozen with: the row's, whose handler validated it (M-9). */
+  readonly typeCode: string;
 }
 
 export interface FreezeRevisionDependencies {
@@ -51,9 +53,9 @@ export interface FreezeRevisionDependencies {
   readonly images?: ProductImageRepository;
   /**
    * The revisions, to read the axes of the published one (variants V3: the axes of a published
-   * product are locked). Without it the lock is not checked.
+   * product are locked). Required: the lock fails closed, never unchecked.
    */
-  readonly revisions?: Pick<ProductRevisionRepository, 'find'>;
+  readonly revisions: Pick<ProductRevisionRepository, 'find'>;
   /**
    * The sellers' value suggestions (attributes A5): a required field that is empty because its
    * suggestion is still open is reported as `attribute.suggestion-pending`, not `attribute.required`.
@@ -228,6 +230,7 @@ export class FreezeRevision {
       content: frozen.value,
       contentHash: revisionContentHash(frozen.value),
       familyCode,
+      typeCode: state.typeCode,
     });
   }
 
@@ -287,7 +290,7 @@ export class FreezeRevision {
   /** The axes the published revision varies on, or null for a product with none (no lock). */
   async #publishedAxes(market: MarketContext, product: Product): Promise<readonly string[] | null> {
     const published = product.state.publishedRevisionId;
-    if (published === null || this.deps.revisions === undefined) return null;
+    if (published === null) return null;
     const revision = await this.deps.revisions.find(market, product.state.id, published);
     if (revision === null) return null;
     const axes = new Set<string>();
