@@ -142,6 +142,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.admin-review-held-notice',
       'notifications.admin-review-reported-notice',
       'notifications.admin-seller-file-notice',
+      'notifications.item-unavailable-refund-mail',
       'notifications.order-confirmation-mail',
       'notifications.order-shipped-mail',
       'notifications.seller-access-approved-notice',
@@ -214,6 +215,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'promotions.qualify-referral-on-delivery',
     ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
+      'notifications.item-unavailable-refund-mail',
       'ordering.cancel-carrier-after-refund',
     ]);
     expect(subscriptions.subscribersOf('shipping.carrier-delivery-progressed.v1')).toEqual([
