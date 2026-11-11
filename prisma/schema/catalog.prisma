@@ -567,6 +567,8 @@ model CatalogAttributeValueSuggestion {
 /// skipped or failed). The option values name active options of the product's variant attributes
 /// and carry no seller text, so nothing here reaches a buyer. The CHECKs, the guard trigger, the
 /// partial uniques and the grants are hand-written in the migration.
+/// The admin queue (open requests, oldest first) is the partial index variant_requests_open_queue_idx,
+/// written by hand in the migration.
 model CatalogVariantRequest {
   id                  String                 @db.Uuid
   marketId            String                 @map("market_id") @db.VarChar(8)
@@ -599,7 +601,6 @@ model CatalogVariantRequest {
   resolvedVariant     CatalogProductVariant? @relation("VariantRequestsResolved", fields: [marketId, productId, resolvedVariantId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, id])
-  /// The admin queue: open requests, oldest first.
   /// A seller's requests and their open count.
   @@index([marketId, sellerId, status, id], map: "variant_requests_market_id_seller_id_status_id_idx")
   @@index([marketId, productId], map: "variant_requests_market_id_product_id_idx")
