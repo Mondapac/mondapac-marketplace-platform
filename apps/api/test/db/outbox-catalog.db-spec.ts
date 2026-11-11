@@ -272,8 +272,15 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX refunds_pending_requested_at_idx ON ordering.refunds USING btree (market_id, requested_at, id) WHERE (state = 'pending'::text)",
   'ordering.refunds_stripe_refund_id_key':
     'CREATE UNIQUE INDEX refunds_stripe_refund_id_key ON ordering.refunds USING btree (stripe_refund_id) WHERE (stripe_refund_id IS NOT NULL)',
+  // ordering.md 3.12c: the seller refund caps' window sum, and one default and one own cap.
+  'ordering.refunds_market_id_seller_id_requested_at_idx':
+    "CREATE INDEX refunds_market_id_seller_id_requested_at_idx ON ordering.refunds USING btree (market_id, seller_id, requested_at) INCLUDE (gross_amount) WHERE ((actor_population = 'seller'::text) AND (state <> 'failed'::text))",
   'ordering.refunds_unrecorded_ledger_idx':
     "CREATE INDEX refunds_unrecorded_ledger_idx ON ordering.refunds USING btree (market_id, ledger_attempts, requested_at, id) WHERE ((state = 'succeeded'::text) AND (ledger_recorded_at IS NULL))",
+  'ordering.seller_refund_limits_default_key':
+    'CREATE UNIQUE INDEX seller_refund_limits_default_key ON ordering.seller_refund_limits USING btree (market_id) WHERE (seller_id IS NULL)',
+  'ordering.seller_refund_limits_seller_key':
+    'CREATE UNIQUE INDEX seller_refund_limits_seller_key ON ordering.seller_refund_limits USING btree (market_id, seller_id) WHERE (seller_id IS NOT NULL)',
   // docs/design/data/pricing.md 3.1 and 3.3: the relay's claim, one pending regular record per
   // series, and the partial GiST index behind the no-overlap exclusion constraint (below).
   'pricing.outbox_market_id_event_id_unpublished_idx':
