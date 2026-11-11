@@ -103,7 +103,8 @@ ALTER TABLE "catalog"."product_revisions"
     "sensitive_reasons" IS NOT NULL AND array_position("sensitive_reasons", NULL) IS NULL
     AND "sensitive_reasons" <@ ARRAY[
     'platform-categories', 'tax-category', 'name', 'primary-image', 'image-added-or-replaced',
-    'variant-removed', 'gtin-changed', 'axis-added', 'never-published', 'approval-required']::text[]) NOT VALID;
+    'variant-removed', 'gtin-changed', 'axis-added', 'topics-changed', 'never-published',
+    'approval-required']::text[]) NOT VALID;
 ALTER TABLE "catalog"."product_revisions" VALIDATE CONSTRAINT "product_revisions_sensitive_reasons_check";
 
 -- The Add sizes limit: 20 per account per hour (catalog design 8.4). The kind list is a CHECK,
@@ -116,4 +117,6 @@ ALTER TABLE "catalog"."rate_counters"
     'submit.seller.hour', 'photo-upload.seller.day', 'search.account.minute',
     'import-start.seller.day', 'ai-suggest.seller.day', 'reviewer-mail.market.hour',
     'platform-import-check.account.hour', 'platform-import-check.account.day',
-    'platform-import-start.account.day', 'add-sizes.account.hour'));
+    'platform-import-start.account.day',
+    'seller-import-check.seller.hour', 'seller-import-check.seller.day',
+    'import-photo.seller.minute', 'import-photo.seller.day', 'add-sizes.account.hour'));
