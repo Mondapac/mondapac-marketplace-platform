@@ -15,7 +15,7 @@ export type FieldSpec =
   | { readonly kind: 'image'; readonly key: string; readonly optional?: true }
   | { readonly kind: 'int'; readonly key: string; readonly min: number; readonly max: number }
   | { readonly kind: 'choice'; readonly key: string; readonly options: readonly string[] }
-  | { readonly kind: 'spans'; readonly key: string }
+  | { readonly kind: 'spans'; readonly key: string; readonly optional?: true }
   | { readonly kind: 'blocks'; readonly key: string }
   | { readonly kind: 'source'; readonly key: string }
   | {
@@ -89,7 +89,7 @@ export const MODULE_SCHEMAS: Readonly<Record<string, readonly FieldSpec[]>> = {
   ],
   'product-spotlight': [
     { kind: 'text', key: 'heading', max: 120, optional: true },
-    { kind: 'spans', key: 'body' },
+    { kind: 'spans', key: 'body', optional: true },
   ],
 };
 

@@ -201,6 +201,12 @@ describe('the settings forms', () => {
     });
   });
 
+  it('product spotlight: the optional text can be removed, and is then left out', () => {
+    const last = mount('product-spotlight', { productId: 'p1', body: [{ text: '' }] });
+    press('Remove Part 1');
+    expect(last()).toEqual({ productId: 'p1' });
+  });
+
   it('product spotlight: a heading and a text, and the product it keeps', () => {
     const last = mount('product-spotlight', { productId: 'p1', body: [{ text: '' }] });
     type(/^Heading/, 'Dates');

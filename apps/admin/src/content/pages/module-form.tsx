@@ -152,7 +152,14 @@ function Field({
     case 'source':
       return <SourceField path={path} ctx={ctx} />;
     case 'spans':
-      return <SpansField label={label(spec.key)} path={path} ctx={ctx} />;
+      return (
+        <SpansField
+          label={label(spec.key)}
+          path={path}
+          ctx={ctx}
+          optional={spec.optional === true}
+        />
+      );
     case 'blocks':
       return <BlocksField path={path} ctx={ctx} />;
     case 'list':
@@ -312,10 +319,13 @@ function SpansField({
   label,
   path,
   ctx,
+  optional = false,
 }: {
   readonly label: string;
   readonly path: Path;
   readonly ctx: Ctx;
+  /** An optional text can lose its last part: it is then left out. */
+  readonly optional?: boolean;
 }) {
   const { t } = useLabels();
   const errorText = useErrorText();
@@ -324,7 +334,7 @@ function SpansField({
     <Rows
       path={path}
       ctx={ctx}
-      min={1}
+      min={optional ? 0 : 1}
       max={20}
       blank={() => ({ text: '' })}
       legend={label}
