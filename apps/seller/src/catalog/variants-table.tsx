@@ -437,17 +437,6 @@ export function VariantsTable({
           onChange={setSelling}
         />
       ) : null}
-      {showUnits && units.productScope === 'PLATFORM' && sizeRequests !== null ? (
-        <SizeRequests
-          offerId={offerId}
-          axes={sizeRequests.axes}
-          items={sizeRequests.items}
-          openCount={sizeRequests.openCount}
-          maxOpen={sizeRequests.maxOpen}
-          canRequest={units.canEdit}
-          csrfToken={csrfToken}
-        />
-      ) : null}
       {canBulk && selected.size > 0 ? (
         <div
           className="flex flex-col gap-3 rounded-md border border-line p-3"
@@ -829,6 +818,17 @@ export function VariantsTable({
             </Button>
           )}
         </div>
+      ) : null}
+      {showUnits && units.productScope === 'PLATFORM' && sizeRequests !== null ? (
+        <SizeRequests
+          offerId={offerId}
+          axes={sizeRequests.axes}
+          items={sizeRequests.items}
+          openCount={sizeRequests.openCount}
+          maxOpen={sizeRequests.maxOpen}
+          canRequest={units.canEdit}
+          csrfToken={csrfToken}
+        />
       ) : null}
     </Card>
   );

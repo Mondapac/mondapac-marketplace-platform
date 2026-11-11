@@ -101,7 +101,7 @@ describe.each(MARKETS)('size requests queue ($name)', (m) => {
     expect(path).toBe(`catalog/admin/variant-requests/${id(1)}/approve`);
     expect(body).toEqual({ version: 2 });
     expect(csrf).toBe('csrf-1');
-    await expectToast('Variant added to the draft. The seller was told.');
+    await expectToast('Variant added to the draft. The seller will get an email.');
   });
 
   it('keeps Approve off when the product already has the variant', async () => {
@@ -179,6 +179,22 @@ describe.each(MARKETS)('size requests queue ($name)', (m) => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve request' }));
     expect(await screen.findByText(/not published/)).toBeTruthy();
     expect(call).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['conflict.stale', 409, /Someone else already decided/],
+    ['product.not-found', 404, /Someone else already decided/],
+    ['variant-request.not-configurable', 409, /not published/],
+    ['variant.limit-reached', 422, /most variants/],
+    ['product.not-editable', 409, /draft could not take/],
+  ])('shows a specific message for %s', async (code, status, text) => {
+    call.mockResolvedValueOnce(ok(list(m, [item(m)])));
+    call.mockResolvedValue(ok(list(m, [item(m)])));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: `Approve ${m.size}: ${m.xl}` }));
+    call.mockResolvedValueOnce(fail(status, code));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve request' }));
+    expect(await screen.findByText(text)).toBeTruthy();
   });
 
   it('sends a decision once on a double click', async () => {

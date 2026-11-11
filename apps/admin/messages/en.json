@@ -6486,6 +6486,7 @@
       "no-product-code": "without a code",
       "unnamed-seller": "a seller",
       "already-exists": "The product already has this variant. Map the request to it.",
+      "has-sizes": "The product has: {sizes}.",
       "approve": "Approve",
       "map": "Map to existing",
       "decline": "Decline",
@@ -6503,9 +6504,9 @@
       "reason-help": "The seller reads this in an email.",
       "decline-confirm": "Decline request",
       "decided": {
-        "approved": "Variant added to the draft. The seller was told.",
-        "mapped": "Mapped to an existing variant. The seller was told.",
-        "declined": "Request declined. The seller was told."
+        "approved": "Variant added to the draft. The seller will get an email.",
+        "mapped": "Mapped to an existing variant. The seller will get an email.",
+        "declined": "Request declined. The seller will get an email."
       },
       "error": {
         "invalid": "Check the details and try again.",
@@ -6513,7 +6514,8 @@
         "variant-exists": "The product already has this variant. The list is read again.",
         "variant-unknown": "That variant is no longer available. The list is read again.",
         "product-unavailable": "The product is not published, or no longer lists all its variants. Publish it first, or decline the request.",
-        "draft-unavailable": "The product's draft could not take the variant. Open the product, then try again.",
+        "draft-unavailable": "The product's draft could not take the variant. Open the product, check its draft and review state, then try again.",
+        "variant-limit": "The product already has the most variants it can have.",
         "denied": "You cannot answer size requests.",
         "throttled": "Too many requests. Try again in a moment.",
         "csrf": "Your session needs a refresh. Reload the page.",

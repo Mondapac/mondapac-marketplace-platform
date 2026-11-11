@@ -41,6 +41,18 @@ const BY_CODE: Readonly<Record<string, { key: string; reload: boolean }>> = {
   'variant-request.variant-unknown': { key: 'variant-unknown', reload: true },
   'variant-request.product-unavailable': { key: 'product-unavailable', reload: false },
   'variant-request.draft-unavailable': { key: 'draft-unavailable', reload: false },
+  'variant-request.not-configurable': { key: 'product-unavailable', reload: false },
+  'variant-request.variant-invalid': { key: 'variant-unknown', reload: true },
+  'variant-request.reason-invalid': { key: 'invalid', reload: false },
+  'working-copy.invalid-content': { key: 'draft-unavailable', reload: false },
+  'product.not-found': { key: 'stale', reload: true },
+  'conflict.stale': { key: 'stale', reload: true },
+  'product.not-editable': { key: 'draft-unavailable', reload: false },
+  'revision.pending-exists': { key: 'draft-unavailable', reload: false },
+  'revision.base-changed': { key: 'draft-unavailable', reload: false },
+  'variant.limit-reached': { key: 'variant-limit', reload: false },
+  'claim-text.refused': { key: 'draft-unavailable', reload: false },
+  'gtin.duplicate': { key: 'draft-unavailable', reload: false },
   'access.denied': { key: 'denied', reload: false },
   'request.throttled': { key: 'throttled', reload: false },
   'request.csrf': { key: 'csrf', reload: false },
@@ -66,7 +78,11 @@ export function RequestsTab({ csrfToken }: { readonly csrfToken: string }) {
   const t = useTranslations('variants.requests');
   return (
     <section aria-labelledby="requests-heading" className="flex flex-col gap-4">
-      <h2 id="requests-heading" className="text-lg font-semibold text-fg">
+      <h2
+        id="requests-heading"
+        tabIndex={-1}
+        className="text-lg font-semibold text-fg outline-none"
+      >
         {t('title')}
       </h2>
       <RequestsBody csrfToken={csrfToken} />
@@ -146,6 +162,8 @@ function RequestsBody({ csrfToken }: { readonly csrfToken: string }) {
               csrfToken={csrfToken}
               onSettled={(why) => {
                 setNotice(why ?? null);
+                // The card goes away with the refresh: focus moves to the section heading.
+                document.getElementById('requests-heading')?.focus();
                 void fetchList(true);
               }}
             />
@@ -232,6 +250,13 @@ function RequestCard({
         })}{' '}
         <When iso={item.createdAt} missing="" />
       </p>
+      {item.existing.length === 0 ? null : (
+        <p className="mt-1 text-sm text-fg-muted">
+          {t('has-sizes', {
+            sizes: item.existing.map((variant) => describeOptions(variant.options)).join('; '),
+          })}
+        </p>
+      )}
       {item.alreadyExists ? (
         <div className="mt-3">
           <Banner tone="info">{t('already-exists')}</Banner>

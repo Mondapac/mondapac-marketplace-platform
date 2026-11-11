@@ -4,7 +4,7 @@ import { Badge, Banner, Button, Select, toast } from '@mondapac/ui';
 import type { BadgeTone } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { shortInstant } from './format.ts';
 import {
@@ -52,10 +52,23 @@ export function SizeRequests({
   const locale = useLocale();
   const router = useRouter();
   const busy = useRef(false);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const opened = useRef(false);
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+
+  // Opening the form moves focus to its first field; closing it returns focus to the heading.
+  useEffect(() => {
+    if (open) {
+      opened.current = true;
+      document.getElementById('size-requests-form')?.querySelector<HTMLElement>('select')?.focus();
+    } else if (opened.current) {
+      opened.current = false;
+      heading.current?.focus();
+    }
+  }, [open]);
 
   const atLimit = openCount >= maxOpen;
   const complete = axes.every((axis) => (chosen[axis.code] ?? '') !== '');
@@ -90,18 +103,30 @@ export function SizeRequests({
   return (
     <section aria-labelledby="size-requests-title" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 id="size-requests-title" className="text-sm font-semibold text-fg">
+        <h3
+          id="size-requests-title"
+          ref={heading}
+          tabIndex={-1}
+          className="text-sm font-semibold text-fg outline-none"
+        >
           {t('title')}
         </h3>
         {canRequest && !open ? (
-          <Button variant="secondary" disabled={atLimit} onClick={() => setOpen(true)}>
+          <Button
+            variant="secondary"
+            disabled={atLimit}
+            aria-describedby={atLimit ? 'size-requests-limit' : undefined}
+            onClick={() => setOpen(true)}
+          >
             {t('request')}
           </Button>
         ) : null}
       </div>
       <p className="text-sm text-fg-muted">{t('help')}</p>
       {canRequest && atLimit ? (
-        <p className="text-sm text-fg-muted">{t('at-limit', { max: maxOpen })}</p>
+        <p id="size-requests-limit" className="text-sm text-fg-muted">
+          {t('at-limit', { max: maxOpen })}
+        </p>
       ) : null}
       {problem === null ? null : (
         <div role="alert">
@@ -110,6 +135,7 @@ export function SizeRequests({
       )}
       {open ? (
         <form
+          id="size-requests-form"
           className="flex flex-col gap-3 rounded-md border border-line p-3"
           noValidate
           onSubmit={(event) => {
