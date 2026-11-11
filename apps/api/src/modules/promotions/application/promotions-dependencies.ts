@@ -17,6 +17,8 @@ import type { PromotionRepository } from './ports/promotion.repository';
 import type { PromotionsPolicy } from './ports/promotions-policy';
 import type { ReviewQueueRepository } from './ports/review-queue.repository';
 import type { SellerActivity } from './ports/seller-activity';
+import type { SellerCatalogue } from './ports/seller-catalogue';
+import type { SellerCommission } from './ports/seller-commission';
 import type {
   FirstOrderSettingsRepository,
   ShippingThresholdRepository,
@@ -37,6 +39,9 @@ export interface PromotionsDependencies {
   readonly flashSales: FlashSales;
   readonly sellerActivity: SellerActivity;
   readonly priceHistory: PriceHistory;
+  /** Seller campaigns (package PB2): the commission rate and the seller's catalogue. */
+  readonly sellerCommission: SellerCommission;
+  readonly sellerCatalogue: SellerCatalogue;
   // Phase 3.
   /** When a customer last ordered (customer-group segment; "new customer" of a referral). */
   readonly orderHistory: CustomerOrderHistory;

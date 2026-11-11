@@ -55,6 +55,8 @@ import type {
   OptInRepository,
 } from '../../src/modules/promotions/application/ports/opt-in.repository';
 import type { PriceHistory } from '../../src/modules/promotions/application/ports/price-history';
+import type { SellerCatalogue } from '../../src/modules/promotions/application/ports/seller-catalogue';
+import type { SellerCommission } from '../../src/modules/promotions/application/ports/seller-commission';
 import { LockContendedError } from '../../src/modules/promotions/application/ports/promotion.repository';
 import type {
   LiveScope,
@@ -142,6 +144,24 @@ export class MemoryPromotions implements PromotionRepository {
           (r.ownerSellerId === null || scope.sellerIds.includes(r.ownerSellerId)) &&
           (r.productIds.length === 0 || r.productIds.some((p) => scope.productIds.includes(p))),
       ),
+    );
+  }
+  listOpenCampaigns(_market: MarketContext, now: Temporal.Instant, sellerId: Id<'Seller'>) {
+    return Promise.resolve(
+      [...this.records.values()]
+        .filter(
+          (r) =>
+            r.type === 'CO_FUNDED_CAMPAIGN' &&
+            r.funding === 'CO_FUNDED' &&
+            r.status === 'ACTIVE' &&
+            (r.endsAt === null || r.endsAt.epochMilliseconds > now.epochMilliseconds) &&
+            (r.sellerIds.length === 0 || r.sellerIds.includes(sellerId)),
+        )
+        .sort(
+          (a, b) =>
+            a.startsAt.epochMilliseconds - b.startsAt.epochMilliseconds ||
+            (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+        ),
     );
   }
   listLiveOfTypes(
@@ -338,6 +358,26 @@ export class FakePriceHistory implements PriceHistory {
   days: number | null = null;
   daysSoldAtPrice() {
     return Promise.resolve(this.days);
+  }
+}
+
+export class FakeSellerCommission implements SellerCommission {
+  rate: number | null = 1500;
+  rateBps() {
+    return Promise.resolve(this.rate);
+  }
+}
+
+/** A seller's catalogue: the products it sells and the sell units it owns. */
+export class FakeSellerCatalogue implements SellerCatalogue {
+  /** Null = unknown. */
+  sells: ReadonlySet<Id<'Product'>> | null = new Set();
+  owns = true;
+  sellsProducts() {
+    return Promise.resolve(this.sells);
+  }
+  ownsSellUnit() {
+    return Promise.resolve(this.owns);
   }
 }
 

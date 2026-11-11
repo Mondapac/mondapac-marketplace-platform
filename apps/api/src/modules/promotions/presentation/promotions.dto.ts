@@ -12,6 +12,8 @@ import type { SettingsView } from '../application/use-cases/view-promotions-sett
 import type { PromotionUsageView } from '../application/use-cases/list-promotions.use-case';
 import type { PromotionView } from '../application/use-cases/list-promotions-full.use-case';
 import type { OwnPromotionView } from '../application/use-cases/list-own-promotions.use-case';
+import type { SellerCampaignView } from '../application/use-cases/list-seller-campaigns.use-case';
+import type { SellerPayoutPreviewView } from '../application/use-cases/preview-seller-payout.use-case';
 
 // Bodies of the promotions routes. Amounts are digit strings of minor units in the Market's
 // currency (ADR-0007); instants are ISO strings; ids are UUIDs. A Viewer's body carries usage
@@ -300,6 +302,65 @@ export class OptInRequest {
   @ApiProperty() optIn!: boolean;
 }
 
+export class SellerCampaignBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ format: 'date-time' }) startsAt!: string;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) endsAt!: string | null;
+  @ApiProperty({
+    description: 'The campaign has started; leaving it is then a matter for support.',
+  })
+  started!: boolean;
+  @ApiProperty() testMode!: boolean;
+  @ApiProperty({ type: RewardBody }) reward!: RewardBody;
+  @ApiProperty({ description: 'The platform part of the discount, basis points of the discount.' })
+  platformShareBps!: number;
+  @ApiProperty({ nullable: true, type: Number, description: 'PERCENT: basis points of the price.' })
+  sellerPaysBps!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'PERCENT: basis points of the price.' })
+  platformPaysBps!: number | null;
+  @ApiProperty({ nullable: true, type: String }) minSpendMinor!: string | null;
+  @ApiProperty() currency!: string;
+  @ApiProperty() optedIn!: boolean;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) optedInAt!: string | null;
+  @ApiProperty({
+    type: Object,
+    description:
+      '`{ scope: "ALL" | "LISTED", count }`: ALL has no count; LISTED counts the campaign products ' +
+      'the seller sells (null when unknown).',
+  })
+  eligible!: { scope: 'ALL' | 'LISTED'; count: number | null };
+}
+
+export class SellerCampaignsBody {
+  @ApiProperty({ type: [SellerCampaignBody], description: 'Joined ones first, then the others.' })
+  joined!: SellerCampaignBody[];
+  @ApiProperty({ type: [SellerCampaignBody] }) available!: SellerCampaignBody[];
+}
+
+export class SellerPayoutPreviewBody {
+  @ApiProperty() currency!: string;
+  @ApiProperty({ type: String }) priceMinor!: string;
+  @ApiProperty({ type: String }) discountMinor!: string;
+  @ApiProperty({ type: String, description: 'The part of the discount the seller pays.' })
+  sellerFundedMinor!: string;
+  @ApiProperty({ type: String, description: 'The part of the discount the platform pays.' })
+  platformFundedMinor!: string;
+  @ApiProperty({ type: String }) shopperPaysMinor!: string;
+  @ApiProperty({ description: "The seller's commission rate, basis points." })
+  commissionRateBps!: number;
+  @ApiProperty({ type: String, description: 'The price less the seller-funded discount.' })
+  commissionBaseMinor!: string;
+  @ApiProperty({ type: String }) commissionMinor!: string;
+  @ApiProperty({ type: String, description: 'Before delivery and GST.' }) sellerGetsMinor!: string;
+  @ApiProperty({
+    nullable: true,
+    type: Object,
+    description: '`{ eligible }` when an Offer was asked about, else null.',
+  })
+  wasPrice!: { eligible: boolean } | null;
+}
+
 export class OptInBody {
   @ApiProperty({ format: 'uuid' }) promotionId!: string;
   @ApiProperty() optedIn!: boolean;
@@ -508,6 +569,40 @@ export const ownBody = (view: OwnPromotionView): OwnPromotionBody => ({
   budgetMinor: minorOrNull(view.budgetMinor),
   usesCount: view.usesCount,
   spentMinor: minor(view.spentMinor),
+});
+
+export const sellerCampaignBody = (view: SellerCampaignView): SellerCampaignBody => ({
+  id: view.id,
+  name: view.name,
+  startsAt: iso(view.startsAt),
+  endsAt: isoOrNull(view.endsAt),
+  started: view.started,
+  testMode: view.testMode,
+  reward: rewardBody(view.reward),
+  platformShareBps: view.platformShareBps,
+  sellerPaysBps: view.sellerPaysBps,
+  platformPaysBps: view.platformPaysBps,
+  minSpendMinor: minorOrNull(view.minSpendMinor),
+  currency: view.currency,
+  optedIn: view.optedIn,
+  optedInAt: isoOrNull(view.optedInAt),
+  eligible: { scope: view.eligible.scope, count: view.eligible.count },
+});
+
+export const sellerPayoutPreviewBody = (
+  view: SellerPayoutPreviewView,
+): SellerPayoutPreviewBody => ({
+  currency: view.currency,
+  priceMinor: minor(view.price),
+  discountMinor: minor(view.discount),
+  sellerFundedMinor: minor(view.sellerFunded),
+  platformFundedMinor: minor(view.platformFunded),
+  shopperPaysMinor: minor(view.shopperPays),
+  commissionRateBps: view.commissionRateBps,
+  commissionBaseMinor: minor(view.commissionBase),
+  commissionMinor: minor(view.commission),
+  sellerGetsMinor: minor(view.sellerGets),
+  wasPrice: view.wasPrice === null ? null : { eligible: view.wasPrice.eligible },
 });
 
 export const settingsBody = (view: SettingsView): SettingsBody => ({

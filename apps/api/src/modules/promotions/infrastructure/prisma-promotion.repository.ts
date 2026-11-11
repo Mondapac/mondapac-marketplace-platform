@@ -398,6 +398,35 @@ export class PrismaPromotionRepository implements PromotionRepository {
     return rows.map(toRecord);
   }
 
+  async listOpenCampaigns(
+    market: MarketContext,
+    now: Temporal.Instant,
+    sellerId: Id<'Seller'>,
+  ): Promise<readonly PromotionRecord[]> {
+    const at = toDate(now);
+    const rows = await this.prisma.tx(market).promotionsPromotion.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'ACTIVE',
+        type: 'CO_FUNDED_CAMPAIGN',
+        funding: 'CO_FUNDED',
+        AND: [
+          { OR: [{ endsAt: null }, { endsAt: { gt: at } }] },
+          // Aimed at every seller, or at this one.
+          {
+            OR: [
+              { targets: { none: { kind: 'SELLER' } } },
+              { targets: { some: { kind: 'SELLER', value: sellerId } } },
+            ],
+          },
+        ],
+      },
+      include: WITH_CHILDREN,
+      orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map(toRecord);
+  }
+
   countCounting(
     market: MarketContext,
     sellerId: Id<'Seller'>,

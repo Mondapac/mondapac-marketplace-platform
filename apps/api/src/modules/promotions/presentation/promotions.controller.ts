@@ -53,6 +53,8 @@ import { ListPromotionsFull } from '../application/use-cases/list-promotions-ful
 import { ListPromotions } from '../application/use-cases/list-promotions.use-case';
 import { PauseOwnPromotion } from '../application/use-cases/pause-own-promotion.use-case';
 import { PausePromotion } from '../application/use-cases/pause-promotion.use-case';
+import { ListSellerCampaigns } from '../application/use-cases/list-seller-campaigns.use-case';
+import { PreviewSellerPayout } from '../application/use-cases/preview-seller-payout.use-case';
 import { PreviewQuote } from '../application/use-cases/preview-quote.use-case';
 import { ResumeOwnPromotion } from '../application/use-cases/resume-own-promotion.use-case';
 import { ResumePromotion } from '../application/use-cases/resume-promotion.use-case';
@@ -95,6 +97,10 @@ import {
   ReviewDecisionRequest,
   ReviewItemBody,
   reviewItemBody,
+  SellerCampaignsBody,
+  sellerCampaignBody,
+  SellerPayoutPreviewBody,
+  sellerPayoutPreviewBody,
   ReviewQueueBody,
   SetSettingsRequest,
   SettingsBody,
@@ -827,6 +833,8 @@ export class SellerPromotionsController {
     private readonly pause: PauseOwnPromotion,
     private readonly resume: ResumeOwnPromotion,
     private readonly optIn: SetCoFundingOptIn,
+    private readonly campaigns: ListSellerCampaigns,
+    private readonly payoutPreview: PreviewSellerPayout,
   ) {}
 
   @Get('promotions')
@@ -956,6 +964,80 @@ export class SellerPromotionsController {
     noStore(response);
     const result = await this.resume.execute(context, { promotionId: id });
     return ownBody(settle(this.#logger, 'promotions.resume-own-route', context, result, 'resumed'));
+  }
+
+  @Get('campaigns')
+  @ApiOperation({
+    summary: 'The open co-funded campaigns the seller may join',
+    description:
+      'Split into `joined` and `available`. Each campaign says what the seller and the platform ' +
+      'pay (percent of the price), whether it started, and which of the seller products it ' +
+      'covers. Never the platform budget or spend.',
+  })
+  @ApiOkResponse({ type: SellerCampaignsBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async listCampaigns(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query() query: Record<string, unknown>,
+  ) {
+    noStore(response);
+    const unknown = closedQuery(query, []);
+    if (unknown !== null) throw unknown;
+    const result = await this.campaigns.execute(context, {});
+    const views = settle(this.#logger, 'promotions.list-campaigns-route', context, result, 'read');
+    return {
+      joined: views.filter((view) => view.optedIn).map(sellerCampaignBody),
+      available: views.filter((view) => !view.optedIn).map(sellerCampaignBody),
+    };
+  }
+
+  @Get('payout-preview')
+  @ApiOperation({
+    summary: 'What the shopper pays and the seller gets for one unit under a discount',
+    description:
+      'Pass `promotionId` (an open campaign) or `discountBps` (the seller own percentage sale), ' +
+      'with `priceMinor`. With `offerId` and `variantId` of the seller own sell unit it also says ' +
+      'whether the price it has now may show as a struck-through earlier price. Uses the seller ' +
+      'own commission rate; without a readable rate it answers promotions.unavailable.',
+  })
+  @ApiQuery({ name: 'priceMinor', required: true, description: 'Digits, minor units.' })
+  @ApiQuery({ name: 'promotionId', required: false })
+  @ApiQuery({ name: 'discountBps', required: false })
+  @ApiQuery({ name: 'offerId', required: false })
+  @ApiQuery({ name: 'variantId', required: false })
+  @ApiOkResponse({ type: SellerPayoutPreviewBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled or promotions.not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async previewPayout(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query() query: Record<string, unknown>,
+  ) {
+    noStore(response);
+    const unknown = closedQuery(query, [
+      'priceMinor',
+      'promotionId',
+      'discountBps',
+      'offerId',
+      'variantId',
+    ]);
+    if (unknown !== null) throw unknown;
+    // A query value is text; the use case wants a number for the percentage and refuses the rest.
+    const bps = query.discountBps;
+    const result = await this.payoutPreview.execute(context, {
+      ...query,
+      ...(typeof bps === 'string' && /^[0-9]{1,5}$/.test(bps) ? { discountBps: Number(bps) } : {}),
+    });
+    return sellerPayoutPreviewBody(
+      settle(this.#logger, 'promotions.preview-payout-route', context, result, 'read'),
+    );
   }
 
   @Put('campaigns/:id/opt-in')

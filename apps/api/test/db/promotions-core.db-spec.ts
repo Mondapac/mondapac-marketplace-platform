@@ -41,6 +41,8 @@ import { MarketRegistry } from '../../src/platform/market-config/market-registry
 import {
   FakeFlashSales,
   FakePriceHistory,
+  FakeSellerCatalogue,
+  FakeSellerCommission,
   FakeSellerActivity,
   FakeStepUp,
   phase3Fakes,
@@ -163,6 +165,8 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
       flashSales: new FakeFlashSales(),
       sellerActivity: activity,
       priceHistory: new FakePriceHistory(),
+      sellerCommission: new FakeSellerCommission(),
+      sellerCatalogue: new FakeSellerCatalogue(),
       ...phase3Fakes(),
       credits: new PrismaCreditRepository(db.service),
       referrals: new PrismaReferralRepository(db.service),
@@ -868,6 +872,53 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
       expect(await count()).toBe(1);
       await make(PauseOwnPromotion).execute(otherSeller, { promotionId: theirs.value.id });
       expect(await count()).toBe(0);
+    });
+
+    it('lists the open co-funded campaigns a seller may join, aimed ones only for their sellers', async () => {
+      await make(SetPromotionsStatus).execute(admin, { status: 'active' });
+      const other = ids.next<'Seller'>();
+      const campaign = (extra: Record<string, unknown>) =>
+        make(CreatePromotion).execute(
+          admin,
+          platformCart({
+            type: 'CO_FUNDED_CAMPAIGN',
+            funding: 'CO_FUNDED',
+            platformSplitBps: 5000,
+            ...extra,
+          }),
+        );
+      const everyone = await campaign({ name: 'Everyone' });
+      const mineOnly = await campaign({ name: 'Mine', sellerIds: [sellerId] });
+      const theirs = await campaign({ name: 'Theirs', sellerIds: [other] });
+      const ended = await campaign({
+        name: 'Ended',
+        endsAt: clock.now().subtract({ hours: 1 }).toString(),
+      });
+      const later = await campaign({
+        name: 'Later',
+        startsAt: clock.now().add({ hours: 48 }).toString(),
+      });
+      const plain = await make(CreatePromotion).execute(admin, platformCart({ name: 'Cart' }));
+      if (!everyone.ok || !mineOnly.ok || !theirs.ok || !ended.ok || !later.ok || !plain.ok) {
+        throw new Error('setup failed');
+      }
+      const read = await deps.unitOfWork.run(
+        market,
+        async () => ({
+          ok: true as const,
+          value: await deps.promotions.listOpenCampaigns(market, clock.now(), sellerId),
+        }),
+        { readOnly: true },
+      );
+      const seen = read.ok ? read.value.map((r) => r.id) : [];
+      expect(seen).toContain(everyone.value.id);
+      expect(seen).toContain(mineOnly.value.id);
+      expect(seen).toContain(later.value.id);
+      expect(seen).not.toContain(theirs.value.id);
+      expect(seen).not.toContain(ended.value.id);
+      expect(seen).not.toContain(plain.value.id);
+      // Soonest start first: the one that starts later is last.
+      expect(seen[seen.length - 1]).toBe(later.value.id);
     });
 
     it('serialises two parallel changes of one promotion on its row', async () => {
