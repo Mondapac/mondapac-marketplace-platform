@@ -81,6 +81,14 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.product.view'],
     },
     {
+      id: 'certificates',
+      icon: 'shield-check',
+      labelKey: 'nav.certificates',
+      href: '/certificates',
+      group: 'reviews',
+      anyOf: ['certification.seller-certificate.view', 'certification.type.view'],
+    },
+    {
       id: 'review-moderation',
       icon: 'shield-check',
       labelKey: 'nav.review-moderation',
