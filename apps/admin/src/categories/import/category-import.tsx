@@ -15,7 +15,7 @@ import {
   type BadgeTone,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { callApi, type ApiFailure } from '../../api/client.ts';
 import {
   ImportFooter,
@@ -26,7 +26,9 @@ import {
 import { numberFormat } from '../../shared/intl.ts';
 import {
   API_IMPORT,
+  MAX_FILE_BYTES,
   canApply,
+  needsRecheck,
   errorReportCsv,
   problemOf,
   readAsBase64,
@@ -67,6 +69,13 @@ const ROW_CODES = new Set([
   'locale-uncheckable',
   'tree.size-exceeded',
   'row.invalid',
+  'format',
+  'repeated',
+  'english-only',
+  'type',
+  'unknown',
+  'invalid',
+  'locale-unsupported',
 ]);
 
 interface Checked {
@@ -98,19 +107,27 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const working = useRef(false);
+  // After a refusal that says the tree moved, the old result must be checked again before Apply.
+  const [stale, setStale] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
+  const resultRef = useRef<HTMLDivElement>(null);
 
   const fail = (failure: ApiFailure): void => {
     if (failure.status === 401) {
       window.location.assign('/session-ended');
       return;
     }
-    setProblem(problemOf(failure));
+    const next = problemOf(failure);
+    setProblem(next);
+    setStale(needsRecheck(next));
   };
 
   /** Reads the file once; the check and the apply both send it. */
   async function check(name: string, bytes: number, data: string) {
     setProblem(null);
+    setStale(false);
     setFilter('all');
+    setAnnouncement(t('announce.checking'));
     setPhase({ kind: 'checking', name });
     const result = await callApi<DryRunBody>('POST', `${API_IMPORT}/dry-run`, { data }, csrfToken);
     if (!result.ok) {
@@ -119,6 +136,12 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
       return;
     }
     setPhase({ kind: 'checked', file: { name, bytes, data, body: result.body } });
+    const rows =
+      result.body.counts.create +
+      result.body.counts.update +
+      result.body.counts.unchanged +
+      result.body.counts.error;
+    setAnnouncement(t('announce.checked', { rows, errors: result.body.counts.error }));
   }
 
   async function onFiles(files: FileList | null) {
@@ -126,6 +149,10 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
     if (file === undefined || file === null || working.current) return;
     working.current = true;
     try {
+      if (file.size > MAX_FILE_BYTES) {
+        setProblem({ kind: 'file', code: 'file.too-large', maxBytes: MAX_FILE_BYTES });
+        return;
+      }
       const data = await readAsBase64(file);
       if (data === null) {
         setProblem({ kind: 'file', code: 'file.unreadable', maxBytes: null });
@@ -152,6 +179,7 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
       return;
     }
     setProblem(null);
+    setAnnouncement(t('announce.applied'));
     setPhase({ kind: 'applied', body: result.body });
     flashToast(
       'success',
@@ -168,6 +196,12 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
       `category-import-errors-${new Date().toISOString().slice(0, 10)}.csv`,
     );
   }
+
+  // A step that replaces the one the person was on takes focus to its own region, so a keyboard or
+  // screen reader user is not dropped at the top of the page.
+  useEffect(() => {
+    if (phase.kind === 'checked' || phase.kind === 'applied') resultRef.current?.focus();
+  }, [phase.kind]);
 
   const checked = phase.kind === 'checked' ? phase.file : null;
   const checkingFile = phase.kind === 'checking' || busy;
@@ -189,36 +223,38 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
       )}
 
       {phase.kind === 'applied' ? (
-        <ImportSection title={t('done.title')}>
-          <ImportTiles
-            tiles={[
-              {
-                label: t('tiles.create'),
-                value: number(phase.body.counts.create),
-                tone: 'success',
-              },
-              { label: t('tiles.update'), value: number(phase.body.counts.update) },
-              { label: t('tiles.unchanged'), value: number(phase.body.counts.unchanged) },
-            ]}
-          />
-          <p className="text-sm text-fg-muted">{t('done.hidden-note')}</p>
-          <ImportFooter
-            end={
-              <>
-                <FileButton
-                  accept={IMPORT_ACCEPT}
-                  onFiles={(files) => {
-                    setPhase({ kind: 'idle' });
-                    void onFiles(files);
-                  }}
-                >
-                  {t('choose-another')}
-                </FileButton>
-                <LinkButton href="/catalog/categories">{t('done.open-tree')}</LinkButton>
-              </>
-            }
-          />
-        </ImportSection>
+        <div ref={resultRef} tabIndex={-1} className="outline-none">
+          <ImportSection title={t('done.title')}>
+            <ImportTiles
+              tiles={[
+                {
+                  label: t('tiles.create'),
+                  value: number(phase.body.counts.create),
+                  tone: 'success',
+                },
+                { label: t('tiles.update'), value: number(phase.body.counts.update) },
+                { label: t('tiles.unchanged'), value: number(phase.body.counts.unchanged) },
+              ]}
+            />
+            <p className="text-sm text-fg-muted">{t('done.hidden-note')}</p>
+            <ImportFooter
+              end={
+                <>
+                  <FileButton
+                    accept={IMPORT_ACCEPT}
+                    onFiles={(files) => {
+                      setPhase({ kind: 'idle' });
+                      void onFiles(files);
+                    }}
+                  >
+                    {t('choose-another')}
+                  </FileButton>
+                  <LinkButton href="/catalog/categories">{t('done.open-tree')}</LinkButton>
+                </>
+              }
+            />
+          </ImportSection>
+        </div>
       ) : null}
 
       {phase.kind === 'idle' || phase.kind === 'checking' ? (
@@ -233,16 +269,16 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
             </FileButton>
             <ExportLinks />
           </div>
-          <p className="text-xs text-fg-muted" role="status">
+          <p className="text-sm text-fg-muted">
             {phase.kind === 'checking'
-              ? t('checking', { name: phase.name })
+              ? t('checking-progress', { name: phase.name })
               : t('upload.limits', { size: FALLBACK_MAX_MB })}
           </p>
         </ImportSection>
       ) : null}
 
       {checked === null ? null : (
-        <>
+        <div ref={resultRef} tabIndex={-1} className="flex flex-col gap-6 outline-none">
           <FileRow
             name={checked.name}
             meta={t('file-meta', {
@@ -292,6 +328,11 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
             <Banner tone="info">{t('result.nothing')}</Banner>
           )}
           <ResultTable rows={checked.body} filter={filter} onFilter={setFilter} />
+          {!canApply(checked.body) || stale ? (
+            <p id="category-import-apply-blocked" className="sr-only">
+              {t('apply-blocked')}
+            </p>
+          ) : null}
           <ImportFooter
             start={
               checked.body.counts.error > 0 ? (
@@ -302,7 +343,10 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
             }
             end={
               <Button
-                disabled={!canApply(checked.body) || busy}
+                disabled={!canApply(checked.body) || busy || stale}
+                aria-describedby={
+                  !canApply(checked.body) || stale ? 'category-import-apply-blocked' : undefined
+                }
                 onClick={() => setConfirming(true)}
               >
                 {t('apply')}
@@ -333,8 +377,11 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
               })}
             </p>
           </Dialog>
-        </>
+        </div>
       )}
+      <p className="sr-only" role="status">
+        {announcement}
+      </p>
     </div>
   );
 }
@@ -342,23 +389,34 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
 /** The export of the tree, as the starting point of a file. */
 function ExportLinks() {
   const t = useTranslations('categories.import');
+  const [busy, setBusy] = useState(false);
+  const run = async (format: 'csv' | 'xlsx') => {
+    setBusy(true);
+    try {
+      await exportTree(format, t('export-failed'));
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <span className="text-sm text-fg-muted">
-      {t('upload.export-hint')}{' '}
-      <button
-        type="button"
-        className="font-medium text-link underline"
-        onClick={() => void exportTree('csv', t('export-failed'))}
+    <span className="flex flex-wrap items-center gap-2 text-sm text-fg-muted">
+      {t('upload.export-hint')}
+      <Button
+        variant="secondary"
+        loading={busy}
+        aria-label={t('export-csv-label')}
+        onClick={() => void run('csv')}
       >
         CSV
-      </button>{' '}
-      <button
-        type="button"
-        className="font-medium text-link underline"
-        onClick={() => void exportTree('xlsx', t('export-failed'))}
+      </Button>
+      <Button
+        variant="secondary"
+        loading={busy}
+        aria-label={t('export-xlsx-label')}
+        onClick={() => void run('xlsx')}
       >
         XLSX
-      </button>
+      </Button>
     </span>
   );
 }
@@ -379,6 +437,8 @@ function ProblemBanner({
         return t('problem.file-changed');
       case 'has-errors':
         return t('problem.has-errors');
+      case 'race':
+        return t('problem.race');
       case 'forbidden':
         return t('problem.forbidden');
       case 'claim-check':
@@ -408,7 +468,7 @@ function ProblemBanner({
   return (
     <Banner tone="critical">
       <span>{text}</span>
-      {problem.kind === 'stale' && onCheckAgain !== undefined ? (
+      {needsRecheck(problem) && onCheckAgain !== undefined ? (
         <>
           {' '}
           <button type="button" className="font-medium underline" onClick={onCheckAgain}>
@@ -482,9 +542,15 @@ function ResultTable({
             <tbody className={CARD_TABLE.body}>
               {list.map((row) => (
                 <tr key={row.rowNumber} className={CARD_TABLE.row}>
-                  <td className={`${CARD_TABLE.cell} tabular-nums`}>{row.rowNumber}</td>
+                  <th
+                    scope="row"
+                    className={`${CARD_TABLE.cell} text-start font-normal tabular-nums`}
+                  >
+                    <span className="lg:hidden">{t('table.row-n', { n: row.rowNumber })}</span>
+                    <span className="max-lg:hidden">{row.rowNumber}</span>
+                  </th>
                   <td
-                    className={`${CARD_TABLE.labelled} break-words font-mono text-sm`}
+                    className={`${CARD_TABLE.labelled} break-all font-mono text-sm`}
                     data-label={t('table.category')}
                   >
                     {row.slug === '' ? t('table.no-slug') : row.slug}
@@ -492,7 +558,10 @@ function ResultTable({
                   <td className={CARD_TABLE.labelled} data-label={t('table.result')}>
                     <Badge tone={ACTION_TONE[row.action]}>{t(`action.${row.action}`)}</Badge>
                   </td>
-                  <td className={`${CARD_TABLE.labelled} text-fg`} data-label={t('table.problem')}>
+                  <td
+                    className={`${CARD_TABLE.labelled} text-fg max-lg:empty:hidden`}
+                    data-label={t('table.problem')}
+                  >
                     {row.issues.length === 0 ? (
                       ''
                     ) : (
@@ -501,7 +570,7 @@ function ResultTable({
                           <li key={`${issue.path}:${issue.code}`}>
                             {ROW_CODES.has(issue.code)
                               ? t(`row-code.${issue.code.replace('.', '-')}` as never)
-                              : issue.code}
+                              : t('row-code.other' as never, { code: issue.code } as never)}
                             {issue.path === '' ? null : (
                               <span className="text-fg-muted"> ({issue.path})</span>
                             )}

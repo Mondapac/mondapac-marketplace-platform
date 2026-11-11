@@ -5437,7 +5437,7 @@
         "sub": "Start from an export of the current tree: each row is one category, matched by its slug.",
         "choose": "Choose a file",
         "limits": "CSV or XLSX, up to {size} MB.",
-        "export-hint": "Export the tree as"
+        "export-hint": "Start from an export of the tree:"
       },
       "checking": "Checking {name}…",
       "choose-another": "Choose another file",
@@ -5453,7 +5453,7 @@
       },
       "result": {
         "ready": "The file is ready. Applying it writes every row in one step.",
-        "has-errors": "{count, plural, one {# row has an error.} other {# rows have errors.}} Fix the file and upload it again; nothing is applied until no row has an error.",
+        "has-errors": "{count, plural, one {# row has an error.} other {# rows have errors.}} Fix the file and upload it again. Nothing is applied while any row has an error.",
         "nothing": "Every row is already in the tree. There is nothing to apply."
       },
       "filter": {
@@ -5467,7 +5467,8 @@
         "category": "Category",
         "result": "Result",
         "problem": "Problem",
-        "no-slug": "(no valid slug)"
+        "no-slug": "(no valid slug)",
+        "row-n": "Row {n}"
       },
       "action": {
         "create": "Create",
@@ -5490,7 +5491,15 @@
         "claim-word": "This text makes a claim that only a certificate can back. Remove the word.",
         "locale-uncheckable": "This language cannot be checked yet, so its text cannot be saved.",
         "tree-size-exceeded": "The tree is at its size limit, so no more categories can be added.",
-        "row-invalid": "This row cannot be read."
+        "row-invalid": "This row cannot be read.",
+        "format": "This value is too long or has characters that are not allowed.",
+        "repeated": "This value is repeated.",
+        "english-only": "This field takes English only.",
+        "type": "This value is the wrong kind.",
+        "unknown": "This field is not known.",
+        "invalid": "This value cannot be used.",
+        "locale-unsupported": "This language is not supported.",
+        "other": "This value cannot be used ({code})."
       },
       "column-code": {
         "column-blank": "a column has no heading",
@@ -5516,8 +5525,8 @@
       "export-failed": "The tree could not be exported. Try again.",
       "problem": {
         "stale": "The tree changed after the file was checked.",
-        "file-changed": "The file is not the one that was checked. Choose it again.",
-        "has-errors": "The file has errors now, so nothing was applied. Check it again.",
+        "file-changed": "The file sent is not the one that was checked, so nothing was applied.",
+        "has-errors": "The tree changed and the file now has errors, so nothing was applied.",
         "forbidden": "Your role cannot import categories.",
         "claim-check": "The wording check is not available right now, so the file was not read. Try again later.",
         "busy": "The import is busy. Try again in a moment.",
@@ -5536,15 +5545,27 @@
           "file-formula-cell": "The file has a formula cell. Replace it with its value.",
           "file-too-complex": "The workbook is too complex to read. Save the sheet as CSV.",
           "validation-failed": "The file could not be sent. Choose it again."
-        }
-      }
+        },
+        "race": "The tree changed while the file was applied, so nothing was applied."
+      },
+      "announce": {
+        "checking": "Checking the file.",
+        "checked": "{rows, plural, one {# row checked} other {# rows checked}}, {errors} with errors.",
+        "applied": "The import is applied."
+      },
+      "export-csv-label": "Export the tree as CSV",
+      "export-xlsx-label": "Export the tree as XLSX",
+      "apply-blocked": "Apply is off until the file has no errors and at least one change.",
+      "checking-progress": "Checking {name}…"
     },
     "export": {
       "csv": "Export CSV",
       "xlsx": "Export XLSX",
       "import": "Import",
       "failed": "The tree could not be exported. Try again.",
-      "group": "Export and import"
+      "group": "Export and import",
+      "csv-label": "Export the category tree as a CSV file",
+      "xlsx-label": "Export the category tree as an XLSX file"
     }
   },
   "brands": {

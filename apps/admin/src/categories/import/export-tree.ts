@@ -24,9 +24,10 @@ export async function exportTree(format: 'csv' | 'xlsx', failedText: string): Pr
     return;
   }
   const day = new Date().toISOString().slice(0, 10);
-  const blob =
-    format === 'xlsx'
-      ? new Blob([await response.arrayBuffer()], { type: XLSX_TYPE })
-      : new Blob([await response.text()], { type: 'text/csv;charset=utf-8' });
+  // Bytes, not text: a text read would drop the byte-order mark that lets Excel open the CSV as UTF-8.
+  const bytes = await response.arrayBuffer();
+  const blob = new Blob([bytes], {
+    type: format === 'xlsx' ? XLSX_TYPE : 'text/csv;charset=utf-8',
+  });
   saveFile(blob, `category-tree-${day}.${format}`);
 }

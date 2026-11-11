@@ -20,10 +20,20 @@ export function TreeFileActions() {
   };
   return (
     <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('group')}>
-      <Button variant="secondary" disabled={busy} onClick={() => void run('csv')}>
+      <Button
+        variant="secondary"
+        loading={busy}
+        aria-label={t('csv-label')}
+        onClick={() => void run('csv')}
+      >
         {t('csv')}
       </Button>
-      <Button variant="secondary" disabled={busy} onClick={() => void run('xlsx')}>
+      <Button
+        variant="secondary"
+        loading={busy}
+        aria-label={t('xlsx-label')}
+        onClick={() => void run('xlsx')}
+      >
         {t('xlsx')}
       </Button>
       <LinkButton variant="secondary" href={IMPORT_PAGE_PATH}>

@@ -128,15 +128,21 @@ describe('CategoriesView', () => {
     serve({ 'catalog/admin/categories': ok(tree()) });
     const { unmount } = view(<CategoriesView canEdit canImport />);
     await screen.findAllByRole('treeitem');
-    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Export XLSX' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Export the category tree as a CSV file' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Export the category tree as an XLSX file' }),
+    ).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Import' }).getAttribute('href')).toBe(
       '/catalog/categories/import',
     );
     unmount();
     view(<CategoriesView canEdit />);
     await screen.findAllByRole('treeitem');
-    expect(screen.queryByRole('button', { name: 'Export CSV' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Export the category tree as a CSV file' }),
+    ).toBeNull();
     expect(screen.queryByRole('link', { name: 'Import' })).toBeNull();
   });
 

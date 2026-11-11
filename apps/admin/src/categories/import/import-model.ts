@@ -90,6 +90,7 @@ export type ImportProblem =
   | { readonly kind: 'stale' }
   | { readonly kind: 'file-changed' }
   | { readonly kind: 'has-errors' }
+  | { readonly kind: 'race' }
   | { readonly kind: 'columns'; readonly fields: readonly RowIssue[] }
   | { readonly kind: 'file'; readonly code: string; readonly maxBytes: number | null }
   | { readonly kind: 'forbidden' }
@@ -121,6 +122,14 @@ export function problemOf(failure: ApiFailure): ImportProblem {
       return { kind: 'file-changed' };
     case 'import.has-errors':
       return { kind: 'has-errors' };
+    case 'category.slug-taken':
+    case 'category.sibling-name-taken':
+    case 'category.parent-not-found':
+    case 'category.not-editable':
+    case 'category.depth-exceeded':
+      return { kind: 'race' };
+    case 'request.too-large':
+      return { kind: 'file', code: 'file.too-large', maxBytes: null };
     case 'import.columns-invalid':
       return { kind: 'columns', fields: failure.details?.fields ?? [] };
     case 'claim-text.check-unavailable':
@@ -133,6 +142,19 @@ export function problemOf(failure: ApiFailure): ImportProblem {
         ? { kind: 'file', code: failure.code, maxBytes: failure.details?.maxBytes ?? null }
         : { kind: 'unknown' };
   }
+}
+
+/** What the page asks the API to read: the platform ceiling for an import file (the Market's own cap is the API's). */
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/** True for a refusal after which the same file must be checked again before it can be applied. */
+export function needsRecheck(problem: ImportProblem): boolean {
+  return (
+    problem.kind === 'stale' ||
+    problem.kind === 'has-errors' ||
+    problem.kind === 'race' ||
+    problem.kind === 'file-changed'
+  );
 }
 
 /** The file as base64 text, read in the browser; null when it cannot be read. */

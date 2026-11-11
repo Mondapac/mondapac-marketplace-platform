@@ -213,6 +213,135 @@ describe('Import categories page', () => {
     ).toBeTruthy();
   });
 
+  const applyFlow = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply import' }));
+    const dialog = await screen.findByRole('dialog', { hidden: true });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Apply', hidden: true }));
+  };
+
+  it.each([
+    ['import.file-changed', /file sent is not the one that was checked/],
+    ['import.has-errors', /file now has errors/],
+    ['category.slug-taken', /changed while the file was applied/],
+  ])('after %s offers a new check and keeps Apply off until it is done', async (code, text) => {
+    call
+      .mockReturnValueOnce(ok(dry([result(2, 'create')])))
+      .mockReturnValueOnce(fail(409, code))
+      .mockReturnValueOnce(ok(dry([result(2, 'create')], { treeVersion: 9 })));
+    page();
+    choose();
+    await applyFlow();
+    expect(await screen.findByText(text)).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Apply import' }).disabled).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Check the file again' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    await waitFor(() =>
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Apply import' }).disabled).toBe(
+        false,
+      ),
+    );
+  });
+
+  it('words a forbidden role, an unavailable claim check and a busy import', async () => {
+    for (const [status, code, text] of [
+      [403, 'forbidden', /Your role cannot import categories/],
+      [503, 'claim-text.check-unavailable', /wording check is not available/],
+      [409, 'file.busy', /import is busy/],
+    ] as const) {
+      call.mockReset();
+      call.mockReturnValueOnce(fail(status, code));
+      page();
+      choose();
+      expect(await screen.findByText(text)).toBeTruthy();
+      cleanup();
+    }
+  });
+
+  it('sends a session that ends during the apply to sign-in', async () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, 'location', { configurable: true, value: { assign } });
+    call.mockReturnValueOnce(ok(dry([result(2, 'create')]))).mockReturnValueOnce(fail(401, 'x'));
+    page();
+    choose();
+    await applyFlow();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+  });
+
+  it('words every known row code, and falls back for an unknown one', async () => {
+    const codes = [
+      'slug.invalid',
+      'slug.duplicate',
+      'slug.taken',
+      'parent.invalid',
+      'parent.not-found',
+      'move.not-supported',
+      'depth.exceeded',
+      'required',
+      'sibling-name-taken',
+      'show-in-menu.invalid',
+      'blocked-term',
+      'claim-word',
+      'locale-uncheckable',
+      'tree.size-exceeded',
+      'row.invalid',
+      'format',
+      'repeated',
+      'english-only',
+      'type',
+      'unknown',
+      'invalid',
+      'locale-unsupported',
+    ];
+    call.mockReturnValueOnce(
+      ok(
+        dry([
+          ...codes.map((c, i) => result(i + 2, 'error', [{ path: 'name', code: c }])),
+          result(99, 'error', [{ path: 'name', code: 'brand.new' }]),
+        ]),
+      ),
+    );
+    page();
+    choose();
+    await screen.findByRole('table');
+    const text = within(screen.getByRole('table'))
+      .getAllByRole('row')
+      .map((r) => r.textContent);
+    for (const c of codes)
+      expect(text.join('|')).not.toContain(c === 'required' ? 'zzz' : `${c} (`);
+    expect(text.join('|')).toContain('This value cannot be used (brand.new).');
+  });
+
+  it('applies only once when Apply is confirmed twice quickly, and shows the applied step when nothing was written', async () => {
+    call.mockReturnValueOnce(ok(dry([result(2, 'create')]))).mockReturnValueOnce(
+      ok({
+        treeVersion: 7,
+        counts: { create: 0, update: 0, unchanged: 1, error: 0 },
+        written: false,
+      }),
+    );
+    page();
+    choose();
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply import' }));
+    const dialog = await screen.findByRole('dialog', { hidden: true });
+    const confirm = within(dialog).getByRole('button', { name: 'Apply', hidden: true });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(await screen.findByText('The import is applied')).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses a file over the platform ceiling before reading it', async () => {
+    page();
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const big = new File(['x'], 'big.csv');
+    Object.defineProperty(big, 'size', { value: 11 * 1024 * 1024 });
+    fireEvent.change(input, { target: { files: [big] } });
+    expect(await screen.findByText(/larger than/)).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+  });
+
   it('sends a rejected session to sign-in', async () => {
     const assign = vi.fn();
     Object.defineProperty(window, 'location', { configurable: true, value: { assign } });
@@ -240,6 +369,23 @@ describe('exportTree', () => {
     expect(save.mock.calls[0]![1]).toMatch(/^category-tree-\d{4}-\d{2}-\d{2}\.csv$/);
     await exportTree('xlsx', 'failed');
     expect(save.mock.calls[1]![1]).toMatch(/\.xlsx$/);
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the byte-order mark of the CSV', async () => {
+    const bom = new Uint8Array([0xef, 0xbb, 0xbf, 0x61]);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        arrayBuffer: () => Promise.resolve(bom.buffer),
+        text: () => Promise.resolve('a'),
+      }),
+    );
+    await exportTree('csv', 'failed');
+    const blob = save.mock.calls[0]![0];
+    expect(blob.size).toBe(4);
     vi.unstubAllGlobals();
   });
 
