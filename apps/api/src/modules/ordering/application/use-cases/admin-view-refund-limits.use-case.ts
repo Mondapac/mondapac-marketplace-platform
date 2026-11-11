@@ -6,7 +6,10 @@ import {
   viewRefundLimits,
   type RefundLimitsFailure,
   type RefundLimitsView,
+  type RefundLimitView,
 } from '../refund-limits-flow';
+
+export type { RefundLimitView, RefundLimitsView };
 
 /** The caps on seller refunds of the Market, and of one seller when named (rule `permissions [ordering.refund-limits.view]`). */
 export class AdminViewRefundLimits extends UseCase<

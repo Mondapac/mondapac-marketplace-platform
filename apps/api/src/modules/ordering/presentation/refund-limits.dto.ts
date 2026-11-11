@@ -1,5 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
-import type { RefundLimitsView, RefundLimitView } from '../application/refund-limits-flow';
+import type {
+  RefundLimitsView,
+  RefundLimitView,
+} from '../application/use-cases/admin-view-refund-limits.use-case';
 import { MAX_REFUND_LIMIT_COUNT } from '../domain/refund-limits';
 import { moneyBody } from './http-answers';
 import { MoneyView } from './orders.dto';
