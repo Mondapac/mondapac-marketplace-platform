@@ -17,7 +17,11 @@ import {
   postcodeUrl,
   reverseUrl,
 } from '../src/delivery/mapbox.ts';
-import { takeAddressPrefill } from '../src/delivery/address-prefill.ts';
+import {
+  PREFILL_TTL_MS,
+  takeAddressPrefill,
+  writeAddressPrefill,
+} from '../src/delivery/address-prefill.ts';
 import {
   answerKeep,
   answerSearch,
@@ -397,7 +401,12 @@ describe('server routes', () => {
     expect(asked.searchParams.get('country')).toBe('au');
   });
 
-  const keepAsk = (q: string, d = deps(), h = incoming()) =>
+  const signedIn = () => {
+    const h = incoming();
+    h.set('cookie', 'other=1; __Host-session-customer-AU=s3ss10n');
+    return h;
+  };
+  const keepAsk = (q: string, d = deps(), h = signedIn()) =>
     answerKeep(
       d,
       h,
@@ -426,6 +435,21 @@ describe('server routes', () => {
     expect((await keepAsk('12 Example Street, Kedron QLD 4031', d)).status).toBe(429);
     expect(mapbox).toHaveBeenCalledTimes(1);
     expect((await search('12 Example', d)).status).toBe(200);
+  });
+
+  it('refuses a request without exactly one session cookie of the Market, before Mapbox', async () => {
+    const guest = incoming();
+    expect((await keepAsk('12 Example Street', deps(), guest)).status).toBe(401);
+    const other = incoming();
+    other.set('cookie', '__Host-session-customer-NZ=s3ss10n');
+    expect((await keepAsk('12 Example Street', deps(), other)).status).toBe(401);
+    const twice = incoming();
+    twice.set('cookie', '__Host-session-customer-AU=a; __Host-session-customer-AU=b');
+    expect((await keepAsk('12 Example Street', deps(), twice)).status).toBe(401);
+    const empty = incoming();
+    empty.set('cookie', '__Host-session-customer-AU=');
+    expect((await keepAsk('12 Example Street', deps(), empty)).status).toBe(401);
+    expect(mapbox).not.toHaveBeenCalled();
   });
 
   it('refuses a short or long saved address and other sites', async () => {
@@ -841,13 +865,14 @@ describe('Deliver to modal with the live lookup', () => {
       Response.json({ place: placeOfFeature(feature('p1', '9 Real Street', 'Kedron', '4031')) }),
     );
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Save to my addresses' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Add to my addresses…' }));
       await Promise.resolve();
     });
     await act(() => Promise.resolve());
     const keepCall = browserFetch.mock.calls.at(-1)![0] as string;
     expect(keepCall).toBe('/api/deliver-to/keep?q=9%20Real%20Street%2C%20Kedron%20QLD%204031');
     expect(push).toHaveBeenCalledWith('/account/addresses');
+    expect(screen.queryByText('Opening…')).toBeNull();
     expect(takeAddressPrefill()).toEqual({
       street: '9 Real Street',
       suburb: 'Kedron',
@@ -861,7 +886,7 @@ describe('Deliver to modal with the live lookup', () => {
     deliveryAreaFor.mockResolvedValue({ kind: 'in' });
     push.mockReset();
     await pickAddress('Kedron', '4031');
-    expect(screen.queryByRole('button', { name: 'Save to my addresses' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add to my addresses…' })).toBeNull();
     cleanup();
     await openSignedIn();
     browserFetch.mockResolvedValue(
@@ -879,7 +904,7 @@ describe('Deliver to modal with the live lookup', () => {
     });
     browserFetch.mockResolvedValue(new Response('', { status: 429 }));
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Save to my addresses' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Add to my addresses…' }));
       await Promise.resolve();
     });
     await act(() => Promise.resolve());
@@ -953,5 +978,18 @@ describe('saving an address from the Deliver to modal', () => {
     expect(url.searchParams.get('autocomplete')).toBe('false');
     expect(url.searchParams.get('limit')).toBe('1');
     expect(url.searchParams.get('country')).toBe('nz');
+  });
+});
+
+describe('the address hand-over', () => {
+  it('is dropped after ten minutes, so a later buyer on the tab never sees it', () => {
+    writeAddressPrefill({ street: '1 A St', suburb: 'Kedron', postcode: '4031' }, 1_000);
+    expect(takeAddressPrefill(1_000 + PREFILL_TTL_MS + 1)).toBeNull();
+    writeAddressPrefill({ street: '1 A St', suburb: 'Kedron', postcode: '4031' }, 1_000);
+    expect(takeAddressPrefill(1_000 + PREFILL_TTL_MS)).toEqual({
+      street: '1 A St',
+      suburb: 'Kedron',
+      postcode: '4031',
+    });
   });
 });

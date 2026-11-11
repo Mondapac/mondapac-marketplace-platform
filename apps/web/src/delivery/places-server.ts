@@ -22,6 +22,7 @@ import {
   type MapboxConfig,
 } from './mapbox.ts';
 import { clientKey, fixedWindowLimiter, type RateLimiter } from './rate-limit.ts';
+import { sessionCookieNames } from '../storefront/session-relay.ts';
 
 interface Incoming {
   get(name: string): string | null;
@@ -92,12 +93,23 @@ export function fromOwnPage(incoming: Incoming, host: StorefrontHost): boolean {
 function admit(
   deps: PlacesDeps,
   incoming: Incoming,
-): { readonly country: string } | { readonly refused: Response } {
+): { readonly country: string; readonly marketId: string } | { readonly refused: Response } {
   const found = hostAndCountry(deps, incoming);
   if (found === null) return { refused: json({ code: 'places.disabled' }, 404) };
   if (!fromOwnPage(incoming, found.host))
     return { refused: json({ code: 'request.forbidden' }, 403) };
-  return { country: found.country };
+  return { country: found.country, marketId: found.host.marketId };
+}
+
+/** Whether the request carries exactly one non-empty session cookie of the host's Market. */
+function hasSession(incoming: Incoming, marketId: string): boolean {
+  const name = sessionCookieNames(marketId).session;
+  const values = (incoming.get('cookie') ?? '')
+    .split(';')
+    .map((pair) => pair.trim())
+    .filter((pair) => pair.startsWith(`${name}=`))
+    .map((pair) => pair.slice(name.length + 1));
+  return values.length === 1 && values[0] !== '';
 }
 
 function throttled(deps: PlacesDeps, incoming: Incoming): Response | null {
@@ -203,6 +215,10 @@ export async function answerSuburb(deps: PlacesDeps, incoming: Incoming, url: UR
 export async function answerKeep(deps: PlacesDeps, incoming: Incoming, url: URL) {
   const admitted = admit(deps, incoming);
   if ('refused' in admitted) return admitted.refused;
+  // Only a signed-in buyer saves addresses: the permanent answer is the dearer, storable one.
+  // The API checks the session itself when the address is saved; this keeps guests and scripts
+  // without a session cookie off the paid route.
+  if (!hasSession(incoming, admitted.marketId)) return json({ code: 'auth.required' }, 401);
   const query = (url.searchParams.get('q') ?? '').replace(/\s+/gu, ' ').trim();
   if (query.length < MIN_QUERY || query.length > MAX_QUERY) {
     return json({ code: 'validation.failed' }, 400);

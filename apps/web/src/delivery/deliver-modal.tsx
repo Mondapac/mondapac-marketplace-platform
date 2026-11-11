@@ -172,12 +172,14 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   const close = () => setDeliverOpen(false);
   const choose = (place: Place, savedId?: string) => {
     placeTicket.current++;
+    setKeeping('idle');
     setPick({ point: place.point, origin: 'place', place, ...(savedId ? { savedId } : {}) });
     setResults(null);
     setActive(-1);
   };
   const pinAt = (point: GeoPoint, origin: Origin) => {
     const ticket = ++placeTicket.current;
+    setKeeping('idle');
     // The place found before stays until the lookup answers, so the summary does not flicker.
     setPick((before) => ({ point, origin, place: before.place, pending: true }));
     void lookup.suburbAt(point).then((place) => {
@@ -358,7 +360,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   else if (inside) status = t('in-area');
   else status = t('out-of-area', { area });
   // One short announcement per settled pick, not the whole summary box on every change.
-  const announced = pick.pending ? '' : `${summary}. ${status}`;
+  const announced = pick.pending || checking ? '' : `${summary}. ${status}`;
 
   return createPortal(
     <div className="lmw">

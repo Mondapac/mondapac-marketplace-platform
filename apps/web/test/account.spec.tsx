@@ -493,6 +493,7 @@ describe('addresses', () => {
     expect(within(page).getByLabelText<HTMLInputElement>('Postcode').value).toBe('4031');
     // The buyer still gives the name and phone.
     expect(within(page).getByLabelText<HTMLInputElement>('First name').value).toBe('');
+    expect(document.activeElement).toBe(within(page).getByLabelText('First name'));
     cleanup();
     renderStore(<AccountAddresses />);
     expect(within(main()).queryByLabelText('Street address and unit')).toBeNull();

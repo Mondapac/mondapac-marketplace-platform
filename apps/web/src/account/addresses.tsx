@@ -237,6 +237,16 @@ function AddressForm({
   useEffect(() => {
     if (tries > 0) form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
   }, [tries]);
+  // Opened from Deliver to: the buyer arrives on a new page, so focus goes to the first field
+  // left to fill (the name), not the page top.
+  useEffect(() => {
+    if (!prefill) return;
+    const empty = [...(form.current?.querySelectorAll<HTMLInputElement>('input') ?? [])].find(
+      (field) => !field.readOnly && field.value === '',
+    );
+    empty?.focus();
+    // Only on opening.
+  }, []);
   const [problem, setProblem] = useState<SaveOutcome | null>(null);
   const [pending, setPending] = useState(false);
   const set = (key: keyof Draft) => (text: string) => setDraft({ ...draft, [key]: text });
