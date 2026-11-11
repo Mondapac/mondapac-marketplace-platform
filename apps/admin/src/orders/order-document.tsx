@@ -49,7 +49,7 @@ export function OrderDocumentView({
   const to = useTranslations('orders');
   const locale = useLocale();
   return (
-    <article className="flex flex-col gap-4">
+    <article className="print-only-document flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <BackLink href={`/orders/${document.orderId}`} label={t('back')} />
         <PrintButton label={t('print')} />
@@ -89,6 +89,9 @@ export function OrderDocumentView({
                     <td className="py-1 break-words">
                       {names.get(line.lineId)?.trim() ||
                         to('line.variant', { id: shortId(line.variantId) })}
+                      {line.taxInclusive ? (
+                        <span className="text-fg-muted"> · {t('tax-included')}</span>
+                      ) : null}
                     </td>
                     <td className="py-1 text-end tabular-nums">{line.quantity}</td>
                     <td className="py-1 text-end tabular-nums">

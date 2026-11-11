@@ -3473,11 +3473,11 @@
         "seller": "Seller bears the loss",
         "platform": "Platform bears the loss",
         "unknown": "Loss: unknown"
-      }
+      },
+      "not-refunded": "Not refunded"
     },
     "actions": {
       "more": "More order actions",
-      "keep": "Keep order",
       "reason": "Reason",
       "reason-placeholder": "Choose a reason",
       "loss-bearer": "Who bears the loss",
@@ -3508,7 +3508,7 @@
       "cancel": {
         "open": "Cancel and refund",
         "title": "Cancel and refund this order?",
-        "body": "Every item not yet refunded and the delivery fee go back to the customer's card, for {sellers, plural, one {the seller} other {all # sellers}}. The sellers can no longer mark their part ready. This can't be undone.",
+        "body": "Every item not yet refunded and the delivery fee go back to the customer's card, for {sellers, plural, one {the seller} other {all # sellers}}. The sellers can no longer mark their part ready.",
         "sure": "I understand the customer gets this money back and it can't be undone.",
         "confirm": "Cancel and refund",
         "done": "The order was cancelled and refunded.",
@@ -3520,7 +3520,8 @@
           "too-late": "A seller has started on this order. Refund each seller instead.",
           "in-progress": "A refund is still waiting for Stripe.",
           "nothing-left": "Everything was refunded already."
-        }
+        },
+        "keep": "Don't cancel"
       },
       "refund": {
         "open": "Refund…",
@@ -3532,18 +3533,20 @@
         "units-label": "{item}: units to refund (up to {max})",
         "units-error": "Enter a whole number from 1 to {max}.",
         "shipping": "Delivery fee to refund ({currency})",
-        "shipping-help": "Leave empty to keep the delivery fee. Tax included.",
-        "shipping-given": "Part of the delivery fee was refunded already. Leave empty to keep the rest. Tax included.",
+        "shipping-help": "Up to {left} is left. Leave empty to keep it. Tax included.",
         "shipping-error": "Enter an amount, like 5.00.",
         "sure": "I understand the customer gets this money back and it can't be undone.",
         "confirm": "Refund",
-        "done": "Refund sent.",
+        "done": "Refund requested. Its state is under Refunds.",
         "block": {
           "disabled": "Refunds are switched off for this Market.",
           "not-paid": "Only a paid order can be refunded.",
           "in-progress": "A refund is still waiting for Stripe.",
           "nothing-left": "Everything was refunded already."
-        }
+        },
+        "keep": "Don't refund",
+        "confirm-note": "Choose what to refund and a reason, and tick the box to continue.",
+        "shipping-exceeds": "Only {left} of the delivery fee is left to refund."
       },
       "problem": {
         "ordering-cancel-too-late": "A seller started on this order a moment ago. Refund each seller instead.",
@@ -3562,7 +3565,8 @@
         "validation-failed": "Check the fields and try again.",
         "network": "We couldn't reach the server. Check your connection and try again.",
         "unknown": "Something went wrong. Try again."
-      }
+      },
+      "confirm-note": "Choose a reason and tick the box to continue."
     },
     "notes": {
       "title": "Internal notes",
@@ -3582,7 +3586,8 @@
         "erased": "The customer's account was deleted, so new notes can't be added.",
         "denied": "You don't have permission to add notes.",
         "unknown": "We couldn't add the note. Try again."
-      }
+      },
+      "added": "Note added."
     },
     "documents": {
       "title": "Documents",
@@ -3600,7 +3605,8 @@
       "item": "Item",
       "quantity": "Qty",
       "unit-price": "Unit price",
-      "amount": "Amount"
+      "amount": "Amount",
+      "tax-included": "Tax incl."
     }
   },
   "load": {

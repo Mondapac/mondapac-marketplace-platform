@@ -45,10 +45,20 @@ export function shippingGiven(refunds: readonly Refund[]): bigint {
 export const pendingOf = (refunds: readonly Refund[]): boolean =>
   refunds.some((refund) => refund.state === 'pending');
 
-/** Whether nothing of the seller order is left to give back: every unit, and some shipping. */
+/**
+ * The delivery fee still to give back, in minor units: the fee as paid less what refunds gave.
+ * Zero when the fee was free or its tax was not recorded (the API refuses such a fee).
+ */
+export function shippingLeft(part: SellerPart, refunds: readonly Refund[]): bigint {
+  if (part.shippingGross === null) return 0n;
+  const left = BigInt(part.shippingGross.amount) - shippingGiven(refunds);
+  return left > 0n ? left : 0n;
+}
+
+/** Whether nothing of the seller order is left to give back: no unit and no delivery fee. */
 export function fullyRefunded(part: SellerPart, refunds: readonly Refund[]): boolean {
   const units = [...unitsLeft(part, refunds).values()].every((left) => left === 0);
-  return units && (part.shipping.amount === '0' || shippingGiven(refunds) > 0n);
+  return units && shippingLeft(part, refunds) === 0n;
 }
 
 export type CancelBlock = 'disabled' | 'not-paid' | 'too-late' | 'in-progress' | 'nothing-left';

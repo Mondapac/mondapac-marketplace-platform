@@ -1,10 +1,12 @@
 import {
   BackLink,
+  Badge,
   Banner,
   Card,
   DataList,
   EmailText,
   LinkButton,
+  type BadgeTone,
   type DataListRow,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -199,6 +201,12 @@ function RefundList({ order }: { readonly order: AdminOrderDetail }) {
   );
 }
 
+const REFUND_TONE: Readonly<Record<string, BadgeTone>> = {
+  pending: 'attention',
+  succeeded: 'success',
+  failed: 'critical',
+};
+
 function RefundRow({
   order,
   refund,
@@ -218,8 +226,11 @@ function RefundRow({
   return (
     <li className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
       <div className="min-w-0">
-        <div className="font-medium">
-          {seller} · {t(`refund-state.${known(refund.state, REFUND_STATES)}`)}
+        <div className="flex flex-wrap items-center gap-2 font-medium">
+          <span>{seller}</span>
+          <Badge tone={REFUND_TONE[refund.state] ?? 'neutral'}>
+            {t(`refund-state.${known(refund.state, REFUND_STATES)}`)}
+          </Badge>
         </div>
         <div className="text-sm text-fg-muted">
           {t(`actions.refund-reason.${known(refund.reason, REFUND_REASONS)}`)}
@@ -232,7 +243,14 @@ function RefundRow({
           {formatInstant(refund.requestedAt, locale)}
         </div>
       </div>
-      <div className="font-medium tabular-nums">{formatMoney(refund.amount, locale)}</div>
+      {refund.state === 'failed' ? (
+        <div className="text-fg-muted tabular-nums">
+          <span className="line-through">{formatMoney(refund.amount, locale)}</span>{' '}
+          {t('refunds.not-refunded')}
+        </div>
+      ) : (
+        <div className="font-medium tabular-nums">{formatMoney(refund.amount, locale)}</div>
+      )}
     </li>
   );
 }

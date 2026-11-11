@@ -58,6 +58,11 @@ export interface SellerPart {
   readonly storeName: string | null;
   readonly subtotal: Money;
   readonly shipping: Money;
+  /**
+   * The delivery fee as paid, tax included: the most a refund gives back of it. Null on an older
+   * order whose delivery tax was not recorded (its fee is not refunded here).
+   */
+  readonly shippingGross: Money | null;
   /** The tax of the seller's lines; null when not recorded. */
   readonly tax: Money | null;
   readonly total: Money;

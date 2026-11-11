@@ -2,11 +2,11 @@
 
 import { Banner, Button, CheckboxRow, Dialog, Menu, Select, TextField } from '@mondapac/ui';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
+import { useId, useRef, useState } from 'react';
 import { callApi, type ApiFailure, type ApiResult } from '../api/client.ts';
-import { parseAmount } from '../wallet/money.ts';
-import { cancelBlock, refundBlock, refundsOf, shippingGiven, unitsLeft } from './refunds.ts';
+import { formatMinor, parseAmount } from '../wallet/money.ts';
+import { cancelBlock, refundBlock, refundsOf, shippingLeft, unitsLeft } from './refunds.ts';
 import {
   LOSS_BEARERS,
   LOSS_REASON_CODES,
@@ -204,7 +204,7 @@ function CancelResult({ answer }: { readonly answer: CancelAnswer }) {
   const failed = answer.refunds.filter((refund) => refund.state === 'failed').length;
   const pending = answer.refunds.filter((refund) => refund.state === 'pending').length;
   return (
-    <div className="basis-full" role="status">
+    <div className="basis-full">
       <Banner tone={failed > 0 ? 'critical' : pending > 0 ? 'attention' : 'success'}>
         {failed > 0
           ? t('done-failed', { count: failed })
@@ -234,6 +234,7 @@ function CancelDialog({
   const { pending, problem, send } = useSend();
   const keep = useRef<HTMLButtonElement>(null);
   const ready = lossReady(loss) && sure;
+  const noteId = useId();
 
   async function confirm() {
     const answer = await send(() =>
@@ -259,18 +260,20 @@ function CancelDialog({
       actions={
         <>
           <Button ref={keep} variant="secondary" disabled={pending} onClick={onClose}>
-            {t('keep')}
+            {t('cancel.keep')}
           </Button>
           <Button
             variant="destructive-solid"
             disabled={!ready}
             loading={pending}
+            aria-describedby={ready ? undefined : noteId}
             onClick={() => void confirm()}
           >
             {t('cancel.confirm')}
           </Button>
         </>
       }
+      actionsNote={ready ? undefined : <span id={noteId}>{t('confirm-note')}</span>}
     >
       <div className="flex flex-col gap-4">
         <p>{t('cancel.body', { sellers: order.sellerOrders.length })}</p>
@@ -307,11 +310,7 @@ export function RefundButton({
   const noteId = `refund-note-${part.sellerOrderId}`;
   return (
     <div className="flex flex-col items-start gap-2">
-      {done ? (
-        <Banner tone="success">
-          <span role="status">{t('refund.done')}</span>
-        </Banner>
-      ) : null}
+      {done ? <Banner tone="success">{t('refund.done')}</Banner> : null}
       <Button
         variant="secondary"
         disabled={block !== null}
@@ -358,6 +357,7 @@ function RefundDialog({
   readonly onDone: () => void;
 }) {
   const t = useTranslations('orders.actions');
+  const locale = useLocale();
   const router = useRouter();
   const refunds = refundsOf(order, part);
   const left = unitsLeft(part, refunds);
@@ -368,6 +368,8 @@ function RefundDialog({
   const { pending, problem, send } = useSend();
   const keep = useRef<HTMLButtonElement>(null);
   const currency = part.shipping.currency;
+  const noteId = useId();
+  const shippingMax = shippingLeft(part, refunds);
 
   const lineErrors = new Map<string, string>();
   const lines: { orderLineId: string; quantity: number }[] = [];
@@ -382,11 +384,18 @@ function RefundDialog({
   }
   const shippingParse = shipping.trim() === '' ? null : parseAmount(shipping, currency);
   const shippingError =
-    shippingParse === null || shippingParse.ok ? undefined : t('refund.shipping-error');
+    shippingParse === null
+      ? undefined
+      : !shippingParse.ok
+        ? t('refund.shipping-error')
+        : BigInt(shippingParse.minor) > shippingMax
+          ? t('refund.shipping-exceeds', {
+              left: formatMinor(shippingMax.toString(), currency, locale),
+            })
+          : undefined;
   const anything = lines.length > 0 || shippingParse?.ok === true;
   const ready =
     anything && lineErrors.size === 0 && shippingError === undefined && lossReady(loss) && sure;
-  const given = shippingGiven(refunds);
 
   async function confirm() {
     const body = {
@@ -417,18 +426,20 @@ function RefundDialog({
       actions={
         <>
           <Button ref={keep} variant="secondary" disabled={pending} onClick={onClose}>
-            {t('keep')}
+            {t('refund.keep')}
           </Button>
           <Button
             variant="destructive-solid"
             disabled={!ready}
             loading={pending}
+            aria-describedby={ready ? undefined : noteId}
             onClick={() => void confirm()}
           >
             {t('refund.confirm')}
           </Button>
         </>
       }
+      actionsNote={ready ? undefined : <span id={noteId}>{t('refund.confirm-note')}</span>}
     >
       <div className="flex flex-col gap-4">
         <p>{t('refund.body')}</p>
@@ -455,10 +466,12 @@ function RefundDialog({
             );
           })}
         </fieldset>
-        {part.shipping.amount === '0' ? null : (
+        {shippingMax === 0n ? null : (
           <TextField
             label={t('refund.shipping', { currency })}
-            help={given > 0n ? t('refund.shipping-given') : t('refund.shipping-help')}
+            help={t('refund.shipping-help', {
+              left: formatMinor(shippingMax.toString(), currency, locale),
+            })}
             inputMode="decimal"
             value={shipping}
             disabled={pending}

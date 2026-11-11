@@ -36,6 +36,7 @@ export function NotesCard({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<NoteProblem | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [added, setAdded] = useState(false);
   const busy = useRef(false);
   const length = [...text.trim()].length;
 
@@ -51,19 +52,21 @@ export function NotesCard({
       return;
     }
     busy.current = true;
+    setAdded(false);
     setPending(true);
     setProblem(null);
     setError(undefined);
     const result = await callApi<AdminNote>(
       'POST',
       `ordering/admin/orders/${orderId}/notes`,
-      { body: text },
+      { body: text.trim() },
       csrfToken,
     );
     busy.current = false;
     setPending(false);
     if (result.ok) {
       setText('');
+      setAdded(true);
       router.refresh();
       return;
     }
@@ -74,7 +77,15 @@ export function NotesCard({
     const code = result.failure.code;
     if (code === 'validation.failed') {
       const field = result.failure.details?.fields?.[0]?.code;
-      setError(field === 'format' ? t('format') : t('too-long', { max: NOTE_MAX_LENGTH }));
+      setError(
+        field === 'format'
+          ? t('format')
+          : field === 'too-long'
+            ? t('too-long', { max: NOTE_MAX_LENGTH })
+            : field === 'required'
+              ? t('required')
+              : t('problem.unknown'),
+      );
       return;
     }
     setProblem(
@@ -127,10 +138,13 @@ export function NotesCard({
               setError(undefined);
             }}
           />
-          <div>
+          <div className="flex flex-wrap items-center gap-3">
             <Button type="submit" variant="secondary" loading={pending}>
               {t('add')}
             </Button>
+            <span role="status" className="text-sm text-fg-muted">
+              {added ? t('added') : ''}
+            </span>
           </div>
         </form>
       ) : null}

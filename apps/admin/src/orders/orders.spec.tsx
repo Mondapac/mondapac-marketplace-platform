@@ -23,6 +23,7 @@ const part = (over: Partial<SellerPart> = {}): SellerPart => ({
   storeName: null,
   subtotal: money('2000'),
   shipping: money('500'),
+  shippingGross: money('500'),
   tax: money('182'),
   total: money('2500'),
   fulfilment: 'to-ship',
@@ -211,6 +212,51 @@ describe('orders list', () => {
 });
 
 describe('order detail', () => {
+  it('lists the refunds with their state, and a refused one as not refunded', () => {
+    const refund = {
+      refundId: '0190a000-0000-7000-8000-0000000000f1',
+      sellerOrderId: '0190a000-0000-7000-8000-0000000000b1',
+      reason: 'damaged',
+      lossBearer: 'seller',
+      lossReasonCode: null,
+      amount: money('1000'),
+      tax: money('91'),
+      shipping: null,
+      lines: [
+        {
+          orderLineId: '0190a000-0000-7000-8000-0000000000b1',
+          quantity: 1,
+          amount: money('1000'),
+          tax: money('91'),
+        },
+      ],
+      requestedAt: '2026-10-14T01:00:00.000Z',
+      settledAt: null,
+      creditNoteId: null,
+    };
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({
+            refundsEnabled: true,
+            refunds: [
+              { ...refund, state: 'failed' },
+              { ...refund, refundId: '0190a000-0000-7000-8000-0000000000f2', state: 'pending' },
+            ],
+          })}
+        />,
+      ),
+    );
+    expect(screen.getByText('Refused by Stripe')).toBeTruthy();
+    expect(screen.getByText('Waiting for Stripe')).toBeTruthy();
+    expect(screen.getByText(/Not refunded/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Order confirmation' }).getAttribute('href')).toBe(
+      '/orders/0190a000-0000-7000-8000-000000000001/document',
+    );
+  });
+
   it('shows the summary, the seller part, its lines and totals', () => {
     render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
     expect(screen.getByRole('heading', { name: 'Order 00000001' })).toBeTruthy();

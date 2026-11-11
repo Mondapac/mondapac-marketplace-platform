@@ -11,7 +11,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }));
 import { callApi } from '../api/client.ts';
 import { NotesCard } from './notes-card.tsx';
 import { OrderMoreMenu, RefundButton } from './order-actions.tsx';
-import { cancelBlock, fullyRefunded, refundBlock, unitsLeft } from './refunds.ts';
+import { cancelBlock, fullyRefunded, refundBlock, shippingLeft, unitsLeft } from './refunds.ts';
 import type { AdminNote, AdminOrderDetail, Refund, SellerPart } from './types.ts';
 
 // The money actions and the notes of the order page (order detail decisions 1 and 3), against
@@ -37,6 +37,7 @@ function fixtures(currency: string, shippingAmount: string) {
     storeName: 'Cedar Lane',
     subtotal: money('2000'),
     shipping: money(shippingAmount),
+    shippingGross: money(shippingAmount),
     tax: money('182'),
     total: money('2500'),
     fulfilment: 'to-ship',
@@ -165,6 +166,19 @@ describe.each(markets)('what is left to refund ($name)', ({ currency, shipping }
     expect(cancelBlock(order({ refunds: [all] }))).toBe('nothing-left');
   });
 
+  it('keeps the rest of a delivery fee refunded in part', () => {
+    const { money } = fixtures(currency, shipping);
+    const partial = refund({
+      lines: [{ ...refund().lines[0]!, quantity: 2 }],
+      shipping: { amount: money('100'), tax: money('0') },
+    });
+    expect(shippingLeft(part(), [partial])).toBe(400n);
+    expect(fullyRefunded(part(), [partial])).toBe(false);
+    expect(cancelBlock(order({ refunds: [partial] }))).toBeNull();
+    // A fee whose tax was not recorded is not refunded here.
+    expect(shippingLeft(part({ shippingGross: null }), [])).toBe(0n);
+  });
+
   it('still refunds one seller after another has started', () => {
     const started = part({ sellerOrderId: SO_2, fulfilment: 'shipped' });
     const value = order({ sellerOrders: [part(), started] });
@@ -235,6 +249,28 @@ describe.each(markets)('cancel and refund ($name)', ({ currency, shipping }) => 
     expect(await screen.findByText('The order was cancelled and refunded.')).toBeTruthy();
   });
 
+  it('says why Confirm waits, and reports refunds Stripe refused', async () => {
+    const value = order();
+    call.mockResolvedValueOnce(
+      ok({
+        orderId: ORDER,
+        refunds: [fixtures(currency, shipping).refund({ state: 'failed' })],
+      }),
+    );
+    render(wrap(<OrderMoreMenu order={value} canRefund csrfToken="csrf" />));
+    openCancel();
+    expect(screen.getByText('Choose a reason and tick the box to continue.')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'other' } });
+    fireEvent.click(screen.getByLabelText(/I understand/));
+    expect(screen.queryByText('Choose a reason and tick the box to continue.')).toBeNull();
+    fireEvent.click(
+      screen
+        .getAllByRole('button', { name: 'Cancel and refund' })
+        .find((button) => button.closest('dialog') !== null)!,
+    );
+    expect(await screen.findByText(/Stripe refused 1 refund/)).toBeTruthy();
+  });
+
   it('explains a seller who marked ready at the same moment', async () => {
     call.mockResolvedValueOnce(fail(409, 'ordering.cancel-too-late'));
     render(wrap(<OrderMoreMenu order={order()} canRefund csrfToken="csrf" />));
@@ -283,6 +319,15 @@ describe.each(markets)(
         },
         'csrf',
       );
+    });
+
+    it('refuses more delivery fee than is left', () => {
+      render(wrap(<RefundButton order={order()} part={part()} canRefund csrfToken="csrf" />));
+      fireEvent.click(screen.getByRole('button', { name: 'Refund…' }));
+      fireEvent.change(screen.getByLabelText(/Delivery fee to refund/), {
+        target: { value: '9999' },
+      });
+      expect(screen.getByText(/of the delivery fee is left to refund/)).toBeTruthy();
     });
 
     it('is disabled with a reason while a refund waits for Stripe', () => {
@@ -355,7 +400,7 @@ describe('internal notes', () => {
     expect(call).toHaveBeenCalledWith(
       'POST',
       `ordering/admin/orders/${ORDER}/notes`,
-      { body: ' Called back ' },
+      { body: 'Called back' },
       'csrf',
     );
   });
