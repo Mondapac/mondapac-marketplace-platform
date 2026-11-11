@@ -48,7 +48,8 @@ const simple = (over: Partial<ProductView> = {}): ProductView => ({
   familyCode: 'food',
   variantModel: 'single',
   status: 'published',
-  variants: [{ variantId: 'v1', state: 'published' }],
+  pausedAt: null,
+  variants: [{ variantId: 'v1', state: 'published', variantCode: 'P00000001-1' }],
   maxVariants: 100,
   maxAxes: 2,
   version: 7,
@@ -56,7 +57,12 @@ const simple = (over: Partial<ProductView> = {}): ProductView => ({
   lastChangedAt: '2026-10-01T00:00:00Z',
   createdAt: '2026-10-01T00:00:00Z',
   pendingSubmittedAt: null,
-  form: { taxCategoryCodes: ['gst'], units: [], fields: FIELDS, categories: [] },
+  form: {
+    taxCategoryCodes: ['gst'],
+    units: [],
+    fields: FIELDS,
+    categories: [{ categoryId: 'c1', parentId: null, names: { 'en-AU': 'Tops' } }],
+  },
   workingCopy: {
     content: { texts: { 'en-AU': { name: 'Tee' } } },
     lastSavedAt: '2026-10-01T00:00:00Z',
@@ -83,12 +89,14 @@ const oneType = (over: Partial<ProductView> = {}): ProductView =>
     variantModel: 'configurable',
     typeCode: 'configurable',
     variants: [
-      { variantId: 'v1', state: 'published' },
-      { variantId: 'v2', state: 'published' },
+      { variantId: 'v1', state: 'published', variantCode: 'P00000001-1' },
+      { variantId: 'v2', state: 'published', variantCode: 'P00000001-2' },
     ],
     workingCopy: {
       content: {
         texts: { 'en-AU': { name: 'Tee' } },
+        categoryIds: ['c1'],
+        taxCategoryCode: 'gst',
         variantAxes: ['size'],
         variants: [
           { variantId: 'v1', optionValues: { size: 'small' } },
@@ -116,6 +124,7 @@ const mount = (p: ProductView) =>
         photos={[]}
         locales={['en-AU']}
         defaultLocale="en-AU"
+        marketName="Australia"
         csrfToken="csrf"
       />
     </NextIntlClientProvider>,
@@ -391,7 +400,7 @@ describe('Add sizes dialog', () => {
 
   it('asks to save first while the form has unsaved changes', () => {
     mount(simple());
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Tee 2' } });
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Tee 2' } });
     expect(screen.getByText('Save your changes before you add sizes.')).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Add sizes' }).disabled).toBe(
       true,
@@ -449,7 +458,7 @@ describe('Add a second type', () => {
 
     fireEvent.change(cells[0] as HTMLElement, { target: { value: 'red' } });
     fireEvent.change(cells[1] as HTMLElement, { target: { value: 'blue' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save revision' }));
     await waitFor(() => expect(call).toHaveBeenCalled());
     const body = call.mock.calls[0]?.[2] as {
       content: { variantAxes: string[]; variants: { optionValues: Record<string, string> }[] };

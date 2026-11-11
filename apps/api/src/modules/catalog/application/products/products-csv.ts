@@ -1,3 +1,5 @@
+import { CSV_BOM, csvLine } from '@mondapac/platform-import';
+
 // The CSV of the admin product export (catalog design 9.2c): pure text functions, no I/O.
 
 /** The optional columns of the list, as the page's column picker names them. */
@@ -9,6 +11,7 @@ export const EXPORT_COLUMNS = [
   'scope',
   'seller',
   'created',
+  'tags',
 ] as const;
 export type ExportColumn = (typeof EXPORT_COLUMNS)[number];
 
@@ -26,31 +29,33 @@ export const EXPORT_HEADERS: Readonly<
   scope: 'Scope',
   seller: 'Seller',
   created: 'Created',
+  tags: 'Tags',
 });
 
-/**
- * Spreadsheets run a cell that starts with one of these as a formula (CSV injection, OWASP). The
- * test looks past leading whitespace (some locales and import settings trim it) and covers the
- * fullwidth signs `＝ ＋ － ＠` (U+FF1D, U+FF0B, U+FF0D, U+FF20) that a spreadsheet may fold.
- */
-const FORMULA_START = /^\s*[=+\-@\t\r\uFF1D\uFF0B\uFF0D\uFF20]/u;
+// The formula guard and the CSV line writer are the shared `@mondapac/platform-import` package
+// (design 14b): the seller panel writes its variant file with the same code.
+export { CSV_BOM, csvCell, csvLine } from '@mondapac/platform-import';
 
-/**
- * One cell as text: a text that a spreadsheet would read as a formula gets a leading quote (`'`),
- * which every common spreadsheet shows as plain text; then RFC 4180 quoting for a comma, a quote
- * or a line break. A number is written as it is (never negative here), so it is never altered.
- */
-export function csvCell(value: string | number | null): string {
-  if (value === null) return '';
-  if (typeof value === 'number') return String(value);
-  const safe = FORMULA_START.test(value) ? `'${value}` : value;
-  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+/** One cell of a row before it is written: text, a count or nothing. */
+export type ExportCell = string | number | null;
+
+/** CSV: the byte order mark before the header, then each group of rows as one chunk of lines. */
+export async function* csvChunks(
+  groups: AsyncIterable<readonly (readonly ExportCell[])[]>,
+): AsyncGenerator<string> {
+  let first = true;
+  for await (const group of groups) {
+    const text = group.map((row) => csvLine(row)).join('');
+    yield first ? CSV_BOM + text : text;
+    first = false;
+  }
 }
 
-/** One line of cells, ending in CRLF. */
-export function csvLine(cells: readonly (string | number | null)[]): string {
-  return `${cells.map(csvCell).join(',')}\r\n`;
+/** XLSX: every cell as text; a count is written as the digits, nothing is a number or formula. */
+export async function* textRows(
+  groups: AsyncIterable<readonly (readonly ExportCell[])[]>,
+): AsyncGenerator<readonly string[]> {
+  for await (const group of groups) {
+    for (const row of group) yield row.map((cell) => (cell === null ? '' : String(cell)));
+  }
 }
-
-/** The byte order mark that makes a spreadsheet read the file as UTF-8. */
-export const CSV_BOM = '﻿';

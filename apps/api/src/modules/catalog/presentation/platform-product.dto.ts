@@ -5,6 +5,7 @@ import {
   OwnVariantView,
   OwnWorkingCopyView,
 } from './own-reads.dto';
+import { TopicRefBody } from './topic.dto';
 
 // Bodies and answers of the platform product routes (catalog design 4.2, 8.2; CAT-10, CAT-41;
 // slice 6). Ids and codes only: an answer never carries a text the admin typed, except in the
@@ -148,6 +149,10 @@ export class PlatformProductSubmitted {
   published!: boolean;
 }
 
+export class PlatformProductDiscarded {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+}
+
 export class PlatformProductOptionsView {
   @ApiProperty({ type: [String], description: 'The product types the Market offers.' })
   productTypes!: string[];
@@ -162,6 +167,13 @@ export class PlatformRevisionView {
   content!: Record<string, unknown>;
 }
 
+export class PlatformProductOffers {
+  @ApiProperty({ description: 'Sellers that hold at least one Offer on the product.' })
+  sellerCount!: number;
+  @ApiProperty({ description: 'Offers on the product that are not deleted, every seller.' })
+  offerCount!: number;
+}
+
 export class PlatformProductView {
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty({ example: 'P00000001' }) productCode!: string;
@@ -170,6 +182,13 @@ export class PlatformProductView {
   @ApiProperty({ description: 'single (one fixed variant) or configurable.' })
   variantModel!: string;
   @ApiProperty() status!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'When an admin paused the product (ISO 8601, UTC); null when it is not paused.',
+  })
+  pausedAt!: string | null;
+  @ApiProperty({ type: PlatformProductOffers }) offers!: PlatformProductOffers;
   @ApiProperty({ type: [OwnVariantView] }) variants!: OwnVariantView[];
   @ApiProperty({ description: "The Market's cap on non-retired variants." }) maxVariants!: number;
   @ApiProperty({ description: "The Market's cap on the options a product varies on (1 or 2)." })
@@ -190,6 +209,13 @@ export class PlatformProductView {
   workingCopy!: OwnWorkingCopyView | null;
   @ApiProperty({ nullable: true, type: PlatformRevisionView })
   published!: PlatformRevisionView | null;
+  @ApiProperty({
+    type: [TopicRefBody],
+    description:
+      'The topics named by the draft and the published revision (`topicIds`), each once. A topic ' +
+      'that no longer exists is absent.',
+  })
+  topicRefs!: TopicRefBody[];
 }
 
 /** The body of Add sizes (catalog design 4.2a; variants V9). A closed object. */

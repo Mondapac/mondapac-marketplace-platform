@@ -10,7 +10,7 @@ import type { ImportFileStore } from '../application/ports/import-file-store';
 export class ObjectImportFileStore implements ImportFileStore {
   constructor(private readonly store: ObjectStore) {}
 
-  keyOf(market: MarketContext, id: Id<'PlatformImport'>): string {
+  keyOf(market: MarketContext, id: Id<'PlatformImport'> | Id<'SellerImport'>): string {
     return `catalog/imports/${market.marketId}/${id}`;
   }
 

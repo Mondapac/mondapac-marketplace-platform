@@ -95,7 +95,7 @@ interface Row {
 const ROWS: readonly Row[] = [
   {
     url: '/',
-    load: () => page(() => import('../app/page.tsx')),
+    load: () => page(() => import('../app/(home)/page.tsx')),
     title: 'Mondapac',
     canonical: '/',
     noindex: false,
@@ -206,14 +206,14 @@ const ROWS: readonly Row[] = [
   },
   {
     url: '/account',
-    load: () => page(() => import('../app/account/(member)/page.tsx')),
+    load: () => page(() => import('../app/account/(member)/(pages)/page.tsx')),
     title: 'My account | Mondapac',
     canonical: '/account',
     noindex: true,
   },
   {
     url: '/account/orders',
-    load: () => page(() => import('../app/account/(member)/orders/page.tsx')),
+    load: () => page(() => import('../app/account/(member)/(pages)/orders/page.tsx')),
     title: 'My orders | Mondapac',
     canonical: '/account/orders',
     noindex: true,

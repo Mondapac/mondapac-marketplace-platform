@@ -9,8 +9,7 @@ import { OfferDetail } from './offer-detail.tsx';
 import { OffersTable } from './offers-table.tsx';
 import { Pager } from './pager.tsx';
 import { ProductDetail } from './product-detail.tsx';
-import { ProductsTable } from './products-table.tsx';
-import type { OfferView, ProductListItem, ProductView } from './types.ts';
+import type { OfferView, ProductView } from './types.ts';
 import { visibleNavItems } from '@mondapac/ui';
 
 vi.mock('next-intl/server', () => ({
@@ -20,19 +19,6 @@ vi.mock('next-intl/server', () => ({
 }));
 
 const ID = '0190a000-0000-7000-8000-0000000000a1';
-const product = (over: Partial<ProductListItem> = {}): ProductListItem => ({
-  productId: ID,
-  productCode: 'P00000001',
-  typeCode: 'grocery',
-  status: 'published',
-  draftName: 'Olive oil 1L',
-  hasPublishedRevision: true,
-  hasPendingRevision: false,
-  pendingSubmittedAt: null,
-  lastChangedAt: '2026-10-09T03:30:00.000Z',
-  createdAt: '2026-10-01T00:00:00.000Z',
-  ...over,
-});
 const offer = (over: Partial<OfferView> = {}): OfferView => ({
   offerId: ID,
   productId: ID,
@@ -58,9 +44,10 @@ const detail = (over: Partial<ProductView> = {}): ProductView => ({
   familyCode: 'food',
   variantModel: 'single',
   status: 'published',
+  pausedAt: null,
   variants: [
-    { variantId: 'a', state: 'published' },
-    { variantId: 'b', state: 'retired' },
+    { variantId: 'a', state: 'published', variantCode: 'P-000001-0a' },
+    { variantId: 'b', state: 'retired', variantCode: 'P-000001-0b' },
   ],
   maxVariants: 20,
   sensitiveFields: ['images'],
@@ -84,30 +71,6 @@ const detail = (over: Partial<ProductView> = {}): ProductView => ({
 
 describe('seller catalog pages', () => {
   afterEach(cleanup);
-
-  it('lists products with status, pending flag and a detail link', async () => {
-    render(
-      await ProductsTable({
-        items: [product(), product({ productId: 'x', status: 'draft', hasPendingRevision: true })],
-      }),
-    );
-    expect(screen.getAllByRole('link', { name: 'Olive oil 1L' })[0]?.getAttribute('href')).toBe(
-      `/products/${ID}`,
-    );
-    expect(screen.getByText('Published')).toBeTruthy();
-    expect(screen.getByText('Waiting for review')).toBeTruthy();
-    expect(screen.getAllByText(/Oct 2026.*UTC/).length).toBeGreaterThan(0);
-  });
-
-  it('shows an empty state with no products', async () => {
-    render(await ProductsTable({ items: [] }));
-    expect(screen.getByText('No products yet')).toBeTruthy();
-  });
-
-  it('shows an unknown status as Unknown instead of a raw value', async () => {
-    render(await ProductsTable({ items: [product({ status: 'mystery' })] }));
-    expect(screen.getByText('Unknown')).toBeTruthy();
-  });
 
   it('lists offers with sku, status and on-sale state', async () => {
     render(

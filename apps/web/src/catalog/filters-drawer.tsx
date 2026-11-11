@@ -87,7 +87,7 @@ export function FilterGroupView({
   return (
     <details className="fg" open={open}>
       <summary>
-        {title}
+        <span dir="auto">{title}</span>
         <Icon name="chevd" />
       </summary>
       <div className="opts">{children}</div>
@@ -95,7 +95,10 @@ export function FilterGroupView({
   );
 }
 
-/** One checkbox of a group with its count; an option with nothing in it cannot be ticked. */
+/**
+ * One checkbox of a group with its count; an option with nothing in it cannot be ticked. Without a
+ * count (the source did not count it) the option shows none.
+ */
 export function FilterOption({
   label,
   count,
@@ -103,7 +106,7 @@ export function FilterOption({
   onChange,
 }: {
   readonly label: string;
-  readonly count: number;
+  readonly count?: number | null;
   readonly on: boolean;
   readonly onChange: () => void;
 }) {
@@ -111,8 +114,8 @@ export function FilterOption({
   return (
     <label className="opt">
       <input type="checkbox" checked={on} disabled={count === 0 && !on} onChange={onChange} />
-      <span>{label}</span>
-      <small className="num">{count}</small>
+      <span dir="auto">{label}</span>
+      {typeof count === 'number' ? <small className="num">{count}</small> : null}
     </label>
   );
 }

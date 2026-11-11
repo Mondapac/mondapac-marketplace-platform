@@ -32,6 +32,7 @@ const MAX_LIST = 500;
 const TOP_KEYS = [
   'texts',
   'categoryIds',
+  'topicIds',
   'taxCategoryCode',
   'attributeValues',
   'variants',
@@ -133,6 +134,7 @@ export function draftTextsOf(
   const found: DraftText[] = [];
   if (!closedKeys(content, TOP_KEYS)) return invalid;
   if (!idList(content['categoryIds']) || !idList(content['imageIds'])) return invalid;
+  if (!idList(content['topicIds'])) return invalid;
   if (!idList(content['variantAxes'])) return invalid;
   const tax = content['taxCategoryCode'];
   if (tax !== undefined && (typeof tax !== 'string' || !isKey(tax))) return invalid;

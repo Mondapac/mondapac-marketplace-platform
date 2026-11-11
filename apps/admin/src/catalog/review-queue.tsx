@@ -19,10 +19,13 @@ export function ReviewQueue({
   rows,
   canDecide,
   csrfToken,
+  morePages = false,
 }: {
   readonly rows: readonly ReviewRow[];
   readonly canDecide: boolean;
   readonly csrfToken: string;
+  /** A next queue page exists, so an empty list here does not mean an empty queue. */
+  readonly morePages?: boolean;
 }) {
   const t = useTranslations('catalog.review');
   const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
@@ -32,7 +35,7 @@ export function ReviewQueue({
   return (
     <div className="flex flex-col gap-4">
       {visible.length === 0 ? (
-        <EmptyState icon="inbox" title={t('empty')} />
+        <EmptyState icon="inbox" title={t(morePages ? 'empty-page' : 'empty')} />
       ) : (
         <ul className="flex flex-col gap-3">
           {visible.map((row) => (

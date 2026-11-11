@@ -10,6 +10,7 @@ import {
   VIEW_PERMISSION,
 } from '../../../../../src/catalog/types.ts';
 import { isUuid, loadCatalogPage } from '../../../../../src/server/catalog-page.ts';
+import { panelConfig } from '../../../../../src/server/config.ts';
 import { SellerShell } from '../../../../../src/server/seller-shell.tsx';
 
 export async function generateMetadata() {
@@ -44,8 +45,7 @@ export default async function EditProductPage({
   );
   return (
     <SellerShell session={page.session} activeId="s_products" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{page.body.productCode}</h1>
-      <div className="max-w-(--mp-size-form-max)">
+      <div>
         <EditForm
           // Add sizes changes the product under the form: the form starts again from what is read.
           key={`${page.body.variantModel}-${page.body.version ?? 0}`}
@@ -53,6 +53,7 @@ export default async function EditProductPage({
           photos={photos.kind === 'ok' ? photos.body.images : null}
           locales={options.body.locales.supported}
           defaultLocale={options.body.locales.default}
+          marketName={panelConfig().marketName}
           csrfToken={page.session.csrfToken}
         />
       </div>

@@ -3,15 +3,18 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_VIEW } from '../../contracts/permissions';
-import type { ProductStatus, VariantState } from '../../domain/product';
+import { variantCodeOf, type ProductStatus, type VariantState } from '../../domain/product';
 import type { SensitiveReason } from '../../domain/product-revision-policy';
 import type { RevisionContent } from '../../domain/revision-content';
 import type { StoredRevision } from '../../domain/stored-revision';
+import { MAX_TOPICS_PER_PRODUCT } from '../../domain/topic';
 import type { OwnCatalogReader, ProductForm } from '../ports/own-catalog.reader';
 import type { AttributeDefinitionStore } from '../ports/attribute-definition.store';
 import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRepository } from '../ports/product.repository';
+import type { TopicReader } from '../ports/topic.reader';
+import { draftTopicIds, topicRefsOf, type TopicRef } from '../topics/topic-refs';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
@@ -39,9 +42,11 @@ export interface OwnProductReadOutput {
   /** `single`: one fixed variant, no options; `configurable`: variants defined by option values. */
   readonly variantModel: string;
   readonly status: ProductStatus;
+  /** When an admin paused the product (the seller's offers are off sale); null when not paused. */
+  readonly pausedAt: string | null;
   /** The seller marked the product as carrying their own brand (it lets them propose a brand). */
   readonly ownBrand: boolean;
-  readonly variants: readonly { variantId: string; state: VariantState }[];
+  readonly variants: readonly { variantId: string; state: VariantState; variantCode: string }[];
   /** The Market's cap on non-retired variants. */
   readonly maxVariants: number;
   /** The Market's cap on the options a product varies on (1 or 2); Add a second type needs 2. */
@@ -82,6 +87,12 @@ export interface OwnProductReadOutput {
    * Empty when the suggestion store is not wired.
    */
   readonly suggestions: readonly OwnSuggestionView[];
+  /**
+   * The topics named by the draft, the published and the pending revision (product tags T2), each
+   * once with its slug, state and name; look a `topicIds` entry up here. A topic that no longer
+   * exists in the Market is absent.
+   */
+  readonly topicRefs: readonly TopicRef[];
 }
 
 export interface OwnSuggestionView {
@@ -115,6 +126,8 @@ export interface OwnProductReadDependencies {
   readonly policy: CatalogMarketPolicy;
   readonly suggestions?: AttributeValueSuggestionStore;
   readonly attributeStore?: AttributeDefinitionStore;
+  /** The topics, to name the ids of the draft and of the revisions. */
+  readonly topicReader?: Pick<TopicReader, 'briefsOf'>;
   /** Shows the feature set of the draft's current primary category (CAT-10); display only. */
   readonly familyResolver?: ProductFamilyResolver;
 }
@@ -227,14 +240,28 @@ export class OwnProductRead extends UseCase<
             });
           }
         }
+        const publishedRevision = await revisionOf(state.publishedRevisionId);
+        const pendingRevision = await revisionOf(state.pendingRevisionId);
+        const topicRefs = await topicRefsOf(
+          deps.topicReader,
+          market,
+          // Published and pending first, so an oversized draft cannot crowd their names out.
+          [
+            ...(publishedRevision?.content.topicIds ?? []),
+            ...(pendingRevision?.content.topicIds ?? []),
+            ...draftTopicIds(copy?.content).slice(0, MAX_TOPICS_PER_PRODUCT),
+          ],
+          deps.policy.locales(market).default,
+        );
         return ok({
           product,
           suggestions,
+          topicRefs: [...topicRefs.values()],
           form: await deps.ownReader.productForm(market, shownFamily),
           copy,
           shownFamily,
-          published: await revisionOf(state.publishedRevisionId),
-          pending: await revisionOf(state.pendingRevisionId),
+          published: publishedRevision,
+          pending: pendingRevision,
           changeRequest: await deps.revisions.latestChangeRequest(market, state.id),
         });
       },
@@ -242,8 +269,17 @@ export class OwnProductRead extends UseCase<
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
     if (read.value === null) return err({ code: 'product.not-found' });
-    const { product, form, copy, shownFamily, published, pending, changeRequest, suggestions } =
-      read.value;
+    const {
+      product,
+      form,
+      copy,
+      shownFamily,
+      published,
+      pending,
+      changeRequest,
+      suggestions,
+      topicRefs,
+    } = read.value;
     const { state } = product;
     return ok({
       productId: state.id,
@@ -252,10 +288,12 @@ export class OwnProductRead extends UseCase<
       familyCode: shownFamily,
       variantModel: state.variantModel,
       status: state.status,
+      pausedAt: isoOf(state.pausedAt),
       ownBrand: state.ownBrand,
       variants: state.variants.map((variant) => ({
         variantId: variant.id,
         state: variant.state,
+        variantCode: variantCodeOf(state.productCode, variant.variantNo),
       })),
       maxVariants,
       maxAxes,
@@ -285,6 +323,7 @@ export class OwnProductRead extends UseCase<
               decidedAt: changeRequest.decidedAt.toString(),
             },
       suggestions,
+      topicRefs,
     });
   }
 }
@@ -313,6 +352,7 @@ export function sensitiveFieldsOf(
   if (policy.variantRemoved) fields.push('variant-removed');
   if (policy.gtinChanged) fields.push('gtin-changed');
   if (policy.axisAdded) fields.push('axis-added');
-  fields.push('images');
+  // A change of the topic set is always reviewed (tags decision 3), whatever the Market policy says.
+  fields.push('topics', 'images');
   return fields;
 }

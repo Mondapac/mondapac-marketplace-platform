@@ -2,6 +2,12 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { FilterChips, type Chip } from '../../../src/catalog/filter-chips.tsx';
+import { LiveListingFilters } from '../../../src/catalog/live-filter-controls.tsx';
+import {
+  liveFilterCount,
+  liveFiltersOf,
+  withLiveParams,
+} from '../../../src/catalog/live-filters.ts';
 import { ListingFilters, SortSelect } from '../../../src/catalog/listing-controls.tsx';
 import {
   activeFilterCount,
@@ -14,6 +20,7 @@ import {
 import {
   ActiveFilters,
   ListingBannerView,
+  LiveActiveFilters,
   NumberedPager,
   ResultCount,
 } from '../../../src/catalog/listing.tsx';
@@ -92,6 +99,8 @@ export async function generateMetadata({ params, searchParams }: Props) {
   ]);
   const state = listingStateOf(query);
   const direct = directOf(query, facts?.depth, children);
+  // An attribute or price filter of the API (A7, V8) is a view of the plain page too.
+  const liveFiltered = listingIsLive() && liveFilterCount(liveFiltersOf(query)) > 0;
   const [empty, fallback] = await Promise.all([
     facts?.hasLiveProducts === undefined
       ? categoryIsEmpty(scope)
@@ -106,7 +115,12 @@ export async function generateMetadata({ params, searchParams }: Props) {
     // Canonical to the plain page: a later page, a filter, another order or "Other" is a view of it.
     path: categoryHref(current.code),
     noindex:
-      listingNoindex(state) || state.page > 1 || direct || empty || facts?.seo?.noindex === true,
+      listingNoindex(state) ||
+      liveFiltered ||
+      state.page > 1 ||
+      direct ||
+      empty ||
+      facts?.seo?.noindex === true,
   });
 }
 
@@ -114,18 +128,25 @@ export default async function CategoryPage({ params, searchParams }: Props) {
   const [{ current, facts, trail, children, scope: baseScope, parent }, query, t] =
     await Promise.all([resolve(params), searchParams, getTranslations('catalog')]);
   const path = categoryHref(current.code);
-  // With the API on the page lists products only: the route has no filters, sort, total, facets
-  // or banners, so those controls are left out and a filter left in the URL matches nothing.
+  // With the API on the page lists products with the route's own attribute and price filters
+  // (A7, V8); the route has no sort, total or banners, so those controls are left out and a
+  // sample filter left in the URL matches nothing.
   const live = listingIsLive();
   const state = listingStateOf(query);
+  const liveFilters = liveFiltersOf(live ? query : {});
   const direct = directOf(query, facts?.depth, children);
   const scope = { ...baseScope, ...(direct ? { direct: true } : {}) };
-  // The list's own address: "Other" keeps `direct=1` through its pages, filters and order.
-  const listPath = direct ? `${path}?direct=1` : path;
+  // The list's own address: "Other" keeps `direct=1` through its pages, filters and order, and
+  // the API's filters stay on it.
+  const basePath = direct ? `${path}?direct=1` : path;
+  const listPath = withLiveParams(basePath, liveFilters);
   // A phone that pressed Load more has `?through=N`: pages `page` to N are one list.
   const through = throughOf(query, state.page);
   const [result, facets, banner, origin] = await Promise.all([
-    findProductsThrough({ ...scope, ...state, pageSize: LISTING_PAGE_SIZE }, through),
+    findProductsThrough(
+      { ...scope, ...state, live: liveFilters, pageSize: LISTING_PAGE_SIZE },
+      through,
+    ),
     listingFacets(baseScope),
     listingBanner(baseScope.category),
     requestOrigin(),
@@ -146,7 +167,9 @@ export default async function CategoryPage({ params, searchParams }: Props) {
   const other = facts?.depth === OTHER_DEPTH && facts.directCount !== 0;
   const total = result.total ?? 0;
   const pages = Math.ceil(total / LISTING_PAGE_SIZE);
-  const filtered = activeFilterCount(state.filters) > 0;
+  const filtered = activeFilterCount(state.filters) > 0 || liveFilterCount(liveFilters) > 0;
+  // The listing's currency, for the price bands: the API's prices carry it.
+  const currency = result.items.find((item) => item.price !== undefined)?.price?.currency;
   const crumbs: Crumb[] = [
     { label: t('home'), href: '/' },
     { label: t('browse-products'), browse: true },
@@ -178,7 +201,12 @@ export default async function CategoryPage({ params, searchParams }: Props) {
   // generateMetadata: plain view, page 1, not empty) of a listed host. "Browse products" is a panel.
   const empty = facts?.hasLiveProducts === false || (result.total ?? result.items.length) === 0;
   const indexable =
-    !listingNoindex(state) && state.page === 1 && !direct && !empty && facts?.seo?.noindex !== true;
+    !listingNoindex(state) &&
+    liveFilterCount(liveFilters) === 0 &&
+    state.page === 1 &&
+    !direct &&
+    !empty &&
+    facts?.seo?.noindex !== true;
   const canonical = origin === undefined ? undefined : canonicalOf({ path }, origin);
   const structured =
     origin === undefined || canonical === undefined || !indexable
@@ -217,6 +245,24 @@ export default async function CategoryPage({ params, searchParams }: Props) {
         ) : null}
         <FilterChips label={t('filter-subcategory', { name: current.name })} chips={chips} />
       </ResultsHead>
+      {live && !(empty && !filtered) ? (
+        <>
+          <LiveListingFilters
+            path={basePath}
+            state={state}
+            filters={liveFilters}
+            groups={result.liveFilters ?? []}
+            {...(currency === undefined ? {} : { currency })}
+          />
+          <LiveActiveFilters
+            path={basePath}
+            state={state}
+            filters={liveFilters}
+            groups={result.liveFilters ?? []}
+            {...(currency === undefined ? {} : { currency })}
+          />
+        </>
+      ) : null}
       {live || (empty && !filtered) ? null : (
         <>
           <ListingFilters path={listPath} state={state} facets={facets} total={total} />
@@ -243,7 +289,7 @@ export default async function CategoryPage({ params, searchParams }: Props) {
               <p className="hint">{t('filters-empty-hint')}</p>
               <Link
                 className="btn"
-                href={listingHref(listPath, withoutFilters(state))}
+                href={listingHref(basePath, withoutFilters(state))}
                 scroll={false}
               >
                 {t('clear-filters')}

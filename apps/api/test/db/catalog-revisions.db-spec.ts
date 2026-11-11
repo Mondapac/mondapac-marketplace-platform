@@ -143,6 +143,23 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
     return id;
   }
 
+  /** A topic of `target` (this Market unless named): the row a revision's topic points at. */
+  async function topic(target = market): Promise<string> {
+    const id = uuid7();
+    await insert('topics', {
+      id,
+      ...base(target.marketId, target.tenantId),
+      slug: `t-${randomUUID().replaceAll('-', '').slice(0, 14)}`,
+      topic_group: 'use',
+      status: 'active',
+      created_by: uuid7(),
+      created_at: T0,
+      updated_at: T0,
+      version: 1,
+    });
+    return id;
+  }
+
   function revisionRow(
     productId: string,
     familyRevisionId: string,
@@ -288,6 +305,101 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
     expect(index.rows[0]?.indexdef).toContain('WHERE (published_revision_id IS NOT NULL)');
   });
 
+  it('checks the topics of a revision: positions 0 to 9, one row per topic, both keys in this Market', async () => {
+    const p = await product();
+    const f = await familyRevision();
+    const r = await revision(p, f);
+    const t1 = await topic();
+    const t2 = await topic();
+    const row = (overrides: Record<string, unknown>) => ({
+      ...base(),
+      revision_id: r,
+      topic_id: t1,
+      position: 0,
+      ...overrides,
+    });
+    expect(await insertState('product_revision_topics', row({}))).toBeNull();
+    // The same topic twice (primary key), the same position twice (unique).
+    expect(await insertState('product_revision_topics', row({ position: 1 }))).toBe('23505');
+    expect(await insertState('product_revision_topics', row({ topic_id: t2 }))).toBe('23505');
+    // At most 10 topics: position 9 is the last, 10 and below 0 are refused.
+    expect(
+      await insertState('product_revision_topics', row({ topic_id: t2, position: 9 })),
+    ).toBeNull();
+    expect(
+      await insertState('product_revision_topics', row({ topic_id: await topic(), position: 10 })),
+    ).toBe('23514');
+    expect(
+      await insertState('product_revision_topics', row({ topic_id: await topic(), position: -1 })),
+    ).toBe('23514');
+    // A tenant or Market in the wrong shape.
+    expect(
+      await insertState(
+        'product_revision_topics',
+        row({ topic_id: await topic(), position: 2, tenant_id: 'X' }),
+      ),
+    ).toBe('23514');
+    expect(
+      await insertState(
+        'product_revision_topics',
+        row({ topic_id: await topic(), position: 2, market_id: 'a' }),
+      ),
+    ).toBe('23514');
+    // A topic of another Market is refused by the composite key, never matched by id alone.
+    const foreign = await topic(other);
+    expect(
+      await insertState('product_revision_topics', row({ topic_id: foreign, position: 3 })),
+    ).toBe('23503');
+    // A revision of another Market is refused the same way.
+    expect(
+      await insertState(
+        'product_revision_topics',
+        row({ ...base(other.marketId, other.tenantId), topic_id: foreign, position: 4 }),
+      ),
+    ).toBe('23503');
+    const kept = await sql.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM catalog.product_revision_topics WHERE revision_id = $1',
+      [r],
+    );
+    expect(kept.rows[0]?.n).toBe(2);
+  });
+
+  it('refuses to delete a topic a revision carries, and gives the application no way to', async () => {
+    const p = await product();
+    const f = await familyRevision();
+    const r = await revision(p, f);
+    const t = await topic();
+    await insert('product_revision_topics', {
+      ...base(),
+      revision_id: r,
+      topic_id: t,
+      position: 0,
+    });
+    expect(await sqlState(sql, 'DELETE FROM catalog.topics WHERE id = $1', [t])).toBe('42501');
+    // Even the owner cannot: the foreign key restricts it.
+    expect(await sqlState(owner, 'DELETE FROM catalog.topics WHERE id = $1', [t])).toBe('23503');
+  });
+
+  it('lets a revision carry the review reason topics-changed, and no unknown one', async () => {
+    const p = await product();
+    const f = await familyRevision();
+    const ok = await insertState(
+      'product_revisions',
+      revisionRow(p, f, { sensitive: true, sensitive_reasons: ['topics-changed', 'name'] }),
+    );
+    expect(ok).toBeNull();
+    expect(
+      await insertState(
+        'product_revisions',
+        revisionRow(p, f, {
+          revision_no: 2,
+          sensitive: true,
+          sensitive_reasons: ['topics-changed', 'topic-changed'],
+        }),
+      ),
+    ).toBe('23514');
+  });
+
   it('keeps every revision table insert-only: 42501 for the application, 23001 for the owner', async () => {
     const p = await product();
     const f = await familyRevision();
@@ -304,6 +416,12 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
       ...base(),
       revision_id: r,
       category_id: c,
+      position: 0,
+    });
+    await insert('product_revision_topics', {
+      ...base(),
+      revision_id: r,
+      topic_id: await topic(),
       position: 0,
     });
     await insert('product_revision_variants', {
@@ -332,6 +450,7 @@ describe.each(TEST_MARKETS)('catalog revisions in market %s (database integratio
       'product_revisions',
       'product_revision_texts',
       'product_revision_categories',
+      'product_revision_topics',
       'product_revision_variants',
       'product_revision_decisions',
     ];

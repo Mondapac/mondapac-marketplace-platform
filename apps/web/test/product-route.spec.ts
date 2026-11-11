@@ -59,7 +59,7 @@ vi.mock('../src/reviews/reviews-source.ts', () => ({
   loadProductReviews: () => Promise.resolve(null),
 }));
 
-const { removedProductOfPath, resolveProduct } = await import('../src/storefront/product-route.ts');
+const { resolveProduct } = await import('../src/storefront/product-route.ts');
 const page = await import('../app/p/[id]/page.tsx');
 
 const outcome = async (promise: Promise<unknown>): Promise<string> => {
@@ -125,15 +125,6 @@ describe('/p/<name>-<id>', () => {
     expect(await go(`${ID}-lamb`)).toBe(unknown);
     expect(await go('')).toBe(unknown);
   });
-
-  it('keeps the removed product for the 404 page body, found by the path', async () => {
-    const removed = await removedProductOfPath(`/p/old-name-${REMOVED_ID}`);
-    expect(removed).toMatchObject({ id: REMOVED_ID, name: 'Lamb leg roast, 2 kg' });
-    expect(await removedProductOfPath(`/p/${ID}`)).toBeUndefined();
-    expect(await removedProductOfPath('/s/x')).toBeUndefined();
-    expect(await removedProductOfPath(null)).toBeUndefined();
-    expect(await removedProductOfPath('/p/%E0%A4%A')).toBeUndefined();
-  });
 });
 
 describe('the page route', () => {
@@ -176,7 +167,12 @@ describe('the page route', () => {
 
   it('puts the same canonical in the JSON-LD offer url', async () => {
     vi.stubEnv('STOREFRONT_INDEXING', 'on');
-    const out = (await page.default(props(CURRENT, { v: 'variant-1' }))) as {
+    // The page decides first and hands the rest to a Suspense boundary: render that content.
+    const shell = (await page.default(props(CURRENT, { v: 'variant-1' }))) as {
+      props: { children: { type: (props: unknown) => Promise<unknown>; props: unknown } };
+    };
+    const content = shell.props.children;
+    const out = (await content.type(content.props)) as {
       props: { children: { props: { data: unknown } }[] };
     };
     const json = JSON.stringify(out.props.children[0]!.props.data);

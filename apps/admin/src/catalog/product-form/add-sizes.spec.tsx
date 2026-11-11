@@ -4,15 +4,27 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
 
-vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
+import type { callApi } from '../../api/client.ts';
 
-import { callApi } from '../../api/client.ts';
+// The form also reads the photo library of the product (P1 images). That call goes to its own
+// mock, so `call` sees only the add-sizes calls, in order.
+const mocks = vi.hoisted(() => ({
+  call: vi.fn<typeof callApi>(),
+  images: vi.fn<typeof callApi>(),
+}));
+vi.mock('../../api/client.ts', () => ({
+  callApi: ((...args: Parameters<typeof callApi>) =>
+    args[0] === 'GET' && args[1].endsWith('/images')
+      ? mocks.images(...args)
+      : mocks.call(...args)) as typeof callApi,
+}));
+
 import { expectToast } from '../../../test/toast-spy.ts';
 import { addSizesProblemOf, canAddSizes, publishedAxesOf, secondAxisChoices } from './add-sizes.ts';
 import { ProductEdit } from './edit-form.tsx';
 import type { FormField, ProductView } from './types.ts';
 
-const call = vi.mocked(callApi);
+const call = mocks.call;
 const ID = '0190a000-0000-7000-8000-0000000000c1';
 const V1 = '0190a000-0000-7000-8000-0000000000e1';
 const V2 = '0190a000-0000-7000-8000-0000000000e2';
@@ -44,6 +56,8 @@ const view = (over: Partial<ProductView> = {}): ProductView => ({
   familyCode: 'default',
   variantModel: 'single',
   status: 'published',
+  pausedAt: null,
+  offers: { sellerCount: 0, offerCount: 0 },
   variants: [{ variantId: V1, state: 'published' }],
   maxVariants: 100,
   maxAxes: 2,
@@ -51,7 +65,13 @@ const view = (over: Partial<ProductView> = {}): ProductView => ({
   pendingSubmittedAt: null,
   lastChangedAt: '2026-11-05T01:00:00.000Z',
   createdAt: '2026-11-05T01:00:00.000Z',
-  form: { taxCategoryCodes: ['gst'], fields: FIELDS, categories: [] },
+  form: {
+    taxCategoryCodes: ['gst'],
+    fields: FIELDS,
+    categories: [
+      { categoryId: '0190a000-0000-7000-8000-0000000000d1', parentId: null, names: { en: 'Tops' } },
+    ],
+  },
   locales: { default: 'en', supported: ['en'] },
   workingCopy: {
     content: { texts: { en: { name: 'Tee' } } },
@@ -73,6 +93,8 @@ const oneType = (over: Partial<ProductView> = {}): ProductView =>
     workingCopy: {
       content: {
         texts: { en: { name: 'Tee' } },
+        categoryIds: ['0190a000-0000-7000-8000-0000000000d1'],
+        taxCategoryCode: 'gst',
         variantAxes: ['size'],
         variants: [
           { variantId: V1, optionValues: { size: 'small' } },
@@ -118,7 +140,13 @@ function mount(product: ProductView) {
   call.mockResolvedValueOnce(ok(product));
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <ProductEdit productId={ID} csrfToken="csrf-1" />
+      <ProductEdit
+        productId={ID}
+        csrfToken="csrf-1"
+        marketName="Australia"
+        timeZone="Australia/Brisbane"
+        canPause={false}
+      />
     </NextIntlClientProvider>,
   );
 }
@@ -126,6 +154,8 @@ function mount(product: ProductView) {
 beforeEach(() => {
   vi.clearAllMocks();
   call.mockReset();
+  mocks.images.mockReset();
+  mocks.images.mockResolvedValue({ ok: true, status: 200, body: { images: [] } });
   HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
     this.setAttribute('open', '');
   };
@@ -411,7 +441,7 @@ describe('Add sizes on a platform product', () => {
 
   it('is not offered on a product that already has sizes', async () => {
     mount(oneType());
-    await screen.findByRole('heading', { name: 'Edit product' });
+    await screen.findByRole('heading', { name: 'Tee' });
     expect(screen.queryByRole('button', { name: 'Add sizes' })).toBeNull();
   });
 });
@@ -428,15 +458,15 @@ describe('Add a second type on a platform product', () => {
         },
       }),
     );
-    await screen.findByRole('heading', { name: 'Edit product' });
+    await screen.findByRole('heading', { name: 'Tee' });
     expect(screen.queryByRole('button', { name: 'Add a second type' })).toBeNull();
     cleanup();
     mount(oneType({ maxAxes: 1 }));
-    await screen.findByRole('heading', { name: 'Edit product' });
+    await screen.findByRole('heading', { name: 'Tee' });
     expect(screen.queryByRole('button', { name: 'Add a second type' })).toBeNull();
     cleanup();
     mount(oneType({ published: null }));
-    await screen.findByRole('heading', { name: 'Edit product' });
+    await screen.findByRole('heading', { name: 'Tee' });
     expect(screen.queryByRole('button', { name: 'Add a second type' })).toBeNull();
   });
 
@@ -447,18 +477,22 @@ describe('Add a second type on a platform product', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add this type' }));
     expect(screen.getByText('When you publish, every variant gets a new name.')).toBeTruthy();
     expect(screen.queryByText(/goes to review/)).toBeNull();
-    const cells = screen.getAllByLabelText('Colour');
+    // The grid lists the type as a locked tick as well; the value cells are the selects.
+    const cells = screen
+      .getAllByLabelText('Colour')
+      .filter((element) => element.tagName === 'SELECT');
     expect(cells).toHaveLength(2);
 
     // Publishing with a missing value is stopped before anything is sent.
-    fireEvent.click(screen.getByRole('button', { name: 'Publish changes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish revision 2' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }));
     expect(await screen.findByText(/Choose the new type's value for every variant/)).toBeTruthy();
     expect(call).toHaveBeenCalledTimes(1);
 
     call.mockResolvedValue(ok({ variantIds: [V1, V2], refusedFields: [] }));
     fireEvent.change(cells[0] as HTMLElement, { target: { value: 'red' } });
     fireEvent.change(cells[1] as HTMLElement, { target: { value: 'blue' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save revision' }));
     await waitFor(() => expect(call.mock.calls.some(([m]) => m === 'PUT')).toBe(true));
     const put = call.mock.calls.find(([m]) => m === 'PUT');
     const body = put?.[2] as {

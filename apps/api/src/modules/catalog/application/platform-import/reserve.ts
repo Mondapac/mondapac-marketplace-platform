@@ -28,13 +28,13 @@ export async function reserveForAccount(
   deps: ReserveDependencies,
   context: CallContext,
   limits: readonly RateLimit[],
-  accountId: Id<'Account'>,
+  subject: Id<'Account'> | Id<'Seller'>,
 ): Promise<ReserveFailure | null> {
   const { market } = context;
   try {
     const counters = limits.map((limit) => ({
       limit,
-      keyHash: deps.counterKeys.keyOf(market, limit.kind, accountId),
+      keyHash: deps.counterKeys.keyOf(market, limit.kind, subject),
     }));
     const now = deps.clock.now();
     const reserved = await deps.unitOfWork.run(market, async () =>

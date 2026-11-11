@@ -4,6 +4,16 @@
 
 export const EDIT_PERMISSION = 'catalog.platform-product.edit';
 export const BASE = 'catalog/admin/platform-products';
+/** The bulk route; the form calls it with one id to turn a published product off or on. */
+export const BULK = 'catalog/admin/products/bulk';
+export const PAUSE_PERMISSION = 'catalog.product.pause';
+/** Reading the tag list: without it the Tags field shows the saved tags and cannot change them. */
+export const TOPIC_READ_PERMISSION = 'catalog.topic.read';
+export const API_TOPICS = 'catalog/admin/topics';
+/** The most tags a product carries (the API's MAX_TOPICS_PER_PRODUCT). */
+export const MAX_TAGS = 10;
+/** The API's page maximum: the search narrows the list instead of paging it. */
+export const TAG_PAGE = 100;
 
 export interface FormOption {
   readonly code: string;
@@ -34,6 +44,33 @@ export interface ProductForm {
   readonly categories: readonly FormCategory[];
 }
 
+/** A tag (catalog topic) as a product read names it (`topicRefs`). */
+export interface TopicRef {
+  readonly id: string;
+  readonly slug: string;
+  readonly status: 'active' | 'archived';
+  /** The name in the Market default locale, else any locale; null when it has none. */
+  readonly name: string | null;
+  readonly names: Readonly<Record<string, string>>;
+}
+
+export type TopicGroup = 'occasion' | 'cuisine' | 'use';
+
+/** One row of the tag list the Tags field searches (`GET catalog/admin/topics`). */
+export interface TopicChoice {
+  readonly id: string;
+  readonly slug: string;
+  readonly group: TopicGroup;
+  readonly status: 'active' | 'archived';
+  readonly names: Readonly<Record<string, string>>;
+}
+
+/** `GET catalog/admin/topics`. */
+export interface TopicPage {
+  readonly items: readonly TopicChoice[];
+  readonly nextAfterId: string | null;
+}
+
 export interface Locales {
   readonly default: string;
   readonly supported: readonly string[];
@@ -61,6 +98,10 @@ export interface ProductView {
   /** `single`: one fixed variant; `configurable`: variants defined by option values. */
   readonly variantModel: string;
   readonly status: string;
+  /** When an admin paused the product (offers off sale); null when it is not paused. */
+  readonly pausedAt: string | null;
+  /** The offers on it (not deleted), every seller; read only. */
+  readonly offers: { readonly sellerCount: number; readonly offerCount: number };
   readonly variants: readonly { readonly variantId: string; readonly state: string }[];
   readonly maxVariants: number;
   /** The Market's cap on the types a product varies on; older answers leave it out. */
@@ -84,6 +125,8 @@ export interface ProductView {
     readonly submittedAt: string;
     readonly content: Readonly<Record<string, unknown>>;
   } | null;
+  /** The tags named by the draft and the published version, each once. */
+  readonly topicRefs?: readonly TopicRef[];
 }
 
 /** `PUT catalog/admin/platform-products/:id/draft`. */
@@ -108,4 +151,22 @@ export interface Submitted {
 export function readable(code: string): string {
   const text = code.replace(/[-_]+/g, ' ').trim();
   return text === '' ? code : text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** One photo of a platform product's library: `GET catalog/admin/platform-products/:id/images`. */
+export interface ProductImage {
+  readonly imageId: string;
+  readonly width: number;
+  readonly height: number;
+  readonly createdAt: string;
+}
+
+/** `POST catalog/admin/products/bulk` with one product id. */
+export interface BulkAnswer {
+  readonly counts: { readonly done: number; readonly skipped: number; readonly failed: number };
+  readonly results: readonly {
+    readonly productId: string;
+    readonly outcome: 'done' | 'skipped' | 'failed';
+    readonly reason?: string;
+  }[];
 }

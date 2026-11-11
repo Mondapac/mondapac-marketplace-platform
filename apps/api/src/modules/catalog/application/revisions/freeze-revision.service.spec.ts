@@ -8,6 +8,7 @@ import type { AttributeRepository } from '../ports/attribute.repository';
 import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
+import type { TopicBrief, TopicReader } from '../ports/topic.reader';
 import { FreezeRevision } from './freeze-revision.service';
 import { fixedFamilyResolver } from '../../../../../test/support/family-resolver';
 
@@ -158,6 +159,142 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
       definitionRevisionIds: ['def-rev-1', 'def-rev-2'],
     });
     expect(result.value.contentHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+  });
+
+  describe('topics (product tags T2)', () => {
+    const T = (n: number) => `0197a1b2-0000-7000-8000-${String(n).padStart(12, '0')}`;
+    const OTHER = code === 'AU' ? 'ZZ' : 'AU';
+    // Topics per Market: T(1) active, T(2) archived, T(9) active in the OTHER Market only.
+    const briefs: Record<string, TopicBrief[]> = {
+      [code]: [
+        {
+          id: T(1) as Id<'Topic'>,
+          slug: 'ramadan',
+          status: 'active',
+          names: { [locale]: 'Ramadan' },
+        },
+        { id: T(2) as Id<'Topic'>, slug: 'old', status: 'archived', names: { [locale]: 'Old' } },
+        { id: T(3) as Id<'Topic'>, slug: 'bbq', status: 'active', names: { [locale]: 'BBQ' } },
+      ],
+      [OTHER]: [
+        { id: T(9) as Id<'Topic'>, slug: 'other', status: 'active', names: { [locale]: 'Other' } },
+      ],
+    };
+    const asked: string[][] = [];
+    const reader: Pick<TopicReader, 'briefsOf'> = {
+      briefsOf: (m, ids) => {
+        asked.push([...ids]);
+        return Promise.resolve((briefs[m.marketId] ?? []).filter((b) => ids.includes(b.id)));
+      },
+    };
+    const withTopics = (
+      publishedTopics: string[] | null = null,
+    ): {
+      service: FreezeRevision;
+      subject: Product;
+    } => {
+      const deps = (service as unknown as { deps: Record<string, unknown> }).deps;
+      const draft = product('simple');
+      const subject =
+        publishedTopics === null
+          ? draft
+          : new Proxy(draft, {
+              get: (target, prop) =>
+                prop === 'state'
+                  ? { ...target.state, publishedRevisionId: 'rev-1' as Id<'ProductRevision'> }
+                  : (Reflect.get(target, prop, target) as unknown),
+            });
+      const revisions = {
+        find: () => Promise.resolve({ content: { variants: [], topicIds: publishedTopics } }),
+      } as unknown as ProductRevisionRepository;
+      return {
+        service: new FreezeRevision({ ...deps, topics: reader, revisions } as never),
+        subject,
+      };
+    };
+    const issuesOf = (result: Awaited<ReturnType<FreezeRevision['freeze']>>): string[] =>
+      !result.ok && result.error.code === 'revision.not-ready'
+        ? result.error.issues.map((issue) => `${issue.path}:${issue.code}`)
+        : [];
+
+    beforeEach(() => {
+      asked.length = 0;
+    });
+
+    it('freezes active topics of the Market in the order entered, and looks nothing up without any', async () => {
+      const { service: s, subject } = withTopics();
+      const result = await s.freeze(market, subject, copyOf(ready({ topicIds: [T(3), T(1)] })));
+      expect(result.ok && result.value.content.topicIds).toEqual([T(3), T(1)]);
+      const none = await s.freeze(market, subject, copyOf(ready()));
+      expect(none.ok && none.value.content.topicIds).toEqual([]);
+      expect(asked).toHaveLength(1);
+    });
+
+    it('refuses an unknown topic and a topic of another Market the same way (unknown)', async () => {
+      const { service: s, subject } = withTopics();
+      const result = await s.freeze(
+        market,
+        subject,
+        copyOf(ready({ topicIds: [T(1), T(9), T(77)] })),
+      );
+      expect(issuesOf(result)).toEqual(['topicIds.1:unknown', 'topicIds.2:unknown']);
+    });
+
+    it('refuses a newly added archived topic, and keeps one the published revision carries', async () => {
+      const fresh = withTopics([T(1)]);
+      expect(
+        issuesOf(
+          await fresh.service.freeze(
+            market,
+            fresh.subject,
+            copyOf(ready({ topicIds: [T(1), T(2)] })),
+          ),
+        ),
+      ).toEqual(['topicIds.1:archived']);
+      const kept = withTopics([T(1), T(2)]);
+      const result = await kept.service.freeze(
+        market,
+        kept.subject,
+        copyOf(ready({ topicIds: [T(2), T(1)] })),
+      );
+      expect(result.ok && result.value.content.topicIds).toEqual([T(2), T(1)]);
+      // Never published: an archived topic cannot be added at all.
+      const never = withTopics();
+      expect(
+        issuesOf(
+          await never.service.freeze(market, never.subject, copyOf(ready({ topicIds: [T(2)] }))),
+        ),
+      ).toEqual(['topicIds.0:archived']);
+    });
+
+    it('reports the shape problems of the domain without a lookup', async () => {
+      const { service: s, subject } = withTopics();
+      const result = await s.freeze(market, subject, copyOf(ready({ topicIds: [T(1), T(1)] })));
+      expect(issuesOf(result)).toEqual(['topicIds.1:duplicate']);
+      expect(asked).toHaveLength(0);
+    });
+
+    it('fails closed when no topic reader is wired', async () => {
+      const result = await service.freeze(
+        market,
+        product('simple'),
+        copyOf(ready({ topicIds: [T(1)] })),
+      );
+      expect(issuesOf(result)).toEqual(['topicIds.0:unavailable']);
+    });
+
+    it('gives the content a hash that covers the topics', async () => {
+      const { service: s, subject } = withTopics();
+      const a = await s.freeze(market, subject, copyOf(ready({ topicIds: [T(1)] })));
+      const b = await s.freeze(market, subject, copyOf(ready({ topicIds: [T(3)] })));
+      const none = await s.freeze(market, subject, copyOf(ready()));
+      expect(a.ok && b.ok && none.ok).toBe(true);
+      if (a.ok && b.ok && none.ok) {
+        expect(
+          new Set([a.value.contentHash, b.value.contentHash, none.value.contentHash]).size,
+        ).toBe(3);
+      }
+    });
   });
 
   describe('the feature set follows the primary category (CAT-10, decision ت۱۰)', () => {

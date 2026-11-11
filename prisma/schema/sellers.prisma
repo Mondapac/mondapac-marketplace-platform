@@ -682,8 +682,8 @@ model SellersSellerHealthSnapshot {
 /// a frequent job reads the pending rows as the system actor, because the three feeds accept only
 /// the system actor. `requestedByAccountId` is a plain id (C4) of the admin or seller account.
 /// The partial unique "one pending request per (Market, seller)", the pick-up index, the CHECKs
-/// and the grants are hand-written in the migration. A request is never deleted by the app;
-/// `finishedAt` is set exactly when it is not pending (CHECK).
+/// and the grants are hand-written in the migration. Only the retention purge deletes a request
+/// (finished ones, after 30 days); `finishedAt` is set exactly when it is not pending (CHECK).
 model SellersSellerHealthRequest {
   id                   String            @id @db.Uuid
   marketId             String            @map("market_id") @db.VarChar(8)
