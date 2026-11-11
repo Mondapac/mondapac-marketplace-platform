@@ -89,9 +89,16 @@ export class UnavailableRequestBody {
       'price, and the rest of the shipping fee too once nothing is left to send.',
   })
   lines!: RefundLineRequest[];
+  @ApiProperty({
+    description:
+      'How many refunds of the order that are not failed the page showed (its refunds list). ' +
+      'If another went through since (a repeat of this request), 409 conflict.retry: read the ' +
+      'order again; units are never refunded twice.',
+  })
+  expectedRefunds!: number;
 }
 
-export const UNAVAILABLE_BODY_KEYS = ['lines'] as const;
+export const UNAVAILABLE_BODY_KEYS = ['lines', 'expectedRefunds'] as const;
 
 export const REFUND_BODY_KEYS = [
   'lines',

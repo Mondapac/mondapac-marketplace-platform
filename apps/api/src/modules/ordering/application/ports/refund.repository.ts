@@ -51,10 +51,14 @@ export interface RefundRepository {
     sellerId: Id<'Seller'>,
   ): Promise<RefundTarget | null>;
 
-  /** Every refund of a seller order (any state), oldest first; the seller order's own page. */
+  /**
+   * Every refund of the seller's own seller order (any state), oldest first, for its page; none
+   * for another shop's seller order (Hassan, row 40 F4).
+   */
   listOfSellerOrder(
     market: MarketContext,
     sellerOrderId: Id<'SellerOrder'>,
+    sellerId: Id<'Seller'>,
   ): Promise<readonly Refund[]>;
 
   /**

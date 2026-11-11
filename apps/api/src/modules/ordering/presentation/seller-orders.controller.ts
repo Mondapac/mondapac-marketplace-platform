@@ -235,8 +235,10 @@ export class SellerOrdersController {
       'refunded to the customer at once at their frozen price, with the rest of the shipping fee ' +
       'when nothing is left to send; the seller bears the refund (it is reversed in the seller ' +
       'ledger). One refund at a time per seller order (409 ordering.refund-in-progress). Off ' +
-      'while tax.refundCredit.enabled is (409 ordering.refund-disabled). Not idempotent: each ' +
-      'call refunds the units it names, never past what is left (422 ordering.refund-exceeds).',
+      'while tax.refundCredit.enabled is (409 ordering.refund-disabled). The body names ' +
+      'expectedRefunds, the count of refunds not failed its page showed: a repeat after one went ' +
+      'through is 409 conflict.retry, so units are never refunded twice. Never past what is ' +
+      'left (422 ordering.refund-exceeds).',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
@@ -271,8 +273,12 @@ export class SellerOrdersController {
     response.setHeader('Cache-Control', 'no-store');
     const invalid = closedBody(request, body, UNAVAILABLE_BODY_KEYS);
     if (invalid !== null) throw invalid;
-    const { lines } = body as { lines?: unknown };
-    const result = await this.markUnavailable.execute(context, { sellerOrderId, lines });
+    const { lines, expectedRefunds } = body as { lines?: unknown; expectedRefunds?: unknown };
+    const result = await this.markUnavailable.execute(context, {
+      sellerOrderId,
+      lines,
+      expectedRefunds,
+    });
     this.log(
       'ordering.seller-mark-unavailable-route',
       context,

@@ -723,11 +723,13 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     const unavailable = (
       o: { sellerOrderId: Id<'SellerOrder'>; sellerId: Id<'Seller'>; lineId: Id<'OrderLine'> },
       quantity: number,
+      expectedRefunds = 0,
       as: CallContext = sellerOf(o.sellerId),
     ) =>
       new SellerMarkUnavailable(gate, deps).execute(as, {
         sellerOrderId: o.sellerOrderId,
         lines: [{ orderLineId: o.lineId, quantity }],
+        expectedRefunds,
       });
     const storedOf = async (refundId: string) =>
       (
@@ -770,19 +772,39 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       // The seller order's page lists it.
       const listed = await db.unitOfWork.run(
         market,
-        async () => ok(await deps.refunds.listOfSellerOrder(market, o.sellerOrderId)),
+        async () => ok(await deps.refunds.listOfSellerOrder(market, o.sellerOrderId, o.sellerId)),
         { readOnly: true },
       );
       expect(listed.ok && listed.value.map((r) => [r.actor.population, r.reason])).toEqual([
         ['seller', 'item-unavailable'],
       ]);
+      // Another shop reads none of them.
+      const foreign = await db.unitOfWork.run(
+        market,
+        async () =>
+          ok(await deps.refunds.listOfSellerOrder(market, o.sellerOrderId, ids.next<'Seller'>())),
+        { readOnly: true },
+      );
+      expect(foreign).toEqual(ok([]));
+    });
+
+    it('refuses a repeat of a request that went through (lost answer, second click)', async () => {
+      const o = await paidOrder();
+      expect((await unavailable(o, 1)).ok).toBe(true);
+
+      // The page showed no refund when both were sent: the second finds one and refunds nothing.
+      const repeat = await unavailable(o, 1, 0);
+
+      expect(repeat).toEqual({ ok: false, error: { code: 'conflict.retry' } });
+      expect(gateway.refunds).toHaveLength(1);
+      expect((await rowsOf(o.sellerOrderId)).refunds).toHaveLength(1);
     });
 
     it('gives the whole seller order back, shipping included, once nothing is left to send', async () => {
       const o = await paidOrder();
       expect((await unavailable(o, 1)).ok).toBe(true);
 
-      const rest = await unavailable(o, 2);
+      const rest = await unavailable(o, 2, 1);
 
       expect(rest.ok).toBe(true);
       if (!rest.ok) return;
@@ -793,7 +815,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       const taxBack = rows.notes.reduce((sum, n) => sum + BigInt(n.tax_amount), 0n);
       expect(taxBack).toBe(lineTax + shippingTax);
       // Nothing is left: more units are refused.
-      expect(await unavailable(o, 1)).toMatchObject({
+      expect(await unavailable(o, 1, 2)).toMatchObject({
         ok: false,
         error: { code: 'ordering.refund-exceeds' },
       });
@@ -802,7 +824,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     it("finds another shop's seller order exactly as an unknown one, and writes nothing", async () => {
       const o = await paidOrder();
 
-      const result = await unavailable(o, 1, sellerOf(ids.next<'Seller'>()));
+      const result = await unavailable(o, 1, 0, sellerOf(ids.next<'Seller'>()));
 
       expect(result).toEqual({ ok: false, error: { code: 'ordering.seller-order-not-found' } });
       expect(gateway.refunds).toHaveLength(0);
@@ -837,6 +859,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         {
           sellerOrderId: racing.sellerOrderId,
           lines: [{ orderLineId: racing.lineId, quantity: 1 }],
+          expectedRefunds: 0,
         },
       );
       expect(result).toEqual({ ok: false, error: { code: 'conflict.retry' } });
@@ -844,11 +867,41 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       expect(await rowsOf(racing.sellerOrderId)).toMatchObject({ refunded: '0', refunds: [] });
     });
 
+    it('waits for a ready signal holding the row, then refuses (two transactions)', async () => {
+      const o = await paidOrder();
+      const other = new Client({ connectionString: orderingRefundsTestDatabaseUrl() });
+      await other.connect();
+      try {
+        // Mark-ready's unit holds the seller order's row lock while the refund is written.
+        await other.query('BEGIN');
+        await other.query(
+          'UPDATE ordering.seller_orders SET ready_at = now() WHERE market_id = $1 AND id = $2',
+          [market.marketId, o.sellerOrderId],
+        );
+        const pending = unavailable(o, 1);
+        // Give the refund time to read (no lock) and block on the guarded write.
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await other.query('COMMIT');
+
+        expect(await pending).toEqual({ ok: false, error: { code: 'conflict.retry' } });
+      } finally {
+        await other.end();
+      }
+      expect(gateway.refunds).toHaveLength(0);
+      expect(await rowsOf(o.sellerOrderId)).toMatchObject({ refunded: '0', refunds: [] });
+      // Read again, it is ready: only an admin can refund it now.
+      expect(await unavailable(o, 1)).toEqual({
+        ok: false,
+        error: { code: 'ordering.fulfilment-conflict' },
+      });
+    });
+
     it('refuses an acting-as session, an admin, and while the Market switch is off', async () => {
       const o = await paidOrder();
       const input = {
         sellerOrderId: o.sellerOrderId,
         lines: [{ orderLineId: o.lineId, quantity: 1 }],
+        expectedRefunds: 0,
       };
       const denied = { ok: false, error: { code: 'access.denied' } };
 

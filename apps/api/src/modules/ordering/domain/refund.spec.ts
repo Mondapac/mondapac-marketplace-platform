@@ -35,6 +35,7 @@ const inclusive: RefundTarget = {
   shippingTaxInclusive: true,
   total: 3850n,
   refunded: 0n,
+  refundCount: 0,
   pending: false,
   lines: [
     {
@@ -312,11 +313,17 @@ describe('a seller marks units unavailable (decision 6)', () => {
   });
 
   it('takes only lines with their units, never an amount or a reason', () => {
-    expect(parseUnavailableRequest({ lines: [{ orderLineId: LINE_A, quantity: 2 }] })).toEqual({
+    expect(
+      parseUnavailableRequest({
+        lines: [{ orderLineId: LINE_A, quantity: 2 }],
+        expectedRefunds: 1,
+      }),
+    ).toEqual({
       ok: true,
       lines: [{ orderLineId: LINE_A, quantity: 2 }],
+      expectedRefunds: 1,
     });
-    expect(parseUnavailableRequest({ lines: [] })).toEqual({
+    expect(parseUnavailableRequest({ lines: [], expectedRefunds: 0 })).toEqual({
       ok: false,
       fields: [{ path: 'lines', code: 'required' }],
     });
@@ -326,6 +333,7 @@ describe('a seller marks units unavailable (decision 6)', () => {
           { orderLineId: LINE_A, quantity: 1 },
           { orderLineId: LINE_A, quantity: 0 },
         ],
+        expectedRefunds: 0,
       }),
     ).toEqual({
       ok: false,
@@ -334,10 +342,20 @@ describe('a seller marks units unavailable (decision 6)', () => {
         { path: 'lines.1.quantity', code: 'range' },
       ],
     });
-    expect(parseUnavailableRequest({ lines: 'all' })).toEqual({
+    expect(parseUnavailableRequest({ lines: 'all', expectedRefunds: -1 })).toEqual({
       ok: false,
-      fields: [{ path: 'lines', code: 'range' }],
+      fields: [
+        { path: 'lines', code: 'range' },
+        { path: 'expectedRefunds', code: 'range' },
+      ],
     });
+    // The count the page showed is required: without it a repeat could refund twice.
+    expect(
+      parseUnavailableRequest({
+        lines: [{ orderLineId: LINE_A, quantity: 1 }],
+        expectedRefunds: undefined,
+      }),
+    ).toEqual({ ok: false, fields: [{ path: 'expectedRefunds', code: 'range' }] });
   });
 
   it('refunds the units borne by the seller, keeping the shipping while something is left', () => {

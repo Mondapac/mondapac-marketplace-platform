@@ -117,6 +117,8 @@ export interface RefundTarget {
   readonly total: bigint;
   /** The gross of the refunds not failed (the stored running sum). */
   readonly refunded: bigint;
+  /** How many refunds of the seller order have not failed (the seller's page shows them). */
+  readonly refundCount: number;
   /** Whether a refund of this seller order is still waiting for Stripe. */
   readonly pending: boolean;
   readonly lines: readonly RefundableLine[];
@@ -397,21 +399,42 @@ export type UnavailableRefusal =
 
 /**
  * The seller's request (decision 6), checked: lines with the units that are unavailable, no line
- * twice, at least one. No amount, shipping or reason is taken from the seller: the units are
+ * twice, at least one, and `expectedRefunds`, the count of refunds not failed that the seller's
+ * page showed: a repeat of a request that already went through (a lost answer, a second click)
+ * finds one more and is refused, so units are never refunded twice (Hassan, row 40 F1). No
+ * amount, shipping or reason is taken from the seller: the units are
  * refunded at their frozen price, and the shipping fee follows only when nothing is left to send.
  */
-export function parseUnavailableRequest(input: { readonly lines: unknown }):
+export function parseUnavailableRequest(input: {
+  readonly lines: unknown;
+  readonly expectedRefunds: unknown;
+}):
   | {
       readonly ok: true;
       readonly lines: readonly {
         readonly orderLineId: Id<'OrderLine'>;
         readonly quantity: number;
       }[];
+      readonly expectedRefunds: number;
     }
   | { readonly ok: false; readonly fields: readonly { path: string; code: string }[] } {
   const parsed = parseRefundRequest({ lines: input?.lines, shippingAmount: null, reason: 'other' });
-  if (!parsed.ok) return parsed;
-  return { ok: true, lines: parsed.request.lines };
+  const expected = input?.expectedRefunds;
+  const expectedOk =
+    typeof expected === 'number' &&
+    Number.isSafeInteger(expected) &&
+    expected >= 0 &&
+    expected <= 1000;
+  if (!parsed.ok || !expectedOk) {
+    return {
+      ok: false,
+      fields: [
+        ...(parsed.ok ? [] : parsed.fields),
+        ...(expectedOk ? [] : [{ path: 'expectedRefunds', code: 'range' }]),
+      ],
+    };
+  }
+  return { ok: true, lines: parsed.request.lines, expectedRefunds: expected };
 }
 
 /**

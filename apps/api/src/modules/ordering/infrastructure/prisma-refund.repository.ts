@@ -132,10 +132,11 @@ export class PrismaRefundRepository implements RefundRepository {
   async listOfSellerOrder(
     market: MarketContext,
     sellerOrderId: Id<'SellerOrder'>,
+    sellerId: Id<'Seller'>,
   ): Promise<readonly Refund[]> {
     const tx = this.prisma.tx(market);
     const rows = await tx.orderingRefund.findMany({
-      where: { marketId: market.marketId, sellerOrderId },
+      where: { marketId: market.marketId, sellerOrderId, sellerId },
       include: { lines: true },
       orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
       take: 200,
@@ -190,6 +191,7 @@ export class PrismaRefundRepository implements RefundRepository {
       shippingTaxInclusive: row.shippingTaxInclusive,
       total: row.totalAmount,
       refunded: row.refundedAmount,
+      refundCount: row.refunds.length,
       pending: row.refunds.some((refund) => refund.state === 'pending'),
       lines: [...row.lines]
         .sort((a, b) => a.id.localeCompare(b.id))

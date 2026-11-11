@@ -497,7 +497,8 @@ export async function labelled(
   const [one] = await labelSellerOrders(deps.labels, context, [view]);
   const refunds = await deps.unitOfWork.run<readonly Refund[], never>(
     context.market,
-    async () => ok(await deps.refunds.listOfSellerOrder(context.market, view.sellerOrderId)),
+    async () =>
+      ok(await deps.refunds.listOfSellerOrder(context.market, view.sellerOrderId, view.sellerId)),
     { readOnly: true },
   );
   return ok({

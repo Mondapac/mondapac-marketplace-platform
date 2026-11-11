@@ -151,6 +151,8 @@ export async function adminRefund(
 export interface UnavailableInput {
   readonly sellerOrderId: unknown;
   readonly lines: unknown;
+  /** The count of refunds not failed the seller's page showed (a repeat is refused). */
+  readonly expectedRefunds: unknown;
 }
 
 /**
@@ -172,7 +174,10 @@ export async function sellerUnavailableRefund(
   if (seller === null || !seller.ok) return err({ code: 'access.denied' });
   if (!deps.policy.refundsEnabled(context.market)) return err({ code: 'ordering.refund-disabled' });
   const sellerOrderId = parseIdField<'SellerOrder'>(input?.sellerOrderId, 'sellerOrderId');
-  const parsed = parseUnavailableRequest({ lines: input?.lines });
+  const parsed = parseUnavailableRequest({
+    lines: input?.lines,
+    expectedRefunds: input?.expectedRefunds,
+  });
   const fields = [
     ...(typeof sellerOrderId === 'string' ? [] : [sellerOrderId]),
     ...(parsed.ok ? [] : parsed.fields),
@@ -195,6 +200,9 @@ export async function sellerUnavailableRefund(
     { readOnly: true },
   );
   if (!read.ok) return read;
+  // A refund went through since the page was read (a repeat, another tab): read again first. A
+  // refund written after this read moves the refunded sum, which the guarded write refuses.
+  if (read.value.refundCount !== parsed.expectedRefunds) return err({ code: 'conflict.retry' });
   const request = unavailableRequest(read.value, parsed.lines);
   if (!request.ok) return err(request.error);
   return executeRefund(

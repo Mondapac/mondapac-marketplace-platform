@@ -554,7 +554,7 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
 
       const res = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}`, seller());
 
-      expect(res.body.refunds).toEqual([
+      expect((res.body as { refunds: unknown }).refunds).toEqual([
         {
           refundId: id<'Refund'>(0xd001),
           requestedBy: 'seller',
@@ -600,7 +600,7 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
         creditNoteId: id<'CreditNote'>(0xd003),
       });
 
-      const done = await call('post', 'seller', path, session, { lines });
+      const done = await call('post', 'seller', path, session, { lines, expectedRefunds: 0 });
 
       expect(done.status).toBe(200);
       expect(done.headers['cache-control']).toBe('no-store');
@@ -612,7 +612,7 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
         amount: { amount: '1500', currency },
       });
       expect(calls).toEqual([
-        { name: 'unavailable', input: { sellerOrderId: SELLER_ORDER, lines } },
+        { name: 'unavailable', input: { sellerOrderId: SELLER_ORDER, lines, expectedRefunds: 0 } },
       ]);
 
       // No CSRF, an amount or a reason of the seller's own, and not JSON: nothing is called.
