@@ -45,6 +45,7 @@ export type CultureCreateFailure =
   | { readonly code: 'culture.code-taken' }
   | { readonly code: 'culture.name-taken' }
   | { readonly code: 'culture.limit-reached' }
+  | { readonly code: 'conflict.stale' }
   | ValidationFailure;
 
 export interface CultureCreateDependencies {
@@ -145,7 +146,7 @@ export class CultureCreate extends UseCase<
     }
     if (problems.length > 0 || !content.ok || !isCultureCode(code)) return invalidFields(problems);
 
-    const claim = await refuseClaimWords(this.deps.matcher, context, content.value.names);
+    const claim = await refuseClaimWords(this.deps.matcher, context, content.value.names, [], code);
     if (claim !== null) return err(claim);
     if (requiredType !== null) {
       const known = await checkRequiredCertificationType(

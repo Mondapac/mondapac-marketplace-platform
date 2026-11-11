@@ -1294,7 +1294,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     // Multi-culture package 1: a culture's code, creator and creation time never change and it is
-    // never deleted (made inactive); names are replaced as a set; a mark row is upserted or deleted.
+    // never deleted (made inactive); names are deleted and re-inserted as a set; a mark row is upserted or deleted.
     'catalog.cultures': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
@@ -1309,7 +1309,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'catalog.culture_names': {
       table: ['DELETE', 'INSERT', 'SELECT'],
-      columnUpdate: ['description', 'name'],
+      columnUpdate: [],
     },
     'catalog.culture_categories': {
       table: ['DELETE', 'INSERT', 'SELECT'],

@@ -917,6 +917,7 @@ const RESTRUCTURE_DEPS = {
       cultureSeed: true,
       policy: true,
       evaluator: true,
+      matcher: true,
       clock: true,
       ids: true,
     }),

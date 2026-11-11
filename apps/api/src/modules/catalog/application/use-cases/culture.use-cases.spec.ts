@@ -180,12 +180,13 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
               requiredCertificationType: type,
               badgeColour: null,
               isDefault: true,
-              names: [{ locale: main, name: 'Halal community', description: 'Seeded' }],
+              names: [{ locale: main, name: 'Muslim community', description: 'Seeded' }],
             },
           ],
         }),
         policy,
         evaluator,
+        matcher,
         clock,
         ids,
       }),
@@ -331,6 +332,56 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
       names: { [main]: text('Other') },
     });
     expect(again).toEqual({ ok: false, error: { code: 'culture.code-taken' } });
+  });
+
+  it('runs the code through the claim-term matcher, so a code like halal-certified is refused', async () => {
+    const hit = { typeCode: type, span: { fromToken: 0, toToken: 0 } };
+    const matcher: ClaimTextMatcher = {
+      match: (_c, texts) =>
+        Promise.resolve(ok(texts.map((t) => (/halal/i.test(t.text) ? [hit] : [])))),
+    };
+
+    const refused = await build(matcher).create.execute(admin, {
+      code: 'halal-certified',
+      names: { [main]: text('Folk') },
+    });
+    const allowed = await build(matcher).create.execute(admin, {
+      code: 'folk',
+      names: { [main]: text('Folk') },
+    });
+
+    expect(refused).toEqual({
+      ok: false,
+      error: { code: 'culture.claim-word', fields: [{ path: 'code', code: 'claim-word' }] },
+    });
+    expect(allowed.ok).toBe(true);
+    expect(rows.size).toBe(1);
+  });
+
+  it('answers conflict.stale when another admin took the default at the same moment', async () => {
+    const culture = await created();
+    const racing: CultureRepository = {
+      ...cultures,
+      save: () => Promise.resolve('conflict.stale'),
+    };
+    const edit = new CultureEdit(createUseCaseGate(markets, check), {
+      unitOfWork,
+      cultures: racing,
+      policy,
+      matcher: cleanClaimTextMatcher,
+      evaluator,
+      audit,
+      clock,
+    });
+
+    expect(
+      await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        status: 'active',
+        isDefault: true,
+      }),
+    ).toEqual({ ok: false, error: { code: 'conflict.stale' } });
   });
 
   it('refuses text that asserts a certification and fails closed when the matcher is down', async () => {
@@ -493,17 +544,17 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
     ).toMatchObject({ ok: false, error: { code: 'conflict.stale' } });
   });
 
-  it('claim-checks only the texts an edit changes, so a seeded standard-named culture stays editable', async () => {
+  it('claim-checks only the texts an edit changes, so an unchanged text stays editable', async () => {
     const hit = { typeCode: type, span: { fromToken: 0, toToken: 0 } };
     const matcher: ClaimTextMatcher = {
       match: (_c, texts) =>
         Promise.resolve(ok(texts.map((t) => (t.text.includes('Halal') ? [hit] : [])))),
     };
-    const seeded = await build(matcher).seed.execute(testCallContext(market, 'system'), {});
-    expect(seeded).toEqual({ ok: true, value: { created: 1 } });
-    const stored = [...rows.values()][0]!;
+    // A text stored before the matcher knew a word stays editable while it is left alone.
+    const legacy = await created({ names: { [main]: text('Halal community') } }, 'legacy');
+    const stored = rows.get(legacy.id)!;
     const { edit } = build(matcher);
-    const same = { [main]: { name: 'Halal community', description: 'Seeded' } };
+    const same = { [main]: text('Halal community') };
 
     const untouched = await edit.execute(admin, {
       cultureId: stored.id,
@@ -715,6 +766,29 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
       expect([...rows.values()][0]!.displayOrder).toBe(9);
     });
 
+    it('claim-checks the seeded code and text as the system actor and fails closed', async () => {
+      const hit = { typeCode: type, span: { fromToken: 0, toToken: 0 } };
+      const matcher: ClaimTextMatcher = {
+        match: (_c, texts) =>
+          Promise.resolve(ok(texts.map((t) => (t.text.includes('Muslim') ? [hit] : [])))),
+      };
+
+      expect(await build(matcher).seed.execute(testCallContext(market, 'system'), {})).toEqual({
+        ok: false,
+        error: { code: 'culture.seed-claim-text-refused', seedCode: 'first' },
+      });
+      expect(
+        await build(unavailableClaimTextMatcher).seed.execute(
+          testCallContext(market, 'system'),
+          {},
+        ),
+      ).toEqual({
+        ok: false,
+        error: { code: 'culture.seed-claim-text-unavailable', seedCode: 'first' },
+      });
+      expect(rows.size).toBe(0);
+    });
+
     it('does not take the default mark when the Market already has one', async () => {
       await created();
       const first = [...rows.values()][0]!;
@@ -749,11 +823,11 @@ describe('the checked-in culture seed', () => {
 
     expect(au).toHaveLength(1);
     expect(au[0]).toMatchObject({
-      code: 'muslim-halal',
+      code: 'muslim',
       requiredCertificationType: 'halal',
       isDefault: true,
     });
-    expect(au[0]!.names[0]).toMatchObject({ locale: 'en-AU', name: 'Muslim community · Halal' });
+    expect(au[0]!.names[0]).toMatchObject({ locale: 'en-AU', name: 'Muslim community' });
     expect(zz).toHaveLength(1);
     expect(zz[0]).toMatchObject({ requiredCertificationType: null, isDefault: true });
   });

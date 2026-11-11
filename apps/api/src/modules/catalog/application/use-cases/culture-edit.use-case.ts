@@ -210,6 +210,8 @@ export class CultureEdit extends UseCase<
             await cultures.clearDefaultExcept(market, found.id, now);
           }
           const saved = await cultures.save(market, next.value, found.version);
+          if (saved === 'conflict.stale') return err({ code: 'conflict.stale' } as const);
+          // The code of an existing culture never changes, so only a name can collide.
           if (saved !== null) return err({ code: 'culture.name-taken' } as const);
           await this.deps.audit.record(
             context,

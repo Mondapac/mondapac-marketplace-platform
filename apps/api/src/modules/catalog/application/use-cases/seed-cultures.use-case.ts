@@ -6,6 +6,8 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { newCulture, parseCultureContent, type CultureState } from '../../domain/culture';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
+import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
+import { refuseClaimWords } from '../cultures/culture-views';
 import type { CultureRepository } from '../ports/culture.repository';
 import type { CultureSeed } from '../ports/culture-seed';
 
@@ -17,7 +19,9 @@ export interface SeedCulturesOutput {
 export type SeedCulturesFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'culture.seed-invalid'; readonly seedCode: string; readonly reason: string }
-  | { readonly code: 'culture.seed-type-unavailable'; readonly seedCode: string };
+  | { readonly code: 'culture.seed-type-unavailable'; readonly seedCode: string }
+  | { readonly code: 'culture.seed-claim-text-refused'; readonly seedCode: string }
+  | { readonly code: 'culture.seed-claim-text-unavailable'; readonly seedCode: string };
 
 export interface SeedCulturesDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -25,6 +29,7 @@ export interface SeedCulturesDependencies {
   readonly cultureSeed: CultureSeed;
   readonly policy: CatalogMarketPolicy;
   readonly evaluator: ClaimEvaluator;
+  readonly matcher: ClaimTextMatcher;
   readonly clock: Clock;
   readonly ids: IdGenerator;
 }
@@ -34,9 +39,9 @@ export interface SeedCulturesDependencies {
  * `system`, run per hosted Market at worker start and then daily. It only ever creates: a seeded
  * code that exists is skipped whatever its state, so an admin's later edits are never overwritten.
  * A seeded culture is active at once, and takes the default mark only while the Market has none.
- * The seed is checked-in data reviewed in the pull request, so its names are not claim-checked (the
- * first culture is named after the standard it requires); every other path that writes a culture
- * is. A required certification type must be an active type of the Market: when certification's
+ * Every seeded code, name and description goes through the claim-term matcher as the system actor,
+ * like every other path that writes a culture, and fails closed: a text that asserts a
+ * certification, or a matcher that cannot answer, refuses the run. A required certification type must be an active type of the Market: when certification's
  * seed has not created it yet, the run is refused and the next run converges. Names are checked
  * against the Market's locales like an admin's.
  */
@@ -64,7 +69,16 @@ export class SeedCultures extends UseCase<
   ): Promise<Result<SeedCulturesOutput, SeedCulturesFailure>> {
     if (context.actor.kind !== 'system') return err({ code: 'access.denied' });
     const { market } = context;
-    const { unitOfWork, cultures, cultureSeed: seed, policy, evaluator, clock, ids } = this.deps;
+    const {
+      unitOfWork,
+      cultures,
+      cultureSeed: seed,
+      policy,
+      evaluator,
+      matcher,
+      clock,
+      ids,
+    } = this.deps;
     const list = seed.cultures(market);
     if (list.length === 0) return ok({ created: 0 });
     const locales = policy.locales(market);
@@ -84,6 +98,18 @@ export class SeedCultures extends UseCase<
           code: 'culture.seed-invalid',
           seedCode: seeded.code,
           reason: content.error.map((p) => `${p.path}:${p.code}`).join(','),
+        });
+      }
+      // Seed text goes through the claim-term matcher like every other path, and fails closed: a
+      // seed that asserts a certification, or a matcher that cannot answer, refuses the run.
+      const claim = await refuseClaimWords(matcher, context, content.value.names, [], seeded.code);
+      if (claim !== null) {
+        return err({
+          code:
+            claim.code === 'culture.claim-word'
+              ? 'culture.seed-claim-text-refused'
+              : 'culture.seed-claim-text-unavailable',
+          seedCode: seeded.code,
         });
       }
       if (seeded.requiredCertificationType !== null) {

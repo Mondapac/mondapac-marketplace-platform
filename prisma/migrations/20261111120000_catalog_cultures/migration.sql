@@ -104,11 +104,11 @@ CREATE UNIQUE INDEX "cultures_one_default_key"
   ON "catalog"."cultures" ("market_id") WHERE "is_default";
 
 -- Grants (database-designer). A culture row changes in everything except its code, creator and
--- creation time. Names are replaced as a set; a mark row is upserted or deleted. No culture is ever
+-- creation time. Names are deleted and re-inserted as a set (never updated); a mark row is upserted or deleted. No culture is ever
 -- deleted by the application (no DELETE on cultures): it is made inactive.
 GRANT SELECT, INSERT,
   UPDATE ("status", "display_order", "required_certification_type", "badge_colour", "is_default", "updated_at", "version")
   ON TABLE "catalog"."cultures" TO "mondapac_app";
-GRANT SELECT, INSERT, DELETE, UPDATE ("name", "description") ON TABLE "catalog"."culture_names" TO "mondapac_app";
+GRANT SELECT, INSERT, DELETE ON TABLE "catalog"."culture_names" TO "mondapac_app";
 GRANT SELECT, INSERT, DELETE, UPDATE ("visible", "certification_mark", "updated_by", "updated_at")
   ON TABLE "catalog"."culture_categories" TO "mondapac_app";

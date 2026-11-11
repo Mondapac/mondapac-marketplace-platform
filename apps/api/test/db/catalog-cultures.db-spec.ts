@@ -166,15 +166,65 @@ describe.each(TEST_MARKETS)('catalog cultures in market %s (database integration
 
     await inUnit(() => repository.save(market, { ...first, isDefault: true, version: 2 }, 1));
     expect(await inUnit(() => repository.defaultId(market))).toBe(first.id);
-    await expect(
-      inUnit(() => repository.save(market, { ...second, isDefault: true, version: 2 }, 1)),
-    ).rejects.toThrow();
+    expect(
+      await inUnit(() => repository.save(market, { ...second, isDefault: true, version: 2 }, 1)),
+    ).toBe('conflict.stale');
 
     await inUnit(() => repository.clearDefaultExcept(market, second.id, T1));
     await inUnit(() => repository.save(market, { ...second, isDefault: true, version: 2 }, 1));
     expect(await inUnit(() => repository.defaultId(market))).toBe(second.id);
     expect((await inUnit(() => repository.findById(market, first.id)))?.isDefault).toBe(false);
     expect((await inUnit(() => repository.findById(market, first.id)))?.version).toBe(3);
+  });
+
+  it('turns two concurrent make-default edits into one winner and conflict.stale', async () => {
+    const unique = letters(tag());
+    const first = culture(`${unique}a`, { status: 'active' });
+    const second = culture(`${unique}b`, { status: 'active' });
+    await inUnit(() => repository.add(market, first));
+    await inUnit(() => repository.add(market, second));
+    await inUnit(() => repository.clearDefaultExcept(market, uuid7() as Id<'Culture'>, T0));
+
+    // Both units clear "the others" before either saves, so each sees no default: the one-default
+    // index is the only thing that can stop the second.
+    let cleared = 0;
+    let release!: () => void;
+    const bothCleared = new Promise<void>((resolve) => (release = resolve));
+    const makeDefault = (state: CultureState) =>
+      inUnit(async () => {
+        await repository.clearDefaultExcept(market, state.id, T1);
+        cleared += 1;
+        if (cleared === 2) release();
+        await bothCleared;
+        return repository.save(market, { ...state, isDefault: true, version: 2 }, 1);
+      });
+    const results = await Promise.all([makeDefault(first), makeDefault(second)]);
+
+    expect(results.filter((r) => r === null)).toHaveLength(1);
+    expect(results.filter((r) => r === 'conflict.stale')).toHaveLength(1);
+    const defaultId = await inUnit(() => repository.defaultId(market));
+    expect([first.id, second.id]).toContain(defaultId);
+  });
+
+  it('upserts the same mark row from two concurrent units without a key collision', async () => {
+    const state = culture(letters(tag()));
+    await inUnit(() => repository.add(market, state));
+    const category = await insertCategory();
+    const admin = uuid7() as Id<'Account'>;
+    const set = (visible: boolean) =>
+      inUnit(() =>
+        repository.setCategoryRow(
+          market,
+          state.id,
+          { categoryId: category, visible, certificationMark: null },
+          admin,
+          T1,
+        ),
+      );
+
+    await Promise.all([set(true), set(false), set(true), set(false)]);
+
+    expect(await inUnit(() => repository.categoryRows(market, state.id))).toHaveLength(1);
   });
 
   it('stores, upserts, lists and clears the mark rows of a culture', async () => {
@@ -339,6 +389,12 @@ describe.each(TEST_MARKETS)('catalog cultures in market %s (database integration
     const state = culture(letters(tag()));
     await inUnit(() => repository.add(market, state));
 
+    expect(
+      await sqlState(sql, 'UPDATE catalog.culture_names SET name = $2 WHERE culture_id = $1', [
+        state.id,
+        'Renamed',
+      ]),
+    ).toBe('42501');
     expect(
       await sqlState(sql, 'UPDATE catalog.cultures SET code = $2 WHERE id = $1', [
         state.id,

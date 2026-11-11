@@ -97,8 +97,9 @@ export type CultureClaimWordFailure =
 /**
  * Refuses a name or description that asserts a certification (halal and the like): a culture's text
  * is a label for a community, never a claim (ADR-0047 decision 10). Only texts that differ from
- * `stored` are checked, so an edit that does not touch a text (the seeded first culture is named
- * after the standard it requires) can still be saved; every new or changed text is checked. Runs
+ * `stored` are checked, so an edit that does not touch a text (an unchanged text is not asked
+ * again) can still be saved; every new or changed text is checked. A `code`
+ * (on create and in the seed) is checked as a text too. Runs
  * outside any unit (the matcher opens its own); an unavailable matcher fails closed.
  */
 export async function refuseClaimWords(
@@ -106,6 +107,7 @@ export async function refuseClaimWords(
   context: CallContext,
   names: readonly CultureName[],
   stored: readonly CultureName[] = [],
+  code?: string,
 ): Promise<CultureClaimWordFailure | null> {
   const before = new Map(stored.map((entry) => [entry.locale, entry] as const));
   const texts: { path: string; locale: string; text: string }[] = [];
@@ -121,6 +123,10 @@ export async function refuseClaimWords(
         text: entry.description,
       });
     }
+  }
+  if (code !== undefined) {
+    // The code is a label too (it may reach an address later): `halal-certified` is refused.
+    texts.push({ path: 'code', locale: names[0]?.locale ?? 'en', text: code });
   }
   if (texts.length === 0) return null;
   const answer = await matcher.match(

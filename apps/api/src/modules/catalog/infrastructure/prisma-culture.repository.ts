@@ -13,6 +13,7 @@ const toInstant = (date: Date): Temporal.Instant =>
 
 const UNIQUE_CODE = 'cultures_market_id_code_key';
 const UNIQUE_NAME = 'culture_names_name_lower_key';
+const UNIQUE_DEFAULT = 'cultures_one_default_key';
 
 type CultureRow = Prisma.CatalogCultureGetPayload<{ include: { names: true } }>;
 
@@ -174,28 +175,31 @@ export class PrismaCultureRepository implements CultureRepository {
     updatedBy: Id<'Account'>,
     now: Temporal.Instant,
   ): Promise<void> {
-    const tx = this.prisma.tx(market);
-    const { count } = await tx.catalogCultureCategory.updateMany({
-      where: { marketId: market.marketId, cultureId, categoryId: row.categoryId },
-      data: {
-        visible: row.visible,
-        certificationMark: row.certificationMark,
-        updatedBy,
-        updatedAt: toDate(now),
+    const data = {
+      visible: row.visible,
+      certificationMark: row.certificationMark,
+      updatedBy,
+      updatedAt: toDate(now),
+    };
+    // One statement, so two admins setting the same row at once cannot collide on the key.
+    await this.prisma.tx(market).catalogCultureCategory.upsert({
+      where: {
+        marketId: market.marketId,
+        marketId_cultureId_categoryId: {
+          marketId: market.marketId,
+          cultureId,
+          categoryId: row.categoryId,
+        },
       },
-    });
-    if (count === 1) return;
-    await tx.catalogCultureCategory.create({
-      data: {
+      create: {
         marketId: market.marketId,
         tenantId: market.tenantId,
         cultureId,
         categoryId: row.categoryId,
-        visible: row.visible,
-        certificationMark: row.certificationMark,
-        updatedBy,
-        updatedAt: toDate(now),
+        ...data,
       },
+      update: data,
+      select: { categoryId: true },
     });
   }
 
@@ -228,6 +232,7 @@ export class PrismaCultureRepository implements CultureRepository {
     const violated = this.prisma.violatedConstraint(error);
     if (violated === UNIQUE_CODE) return 'culture.code-taken';
     if (violated === UNIQUE_NAME) return 'culture.name-taken';
+    if (violated === UNIQUE_DEFAULT) return 'conflict.stale';
     return null;
   }
 }

@@ -3,7 +3,11 @@ import type { CultureCategoryRow } from '../../domain/culture-category';
 import type { CultureState } from '../../domain/culture';
 
 /** Why a write was refused by a unique index. */
-export type CultureConflict = 'culture.code-taken' | 'culture.name-taken';
+export type CultureConflict =
+  | 'culture.code-taken'
+  | 'culture.name-taken'
+  // Another unit made a culture the default first (the one-default index): the caller's view is stale.
+  | 'conflict.stale';
 
 /**
  * The store of cultures with their names and category marks (multi-culture package 1). Every method
