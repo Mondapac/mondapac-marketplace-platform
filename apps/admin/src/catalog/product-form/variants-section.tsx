@@ -20,6 +20,9 @@ export function VariantsSection({
   max,
   published,
   refused,
+  productId,
+  galleryIds,
+  notices,
   onChange,
 }: {
   readonly configurable: boolean;
@@ -31,6 +34,9 @@ export function VariantsSection({
   /** The product has a published revision: its variant types are locked. */
   readonly published: boolean;
   readonly refused: DraftSaved['refusedFields'];
+  readonly productId: string;
+  readonly galleryIds: readonly string[];
+  readonly notices: readonly string[];
   readonly onChange: (change: { rows: VariantRow[]; axes: string[] }) => void;
 }) {
   const t = useTranslations('catalog.productForm');
@@ -51,6 +57,9 @@ export function VariantsSection({
           defaultLocale={defaultLocale}
           max={max}
           refused={refused}
+          productId={productId}
+          galleryIds={galleryIds}
+          notices={notices}
           onChange={onChange}
         />
       ) : null}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { VariantRow } from './draft-content.ts';
+import { NO_VARIANT_FIELDS, type VariantRow } from './draft-content.ts';
 import type { FormField } from './types.ts';
 import { activeOptionsOf, axesOf, combinationsOf, nearLimit, rowOf } from './variant-grid.ts';
 
@@ -24,6 +24,7 @@ const row = (key: string, options: Record<string, string>): VariantRow => ({
   state: 'proposed',
   options,
   labels: {},
+  ...NO_VARIANT_FIELDS,
 });
 
 describe('variant grid logic', () => {
