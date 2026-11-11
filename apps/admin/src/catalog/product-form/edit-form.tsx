@@ -352,7 +352,15 @@ function EditForm({
       topicIds,
       taxCategoryCode,
       attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
-      variants: configurable ? variantsWith(list) : null,
+      // A photo taken off the product no longer counts as a pick of any variant.
+      variants: configurable
+        ? variantsWith(
+            list.map((row) => ({
+              ...row,
+              imageIds: row.imageIds.filter((id) => imageIds.includes(id)),
+            })),
+          )
+        : null,
       variantAxes: configurable ? axes : null,
     });
     if (imageIds.length > 0) next['imageIds'] = [...imageIds];
