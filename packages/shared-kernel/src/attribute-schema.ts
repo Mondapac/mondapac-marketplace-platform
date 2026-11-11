@@ -1,6 +1,8 @@
 import { err, ok } from './result';
 import type { Result } from './result';
 import type { Id } from './id';
+import { checkMeasure, compareDecimals } from './measure';
+import type { MeasureSettings, MeasureValue } from './measure';
 import { parsePlainText } from './plain-text';
 import type { InvisibleCharacterKind } from './plain-text';
 
@@ -16,6 +18,7 @@ export const ATTRIBUTE_DATA_TYPES = [
   'select',
   'multi-select',
   'date',
+  'measure',
 ] as const;
 export type AttributeDataType = (typeof ATTRIBUTE_DATA_TYPES)[number];
 
@@ -52,6 +55,8 @@ export interface AttributeField {
     readonly max?: number;
     readonly options?: readonly OptionRef[];
   };
+  /** A `measure` field only: dimension, offered units, default unit and decimal places. */
+  readonly measure?: MeasureSettings;
 }
 
 /** The revisions a schema was built from, recorded on every product revision it validates. */
@@ -72,7 +77,12 @@ export interface AttributeSchema {
  * localizable text field, an object from locale to string.
  */
 export type AttributeValue =
-  string | number | boolean | readonly string[] | { readonly [locale: string]: string };
+  | string
+  | number
+  | boolean
+  | readonly string[]
+  | MeasureValue
+  | { readonly [locale: string]: string };
 export type AttributeValues = { readonly [code: string]: AttributeValue | undefined };
 
 export const ATTRIBUTE_ISSUE_CODES = [
@@ -83,6 +93,8 @@ export const ATTRIBUTE_ISSUE_CODES = [
   'attribute.out-of-range',
   'attribute.option-unknown',
   'attribute.option-duplicate',
+  'attribute.unit-unknown',
+  'attribute.precision',
   'attribute.locale-unknown',
   'text.invisible-character',
 ] as const;
@@ -140,6 +152,14 @@ function checkText(
   }
 }
 
+/** Exact comparison of a base-unit decimal text with a bound; a bound that is not a plain decimal falls back to numbers. */
+function compareToBound(base: string, bound: number): number {
+  const exact = compareDecimals(base, String(bound));
+  if (exact !== null) return exact;
+  const number = Number(base);
+  return number < bound ? -1 : number > bound ? 1 : 0;
+}
+
 function isBlank(value: unknown): boolean {
   return value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
 }
@@ -173,6 +193,23 @@ function checkScalar(field: AttributeField, value: unknown, issues: AttributeIss
     case 'boolean':
       if (typeof value !== 'boolean') issues.push({ path, code: 'attribute.type' });
       return;
+    case 'measure': {
+      // A measure field without settings is a build fault: nothing can be valid against it.
+      const problem = field.measure === undefined ? 'type' : checkMeasure(field.measure, value);
+      if (problem === 'type') issues.push({ path, code: 'attribute.type' });
+      else if (problem === 'unit-unknown') issues.push({ path, code: 'attribute.unit-unknown' });
+      else if (problem === 'precision') issues.push({ path, code: 'attribute.precision' });
+      else {
+        const base = (value as MeasureValue).value;
+        if (
+          (min !== undefined && compareToBound(base, min) < 0) ||
+          (max !== undefined && compareToBound(base, max) > 0)
+        ) {
+          issues.push({ path, code: 'attribute.out-of-range' });
+        }
+      }
+      return;
+    }
     case 'date':
       if (typeof value !== 'string' || !isCalendarDate(value)) {
         issues.push({ path, code: 'attribute.type' });

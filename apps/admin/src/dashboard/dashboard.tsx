@@ -13,7 +13,7 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
-import type { ReviewRow } from '../catalog/types.ts';
+import { offerRowsOf, type ReviewRow } from '../catalog/types.ts';
 import { AccountStatusBadge } from '../payments/status-badge.tsx';
 import type { ConnectedAccountRow } from '../payments/types.ts';
 import { formatMoney, percentChange } from '../pricing/format.ts';
@@ -125,15 +125,16 @@ function Attention({ data }: { readonly data: AdminDashboardData }) {
   if (data.offers !== null) {
     const page = ok(data.offers);
     const more = page?.nextAfterId != null;
+    const waiting = page === null ? 0 : offerRowsOf(page.items).length;
     cards.push(
       <StatCard
         key="offers"
         icon="inbox"
         label={t('attention.offers.label')}
-        value={formatCount(page?.items.length ?? 0, more, locale)}
+        value={formatCount(waiting, more, locale)}
         scope={t(more ? 'scope.first-page' : 'scope.whole-queue', { count: COUNT_LIMIT })}
-        href="/offer-reviews"
-        tone={(page?.items.length ?? 0) > 0 ? 'attention' : 'neutral'}
+        href="/review?type=offer"
+        tone={waiting > 0 ? 'attention' : 'neutral'}
         {...(page === null ? { error: failed } : {})}
       />,
     );
@@ -300,7 +301,7 @@ function Offers({ data }: { readonly data: AdminDashboardData }) {
   const t = useTranslations('dashboard');
   if (data.offers === null) return null;
   const page = ok(data.offers);
-  const rows = page?.items.slice(0, RECENT) ?? [];
+  const rows = page === null ? [] : offerRowsOf(page.items).slice(0, RECENT);
   const columns: ActivityColumn<ReviewRow>[] = [
     {
       id: 'offer',
@@ -308,7 +309,7 @@ function Offers({ data }: { readonly data: AdminDashboardData }) {
       kind: 'title',
       cell: (row) => (
         <>
-          <a className="font-medium text-link underline" href="/offer-reviews">
+          <a className="font-medium text-link underline" href="/review?type=offer">
             {row.product.name ?? t('unnamed-product')}
           </a>
           <div className="text-fg-muted">{row.sellerSku}</div>
@@ -335,7 +336,7 @@ function Offers({ data }: { readonly data: AdminDashboardData }) {
       id="dash-offers"
       title={t('offers.title')}
       scope={t('scope.oldest', { count: RECENT })}
-      action={{ href: '/offer-reviews', label: t('view-all') }}
+      action={{ href: '/review?type=offer', label: t('view-all') }}
       flush={rows.length > 0}
       {...(page === null ? { error: t('error.card') } : {})}
     >

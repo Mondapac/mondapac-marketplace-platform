@@ -93,8 +93,6 @@ export async function AdminShell({
               activeId={activeId}
               label={(key) => t(key)}
               openGroups={openGroups}
-              expandAll={t('nav.expandAll')}
-              collapseAll={t('nav.collapseAll')}
             />
           }
           topbar={

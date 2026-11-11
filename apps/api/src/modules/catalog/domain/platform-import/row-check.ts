@@ -1,3 +1,4 @@
+import { gtinCheckDigitValid } from '../variant-gtin';
 import type { AttributeSchema, AttributeValues } from '@mondapac/shared-kernel';
 import type { ProductTypeHandler } from '../product-type-handler';
 import type { ColumnMap, ImportColumnKey } from './columns';
@@ -79,16 +80,7 @@ export function looseName(value: string): string {
   return value.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-/** The check digit of a GTIN-8, 12, 13 or 14 (GS1 modulo 10). */
-export function gtinCheckDigitValid(digits: string): boolean {
-  const body = digits.slice(0, -1);
-  let sum = 0;
-  for (let index = 0; index < body.length; index += 1) {
-    const weight = (body.length - index) % 2 === 1 ? 3 : 1;
-    sum += Number(body[index]) * weight;
-  }
-  return (10 - (sum % 10)) % 10 === Number(digits.at(-1));
-}
+export { gtinCheckDigitValid };
 
 function cellOf(row: ParsedRow, map: ColumnMap, key: ImportColumnKey): string {
   const index = map[key];

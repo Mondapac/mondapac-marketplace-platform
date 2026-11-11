@@ -53,10 +53,15 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'shipping/admin/delivery-settings',
     // The service areas with their names (sellers, ADR-0041), read-only.
     'sellers/admin/service-areas',
+    // The product form's certificates card (certification): what the form's dialog offers (types
+    // with their issuers). The certificates of one product and one certificate are read by id below.
+    'certification/admin/product-certificates/options',
     // The marketplace product list (catalog), read-only (query: `view`, `q`, the filters, `sort`,
     // `direction`, `page`, `pageSize`); and the public category tree, which names its filter.
     'catalog/admin/products',
     'catalog/categories',
+    // What the platform product create form offers (catalog): the Market's types and languages.
+    'catalog/admin/platform-products/options',
     // The export of the product list as a file (catalog): the chosen ids or the list's own query.
     'catalog/admin/products/export',
     // Import products (catalog): the CSV and XLSX templates and the admin's current import.
@@ -85,6 +90,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/categories',
     // The business activities (catalog; query: `status`, `search`, `afterId`, `limit`).
     'catalog/admin/business-activities',
+    // The product tags (catalog topics; query: `status`, `group`, `search`, `afterId`, `limit`).
+    'catalog/admin/topics',
     // The attributes (catalog; query: `search`, `type`, `status`, `usedIn`, `missing`, `afterId`,
     // `limit`) and the feature sets (attribute families), read only (attributes package A1).
     'catalog/admin/attributes',
@@ -95,6 +102,15 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/attribute-relaxations',
     // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
     'catalog/admin/attribute-archive-requests',
+    // The variant types and the variants of live products, their issue counts and their export
+    // (catalog, variants V6; query of the list: `q`, `typeCode`, `issue`, `after`, `limit`).
+    'catalog/admin/variant-types',
+    'catalog/admin/variants',
+    'catalog/admin/variants/issue-counts',
+    'catalog/admin/variants/export',
+    // The report of published products missing a required detail (catalog, attributes A4;
+    // query: `sellerId`, `familyCode`, `afterId`, `limit`).
+    'catalog/admin/reports/products-missing-details',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -160,6 +176,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/brands/merge-queue/dismiss',
     // A new business activity (catalog).
     'catalog/admin/business-activities',
+    // A new product tag (catalog topics).
+    'catalog/admin/topics',
     // A new platform category, as a hidden one (catalog, categories C3).
     'catalog/admin/categories',
     // Add an attribute as a draft (catalog, attributes package A2).
@@ -170,8 +188,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // Import products (catalog): the checked file, as base64 in a JSON body (the one path with a
     // larger body cap, see UPLOAD_PATH).
     'catalog/admin/platform-imports',
+    // A new platform product, as a draft (catalog): the body names the type only.
+    'catalog/admin/platform-products',
     // Save the product list's current view as a tab (catalog): a closed body, for me or everyone.
     'catalog/admin/saved-filters',
+    // A new manufacturer certificate, as a draft (certification): the body names the type only.
+    'certification/admin/product-certificates',
   ]),
 };
 
@@ -201,6 +223,22 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'pricing/admin/price-holds/:id/reject',
     'catalog/admin/offers/:id/approve',
     'catalog/admin/offers/:id/request-changes',
+    // Approve or send back a pending product version, naming the version seen (catalog, product
+    // version review); take a photo down with a reason (cannot be undone).
+    'catalog/admin/products/:id/revisions/:id/approve',
+    'catalog/admin/products/:id/revisions/:id/request-changes',
+    'catalog/admin/products/:id/images/:id/take-down',
+    // Submit (publish) a platform product's working copy (catalog).
+    'catalog/admin/platform-products/:id/submit',
+    // Discard a platform product that was never submitted (catalog).
+    'catalog/admin/platform-products/:id/discard',
+    // A manufacturer certificate (certification): add its document, then send it for review, each
+    // with the record version read. Approve, reject, suspend and revoke are not reachable here.
+    'certification/admin/product-certificates/:id/documents',
+    'certification/admin/product-certificates/:id/submit',
+    // Add a photo to a platform product's library (catalog, P1): a base64 photo, so the body cap
+    // of this path is the larger image one.
+    'catalog/admin/platform-products/:id/images',
     // A brand (catalog): approve a seller's proposal, archive (also turns a proposal down), and
     // merge other brands into it.
     'catalog/admin/brands/:id/approve',
@@ -216,6 +254,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/show',
     'catalog/admin/categories/:id/change-slug',
     'catalog/admin/categories/:id/discard',
+    // Remove a category's image, with the category version seen (catalog, categories C3c).
+    'catalog/admin/categories/:id/image/remove',
     // Move, merge and archive a platform category (catalog, categories C4a: protected key
     // `catalog.category-tree.restructure`), each with the tree version and a reason note.
     'catalog/admin/categories/:id/move',
@@ -268,8 +308,16 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'reviews/admin/moderation/:id/dismiss-reports',
   ],
   PUT: [
+    // Change a feature set: names, groups and requirement levels, with the version read
+    // (catalog, attributes A4).
+    'catalog/admin/feature-sets/:id',
+    // Set or replace a category's image, with the category version seen (catalog, categories
+    // C3c). A base64 picture: the body cap of this path is the larger image one.
+    'catalog/admin/categories/:id/image',
     'identity/admin/roles/:id',
     'sellers/admin/:id/review/manual-register-check',
+    // Whether the seller may propose categories (sellers, SEL-26; categories C9-0).
+    'sellers/admin/:id/category-proposals',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
     // A fleet-selection model edited by its id (shipping).
@@ -284,10 +332,18 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/brands/:id',
     // The whole content of a business activity, with the version seen (catalog).
     'catalog/admin/business-activities/:id',
+    // The whole content of a product tag, with the version seen (catalog topics).
+    'catalog/admin/topics/:id',
     // The whole content of an attribute, a new revision, with the version seen (attributes A2).
     'catalog/admin/attributes/:id',
+    // How buyers choose a variant type, the whole settings with the version seen (variants V6).
+    'catalog/admin/variant-types/:id/settings',
     // A saved view's name and who can use it (catalog).
     'catalog/admin/saved-filters/:id',
+    // The working copy of a platform product, saved as a draft (catalog).
+    'catalog/admin/platform-products/:id/draft',
+    // The draft of a manufacturer certificate, with the record version read (certification).
+    'certification/admin/product-certificates/:id/draft',
   ],
   // The details of one platform category (catalog, categories C3), with the version seen.
   PATCH: ['catalog/admin/categories/:id'],
@@ -300,6 +356,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/deletion-requests/:id',
     // A saved view of the product list (catalog).
     'catalog/admin/saved-filters/:id',
+    // Delete an unused photo of a platform product (catalog, P1).
+    'catalog/admin/platform-products/:id/images/:id',
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
@@ -307,18 +365,35 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // (catalog, read-only; the impact takes the `action`).
     'catalog/admin/categories/:id',
     'catalog/admin/categories/:id/impact',
+    // One platform product with its working copy, for the product form (catalog).
+    'catalog/admin/platform-products/:id',
+    // The manufacturer certificates that name one product, one certificate, and its status history
+    // (certification), read by the product form's certificates card.
+    'certification/admin/product-certificates/for-product/:id',
+    'certification/admin/product-certificates/:id',
+    'certification/admin/product-certificates/:id/history',
+    // The photo library of a platform product, for the form's images card (catalog, P1).
+    'catalog/admin/platform-products/:id/images',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
+    // A product version's photo opened large, for its review (catalog).
+    'catalog/admin/products/:id/images/:id/large',
+    // The current image of a category, medium size only (catalog, categories C3c).
+    'catalog/admin/categories/:id/images/:id/medium',
     // One import and its report CSV (catalog): the report takes the query `kind`.
     'catalog/admin/platform-imports/:id',
     'catalog/admin/platform-imports/:id/report',
     // One business activity (catalog), read again after a conflict.
     'catalog/admin/business-activities/:id',
+    // One product tag (catalog topics).
+    'catalog/admin/topics/:id',
     // One attribute with its values, uses and history, and one feature set (catalog, package A1).
     'catalog/admin/attributes/:id',
     // What merging values or archiving an attribute reaches (catalog, attributes A8).
     'catalog/admin/attributes/:id/impact',
     'catalog/admin/feature-sets/:id',
+    // One variant type with its options and settings (catalog, variants V6).
+    'catalog/admin/variant-types/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
     'commission-payouts/admin/sellers/:id/ledger',
     // A storefront slide as a package to create in another Market (storefront).
@@ -381,7 +456,12 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
+  'catalog/admin/variants': ['q', 'typeCode', 'issue', 'after', 'limit'],
+  'catalog/admin/variants/issue-counts': ['typeCode'],
+  'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
+  'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
@@ -418,7 +498,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'catalog/admin/products/export': {
     format: /^(csv|xlsx)$/,
     columns:
-      /^(code|offers|updated|type|scope|seller|created)(,(code|offers|updated|type|scope|seller|created)){0,6}$/,
+      /^(code|offers|updated|type|scope|seller|created|tags)(,(code|offers|updated|type|scope|seller|created|tags)){0,7}$/,
     // At most 200 product ids, the cap of the bulk action.
     ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
     view: /^(active|all|inactive)$/,
@@ -427,6 +507,18 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     categoryId: UUID,
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
+  },
+  'catalog/admin/variants': {
+    typeCode: /^[a-z][a-z0-9_-]{0,63}$/,
+    issue: /^(no-seller-selling|missing-gtin|duplicate-gtin|no-image|missing-language)$/,
+    after: UUID,
+    limit: /^([1-9][0-9]?|100)$/,
+  },
+  'catalog/admin/variants/issue-counts': { typeCode: /^[a-z][a-z0-9_-]{0,63}$/ },
+  'catalog/admin/variants/export': {
+    format: /^(csv|xlsx)$/,
+    typeCode: /^[a-z][a-z0-9_-]{0,63}$/,
+    issue: /^(no-seller-selling|missing-gtin|duplicate-gtin|no-image|missing-language)$/,
   },
   'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'commission-payouts/admin/payouts': {
@@ -454,6 +546,18 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'catalog/admin/business-activities': {
     status: /^(active|inactive)$/,
+    limit: /^[0-9]{1,3}$/,
+    afterId: UUID,
+  },
+  'catalog/admin/topics': {
+    status: /^(active|archived)$/,
+    group: /^(occasion|cuisine|use)$/,
+    limit: /^[0-9]{1,3}$/,
+    afterId: UUID,
+  },
+  'catalog/admin/reports/products-missing-details': {
+    sellerId: UUID,
+    familyCode: /^[a-z][a-z0-9_-]{0,63}$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
   },
@@ -576,6 +680,29 @@ const MAX_BODY_BYTES = 16 * 1024;
  */
 const UPLOAD_PATH = 'catalog/admin/platform-imports';
 const MAX_UPLOAD_BODY_BYTES = 14_500 * 1024;
+/**
+ * A category image (categories C3c) is a picture of at most 4 MiB as base64 (about 5.6 MB). The API
+ * accepts 5800 kB for this one route and checks the real size itself.
+ */
+const CATEGORY_IMAGE_PATH = /^catalog\/admin\/categories\/[0-9a-f-]{36}\/image$/i;
+const MAX_IMAGE_BODY_BYTES = 5_800 * 1024;
+/**
+ * A manufacturer certificate's document (certification) is a file of at most 10 MiB as base64
+ * (about 14 MB). The API accepts 14500 kB for this one route and checks the real size itself.
+ */
+const CERT_DOCUMENT_PATH =
+  /^certification\/admin\/product-certificates\/[0-9a-f-]{36}\/documents$/i;
+/** A platform product photo upload (catalog, P1): the same base64 photo cap. */
+const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/images$/i;
+
+/** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
+function bodyCapOf(method: string, target: string): number {
+  if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
+  if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
+  if (method === 'POST' && CERT_DOCUMENT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
+  if (method === 'POST' && PRODUCT_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
+  return MAX_BODY_BYTES;
+}
 
 /** Lower case, no trailing dot on the host name; the port stays. */
 export function normaliseHost(raw: string | null): string | null {
@@ -689,8 +816,17 @@ export async function relay(
       return jsonError(403, 'request.csrf');
     if (request.headers.get('origin') !== host.origin) return jsonError(403, 'request.csrf');
   }
-  const bodyCap =
-    request.method === 'POST' && target === UPLOAD_PATH ? MAX_UPLOAD_BODY_BYTES : MAX_BODY_BYTES;
+  // A cheap filter, not an authentication check: the large document body is read only for a
+  // request that carries an admin session cookie, so a caller with no cookie at all cannot make
+  // the relay buffer 14.5 MB. A forged cookie still passes here; the API checks the session.
+  if (
+    request.method === 'POST' &&
+    CERT_DOCUMENT_PATH.test(target) &&
+    !/(?:^|;\s*)__Host-session-admin-[^=;]*=/.test(request.headers.get('cookie') ?? '')
+  ) {
+    return jsonError(401, 'session.invalid');
+  }
+  const bodyCap = bodyCapOf(request.method, target);
   const declared = Number(request.headers.get('content-length') ?? 0);
   if (declared > bodyCap) return jsonError(413, 'request.too-large');
   let body: string | undefined;

@@ -40,8 +40,9 @@ const KEYS = ['categoryId', 'version', 'texts', 'seo', 'showInMenu', 'imageId'] 
  * search-result fields and the menu flag. The request is the whole content (a field left out is
  * cleared) and the category version the admin saw; a later version is `conflict.stale`. It makes
  * a new revision and announces the change; a save that changes nothing writes nothing. The slug
- * has its own use case. The category image waits for the image intake of purpose `category-image`:
- * a non-null `imageId` is refused (`unsupported`). Rule: the key `catalog.category-tree.edit`.
+ * has its own use case, and so has the category image (C3c, `CategoryImageSet` and
+ * `CategoryImageRemove`): a details save keeps the image, and a non-null `imageId` is refused
+ * (`unsupported`). Rule: the key `catalog.category-tree.edit`.
  * Not a structural change: it does not raise the tree version.
  */
 export class CategoryEditDetails extends UseCase<

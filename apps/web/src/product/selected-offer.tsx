@@ -101,14 +101,28 @@ export function SelectedByline() {
 }
 
 export function SelectedGallery() {
-  const { product, offer } = useSelected();
+  const { product, variant, offer } = useSelected();
+  // A Variant that picked photos shows those, main photo first; else the product's photos.
+  const picked = variant?.photoIndexes;
+  const photos =
+    picked === undefined ? product.photos : picked.flatMap((at) => product.photos[at] ?? []);
+  const thumbs =
+    picked === undefined || product.photoThumbs === undefined
+      ? product.photoThumbs
+      : picked.flatMap((at) => product.photoThumbs?.[at] ?? []);
+  const sets =
+    picked === undefined || product.photoSets === undefined
+      ? product.photoSets
+      : picked.flatMap((at) => product.photoSets?.[at] ?? []);
   return (
     <Gallery
+      // A new Variant starts on its first photo.
+      key={picked === undefined ? 'product' : (variant?.id ?? 'product')}
       name={product.name}
       category={product.category}
-      photos={product.photos}
-      thumbs={product.photoThumbs}
-      sets={product.photoSets}
+      photos={photos}
+      thumbs={thumbs}
+      sets={sets}
       certifications={offer.certifications.filter((badge) => badge.sellerClaim !== true)}
       special={offer.wasPrice !== undefined}
     />

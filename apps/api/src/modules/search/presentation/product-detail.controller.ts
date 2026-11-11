@@ -95,6 +95,10 @@ export class ProductDetailController {
         height,
         alt,
       })),
+      variantImages: detail.variantImages.map(({ variantId, imageIds }) => ({
+        variantId,
+        imageIds: [...imageIds],
+      })),
       offers: detail.offers.map((offer) => ({
         offerId: offer.offerId,
         sellerId: offer.sellerId,

@@ -18,6 +18,24 @@ export class ProductImageRefBody {
   alt!: string;
 }
 
+export class SearchMoneyBody {
+  @ApiProperty({ description: 'Whole minor units, as decimal text (e.g. "1299").' })
+  amount!: string;
+  @ApiProperty({ description: 'ISO 4217 code.' }) currency!: string;
+}
+
+export class SearchItemPriceBody {
+  @ApiProperty({ type: SearchMoneyBody, description: 'The lowest buyer price.' })
+  from!: SearchMoneyBody;
+  @ApiProperty({ description: 'True when the matching variants differ in price: show "From".' })
+  varies!: boolean;
+}
+
+export class SearchExactMatchBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ format: 'uuid' }) variantId!: string;
+}
+
 export class ProductSearchItemBody {
   @ApiProperty({ format: 'uuid' }) offerId!: string;
   @ApiProperty({ format: 'uuid' }) productId!: string;
@@ -36,7 +54,24 @@ export class ProductSearchItemBody {
   primaryImage!: ProductImageRefBody | null;
 }
 
-export class SearchProductItemBody extends ProductSearchItemBody {
+export class SearchResultItemBody extends ProductSearchItemBody {
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    type: String,
+    description:
+      'The variant to open (`/p/{productId}?v={variantId}`): the first matching in-stock variant ' +
+      'by the owner order when a variant filter, `price` or an exact GTIN chose it; else null.',
+  })
+  variantId!: string | null;
+  @ApiProperty({
+    type: SearchItemPriceBody,
+    nullable: true,
+    description:
+      'The lowest buyer price of the matching in-stock variants (all in-stock variants when ' +
+      'nothing narrowed to a variant); null when none is in stock and priced.',
+  })
+  price!: SearchItemPriceBody | null;
   @ApiProperty({
     type: [ProductImageRefBody],
     description:
@@ -88,8 +123,8 @@ export class SearchFilterBody {
 }
 
 export class ProductSearchPageBody {
-  @ApiProperty({ type: [SearchProductItemBody], description: 'In rank order for a text query.' })
-  items!: SearchProductItemBody[];
+  @ApiProperty({ type: [SearchResultItemBody], description: 'In rank order for a text query.' })
+  items!: SearchResultItemBody[];
   @ApiProperty() page!: number;
   @ApiProperty() pageSize!: number;
   @ApiProperty({
@@ -114,6 +149,15 @@ export class ProductSearchPageBody {
   filtered!: boolean;
   @ApiProperty({ description: 'False when the scope was too large to count (counts are null).' })
   countsComplete!: boolean;
+  @ApiProperty({
+    type: SearchExactMatchBody,
+    nullable: true,
+    description:
+      '`q` was exactly the GTIN of a published variant of a listed Offer, in stock or not (the ' +
+      'product page shows its stock): go straight to that product page with `?v={variantId}`. ' +
+      'Null otherwise, and on any page after the first.',
+  })
+  exactMatch!: SearchExactMatchBody | null;
 }
 
 export class SearchQueryParams {
@@ -307,6 +351,17 @@ export class ProductDetailSpecificationGroupBody {
   specifications!: ProductDetailSpecificationBody[];
 }
 
+export class ProductDetailVariantImagesBody {
+  @ApiProperty({ format: 'uuid' }) variantId!: string;
+  @ApiProperty({
+    type: [String],
+    description:
+      'The photo ids this Variant shows, main photo first. Each is one of the `images` of the ' +
+      'product; build the URL like any photo.',
+  })
+  imageIds!: string[];
+}
+
 export class ProductDetailBody {
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty({ description: 'The published name in the Market default locale.' })
@@ -333,6 +388,12 @@ export class ProductDetailBody {
       'Public photos in the published revision order (the first is the main one); at most 8.',
   })
   images!: ProductImageRefBody[];
+  @ApiProperty({
+    type: [ProductDetailVariantImagesBody],
+    description:
+      'The photos of each Variant that picked some of the product photos; a Variant not listed shows the product photos. Never more than the product photos.',
+  })
+  variantImages!: ProductDetailVariantImagesBody[];
   @ApiProperty({
     type: [ProductDetailOfferBody],
     description: 'At least one Offer, lowest unit price first.',

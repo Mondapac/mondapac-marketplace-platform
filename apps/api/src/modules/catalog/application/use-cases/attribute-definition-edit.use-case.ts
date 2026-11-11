@@ -12,6 +12,7 @@ import {
   closedInput,
   CONTENT_KEYS,
   editorAccountOf,
+  marketUnitsRefusal,
   parseEditorContent,
   refuseClaimContent,
   versionOf,
@@ -108,6 +109,10 @@ export class AttributeDefinitionEdit extends UseCase<
     }
     const content = parseEditorContent(body.value, locales);
     if (!content.ok) return content;
+    const notOffered = marketUnitsRefusal(content.value.bounds, this.deps.policy.units(market));
+    if (notOffered !== null) {
+      return err({ code: 'attribute-definition.measure-invalid', fields: [notOffered] });
+    }
     // Checked before the unit opens: the certification facade opens its own.
     const claim = await refuseClaimContent(this.deps, context, content.value);
     if (claim !== null) return err(claim);

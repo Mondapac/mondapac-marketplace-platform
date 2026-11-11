@@ -2,6 +2,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import type { SellerHealthRequestStore } from '../ports/seller-health-request.store';
 import type { SellerHealthStore } from '../ports/seller-health.store';
 
 /**
@@ -11,22 +12,31 @@ import type { SellerHealthStore } from '../ports/seller-health.store';
  */
 export const SELLER_HEALTH_KEPT_DAYS = 400;
 
+/**
+ * Finished "Recalculate now" and "Refresh now" requests older than this many days are deleted. The
+ * seller's cooldown looks back minutes, so nothing reads a request this old.
+ */
+export const SELLER_HEALTH_REQUESTS_KEPT_DAYS = 30;
+
 export type PurgeSellerHealthFailure = { readonly code: 'access.denied' };
 
 export interface PurgeSellerHealthOutput {
   readonly days: number;
   readonly snapshots: number;
+  readonly requests: number;
 }
 
 export interface PurgeSellerHealthDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly healthStore: SellerHealthStore;
+  readonly healthRequests: SellerHealthRequestStore;
   readonly clock: Clock;
 }
 
 /**
  * `sellers.purge-seller-health` (seller health retention): for one Market, deletes the daily
- * counters and snapshots older than {@link SELLER_HEALTH_KEPT_DAYS}. It deletes only what no
+ * counters and snapshots older than {@link SELLER_HEALTH_KEPT_DAYS}, and the finished recount
+ * requests older than {@link SELLER_HEALTH_REQUESTS_KEPT_DAYS}. It deletes only what no
  * window can read any more, so it is safe to run twice and concurrently. Rule `system`: run by
  * its job only.
  */
@@ -52,15 +62,19 @@ export class PurgeSellerHealth extends UseCase<
   ): Promise<Result<PurgeSellerHealthOutput, PurgeSellerHealthFailure>> {
     if (context.actor.kind !== 'system') return err({ code: 'access.denied' });
     const { market } = context;
-    const { unitOfWork, healthStore, clock } = this.deps;
-    const before = clock
-      .now()
+    const { unitOfWork, healthStore, healthRequests, clock } = this.deps;
+    const now = clock.now();
+    const requestsBefore = now.subtract({ hours: 24 * SELLER_HEALTH_REQUESTS_KEPT_DAYS });
+    const before = now
       .toZonedDateTimeISO('UTC')
       .toPlainDate()
       .subtract({ days: SELLER_HEALTH_KEPT_DAYS });
     // A failed unit throws out of here: the scheduler logs that Market's run as failed.
     const purged = await unitOfWork.run(market, async () =>
-      ok(await healthStore.purgeBefore(market, before)),
+      ok({
+        ...(await healthStore.purgeBefore(market, before)),
+        requests: await healthRequests.purgeFinishedBefore(market, requestsBefore),
+      }),
     );
     if (!purged.ok) throw new Error('sellers.purge-seller-health: the unit failed');
     return ok(purged.value);

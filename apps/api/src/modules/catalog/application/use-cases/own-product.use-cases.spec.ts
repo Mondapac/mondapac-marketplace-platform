@@ -39,11 +39,13 @@ import {
 } from '../../../../../test/support/catalog-tag-fakes';
 import type { OfferAddRefusal, OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
+import type { TopicBrief } from '../ports/topic.reader';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import { OwnProductCreate } from './own-product-create.use-case';
 import { OwnProductSubmit, type OwnProductSubmitInput } from './own-product-submit.use-case';
 import type { AllowedProductTypes } from '../ports/allowed-product-types.reader';
+import { fixedFamilyResolver } from '../../../../../test/support/family-resolver';
 
 // `own-product.create` and `own-product.submit` in memory (catalog design 4.2 row 1, 6; slice 6), on both Market
 // fixtures: the freeze, the claim-text check over every text of the frozen content, the admin
@@ -144,6 +146,8 @@ describe.each(FIXTURES)(
     function rig(
       matcherOverride?: ClaimTextMatcher,
       options: {
+        /** The topics of this Market the freeze can see (product tags T2). */
+        topics?: readonly TopicBrief[];
         approvalThrows?: boolean;
         approvalRequired?: boolean;
         noSchema?: boolean;
@@ -252,6 +256,7 @@ describe.each(FIXTURES)(
         },
         recordDecision: () => Promise.resolve(),
         latestChangeRequest: () => Promise.resolve(null),
+        history: () => Promise.resolve([]),
         find: (_m, productId, id) => {
           const found = revisions.get(id);
           return Promise.resolve(found?.productId === productId ? found : null);
@@ -267,9 +272,11 @@ describe.each(FIXTURES)(
           primaryImage: true,
           anyImage: false,
           variantRemoved: true,
+          gtinChanged: true,
         }),
         maxVariantsPerProduct: () => 100,
         maxVariantAttributes: () => 2,
+        units: () => [],
         maxCategoryDepth: () => 4,
         maxCategoryChangeTags: () => 50_000,
         productTypes: () => ['simple', 'configurable'],
@@ -330,9 +337,15 @@ describe.each(FIXTURES)(
           ),
       } as unknown as AttributeRepository;
       const freeze = new FreezeRevision({
+        familyResolver: fixedFamilyResolver(),
         attributes,
         policy,
         handlerFor: (typeCode) => (typeCode === 'simple' ? simpleProductType : undefined),
+        revisions: revisionRepo,
+        topics: {
+          briefsOf: (_m, topicIds) =>
+            Promise.resolve((options.topics ?? []).filter((brief) => topicIds.includes(brief.id))),
+        },
       });
       const fanOut = new RecordingReevaluationRequests();
       const submit = new SubmitProduct({
@@ -583,6 +596,96 @@ describe.each(FIXTURES)(
         error: { code: 'validation.failed', fields: [{ path: 'productId', code: 'format' }] },
       });
       expect(r.revisions.size).toBe(0);
+    });
+
+    describe('topics on the revision (product tags T2)', () => {
+      const T = (n: number) => `0197a1b2-0000-7000-8000-${String(n).padStart(12, '0')}`;
+      const topics: TopicBrief[] = [1, 2, 3].map((n) => ({
+        id: T(n) as Id<'Topic'>,
+        slug: `topic-${n}`,
+        status: 'active',
+        names: { [locale]: `Topic ${n}` },
+      }));
+      const reasonsOf = (r: { revisions: Map<string, StoredRevision> }, revisionNo: number) =>
+        [...r.revisions.values()].find((revision) => revision.revisionNo === revisionNo)
+          ?.sensitiveReasons;
+
+      it('holds a first submit with topics for review even when the Market needs no approval', async () => {
+        const r = rig(undefined, { approvalRequired: false, topics });
+        const product = newProduct();
+        r.seed(product, draft({ topicIds: [T(1)] }));
+        const submitted = await r.useCase.execute(contextOf('seller'), request(product.state.id));
+        expect(submitted.ok && submitted.value).toMatchObject({ revisionNo: 1, published: false });
+        expect(reasonsOf(r, 1)).toEqual(['never-published', 'topics-changed']);
+        const stored = [...r.revisions.values()][0]!;
+        expect(stored.content.topicIds).toEqual([T(1)]);
+      });
+
+      it('publishes a first submit without topics at once, as before', async () => {
+        const r = rig(undefined, { approvalRequired: false, topics });
+        const product = newProduct();
+        r.seed(product);
+        const submitted = await r.useCase.execute(contextOf('seller'), request(product.state.id));
+        expect(submitted.ok && submitted.value).toMatchObject({ published: true });
+        expect([...r.revisions.values()][0]!.content.topicIds).toEqual([]);
+      });
+
+      it('sends a change of the topic set of a published product to review, approval off', async () => {
+        const r = rig(undefined, { approvalRequired: false, topics });
+        const product = newProduct();
+        r.seed(product);
+        await r.useCase.execute(contextOf('seller'), request(product.state.id));
+        r.copies.set(product.state.id, {
+          ...r.copies.get(product.state.id)!,
+          content: draft({ topicIds: [T(1), T(2)] }),
+        });
+        const changed = await r.useCase.execute(contextOf('seller'), request(product.state.id));
+        expect(changed.ok && changed.value).toMatchObject({ revisionNo: 2, published: false });
+        expect(reasonsOf(r, 2)).toEqual(['topics-changed']);
+        expect(r.stored.get(product.state.id)!.state.pendingRevisionId).not.toBeNull();
+      });
+
+      it('publishes a reorder of the same topics at once: the order is not a tag change', async () => {
+        const r = rig(undefined, { approvalRequired: false, topics });
+        const product = newProduct();
+        // The published revision already carries the topics, as an approved one would.
+        r.seed(product, draft({ topicIds: [T(1), T(2)] }));
+        const first = await r.useCase.execute(contextOf('seller'), request(product.state.id));
+        expect(first.ok && first.value.published).toBe(false);
+        const approved = r.stored.get(product.state.id)!;
+        const pendingId = approved.state.pendingRevisionId!;
+        r.stored.set(
+          product.state.id,
+          Product.restore({
+            ...approved.state,
+            status: 'published',
+            publishedRevisionId: pendingId,
+            pendingRevisionId: null,
+            version: approved.state.version + 1,
+          }),
+        );
+        r.copies.set(product.state.id, {
+          ...r.copies.get(product.state.id)!,
+          content: draft({ topicIds: [T(2), T(1)] }),
+        });
+        const reordered = await r.useCase.execute(contextOf('seller'), request(product.state.id));
+        expect(reordered.ok && reordered.value).toMatchObject({ revisionNo: 2, published: true });
+        expect(reasonsOf(r, 2)).toEqual([]);
+        expect([...r.revisions.values()][1]!.content.topicIds).toEqual([T(2), T(1)]);
+      });
+
+      it('refuses an unknown topic, one of another Market and an eleventh, storing nothing', async () => {
+        const r = rig(undefined, { topics });
+        const product = newProduct();
+        const eleven = Array.from({ length: 11 }, (_, n) => T(n + 100));
+        for (const topicIds of [[T(1), T(77)], eleven]) {
+          r.seed(product, draft({ topicIds }));
+          const refused = await r.useCase.execute(contextOf('seller'), request(product.state.id));
+          expect(refused.ok).toBe(false);
+          expect(!refused.ok && refused.error.code).toBe('revision.not-ready');
+        }
+        expect(r.revisions.size).toBe(0);
+      });
     });
 
     describe('badge requests and the T4 check (design 5.1a)', () => {

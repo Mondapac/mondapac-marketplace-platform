@@ -11,6 +11,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_ATTRIBUTE_VIEW } from '../../contracts/permissions';
 import { closedInput, invalid, type ValidationFailure } from '../brands/brand-views';
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductDetailsGapReader } from '../ports/product-details-gap.reader';
@@ -59,6 +60,7 @@ export interface ProductsMissingDetailsListDependencies {
   readonly detailsGapReader: ProductDetailsGapReader;
   readonly attributes: AttributeRepository;
   readonly policy: CatalogMarketPolicy;
+  readonly familyResolver: ProductFamilyResolver;
 }
 
 /**
@@ -171,17 +173,21 @@ export class ProductsMissingDetailsList extends UseCase<
     locale: string,
     ordered: readonly string[],
   ): Promise<ProductsMissingDetailsListOutput> {
+    // The feature set a product is judged against is the one its published revision's primary
+    // category holds now: what its next submit will ask (CAT-10). When that cannot be resolved the
+    // product is judged against the feature set its revision was frozen under.
+    const session = await this.deps.familyResolver.open(market);
     const schemas = new Map<string, AttributeSchema | null>();
     const items: MissingDetailsItem[] = [];
     let cursor = filter.afterId;
     let scanned = 0;
     let exhausted = false;
     while (items.length < filter.limit && scanned < GAP_SCAN_MAX) {
+      const requested = Math.min(GAP_BATCH, GAP_SCAN_MAX - scanned);
       const batch = await this.deps.detailsGapReader.published(market, {
         afterId: cursor,
         sellerId: filter.sellerId,
-        familyCode: filter.familyCode,
-        limit: Math.min(GAP_BATCH, GAP_SCAN_MAX - scanned),
+        limit: requested,
         locale,
       });
       if (batch.length === 0) {
@@ -189,16 +195,16 @@ export class ProductsMissingDetailsList extends UseCase<
         break;
       }
       for (const [index, product] of batch.entries()) {
-        if (!schemas.has(product.familyCode)) {
-          schemas.set(
-            product.familyCode,
-            await this.deps.attributes.loadSchema(market, product.familyCode),
-          );
+        const resolved = await session.resolve(product.primaryCategoryId);
+        const familyCode = resolved.ok ? resolved.familyCode : product.revisionFamilyCode;
+        if (!schemas.has(familyCode)) {
+          schemas.set(familyCode, await this.deps.attributes.loadSchema(market, familyCode));
         }
-        const schema = schemas.get(product.familyCode) ?? null;
+        const schema = schemas.get(familyCode) ?? null;
         cursor = product.productId;
         scanned += 1;
         if (schema === null) continue;
+        if (filter.familyCode !== null && familyCode !== filter.familyCode) continue;
         const raw = product.attributeValues;
         const values = (typeof raw === 'object' && raw !== null ? raw : {}) as AttributeValues;
         const checked = validateAttributeValues(schema, values, ordered);
@@ -217,14 +223,14 @@ export class ProductsMissingDetailsList extends UseCase<
               productCode: product.productCode,
               name: product.name,
               sellerId: product.ownerSellerId,
-              featureSetCode: product.familyCode,
+              featureSetCode: familyCode,
               missing,
             });
           }
         }
         if (items.length >= filter.limit) {
           // The page is full; the rest of this batch is read by the next call.
-          exhausted = index === batch.length - 1 && batch.length < GAP_BATCH;
+          exhausted = index === batch.length - 1 && batch.length < requested;
           break;
         }
       }

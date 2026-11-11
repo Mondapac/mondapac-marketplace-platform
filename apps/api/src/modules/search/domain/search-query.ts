@@ -1,6 +1,6 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { Id, Result } from '@mondapac/shared-kernel';
-import { parseFilters, type ParsedFilters } from './search-filter';
+import { parseFilters, parsePrice, type ParsedFilters, type PriceRange } from './search-filter';
 
 export const MIN_QUERY_LENGTH = 2;
 export const MAX_QUERY_LENGTH = 100;
@@ -51,6 +51,8 @@ export interface SearchProductsRequest {
   readonly filter?: string | readonly string[] | undefined;
   /** Number ranges (A7): `<attribute>:<min>..<max>`, either end may be left out. */
   readonly range?: string | readonly string[] | undefined;
+  /** The price filter (variants V8): `<min>..<max>` in minor units, either end may be left out. */
+  readonly price?: string | undefined;
   readonly page?: number | undefined;
   readonly pageSize?: number | undefined;
 }
@@ -72,6 +74,8 @@ export interface SearchQuery {
   readonly sort: SearchSort;
   /** Attribute filters, checked for shape; which are filters of the category is catalog's answer. */
   readonly filters: ParsedFilters;
+  /** The price filter (V8), or null. */
+  readonly price: PriceRange | null;
   readonly page: number;
   readonly pageSize: number;
 }
@@ -182,6 +186,12 @@ export function parseSearchQuery(
     if (storeSlug !== null) return invalid('filter', 'with-store');
     if (brandSlug !== null) return invalid('filter', 'with-brand');
   }
+  const price = parsePrice(request.price);
+  if (!price.ok) return invalid(price.error.path, price.error.code);
+  if (price.value !== null) {
+    if (storeSlug !== null) return invalid('price', 'with-store');
+    if (brandSlug !== null) return invalid('price', 'with-brand');
+  }
 
   const page = request.page ?? 1;
   if (!Number.isInteger(page) || page < 1 || page > MAX_PAGE) return invalid('page', 'range');
@@ -197,6 +207,7 @@ export function parseSearchQuery(
     brandSlug,
     sort,
     filters: filters.value,
+    price: price.value,
     page,
     pageSize,
   });

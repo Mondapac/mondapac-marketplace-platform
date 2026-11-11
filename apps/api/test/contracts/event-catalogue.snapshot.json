@@ -153,6 +153,15 @@
     }
   },
   {
+    "type": "catalog.offer-sell-unit-changed.v1",
+    "aggregateType": "offer-sell-unit",
+    "fields": {
+      "offerId": "id",
+      "selling": "boolean",
+      "variantId": "id"
+    }
+  },
+  {
     "type": "catalog.offer-tag-added.v1",
     "aggregateType": "offer",
     "fields": {
@@ -215,12 +224,31 @@
     }
   },
   {
+    "type": "catalog.product-family-changed.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "revisionId": "id",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
     "type": "catalog.product-revision-changes-requested.v1",
     "aggregateType": "product",
     "fields": {
       "productId": "id",
       "revisionId": "id",
       "reasonCode": "enumOf(content-unclear|description-claim|sku-or-condition|handling-unclear|other)",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
+    "type": "catalog.product-revision-changes-requested.v2",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "revisionId": "id",
+      "reasonCode": "enumOf(content-unclear|description-claim|sku-or-condition|handling-unclear|photos|category|tax-category|duplicate|other)",
       "scope": "enumOf(platform|seller)"
     }
   },
@@ -991,6 +1019,20 @@
     }
   },
   {
+    "type": "sellers.category-proposals-granted.v1",
+    "aggregateType": "seller-admin-settings",
+    "fields": {
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "sellers.category-proposals-revoked.v1",
+    "aggregateType": "seller-admin-settings",
+    "fields": {
+      "sellerId": "id"
+    }
+  },
+  {
     "type": "shipping.carrier-delivery-progressed.v1",
     "aggregateType": "carrier-booking",
     "fields": {
@@ -1038,6 +1080,18 @@
     "fields": {
       "categoryId": "id",
       "checkedIds": "listOf(id)"
+    }
+  },
+  {
+    "type": "catalog.seller-import-finished.v1",
+    "aggregateType": "import-job",
+    "fields": {
+      "importId": "id",
+      "sellerId": "id",
+      "outcome": "enumOf(completed|stopped)",
+      "created": "integer",
+      "updated": "integer",
+      "failed": "integer"
     }
   }
 ]

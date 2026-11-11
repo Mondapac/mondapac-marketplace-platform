@@ -30,6 +30,8 @@ import { PERSONAL_SIGNALS } from './application/ports/personal-signals';
 import { PUBLIC_VISIBILITY } from './application/ports/public-visibility';
 import { SEARCH_POLICY } from './application/ports/search-policy';
 import { SELLER_ELIGIBILITY } from './application/ports/seller-eligibility';
+import { SELL_UNIT_STATES } from './application/ports/sell-unit-states';
+import { OFFER_VARIANT_READER } from './application/ports/offer-variant.reader';
 import { SHELF_DOCUMENTS_READER } from './application/ports/shelf-documents.reader';
 import { SHELF_SOURCES } from './application/ports/shelf-sources';
 import { PRODUCT_DETAIL_SOURCES } from './application/ports/product-detail-sources';
@@ -81,6 +83,8 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['feed', OFFER_FEED],
   ['visibility', PUBLIC_VISIBILITY],
   ['sellers', SELLER_ELIGIBILITY],
+  ['sellUnits', SELL_UNIT_STATES],
+  ['variants', OFFER_VARIANT_READER],
   ['clock', CLOCK],
   ['shelves', SHELF_DOCUMENTS_READER],
   ['stores', STORE_RESOLVER],

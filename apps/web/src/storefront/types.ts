@@ -55,7 +55,16 @@ export interface ProductCard {
  * A product card of a home shelf. The price is absent when the shelf read does not carry it (the
  * best-sellers route gives ids and text only): the card then shows no price and no add button.
  */
-export type ShelfCard = Omit<ProductCard, 'price'> & { readonly price?: Money };
+export type ShelfCard = Omit<ProductCard, 'price'> & {
+  readonly price?: Money;
+  /**
+   * True when `price` is the lowest of several (a search result whose matching variants differ in
+   * price, variants V8): the card reads "From {price}".
+   */
+  readonly priceFrom?: boolean;
+  /** The variant the card opens (`/p/<id>?v=<variantId>`): the one a filter or a GTIN chose. */
+  readonly variantId?: string;
+};
 
 export interface SellerSummary {
   readonly id: string;
@@ -237,6 +246,11 @@ export interface ProductVariant {
   readonly label?: string;
   /** False when every seller is out of it: the picker greys it and it cannot be added to the cart. */
   readonly inStock: boolean;
+  /**
+   * The photos this Variant shows, as positions in the product's `photos` (main photo first),
+   * when the seller picked some; absent when it shows the product's photos.
+   */
+  readonly photoIndexes?: readonly number[];
   readonly offers: readonly [ProductOffer, ...ProductOffer[]];
 }
 
@@ -594,6 +608,11 @@ export interface DeliveryLocatorSource {
   readonly addresses: readonly Place[];
   /** Sample only: the suburbs the stubbed reverse lookup and the map labels use. */
   readonly suburbs: readonly Place[];
+  /**
+   * True when the address lookup is live (Mapbox through /api/deliver-to/*, delivery area from
+   * the API); false or absent: the stubbed lookup on the sample places above.
+   */
+  readonly live?: boolean;
 }
 
 /**

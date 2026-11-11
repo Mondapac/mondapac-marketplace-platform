@@ -22,7 +22,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { testDatabaseUrl } from './test-database';
+import { searchRatingsTestDatabaseUrl } from './test-database';
 
 // The three rated search statements (ADR-0030) on PostgreSQL in both Market fixtures: the stored
 // rating factor moves relevance by at most the Market weight, "Top rated" orders by the stored
@@ -83,6 +83,7 @@ describe.each(TEST_MARKETS)('rated search statements in market %s (database)', (
       searchText: null,
       facetCodes: [],
       numbers: {},
+      variants: [],
     };
   };
   const inUnit = async <T>(target: MarketContext, work: () => Promise<T>, readOnly = false) => {
@@ -123,11 +124,11 @@ describe.each(TEST_MARKETS)('rated search statements in market %s (database)', (
     );
 
   beforeAll(async () => {
-    db = createPersistence();
+    db = createPersistence({ databaseUrl: searchRatingsTestDatabaseUrl() });
     documents = new PrismaOfferDocumentRepository(db.service);
     ratings = new PrismaProductRatingRepository(db.service);
     reader = new RawOfferSearchReader(new PrismaRawReadPort(db.root).forModule('search'));
-    sql = new Client({ connectionString: testDatabaseUrl() });
+    sql = new Client({ connectionString: searchRatingsTestDatabaseUrl() });
     await sql.connect();
   });
   afterAll(async () => {

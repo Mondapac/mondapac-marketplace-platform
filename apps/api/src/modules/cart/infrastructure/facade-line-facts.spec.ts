@@ -48,7 +48,7 @@ describe.each([
     productId: id<'Product'>(4),
     status: 'published',
     listed: true,
-    sellUnits: [{ variantId: VARIANT, state: 'published' }],
+    sellUnits: [{ variantId: VARIANT, state: 'published', selling: true, variantSku: null }],
   };
   const price: EffectivePrice = {
     price: money(1999n, currency),
@@ -140,14 +140,39 @@ describe.each([
     ['a draft Offer', { offer: { ...published, status: 'draft' as const } }],
     [
       'a proposed sell unit',
-      { offer: { ...published, sellUnits: [{ variantId: VARIANT, state: 'proposed' as const }] } },
+      {
+        offer: {
+          ...published,
+          sellUnits: [
+            { variantId: VARIANT, state: 'proposed' as const, selling: true, variantSku: null },
+          ],
+        },
+      },
+    ],
+    [
+      'a sell unit the seller turned off',
+      {
+        offer: {
+          ...published,
+          sellUnits: [
+            { variantId: VARIANT, state: 'published' as const, selling: false, variantSku: null },
+          ],
+        },
+      },
     ],
     [
       'another variant',
       {
         offer: {
           ...published,
-          sellUnits: [{ variantId: id<'Variant'>(9), state: 'published' as const }],
+          sellUnits: [
+            {
+              variantId: id<'Variant'>(9),
+              state: 'published' as const,
+              selling: true,
+              variantSku: null,
+            },
+          ],
         },
       },
     ],

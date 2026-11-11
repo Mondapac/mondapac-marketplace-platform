@@ -99,7 +99,7 @@ export function Footer({ area }: { readonly area: string }) {
   const t = useTranslations('footer');
   const name = useTranslations('store')('name');
   const desktop = useDesktop();
-  const { deliverTo } = useStore();
+  const { deliverTo, deliverGuess } = useStore();
   const shown = deliverTo ? deliverToLabel(deliverTo) : area;
   const trust: [IconName | 'seal', string][] = [
     ['seal', 'certificates'],
@@ -137,7 +137,9 @@ export function Footer({ area }: { readonly area: string }) {
             </a>
             <Link href="/delivery-area">
               <Icon name="pin" />
-              {t('delivering', { area: shown })}
+              {!deliverTo && deliverGuess
+                ? t('delivering-near', { area: deliverToLabel(deliverGuess) })
+                : t('delivering', { area: shown })}
             </Link>
           </div>
           <div className="fsoc" role="group" aria-label={t('social')}>
