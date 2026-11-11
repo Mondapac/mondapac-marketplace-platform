@@ -1311,6 +1311,8 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', 'catalog/admin/feature-sets'],
     ['GET', `catalog/admin/feature-sets/${id}`],
     ['PUT', `catalog/admin/feature-sets/${id}`],
+    ['GET', `catalog/admin/categories/${id}/attribute-links`],
+    ['PUT', `catalog/admin/categories/${id}/attribute-links`],
   ])('relays %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1391,6 +1393,8 @@ describe('relay of the wallet and step-up routes', () => {
     ['PUT', 'catalog/admin/feature-sets/not-a-uuid'],
     ['PUT', 'catalog/admin/feature-sets'],
     ['DELETE', `catalog/admin/feature-sets/${id}`],
+    ['POST', `catalog/admin/categories/${id}/attribute-links`],
+    ['PUT', 'catalog/admin/categories/not-a-uuid/attribute-links'],
   ])('does not relay %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,

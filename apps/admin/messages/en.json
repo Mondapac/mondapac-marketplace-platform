@@ -5160,6 +5160,7 @@
       "tabs": "Category sections",
       "tab": {
         "details": "Details",
+        "attribute-links": "Attribute links",
         "products": "Products",
         "history": "History"
       },
@@ -5425,6 +5426,47 @@
         "category_target-not-found": "The category you chose is no longer available. Reload to choose another.",
         "category_parent-not-found": "The category you chose is no longer available. Reload to choose another.",
         "reason": "Add a reason of 10 to 500 characters."
+      }
+    },
+    "links": {
+      "loading": "Loading attribute links",
+      "load-error": "We could not load the attribute links. Try again.",
+      "gone": "This category no longer exists.",
+      "feature-set": "Feature set",
+      "no-feature-set": "No feature set. Products here use the core details only.",
+      "inherited": "Inherited",
+      "own": "Own",
+      "filters": "Filters",
+      "no-filters": "No filters. Buyers can't filter this category's page yet.",
+      "noindex": "Filtered pages are not indexed by search engines.",
+      "edit": "Edit attribute links",
+      "editor": "Attribute links editor",
+      "inherit": "Inherit the parent's feature set",
+      "use-own": "Use its own feature set",
+      "feature-set-select": "Feature set",
+      "choose": "Choose",
+      "impact": {
+        "title": "Products move at their next submit",
+        "body": "Live products stay on sale. When a seller next updates one, the form follows the new feature set, and values of other feature sets are dropped."
+      },
+      "inherit-filters": "Inherit filters from the parent",
+      "add-filter": "Add a filter",
+      "add": "Add filter",
+      "up": "Move {filter} up",
+      "down": "Move {filter} down",
+      "remove": "Remove {filter}",
+      "cancel": "Cancel",
+      "save": "Save changes",
+      "error": {
+        "need-feature-set": "Choose a feature set, or inherit the parent's.",
+        "stale": "Someone else changed these links. Cancel to load the latest version.",
+        "not-active": "This category is not active, so its links can't change.",
+        "too-many-filters": "There are too many filters. Remove some.",
+        "feature-set": "That feature set can't be used here. Choose an active one.",
+        "filter": "One of the filters can't be used. Remove it and try again.",
+        "invalid": "Check the feature set and filters.",
+        "unavailable": "We could not save right now. Try again.",
+        "unknown": "The links could not be saved."
       }
     }
   },
