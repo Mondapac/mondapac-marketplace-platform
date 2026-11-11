@@ -249,6 +249,40 @@ describe('Email sellers', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('shows a title without a count while the preview loads', async () => {
+    call.mockResolvedValueOnce(ok(page([item(1)])));
+    mountEditable();
+    await screen.findByText('Product 1');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P1' }));
+    call.mockReturnValueOnce(new Promise(() => undefined));
+    fireEvent.click(screen.getByRole('button', { name: 'Email sellers' }));
+    expect(await screen.findByRole('heading', { name: 'Email sellers?' })).toBeTruthy();
+  });
+
+  it('says a seller was emailed recently when no date is known', async () => {
+    call.mockResolvedValueOnce(ok(page([item(1)])));
+    mountEditable();
+    await screen.findByText('Product 1');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P1' }));
+    const [, skipped] = answer().sellers;
+    call.mockResolvedValueOnce(
+      ok(
+        answer({
+          sellers: skipped
+            ? [
+                {
+                  ...skipped,
+                  products: skipped.products.map((p) => ({ ...p, lastRequestedAt: null })),
+                },
+              ]
+            : [],
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Email sellers' }));
+    expect(await screen.findByText('Skipped: emailed recently')).toBeTruthy();
+  });
+
   it('cannot send when every seller was emailed in the last 7 days', async () => {
     call.mockResolvedValueOnce(ok(page([item(1)])));
     mountEditable();
