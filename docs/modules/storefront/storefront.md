@@ -262,9 +262,27 @@ left) is published per Market by an admin (W3) and chosen only in the signed-in 
 - A page in a non-default language must never be cached shared: once `publishedLocales()` lists
   more than English, the proxy sets `Cache-Control: private, no-store` on every document.
 
+## Slide images (file storage pilot F9, 6 Nov 2026)
+
+An editor (`storefront.slide.edit`) uploads a picture for a slide: `POST storefront/admin/slide-images`
+with `{ desktop, mobile? }`, each a base64 picture of at most 4 MB (large-body route like the category
+images; admin session and CSRF). The shared image pipeline (`platform/images`) checks the type by
+content, bounds the decode, applies orientation and drops all metadata. Desktop pictures (at least
+960x360) are written as `desktop` (1920x720) and `desktop-small` (960x360); an optional mobile picture
+(at least 400x500) as `mobile` (800x1000) and `mobile-small` (400x500), all `cover`. The answer is the
+new image id. A slide names it in `content.image.ref` (a UUID; a ready-made key is never a UUID). Create
+and draft change refuse a UUID that is not an image of this Market (`content.image.ref: not-found`).
+The public slider read gives such an image `desktopUrl`, `desktopSmallUrl` and, when a mobile picture
+exists, `mobileUrl` and `mobileSmallUrl`: site paths built by code. `GET storefront/slide-images/:imageId/:size`
+(anonymous, the server's JPEG, hash checked, `public, max-age=300`) serves them.
+
+Choices to confirm: the mobile picture is optional and tall (4:5); images are readable by their
+unguessable id even while a slide is a draft; library images are not deleted yet and a sweep of
+unreferenced slide image files is not written.
+
 ## Not in v1 (follow-ups)
 
 Read routes for product detail, seller page and list, and the `category`, `seller`, `tag` and
 `manual` shelf sources; brands (no brand in catalog yet, so no brand
-source or link), uploaded images (catalog media slice), CDN caching of published layouts,
+source or link), uploaded images for modules other than slides, CDN caching of published layouts,
 preview links, per-city layouts, scheduled publishing of a future draft.

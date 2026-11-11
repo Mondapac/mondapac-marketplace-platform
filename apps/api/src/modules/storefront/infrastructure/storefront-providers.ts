@@ -15,6 +15,13 @@ import { SLIDE_TARGETS, type SlideTargets } from '../application/ports/slide-tar
 import { FacadeLinkTargets } from './facade-link-targets';
 import { FacadeSlideTargets } from './facade-slide-targets';
 import { PrismaPageRepository } from './prisma-page.repository';
+import {
+  SLIDE_IMAGE_PROCESSOR,
+  type SlideImageProcessor,
+} from '../application/ports/slide-image-processor';
+import { SLIDE_IMAGE_STORE, type SlideImageStore } from '../application/ports/slide-image.store';
+import { PrismaSlideImageStore } from './prisma-slide-image.store';
+import { SharpSlideImageProcessor } from './sharp-slide-image-processor';
 import { PrismaSlideRepository } from './prisma-slide.repository';
 
 /** Binds the ports of the storefront. Only this layer may reach `PrismaService`. */
@@ -28,6 +35,15 @@ export const storefrontProviders: readonly FactoryProvider[] = [
     provide: SLIDE_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SlideRepository => new PrismaSlideRepository(prisma),
+  },
+  {
+    provide: SLIDE_IMAGE_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SlideImageStore => new PrismaSlideImageStore(prisma),
+  },
+  {
+    provide: SLIDE_IMAGE_PROCESSOR,
+    useFactory: (): SlideImageProcessor => new SharpSlideImageProcessor(),
   },
   {
     provide: SLIDE_TARGETS,

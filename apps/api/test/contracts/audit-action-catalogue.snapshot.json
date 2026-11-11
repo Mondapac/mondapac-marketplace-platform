@@ -2567,6 +2567,16 @@
     }
   },
   {
+    "action": "storefront.slide-image.upload",
+    "targetType": "storefront.slide-image",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "hasMobile": "boolean"
+    }
+  },
+  {
     "action": "storefront.slide.create",
     "targetType": "storefront.slide",
     "targetId": "id",
