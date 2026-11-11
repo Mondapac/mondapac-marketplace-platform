@@ -127,6 +127,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX product_revision_categories_market_id_revision_id_primary_key ON catalog.product_revision_categories USING btree (market_id, revision_id) WHERE is_primary',
   'catalog.product_revision_variants_market_id_gtin_idx':
     'CREATE INDEX product_revision_variants_market_id_gtin_idx ON catalog.product_revision_variants USING btree (market_id, gtin) WHERE (gtin IS NOT NULL)',
+  'catalog.missing_details_emails_pending_idx':
+    "CREATE INDEX missing_details_emails_pending_idx ON catalog.missing_details_emails USING btree (market_id, requested_at, seller_id, product_id) WHERE (state = 'pending'::text)",
   'catalog.product_variants_market_id_product_id_single_key':
     "CREATE UNIQUE INDEX product_variants_market_id_product_id_single_key ON catalog.product_variants USING btree (market_id, product_id) WHERE (variant_model = 'single'::text)",
   'catalog.products_market_id_owner_seller_id_created_at_idx':
