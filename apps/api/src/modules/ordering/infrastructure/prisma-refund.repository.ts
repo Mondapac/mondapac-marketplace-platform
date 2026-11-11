@@ -144,6 +144,15 @@ export class PrismaRefundRepository implements RefundRepository {
     return rows.map(toRefund);
   }
 
+  async findById(market: MarketContext, refundId: Id<'Refund'>): Promise<Refund | null> {
+    const tx = this.prisma.tx(market);
+    const row = await tx.orderingRefund.findFirst({
+      where: { marketId: market.marketId, id: refundId },
+      include: { lines: true },
+    });
+    return row === null ? null : toRefund(row);
+  }
+
   private async target(
     market: MarketContext,
     where: {

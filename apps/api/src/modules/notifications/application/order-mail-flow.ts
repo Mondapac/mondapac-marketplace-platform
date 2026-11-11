@@ -8,6 +8,7 @@ import type { CatalogFacade } from '../../catalog';
 import type { IdentityFacade } from '../../identity';
 import type { OrderingFacade, OrderNotice } from '../../ordering';
 import {
+  itemUnavailableRefundMail,
   orderConfirmationMail,
   orderShippedMail,
   sellerNewOrderMail,
@@ -36,7 +37,17 @@ export interface ShippedMailInput extends OrderMailInput {
   readonly sellerOrderId: string;
 }
 
-export type OrderMailSkipped = 'order.gone' | 'recipient.none' | 'link.unconfigured';
+/** One delivery of `ordering.refund-succeeded.v1`: ids only; the refund is read now. */
+export interface RefundMailInput extends OrderMailInput {
+  readonly refundId: string;
+}
+
+export type OrderMailSkipped =
+  | 'order.gone'
+  | 'recipient.none'
+  | 'link.unconfigured'
+  /** A refund that is not for unavailable units: an admin tells the customer in person. */
+  | 'refund.not-unavailable';
 
 export type OrderMailOutput =
   | { readonly code: 'order-mail.sent'; readonly sent: number }
@@ -281,6 +292,55 @@ export async function sendOrderShipped(
     locale: deps.policy.defaultLocale(context.market),
   });
   // A send failure throws: the outbox retries the delivery; the shipment is already recorded.
+  await deps.transport.send({
+    to,
+    from: deps.policy.mailSender(context.market),
+    subject: composed.subject,
+    text: composed.text,
+  });
+  return finish(deps, context, input, name, { sent: 1 });
+}
+
+/**
+ * The customer's "Part of your order is unavailable", once Stripe confirmed the refund of units a
+ * seller marked unavailable (order detail decision 6). Any other refund sends nothing here: an
+ * admin refund is explained to the customer by the admin.
+ */
+export async function sendItemUnavailableRefund(
+  deps: OrderMailDependencies,
+  context: CallContext,
+  input: RefundMailInput,
+): Promise<Result<OrderMailOutput, OrderMailFailure>> {
+  const name = 'notifications.item-unavailable-refund-mail';
+  const notice = await deps.ordering.refundNotice(context, {
+    orderId: input.orderId,
+    refundId: input.refundId,
+  });
+  if (!notice.ok) {
+    if (notice.error.code === 'access.denied') return err({ code: 'access.denied' });
+    if (notice.error.code === 'ordering.refund-not-found') {
+      return finish(deps, context, input, name, { skipped: 'order.gone' });
+    }
+    throw new Error(`${name}: the refund could not be read: ${notice.error.code}`);
+  }
+  if (notice.value.reason !== 'item-unavailable') {
+    return finish(deps, context, input, name, { skipped: 'refund.not-unavailable' });
+  }
+  const url = deps.policy.customerOrderUrl(context.market, notice.value.orderId);
+  if (url === null) return finish(deps, context, input, name, { skipped: 'link.unconfigured' });
+  const to = await recipientOf(deps, context, {
+    kind: 'customer',
+    accountId: notice.value.accountId,
+  });
+  if (to === null) return finish(deps, context, input, name, { skipped: 'recipient.none' });
+  const composed = itemUnavailableRefundMail({
+    orderId: notice.value.orderId,
+    units: notice.value.units,
+    amount: notice.value.amount,
+    orderUrl: url,
+    locale: deps.policy.defaultLocale(context.market),
+  });
+  // A send failure throws: the outbox retries the delivery; the refund is already made.
   await deps.transport.send({
     to,
     from: deps.policy.mailSender(context.market),

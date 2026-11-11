@@ -71,6 +71,28 @@ export interface ShipmentNotice {
 export type ShipmentNoticeFailure = OrderNoticeFailure;
 
 /**
+ * What the customer's refund emails need from a refund Stripe confirmed (`ordering.refund-
+ * succeeded.v1`): the customer's account id (for the address lookup in `identity` only), the
+ * reason code, the amount given back and how many units it covered. No name, address or Stripe id.
+ */
+export interface RefundNotice {
+  readonly orderId: string;
+  readonly accountId: Id<'Account'>;
+  readonly refundId: Id<'Refund'>;
+  /** `item-unavailable` when the seller marked the units unavailable (decision 6). */
+  readonly reason: string;
+  readonly requestedBy: 'admin' | 'seller';
+  readonly amount: Money;
+  readonly units: number;
+}
+
+/** An unknown, foreign-Market or not succeeded refund is `ordering.refund-not-found`. */
+export type RefundNoticeFailure =
+  | AccessDenied
+  | { readonly code: 'validation.failed' }
+  | { readonly code: 'ordering.refund-not-found' };
+
+/**
  * The short customer name of one of the seller's own paid seller orders (in-app notices). PERSONAL
  * DATA for the seller member who asked: never logged, stored on a notice, cached or put in an
  * event; rendered as escaped text only.
@@ -175,6 +197,15 @@ export interface OrderingFacade {
     context: CallContext,
     request: { readonly orderId: string; readonly sellerOrderId: string },
   ): Promise<Result<ShipmentNotice, ShipmentNoticeFailure>>;
+
+  /**
+   * The succeeded refund behind an `ordering.refund-succeeded.v1` event, for the customer's refund
+   * email. Rule `system`.
+   */
+  refundNotice(
+    context: CallContext,
+    request: { readonly orderId: string; readonly refundId: string },
+  ): Promise<Result<RefundNotice, RefundNoticeFailure>>;
 
   /**
    * The PaymentIntent the order itself holds, for the dispute consumer of `commission-payouts`.
