@@ -385,6 +385,23 @@ describe('planValues', () => {
     expect(plan.writes).toEqual([]);
   });
 
+  it('refuses a position that differs from the stored one, and ignores it on a new value', async () => {
+    const plan = await planOf(
+      'values',
+      [
+        header,
+        'pack-size,g500,yes,3,500 g,',
+        'pack-size,kg1,yes,x,1 kg,',
+        'pack-size,g250,yes,9,250 g,',
+      ].join('\n'),
+    );
+    expect(plan.rows.map((row) => [row.action, row.issues])).toEqual([
+      ['error', [{ column: 'position', code: 'locked' }]],
+      ['error', [{ column: 'position', code: 'format' }]],
+      ['create', []],
+    ]);
+  });
+
   it('refuses an unknown or non-select attribute, an archived one, a bad or repeated value code, and a blank default label', async () => {
     const plan = await planOf(
       'values',

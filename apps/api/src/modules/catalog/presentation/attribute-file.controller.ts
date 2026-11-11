@@ -79,6 +79,9 @@ export const ATTRIBUTE_FILE_STATUS: Readonly<Record<string, number>> = Object.fr
   'columns.missing': 422,
   'columns.duplicate': 422,
   'import.file-changed': 409,
+  'import.plan-changed': 409,
+  'import.too-many-attributes': 422,
+  'import.too-many-writes': 422,
   'import.errors-not-skipped': 409,
   'import.nothing-to-import': 409,
   'request.throttled': 429,
@@ -244,7 +247,7 @@ export class AttributeFileController {
   @ApiOperation({
     summary: 'Run a checked attributes or values file',
     description:
-      `${IMPORT_NEEDS} Send the same file with the fileSha256 the check answered. Every row goes ` +
+      `${IMPORT_NEEDS} Send the same file with the fileSha256 and planSha256 the check answered. Every row goes ` +
       'through the attribute editor (claim-word check of every language, code uniqueness, version ' +
       'check, domain rules), each with its own audit row; a refused attribute fails and the run ' +
       'goes on. A file with errors needs skipErrors: true. The answer counts what happened and ' +
@@ -259,7 +262,8 @@ export class AttributeFileController {
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description: 'import.file-changed, import.errors-not-skipped or import.nothing-to-import',
+    description:
+      'import.file-changed, import.plan-changed, import.errors-not-skipped or import.nothing-to-import',
   })
   @ApiPayloadTooLargeResponse({
     type: ApiErrorBody,
@@ -284,7 +288,7 @@ export class AttributeFileController {
     const input = closedBody(
       request,
       jsonOf(body),
-      ['data', 'fileSha256'],
+      ['data', 'fileSha256', 'planSha256'],
       ['fileName', 'skipErrors'],
     );
     if (input instanceof HttpException) throw input;

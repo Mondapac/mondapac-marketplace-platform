@@ -26,6 +26,12 @@ export class AttributeImportRunRequest extends AttributeImportCheckRequest {
   })
   fileSha256!: string;
 
+  @ApiProperty({
+    description:
+      'The `planSha256` the check answered. The run refuses if the attributes changed since.',
+  })
+  planSha256!: string;
+
   @ApiPropertyOptional({
     description: 'true runs the file although some rows are errors; they are skipped.',
   })
@@ -65,6 +71,8 @@ export class AttributeImportCheckBody {
   @ApiProperty({ type: ImportCountsDto }) counts!: ImportCountsDto;
   @ApiProperty({ description: 'Hex SHA-256 of the file; send it back to run exactly this file.' })
   fileSha256!: string;
+  @ApiProperty({ description: 'Hex SHA-256 of what the file would write; send it back to run.' })
+  planSha256!: string;
   @ApiProperty({ type: [String], description: 'Headers of the file that were not read.' })
   ignoredColumns!: string[];
   @ApiProperty() canRun!: boolean;

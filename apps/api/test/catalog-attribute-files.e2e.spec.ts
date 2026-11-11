@@ -309,7 +309,7 @@ describe('attribute export and import over HTTP (integration)', () => {
           .set(reading)
           .send({
             data: b64(`${header}\ncut,text,Cut`),
-            ...(route === RUN ? { fileSha256: 'a'.repeat(64) } : {}),
+            ...(route === RUN ? { fileSha256: 'a'.repeat(64), planSha256: 'b'.repeat(64) } : {}),
           })
           .expect(403);
         expect(refused.body).toMatchObject({ code: 'access.denied' });
@@ -334,18 +334,25 @@ describe('attribute export and import over HTTP (integration)', () => {
         ],
       });
       expect(store.rows.size).toBe(0);
-      const fileSha256 = (checked.body as { fileSha256: string }).fileSha256;
+      const tokens = checked.body as { fileSha256: string; planSha256: string };
+      const fileSha256 = tokens.fileSha256;
+      const planSha256 = tokens.planSha256;
 
       const notSkipped = await http()
         .post(RUN)
         .set(importer)
-        .send({ data, fileSha256 })
+        .send({ data, fileSha256, planSha256 })
         .expect(409);
       expect(notSkipped.body).toMatchObject({ code: 'import.errors-not-skipped' });
       const changed = await http()
         .post(RUN)
         .set(importer)
-        .send({ data: b64(`${header}\ncut,text,Cut again`), fileSha256, skipErrors: true })
+        .send({
+          data: b64(`${header}\ncut,text,Cut again`),
+          fileSha256,
+          planSha256,
+          skipErrors: true,
+        })
         .expect(409);
       expect(changed.body).toMatchObject({ code: 'import.file-changed' });
       expect(store.rows.size).toBe(0);
@@ -353,7 +360,7 @@ describe('attribute export and import over HTTP (integration)', () => {
       const ran = await http()
         .post(RUN)
         .set(importer)
-        .send({ data, fileSha256, skipErrors: true })
+        .send({ data, fileSha256, planSha256, skipErrors: true })
         .expect(200);
       expect(ran.body).toMatchObject({
         kind: 'attributes',
@@ -378,7 +385,11 @@ describe('attribute export and import over HTTP (integration)', () => {
       const ran = await http()
         .post(RUN)
         .set(importer)
-        .send({ data, fileSha256: (checked.body as { fileSha256: string }).fileSha256 })
+        .send({
+          data,
+          fileSha256: (checked.body as { fileSha256: string }).fileSha256,
+          planSha256: (checked.body as { planSha256: string }).planSha256,
+        })
         .expect(200);
       expect(ran.body).toMatchObject({
         failed: 1,

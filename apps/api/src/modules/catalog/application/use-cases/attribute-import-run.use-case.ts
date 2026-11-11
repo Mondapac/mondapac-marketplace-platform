@@ -22,6 +22,8 @@ export interface AttributeImportRunInput {
   readonly fileName?: unknown;
   /** The `fileSha256` the check answered: the run applies only that file. */
   readonly fileSha256?: unknown;
+  /** The `planSha256` the check answered: the run applies only the revisions the check showed. */
+  readonly planSha256?: unknown;
   /** True to run although some rows are errors; they are skipped. */
   readonly skipErrors?: unknown;
 }
@@ -46,6 +48,7 @@ export interface AttributeImportRunOutput {
 export type AttributeImportRunFailure =
   | PrepareFailure
   | { readonly code: 'import.file-changed' }
+  | { readonly code: 'import.plan-changed' }
   | { readonly code: 'import.errors-not-skipped' }
   | { readonly code: 'import.nothing-to-import' };
 
@@ -128,6 +131,9 @@ export class AttributeImportRun extends UseCase<
     if (typeof input.fileSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(input.fileSha256)) {
       return fail('fileSha256', 'format');
     }
+    if (typeof input.planSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(input.planSha256)) {
+      return fail('planSha256', 'format');
+    }
     if (input.skipErrors !== undefined && typeof input.skipErrors !== 'boolean') {
       return fail('skipErrors', 'type');
     }
@@ -135,8 +141,10 @@ export class AttributeImportRun extends UseCase<
     const { deps } = this;
     const prepared = await prepareImport(deps, context, input);
     if (!prepared.ok) return prepared;
-    const { kind, plan, fileSha256 } = prepared.value;
+    const { kind, plan, fileSha256, planSha256 } = prepared.value;
     if (fileSha256 !== input.fileSha256) return err({ code: 'import.file-changed' });
+    // Someone edited an attribute (or created one) since the check: the diff shown is not this one.
+    if (planSha256 !== input.planSha256) return err({ code: 'import.plan-changed' });
     const errors = plan.rows.filter((row) => row.action === 'error').length;
     if (errors > 0 && !skipErrors) return err({ code: 'import.errors-not-skipped' });
     if (plan.writes.length === 0) return err({ code: 'import.nothing-to-import' });

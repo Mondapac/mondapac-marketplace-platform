@@ -11,6 +11,7 @@ import {
   type ReserveDependencies,
   type ReserveFailure,
 } from '../platform-import/reserve';
+import { isActingAsSession } from '../acting-as';
 import type { AttributeAdminReader } from '../ports/attribute-admin.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ImportFileParsers } from '../ports/import-file-parsers';
@@ -36,6 +37,8 @@ export type PrepareFailure =
   | ReserveFailure
   | FileRefusal
   | ColumnsRefusal
+  | { readonly code: 'import.too-many-attributes' }
+  | { readonly code: 'import.too-many-writes'; readonly max: number }
   | {
       readonly code: 'validation.failed';
       readonly fields: readonly { readonly path: string; readonly code: string }[];
@@ -45,10 +48,14 @@ export interface Prepared {
   readonly kind: AttributeFileKind;
   /** Hex SHA-256 of the uploaded bytes. */
   readonly fileSha256: string;
+  /** Hex SHA-256 of what the plan writes (the attributes and their versions): the run applies only that. */
+  readonly planSha256: string;
   readonly plan: ImportPlan;
   readonly ignoredColumns: readonly string[];
 }
 
+/** Attributes (or attribute revisions) one file may write; a longer file is split. */
+export const IMPORT_MAX_WRITES = 500;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 /** The base64 text of a file at the size limit, plus its padding. */
 const MAX_BASE64_LENGTH = Math.ceil((IMPORT_LIMITS.fileBytes * 4) / 3) + 4;
@@ -62,6 +69,7 @@ export async function prepareImport(
   if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
     return err({ code: 'access.denied' });
   }
+  if (isActingAsSession(actor)) return err({ code: 'access.denied' });
   const fail = (path: string, code: string): Result<never, PrepareFailure> =>
     err({ code: 'validation.failed', fields: [{ path, code }] });
   if (typeof input.data !== 'string' || input.data.length === 0) return fail('data', 'required');
@@ -112,8 +120,28 @@ export async function prepareImport(
     columns.value.kind === 'attributes'
       ? planAttributes(table.value.rows, columns.value, env)
       : planValues(table.value.rows, columns.value, env);
+  if (plan.writes.length > IMPORT_MAX_WRITES) {
+    return err({ code: 'import.too-many-writes', max: IMPORT_MAX_WRITES });
+  }
+  // The Market's attributes are read up to ATTRIBUTE_LOAD_MAX; a file may not push it past that.
+  const creates = plan.writes.filter((write) => write.kind === 'create').length;
+  if (definitions.length + creates >= ATTRIBUTE_LOAD_MAX) {
+    return err({ code: 'import.too-many-attributes' });
+  }
+  const planSha256 = createHash('sha256')
+    .update(
+      JSON.stringify(
+        plan.writes.map((write) =>
+          write.kind === 'edit'
+            ? ['edit', write.code, write.attributeId, write.version]
+            : ['create', write.code],
+        ),
+      ),
+    )
+    .digest('hex');
   return ok({
     kind: columns.value.kind,
+    planSha256,
     fileSha256: createHash('sha256').update(bytes).digest('hex'),
     plan,
     ignoredColumns: columns.value.ignored,

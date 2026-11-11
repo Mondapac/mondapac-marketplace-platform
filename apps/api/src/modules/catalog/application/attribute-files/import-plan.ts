@@ -506,6 +506,13 @@ export function planValues(
     }
     const existingOption =
       record === undefined ? undefined : record.revision.options.find((o) => o.code === valueCode);
+    const positionCell = read.head('position');
+    if (existingOption !== undefined && filled(positionCell)) {
+      // Reordering is the editor's job: a position that differs from the stored one is refused,
+      // so an old export never quietly moves a value.
+      if (!/^\d{1,5}$/.test(positionCell.trim())) issue('position', 'format');
+      else if (Number(positionCell.trim()) !== existingOption.position) issue('position', 'locked');
+    }
     if (existingOption === undefined && issues.length === 0) {
       if (labels.get(defaultLocale) === undefined || labels.get(defaultLocale) === '') {
         if (!issues.some((i) => i.column === `label[${defaultLocale}]`)) {

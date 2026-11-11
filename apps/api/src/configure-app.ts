@@ -203,8 +203,20 @@ const ATTRIBUTE_IMPORT_UPLOAD_PATH =
 export function isAttributeImportUploadRequest(
   method: string | undefined,
   url: string | undefined,
+  headers: IncomingHttpHeaders = {},
 ): boolean {
-  return method === 'POST' && url !== undefined && ATTRIBUTE_IMPORT_UPLOAD_PATH.test(url);
+  if (method !== 'POST' || url === undefined || !ATTRIBUTE_IMPORT_UPLOAD_PATH.test(url)) {
+    return false;
+  }
+  // A cheap pre-filter (an admin session cookie and the CSRF header) so an anonymous request does
+  // not make the server buffer a large body; the actor guard still checks both itself.
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
 }
 // The seller import's upload (catalog design 14c) takes the same body as the admin's, and its photo
 // step (one base64 photo of at most 4 MiB per call) the photo body; both controllers parse the JSON
@@ -362,7 +374,7 @@ export function configureApp(app: NestExpressApplication): void {
     inflate: false,
   });
   app.useBodyParser('raw', {
-    type: (request) => isAttributeImportUploadRequest(request.method, request.url),
+    type: (request) => isAttributeImportUploadRequest(request.method, request.url, request.headers),
     limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
     inflate: false,
   });

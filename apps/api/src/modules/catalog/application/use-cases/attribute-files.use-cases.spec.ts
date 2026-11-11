@@ -28,6 +28,8 @@ import {
 import type { AttributeDefinition } from '../../domain/attribute-definition';
 import { csvParser } from '../../domain/platform-import/import-file';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
+import { ATTRIBUTE_LOAD_MAX } from '../attributes/attribute-admin-views';
+import { prepareImport } from '../attribute-files/import-prepare';
 import type { AttributeDefinitionRecord } from '../ports/attribute-admin.reader';
 import type { RateReservation } from '../../domain/rate-limits';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
@@ -168,6 +170,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute files in market %s', (code) => {
       clock,
     };
     return {
+      prepare,
       create,
       edit,
       exporter: new AttributeFilesExport(gate, {
@@ -242,6 +245,14 @@ describe.each(['AU', 'ZZ'] as const)('attribute files in market %s', (code) => {
     return text(answer.value.chunks);
   };
   const b64 = (csv: string): string => Buffer.from(csv, 'utf8').toString('base64');
+
+  const tokens = (checked: {
+    readonly ok: boolean;
+    readonly value?: unknown;
+  }): { fileSha256: string; planSha256: string } => {
+    const view = checked.ok ? (checked.value as { fileSha256: string; planSha256: string }) : null;
+    return { fileSha256: view?.fileSha256 ?? '', planSha256: view?.planSha256 ?? '' };
+  };
 
   describe('export', () => {
     it('writes a column per language and the product counts, and the file imports back unchanged', async () => {
@@ -415,15 +426,15 @@ describe.each(['AU', 'ZZ'] as const)('attribute files in market %s', (code) => {
       const csv = [header, 'cut,text,Cut cuts', 'weave,text,Weave', 'cut,text,again'].join('\n');
       const checked = await build().check.execute(context(), { data: b64(csv) });
       expect(checked.ok && checked.value.counts.errors).toBe(1);
-      const sha = checked.ok ? checked.value.fileSha256 : '';
+      const sha = tokens(checked);
 
-      const refused = await build().run.execute(context(), { data: b64(csv), fileSha256: sha });
+      const refused = await build().run.execute(context(), { data: b64(csv), ...sha });
       expect(refused).toEqual(err({ code: 'import.errors-not-skipped' }));
       expect(store.rows.size).toBe(2);
 
       const answer = await build().run.execute(context(), {
         data: b64(csv),
-        fileSha256: sha,
+        ...sha,
         skipErrors: true,
       });
       expect(answer).toEqual(
@@ -481,17 +492,31 @@ describe.each(['AU', 'ZZ'] as const)('attribute files in market %s', (code) => {
       await seed();
       const csv = [header, 'weave,text,Weave'].join('\n');
       const { run } = build();
-      expect(await run.execute(context(), { data: b64(csv), fileSha256: 'a'.repeat(64) })).toEqual(
-        err({ code: 'import.file-changed' }),
-      );
-      expect(await run.execute(context(), { data: b64(csv), fileSha256: 'nope' })).toEqual(
+      expect(
+        await run.execute(context(), {
+          data: b64(csv),
+          fileSha256: 'a'.repeat(64),
+          planSha256: 'b'.repeat(64),
+        }),
+      ).toEqual(err({ code: 'import.file-changed' }));
+      expect(
+        await run.execute(context(), {
+          data: b64(csv),
+          fileSha256: 'nope',
+          planSha256: 'b'.repeat(64),
+        }),
+      ).toEqual(
         err({ code: 'validation.failed', fields: [{ path: 'fileSha256', code: 'format' }] }),
       );
       const sha = await build().check.execute(context(), { data: b64(csv) });
-      const fileSha256 = sha.ok ? sha.value.fileSha256 : '';
-      expect((await run.execute(context(), { data: b64(csv), fileSha256 })).ok).toBe(true);
+      const fileSha256 = tokens(sha);
+      expect((await run.execute(context(), { data: b64(csv), ...fileSha256 })).ok).toBe(true);
       sync();
-      const again = await build().run.execute(context(), { data: b64(csv), fileSha256 });
+      // The attribute moved on since the check: its token no longer fits.
+      const replay = await build().run.execute(context(), { data: b64(csv), ...fileSha256 });
+      expect(replay).toEqual(err({ code: 'import.plan-changed' }));
+      const fresh = tokens(await build().check.execute(context(), { data: b64(csv) }));
+      const again = await build().run.execute(context(), { data: b64(csv), ...fresh });
       expect(again).toEqual(err({ code: 'import.nothing-to-import' }));
     });
 
@@ -501,7 +526,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute files in market %s', (code) => {
       const checked = await build().check.execute(context(), { data: b64(csv) });
       const answer = await build().run.execute(context(), {
         data: b64(csv),
-        fileSha256: checked.ok ? checked.value.fileSha256 : '',
+        ...tokens(checked),
       });
       expect(answer).toEqual(ok(expect.objectContaining({ created: 1, failed: 1 })));
       expect(answer.ok && answer.value.results).toEqual([
@@ -516,13 +541,52 @@ describe.each(['AU', 'ZZ'] as const)('attribute files in market %s', (code) => {
       expect(JSON.stringify(answer)).not.toContain('Halal sweet');
     });
 
+    it('refuses an acting-as session at the shared preparation, not only at the gate', async () => {
+      await seed();
+      const base = context();
+      const actingAs: CallContext = {
+        ...base,
+        actor: { ...base.actor, actingAs: { adminAccountId: ADMIN } } as never,
+      };
+      const refused = await prepareImport(build().prepare, actingAs, {
+        data: b64(`${header}\ncut,text,Cut`),
+      });
+      expect(refused).toEqual(err({ code: 'access.denied' }));
+    });
+
+    it('refuses a file of more than 500 writes', async () => {
+      await seed();
+      const rows = Array.from({ length: 501 }, (_, i) => `new-${i},text,New ${i}`);
+      const checked = await build().check.execute(context(), {
+        data: b64([header, ...rows].join('\n')),
+      });
+      expect(checked).toEqual(err({ code: 'import.too-many-writes', max: 500 }));
+    });
+
+    it('refuses a file that would take the Market to the most attributes the admin can load', async () => {
+      await seed();
+      sync();
+      const [first] = [...store.rows.values()];
+      for (let i = 0; i < ATTRIBUTE_LOAD_MAX - 3; i += 1) {
+        reader.seedDefinition(market.marketId, {
+          ...recordOf(first!),
+          id: `filler-${i}` as never,
+          code: `filler-${i}`,
+        });
+      }
+      const checked = await build().check.execute(context(), {
+        data: b64(`${header}\nnew-a,text,New a\nnew-b,text,New b`),
+      });
+      expect(checked).toEqual(err({ code: 'import.too-many-attributes' }));
+    });
+
     it('fails a stale attribute and a code taken meanwhile, and never runs in an acting-as session', async () => {
       await seed();
       const csv = [header, 'cut,text,Cut cuts'].join('\n');
       const checked = await build().check.execute(context(), { data: b64(csv) });
-      const fileSha256 = checked.ok ? checked.value.fileSha256 : '';
+      const fileSha256 = tokens(checked);
       store.raceNext = true;
-      const stale = await build().run.execute(context(), { data: b64(csv), fileSha256 });
+      const stale = await build().run.execute(context(), { data: b64(csv), ...fileSha256 });
       expect(stale.ok && stale.value.results).toEqual([
         { rowNumber: 2, key: 'cut', result: 'failed', code: 'attribute.stale' },
       ]);
@@ -532,7 +596,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute files in market %s', (code) => {
         ...base,
         actor: { ...base.actor, actingAs: { adminAccountId: ADMIN } } as never,
       };
-      const refused = await build().run.execute(actingAs, { data: b64(csv), fileSha256 });
+      const refused = await build().run.execute(actingAs, { data: b64(csv), ...fileSha256 });
       expect(refused).toEqual(err({ code: 'access.denied' }));
     });
 
@@ -555,7 +619,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute files in market %s', (code) => {
       });
       const answer = await build().run.execute(context(), {
         data: b64(csv),
-        fileSha256: checked.ok ? checked.value.fileSha256 : '',
+        ...tokens(checked),
       });
       expect(answer).toEqual(ok(expect.objectContaining({ failed: 3, created: 0 })));
       expect(answer.ok && answer.value.results).toEqual([
@@ -569,7 +633,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute files in market %s', (code) => {
       const checkedClean = await build().check.execute(context(), { data: b64(clean) });
       const ran = await build().run.execute(context(), {
         data: b64(clean),
-        fileSha256: checkedClean.ok ? checkedClean.value.fileSha256 : '',
+        ...tokens(checkedClean),
       });
       expect(ran).toEqual(
         ok(expect.objectContaining({ kind: 'values', created: 1, updated: 1, failed: 0 })),

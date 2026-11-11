@@ -10,6 +10,7 @@ export interface ImportCheckView {
   readonly kind: AttributeFileKind;
   /** Hex SHA-256 of the file; the run names it, so it applies exactly what was checked. */
   readonly fileSha256: string;
+  readonly planSha256: string;
   /** Headers of the file that were not read. */
   readonly ignoredColumns: readonly string[];
   /** True when at least one row would write something. */
@@ -29,6 +30,7 @@ export function checkViewOf(prepared: Prepared): ImportCheckView {
     counts: countPlan(rows),
     kind: prepared.kind,
     fileSha256: prepared.fileSha256,
+    planSha256: prepared.planSha256,
     ignoredColumns: prepared.ignoredColumns,
     canRun: writes.length > 0,
     rows: shown.slice(0, VIEW_ROWS),
