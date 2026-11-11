@@ -864,6 +864,14 @@
     }
   },
   {
+    "type": "ordering.seller-refund-limit-reached.v1",
+    "aggregateType": "seller-refund-guard",
+    "fields": {
+      "sellerId": "id",
+      "limit": "enumOf(count|amount|unset)"
+    }
+  },
+  {
     "type": "payments.dispute-changed.v1",
     "aggregateType": "dispute",
     "fields": {
