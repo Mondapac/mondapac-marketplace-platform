@@ -145,6 +145,14 @@ class MemoryDocuments implements OfferDocumentRepository {
         .map(([, row]) => row.document.offerId),
     );
   }
+  offerIdsInCategories(market: MarketContext, categoryIds: readonly Id<'Category'>[]) {
+    return Promise.resolve(
+      [...this.rows.entries()]
+        .filter(([key]) => key.startsWith(`${market.marketId}:`))
+        .filter(([, row]) => row.document.categoryIds.some((c) => categoryIds.includes(c)))
+        .map(([, row]) => row.document.offerId),
+    );
+  }
   offerIdsOfSeller(market: MarketContext, sellerId: Id<'Seller'>) {
     return Promise.resolve(
       [...this.rows.entries()]
@@ -230,6 +238,9 @@ class StubReader implements OfferSearchReader {
 
 /** The scope rows the stub index answers (reset by each test's setup). */
 const scopeRowsOf: { rows: readonly ScopeRow[] } = { rows: [] };
+
+/** The public stores the stub directory answers (reset by each test's setup). */
+const storeNames = new Map<Id<'Seller'>, { slug: string; name: string }>();
 
 const treeOf: { nodes: readonly NamedCategory[] | null } = { nodes: [] };
 
@@ -423,11 +434,13 @@ describe.each([
     sellUnits = new StubSellUnits();
     scopeRowsOf.rows = [];
     treeOf.nodes = [];
+    storeNames.clear();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       documents,
       index: indexOf(reader),
       categoryTree: { tree: () => Promise.resolve(treeOf.nodes) },
+      storeDirectory: { publicStores: () => Promise.resolve(new Map(storeNames.entries())) },
       filterSource: { filters: () => Promise.resolve([]) },
       policy: new ConfigSearchPolicy(markets),
       feed,
@@ -481,6 +494,55 @@ describe.each([
         },
       ]);
       expect(documents.markets).toEqual(new Set([code]));
+    });
+
+    describe('names in the searchable text (search 1a)', () => {
+      const parent = '00000000-0000-7000-8000-0000000000c1' as Id<'Category'>;
+      const run = () =>
+        new SyncOfferDocuments(gate, deps).execute(system, { offerIds: [offer(1)] });
+
+      it("adds the seller's public store name and the category names of every level", async () => {
+        treeOf.nodes = [
+          { id: parent, parentId: null, name: 'Meat' },
+          { id: CATEGORY, parentId: parent, name: 'Sausages' },
+        ];
+        storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+        feed.facts_.set(offer(1), sellable({ categoryIds: [CATEGORY] }));
+
+        await run();
+
+        const [row] = [...documents.rows.values()];
+        expect(row?.document.searchText).toBe("Ali's Butcher Sausages Meat");
+      });
+
+      it('re-syncs the Offers that name a renamed category, and only those', async () => {
+        treeOf.nodes = [{ id: CATEGORY, parentId: null, name: 'Sausages' }];
+        feed.facts_.set(offer(1), sellable({ categoryIds: [CATEGORY] }));
+        await run();
+        treeOf.nodes = [{ id: CATEGORY, parentId: null, name: 'Smallgoods' }];
+
+        const result = await new SyncOfferDocuments(gate, deps).execute(system, {
+          categoryId: CATEGORY,
+        });
+
+        expect(result).toEqual({ ok: true, value: { upserted: 1, deleted: 0 } });
+        const [row] = [...documents.rows.values()];
+        expect(row?.document.searchText).toBe('Smallgoods');
+      });
+
+      it('indexes without a store name for a seller that has no public store', async () => {
+        feed.facts_.set(offer(1), sellable());
+        await run();
+        const [row] = [...documents.rows.values()];
+        expect(row?.document.searchText).toBeNull();
+      });
+
+      it('throws, so the delivery is retried, when the category tree cannot be read', async () => {
+        treeOf.nodes = null;
+        feed.facts_.set(offer(1), sellable());
+        await expect(run()).rejects.toThrow('category tree unavailable');
+        expect(documents.rows.size).toBe(0);
+      });
     });
 
     it('deletes the document of an Offer that is unlisted, deleted, unknown or has no text', async () => {

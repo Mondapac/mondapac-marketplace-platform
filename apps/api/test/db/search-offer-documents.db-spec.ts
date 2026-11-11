@@ -410,6 +410,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
         new RawOfferScopeReader(new PrismaRawReadPort(db.root).forModule('search')),
       ),
       categoryTree: { tree: () => Promise.resolve([]) },
+      storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
       filterSource: { filters: () => Promise.resolve([]) },
       policy,
       feed: { facts: () => Promise.resolve(null), publishedIds: () => Promise.resolve(null) },

@@ -18,6 +18,7 @@ import { OFFER_DOCUMENT_REPOSITORY } from './application/ports/offer-document.re
 import { OFFER_FEED } from './application/ports/offer-feed';
 import { OFFER_SEARCH_INDEX } from './application/ports/offer-search-index';
 import { CATEGORY_TREE_SOURCE } from './application/ports/category-tree';
+import { STORE_DIRECTORY } from './application/ports/store-directory';
 import { OFFER_SEARCH_READER } from './application/ports/offer-search.reader';
 import { SEARCH_FILTER_SOURCE } from './application/ports/search-filters';
 import { PRODUCT_IMAGES } from './application/ports/product-images';
@@ -68,6 +69,7 @@ import { SearchController } from './presentation/search.controller';
 import { BoughtTogetherController } from './presentation/bought-together.controller';
 import { ShelfController } from './presentation/shelf.controller';
 import { catalogIndexSubscriptions } from './presentation/subscribers/catalog-index.subscriptions';
+import { namesIndexSubscriptions } from './presentation/subscribers/names-index.subscriptions';
 import { sellerAccessIndexSubscriptions } from './presentation/subscribers/seller-access-index.subscriptions';
 import { SEARCH_ASSISTANT_FACADE } from './contracts';
 import { SearchAssistantFacadeImplementation } from './presentation/search-assistant.facade';
@@ -92,6 +94,7 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['images', PRODUCT_IMAGES],
   ['categories', CATEGORY_SUBTREE_SOURCE],
   ['categoryTree', CATEGORY_TREE_SOURCE],
+  ['storeDirectory', STORE_DIRECTORY],
 ];
 
 /** Every search use case shares one dependency object, built from the same ports. */
@@ -287,6 +290,7 @@ function productDetailProvider<U>(
     registerSubscriptionsFrom('search', [SyncOfferDocuments], (sync: SyncOfferDocuments) => [
       ...catalogIndexSubscriptions(sync),
       ...sellerAccessIndexSubscriptions(sync),
+      ...namesIndexSubscriptions(sync),
     ]),
     registerJobsFrom(
       'search',

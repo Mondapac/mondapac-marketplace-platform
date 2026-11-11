@@ -6,6 +6,7 @@ import type { OfferDocumentRepository } from './ports/offer-document.repository'
 import type { OfferFeed } from './ports/offer-feed';
 import type { OfferSearchIndex } from './ports/offer-search-index';
 import type { CategoryTreeSource } from './ports/category-tree';
+import type { StoreDirectory } from './ports/store-directory';
 import type { SearchFilterSource } from './ports/search-filters';
 import type { ProductImages } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
@@ -43,4 +44,6 @@ export interface SearchDependencies {
   readonly categories: CategorySubtreeSource;
   /** The live category tree with public names, for "In categories" counts. */
   readonly categoryTree: CategoryTreeSource;
+  /** The public stores (address and name) among sellers, for names in the index (search 1a). */
+  readonly storeDirectory: StoreDirectory;
 }

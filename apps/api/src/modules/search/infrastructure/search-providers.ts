@@ -102,6 +102,8 @@ import { CATEGORY_TREE_SOURCE, type CategoryTreeSource } from '../application/po
 import { RawOfferScopeReader } from './raw-offer-scope.reader';
 import { PostgresOfferSearchIndex } from './postgres-offer-search-index';
 import { FacadeCategoryTree } from './facade-category-tree';
+import { FacadeStoreDirectory } from './facade-store-directory';
+import { STORE_DIRECTORY, type StoreDirectory } from '../application/ports/store-directory';
 import { RawOfferFacetReader } from './raw-offer-facet.reader';
 import { RawOfferSearchReader } from './raw-offer-search.reader';
 import {
@@ -218,6 +220,11 @@ export const searchProviders: readonly FactoryProvider[] = [
         new RawOfferFacetReader(rawReads),
         new RawOfferScopeReader(rawReads),
       ),
+  },
+  {
+    provide: STORE_DIRECTORY,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): StoreDirectory => new FacadeStoreDirectory(sellers),
   },
   {
     provide: CATEGORY_TREE_SOURCE,

@@ -10,6 +10,8 @@ import {
   MAX_VARIANT_FACETS,
   type OfferDocument,
 } from '../domain/offer-document';
+import { categoryNamesOf, composeSearchText } from '../domain/index-names';
+import type { NamedCategory } from '../domain/scope-counts';
 import type { FeedFacts } from './ports/offer-feed';
 import { sellUnitRefKey, type SellUnitRef, type SellUnitState } from './ports/sell-unit-states';
 import type { SearchDependencies } from './search-dependencies';
@@ -23,6 +25,13 @@ export interface SyncCounts {
 }
 
 const NO_STATE: SellUnitState = { inStock: false, price: null };
+
+/** The names that join a document's searchable text: public store names and the live category tree. */
+export interface IndexLabels {
+  readonly storeNames: ReadonlyMap<Id<'Seller'>, string>;
+  readonly tree: readonly NamedCategory[];
+}
+const NO_LABELS: IndexLabels = { storeNames: new Map(), tree: [] };
 
 /** Whether an Offer can have a document (before its text is checked). Pure. */
 const indexable = (
@@ -39,7 +48,9 @@ const indexable = (
  * sellable, its seller may not sell now (suspended, for one), or the published revision has no
  * text in the Market's locale. Each published variant becomes a sell unit with the stock and price
  * `states` hold for it (absent: out of stock, unpriced). A price in another currency than the
- * Market's is stored as no price: the price filter compares minor units of one currency. Pure.
+ * Market's is stored as no price: the price filter compares minor units of one currency. The
+ * seller's public store name and the names of the product's categories (all levels, from the live
+ * tree) join the searchable text at weight C (search 1a). Pure.
  */
 export function documentOf(
   offerId: Id<'Offer'>,
@@ -51,6 +62,7 @@ export function documentOf(
   },
   eligibleSellers: ReadonlySet<Id<'Seller'>>,
   states: ReadonlyMap<string, SellUnitState> = new Map(),
+  labels: IndexLabels = NO_LABELS,
 ): OfferDocument | null {
   if (!indexable(facts, eligibleSellers) || facts.name === null) return null;
   const name = clip(facts.name, MAX_NAME);
@@ -65,7 +77,11 @@ export function documentOf(
     shortText: shortText === '' ? null : shortText,
     categoryIds: [...new Set(facts.categoryIds)].slice(0, MAX_DOCUMENT_CATEGORIES),
     textSearchConfig: settings.textSearchConfig,
-    searchText: facts.attributes.searchText === '' ? null : facts.attributes.searchText,
+    searchText: composeSearchText(
+      facts.attributes.searchText,
+      labels.storeNames.get(facts.sellerId) ?? null,
+      categoryNamesOf(facts.categoryIds, labels.tree),
+    ),
     facetCodes: [...new Set(facts.attributes.facets)].slice(0, MAX_FACET_CODES),
     numbers: facts.attributes.numbers,
     variants: facts.variants.slice(0, MAX_DOCUMENT_VARIANTS).map((variant) => {
@@ -123,10 +139,26 @@ export async function syncOffers(
     });
     const states = units.length === 0 ? new Map() : await deps.sellUnits.states(context, units);
     if (states === null) throw new Error('search: stock or price unavailable');
+    // The names that make a store or a category findable through its products (search 1a). A
+    // failed read throws, so the delivery is retried rather than indexing without names.
+    const sellersOfDocuments = [
+      ...new Set([...facts.values()].filter((f) => indexable(f, eligible)).map((f) => f.sellerId)),
+    ];
+    const stores =
+      sellersOfDocuments.length === 0
+        ? new Map()
+        : await deps.storeDirectory.publicStores(context, sellersOfDocuments);
+    if (stores === null) throw new Error('search: store names unavailable');
+    const tree = await deps.categoryTree.tree(context);
+    if (tree === null) throw new Error('search: category tree unavailable');
+    const labels: IndexLabels = {
+      storeNames: new Map([...stores].map(([sellerId, store]) => [sellerId, store.name])),
+      tree,
+    };
     const documents: OfferDocument[] = [];
     const removals: Id<'Offer'>[] = [];
     for (const offerId of batch) {
-      const document = documentOf(offerId, facts.get(offerId), settings, eligible, states);
+      const document = documentOf(offerId, facts.get(offerId), settings, eligible, states, labels);
       if (document === null) removals.push(offerId);
       else documents.push(document);
     }

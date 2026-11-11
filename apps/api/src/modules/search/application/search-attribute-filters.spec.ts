@@ -127,6 +127,7 @@ describe('SearchProducts with attribute filters', () => {
       unitOfWork: new FakeUnitOfWork(),
       index: { ...reader, ...facets, scopeRows: () => Promise.resolve([]) },
       categoryTree: { tree: () => Promise.resolve([]) },
+      storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
       filterSource,
       policy: new ConfigSearchPolicy(markets),
       visibility: {
