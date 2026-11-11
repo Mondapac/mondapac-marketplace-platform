@@ -592,6 +592,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   ProductCategoryNode: {
     noCustomerText: 'ids and status of a category, for the product category rules; no text',
   },
+  CategoryMoveNoticeMail: {
+    noCustomerText:
+      'the plain-text mail to a seller about a moved product: product code and category names; never shown to buyers',
+  },
   ProductCategoryIssue: {
     noCustomerText: 'a path and a closed code of a refused product category; no text',
   },
