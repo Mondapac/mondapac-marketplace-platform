@@ -34,25 +34,20 @@ carts and admins (ADR-0003 decision 4, ADR-0018) and needs a country-level chang
    `catalog.cultures` (fixed English code, status Draft/Active/Inactive, order, optional
    `required_certification_type`, colour or badge) and `catalog.culture_names` (name and short
    description per locale; English required; a locale is published only when all its names exist;
-   never machine-translated). All three tables carry `market_id` and `tenant_id`. Exactly one Active culture is marked
-   the default of the Market. Core code never names a culture (ADR-0001 decision 5). The plan asked
+   never machine-translated). The other tables are `catalog.culture_categories` (decision 4) and `sellers.seller_cultures` (decision 3); all four carry `market_id` and `tenant_id`. One Active culture is marked as the Market's default on its record in `catalog` and cannot be made Inactive. The setting's `defaultCultures` may widen that for guests; when it is empty or invalid, the marked culture applies. Core code never names a culture (ADR-0001 decision 5). The plan asked
    this ADR to fix the table names; they are only proposed here and become final in package 1,
    which records them in the catalog data design.
 2. **One optional switch, in the settings store.** `multi-culture` is a platform-level Market
    setting kept in the `settings` module (ADR-0042 decision 4) with `enabled`, `defaultCultures` and
    `showChooserOnFirstVisit`, and its own keys `settings.multi-culture.view` and
-   `settings.multi-culture.manage` (ADR-0042 decision 2). Its safe value, returned on a missing row
-   or a read failure, is the restrictive one: switch off and the default culture (ADR-0026 decision
-   5). The setting is reviewed by security-tester because it decides what buyers see (ADR-0026
+   `settings.multi-culture.manage` (ADR-0042 decision 2). Its safe value, returned on a missing row or a read failure, is the restrictive one: the filter on, with the Market's marked default culture only (ADR-0026 decision 5). A read failure therefore never shows more than the default culture. The setting is reviewed by security-tester because it decides what buyers see (ADR-0026
    decision 9). While the switch is off the culture filter is not applied at all, so what buyers see
    is exactly what they see today: no chooser, no culture badge, and stored buyer choices are
-   ignored. It can be turned on only when at least two cultures are Active and each has an approved
-   seller. The confirmation shows how many Offers and sellers each culture would show or hide.
+   ignored. It can be turned on only when at least two cultures are Active and each still has an approved seller after the one-time re-check below. The confirmation shows how many Offers and sellers each culture would show or hide.
    Turning it off deletes nothing. Changes are audited.
 3. **A seller joins cultures by request and review.** `sellers.seller_cultures` holds seller,
    culture, status (requested, approved, rejected), reviewer, date and reason; a later change is a
-   change request, as for business activities (ADR-0040 decision 4). A seller with no approved
-   culture is not shown anywhere (fail closed). While the switch is off a new seller is attached to
+   change request, as for business activities (ADR-0040 decision 4). While the switch is on, a seller with no approved culture is not shown anywhere (fail closed). While the switch is off a new seller is attached to
    the default culture automatically, without a certificate check, because no filter applies yet.
    When the switch is turned on, every membership in a culture with a required certification type is
    checked once; a seller without a valid certificate of that type goes back to "requested" and is
@@ -88,14 +83,14 @@ carts and admins (ADR-0003 decision 4, ADR-0018) and needs a country-level chang
    is added. Search that finds nothing in the chosen cultures but something in another shows one
    line with the count and an add button, never the products.
 8. **Search index and events.** The index gets `culture_codes`; every change of membership,
-   certificate, category or "neutral" mark emits an event and re-indexes the Offer. The producers are `sellers` (membership), certification (certificates),
+   certificate, category, Offer tag or "neutral" mark emits an event and re-indexes the Offer. The producers are `sellers` (membership), certification (certificates and Offer tags),
    and `catalog` (category visibility, the "neutral" mark, and a culture's status change); `search`
    consumes them. Until the new
    index arrives, a certified culture's shelf re-checks the certificate at read time, as the halal
    shelf does today.
 9. **Cart and delivery.** One cart, one account and one payment across cultures. Each cart and
    order line carries `culture_code` (when an Offer is visible in two of the buyer's cultures, the
-   one with a required certification wins, and between two certified cultures the lower display
+   one with a required certification wins, and in every other tie (two certified or two uncertified cultures) the lower display
    order wins). The `culture_code` of a line never changes after purchase. At checkout the order is
    split into one delivery shipment per seller and culture (an existing per-seller split stays), each with its own courier, time and shipping fee, shown before the buyer
    confirms ("This order arrives in 2 separate deliveries"). Whether a free-shipping threshold
