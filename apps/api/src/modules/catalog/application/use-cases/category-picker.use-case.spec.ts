@@ -69,7 +69,12 @@ describe.each(FIXTURES)('category picker in market $code', ({ code, depth, ids: 
     node('s1', 'c1'),
     node('ch', 'g', 'hidden'),
   ];
-  const reader = { categories: () => Promise.resolve(nodes) } as unknown as AdminCategoryReader;
+  // The other Market's tree (its own ids): a reader scoped by the request's Market never mixes them.
+  const otherNodes = [node('xd', null), node('xg', 'xd'), node('xc', 'xg')];
+  const reader = {
+    categories: (m: MarketContext) =>
+      Promise.resolve(m.marketId === market.marketId ? nodes : otherNodes),
+  } as unknown as AdminCategoryReader;
   const unitOfWork = {
     run: <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
   } as unknown as UnitOfWork;
@@ -103,6 +108,16 @@ describe.each(FIXTURES)('category picker in market $code', ({ code, depth, ids: 
   it('gives an admin the hidden node too', async () => {
     const result = await platform.execute(contextOf('admin'), {});
     expect(result.ok && result.value.choices.map((c) => c.id)).toEqual(expected);
+  });
+
+  it("offers only this Market's categories, to a seller and to an admin", async () => {
+    const seller = await own.execute(contextOf('seller'), {});
+    const admin = await platform.execute(contextOf('admin'), {});
+    for (const result of [seller, admin]) {
+      const ids = result.ok ? result.value.choices.map((c) => c.id) : [];
+      expect(ids.length).toBeGreaterThan(0);
+      expect(ids.some((id) => id.startsWith('x'))).toBe(false);
+    }
   });
 
   it('refuses the wrong population and declares the keys', async () => {

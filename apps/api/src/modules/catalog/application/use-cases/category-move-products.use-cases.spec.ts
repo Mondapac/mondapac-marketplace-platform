@@ -9,10 +9,10 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
 import { fixedFamilyResolver } from '../../../../../test/support/family-resolver';
-import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
+import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { AdminStoredCategory } from '../../domain/category-admin-tree';
 import { Product } from '../../domain/product';
@@ -24,7 +24,7 @@ import type { CategoryProductMoveStore, MoveJobRecord } from '../ports/category-
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import { CategoryMoveProducts } from './category-move-products.use-case';
 import { CategoryMoveProductsProgress } from './category-move-products-progress.use-case';
-import { CategoryMoveProductsRun } from './category-move-products-run.use-case';
+import { CategoryMoveProductsRun, MOVE_BATCH_SIZE } from './category-move-products-run.use-case';
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const T0 = Temporal.Instant.from('2026-11-11T00:00:00Z');
@@ -41,7 +41,7 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
   const ids = new SequenceIdGenerator(clock);
   const gate = createUseCaseGate(markets, {
     check: () => Promise.resolve({ allowed: true }),
-  } as AuthorisationCheck);
+  });
 
   const cat = (n: number): Id<'Category'> =>
     `01990000-0000-7000-8000-${(0xd00 + n).toString(16).padStart(12, '0')}` as Id<'Category'>;
@@ -64,8 +64,10 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
     showInMenu: true,
   });
 
-  // 1 > 2 > 3 (levels 1..3); 3 > 4 (level 4); 2 > 5, 2 > 6 (level 3); 2 > 7 archived
+  // 1 > 2 > 3 (levels 1..3); 3 > 4 (level 4); 2 > 5, 2 > 6 (level 3); 2 > 7 archived;
+  // 2 > 8 hidden, 2 > 9 hidden (level 3). The other Market's tree uses other ids (40 > 41 > 42).
   let nodes: AdminStoredCategory[];
+  let otherNodes: AdminStoredCategory[];
   let products: Map<string, Product>;
   let revisions: Map<string, StoredRevision>;
   let jobs: MoveJobRecord[];
@@ -74,7 +76,26 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
   let audits: { action: string; targetId: string }[];
   let requests: { productId: string; productRevisionId: string }[];
   let events: string[];
-  let claimCalls: number;
+  // Knobs of the fakes, reset before each test.
+  let cursorsAsked: (string | null)[];
+  let extraScan: Id<'Product'>[];
+  let renewCalls: number;
+  let renewsBeforeLoss: number | null;
+  let staleSaves: Map<string, number>;
+  let afterSave: ((productId: string) => void) | null;
+  let auditFailsFor: Set<string>;
+  let failingSends: Map<string, number>;
+  let noEmailFor: Set<string>;
+
+  const nodesOf = (m: MarketContext): AdminStoredCategory[] =>
+    m.marketId === market.marketId ? nodes : otherNodes;
+  const countsOf = (jobId: string) => {
+    const states = [...items.entries()]
+      .filter(([key]) => key.startsWith(`${jobId}/`))
+      .map(([, item]) => item.state);
+    const of = (state: string) => states.filter((entry) => entry === state).length;
+    return { moved: of('moved'), skipped: of('skipped'), failed: of('failed') };
+  };
 
   const store: CategoryProductMoveStore = {
     countProducts: (_m, c) =>
@@ -118,83 +139,131 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
     listForSource: (_m, s, limit) =>
       Promise.resolve(jobs.filter((j) => j.sourceCategoryId === s).slice(0, limit)),
     claim: (_m, _holder, now) => {
-      claimCalls += 1;
       const index = jobs.findIndex((j) => j.state === 'queued' || j.state === 'running');
       if (index < 0) return Promise.resolve(null);
       jobs[index] = {
         ...jobs[index]!,
         state: 'running',
-        startedAt: now,
+        startedAt: jobs[index]!.startedAt ?? now,
         version: jobs[index]!.version + 1,
       };
-      return Promise.resolve(jobs[index]!);
+      return Promise.resolve(jobs[index]);
     },
-    renew: () => Promise.resolve(true),
-    nextProducts: (_m, job, limit) =>
-      Promise.resolve(
-        [...products.values()]
-          .filter((p) => {
-            const r = revisions.get(p.state.publishedRevisionId ?? '');
-            return (
-              p.state.status === 'published' &&
-              r?.content.categoryIds.includes(job.sourceCategoryId) &&
-              (job.cursorProductId === null || p.state.id > job.cursorProductId)
-            );
-          })
-          .map((p) => p.state.id)
+    renew: () => {
+      renewCalls += 1;
+      return Promise.resolve(renewsBeforeLoss === null || renewCalls <= renewsBeforeLoss);
+    },
+    nextProducts: (_m, job, limit) => {
+      cursorsAsked.push(job.cursorProductId);
+      return Promise.resolve(
+        [
+          ...[...products.values()]
+            .filter((p) => {
+              const r = revisions.get(p.state.publishedRevisionId ?? '');
+              return (
+                p.state.status === 'published' &&
+                r?.content.categoryIds.includes(job.sourceCategoryId)
+              );
+            })
+            .map((p) => p.state.id),
+          ...extraScan,
+        ]
+          .filter((id) => job.cursorProductId === null || id > job.cursorProductId)
           .sort()
           .slice(0, limit),
-      ),
+      );
+    },
     recordItem: (_m, jobId, productId, outcome) => {
       const key = `${jobId}/${productId}`;
       if (items.has(key)) return Promise.resolve(false);
-      items.set(key, {
-        state: outcome.state,
-        notified: false,
-        ...(outcome.state === 'moved' ? { revisionId: outcome.revisionId } : {}),
-      });
+      items.set(key, { state: outcome.state, notified: false });
       return Promise.resolve(true);
     },
-    unnotified: (_m, jobId) =>
+    markMoved: (_m, jobId, productId, revisionId) => {
+      const item = items.get(`${jobId}/${productId}`);
+      if (item?.state !== 'pending') return Promise.resolve(false);
+      items.set(`${jobId}/${productId}`, { ...item, state: 'moved', revisionId });
+      return Promise.resolve(true);
+    },
+    categoryChain: (m, id) => {
+      const all = nodesOf(m);
+      const chain: AdminStoredCategory[] = [];
+      let cursor: string | null = id;
+      while (cursor !== null) {
+        const found = all.find((n) => n.id === cursor);
+        if (found === undefined) break;
+        chain.push(found);
+        cursor = found.parentId;
+      }
+      return Promise.resolve(chain);
+    },
+    unnotified: (_m, jobId, limit) =>
       Promise.resolve(
         [...items.entries()]
           .filter(([k, v]) => k.startsWith(`${jobId}/`) && v.state === 'moved' && !v.notified)
-          .map(([k]) => ({ productId: k.split('/')[1] as Id<'Product'> })),
+          .map(([k]) => ({ productId: k.split('/')[1] as Id<'Product'> }))
+          .sort((a, b) => (a.productId < b.productId ? -1 : 1))
+          .slice(0, limit),
       ),
     markNotified: (_m, jobId, productId) => {
-      items.get(`${jobId}/${productId}`)!.notified = true;
+      const key = `${jobId}/${productId}`;
+      items.set(key, { ...items.get(key)!, notified: true });
       return Promise.resolve();
     },
-    advance: (_m, id, _h, step) => {
+    advance: (_m, id, _h, cursor) => {
       const i = jobs.findIndex((j) => j.id === id);
       const j = jobs[i]!;
-      jobs[i] = {
-        ...j,
-        cursorProductId: step.cursor,
-        moved: j.moved + step.moved,
-        skipped: j.skipped + step.skipped,
-        failed: j.failed + step.failed,
-        version: j.version + 1,
-      };
+      jobs[i] = { ...j, cursorProductId: cursor, ...countsOf(id), version: j.version + 1 };
       return Promise.resolve(true);
     },
     finish: (_m, id, _h, state, now) => {
       const i = jobs.findIndex((j) => j.id === id);
-      jobs[i] = { ...jobs[i]!, state, finishedAt: now };
+      jobs[i] = { ...jobs[i]!, state, ...countsOf(id), finishedAt: now };
       return Promise.resolve(true);
     },
   };
 
+  // A unit rolls back what it wrote when it throws or answers an error, as the real one does.
   const unitOfWork = {
-    run: <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
+    run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => {
+      const saved = {
+        items: new Map([...items].map(([k, v]) => [k, { ...v }])),
+        revisions: new Map(revisions),
+        products: new Map(products),
+        jobs: [...jobs],
+        audits: audits.length,
+        requests: requests.length,
+        events: events.length,
+      };
+      const restore = () => {
+        items = saved.items;
+        revisions = saved.revisions;
+        products = saved.products;
+        jobs = saved.jobs;
+        audits.length = saved.audits;
+        requests.length = saved.requests;
+        events.length = saved.events;
+      };
+      try {
+        const result = await work();
+        if (!result.ok) restore();
+        return result;
+      } catch (error) {
+        restore();
+        throw error;
+      }
+    },
   } as unknown as UnitOfWork;
   const policy = {
     locales: () => ({ default: 'en', supported: ['en'] }),
     maxCategoryDepth: () => depth,
   } as unknown as CatalogMarketPolicy;
-  const reader = { categories: () => Promise.resolve(nodes) } as unknown as AdminCategoryReader;
+  const reader = {
+    categories: (m: MarketContext) => Promise.resolve(nodesOf(m)),
+  } as unknown as AdminCategoryReader;
   const audit = {
     record: (_c: CallContext, entry: { action: string; targetId: string }) => {
+      if (auditFailsFor.has(entry.targetId)) return Promise.reject(new Error('audit down'));
       audits.push({ action: entry.action, targetId: entry.targetId });
       return Promise.resolve();
     },
@@ -205,7 +274,7 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
     adminCategoryReader: reader,
     moveStore: store,
     policy,
-    audit: audit as never,
+    audit: audit,
     clock,
     ids,
   });
@@ -215,8 +284,21 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
       unitOfWork,
       moveStore: store,
       products: {
-        findById: (_m: unknown, id: Id<'Product'>) => Promise.resolve(products.get(id) ?? null),
-        save: () => Promise.resolve(),
+        findById: (_m: unknown, id: Id<'Product'>) => {
+          const found = products.get(id);
+          return Promise.resolve(found === undefined ? null : Product.restore(found.state));
+        },
+        save: (_m: unknown, product: Product) => {
+          const id = product.state.id;
+          const stale = staleSaves.get(id) ?? 0;
+          if (stale > 0) {
+            staleSaves.set(id, stale - 1);
+            return Promise.reject(new StaleAggregateError('Product', id));
+          }
+          products.set(id, product);
+          afterSave?.(id);
+          return Promise.resolve();
+        },
       } as never,
       revisions: {
         find: (_m: unknown, _p: unknown, id: string) => Promise.resolve(revisions.get(id) ?? null),
@@ -244,21 +326,29 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
           events.push(...list.map((e) => e.type));
           return Promise.resolve();
         },
-      } as never,
-      audit: audit as never,
+      },
+      audit: audit,
       clock,
       ids,
-      ownerContacts: { emailOf: (_c: unknown, s: string) => Promise.resolve(`${s}@example.test`) },
+      ownerContacts: {
+        emailOf: (_c: unknown, s: string) =>
+          Promise.resolve(noEmailFor.has(s) ? null : `${s}@example.test`),
+      },
       mailSettings: {
         sender: () => ({ address: 'noreply@example.test', name: 'Team' }),
         zone: () => 'UTC',
       },
       mailTransport: {
         send: (mail: { to: string; subject: string; text: string }) => {
+          const left = failingSends.get(mail.to) ?? 0;
+          if (left > 0) {
+            failingSends.set(mail.to, left - 1);
+            return Promise.reject(new Error('smtp down'));
+          }
           mails.push(mail);
           return Promise.resolve();
         },
-      } as never,
+      },
     });
 
   const adminCtx = (): CallContext =>
@@ -343,7 +433,10 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
       node(5, 2),
       node(6, 2),
       node(7, 2, 'archived'),
+      node(8, 2, 'hidden'),
+      node(9, 2, 'hidden'),
     ];
+    otherNodes = [node(40, null), node(41, 40), node(42, 41), node(43, 41)];
     products = new Map();
     revisions = new Map();
     jobs = [];
@@ -352,7 +445,15 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
     audits = [];
     requests = [];
     events = [];
-    claimCalls = 0;
+    cursorsAsked = [];
+    extraScan = [];
+    renewCalls = 0;
+    renewsBeforeLoss = null;
+    staleSaves = new Map();
+    afterSave = null;
+    auditFailsFor = new Set();
+    failingSends = new Map();
+    noEmailFor = new Set();
   });
 
   it('moves every product of the source to the target, target primary when the source was', async () => {
@@ -420,14 +521,15 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
     expect(categoriesOf(1)).toEqual([cat(5)]);
   });
 
-  it('fails the job, moving nothing, when the target stopped being a product category', async () => {
+  it('fails each product, not the job, when the target stopped being a product category', async () => {
     publish(1, [5]);
     await startMove(5, 3);
     nodes = nodes.map((n) => (n.id === cat(3) ? { ...n, status: 'archived' as const } : n));
     const ran = await runner().execute(systemCtx(), { budgetMs: 60_000 });
-    expect(ran).toMatchObject({ ok: true, value: { outcome: 'failed', moved: 0 } });
-    expect(jobs[0]!.state).toBe('failed');
+    expect(ran).toMatchObject({ ok: true, value: { outcome: 'done', moved: 0, failed: 1 } });
+    expect(jobs[0]).toMatchObject({ state: 'done', moved: 0, failed: 1 });
     expect(categoriesOf(1)).toEqual([cat(5)]);
+    expect(mails).toHaveLength(0);
   });
 
   it('refuses a target on level 2, an archived target, the same category and a second open job', async () => {
@@ -484,6 +586,195 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
     expect(JSON.stringify(read)).not.toContain('Merging two shelves');
     const notSystem = await runner().execute(adminCtx(), { budgetMs: 1 });
     expect(notSystem.ok).toBe(false);
+  });
+
+  const itemOf = (n: number) => items.get(`${jobs[0]!.id}/${pid(n)}`);
+  const overrides = () => [...revisions.values()].filter((r) => r.kind === 'category-override');
+
+  it('works more than one batch, the cursor advancing to the last product of each', async () => {
+    const count = MOVE_BATCH_SIZE + 50;
+    for (let n = 1; n <= count; n += 1) publish(n, [5]);
+    await startMove(5, 3);
+    const ran = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(ran).toMatchObject({ ok: true, value: { outcome: 'done', moved: count } });
+    // First batch from the start, second after product 100, then an empty read after 150.
+    expect(cursorsAsked).toEqual([null, pid(MOVE_BATCH_SIZE), pid(count)]);
+    expect(jobs[0]).toMatchObject({ state: 'done', moved: count, cursorProductId: pid(count) });
+    // Every seller is emailed, across more than one page of notices.
+    expect(mails).toHaveLength(count);
+  });
+
+  it('stops on a lost lease after the product in hand; the next turn resumes without a second move', async () => {
+    publish(1, [5]);
+    publish(2, [5]);
+    publish(3, [5]);
+    await startMove(5, 3);
+    renewsBeforeLoss = 1;
+    const first = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(first).toMatchObject({ ok: true, value: { outcome: 'lease-lost', moved: 2 } });
+    // The cursor did not move and the job is still running (another runner takes it over).
+    expect(jobs[0]).toMatchObject({ state: 'running', cursorProductId: null });
+    renewsBeforeLoss = null;
+    const second = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(second).toMatchObject({ ok: true, value: { outcome: 'done', moved: 1 } });
+    // The counters come from the items: three moved, none counted twice or lost.
+    expect(jobs[0]).toMatchObject({ state: 'done', moved: 3, skipped: 0, failed: 0 });
+    expect(overrides()).toHaveLength(3);
+    expect(mails).toHaveLength(3);
+  });
+
+  it('keeps the job running while a seller email fails, and sends it on the next turn', async () => {
+    publish(1, [5]);
+    publish(2, [5]);
+    await startMove(5, 3);
+    // Fails after the batch and again at the final drain of this turn.
+    failingSends.set('seller-2@example.test', 2);
+    const first = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(first).toMatchObject({ ok: true, value: { outcome: 'notices-pending', moved: 2 } });
+    expect(jobs[0]!.state).toBe('running');
+    expect(itemOf(1)).toMatchObject({ notified: true });
+    expect(itemOf(2)).toMatchObject({ notified: false });
+    const second = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(second).toMatchObject({ ok: true, value: { outcome: 'done', moved: 0 } });
+    expect(jobs[0]).toMatchObject({ state: 'done', moved: 2 });
+    expect(mails.map((m) => m.to).sort()).toEqual([
+      'seller-1@example.test',
+      'seller-2@example.test',
+    ]);
+  });
+
+  it('reads the product again once when another write won it (StaleAggregateError)', async () => {
+    publish(1, [5]);
+    await startMove(5, 3);
+    staleSaves.set(pid(1), 1);
+    const ran = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(ran).toMatchObject({ ok: true, value: { outcome: 'done', moved: 1, failed: 0 } });
+    // The first attempt rolled back with its unit: one revision, one item, one audit.
+    expect(overrides()).toHaveLength(1);
+    expect(itemOf(1)).toMatchObject({ state: 'moved', revisionId: overrides()[0]!.id });
+    expect(audits).toHaveLength(2);
+  });
+
+  it('fails the product when it is won twice in a row', async () => {
+    publish(1, [5]);
+    await startMove(5, 3);
+    staleSaves.set(pid(1), 2);
+    const ran = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(ran).toMatchObject({ ok: true, value: { outcome: 'done', moved: 0, failed: 1 } });
+    expect(itemOf(1)).toMatchObject({ state: 'failed' });
+    expect(overrides()).toHaveLength(0);
+  });
+
+  it('skips a product that is gone or no longer on the source, and records it once', async () => {
+    publish(1, [5]);
+    publish(2, [6]);
+    await startMove(5, 3);
+    // The scan named them, but by the product unit one is unknown and one is not on the source.
+    extraScan = [pid(2), pid(3)];
+    const ran = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(ran).toMatchObject({ ok: true, value: { moved: 1, skipped: 2, failed: 0 } });
+    expect(itemOf(2)).toMatchObject({ state: 'skipped' });
+    expect(itemOf(3)).toMatchObject({ state: 'skipped' });
+    expect(categoriesOf(2)).toEqual([cat(6)]);
+    expect(jobs[0]).toMatchObject({ moved: 1, skipped: 2 });
+  });
+
+  it('fails a product whose unit throws, rolling its writes back, and goes on with the next', async () => {
+    publish(1, [5]);
+    publish(2, [5]);
+    await startMove(5, 3);
+    auditFailsFor.add(pid(1));
+    const ran = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(ran).toMatchObject({ ok: true, value: { outcome: 'done', moved: 1, failed: 1 } });
+    expect(itemOf(1)).toMatchObject({ state: 'failed' });
+    expect(itemOf(1)!.revisionId).toBeUndefined();
+    expect(categoriesOf(1)).toEqual([cat(5)]);
+    expect(categoriesOf(2)).toEqual([cat(3)]);
+    expect(mails.map((m) => m.to)).toEqual(['seller-2@example.test']);
+  });
+
+  it('fails a product whose published revision cannot be read', async () => {
+    publish(1, [5]);
+    await startMove(5, 3);
+    // The scan named it, but its published revision row cannot be read in the product unit.
+    revisions.delete('r1');
+    extraScan = [pid(1)];
+    const ran = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(ran).toMatchObject({ ok: true, value: { failed: 1, moved: 0 } });
+  });
+
+  it('fails the products after the target is archived mid-job, keeping the ones already moved', async () => {
+    publish(1, [5]);
+    publish(2, [5]);
+    publish(3, [5]);
+    await startMove(5, 3);
+    afterSave = (id) => {
+      if (id === pid(1)) {
+        nodes = nodes.map((n) => (n.id === cat(3) ? { ...n, status: 'archived' as const } : n));
+      }
+    };
+    const ran = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(ran).toMatchObject({ ok: true, value: { outcome: 'done', moved: 1, failed: 2 } });
+    expect(categoriesOf(1)).toEqual([cat(3)]);
+    expect(categoriesOf(2)).toEqual([cat(5)]);
+    expect(jobs[0]).toMatchObject({ state: 'done', moved: 1, failed: 2 });
+  });
+
+  it('moves onto a hidden target and off a hidden source', async () => {
+    publish(1, [5]);
+    publish(2, [9]);
+    expect(await startMove(5, 8)).toMatchObject({ ok: true });
+    await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(categoriesOf(1)).toEqual([cat(8)]);
+    expect(await startMove(9, 3)).toMatchObject({ ok: true });
+    await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(categoriesOf(2)).toEqual([cat(3)]);
+  });
+
+  it('marks a product whose seller has no email notified without sending', async () => {
+    publish(1, [5]);
+    publish(2, [5]);
+    noEmailFor.add('seller-1');
+    await startMove(5, 3);
+    const ran = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(ran).toMatchObject({ ok: true, value: { outcome: 'done', moved: 2 } });
+    expect(mails.map((m) => m.to)).toEqual(['seller-2@example.test']);
+    expect(itemOf(1)).toMatchObject({ state: 'moved', notified: true });
+  });
+
+  it("refuses another Market's source and target ids", async () => {
+    publish(1, [5]);
+    // Category 42 is on level 3 of the other Market's tree: never found from this Market.
+    expect(await startMove(42, 3)).toMatchObject({ error: { code: 'category.not-found' } });
+    expect(await startMove(5, 42)).toMatchObject({ error: { code: 'category.target-not-found' } });
+    expect(jobs).toHaveLength(0);
+  });
+
+  it('counts a product published into the source after the start, the progress total following', async () => {
+    publish(1, [5]);
+    await startMove(5, 3);
+    publish(2, [5]);
+    await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(jobs[0]).toMatchObject({ state: 'done', total: 1, moved: 2 });
+    const read = await progress.execute(adminCtx(), { categoryId: cat(5) });
+    expect(read).toMatchObject({ ok: true, value: { jobs: [{ total: 2, moved: 2 }] } });
+  });
+
+  it('refuses an admin in an acting-as session', async () => {
+    publish(1, [5]);
+    const base = adminCtx();
+    const actingAs = {
+      ...base,
+      actor: { ...base.actor, actingAs: { adminAccountId: ids.next<'Account'>() } },
+    } as unknown as CallContext;
+    expect(
+      await start.execute(actingAs, {
+        categoryId: cat(5),
+        targetId: cat(3),
+        reason: 'Merging two shelves of dates',
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+    expect(jobs).toHaveLength(0);
   });
 
   it('declares the keys and the system rule', () => {

@@ -1,11 +1,30 @@
 import { ok, Temporal, uuidV7 } from '@mondapac/shared-kernel';
-import type { Id } from '@mondapac/shared-kernel';
+import type { CallContext, Id, IdGenerator } from '@mondapac/shared-kernel';
+import {
+  FixedClock,
+  testAuthenticatedActor,
+  testCallContext,
+} from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
-import type { EditableCategory } from '../../src/modules/catalog/domain/category-edit';
+import { ProductFamilyResolver } from '../../src/modules/catalog/application/attributes/product-family-resolver';
+import { CategoryMoveProducts } from '../../src/modules/catalog/application/use-cases/category-move-products.use-case';
+import { CategoryMoveProductsRun } from '../../src/modules/catalog/application/use-cases/category-move-products-run.use-case';
+import { ConfigCatalogMarketPolicy } from '../../src/modules/catalog/infrastructure/config-catalog-market-policy';
+import { PrismaAdminCategoryReader } from '../../src/modules/catalog/infrastructure/prisma-admin-category.reader';
+import { PrismaAttributeAdminReader } from '../../src/modules/catalog/infrastructure/prisma-attribute-admin.reader';
+import { PrismaCategoryAttributeLinkStore } from '../../src/modules/catalog/infrastructure/prisma-category-attribute-link.store';
 import { PrismaCategoryEditStore } from '../../src/modules/catalog/infrastructure/prisma-category-edit.store';
 import { PrismaCategoryProductMoveStore } from '../../src/modules/catalog/infrastructure/prisma-category-product-move.store';
-import { PrismaPlatformCategoryRepository } from '../../src/modules/catalog/infrastructure/prisma-platform-category.repository';
-import { TEST_MARKETS } from '../support/test-config';
+import { PrismaCategoryTreeReader } from '../../src/modules/catalog/infrastructure/prisma-category-tree.reader';
+import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
+import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
+import { PrismaProductRevisionRepository } from '../../src/modules/catalog/infrastructure/prisma-product-revision.repository';
+import { PrismaTagReevaluationRequests } from '../../src/modules/catalog/infrastructure/prisma-tag-reevaluation-requests';
+import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
+import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
+import { MarketRegistry } from '../../src/platform/market-config/market-registry';
+import { RecordingOutbox } from '../support/catalog-tag-fakes';
+import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import {
   createPersistence,
   marketOf,
@@ -18,7 +37,11 @@ import { ownerTestDatabaseUrl } from './test-database';
 // open job per source category (partial unique), the claim and the lease, the product scan after
 // the cursor (published products whose published revision names the source, never another
 // Market's), one item per job and product, the counters guarded by the lease holder, and the
-// CHECKs of the new `category-override` revision kind.
+// CHECKs of the new `category-override` revision kind. And one real move end to end through the
+// run use case on the Prisma adapters: the item is written `pending` and turned `moved` once the
+// revision row exists (its foreign key), the product publishes the `category-override` revision
+// naming the target, and in the same unit its Offers' active tags turn `rechecking` with a pending
+// re-ask request naming the new revision; a product whose unit fails leaves none of that behind.
 
 const T0 = Temporal.Instant.from('2026-11-11T00:00:00Z');
 let sequence = 0;
@@ -27,6 +50,10 @@ const uuid7 = (): string =>
 const HASH = `sha256:${'c'.repeat(64)}`;
 const ADMIN = uuid7() as Id<'Account'>;
 const REASON = 'Pantry aisle reorganised';
+const ids: IdGenerator = { next: <K extends string>() => uuid7() as Id<K> };
+const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+const policy = new ConfigCatalogMarketPolicy(markets);
+const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
 
 describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)', (code) => {
   const market = marketOf(code);
@@ -35,7 +62,6 @@ describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)
   let owner: Client;
   let store: PrismaCategoryEditStore;
   let moves: PrismaCategoryProductMoveStore;
-  let categories: PrismaPlatformCategoryRepository;
 
   beforeAll(async () => {
     db = createPersistence();
@@ -43,7 +69,6 @@ describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)
     await owner.connect();
     store = new PrismaCategoryEditStore(db.service);
     moves = new PrismaCategoryProductMoveStore(db.service);
-    categories = new PrismaPlatformCategoryRepository(db.service);
   });
   afterAll(async () => {
     await owner.end();
@@ -95,34 +120,6 @@ describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)
     );
     return id;
   }
-  const load = async (target: typeof market, id: string): Promise<EditableCategory> => {
-    const all = await read(target, () => store.loadAll(target, 10_000));
-    const found = all.find((node) => node.id === id);
-    if (found === undefined) throw new Error('category not found');
-    return found;
-  };
-  const apply = async (
-    target: typeof market,
-    id: string,
-    kind: 'moved' | 'merged' | 'archived',
-    patch: Parameters<typeof store.apply>[1]['patch'],
-    reason?: string,
-  ) => {
-    const current = await load(target, id);
-    return write(target, () =>
-      store.apply(target, {
-        category: current,
-        revisionId: uuid7() as Id<'CategoryRevision'>,
-        kind,
-        texts: current.texts,
-        patch,
-        authorAccountId: ADMIN,
-        now: T0,
-        ...(reason === undefined ? {} : { reason }),
-      }),
-    );
-  };
-
   async function familyRevision(target: typeof market): Promise<string> {
     const familyId = uuid7();
     const revisionId = uuid7();
@@ -153,7 +150,7 @@ describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)
     categoryIds: string[],
     offers: { deleted?: boolean; tags?: number }[] = [],
     status: 'published' | 'draft' = 'published',
-  ): Promise<{ productId: string; revisionId: string }> {
+  ): Promise<{ productId: string; revisionId: string; offerIds: string[] }> {
     const familyRevisionId = await familyRevision(target);
     const productId = uuid7();
     const revisionId = uuid7();
@@ -195,6 +192,35 @@ describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)
       acting_admin_account_id: null,
       submitted_at: T0.toString(),
     });
+    const variantId = uuid7();
+    await insert('product_variants', {
+      id: variantId,
+      ...base(target),
+      product_id: productId,
+      variant_model: 'single',
+      variant_no: 1,
+      state: 'published',
+      created_at: T0.toString(),
+      published_at: T0.toString(),
+    });
+    await insert('product_revision_texts', {
+      ...base(target),
+      revision_id: revisionId,
+      locale: 'en',
+      name: 'Dates',
+      short_description: null,
+      description: null,
+    });
+    await insert('product_revision_variants', {
+      ...base(target),
+      revision_id: revisionId,
+      variant_id: variantId,
+      product_id: productId,
+      position: 0,
+      option_key: '',
+      option_values: '{}',
+      labels: '{}',
+    });
     for (const [index, categoryId] of categoryIds.entries()) {
       await insert('product_revision_categories', {
         ...base(target),
@@ -210,9 +236,11 @@ describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)
         [target.marketId, productId, revisionId],
       );
     }
+    const offerIds: string[] = [];
     for (const spec of offers) {
       const deleted = spec.deleted === true;
       const offerId = uuid7();
+      offerIds.push(offerId);
       const sellerId = uuid7();
       await insert('offers', {
         id: offerId,
@@ -309,7 +337,7 @@ describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)
         }
       }
     }
-    return { productId, revisionId };
+    return { productId, revisionId, offerIds };
   }
 
   const job = (source: string, target: string) => ({
@@ -382,64 +410,108 @@ describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)
       const taken = await write(market, () => moves.claim(market, holder, T0, LEASE));
       if (taken === null || taken.id === created.id) break;
     }
-    const revisionId = uuid7() as Id<'ProductRevision'>;
-    // The revision the item names must be a revision of that product: use the product's own.
-    const own = p.revisionId as Id<'ProductRevision'>;
-    void revisionId;
     const productId = p.productId as Id<'Product'>;
+    // A revision the item may not name: not a revision of this product (the composite foreign key).
+    const stranger = await product(market, [a]);
+    // The item is written pending (no revision) and turned moved in the same unit, after the
+    // revision row exists; here the product's own revision stands in for the move's.
+    const own = p.revisionId as Id<'ProductRevision'>;
     expect(
-      await write(market, () =>
-        moves.recordItem(market, created.id, productId, { state: 'moved', revisionId: own }, T0),
-      ),
-    ).toBe(true);
+      await write(market, async () => {
+        const first = await moves.recordItem(
+          market,
+          created.id,
+          productId,
+          { state: 'pending' },
+          T0,
+        );
+        // A duplicate answers false without failing the statement: the unit goes on (no 25P02).
+        const again = await moves.recordItem(
+          market,
+          created.id,
+          productId,
+          { state: 'skipped' },
+          T0,
+        );
+        const moved = await moves.markMoved(market, created.id, productId, own);
+        return [first, again, moved];
+      }),
+    ).toEqual([true, false, true]);
     expect(
       await write(market, () =>
         moves.recordItem(market, created.id, productId, { state: 'skipped' }, T0),
       ),
     ).toBe(false);
+    // Moved only from pending, and never naming another product's revision.
+    expect(await write(market, () => moves.markMoved(market, created.id, productId, own))).toBe(
+      false,
+    );
+    const strangerId = stranger.productId as Id<'Product'>;
+    await expect(
+      write(market, async () => {
+        await moves.recordItem(market, created.id, strangerId, { state: 'pending' }, T0);
+        return moves.markMoved(market, created.id, strangerId, own);
+      }),
+    ).rejects.toThrow();
     expect(await read(market, () => moves.unnotified(market, created.id, 10))).toEqual([
       { productId },
     ]);
     await write(market, () => moves.markNotified(market, created.id, productId, T0));
     expect(await read(market, () => moves.unnotified(market, created.id, 10))).toEqual([]);
 
-    expect(
-      await write(market, () =>
-        moves.advance(market, created.id, uuid7(), {
-          cursor: productId,
-          moved: 1,
-          skipped: 0,
-          failed: 0,
-        }),
-      ),
-    ).toBe(false);
-    expect(
-      await write(market, () =>
-        moves.advance(market, created.id, holder, {
-          cursor: productId,
-          moved: 1,
-          skipped: 0,
-          failed: 0,
-        }),
-      ),
-    ).toBe(true);
+    expect(await write(market, () => moves.advance(market, created.id, uuid7(), productId))).toBe(
+      false,
+    );
+    expect(await write(market, () => moves.advance(market, created.id, holder, productId))).toBe(
+      true,
+    );
     expect(await write(market, () => moves.finish(market, created.id, uuid7(), 'done', T0))).toBe(
       false,
     );
     expect(await write(market, () => moves.finish(market, created.id, holder, 'done', T0))).toBe(
       true,
     );
+    // The counters are counted from the items (one moved), whatever the runner believes.
     const ended = await read(market, () => moves.find(market, created.id));
-    expect(ended).toMatchObject({ state: 'done', moved: 1, cursorProductId: productId });
+    expect(ended).toMatchObject({
+      state: 'done',
+      moved: 1,
+      skipped: 0,
+      failed: 0,
+      cursorProductId: productId,
+    });
   });
 
-  it('refuses the same source and target, a bad reason and counts above the total', async () => {
+  it('refuses the same source and target, a bad reason and a negative count, but not counts above the total', async () => {
     const a = await category(market, null, 'Check source');
     const b = await category(market, null, 'Check target');
     await expect(write(market, () => moves.insertJob(market, job(a, a)))).rejects.toThrow();
     await expect(
       write(market, () => moves.insertJob(market, { ...job(a, b), reason: 'short' })),
     ).rejects.toThrow();
+    const created = job(a, b);
+    await write(market, () => moves.insertJob(market, created));
+    // The total is a snapshot: products published into the source later are handled too.
+    await expect(
+      owner.query(
+        `UPDATE catalog.category_product_move_jobs SET moved_count = 5, failed_count = 1
+           WHERE market_id = $1 AND id = $2`,
+        [market.marketId, created.id],
+      ),
+    ).resolves.toMatchObject({ rowCount: 1 });
+    await expect(
+      owner.query(
+        `UPDATE catalog.category_product_move_jobs SET skipped_count = -1
+           WHERE market_id = $1 AND id = $2`,
+        [market.marketId, created.id],
+      ),
+    ).rejects.toThrow(/category_product_move_jobs_counts_check/);
+    await owner.query(
+      `UPDATE catalog.category_product_move_jobs
+          SET state = 'failed', started_at = now(), finished_at = now()
+        WHERE market_id = $1 AND id = $2`,
+      [market.marketId, created.id],
+    );
   });
 
   it('accepts a category-override revision only on a base and by an admin', async () => {
@@ -476,5 +548,202 @@ describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)
     await expect(
       insert('product_revisions', row({ revision_no: 4, author_kind: 'seller' })),
     ).rejects.toThrow();
+  });
+  describe('one real move through the run use case', () => {
+    const audits: { action: string; targetId: string }[] = [];
+    const failAuditFor = new Set<string>();
+    const outbox = new RecordingOutbox();
+    const audit = {
+      record: (_c: CallContext, entry: { action: string; targetId: string }) => {
+        if (failAuditFor.has(entry.targetId)) return Promise.reject(new Error('audit down'));
+        audits.push({ action: entry.action, targetId: entry.targetId });
+        return Promise.resolve();
+      },
+    };
+    const clock = new FixedClock(T0.add({ hours: 1 }));
+    const adminReader = () => new PrismaAdminCategoryReader(db.service);
+    const runner = () =>
+      new CategoryMoveProductsRun(gate, {
+        unitOfWork: db.unitOfWork,
+        moveStore: moves,
+        products: new PrismaProductRepository(db.service),
+        revisions: new PrismaProductRevisionRepository(db.service),
+        familyResolver: new ProductFamilyResolver({
+          treeReader: new PrismaCategoryTreeReader(db.service),
+          linkStore: new PrismaCategoryAttributeLinkStore(db.service),
+          attributeAdminReader: new PrismaAttributeAdminReader(db.service),
+          policy,
+        }),
+        adminCategoryReader: adminReader(),
+        policy,
+        offers: new PrismaOfferRepository(db.service, ids),
+        requests: new PrismaTagReevaluationRequests(db.service),
+        outbox,
+        audit: audit,
+        clock,
+        ids,
+        ownerContacts: { emailOf: () => Promise.resolve(null) },
+        mailSettings: {
+          sender: () => ({ address: 'noreply@example.test', name: 'Team' }),
+          zone: () => 'UTC',
+        },
+        mailTransport: { send: () => Promise.reject(new Error('no seller to email')) },
+      });
+
+    it('moves a product, publishes the override, re-asks its tags in the same unit, and fails a product whose unit failed with nothing left behind', async () => {
+      // Jobs the store tests above left open would be claimed first: close them.
+      await owner.query(
+        `UPDATE catalog.category_product_move_jobs
+            SET state = 'done', started_at = COALESCE(started_at, now()), finished_at = now(),
+                lease_holder = NULL, lease_expires_at = NULL
+          WHERE market_id = $1 AND state IN ('queued', 'running')`,
+        [market.marketId],
+      );
+      const department = await category(market, null, 'Pantry');
+      const group = await category(market, department, 'Dry goods');
+      const source = await category(market, group, 'Dates');
+      const target = await category(market, group, 'Dried fruit');
+      const moved = await product(market, [source], [{ tags: 1 }]);
+      const failing = await product(market, [source], [{ tags: 1 }]);
+      failAuditFor.add(failing.productId);
+
+      const admin = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: ADMIN,
+          sessionId: uuid7() as Id<'Session'>,
+          sellerId: null,
+        }),
+      );
+      const started = await new CategoryMoveProducts(gate, {
+        unitOfWork: db.unitOfWork,
+        adminCategoryReader: adminReader(),
+        moveStore: moves,
+        policy,
+        audit: audit,
+        clock,
+        ids,
+      }).execute(admin, { categoryId: source, targetId: target, reason: REASON });
+      expect(started).toMatchObject({ ok: true, value: { products: 2 } });
+      const jobId = started.ok ? started.value.jobId : ('' as Id<'CategoryMoveJob'>);
+
+      const ran = await runner().execute(testCallContext(market, 'system', 'move-job'), {
+        budgetMs: 60_000,
+      });
+      expect(ran).toMatchObject({
+        ok: true,
+        value: { ran: true, jobId, outcome: 'done', moved: 1, skipped: 0, failed: 1 },
+      });
+
+      // The item names the category-override revision, now the product's published one.
+      const items = await owner.query<{
+        product_id: string;
+        state: string;
+        revision_id: string | null;
+        notified: boolean;
+      }>(
+        `SELECT product_id, state, revision_id, seller_notified_at IS NOT NULL AS notified
+           FROM catalog.category_product_move_items WHERE market_id = $1 AND job_id = $2`,
+        [market.marketId, jobId],
+      );
+      const itemOf = (productId: string) => items.rows.find((row) => row.product_id === productId);
+      const revisionId = itemOf(moved.productId)?.revision_id;
+      // A PLATFORM product has no seller to email: marked as told, nothing sent.
+      expect(itemOf(moved.productId)).toMatchObject({ state: 'moved', notified: true });
+      expect(revisionId).toEqual(expect.any(String));
+      expect(itemOf(failing.productId)).toMatchObject({ state: 'failed', revision_id: null });
+
+      const published = await owner.query<{ published_revision_id: string }>(
+        `SELECT published_revision_id FROM catalog.products WHERE market_id = $1 AND id = $2`,
+        [market.marketId, moved.productId],
+      );
+      expect(published.rows[0]?.published_revision_id).toBe(revisionId);
+      const revision = await owner.query<{
+        revision_kind: string;
+        base_revision_id: string;
+        author_kind: string;
+        author_account_id: string;
+      }>(
+        `SELECT revision_kind, base_revision_id, author_kind, author_account_id
+           FROM catalog.product_revisions WHERE market_id = $1 AND id = $2`,
+        [market.marketId, revisionId],
+      );
+      expect(revision.rows[0]).toEqual({
+        revision_kind: 'category-override',
+        base_revision_id: moved.revisionId,
+        author_kind: 'admin',
+        author_account_id: ADMIN,
+      });
+      const categoriesOf = async (id: string | null | undefined) =>
+        (
+          await owner.query<{ category_id: string }>(
+            `SELECT category_id FROM catalog.product_revision_categories
+              WHERE market_id = $1 AND revision_id = $2 ORDER BY position`,
+            [market.marketId, id],
+          )
+        ).rows.map((row) => row.category_id);
+      expect(await categoriesOf(revisionId)).toEqual([target]);
+
+      // The Offer's active tag is rechecking through the publish path, with a pending re-ask of
+      // the new revision: written in the publish unit (M1).
+      const tagsOf = async (offerId: string) =>
+        (
+          await owner.query<{ status: string; entry_path: string | null }>(
+            `SELECT t.status,
+                    (SELECT h.entry_path FROM catalog.offer_tag_history h
+                      WHERE h.market_id = t.market_id AND h.tag_id = t.id
+                      ORDER BY h.change_seq DESC LIMIT 1) AS entry_path
+               FROM catalog.offer_tags t WHERE t.market_id = $1 AND t.offer_id = $2`,
+            [market.marketId, offerId],
+          )
+        ).rows;
+      const requestsOf = async (productId: string) =>
+        (
+          await owner.query<{ state: string; product_revision_id: string }>(
+            `SELECT state, product_revision_id FROM catalog.tag_reevaluation_requests
+              WHERE market_id = $1 AND product_id = $2`,
+            [market.marketId, productId],
+          )
+        ).rows;
+      expect(await tagsOf(moved.offerIds[0]!)).toEqual([
+        { status: 'rechecking', entry_path: 'revision-publish' },
+      ]);
+      expect(await requestsOf(moved.productId)).toEqual([
+        { state: 'pending', product_revision_id: revisionId },
+      ]);
+
+      // The failed product's unit rolled back whole: still on the source, tag still active, no
+      // request and no override revision.
+      const failedProduct = await owner.query<{ published_revision_id: string }>(
+        `SELECT published_revision_id FROM catalog.products WHERE market_id = $1 AND id = $2`,
+        [market.marketId, failing.productId],
+      );
+      expect(failedProduct.rows[0]?.published_revision_id).toBe(failing.revisionId);
+      expect(await tagsOf(failing.offerIds[0]!)).toEqual([
+        { status: 'active', entry_path: 'tag-add' },
+      ]);
+      expect(await requestsOf(failing.productId)).toEqual([]);
+      const overrides = await owner.query(
+        `SELECT 1 FROM catalog.product_revisions
+          WHERE market_id = $1 AND product_id = $2 AND revision_kind = 'category-override'`,
+        [market.marketId, failing.productId],
+      );
+      expect(overrides.rowCount).toBe(0);
+
+      // The job is done, its counters counted from the items; the audit names the moved product.
+      expect(await read(market, () => moves.find(market, jobId))).toMatchObject({
+        state: 'done',
+        total: 2,
+        moved: 1,
+        skipped: 0,
+        failed: 1,
+      });
+      expect(audits).toContainEqual({
+        action: 'catalog.product.category-overridden',
+        targetId: moved.productId,
+      });
+      expect(audits.some((entry) => entry.targetId === failing.productId)).toBe(false);
+    });
   });
 });
