@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Button, EmptyState, SettingsPage, SettingsSection } from '@mondapac/ui';
+import { Badge, Button, CARD_TABLE, EmptyState, SettingsPage, SettingsSection } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -55,14 +55,12 @@ export function TaxPanel({
               <div className="text-sm text-fg-muted">{t('active-now')}</div>
               <div className="font-medium text-fg">
                 {inForce === undefined ? t('built-in') : inForce.name}
-                {' · '}
-                {inForce === undefined ? percentOf(list.builtInRateBps) : rateOf(inForce)}
               </div>
-              {inForce === undefined ? null : (
-                <div className="text-sm text-fg-muted">
-                  {t('built-in-note', { rate: percentOf(list.builtInRateBps) })}
-                </div>
-              )}
+              <div className="text-sm text-fg-muted">
+                {inForce === undefined
+                  ? percentOf(list.builtInRateBps)
+                  : `${rateOf(inForce)} · ${t('built-in-note', { rate: percentOf(list.builtInRateBps) })}`}
+              </div>
             </div>
             {canManage ? (
               <div className="flex flex-wrap gap-2">
@@ -92,53 +90,50 @@ export function TaxPanel({
               body={t('empty-body')}
             />
           ) : (
-            <div className="relative overflow-x-auto rounded-lg border border-line">
-              <table className="w-full min-w-160 table-fixed text-start text-sm">
+            <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
+              <table className={CARD_TABLE.table}>
                 <caption className="sr-only">{t('section')}</caption>
-                <colgroup>
-                  <col className="w-[24%]" />
-                  <col className="w-[14%]" />
-                  <col className="w-[16%]" />
-                  <col className="w-[12%]" />
-                  {canManage ? <col className="w-[34%]" /> : null}
-                </colgroup>
-                <thead className="bg-muted text-fg-muted">
+                <thead className={CARD_TABLE.head}>
                   <tr>
-                    <th scope="col" className="px-3 py-3 font-medium">
+                    <th scope="col" className="px-4 py-3 font-medium">
                       {t('col.name')}
                     </th>
-                    <th scope="col" className="px-3 py-3 font-medium">
-                      {t('col.kind')}
-                    </th>
-                    <th scope="col" className="px-3 py-3 font-medium">
-                      {t('col.rate')}
-                    </th>
-                    <th scope="col" className="px-3 py-3 font-medium">
+                    <th scope="col" className="px-4 py-3 font-medium">
                       {t('col.status')}
                     </th>
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      {t('col.kind')}
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-medium">
+                      {t('col.rate')}
+                    </th>
                     {canManage ? (
-                      <th scope="col" className="px-3 py-3 font-medium">
+                      <th scope="col" className="px-4 py-3 font-medium">
                         <span className="sr-only">{t('col.actions')}</span>
                       </th>
                     ) : null}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-line-row">
+                <tbody className={CARD_TABLE.body}>
                   {list.strategies.map((strategy) => (
-                    <tr key={strategy.id}>
-                      <td className="break-words px-3 py-3 align-top font-medium text-fg">
+                    <tr key={strategy.id} className={CARD_TABLE.row}>
+                      <td className={`${CARD_TABLE.cell} break-words font-medium text-fg`}>
                         {strategy.name}
                       </td>
-                      <td className="px-3 py-3 align-top">{kinds(strategy.kind)}</td>
-                      <td className="px-3 py-3 align-top">{rateOf(strategy)}</td>
-                      <td className="px-3 py-3 align-top">
+                      <td className={CARD_TABLE.corner}>
                         <Badge tone={strategy.active ? 'success' : 'neutral'}>
                           {strategy.active ? t('status-active') : t('status-idle')}
                         </Badge>
                       </td>
+                      <td className={CARD_TABLE.labelled} data-label={t('col.kind')}>
+                        {kinds(strategy.kind)}
+                      </td>
+                      <td className={CARD_TABLE.labelled} data-label={t('col.rate')}>
+                        {rateOf(strategy)}
+                      </td>
                       {canManage ? (
-                        <td className="px-3 py-3 align-top">
-                          <div className="flex flex-wrap gap-2">
+                        <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-2`}>
+                          <div className="flex flex-wrap gap-2 lg:flex-nowrap lg:justify-end">
                             <Button
                               variant="secondary"
                               className="min-h-12"

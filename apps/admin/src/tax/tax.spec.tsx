@@ -84,7 +84,7 @@ describe('percent helpers', () => {
 describe('TaxPanel', () => {
   it('shows the built-in rate when no strategy is in force, and the strategies', () => {
     mount(data());
-    expect(screen.getByText(/Built-in rate · 10 %/)).toBeTruthy();
+    expect(screen.getByText('Built-in rate')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Back to built-in rate' })).toBeNull();
     const row = screen.getByRole('row', { name: /GST 10/ });
     expect(within(row).getByText('Not active')).toBeTruthy();

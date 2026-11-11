@@ -6403,7 +6403,7 @@
     "intro": "How the tax of an order line is worked out. A new strategy applies to new orders only; the tax already frozen on an order never changes.",
     "read-only": "You can see the tax strategies but not change them. Changing them needs the tax strategy manage permission.",
     "built-in": "Built-in rate",
-    "built-in-note": "{rate}, used when no strategy is active.",
+    "built-in-note": "Built-in rate {rate} applies when none is active.",
     "active-now": "In force now",
     "col": {
       "name": "Name",
