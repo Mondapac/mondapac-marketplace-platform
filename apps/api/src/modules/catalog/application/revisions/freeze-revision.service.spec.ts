@@ -149,6 +149,55 @@ describe.each(MARKETS)('FreezeRevision in market $code', ({ code, locale, locale
     ...extra,
   });
 
+  describe('category rules (categories C5a)', () => {
+    const node = (id: string, parentId: string | null, status = 'active') => ({
+      id: id as Id<'Category'>,
+      parentId: parentId as Id<'Category'> | null,
+      status,
+      mergedIntoId: null,
+      slug: id,
+      position: 0,
+      names: [],
+    });
+    const tree = [
+      node('d', null),
+      node('g', 'd'),
+      node('c1', 'g'),
+      node('s1', 'c1'),
+      node('c2', 'g'),
+      node('c3', 'g'),
+    ];
+    const withTree = (nodes: readonly unknown[]): FreezeRevision =>
+      new FreezeRevision({
+        ...(service as unknown as { deps: ConstructorParameters<typeof FreezeRevision>[0] }).deps,
+        categories: { nodes: () => Promise.resolve(nodes as never) },
+      });
+    const issuesOf = async (categoryIds: string[]) => {
+      const result = await withTree(tree).freeze(
+        market,
+        product('simple'),
+        copyOf(ready({ categoryIds })),
+      );
+      return result.ok ? [] : result.error.code === 'revision.not-ready' ? result.error.issues : [];
+    };
+
+    it('accepts a level 3 and a level 4 category', async () => {
+      expect(await issuesOf(['c1', 's1'])).toEqual([]);
+    });
+    it('refuses a department or a group with category.level-not-allowed', async () => {
+      expect(await issuesOf(['g'])).toEqual([
+        { path: 'categoryIds.0', code: 'category.level-not-allowed' },
+      ]);
+    });
+    it('refuses four categories and an unknown category', async () => {
+      expect(await issuesOf(['c1', 's1', 'c2', 'c3'])).toContainEqual({
+        path: 'categoryIds',
+        code: 'too-many',
+      });
+      expect(await issuesOf(['nope'])).toEqual([{ path: 'categoryIds.0', code: 'unknown' }]);
+    });
+  });
+
   it('freezes a ready Simple draft with the server schema ref and a content hash', async () => {
     const result = await service.freeze(market, product('simple'), copyOf(ready()));
     expect(result.ok).toBe(true);

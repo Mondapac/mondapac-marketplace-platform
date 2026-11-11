@@ -1,4 +1,8 @@
 import {
+  PlatformCategoryPicker,
+  type CategoryPickerAnswer,
+} from '../application/use-cases/category-picker.use-cases';
+import {
   Body,
   Controller,
   Get,
@@ -144,6 +148,7 @@ export class PlatformProductController {
     private readonly productOptions: PlatformProductOptions,
     private readonly readProduct: PlatformProductRead,
     private readonly discardProduct: PlatformProductDiscard,
+    private readonly pickCategories: PlatformCategoryPicker,
   ) {}
 
   // Declared before `:productId`, so "options" is not read as a product id.
@@ -167,6 +172,41 @@ export class PlatformProductController {
       ? (JSON.parse(JSON.stringify(result.value)) as PlatformProductOptionsView)
       : refusal(result.error, response, context);
     return this.settle('catalog.platform-product-options', context, outcome);
+  }
+
+  // Declared before `:productId`, so "category-picker" is not read as a product id.
+  @Get('category-picker')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Category choices for the platform product form',
+    description:
+      'Needs catalog.platform-product.edit. Levels 3 and 4 only; children first and the level-3 node itself as General when it has children; hidden nodes included.',
+  })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'catalog.categories-unavailable',
+  })
+  async categoryPicker(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<CategoryPickerAnswer> {
+    const result = await this.pickCategories.execute(context, {});
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as CategoryPickerAnswer)
+      : refusal(
+          {
+            code:
+              result.error.code === 'catalog.categories-unavailable'
+                ? 'access.unavailable'
+                : result.error.code,
+          },
+          response,
+          context,
+        );
+    return this.settle('catalog.platform-category-picker', context, outcome);
   }
 
   @Get(':productId')

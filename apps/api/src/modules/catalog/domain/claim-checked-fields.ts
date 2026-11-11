@@ -581,6 +581,20 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText:
       'read copy of stored category rows: ids, status, slug and the published CategoryName rows, already claim-checked when written',
   },
+  PickerNode: {
+    noCustomerText:
+      'read copy of stored category rows for the picker: ids, status, position and the published CategoryName rows, already claim-checked when written',
+  },
+  PickerChoice: {
+    noCustomerText:
+      'one picker choice: id, level, a published category name and the path of published names, already claim-checked when written',
+  },
+  ProductCategoryNode: {
+    noCustomerText: 'ids and status of a category, for the product category rules; no text',
+  },
+  ProductCategoryIssue: {
+    noCustomerText: 'a path and a closed code of a refused product category; no text',
+  },
   LiveCategory: {
     noCustomerText:
       'public tree view: ids, slug and one published category name, already claim-checked when written, with numbers',

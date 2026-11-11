@@ -144,7 +144,10 @@ import { PRODUCT_LINKING_READER } from './application/ports/product-linking.read
 import { ProductsForLinkingQuery } from './application/use-cases/products-for-linking.use-case';
 import { SELLER_PRODUCT_OWNERS_READER } from './application/ports/seller-product-owners.reader';
 import { SellerProductOwnersQuery } from './application/use-cases/seller-product-owners.use-case';
-import { CATEGORY_TREE_READER } from './application/ports/category-tree.reader';
+import {
+  CATEGORY_TREE_READER,
+  type CategoryTreeReader,
+} from './application/ports/category-tree.reader';
 import { CategoryTreeQuery } from './application/use-cases/category-tree.use-case';
 import { CategorySlugResolveQuery } from './application/use-cases/category-slug-resolve.use-case';
 import { PublicCategoryTreeQuery } from './application/use-cases/public-category-tree.use-case';
@@ -275,6 +278,10 @@ import { OwnProductController } from './presentation/own-product.controller';
 import { OwnTopicController } from './presentation/own-topic.controller';
 import { OwnTopicList } from './application/use-cases/own-topic-list.use-case';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
+import {
+  OwnCategoryPicker,
+  PlatformCategoryPicker,
+} from './application/use-cases/category-picker.use-cases';
 import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from './application/use-cases/own-product-save-draft.use-case';
 import { OwnProductSetOwnBrand } from './application/use-cases/own-product-set-own-brand.use-case';
@@ -744,6 +751,7 @@ const RESTRUCTURE_DEPS = {
         PRODUCT_REVISION_REPOSITORY,
         ProductFamilyResolver,
         TOPIC_READER,
+        CATEGORY_TREE_READER,
       ],
       useFactory: (
         attributes: AttributeRepository,
@@ -754,6 +762,7 @@ const RESTRUCTURE_DEPS = {
         revisions: ProductRevisionRepository,
         familyResolver: ProductFamilyResolver,
         topics: TopicReader,
+        categories: CategoryTreeReader,
       ): FreezeRevision =>
         new FreezeRevision({
           attributes,
@@ -764,6 +773,7 @@ const RESTRUCTURE_DEPS = {
           suggestions,
           revisions,
           topics,
+          categories,
         }),
     },
     serviceProvider(ProductFamilyResolver, {
@@ -2010,6 +2020,16 @@ const RESTRUCTURE_DEPS = {
       clock: true,
     }),
     useCaseProvider(PlatformProductOptions, { policy: true }),
+    useCaseProvider(OwnCategoryPicker, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      policy: true,
+    }),
+    useCaseProvider(PlatformCategoryPicker, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      policy: true,
+    }),
     useCaseProvider(PlatformProductRead, {
       unitOfWork: true,
       products: true,

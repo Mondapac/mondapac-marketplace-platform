@@ -1,4 +1,8 @@
 import {
+  OwnCategoryPicker,
+  type CategoryPickerAnswer,
+} from '../application/use-cases/category-picker.use-cases';
+import {
   Body,
   Controller,
   Get,
@@ -176,6 +180,7 @@ export class OwnProductController {
     private readonly exportProducts: OwnProductsExport,
     private readonly readProduct: OwnProductRead,
     private readonly productOptions: OwnProductOptionsUseCase,
+    private readonly pickCategories: OwnCategoryPicker,
     private readonly setOwnBrand: OwnProductSetOwnBrand,
   ) {}
 
@@ -368,6 +373,41 @@ export class OwnProductController {
       ? (JSON.parse(JSON.stringify(result.value)) as OwnProductOptions)
       : refusal(result.error, response, context);
     return this.settle('catalog.own-product-options', context, outcome);
+  }
+
+  // Declared before `:productId`, so "category-picker" is not read as a product id.
+  @Get('category-picker')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Category choices for the seller product form',
+    description:
+      'Needs catalog.own-product.edit. Levels 3 and 4 only; children first and the level-3 node itself as General when it has children; hidden nodes are never offered to a seller.',
+  })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'catalog.categories-unavailable',
+  })
+  async categoryPicker(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<CategoryPickerAnswer> {
+    const result = await this.pickCategories.execute(context, {});
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as CategoryPickerAnswer)
+      : refusal(
+          {
+            code:
+              result.error.code === 'catalog.categories-unavailable'
+                ? 'access.unavailable'
+                : result.error.code,
+          },
+          response,
+          context,
+        );
+    return this.settle('catalog.own-category-picker', context, outcome);
   }
 
   @Get(':productId')
