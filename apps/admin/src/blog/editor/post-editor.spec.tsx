@@ -7,6 +7,7 @@ import messages from '../../../messages/en.json';
 vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi, type ApiFailure, type ApiResult } from '../../api/client.ts';
+import { editorProblemOf } from './editor-errors.ts';
 import { PostEditor } from './post-editor.tsx';
 import type { ApiContent, PostDetail, Taxonomy } from './types.ts';
 
@@ -195,6 +196,12 @@ describe('admin blog post editor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     expect(await screen.findByText(/Someone else changed this post/u)).toBeTruthy();
     expect(writes()).toHaveLength(1);
+  });
+
+  it('maps a too-large refusal to its own message', () => {
+    expect(editorProblemOf({ status: 413, code: 'request.too-large' }).key).toBe(
+      'blog.editor.error.too-large',
+    );
   });
 
   it('is read-only for a role without blog.post.edit, and for a post in review', async () => {

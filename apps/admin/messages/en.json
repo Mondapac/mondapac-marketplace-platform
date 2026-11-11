@@ -5799,6 +5799,7 @@
         "invalid": "Some fields are not valid. Check the marked ones.",
         "title-required": "Enter a title.",
         "slug-taken": "This address is already used by another post.",
+        "too-large": "This post is too long to save. Shorten some blocks and try again.",
         "wrong-state": "The post changed state meanwhile. It was reloaded; nothing was saved.",
         "archived": "This post is archived and cannot be changed.",
         "gone": "This post no longer exists.",

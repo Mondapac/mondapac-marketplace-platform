@@ -239,7 +239,11 @@ export function PostEditor({
           >
             {t('save')}
           </Button>
-          <Button loading={busy === 'submit'} disabled={disabled} onClick={() => void onSubmit()}>
+          <Button
+            loading={busy === 'submit'}
+            disabled={disabled || (post.open === null && !dirty)}
+            onClick={() => void onSubmit()}
+          >
             {t('submit')}
           </Button>
         </div>

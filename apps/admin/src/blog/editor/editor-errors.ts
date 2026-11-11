@@ -15,6 +15,7 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'conflict.retry': 'retry',
   'access.denied': 'denied',
   'request.throttled': 'throttled',
+  'request.too-large': 'too-large',
   'request.csrf': 'csrf',
 };
 
