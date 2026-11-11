@@ -986,6 +986,33 @@
         "unavailable": "The service is not available right now. Try again in a few minutes.",
         "unknown": "Something went wrong. Try again."
       }
+    },
+    "health": {
+      "title": "Seller health",
+      "none": "No night has measured this seller yet.",
+      "new": "New seller",
+      "no-data": "No data",
+      "measured": "Measured {when}",
+      "lowest": "The measure pulling the score down most is {metric}.",
+      "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Needs attention" },
+      "metric": {
+        "seller-cancellations": "Cancellations by the seller",
+        "late-ready": "Orders ready late",
+        "customer-rating": "Customer rating",
+        "lost-disputes": "Disputes lost",
+        "reports": "Reports"
+      },
+      "trend": {
+        "too-short": "Not enough days measured to show a trend yet.",
+        "summary": "From {first} to {last} over {days} days."
+      },
+      "recalculate": "Recalculate now",
+      "outcome": {
+        "queued": "Queued. The new score shows within about two minutes; reload the page to see it.",
+        "already-queued": "A recount is already waiting for this seller.",
+        "failed": "The recount could not be queued. Try again in a few minutes."
+      },
+      "informs": "Health only informs. Nothing happens to the seller because of this score."
     }
   },
   "certificates": {
