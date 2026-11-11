@@ -6134,6 +6134,19 @@ svg {
   cursor: grab;
   touch-action: none;
 }
+/* The Mapbox map (ADR-0048): the canvas fills the box; the pin is the same button, placed by the
+   map at its tip (anchor bottom); Mapbox's own logo and attribution stay visible, as its terms ask. */
+.lmmap.gl {
+  cursor: default;
+}
+.lmgl {
+  position: absolute;
+  inset: 0;
+}
+.lmpin.gl {
+  position: static;
+  margin: 0;
+}
 .lmpin svg {
   display: block;
   width: 44px;
