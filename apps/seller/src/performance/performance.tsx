@@ -49,12 +49,7 @@ function Trend({ points }: { readonly points: readonly HealthTrendPoint[] }) {
   const last = scored[scored.length - 1]!.score!;
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <svg
-        role="img"
-        aria-label={t('label', { first, last })}
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-12 w-60 text-accent"
-      >
+      <svg aria-hidden="true" viewBox={`0 0 ${width} ${height}`} className="h-12 w-60 text-accent">
         <polyline points={path} fill="none" stroke="currentColor" strokeWidth="2" />
       </svg>
       <p className="text-sm text-fg-muted">{t('summary', { first, last, days: points.length })}</p>

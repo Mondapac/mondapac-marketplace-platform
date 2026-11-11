@@ -3201,8 +3201,8 @@
     },
     "summary": {
       "healthy": "Your store is healthy. {metric} is your lowest of the five measures.",
-      "at-risk": "Your store is at risk. {metric} is the measure that pulls your score down most, so that is the one to work on first.",
-      "unhealthy": "Your store needs attention. {metric} is the measure that pulls your score down most, so that is the one to work on first. The platform team may look at your store and get in touch.",
+      "at-risk": "Your score is in the at-risk range. {metric} is the measure that pulls your score down most, so that is the one to work on first.",
+      "unhealthy": "Your store needs attention. {metric} is the measure that pulls your score down most, so that is the one to work on first. If you would like help, the platform team is happy to talk.",
       "new": "You are new on MondaPac: you have {orders} orders in the counting window, and a score appears once you have enough.",
       "no-data": "There is not enough data to score your store yet."
     },

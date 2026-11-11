@@ -65,7 +65,7 @@ describe('seller performance page', () => {
     expect(screen.getAllByText('Customer rating').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Reports').length).toBeGreaterThan(0);
     expect(screen.getByText('No data')).toBeTruthy();
-    expect(screen.getByRole('img', { name: /from 70 to 58/ })).toBeTruthy();
+    expect(screen.getByText(/from 70 to 58/)).toBeTruthy();
   });
 
   it('says New with the order count, and No data yet, instead of a score', () => {
