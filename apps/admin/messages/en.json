@@ -5466,7 +5466,8 @@
         "filter": "One of the filters can't be used. Remove it and try again.",
         "invalid": "Check the feature set and filters.",
         "unavailable": "We could not save right now. Try again.",
-        "unknown": "The links could not be saved."
+        "unknown": "The links could not be saved.",
+        "attributes-unavailable": "We could not load the attributes to choose from. Cancel and try again."
       }
     }
   },
@@ -6394,7 +6395,8 @@
           "invalid": "Check the names and attributes. Something isn't accepted.",
           "refused": "The feature set could not be saved. Check the names and attributes.",
           "unavailable": "We could not save right now. Try again.",
-          "unknown": "The feature set could not be saved."
+          "unknown": "The feature set could not be saved.",
+          "attributes-unavailable": "We could not load the attributes to choose from. Cancel and try again."
         }
       }
     },

@@ -4,6 +4,7 @@ import { Badge, Banner, Button, EmptyState, Select, TextField } from '@mondapac/
 import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { loadActiveAttributes } from './load-active-attributes.ts';
 import {
   addEntry,
   addGroup,
@@ -23,7 +24,6 @@ import {
   type EditorState,
 } from './feature-set-editor-model.ts';
 import {
-  API_ATTRIBUTES,
   API_FEATURE_SETS,
   directionOf,
   languageName,
@@ -80,16 +80,17 @@ export function FeatureSetEditor({
   const [locale, setLocale] = useState(locales.default);
   const [failure, setFailure] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<AttributePage['items']>([]);
+  const [listFailed, setListFailed] = useState(false);
   const [newGroup, setNewGroup] = useState('');
   const [adding, setAdding] = useState<Readonly<Record<number, string>>>({});
 
   useEffect(() => {
     let live = true;
-    void callApi<AttributePage>('GET', `${API_ATTRIBUTES}?status=active&limit=200`).then(
-      (result) => {
-        if (live && result.ok) setCandidates(result.body.items);
-      },
-    );
+    void loadActiveAttributes().then((result) => {
+      if (!live) return;
+      if (result.ok) setCandidates(result.items);
+      else setListFailed(true);
+    });
     return () => {
       live = false;
     };
@@ -143,6 +144,7 @@ export function FeatureSetEditor({
         {t('title', { code: detail.code })}
       </h2>
       {failure !== null ? <Banner tone="critical">{t(`error.${failure}`)}</Banner> : null}
+      {listFailed ? <Banner tone="critical">{t('error.attributes-unavailable')}</Banner> : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Select
           label={t('language')}

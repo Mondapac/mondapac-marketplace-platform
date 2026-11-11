@@ -13,8 +13,8 @@ import {
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { loadActiveAttributes } from '../attributes/load-active-attributes.ts';
 import {
-  API_ATTRIBUTES,
   API_FEATURE_SETS,
   type AttributePage,
   type FeatureSetList,
@@ -208,6 +208,7 @@ function LinksEditor({
   const [sets, setSets] = useState<FeatureSetList['items']>([]);
   const [attributes, setAttributes] = useState<AttributePage['items']>([]);
   const [defaultLocale, setDefaultLocale] = useState('');
+  const [listFailed, setListFailed] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
@@ -217,11 +218,12 @@ function LinksEditor({
     void callApi<FeatureSetList>('GET', API_FEATURE_SETS).then((r) => {
       if (live && r.ok) setSets(r.body.items.filter((row) => row.status === 'active'));
     });
-    void callApi<AttributePage>('GET', `${API_ATTRIBUTES}?status=active&limit=200`).then((r) => {
-      if (live && r.ok) {
-        setAttributes(r.body.items);
-        setDefaultLocale(r.body.locales?.default ?? '');
-      }
+    void loadActiveAttributes().then((result) => {
+      if (!live) return;
+      if (result.ok) {
+        setAttributes(result.items);
+        setDefaultLocale(result.locale);
+      } else setListFailed(true);
     });
     return () => {
       live = false;
@@ -234,7 +236,7 @@ function LinksEditor({
       (FILTERABLE as readonly string[]).includes(item.dataType) && !filters.includes(item.code),
   );
   const sent = inheritFilters ? [] : filters;
-  const tightens = own && featureSetId !== (body.own?.featureSetId ?? '');
+  const tightens = (own ? featureSetId : '') !== (body.own?.featureSetId ?? '');
 
   async function save() {
     if (busy.current) return;
@@ -271,6 +273,7 @@ function LinksEditor({
   return (
     <section aria-label={t('editor')} className="flex flex-col gap-4">
       {failure === null ? null : <Banner tone="critical">{t(`error.${failure}`)}</Banner>}
+      {listFailed ? <Banner tone="critical">{t('error.attributes-unavailable')}</Banner> : null}
       <fieldset className="flex flex-col gap-2">
         <legend className="font-semibold text-fg">{t('feature-set')}</legend>
         <label className="flex items-center gap-2">

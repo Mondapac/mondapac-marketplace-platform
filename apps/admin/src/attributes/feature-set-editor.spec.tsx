@@ -118,6 +118,19 @@ describe.each(MARKETS)('feature set editor in market $name', ({ locales }) => {
     });
   });
 
+  it('reads the attribute list in pages the API accepts', async () => {
+    show();
+    await waitFor(() =>
+      expect(call.mock.calls.some(([, path]) => path.startsWith('catalog/admin/attributes?'))).toBe(
+        true,
+      ),
+    );
+    const path = call.mock.calls
+      .map(([, p]) => p)
+      .find((p) => p.startsWith('catalog/admin/attributes?'));
+    expect(Number(new URLSearchParams(path?.split('?')[1]).get('limit'))).toBeLessThanOrEqual(50);
+  });
+
   it('adds an attribute the set does not hold yet', async () => {
     show();
     const select = await screen.findByLabelText('Add attribute to core');

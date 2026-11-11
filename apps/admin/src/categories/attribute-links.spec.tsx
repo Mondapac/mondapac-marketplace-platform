@@ -104,6 +104,37 @@ describe.each([
     expect(put?.[2]).toEqual({ version: 3, featureSetId: 'fs2', filters: ['size'] });
   });
 
+  it('reads the attribute list in pages the API accepts', async () => {
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit attribute links' }));
+    await waitFor(() =>
+      expect(call.mock.calls.some(([, path]) => path.startsWith('catalog/admin/attributes?'))).toBe(
+        true,
+      ),
+    );
+    const path = call.mock.calls
+      .map(([, p]) => p)
+      .find((p) => p.startsWith('catalog/admin/attributes?'));
+    const query = new URLSearchParams(path?.split('?')[1]);
+    expect(query.get('status')).toBe('active');
+    expect(Number(query.get('limit'))).toBeLessThanOrEqual(50);
+  });
+
+  it('says so when the attributes cannot be loaded', async () => {
+    call.mockImplementation((method, path) =>
+      Promise.resolve(
+        method === 'GET' && path.startsWith('catalog/admin/attributes?')
+          ? { ok: false, failure: { status: 400, code: 'validation.failed' } }
+          : method === 'GET' && path.includes('attribute-links')
+            ? { ok: true, status: 200, body: links() }
+            : { ok: true, status: 200, body: lists.sets },
+      ),
+    );
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit attribute links' }));
+    expect(await screen.findByText(/We could not load the attributes to choose from/)).toBeTruthy();
+  });
+
   it('shows a stale save as a message', async () => {
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Edit attribute links' }));
