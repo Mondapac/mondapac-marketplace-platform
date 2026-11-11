@@ -7,7 +7,7 @@ import { MarketRegistry } from '../market-config/market-registry';
 import { MarketContextFactory } from '../market-context/market-context.factory';
 import { JOB_LOCK, type JobLock } from './job-lock';
 import { JobRegistry } from './job-registry';
-import { maxConcurrentJobRunsOf, Scheduler } from './scheduler';
+import { jobRunBoundsOf, Scheduler } from './scheduler';
 
 /**
  * The scheduler (platform persistence design, "P", 7): the job registry modules register
@@ -42,7 +42,7 @@ import { maxConcurrentJobRunsOf, Scheduler } from './scheduler';
           contexts,
           ids,
           Math.random,
-          maxConcurrentJobRunsOf(config.databasePoolMax),
+          jobRunBoundsOf(config.databasePoolMax),
         ),
     },
   ],

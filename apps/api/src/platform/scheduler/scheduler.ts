@@ -28,14 +28,34 @@ export type JobRunResult =
 /** Where the first tick of a job falls inside its interval: a fraction from 0 to 1. */
 export type Jitter = () => number;
 
+/** The two lanes of ticked runs: jobs that may run past the default 60 s, and the rest. */
+export type JobLane = 'short' | 'long';
+
+/** How many ticked runs of each lane may be in flight at once in one worker. */
+export type JobRunBounds = Readonly<Record<JobLane, number>>;
+
+/** No bound: what tests that build a `Scheduler` themselves get unless they pass one. */
+export const UNBOUNDED_JOB_RUNS: JobRunBounds = {
+  short: Number.POSITIVE_INFINITY,
+  long: Number.POSITIVE_INFINITY,
+};
+
+/** A job declared to run longer than the default (imports, reindexes, reconciles) is long. */
+export function laneOf(job: Pick<JobDefinition, 'maxRunMs'>): JobLane {
+  return (job.maxRunMs ?? DEFAULT_MAX_RUN_MS) > DEFAULT_MAX_RUN_MS ? 'long' : 'short';
+}
+
 /**
- * The bound on job runs in flight for a pool of `poolMax` connections: a third of the pool,
- * at least one. Each run holds its lock connection and usually one for its work, so the jobs
- * keep at most about two thirds of the pool, and the relay and the dispatcher always find a
- * connection (10 connections: 3 runs).
+ * The bounds for a pool of `poolMax` connections: a third of the pool, at least two runs, of
+ * which one is the long lane's. Each run holds its lock connection and usually one for its
+ * work, so with the default 10 the jobs keep at most 6 connections (2 short runs, 1 long) and
+ * the relay and the dispatcher always find one. A long run never takes a short run's slot, so
+ * a 10-minute import cannot hold back the 5 s and 10 s payment and ledger jobs. Below 6
+ * connections the jobs can still take the whole pool.
  */
-export function maxConcurrentJobRunsOf(poolMax: number): number {
-  return Math.max(1, Math.floor(poolMax / 3));
+export function jobRunBoundsOf(poolMax: number): JobRunBounds {
+  const runs = Math.max(2, Math.floor(poolMax / 3));
+  return { short: runs - 1, long: 1 };
 }
 
 /**
@@ -50,19 +70,23 @@ export function maxConcurrentJobRunsOf(poolMax: number): number {
  * Nothing starts on construction: `WorkerRuntime.start()` calls {@link start}, and tests call
  * {@link runJobOnce} themselves (P 8).
  *
- * At most `maxConcurrentRuns` ticked runs are in flight at once. A run holds one pooled
+ * Ticked runs are bounded per lane ({@link jobRunBoundsOf}). A run holds one pooled
  * connection for its lock for the whole run and takes others for its work, so without a
  * bound the jobs due together (every `runAtStart` job at start-up, the short-interval jobs)
  * held most of the worker's pool, and the relay and the dispatcher waited past their
- * connection wait and failed pass after pass. A tick that finds the bound reached waits in a
- * queue, once per job, and runs when a run ends; {@link stop} drops the queue.
+ * connection wait and failed pass after pass. A tick that finds its lane full waits in that
+ * lane's queue, once per job, and runs when a run of the lane ends; a tick of a job whose run
+ * is still in flight is dropped (its lock would skip it); {@link stop} drops the queues.
  */
 export class Scheduler {
   private readonly logger = new Logger('Scheduler');
   private readonly timers = new Set<NodeJS.Timeout>();
   private readonly inFlight = new Set<Promise<unknown>>();
-  /** Jobs whose tick found the bound reached, oldest first; a job is queued at most once. */
-  private readonly waiting: string[] = [];
+  /** The jobs with a ticked run in flight. */
+  private readonly running = new Set<string>();
+  private readonly runningIn: Record<JobLane, number> = { short: 0, long: 0 };
+  /** Per lane, jobs whose tick found the lane full, oldest first; each job at most once. */
+  private readonly waiting: Record<JobLane, string[]> = { short: [], long: [] };
   private stopping = false;
 
   constructor(
@@ -72,7 +96,7 @@ export class Scheduler {
     private readonly contexts: MarketContextFactory,
     private readonly ids: IdGenerator,
     private readonly jitter: Jitter = Math.random,
-    private readonly maxConcurrentRuns: number = Number.POSITIVE_INFINITY,
+    private readonly bounds: JobRunBounds = UNBOUNDED_JOB_RUNS,
   ) {}
 
   async runJobOnce(name: string): Promise<JobRunResult> {
@@ -139,11 +163,14 @@ export class Scheduler {
   }
 
   private tick(name: string): void {
-    if (this.stopping) return;
-    if (this.inFlight.size >= this.maxConcurrentRuns) {
-      if (!this.waiting.includes(name)) this.waiting.push(name);
+    if (this.stopping || this.running.has(name)) return;
+    const lane = laneOf(this.registry.get(name)!);
+    if (this.runningIn[lane] >= this.bounds[lane]) {
+      if (!this.waiting[lane].includes(name)) this.waiting[lane].push(name);
       return;
     }
+    this.running.add(name);
+    this.runningIn[lane] += 1;
     const run = this.runJobOnce(name)
       .then((result) => {
         if (result.outcome === 'skipped') {
@@ -156,7 +183,9 @@ export class Scheduler {
       })
       .finally(() => {
         this.inFlight.delete(run);
-        const next = this.waiting.shift();
+        this.running.delete(name);
+        this.runningIn[lane] -= 1;
+        const next = this.waiting[lane].shift();
         if (next !== undefined) this.tick(next);
       });
     this.inFlight.add(run);
@@ -165,7 +194,8 @@ export class Scheduler {
   /** No new tick; waits up to `graceMs` for the runs in flight (P 8). */
   async stop(graceMs: number): Promise<void> {
     this.stopping = true;
-    this.waiting.length = 0;
+    this.waiting.short.length = 0;
+    this.waiting.long.length = 0;
     for (const timer of this.timers) clearTimeout(timer);
     this.timers.clear();
     let timeout: NodeJS.Timeout | undefined;
