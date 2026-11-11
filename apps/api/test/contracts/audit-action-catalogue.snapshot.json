@@ -2993,6 +2993,36 @@
     }
   },
   {
+    "action": "catalog.platform-category.products-move-started",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "products": "integer"
+    },
+    "after": {
+      "jobId": "id",
+      "reasonGiven": "boolean",
+      "targetCategoryId": "id"
+    }
+  },
+  {
+    "action": "catalog.product.category-overridden",
+    "targetType": "catalog.product",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": {
+      "fromCategoryId": "id"
+    },
+    "after": {
+      "categoryCount": "integer",
+      "jobId": "id",
+      "requestedBy": "id",
+      "scope": "enumOf(platform|seller)",
+      "toCategoryId": "id"
+    }
+  },
+  {
     "action": "catalog.platform-category.reordered",
     "targetType": "catalog.platform-category",
     "targetId": "id",

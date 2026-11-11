@@ -16,7 +16,10 @@ import type { WorkingCopy } from '../../domain/working-copy';
 import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
+import { MAX_TREE_NODES } from '../../domain/category-tree';
+import { checkProductCategories } from '../../domain/product-category-rules';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { CategoryTreeReader } from '../ports/category-tree.reader';
 import type { ProductImageRepository } from '../ports/product-image.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import type { TopicBrief, TopicReader } from '../ports/topic.reader';
@@ -64,6 +67,13 @@ export interface FreezeRevisionDependencies {
    * T2). Without it a draft that lists topics is not ready (fail closed).
    */
   readonly topics?: Pick<TopicReader, 'briefsOf'>;
+  /**
+   * The category tree, to check the product's categories at every submit (categories C5a,
+   * decision 4): one to three, each active or hidden and on level 3 or 4 (`category.level-not-allowed`).
+   * The module wires it; a caller without it skips only this check. Existing published revisions
+   * are not rewritten, the rule bites at the next submit.
+   */
+  readonly categories?: Pick<CategoryTreeReader, 'nodes'>;
 }
 
 /**
@@ -220,6 +230,9 @@ export class FreezeRevision {
         if (!usable.has(imageId)) issues.push({ path: `imageIds.${index}`, code: 'unavailable' });
       });
     }
+    if (frozen.ok && this.deps.categories !== undefined) {
+      issues.push(...(await this.#categoryIssues(market, frozen.value.categoryIds)));
+    }
     if (frozen.ok && frozen.value.topicIds.length > 0) {
       issues.push(...(await this.#topicIssues(market, product, frozen.value.topicIds)));
     }
@@ -236,6 +249,16 @@ export class FreezeRevision {
    * foreign key fault) and must not be archived, unless the published revision already carries it
    * (`archived`). Approval does not look again: the content hash ties the review to the content.
    */
+  /** The category rules of C5a over the stored tree; a tree too large to read fails closed. */
+  async #categoryIssues(
+    market: MarketContext,
+    categoryIds: readonly string[],
+  ): Promise<readonly RevisionIssue[]> {
+    const nodes = await this.deps.categories!.nodes(market, MAX_TREE_NODES + 1);
+    if (nodes.length > MAX_TREE_NODES) return [{ path: 'categoryIds', code: 'unavailable' }];
+    return checkProductCategories(nodes, categoryIds, this.deps.policy.maxCategoryDepth(market));
+  }
+
   async #topicIssues(
     market: MarketContext,
     product: Product,

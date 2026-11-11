@@ -223,6 +223,11 @@ import {
   PLATFORM_IMPORT_REPOSITORY,
   type PlatformImportRepository,
 } from '../application/ports/platform-import.repository';
+import {
+  CATEGORY_PRODUCT_MOVE_STORE,
+  type CategoryProductMoveStore,
+} from '../application/ports/category-product-move.store';
+import { PrismaCategoryProductMoveStore } from './prisma-category-product-move.store';
 import { CheckedInAttributeSeed } from './seed/checked-in-attribute-seed';
 import { PrismaAttributeRepository } from './prisma-attribute.repository';
 import { CheckedInCategorySeed } from './seed/checked-in-category-seed';
@@ -689,6 +694,12 @@ export const catalogProviders: readonly Provider[] = [
   {
     provide: ATTRIBUTE_SEED,
     useFactory: (): AttributeSeed => new CheckedInAttributeSeed(),
+  },
+  {
+    provide: CATEGORY_PRODUCT_MOVE_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryProductMoveStore =>
+      new PrismaCategoryProductMoveStore(prisma),
   },
   {
     provide: PLATFORM_IMPORT_REPOSITORY,

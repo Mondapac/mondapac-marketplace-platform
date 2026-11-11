@@ -399,6 +399,57 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
     });
   });
 
+  describe('C5a: the category override publishes at once and keeps the pending revision', () => {
+    it.each(['SELLER', 'PLATFORM'] as const)(
+      'publishes over the published revision of a %s product, keeping a pending seller revision',
+      (scope) => {
+        const product = simple(scope);
+        submit(product, {
+          revisionId: rev(1),
+          authorKind: scope === 'SELLER' ? 'seller' : 'admin',
+        });
+        const result = product.publishCategoryOverride({
+          revisionId: rev(3),
+          fromRevisionId: rev(1),
+          familyCode: 'default',
+          now: T2,
+        });
+        expect(result.ok).toBe(true);
+        expect(product.state.publishedRevisionId).toBe(rev(3));
+      },
+    );
+    it('raises a family change when the new primary holds another feature set', () => {
+      const product = simple();
+      submit(product, { revisionId: rev(1) });
+      product.publishCategoryOverride({
+        revisionId: rev(2),
+        fromRevisionId: rev(1),
+        familyCode: 'snacks',
+        now: T2,
+      });
+      expect(product.state.familyCode).toBe('snacks');
+      expect(types(product)).toContain('catalog.product-family-changed.v1');
+    });
+    it('refuses a stale base, a taken id, an unpublished product and a bad family', () => {
+      const product = simple();
+      const ask = (revisionId: number, fromRevisionId: number, familyCode = 'default') =>
+        product.publishCategoryOverride({
+          revisionId: rev(revisionId),
+          fromRevisionId: rev(fromRevisionId),
+          familyCode,
+          now: T2,
+        });
+      expect(ask(2, 1)).toEqual({ ok: false, error: { code: 'product.no-published-revision' } });
+      submit(product, { revisionId: rev(1) });
+      expect(ask(2, 9)).toEqual({ ok: false, error: { code: 'revision.base-changed' } });
+      expect(ask(1, 1)).toEqual({ ok: false, error: { code: 'revision.id-taken' } });
+      expect(ask(2, 1, 'Bad Code')).toEqual({
+        ok: false,
+        error: { code: 'product.family-invalid' },
+      });
+    });
+  });
+
   describe('base revision', () => {
     it('refuses a submit built on a revision that is no longer the published one', () => {
       const product = simple();

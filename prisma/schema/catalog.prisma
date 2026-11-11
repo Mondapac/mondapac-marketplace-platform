@@ -113,6 +113,7 @@ model CatalogProduct {
   images               CatalogProductImage[]
   offers               CatalogOffer[]
   attributeSuggestions CatalogAttributeValueSuggestion[] @relation("ProductValueSuggestions")
+  categoryMoveItems    CatalogCategoryProductMoveItem[]
 
   /// The target of composite foreign keys (C3).
   @@unique([marketId, id])
@@ -233,6 +234,8 @@ model CatalogPlatformCategory {
   businessActivities            CatalogBusinessActivityCategory[]    @relation("ActivityCategory")
   slugHistory                   CatalogPlatformCategorySlugHistory[]
   catalogCategoryAttributeLinks CatalogCategoryAttributeLink[]
+  moveJobsFrom                  CatalogCategoryProductMoveJob[]      @relation("MoveJobSource")
+  moveJobsTo                    CatalogCategoryProductMoveJob[]      @relation("MoveJobTarget")
 
   @@unique([marketId, id])
   /// One slug per Market (D 17.1).
@@ -619,7 +622,7 @@ model CatalogProductRevision {
   tenantId               String                           @map("tenant_id")
   productId              String                           @map("product_id") @db.Uuid
   revisionNo             Int                              @map("revision_no")
-  /// submission | revert | tax-override.
+  /// submission | revert | tax-override | category-override.
   revisionKind           String                           @map("revision_kind")
   /// The published revision it was built on; same product.
   baseRevisionId         String?                          @map("base_revision_id") @db.Uuid
@@ -659,6 +662,7 @@ model CatalogProductRevision {
   decision               CatalogProductRevisionDecision?
   tagCopies              CatalogOfferTag[]
   reevaluationRequests   CatalogTagReevaluationRequest[]
+  categoryMoveItems      CatalogCategoryProductMoveItem[]
 
   @@unique([marketId, productId, revisionNo])
   @@unique([marketId, id])
@@ -1752,5 +1756,83 @@ model CatalogTopicTerm {
   @@id([marketId, topicId, locale, position])
   @@unique([marketId, locale, termKey])
   @@map("topic_terms")
+  @@schema("catalog")
+}
+
+/// Move products (categories C5; decision 8): an admin job that replaces the platform category X
+/// (source) by Y (target) on the published revision of every product whose published revision names
+/// X, as a `category-override` revision published at once. Runs in batches under a lease; at most
+/// one queued or running job per source category (partial unique, hand-written). The CHECKs, the
+/// partial indexes and the column grants are hand-written in the migration.
+model CatalogCategoryProductMoveJob {
+  id                 String                           @id @db.Uuid
+  marketId           String                           @map("market_id") @db.VarChar(8)
+  tenantId           String                           @map("tenant_id")
+  sourceCategoryId   String                           @map("source_category_id") @db.Uuid
+  /// Level 3 or 4, live, same Market (checked by the use case); never the source (CHECK).
+  targetCategoryId   String                           @map("target_category_id") @db.Uuid
+  /// The admin's reason, 10 to 500 characters (CHECK).
+  reason             String
+  /// queued | running | done | failed.
+  state              String
+  /// The identity account of the admin who started the job; no foreign key (other schema).
+  createdByAccountId String                           @map("created_by_account_id") @db.Uuid
+  createdAt          DateTime                         @map("created_at") @db.Timestamptz(6)
+  startedAt          DateTime?                        @map("started_at") @db.Timestamptz(6)
+  finishedAt         DateTime?                        @map("finished_at") @db.Timestamptz(6)
+  /// The last product id the runner handled (keyset cursor); null before the first batch.
+  cursorProductId    String?                          @map("cursor_product_id") @db.Uuid
+  totalCount         Int                              @map("total_count")
+  movedCount         Int                              @map("moved_count")
+  skippedCount       Int                              @map("skipped_count")
+  failedCount        Int                              @map("failed_count")
+  /// The runner turn that holds the job; set together with `leaseExpiresAt`, exactly while running.
+  leaseHolder        String?                          @map("lease_holder") @db.Uuid
+  leaseExpiresAt     DateTime?                        @map("lease_expires_at") @db.Timestamptz(6)
+  /// done | failed: how the job's one product pass ended; null until then. Set once (CHECK); a
+  /// later turn only drains the seller notices.
+  scanOutcome        String?                          @map("scan_outcome")
+  version            Int
+  sourceCategory     CatalogPlatformCategory          @relation("MoveJobSource", fields: [marketId, sourceCategoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  targetCategory     CatalogPlatformCategory          @relation("MoveJobTarget", fields: [marketId, targetCategoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  items              CatalogCategoryProductMoveItem[]
+
+  @@unique([marketId, id])
+  /// The jobs of one category, newest first (the impact read and the dialog's progress).
+  @@index([marketId, sourceCategoryId, createdAt(sort: Desc)], map: "category_product_move_jobs_market_id_source_created_at_idx")
+  @@map("category_product_move_jobs")
+  @@schema("catalog")
+}
+
+/// One product of a Move products job (insert-only but for its outcome): the guard that a product is
+/// moved, and its seller emailed, once per job. `revision_id` names the `category-override` revision
+/// the move published (the item is written `pending` first and turned `moved` once that revision row
+/// exists, in the same unit); `seller_notified_at` is set once the seller's email is queued, or
+/// `notice_failed_at` once it is given up after its last attempt. The partial index of the open
+/// notices is hand-written in the migration.
+model CatalogCategoryProductMoveItem {
+  marketId            String                        @map("market_id") @db.VarChar(8)
+  tenantId            String                        @map("tenant_id")
+  jobId               String                        @map("job_id") @db.Uuid
+  productId           String                        @map("product_id") @db.Uuid
+  /// pending | moved | skipped | failed.
+  state               String
+  /// Set exactly when moved (CHECK).
+  revisionId          String?                       @map("revision_id") @db.Uuid
+  /// Only on a moved product (CHECK).
+  sellerNotifiedAt    DateTime?                     @map("seller_notified_at") @db.Timestamptz(6)
+  /// Failed sends of the seller email so far.
+  noticeAttempts      Int                           @default(0) @map("notice_attempts")
+  /// When a failed send is tried again; null when no retry is waiting.
+  noticeNextAttemptAt DateTime?                     @map("notice_next_attempt_at") @db.Timestamptz(6)
+  /// Set when the email is given up after the last attempt; never with `sellerNotifiedAt` (CHECK).
+  noticeFailedAt      DateTime?                     @map("notice_failed_at") @db.Timestamptz(6)
+  createdAt           DateTime                      @map("created_at") @db.Timestamptz(6)
+  job                 CatalogCategoryProductMoveJob @relation(fields: [marketId, jobId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  product             CatalogProduct                @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  revision            CatalogProductRevision?       @relation(fields: [marketId, productId, revisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, jobId, productId])
+  @@map("category_product_move_items")
   @@schema("catalog")
 }

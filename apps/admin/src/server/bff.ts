@@ -62,6 +62,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/categories',
     // What the platform product create form offers (catalog): the Market's types and languages.
     'catalog/admin/platform-products/options',
+    // The category choices of the platform product form (catalog, categories C5a).
+    'catalog/admin/platform-products/category-picker',
     // The export of the product list as a file (catalog): the chosen ids or the list's own query.
     'catalog/admin/products/export',
     // Import products (catalog): the CSV and XLSX templates and the admin's current import.
@@ -261,6 +263,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/move',
     'catalog/admin/categories/:id/merge',
     'catalog/admin/categories/:id/archive',
+    // Move all the products of a category to another one (catalog, categories C5a: protected key
+    // `catalog.category-tree.restructure` and `catalog.product.approve`; a job runs it).
+    'catalog/admin/categories/:id/move-products',
     // Decide a seller's value suggestion with the version seen (catalog, attributes A5).
     'catalog/admin/attribute-suggestions/:id/approve',
     'catalog/admin/attribute-suggestions/:id/map',
@@ -365,6 +370,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // (catalog, read-only; the impact takes the `action`).
     'catalog/admin/categories/:id',
     'catalog/admin/categories/:id/impact',
+    // The state and counts of the jobs that move a category's products (catalog, categories C5a).
+    'catalog/admin/categories/:id/move-products',
     // One platform product with its working copy, for the product form (catalog).
     'catalog/admin/platform-products/:id',
     // The manufacturer certificates that name one product, one certificate, and its status history

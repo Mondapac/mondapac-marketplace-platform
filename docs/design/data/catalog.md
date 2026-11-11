@@ -1163,6 +1163,47 @@ delete, 10.1, and a photo delete must never conflict with a row that remembers w
   job's cascade, and the narrow `UPDATE (image_id)` grant is its guard (Mojtaba M5).
 - Reversible: `pnpm db:check-reversible` passes (up, down newest-first, up, no drift).
 
+### 3.32 `category_product_move_jobs`, `category_product_move_items` (Move products; categories C5a)
+
+Migration `20261111100000_catalog_move_products_job`. One job moves every published product of a
+platform category to another; one item per product of the job. Notes from the C5a review:
+
+- Item write order. An item is inserted `pending` with `revision_id` NULL (the once-per-product
+  guard, `ON CONFLICT DO NOTHING` so a duplicate never aborts the unit), and turned `moved` with
+  the revision id after the `category-override` revision row is written, in the same unit. The
+  composite FK to `product_revisions` is not deferrable, so the revision must exist first.
+- Counters. `moved/skipped/failed_count` are counted from the items by state whenever the cursor
+  moves, when the pass ends and at the end; each is `>= 0`. A `pending` item that was committed
+  (a product unit that ended without its revision; the run never does this) counts as failed, and
+  `finish` turns it `failed` (re-review N2), so no handled product drops out of the counters. There
+  is no bound by `total_count`: the total is the count at the start (a display snapshot), and a
+  product published into the source while the pass runs is handled too. The progress read shows
+  `max(total, moved + skipped + failed)` as the total.
+- Keyset cursor (N3). The scan reads products with `id > cursor_product_id`. A product published
+  into the source during a run with an id below the cursor is not seen by that job; the admin
+  starts another job for it (the impact read still counts it).
+- One product pass (re-review N1). `scan_outcome` (`done` | `failed`, NULL until then, never on a
+  queued job; CHECK) is written once, under the lease, when the scan first finds no product left
+  (`done`) or the tree cannot be read (`failed`). A later turn only drains seller notices and ends
+  the job in that state; it never scans products again, so a product published into the source
+  while the job waits for an email is not moved in the starting admin's name.
+- No indexes on the item FKs to `products` and `product_revisions` (N4): items are never deleted
+  and neither are those parents (RESTRICT, insert-only revisions), so no delete has to find items
+  by them. The partial index `..._market_id_job_id_unnotified_idx` serves the seller-notice scan.
+- Seller email is at-least-once: the send comes before the mark. A job stays `running` until every
+  moved item's email is sent (`seller_notified_at`) or given up (`notice_failed_at`; never both,
+  CHECK). A failed send (or address read) records `notice_attempts` and `notice_next_attempt_at`
+  (5, 10, 20, 40 minutes after the failures); the fifth failed attempt gives the email up with an
+  error log, so a send that always fails keeps the job open, and its source blocked, for about 75
+  minutes at most (re-review N1). The partial index `..._unnotified_idx` holds only open notices
+  (`state = 'moved'`, neither sent nor given up); a waiting retry is filtered by its time.
+- Retention (N7). Jobs and items are kept as the audit trail of a bulk publish (no DELETE grant).
+  They grow by one row per moved product. If that becomes material, a later change archives old
+  finished jobs.
+- Lock note (N1). The `product_revisions` kind-CHECK swap runs its VALIDATEs in the migration's one
+  implicit transaction, under the ACCESS EXCLUSIVE lock of the DROP/ADD CONSTRAINT. This is fine at
+  today's size. A large environment would move the VALIDATEs to a second migration file (8.2).
+
 ## 4. What is never stored
 
 | Never | Instead |

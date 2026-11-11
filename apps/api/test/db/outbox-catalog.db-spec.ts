@@ -93,6 +93,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX saved_filters_seller_owner_name_key ON catalog.saved_filters USING btree (market_id, seller_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NOT NULL)',
   'catalog.saved_filters_seller_shared_name_key':
     "CREATE UNIQUE INDEX saved_filters_seller_shared_name_key ON catalog.saved_filters USING btree (market_id, seller_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NOT NULL))",
+  // Categories package C5a (Move products): one queued or running move per source category, the
+  // runner's claim order, and the moved items whose seller notice is still open.
+  'catalog.category_product_move_jobs_market_id_source_open_key':
+    "CREATE UNIQUE INDEX category_product_move_jobs_market_id_source_open_key ON catalog.category_product_move_jobs USING btree (market_id, source_category_id) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))",
+  'catalog.category_product_move_jobs_market_id_queue_idx':
+    "CREATE INDEX category_product_move_jobs_market_id_queue_idx ON catalog.category_product_move_jobs USING btree (market_id, created_at, id) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))",
+  'catalog.category_product_move_items_market_id_job_id_unnotified_idx':
+    "CREATE INDEX category_product_move_items_market_id_job_id_unnotified_idx ON catalog.category_product_move_items USING btree (market_id, job_id, product_id) WHERE ((state = 'moved'::text) AND (seller_notified_at IS NULL) AND (notice_failed_at IS NULL))",
   // docs/design/data/catalog.md 3.29: the admin product import. One queued or running import per
   // admin, the worker's claim order, and the purge's reach for files still stored.
   'catalog.platform_import_jobs_market_id_file_purge_idx':

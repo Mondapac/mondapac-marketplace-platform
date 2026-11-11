@@ -16,6 +16,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import {
+  ApiAcceptedResponse,
   ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
@@ -49,6 +50,8 @@ import { CategoryEditDetails } from '../application/use-cases/category-edit-deta
 import { CategoryHide } from '../application/use-cases/category-hide.use-case';
 import { CategoryMove } from '../application/use-cases/category-move.use-case';
 import { CategoryMerge } from '../application/use-cases/category-merge.use-case';
+import { CategoryMoveProducts } from '../application/use-cases/category-move-products.use-case';
+import { CategoryMoveProductsProgress } from '../application/use-cases/category-move-products-progress.use-case';
 import { CategoryArchive } from '../application/use-cases/category-archive.use-case';
 import { CategoryReorder } from '../application/use-cases/category-reorder.use-case';
 import { CategoryShow } from '../application/use-cases/category-show.use-case';
@@ -71,6 +74,9 @@ import {
   CategoryArchiveRequest,
   CategoryMergeRequest,
   CategoryMoveRequest,
+  CategoryMoveProductsProgressBody,
+  CategoryMoveProductsRequest,
+  CategoryMoveProductsStartedBody,
   CategoryTreeVersionRequest,
   CategoryVersionRequest,
   CategoryWriteWrapBody,
@@ -110,6 +116,9 @@ export const CATEGORY_ADMIN_STATUS: Readonly<Record<string, number>> = Object.fr
   'category.only-platform-category': 422,
   'category.products-on-upper-level': 422,
   'category.impact-too-large': 422,
+  'category.level-not-allowed': 422,
+  'category.no-products': 409,
+  'category.move-in-progress': 409,
   'category.referenced-by-policy': 409,
   'category.check-unavailable': 503,
   'category.depth-exceeded': 422,
@@ -195,6 +204,8 @@ export class CategoryAdminController {
     private readonly moveCategory: CategoryMove,
     private readonly mergeCategory: CategoryMerge,
     private readonly archiveCategory: CategoryArchive,
+    private readonly moveProducts: CategoryMoveProducts,
+    private readonly moveProductsProgress: CategoryMoveProductsProgress,
   ) {}
 
   @Get()
@@ -800,6 +811,89 @@ export class CategoryAdminController {
       optional: [],
       run: (input) => this.archiveCategory.execute(context, { ...input, categoryId }),
     });
+  }
+
+  @Post(':categoryId/move-products')
+  @HttpCode(202)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Move the products of a category to another category',
+    description:
+      'Needs the protected key catalog.category-tree.restructure and catalog.product.approve; ' +
+      'refused in an acting-as session. Starts a job that gives every published product of the ' +
+      'category an admin revision naming the target, published at once (the target becomes ' +
+      'primary when the category was), audits it and emails the seller. The target is on level 3 ' +
+      'up to the Market depth. The job makes one pass over the category: a product published ' +
+      'into it after the pass is not moved. A seller email that cannot be sent is retried for ' +
+      'about 75 minutes and then given up, so the job always ends. Read the progress with GET on ' +
+      'the same path.',
+  })
+  @ApiParam(CATEGORY_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: CategoryMoveProductsRequest })
+  @ApiAcceptedResponse({ type: CategoryMoveProductsStartedBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({
+    type: ApiErrorBody,
+    description: 'category.not-found or category.target-not-found',
+  })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description:
+      'category.move-unchanged, category.not-editable, category.no-products or category.move-in-progress',
+  })
+  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: 'category.level-not-allowed' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'catalog.categories-unavailable or access.unavailable',
+  })
+  async startMoveProducts(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('categoryId') categoryId: string,
+    @Body() body: unknown,
+  ): Promise<CategoryMoveProductsStartedBody> {
+    return this.write<CategoryMoveProductsStartedBody>(
+      'catalog.category-move-products',
+      context,
+      response,
+      request,
+      body,
+      {
+        keys: ['targetId', 'reason'],
+        optional: [],
+        run: (input) => this.moveProducts.execute(context, { ...input, categoryId }),
+      },
+    );
+  }
+
+  @Get(':categoryId/move-products')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Progress of the jobs that move the products of a category',
+    description:
+      'Needs catalog.category-tree.view. The newest jobs with state and counts; ids and numbers only.',
+  })
+  @ApiParam(CATEGORY_PARAM)
+  @ApiOkResponse({ type: CategoryMoveProductsProgressBody })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'category.not-found' })
+  async readMoveProductsProgress(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('categoryId') categoryId: string,
+  ): Promise<CategoryMoveProductsProgressBody> {
+    const result = await this.moveProductsProgress.execute(context, { categoryId });
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as CategoryMoveProductsProgressBody)
+      : refusal(result.error, response, context);
+    return this.settle('catalog.category-move-products-progress', context, outcome);
   }
 
   private async write<T extends object = CategoryWriteWrapBody>(

@@ -581,6 +581,32 @@ describe('relay allowlist for seller decisions', () => {
     }
   });
 
+  it('relays Move products as a POST and its progress as a GET on the exact path only (categories C5a)', async () => {
+    const path = `catalog/admin/categories/${ID}/move-products`;
+    const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, path.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('POST', path)).status).toBe(200);
+    expect((await call('PUT', path)).status).toBe(404);
+    expect((await call('DELETE', path)).status).toBe(404);
+    expect((await call('POST', `${path}/extra`)).status).toBe(404);
+    expect((await call('POST', 'catalog/admin/categories/not-a-uuid/move-products')).status).toBe(
+      404,
+    );
+  });
+
+  it('relays the platform product category picker as a GET on its exact path only (categories C5a)', async () => {
+    const path = 'catalog/admin/platform-products/category-picker';
+    const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, path.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('POST', path)).status).toBe(404);
+    const extra = new Request(`http://admin.localhost:3002/api/${path}/extra`, {
+      headers: sameOrigin,
+    });
+    expect((await relay(config, extra, [...path.split('/'), 'extra'], fetchImpl)).status).toBe(404);
+  });
+
   it('relays the assistant settings read and write on their exact path only', async () => {
     const path = 'assistant/admin/settings';
     const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
@@ -1207,6 +1233,9 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', 'catalog/admin/categories'],
     ['GET', `catalog/admin/categories/${id}`],
     ['GET', `catalog/admin/categories/${id}/impact`],
+    ['GET', `catalog/admin/categories/${id}/move-products`],
+    ['POST', `catalog/admin/categories/${id}/move-products`],
+    ['GET', 'catalog/admin/platform-products/category-picker'],
     ['GET', 'catalog/admin/business-activities'],
     ['GET', `catalog/admin/business-activities/${id}`],
     ['POST', 'catalog/admin/business-activities'],

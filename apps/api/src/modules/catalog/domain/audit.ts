@@ -441,6 +441,41 @@ export const PlatformCategoryMovedAudit = defineAuditAction({
   },
 });
 
+/**
+ * An admin started "Move products" on a category (C5a, decision 8): every published product that
+ * names the source gets an admin revision naming the target. Ids, counts and the fact that a
+ * reason was given; the reason text stays on the job.
+ */
+export const PlatformCategoryProductsMoveStartedAudit = defineAuditAction({
+  action: 'catalog.platform-category.products-move-started',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { products: auditField.integer() },
+  after: {
+    targetCategoryId: auditField.id(),
+    jobId: auditField.id(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/**
+ * The job of "Move products" published a `category-override` revision of a product (C5a). It runs
+ * as the system; `requestedBy` is the admin who started the job.
+ */
+export const ProductCategoryOverriddenAudit = defineAuditAction({
+  action: 'catalog.product.category-overridden',
+  targetType: CATALOG_PRODUCT_TARGET,
+  actors: ['system'],
+  before: { fromCategoryId: auditField.id() },
+  after: {
+    toCategoryId: auditField.id(),
+    categoryCount: auditField.integer(),
+    scope,
+    jobId: auditField.id(),
+    requestedBy: auditField.id(),
+  },
+});
+
 /** An admin merged a category into another; its children moved there (C4a). */
 export const PlatformCategoryMergedAudit = defineAuditAction({
   action: 'catalog.platform-category.merged',
@@ -688,6 +723,8 @@ export const CATALOG_AUDIT_ACTIONS = [
   PlatformCategoryImageChangedAudit,
   ProductImageDeletedAudit,
   PlatformCategoryMovedAudit,
+  PlatformCategoryProductsMoveStartedAudit,
+  ProductCategoryOverriddenAudit,
   PlatformCategoryMergedAudit,
   PlatformCategoryArchivedAudit,
   BrandCreatedAudit,
