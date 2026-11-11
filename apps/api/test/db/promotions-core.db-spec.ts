@@ -681,6 +681,8 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
           funding: 'CO_FUNDED',
           platformSplitBps: 5000,
           name: 'Campaign',
+          // Leaving is only possible before the start.
+          startsAt: clock.now().add({ hours: 48 }).toString(),
         }),
       );
       expect(campaign.ok).toBe(true);

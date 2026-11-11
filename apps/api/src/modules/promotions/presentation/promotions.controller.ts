@@ -1045,8 +1045,8 @@ export class SellerPromotionsController {
   @ApiOperation({
     summary: 'Opt in to, or out of, a co-funded campaign',
     description:
-      'For the seller own products only. Withdrawing stops the campaign for this seller; ' +
-      'it never changes what was already ordered.',
+      'For the seller own products only. Withdrawing is possible only before the campaign ' +
+      'starts (promotions.invalid-state after); it never changes what was already ordered.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'id', format: 'uuid' })

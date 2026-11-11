@@ -192,6 +192,11 @@ export async function setOptIn(
     const existing = await deps.optIns.find(context.market, promotion.id, seller.sellerId);
     const was = existing !== null && existing.withdrawnAt === null;
     if (was === optIn) return ok({ promotionId: promotion.id, optedIn: optIn });
+    // Leaving is for before the campaign starts; once it runs, only support can take a seller out
+    // (owner decision, 11 Nov 2026). Joining stays open while the campaign is.
+    if (!optIn && promotion.startsAt.epochMilliseconds <= now.epochMilliseconds) {
+      return err({ code: 'promotions.invalid-state' });
+    }
     if (optIn) {
       await deps.optIns.optIn(context.market, promotion.id, seller.sellerId, now, seller.accountId);
     } else {

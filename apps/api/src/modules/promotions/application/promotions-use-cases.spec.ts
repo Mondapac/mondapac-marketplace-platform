@@ -642,8 +642,29 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       expect((await optIns.liveSellers(market, [created.value.id])).get(created.value.id)).toEqual([
         SELLER,
       ]);
-      await make(SetCoFundingOptIn).execute(seller(), { ...input, optIn: false });
-      expect((await optIns.liveSellers(market, [created.value.id])).size).toBe(0);
+      // The campaign has started: leaving is no longer the seller's to do.
+      expect(await make(SetCoFundingOptIn).execute(seller(), { ...input, optIn: false })).toEqual({
+        ok: false,
+        error: { code: 'promotions.invalid-state' },
+      });
+      expect((await optIns.liveSellers(market, [created.value.id])).get(created.value.id)).toEqual([
+        SELLER,
+      ]);
+
+      // Before the start, leaving and joining again both work.
+      const later = await make(CreatePromotion).execute(
+        admin(),
+        campaign({ name: 'Later', startsAt: T0.add({ hours: 48 }).toString() }),
+      );
+      if (!later.ok) throw new Error('create failed');
+      const join = { promotionId: later.value.id, optIn: true };
+      await make(SetCoFundingOptIn).execute(seller(), join);
+      await make(SetCoFundingOptIn).execute(seller(), { ...join, optIn: false });
+      expect((await optIns.liveSellers(market, [later.value.id])).size).toBe(0);
+      await make(SetCoFundingOptIn).execute(seller(), join);
+      expect((await optIns.liveSellers(market, [later.value.id])).get(later.value.id)).toEqual([
+        SELLER,
+      ]);
 
       const aimed = await make(CreatePromotion).execute(
         admin(),
@@ -1201,10 +1222,8 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
 
       it('leaves a withdrawn opt-in alone and a refused edit changes nothing', async () => {
         const promotionId = await optedIn();
-        await make(SetCoFundingOptIn).execute(seller(SELLER_2, SELLER_2_ACCOUNT), {
-          promotionId,
-          optIn: false,
-        });
+        // The campaign runs, so a seller can no longer leave it by itself (support does it).
+        await optIns.withdraw(market, promotionId, SELLER_2, T0);
         audit.entries.length = 0;
         expect((await edit(promotionId, { platformSplitBps: 6000 })).ok).toBe(true);
         expect(
