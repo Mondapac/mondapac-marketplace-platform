@@ -358,6 +358,14 @@ export class AdminSellerOrderBody extends SellerOrderBody {
   })
   sellerOrderId!: string;
   @ApiProperty({
+    type: MoneyView,
+    nullable: true,
+    description:
+      'The delivery fee as paid, tax included: the most a refund gives back of it. Null when ' +
+      'the delivery tax was not recorded (an older order; such a fee is not refunded here).',
+  })
+  shippingGross!: MoneyView | null;
+  @ApiProperty({
     type: String,
     nullable: true,
     description: "The seller's public store name; null when unknown.",
@@ -610,6 +618,7 @@ export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody =>
   sellerOrders: order.sellerOrders.map((seller) => ({
     ...sellerOrderBody(seller),
     sellerOrderId: seller.sellerOrderId,
+    shippingGross: seller.shippingGross === null ? null : moneyBody(seller.shippingGross),
     storeName: seller.storeName,
     lines: seller.lines.map(labelledLineBody),
   })),

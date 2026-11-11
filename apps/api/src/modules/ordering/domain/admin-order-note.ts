@@ -8,9 +8,11 @@
 export const NOTE_MAX_LENGTH = 2000;
 
 /**
- * Control characters other than a line break or a tab, line and paragraph separators and the
- * bidirectional embedding, override and isolate marks are refused (no hidden or reordered text).
- * Joiners such as U+200C, which Persian text needs, are allowed.
+ * Control characters other than a line break or a tab, line and paragraph separators, the
+ * bidirectional marks, embeddings, overrides and isolates (U+061C, U+200E, U+200F, U+202A to
+ * U+202E, U+2066 to U+2069) and the invisible ones (U+200B, U+2060 to U+2064, U+FEFF) are refused:
+ * no hidden or reordered text in the support trail. The joiners U+200C and U+200D, which Persian
+ * text needs, are allowed.
  */
 function hasHiddenCharacter(text: string): boolean {
   for (const char of text) {
@@ -19,8 +21,14 @@ function hasHiddenCharacter(text: string): boolean {
     if (
       code < 0x20 ||
       (code >= 0x7f && code <= 0x9f) ||
+      code === 0x061c ||
+      code === 0x200b ||
+      code === 0x200e ||
+      code === 0x200f ||
       code === 0x2028 ||
       code === 0x2029 ||
+      (code >= 0x2060 && code <= 0x2064) ||
+      code === 0xfeff ||
       (code >= 0x202a && code <= 0x202e) ||
       (code >= 0x2066 && code <= 0x2069)
     ) {

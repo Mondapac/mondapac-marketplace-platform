@@ -9,10 +9,8 @@ import { Client } from 'pg';
 import type { OrderingDependencies } from '../../src/modules/ordering/application/checkout-flow';
 import { adminRefund } from '../../src/modules/ordering/application/refund-flow';
 import type { AdminNoteDependencies } from '../../src/modules/ordering/application/admin-note-flow';
-import {
-  AdminAddOrderNote,
-  AdminListOrderNotes,
-} from '../../src/modules/ordering/application/use-cases/admin-order-notes.use-case';
+import { AdminAddOrderNote } from '../../src/modules/ordering/application/use-cases/admin-add-order-note.use-case';
+import { AdminListOrderNotes } from '../../src/modules/ordering/application/use-cases/admin-list-order-notes.use-case';
 import { PrismaAdminOrderNoteRepository } from '../../src/modules/ordering/infrastructure/prisma-admin-order-notes';
 import { AdminCancelOrder } from '../../src/modules/ordering/application/use-cases/admin-cancel-order.use-case';
 import { AdminRefundOrder } from '../../src/modules/ordering/application/use-cases/admin-refund-order.use-case';
@@ -104,6 +102,25 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
   let admin: CallContext;
   let system: CallContext;
   let audit: AuditWriter;
+  /** The admin in a Login as Seller session: refused by every money and note flow. */
+  const actingAsAdmin = () =>
+    ({
+      ...admin,
+      actor: { ...admin.actor, actingAs: { accountId: ids.next<'Account'>(), sellerId: null } },
+    }) as unknown as CallContext;
+  /** An admin of the other test Market, holding an id of this one. */
+  const otherMarketAdmin = () => {
+    const elsewhere = marketOf(TEST_MARKETS.find((other) => other !== code)!);
+    return testCallContext(
+      elsewhere,
+      testAuthenticatedActor(elsewhere, {
+        population: 'admin',
+        accountId: ids.next<'Account'>(),
+        sessionId: ids.next<'Session'>(),
+        sellerId: null,
+      }),
+    );
+  };
 
   beforeAll(async () => {
     db = createPersistence({ databaseUrl: orderingRefundsTestDatabaseUrl() });
@@ -1132,6 +1149,24 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         )
       ).rows[0]?.ready_at;
 
+    it('is refused in an acting-as session and from another Market, writing nothing', async () => {
+      const o = await paidOrder();
+      expect(
+        await new AdminCancelOrder(gate, deps).execute(actingAsAdmin(), {
+          orderId: o.orderId,
+          reason: 'other',
+        }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(
+        await new AdminCancelOrder(gate, deps).execute(otherMarketAdmin(), {
+          orderId: o.orderId,
+          reason: 'other',
+        }),
+      ).toEqual({ ok: false, error: { code: 'ordering.order-not-found' } });
+      expect(gateway.refunds).toHaveLength(0);
+      expect((await rowsOf(o.sellerOrderId)).refunds).toHaveLength(0);
+    });
+
     it('refunds every unit and the whole delivery fee in one step, audited, and lists them on the page', async () => {
       const o = await paidOrder();
 
@@ -1363,7 +1398,10 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       );
       expect(stored.rows).toHaveLength(2);
       for (const row of stored.rows) {
-        expect(row.body_ciphertext).toMatch(new RegExp(`^sealed:${await accountOf(o.orderId)}:`));
+        expect(row.body_ciphertext).toMatch(/^v1\.[A-Za-z0-9_-]+$/);
+        expect(Buffer.from(row.body_ciphertext.slice(3), 'base64url').toString('utf8')).toMatch(
+          new RegExp(`^${await accountOf(o.orderId)}:`),
+        );
         expect(row.body_ciphertext).not.toContain('bread');
       }
       const listed = await new AdminListOrderNotes(gate, noteDeps).execute(admin, {
@@ -1436,6 +1474,45 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         ok: false,
         error: { code: 'access.denied' },
       });
+      // An acting-as (Login as Seller) session neither reads nor writes notes.
+      expect(await add('Hello', o.orderId, actingAsAdmin())).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(
+        await new AdminListOrderNotes(gate, noteDeps).execute(actingAsAdmin(), {
+          orderId: o.orderId,
+        }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      // Another Market's admin does not find this Market's order.
+      expect(await add('Hello', o.orderId, otherMarketAdmin())).toEqual({
+        ok: false,
+        error: { code: 'ordering.order-not-found' },
+      });
+      expect(
+        await new AdminListOrderNotes(gate, noteDeps).execute(otherMarketAdmin(), {
+          orderId: o.orderId,
+        }),
+      ).toEqual({ ok: false, error: { code: 'ordering.order-not-found' } });
+    });
+
+    it('refuses a body in clear at the database (data design O7)', async () => {
+      const o = await paidOrder();
+      await expect(
+        sql.query(
+          `INSERT INTO ordering.admin_order_notes
+             (id, market_id, tenant_id, order_id, author_account_id, body_ciphertext, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, now())`,
+          [
+            ids.next(),
+            market.marketId,
+            market.tenantId,
+            o.orderId,
+            ids.next(),
+            'Customer called about the bread, plain text.',
+          ],
+        ),
+      ).rejects.toThrow(/admin_order_notes_body_ciphertext_check/);
     });
 
     it('lets the app role insert and read notes, never change or remove one', async () => {

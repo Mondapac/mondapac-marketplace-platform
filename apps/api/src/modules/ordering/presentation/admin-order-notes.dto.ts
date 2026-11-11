@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import type { AdminNoteView } from '../application/use-cases/admin-order-notes.use-case';
+import type { AdminNoteView } from '../application/use-cases/admin-list-order-notes.use-case';
 import { NOTE_MAX_LENGTH } from '../domain/admin-order-note';
 
 export class AdminNoteRequestBody {
