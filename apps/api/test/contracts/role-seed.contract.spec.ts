@@ -230,6 +230,11 @@ const PINNED: readonly (readonly [string, string])[] = [
   ],
   ['platform:viewer@30', '5dcf8913a4716772448865f80df795a683e163f9fa11b83abda8596b39cd5439'],
   ['seller:store-manager@5', 'e0c92df586baef19607aa65dd0841e35d880e419e30940a2e3c35c0d51b95240'],
+  // Variants V7: `catalog.variant-request.review` to decide a seller's request for a new variant.
+  [
+    'platform:catalogue-moderator@16',
+    'a61825d3bb6c7c835a8d48428523d0bdf29ed9aeb298fd63533c73f36dcb807f',
+  ],
 ];
 
 const ENTRY = /^(platform|seller):([a-z][a-z0-9-]*)@([1-9][0-9]*)$/;

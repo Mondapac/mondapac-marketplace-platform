@@ -90,7 +90,10 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // seller's suggested value; unprotected, it adds one value to a published attribute that is not
     // `material` and nothing else). Version 15 adds `catalog.variant.view` (variants V6: the
     // read-only Catalogue > Variants page); the protected `catalog.variant-type.edit` is not listed.
-    seedVersion: 15,
+    // Version 16 adds `catalog.variant-request.review` (variants V7: decide a seller's request for
+    // a new variant; unprotected, approving also needs `catalog.platform-product.edit`, which this
+    // role holds).
+    seedVersion: 16,
     nameKey: 'identity.role.catalogue-moderator',
     permissionKeys: [
       'identity.seller-access.view',
@@ -106,6 +109,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.category-tree.edit',
       'catalog.attribute-suggestion.decide',
       'catalog.variant.view',
+      'catalog.variant-request.review',
       'sellers.seller.view',
       'pricing.price-hold.view',
       'certification.type.view',

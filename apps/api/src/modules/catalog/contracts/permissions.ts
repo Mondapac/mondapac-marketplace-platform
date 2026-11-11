@@ -325,6 +325,20 @@ export const CATALOG_VARIANT_TYPE_EDIT = definePermission('catalog', {
   protected: true,
 });
 
+/**
+ * Decide a seller's request for a new variant (size) on a PLATFORM product (variants V7; plan
+ * section 9, decision tn14): approve it, map it to a variant the product already has, or decline
+ * it with a reason, and read the queue of waiting requests. Platform scope; unprotected, so
+ * Catalogue Moderator receives it by identity's seed. Approving also adds a variant to the
+ * product's draft, so that use case needs `catalog.platform-product.edit` as well; the draft then
+ * goes through the normal submit and review.
+ */
+export const CATALOG_VARIANT_REQUEST_REVIEW = definePermission('catalog', {
+  key: 'catalog.variant-request.review',
+  scope: 'platform',
+  protected: false,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
@@ -354,4 +368,5 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_CATEGORY_TREE_IMPORT,
   CATALOG_VARIANT_VIEW,
   CATALOG_VARIANT_TYPE_EDIT,
+  CATALOG_VARIANT_REQUEST_REVIEW,
 ]);

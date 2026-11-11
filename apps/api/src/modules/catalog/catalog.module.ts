@@ -321,6 +321,20 @@ import { AttributeSuggestionReject } from './application/use-cases/attribute-sug
 import { SendAttributeSuggestionNotices } from './application/use-cases/send-attribute-suggestion-notices.use-case';
 import { sendAttributeSuggestionNoticesJob } from './presentation/jobs/send-attribute-suggestion-notices.job';
 import { AttributeSuggestionController } from './presentation/attribute-suggestion.controller';
+import { VARIANT_REQUEST_STORE } from './application/ports/variant-request.store';
+import { OwnVariantRequestCreate } from './application/use-cases/own-variant-request-create.use-case';
+import { OwnVariantRequestsList } from './application/use-cases/own-variant-requests-list.use-case';
+import { VariantRequestApprove } from './application/use-cases/variant-request-approve.use-case';
+import { VariantRequestDecline } from './application/use-cases/variant-request-decline.use-case';
+import { VariantRequestList } from './application/use-cases/variant-request-list.use-case';
+import { VariantRequestMap } from './application/use-cases/variant-request-map.use-case';
+import { SendVariantRequestNotices } from './application/use-cases/send-variant-request-notices.use-case';
+import { sendVariantRequestNoticesJob } from './presentation/jobs/send-variant-request-notices.job';
+import {
+  OwnVariantRequestController,
+  OwnVariantRequestsController,
+  VariantRequestController,
+} from './presentation/variant-request.controller';
 import {
   OwnAttributeSuggestionController,
   OwnAttributeSuggestionsController,
@@ -534,6 +548,7 @@ const PORT = {
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
   suggestions: ATTRIBUTE_VALUE_SUGGESTION_STORE,
+  variantRequests: VARIANT_REQUEST_STORE,
   claimLocales: CLAIM_TERM_LOCALES,
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
@@ -672,6 +687,9 @@ const RESTRUCTURE_DEPS = {
     AttributeSuggestionController,
     OwnAttributeSuggestionController,
     OwnAttributeSuggestionsController,
+    OwnVariantRequestController,
+    OwnVariantRequestsController,
+    VariantRequestController,
     CategoryAdminController,
     BusinessActivityAdminController,
     TopicAdminController,
@@ -1014,6 +1032,73 @@ const RESTRUCTURE_DEPS = {
     useCaseProvider(SendAttributeSuggestionNotices, {
       unitOfWork: true,
       suggestions: true,
+      attributeStore: true,
+      ownerContacts: true,
+      mailTransport: true,
+      mailSettings: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnVariantRequestCreate, {
+      unitOfWork: true,
+      offers: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      attributes: true,
+      variantRequests: true,
+      eligibility: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnVariantRequestsList, {
+      unitOfWork: true,
+      variantRequests: true,
+      products: true,
+      attributes: true,
+      attributeStore: true,
+      policy: true,
+    }),
+    useCaseProvider(VariantRequestList, {
+      unitOfWork: true,
+      variantRequests: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      attributes: true,
+      attributeStore: true,
+      sellerNames: true,
+      policy: true,
+    }),
+    useCaseProvider(VariantRequestApprove, {
+      unitOfWork: true,
+      variantRequests: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      saveDraft: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(VariantRequestMap, {
+      unitOfWork: true,
+      variantRequests: true,
+      products: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(VariantRequestDecline, {
+      unitOfWork: true,
+      variantRequests: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SendVariantRequestNotices, {
+      unitOfWork: true,
+      variantRequests: true,
+      products: true,
+      attributes: true,
       attributeStore: true,
       ownerContacts: true,
       mailTransport: true,
@@ -2080,6 +2165,7 @@ const RESTRUCTURE_DEPS = {
         OwnImportPurge,
         ExpireRelaxationRequests,
         SendAttributeSuggestionNotices,
+        SendVariantRequestNotices,
       ],
       (
         categories: SeedCategoryTree,
@@ -2095,6 +2181,7 @@ const RESTRUCTURE_DEPS = {
         sellerPurge: OwnImportPurge,
         expireRelaxations: ExpireRelaxationRequests,
         suggestionNotices: SendAttributeSuggestionNotices,
+        variantRequestNotices: SendVariantRequestNotices,
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
@@ -2109,6 +2196,7 @@ const RESTRUCTURE_DEPS = {
         purgeSellerImportsJob(sellerPurge),
         expireRelaxationRequestsJob(expireRelaxations),
         sendAttributeSuggestionNoticesJob(suggestionNotices),
+        sendVariantRequestNoticesJob(variantRequestNotices),
       ],
     ),
     // Certification events consumed (design 5.5, 9.5; slice 12).

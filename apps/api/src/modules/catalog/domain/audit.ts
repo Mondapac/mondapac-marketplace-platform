@@ -612,6 +612,30 @@ export const AttributeValueSuggestionDecidedAudit = defineAuditAction({
   },
 });
 
+/** The audit target type of a seller's request for a new variant (variants V7). */
+export const CATALOG_VARIANT_REQUEST_TARGET = 'catalog.variant-request';
+
+/** A seller asked for a new variant. Ids only: the option values name nothing a seller typed. */
+export const VariantRequestedAudit = defineAuditAction({
+  action: 'catalog.variant-request.requested',
+  targetType: CATALOG_VARIANT_REQUEST_TARGET,
+  actors: ['authenticated'],
+  after: { offerId: auditField.id(), productId: auditField.id() },
+});
+
+/** An admin approved, mapped or declined a request. The reason is kept on the request only. */
+export const VariantRequestDecidedAudit = defineAuditAction({
+  action: 'catalog.variant-request.decided',
+  targetType: CATALOG_VARIANT_REQUEST_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['open'] as const) },
+  after: {
+    status: auditField.enumOf(['approved', 'mapped', 'declined'] as const),
+    productId: auditField.id(),
+    sellerId: auditField.id(),
+  },
+});
+
 /** The audit target type of a category's attribute links (A4, categories C8). */
 export const CATALOG_CATEGORY_LINKS_TARGET = 'catalog.category';
 
@@ -703,4 +727,6 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeValueSuggestionDecidedAudit,
   CategoryAttributesChangedAudit,
   VariantTypeSettingsChangedAudit,
+  VariantRequestedAudit,
+  VariantRequestDecidedAudit,
 ] as const;

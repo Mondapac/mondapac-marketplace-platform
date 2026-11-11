@@ -113,6 +113,7 @@ model CatalogProduct {
   images               CatalogProductImage[]
   offers               CatalogOffer[]
   attributeSuggestions CatalogAttributeValueSuggestion[] @relation("ProductValueSuggestions")
+  variantRequests CatalogVariantRequest[] @relation("ProductVariantRequests")
 
   /// The target of composite foreign keys (C3).
   @@unique([marketId, id])
@@ -150,6 +151,7 @@ model CatalogProductVariant {
   product          CatalogProduct                  @relation(fields: [marketId, productId, variantModel], references: [marketId, id, variantModel], onDelete: Restrict, onUpdate: Restrict)
   revisionVariants CatalogProductRevisionVariant[]
   offerSellUnits   CatalogOfferSellUnit[]
+  variantRequests  CatalogVariantRequest[] @relation("VariantRequestsResolved")
 
   @@unique([marketId, id])
   /// The count path of the variant limit and the target of a same-product foreign key (3.10).
@@ -557,6 +559,55 @@ model CatalogAttributeValueSuggestion {
   @@schema("catalog")
 }
 
+/// A seller's request for a new variant (size) on a PLATFORM product they have an Offer on
+/// (variants V7; plan section 9, decision tn14). It is born `open` and moves once: an admin
+/// approves it (a variant was added to the product's draft: `resolved_variant_id`), maps it to a
+/// variant the product already has (`resolved_variant_id`) or declines it (`decline_reason`). Then
+/// the seller is told by mail: `notice_*` is the send marker of that one notice (pending, sent,
+/// skipped or failed). The option values name active options of the product's variant attributes
+/// and carry no seller text, so nothing here reaches a buyer. The CHECKs, the guard trigger, the
+/// partial uniques and the grants are hand-written in the migration.
+model CatalogVariantRequest {
+  id                  String                 @db.Uuid
+  marketId            String                 @map("market_id") @db.VarChar(8)
+  tenantId            String                 @map("tenant_id")
+  /// The requesting seller, a copy bound to the Offer by the composite foreign key; never updated.
+  sellerId            String                 @map("seller_id") @db.Uuid
+  /// The seller's Offer on the product; the request is about selling that product.
+  offerId             String                 @map("offer_id") @db.Uuid
+  productId           String                 @map("product_id") @db.Uuid
+  /// Variant attribute code to option code, an object (CHECK).
+  optionValues        Json                   @map("option_values") @db.JsonB
+  /// The canonical string of the option values (`colour=red;size=l`), as the revision builds it.
+  optionKey           String                 @map("option_key")
+  /// open | approved | mapped | declined.
+  status              String
+  /// The variant created (approved) or chosen (mapped); null otherwise.
+  resolvedVariantId   String?                @map("resolved_variant_id") @db.Uuid
+  /// The reviewer's words to the seller; set exactly when declined.
+  declineReason       String?                @map("decline_reason")
+  decidedByAccountId  String?                @map("decided_by_account_id") @db.Uuid
+  decidedAt           DateTime?              @map("decided_at") @db.Timestamptz(6)
+  /// none (open) | pending | sent | skipped | failed.
+  noticeState         String                 @map("notice_state")
+  noticeAttempts      Int                    @map("notice_attempts")
+  noticeNextAttemptAt DateTime?              @map("notice_next_attempt_at") @db.Timestamptz(6)
+  version             Int
+  createdAt           DateTime               @map("created_at") @db.Timestamptz(6)
+  offer               CatalogOffer           @relation(fields: [marketId, offerId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  product             CatalogProduct         @relation("ProductVariantRequests", fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  resolvedVariant     CatalogProductVariant? @relation("VariantRequestsResolved", fields: [marketId, productId, resolvedVariantId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, id])
+  /// The admin queue: open requests, oldest first.
+  @@index([marketId, status, createdAt, id], map: "variant_requests_market_id_status_created_at_idx")
+  /// A seller's requests and their open count.
+  @@index([marketId, sellerId, status], map: "variant_requests_market_id_seller_id_status_idx")
+  @@index([marketId, productId], map: "variant_requests_market_id_product_id_idx")
+  @@map("variant_requests")
+  @@schema("catalog")
+}
+
 /// A revision of a family (V1, insert-only): the groups as a document, because a revision is
 /// read whole and never queried inside.
 model CatalogAttributeFamilyRevision {
@@ -855,6 +906,7 @@ model CatalogOffer {
   history                     CatalogOfferHistory[]
   tags                        CatalogOfferTag[]
   sellUnits                   CatalogOfferSellUnit[]
+  variantRequests             CatalogVariantRequest[]
 
   /// The target of composite foreign keys (C3); the A1 batch read.
   @@unique([marketId, id])
