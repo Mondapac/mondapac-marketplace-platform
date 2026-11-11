@@ -279,6 +279,42 @@ describe('Settings → Promotions', () => {
   });
 });
 
+describe('roles', () => {
+  it('lets a promotions manager without the switch key change the cards but not the switch', async () => {
+    serve();
+    mount(on, false, true);
+    await screen.findByRole('heading', { name: 'First-order discount' });
+    expect(screen.getAllByRole<HTMLInputElement>('checkbox')[0]!.disabled).toBe(true);
+    type('Amount off', '9');
+    call.mockResolvedValueOnce(ok(firstOrder()));
+    save();
+    await waitFor(() =>
+      expect(
+        call.mock.calls.some(([m, p]) => m === 'PUT' && p === 'promotions/admin/first-order'),
+      ).toBe(true),
+    );
+    expect(call.mock.calls.some(([, p]) => p === 'promotions/admin/settings')).toBe(false);
+  });
+
+  it('shows a switch-only manager no cards and reads nothing', () => {
+    mount(on, true, false);
+    expect(call).not.toHaveBeenCalled();
+    expect(screen.queryByRole('heading', { name: 'First-order discount' })).toBeNull();
+    expect(screen.getByText(/need the promotions manage permission/)).toBeTruthy();
+  });
+
+  it('adds a zone on Enter without saving the page', async () => {
+    serve();
+    mount();
+    await screen.findByRole('heading', { name: 'Free delivery threshold' });
+    const input = screen.getByLabelText('Add a zone');
+    fireEvent.change(input, { target: { value: 'ipswich' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByLabelText('Free delivery threshold for ipswich')).toBeTruthy();
+    expect(call.mock.calls.filter(([m]) => m === 'PUT')).toHaveLength(0);
+  });
+});
+
 describe('promotionsProblemOf', () => {
   it('words the API refusals', () => {
     expect(promotionsProblemOf({ status: 400, code: 'validation.failed' })).toBe('invalid');

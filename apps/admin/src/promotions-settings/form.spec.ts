@@ -151,3 +151,27 @@ describe('zone thresholds', () => {
     ]);
   });
 });
+
+describe('other currencies', () => {
+  const yen: FirstOrderSettings = { ...saved, amountMinor: '800', minSpendMinor: '3000' };
+  it('scale by the currency: no decimals for JPY, three for KWD', () => {
+    expect(decimalOf('800', 'JPY')).toBe('800');
+    expect(decimalOf('8000', 'KWD')).toBe('8.000');
+    expect(checkFirstOrder(firstOrderDraftOf(yen, 'JPY'), 'JPY')).toMatchObject({
+      ok: true,
+      body: { amountMinor: '800', minSpendMinor: '3000' },
+    });
+    const draft = { ...firstOrderDraftOf(yen, 'JPY'), amount: '8.5' };
+    expect(checkFirstOrder(draft, 'JPY')).toMatchObject({ ok: false, invalid: ['amount'] });
+    const kwd = { ...firstOrderDraftOf(yen, 'KWD'), amount: '1.250' };
+    expect(checkFirstOrder(kwd, 'KWD')).toMatchObject({ ok: true, body: { amountMinor: '1250' } });
+  });
+  it('fail closed on an unknown currency', () => {
+    expect(checkFirstOrder(firstOrderDraftOf(yen, 'AUD'), '')).toMatchObject({ ok: false });
+    expect(
+      zoneChanges({ currency: '', defaultThresholdMinor: '5000', zones: [] }, [
+        { zoneCode: 'x', own: true, value: '5' },
+      ]),
+    ).toEqual([{ zoneCode: 'x', invalid: true }]);
+  });
+});

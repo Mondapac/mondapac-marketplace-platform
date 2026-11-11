@@ -6603,7 +6603,7 @@
     "optional": "optional",
     "loading": "Loading promotions settings",
     "load-failed": "The first-order and free-delivery settings could not be loaded.",
-    "view-only-cards": "You can change the market switch, but not the first-order discount or the free-delivery thresholds.",
+    "view-only-cards": "You can change the market switch. The first-order discount and the free-delivery thresholds need the promotions manage permission, so they are not shown.",
     "state": {
       "on": "On",
       "off": "Off"
@@ -6641,14 +6641,14 @@
         "percent": "From 0.01 to 100, up to two decimals.",
         "cap": "Leave empty for no limit per order.",
         "minSpend": "The cart must reach this amount. 0 means no minimum.",
-        "budget": "What the platform spends on this discount each month. A budget above the market threshold needs a fresh sign-in code."
+        "budget": "What the platform spends on this discount each month. 0 means it pays nothing. A budget above the market threshold needs a fresh sign-in code."
       },
       "invalid": {
         "percent": "Enter a percentage from 0.01 to 100, for example 10 or 12.5.",
         "amount": "Enter an amount above zero, for example 8.00.",
         "cap": "Enter an amount above zero, or leave it empty.",
         "minSpend": "Enter an amount, for example 30.00. Use 0 for no minimum.",
-        "budget": "Enter an amount, for example 1000.00. Use 0 for no budget."
+        "budget": "Enter an amount, for example 1000.00. 0 means the discount pays nothing."
       }
     },
     "zones": {

@@ -129,7 +129,8 @@ export function PromotionsSettingsPanel({
   }, [showCards, load]);
 
   const ready = loaded.state === 'ready' ? loaded : null;
-  const currency = ready?.firstOrder.currency ?? 'AUD';
+  // No money is shown or parsed before the Market's own currency is read (never assume AUD).
+  const currency = ready?.firstOrder.currency ?? '';
   const money = (minor: string) => formatMinor(minor, currency, locale);
 
   const check = first === null ? null : checkFirstOrder(first, currency);
@@ -527,7 +528,7 @@ export function PromotionsSettingsPanel({
                 changed={zoneWrites.some((write) => write.zoneCode === zone.zoneCode)}
                 error={invalidZones.has(zone.zoneCode) ? t(`${P}.zones.invalid`) : undefined}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {zone.own ? (
                     <SettingInput
                       name={`zone-${zone.zoneCode}`}
@@ -568,13 +569,19 @@ export function PromotionsSettingsPanel({
               help={t(`${P}.zones.add-help`)}
               error={newZoneError ? t(`${P}.zones.code-invalid`) : undefined}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <SettingInput
                   name="new-zone"
                   autoComplete="off"
                   className="md:max-w-48"
                   value={newZone}
                   onChange={(event) => setNewZone(event.target.value)}
+                  onKeyDown={(event) => {
+                    // Enter adds the zone; it must not save the whole page.
+                    if (event.key !== 'Enter') return;
+                    event.preventDefault();
+                    addZone();
+                  }}
                 />
                 <Button type="button" variant="secondary" onClick={addZone}>
                   {t(`${P}.zones.add-button`)}
