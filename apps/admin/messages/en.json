@@ -5437,7 +5437,7 @@
         "sub": "Start from an export of the current tree: each row is one category, matched by its slug.",
         "choose": "Choose a file",
         "limits": "CSV or XLSX, up to {size} MB.",
-        "export-hint": "Start from an export of the tree:"
+        "export-hint": "Need the current tree as a file?"
       },
       "checking": "Checking {name}…",
       "choose-another": "Choose another file",
