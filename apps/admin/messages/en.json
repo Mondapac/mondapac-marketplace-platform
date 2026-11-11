@@ -994,7 +994,7 @@
       "no-data": "No data",
       "measured": "Measured {when}",
       "lowest": "The measure pulling the score down most is {metric}.",
-      "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Needs attention" },
+      "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
       "metric": {
         "seller-cancellations": "Cancellations by the seller",
         "late-ready": "Orders ready late",

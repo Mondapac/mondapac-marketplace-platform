@@ -44,7 +44,11 @@ function Trend({ points }: { readonly points: readonly HealthTrendPoint[] }) {
   const last = scored[scored.length - 1]!.score!;
   return (
     <div className="flex flex-wrap items-center gap-4">
-      <svg aria-hidden="true" viewBox={`0 0 ${width} ${height}`} className="h-12 w-60 text-accent">
+      <svg
+        aria-hidden="true"
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-12 w-full max-w-60 text-accent"
+      >
         <polyline points={path} fill="none" stroke="currentColor" strokeWidth="2" />
       </svg>
       <p className="text-sm text-fg-muted">{t('summary', { first, last, days: points.length })}</p>
@@ -145,7 +149,7 @@ export function SellerHealthCard({
       {outcome === 'queued' || outcome === 'already-queued' ? (
         <Banner tone="success">{t(`outcome.${outcome}`)}</Banner>
       ) : null}
-      {outcome === 'failed' ? <Banner tone="attention">{t('outcome.failed')}</Banner> : null}
+      {outcome === 'failed' ? <Banner tone="critical">{t('outcome.failed')}</Banner> : null}
       {canRecalculate ? (
         <div>
           <Button variant="secondary" loading={pending} onClick={() => void recalculate()}>

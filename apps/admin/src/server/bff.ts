@@ -170,8 +170,6 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/admin/list',
     // The names of one service area, set or restored (sellers, ADR-0041).
     'sellers/admin/service-areas/names',
-    // Queue a recount of one seller's health (sellers, seller health package 5).
-    'sellers/admin/:id/health/recalculate',
     'notifications/admin/notices/read-all',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
@@ -232,6 +230,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
     'identity/admin/sellers/:id/second-factor/reset',
+    // Queue a recount of one seller's health (sellers, seller health package 5).
+    'sellers/admin/:id/health/recalculate',
     'sellers/admin/:id/review/approve',
     'sellers/admin/:id/review/reject',
     'pricing/admin/price-holds/:id/approve',
@@ -430,10 +430,6 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/sellers/:id/payout-holds',
     // The delivery methods of a seller (shipping), read again after a conflict.
     'shipping/admin/sellers/:id/delivery-methods',
-    // A seller's stored health card (sellers, seller health package 5), read by the review page.
-    'sellers/admin/:id/health',
-    // The sellers whose health needs a look, worst first (sellers, seller health package 5).
-    'sellers/admin/health-queue',
   ],
 };
 
