@@ -210,7 +210,7 @@ describe('Email sellers', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select P2' }));
     call.mockResolvedValueOnce(ok(answer()));
     fireEvent.click(screen.getByRole('button', { name: 'Email sellers' }));
-    expect(await screen.findByRole('heading', { name: 'Email 2 sellers?' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Email 1 seller?' })).toBeTruthy();
     expect(call).toHaveBeenLastCalledWith(
       'POST',
       'catalog/admin/reports/products-missing-details/email-sellers',

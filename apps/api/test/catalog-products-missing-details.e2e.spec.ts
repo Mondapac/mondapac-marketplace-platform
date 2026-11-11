@@ -39,6 +39,8 @@ const id = <T extends string>(n: number): Id<T> => {
   return parsed.value as Id<T>;
 };
 const MODERATOR = id<'Account'>(0xb701);
+const VIEWER = id<'Account'>(0xb703);
+const VIEWER_ROLE = id<'Role'>(0xb704);
 const EDITOR = id<'Account'>(0xb702);
 const EDITOR_ROLE = id<'Role'>(0xb801);
 
@@ -294,6 +296,48 @@ describe('products missing required details over HTTP (integration)', () => {
       delete noCsrf['x-csrf-token'];
       const refusedCsrf = await http().post(url).set(noCsrf).send(body).expect(403);
       expect(refusedCsrf.body).toMatchObject({ code: 'request.csrf' });
+      // A signed-in admin who may only view attributes is refused.
+      fakes.seedRole({
+        id: VIEWER_ROLE,
+        marketId: code as AccountState['marketId'],
+        scope: 'platform',
+        kind: 'custom',
+        seedCode: null,
+        seedVersion: null,
+        sellerId: null,
+        name: 'Attribute viewer',
+        permissionKeys: ['catalog.attribute.view'],
+        version: 1,
+        createdAt: START,
+      });
+      fakes.seedAccount({
+        id: VIEWER,
+        marketId: code as AccountState['marketId'],
+        population: 'admin',
+        email: { typed: 'viewer@Example.com', normalized: 'viewer@example.com' },
+        displayName: 'Name viewer',
+        status: 'active',
+        emailVerifiedAt: START,
+        existingAccountNoticeAt: null,
+        signedUpAt: START,
+        createdAt: START,
+        version: 1,
+        credential: { passwordHash: fakeHashOf('x'), changedAt: START },
+      });
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(0xe9f0),
+        marketId: code as AccountState['marketId'],
+        accountId: VIEWER,
+        roleId: VIEWER_ROLE,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+      await http()
+        .post(url)
+        .set(adminSession(code, VIEWER, 5))
+        .send(body)
+        .expect(403);
       for (const bad of [{}, { productIds: [] }, { productIds: ['nope'] }, { ...body, extra: 1 }]) {
         const refused = await http().post(url).set(editor).send(bad).expect(400);
         expect(refused.body).toMatchObject({ code: 'validation.failed' });

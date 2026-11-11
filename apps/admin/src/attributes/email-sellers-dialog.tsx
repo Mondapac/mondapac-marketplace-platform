@@ -126,7 +126,7 @@ export function EmailSellersDialog({
   return (
     <Dialog
       open
-      title={t('title', { count: answer === null ? ids.length : count })}
+      title={answer === null ? t('title-pending') : t('title', { count })}
       onClose={onClose}
       actions={
         <>
@@ -179,12 +179,11 @@ export function EmailSellersDialog({
                         <Badge tone="success">{t('will-send')}</Badge>
                       ) : (
                         <Badge tone="neutral">
-                          {t('skipped', {
-                            date:
-                              lastDate === undefined
-                                ? ''
-                                : format.dateTime(new Date(lastDate), { dateStyle: 'medium' }),
-                          })}
+                          {lastDate === undefined
+                            ? t('skipped-recent')
+                            : t('skipped', {
+                                date: format.dateTime(new Date(lastDate), { dateStyle: 'medium' }),
+                              })}
                         </Badge>
                       )}
                     </li>
