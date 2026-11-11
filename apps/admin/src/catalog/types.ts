@@ -76,6 +76,7 @@ export const REVISION_REASONS = [
   'image-added-or-replaced',
   'variant-removed',
   'gtin-changed',
+  'topics-changed',
   'never-published',
   'approval-required',
 ] as const;

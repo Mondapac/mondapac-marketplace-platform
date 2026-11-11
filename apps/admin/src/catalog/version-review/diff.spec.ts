@@ -7,7 +7,7 @@ import {
   textDiffs,
   variantDiffs,
 } from './diff.ts';
-import { CATEGORY, IMG, VARIANT, published, revision } from './fixtures.ts';
+import { CATEGORY, IMG, TOPIC, VARIANT, published, revision } from './fixtures.ts';
 
 describe('version diff', () => {
   it('compares texts per locale, the panel locale first, and folds unchanged locales', () => {
@@ -28,6 +28,19 @@ describe('version diff', () => {
   it('treats every text of a first publication as added', () => {
     const rows = textDiffs(revision, null, 'en-AU')[0]!.rows;
     expect(rows.map((row) => row.change)).toEqual(['added', 'added', 'added']);
+  });
+
+  it('lists tag ids in the version order, then the removed ones; a reorder is no change', () => {
+    expect(idDiffs(revision.topicIds, published.topicIds)).toEqual([
+      { id: TOPIC(2), change: 'same' },
+      { id: TOPIC(3), change: 'added' },
+      { id: TOPIC(1), change: 'removed' },
+    ]);
+    expect(idDiffs([TOPIC(2), TOPIC(1)], [TOPIC(1), TOPIC(2)]).map((row) => row.change)).toEqual([
+      'same',
+      'same',
+    ]);
+    expect(idDiffs([TOPIC(1)], null)).toEqual([{ id: TOPIC(1), change: 'added' }]);
   });
 
   it('lists ids in the version order, then the removed ones', () => {

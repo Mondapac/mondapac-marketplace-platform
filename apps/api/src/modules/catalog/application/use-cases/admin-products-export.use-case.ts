@@ -280,6 +280,9 @@ function cellOf(
       return row.typeCode;
     case 'scope':
       return row.scope === 'PLATFORM' ? 'Platform' : 'Seller';
+    case 'tags':
+      // The names in the Market default language, in the order entered; a spreadsheet cell.
+      return row.topics.map((topic) => topic.name ?? topic.slug).join('; ');
     case 'seller':
       return row.ownerSellerId === null ? 'Platform' : (names.get(row.ownerSellerId) ?? '');
   }

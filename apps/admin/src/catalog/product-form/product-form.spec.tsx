@@ -98,7 +98,7 @@ const view = (over: Partial<ProductView> = {}): ProductView => ({
   ...over,
 });
 
-function mountEdit(canPause = false) {
+function mountEdit(canPause = false, canReadTags = true) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <ProductEdit
@@ -107,6 +107,7 @@ function mountEdit(canPause = false) {
         marketName="Australia"
         timeZone="Australia/Brisbane"
         canPause={canPause}
+        canReadTags={canReadTags}
       />
     </NextIntlClientProvider>,
   );
@@ -317,7 +318,7 @@ describe('the edit form', () => {
     expect(headings()).toEqual([
       'Status',
       'Product',
-      'Category',
+      'Category and tags',
       'Product details',
       'Variants',
       'Organisation',

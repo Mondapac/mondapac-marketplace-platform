@@ -5,6 +5,7 @@ import {
   OwnVariantView,
   OwnWorkingCopyView,
 } from './own-reads.dto';
+import { TopicRefBody } from './topic.dto';
 
 // Bodies and answers of the platform product routes (catalog design 4.2, 8.2; CAT-10, CAT-41;
 // slice 6). Ids and codes only: an answer never carries a text the admin typed, except in the
@@ -198,6 +199,13 @@ export class PlatformProductView {
   workingCopy!: OwnWorkingCopyView | null;
   @ApiProperty({ nullable: true, type: PlatformRevisionView })
   published!: PlatformRevisionView | null;
+  @ApiProperty({
+    type: [TopicRefBody],
+    description:
+      'The topics named by the draft and the published revision (`topicIds`), each once. A topic ' +
+      'that no longer exists is absent.',
+  })
+  topicRefs!: TopicRefBody[];
 }
 
 /** The error format `{ statusCode, code, details? }`: codes only, never a text of the request. */

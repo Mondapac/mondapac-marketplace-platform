@@ -64,6 +64,15 @@ export function VersionReview({
   const attributes = attributeDiffs(revision, published);
   const taxChanged = published !== null && published.taxCategoryCode !== revision.taxCategoryCode;
   const categoryName = (id: string) => categoryNames[id] ?? id;
+  const topics = idDiffs(revision.topicIds, published?.topicIds ?? null);
+  const topicRefs = new Map(read.topicRefs.map((ref) => [ref.id, ref]));
+  const topicName = (id: string) => {
+    const ref = topicRefs.get(id);
+    if (ref === undefined) return id;
+    // The panel language, then the Market default name the API picked, then any language.
+    const name = ref.names[locale] ?? ref.name ?? Object.values(ref.names)[0] ?? ref.slug;
+    return ref.status === 'archived' ? t('topic-archived', { name }) : name;
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -181,6 +190,20 @@ export function VersionReview({
               first={published === null}
             />
           </Card>
+
+          {topics.length === 0 ? null : (
+            <Card title={t('section.tags')}>
+              <ul className="flex flex-col gap-1">
+                {topics.map((row) => (
+                  <li key={row.id} className="break-words">
+                    <Marked change={published === null ? 'same' : row.change}>
+                      {topicName(row.id)}
+                    </Marked>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           <Card title={t('section.variants')}>
             {variants.length === 0 ? (

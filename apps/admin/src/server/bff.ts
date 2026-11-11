@@ -498,7 +498,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'catalog/admin/products/export': {
     format: /^(csv|xlsx)$/,
     columns:
-      /^(code|offers|updated|type|scope|seller|created)(,(code|offers|updated|type|scope|seller|created)){0,6}$/,
+      /^(code|offers|updated|type|scope|seller|created|tags)(,(code|offers|updated|type|scope|seller|created|tags)){0,7}$/,
     // At most 200 product ids, the cap of the bulk action.
     ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
     view: /^(active|all|inactive)$/,

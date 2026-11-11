@@ -169,7 +169,7 @@ describe('EditForm', () => {
   it('lays the cards out in order, Status first, and has no price, stock or cost field', () => {
     mount();
     const headings = Array.from(document.querySelectorAll('h2')).map((h) => h.textContent);
-    expect(headings.slice(0, 3)).toEqual(['Status', 'Product', 'Category']);
+    expect(headings.slice(0, 3)).toEqual(['Status', 'Product', 'Category and tags']);
     expect(headings.at(-1)).toBe('Organisation');
     expect(headings.indexOf('Photos')).toBeGreaterThan(headings.indexOf('Product'));
     expect(headings.indexOf('Photos')).toBeLessThan(headings.indexOf('Organisation'));

@@ -51,6 +51,16 @@ export interface RevisionVariant {
   readonly imageIds: readonly string[];
 }
 
+/** A tag as the review read names it (`topicRefs`). */
+export interface RevisionTopicRef {
+  readonly id: string;
+  readonly slug: string;
+  readonly status: 'active' | 'archived';
+  /** The name in the Market default locale, else any locale; null when it has none. */
+  readonly name: string | null;
+  readonly names: Readonly<Record<string, string>>;
+}
+
 export interface RevisionContent {
   readonly revisionId: string;
   readonly revisionNo: number;
@@ -60,6 +70,8 @@ export interface RevisionContent {
   /** Locale to texts. */
   readonly texts: Readonly<Record<string, RevisionText>>;
   readonly categoryIds: readonly string[];
+  /** Tag ids in the order entered; named in the read's `topicRefs`. */
+  readonly topicIds: readonly string[];
   readonly taxCategoryCode: string;
   readonly attributeValues: Readonly<Record<string, unknown>>;
   readonly variants: readonly RevisionVariant[];
@@ -102,6 +114,8 @@ export interface RevisionRead {
   readonly requiredChecks: readonly string[];
   readonly warnings: readonly string[];
   readonly revision: RevisionContent;
+  /** The tags of the version and of the published one, each once. */
+  readonly topicRefs: readonly RevisionTopicRef[];
   /** The published revision; null before the first publication. */
   readonly published: RevisionContent | null;
   /** Newest first, at most 50. */

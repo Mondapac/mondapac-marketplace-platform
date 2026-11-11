@@ -13,6 +13,7 @@ import type {
   SortDirection,
 } from '../application/ports/admin-products.reader';
 import type { ProductScope, ProductStatus } from '../domain/product';
+import type { TopicStatus } from '../domain/topic';
 
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
@@ -288,6 +289,7 @@ export class PrismaAdminProductsReader implements AdminProductsReader {
                   topic: {
                     select: {
                       slug: true,
+                      status: true,
                       terms: { where: { kind: 'name', locale }, select: { term: true } },
                     },
                   },
@@ -349,6 +351,7 @@ export class PrismaAdminProductsReader implements AdminProductsReader {
           topics: (revision?.topics ?? []).map((entry) => ({
             id: entry.topicId as Id<'Topic'>,
             slug: entry.topic.slug,
+            status: entry.topic.status as TopicStatus,
             name: entry.topic.terms[0]?.term ?? null,
           })),
           typeCode: row.typeCode,

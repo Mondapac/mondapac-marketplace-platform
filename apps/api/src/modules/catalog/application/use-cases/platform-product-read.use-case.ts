@@ -5,6 +5,9 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_PLATFORM_PRODUCT_EDIT } from '../../contracts/permissions';
 import type { ProductStatus, VariantState } from '../../domain/product';
 import type { StoredRevision } from '../../domain/stored-revision';
+import { MAX_TOPICS_PER_PRODUCT } from '../../domain/topic';
+import type { TopicReader } from '../ports/topic.reader';
+import { draftTopicIds, topicRefsOf, type TopicRef } from '../topics/topic-refs';
 import type { OwnCatalogReader, ProductForm } from '../ports/own-catalog.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
@@ -50,6 +53,8 @@ export interface PlatformProductReadOutput {
     readonly baseRevisionId: string | null;
   } | null;
   readonly published: PlatformRevisionView | null;
+  /** The topics named by the draft and the published revision (`topicIds`), each once. */
+  readonly topicRefs: readonly TopicRef[];
 }
 
 export type PlatformProductReadFailure =
@@ -65,6 +70,8 @@ export interface PlatformProductReadDependencies {
   readonly revisions: ProductRevisionRepository;
   readonly ownReader: OwnCatalogReader;
   readonly policy: CatalogMarketPolicy;
+  /** The topics, to name the ids of the draft and the published revision. */
+  readonly topicReader?: Pick<TopicReader, 'briefsOf'>;
   /** The feature set follows the draft's primary category (A4 CAT-10); absent: the stored one. */
   readonly familyResolver?: ProductFamilyResolver;
 }
@@ -142,12 +149,24 @@ export class PlatformProductRead extends UseCase<
             : await deps.familyResolver.resolve(market, primaryCategoryId);
         const shownFamily =
           resolved !== null && resolved.ok ? resolved.familyCode : state.familyCode;
+        const published = await revisionOf(state.publishedRevisionId);
+        const topicRefs = await topicRefsOf(
+          deps.topicReader,
+          market,
+          // The published ids first, so an oversized draft cannot crowd their names out.
+          [
+            ...(published?.content.topicIds ?? []),
+            ...draftTopicIds(copy?.content).slice(0, MAX_TOPICS_PER_PRODUCT),
+          ],
+          locales.default,
+        );
         return ok({
           product,
           shownFamily,
           form: await deps.ownReader.productForm(market, shownFamily),
           copy,
-          published: await revisionOf(state.publishedRevisionId),
+          published,
+          topicRefs: [...topicRefs.values()],
           offers: await deps.ownReader.offerTotalsOfProduct(market, state.id),
         });
       },
@@ -155,7 +174,7 @@ export class PlatformProductRead extends UseCase<
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
     if (read.value === null) return err({ code: 'product.not-found' });
-    const { product, shownFamily, form, copy, published, offers } = read.value;
+    const { product, shownFamily, form, copy, published, offers, topicRefs } = read.value;
     const { state } = product;
     return ok({
       productId: state.id,
@@ -184,6 +203,7 @@ export class PlatformProductRead extends UseCase<
               baseRevisionId: copy.baseRevisionId,
             },
       published: published === null ? null : viewOf(published),
+      topicRefs,
     });
   }
 }

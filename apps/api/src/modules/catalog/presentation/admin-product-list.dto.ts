@@ -1,10 +1,22 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { PRODUCT_SCOPES } from '../domain/product';
 import { LISTED_STATUSES } from '../application/use-cases/admin-products-list.use-case';
-import { TopicRefBody } from './topic.dto';
 
 // The answer of the admin product list (catalog design 8.2, 9.2 `admin-products.list`). Ids, codes
 // and names only: no price and no stock.
+
+/** A topic on a listed product (the list carries no per-locale names). */
+export class AdminProductTopicBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() slug!: string;
+  @ApiProperty({ enum: ['active', 'archived'] }) status!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The name in the Market default locale; null without one.',
+  })
+  name!: string | null;
+}
 
 export class AdminProductRowDto {
   @ApiProperty({ format: 'uuid' })
@@ -54,10 +66,10 @@ export class AdminProductRowDto {
   categoryName!: string | null;
 
   @ApiProperty({
-    type: [TopicRefBody],
+    type: [AdminProductTopicBody],
     description: 'The topics of the shown revision, in order; name in the Market default locale.',
   })
-  topics!: TopicRefBody[];
+  topics!: AdminProductTopicBody[];
 
   @ApiProperty()
   typeCode!: string;

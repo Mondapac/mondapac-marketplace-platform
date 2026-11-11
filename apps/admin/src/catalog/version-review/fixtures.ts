@@ -11,6 +11,9 @@ export const VARIANT = (n: number) =>
 export const CATEGORY = (n: number) =>
   `0190a000-0000-7000-8000-0000000003${String(n).padStart(2, '0')}`;
 
+export const TOPIC = (n: number) =>
+  `0190a000-0000-7000-8000-0000000004${String(n).padStart(2, '0')}`;
+
 const variant = (n: number, gtin: string | null) => ({
   variantId: VARIANT(n),
   position: n,
@@ -35,6 +38,7 @@ export const published: RevisionContent = {
     ar: { name: 'زيت زيتون', shortDescription: null, description: null },
   },
   categoryIds: [CATEGORY(1)],
+  topicIds: [TOPIC(1), TOPIC(2)],
   taxCategoryCode: 'food-basic',
   attributeValues: { origin: 'Spain', volume: 1 },
   variants: [variant(1, '09300000000011'), variant(2, null)],
@@ -55,6 +59,7 @@ export const revision: RevisionContent = {
     ar: published.texts['ar']!,
   },
   categoryIds: [CATEGORY(2)],
+  topicIds: [TOPIC(2), TOPIC(3)],
   taxCategoryCode: 'food-standard',
   attributeValues: { origin: 'Spain', volume: 1, organic: true },
   variants: [variant(1, '09300000000028'), variant(3, null)],
@@ -71,10 +76,27 @@ export const read: RevisionRead = {
   storeName: 'Cedar Lane',
   state: 'pending',
   firstPublication: false,
-  reasons: ['name', 'tax-category', 'image-added-or-replaced'],
+  reasons: ['name', 'tax-category', 'image-added-or-replaced', 'topics-changed'],
   requiredChecks: ['photos-no-certification-mark', 'tax-category-fits'],
   warnings: ['gtin.duplicate'],
   revision,
+  topicRefs: [
+    { id: TOPIC(1), slug: 'eid', status: 'active', name: 'Eid', names: { 'en-AU': 'Eid' } },
+    {
+      id: TOPIC(2),
+      slug: 'ramadan',
+      status: 'archived',
+      name: 'Ramadan',
+      names: { 'en-AU': 'Ramadan', ar: 'رمضان' },
+    },
+    {
+      id: TOPIC(3),
+      slug: 'picnic',
+      status: 'active',
+      name: 'Picnic',
+      names: { 'en-AU': 'Picnic' },
+    },
+  ],
   published,
   history: [
     {

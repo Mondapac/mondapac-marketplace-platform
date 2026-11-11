@@ -1252,7 +1252,7 @@
         "suggestion-pending": "A value you suggested is still waiting for a reviewer, so a required field is empty. You can submit once it is decided."
       },
       "attributes": "Product details",
-      "classification": "Category",
+      "classification": "Category and tags",
       "categories": "Categories",
       "categories-none": "No categories are available yet.",
       "tax-category": "Tax category",
@@ -1350,6 +1350,7 @@
         "primary-image": "main image",
         "variant-removed": "removed variants",
         "gtin-changed": "variant barcodes (GTIN)",
+        "topics": "tags",
         "images": "images"
       },
       "attribute": {
@@ -1436,6 +1437,34 @@
         "message-untitled": "Your changes aren't saved.",
         "stay": "Cancel",
         "leave": "Leave without saving"
+      },
+      "tags": {
+        "label": "Tags",
+        "placeholder": "Choose tags",
+        "help": "Optional. Tags help shoppers find this product. Tag changes are checked by us before they go live.",
+        "archived-help": "Archived tags can't be added. A tag the live product already has can stay.",
+        "archived-chip": "{name} (archived)",
+        "unknown-chip": "Unavailable tag",
+        "load-error": "Tags can't be loaded right now.",
+        "load-throttled": "Too many requests. Wait a moment and try again.",
+        "too-many": "Pick {max} tags or fewer.",
+        "archived-problem": "{name} is archived. Remove it.",
+        "unknown-problem": "A tag on this product no longer exists. Remove it.",
+        "duplicate-problem": "{name} is picked twice. Remove one.",
+        "group": {
+          "occasion": "Occasion",
+          "cuisine": "Cuisine",
+          "use": "Use"
+        },
+        "labels": {
+          "search": "Search tags",
+          "no-results": "No tags found.",
+          "loading": "Loading…",
+          "retry": "Try again",
+          "remove": "Remove {name}",
+          "limit-reached": "You can pick up to {max} tags. Remove one to add another.",
+          "none": "None"
+        }
       }
     },
     "offer-edit": {

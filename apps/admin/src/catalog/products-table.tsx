@@ -76,6 +76,27 @@ export function ProductsTable({
         return <span className="break-words">{row.typeCode}</span>;
       case 'scope':
         return t(`scope.${row.scope}`);
+      case 'tags': {
+        const topics = row.topics ?? [];
+        if (topics.length === 0) return <span className="text-fg-muted">{t('tags.none')}</span>;
+        const shown = topics.slice(0, 2).map((topic) => {
+          const name = topic.name ?? topic.slug;
+          return topic.status === 'archived' ? t('tags.archived', { name }) : name;
+        });
+        const more = topics.length - shown.length;
+        return (
+          <span className="break-words">
+            {shown.join(', ')}
+            {more > 0 ? (
+              <>
+                {' '}
+                <span aria-hidden="true">{t('tags.more', { count: more })}</span>
+                <span className="sr-only">{t('tags.more-sr', { count: more })}</span>
+              </>
+            ) : null}
+          </span>
+        );
+      }
       case 'seller':
         return row.scope === 'PLATFORM' ? (
           <span className="text-fg-muted">{t('seller-platform')}</span>

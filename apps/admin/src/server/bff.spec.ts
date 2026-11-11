@@ -1749,6 +1749,30 @@ describe('relay of the product list', () => {
       );
     });
 
+    it('relays the Tags column, and all eight columns at once', async () => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        get('catalog/admin/products/export?columns=code,tags'),
+        exportPath,
+        upstream,
+      );
+      await relay(
+        config,
+        get(
+          'catalog/admin/products/export?columns=code,offers,updated,type,scope,seller,created,tags',
+        ),
+        exportPath,
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        'http://api.test/catalog/admin/products/export?columns=code%2Ctags',
+      );
+      expect(upstream.mock.calls[1]?.[0]).toBe(
+        'http://api.test/catalog/admin/products/export?columns=code%2Coffers%2Cupdated%2Ctype%2Cscope%2Cseller%2Ccreated%2Ctags',
+      );
+    });
+
     it('relays the xlsx format and drops any other', async () => {
       const upstream = upstreamOk();
       await relay(config, get('catalog/admin/products/export?format=xlsx'), exportPath, upstream);

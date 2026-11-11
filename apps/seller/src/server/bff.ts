@@ -48,6 +48,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The seller import (catalog design 14c): the templates, and the latest import of the seller.
     'catalog/seller/imports/template',
     'catalog/seller/imports/current',
+    // The tags a product may carry (catalog topics; query: `search`, `afterId`, `limit`).
+    'catalog/seller/topics',
     // The Products list (list mode; query: view, q, status, categoryId, paused, typeCode, sort,
     // direction, page, pageSize). The keyset parameters (`afterId`, `limit`) are read by the
     // panel's server pages only and do not cross.
@@ -183,6 +185,7 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
   'identity/seller/team': { after: UUID },
+  'catalog/seller/topics': { search: null, afterId: UUID, limit: /^[0-9]{1,3}$/ },
   'catalog/seller/products': {
     view: /^(all|drafts|live|inactive|in-review)$/,
     // Free text up to the API's 100 characters (it refuses control characters itself).

@@ -32,6 +32,7 @@ import type { TopicBrief, TopicReader } from '../ports/topic.reader';
 import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import { OwnProductRead } from './own-product-read.use-case';
 import { OwnTopicList } from './own-topic-list.use-case';
+import { PlatformProductRead } from './platform-product-read.use-case';
 import { ProductRevisionAdminRead } from './revision-review-read.use-case';
 
 // The reads of product tags T2 in memory, on both Market fixtures: the seller topic picker
@@ -345,8 +346,9 @@ describe.each(['AU', 'ZZ'] as const)('topic reads in market %s', (code) => {
       });
       expect(result.value.workingCopy?.content['topicIds']).toEqual([T(2), T(1)]);
       expect(result.value.published?.content.topicIds).toEqual([T(1)]);
-      // Listed only once the seller panel can name it (PR 4).
-      expect(result.value.sensitiveFields).not.toContain('topics');
+      // A topic change is always reviewed, so the seller form names it before `images`.
+      expect(result.value.sensitiveFields).toContain('topics');
+      expect(result.value.sensitiveFields.at(-2)).toBe('topics');
     });
 
     it('reads a draft without topicIds, and a malformed one, as none', async () => {
@@ -363,6 +365,57 @@ describe.each(['AU', 'ZZ'] as const)('topic reads in market %s', (code) => {
       const result = await read(useCase(copyOf({ topicIds: [T(9)] })));
       expect(result.ok && result.value.topicRefs.map((ref) => ref.id)).not.toContain(T(9));
       const bare = await read(useCase(copyOf({ topicIds: [T(1)] }), false));
+      expect(bare.ok && bare.value.topicRefs).toEqual([]);
+    });
+  });
+
+  describe('platform-product.read topics', () => {
+    const platformCopy = (content: Record<string, unknown>): WorkingCopy => ({
+      productId,
+      content,
+      contentSchemaVersion: 1,
+      baseRevisionId: null,
+      lastSavedAt: T0,
+      lastSavedByAccountId: ids.next<'Account'>(),
+    });
+    const useCase = (copy: WorkingCopy | null, withReader = true) =>
+      new PlatformProductRead(gate, {
+        unitOfWork,
+        products: products(
+          productState({
+            scope: 'PLATFORM',
+            ownerSellerId: null,
+            publishedRevisionId: publishedId,
+          }),
+        ),
+        workingCopies: { find: () => Promise.resolve(copy) } as unknown as WorkingCopyRepository,
+        revisions,
+        ownReader: {
+          productForm: () => Promise.resolve({ fields: [], categories: [] }),
+          offerTotalsOfProduct: () => Promise.resolve({ sellerCount: 0, offerCount: 0 }),
+        } as unknown as OwnCatalogReader,
+        policy,
+        ...(withReader ? { topicReader } : {}),
+      });
+    const read = (reader: PlatformProductRead) => reader.execute(contextOf('admin'), { productId });
+
+    beforeEach(() => stored.set(publishedId, revision(publishedId, 1, [T(1)])));
+
+    it('names the topics of the draft and the published revision once each', async () => {
+      const result = await read(useCase(platformCopy({ topicIds: [T(2), T(1)] })));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.topicRefs.map((ref) => ref.id).sort()).toEqual([T(1), T(2)]);
+      expect(result.value.topicRefs.find((ref) => ref.id === T(2))).toMatchObject({
+        status: 'archived',
+        name: 'Topic 2',
+      });
+    });
+
+    it('does not name a topic of another Market (canary), and works without a reader', async () => {
+      const result = await read(useCase(platformCopy({ topicIds: [T(9)] })));
+      expect(result.ok && result.value.topicRefs.map((ref) => ref.id)).toEqual([T(1)]);
+      const bare = await read(useCase(platformCopy({ topicIds: [T(1)] }), false));
       expect(bare.ok && bare.value.topicRefs).toEqual([]);
     });
   });
