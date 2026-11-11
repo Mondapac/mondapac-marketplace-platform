@@ -231,3 +231,45 @@ model StorefrontSlidePositionLock {
   @@map("slide_position_locks")
   @@schema("storefront")
 }
+
+/// An image of the slide library (file storage pilot F9): uploaded once by an admin and named by a
+/// slide's `content.image.ref`. The desktop picture is always there; the mobile one is optional
+/// (`hasMobile`). Rows are insert-only. The raw upload is never stored.
+model StorefrontSlideImage {
+  marketId          String                           @map("market_id") @db.VarChar(8)
+  tenantId          String                           @map("tenant_id")
+  id                String                           @db.Uuid
+  uploaderAccountId String                           @map("uploader_account_id") @db.Uuid
+  hasMobile         Boolean                          @map("has_mobile")
+  /// The size of the largest desktop rendition.
+  pixelWidth        Int                              @map("pixel_width")
+  pixelHeight       Int                              @map("pixel_height")
+  /// The size of the uploads together in bytes (abuse review); the uploads themselves are not kept.
+  byteSize          Int                              @map("byte_size")
+  createdAt         DateTime                         @map("created_at") @db.Timestamptz(6)
+  renditions        StorefrontSlideImageRendition[]
+
+  @@id([marketId, id])
+  @@map("slide_images")
+  @@schema("storefront")
+}
+
+/// One size of a slide image: desktop, desktop-small, mobile or mobile-small JPEG. The key is
+/// `slide-images/<image id>/<size>` (CHECK).
+model StorefrontSlideImageRendition {
+  marketId    String               @map("market_id") @db.VarChar(8)
+  tenantId    String               @map("tenant_id")
+  imageId     String               @map("image_id") @db.Uuid
+  sizeCode    String               @map("size_code")
+  objectKey   String               @map("object_key")
+  sha256      Bytes
+  byteSize    Int                  @map("byte_size")
+  pixelWidth  Int                  @map("pixel_width")
+  pixelHeight Int                  @map("pixel_height")
+  image       StorefrontSlideImage @relation(fields: [marketId, imageId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, imageId, sizeCode])
+  @@unique([marketId, objectKey])
+  @@map("slide_image_renditions")
+  @@schema("storefront")
+}

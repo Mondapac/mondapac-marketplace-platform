@@ -3,7 +3,13 @@ import type { ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { areaName, known } from './format.ts';
 import { When } from '../shared/when.tsx';
-import { KINDS, STATUSES, type SellerRow } from './types.ts';
+import {
+  KINDS,
+  STATUSES,
+  type HEALTH_BANDS,
+  type SellerRow,
+  type SellerRowHealth,
+} from './types.ts';
 
 const TONE: Record<string, BadgeTone> = {
   approved: 'success',
@@ -15,11 +21,41 @@ const TONE: Record<string, BadgeTone> = {
   'outside-service-area': 'critical',
 };
 
+const HEALTH_TONE: Record<(typeof HEALTH_BANDS)[number], BadgeTone> = {
+  healthy: 'success',
+  'at-risk': 'attention',
+  unhealthy: 'critical',
+};
+
+/** The health cell: the band and score, or why there is none. Health only informs. */
+function HealthCell({
+  health,
+  unavailable,
+}: {
+  readonly health: SellerRowHealth | null | undefined;
+  readonly unavailable: boolean;
+}) {
+  const t = useTranslations('sellers.list.health');
+  if (health === null || health === undefined) {
+    return <span className="text-fg-muted">{unavailable ? t('unavailable') : t('none')}</span>;
+  }
+  if (health.kind === 'new') return <Badge tone="neutral">{t('new')}</Badge>;
+  if (health.kind === 'no-data' || health.band === null || health.score === null) {
+    return <span className="text-fg-muted">{t('no-data')}</span>;
+  }
+  return (
+    <Badge tone={HEALTH_TONE[health.band]}>
+      {t(`band.${health.band}`)} · {health.score}
+    </Badge>
+  );
+}
+
 /** The rows of one tab: store, owner, status, kind of submission, area and dates. */
 export function SellersTable({
   rows,
   canReview,
   showOwner,
+  healthUnavailable = false,
   empty,
 }: {
   readonly rows: readonly SellerRow[];
@@ -29,16 +65,18 @@ export function SellersTable({
   readonly showOwner: boolean;
   /** Rows link to the review page only for an actor who may open it. */
   readonly canReview: boolean;
+  /** The page's health could not be read: the cells say so instead of "not measured yet". */
+  readonly healthUnavailable?: boolean;
 }) {
   const t = useTranslations('sellers.list');
   const cols = showOwner
-    ? ['store', 'owner', 'status', 'area', 'submitted', 'changed']
-    : ['store', 'status', 'area', 'submitted', 'changed'];
+    ? ['store', 'owner', 'status', 'health', 'area', 'submitted', 'changed']
+    : ['store', 'status', 'health', 'area', 'submitted', 'changed'];
   // From 1024 px a table; below it (phones and tablets, where seven columns do not fit) each row is a card with labelled lines (like the Team table).
   const { cell, labelled } = CARD_TABLE;
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
-      <table className={`${CARD_TABLE.table} ${showOwner ? 'lg:min-w-200' : 'lg:min-w-160'}`}>
+      <table className={`${CARD_TABLE.table} ${showOwner ? 'lg:min-w-240' : 'lg:min-w-200'}`}>
         <caption className="sr-only">{t('title')}</caption>
         <thead className={CARD_TABLE.head}>
           <tr>
@@ -114,6 +152,9 @@ export function SellersTable({
                       {t(`kind.${known(row.kind, KINDS)}`)}
                     </span>
                   )}
+                </td>
+                <td className={`${labelled} lg:whitespace-nowrap`} data-label={t('col.health')}>
+                  <HealthCell health={row.health} unavailable={healthUnavailable} />
                 </td>
                 <td className={`${labelled} lg:whitespace-nowrap`} data-label={t('col.area')}>
                   {areaName(row.serviceAreaCode, row.serviceAreaName) ?? (

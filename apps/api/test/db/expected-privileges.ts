@@ -928,6 +928,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['sort_order'],
     },
+    // File storage pilot F9: a slide image and its renditions are inserted once and never changed.
+    'storefront.slide_images': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'storefront.slide_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'storefront.slide_saved_orders': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'storefront.slide_position_locks': {
       table: ['INSERT', 'SELECT'],
@@ -1108,6 +1111,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Search attribute filters (A7): the measure values of a document, replaced with it; the
     // reindex progress row of a Market, written by the reindex job and never deleted.
     'search.offer_document_numbers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Search 1a: the public stores that have indexed Offers, upserted with the Offers' sync.
+    'search.store_documents': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['indexed_at', 'name', 'slug', 'text_search_config'],
+    },
     'search.offer_variant_documents': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'search.reindex_state': {
       table: ['INSERT', 'SELECT'],

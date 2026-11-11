@@ -51,6 +51,7 @@ import {
   StatusBadge,
   StatusCard,
 } from './side-cards.tsx';
+import { hasProblems, problemsOfRows } from './variant-fields.ts';
 import { axesOf } from './variant-grid.ts';
 import { VariantsSection } from './variants-section.tsx';
 import {
@@ -279,6 +280,7 @@ function EditForm({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<FormProblem | null>(null);
   const [refused, setRefused] = useState<DraftSaved['refusedFields']>([]);
+  const [notices, setNotices] = useState<NonNullable<DraftSaved['variantNotices']>>([]);
   const [status, setStatus] = useState(product.status);
   const [publishedNo, setPublishedNo] = useState(product.published?.revisionNo ?? null);
   const [hasRevision, setHasRevision] = useState(() => hasSavedRevision(product));
@@ -365,7 +367,15 @@ function EditForm({
       topicIds,
       taxCategoryCode,
       attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
-      variants: configurable ? variantsWith(list) : null,
+      // A photo taken off the product no longer counts as a pick of any variant.
+      variants: configurable
+        ? variantsWith(
+            list.map((row) => ({
+              ...row,
+              imageIds: row.imageIds.filter((id) => imageIds.includes(id)),
+            })),
+          )
+        : null,
       variantAxes: configurable ? axes : null,
     });
     if (imageIds.length > 0) next['imageIds'] = [...imageIds];
@@ -375,6 +385,11 @@ function EditForm({
 
   /** Saves the draft; 'saved' when the API took it whole, 'refused' when it dropped some texts. */
   async function save(): Promise<'saved' | 'refused' | false> {
+    // Barcode, shipping and photo picks that cannot be saved are fixed first, next to their fields.
+    if (configurable && hasProblems(problemsOfRows(rows))) {
+      setProblem({ key: 'variant-fields', details: [], reload: false });
+      return false;
+    }
     let list = rows;
     let idsMinted = false;
     let next = contentOf(list);
@@ -408,6 +423,7 @@ function EditForm({
     }
     setContent(next);
     setRefused(result.body.refusedFields);
+    setNotices(result.body.variantNotices ?? []);
     setDirty(result.body.refusedFields.length > 0);
     if (published) setHasRevision(true);
     return result.body.refusedFields.length === 0 ? 'saved' : 'refused';
@@ -666,6 +682,18 @@ function EditForm({
           {t('banner.published-body')}
         </Banner>
       ) : null}
+      {notices.length > 0 ? (
+        <Banner tone="info">
+          <p>{t('grid.notice.duplicate', { count: notices.length })}</p>
+          {[
+            ...new Set(
+              notices.flatMap((n) => (n.sellOnProductCode === null ? [] : [n.sellOnProductCode])),
+            ),
+          ].map((code) => (
+            <p key={code}>{t('grid.notice.sell-on', { code })}</p>
+          ))}
+        </Banner>
+      ) : null}
       {problem === null ? null : (
         <Banner
           tone={stale ? 'attention' : 'critical'}
@@ -840,6 +868,9 @@ function EditForm({
             canAddSizes={canAddSizes(product, form.fields)}
             addSizesBlocked={dirty || pending}
             refused={refused}
+            productId={product.productId}
+            galleryIds={imageIds}
+            notices={notices.map((notice) => notice.variantId)}
             onChange={(next) => {
               setRows(next.rows);
               setAxes(next.axes);

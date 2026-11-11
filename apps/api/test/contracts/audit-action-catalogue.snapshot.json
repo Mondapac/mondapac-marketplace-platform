@@ -159,6 +159,23 @@
     }
   },
   {
+    "action": "catalog.attribute-import.ran",
+    "targetType": "catalog.attribute-import",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "created": "integer",
+      "failed": "integer",
+      "kind": "enumOf(attributes|values)",
+      "rows": "integer",
+      "skipErrors": "boolean",
+      "skipped": "integer",
+      "unchanged": "integer",
+      "updated": "integer"
+    }
+  },
+  {
     "action": "catalog.attribute-relaxation.cancelled",
     "targetType": "catalog.attribute-definition",
     "targetId": "id",
@@ -2580,6 +2597,16 @@
     "before": null,
     "after": {
       "wasApproved": "boolean"
+    }
+  },
+  {
+    "action": "storefront.slide-image.upload",
+    "targetType": "storefront.slide-image",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "hasMobile": "boolean"
     }
   },
   {

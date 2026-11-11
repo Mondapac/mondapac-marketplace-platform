@@ -26,6 +26,9 @@ export function VariantsSection({
   canAddSizes,
   addSizesBlocked,
   refused,
+  productId,
+  galleryIds,
+  notices,
   onChange,
   onAddSizes,
 }: {
@@ -46,6 +49,9 @@ export function VariantsSection({
   /** There are edits not saved: Add sizes reloads the product, so they must be saved first. */
   readonly addSizesBlocked: boolean;
   readonly refused: DraftSaved['refusedFields'];
+  readonly productId: string;
+  readonly galleryIds: readonly string[];
+  readonly notices: readonly string[];
   readonly onChange: (change: { rows: VariantRow[]; axes: string[] }) => void;
   readonly onAddSizes: () => void;
 }) {
@@ -113,6 +119,9 @@ export function VariantsSection({
           defaultLocale={defaultLocale}
           max={max}
           refused={refused}
+          productId={productId}
+          galleryIds={galleryIds}
+          notices={notices}
           onChange={(change) =>
             onChange({
               rows: change.rows,

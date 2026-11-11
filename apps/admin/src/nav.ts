@@ -81,6 +81,14 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.product.view'],
     },
     {
+      id: 'certificates',
+      icon: 'shield-check',
+      labelKey: 'nav.certificates',
+      href: '/certificates',
+      group: 'reviews',
+      anyOf: ['certification.seller-certificate.view'],
+    },
+    {
       id: 'review-moderation',
       icon: 'shield-check',
       labelKey: 'nav.review-moderation',
@@ -102,7 +110,15 @@ export const adminNav: NavConfig = {
       labelKey: 'nav.content',
       href: '/content',
       group: 'content',
-      anyOf: ['storefront.slide.read'],
+      anyOf: ['storefront.page.read', 'storefront.slide.read'],
+    },
+    {
+      id: 'blog',
+      icon: 'file',
+      labelKey: 'nav.blog',
+      href: '/content/blog',
+      group: 'content',
+      anyOf: ['blog.post.read'],
     },
     {
       id: 'sellers',

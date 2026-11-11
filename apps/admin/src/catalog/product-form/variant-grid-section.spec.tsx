@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
-import type { VariantRow } from './draft-content.ts';
+import { NO_VARIANT_FIELDS, type VariantRow } from './draft-content.ts';
 import type { FormField } from './types.ts';
 import { VariantGridSection } from './variant-grid-section.tsx';
 
@@ -34,9 +34,17 @@ const row = (
   state,
   options,
   labels: {},
+  ...NO_VARIANT_FIELDS,
 });
 
-function mount(props: { rows?: VariantRow[]; axes?: string[]; locked?: boolean; max?: number }) {
+function mount(props: {
+  rows?: VariantRow[];
+  axes?: string[];
+  locked?: boolean;
+  max?: number;
+  galleryIds?: string[];
+  notices?: string[];
+}) {
   const onChange = vi.fn();
   render(
     <NextIntlClientProvider locale="en" messages={messages}>
@@ -48,6 +56,9 @@ function mount(props: { rows?: VariantRow[]; axes?: string[]; locked?: boolean; 
         defaultLocale="en"
         max={props.max ?? 10}
         refused={[]}
+        productId="p1"
+        galleryIds={props.galleryIds ?? []}
+        notices={props.notices ?? []}
         onChange={onChange}
       />
     </NextIntlClientProvider>,
@@ -102,5 +113,28 @@ describe('the variant grid of the platform product form', () => {
   it('locks the axes once the product is published', () => {
     mount({ axes: ['size'], locked: true });
     expect(screen.getByRole<HTMLInputElement>('checkbox', { name: 'Size' }).disabled).toBe(true);
+  });
+
+  it('shows barcode, shipping and photo picks of a ticked variant and writes them to the row', () => {
+    const onChange = mount({
+      axes: ['size'],
+      rows: [row('v1', { size: 's' }, 'published')],
+      galleryIds: ['img-1', 'img-2'],
+    });
+    fireEvent.change(screen.getByLabelText(/Barcode \(GTIN\)/), {
+      target: { value: '4006381333931' },
+    });
+    expect((onChange.mock.calls.at(-1)![0] as { rows: VariantRow[] }).rows[0]!.gtin).toBe(
+      '4006381333931',
+    );
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Photo 2' }));
+    expect((onChange.mock.calls.at(-1)![0] as { rows: VariantRow[] }).rows[0]!.imageIds).toEqual([
+      'img-2',
+    ]);
+  });
+
+  it('tells the admin about a barcode another product already carries', () => {
+    mount({ axes: ['size'], rows: [row('v1', { size: 's' }, 'published')], notices: ['v1'] });
+    expect(screen.getByText(/already used by another product/)).toBeTruthy();
   });
 });

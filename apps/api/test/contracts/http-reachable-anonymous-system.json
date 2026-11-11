@@ -265,6 +265,11 @@
     "reason": "The public storefront search: a visitor with no session finds sellable Offers by text or category; the answer is ids, text and category ids, re-checked against catalog and sellers, and the route is rate limited per origin."
   },
   {
+    "name": "search.search-stores",
+    "rule": "anonymous",
+    "reason": "The public store search: a visitor with no session finds public stores by name; the answer is the store address, public name and an Offer count, re-checked against sellers' published-store rules, and the route is rate limited per origin."
+  },
+  {
     "name": "search.view-product-detail",
     "rule": "anonymous",
     "reason": "The storefront product page for a visitor with no session: the published product text and variants and its sellable Offers with buyer price (never Cost), public stock state (never the exact count) and the seller's public store name; re-checked against catalog and sellers; rate limited per origin."
@@ -318,5 +323,10 @@
     "name": "storefront.view-published-slides",
     "rule": "anonymous",
     "reason": "The buyer site draws the slider of a position (home hero, ...) for a visitor with no session: only approved slides of the request's Market inside their window whose link target is alive in that Market (a suspended seller or a dead link drops the slide); plain texts, ready-made image keys and site paths only; cache-control at most 60 seconds and never past the next start or end."
+  },
+  {
+    "name": "storefront.view-slide-image",
+    "rule": "anonymous",
+    "reason": "The buyer site loads a slide picture for a visitor with no session: one stored size of an image of the request's Market, found by its unguessable id; always a server-written metadata-free JPEG, hash checked, cached five minutes; nothing else is returned."
   }
 ]

@@ -1032,13 +1032,14 @@ model CatalogCategoryImageRendition {
   @@schema("catalog")
 }
 
-/// One size of a photo: thumb, medium or large JPEG. The key starts with the product id (CHECK).
+/// One size and format of a photo: thumb, medium or large, as JPEG, WebP or AVIF. The key starts with the product id (CHECK).
 model CatalogProductImageRendition {
   marketId    String              @map("market_id") @db.VarChar(8)
   tenantId    String              @map("tenant_id")
   imageId     String              @map("image_id") @db.Uuid
   productId   String              @map("product_id") @db.Uuid
   sizeCode    String              @map("size_code")
+  formatCode  String              @default("jpeg") @map("format_code")
   objectKey   String              @map("object_key")
   sha256      Bytes
   byteSize    Int                 @map("byte_size")
@@ -1046,7 +1047,7 @@ model CatalogProductImageRendition {
   pixelHeight Int                 @map("pixel_height")
   image       CatalogProductImage @relation(fields: [marketId, imageId, productId], references: [marketId, id, productId], onDelete: Cascade, onUpdate: Restrict)
 
-  @@id([marketId, imageId, sizeCode])
+  @@id([marketId, imageId, sizeCode, formatCode])
   @@unique([marketId, objectKey])
   @@map("product_image_renditions")
   @@schema("catalog")

@@ -109,8 +109,31 @@ export function isStoreImageUploadRequest(
 /** An admin's category image (categories package C3c): `PUT /catalog/admin/categories/<id>/image`. */
 const CATEGORY_IMAGE_PATH = /^\/catalog\/admin\/categories\/[0-9a-fA-F-]{36}\/image\/?(?:\?.*)?$/;
 
+/** An admin's slide image (file storage pilot F9): `POST /storefront/admin/slide-images`. */
+const SLIDE_IMAGE_PATH = /^\/storefront\/admin\/slide-images\/?(?:\?.*)?$/;
+
 /** An admin session cookie of any Market: `__Host-session-admin-<MARKET>=...`. */
 const ADMIN_SESSION_COOKIE = /(?:^|;\s*)__Host-session-admin-[A-Z][A-Z0-9_]{1,7}=[^;\s]/;
+
+/**
+ * True for a slide image upload that may carry the large body (up to two pictures): a POST to the
+ * route that holds an admin session cookie and the CSRF header, the same pre-filter as the
+ * category images. A cheap pre-filter only: the actor guard still checks the session and token.
+ */
+export function isSlideImageUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'POST' || url === undefined || !SLIDE_IMAGE_PATH.test(url)) return false;
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
 
 /**
  * True for a category image upload that may carry the large body: a PUT to the route that holds
@@ -171,6 +194,29 @@ export function isPlatformImportUploadRequest(
   url: string | undefined,
 ): boolean {
   return method === 'POST' && url !== undefined && PLATFORM_IMPORT_UPLOAD_PATH.test(url);
+}
+// The attribute import's check and run (attributes package A9) take the same body: a base64 file of
+// at most 10 MiB, read as bytes; their controller parses the JSON itself. Only these two routes.
+const ATTRIBUTE_IMPORT_UPLOAD_PATH =
+  /^\/catalog\/admin\/attribute-imports\/(?:check|run)\/?(?:\?.*)?$/;
+
+export function isAttributeImportUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'POST' || url === undefined || !ATTRIBUTE_IMPORT_UPLOAD_PATH.test(url)) {
+    return false;
+  }
+  // A cheap pre-filter (an admin session cookie and the CSRF header) so an anonymous request does
+  // not make the server buffer a large body; the actor guard still checks both itself.
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
 }
 // The seller import's upload (catalog design 14c) takes the same body as the admin's, and its photo
 // step (one base64 photo of at most 4 MiB per call) the photo body; both controllers parse the JSON
@@ -292,6 +338,13 @@ export function configureApp(app: NestExpressApplication): void {
     limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });
+  // An admin's slide image takes up to two such pictures in one body (file storage pilot F9), only
+  // for a request that carries an admin session cookie and the CSRF header.
+  app.useBodyParser('raw', {
+    type: (request) => isSlideImageUploadRequest(request.method, request.url, request.headers),
+    limit: STORE_PROFILE_SAVE_BODY_LIMIT,
+    inflate: false,
+  });
   // An admin's photo of a PLATFORM product takes the same body, under the same pre-filter (P1).
   app.useBodyParser('raw', {
     type: (request) =>
@@ -317,6 +370,11 @@ export function configureApp(app: NestExpressApplication): void {
   // design 14a), read as bytes; its controller parses the JSON itself.
   app.useBodyParser('raw', {
     type: (request) => isPlatformImportUploadRequest(request.method, request.url),
+    limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
+    inflate: false,
+  });
+  app.useBodyParser('raw', {
+    type: (request) => isAttributeImportUploadRequest(request.method, request.url, request.headers),
     limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
     inflate: false,
   });

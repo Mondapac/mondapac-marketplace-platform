@@ -70,6 +70,8 @@ describe.each(TEST_MARKETS)('catalog published images in market %s (database)', 
     readonly revisions: string[];
     /** A photo uploaded to the product's library: in no revision until `attach`. */
     photo(width?: number, height?: number): Promise<Photo>;
+    /** One more rendition row of a photo: a WebP or AVIF file besides its JPEG. */
+    addFormat(photo: Photo, size: 'thumb' | 'medium' | 'large', format: string): Promise<void>;
     attach(revisionNo: number, ...photos: Photo[]): Promise<void>;
     takeDown(photo: Photo): Promise<void>;
   }
@@ -183,6 +185,20 @@ describe.each(TEST_MARKETS)('catalog published images in market %s (database)', 
         }
         return { id, width, height };
       },
+      async addFormat(photo: Photo, size, format): Promise<void> {
+        await insert('product_image_renditions', {
+          ...base,
+          image_id: photo.id,
+          product_id: productId,
+          size_code: size,
+          format_code: format,
+          object_key: `${productId}/${photo.id}/${size}-${format}`,
+          sha256: createHash('sha256').update(`${photo.id}${size}${format}`).digest(),
+          byte_size: 50,
+          pixel_width: photo.width,
+          pixel_height: photo.height,
+        });
+      },
       async attach(revisionNo: number, ...photos: Photo[]): Promise<void> {
         for (const [index, photo] of photos.entries()) {
           await insert('product_revision_images', {
@@ -214,10 +230,11 @@ describe.each(TEST_MARKETS)('catalog published images in market %s (database)', 
     size: 'thumb' | 'medium' | 'large' = 'medium',
     target = market,
     productId: Id<'Product'> = made.productId,
+    format: 'jpeg' | 'webp' | 'avif' = 'jpeg',
   ) =>
     run(
       target,
-      () => reader.renditionKey(target, productId, photo.id as Id<'ProductImage'>, size),
+      () => reader.renditionKey(target, productId, photo.id as Id<'ProductImage'>, size, format),
       true,
     );
   const shape = (photos: Photo[]) =>
@@ -338,6 +355,29 @@ describe.each(TEST_MARKETS)('catalog published images in market %s (database)', 
       for (const size of ['thumb', 'medium', 'large'] as const) {
         expect(await keyOf(made, photo, size)).toBe(`${made.productId}/${photo.id}-${size}`);
       }
+    });
+
+    it('gives the WebP and AVIF key of a size beside its JPEG, and null for a format that was never written', async () => {
+      const made = await product(market, { revisionCount: 1, published: 1 });
+      const photo = await made.photo();
+      await made.attach(1, photo);
+      await made.addFormat(photo, 'large', 'webp');
+
+      expect(await keyOf(made, photo, 'large', market, made.productId, 'webp')).toBe(
+        `${made.productId}/${photo.id}/large-webp`,
+      );
+      expect(await keyOf(made, photo, 'large')).toBe(`${made.productId}/${photo.id}-large`);
+      expect(await keyOf(made, photo, 'large', market, made.productId, 'avif')).toBeNull();
+      expect(await keyOf(made, photo, 'thumb', market, made.productId, 'webp')).toBeNull();
+    });
+
+    it('refuses a format outside jpeg, webp and avif, and a second row of the same size and format', async () => {
+      const made = await product(market, { revisionCount: 1, published: 1 });
+      const photo = await made.photo();
+      await made.addFormat(photo, 'large', 'avif');
+
+      await expect(made.addFormat(photo, 'large', 'gif')).rejects.toThrow();
+      await expect(made.addFormat(photo, 'large', 'avif')).rejects.toThrow();
     });
 
     it('is null for a photo that only a draft or pending revision holds, or that no revision holds', async () => {
