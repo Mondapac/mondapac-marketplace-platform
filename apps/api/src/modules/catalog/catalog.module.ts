@@ -413,6 +413,10 @@ import { AdminVariantTypeGet } from './application/use-cases/admin-variant-type-
 import { AdminVariantTypesList } from './application/use-cases/admin-variant-types-list.use-case';
 import { AdminVariantIssueCounts } from './application/use-cases/admin-variant-issue-counts.use-case';
 import { AdminVariantsExport } from './application/use-cases/admin-variants-export.use-case';
+import { AttributeFilesExport } from './application/use-cases/attribute-files-export.use-case';
+import { AttributeImportCheck } from './application/use-cases/attribute-import-check.use-case';
+import { AttributeImportRun } from './application/use-cases/attribute-import-run.use-case';
+import { AttributeFileController } from './presentation/attribute-file.controller';
 import { AdminVariantsList } from './application/use-cases/admin-variants-list.use-case';
 import { VariantTypeSettingsEdit } from './application/use-cases/variant-type-settings-edit.use-case';
 import { VariantAdminController } from './presentation/variant-admin.controller';
@@ -531,6 +535,8 @@ const PORT = {
   detailsGapReader: PRODUCT_DETAILS_GAP_READER,
   familyResolver: ProductFamilyResolver,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
+  attributeCreate: AttributeDefinitionCreate,
+  attributeEdit: AttributeDefinitionEdit,
   featureSetStore: FEATURE_SET_STORE,
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
@@ -656,6 +662,7 @@ const RESTRUCTURE_DEPS = {
     AdminProductListController,
     AdminCustomVariantLabelsController,
     VariantAdminController,
+    AttributeFileController,
     AdminProductBulkController,
     PlatformImportController,
     SellerImportController,
@@ -1465,6 +1472,35 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       sheetWriter: true,
       clock: true,
+    }),
+    useCaseProvider(AttributeFilesExport, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+      sheetWriter: true,
+      clock: true,
+    }),
+    useCaseProvider(AttributeImportCheck, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+      importParsers: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    useCaseProvider(AttributeImportRun, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+      importParsers: true,
+      counters: true,
+      counterKeys: true,
+      attributeCreate: true,
+      attributeEdit: true,
+      audit: true,
+      clock: true,
+      ids: true,
     }),
     useCaseProvider(AdminProductsList, {
       unitOfWork: true,
