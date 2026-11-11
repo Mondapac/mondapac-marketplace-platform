@@ -37,8 +37,14 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `position`, `scope`, `scopeId`). A fixed path, so `order` is never read as a slide id: the
     // slide route reads a UUID only, and one slide is read by the page server.
     'storefront/admin/slides/order',
+    // The storefront pages (storefront), read-only: the list, and the templates and modules the
+    // new-page form offers. One page is read by the page server.
+    'storefront/admin/pages',
+    'storefront/admin/catalogue',
     // The Market's wallet switch, and the admin credit requests (query: `status`, `cursor`, `limit`).
     'wallet/admin/settings',
+    // The Market's tax strategies and the active one (tax), read again after a change.
+    'tax/admin/strategies',
     'wallet/admin/credit-requests',
     // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
     // `limit`); one case is read by the page server and again after a decision.
@@ -82,6 +88,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'wallet/admin/settings/history',
     // The editable Market settings (settings; List paging), read again after a conflict.
     'settings/admin/market-settings',
+    // The blog posts of the Market (blog; query: `status`, `kind`, `owner`, `page`), read only.
+    'blog/admin/posts',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
@@ -165,8 +173,13 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'notifications/admin/notices/read-all',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
+    // A new tax strategy, and the choice of the active one (tax; protected key).
+    'tax/admin/strategies',
+    'tax/admin/strategies/active',
     // A new storefront slide, as a draft (storefront).
     'storefront/admin/slides',
+    // A new storefront page from a template, as a draft (storefront).
+    'storefront/admin/pages',
     // Admin store credit (wallet), behind a fresh two-step code.
     'wallet/admin/credits',
     // A fresh two-step code for one admin action (identity).
@@ -320,6 +333,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'sellers/admin/:id/category-proposals',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
+    // A tax strategy edited by its id (tax).
+    'tax/admin/strategies/:id',
     // A fleet-selection model edited by its id (shipping).
     'shipping/admin/fleet-selection/models/:id',
     // The seller's own commission rate (commission-payouts), set from the seller review page.
@@ -349,6 +364,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   PATCH: ['catalog/admin/categories/:id'],
   DELETE: [
     'identity/admin/roles/:id',
+    // A tax strategy that is not active (tax).
+    'tax/admin/strategies/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
     // Back to the Market's payout terms; the version and reason code are in the query.
     'commission-payouts/admin/sellers/:id/payout-terms',
@@ -423,6 +440,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
+  'blog/admin/posts': ['status', 'kind', 'owner', 'page'],
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
   'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
   'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
@@ -573,6 +591,13 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'storefront/admin/slides': {
     state: /^(draft|pending|scheduled|live|ended|paused|archived)$/,
     position: /^[a-z]+(?:\.[a-z-]+)+$/,
+  },
+  'blog/admin/posts': {
+    status:
+      /^(draft|in_review|changes_requested|approved|scheduled|published|unpublished|archived)$/,
+    kind: /^(product|brand|event|news)$/,
+    owner: /^(platform|seller)$/,
+    page: /^[0-9]{1,4}$/,
   },
   'storefront/admin/slides/order': {
     position: /^[a-z]+(?:\.[a-z-]+)+$/,

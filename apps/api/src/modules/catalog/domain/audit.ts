@@ -71,6 +71,25 @@ export const ProductRetiredAudit = defineAuditAction({
   },
 });
 
+/**
+ * A Simple product became Configurable by Add sizes (design 4.2a; variants V9): ids, codes and
+ * counts only. `offerCount` is the Offers on the product when it changed, `offOfferCount` those of
+ * sellers who may not sell the new type, which went off sale with the cause `type-not-allowed`.
+ */
+export const ProductTypeChangedAudit = defineAuditAction({
+  action: 'catalog.product.type-changed',
+  targetType: CATALOG_PRODUCT_TARGET,
+  actors: ['authenticated'],
+  before: { typeCode: auditField.enumOf(['simple'] as const) },
+  after: {
+    typeCode: auditField.enumOf(['configurable'] as const),
+    scope,
+    offerCount: auditField.integer(),
+    offOfferCount: auditField.integer(),
+    axisCount: auditField.integer(),
+  },
+});
+
 /** The audit target type of a platform import job. */
 export const CATALOG_PLATFORM_IMPORT_TARGET = 'catalog.platform-import';
 
@@ -584,6 +603,31 @@ export const AttributeFamilyRevisedAudit = defineAuditAction({
   after: { ...familyShape, requiredRelaxed: auditField.integer() },
 });
 
+/** The audit target type of an attribute import run (attributes package A9). */
+export const CATALOG_ATTRIBUTE_IMPORT_TARGET = 'catalog.attribute-import';
+
+/**
+ * An admin ran an attribute or value import (A9) after its diff preview. One row per run, written
+ * after the rows were applied through the editor use cases (each of which also wrote its own
+ * `catalog.attribute-definition.*` row). The target is an id made for the run. Counts and the file
+ * kind only: the audit vocabulary has no text field, so no code, name or label of the file is here.
+ */
+export const AttributeImportRanAudit = defineAuditAction({
+  action: 'catalog.attribute-import.ran',
+  targetType: CATALOG_ATTRIBUTE_IMPORT_TARGET,
+  actors: ['authenticated'],
+  after: {
+    kind: auditField.enumOf(['attributes', 'values'] as const),
+    skipErrors: auditField.boolean(),
+    rows: auditField.integer(),
+    created: auditField.integer(),
+    updated: auditField.integer(),
+    unchanged: auditField.integer(),
+    failed: auditField.integer(),
+    skipped: auditField.integer(),
+  },
+});
+
 /** The audit target type of a seller's value suggestion (attributes plan, package A5). */
 export const CATALOG_ATTRIBUTE_SUGGESTION_TARGET = 'catalog.attribute-value-suggestion';
 
@@ -663,6 +707,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   ProductResumedAudit,
   ProductWithdrawnAudit,
   ProductRetiredAudit,
+  ProductTypeChangedAudit,
   PlatformImportStartedAudit,
   OwnImportStartedAudit,
   SavedFilterSharedAudit,
@@ -699,6 +744,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   BrandMergeDismissedAudit,
   AttributeFamilyCreatedAudit,
   AttributeFamilyRevisedAudit,
+  AttributeImportRanAudit,
   AttributeValueSuggestedAudit,
   AttributeValueSuggestionDecidedAudit,
   CategoryAttributesChangedAudit,

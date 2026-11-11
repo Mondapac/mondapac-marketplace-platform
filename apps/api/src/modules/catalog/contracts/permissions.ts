@@ -288,6 +288,20 @@ export const CATALOG_ATTRIBUTE_RESTRUCTURE = definePermission('catalog', {
 });
 
 /**
+ * Import attributes and their values from a file (attributes plan 14, package A9). Platform scope;
+ * **protected**: an import is a bulk write of what sellers must declare. Every row still goes
+ * through the editor use cases, so running an import also needs `catalog.attribute.edit`
+ * (protected); this key alone does not let a role change an attribute. No default role lists it;
+ * the Platform Administrator grants it in a custom role. Exporting needs only
+ * `catalog.attribute.view`.
+ */
+export const CATALOG_ATTRIBUTE_IMPORT = definePermission('catalog', {
+  key: 'catalog.attribute.import',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
  * Approve, map or reject a seller's suggestion of a new value for a select attribute (attributes
  * plan 14, package A5). Platform scope; unprotected, so Catalogue Moderator receives it by
  * identity's seed. It does not need `catalog.attribute.edit` (protected): approving adds exactly
@@ -347,6 +361,7 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_ATTRIBUTE_VIEW,
   CATALOG_ATTRIBUTE_EDIT,
   CATALOG_ATTRIBUTE_RESTRUCTURE,
+  CATALOG_ATTRIBUTE_IMPORT,
   CATALOG_ATTRIBUTE_SUGGESTION_DECIDE,
   CATALOG_CATEGORY_TREE_VIEW,
   CATALOG_CATEGORY_TREE_EDIT,

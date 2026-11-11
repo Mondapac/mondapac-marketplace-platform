@@ -4,6 +4,16 @@ import { parseFilters, parsePrice, type ParsedFilters, type PriceRange } from '.
 
 export const MIN_QUERY_LENGTH = 2;
 export const MAX_QUERY_LENGTH = 100;
+/**
+ * The most terms joined by `or` in one text (Hassan L-3): each `or` of the web-search syntax adds
+ * a branch the index must evaluate, so a long chain is refused instead of run.
+ */
+export const MAX_OR_TERMS = 8;
+
+/** How many terms the text has when its standalone `or` words are the separators (web-search syntax). */
+export function orTermsOf(text: string): number {
+  return text.split(/\s+/u).filter((word) => word.toLowerCase() === 'or').length + 1;
+}
 export const DEFAULT_PAGE_SIZE = 24;
 export const MAX_PAGE_SIZE = 48;
 /** Deep pages are refused: a storefront narrows the query instead of paging far. */
@@ -115,6 +125,7 @@ export function parseSearchQuery(
       const length = [...collapsed].length;
       if (length < MIN_QUERY_LENGTH) return invalid('q', 'too-short');
       if (length > MAX_QUERY_LENGTH) return invalid('q', 'too-long');
+      if (orTermsOf(collapsed) > MAX_OR_TERMS) return invalid('q', 'too-many-terms');
       text = collapsed;
     }
   }

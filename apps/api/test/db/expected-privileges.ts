@@ -1111,6 +1111,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Search attribute filters (A7): the measure values of a document, replaced with it; the
     // reindex progress row of a Market, written by the reindex job and never deleted.
     'search.offer_document_numbers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Search 1a: the public stores that have indexed Offers, upserted with the Offers' sync.
+    'search.store_documents': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['indexed_at', 'name', 'slug', 'text_search_config'],
+    },
     'search.offer_variant_documents': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'search.reindex_state': {
       table: ['INSERT', 'SELECT'],
@@ -1219,7 +1224,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     // docs/design/data/catalog.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; no DELETE on products or variants, ever (Q-K2: a discard is a
-    // status and a retired variant). The identity columns of a product and a variant never change.
+    // status and a retired variant). The identity columns of a product and a variant never change;
+    // `type_code` and `variant_model` change only together, simple to configurable (Add sizes).
     'catalog.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'catalog.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.products': {
@@ -1241,6 +1247,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'retired_at',
         'scope',
         'status',
+        'type_code',
+        'variant_model',
         'version',
         'withdrawn_at',
       ],

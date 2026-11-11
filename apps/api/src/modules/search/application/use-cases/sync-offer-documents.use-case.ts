@@ -9,7 +9,9 @@ import { syncOffers, SYNC_BATCH, type SyncCounts } from '../sync-offers';
 export type SyncOfferDocumentsInput =
   | { readonly offerIds: readonly Id<'Offer'>[] }
   | { readonly productId: Id<'Product'> }
-  | { readonly sellerId: Id<'Seller'> };
+  | { readonly sellerId: Id<'Seller'> }
+  /** The Offers whose document names this category or one under it (a rename or a move). */
+  | { readonly categoryId: Id<'Category'> };
 
 /** The most pages of one product's or seller's Offers read in one call (a safety stop). */
 const MAX_PRODUCT_PAGES = 50;
@@ -46,7 +48,9 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
             offers: input.offerIds.length,
             ...(await syncOffers(this.deps, context, input.offerIds)),
           }
-        : await this.#syncScope(context, input);
+        : 'categoryId' in input
+          ? await this.#syncCategory(context, input.categoryId)
+          : await this.#syncScope(context, input);
     const counts = { upserted, deleted };
     this.#logger.log({
       msg: 'search.documents-synced',
@@ -56,6 +60,28 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
       correlationId: context.correlationId,
     });
     return ok(counts);
+  }
+
+  /**
+   * A category was renamed or moved: re-syncs the Offers whose document names it or a category
+   * under it (their text holds the names of every level). Offers with no document have nothing
+   * to refresh; a published Offer not yet indexed is picked up by its own events and the rebuild.
+   */
+  async #syncCategory(
+    context: CallContext,
+    categoryId: Id<'Category'>,
+  ): Promise<SyncCounts & { readonly offers: number }> {
+    const { market } = context;
+    const subtree = await this.deps.categories.subtreeOf(context, categoryId);
+    if (subtree === null) throw new Error('search: category tree unavailable');
+    const indexed = await this.deps.unitOfWork.run(
+      market,
+      async () => ok(await this.deps.documents.offerIdsInCategories(market, subtree)),
+      { readOnly: true },
+    );
+    if (!indexed.ok) throw new Error('search: the index read failed');
+    const counts = await syncOffers(this.deps, context, indexed.value);
+    return { offers: indexed.value.length, ...counts };
   }
 
   /**

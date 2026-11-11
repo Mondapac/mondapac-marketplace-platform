@@ -30,9 +30,9 @@ export interface SweepOrphanImageFilesDependencies {
   readonly clock: Clock;
 }
 
-/** `<product id>/<image id>/<size>`: the shape catalog gives its photo files; nothing else matches. */
+/** `<product id>/<image id>/<size>` with `-webp` or `-avif` after the size for the other formats: the shape catalog gives its photo files; nothing else matches. */
 const PHOTO_KEY =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(thumb|medium|large)$/;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(thumb|medium|large)(-webp|-avif)?$/;
 
 /**
  * `catalog.sweep-orphan-image-files` (file storage pilot F6): removes photo files that no photo
