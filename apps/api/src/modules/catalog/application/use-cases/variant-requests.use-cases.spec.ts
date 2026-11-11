@@ -96,6 +96,8 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
   let gainedXl: boolean;
   /** The draft save of an approval mints the new variant: it is live afterwards. */
   let savedNew: boolean;
+  /** Another admin's save retired the new variant before the request was decided. */
+  let retiredMeanwhile: boolean;
 
   const clock = new FixedClock(T0);
   let ids: SequenceIdGenerator;
@@ -140,7 +142,7 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
   });
   const platformProduct = () => {
     const variants = [variant(V_SMALL, 1), variant(V_LARGE, 2)];
-    if (gainedXl || savedNew) variants.push(variant(V_NEW, 3));
+    if (gainedXl || (savedNew && !retiredMeanwhile)) variants.push(variant(V_NEW, 3));
     return {
       state: {
         id: PRODUCT,
@@ -355,6 +357,7 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
     productStatus = 'published';
     gainedXl = false;
     savedNew = false;
+    retiredMeanwhile = false;
     definitions.rows.set(SIZE, sizeDefinition());
   });
 
@@ -600,6 +603,21 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
         'catalog.variant-request.requested',
         'catalog.variant-request.decided',
       ]);
+    });
+
+    it('does not decide the request when the added variant was retired meanwhile', async () => {
+      const first = await opened();
+      retiredMeanwhile = true;
+      const answer = await build().approve.execute(context('admin'), {
+        requestId: first.id,
+        version: 1,
+      });
+      expect(answer).toEqual(err({ code: 'variant-request.stale' }));
+      expect(requests.rows.get(first.id)!.state).toMatchObject({
+        status: 'open',
+        resolvedVariantId: null,
+      });
+      expect(audits.map((a) => a.action)).toEqual(['catalog.variant-request.requested']);
     });
 
     it('starts from the published revision when the product has no draft', async () => {
