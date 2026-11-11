@@ -2,13 +2,7 @@ import { Badge, CARD_TABLE } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { shortInstantInZone } from '../../shared/format.ts';
 import { PageStatusBadge } from './page-labels.tsx';
-import {
-  isKnownEditLevel,
-  isKnownTemplate,
-  pagePath,
-  pageRef,
-  type PageSummary,
-} from './page-types.ts';
+import { isKnownEditLevel, isKnownTemplate, pageRef, type PageSummary } from './page-types.ts';
 
 /**
  * The pages of the Market: title, buyer-site address, template, editing level, status and the
@@ -71,15 +65,10 @@ export function PagesTable({
             return (
               <tr key={ref ?? page.path} className={CARD_TABLE.row}>
                 <td className={CARD_TABLE.cell}>
-                  {ref === null ? (
-                    <span className="font-medium">{page.title}</span>
-                  ) : (
-                    <a className="break-words font-medium text-link underline" href={pagePath(ref)}>
-                      {page.title}
-                    </a>
-                  )}
+                  {/* A title opens the page editor (PR 2 of the content editor); until it ships the title is text. */}
+                  <span className="break-words font-medium">{page.title}</span>
                   {page.kind === 'system' ? (
-                    <p className="text-xs text-fg-muted">{t('system')}</p>
+                    <p className="whitespace-nowrap text-xs text-fg-muted">{t('system')}</p>
                   ) : null}
                 </td>
                 <td className={CARD_TABLE.labelled} data-label={t('col.address')}>

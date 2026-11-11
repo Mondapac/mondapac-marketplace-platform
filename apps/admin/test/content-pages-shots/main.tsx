@@ -149,7 +149,7 @@ createRoot(document.getElementById('root')!).render(
               ]}
             />
           </div>
-          <PagesList canEdit={view !== 'readonly'} canCreate zone="Australia/Brisbane" />
+          <PagesList canEdit={view !== 'readonly'} zone="Australia/Brisbane" />
         </>
       )}
     </main>

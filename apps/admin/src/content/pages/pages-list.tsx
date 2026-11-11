@@ -4,7 +4,6 @@ import {
   Banner,
   Button,
   EmptyState,
-  LinkButton,
   LoadError,
   Select,
   SkeletonRows,
@@ -15,7 +14,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
 import { NO_PAGE_FILTERS, filterPages, type PageFilters } from './page-filter.ts';
 import {
-  NEW_PAGE_PATH,
   PAGES_API_PATH,
   PAGE_STATUSES,
   listedPages,
@@ -34,15 +32,7 @@ const TOGGLE =
  * and the title filter the answer in the browser. Loading, empty, no match and load error each
  * have a state. Without an edit key the list is read-only (a note says so).
  */
-export function PagesList({
-  canEdit,
-  canCreate,
-  zone,
-}: {
-  readonly canEdit: boolean;
-  readonly canCreate: boolean;
-  readonly zone: string;
-}) {
+export function PagesList({ canEdit, zone }: { readonly canEdit: boolean; readonly zone: string }) {
   const t = useTranslations('content.pages.list');
   const status = useTranslations('content.pages.status');
   const tl = useTranslations('load');
@@ -136,12 +126,7 @@ export function PagesList({
         </>
       ) : null}
       {trulyEmpty ? (
-        <EmptyState
-          icon="layout"
-          title={t('empty-title')}
-          body={t('empty-body')}
-          action={canCreate ? <LinkButton href={NEW_PAGE_PATH}>{t('new')}</LinkButton> : undefined}
-        />
+        <EmptyState icon="layout" title={t('empty-title')} body={t('empty-body')} />
       ) : null}
       {load === 'ready' && shown.length === 0 && !trulyEmpty ? (
         <EmptyState

@@ -12,6 +12,7 @@ import SlidePlacementPage from './[slideId]/placement/page.tsx';
 import SlideVersionsPage from './[slideId]/versions/page.tsx';
 import SlideOrderPage from './order/page.tsx';
 import ContentPage from '../page.tsx';
+import NewPagePage from '../pages/new/page.tsx';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -64,22 +65,16 @@ vi.mock('../../../../src/content/slides/slides-list.tsx', () => ({
     </p>
   ),
 }));
+vi.mock('../../../../src/content/pages/new-page-form.tsx', () => ({
+  NewPageFormView: ({ csrfToken, zone }: { readonly csrfToken: string; readonly zone: string }) => (
+    <p data-testid="new-page" data-csrf={csrfToken} data-zone={zone}>
+      new page
+    </p>
+  ),
+}));
 vi.mock('../../../../src/content/pages/pages-list.tsx', () => ({
-  PagesList: ({
-    canEdit,
-    canCreate,
-    zone,
-  }: {
-    readonly canEdit: boolean;
-    readonly canCreate: boolean;
-    readonly zone: string;
-  }) => (
-    <p
-      data-testid="pages"
-      data-edit={String(canEdit)}
-      data-create={String(canCreate)}
-      data-zone={zone}
-    >
+  PagesList: ({ canEdit, zone }: { readonly canEdit: boolean; readonly zone: string }) => (
+    <p data-testid="pages" data-edit={String(canEdit)} data-zone={zone}>
       pages
     </p>
   ),
@@ -235,7 +230,6 @@ describe('content area', () => {
     signIn(['storefront.page.read', 'storefront.page.create', READ]);
     render(await ContentPage());
     expect(screen.getByRole('heading', { level: 1, name: 'Storefront content' })).toBeTruthy();
-    expect(screen.getByTestId('pages').getAttribute('data-create')).toBe('true');
     expect(screen.getByTestId('pages').getAttribute('data-edit')).toBe('false');
     expect(screen.getByRole('link', { name: 'New page' }).getAttribute('href')).toBe(
       '/content/pages/new',
@@ -264,6 +258,28 @@ describe('content area', () => {
     render(await SlidesPage());
     expect(screen.getByRole('link', { name: 'Pages' }).getAttribute('href')).toBe('/content');
     expect(screen.getByRole('link', { name: 'Slides' }).getAttribute('aria-current')).toBe('page');
+  });
+});
+
+describe('new page route', () => {
+  const READ_PAGES = 'storefront.page.read';
+  const CREATE_PAGES = 'storefront.page.create';
+
+  it.each([[[READ_PAGES]], [[CREATE_PAGES]], [[READ, EDIT]]])(
+    'shows the no-access page unless the role can read and create pages (%j)',
+    async (keys) => {
+      signIn(keys);
+      render(await NewPagePage());
+      expect(screen.getByRole('heading', { name: 'No access to content' })).toBeTruthy();
+      expect(screen.queryByTestId('new-page')).toBeNull();
+    },
+  );
+
+  it('shows the form with the session csrf token and the Market zone', async () => {
+    signIn([READ_PAGES, CREATE_PAGES], 'Australia/Brisbane');
+    render(await NewPagePage());
+    expect(screen.getByTestId('new-page').getAttribute('data-csrf')).toBe('csrf-9');
+    expect(screen.getByTestId('new-page').getAttribute('data-zone')).toBe('Australia/Brisbane');
   });
 });
 

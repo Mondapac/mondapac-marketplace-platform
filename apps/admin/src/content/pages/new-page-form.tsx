@@ -35,7 +35,6 @@ import {
   PAGES_PATH,
   SLUG_MAX,
   TITLE_MAX,
-  pagePath,
   type Catalogue,
   type DynamicTemplate,
 } from './page-types.ts';
@@ -205,7 +204,8 @@ export function NewPageFormView({
       );
       if (result.ok) {
         toast.flash('success', t('created'));
-        router.push(result.body.id === null ? PAGES_PATH : pagePath(result.body.id));
+        // The page editor ships in the next PR; until then the new draft is in the list.
+        router.push(PAGES_PATH);
         return;
       }
       const failure = result.failure;

@@ -59,10 +59,10 @@ const pages: PageSummary[] = [
   page({ systemKey: 'navigation', title: 'Navigation', editLevel: 'navigation' }),
 ];
 
-function mount(canEdit = true, canCreate = true) {
+function mount(canEdit = true) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <PagesList canEdit={canEdit} canCreate={canCreate} zone="Australia/Brisbane" />
+      <PagesList canEdit={canEdit} zone="Australia/Brisbane" />
     </NextIntlClientProvider>,
   );
 }
@@ -90,28 +90,25 @@ describe('pages list', () => {
     expect(screen.getAllByRole('row')).toHaveLength(5);
   });
 
-  it('links a saved page by id and an unchanged system page by key', async () => {
+  it('shows each title as text until the page editor ships', async () => {
     mount();
-    expect(
-      (await screen.findByRole('link', { name: 'Ramadan specials' })).getAttribute('href'),
-    ).toBe('/content/pages/p1');
-    expect(screen.getByRole('link', { name: 'Home' }).getAttribute('href')).toBe(
-      '/content/pages/home',
-    );
+    await screen.findByText('Ramadan specials');
+    expect(screen.queryByRole('link', { name: 'Ramadan specials' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Home' })).toBeNull();
   });
 
   it('shows the status, unpublished changes and the last publish in the Market zone', async () => {
     mount();
-    const row = (await screen.findByRole('link', { name: 'Ramadan specials' })).closest('tr')!;
+    const row = (await screen.findByText('Ramadan specials')).closest('tr')!;
     expect(within(row).getByText('Published')).toBeTruthy();
     expect(within(row).getByText('Unpublished changes')).toBeTruthy();
     expect(within(row).getByText('/l/ramadan')).toBeTruthy();
     expect(within(row).getByText(/1 Nov/)).toBeTruthy();
-    const draft = screen.getByRole('link', { name: 'Eid hours' }).closest('tr')!;
+    const draft = screen.getByText('Eid hours').closest('tr')!;
     expect(within(draft).getByText('Draft')).toBeTruthy();
     expect(within(draft).queryByText('Unpublished changes')).toBeNull();
     expect(within(draft).getByText('Never published')).toBeTruthy();
-    const system = screen.getByRole('link', { name: 'Home' }).closest('tr')!;
+    const system = screen.getByText('Home').closest('tr')!;
     expect(within(system).getByText('Template default')).toBeTruthy();
   });
 
@@ -135,11 +132,11 @@ describe('pages list', () => {
   });
 
   it('says it is read-only without the edit key', async () => {
-    mount(false, false);
+    mount(false);
     await screen.findByText('Ramadan specials');
     expect(screen.getByText(/view pages but not change them/)).toBeTruthy();
     cleanup();
-    mount(true, true);
+    mount(true);
     await screen.findByText('Ramadan specials');
     expect(screen.queryByText(/view pages but not change them/)).toBeNull();
   });
@@ -153,15 +150,9 @@ describe('pages list', () => {
     expect(call).toHaveBeenCalledTimes(2);
   });
 
-  it('has an empty state that offers a new page only to someone who can create', async () => {
+  it('has an empty state without a second New page button (the header has the one)', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { pages: [] } });
-    mount(true, true);
-    await screen.findByText('No pages yet');
-    expect(screen.getByRole('link', { name: 'New page' }).getAttribute('href')).toBe(
-      '/content/pages/new',
-    );
-    cleanup();
-    mount(false, false);
+    mount(true);
     await screen.findByText('No pages yet');
     expect(screen.queryByRole('link', { name: 'New page' })).toBeNull();
   });

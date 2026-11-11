@@ -3,7 +3,7 @@ import { SLUG_MAX, SLUG_PATTERN, TITLE_MAX, type DynamicTemplate } from './page-
 // The form of "New page": plain values, the checks the API makes (storefront `parseNewPage`), and
 // the body it takes. The API stays the judge: these checks only save a round trip.
 
-/** Slugs a dynamic page may not take (storefront `RESERVED_SLUGS`), so `/l/<slug>` is never a system word. */
+/** Slugs a dynamic page may not take (storefront `RESERVED_SLUGS`, apps/api storefront domain/templates.ts: keep the two in step), so `/l/<slug>` is never a system word. */
 export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   'home',
   'offers',

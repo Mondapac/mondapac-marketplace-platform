@@ -55,7 +55,6 @@ export default async function ContentPage() {
       />
       <PagesList
         canEdit={permissionKeys.includes(PAGE_EDIT_PERMISSION)}
-        canCreate={permissionKeys.includes(PAGE_CREATE_PERMISSION)}
         zone={displayZone(timezone)}
       />
     </AdminShell>

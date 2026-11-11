@@ -129,7 +129,7 @@ describe('new page form', () => {
       target: { value: '2026-12-08T09:00' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create draft' }));
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/content/pages/new-id'));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/content'));
     expect(posts()[0]).toEqual([
       'POST',
       'storefront/admin/pages',
