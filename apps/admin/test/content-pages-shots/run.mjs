@@ -32,31 +32,47 @@ const { chromium } = createRequire(import.meta.url)('playwright');
 const browser = await chromium.launch();
 const shots = [
   ['list', '#list', (p) => p.getByText('Ramadan specials').waitFor()],
-  ['list-filtered', '#list', async (p) => {
-    await p.getByText('Ramadan specials').waitFor();
-    await p.getByRole('button', { name: 'Landing pages' }).click();
-    await p.getByLabel('Status').selectOption('draft');
-  }],
-  ['list-none', '#list', async (p) => {
-    await p.getByText('Ramadan specials').waitFor();
-    await p.getByLabel('Search by title or address').fill('zzz');
-    await p.getByText('No page matches').waitFor();
-  }],
+  [
+    'list-filtered',
+    '#list',
+    async (p) => {
+      await p.getByText('Ramadan specials').waitFor();
+      await p.getByRole('button', { name: 'Landing pages' }).click();
+      await p.getByLabel('Status').selectOption('draft');
+    },
+  ],
+  [
+    'list-none',
+    '#list',
+    async (p) => {
+      await p.getByText('Ramadan specials').waitFor();
+      await p.getByLabel('Search by title or address').fill('zzz');
+      await p.getByText('No page matches').waitFor();
+    },
+  ],
   ['list-readonly', '#readonly', (p) => p.getByText(/view pages but not change/).waitFor()],
   ['list-empty', '#empty', (p) => p.getByText('No pages yet').waitFor()],
   ['list-error', '#failed', (p) => p.getByText(/could not be loaded/).waitFor()],
   ['new', '#new', (p) => p.getByRole('radio', { name: /Info page/ }).waitFor()],
-  ['new-filled', '#new', async (p) => {
-    await p.getByRole('radio', { name: /Campaign landing/ }).click();
-    await p.getByLabel('Page title').fill('Ramadan specials');
-    await p.getByLabel('Linked category').selectOption('c1');
-  }],
-  ['new-errors', '#new', async (p) => {
-    await p.getByRole('radio', { name: /Info page/ }).waitFor();
-    await p.getByLabel('Address').fill('cart');
-    await p.getByRole('button', { name: 'Create draft' }).click();
-    await p.getByText('Enter a title.').waitFor();
-  }],
+  [
+    'new-filled',
+    '#new',
+    async (p) => {
+      await p.getByRole('radio', { name: /Campaign landing/ }).click();
+      await p.getByLabel('Page title').fill('Ramadan specials');
+      await p.getByLabel('Linked category').selectOption('c1');
+    },
+  ],
+  [
+    'new-errors',
+    '#new',
+    async (p) => {
+      await p.getByRole('radio', { name: /Info page/ }).waitFor();
+      await p.getByLabel('Address').fill('cart');
+      await p.getByRole('button', { name: 'Create draft' }).click();
+      await p.getByText('Enter a title.').waitFor();
+    },
+  ],
 ];
 for (const scheme of ['light', 'dark']) {
   for (const width of [1280, 768, 375]) {
@@ -68,7 +84,10 @@ for (const scheme of ['light', 'dark']) {
       });
       const page = await ctx.newPage();
       await page.goto(`http://localhost:${port}/${hash}`);
-      await page.evaluate((s) => globalThis.document.documentElement.setAttribute('data-theme', s), scheme);
+      await page.evaluate(
+        (s) => globalThis.document.documentElement.setAttribute('data-theme', s),
+        scheme,
+      );
       await ready(page);
       await page.waitForTimeout(250);
       const over = await page.evaluate(
