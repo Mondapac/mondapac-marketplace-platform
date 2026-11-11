@@ -3,6 +3,7 @@ import type { ScopeRow } from '../../domain/scope-counts';
 import type { OfferFacetReader } from './offer-facet.reader';
 import type { OfferSearchReader } from './offer-search.reader';
 import type { StoreSearchReader } from './store-search.reader';
+import type { SuggestReader } from './suggest.reader';
 
 /** The text and category of a query: what the counts read. Filters are not part of it. */
 export interface ScopeRequest {
@@ -22,12 +23,12 @@ export interface OfferScopeReader {
 
 /**
  * The search index the use cases talk to (option B, search 1a): ranked text search, the browse, the
- * filter reads and the scope counts, in one port. The PostgreSQL full-text adapter is the only one
+ * filter reads, the scope counts and (search 1b) the suggest reads, in one port. The PostgreSQL full-text adapter is the only one
  * today (ADR-0004); a dedicated engine would be another adapter behind this port, with no change to
  * the use cases or to apps/web. Every method runs in the caller's read-only unit, for the context's
  * Market only.
  */
 export interface OfferSearchIndex
-  extends OfferSearchReader, OfferFacetReader, OfferScopeReader, StoreSearchReader {}
+  extends OfferSearchReader, OfferFacetReader, OfferScopeReader, StoreSearchReader, SuggestReader {}
 
 export const OFFER_SEARCH_INDEX = Symbol('OFFER_SEARCH_INDEX');

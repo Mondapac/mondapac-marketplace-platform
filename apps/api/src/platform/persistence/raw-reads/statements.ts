@@ -156,6 +156,28 @@ export interface StoreSearchRow {
   readonly rank: number;
 }
 
+/** One row of `search.offer-suggest`: an Offer whose text starts with the typed words (search 1b). */
+export interface OfferSuggestRow {
+  readonly offerId: string;
+  readonly productId: string;
+  readonly sellerId: string;
+  readonly name: string;
+  readonly categoryIds: readonly string[];
+  /** 0: the name starts with the query, 1: the name contains it, 2: seller or category only. */
+  readonly tier: number;
+  readonly rank: number;
+}
+
+/** One row of `search.store-suggest`: a public store with a matching Offer (search 1b). */
+export interface StoreSuggestRow {
+  readonly sellerId: string;
+  readonly slug: string;
+  readonly name: string;
+  /** 0: the store name starts with the query, 1: contains it, 2: one of its products matches. */
+  readonly tier: number;
+  readonly rank: number;
+}
+
 /** One row of `search.offer-number-rows`: one stored number of the scope. */
 export interface OfferNumberRow {
   readonly attr: string;
@@ -303,6 +325,34 @@ export interface RawReadStatements {
     };
     readonly row: StoreSearchRow;
   };
+  readonly 'search.offer-suggest': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly startsWith: string;
+      readonly contains: string;
+      readonly limit: string;
+    };
+    readonly row: OfferSuggestRow;
+  };
+  readonly 'search.offer-suggest-scope-rows': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly limit: string;
+    };
+    readonly row: OfferScopeRow;
+  };
+  readonly 'search.store-suggest': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly startsWith: string;
+      readonly contains: string;
+      readonly limit: string;
+    };
+    readonly row: StoreSuggestRow;
+  };
   readonly 'search.offer-number-rows': {
     readonly params: {
       readonly textSearchConfig: string;
@@ -402,6 +452,28 @@ const parseStoreSearchRow = (raw: unknown): StoreSearchRow => {
     sellerId: text(row['seller_id']),
     slug: text(row['slug']),
     name: text(row['name']),
+    rank: number(row['rank']),
+  };
+};
+const parseOfferSuggestRow = (raw: unknown): OfferSuggestRow => {
+  const row = asRecord(raw);
+  return {
+    offerId: text(row['offer_id']),
+    productId: text(row['product_id']),
+    sellerId: text(row['seller_id']),
+    name: text(row['name']),
+    categoryIds: textList(row['category_ids']),
+    tier: number(row['tier']),
+    rank: number(row['rank']),
+  };
+};
+const parseStoreSuggestRow = (raw: unknown): StoreSuggestRow => {
+  const row = asRecord(raw);
+  return {
+    sellerId: text(row['seller_id']),
+    slug: text(row['slug']),
+    name: text(row['name']),
+    tier: number(row['tier']),
     rank: number(row['rank']),
   };
 };
@@ -661,6 +733,38 @@ const OFFER_NUMBER_ROWS_SQL = `SELECT n.attr, n.value::text AS value
    AND ($3::text = '' OR d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text))
    AND ($4::uuid[] = '{}'::uuid[] OR d.category_ids && $4::uuid[])
  ORDER BY n.offer_id ASC
+ LIMIT $6::text::int4`;
+
+// The suggest route (search 1b). `$3` is the prefix query text the application built from letters and
+// digits only (`word & word:*`), `$4` and `$5` are ILIKE patterns it built and escaped (name starts
+// with the typed text, name contains it). All bound; the visitor's text is never part of the SQL.
+// Tier 0 name starts with, 1 name contains, 2 seller or category only; ts_rank breaks ties.
+const OFFER_SUGGEST_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name,
+       d.category_ids::text[] AS category_ids,
+       CASE WHEN d.name ~~* $4::text THEN 0 WHEN d.name ~~* $5::text THEN 1 ELSE 2 END AS tier,
+       ts_rank(d.search_vector, to_tsquery($2::regconfig, $3::text)) AS rank
+  FROM "search"."offer_documents" d
+ WHERE d.market_id = $1
+   AND d.search_vector @@ to_tsquery($2::regconfig, $3::text)
+ ORDER BY tier ASC, rank DESC, d.name ASC, d.offer_id ASC
+ LIMIT $6::text::int4`;
+
+const OFFER_SUGGEST_SCOPE_ROWS_SQL = `SELECT d.product_id, d.seller_id, d.category_ids::text[] AS category_ids
+  FROM "search"."offer_documents" d
+ WHERE d.market_id = $1
+   AND d.search_vector @@ to_tsquery($2::regconfig, $3::text)
+ ORDER BY d.offer_id ASC
+ LIMIT $4::text::int4`;
+
+const STORE_SUGGEST_SQL = `SELECT s.seller_id, s.slug, s.name,
+       CASE WHEN s.name ~~* $4::text THEN 0 WHEN s.name ~~* $5::text THEN 1 ELSE 2 END AS tier,
+       ts_rank(s.search_vector, to_tsquery($2::regconfig, $3::text)) AS rank
+  FROM "search"."store_documents" s
+ WHERE s.market_id = $1
+   AND EXISTS (SELECT 1 FROM "search"."offer_documents" d
+                WHERE d.market_id = $1 AND d.seller_id = s.seller_id
+                  AND d.search_vector @@ to_tsquery($2::regconfig, $3::text))
+ ORDER BY tier ASC, rank DESC, s.name ASC, s.seller_id ASC
  LIMIT $6::text::int4`;
 
 /**
@@ -939,6 +1043,52 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
       { name: 'offset', type: 'text' },
     ],
     parseRow: parseStoreSearchRow,
+  },
+  {
+    id: 'search.offer-suggest',
+    owner: 'search',
+    reason:
+      'the suggest route: prefix full-text match (to_tsquery with :* on the last word) over offer_documents, ordered name-starts-with, name-contains, other, then ts_rank; Prisma has no ranked text search',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_SUGGEST_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'startsWith', type: 'text' },
+      { name: 'contains', type: 'text' },
+      { name: 'limit', type: 'text' },
+    ],
+    parseRow: parseOfferSuggestRow,
+  },
+  {
+    id: 'search.offer-suggest-scope-rows',
+    owner: 'search',
+    reason:
+      'the documents of a prefix query with product, seller and category ids, counted by the caller for the suggest total; full-text search is not in Prisma',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_SUGGEST_SCOPE_ROWS_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'limit', type: 'text' },
+    ],
+    parseRow: parseOfferScopeRow,
+  },
+  {
+    id: 'search.store-suggest',
+    owner: 'search',
+    reason:
+      'the suggest route: stores with an indexed Offer that matches the prefix query, ordered by name-starts-with, name-contains, other, then ts_rank; full-text search is not in Prisma',
+    design: 'docs/modules/search/search.md',
+    sql: STORE_SUGGEST_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'startsWith', type: 'text' },
+      { name: 'contains', type: 'text' },
+      { name: 'limit', type: 'text' },
+    ],
+    parseRow: parseStoreSuggestRow,
   },
   {
     id: 'search.offer-number-rows',

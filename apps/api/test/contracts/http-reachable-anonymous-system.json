@@ -270,6 +270,11 @@
     "reason": "The public store search: a visitor with no session finds public stores by name; the answer is the store address, public name and an Offer count, re-checked against sellers' published-store rules, and the route is rate limited per origin."
   },
   {
+    "name": "search.suggest-search",
+    "rule": "anonymous",
+    "reason": "The header search suggestions: a visitor with no session types two or more characters and gets up to five products and three stores (no price, no certification text); every Offer is re-checked against catalog and sellers on each call, the index side is cached for seconds, and the route is rate limited per origin."
+  },
+  {
     "name": "search.view-product-detail",
     "rule": "anonymous",
     "reason": "The storefront product page for a visitor with no session: the published product text and variants and its sellable Offers with buyer price (never Cost), public stock state (never the exact count) and the seller's public store name; re-checked against catalog and sellers; rate limited per origin."

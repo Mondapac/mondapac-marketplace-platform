@@ -250,9 +250,37 @@ index, the answer carries counts, and the use cases talk to a port.
   attribute filters and price; it is read from the index (`search.offer-scope-rows`, at most 20,000
   Offers; over that `totalIsCapped` is true and `total` is a floor) without the query-time visibility
   check, like the facet counts. A category tree that cannot be read leaves `counts` null, not the list.
-- **Raw SQL.** `search.offer-scope-rows` and `search.store-search` (ADR-0030 amendment of 11 Nov 2026).
+- **Suggest (search 1b).** `GET /search/suggest?q=` (anonymous, Market from the request, `no-store`, default
+  rate-limit class, only `q` is accepted: any other parameter is 400 `validation.failed`). `q` is trimmed
+  and lower-cased; fewer than 2 characters (or no letter or digit) answers 200 with empty lists and
+  `total` 0 and makes no index call; over 100 characters, a control character or more than 8 words is
+  400. Answer `{ products, stores, total, totalIsCapped }`: `products` (at most 5, one per product) hold
+  `{ productId, name, sellerName, categoryName, image }` (`image` is the search's photo shape or null;
+  never a price or any certification text), `stores` (at most 3) hold `{ storeSlug, name,
+  productCount }`, `total` is the count of products in the scope (`search.offer-suggest-scope-rows`,
+  the same counting and 20,000-Offer cap as the counts above, `totalIsCapped` true over it).
+  Matching: every word must match the Offer text (name, store name, category names, attribute words),
+  the last word as a prefix (`to_tsquery` with `:*`; the words are cut to letters and digits in
+  `domain/suggest-query.ts`, so the text is never an operator). Order: name starts with the query,
+  name contains it, then seller or category only (a `CASE` of two escaped `ILIKE` patterns), `ts_rank`
+  then name then id as tie-breaks; stores the same way, a store shows when its name matches or one of
+  its Offers does. No `pg_trgm` and no migration (1c adds typo tolerance). The visibility re-check is the
+  search's: `PublicVisibility` (catalog published and listed, seller may sell) on every Offer
+  candidate (up to 60, so hidden ones leave spare), `StoreDirectory` for the live store name and address
+  (a product whose seller has no public store now is dropped, as is a store that is not public); a check
+  that fails is 503 `search.unavailable`. Photos and category names are decoration (a failing source
+  leaves them out). Cache: `SuggestCache` port, in-process adapter (`infrastructure/in-memory-suggest-cache.ts`:
+  30 s, 3000 entries, expired first then oldest evicted), key `<market>|<normalised text>`, until a
+  Redis client exists. It holds only what the index said (Offer candidates in order, the total, store
+  candidates and their Offer counts); the visibility re-check, names, photos and category names run on
+  every call, so a hidden Offer never shows from the cache. The rate limit is the `default` class like
+  `/search/products`; an own class needs the shared platform change (see Hassan L-3 below). Nothing of
+  the query is logged by the route (the refusal log line is the search's: code, Market, correlation id).
+- **Raw SQL.** `search.offer-scope-rows` and `search.store-search` (ADR-0030 amendment of 11 Nov 2026);
+  `search.offer-suggest`, `search.offer-suggest-scope-rows` and `search.store-suggest` with the
+  `to_tsquery` function in the checker (ADR-0030 amendment, search 1b).
 - **Hassan L-3.** The OR cap is in. The own rate-limit class is not: a class needs a platform change
   (`RATE_LIMIT_CLASSES`, a migration that widens `rate_limit_counters_key_check`, the Market files'
   `requestLimits`), which is a shared-file PR of its own, announced on the board.
 - **Not in this package.** apps/web wiring (it stops using the sample data in a frontend PR after this
-  one), suggest (1b), typo tolerance (1c), halal and price filters (1d).
+  one), the suggest wiring in apps/web (1b frontend PR), typo tolerance (1c), halal and price filters (1d).
