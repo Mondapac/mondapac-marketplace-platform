@@ -14,7 +14,7 @@ import {
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // Add sizes on PostgreSQL (catalog data design 3.1, 3.2, 3.7; migration
-// 20261106210000_catalog_product_add_sizes), for both Market fixtures: the type moves once, simple
+// 20261111040000_catalog_product_add_sizes), for both Market fixtures: the type moves once, simple
 // to configurable together with variant_model, and the single variant follows by cascade; the
 // variant guard refuses the way back; revisions carry type_code; the new sensitive reason and
 // rate-counter kind are accepted.

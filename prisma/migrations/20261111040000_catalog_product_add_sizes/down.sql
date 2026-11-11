@@ -1,5 +1,5 @@
 SET lock_timeout = '5s';
--- Reverses 20261106210000_catalog_product_add_sizes. A product that was changed to Configurable
+-- Reverses 20261111040000_catalog_product_add_sizes. A product that was changed to Configurable
 -- stays Configurable (its variant row keeps `options` too, so the foreign key still holds); only
 -- the right to change a type is taken away. The revision tables are insert-only, so a revision that
 -- carries the reason `axis-added` is not rewritten: the reversal refuses while one exists.
