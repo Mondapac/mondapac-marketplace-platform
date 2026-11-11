@@ -9,7 +9,7 @@ import type { MailTransport } from '../../../../platform/mail/mail-transport';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { ProductCategoryOverriddenAudit, scopeCode } from '../../domain/audit';
-import { categoryMoveNoticeMail } from '../../domain/category-move-notice';
+import { categoryMoveNoticeMail, moveNoticeRetryAt } from '../../domain/category-move-notice';
 import { MAX_TREE_NODES } from '../../domain/category-tree';
 import {
   checkProductCategories,
@@ -25,7 +25,11 @@ import { revisionContentHash } from '../revisions/revision-content-hash';
 import { markProductForReevaluation } from '../tags/publish-fan-out';
 import type { AdminCategoryReader } from '../ports/admin-category.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
-import type { CategoryProductMoveStore, MoveJobRecord } from '../ports/category-product-move.store';
+import type {
+  CategoryProductMoveStore,
+  MoveJobRecord,
+  MoveScanOutcome,
+} from '../ports/category-product-move.store';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { OfferOwnerContact, OfferOwnerMailSettings } from '../ports/offer-owner-notices';
 import type { ProductRepository } from '../ports/product.repository';
@@ -53,8 +57,9 @@ export type CategoryMoveProductsRunOutput =
       readonly ran: true;
       readonly jobId: Id<'CategoryMoveJob'>;
       /**
-       * `notices-pending`: every product is handled but a seller email could not be sent; the job
-       * stays running and the next turn (after the lease ran out) tries the email again.
+       * `notices-pending`: every product is handled but a seller email could not be sent yet; the
+       * job stays running and a later turn (after the lease ran out) tries the email again, never
+       * scanning products again. After its last attempt an email is given up and the job ends.
        */
       readonly outcome: 'done' | 'failed' | 'budget' | 'lease-lost' | 'notices-pending';
       readonly moved: number;
@@ -105,10 +110,13 @@ type TurnOutcome = 'done' | 'failed' | 'budget' | 'lease-lost' | 'notices-pendin
  * unique per job and product, so a product is never moved twice and a resumed job (a crashed
  * runner, an expired lease) skips what an earlier turn did. After each batch the seller of each
  * moved product gets one email, marked on the item; the job is done only once every moved
- * product's email is marked. The mail is at-least-once: a crash between the send and the mark
- * sends that email again next turn. The lease is renewed after every product, and the job's
- * counters are counted from its items, never accumulated. The target is re-checked against fresh
- * rows in every product unit: a target archived or moved off levels 3..depth mid-job fails that
+ * product's email is marked sent or given up (a failed send is retried with a back-off and given
+ * up after `MAX_MOVE_NOTICE_ATTEMPTS` attempts, N1). The first empty scan ends the job's one
+ * product pass, persisted on the job: a later turn only drains notices and never scans again, so a
+ * product published into the source after the pass is never moved in the admin's name. The mail
+ * is at-least-once: a crash between the send and the mark sends that email again next turn. The
+ * lease is renewed after every product, and the job's counters are counted from its items, never
+ * accumulated. The target is re-checked against fresh rows in every product unit: a target archived or moved off levels 3..depth mid-job fails that
  * product, not the job. The runner is the system; the audit names the admin who started the job.
  * A tree that cannot be read fails the job.
  */
@@ -165,17 +173,29 @@ export class CategoryMoveProductsRun extends UseCase<
 
     const overBudget = (): boolean =>
       deps.clock.now().epochMilliseconds - started.epochMilliseconds >= input.budgetMs;
+    // The product pass ended in an earlier turn (N1): only the seller notices are left. Products
+    // are never scanned again, so one published into the source after the pass is not moved.
+    if (job.scanOutcome !== null) {
+      const drained = await this.#notifySellers(context, job, overBudget);
+      return end(drained ? job.scanOutcome : 'notices-pending');
+    }
+    /** Ends the pass once, under the lease, then drains the notices (L3). */
+    const endPass = async (outcome: MoveScanOutcome) => {
+      const kept = await this.#write(context, () =>
+        deps.moveStore.endScan(market, job.id, holder, outcome),
+      );
+      if (!kept) return end('lease-lost');
+      // Done only once every moved product's seller email is sent or given up (L3, N1).
+      const drained = await this.#notifySellers(context, job, overBudget);
+      return end(drained ? outcome : 'notices-pending');
+    };
     let current: MoveJobRecord = job;
     for (;;) {
       if (overBudget()) return end('budget');
       const batch = await this.#read(context, () =>
         deps.moveStore.nextProducts(market, current, MOVE_BATCH_SIZE),
       );
-      if (batch.length === 0) {
-        // Done only once every moved product's seller email is marked (L3).
-        const drained = await this.#notifySellers(context, current, overBudget);
-        return end(drained ? 'done' : 'notices-pending');
-      }
+      if (batch.length === 0) return endPass('done');
       const environment = await this.#environment(context);
       if (environment === null) {
         // The tree cannot be read (over the cap): nothing can be checked, so nothing is moved.
@@ -185,8 +205,7 @@ export class CategoryMoveProductsRun extends UseCase<
           marketId: market.marketId,
           correlationId: context.correlationId,
         });
-        const drained = await this.#notifySellers(context, current, overBudget);
-        return end(drained ? 'failed' : 'notices-pending');
+        return endPass('failed');
       }
       let handled: Id<'Product'> | null = null;
       for (const productId of batch) {
@@ -411,10 +430,12 @@ export class CategoryMoveProductsRun extends UseCase<
   }
 
   /**
-   * One email per moved product whose seller has not been told, in pages until none is left.
-   * True when every moved item is marked; false when a send failed (tried again next turn) or the
-   * turn's budget ran out. At-least-once: the mark is written after the send, so a crash between
-   * the two sends that email again.
+   * One email per moved product whose seller has not been told, in pages until none is due.
+   * True when every moved item's email is sent or given up; false while one waits for a retry or
+   * the turn's budget ran out. A failed send (or address read) is tried again later
+   * ({@link moveNoticeRetryAt}) and given up at its last attempt (N1), so a send that always fails
+   * cannot keep the job running. At-least-once: the mark is written after the send, so a crash
+   * between the two sends that email again.
    */
   async #notifySellers(
     context: CallContext,
@@ -425,10 +446,12 @@ export class CategoryMoveProductsRun extends UseCase<
     const { market } = context;
     let names: { readonly from: string; readonly to: string } | null = null;
     for (;;) {
-      const pending = await this.#read(context, () =>
-        deps.moveStore.unnotified(market, job.id, NOTICE_BATCH),
+      const due = await this.#read(context, () =>
+        deps.moveStore.unnotified(market, job.id, deps.clock.now(), NOTICE_BATCH),
       );
-      if (pending.length === 0) return true;
+      if (due.length === 0) {
+        return !(await this.#read(context, () => deps.moveStore.hasOpenNotices(market, job.id)));
+      }
       names ??= await this.#read(context, async () => {
         const nodes = await deps.adminCategoryReader.categories(market, MAX_TREE_NODES + 1);
         const locale = deps.policy.locales(market).default;
@@ -438,8 +461,8 @@ export class CategoryMoveProductsRun extends UseCase<
         };
         return { from: nameOf(job.sourceCategoryId), to: nameOf(job.targetCategoryId) };
       });
-      let marked = 0;
-      for (const { productId } of pending) {
+      for (const { productId, attempts } of due) {
+        let sendFailed = false;
         try {
           const product = await this.#read(context, () =>
             deps.products.findById(market, productId),
@@ -462,22 +485,46 @@ export class CategoryMoveProductsRun extends UseCase<
               });
             }
           }
+        } catch {
+          sendFailed = true;
+        }
+        const now = deps.clock.now();
+        if (!sendFailed) {
           // No owner (a PLATFORM product) or no usable address: nothing to send, nothing to retry.
           await this.#write(context, () =>
-            deps.moveStore.markNotified(market, job.id, productId, deps.clock.now()),
+            deps.moveStore.markNotified(market, job.id, productId, now),
           );
-          marked += 1;
-        } catch {
+          continue;
+        }
+        // This seller only: try again later or, at the last attempt, give the email up.
+        const nextAttemptAt = moveNoticeRetryAt(attempts, now);
+        await this.#write(context, () =>
+          deps.moveStore.noticeFailed(
+            market,
+            job.id,
+            productId,
+            { attempts: attempts + 1, nextAttemptAt },
+            now,
+          ),
+        );
+        const log = {
+          jobId: job.id,
+          attempts: attempts + 1,
+          marketId: market.marketId,
+          correlationId: context.correlationId,
+        };
+        if (nextAttemptAt === null) {
+          this.#logger.error({ msg: 'catalog.run-category-product-moves.notice-failed', ...log });
+        } else {
           this.#logger.warn({
             msg: 'catalog.run-category-product-moves.notice-deferred',
-            jobId: job.id,
-            marketId: market.marketId,
-            correlationId: context.correlationId,
+            ...log,
+            nextAttemptAt: nextAttemptAt.toString(),
           });
         }
       }
-      // A failed send stays unmarked: stop here (the page would only return it again).
-      if (marked < pending.length || overBudget()) return false;
+      // Every item of the page is now sent, waiting or given up: the next page holds others.
+      if (overBudget()) return false;
     }
   }
 

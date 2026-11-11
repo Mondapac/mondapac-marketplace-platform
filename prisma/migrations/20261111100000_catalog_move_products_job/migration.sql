@@ -27,6 +27,7 @@ CREATE TABLE "catalog"."category_product_move_jobs" (
     "failed_count" INTEGER NOT NULL,
     "lease_holder" UUID,
     "lease_expires_at" TIMESTAMPTZ(6),
+    "scan_outcome" TEXT,
     "version" INTEGER NOT NULL,
 
     CONSTRAINT "category_product_move_jobs_pkey" PRIMARY KEY ("id")
@@ -41,6 +42,9 @@ CREATE TABLE "catalog"."category_product_move_items" (
     "state" TEXT NOT NULL,
     "revision_id" UUID,
     "seller_notified_at" TIMESTAMPTZ(6),
+    "notice_attempts" INTEGER NOT NULL DEFAULT 0,
+    "notice_next_attempt_at" TIMESTAMPTZ(6),
+    "notice_failed_at" TIMESTAMPTZ(6),
     "created_at" TIMESTAMPTZ(6) NOT NULL,
 
     CONSTRAINT "category_product_move_items_pkey" PRIMARY KEY ("market_id","job_id","product_id")
@@ -119,6 +123,11 @@ ALTER TABLE "catalog"."category_product_move_jobs"
   ADD CONSTRAINT "category_product_move_jobs_lease_check" CHECK (
     ("lease_holder" IS NULL) = ("lease_expires_at" IS NULL)
     AND ("state" = 'running') = ("lease_expires_at" IS NOT NULL)),
+  -- The end of the job's one product pass (N1): set once, when the scan first finds no product left
+  -- (`done`) or the tree could not be read (`failed`); the job's final state when its notices are
+  -- drained. A later turn only drains notices and never scans products again. Never on a queued job.
+  ADD CONSTRAINT "category_product_move_jobs_scan_outcome_check" CHECK (
+    "scan_outcome" IS NULL OR ("scan_outcome" IN ('done', 'failed') AND "state" <> 'queued')),
   ADD CONSTRAINT "category_product_move_jobs_version_check" CHECK ("version" >= 1);
 
 ALTER TABLE "catalog"."category_product_move_items"
@@ -131,7 +140,15 @@ ALTER TABLE "catalog"."category_product_move_items"
   ADD CONSTRAINT "category_product_move_items_revision_check" CHECK (
     ("state" = 'moved') = ("revision_id" IS NOT NULL)),
   ADD CONSTRAINT "category_product_move_items_notified_check" CHECK (
-    "seller_notified_at" IS NULL OR "state" = 'moved');
+    "seller_notified_at" IS NULL OR "state" = 'moved'),
+  -- The seller email's tries (N1): a failed send is tried again at `notice_next_attempt_at`, and
+  -- after the last attempt the item is `notice_failed_at` (given up) so the job can end. Only on a
+  -- moved product; an email is either sent or given up, never both; a retry time follows a try.
+  ADD CONSTRAINT "category_product_move_items_notice_check" CHECK (
+    "notice_attempts" >= 0
+    AND ("notice_failed_at" IS NULL OR "state" = 'moved')
+    AND ("notice_failed_at" IS NULL OR "seller_notified_at" IS NULL)
+    AND ("notice_next_attempt_at" IS NULL OR "notice_attempts" > 0));
 
 -- At most one queued or running job per source category (decision 8): a second start is refused by
 -- this index, which also serialises two starts. Not CONCURRENTLY: the table is new and empty (8.2).
@@ -144,11 +161,12 @@ CREATE INDEX "category_product_move_jobs_market_id_queue_idx"
   ON "catalog"."category_product_move_jobs" ("market_id", "created_at", "id")
   WHERE "state" IN ('queued', 'running');
 
--- The runner's seller-notice scan: the moved items of a job whose seller has not been emailed yet,
--- by product (the order it pages in). Partial, so it holds only the not-yet-notified rows.
+-- The runner's seller-notice scan: the moved items of a job whose seller has not been emailed yet
+-- and whose email is not given up, by product (the order it pages in). Partial, so it holds only
+-- the open notices.
 CREATE INDEX "category_product_move_items_market_id_job_id_unnotified_idx"
   ON "catalog"."category_product_move_items" ("market_id", "job_id", "product_id")
-  WHERE "state" = 'moved' AND "seller_notified_at" IS NULL;
+  WHERE "state" = 'moved' AND "seller_notified_at" IS NULL AND "notice_failed_at" IS NULL;
 
 -- No index on the item foreign keys to products and product_revisions: item rows are never deleted
 -- and those parents are never deleted either (RESTRICT, insert-only revisions), so no delete has to
@@ -156,11 +174,13 @@ CREATE INDEX "category_product_move_items_market_id_job_id_unnotified_idx"
 
 -- Grants (section 7). The job moves through its states by column; its source, target, reason and
 -- author are written once. An item is written once and only its outcome changes (state, the
--- published revision, the time the seller's email was queued). No DELETE (the jobs are the audit
+-- published revision, the time the seller's email was queued, and its tries). No DELETE (the jobs are the audit
 -- trail of a bulk publish) and no TRUNCATE.
 GRANT SELECT, INSERT,
   UPDATE ("state", "started_at", "finished_at", "cursor_product_id", "total_count", "moved_count",
-    "skipped_count", "failed_count", "lease_holder", "lease_expires_at", "version")
+    "skipped_count", "failed_count", "lease_holder", "lease_expires_at", "scan_outcome", "version")
   ON TABLE "catalog"."category_product_move_jobs" TO "mondapac_app";
-GRANT SELECT, INSERT, UPDATE ("state", "revision_id", "seller_notified_at")
+GRANT SELECT, INSERT,
+  UPDATE ("state", "revision_id", "seller_notified_at", "notice_attempts", "notice_next_attempt_at",
+    "notice_failed_at")
   ON TABLE "catalog"."category_product_move_items" TO "mondapac_app";

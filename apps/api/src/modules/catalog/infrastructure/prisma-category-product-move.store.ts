@@ -6,6 +6,7 @@ import type {
   CategoryProductMoveStore,
   MoveJobRecord,
   MoveJobState,
+  MoveScanOutcome,
 } from '../application/ports/category-product-move.store';
 import type { ProductCategoryNode } from '../domain/product-category-rules';
 
@@ -32,6 +33,7 @@ function recordOf(row: JobRow): MoveJobRecord {
     moved: row.movedCount,
     skipped: row.skippedCount,
     failed: row.failedCount,
+    scanOutcome: row.scanOutcome as MoveScanOutcome | null,
     version: row.version,
   };
 }
@@ -244,15 +246,41 @@ export class PrismaCategoryProductMoveStore implements CategoryProductMoveStore 
   async unnotified(
     market: MarketContext,
     jobId: Id<'CategoryMoveJob'>,
+    now: Temporal.Instant,
     limit: number,
-  ): Promise<readonly { readonly productId: Id<'Product'> }[]> {
+  ): Promise<readonly { readonly productId: Id<'Product'>; readonly attempts: number }[]> {
     const rows = await this.prisma.tx(market).catalogCategoryProductMoveItem.findMany({
-      where: { marketId: market.marketId, jobId, state: 'moved', sellerNotifiedAt: null },
-      select: { productId: true },
+      where: {
+        ...this.#openNotice(market, jobId),
+        OR: [{ noticeNextAttemptAt: null }, { noticeNextAttemptAt: { lte: toDate(now) } }],
+      },
+      select: { productId: true, noticeAttempts: true },
       orderBy: { productId: 'asc' },
       take: limit,
     });
-    return rows.map((row) => ({ productId: row.productId as Id<'Product'> }));
+    return rows.map((row) => ({
+      productId: row.productId as Id<'Product'>,
+      attempts: row.noticeAttempts,
+    }));
+  }
+
+  async hasOpenNotices(market: MarketContext, jobId: Id<'CategoryMoveJob'>): Promise<boolean> {
+    const row = await this.prisma.tx(market).catalogCategoryProductMoveItem.findFirst({
+      where: this.#openNotice(market, jobId),
+      select: { productId: true },
+    });
+    return row !== null;
+  }
+
+  /** A moved item whose seller email is neither sent nor given up (the partial index). */
+  #openNotice(market: MarketContext, jobId: Id<'CategoryMoveJob'>) {
+    return {
+      marketId: market.marketId,
+      jobId,
+      state: 'moved',
+      sellerNotifiedAt: null,
+      noticeFailedAt: null,
+    } satisfies Prisma.CatalogCategoryProductMoveItemWhereInput;
   }
 
   async markNotified(
@@ -262,8 +290,25 @@ export class PrismaCategoryProductMoveStore implements CategoryProductMoveStore 
     now: Temporal.Instant,
   ): Promise<void> {
     await this.prisma.tx(market).catalogCategoryProductMoveItem.updateMany({
-      where: { marketId: market.marketId, jobId, productId, sellerNotifiedAt: null },
-      data: { sellerNotifiedAt: toDate(now) },
+      where: { ...this.#openNotice(market, jobId), productId },
+      data: { sellerNotifiedAt: toDate(now), noticeNextAttemptAt: null },
+    });
+  }
+
+  async noticeFailed(
+    market: MarketContext,
+    jobId: Id<'CategoryMoveJob'>,
+    productId: Id<'Product'>,
+    outcome: { readonly attempts: number; readonly nextAttemptAt: Temporal.Instant | null },
+    now: Temporal.Instant,
+  ): Promise<void> {
+    await this.prisma.tx(market).catalogCategoryProductMoveItem.updateMany({
+      where: { ...this.#openNotice(market, jobId), productId },
+      data: {
+        noticeAttempts: outcome.attempts,
+        noticeNextAttemptAt: outcome.nextAttemptAt === null ? null : toDate(outcome.nextAttemptAt),
+        noticeFailedAt: outcome.nextAttemptAt === null ? toDate(now) : null,
+      },
     });
   }
 
@@ -276,6 +321,7 @@ export class PrismaCategoryProductMoveStore implements CategoryProductMoveStore 
     const tx = this.prisma.tx(market);
     const row = await tx.catalogCategoryProductMoveJob.findFirst({
       where: { marketId: market.marketId, id, state: 'running', leaseHolder: holder },
+      select: { version: true },
     });
     if (row === null) return false;
     const done = await tx.catalogCategoryProductMoveJob.updateMany({
@@ -301,7 +347,44 @@ export class PrismaCategoryProductMoveStore implements CategoryProductMoveStore 
     });
     const of = (state: string): number =>
       groups.find((group) => group.state === state)?._count._all ?? 0;
-    return { movedCount: of('moved'), skippedCount: of('skipped'), failedCount: of('failed') };
+    // A committed `pending` item (a unit that ended without its revision) is a failed product:
+    // counted, never dropped (N2).
+    return {
+      movedCount: of('moved'),
+      skippedCount: of('skipped'),
+      failedCount: of('failed') + of('pending'),
+    };
+  }
+
+  async endScan(
+    market: MarketContext,
+    id: Id<'CategoryMoveJob'>,
+    holder: string,
+    outcome: MoveScanOutcome,
+  ): Promise<boolean> {
+    const tx = this.prisma.tx(market);
+    const row = await tx.catalogCategoryProductMoveJob.findFirst({
+      where: {
+        marketId: market.marketId,
+        id,
+        state: 'running',
+        leaseHolder: holder,
+        scanOutcome: null,
+      },
+      select: { version: true },
+    });
+    if (row === null) return false;
+    const done = await tx.catalogCategoryProductMoveJob.updateMany({
+      where: {
+        marketId: market.marketId,
+        id,
+        leaseHolder: holder,
+        scanOutcome: null,
+        version: row.version,
+      },
+      data: { scanOutcome: outcome, ...(await this.#counts(market, id)), version: row.version + 1 },
+    });
+    return done.count === 1;
   }
 
   async finish(
@@ -314,6 +397,7 @@ export class PrismaCategoryProductMoveStore implements CategoryProductMoveStore 
     const tx = this.prisma.tx(market);
     const row = await tx.catalogCategoryProductMoveJob.findFirst({
       where: { marketId: market.marketId, id, state: 'running', leaseHolder: holder },
+      select: { version: true },
     });
     if (row === null) return false;
     const done = await tx.catalogCategoryProductMoveJob.updateMany({
@@ -327,6 +411,12 @@ export class PrismaCategoryProductMoveStore implements CategoryProductMoveStore 
         version: row.version + 1,
       },
     });
-    return done.count === 1;
+    if (done.count !== 1) return false;
+    // N2: a pending item (counted as failed above) does not stay pending on an ended job.
+    await tx.catalogCategoryProductMoveItem.updateMany({
+      where: { marketId: market.marketId, jobId: id, state: 'pending' },
+      data: { state: 'failed' },
+    });
+    return true;
   }
 }

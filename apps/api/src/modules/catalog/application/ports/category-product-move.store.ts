@@ -7,6 +7,8 @@ import type { ProductCategoryNode } from '../../domain/product-category-rules';
 
 export type MoveJobState = 'queued' | 'running' | 'done' | 'failed';
 export type MoveItemState = 'pending' | 'moved' | 'skipped' | 'failed';
+/** How the job's one product pass ended. */
+export type MoveScanOutcome = 'done' | 'failed';
 
 export interface MoveJobRecord {
   readonly id: Id<'CategoryMoveJob'>;
@@ -24,6 +26,13 @@ export interface MoveJobRecord {
   readonly moved: number;
   readonly skipped: number;
   readonly failed: number;
+  /**
+   * Set once, when the product pass ended (N1): `done` at the first empty scan, `failed` when the
+   * tree could not be read. A later turn only drains the seller notices and ends the job in this
+   * state; it never scans products again, so a product published into the source after the pass
+   * is not moved.
+   */
+  readonly scanOutcome: MoveScanOutcome | null;
   readonly version: number;
 }
 
@@ -138,12 +147,19 @@ export interface CategoryProductMoveStore {
     categoryId: Id<'Category'>,
   ): Promise<readonly ProductCategoryNode[]>;
 
-  /** Moved items whose seller has not been told yet, at most `limit`. */
+  /**
+   * Moved items whose seller has not been told, whose email is not given up and whose retry (if
+   * any) is due at `now`, at most `limit`, with the failed sends so far.
+   */
   unnotified(
     market: MarketContext,
     jobId: Id<'CategoryMoveJob'>,
+    now: Temporal.Instant,
     limit: number,
-  ): Promise<readonly { readonly productId: Id<'Product'> }[]>;
+  ): Promise<readonly { readonly productId: Id<'Product'>; readonly attempts: number }[]>;
+
+  /** True while a moved item's seller email is neither sent nor given up (due or waiting). */
+  hasOpenNotices(market: MarketContext, jobId: Id<'CategoryMoveJob'>): Promise<boolean>;
 
   /** Marks the seller email of a moved item as sent. */
   markNotified(
@@ -154,9 +170,23 @@ export interface CategoryProductMoveStore {
   ): Promise<void>;
 
   /**
+   * Records a failed send of a moved item's email (N1): the attempts so far and when to try it
+   * again, or, with `nextAttemptAt` null (the last attempt), gives it up at `now` so the job can
+   * end. Only an open notice changes.
+   */
+  noticeFailed(
+    market: MarketContext,
+    jobId: Id<'CategoryMoveJob'>,
+    productId: Id<'Product'>,
+    outcome: { readonly attempts: number; readonly nextAttemptAt: Temporal.Instant | null },
+    now: Temporal.Instant,
+  ): Promise<void>;
+
+  /**
    * Moves the cursor under the lease and sets the counters from the job's items (counted by
    * state, never accumulated by the runner, so a turn that lost its lease cannot under- or
-   * over-count). False when the holder no longer holds the job.
+   * over-count; a committed `pending` item counts as failed). False when the holder no longer
+   * holds the job.
    */
   advance(
     market: MarketContext,
@@ -166,8 +196,22 @@ export interface CategoryProductMoveStore {
   ): Promise<boolean>;
 
   /**
+   * Records, under the lease, that the job's product pass ended ({@link MoveJobRecord.scanOutcome})
+   * and sets the counters from the items, as in {@link advance}. Written once: false when the
+   * holder no longer holds the job or the pass was already ended.
+   */
+  endScan(
+    market: MarketContext,
+    id: Id<'CategoryMoveJob'>,
+    holder: string,
+    outcome: MoveScanOutcome,
+  ): Promise<boolean>;
+
+  /**
    * Ends the job (`done`, or `failed` after an unrecoverable fault), releasing the lease; the
-   * counters are set from the items, as in {@link advance}.
+   * counters are set from the items, as in {@link advance}. An item still `pending` (a product unit
+   * that committed without its revision, which the run never does) is turned `failed` first and
+   * counted as failed (N2): no handled product drops out of the counters.
    */
   finish(
     market: MarketContext,

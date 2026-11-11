@@ -1789,6 +1789,9 @@ model CatalogCategoryProductMoveJob {
   /// The runner turn that holds the job; set together with `leaseExpiresAt`, exactly while running.
   leaseHolder        String?                          @map("lease_holder") @db.Uuid
   leaseExpiresAt     DateTime?                        @map("lease_expires_at") @db.Timestamptz(6)
+  /// done | failed: how the job's one product pass ended; null until then. Set once (CHECK); a
+  /// later turn only drains the seller notices.
+  scanOutcome        String?                          @map("scan_outcome")
   version            Int
   sourceCategory     CatalogPlatformCategory          @relation("MoveJobSource", fields: [marketId, sourceCategoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   targetCategory     CatalogPlatformCategory          @relation("MoveJobTarget", fields: [marketId, targetCategoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
@@ -1804,23 +1807,30 @@ model CatalogCategoryProductMoveJob {
 /// One product of a Move products job (insert-only but for its outcome): the guard that a product is
 /// moved, and its seller emailed, once per job. `revision_id` names the `category-override` revision
 /// the move published (the item is written `pending` first and turned `moved` once that revision row
-/// exists, in the same unit); `seller_notified_at` is set once the seller's email is queued. The
-/// partial index of the not-yet-notified moved items is hand-written in the migration.
+/// exists, in the same unit); `seller_notified_at` is set once the seller's email is queued, or
+/// `notice_failed_at` once it is given up after its last attempt. The partial index of the open
+/// notices is hand-written in the migration.
 model CatalogCategoryProductMoveItem {
-  marketId         String                        @map("market_id") @db.VarChar(8)
-  tenantId         String                        @map("tenant_id")
-  jobId            String                        @map("job_id") @db.Uuid
-  productId        String                        @map("product_id") @db.Uuid
+  marketId            String                        @map("market_id") @db.VarChar(8)
+  tenantId            String                        @map("tenant_id")
+  jobId               String                        @map("job_id") @db.Uuid
+  productId           String                        @map("product_id") @db.Uuid
   /// pending | moved | skipped | failed.
-  state            String
+  state               String
   /// Set exactly when moved (CHECK).
-  revisionId       String?                       @map("revision_id") @db.Uuid
+  revisionId          String?                       @map("revision_id") @db.Uuid
   /// Only on a moved product (CHECK).
-  sellerNotifiedAt DateTime?                     @map("seller_notified_at") @db.Timestamptz(6)
-  createdAt        DateTime                      @map("created_at") @db.Timestamptz(6)
-  job              CatalogCategoryProductMoveJob @relation(fields: [marketId, jobId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  product          CatalogProduct                @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  revision         CatalogProductRevision?       @relation(fields: [marketId, productId, revisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  sellerNotifiedAt    DateTime?                     @map("seller_notified_at") @db.Timestamptz(6)
+  /// Failed sends of the seller email so far.
+  noticeAttempts      Int                           @default(0) @map("notice_attempts")
+  /// When a failed send is tried again; null when no retry is waiting.
+  noticeNextAttemptAt DateTime?                     @map("notice_next_attempt_at") @db.Timestamptz(6)
+  /// Set when the email is given up after the last attempt; never with `sellerNotifiedAt` (CHECK).
+  noticeFailedAt      DateTime?                     @map("notice_failed_at") @db.Timestamptz(6)
+  createdAt           DateTime                      @map("created_at") @db.Timestamptz(6)
+  job                 CatalogCategoryProductMoveJob @relation(fields: [marketId, jobId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  product             CatalogProduct                @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  revision            CatalogProductRevision?       @relation(fields: [marketId, productId, revisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, jobId, productId])
   @@map("category_product_move_items")

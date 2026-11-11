@@ -823,7 +823,10 @@ export class CategoryAdminController {
       'refused in an acting-as session. Starts a job that gives every published product of the ' +
       'category an admin revision naming the target, published at once (the target becomes ' +
       'primary when the category was), audits it and emails the seller. The target is on level 3 ' +
-      'up to the Market depth. Read the progress with GET on the same path.',
+      'up to the Market depth. The job makes one pass over the category: a product published ' +
+      'into it after the pass is not moved. A seller email that cannot be sent is retried for ' +
+      'about 75 minutes and then given up, so the job always ends. Read the progress with GET on ' +
+      'the same path.',
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)

@@ -11,11 +11,13 @@ BEGIN
 END
 $$;
 
-REVOKE SELECT, INSERT, UPDATE ("state", "revision_id", "seller_notified_at")
+REVOKE SELECT, INSERT,
+  UPDATE ("state", "revision_id", "seller_notified_at", "notice_attempts", "notice_next_attempt_at",
+    "notice_failed_at")
   ON TABLE "catalog"."category_product_move_items" FROM "mondapac_app";
 REVOKE SELECT, INSERT,
   UPDATE ("state", "started_at", "finished_at", "cursor_product_id", "total_count", "moved_count",
-    "skipped_count", "failed_count", "lease_holder", "lease_expires_at", "version")
+    "skipped_count", "failed_count", "lease_holder", "lease_expires_at", "scan_outcome", "version")
   ON TABLE "catalog"."category_product_move_jobs" FROM "mondapac_app";
 
 DROP TABLE "catalog"."category_product_move_items";

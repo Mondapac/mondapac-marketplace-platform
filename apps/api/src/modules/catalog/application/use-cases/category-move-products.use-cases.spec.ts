@@ -71,7 +71,17 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
   let products: Map<string, Product>;
   let revisions: Map<string, StoredRevision>;
   let jobs: MoveJobRecord[];
-  let items: Map<string, { state: string; notified: boolean; revisionId?: string }>;
+  let items: Map<
+    string,
+    {
+      state: string;
+      notified: boolean;
+      revisionId?: string;
+      attempts?: number;
+      nextAttemptAt?: Temporal.Instant | null;
+      noticeFailed?: boolean;
+    }
+  >;
   let mails: { to: string; subject: string; text: string }[];
   let audits: { action: string; targetId: string }[];
   let requests: { productId: string; productRevisionId: string }[];
@@ -94,7 +104,13 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
       .filter(([key]) => key.startsWith(`${jobId}/`))
       .map(([, item]) => item.state);
     const of = (state: string) => states.filter((entry) => entry === state).length;
-    return { moved: of('moved'), skipped: of('skipped'), failed: of('failed') };
+    return { moved: of('moved'), skipped: of('skipped'), failed: of('failed') + of('pending') };
+  };
+  const openNotice = (key: string, jobId: string): boolean => {
+    const item = items.get(key)!;
+    return (
+      key.startsWith(`${jobId}/`) && item.state === 'moved' && !item.notified && !item.noticeFailed
+    );
   };
 
   const store: CategoryProductMoveStore = {
@@ -131,6 +147,7 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
         moved: 0,
         skipped: 0,
         failed: 0,
+        scanOutcome: null,
         version: 1,
       });
       return Promise.resolve(true);
@@ -197,18 +214,46 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
       }
       return Promise.resolve(chain);
     },
-    unnotified: (_m, jobId, limit) =>
+    unnotified: (_m, jobId, now, limit) =>
       Promise.resolve(
         [...items.entries()]
-          .filter(([k, v]) => k.startsWith(`${jobId}/`) && v.state === 'moved' && !v.notified)
-          .map(([k]) => ({ productId: k.split('/')[1] as Id<'Product'> }))
+          .filter(
+            ([k, v]) =>
+              openNotice(k, jobId) &&
+              (v.nextAttemptAt == null || Temporal.Instant.compare(v.nextAttemptAt, now) <= 0),
+          )
+          .map(([k, v]) => ({
+            productId: k.split('/')[1] as Id<'Product'>,
+            attempts: v.attempts ?? 0,
+          }))
           .sort((a, b) => (a.productId < b.productId ? -1 : 1))
           .slice(0, limit),
       ),
+    hasOpenNotices: (_m, jobId) =>
+      Promise.resolve([...items.keys()].some((k) => openNotice(k, jobId))),
     markNotified: (_m, jobId, productId) => {
       const key = `${jobId}/${productId}`;
-      items.set(key, { ...items.get(key)!, notified: true });
+      if (openNotice(key, jobId)) items.set(key, { ...items.get(key)!, notified: true });
       return Promise.resolve();
+    },
+    noticeFailed: (_m, jobId, productId, outcome) => {
+      const key = `${jobId}/${productId}`;
+      if (openNotice(key, jobId)) {
+        items.set(key, {
+          ...items.get(key)!,
+          attempts: outcome.attempts,
+          nextAttemptAt: outcome.nextAttemptAt,
+          noticeFailed: outcome.nextAttemptAt === null,
+        });
+      }
+      return Promise.resolve();
+    },
+    endScan: (_m, id, _h, outcome) => {
+      const i = jobs.findIndex((j) => j.id === id);
+      const j = jobs[i]!;
+      if (j.scanOutcome !== null) return Promise.resolve(false);
+      jobs[i] = { ...j, scanOutcome: outcome, ...countsOf(id), version: j.version + 1 };
+      return Promise.resolve(true);
     },
     advance: (_m, id, _h, cursor) => {
       const i = jobs.findIndex((j) => j.id === id);
@@ -425,6 +470,7 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
     start.execute(adminCtx(), { categoryId: cat(source), targetId: cat(target), reason });
 
   beforeEach(() => {
+    clock.set(T0);
     nodes = [
       node(1, null),
       node(2, 1),
@@ -623,17 +669,21 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
     expect(mails).toHaveLength(3);
   });
 
-  it('keeps the job running while a seller email fails, and sends it on the next turn', async () => {
+  it('keeps the job running while a seller email fails, and sends it once its retry is due', async () => {
     publish(1, [5]);
     publish(2, [5]);
     await startMove(5, 3);
-    // Fails after the batch and again at the final drain of this turn.
-    failingSends.set('seller-2@example.test', 2);
+    // Fails after the batch; the retry waits 5 minutes, so the final drain of this turn skips it.
+    failingSends.set('seller-2@example.test', 1);
     const first = await runner().execute(systemCtx(), { budgetMs: 60_000 });
     expect(first).toMatchObject({ ok: true, value: { outcome: 'notices-pending', moved: 2 } });
-    expect(jobs[0]!.state).toBe('running');
+    expect(jobs[0]).toMatchObject({ state: 'running', scanOutcome: 'done' });
     expect(itemOf(1)).toMatchObject({ notified: true });
-    expect(itemOf(2)).toMatchObject({ notified: false });
+    expect(itemOf(2)).toMatchObject({ notified: false, attempts: 1 });
+    // Not due yet: the next turn sends nothing and keeps waiting.
+    const early = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(early).toMatchObject({ ok: true, value: { outcome: 'notices-pending' } });
+    clock.advance(Temporal.Duration.from({ minutes: 5 }));
     const second = await runner().execute(systemCtx(), { budgetMs: 60_000 });
     expect(second).toMatchObject({ ok: true, value: { outcome: 'done', moved: 0 } });
     expect(jobs[0]).toMatchObject({ state: 'done', moved: 2 });
@@ -641,6 +691,70 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
       'seller-1@example.test',
       'seller-2@example.test',
     ]);
+  });
+
+  it('gives a seller email up after its last attempt, so a send that always fails ends the job', async () => {
+    publish(1, [5]);
+    publish(2, [5]);
+    await startMove(5, 3);
+    failingSends.set('seller-2@example.test', Number.MAX_SAFE_INTEGER);
+    const outcomes: string[] = [];
+    for (let turn = 0; turn < 10; turn += 1) {
+      const ran = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+      if (!ran.ok || !ran.value.ran) break;
+      outcomes.push(ran.value.outcome);
+      clock.advance(Temporal.Duration.from({ hours: 1 }));
+    }
+    // One send per turn (5, 10, 20, 40 minutes apart), the fifth gives up and the job ends.
+    expect(outcomes).toEqual([
+      'notices-pending',
+      'notices-pending',
+      'notices-pending',
+      'notices-pending',
+      'done',
+    ]);
+    expect(itemOf(2)).toMatchObject({ notified: false, noticeFailed: true, attempts: 5 });
+    expect(jobs[0]).toMatchObject({ state: 'done', moved: 2 });
+    expect(mails.map((m) => m.to)).toEqual(['seller-1@example.test']);
+    // The source is free for a new job (no job left open on it).
+    publish(3, [5]);
+    expect(await startMove(5, 6)).toMatchObject({ ok: true });
+  });
+
+  it('never moves a product published into the source while the job waits for an email', async () => {
+    publish(1, [5]);
+    await startMove(5, 3);
+    failingSends.set('seller-1@example.test', 1);
+    const first = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(first).toMatchObject({ ok: true, value: { outcome: 'notices-pending', moved: 1 } });
+    const scans = cursorsAsked.length;
+    // Published into the source after the pass ended, weeks later in the job's life.
+    publish(2, [5]);
+    clock.advance(Temporal.Duration.from({ hours: 1 }));
+    const second = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(second).toMatchObject({ ok: true, value: { outcome: 'done', moved: 0 } });
+    // No scan after the pass: the product stays on the source, with no item and no audit.
+    expect(cursorsAsked).toHaveLength(scans);
+    expect(categoriesOf(2)).toEqual([cat(5)]);
+    expect(itemOf(2)).toBeUndefined();
+    expect(audits.some((a) => a.targetId === pid(2))).toBe(false);
+    expect(jobs[0]).toMatchObject({ state: 'done', moved: 1 });
+  });
+
+  it('ends a job whose pass failed as failed once its notices are drained, never scanning again', async () => {
+    publish(1, [5]);
+    await startMove(5, 3);
+    failingSends.set('seller-1@example.test', 1);
+    await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    // As if the tree had turned unreadable at the pass's end (scan outcome `failed`).
+    jobs[0] = { ...jobs[0]!, scanOutcome: 'failed' };
+    const scans = cursorsAsked.length;
+    clock.advance(Temporal.Duration.from({ hours: 1 }));
+    const second = await runner().execute(systemCtx(), { budgetMs: 60_000 });
+    expect(second).toMatchObject({ ok: true, value: { outcome: 'failed' } });
+    expect(cursorsAsked).toHaveLength(scans);
+    expect(jobs[0]).toMatchObject({ state: 'failed', moved: 1 });
+    expect(itemOf(1)).toMatchObject({ notified: true });
   });
 
   it('reads the product again once when another write won it (StaleAggregateError)', async () => {

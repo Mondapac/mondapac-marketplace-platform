@@ -453,11 +453,12 @@ describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)
         return moves.markMoved(market, created.id, strangerId, own);
       }),
     ).rejects.toThrow();
-    expect(await read(market, () => moves.unnotified(market, created.id, 10))).toEqual([
-      { productId },
+    expect(await read(market, () => moves.unnotified(market, created.id, T0, 10))).toEqual([
+      { productId, attempts: 0 },
     ]);
     await write(market, () => moves.markNotified(market, created.id, productId, T0));
-    expect(await read(market, () => moves.unnotified(market, created.id, 10))).toEqual([]);
+    expect(await read(market, () => moves.unnotified(market, created.id, T0, 10))).toEqual([]);
+    expect(await read(market, () => moves.hasOpenNotices(market, created.id))).toBe(false);
 
     expect(await write(market, () => moves.advance(market, created.id, uuid7(), productId))).toBe(
       false,
@@ -480,6 +481,115 @@ describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)
       failed: 0,
       cursorProductId: productId,
     });
+  });
+
+  /** Claims in order until `id` is held by `holder` (jobs of the tests before are still due). */
+  async function claimJob(id: string, holder: string): Promise<void> {
+    for (let turn = 0; turn < 20; turn += 1) {
+      const taken = await write(market, () => moves.claim(market, holder, T0, LEASE));
+      if (taken === null || taken.id === id) return;
+    }
+  }
+
+  it('retries a failed seller email when due and gives it up at the last attempt (N1)', async () => {
+    const a = await category(market, null, 'Notice source');
+    const b = await category(market, null, 'Notice target');
+    const p = await product(market, [a]);
+    const created = job(a, b);
+    const holder = uuid7();
+    await write(market, () => moves.insertJob(market, created));
+    await claimJob(created.id, holder);
+    const productId = p.productId as Id<'Product'>;
+    await write(market, async () => {
+      await moves.recordItem(market, created.id, productId, { state: 'pending' }, T0);
+      return moves.markMoved(market, created.id, productId, p.revisionId as Id<'ProductRevision'>);
+    });
+    const later = T0.add({ minutes: 5 });
+    await write(market, () =>
+      moves.noticeFailed(market, created.id, productId, { attempts: 1, nextAttemptAt: later }, T0),
+    );
+    // Waiting: not due before its retry time, but still open (the job cannot end yet).
+    expect(await read(market, () => moves.unnotified(market, created.id, T0, 10))).toEqual([]);
+    expect(await read(market, () => moves.hasOpenNotices(market, created.id))).toBe(true);
+    expect(await read(market, () => moves.unnotified(market, created.id, later, 10))).toEqual([
+      { productId, attempts: 1 },
+    ]);
+    // The last attempt gives it up: no longer open, never due again, and never marked sent.
+    await write(market, () =>
+      moves.noticeFailed(
+        market,
+        created.id,
+        productId,
+        { attempts: 5, nextAttemptAt: null },
+        later,
+      ),
+    );
+    expect(
+      await read(market, () => moves.unnotified(market, created.id, later.add({ hours: 9 }), 10)),
+    ).toEqual([]);
+    expect(await read(market, () => moves.hasOpenNotices(market, created.id))).toBe(false);
+    await write(market, () => moves.markNotified(market, created.id, productId, later));
+    const row = await owner.query<{ attempts: number; failed: boolean; notified: boolean }>(
+      `SELECT notice_attempts AS attempts, notice_failed_at IS NOT NULL AS failed,
+              seller_notified_at IS NOT NULL AS notified
+         FROM catalog.category_product_move_items
+        WHERE market_id = $1 AND job_id = $2 AND product_id = $3`,
+      [market.marketId, created.id, productId],
+    );
+    expect(row.rows[0]).toEqual({ attempts: 5, failed: true, notified: false });
+    // The CHECK: an email is never both sent and given up.
+    await expect(
+      owner.query(
+        `UPDATE catalog.category_product_move_items SET seller_notified_at = now()
+          WHERE market_id = $1 AND job_id = $2`,
+        [market.marketId, created.id],
+      ),
+    ).rejects.toThrow(/category_product_move_items_notice_check/);
+
+    // The pass ends once, under the lease only; the job is then finished by its holder.
+    expect(await write(market, () => moves.endScan(market, created.id, uuid7(), 'done'))).toBe(
+      false,
+    );
+    expect(await write(market, () => moves.endScan(market, created.id, holder, 'done'))).toBe(true);
+    expect(await write(market, () => moves.endScan(market, created.id, holder, 'failed'))).toBe(
+      false,
+    );
+    expect(await read(market, () => moves.find(market, created.id))).toMatchObject({
+      state: 'running',
+      scanOutcome: 'done',
+      moved: 1,
+    });
+    expect(await write(market, () => moves.finish(market, created.id, holder, 'done', T0))).toBe(
+      true,
+    );
+  });
+
+  it('counts a committed pending item as failed when the job ends, and turns it failed (N2)', async () => {
+    const a = await category(market, null, 'Pending source');
+    const b = await category(market, null, 'Pending target');
+    const p = await product(market, [a]);
+    const created = job(a, b);
+    const holder = uuid7();
+    await write(market, () => moves.insertJob(market, created));
+    await claimJob(created.id, holder);
+    // A pending item committed on its own: a product unit that ended without its revision.
+    await write(market, () =>
+      moves.recordItem(market, created.id, p.productId as Id<'Product'>, { state: 'pending' }, T0),
+    );
+    expect(await write(market, () => moves.finish(market, created.id, holder, 'done', T0))).toBe(
+      true,
+    );
+    expect(await read(market, () => moves.find(market, created.id))).toMatchObject({
+      state: 'done',
+      moved: 0,
+      skipped: 0,
+      failed: 1,
+    });
+    const item = await owner.query<{ state: string }>(
+      `SELECT state FROM catalog.category_product_move_items WHERE market_id = $1 AND job_id = $2`,
+      [market.marketId, created.id],
+    );
+    expect(item.rows).toEqual([{ state: 'failed' }]);
   });
 
   it('refuses the same source and target, a bad reason and a negative count, but not counts above the total', async () => {
