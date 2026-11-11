@@ -238,6 +238,7 @@ describe('topics (product tags T2)', () => {
       'image-added-or-replaced',
       'variant-removed',
       'gtin-changed',
+      'axis-added',
       'topics-changed',
       'never-published',
       'approval-required',
