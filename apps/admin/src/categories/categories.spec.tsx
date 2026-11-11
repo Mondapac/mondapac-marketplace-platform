@@ -124,6 +124,22 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('CategoriesView', () => {
+  it('offers Export and Import only with the import key', async () => {
+    serve({ 'catalog/admin/categories': ok(tree()) });
+    const { unmount } = view(<CategoriesView canEdit canImport />);
+    await screen.findAllByRole('treeitem');
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Export XLSX' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Import' }).getAttribute('href')).toBe(
+      '/catalog/categories/import',
+    );
+    unmount();
+    view(<CategoriesView canEdit />);
+    await screen.findAllByRole('treeitem');
+    expect(screen.queryByRole('button', { name: 'Export CSV' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Import' })).toBeNull();
+  });
+
   it('lists the departments open one level, as a tree with levels and counts', async () => {
     serve({ 'catalog/admin/categories': ok(tree()) });
     view(<CategoriesView canEdit />);
