@@ -1243,11 +1243,12 @@ export class FakeShipToCipher implements ShipToCipher {
 export class FakeAdminNoteCipher implements AdminNoteCipher {
   readonly destroyed = new Set<string>();
 
+  /** `v1.` and the account and text in base64url: the sealed shape the database CHECK takes (O7). */
   seal(_m: MarketContext, accountId: Id<'Account'>, body: string) {
     return Promise.resolve(
       this.destroyed.has(accountId)
         ? err<NoteKeyDestroyed>({ code: 'subject-key.destroyed' })
-        : ok(`sealed:${accountId}:${Buffer.from(body, 'utf8').toString('base64')}`),
+        : ok(`v1.${Buffer.from(`${accountId}:${body}`, 'utf8').toString('base64url')}`),
     );
   }
 
@@ -1255,9 +1256,12 @@ export class FakeAdminNoteCipher implements AdminNoteCipher {
     if (this.destroyed.has(accountId)) {
       return Promise.resolve(err<NoteKeyDestroyed>({ code: 'subject-key.destroyed' }));
     }
-    const prefix = `sealed:${accountId}:`;
-    if (!sealed.startsWith(prefix)) throw new Error('sealed under another account');
-    return Promise.resolve(ok(Buffer.from(sealed.slice(prefix.length), 'base64').toString('utf8')));
+    const plain = Buffer.from(sealed.replace(/^v1\./, ''), 'base64url').toString('utf8');
+    const prefix = `${accountId}:`;
+    if (!sealed.startsWith('v1.') || !plain.startsWith(prefix)) {
+      throw new Error('sealed under another account');
+    }
+    return Promise.resolve(ok(plain.slice(prefix.length)));
   }
 }
 

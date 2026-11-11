@@ -14,6 +14,7 @@ import {
   ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiHeader,
   ApiUnprocessableEntityResponse,
@@ -36,10 +37,8 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { AdminCancelOrder } from '../application/use-cases/admin-cancel-order.use-case';
 import { AdminListOrders } from '../application/use-cases/admin-list-orders.use-case';
-import {
-  AdminAddOrderNote,
-  AdminListOrderNotes,
-} from '../application/use-cases/admin-order-notes.use-case';
+import { AdminAddOrderNote } from '../application/use-cases/admin-add-order-note.use-case';
+import { AdminListOrderNotes } from '../application/use-cases/admin-list-order-notes.use-case';
 import { AdminRefundOrder } from '../application/use-cases/admin-refund-order.use-case';
 import { AdminViewOrderDocument } from '../application/use-cases/admin-view-order-document.use-case';
 import { AdminViewOrder } from '../application/use-cases/admin-view-order.use-case';
@@ -291,7 +290,10 @@ export class AdminOrdersController {
   @ApiOkResponse({ type: CancelBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
-  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({
+    ...ERROR,
+    description: 'access.denied (also an acting-as session) or request.csrf',
+  })
   @ApiNotFoundResponse({ ...ERROR, description: 'ordering.order-not-found' })
   @ApiConflictResponse({
     ...ERROR,
@@ -372,7 +374,7 @@ export class AdminOrdersController {
   @ApiHeader(CSRF)
   @ApiParam({ name: 'orderId', format: 'uuid' })
   @ApiBody({ type: AdminNoteRequestBody })
-  @ApiOkResponse({ type: AdminNoteBody })
+  @ApiCreatedResponse({ type: AdminNoteBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })

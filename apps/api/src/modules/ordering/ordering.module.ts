@@ -35,10 +35,8 @@ import { ORDERING_POLICY } from './application/ports/ordering-policy';
 import { SHIP_TO_CIPHER } from './application/ports/ship-to-cipher';
 import { AdminRefundOrder } from './application/use-cases/admin-refund-order.use-case';
 import { AdminCancelOrder } from './application/use-cases/admin-cancel-order.use-case';
-import {
-  AdminAddOrderNote,
-  AdminListOrderNotes,
-} from './application/use-cases/admin-order-notes.use-case';
+import { AdminAddOrderNote } from './application/use-cases/admin-add-order-note.use-case';
+import { AdminListOrderNotes } from './application/use-cases/admin-list-order-notes.use-case';
 import type { AdminNoteDependencies } from './application/admin-note-flow';
 import {
   ADMIN_NOTE_CIPHER,

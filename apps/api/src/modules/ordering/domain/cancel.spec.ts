@@ -197,6 +197,16 @@ describe('parseNoteBody', () => {
         fields: [{ path: 'body', code: 'format' }],
       });
     }
+    // Bidirectional marks and invisible characters too; the joiners Persian needs stay allowed.
+    for (const code of [0x061c, 0x200b, 0x200e, 0x200f, 0x2060, 0x2064, 0xfeff]) {
+      expect(parseNoteBody(`a${String.fromCodePoint(code)}b`)).toEqual({
+        ok: false,
+        fields: [{ path: 'body', code: 'format' }],
+      });
+    }
+    for (const code of [0x200c, 0x200d]) {
+      expect(parseNoteBody(`a${String.fromCodePoint(code)}b`).ok).toBe(true);
+    }
     expect(parseNoteBody('')).toEqual({ ok: false, fields: [{ path: 'body', code: 'required' }] });
     expect(parseNoteBody(null)).toEqual({ ok: false, fields: [{ path: 'body', code: 'type' }] });
   });
