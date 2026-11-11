@@ -17,6 +17,24 @@ describe('admin nav: Content', () => {
   });
 });
 
+describe('admin nav: Blog', () => {
+  it('is there for blog.post.read, in the content group, beside Slides', () => {
+    expect(ids(['blog.post.read'])).toContain('blog');
+    const item = adminNav.items.find((entry) => entry.id === 'blog');
+    expect(item).toMatchObject({
+      icon: 'file',
+      href: '/content/blog',
+      labelKey: 'nav.blog',
+      group: 'content',
+    });
+  });
+
+  it('is hidden without it, also for the other blog keys', () => {
+    expect(ids([])).not.toContain('blog');
+    expect(ids(['blog.post.edit', 'blog.post.publish'])).not.toContain('blog');
+  });
+});
+
 describe('admin nav: Catalogue', () => {
   it('shows Products for catalog.product.view, with the package icon, in the catalogue group', () => {
     expect(ids(['catalog.product.view'])).toEqual(['home', 'products', 'review-queue']);
@@ -114,6 +132,7 @@ describe('admin nav: daily work only', () => {
       'review-moderation',
       'price-holds',
       'content',
+      'blog',
       'sellers',
       'orders',
       'customers',

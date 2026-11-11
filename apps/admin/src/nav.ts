@@ -105,6 +105,14 @@ export const adminNav: NavConfig = {
       anyOf: ['storefront.slide.read'],
     },
     {
+      id: 'blog',
+      icon: 'file',
+      labelKey: 'nav.blog',
+      href: '/content/blog',
+      group: 'content',
+      anyOf: ['blog.post.read'],
+    },
+    {
       id: 'sellers',
       icon: 'store',
       labelKey: 'nav.sellers',

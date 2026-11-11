@@ -104,7 +104,8 @@
     "price-holds": "Held prices",
     "review-queue": "Review queue",
     "payout-accounts": "Connected accounts",
-    "content": "Content",
+    "content": "Slides",
+    "blog": "Blog",
     "settings": "Settings",
     "group": {
       "catalogue": "Catalogue",
@@ -1040,7 +1041,8 @@
     "intro": "Slides on the buyer site, for this Market.",
     "tabs": {
       "label": "Content sections",
-      "slides": "Slides"
+      "slides": "Slides",
+      "blog": "Blog"
     },
     "no-access": {
       "title": "You don't have access to this page",
@@ -5638,6 +5640,73 @@
         "code-taken": "This code is already used.",
         "refused": "This value was not accepted."
       }
+    }
+  },
+  "blog": {
+    "title": "Blog",
+    "intro": "Posts on the buyer site for this market. A published post stays live while a new version is in review.",
+    "tabs-label": "Post status",
+    "filter-label": "Filter posts",
+    "kind-filter": "Type",
+    "owner-filter": "Author",
+    "zone-note": "Times are shown in {zone}.",
+    "loading": "Loading posts",
+    "load-error": "The posts could not be loaded. Check your connection and try again.",
+    "retry": "Try again",
+    "more": "Load more",
+    "more-error": "More posts could not be loaded. Try again.",
+    "empty": "No posts yet. They will show here once the first one is written.",
+    "empty-filtered": "No posts match these filters.",
+    "featured": "Featured on the blog home",
+    "col": {
+      "post": "Post",
+      "kind": "Type",
+      "author": "Author",
+      "status": "Status",
+      "updated": "Updated"
+    },
+    "status": {
+      "all": "All",
+      "draft": "Drafts",
+      "in_review": "In review",
+      "changes_requested": "Changes requested",
+      "approved": "Approved",
+      "scheduled": "Scheduled",
+      "published": "Published",
+      "unpublished": "Unpublished",
+      "archived": "Archived"
+    },
+    "state": {
+      "draft": "Draft",
+      "in_review": "In review",
+      "changes_requested": "Changes requested",
+      "approved": "Approved",
+      "scheduled": "Scheduled",
+      "published": "Published",
+      "unpublished": "Unpublished",
+      "archived": "Archived"
+    },
+    "kind": {
+      "all": "All",
+      "product": "Product",
+      "brand": "Brand",
+      "event": "Event",
+      "news": "News"
+    },
+    "owner": {
+      "all": "All",
+      "platform": "Mondapac team",
+      "seller": "Seller"
+    },
+    "author": {
+      "platform": "Mondapac team",
+      "seller": "Seller"
+    },
+    "open-note": {
+      "draft": "New version being written",
+      "in_review": "New version in review",
+      "returned": "New version sent back for changes",
+      "approved": "New version approved"
     }
   },
   "tags": {

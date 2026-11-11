@@ -82,6 +82,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'wallet/admin/settings/history',
     // The editable Market settings (settings; List paging), read again after a conflict.
     'settings/admin/market-settings',
+    // The blog posts of the Market (blog; query: `status`, `kind`, `owner`, `page`), read only.
+    'blog/admin/posts',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
