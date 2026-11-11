@@ -16,6 +16,11 @@ export interface ApiFailure {
     readonly attemptsLeft?: number;
     /** The guarded action of `second-factor.required` or `second-factor.enrolment-required`. */
     readonly actionKey?: string;
+    /** A refused import file (catalog design 14c): the columns, the row counts and the size limit. */
+    readonly columns?: readonly string[];
+    readonly rows?: number;
+    readonly rowNumber?: number;
+    readonly maxBytes?: number;
   };
 }
 

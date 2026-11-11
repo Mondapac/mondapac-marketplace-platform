@@ -12,6 +12,10 @@ import {
   type CatalogMarketPolicy,
 } from '../src/modules/catalog/application/ports/catalog-market-policy';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
+import { OFFER_SELL_UNIT_REPOSITORY } from '../src/modules/catalog/application/ports/offer-sell-unit.repository';
+import { OFFER_SELL_UNITS_READER } from '../src/modules/catalog/application/ports/offer-sell-units.reader';
+import { PRODUCT_SELL_UNIT_FACTS_READER } from '../src/modules/catalog/application/ports/product-sell-unit-facts.reader';
+import { SELL_UNIT_LABELS_READER } from '../src/modules/catalog/application/ports/sell-unit-labels.reader';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
 import { SELLER_ELIGIBILITY_READER } from '../src/modules/catalog/application/ports/seller-eligibility.reader';
 import { SaveWorkingCopy } from '../src/modules/catalog/application/working-copy/save-working-copy.service';
@@ -68,6 +72,14 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
   let offer: Offer | null;
   let saveRefusal: string | null;
   let savedEdits: Offer[];
+  let sellUnitRows: {
+    variantId: string;
+    variantNo: number;
+    variantSku: string | null;
+    selling: boolean;
+  }[];
+  let sellUnitSaves: unknown[][];
+  let sellUnitRefusal: string | null;
   let offerReads: number;
   let allowed: unknown;
   let verdicts: unknown[];
@@ -109,6 +121,65 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
               savedEdits.push(edited);
               return Promise.resolve(null);
             },
+          })
+          .overrideProvider(OFFER_SELL_UNIT_REPOSITORY)
+          .useValue({
+            lockOffer: () => Promise.resolve(),
+            unitsOf: () => Promise.resolve(sellUnitRows),
+            save: (_m: unknown, _o: unknown, states: unknown[]) => {
+              if (sellUnitRefusal !== null) return Promise.resolve({ refusal: sellUnitRefusal });
+              sellUnitSaves.push(states);
+              return Promise.resolve({ refusal: null, stored: [] });
+            },
+          })
+          .overrideProvider(OFFER_SELL_UNITS_READER)
+          .useValue({
+            read: (_m: unknown, ids: Id<'Offer'>[]) =>
+              Promise.resolve(
+                new Map(
+                  ids.map((offerId) => [
+                    offerId,
+                    {
+                      sellerId: SELLER,
+                      productId: PRODUCT,
+                      status: 'draft',
+                      listed: false,
+                      sellUnits: sellUnitRows.map((row) => ({
+                        variantId: row.variantId,
+                        state: 'published',
+                        selling: row.selling,
+                        variantSku: row.variantSku,
+                      })),
+                    },
+                  ]),
+                ),
+              ),
+          })
+          .overrideProvider(PRODUCT_SELL_UNIT_FACTS_READER)
+          .useValue({
+            read: () =>
+              Promise.resolve({
+                scope: 'PLATFORM',
+                productCode: 'MP-000123',
+                variants: sellUnitRows.map((row) => ({
+                  variantId: row.variantId,
+                  variantNo: row.variantNo,
+                })),
+              }),
+          })
+          .overrideProvider(SELL_UNIT_LABELS_READER)
+          .useValue({
+            read: (_m: unknown, keys: { offerId: string; variantId: string }[]) =>
+              Promise.resolve(
+                new Map(
+                  keys
+                    .filter((key) => key.variantId.endsWith('a101'))
+                    .map((key) => [
+                      `${key.offerId}:${key.variantId}`,
+                      { productName: 'Rice', variantLabel: 'Small' },
+                    ]),
+                ),
+              ),
           })
           .overrideProvider(SELLER_ELIGIBILITY_READER)
           .useValue({ isEligible: () => Promise.resolve(eligible) })
@@ -256,6 +327,9 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
     offer = null;
     saveRefusal = null;
     savedEdits = [];
+    sellUnitRows = [];
+    sellUnitSaves = [];
+    sellUnitRefusal = null;
     offerReads = 0;
     allowed = 'all';
     verdicts = [];
@@ -314,6 +388,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       'seller.not-eligible': 403,
       'offer.exists-for-product': 409,
       'offer.sku-taken': 409,
+      'offer.none-selling': 422,
       'type.not-allowed': 422,
       'setting.sell-from-catalogue-off': 422,
       'claim-text.refused': 422,
@@ -1348,6 +1423,225 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       for (const status of ['200', '400', '401', '403', '404', '409', '415', '422', '429', '503']) {
         expect(attestation).toHaveProperty(status);
       }
+    });
+  });
+  describe.each(TEST_MARKETS)('sell units in market %s', (code) => {
+    const OFFER = id<'Offer'>(0x9101);
+    const V1 = id<'Variant'>(0xa101);
+    const V2 = id<'Variant'>(0xa102);
+    const url = `/catalog/seller/offers/${OFFER}/sell-units`;
+    const put = (path: string, payload: unknown, headers: Record<string, string>) =>
+      http()
+        .put(path)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...headers })
+        .send(payload as object);
+    const ownOffer = (overrides: Partial<OfferState> = {}) =>
+      Offer.restore({
+        id: OFFER,
+        marketId: code as AccountState['marketId'],
+        sellerId: SELLER,
+        productId: PRODUCT,
+        sellerSku: 'SKU-1',
+        conditionCode: 'new',
+        description: {},
+        handling: null,
+        attestationRecordedAt: null,
+        attestationAccountId: null,
+        status: 'draft',
+        offSaleCauses: [],
+        listed: false,
+        submittedAt: null,
+        firstPublishedAt: null,
+        deletedAt: null,
+        version: 2,
+        createdAt: START,
+        ...overrides,
+      });
+    const rows = () => [
+      { variantId: V1, variantNo: 1, variantSku: null, selling: true },
+      { variantId: V2, variantNo: 2, variantSku: null, selling: true },
+    ];
+
+    it('turns a unit off sale and answers the changed variant ids', async () => {
+      await boot();
+      await seeded(code);
+      offer = ownOffer();
+      sellUnitRows = rows();
+      const answer = await put(
+        url,
+        { units: [{ variantId: V2, selling: false }] },
+        sessionOf(code),
+      );
+      expect(answer.status).toBe(200);
+      expect(answer.body).toEqual({ changedVariantIds: [V2] });
+      expect(sellUnitSaves).toHaveLength(1);
+    });
+
+    it('refuses without the CSRF token and without a session', async () => {
+      await boot();
+      await seeded(code);
+      offer = ownOffer();
+      sellUnitRows = rows();
+      const session = sessionOf(code);
+      const body = { units: [{ variantId: V2, selling: false }] };
+      expect((await put(url, body, { cookie: session.cookie })).body).toEqual({
+        statusCode: 403,
+        code: 'request.csrf',
+      });
+      expect((await put(url, body, {})).status).toBe(401);
+      expect(sellUnitSaves).toHaveLength(0);
+    });
+
+    it('refuses an unknown field, an unknown variant and an empty list', async () => {
+      await boot();
+      await seeded(code);
+      offer = ownOffer();
+      sellUnitRows = rows();
+      const session = sessionOf(code);
+      const extra = await put(url, { units: [], handling: 'FRESH' }, session);
+      expect(extra.status).toBe(400);
+      expect(extra.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'handling', code: 'unknown-field' }] },
+      });
+      expect((await put(url, { units: [] }, session)).status).toBe(400);
+      const unknown = await put(
+        url,
+        { units: [{ variantId: id<'Variant'>(0xa1ff), selling: false }] },
+        session,
+      );
+      expect(unknown.status).toBe(400);
+      expect(sellUnitSaves).toHaveLength(0);
+    });
+
+    it('maps the refusals: last unit 422, taken SKU 409, spent budget 429', async () => {
+      await boot();
+      await seeded(code);
+      offer = ownOffer();
+      sellUnitRows = rows();
+      const session = sessionOf(code);
+      const last = await put(
+        url,
+        {
+          units: [
+            { variantId: V1, selling: false },
+            { variantId: V2, selling: false },
+          ],
+        },
+        session,
+      );
+      expect(last.status).toBe(422);
+      expect(last.body).toMatchObject({ code: 'offer.none-selling' });
+      sellUnitRefusal = 'offer.sku-taken';
+      const taken = await put(url, { units: [{ variantId: V1, variantSku: 'DUP' }] }, session);
+      expect(taken.status).toBe(409);
+      expect(taken.body).toMatchObject({ code: 'offer.sku-taken' });
+      reserve = { code: 'request.throttled', retryAfterSeconds: 30 };
+      const throttled = await put(url, { units: [{ variantId: V1, selling: false }] }, session);
+      expect(throttled.status).toBe(429);
+    });
+
+    const get = (headers: Record<string, string>) =>
+      http()
+        .get(url)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...headers });
+
+    it('reads the sell units: scope, SKU, codes, labels, switch and SKU, in variant order', async () => {
+      await boot();
+      await seeded(code);
+      offer = ownOffer();
+      sellUnitRows = [
+        { variantId: V2, variantNo: 2, variantSku: 'PK-2', selling: false },
+        { variantId: V1, variantNo: 1, variantSku: null, selling: true },
+      ];
+      const answer = await get({ cookie: sessionOf(code).cookie });
+      expect(answer.status).toBe(200);
+      expect(answer.headers['cache-control']).toBe('no-store');
+      expect(answer.body).toEqual({
+        productScope: 'PLATFORM',
+        sellerSku: 'SKU-1',
+        units: [
+          {
+            variantId: V1,
+            variantNo: 1,
+            variantCode: 'MP-000123-01',
+            state: 'published',
+            label: 'Small',
+            selling: true,
+            variantSku: null,
+            displaySku: 'SKU-1-1',
+          },
+          {
+            variantId: V2,
+            variantNo: 2,
+            variantCode: 'MP-000123-02',
+            state: 'published',
+            label: null,
+            selling: false,
+            variantSku: 'PK-2',
+            displaySku: 'PK-2',
+          },
+        ],
+      });
+      expect((await get({})).status).toBe(401);
+    });
+
+    it('refuses the read with 403 for a seller without catalog.own-product.view', async () => {
+      await boot();
+      await seeded(code);
+      offer = ownOffer();
+      sellUnitRows = rows();
+      fakes.assignments.clear();
+      const answer = await get({ cookie: sessionOf(code).cookie });
+      expect(answer.status).toBe(403);
+      expect(answer.body).toMatchObject({ code: 'access.denied' });
+    });
+
+    it('answers a bad id and every Offer that is not the seller’s to read with the same 404 body', async () => {
+      await boot();
+      await seeded(code);
+      sellUnitRows = rows();
+      const bodies: string[] = [];
+      for (const found of [
+        null,
+        ownOffer({ sellerId: id<'Seller'>(0xb999) }),
+        ownOffer({ status: 'deleted', deletedAt: START }),
+      ]) {
+        offer = found;
+        const answer = await get({ cookie: sessionOf(code).cookie });
+        expect(answer.status).toBe(404);
+        bodies.push(JSON.stringify(answer.body));
+      }
+      const bad = await http()
+        .get('/catalog/seller/offers/not-an-id/sell-units')
+        .set({
+          'x-market-id': code,
+          ...panelHeaders(code, 'seller'),
+          cookie: sessionOf(code).cookie,
+        });
+      expect(bad.status).toBe(404);
+      bodies.push(JSON.stringify(bad.body));
+      expect(new Set(bodies).size).toBe(1);
+    });
+
+    it('answers every Offer that is not the seller’s with the same 404 body', async () => {
+      await boot();
+      await seeded(code);
+      sellUnitRows = rows();
+      const session = sessionOf(code);
+      const bodies: string[] = [];
+      for (const found of [
+        null,
+        ownOffer({ sellerId: id<'Seller'>(0xb999) }),
+        ownOffer({ status: 'deleted', deletedAt: START }),
+      ]) {
+        offer = found;
+        const answer = await put(url, { units: [{ variantId: V1, selling: false }] }, session);
+        expect(answer.status).toBe(404);
+        bodies.push(JSON.stringify(answer.body));
+      }
+      expect(new Set(bodies).size).toBe(1);
+      expect(sellUnitSaves).toHaveLength(0);
     });
   });
 });

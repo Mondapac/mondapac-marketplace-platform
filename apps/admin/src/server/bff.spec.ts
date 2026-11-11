@@ -746,6 +746,41 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(404);
     expect((await call('POST', `pricing/admin/price-holds/${ID}/delete`)).status).toBe(404);
   });
+  it('relays the product version decisions and the photo takedown by UUID, POST only', async () => {
+    const id = '0190a000-0000-7000-8000-0000000000c1';
+    const request = (method: string, path: string) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      });
+    for (const path of [
+      `catalog/admin/products/${id}/revisions/${id}/approve`,
+      `catalog/admin/products/${id}/revisions/${id}/request-changes`,
+      `catalog/admin/products/${id}/images/${id}/take-down`,
+    ]) {
+      expect(
+        (await relay(config, request('POST', path), path.split('/'), upstreamOk())).status,
+        path,
+      ).toBe(200);
+    }
+    for (const [method, path] of [
+      ['PUT', `catalog/admin/products/${id}/revisions/${id}/approve`],
+      ['POST', `catalog/admin/products/nope/revisions/${id}/approve`],
+      ['POST', `catalog/admin/products/${id}/revisions/nope/request-changes`],
+      ['POST', `catalog/admin/products/${id}/revisions/${id}/delete`],
+      ['DELETE', `catalog/admin/products/${id}/images/${id}/take-down`],
+      ['POST', `catalog/admin/products/${id}/images/${id}`],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      expect(
+        (await relay(config, request(method, path), path.split('/'), fetchImpl)).status,
+        `${method} ${path}`,
+      ).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+
   it('relays the offer decisions by UUID, POST only', async () => {
     const id = '0190a000-0000-7000-8000-0000000000c1';
     const request = (method: string, path: string) =>
@@ -1176,6 +1211,10 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', `catalog/admin/business-activities/${id}`],
     ['POST', 'catalog/admin/business-activities'],
     ['PUT', `catalog/admin/business-activities/${id}`],
+    ['GET', 'catalog/admin/topics'],
+    ['GET', `catalog/admin/topics/${id}`],
+    ['POST', 'catalog/admin/topics'],
+    ['PUT', `catalog/admin/topics/${id}`],
     ['GET', 'catalog/admin/attributes'],
     ['GET', `catalog/admin/attributes/${id}`],
     ['POST', 'catalog/admin/attributes'],
@@ -1188,6 +1227,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/attribute-suggestions/${id}/reject`],
     ['GET', 'catalog/admin/attribute-relaxations'],
     ['GET', 'catalog/admin/attribute-archive-requests'],
+    ['GET', 'catalog/admin/reports/products-missing-details'],
     ['POST', `catalog/admin/attributes/${id}/relaxation-requests`],
     ['POST', `catalog/admin/attribute-relaxations/${id}/confirm`],
     ['POST', `catalog/admin/attribute-relaxations/${id}/cancel`],
@@ -1199,6 +1239,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/attribute-archive-requests/${id}/confirm`],
     ['GET', 'catalog/admin/feature-sets'],
     ['GET', `catalog/admin/feature-sets/${id}`],
+    ['PUT', `catalog/admin/feature-sets/${id}`],
   ])('relays %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1246,6 +1287,10 @@ describe('relay of the wallet and step-up routes', () => {
     ['PUT', 'catalog/admin/business-activities/not-a-uuid'],
     ['POST', `catalog/admin/business-activities/${id}`],
     ['GET', 'catalog/admin/business-activities/not-a-uuid'],
+    ['DELETE', `catalog/admin/topics/${id}`],
+    ['PUT', 'catalog/admin/topics'],
+    ['POST', `catalog/admin/topics/${id}`],
+    ['GET', 'catalog/admin/topics/not-a-uuid'],
     ['PUT', 'catalog/admin/attributes'],
     ['POST', 'catalog/admin/attribute-suggestions'],
     ['POST', `catalog/admin/attribute-suggestions/${id}`],
@@ -1272,6 +1317,9 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', 'catalog/admin/attributes/not-a-uuid'],
     ['POST', 'catalog/admin/feature-sets'],
     ['GET', 'catalog/admin/feature-sets/not-a-uuid'],
+    ['PUT', 'catalog/admin/feature-sets/not-a-uuid'],
+    ['PUT', 'catalog/admin/feature-sets'],
+    ['DELETE', `catalog/admin/feature-sets/${id}`],
   ])('does not relay %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1335,6 +1383,23 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe(
       'http://api.test/catalog/admin/business-activities',
     );
+  });
+
+  it('passes only status, group, search, afterId and limit of the tag list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/topics?status=archived&group=cuisine&search=bbq&afterId=${id}&limit=25&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/topics?status=archived&group=cuisine&search=bbq&afterId=${id}&limit=25`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/topics?status=inactive&group=season&afterId=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/topics');
   });
 
   it('passes only the action of the category impact read, in its shape, and no query on the tree', async () => {
@@ -1684,6 +1749,30 @@ describe('relay of the product list', () => {
       );
     });
 
+    it('relays the Tags column, and all eight columns at once', async () => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        get('catalog/admin/products/export?columns=code,tags'),
+        exportPath,
+        upstream,
+      );
+      await relay(
+        config,
+        get(
+          'catalog/admin/products/export?columns=code,offers,updated,type,scope,seller,created,tags',
+        ),
+        exportPath,
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        'http://api.test/catalog/admin/products/export?columns=code%2Ctags',
+      );
+      expect(upstream.mock.calls[1]?.[0]).toBe(
+        'http://api.test/catalog/admin/products/export?columns=code%2Coffers%2Cupdated%2Ctype%2Cscope%2Cseller%2Ccreated%2Ctags',
+      );
+    });
+
     it('relays the xlsx format and drops any other', async () => {
       const upstream = upstreamOk();
       await relay(config, get('catalog/admin/products/export?format=xlsx'), exportPath, upstream);
@@ -1777,6 +1866,10 @@ describe('relay of the product list', () => {
         ['POST', 'catalog/admin/platform-products'],
         ['PUT', `catalog/admin/platform-products/${id}/draft`],
         ['POST', `catalog/admin/platform-products/${id}/submit`],
+        ['POST', `catalog/admin/platform-products/${id}/discard`],
+        ['GET', `catalog/admin/platform-products/${id}/images`],
+        ['POST', `catalog/admin/platform-products/${id}/images`],
+        ['DELETE', `catalog/admin/platform-products/${id}/images/${id}`],
       ] as const) {
         const ok = upstreamOk();
         expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
@@ -1795,7 +1888,15 @@ describe('relay of the product list', () => {
         ['POST', `catalog/admin/platform-products/${id}`],
         ['DELETE', `catalog/admin/platform-products/${id}`],
         ['PUT', `catalog/admin/platform-products/${id}/submit`],
+        ['GET', `catalog/admin/platform-products/${id}/discard`],
+        ['PUT', `catalog/admin/platform-products/${id}/discard`],
         ['POST', `catalog/admin/platform-products/${id}/retire`],
+        ['PUT', `catalog/admin/platform-products/${id}/images`],
+        ['DELETE', `catalog/admin/platform-products/${id}/images`],
+        ['GET', `catalog/admin/platform-products/${id}/images/${id}`],
+        ['POST', `catalog/admin/platform-products/${id}/images/${id}`],
+        ['DELETE', `catalog/admin/platform-products/${id}/images/not-a-uuid`],
+        ['GET', `catalog/admin/products/${id}/images/${id}/original`],
       ] as const) {
         const fetchImpl = upstreamOk();
         const response = await relay(config, request(method, path), path.split('/'), fetchImpl);
@@ -1803,6 +1904,156 @@ describe('relay of the product list', () => {
         expect(fetchImpl).not.toHaveBeenCalled();
       }
     });
+  });
+
+  describe('the certificates card of the product form', () => {
+    const base = 'certification/admin/product-certificates';
+    const request = (
+      method: string,
+      path: string,
+      body = '{}',
+      headers: Record<string, string> = { ...sameOrigin, cookie: '__Host-session-admin-AU=abc' },
+    ) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers,
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it('relays exactly the routes the card uses, with a UUID where an id stands', async () => {
+      for (const [method, path] of [
+        ['GET', `${base}/for-product/${id}`],
+        ['GET', `${base}/options`],
+        ['GET', `${base}/${id}`],
+        ['GET', `${base}/${id}/history`],
+        ['POST', base],
+        ['PUT', `${base}/${id}/draft`],
+        ['POST', `${base}/${id}/documents`],
+        ['POST', `${base}/${id}/submit`],
+      ] as const) {
+        const upstream = upstreamOk();
+        const response = await relay(config, request(method, path), path.split('/'), upstream);
+        expect(response.status, `${method} ${path}`).toBe(200);
+        expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+      }
+    });
+
+    it('refuses the reviewer routes, other methods, a malformed id and any other shape', async () => {
+      for (const [method, path] of [
+        ['GET', base],
+        ['GET', `${base}/not-a-uuid`],
+        ['GET', `${base}/for-product/not-a-uuid`],
+        ['GET', `${base}/for-product`],
+        ['GET', `${base}/${id}/review`],
+        ['GET', `${base}/${id}/draft`],
+        ['GET', `${base}/${id}/documents`],
+        ['PUT', base],
+        ['PUT', `${base}/options`],
+        ['POST', `${base}/options`],
+        ['POST', `${base}/${id}`],
+        ['POST', `${base}/${id}/approve`],
+        ['POST', `${base}/${id}/reject`],
+        ['POST', `${base}/${id}/suspend`],
+        ['POST', `${base}/${id}/revoke`],
+        ['POST', `${base}/${id}/reinstate`],
+        ['POST', `${base}/${id}/checks`],
+        ['POST', `${base}/${id}/draft`],
+        ['PUT', `${base}/${id}/submit`],
+        ['DELETE', `${base}/${id}/documents/${id}`],
+        ['DELETE', `${base}/${id}`],
+      ] as const) {
+        const upstream = upstreamOk();
+        const response = await relay(config, request(method, path), path.split('/'), upstream);
+        expect(response.status, `${method} ${path}`).toBe(404);
+        expect(upstream).not.toHaveBeenCalled();
+      }
+    });
+
+    it('lets only the document route carry a file of up to 10 MiB as base64 and keeps the rest at 16 KB', async () => {
+      const upstream = upstreamOk();
+      const documents = `${base}/${id}/documents`;
+      const large = JSON.stringify({ version: 2, data: 'A'.repeat(13 * 1024 * 1024) });
+      expect(
+        (await relay(config, request('POST', documents, large), documents.split('/'), upstream))
+          .status,
+      ).toBe(200);
+      const tooLarge = JSON.stringify({ version: 2, data: 'A'.repeat(15 * 1024 * 1024) });
+      expect(
+        (await relay(config, request('POST', documents, tooLarge), documents.split('/'), upstream))
+          .status,
+      ).toBe(413);
+      for (const path of [`${base}/${id}/submit`, base]) {
+        expect(
+          (await relay(config, request('POST', path, large), path.split('/'), upstream)).status,
+        ).toBe(413);
+      }
+      const draft = `${base}/${id}/draft`;
+      expect(
+        (await relay(config, request('PUT', draft, large), draft.split('/'), upstream)).status,
+      ).toBe(413);
+      expect(upstream).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a document upload without a session cookie before reading its body', async () => {
+      const upstream = upstreamOk();
+      const documents = `${base}/${id}/documents`;
+      const large = JSON.stringify({ version: 2, data: 'A'.repeat(13 * 1024 * 1024) });
+      for (const cookie of [undefined, 'theme=dark', '__Host-session-seller-AU=abc']) {
+        const headers: Record<string, string> = {
+          ...sameOrigin,
+          ...(cookie === undefined ? {} : { cookie }),
+        };
+        const response = await relay(
+          config,
+          request('POST', documents, large, headers),
+          documents.split('/'),
+          upstream,
+        );
+        expect(response.status, String(cookie)).toBe(401);
+        expect(((await response.json()) as { code: string }).code).toBe('session.invalid');
+      }
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('refuses an unsafe call that is not same-origin', async () => {
+      const upstream = upstreamOk();
+      const submit = `${base}/${id}/submit`;
+      expect(
+        (
+          await relay(
+            config,
+            request('POST', submit, '{}', { host: 'admin.localhost:3002' }),
+            submit.split('/'),
+            upstream,
+          )
+        ).status,
+      ).toBe(403);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+  });
+
+  it('lets a platform product photo carry up to 5.8 MB and keeps the draft save at 16 KB', async () => {
+    const send = (method: string, path: string, body: string) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        body,
+      });
+    const images = `catalog/admin/platform-products/${id}/images`;
+    const large = JSON.stringify({ data: 'A'.repeat(5 * 1024 * 1024) });
+    const tooLarge = JSON.stringify({ data: 'A'.repeat(6 * 1024 * 1024) });
+    const upstream = upstreamOk();
+    expect(
+      (await relay(config, send('POST', images, large), images.split('/'), upstream)).status,
+    ).toBe(200);
+    expect(
+      (await relay(config, send('POST', images, tooLarge), images.split('/'), upstream)).status,
+    ).toBe(413);
+    const draft = `catalog/admin/platform-products/${id}/draft`;
+    expect(
+      (await relay(config, send('PUT', draft, large), draft.split('/'), upstream)).status,
+    ).toBe(413);
+    expect(upstream).toHaveBeenCalledTimes(1);
   });
 
   describe('the saved filters of the product list', () => {
@@ -1871,10 +2122,15 @@ describe('relay of the product list', () => {
     });
   });
 
-  it('refuses a write, another photo size, a take-down and a product that is not a UUID', async () => {
+  it('relays the large photo of a version review, GET only', async () => {
+    const large = ['catalog', 'admin', 'products', id, 'images', id, 'large'];
+    expect((await relay(config, get(large.join('/')), large, upstreamOk())).status).toBe(200);
+  });
+
+  it('refuses a write, another photo size, a take-down read and a product that is not a UUID', async () => {
     const upstream = upstreamOk();
     expect((await relay(config, post('catalog/admin/products'), path, upstream)).status).toBe(404);
-    for (const tail of ['large', 'medium', 'take-down']) {
+    for (const tail of ['medium', 'original', 'take-down']) {
       const other = ['catalog', 'admin', 'products', id, 'images', id, tail];
       expect((await relay(config, get(other.join('/')), other, upstream)).status).toBe(404);
     }

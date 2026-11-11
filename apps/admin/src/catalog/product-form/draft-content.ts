@@ -42,6 +42,12 @@ export function categoryIdsOf(content: Readonly<Record<string, unknown>> | undef
   return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : [];
 }
 
+/** The tag ids a draft lists, in the order entered; anything that is not a string is ignored. */
+export function topicIdsOf(content: Readonly<Record<string, unknown>> | undefined): string[] {
+  const raw = content?.['topicIds'];
+  return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === 'string') : [];
+}
+
 export function taxCategoryOf(content: Readonly<Record<string, unknown>> | undefined): string {
   const raw = content?.['taxCategoryCode'];
   return typeof raw === 'string' ? raw : '';
@@ -218,10 +224,14 @@ export function contentFrom(
   content: Record<string, unknown>,
   parts: {
     readonly categoryIds: readonly string[];
+    /** The tag ids in the order picked; `undefined` leaves the draft's `topicIds` alone. */
+    readonly topicIds?: readonly string[];
     readonly taxCategoryCode: string;
     readonly attributeValues: Record<string, unknown>;
     /** `null` for a product whose variants are fixed: its `variants` key is left alone. */
     readonly variants: Record<string, unknown>[] | null;
+    /** The axis codes of a configurable product; `null` leaves the draft's `variantAxes` alone. */
+    readonly variantAxes?: readonly string[] | null;
   },
 ): Record<string, unknown> {
   const next = { ...content };
@@ -233,8 +243,15 @@ export function contentFrom(
     else next[key] = value;
   };
   set('categoryIds', [...parts.categoryIds], parts.categoryIds.length === 0);
+  if (parts.topicIds !== undefined) {
+    set('topicIds', [...parts.topicIds], parts.topicIds.length === 0);
+  }
   set('taxCategoryCode', parts.taxCategoryCode, parts.taxCategoryCode === '');
   set('attributeValues', parts.attributeValues, Object.keys(parts.attributeValues).length === 0);
   if (parts.variants !== null) set('variants', parts.variants, parts.variants.length === 0);
+  if (parts.variantAxes !== undefined && parts.variantAxes !== null) {
+    // An empty list is kept: an absent key means "every candidate" to the server.
+    next['variantAxes'] = [...parts.variantAxes];
+  }
   return next;
 }

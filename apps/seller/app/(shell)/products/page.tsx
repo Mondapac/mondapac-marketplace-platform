@@ -1,47 +1,56 @@
-import { LinkButton } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { headers } from 'next/headers';
 import { catalogStateFor } from '../../../src/catalog/catalog-states.tsx';
-import { Pager } from '../../../src/catalog/pager.tsx';
-import { ProductsTable } from '../../../src/catalog/products-table.tsx';
-import { EDIT_PERMISSION, type Page, type ProductListItem } from '../../../src/catalog/types.ts';
-import { afterIdParam, loadCatalogPage } from '../../../src/server/catalog-page.ts';
+import { ProductsList } from '../../../src/catalog/products-list.tsx';
+import type { CategoryTree, ListPagingMode } from '../../../src/catalog/products-list-types.ts';
+import { EDIT_PERMISSION, type ProductOptions } from '../../../src/catalog/types.ts';
+import { panelHostFor } from '../../../src/server/bff.ts';
+import { catalogGate } from '../../../src/server/catalog-page.ts';
+import { panelConfig } from '../../../src/server/config.ts';
 import { SellerShell } from '../../../src/server/seller-shell.tsx';
+import { serverGet } from '../../../src/server/server-fetch.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
   return { title: t('catalog.products.title') };
 }
 
-export default async function ProductsPage({
-  searchParams,
-}: {
-  readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const after = afterIdParam((await searchParams).after);
+/**
+ * The Products page: the list itself loads in the browser (it follows the address, which keeps the
+ * view, search, filters, sort and page). The page reads what the list needs once: the category
+ * tree, the Market's product types and the Market's "List paging" setting. A read that fails
+ * only leaves its filter out, or pages with Previous and next.
+ */
+export default async function ProductsPage() {
   const t = await getTranslations();
   const title = t('catalog.products.title');
-  const page = await loadCatalogPage<Page<ProductListItem>>(
-    `catalog/seller/products${after === undefined ? '' : `?afterId=${after}`}`,
-  );
-  const state = await catalogStateFor(page, 's_products', title);
-  if (state !== null || page.kind !== 'ok') return state;
-  const canAdd = page.session.permissionKeys.includes(EDIT_PERMISSION);
+  const gate = await catalogGate();
+  if (gate.kind !== 'ok') return catalogStateFor(gate, 's_products', title);
+  const { session } = gate;
+  const canEdit = session.permissionKeys.includes(EDIT_PERMISSION);
+  const [tree, options, listPaging] = await Promise.all([
+    serverGet<CategoryTree>('catalog/categories'),
+    // The product types come with the form options, which need the edit key.
+    canEdit
+      ? serverGet<ProductOptions>('catalog/seller/products/options')
+      : Promise.resolve(undefined),
+    serverGet<{ readonly listPaging: string }>('settings/seller/list-paging'),
+  ]);
+  const paging: ListPagingMode =
+    listPaging.kind === 'ok' && listPaging.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
   return (
-    <SellerShell session={page.session} activeId="s_products" title={title}>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        {/* An empty list carries the action in its empty state, so it is shown once. */}
-        {canAdd && page.body.items.length > 0 ? (
-          <LinkButton href="/products/new">{t('catalog.products.new')}</LinkButton>
-        ) : null}
-      </div>
-      <ProductsTable
-        items={page.body.items}
-        emptyAction={
-          canAdd ? <LinkButton href="/products/new">{t('catalog.products.new')}</LinkButton> : null
-        }
+    <SellerShell session={session} activeId="s_products" title={title}>
+      <ProductsList
+        accountId={session.accountId}
+        marketId={marketId}
+        timeZone={session.timezone}
+        permissionKeys={session.permissionKeys}
+        csrfToken={session.csrfToken}
+        categories={tree.kind === 'ok' ? tree.body.categories : []}
+        productTypes={options?.kind === 'ok' ? options.body.productTypes : []}
+        paging={paging}
       />
-      <Pager basePath="/products" nextAfterId={page.body.nextAfterId} />
     </SellerShell>
   );
 }

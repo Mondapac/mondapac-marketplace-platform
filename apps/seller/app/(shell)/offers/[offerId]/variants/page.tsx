@@ -5,6 +5,7 @@ import { catalogStateFor } from '../../../../../src/catalog/catalog-states.tsx';
 import { OfferHeader } from '../../../../../src/catalog/offer-header.tsx';
 import { VariantsTable } from '../../../../../src/catalog/variants-table.tsx';
 import { PRICE_EDIT_PERMISSION, PRICE_VIEW_PERMISSION } from '../../../../../src/price/types.ts';
+import { EDIT_PERMISSION } from '../../../../../src/catalog/types.ts';
 import { isUuid } from '../../../../../src/server/catalog-page.ts';
 import { SellerShell } from '../../../../../src/server/seller-shell.tsx';
 import { loadVariantsPage } from '../../../../../src/server/variants-page.ts';
@@ -53,7 +54,13 @@ export default async function OfferVariantsPage({
           currency={page.currency}
           canEditPrice={permissionKeys.includes(PRICE_EDIT_PERMISSION)}
           canEditStock={permissionKeys.includes(STOCK_EDIT_PERMISSION)}
+          units={
+            page.units === null
+              ? null
+              : { ...page.units, canEdit: permissionKeys.includes(EDIT_PERMISSION) }
+          }
           csrfToken={page.session.csrfToken}
+          fileModel={page.fileModel}
         />
       </div>
     </SellerShell>

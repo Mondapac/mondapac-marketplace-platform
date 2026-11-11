@@ -16,7 +16,15 @@ import {
   sampleSellerId,
 } from './sample-catalog.ts';
 import { storefrontApiConfig } from './config.ts';
-import { liveCategory, liveProducts, type CategoryScope, type Reader } from './listing-source.ts';
+import { liveFilterCount, type LiveFilters } from '../catalog/live-filters.ts';
+import {
+  liveCategory,
+  liveProducts,
+  type CategoryScope,
+  type ExactMatch,
+  type LiveFilterGroup,
+  type Reader,
+} from './listing-source.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleSellers } from './sample-sellers.ts';
 import type {
@@ -37,9 +45,10 @@ import type {
 // them so the approved design can be built, and the backend adds them as their own package.
 //
 // With API_BASE_URL set the reads below go to the API (./listing-source.ts) and never mix in the
-// sample: what the route cannot do answers nothing. A filter in a shared URL matches nothing, the
-// order is always the route's best match, there is no total, no facet count, no promotion banner,
-// no category counts and no store search. The pages leave those controls out (`listingIsLive`).
+// sample: what the route cannot do answers nothing. The route's own attribute and price filters
+// (`live`, ../catalog/live-filters.ts) are sent; a sample filter in a shared URL matches nothing,
+// the order is always the route's best match, there is no total, no promotion banner, no category
+// counts and no store search. The pages leave those controls out (`listingIsLive`).
 
 export const PAGE_SIZE = 24;
 export const MAX_PAGE = 100;
@@ -56,8 +65,10 @@ export interface ProductQuery {
   readonly direct?: boolean;
   readonly page: number;
   readonly pageSize?: number;
-  /** Listing filters; not in the API yet. */
+  /** Listing filters of the sample; not in the API. */
   readonly filters?: ListingFilters;
+  /** Attribute and price filters of the API (A7, V8); the sample ignores them. */
+  readonly live?: LiveFilters;
   /** Listing order; not in the API yet. */
   readonly sort?: Sort;
 }
@@ -71,7 +82,13 @@ export interface ProductPage {
   readonly hasMore: boolean;
   /** Number of matching products, when the source knows it (the listing's sample does). */
   readonly total?: number;
+  /** The API's filters of the listing with their counts; absent on sample data. */
+  readonly liveFilters?: readonly LiveFilterGroup[];
+  /** The variant a GTIN query names exactly (the search page opens it); API only. */
+  readonly exactMatch?: ExactMatch;
 }
+
+export type { ExactMatch, LiveFilterGroup };
 
 /** One option of a filter group with the number of products it holds in the listing. */
 export interface FacetOption {
@@ -223,12 +240,18 @@ export async function findProducts(query: ProductQuery, read?: Reader): Promise<
       ...(query.category === undefined ? {} : { category: query.category }),
       ...(query.subcategory === undefined ? {} : { subcategory: query.subcategory }),
       ...(query.direct === true ? { direct: true } : {}),
+      ...(query.live === undefined || liveFilterCount(query.live) === 0
+        ? {}
+        : { filters: query.live }),
       page: query.page,
       pageSize,
     },
     read,
   );
-  if (live !== undefined) return { ...live, page: query.page, pageSize };
+  if (live !== undefined) {
+    const { filters, ...rest } = live;
+    return { ...rest, liveFilters: filters, page: query.page, pageSize };
+  }
   const filters = query.filters ?? NO_FILTERS;
   const matches = inScope(query)
     .filter((p) => matchesFilters(p, filters))

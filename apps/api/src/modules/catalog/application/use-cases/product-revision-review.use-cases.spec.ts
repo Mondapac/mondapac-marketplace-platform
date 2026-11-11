@@ -134,6 +134,7 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
     content: {
       texts: { [locale]: { name: 'Dates', shortDescription: null, description: null } },
       categoryIds: [],
+      topicIds: [],
       taxCategoryCode: taxCode,
       attributeValues: {},
       variants: [
@@ -685,7 +686,7 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       ]);
       expect(r.events).toHaveLength(1);
       expect(r.events[0]).toMatchObject({
-        type: 'catalog.product-revision-changes-requested.v1',
+        type: 'catalog.product-revision-changes-requested.v2',
         payload: { productId, revisionId, reasonCode: 'description-claim', scope: 'seller' },
       });
     });

@@ -72,6 +72,12 @@ export class SearchResultItemBody extends ProductSearchItemBody {
       'nothing narrowed to a variant); null when none is in stock and priced.',
   })
   price!: SearchItemPriceBody | null;
+  @ApiProperty({
+    type: [ProductImageRefBody],
+    description:
+      'All public photos of the product in the published revision order (the first is `primaryImage`); at most 8, empty for none.',
+  })
+  images!: ProductImageRefBody[];
 }
 
 export class SearchFilterOptionBody {

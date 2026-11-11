@@ -134,7 +134,7 @@ strategy implementation, not in core logic.
 - `docker compose up -d` starts Postgres, Redis, mail catcher (no object storage yet, ADR-0016). Copy `.env.example`
   to `.env` first.
 - `pnpm install` / `pnpm dev` / `pnpm build` / `pnpm lint` / `pnpm typecheck` / `pnpm format`
-- `pnpm dev` builds the shared kernel first; restart it after a kernel change. `pnpm build`
+- `pnpm dev` builds the shared kernel and `packages/platform-import` first; restart it after a change to either. `pnpm build`
   ends with `scripts/check-built-kernel.mjs`, which checks that the built API loads one build
   of the shared kernel.
 - `APP_ROLE` (api | worker) is required, no default (P 8; `.env.example` has `api`). `pnpm dev` runs the

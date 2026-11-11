@@ -12,7 +12,8 @@
     "allowJs": false,
     "incremental": true,
     "plugins": [{ "name": "next" }],
-    "types": ["node"]
+    "types": ["node"],
+    "paths": { "@mondapac/platform-import": ["../../packages/platform-import/src/index.ts"] }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]

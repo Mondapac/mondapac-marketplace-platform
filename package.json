@@ -10,7 +10,7 @@
   },
   "scripts": {
     "postinstall": "prisma generate",
-    "dev": "pnpm --filter @mondapac/shared-kernel build && pnpm --filter @mondapac/api dev",
+    "dev": "pnpm --filter @mondapac/shared-kernel --filter @mondapac/platform-import build && pnpm --filter @mondapac/api dev",
     "dev:worker": "node scripts/dev-worker.mjs",
     "dev:seller": "pnpm --filter @mondapac/seller dev",
     "dev:admin": "pnpm --filter @mondapac/admin dev",

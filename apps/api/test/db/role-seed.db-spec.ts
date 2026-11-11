@@ -705,7 +705,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
     const { rows } = await sql.query<{ before: unknown; after: unknown }>(
       `SELECT before, after FROM platform.audit_log
         WHERE market_id = $1 AND target_id = $2 AND action = 'identity.role.seed-applied'
-          AND before->>'seedVersion' = '1' AND after->>'seedVersion' = '14'
+          AND before->>'seedVersion' = '1' AND after->>'seedVersion' = '15'
         ORDER BY occurred_at`,
       [marketId, roleId],
     );
@@ -718,7 +718,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
     expect(registry.get(EDIT)).toMatchObject({ key: EDIT, scope: 'platform', protected: false });
   });
 
-  it('upgrades a Market seeded at catalogue-moderator version 1 to 14 with the keys, in every hosted Market', async () => {
+  it('upgrades a Market seeded at catalogue-moderator version 1 to 15 with the keys, in every hosted Market', async () => {
     // Every hosted Market has its roles (first run creates them, if no other file did yet).
     await expect(runSeedJob()).resolves.toEqual({ outcome: 'ran', failedMarkets: [] });
 
@@ -752,6 +752,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
               'catalog.product.pause',
               'catalog.product.view',
               'catalog.saved-filter.share',
+              'catalog.variant.view',
               'sellers.seller.view',
               'pricing.price-hold.view',
               'certification.type.view',
@@ -773,7 +774,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
 
     for (const code of TEST_MARKETS) {
       const role = await moderatorOf(code);
-      expect(role.seed_version).toBe(14);
+      expect(role.seed_version).toBe(15);
       expect(await keysOf(code, role.id)).toEqual([
         'catalog.attribute-suggestion.decide',
         'catalog.attribute.view',
@@ -786,6 +787,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
         'catalog.product.pause',
         'catalog.product.view',
         'catalog.saved-filter.share',
+        'catalog.variant.view',
         'certification.claim-policy.view',
         'certification.product-certificate.view',
         'certification.type.view',
@@ -798,7 +800,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
       expect(rows.at(-1)).toEqual({
         before: { seedVersion: 1 },
         after: {
-          seedVersion: 14,
+          seedVersion: 15,
           addedKeys: [
             'catalog.attribute-suggestion.decide',
             'catalog.attribute.view',
@@ -811,6 +813,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
             'catalog.product.pause',
             'catalog.product.view',
             'catalog.saved-filter.share',
+            'catalog.variant.view',
             'certification.claim-policy.view',
             'certification.product-certificate.view',
             'certification.type.view',

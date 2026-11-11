@@ -11,25 +11,13 @@ export interface SidebarProps {
   readonly label: (key: string) => string;
   /** Ids of the open groups from the `NAV_OPEN_COOKIE` cookie; the group of the active page opens too. */
   readonly openGroups?: readonly string[];
-  /** Labels of the open-all / close-all button (shown with two or more groups). */
-  readonly expandAll?: string;
-  readonly collapseAll?: string;
 }
 
 // Inside the shell's column the sidebar can be an icon rail (`data-rail` on the `rail` group):
 // labels stay for screen readers and every icon sits on the rail's centre line.
 const RAIL_HIDDEN = 'group-data-[rail=true]/rail:sr-only';
 
-export function Sidebar({
-  panelName,
-  items,
-  groups,
-  activeId,
-  label,
-  openGroups,
-  expandAll,
-  collapseAll,
-}: SidebarProps) {
+export function Sidebar({ panelName, items, groups, activeId, label, openGroups }: SidebarProps) {
   const link = (item: NavItem) => ({
     id: item.id,
     href: item.href,
@@ -66,8 +54,6 @@ export function Sidebar({
         footer={footer.map(link)}
         activeId={activeId}
         openGroups={openGroups}
-        expandAll={expandAll}
-        collapseAll={collapseAll}
       />
     </div>
   );
