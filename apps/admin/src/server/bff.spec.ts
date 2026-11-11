@@ -1050,6 +1050,42 @@ describe('relay of the storefront slides', () => {
     }
   });
 
+  it('reads the page list and the template catalogue, and creates a page with a POST', async () => {
+    for (const [method, path] of [
+      ['GET', 'storefront/admin/pages'],
+      ['GET', 'storefront/admin/catalogue'],
+      ['POST', 'storefront/admin/pages'],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+    }
+  });
+
+  it('keeps one page, and the other methods on the pages, closed for now', async () => {
+    for (const [method, path] of [
+      ['GET', `storefront/admin/pages/${id}`],
+      ['PUT', `storefront/admin/pages/${id}`],
+      ['DELETE', `storefront/admin/pages/${id}`],
+      ['PUT', 'storefront/admin/pages'],
+      ['POST', 'storefront/admin/catalogue'],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(404);
+      expect(ok).not.toHaveBeenCalled();
+    }
+  });
+
+  it('passes no query to the page list', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'storefront/admin/pages?status=draft', { host: 'admin.localhost:3002' }),
+      ['storefront', 'admin', 'pages'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/storefront/admin/pages');
+  });
+
   it('saves the order of a position with a PUT on the fixed order path, not as a slide id', async () => {
     const path = 'storefront/admin/slides/order';
     const upstream = upstreamOk();
