@@ -35,6 +35,8 @@ const MAX_ZOOM = 18;
 const KEY_STEP = 24;
 /** The accuracy ring of a device location, in screen pixels (as on the stub map). */
 const RING_PX = 26;
+/** When the map follows the pin, the tip sits this far below the centre, leaving room for its head. */
+const FOLLOW_OFFSET: [number, number] = [0, 28];
 const ARROWS: Record<string, readonly [number, number]> = {
   ArrowLeft: [-1, 0],
   ArrowRight: [1, 0],
@@ -93,7 +95,9 @@ export function MapboxMap(props: MapboxMapProps) {
   useEffect(() => {
     latest.current = { point, onMove, boundary, accuracy };
   });
+  const latestLabel = useRef(t('pin'));
   const [failed, setFailed] = useState(false);
+  const [zoom, setZoom] = useState(START_ZOOM);
   const pinLabel = t('pin');
 
   useEffect(() => {
@@ -115,6 +119,10 @@ export function MapboxMap(props: MapboxMapProps) {
             dragRotate: false,
             pitchWithRotate: false,
             touchPitch: false,
+            // A double tap would also move the pin twice; the zoom buttons and pinch still zoom.
+            doubleClickZoom: false,
+            // The pin and the zoom buttons take the keys; the canvas is not a second tab stop.
+            keyboard: false,
           });
         } catch {
           setFailed(true);
@@ -126,13 +134,14 @@ export function MapboxMap(props: MapboxMapProps) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'lmpin gl';
-        button.setAttribute('aria-label', pinLabel);
+        button.setAttribute('aria-label', latestLabel.current);
         button.innerHTML =
           '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 1 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>';
         button.addEventListener('keydown', (event) => {
           const step = ARROWS[event.key];
           if (!step) return;
           event.preventDefault();
+          event.stopPropagation();
           const at = live.project(lngLat(latest.current.point));
           const next = live.unproject([at.x + step[0] * KEY_STEP, at.y + step[1] * KEY_STEP]);
           latest.current.onMove({ lat: next.lat, lng: next.lng });
@@ -141,15 +150,26 @@ export function MapboxMap(props: MapboxMapProps) {
         const placed = new gl.Marker({ element: button, draggable: true, anchor: 'bottom' })
           .setLngLat(lngLat(start))
           .addTo(live);
-        placed.on('dragend', () => {
+        // Live while dragged, so the pin turns red as it leaves the area (as on the stub map).
+        const dragged = () => {
           const at = placed.getLngLat();
           latest.current.onMove({ lat: at.lat, lng: at.lng });
-        });
+        };
+        placed.on('drag', dragged);
+        placed.on('dragend', dragged);
         marker.current = placed;
         live.on('click', (event) => {
           latest.current.onMove({ lat: event.lngLat.lat, lng: event.lngLat.lng });
         });
+        live.on('zoomend', () => setZoom(live.getZoom()));
+        // A bad token or style fails before the map loads: the drawn map takes its place. Later
+        // errors (one tile) leave the map as it is.
+        let started = false;
+        live.on('error', () => {
+          if (!started && !gone) setFailed(true);
+        });
         live.on('load', () => {
+          started = true;
           const area = token('--sf-teal', '#0e5a57');
           live.addSource('lm-area', { type: 'geojson', data: areaShape(latest.current.boundary) });
           live.addLayer({
@@ -162,7 +182,8 @@ export function MapboxMap(props: MapboxMapProps) {
             id: 'lm-area-line',
             type: 'line',
             source: 'lm-area',
-            paint: { 'line-color': area, 'line-width': 2 },
+            // Dashed, as on the stub map and the legend.
+            paint: { 'line-color': area, 'line-width': 2, 'line-dasharray': [3, 2.5] },
           });
           live.addSource('lm-ring', { type: 'geojson', data: pointShape(latest.current.point) });
           live.addLayer({
@@ -192,14 +213,22 @@ export function MapboxMap(props: MapboxMapProps) {
       marker.current = null;
       pin.current = null;
     };
-  }, [accessToken, style, pinLabel]);
+  }, [accessToken, style]);
+
+  // A new language relabels the pin without rebuilding the map.
+  useEffect(() => {
+    latestLabel.current = pinLabel;
+    pin.current?.setAttribute('aria-label', pinLabel);
+  }, [pinLabel]);
 
   // A new pick moves the pin and, when it leaves the view, the map.
   useEffect(() => {
     const live = map.current;
     marker.current?.setLngLat(lngLat(point));
     if (!live) return;
-    if (!live.getBounds()?.contains(lngLat(point))) live.easeTo({ center: lngLat(point) });
+    // Not `essential`, so Mapbox jumps without animation when the buyer asks for reduced motion.
+    if (!live.getBounds()?.contains(lngLat(point)))
+      live.easeTo({ center: lngLat(point), offset: FOLLOW_OFFSET });
     whenStyled(live, () => {
       live.getSource<GeoJSONSource>('lm-ring')?.setData(pointShape(point));
     });
@@ -234,10 +263,20 @@ export function MapboxMap(props: MapboxMapProps) {
       <div className="lmgl" ref={canvas} />
       <div className="lmhint">{t('hint')}</div>
       <div className="lmzoom">
-        <button type="button" aria-label={t('zoom-in')} onClick={() => map.current?.zoomIn()}>
+        <button
+          type="button"
+          aria-label={t('zoom-in')}
+          aria-disabled={zoom >= MAX_ZOOM}
+          onClick={() => map.current?.zoomIn()}
+        >
           <Icon name="plus" />
         </button>
-        <button type="button" aria-label={t('zoom-out')} onClick={() => map.current?.zoomOut()}>
+        <button
+          type="button"
+          aria-label={t('zoom-out')}
+          aria-disabled={zoom <= MIN_ZOOM}
+          onClick={() => map.current?.zoomOut()}
+        >
           <Icon name="minus" />
         </button>
       </div>

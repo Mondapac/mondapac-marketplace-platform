@@ -6147,6 +6147,19 @@ svg {
   position: static;
   margin: 0;
 }
+/* Above Mapbox's attribution, which sits in the bottom corner (Reza, PR #823). */
+.lmmap.gl .lmlegend {
+  bottom: 40px;
+}
+.lmload {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
+}
 .lmpin svg {
   display: block;
   width: 44px;

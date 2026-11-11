@@ -18,7 +18,7 @@ const STYLE = /^mapbox:\/\/styles\/[a-z0-9_-]{1,64}\/[A-Za-z0-9_-]{1,64}$/u;
 
 /**
  * MAPBOX_MAP_TOKEN and MAPBOX_MAP_STYLE. No token: null (the modal keeps its drawn stub map). A
- * secret (sk.) or malformed token, or a style without a token, throws so start-up fails.
+ * secret (sk.), malformed or search token, or a style without a token, throws so start-up fails.
  */
 export function parseMapConfig(env: Env): MapConfig | null {
   const token = env['MAPBOX_MAP_TOKEN']?.trim() ?? '';
@@ -31,6 +31,9 @@ export function parseMapConfig(env: Env): MapConfig | null {
     throw new Error('MAPBOX_MAP_TOKEN is sent to browsers: use a public (pk.) token, never sk.');
   }
   if (!PUBLIC_TOKEN.test(token)) throw new Error('MAPBOX_MAP_TOKEN is not a public Mapbox token');
+  if (token === env['MAPBOX_SEARCH_TOKEN']?.trim()) {
+    throw new Error('MAPBOX_MAP_TOKEN must be its own token, not MAPBOX_SEARCH_TOKEN');
+  }
   if (style !== '' && !STYLE.test(style)) {
     throw new Error('MAPBOX_MAP_STYLE must be mapbox://styles/<owner>/<style>');
   }
