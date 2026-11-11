@@ -1533,7 +1533,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "cause": "enumOf(invalid|locked)",
       "sessionId": "id"
     }
@@ -1545,7 +1545,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "sessionId": "id"
     }
   },
@@ -1838,11 +1838,11 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     },
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     }
   },
@@ -2636,6 +2636,24 @@
     "after": {
       "slugChanged": "boolean",
       "windowSet": "boolean"
+    }
+  },
+  {
+    "action": "storefront.seo-settings.changed",
+    "targetType": "storefront.seo-settings",
+    "targetId": "enumOf(seo-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "indexing": "enumOf(off|on)",
+      "version": "integer"
+    },
+    "after": {
+      "changed": "listOf(enumOf(indexing|site-name|title-template|default-description|default-share-image|logo|seller-pages|trading-name|legal-name|abn|postal-address|contact-email|contact-phone|same-as|google-verification|bing-verification|analytics-id|page-templates), max 18)",
+      "indexing": "enumOf(off|on)",
+      "restoredFrom": "optional(integer)",
+      "stepUpSessionId": "optional(id)",
+      "stepUpVerifiedAt": "optional(instant)",
+      "version": "integer"
     }
   },
   {
