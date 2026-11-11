@@ -87,11 +87,12 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.read family in market %s'
           formFor.push(family);
           return Promise.resolve({ fields: [], categories: [] });
         },
-        offerTotalsOfProduct: () => Promise.resolve({ total: 0 }),
+        offerTotalsOfProduct: () => Promise.resolve({ sellerCount: 0, offerCount: 0 }),
       } as unknown as OwnCatalogReader,
       policy: {
         taxCategoryCodes: () => ['gst'],
         maxVariantsPerProduct: () => 100,
+        maxVariantAttributes: () => 2,
         locales: () => ({ default: 'en', supported: ['en'] }),
       } as unknown as CatalogMarketPolicy,
       ...(options.withResolver === false ? {} : { familyResolver: resolver }),
