@@ -1760,6 +1760,7 @@
         "delivery": "Delivery rules",
         "fleets": "Delivery fleets",
         "wallet": "Customer wallet",
+        "tax": "Tax",
         "admins": "Admins",
         "roles": "Roles & permissions",
         "lists": "Lists"
@@ -6610,6 +6611,87 @@
       "value-code-needed": "Required: the name has no Latin letters or digits. Use letters a to z, digits and hyphens.",
       "value-code-bad": "Start with a letter; use only letters a to z, digits and hyphens.",
       "title": "Value suggestions from sellers"
+    }
+  },
+  "tax": {
+    "title": "Tax",
+    "permission-view": "Tax: view strategies",
+    "unavailable": "The tax strategies could not be loaded. Try again later.",
+    "section": "Tax strategy",
+    "intro": "How the tax of an order line is worked out. A new strategy applies to new orders only; the tax already frozen on an order never changes.",
+    "read-only": "You can see the tax strategies but not change them. Changing them needs the tax strategy manage permission.",
+    "built-in": "Built-in rate",
+    "built-in-note": "Built-in rate {rate} applies when none is active.",
+    "active-now": "In force now",
+    "col": {
+      "name": "Name",
+      "kind": "Type",
+      "rate": "Rate",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "kind": {
+      "flat-rate": "Flat rate",
+      "by-category": "By tax category"
+    },
+    "rate-by-category": "Default {rate}, {count} categories",
+    "status-active": "Active",
+    "status-idle": "Not active",
+    "empty-title": "No tax strategies yet",
+    "empty-body": "The built-in rate applies. Add a strategy to charge another rate.",
+    "add": "Add strategy",
+    "edit": "Edit",
+    "edit-label": "Edit {name}",
+    "activate": "Activate",
+    "activate-label": "Activate {name}",
+    "delete": "Delete",
+    "delete-label": "Delete {name}",
+    "back-to-built-in": "Back to built-in rate",
+    "dialog": {
+      "add-title": "Add tax strategy",
+      "edit-title": "Edit {name}",
+      "name": "Name",
+      "name-required": "Enter a name of up to 80 characters.",
+      "kind": "Type",
+      "rate": "Rate (%)",
+      "rate-help": "From 0 to 50, with up to 2 decimals.",
+      "rate-invalid": "Enter a rate from 0 to 50 with up to 2 decimals.",
+      "default-rate": "Default rate (%)",
+      "default-rate-help": "Used for a line in none of the categories below.",
+      "category-rate": "Rate for {code} (%)",
+      "no-categories": "No tax categories are defined, so every line uses the default rate.",
+      "cancel": "Cancel",
+      "save": "Save strategy",
+      "saved": "Strategy saved."
+    },
+    "activate-dialog": {
+      "title": "Activate {name}?",
+      "body": "It applies to new orders only. The tax already frozen on existing orders does not change. The change is recorded in the audit log.",
+      "confirm": "Activate",
+      "done": "{name} is now in force."
+    },
+    "built-in-dialog": {
+      "title": "Go back to the built-in rate?",
+      "body": "The built-in rate of {rate} applies to new orders only. The tax already frozen on existing orders does not change. The change is recorded in the audit log.",
+      "confirm": "Use built-in rate",
+      "done": "The built-in rate is in force."
+    },
+    "delete-dialog": {
+      "title": "Delete {name}?",
+      "body": "This cannot be undone. Orders that already used it keep their tax.",
+      "confirm": "Delete strategy",
+      "done": "Strategy deleted."
+    },
+    "cancel": "Cancel",
+    "error": {
+      "invalid": "The strategy was refused. Check the name and the rates.",
+      "active": "This strategy is in force. Activate another one or the built-in rate first.",
+      "not-found": "This strategy no longer exists. The list was refreshed.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "denied": "Your role cannot change tax strategies.",
+      "unavailable": "Tax is not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
     }
   },
   "serviceAreas": {

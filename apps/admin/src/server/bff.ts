@@ -43,6 +43,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'storefront/admin/catalogue',
     // The Market's wallet switch, and the admin credit requests (query: `status`, `cursor`, `limit`).
     'wallet/admin/settings',
+    // The Market's tax strategies and the active one (tax), read again after a change.
+    'tax/admin/strategies',
     'wallet/admin/credit-requests',
     // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
     // `limit`); one case is read by the page server and again after a decision.
@@ -171,6 +173,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'notifications/admin/notices/read-all',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
+    // A new tax strategy, and the choice of the active one (tax; protected key).
+    'tax/admin/strategies',
+    'tax/admin/strategies/active',
     // A new storefront slide, as a draft (storefront).
     'storefront/admin/slides',
     // A new storefront page from a template, as a draft (storefront).
@@ -328,6 +333,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'sellers/admin/:id/category-proposals',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
+    // A tax strategy edited by its id (tax).
+    'tax/admin/strategies/:id',
     // A fleet-selection model edited by its id (shipping).
     'shipping/admin/fleet-selection/models/:id',
     // The seller's own commission rate (commission-payouts), set from the seller review page.
@@ -357,6 +364,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   PATCH: ['catalog/admin/categories/:id'],
   DELETE: [
     'identity/admin/roles/:id',
+    // A tax strategy that is not active (tax).
+    'tax/admin/strategies/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
     // Back to the Market's payout terms; the version and reason code are in the query.
     'commission-payouts/admin/sellers/:id/payout-terms',
