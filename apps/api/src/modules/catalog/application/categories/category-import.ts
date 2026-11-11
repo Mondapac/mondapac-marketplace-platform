@@ -166,19 +166,24 @@ export async function prepareImport(
       }
     }
   });
-  const claim = await refuseClaimTexts(deps, context, asked);
-  if (claim !== null) {
-    if ('fields' in claim && Array.isArray(claim.fields) && claim.code.startsWith('category.')) {
-      for (const field of claim.fields as readonly FieldIssue[]) {
-        const bar = field.path.indexOf('|');
-        note(Number(field.path.slice(0, bar)), {
-          path: field.path.slice(bar + 1),
-          code: field.code,
-        });
-      }
-    } else {
+  // Every place is checked; a place of a locale the vocabulary does not cover is an error of its
+  // row, and the rest are still sent to the matcher so the preview shows a claim word too.
+  let remaining = asked;
+  for (let pass = 0; pass < 2; pass += 1) {
+    const claim = await refuseClaimTexts(deps, context, remaining);
+    if (claim === null) break;
+    if (!('fields' in claim && Array.isArray(claim.fields) && claim.code.startsWith('category.'))) {
       return err(claim);
     }
+    const flagged = new Set<string>();
+    for (const field of claim.fields as readonly FieldIssue[]) {
+      const bar = field.path.indexOf('|');
+      note(Number(field.path.slice(0, bar)), { path: field.path.slice(bar + 1), code: field.code });
+      flagged.add(field.path);
+    }
+    if (claim.code !== 'category.locale-uncheckable') break;
+    remaining = remaining.filter((place) => !flagged.has(place.path));
+    if (remaining.length === 0) break;
   }
   const parsed: ParsedImport = {
     locales: read.value.locales,
@@ -199,8 +204,8 @@ export interface TreeSnapshot {
 
 /**
  * The tree as one read-only unit sees it, and the file's rows with `slug.taken` added to a new
- * slug that another category used in the last 12 months. The apply checks that again under the
- * slug lock when it creates the category.
+ * slug that another category used in the last 12 months. The apply checks that again in its unit,
+ * under the tree lock, when it creates the category.
  */
 export async function readSnapshot(
   deps: CategoryImportDependencies,
@@ -210,17 +215,19 @@ export async function readSnapshot(
   const read = await deps.unitOfWork.run(
     market,
     async () => {
-      const nodes = await deps.store.loadAll(market, MAX_TREE_NODES + 1);
-      if (nodes.length > MAX_TREE_NODES) return err({ code: 'access.unavailable' } as const);
+      // The version is read before the nodes: a read-only unit has no shared snapshot, so a write that
+      // commits between the two reads can only make the version too old (a stale refusal at apply),
+      // never newer than the tree shown.
       // A Market whose tree row does not exist yet reads 0; the first structural write creates it at 1.
       const treeVersion = Math.max(1, await deps.adminCategoryReader.treeVersion(market));
+      const nodes = await deps.store.loadAll(market, MAX_TREE_NODES + 1);
+      if (nodes.length > MAX_TREE_NODES) return err({ code: 'access.unavailable' } as const);
       const known = new Set(nodes.map((node) => node.slug));
-      const taken = new Set<string>();
       const now = deps.clock.now();
-      for (const row of parsed.rows) {
-        if (row.issues.length > 0 || known.has(row.slug) || taken.has(row.slug)) continue;
-        if (await deps.store.slugUnavailable(market, row.slug, null, now)) taken.add(row.slug);
-      }
+      const fresh = parsed.rows
+        .filter((row) => row.issues.length === 0 && !known.has(row.slug))
+        .map((row) => row.slug);
+      const taken = new Set(await deps.store.unavailableSlugs(market, fresh, now));
       return ok({ nodes, treeVersion, taken });
     },
     { readOnly: true },
@@ -297,6 +304,7 @@ export async function applyImport(
               seo: operation.seo,
               showInMenu: operation.showInMenu,
               maxDepth: prepared.rules.maxDepth,
+              slugsLocked: true,
             },
             nextTreeVersion,
           );

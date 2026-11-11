@@ -13,6 +13,7 @@ import {
   type EditableCategory,
   type FieldIssue,
 } from './category-edit';
+import { MAX_TREE_NODES } from './category-tree';
 
 // The pure rules of the category tree import and export file (categories package C7a; plan
 // decision 12; review amendments 4 Nov 2026, C7). Nothing here reads a store or a clock: the use
@@ -201,6 +202,7 @@ export type ImportAction = 'create' | 'update' | 'unchanged' | 'error';
 /** The answer for one row of the dry run: codes only, never a cell. */
 export interface ImportRowResult {
   readonly rowNumber: number;
+  /** The row's slug when it is a valid slug, else an empty string (a cell is never echoed). */
   readonly slug: string;
   readonly action: ImportAction;
   /** The first issue's code when the row is an error. */
@@ -458,6 +460,11 @@ export function planImport(
       continue;
     }
 
+    // One file cannot grow the tree past the size every tree read refuses (security review M1).
+    if (tree.length >= MAX_TREE_NODES) {
+      fail(row, [{ path: 'row', code: 'tree.size-exceeded' }]);
+      continue;
+    }
     const parentId = parent?.id ?? null;
     const placeholder: EditableCategory = {
       id: `import-row-${row.rowNumber}` as Id<'Category'>,
@@ -505,10 +512,12 @@ export function planImport(
         issues: [{ path: 'row', code: 'row.invalid' }],
       },
   );
+  // Codes only, never a cell: a slug that is not a valid slug is not echoed (security review L2).
+  const shown = list.map((entry) => (isCategorySlug(entry.slug) ? entry : { ...entry, slug: '' }));
   const count = (action: ImportAction): number =>
     list.filter((entry) => entry.action === action).length;
   return {
-    results: list,
+    results: shown,
     operations,
     counts: {
       create: count('create'),

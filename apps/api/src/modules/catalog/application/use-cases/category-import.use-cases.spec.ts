@@ -517,6 +517,19 @@ describe.each(['AU', 'ZZ'] as const)('category tree import and export in market 
       ]);
     });
 
+    it('never echoes a slug cell that is not a valid slug', async () => {
+      const result = await run([row({ slug: 'Not A Slug!', [nameColumn]: 'Rice' })]);
+      expect(codes(result.rows)).toEqual(['error:slug.invalid']);
+      expect(result.rows[0]!.slug).toBe('');
+      expect(JSON.stringify(result)).not.toContain('Not A Slug');
+    });
+
+    it('refuses a create that would take the tree past the size every read accepts', async () => {
+      for (let n = 1; n <= 5000; n += 1) store.put(stored(n, null));
+      const result = await run([row({ slug: 'one-more', [nameColumn]: 'One more' })]);
+      expect(codes(result.rows)).toEqual(['error:tree.size-exceeded']);
+    });
+
     it('refuses a slug held by another category in the last 12 months', async () => {
       store.heldSlugs.add('held');
       const result = await run([row({ slug: 'held', [nameColumn]: 'Held' })]);
@@ -582,7 +595,7 @@ describe.each(['AU', 'ZZ'] as const)('category tree import and export in market 
         data: Buffer.alloc(maxBytes + 10, 97).toString('base64'),
       });
       expect(huge).toEqual(err({ code: 'file.too-large', maxBytes }));
-      expect(maxRows).toBe(code === 'AU' ? 2000 : 500);
+      expect(maxRows).toBe(code === 'AU' ? 1000 : 500);
     });
 
     it('refuses data that is not base64, not a file, or empty', async () => {
@@ -655,8 +668,14 @@ describe.each(['AU', 'ZZ'] as const)('category tree import and export in market 
         );
         const answer = await run([
           row({ slug: 'rice', [nameColumn]: 'Rice', [`name[${second}]`]: 'Second' }),
+          row({ slug: 'halal-rice', [nameColumn]: 'Halal rice' }),
         ]);
         expect(answer.ok && answer.value.rows[0]).toMatchObject({ action: 'error' });
+        // The rest of the file is still checked for a claim word (security review L1).
+        expect(answer.ok && answer.value.rows[1]).toMatchObject({ action: 'error' });
+        expect(answer.ok && answer.value.rows[1]!.issues.map((i) => i.code)).toContain(
+          'claim-word',
+        );
         expect(
           answer.ok && answer.value.rows[0]!.issues.map((i) => `${i.path}:${i.code}`),
         ).toContain(`texts.${second}.name:locale-uncheckable`);
@@ -805,7 +824,7 @@ describe.each(['AU', 'ZZ'] as const)('category tree import and export in market 
       let calls = 0;
       store.slugUnavailable = (...args) => {
         calls += 1;
-        return calls > 3 ? Promise.resolve(true) : original(...args);
+        return calls > 1 ? Promise.resolve(true) : original(...args);
       };
       const answer = await build().apply.execute(context(), body);
       expect(answer).toEqual(err({ code: 'category.slug-taken' }));

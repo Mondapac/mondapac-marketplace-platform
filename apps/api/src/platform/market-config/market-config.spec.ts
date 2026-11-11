@@ -2144,7 +2144,7 @@ describe('loadMarketConfigs', () => {
       expect(zz?.maxCategoryDepth).toBe(3);
       expect(au?.maxCategoryChangeTags).toBe(50_000);
       expect(zz?.maxCategoryChangeTags).toBe(20_000);
-      expect(au?.maxCategoryImportRows).toBe(2000);
+      expect(au?.maxCategoryImportRows).toBe(1000);
       expect(zz?.maxCategoryImportRows).toBe(500);
       expect(au?.maxCategoryImportBytes).toBe(5 * 1024 * 1024);
       expect(zz?.maxCategoryImportBytes).toBe(1024 * 1024);

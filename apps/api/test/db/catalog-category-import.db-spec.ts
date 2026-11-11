@@ -177,7 +177,7 @@ describe.each(TEST_MARKETS)('catalog category import in market %s (database)', (
     expect(applied.ok).toBe(true);
     if (!applied.ok) return;
     expect(applied.value.counts).toEqual({ create: 3, update: 0, unchanged: 0, error: 0 });
-    expect(applied.value.treeVersion).toBeGreaterThan(before);
+    expect(applied.value.treeVersion).toBe(before + 1);
     const rows = await rowsOf(market, [top, one, two]);
     expect(rows.map((r) => [r.slug, r.status, r.version])).toEqual(
       [one, top, two].sort().map((slug) => [slug, 'hidden', 1]),
@@ -279,4 +279,56 @@ describe.each(TEST_MARKETS)('catalog category import in market %s (database)', (
     expect(applied).toEqual(err({ code: 'conflict.stale' }));
     expect(await rowsOf(market, [slug])).toEqual([]);
   });
+
+  it('rolls back every row, the tree version and the audit when a later row fails inside the unit', async () => {
+    const tag = uuid7().slice(-10);
+    const slugs = [`imp-rb1-${tag}`, `imp-rb2-${tag}`];
+    const data = base64(slugs.map((slug) => row({ slug, [nameColumn]: `Rollback ${slug}` })));
+    const dry = await new CategoryImportDryRun(gateOf(), deps).execute(admin(), { data });
+    expect(dry.ok).toBe(true);
+    if (!dry.ok) return;
+    // The second create finds its slug taken after the first row was written to PostgreSQL.
+    let calls = 0;
+    const flaky = new Proxy(store, {
+      get(target, key) {
+        if (key === 'slugUnavailable') {
+          return (...args: Parameters<PrismaCategoryEditStore['slugUnavailable']>) => {
+            calls += 1;
+            return calls > 1 ? Promise.resolve(true) : target.slugUnavailable(...args);
+          };
+        }
+        const value: unknown = Reflect.get(target, key, target);
+        return typeof value === 'function' ? (value as () => unknown).bind(target) : value;
+      },
+    });
+    const before = await treeVersion();
+    const applied = await new CategoryImportApply(gateOf(), { ...deps, store: flaky }).execute(
+      admin(),
+      { data, fileSha256: dry.value.fileSha256, treeVersion: dry.value.treeVersion },
+    );
+    expect(applied).toEqual(err({ code: 'category.slug-taken' }));
+    expect(await rowsOf(market, slugs)).toEqual([]);
+    expect(await treeVersion()).toBe(before);
+  });
+
+  it("applies a file of the Market's row cap well inside the unit timeout", async () => {
+    const tag = uuid7().slice(-8);
+    const cap = deps.policy.maxCategoryImportRows(market);
+    const slugs = Array.from({ length: cap }, (_, n) => `imp-cap-${tag}-${n}`);
+    const data = base64(slugs.map((slug) => row({ slug, [nameColumn]: `Cap ${slug}` })));
+    const started = Date.now();
+    const dry = await new CategoryImportDryRun(gateOf(), deps).execute(admin(), { data });
+    if (!dry.ok) throw new Error(`dry run refused: ${dry.error.code}`);
+    const dryMs = Date.now() - started;
+    const applied = await new CategoryImportApply(gateOf(), deps).execute(admin(), {
+      data,
+      fileSha256: dry.value.fileSha256,
+      treeVersion: dry.value.treeVersion,
+    });
+    const elapsed = Date.now() - started;
+    process.stdout.write(`dry run ${dryMs} ms\n`);
+    process.stdout.write(`category import of ${cap} rows in ${code}: ${elapsed} ms\n`);
+    expect(applied.ok && applied.value.counts.create).toBe(cap);
+    expect(elapsed).toBeLessThan(15_000);
+  }, 60_000);
 });

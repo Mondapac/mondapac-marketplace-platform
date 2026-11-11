@@ -36,6 +36,12 @@ export interface CreateSpec {
   readonly seo: CategorySeo;
   readonly showInMenu: boolean;
   readonly maxDepth: number;
+  /**
+   * True when the caller holds the tree row lock (a structural unit): every writer of a slug takes
+   * that lock first, so the per-slug advisory lock adds nothing and a file of thousands of rows
+   * would hold thousands of them. The slug check below still runs.
+   */
+  readonly slugsLocked?: boolean;
 }
 
 /** A created category and the tree as it now stands (the caller threads it to the next write). */
@@ -64,7 +70,7 @@ export async function createCategoryInUnit(
   }
   const level = levelOf(byId, spec.parentId) + 1;
   if (level > spec.maxDepth) return err({ code: 'category.depth-exceeded', max: spec.maxDepth });
-  await store.lockSlugs(market, [spec.slug]);
+  if (spec.slugsLocked !== true) await store.lockSlugs(market, [spec.slug]);
   if (await store.slugUnavailable(market, spec.slug, null, clock.now())) {
     return err({ code: 'category.slug-taken' });
   }
