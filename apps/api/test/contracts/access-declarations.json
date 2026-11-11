@@ -116,6 +116,7 @@
   { "name": "catalog.reevaluate-from-certification", "rule": "system" },
   { "name": "catalog.reevaluate-tags", "rule": "system" },
   { "name": "catalog.report-retired-categories", "rule": "system" },
+  { "name": "catalog.reprocess-image-formats", "rule": "system" },
   { "name": "catalog.search-filters", "rule": "anonymous" },
   { "name": "catalog.search-index-stamp", "rule": "system" },
   { "name": "catalog.seed-attributes", "rule": "system" },
