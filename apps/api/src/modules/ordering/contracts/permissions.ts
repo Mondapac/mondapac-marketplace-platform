@@ -61,9 +61,31 @@ export const ORDERING_ORDER_REFUND = definePermission('ordering', {
   protected: true,
 });
 
+/**
+ * See the caps on seller refunds (decision 6; Hassan F2): the Market default and each seller's own,
+ * and the admin notice when a seller reaches one.
+ */
+export const ORDERING_REFUND_LIMITS_VIEW = definePermission('ordering', {
+  key: 'ordering.refund-limits.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Set or remove the caps on seller refunds (owner decision 2026-11-11). Protected: a cap decides how
+ * much seller money may go back unchecked, so no default role lists it (R11).
+ */
+export const ORDERING_REFUND_LIMITS_MANAGE = definePermission('ordering', {
+  key: 'ordering.refund-limits.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const ORDERING_PERMISSIONS = declarePermissions('ordering', [
   ORDERING_ORDER_REFUND,
   ORDERING_ORDER_VIEW,
+  ORDERING_REFUND_LIMITS_MANAGE,
+  ORDERING_REFUND_LIMITS_VIEW,
   ORDERING_SELLER_ORDER_CONFIRM_PICKUP,
   ORDERING_SELLER_ORDER_MARK_DELIVERED,
   ORDERING_SELLER_ORDER_MARK_READY,

@@ -13,6 +13,7 @@ import { INVENTORY_ORDERING_PORT } from '../src/modules/inventory/contracts/orde
 import { CHECKOUT_GATEWAY } from '../src/modules/ordering/application/ports/checkout-gateway';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
 import { PICKUP_CODE_REPOSITORY } from '../src/modules/ordering/application/ports/pickup-code.repository';
+import { REFUND_REPOSITORY } from '../src/modules/ordering/application/ports/refund.repository';
 import { PICKUP_CODE_VAULT } from '../src/modules/ordering/application/ports/pickup-code-vault';
 import { SHIP_TO_CIPHER } from '../src/modules/ordering/application/ports/ship-to-cipher';
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
@@ -20,7 +21,7 @@ import { COMMISSION_PAYOUTS_FACADE } from '../src/modules/commission-payouts';
 import { SHIPPING_FACADE } from '../src/modules/shipping';
 import { ORDER_TAX_CATEGORIES } from '../src/modules/ordering/application/ports/order-tax-categories';
 import { TAX_FACADE } from '../src/modules/tax';
-import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
+import { AUDIT_WRITER, type AuditWriter } from '../src/platform/audit/audit-writer';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { OUTBOX_WRITER } from '../src/platform/events/outbox-writer';
@@ -40,9 +41,10 @@ import {
   FakeShipToCipher,
   MemoryOrders,
   MemoryPickupCodes,
+  MemoryRefundLimits,
   TEST_DELIVERY_ADDRESS,
 } from './support/ordering-fakes';
-import { FakeUnitOfWork, RecordingAuditWriter, RecordingOutbox } from './support/pricing-fakes';
+import { FakeUnitOfWork, RecordingOutbox } from './support/pricing-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -110,6 +112,9 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.refund-exceeds': 422,
     'ordering.refund-rejected': 422,
     'ordering.refund-tax-unavailable': 503,
+    'ordering.refund-limit-reached': 409,
+    'ordering.refund-limit-unset': 409,
+    'ordering.refund-limit-not-found': 404,
     'ordering.document-not-available': 409,
     'ordering.invoice-numbering-unavailable': 503,
     'access.unavailable': 503,
@@ -127,6 +132,9 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let shipping: FakeShipping;
   let pickupCodes: MemoryPickupCodes;
   let pickupVault: FakePickupVault;
+  let refundLimits: MemoryRefundLimits;
+  /** Ordering's audit entries (refund caps); the writer's own checks are tested with it. */
+  let audit: AuditWriter & { readonly actions: string[] };
   const clock = new FixedClock(START);
   const http = () => request(app.getHttpServer());
   const marketOf = () => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -140,6 +148,15 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     shipping = new FakeShipping();
     pickupCodes = new MemoryPickupCodes();
     pickupVault = new FakePickupVault();
+    refundLimits = new MemoryRefundLimits();
+    const actions: string[] = [];
+    audit = {
+      actions,
+      record: (_context, entry) => {
+        actions.push(entry.action);
+        return Promise.resolve();
+      },
+    };
     const customers = new FakeCustomers();
     customers.addresses.set(ADDRESS, { accountId: CUSTOMER, address: TEST_DELIVERY_ADDRESS });
     // The seller delivers for a flat 5.00.
@@ -165,7 +182,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .overrideProvider(UNIT_OF_WORK)
           .useValue(new FakeUnitOfWork())
           .overrideProvider(AUDIT_WRITER)
-          .useValue(new RecordingAuditWriter())
+          .useValue(audit)
           .overrideProvider(OUTBOX_WRITER)
           .useValue(new RecordingOutbox())
           .overrideProvider(ORDER_REPOSITORY)
@@ -184,6 +201,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(pickupCodes)
           .overrideProvider(PICKUP_CODE_VAULT)
           .useValue(pickupVault)
+          .overrideProvider(REFUND_REPOSITORY)
+          .useValue(refundLimits.repository)
           .overrideProvider(SHIPPING_FACADE)
           .useValue(shipping)
           .overrideProvider(TAX_FACADE)
@@ -1105,6 +1124,97 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(noKey.status).toBe(403);
       expect(noCsrf.body).toMatchObject({ code: 'request.csrf' });
       expect(unknownField.status).toBe(400);
+    });
+
+    it('lets an admin with the refund-limit keys set the default and a seller’s own cap, audited', async () => {
+      await seedAdmins();
+      const rootRole = [...fakes.roles.values()].find(
+        (r) => r.marketId === code && r.seedCode === 'platform-administrator',
+      )!.id;
+      seedAccount(REFUNDER, 'admin', 'admin9');
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(0xe009),
+        marketId: code as AccountState['marketId'],
+        accountId: REFUNDER,
+        roleId: rootRole,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+      const writer = (accountId: Id<'Account'>, n: number) => ({
+        'x-market-id': code,
+        ...panelHeaders(code, 'admin'),
+        ...session(accountId, 'admin', n),
+      });
+      const seller = id<'Seller'>(0xbe10);
+      const base = '/ordering/admin/refund-limits';
+
+      const none = await http().get(`${base}?sellerId=${seller}`).set(adminHeaders(REFUNDER, 40));
+      const setDefault = await http()
+        .put(base)
+        .set(writer(REFUNDER, 41))
+        .send({ maxCount: 20, maxAmount: '50000', expectedVersion: 0 });
+      const setOwn = await http()
+        .put(`${base}/sellers/${seller}`)
+        .set(writer(REFUNDER, 42))
+        .send({ maxCount: 5, maxAmount: '10000', expectedVersion: 0 });
+      const stale = await http()
+        .put(`${base}/sellers/${seller}`)
+        .set(writer(REFUNDER, 43))
+        .send({ maxCount: 6, maxAmount: '10000', expectedVersion: 0 });
+      const viewerSet = await http()
+        .put(base)
+        .set(writer(VIEWER, 44))
+        .send({ maxCount: 1, maxAmount: '1', expectedVersion: 1 });
+      const badBody = await http()
+        .put(base)
+        .set(writer(REFUNDER, 45))
+        .send({ maxCount: 0, maxAmount: 5, expectedVersion: 1, extra: true });
+      const removed = await http()
+        .delete(`${base}/sellers/${seller}?expectedVersion=1`)
+        .set(writer(REFUNDER, 46));
+      const removedAgain = await http()
+        .delete(`${base}/sellers/${seller}?expectedVersion=1`)
+        .set(writer(REFUNDER, 47));
+      const noKey = await http().get(base).set(adminHeaders(NO_KEY, 48));
+
+      expect(none.status).toBe(200);
+      expect(none.headers['cache-control']).toBe('no-store');
+      expect(none.body).toEqual({
+        currency,
+        marketDefault: null,
+        sellerId: seller,
+        own: null,
+        inForce: 'none',
+      });
+      expect(setDefault.status).toBe(200);
+      expect(setDefault.body).toMatchObject({
+        marketDefault: { maxCount: 20, maxAmount: { amount: '50000', currency }, version: 1 },
+        inForce: 'market',
+      });
+      expect(setOwn.body).toMatchObject({
+        sellerId: seller,
+        own: { maxCount: 5, maxAmount: { amount: '10000', currency }, version: 1 },
+        marketDefault: { maxCount: 20 },
+        inForce: 'own',
+      });
+      expect(stale.status).toBe(409);
+      expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.retry' });
+      expect(viewerSet.status).toBe(403);
+      expect(badBody.status).toBe(400);
+      expect(removed.status).toBe(200);
+      expect(removed.body).toMatchObject({ own: null, inForce: 'market' });
+      expect(removedAgain.status).toBe(404);
+      expect(removedAgain.body).toEqual({
+        statusCode: 404,
+        code: 'ordering.refund-limit-not-found',
+      });
+      expect(noKey.status).toBe(403);
+      expect(audit.actions.filter((a) => a.startsWith('ordering.'))).toEqual([
+        'ordering.refund-limit.set',
+        'ordering.refund-limit.set',
+        'ordering.refund-limit.removed',
+      ]);
     });
   });
 });

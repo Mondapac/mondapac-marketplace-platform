@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import {
@@ -16,7 +17,13 @@ import {
   type RefundTarget,
 } from '../domain/refund';
 import { RefundRequested, RefundSettled } from '../domain/audit';
-import { RefundSucceeded } from '../domain/events';
+import { RefundSucceeded, SellerRefundLimitReached } from '../domain/events';
+import {
+  REFUND_LIMIT_WINDOW,
+  checkRefundLimit,
+  limitInForce,
+  type RefundLimitKind,
+} from '../domain/refund-limits';
 import { isActingAsSession } from './acting-as';
 import type { OrderingDependencies } from './checkout-flow';
 import type { GatewayFailure, RefundAnswer } from './ports/checkout-gateway';
@@ -56,7 +63,11 @@ export type RefundFailure =
   /** `tax` could not work out the tax reversed: nothing was written. */
   | { readonly code: 'ordering.refund-tax-unavailable' }
   /** Stripe refused the refund: it is recorded as failed and nothing went back. */
-  | { readonly code: 'ordering.refund-rejected' };
+  | { readonly code: 'ordering.refund-rejected' }
+  /** A seller refund would pass the seller's cap of refunds or amount in 24 hours (Hassan F2). */
+  | { readonly code: 'ordering.refund-limit-reached'; readonly limit: RefundLimitKind }
+  /** No cap is set for the seller or the Market: seller refunds are refused until an admin sets one. */
+  | { readonly code: 'ordering.refund-limit-unset' };
 
 export interface RefundLineView {
   readonly orderLineId: Id<'OrderLine'>;
@@ -304,6 +315,25 @@ async function executeRefund(
   // The refund and the raised sum are written before Stripe is called: a crash after the call
   // leaves a pending refund the worker retries with the same key, never a second refund.
   const reserved = await deps.unitOfWork.run<true, RefundFailure>(context.market, async () => {
+    // A seller's own refunds are capped (Hassan F2): counted under the seller's guard lock, so
+    // two at once never both pass, and before the refunded sum is raised.
+    if (actor.population === 'seller') {
+      const guard = await deps.refunds.guardSellerRefunds(
+        context.market,
+        priced.sellerId,
+        priced.requestedAt,
+        priced.requestedAt.subtract(REFUND_LIMIT_WINDOW),
+      );
+      const verdict = checkRefundLimit(
+        limitInForce(guard.own, guard.marketDefault),
+        guard.usage,
+        priced,
+      );
+      if (verdict === 'unset') return err({ code: 'ordering.refund-limit-unset' } as const);
+      if (verdict !== 'within') {
+        return err({ code: 'ordering.refund-limit-reached', limit: verdict } as const);
+      }
+    }
     if (
       (await deps.refunds.reserve(context.market, priced, target.refunded, options)) === 'stale'
     ) {
@@ -325,11 +355,60 @@ async function executeRefund(
     );
     return ok(true as const);
   });
-  if (!reserved.ok) return reserved;
+  if (!reserved.ok) {
+    if (reserved.error.code === 'ordering.refund-limit-reached') {
+      await alertRefundLimit(deps, context, priced, reserved.error.limit);
+    }
+    return reserved;
+  }
 
   const settled = await settle(deps, context, priced, target.paymentIntentId!);
   if (settled.state === 'failed') return err({ code: 'ordering.refund-rejected' });
   return ok(refundView(settled.refund, settled.creditNoteId));
+}
+
+const alertLogger = new Logger('SellerRefundLimits');
+
+/**
+ * Tells the admins that a seller reached a cap (an outbox event in a unit of its own, since the
+ * refused unit rolled back), at most once in 24 hours per seller. A failure here is logged and
+ * the seller still gets the refusal: no money moved either way.
+ */
+async function alertRefundLimit(
+  deps: OrderingDependencies,
+  context: CallContext,
+  refused: Refund,
+  limit: RefundLimitKind,
+): Promise<void> {
+  const at = refused.requestedAt;
+  try {
+    await deps.unitOfWork.run<true, never>(context.market, async () => {
+      const alert = await deps.refunds.noteRefundLimitAlert(
+        context.market,
+        refused.sellerId,
+        at,
+        at.subtract(REFUND_LIMIT_WINDOW),
+      );
+      if (alert !== null) {
+        await deps.outbox.append(context, [
+          SellerRefundLimitReached.record({
+            aggregateId: refused.sellerId,
+            aggregateVersion: alert,
+            occurredAt: at,
+            payload: { sellerId: refused.sellerId, limit },
+          }),
+        ]);
+      }
+      return ok(true as const);
+    });
+  } catch (error: unknown) {
+    alertLogger.error({
+      msg: 'ordering.refund-limit-alert-failed',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+      error: error instanceof Error ? error.name : 'unknown',
+    });
+  }
 }
 
 interface Settled {

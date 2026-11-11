@@ -39,4 +39,45 @@ export const RefundSettled = defineAuditAction({
   },
 });
 
-export const ORDERING_AUDIT_ACTIONS = [RefundRequested, RefundSettled] as const;
+/** The audit target type of a refund cap; the target id is the cap's row. */
+export const REFUND_LIMIT_TARGET = 'ordering.seller-refund-limit';
+
+const limitFields = {
+  maxCount: auditField.integer(),
+  maxAmount: auditField.money(),
+};
+
+/**
+ * An admin set the Market's default cap or a seller's own (decision 6; Hassan F2). The target is
+ * the cap's row; `before` is null on a first set.
+ */
+export const RefundLimitSet = defineAuditAction({
+  action: 'ordering.refund-limit.set',
+  targetType: REFUND_LIMIT_TARGET,
+  actors: ['authenticated'],
+  before: {
+    maxCount: auditField.optional(auditField.integer()),
+    maxAmount: auditField.optional(auditField.money()),
+  },
+  after: {
+    ...limitFields,
+    scope: auditField.enumOf(['market', 'seller'] as const),
+    sellerId: auditField.optional(auditField.id()),
+    version: auditField.integer(),
+  },
+});
+
+/** An admin removed a seller's own cap: the Market default is in force again. */
+export const RefundLimitRemoved = defineAuditAction({
+  action: 'ordering.refund-limit.removed',
+  targetType: REFUND_LIMIT_TARGET,
+  actors: ['authenticated'],
+  before: { ...limitFields, sellerId: auditField.id() },
+});
+
+export const ORDERING_AUDIT_ACTIONS = [
+  RefundRequested,
+  RefundSettled,
+  RefundLimitSet,
+  RefundLimitRemoved,
+] as const;

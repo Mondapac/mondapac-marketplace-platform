@@ -1,5 +1,6 @@
 import { defineEvent, eventField } from '@mondapac/shared-kernel';
 import type { EventDefinition } from '@mondapac/shared-kernel';
+import { REFUND_LIMIT_KINDS } from '../refund-limits';
 
 /**
  * An order became paid (Phase 6 package 1, owner decision Q10): the money is captured and the
@@ -84,6 +85,21 @@ export const SellerOrderDelivered = defineEvent({
   },
 });
 
+/**
+ * A seller refund (units marked unavailable, order detail decision 6) was refused because it would
+ * pass the seller's cap of refunds or amount in 24 hours (Hassan F2; owner decision 2026-11-11).
+ * At most once in 24 hours per seller; the aggregate version counts the seller's alerts. Ids and
+ * the cap's kind only: no amount, order or customer. Notifications makes it an admin notice.
+ */
+export const SellerRefundLimitReached = defineEvent({
+  type: 'ordering.seller-refund-limit-reached.v1',
+  aggregateType: 'seller-refund-guard',
+  payload: {
+    sellerId: eventField.id(),
+    limit: eventField.enumOf(REFUND_LIMIT_KINDS),
+  },
+});
+
 /** Every event type ordering publishes, registered with the event catalogue at boot. */
 export const ORDERING_EVENTS: readonly EventDefinition[] = [
   OrderPaid,
@@ -91,4 +107,5 @@ export const ORDERING_EVENTS: readonly EventDefinition[] = [
   SellerOrderReady,
   SellerOrderDelivered,
   RefundSucceeded,
+  SellerRefundLimitReached,
 ];

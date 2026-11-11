@@ -554,7 +554,24 @@ Migration `20261111050000_ordering_seller_unavailable_refunds`. Before a paid se
 - "Not ready" is checked on the read and again in the guarded `refunded_amount` update (`fulfilment = 'to-ship' AND ready_at IS NULL`, same row lock), so a ready signal that lands in between makes the write `stale` (`conflict.retry`). Another shop's seller order is not found. No Login-as-Seller session moves money. Off with `tax.refundCredit.enabled`.
 - A repeat is refused: the body carries `expectedRefunds`, the count of refunds not failed the seller's page showed, and a request that finds more answers `conflict.retry` (Hassan F1).
 - The seller order's page lists its refunds (who asked, state, amount, units; filtered on the seller too), also while the switch is off (then there are none); this replaces "no seller path" of ordering design 97, which Hassan H1 tied to the missing seller ledger reversal, now built.
-- **Open before `tax.refundCredit.enabled` is turned on in any Market:** a per-seller velocity limit and admin alert on seller refunds (Hassan F2, owner decision asked 2026-11-11); the customer's "item unavailable, refunded" email (decision 6, follow-up PR in notifications); refusing "ready" for a seller order refunded in full (built by the admin cancel-and-refund PR, row 28, in `markSellerOrderReady`); and an admin flag when the last unit goes back but the shipping fee cannot (placed before its tax was recorded).
+- Capped (Hassan F2; owner decision 2026-11-11, option A): see 3.12c.
+- **Open before `tax.refundCredit.enabled` is turned on in any Market:** an admin sets the Market's default cap (3.12c; none refuses every seller refund); the customer's "item unavailable, refunded" email (decision 6, follow-up PR in notifications); refusing "ready" for a seller order refunded in full (built by the admin cancel-and-refund PR, row 28, in `markSellerOrderReady`); and an admin flag when the last unit goes back but the shipping fee cannot (placed before its tax was recorded).
+
+### 3.12c `ordering.seller_refund_limits` and `ordering.seller_refund_guards` (decision 6 caps)
+
+Migration `20261111060000_ordering_seller_refund_limits`. A seller refund (3.12b) is refused when, with it, the seller's own refunds not failed in the last 24 hours (a rolling window of instants, so no zone) would pass the cap in force: more than `max_count` refunds or more than `max_amount` minor units. An admin sets the Market's default (`seller_id` NULL, one per Market, partial unique index) and any seller's own (one per seller, partial unique index), which wins; with neither the seller path answers `ordering.refund-limit-unset` (fail closed). Routes: `GET/PUT /ordering/admin/refund-limits`, `PUT/DELETE /ordering/admin/refund-limits/sellers/:sellerId`; keys `ordering.refund-limits.view` and `ordering.refund-limits.manage` (protected; not yet in the viewer seed role). Each set or removal is audited (`ordering.refund-limit.set`, `.removed`, before and after); an edit carries the version read (`conflict.retry` when stale).
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| id | uuid | no | PK; the audit target |
+| market_id, tenant_id | varchar(8), text | no | |
+| seller_id | uuid | yes | NULL is the Market default |
+| max_count | int | no | CHECK 1..1000 |
+| max_amount | bigint | no | CHECK > 0; minor units of `currency`, the Market currency |
+| currency | varchar(3) | no | a cap in another currency than the refund's counts as none |
+| version, updated_at, updated_by_account_id | int, timestamptz, uuid | no | |
+
+`seller_refund_guards` (PK market, seller) is taken with `INSERT ... ON CONFLICT DO UPDATE` in the unit that reserves a seller refund, before the 24-hour count is read (partial index `refunds_seller_requested_at_idx` on `refunds (market_id, seller_id, requested_at) WHERE actor_population = 'seller'`): two refunds of one seller are counted one after the other, never both past the cap. A refusal past a cap writes `ordering.seller-refund-limit-reached.v1` (seller id and `count` or `amount`) in a unit of its own, at most once in 24 hours per seller (`last_alerted_at`, `alerts` as the aggregate version); notifications makes it the admin notice `admin.seller-refund-limit-reached`, shown to admins holding `ordering.refund-limits.view`. App grants: SELECT, INSERT, UPDATE of the values, DELETE on the caps; SELECT, INSERT, UPDATE of the three guard columns.
 
 ### 3.13 `ordering.saved_addresses` (M6; Ali T6 A, own slice after slice 3; PD15)
 

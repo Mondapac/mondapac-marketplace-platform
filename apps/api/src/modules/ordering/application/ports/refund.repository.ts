@@ -1,6 +1,7 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { LedgerState } from '../../domain/order';
 import type { Refund, RefundTarget } from '../../domain/refund';
+import type { RefundLimit, RefundUsage } from '../../domain/refund-limits';
 
 /** A pending refund with the PaymentIntent it gives money back from. */
 export interface PendingRefund {
@@ -23,6 +24,17 @@ export interface RefundForLedger {
 export interface CreditNoteRecord {
   readonly id: Id<'CreditNote'>;
   readonly issuedAt: Temporal.Instant;
+}
+
+/** The caps an admin set: the seller's own (null when none or not asked) and the default. */
+export interface RefundLimits {
+  readonly own: RefundLimit | null;
+  readonly marketDefault: RefundLimit | null;
+}
+
+/** What a seller refund is checked against, read under the seller's guard lock. */
+export interface SellerRefundGuard extends RefundLimits {
+  readonly usage: RefundUsage;
 }
 
 /**
@@ -75,6 +87,50 @@ export interface RefundRepository {
     expectedRefunded: bigint,
     options?: { readonly whileNotReady?: boolean },
   ): Promise<'saved' | 'stale'>;
+
+  /**
+   * Takes the seller's refund guard row (made on first use) with a row lock held until the unit
+   * ends, so two seller refunds of one seller are counted one after the other; then answers the
+   * caps in the Market (the seller's own and the default) and the seller's own refunds not failed
+   * requested after `since` (count and gross sum). Call it in the unit that reserves the refund.
+   */
+  guardSellerRefunds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    at: Temporal.Instant,
+    since: Temporal.Instant,
+  ): Promise<SellerRefundGuard>;
+
+  /**
+   * Notes an admin alert for the seller unless one was noted after `since`: the alert number (the
+   * event's aggregate version) when this unit is the one to send it, else null.
+   */
+  noteRefundLimitAlert(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    at: Temporal.Instant,
+    since: Temporal.Instant,
+  ): Promise<number | null>;
+
+  /** The Market's default cap and, when `sellerId` is given, that seller's own. */
+  findRefundLimits(market: MarketContext, sellerId: Id<'Seller'> | null): Promise<RefundLimits>;
+
+  /**
+   * Writes a cap: a first one (with `limit.id`) when `expectedVersion` is 0 (`stale` when one
+   * exists already), else the stored one only if it still has that version (then version + 1).
+   */
+  saveRefundLimit(
+    market: MarketContext,
+    limit: RefundLimit,
+    expectedVersion: number,
+  ): Promise<'saved' | 'stale'>;
+
+  /** Removes a seller's own cap if it still has that version; `stale` otherwise (or none). */
+  removeRefundLimit(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    expectedVersion: number,
+  ): Promise<'removed' | 'stale'>;
 
   /**
    * Marks a pending refund succeeded and writes its credit note. False when it was no longer
