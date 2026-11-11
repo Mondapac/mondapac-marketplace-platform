@@ -15,6 +15,7 @@ import {
   SETTINGS_VIEW_PERMISSION as LISTS_VIEW_PERMISSION,
 } from '../lists-settings/types.ts';
 import { AREAS_EDIT_PERMISSION, AREAS_VIEW_PERMISSION } from '../service-area-names/types.ts';
+import { TAX_MANAGE_PERMISSION, TAX_VIEW_PERMISSION } from '../tax/types.ts';
 import { SUPPORT_MANAGE_PERMISSION, SUPPORT_VIEW_PERMISSION } from './types.ts';
 
 // The one map of the admin Settings pages (settings UX design, hub and roles sections). The hub,
@@ -115,6 +116,13 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/wallet',
         view: [SETTINGS_VIEW],
         manage: [SETTINGS_MANAGE],
+      },
+      {
+        id: 'tax',
+        labelKey: 'settings.hub.link.tax',
+        href: '/settings/tax',
+        view: [TAX_VIEW_PERMISSION],
+        manage: [TAX_MANAGE_PERMISSION],
       },
     ],
   },
