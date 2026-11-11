@@ -1,7 +1,5 @@
-import {
-  PlatformCategoryPicker,
-  type CategoryPickerAnswer,
-} from '../application/use-cases/category-picker.use-cases';
+import type { CategoryPickerAnswer } from '../application/use-cases/platform-category-picker.use-case';
+import { PlatformCategoryPicker } from '../application/use-cases/platform-category-picker.use-case';
 import {
   Body,
   Controller,

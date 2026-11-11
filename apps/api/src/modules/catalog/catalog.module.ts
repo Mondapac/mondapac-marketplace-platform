@@ -278,10 +278,8 @@ import { OwnProductController } from './presentation/own-product.controller';
 import { OwnTopicController } from './presentation/own-topic.controller';
 import { OwnTopicList } from './application/use-cases/own-topic-list.use-case';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
-import {
-  OwnCategoryPicker,
-  PlatformCategoryPicker,
-} from './application/use-cases/category-picker.use-cases';
+import { OwnCategoryPicker } from './application/use-cases/own-category-picker.use-case';
+import { PlatformCategoryPicker } from './application/use-cases/platform-category-picker.use-case';
 import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from './application/use-cases/own-product-save-draft.use-case';
 import { OwnProductSetOwnBrand } from './application/use-cases/own-product-set-own-brand.use-case';

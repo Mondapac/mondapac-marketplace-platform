@@ -1,7 +1,5 @@
-import {
-  OwnCategoryPicker,
-  type CategoryPickerAnswer,
-} from '../application/use-cases/category-picker.use-cases';
+import type { CategoryPickerAnswer } from '../application/use-cases/own-category-picker.use-case';
+import { OwnCategoryPicker } from '../application/use-cases/own-category-picker.use-case';
 import {
   Body,
   Controller,
