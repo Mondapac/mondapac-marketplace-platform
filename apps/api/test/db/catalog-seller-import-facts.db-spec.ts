@@ -133,6 +133,7 @@ describe.each(TEST_MARKETS)('seller import facts in market %s (database)', (code
       product_id: productId,
       revision_no: 1,
       revision_kind: 'submission',
+      type_code: 'simple',
       base_revision_id: null,
       reverted_from_revision_id: null,
       family_revision_id: await family(target),
