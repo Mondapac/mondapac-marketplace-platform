@@ -148,6 +148,14 @@ export interface OfferScopeRow {
   readonly categoryIds: readonly string[];
 }
 
+/** One row of `search.store-search`: a public store that matches the text and has indexed Offers. */
+export interface StoreSearchRow {
+  readonly sellerId: string;
+  readonly slug: string;
+  readonly name: string;
+  readonly rank: number;
+}
+
 /** One row of `search.offer-number-rows`: one stored number of the scope. */
 export interface OfferNumberRow {
   readonly attr: string;
@@ -286,6 +294,15 @@ export interface RawReadStatements {
     };
     readonly row: OfferScopeRow;
   };
+  readonly 'search.store-search': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly limit: string;
+      readonly offset: string;
+    };
+    readonly row: StoreSearchRow;
+  };
   readonly 'search.offer-number-rows': {
     readonly params: {
       readonly textSearchConfig: string;
@@ -377,6 +394,15 @@ const parseOfferScopeRow = (raw: unknown): OfferScopeRow => {
     productId: text(row['product_id']),
     sellerId: text(row['seller_id']),
     categoryIds: textList(row['category_ids']),
+  };
+};
+const parseStoreSearchRow = (raw: unknown): StoreSearchRow => {
+  const row = asRecord(raw);
+  return {
+    sellerId: text(row['seller_id']),
+    slug: text(row['slug']),
+    name: text(row['name']),
+    rank: number(row['rank']),
   };
 };
 const parseOfferNumberRow = (raw: unknown): OfferNumberRow => {
@@ -615,6 +641,16 @@ const OFFER_SCOPE_ROWS_SQL = `SELECT d.product_id, d.seller_id, d.category_ids::
    AND ($4::uuid[] = '{}'::uuid[] OR d.category_ids && $4::uuid[])
  ORDER BY d.offer_id ASC
  LIMIT $5::text::int4`;
+
+// The store query (search 1a): stores whose name matches, with at least one indexed Offer.
+const STORE_SEARCH_SQL = `SELECT s.seller_id, s.slug, s.name,
+       ts_rank(s.search_vector, websearch_to_tsquery($2::regconfig, $3::text)) AS rank
+  FROM "search"."store_documents" s
+ WHERE s.market_id = $1
+   AND s.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text)
+   AND EXISTS (SELECT 1 FROM "search"."offer_documents" d WHERE d.market_id = $1 AND d.seller_id = s.seller_id)
+ ORDER BY rank DESC, s.seller_id ASC
+ LIMIT $4::text::int4 OFFSET $5::text::int4`;
 
 // The stored numbers of some attributes over a scope (their lowest and highest are read by the caller).
 const OFFER_NUMBER_ROWS_SQL = `SELECT n.attr, n.value::text AS value
@@ -888,6 +924,21 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
       { name: 'limit', type: 'text' },
     ],
     parseRow: parseOfferScopeRow,
+  },
+  {
+    id: 'search.store-search',
+    owner: 'search',
+    reason:
+      'full-text search over the store names with websearch_to_tsquery, @@ and ts_rank on the store_documents GIN index; Prisma has no ranked text search',
+    design: 'docs/modules/search/search.md',
+    sql: STORE_SEARCH_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'limit', type: 'text' },
+      { name: 'offset', type: 'text' },
+    ],
+    parseRow: parseStoreSearchRow,
   },
   {
     id: 'search.offer-number-rows',

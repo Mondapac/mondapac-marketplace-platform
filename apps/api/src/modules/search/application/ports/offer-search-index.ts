@@ -2,6 +2,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { ScopeRow } from '../../domain/scope-counts';
 import type { OfferFacetReader } from './offer-facet.reader';
 import type { OfferSearchReader } from './offer-search.reader';
+import type { StoreSearchReader } from './store-search.reader';
 
 /** The text and category of a query: what the counts read. Filters are not part of it. */
 export interface ScopeRequest {
@@ -26,6 +27,7 @@ export interface OfferScopeReader {
  * the use cases or to apps/web. Every method runs in the caller's read-only unit, for the context's
  * Market only.
  */
-export interface OfferSearchIndex extends OfferSearchReader, OfferFacetReader, OfferScopeReader {}
+export interface OfferSearchIndex
+  extends OfferSearchReader, OfferFacetReader, OfferScopeReader, StoreSearchReader {}
 
 export const OFFER_SEARCH_INDEX = Symbol('OFFER_SEARCH_INDEX');

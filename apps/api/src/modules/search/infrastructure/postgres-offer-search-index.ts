@@ -16,6 +16,11 @@ import type {
   ScopeRequest,
 } from '../application/ports/offer-search-index';
 import type { OfferHit } from '../domain/offer-document';
+import type {
+  StoreSearchReader,
+  StoreSearchRequest,
+} from '../application/ports/store-search.reader';
+import type { StoreHit } from '../domain/store-document';
 import type { ScopeRow } from '../domain/scope-counts';
 
 /**
@@ -27,6 +32,7 @@ export class PostgresOfferSearchIndex implements OfferSearchIndex {
     private readonly search_: OfferSearchReader,
     private readonly facets_: OfferFacetReader,
     private readonly scope_: OfferScopeReader,
+    private readonly stores_: StoreSearchReader,
   ) {}
 
   search(market: MarketContext, request: OfferSearchRequest): Promise<readonly OfferHit[]> {
@@ -50,5 +56,8 @@ export class PostgresOfferSearchIndex implements OfferSearchIndex {
   }
   scopeRows(market: MarketContext, scope: ScopeRequest): Promise<readonly ScopeRow[]> {
     return this.scope_.scopeRows(market, scope);
+  }
+  searchStores(market: MarketContext, request: StoreSearchRequest): Promise<readonly StoreHit[]> {
+    return this.stores_.searchStores(market, request);
   }
 }

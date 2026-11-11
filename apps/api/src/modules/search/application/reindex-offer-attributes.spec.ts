@@ -107,6 +107,10 @@ describe.each(TEST_MARKETS)('attribute reindex in market %s', (code) => {
       documents: { upsert: () => Promise.resolve(), deleteMany: () => Promise.resolve(0) },
       feed,
       sellers: { eligible: () => Promise.resolve(new Set()) },
+      storeDocuments: {
+        upsertMany: () => Promise.resolve(),
+        deleteMany: () => Promise.resolve(0),
+      },
       categoryTree: { tree: () => Promise.resolve([]) },
       storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
       policy: new ConfigSearchPolicy(markets),

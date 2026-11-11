@@ -100,6 +100,12 @@ import { OFFER_FACET_READER, type OfferFacetReader } from '../application/ports/
 import { OFFER_SEARCH_INDEX, type OfferSearchIndex } from '../application/ports/offer-search-index';
 import { CATEGORY_TREE_SOURCE, type CategoryTreeSource } from '../application/ports/category-tree';
 import { RawOfferScopeReader } from './raw-offer-scope.reader';
+import { RawStoreSearchReader } from './raw-store-search.reader';
+import { PrismaStoreDocumentRepository } from './prisma-store-document.repository';
+import {
+  STORE_DOCUMENT_REPOSITORY,
+  type StoreDocumentRepository,
+} from '../application/ports/store-document.repository';
 import { PostgresOfferSearchIndex } from './postgres-offer-search-index';
 import { FacadeCategoryTree } from './facade-category-tree';
 import { FacadeStoreDirectory } from './facade-store-directory';
@@ -219,7 +225,14 @@ export const searchProviders: readonly FactoryProvider[] = [
         new RawOfferSearchReader(rawReads),
         new RawOfferFacetReader(rawReads),
         new RawOfferScopeReader(rawReads),
+        new RawStoreSearchReader(rawReads),
       ),
+  },
+  {
+    provide: STORE_DOCUMENT_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): StoreDocumentRepository =>
+      new PrismaStoreDocumentRepository(prisma),
   },
   {
     provide: STORE_DIRECTORY,

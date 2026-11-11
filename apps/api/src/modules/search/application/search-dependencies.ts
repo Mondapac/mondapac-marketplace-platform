@@ -7,6 +7,7 @@ import type { OfferFeed } from './ports/offer-feed';
 import type { OfferSearchIndex } from './ports/offer-search-index';
 import type { CategoryTreeSource } from './ports/category-tree';
 import type { StoreDirectory } from './ports/store-directory';
+import type { StoreDocumentRepository } from './ports/store-document.repository';
 import type { SearchFilterSource } from './ports/search-filters';
 import type { ProductImages } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
@@ -46,4 +47,6 @@ export interface SearchDependencies {
   readonly categoryTree: CategoryTreeSource;
   /** The public stores (address and name) among sellers, for names in the index (search 1a). */
   readonly storeDirectory: StoreDirectory;
+  /** The store read model, written with the Offers' sync (search 1a). */
+  readonly storeDocuments: StoreDocumentRepository;
 }

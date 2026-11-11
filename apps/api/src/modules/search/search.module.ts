@@ -19,6 +19,7 @@ import { OFFER_FEED } from './application/ports/offer-feed';
 import { OFFER_SEARCH_INDEX } from './application/ports/offer-search-index';
 import { CATEGORY_TREE_SOURCE } from './application/ports/category-tree';
 import { STORE_DIRECTORY } from './application/ports/store-directory';
+import { STORE_DOCUMENT_REPOSITORY } from './application/ports/store-document.repository';
 import { OFFER_SEARCH_READER } from './application/ports/offer-search.reader';
 import { SEARCH_FILTER_SOURCE } from './application/ports/search-filters';
 import { PRODUCT_IMAGES } from './application/ports/product-images';
@@ -52,6 +53,7 @@ import type { SearchDependencies } from './application/search-dependencies';
 import { RebuildOfferIndex } from './application/use-cases/rebuild-offer-index.use-case';
 import { ViewProductDetail } from './application/use-cases/view-product-detail.use-case';
 import { SearchProducts } from './application/use-cases/search-products.use-case';
+import { SearchStores } from './application/use-cases/search-stores.use-case';
 import { SyncProductRatings } from './application/use-cases/sync-product-ratings.use-case';
 import type { RatingSyncDependencies } from './application/rating-sync-dependencies';
 import { SyncOfferDocuments } from './application/use-cases/sync-offer-documents.use-case';
@@ -95,6 +97,7 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['categories', CATEGORY_SUBTREE_SOURCE],
   ['categoryTree', CATEGORY_TREE_SOURCE],
   ['storeDirectory', STORE_DIRECTORY],
+  ['storeDocuments', STORE_DOCUMENT_REPOSITORY],
 ];
 
 /** Every search use case shares one dependency object, built from the same ports. */
@@ -268,7 +271,7 @@ function productDetailProvider<U>(
   providers: [
     PersistenceModule.rawReadFor('search'),
     ...searchProviders,
-    ...[SearchProducts, SyncOfferDocuments, RebuildOfferIndex].map((type) =>
+    ...[SearchProducts, SearchStores, SyncOfferDocuments, RebuildOfferIndex].map((type) =>
       useCaseProvider(type as UseCaseClass<unknown>),
     ),
     shelfProvider(ListBestsellers),

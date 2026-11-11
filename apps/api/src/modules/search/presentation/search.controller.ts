@@ -14,7 +14,8 @@ import { Call } from '../../../platform/call-context/call-context.decorator';
 import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
 import type { SearchProductsRequest } from '../domain/search-query';
 import { SearchProducts } from '../application/use-cases/search-products.use-case';
-import { ProductSearchPageBody } from './search.dto';
+import { SearchStores } from '../application/use-cases/search-stores.use-case';
+import { ProductSearchPageBody, StoreSearchPageBody } from './search.dto';
 
 const ALLOWED = [
   'q',
@@ -29,6 +30,7 @@ const ALLOWED = [
   'page',
   'pageSize',
 ] as const;
+const STORE_ALLOWED = ['q', 'page', 'pageSize'] as const;
 const WHOLE_NUMBER = /^[0-9]{1,6}$/u;
 
 const fail = (status: number, code: string, details?: object): HttpException =>
@@ -94,6 +96,43 @@ function requestOf(query: Record<string, unknown>): SearchProductsRequest {
   return request;
 }
 
+/** Turns the query string of the store search into a request (the same rules as `requestOf`). */
+function storesRequestOf(query: Record<string, unknown>): {
+  q: string | undefined;
+  page: number | undefined;
+  pageSize: number | undefined;
+} {
+  const fields = Object.keys(query)
+    .filter((key) => !(STORE_ALLOWED as readonly string[]).includes(key))
+    .sort()
+    .slice(0, 10)
+    .map((key) => ({
+      path: Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�'),
+      code: 'unknown-field',
+    }));
+  const text = (name: (typeof STORE_ALLOWED)[number]): string | undefined => {
+    const value = query[name];
+    if (value === undefined) return undefined;
+    if (typeof value !== 'string') {
+      fields.push({ path: name, code: 'type' });
+      return undefined;
+    }
+    return value;
+  };
+  const whole = (name: 'page' | 'pageSize'): number | undefined => {
+    const value = text(name);
+    if (value === undefined) return undefined;
+    if (!WHOLE_NUMBER.test(value)) {
+      fields.push({ path: name, code: 'range' });
+      return undefined;
+    }
+    return Number(value);
+  };
+  const request = { q: text('q'), page: whole('page'), pageSize: whole('pageSize') };
+  if (fields.length > 0) throw fail(400, 'validation.failed', { fields });
+  return request;
+}
+
 /**
  * The storefront product search (speed mode, Phase 6 package 2). No session is read: the actor is
  * the Market's anonymous actor and the Market is the request's. In the default rate-limit class
@@ -106,7 +145,10 @@ function requestOf(query: Record<string, unknown>): SearchProductsRequest {
 export class SearchController {
   readonly #logger = new Logger('SearchController');
 
-  constructor(private readonly search: SearchProducts) {}
+  constructor(
+    private readonly search: SearchProducts,
+    private readonly searchStores: SearchStores,
+  ) {}
 
   @Get('products')
   @Header('Cache-Control', 'no-store')
@@ -199,6 +241,45 @@ export class SearchController {
         ),
       ) as ProductSearchPageBody;
     }
+    const { error } = result;
+    if (error.code === 'validation.failed') {
+      throw fail(400, error.code, { fields: error.fields });
+    }
+    const denied = ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS];
+    if (denied !== undefined) throw fail(denied, error.code);
+    this.#logger.warn({
+      msg: 'search.refused',
+      code: error.code,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    throw fail(503, 'search.unavailable');
+  }
+
+  @Get('stores')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Search stores by name (public)',
+    description:
+      'No session needed. `q` is 2 to 100 characters, in web-search syntax (at most 8 `or` terms). ' +
+      'Lists public stores (an approved revision, a held address, the seller may sell now) whose ' +
+      'name matches and that have at least one sellable Offer, in rank order, ties by seller. ' +
+      "`pageSize` is 1 to 48 (default 24), `page` 1 to 100. `productCount` counts the store's " +
+      'indexed Offers.',
+  })
+  @ApiQuery({ name: 'q', required: true, description: '2 to 100 characters.' })
+  @ApiQuery({ name: 'page', required: false, description: '1 to 100, default 1.' })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 48, default 24.' })
+  @ApiOkResponse({ type: StoreSearchPageBody })
+  @ApiBadRequestResponse({ description: 'validation.failed (details.fields)' })
+  @ApiTooManyRequestsResponse({ description: 'request.throttled' })
+  @ApiServiceUnavailableResponse({ description: 'search.unavailable' })
+  async stores(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+  ): Promise<StoreSearchPageBody> {
+    const result = await this.searchStores.execute(context, storesRequestOf(query));
+    if (result.ok) return result.value as StoreSearchPageBody;
     const { error } = result;
     if (error.code === 'validation.failed') {
       throw fail(400, error.code, { fields: error.fields });

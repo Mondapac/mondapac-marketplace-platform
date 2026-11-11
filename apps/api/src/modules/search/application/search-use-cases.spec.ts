@@ -13,6 +13,10 @@ import type { FeedFacts, OfferFeed } from './ports/offer-feed';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
 import type { OfferFacetReader } from './ports/offer-facet.reader';
 import type { OfferSearchIndex } from './ports/offer-search-index';
+import type { StoreDocumentRepository } from './ports/store-document.repository';
+import type { StoreDocument, StoreHit } from '../domain/store-document';
+import type { StoreSearchRequest } from './ports/store-search.reader';
+import { SearchStores } from './use-cases/search-stores.use-case';
 import type { NamedCategory, ScopeRow } from '../domain/scope-counts';
 import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
@@ -239,6 +243,13 @@ class StubReader implements OfferSearchReader {
 /** The scope rows the stub index answers (reset by each test's setup). */
 const scopeRowsOf: { rows: readonly ScopeRow[] } = { rows: [] };
 
+/** What the stub store query answers and was asked (reset by each test's setup). */
+const storeSearch: {
+  hits: StoreHit[];
+  counts: Map<Id<'Seller'>, number>;
+  requests: StoreSearchRequest[];
+} = { hits: [], counts: new Map(), requests: [] };
+
 /** The public stores the stub directory answers (reset by each test's setup). */
 const storeNames = new Map<Id<'Seller'>, { slug: string; name: string }>();
 
@@ -260,7 +271,30 @@ const indexOf = (
   facetRows: (market, scope) => facets.facetRows(market, scope),
   numberRows: (market, scope, attrs) => facets.numberRows(market, scope, attrs),
   scopeRows: () => Promise.resolve(scopeRowsOf.rows),
+  searchStores: (_market, request) => {
+    storeSearch.requests.push(request);
+    return Promise.resolve(storeSearch.hits.slice(0, request.limit));
+  },
 });
+
+class MemoryStores implements StoreDocumentRepository {
+  readonly rows = new Map<Id<'Seller'>, StoreDocument>();
+  upsertMany(_market: MarketContext, documents: readonly StoreDocument[]) {
+    for (const document of documents) this.rows.set(document.sellerId, document);
+    return Promise.resolve();
+  }
+  deleteMany(_market: MarketContext, sellerIds: readonly Id<'Seller'>[]) {
+    let count = 0;
+    for (const sellerId of sellerIds) if (this.rows.delete(sellerId)) count += 1;
+    return Promise.resolve(count);
+  }
+  deleteIndexedBefore() {
+    return Promise.resolve(0);
+  }
+  offerCounts() {
+    return Promise.resolve(storeSearch.counts);
+  }
+}
 
 class StubVisibility implements PublicVisibility {
   hidden = new Set<Id<'Offer'>>();
@@ -408,6 +442,7 @@ describe.each([
   const anonymous = testCallContext(market, 'anonymous', 'search-anon-abcdef');
 
   let documents: MemoryDocuments;
+  let storeRows: MemoryStores;
   let feed: StubFeed;
   let reader: StubReader;
   let visibility: StubVisibility;
@@ -422,6 +457,7 @@ describe.each([
 
   beforeEach(() => {
     documents = new MemoryDocuments();
+    storeRows = new MemoryStores();
     feed = new StubFeed();
     reader = new StubReader();
     visibility = new StubVisibility();
@@ -435,9 +471,13 @@ describe.each([
     scopeRowsOf.rows = [];
     treeOf.nodes = [];
     storeNames.clear();
+    storeSearch.hits = [];
+    storeSearch.counts = new Map();
+    storeSearch.requests = [];
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       documents,
+      storeDocuments: storeRows,
       index: indexOf(reader),
       categoryTree: { tree: () => Promise.resolve(treeOf.nodes) },
       storeDirectory: { publicStores: () => Promise.resolve(new Map(storeNames.entries())) },
@@ -710,6 +750,124 @@ describe.each([
     it('is for the system only', async () => {
       const result = await new RebuildOfferIndex(gate, deps).execute(anonymous, {});
       expect(result).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+    });
+  });
+
+  describe('store rows (search 1a)', () => {
+    const run = (offers = [offer(1)]) =>
+      new SyncOfferDocuments(gate, deps).execute(system, { offerIds: offers });
+
+    it('writes a row for the public store of an indexed Offer', async () => {
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      feed.facts_.set(offer(1), sellable());
+
+      await run();
+
+      expect([...storeRows.rows.values()]).toEqual([
+        { sellerId: SELLER, slug: 'alis-butcher', name: "Ali's Butcher", textSearchConfig: config },
+      ]);
+    });
+
+    it('removes the row of a seller that has no public store any more', async () => {
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      feed.facts_.set(offer(1), sellable());
+      await run();
+      storeNames.clear();
+
+      await run();
+
+      expect(storeRows.rows.size).toBe(0);
+    });
+  });
+
+  describe('SearchStores', () => {
+    const search = (input: Parameters<SearchStores['execute']>[1]) =>
+      new SearchStores(gate, deps).execute(anonymous, input);
+    const stored = (seller: Id<'Seller'>, slug: string, name: string): StoreHit => ({
+      sellerId: seller,
+      slug,
+      name,
+      rank: 1,
+    });
+
+    it("asks the index with the Market's configuration and answers address, name and count", async () => {
+      storeSearch.hits = [stored(SELLER, 'alis-butcher', "Ali's Butcher")];
+      storeSearch.counts = new Map([[SELLER, 7]]);
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+
+      const result = await search({ q: '  butcher ', pageSize: 10 });
+
+      expect(result).toEqual({
+        ok: true,
+        value: {
+          items: [{ slug: 'alis-butcher', name: "Ali's Butcher", productCount: 7 }],
+          page: 1,
+          pageSize: 10,
+          hasMore: false,
+        },
+      });
+      expect(storeSearch.requests).toEqual([
+        { textSearchConfig: config, text: 'butcher', limit: 11, offset: 0 },
+      ]);
+    });
+
+    it("uses sellers' live name and address, and drops a store that is not public now", async () => {
+      storeSearch.hits = [
+        stored(SELLER, 'old-address', 'Old name'),
+        stored(OTHER_SELLER, 'gone', 'Gone'),
+      ];
+      storeSearch.counts = new Map([
+        [SELLER, 2],
+        [OTHER_SELLER, 3],
+      ]);
+      storeNames.set(SELLER, { slug: 'new-address', name: 'New name' });
+
+      const result = await search({ q: 'name' });
+
+      expect(result.ok && result.value.items).toEqual([
+        { slug: 'new-address', name: 'New name', productCount: 2 },
+      ]);
+    });
+
+    it('says hasMore only when the next store is visible', async () => {
+      storeSearch.hits = [
+        stored(SELLER, 'one-store', 'One'),
+        stored(OTHER_SELLER, 'two-store', 'Two'),
+      ];
+      storeSearch.counts = new Map([
+        [SELLER, 1],
+        [OTHER_SELLER, 1],
+      ]);
+      storeNames.set(SELLER, { slug: 'one-store', name: 'One' });
+
+      const hidden = await search({ q: 'store', pageSize: 1 });
+      expect(hidden.ok && hidden.value.hasMore).toBe(false);
+
+      storeNames.set(OTHER_SELLER, { slug: 'two-store', name: 'Two' });
+      const shown = await search({ q: 'store', pageSize: 1 });
+      expect(shown.ok && shown.value.hasMore).toBe(true);
+    });
+
+    it('needs a text and refuses a long OR chain', async () => {
+      expect(await search({})).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'q', code: 'required' }] },
+      });
+      const long = Array.from({ length: 9 }, (_, n) => `t${n}`).join(' or ');
+      expect(await search({ q: long })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'q', code: 'too-many-terms' }] },
+      });
+    });
+
+    it('is search.unavailable, never an unchecked list, when sellers cannot answer', async () => {
+      storeSearch.hits = [stored(SELLER, 'one-store', 'One')];
+      deps = { ...deps, storeDirectory: { publicStores: () => Promise.resolve(null) } };
+
+      expect(await search({ q: 'one' })).toEqual({
+        ok: false,
+        error: { code: 'search.unavailable' },
+      });
     });
   });
 

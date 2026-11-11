@@ -12,6 +12,7 @@ import {
 } from '../domain/offer-document';
 import { categoryNamesOf, composeSearchText } from '../domain/index-names';
 import type { NamedCategory } from '../domain/scope-counts';
+import type { StoreDocument } from '../domain/store-document';
 import type { FeedFacts } from './ports/offer-feed';
 import { sellUnitRefKey, type SellUnitRef, type SellUnitState } from './ports/sell-unit-states';
 import type { SearchDependencies } from './search-dependencies';
@@ -163,9 +164,33 @@ export async function syncOffers(
       else documents.push(document);
     }
     const indexedAt = deps.clock.now();
+    // The store rows follow the same facts (search 1a): a seller of a document that has a public
+    // store is written; a seller met in the batch that has none (suspended, unapproved, no address)
+    // is removed. A seller with no Offer left keeps a stale row that no query returns (the store
+    // query needs an indexed Offer) and the rebuild deletes it.
+    const storeRows: StoreDocument[] = sellersOfDocuments.flatMap((sellerId) => {
+      const store = stores.get(sellerId);
+      return store === undefined
+        ? []
+        : [
+            {
+              sellerId,
+              slug: store.slug,
+              name: store.name,
+              textSearchConfig: settings.textSearchConfig,
+            },
+          ];
+    });
+    const storeRemovals = [
+      ...new Set(
+        [...facts.values()].map((f) => f.sellerId).filter((sellerId) => !stores.has(sellerId)),
+      ),
+    ];
     const written = await deps.unitOfWork.run(market, async () => {
       for (const document of documents) await deps.documents.upsert(market, document, indexedAt);
       const removed = await deps.documents.deleteMany(market, removals);
+      await deps.storeDocuments.upsertMany(market, storeRows, indexedAt);
+      await deps.storeDocuments.deleteMany(market, storeRemovals);
       return ok(removed);
     });
     if (!written.ok) throw new Error('search: the index write failed');
