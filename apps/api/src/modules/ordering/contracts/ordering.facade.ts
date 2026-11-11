@@ -1,5 +1,6 @@
 import type { CallContext, Id, Money, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { RefundReason } from '../domain/refund';
 
 /** A payment the provider holds on a card, as the webhook receiver reports it. */
 export interface AuthorisedPayment {
@@ -79,8 +80,8 @@ export interface RefundNotice {
   readonly orderId: string;
   readonly accountId: Id<'Account'>;
   readonly refundId: Id<'Refund'>;
-  /** `item-unavailable` when the seller marked the units unavailable (decision 6). */
-  readonly reason: string;
+  /** `SELLER_UNAVAILABLE_REASON` when the seller marked the units unavailable (decision 6). */
+  readonly reason: RefundReason;
   readonly requestedBy: 'admin' | 'seller';
   readonly amount: Money;
   readonly units: number;

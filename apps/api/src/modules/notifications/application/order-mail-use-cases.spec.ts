@@ -14,6 +14,7 @@ import type { ContactEmailTarget, IdentityFacade } from '../../identity';
 import type { OrderingFacade, OrderNotice, RefundNotice, ShipmentNotice } from '../../ordering';
 import { ConfigNotificationsPolicy } from '../infrastructure/config-notifications-policy';
 import type { OrderMailDependencies } from './order-mail-flow';
+import { mailAmount } from '../domain/order-mail';
 import { SendItemUnavailableRefundMail } from './use-cases/send-item-unavailable-refund-mail.use-case';
 import { SendOrderConfirmationMail } from './use-cases/send-order-confirmation-mail.use-case';
 import { SendOrderShippedMail } from './use-cases/send-order-shipped-mail.use-case';
@@ -506,6 +507,23 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
       sendError = null;
       await unavailableMail(1);
       expect(await unavailableMail(1)).toEqual(ok({ code: 'order-mail.already-handled' }));
+    });
+
+    it('answers access denied when ordering refuses, and throws on an unexpected refusal', async () => {
+      refundNotice = Promise.resolve(err({ code: 'access.denied' as const }));
+      expect(await unavailableMail()).toEqual(err({ code: 'access.denied' }));
+      refundNotice = Promise.resolve(err({ code: 'validation.failed' as const }));
+      await expect(unavailableMail()).rejects.toThrow('the refund could not be read');
+      expect(sent).toEqual([]);
+      expect(unitOfWork.handled.size).toBe(0);
+    });
+
+    it('formats amounts from exact minor units, with no float rounding', () => {
+      expect(mailAmount(money(900719925474099312n, 'AUD'), 'en-AU')).toContain(
+        '9,007,199,254,740,993.12',
+      );
+      expect(mailAmount(money(7n, 'AUD'), 'en-AU')).toContain('0.07');
+      expect(mailAmount(money(1500n, 'JPY'), 'en-AU')).toMatch(/1,500$/);
     });
 
     it('is for the system actor only', async () => {

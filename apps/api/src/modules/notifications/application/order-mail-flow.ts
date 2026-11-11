@@ -6,6 +6,7 @@ import type { MailTransport } from '../../../platform/mail/mail-transport';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { CatalogFacade } from '../../catalog';
 import type { IdentityFacade } from '../../identity';
+import { SELLER_UNAVAILABLE_REASON } from '../../ordering';
 import type { OrderingFacade, OrderNotice } from '../../ordering';
 import {
   itemUnavailableRefundMail,
@@ -323,7 +324,7 @@ export async function sendItemUnavailableRefund(
     }
     throw new Error(`${name}: the refund could not be read: ${notice.error.code}`);
   }
-  if (notice.value.reason !== 'item-unavailable') {
+  if (notice.value.reason !== SELLER_UNAVAILABLE_REASON) {
     return finish(deps, context, input, name, { skipped: 'refund.not-unavailable' });
   }
   const url = deps.policy.customerOrderUrl(context.market, notice.value.orderId);

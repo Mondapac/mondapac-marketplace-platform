@@ -112,19 +112,27 @@ export function orderShippedMail(input: {
   return { subject, text };
 }
 
-/** An amount as the mail shows it, in the Market's locale (e.g. "A$15.00" or "¥1,500"). */
+/**
+ * An amount as the mail shows it, in the Market's locale (e.g. "A$15.00" or "¥1,500"). The minor
+ * units stay a bigint: the major amount is built as an exact decimal string, never a float.
+ */
 export function mailAmount(amount: Money, locale: string): string {
   const exponent = minorUnitExponent(amount.currency);
-  const major = Number(amount.amount) / 10 ** exponent;
+  const negative = amount.amount < 0n;
+  const digits = (negative ? -amount.amount : amount.amount).toString().padStart(exponent + 1, '0');
+  const whole = digits.slice(0, digits.length - exponent);
+  const major =
+    (negative ? '-' : '') + (exponent === 0 ? whole : `${whole}.${digits.slice(-exponent)}`);
   try {
     return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: amount.currency,
       minimumFractionDigits: exponent,
       maximumFractionDigits: exponent,
-    }).format(major);
+      // An exact decimal string is a valid input (ECMA-402 Intl.NumberFormat v3).
+    }).format(major as unknown as number);
   } catch {
-    return `${amount.currency} ${major.toFixed(exponent)}`;
+    return `${amount.currency} ${major}`;
   }
 }
 

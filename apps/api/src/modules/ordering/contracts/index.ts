@@ -17,6 +17,7 @@ export {
   RefundSucceeded,
   SellerOrderDelivered,
 } from '../domain/events';
+export { SELLER_UNAVAILABLE_REASON, type RefundReason } from '../domain/refund';
 export {
   MAX_DELIVERED_SELLER_ORDERS,
   ORDERING_FACADE,
