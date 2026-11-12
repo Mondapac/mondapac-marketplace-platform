@@ -28,6 +28,7 @@ import type { LedgerPage, LedgerRepository } from './ports/ledger.repository';
 import type { SellerRateRecord, SellerRateRepository } from './ports/seller-rate.repository';
 import { ClearCommissionRate } from './use-cases/clear-commission-rate.use-case';
 import { CommissionRates } from './use-cases/commission-rates.use-case';
+import { OwnCommissionOn } from './use-cases/own-commission-on.use-case';
 import { RecordRefund } from './use-cases/record-refund.use-case';
 import { RecordSellerOrderPaid } from './use-cases/record-seller-order-paid.use-case';
 import { SetCommissionRate } from './use-cases/set-commission-rate.use-case';
@@ -382,6 +383,66 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         ok: false,
         error: { code: 'access.unauthenticated' },
       });
+    });
+  });
+
+  describe("the seller's own commission on an amount", () => {
+    const own = (input: unknown, context: CallContext = sellerA) =>
+      new OwnCommissionOn(gate, deps).execute(
+        context,
+        input as { amount: bigint; taxInclusive: boolean },
+      );
+    const provisional = config.commissionPayouts!.provisionalTaxRateBps;
+
+    it('uses the Market rate, then the seller rate, and the ledger rules for base and rounding', async () => {
+      const first = await own({ amount: 2000n, taxInclusive: true });
+      const base = commissionBase(2000n, true, provisional);
+      expect(first).toEqual(
+        ok({
+          rateBps: marketRate,
+          source: 'market',
+          commissionBase: base,
+          commission: commissionOn(base, marketRate),
+        }),
+      );
+      await setRate(SELLER_A, 1000);
+      expect(await own({ amount: 2000n, taxInclusive: false })).toEqual(
+        ok({ rateBps: 1000, source: 'seller', commissionBase: 2000n, commission: 200n }),
+      );
+    });
+
+    it('answers only about the signed-in seller: it takes no seller id and shows nobody else', async () => {
+      await setRate(SELLER_A, 1000);
+      const b = await own({ amount: 1000n, taxInclusive: false, sellerId: SELLER_A }, sellerB);
+      expect(b.ok && b.value.source).toBe('market');
+    });
+
+    it('refuses everyone but a seller, and an acting-as session', async () => {
+      for (const other of [admin, customer, system]) {
+        expect(await own({ amount: 1000n, taxInclusive: false }, other)).toMatchObject({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+      }
+      const acting = {
+        ...sellerA,
+        actor: { ...sellerA.actor, actingAs: { adminAccountId: ADMIN } },
+      } as unknown as CallContext;
+      expect(await own({ amount: 1000n, taxInclusive: false }, acting)).toMatchObject({
+        ok: false,
+      });
+    });
+
+    it('validates the amount and the tax flag', async () => {
+      for (const bad of [
+        { amount: -1n, taxInclusive: true },
+        { amount: 10n ** 12n + 1n, taxInclusive: true },
+        { amount: 100, taxInclusive: true },
+        { amount: 100n, taxInclusive: 'yes' },
+        {},
+      ]) {
+        expect(await own(bad)).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      }
     });
   });
 

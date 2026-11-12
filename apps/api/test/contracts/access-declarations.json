@@ -257,6 +257,11 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "commission-payouts.note-seller-reinstated", "rule": "system" },
+  {
+    "name": "commission-payouts.own-commission-on",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "commission-payouts.place-seller-suspended-hold", "rule": "system" },
   { "name": "commission-payouts.reconcile-instructions", "rule": "system" },
   { "name": "commission-payouts.record-refund", "rule": "system" },

@@ -30,6 +30,7 @@ export class ConfigPromotionsPolicy implements PromotionsPolicy {
           };
     return {
       currency: config.defaultCurrency,
+      pricesIncludeTax: config.pricesIncludeTax,
       rules: {
         sellerMaxDiscountBps: promotions.sellerMaxDiscountBps,
         priorApprovalDiscountBps: promotions.priorApprovalDiscountBps,

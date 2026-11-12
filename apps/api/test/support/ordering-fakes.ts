@@ -867,6 +867,10 @@ export class FakeCommission implements CommissionPayoutsFacade {
       ),
     );
   }
+  /** Ordering never asks for the seller's own commission preview. */
+  ownCommissionOn(): Promise<never> {
+    return Promise.reject(new Error('not used'));
+  }
   recordSellerOrderPaid(
     _c: CallContext,
     paid: PaidSellerOrder,

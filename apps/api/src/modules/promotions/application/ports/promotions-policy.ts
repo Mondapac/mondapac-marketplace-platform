@@ -24,6 +24,8 @@ export interface BatchCodeSettings {
 export interface PromotionsSettings {
   /** The currency of every promotion and cart of the Market. */
   readonly currency: string;
+  /** The Market's price convention: shown prices include tax (AU) or not. */
+  readonly pricesIncludeTax: boolean;
   readonly rules: PromotionRules;
   /** All discounts together may take this share of a line, in basis points. */
   readonly lineDiscountCapBps: number;
