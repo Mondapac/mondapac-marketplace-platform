@@ -359,6 +359,28 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
     ]);
   });
 
+  it('reads an attr[<code>] column of the file again at run time and saves its value', async () => {
+    const r = rig({
+      fileBytes: Buffer.from(
+        [
+          'Title,Main category,Product type,attr[brand]',
+          'Lamb,Meat,simple,Farms',
+          'Beef,Meat,simple,Ranch',
+          'Pork,Nowhere,simple,Farms',
+        ].join('\n'),
+      ),
+    });
+    await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    const brands = r.saves.map(
+      (save) =>
+        (save as { content: { attributeValues: Record<string, unknown> } }).content.attributeValues[
+          'brand'
+        ],
+    );
+    expect(brands).toEqual(['Farms', 'Ranch']);
+    expect(r.rows.map((row) => row.runState)).toEqual(['added', 'added', 'skipped']);
+  });
+
   it('fails only the row whose text the claim control refused', async () => {
     const r = rig({
       save: (call) =>

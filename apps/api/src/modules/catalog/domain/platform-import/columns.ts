@@ -88,7 +88,7 @@ export interface MappedColumns {
 
 /** The most attribute columns one file may carry. */
 export const ATTRIBUTE_COLUMNS_MAX = 40;
-const ATTRIBUTE_HEADER = /^attr\s*\[\s*([a-z0-9][a-z0-9-]{0,63})\s*\]$/;
+const ATTRIBUTE_HEADER = /^attr\s*\[\s*([a-z][a-z0-9_-]{0,63})\s*\]$/;
 
 /**
  * The attribute code of an `attr[<code>]` header (case and spacing do not matter), or null.

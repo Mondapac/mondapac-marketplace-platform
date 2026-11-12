@@ -69,6 +69,8 @@ export function problemText(code: string, column: IssueColumn, otherRow?: number
       return `${header}: too many decimal places`;
     case 'family.unavailable':
       return 'The attributes of this category cannot be read: try again later';
+    case 'attribute.unknown':
+    case 'attribute.locale-unknown':
     case 'attribute.too-long':
     case 'attribute.type':
     case 'attribute.out-of-range':

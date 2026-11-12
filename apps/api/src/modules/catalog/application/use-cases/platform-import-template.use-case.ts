@@ -4,6 +4,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { CATALOG_PLATFORM_IMPORT_RUN } from '../../contracts/permissions';
 import {
   ATTRIBUTE_COLUMNS_MAX,
+  attributeCodeOf,
   attributeColumn,
   IMPORT_COLUMNS,
   templateRows,
@@ -16,6 +17,14 @@ import { templateCsv } from '../platform-import/import-report';
 import type { AttributeAdminReader } from '../ports/attribute-admin.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { SheetWriter } from '../ports/sheet-writer';
+
+/** Attributes that have a column of their own in the file (Brand, Description, Barcode, Unit size). */
+const DEDICATED_ATTRIBUTES: ReadonlySet<string> = new Set([
+  'brand',
+  'description',
+  'gtin',
+  'unit-size',
+]);
 
 export interface PlatformImportTemplateInput {
   /** The code of a feature set: the template then has an `attr[<code>]` column for each of its attributes. */
@@ -92,7 +101,7 @@ export class PlatformImportTemplate extends UseCase<
     if (input?.featureSet !== undefined) {
       if (
         typeof input.featureSet !== 'string' ||
-        !/^[a-z0-9][a-z0-9-]{0,63}$/.test(input.featureSet)
+        !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(input.featureSet)
       ) {
         return err({
           code: 'validation.failed',
@@ -148,11 +157,16 @@ export class PlatformImportTemplate extends UseCase<
     } catch {
       return err({ code: 'access.unavailable' });
     }
-    const set = sets.find((candidate) => candidate.code === featureSet);
+    const set = sets.find(
+      (candidate) => candidate.code === featureSet && candidate.status === 'active',
+    );
     if (set === undefined) return err({ code: 'feature-set.unknown' });
     const codes: string[] = [];
     for (const group of set.groups) {
       for (const entry of group.attributes) {
+        if (DEDICATED_ATTRIBUTES.has(entry.code)) continue;
+        // A code the import would not read as a column (a certification-looking one) is not offered.
+        if (attributeCodeOf(attributeColumn(entry.code)) === null) continue;
         if (!codes.includes(entry.code) && codes.length < ATTRIBUTE_COLUMNS_MAX)
           codes.push(entry.code);
       }

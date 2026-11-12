@@ -73,6 +73,8 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
         weight: 3,
         organic: true,
         note: null,
+        // A measure is a number with a unit: it holds no text for the claim check.
+        pack: { value: '500', unit: 'g' },
       },
       variants: [{ variantId: 'v1', optionValues: { size: 'l' }, labels: { [first]: 'Large' } }],
       imageIds: [],
@@ -149,6 +151,10 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
     ['texts that are not an object', { texts: 'halal' }],
     ['a bad attribute code', { attributeValues: { 'bad code!': 'x' } }],
     ['an object attribute value with a bad locale', { attributeValues: { a: { fr: 'x' } } }],
+    [
+      'a measure with a third member',
+      { attributeValues: { a: { value: '1', unit: 'g', x: 'y' } } },
+    ],
     ['a nested attribute value', { attributeValues: { a: { en: { x: 'y' } } } }],
     ['an array of non-strings', { attributeValues: { a: [1, 2] } }],
     ['a variant with an unknown key', { variants: [{ variantId: 'v1', note: 'halal' }] }],

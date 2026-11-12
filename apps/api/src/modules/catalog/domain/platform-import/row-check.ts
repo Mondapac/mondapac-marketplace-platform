@@ -271,7 +271,7 @@ export function checkRow(
     if (cell === '') continue;
     const column = attributeColumn(code);
     const field = schema.fields.find((candidate) => candidate.code === code);
-    if (field === undefined || attributeValues[code] !== undefined) {
+    if (field === undefined || Object.hasOwn(attributeValues, code)) {
       // The feature set has no such attribute, or a dedicated column already filled it: not stored.
       add('warning', column, 'column.not-stored', cell);
       continue;
@@ -363,20 +363,48 @@ const MEASURE_CELL = /^(\d{1,15}(?:\.\d{1,9})?)\s*(\S.{0,19})?$/;
 const YES = new Set(['yes', 'true', '1']);
 const NO = new Set(['no', 'false', '0']);
 
+interface OptionIndex {
+  readonly codes: ReadonlySet<string>;
+  /** Loose label to the codes that carry it (more than one means the label is ambiguous). */
+  readonly byLabel: ReadonlyMap<string, readonly string[]>;
+}
+
+// Built once per field and default language: a file of 5,000 rows names options 200,000 times, and
+// a lookup must not read every label of every option each time.
+const OPTION_INDEXES = new WeakMap<AttributeField, Map<string, OptionIndex>>();
+
+function optionIndexOf(field: AttributeField, defaultLocale: string): OptionIndex {
+  const byLocale = OPTION_INDEXES.get(field) ?? new Map<string, OptionIndex>();
+  const known = byLocale.get(defaultLocale);
+  if (known !== undefined) return known;
+  const options = field.bounds.options ?? [];
+  const byLabel = new Map<string, string[]>();
+  for (const option of options) {
+    const seen = new Set<string>();
+    for (const [locale, label] of Object.entries(option.labels ?? {})) {
+      if (locale !== defaultLocale && !locale.toLowerCase().startsWith('en')) continue;
+      const key = looseName(label);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      byLabel.set(key, [...(byLabel.get(key) ?? []), option.code]);
+    }
+  }
+  const index: OptionIndex = { codes: new Set(options.map((option) => option.code)), byLabel };
+  byLocale.set(defaultLocale, index);
+  OPTION_INDEXES.set(field, byLocale);
+  return index;
+}
+
+/** The most options one multi-select cell may list. */
+const MULTI_SELECT_PARTS_MAX = 50;
+
 /** The option of a select field a cell names: its code, or its label in English or the default locale. */
 function optionOf(field: AttributeField, cell: string, env: CheckEnvironment): string | null {
-  const options = field.bounds.options ?? [];
-  const wanted = looseName(cell);
-  const byCode = options.find((option) => option.code === cell.toLowerCase());
-  if (byCode !== undefined) return byCode.code;
-  const byLabel = options.filter((option) =>
-    Object.entries(option.labels ?? {}).some(
-      ([locale, label]) =>
-        (locale === env.defaultLocale || locale.toLowerCase().startsWith('en')) &&
-        looseName(label) === wanted,
-    ),
-  );
-  return byLabel.length === 1 ? byLabel[0]!.code : null;
+  const index = optionIndexOf(field, env.defaultLocale);
+  const lower = cell.toLowerCase();
+  if (index.codes.has(lower)) return lower;
+  const found = index.byLabel.get(looseName(cell));
+  return found?.length === 1 ? found[0]! : null;
 }
 
 /**
@@ -416,7 +444,9 @@ function parseCell(field: AttributeField, cell: string, env: CheckEnvironment): 
     }
     case 'multi-select': {
       const codes: string[] = [];
-      for (const part of cell.split(';').map((piece) => piece.trim())) {
+      const parts = cell.split(';').map((piece) => piece.trim());
+      if (parts.length > MULTI_SELECT_PARTS_MAX) return bad();
+      for (const part of parts) {
         if (part === '') continue;
         const code = optionOf(field, part, env);
         if (code === null) return bad('attribute.option-unknown');

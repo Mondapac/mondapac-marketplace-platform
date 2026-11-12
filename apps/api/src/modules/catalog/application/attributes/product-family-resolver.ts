@@ -52,6 +52,9 @@ export class ProductFamilyResolver {
       }
       return familyCodes.get(familyId) ?? null;
     };
+    // Built once: a check resolves every category of the tree against the same nodes and links.
+    const nodeIndex = new Map(nodes.map((node) => [node.id as string, node]));
+    const linkIndex = new Map(links.map((link) => [link.categoryId, link]));
     const fallback = (): FamilyResolution => ({
       ok: true,
       familyCode: this.deps.policy.defaultFamily(market),
@@ -60,7 +63,7 @@ export class ProductFamilyResolver {
       resolve: async (primaryCategoryId): Promise<FamilyResolution> => {
         if (primaryCategoryId === null) return fallback();
         if (!readable) return UNAVAILABLE;
-        return resolveIn(nodes, links, primaryCategoryId, codeOf, fallback);
+        return resolveIn(nodeIndex, linkIndex, primaryCategoryId, codeOf, fallback);
       },
     };
   }
@@ -76,15 +79,15 @@ export class ProductFamilyResolver {
 const UNAVAILABLE: FamilyResolution = { ok: false, code: 'family.unavailable' };
 
 async function resolveIn(
-  nodes: readonly StoredCategoryNode[],
-  links: readonly StoredLinkFact[],
+  nodes: ReadonlyMap<string, StoredCategoryNode>,
+  links: ReadonlyMap<string, StoredLinkFact>,
   categoryId: string,
   codeOf: (familyId: string) => Promise<string | null>,
   fallback: () => FamilyResolution,
 ): Promise<FamilyResolution> {
-  const chain = chainOf(categoryId, nodes);
+  const chain = chainOf(categoryId, [], nodes);
   if (chain === null) return UNAVAILABLE;
-  const effective = effectiveOf(chain, links);
+  const effective = effectiveOf(chain, [], undefined, links);
   if (effective.familyId === null) return fallback();
   const code = await codeOf(effective.familyId);
   return code === null ? UNAVAILABLE : { ok: true, familyCode: code };

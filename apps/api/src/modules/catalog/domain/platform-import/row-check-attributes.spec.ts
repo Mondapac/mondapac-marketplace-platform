@@ -124,12 +124,27 @@ describe('attributeCodeOf and mapColumns', () => {
     ]);
   });
 
+  it('reads a code with an underscore, as an attribute definition may have one', () => {
+    expect(attributeCodeOf('attr[net_weight]')).toBe('net_weight');
+    expect(attributeCodeOf('attr[1st]')).toBeNull();
+  });
+
   it('refuses an attribute column that appears twice', () => {
     const mapped = mapColumns([...FIXED, 'attr[cut]', 'ATTR[cut]']);
     expect(mapped).toEqual({
       ok: false,
       error: { code: 'columns.duplicate', columns: ['attr[cut]'] },
     });
+  });
+
+  it('reads 40 attribute columns and lists the ones after that as ignored', () => {
+    const codes = Array.from({ length: 41 }, (_, i) => `attr[a-${i}]`);
+    const mapped = mapColumns([...FIXED, ...codes]);
+    if (!mapped.ok) throw new Error('columns');
+    expect(mapped.value.attributes.size).toBe(40);
+    expect(mapped.value.attributes.has('a-39')).toBe(true);
+    expect(mapped.value.attributes.has('a-40')).toBe(false);
+    expect(mapped.value.ignored).toEqual([{ header: 'attr[a-40]', certification: false }]);
   });
 
   it('adds the attribute columns to the template', () => {
@@ -257,6 +272,56 @@ describe.each([
     );
   });
 
+  it('treats attr[constructor] as a column the feature set does not have, and fills no prototype', () => {
+    const row = checkWith(
+      ['attr[constructor]', 'attr[toString]'.toLowerCase()],
+      ['x', 'y'],
+      locale,
+    );
+    expect(row.state).toBe('ready');
+    expect(row.issues.map((issue) => `${issue.column}:${issue.code}`)).toEqual(
+      expect.arrayContaining(['attr[constructor]:column.not-stored']),
+    );
+    expect(Object.keys(row.plan?.content['attributeValues'] as object)).toEqual(['brand']);
+  });
+
+  it('refuses a multi-select cell that lists more options than a field can have', () => {
+    const cell = Array.from({ length: 51 }, () => 'low-fat').join(';');
+    const row = checkWith(['attr[diet]'], [cell], locale);
+    expect(row.issues.filter((issue) => issue.severity === 'error')).toEqual([
+      expect.objectContaining({ column: 'attr[diet]', code: 'attribute.type' }),
+    ]);
+  });
+
+  it('looks options up by an index: 200 options and 5,000 cells stay fast', () => {
+    const many = field('big', 'select', {
+      bounds: {
+        options: Array.from({ length: 200 }, (_, i) => ({
+          code: `opt-${i}`,
+          labels: { [locale]: `Option number ${i}` },
+        })),
+      },
+    });
+    const env = { ...envOf(locale), schema: schemaOf([field('brand', 'text'), many]) };
+    const mapped = mapColumns([...FIXED, 'attr[big]']);
+    if (!mapped.ok) throw new Error('columns');
+    const started = Date.now();
+    for (let i = 0; i < 5000; i += 1) {
+      const row = {
+        rowNumber: i + 2,
+        cells: ['Lamb', 'Meat', 'simple', '', 'Farms', '', '', '', '', `Option number ${i % 200}`],
+      };
+      const checked = checkRow(
+        row,
+        mapped.value.map,
+        { ...env, schemaByCategory: undefined },
+        mapped.value.attributes,
+      );
+      expect(checked.plan?.content['attributeValues']).toMatchObject({ big: `opt-${i % 200}` });
+    }
+    expect(Date.now() - started).toBeLessThan(5000);
+  });
+
   it('refuses a control character in an attribute cell, naming its column', () => {
     const row = checkWith(['attr[origin-note]'], ['bad\u0001text'], locale);
     expect(row.issues).toEqual(
@@ -264,5 +329,47 @@ describe.each([
         expect.objectContaining({ column: 'attr[origin-note]', code: 'text.invalid-characters' }),
       ]),
     );
+  });
+});
+
+describe('a select by label in a Market whose default language is not English', () => {
+  const persian: AttributeSchema = schemaOf([
+    field('brand', 'text'),
+    field('cut', 'select', {
+      bounds: {
+        options: [
+          { code: 'shoulder', labels: { 'fa-ZZ': 'شانه', 'en-ZZ': 'Shoulder' } },
+          { code: 'leg', labels: { 'fa-ZZ': 'ران', 'en-ZZ': 'Leg' } },
+          { code: 'twin-a', labels: { 'en-ZZ': 'Twin' } },
+          { code: 'twin-b', labels: { 'en-ZZ': 'Twin' } },
+        ],
+      },
+    }),
+  ]);
+  const env: CheckEnvironment = { ...envOf('fa-ZZ'), schema: persian, schemaByCategory: undefined };
+  const run = (cell: string) => {
+    const mapped = mapColumns([...FIXED, 'attr[cut]']);
+    if (!mapped.ok) throw new Error('columns');
+    const row = {
+      rowNumber: 2,
+      cells: ['Lamb', 'Meat', 'simple', '', 'Farms', '', '', '', '', cell],
+    };
+    return checkRow(row, mapped.value.map, env, mapped.value.attributes);
+  };
+
+  it('takes the English label, the default-language label and the code', () => {
+    for (const cell of ['Shoulder', 'شانه', 'shoulder']) {
+      expect(run(cell).plan?.content['attributeValues']).toMatchObject({ cut: 'shoulder' });
+    }
+  });
+
+  it('refuses a label two options share, and one that is no option', () => {
+    for (const cell of ['Twin', 'Neck']) {
+      expect(
+        run(cell)
+          .issues.filter((issue) => issue.severity === 'error')
+          .map((issue) => issue.code),
+      ).toEqual(['attribute.option-unknown']);
+    }
   });
 });

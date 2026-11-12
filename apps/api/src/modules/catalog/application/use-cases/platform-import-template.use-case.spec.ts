@@ -67,10 +67,11 @@ describe.each(['AU', 'ZZ'] as const)('platform import template in market %s', (c
     reader.seedFeatureSet(
       market.marketId,
       set('meat', [
-        ['cut', 'pack-size'],
-        ['cut', 'organic'],
+        ['brand', 'cut', 'pack-size'],
+        ['cut', 'gtin', 'organic', 'net_weight', 'halal-status', 'price-tag'],
       ]),
     );
+    reader.seedFeatureSet(market.marketId, { ...set('old', [['cut']]), status: 'archived' });
     const useCase = new PlatformImportTemplate(createUseCaseGate(markets, allow), {
       unitOfWork,
       attributeAdminReader: reader,
@@ -92,16 +93,21 @@ describe.each(['AU', 'ZZ'] as const)('platform import template in market %s', (c
       'attr[cut]',
       'attr[pack-size]',
       'attr[organic]',
+      'attr[net_weight]',
     ]);
     if (!result.ok) throw new Error('template');
     const header = result.value.csv.split(/\r?\n/)[0]!;
-    expect(header.endsWith('attr[cut],attr[pack-size],attr[organic]')).toBe(true);
+    expect(header.endsWith('attr[cut],attr[pack-size],attr[organic],attr[net_weight]')).toBe(true);
     expect(result.value.xlsx.length).toBeGreaterThan(0);
   });
 
   it('answers feature-set.unknown for a code the Market does not have, and validates the code', async () => {
     const { useCase } = build();
     expect(await useCase.execute(context(), { featureSet: 'poultry' })).toEqual(
+      err({ code: 'feature-set.unknown' }),
+    );
+    // An archived feature set is not one a category can hold.
+    expect(await useCase.execute(context(), { featureSet: 'old' })).toEqual(
       err({ code: 'feature-set.unknown' }),
     );
     expect(await useCase.execute(context(), { featureSet: 'Bad Code' })).toEqual(
