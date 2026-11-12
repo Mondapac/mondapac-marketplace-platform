@@ -52,12 +52,16 @@ export function PublishPanel({
   );
   const [reason, setReason] = useState('');
   const [slug, setSlug] = useState(post.slug);
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const working = useRef(false);
 
-  const approved = post.status === 'approved' && post.open?.state === 'approved';
-  const scheduled = post.status === 'scheduled';
-  const published = post.status === 'published';
+  // A live post whose new version was approved keeps the status `published`: it can still be
+  // published (the new version) or scheduled, so the offer follows the version, not the status.
   const unpublished = post.status === 'unpublished';
+  const archived = post.status === 'archived';
+  const published = post.status === 'published';
+  const approved = post.open?.state === 'approved' && !unpublished && !archived;
+  const scheduled = post.scheduledAt !== null && post.scheduledAt !== undefined && !archived;
   if (!approved && !scheduled && !published && !unpublished) return null;
   const versionNo = post.open?.versionNo ?? null;
   const base = `${API_BLOG_POSTS}/${post.id}`;
@@ -137,7 +141,11 @@ export function PublishPanel({
                 label={t('schedule-at')}
                 type="datetime-local"
                 value={when}
-                help={t('zone-note', { zone })}
+                help={
+                  scheduledInstant === null
+                    ? t('zone-note', { zone })
+                    : `${t('zone-note', { zone })} ${t('goes-live-preview', { at: formatInstantInZone(scheduledInstant, locale, zone) })}`
+                }
                 disabled={disabled}
                 onChange={(event) => setWhen(event.target.value)}
               />
@@ -220,6 +228,7 @@ export function PublishPanel({
         <div className="flex flex-col gap-3">
           <CheckboxRow
             label={t('featured')}
+            help={t('featured-help')}
             checked={post.featured === true}
             disabled={disabled}
             onChange={() =>
@@ -253,16 +262,40 @@ export function PublishPanel({
       ) : null}
 
       {(published || unpublished) && canPublish && post.ownerType === 'platform' ? (
-        <div>
-          <Button
-            variant="secondary"
-            loading={busy === 'archive'}
-            disabled={disabled}
-            onClick={() => void run('archive', 'POST', 'archive', undefined, 'archived')}
-          >
-            {t('archive')}
-          </Button>
-          <p className="mt-1 text-sm text-fg-muted">{t('archive-help')}</p>
+        <div className="flex flex-col gap-2">
+          {confirmArchive ? (
+            <>
+              <p role="alert">{t('archive-confirm')}</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="destructive-solid"
+                  loading={busy === 'archive'}
+                  disabled={disabled}
+                  onClick={() => void run('archive', 'POST', 'archive', undefined, 'archived')}
+                >
+                  {t('archive')}
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={disabled}
+                  onClick={() => setConfirmArchive(false)}
+                >
+                  {t('cancel')}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <div>
+              <Button
+                variant="secondary"
+                disabled={disabled}
+                onClick={() => setConfirmArchive(true)}
+              >
+                {t('archive')}
+              </Button>
+              <p className="mt-1 text-sm text-fg-muted">{t('archive-help')}</p>
+            </div>
+          )}
         </div>
       ) : null}
     </section>

@@ -6661,7 +6661,7 @@
     "title": "Blog",
     "new": "New post",
     "publish": {
-      "title": "Publish",
+      "title": "Publishing",
       "published": "The post is live.",
       "scheduled": "The post is scheduled.",
       "unscheduled": "The schedule was removed.",
@@ -6690,7 +6690,11 @@
       "slug-help": "Lower-case words joined by hyphens. The old address redirects to the new one.",
       "slug-save": "Change address",
       "archive": "Archive",
-      "archive-help": "The post leaves the site and its address answers that it is gone."
+      "archive-help": "The post leaves the site and its address answers that it is gone.",
+      "archive-confirm": "Archive this post? It leaves the site and its address answers that it is gone.",
+      "cancel": "Cancel",
+      "goes-live-preview": "It will go live at {at}.",
+      "featured-help": "Only one post is featured. Featuring this one replaces the current one."
     },
     "review": {
       "page-title": "Review post",
@@ -6733,6 +6737,7 @@
         "event": "Event details"
       },
       "problem": {
+        "slug-taken": "This address is already used by another post.",
         "access-off": "Blog access of this seller is off.",
         "seller-owned": "This post belongs to a seller and cannot be changed here.",
         "quota-used": "The seller used the monthly post quota.",

@@ -153,4 +153,78 @@ describe('admin blog publish panel', () => {
     show(post({ status: 'draft', open: version('draft') }));
     expect(screen.queryByText('Publish')).toBeNull();
   });
+
+  it('asks twice before archiving, and Cancel backs out', async () => {
+    show(post({ status: 'published', open: null }));
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+    expect(call).not.toHaveBeenCalled();
+    expect(screen.getByText(/Archive this post\?/u)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText(/Archive this post\?/u)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Archive' })[0]!);
+    await waitFor(() => expect(call).toHaveBeenCalled());
+    expect(call).toHaveBeenCalledWith(
+      'POST',
+      `blog/admin/posts/${POST}/archive`,
+      undefined,
+      'csrf-1',
+    );
+  });
+
+  it('offers to publish a newly approved edit of a live post, and keeps the live controls', () => {
+    show(post({ status: 'published', open: version('approved'), live: version('published') }));
+    expect(screen.getByRole('button', { name: 'Publish now' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Take off the site' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Archive' })).toBeTruthy();
+  });
+
+  it('puts a taken-off post back, and features and renames a live one', async () => {
+    show(post({ status: 'unpublished', open: null }));
+    fireEvent.click(screen.getByRole('button', { name: 'Put back on the site' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call).toHaveBeenLastCalledWith(
+      'POST',
+      `blog/admin/posts/${POST}/resume`,
+      undefined,
+      'csrf-1',
+    );
+    cleanup();
+    show(post({ status: 'published', open: null, featured: false }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Feature on the blog home/u }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect(call).toHaveBeenLastCalledWith(
+      'PUT',
+      `blog/admin/posts/${POST}/featured`,
+      { featured: true },
+      'csrf-1',
+    );
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: ' new-address ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Change address' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
+    expect(call).toHaveBeenLastCalledWith(
+      'PUT',
+      `blog/admin/posts/${POST}/slug`,
+      { slug: 'new-address' },
+      'csrf-1',
+    );
+  });
+
+  it('hides take-off without blog.post.pause, and archive for a seller post', () => {
+    show(post({ status: 'published', open: null, ownerType: 'seller' }), { canPause: false });
+    expect(screen.queryByRole('button', { name: 'Take off the site' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Change address' })).toBeTruthy();
+  });
+
+  it('says that an address is taken, and leaves the page as it is', async () => {
+    call.mockImplementation(() =>
+      Promise.resolve({ ok: false, failure: { status: 409, code: 'blog.slug-taken' } }),
+    );
+    show(post({ status: 'published', open: null }));
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: 'taken' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Change address' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/already used by another post/u);
+    expect(changed).not.toHaveBeenCalled();
+  });
 });
