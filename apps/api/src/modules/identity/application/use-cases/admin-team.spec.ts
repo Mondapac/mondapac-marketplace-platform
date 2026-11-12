@@ -87,6 +87,7 @@ const LEAD_KEYS = [
   'catalog.brand.read',
   'catalog.category-tree.view',
   'catalog.product.view',
+  'catalog.variant.view',
   'identity.admin-account.disable',
   'identity.admin-account.invite',
   'identity.admin-account.reset-second-factor',
@@ -118,6 +119,7 @@ const LEAD_KEYS = [
   'commission-payouts.payout-terms.view',
   'commission-payouts.dispute.view',
   'settings.list-paging.view',
+  'storefront.seo.view',
 ];
 
 describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)', (code) => {

@@ -66,6 +66,10 @@ it('maps every refusal code of the storefront routes to its exact status', () =>
     'storefront.slug-taken': 409,
     'storefront.nothing-to-publish': 409,
     'storefront.draft-changed': 409,
+    'storefront.conflict': 409,
+    'storefront.seo-version-not-found': 404,
+    'second-factor.required': 403,
+    'second-factor.enrolment-required': 403,
     'storefront.slide-not-found': 404,
     'storefront.slide-version-not-found': 404,
     'storefront.slide-archived': 409,
@@ -79,6 +83,12 @@ it('maps every refusal code of the storefront routes to its exact status', () =>
     'storefront.slide-position-full': 409,
     'storefront.slide-link-invalid': 409,
     'storefront.slide-order-mismatch': 409,
+    'storefront.slide-image-not-found': 404,
+    'file.too-large': 413,
+    'file.unsupported-type': 415,
+    'file.too-many-pixels': 422,
+    'file.too-small': 422,
+    'file.unreadable': 422,
   });
 });
 

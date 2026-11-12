@@ -22,6 +22,7 @@ import type {
   PublishedProductValues,
   PublishedProductsFilter,
 } from '../ports/product-details-gap.reader';
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import { GAP_SCAN_MAX, ProductsMissingDetailsList } from './products-missing-details-list.use-case';
 
@@ -64,8 +65,7 @@ class MemoryGapReader implements ProductDetailsGapReader {
         .filter(
           (row) =>
             (filter.afterId === null || row.productId > filter.afterId) &&
-            (filter.sellerId === null || row.ownerSellerId === filter.sellerId) &&
-            (filter.familyCode === null || row.familyCode === filter.familyCode),
+            (filter.sellerId === null || row.ownerSellerId === filter.sellerId),
         )
         .sort((a, b) => (a.productId < b.productId ? -1 : 1))
         .slice(0, filter.limit),
@@ -111,12 +111,25 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     loadSchema: (_m: MarketContext, familyCode: string) =>
       Promise.resolve(schemas[familyCode] ?? null),
   } as unknown as AttributeRepository;
+  // A category `cat:<code>` holds the feature set `<code>`; `cat:unreadable` cannot be resolved.
+  const familyResolver = {
+    open: () =>
+      Promise.resolve({
+        resolve: (categoryId: string | null) =>
+          Promise.resolve(
+            categoryId === null || categoryId === 'cat:unreadable'
+              ? ({ ok: false, code: 'family.unavailable' } as const)
+              : ({ ok: true, familyCode: categoryId.slice(4) } as const),
+          ),
+      }),
+  } as unknown as ProductFamilyResolver;
   const useCase = () =>
     new ProductsMissingDetailsList(createUseCaseGate(markets, check), {
       unitOfWork,
       detailsGapReader: reader,
       attributes,
       policy,
+      familyResolver,
     });
 
   const product = (
@@ -126,7 +139,8 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     productId: ID(0x1000 + n),
     productCode: `P${n}`,
     ownerSellerId: ID(0x2000),
-    familyCode: 'pantry',
+    revisionFamilyCode: 'pantry',
+    primaryCategoryId: 'cat:pantry',
     name: `Product ${n}`,
     attributeValues: {},
     ...over,
@@ -202,7 +216,7 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     reader.rows = [
       product(1, { ownerSellerId: null }),
       product(2, { ownerSellerId: ID(0x2001) }),
-      product(3, { familyCode: 'other' }),
+      product(3, { primaryCategoryId: 'cat:other', revisionFamilyCode: 'other' }),
     ];
     const all = await useCase().execute(context(), {});
     expect(all.ok && all.value.items.map((i) => [i.productCode, i.sellerId])).toEqual([
@@ -227,6 +241,23 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     expect(last.ok && last.value).toMatchObject({ nextAfterId: null, scanned: 1 });
   });
 
+  it('ends the report when a page fills on the last row of a short batch', async () => {
+    reader.rows = [1, 2, 3].map((n) => product(n));
+    const result = await useCase().execute(context(), { limit: 3 });
+    expect(result.ok && result.value).toMatchObject({ scanned: 3, nextAfterId: null });
+  });
+
+  it('keeps a cursor when a page fills on the last row the scan cap allows', async () => {
+    const complete = { origin: 'AU', storage: { [locales.default]: 'x' } };
+    reader.rows = Array.from({ length: GAP_SCAN_MAX }, (_, i) =>
+      product(i + 1, i < GAP_SCAN_MAX - 1 ? { attributeValues: complete } : {}),
+    );
+    const result = await useCase().execute(context(), { limit: 1 });
+    expect(result.ok && result.value.items.map((i) => i.productCode)).toEqual([`P${GAP_SCAN_MAX}`]);
+    expect(result.ok && result.value.scanned).toBe(GAP_SCAN_MAX);
+    expect(result.ok && result.value.nextAfterId).toBe(ID(0x1000 + GAP_SCAN_MAX));
+  });
+
   it('skips products that are complete and stops a long scan at the cap with a cursor', async () => {
     const complete = { origin: 'AU', storage: { [locales.default]: 'x' } };
     reader.rows = Array.from({ length: GAP_SCAN_MAX + 5 }, (_, i) =>
@@ -241,9 +272,34 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     expect(rest.ok && rest.value).toMatchObject({ scanned: 5, nextAfterId: null });
   });
 
+  it('judges a product against the feature set its primary category holds now, not the one it was frozen under', async () => {
+    schemas['other'] = schemaOf([field('size', { required: true })]);
+    reader.rows = [product(1, { primaryCategoryId: 'cat:other' }), product(2)];
+    const result = await useCase().execute(context(), {});
+    expect(result.ok && result.value.items.map((i) => [i.productCode, i.featureSetCode])).toEqual([
+      ['P1', 'other'],
+      ['P2', 'pantry'],
+    ]);
+  });
+
+  it('falls back to the revision feature set when the category cannot be resolved', async () => {
+    reader.rows = [
+      product(1, { primaryCategoryId: 'cat:unreadable' }),
+      product(2, { primaryCategoryId: null }),
+    ];
+    const result = await useCase().execute(context(), {});
+    expect(result.ok && result.value.items.map((i) => i.featureSetCode)).toEqual([
+      'pantry',
+      'pantry',
+    ]);
+  });
+
   it('names a feature set it cannot read and does not judge its products', async () => {
     schemas['gone'] = null;
-    reader.rows = [product(1, { familyCode: 'gone' }), product(2)];
+    reader.rows = [
+      product(1, { primaryCategoryId: 'cat:gone', revisionFamilyCode: 'gone' }),
+      product(2),
+    ];
     const result = await useCase().execute(context(), {});
     expect(result.ok && result.value.items.map((i) => i.productCode)).toEqual(['P2']);
     expect(result.ok && result.value.unreadableFeatureSets).toEqual(['gone']);

@@ -28,7 +28,9 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
 
 - `requestLimits`: the generic per-origin rate limiter (`apps/api/src/platform/rate-limit/`;
   identity design 6.8). `anonymousIdentityPerMinute` (sign-up, sign-in and reset requests;
-  20 for AU) and `publicMediaPerMinute` (the anonymous buyer photo route; 1500 for AU) and `defaultPerMinute`
+  20 for AU) and `publicMediaPerMinute` (the anonymous buyer photo route; 1500 for AU),
+  `publicSearchPerMinute` (the storefront product and store search, `GET search/products` and
+  `GET search/stores`; 120 for AU) and `defaultPerMinute`
   (every other market-scoped route; 300 for AU). The counter
   of an origin is shared by every Market of the Region Stack; the request's Market chooses
   only the limit.
@@ -212,7 +214,9 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
 - `taxCategories` (required, 1 to 20 entries, no code repeated): `code` (lower-case letters,
   digits and `_`) and `labelKey`. The AU values wait for the tax adviser (ADR-0007 decision 5).
 - `sensitiveChanges` (required, every flag required): `platformCategories`, `taxCategory`,
-  `name`, `primaryImage`, `anyImage`, `variantRemoved`. A change in a field marked `true` sends
+  `name`, `primaryImage`, `anyImage`, `variantRemoved`, `gtinChanged` (a GTIN set,
+  changed or cleared on a published variant), `axisAdded` (a second variant axis added to a
+  published product). A change in a field marked `true` sends
   the revision to review (design 4.3). `anyImage` must be `true`: an added or replaced
   image always goes to review (Hassan H1), so a Market cannot switch it off.
 - `maxVariantsPerProduct` (required, 1 to 100; AU 100): the most non-retired variants one
@@ -226,10 +230,19 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
   move, merge or archive of platform categories marks `rechecking` in its unit (catalog design
   4.6, Q-K4). Above it the change is refused with `category.impact-too-large`, and the admin moves
   the subcategories in parts.
+- `maxCategoryImportRows` (required, 1 to 5,000; AU 1,000): the most data rows one category tree
+  import file may hold (categories C7). More is refused before any row is read.
+- `maxCategoryImportBytes` (required, 1 KiB to 10 MiB; AU 5 MiB): the largest category tree import
+  file. The platform-wide import ceiling (10 MiB, 5,000 rows) still applies above it.
 - `maxVariantAttributes` (required, 1 to 5; AU 2): the most variant (option) attributes one
   configurable product may vary on (attributes plan A2). A product whose feature set marks more
   option attributes is refused by the configurable type's variant check
   (`variants.too-many-option-attributes`).
+- `units` (required; attributes A3): the units a number-with-unit attribute may offer in this
+  Market, as `{ "code", "labels": { locale: text } }`. A code is one the platform knows (`g`, `kg`,
+  `ml`, `l`, `mm`, `cm`, `m`, `count`), no code repeats, and the four base units `g`, `ml`, `mm` and
+  `count` must all be listed (stored values are in base units). The label is what a seller and a
+  buyer see per locale ("kg", "L"); an administrator picks among these and cannot add one.
 - `productTypes` (required, 1 to 20 entries, no code repeated): the product type codes the Market
   offers (lower-case letters, digits and `-`, as the registry's codes are). A type that is not
   listed, or is listed but not registered, is refused at product creation (`product.type-not-offered`,

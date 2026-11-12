@@ -17,10 +17,13 @@ import { API_CATEGORIES, CATEGORIES_PATH, type TreeBody } from './types.ts';
 export function CategoryPageView({
   id,
   canEdit,
+  canRestructure = false,
   csrfToken = '',
 }: {
   readonly id: string;
   readonly canEdit: boolean;
+  /** `catalog.category-tree.restructure`: Move, Merge and Archive. */
+  readonly canRestructure?: boolean;
   readonly csrfToken?: string;
 }) {
   const t = useTranslations('categories');
@@ -71,6 +74,7 @@ export function CategoryPageView({
         id={id}
         tree={tree}
         canEdit={canEdit}
+        canRestructure={canRestructure}
         csrfToken={csrfToken}
         onChanged={(message) => {
           setNote(message ?? null);

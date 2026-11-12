@@ -16,7 +16,10 @@ import { SellersModule } from '../sellers';
 import { CATEGORY_SUBTREE_SOURCE } from './application/ports/category-subtree';
 import { OFFER_DOCUMENT_REPOSITORY } from './application/ports/offer-document.repository';
 import { OFFER_FEED } from './application/ports/offer-feed';
-import { OFFER_FACET_READER } from './application/ports/offer-facet.reader';
+import { OFFER_SEARCH_INDEX } from './application/ports/offer-search-index';
+import { CATEGORY_TREE_SOURCE } from './application/ports/category-tree';
+import { STORE_DIRECTORY } from './application/ports/store-directory';
+import { STORE_DOCUMENT_REPOSITORY } from './application/ports/store-document.repository';
 import { OFFER_SEARCH_READER } from './application/ports/offer-search.reader';
 import { SEARCH_FILTER_SOURCE } from './application/ports/search-filters';
 import { PRODUCT_IMAGES } from './application/ports/product-images';
@@ -30,6 +33,8 @@ import { PERSONAL_SIGNALS } from './application/ports/personal-signals';
 import { PUBLIC_VISIBILITY } from './application/ports/public-visibility';
 import { SEARCH_POLICY } from './application/ports/search-policy';
 import { SELLER_ELIGIBILITY } from './application/ports/seller-eligibility';
+import { SELL_UNIT_STATES } from './application/ports/sell-unit-states';
+import { OFFER_VARIANT_READER } from './application/ports/offer-variant.reader';
 import { SHELF_DOCUMENTS_READER } from './application/ports/shelf-documents.reader';
 import { SHELF_SOURCES } from './application/ports/shelf-sources';
 import { PRODUCT_DETAIL_SOURCES } from './application/ports/product-detail-sources';
@@ -48,6 +53,7 @@ import type { SearchDependencies } from './application/search-dependencies';
 import { RebuildOfferIndex } from './application/use-cases/rebuild-offer-index.use-case';
 import { ViewProductDetail } from './application/use-cases/view-product-detail.use-case';
 import { SearchProducts } from './application/use-cases/search-products.use-case';
+import { SearchStores } from './application/use-cases/search-stores.use-case';
 import { SyncProductRatings } from './application/use-cases/sync-product-ratings.use-case';
 import type { RatingSyncDependencies } from './application/rating-sync-dependencies';
 import { SyncOfferDocuments } from './application/use-cases/sync-offer-documents.use-case';
@@ -65,6 +71,7 @@ import { SearchController } from './presentation/search.controller';
 import { BoughtTogetherController } from './presentation/bought-together.controller';
 import { ShelfController } from './presentation/shelf.controller';
 import { catalogIndexSubscriptions } from './presentation/subscribers/catalog-index.subscriptions';
+import { namesIndexSubscriptions } from './presentation/subscribers/names-index.subscriptions';
 import { sellerAccessIndexSubscriptions } from './presentation/subscribers/seller-access-index.subscriptions';
 import { SEARCH_ASSISTANT_FACADE } from './contracts';
 import { SearchAssistantFacadeImplementation } from './presentation/search-assistant.facade';
@@ -74,19 +81,23 @@ type UseCaseClass<U> = new (gate: UseCaseGate, deps: SearchDependencies) => U;
 const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['documents', OFFER_DOCUMENT_REPOSITORY],
-  ['reader', OFFER_SEARCH_READER],
-  ['facets', OFFER_FACET_READER],
+  ['index', OFFER_SEARCH_INDEX],
   ['filterSource', SEARCH_FILTER_SOURCE],
   ['policy', SEARCH_POLICY],
   ['feed', OFFER_FEED],
   ['visibility', PUBLIC_VISIBILITY],
   ['sellers', SELLER_ELIGIBILITY],
+  ['sellUnits', SELL_UNIT_STATES],
+  ['variants', OFFER_VARIANT_READER],
   ['clock', CLOCK],
   ['shelves', SHELF_DOCUMENTS_READER],
   ['stores', STORE_RESOLVER],
   ['brands', BRAND_PRODUCTS],
   ['images', PRODUCT_IMAGES],
   ['categories', CATEGORY_SUBTREE_SOURCE],
+  ['categoryTree', CATEGORY_TREE_SOURCE],
+  ['storeDirectory', STORE_DIRECTORY],
+  ['storeDocuments', STORE_DOCUMENT_REPOSITORY],
 ];
 
 /** Every search use case shares one dependency object, built from the same ports. */
@@ -260,7 +271,7 @@ function productDetailProvider<U>(
   providers: [
     PersistenceModule.rawReadFor('search'),
     ...searchProviders,
-    ...[SearchProducts, SyncOfferDocuments, RebuildOfferIndex].map((type) =>
+    ...[SearchProducts, SearchStores, SyncOfferDocuments, RebuildOfferIndex].map((type) =>
       useCaseProvider(type as UseCaseClass<unknown>),
     ),
     shelfProvider(ListBestsellers),
@@ -282,6 +293,7 @@ function productDetailProvider<U>(
     registerSubscriptionsFrom('search', [SyncOfferDocuments], (sync: SyncOfferDocuments) => [
       ...catalogIndexSubscriptions(sync),
       ...sellerAccessIndexSubscriptions(sync),
+      ...namesIndexSubscriptions(sync),
     ]),
     registerJobsFrom(
       'search',

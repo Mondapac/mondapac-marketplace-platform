@@ -43,6 +43,13 @@ export interface ProductRow {
   readonly typeCode: string;
   readonly status: Status;
   readonly offerCount: number;
+  /** The tags of the shown version, in order, named in the Market default language. */
+  readonly topics?: readonly {
+    readonly id: string;
+    readonly status: 'active' | 'archived';
+    readonly name: string | null;
+    readonly slug: string;
+  }[];
   readonly updatedAt: string;
   readonly createdAt: string;
 }
@@ -141,6 +148,7 @@ export const OPTIONAL_COLUMNS = [
   'scope',
   'seller',
   'created',
+  'tags',
 ] as const;
 export type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number];
 

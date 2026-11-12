@@ -39,10 +39,17 @@ import { SellerConfirmPickup } from '../application/use-cases/seller-confirm-pic
 import { SellerDeliverOrder } from '../application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from '../application/use-cases/seller-list-orders.use-case';
 import { SellerMarkOrderReady } from '../application/use-cases/seller-mark-order-ready.use-case';
+import { SellerMarkUnavailable } from '../application/use-cases/seller-mark-unavailable.use-case';
 import { SellerViewOrderDocument } from '../application/use-cases/seller-view-order-document.use-case';
 import { SellerViewOrder } from '../application/use-cases/seller-view-order.use-case';
 import { OrderDocumentBody, orderDocumentBody } from './documents.dto';
 import { closedBody, refusal } from './http-answers';
+import {
+  RefundBody,
+  UNAVAILABLE_BODY_KEYS,
+  UnavailableRequestBody,
+  refundBody,
+} from './refunds.dto';
 import {
   PickupConfirmRequest,
   SellerOrderPageBody,
@@ -81,6 +88,7 @@ export class SellerOrdersController {
     private readonly confirmPickup: SellerConfirmPickup,
     private readonly deliver: SellerDeliverOrder,
     private readonly documentOf: SellerViewOrderDocument,
+    private readonly markUnavailable: SellerMarkUnavailable,
   ) {}
 
   @Get()
@@ -212,7 +220,9 @@ export class SellerOrdersController {
   @ApiNotFoundResponse({ ...ERROR, description: 'ordering.seller-order-not-found' })
   @ApiConflictResponse({
     ...ERROR,
-    description: 'ordering.fulfilment-conflict (the order has already shipped)',
+    description:
+      'ordering.fulfilment-conflict (the order has already shipped) or ' +
+      'ordering.seller-order-refunded (every unit was refunded: the order was cancelled)',
   })
   async readyOrder(
     @Call() context: CallContext,
@@ -232,6 +242,69 @@ export class SellerOrdersController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return sellerOrderShipBody(result.value);
+  }
+
+  @Post(':sellerOrderId/unavailable')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Mark units of a paid order unavailable and refund them',
+    description:
+      'Needs ordering.seller-order.mark-unavailable (protected). Only before the order is ready: ' +
+      'a ready, shipped or delivered order is 409 ordering.fulfilment-conflict. The units are ' +
+      'refunded to the customer at once at their frozen price, with the rest of the shipping fee ' +
+      'when nothing is left to send; the seller bears the refund (it is reversed in the seller ' +
+      'ledger). One refund at a time per seller order (409 ordering.refund-in-progress). Off ' +
+      'while tax.refundCredit.enabled is (409 ordering.refund-disabled). The body names ' +
+      'expectedRefunds, the count of refunds not failed its page showed: a repeat after one went ' +
+      'through is 409 conflict.retry, so units are never refunded twice. Never past what is ' +
+      'left (422 ordering.refund-exceeds).',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
+  @ApiBody({ type: UnavailableRequestBody })
+  @ApiOkResponse({ type: RefundBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.seller-order-not-found' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description:
+      'ordering.fulfilment-conflict, ordering.refund-disabled, ordering.refund-not-allowed, ' +
+      'ordering.refund-in-progress or conflict.retry',
+  })
+  @ApiUnprocessableEntityResponse({
+    ...ERROR,
+    description:
+      'ordering.refund-exceeds (details.fields), ordering.refund-tax-unknown or ordering.refund-rejected',
+  })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'ordering.refund-tax-unavailable or access.unavailable',
+  })
+  async unavailableUnits(
+    @Call() context: CallContext,
+    @Param('sellerOrderId') sellerOrderId: string,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, UNAVAILABLE_BODY_KEYS);
+    if (invalid !== null) throw invalid;
+    const { lines, expectedRefunds } = body as { lines?: unknown; expectedRefunds?: unknown };
+    const result = await this.markUnavailable.execute(context, {
+      sellerOrderId,
+      lines,
+      expectedRefunds,
+    });
+    this.log(
+      'ordering.seller-mark-unavailable-route',
+      context,
+      result.ok ? `refund-${result.value.state}` : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return refundBody(result.value);
   }
 
   @Post(':sellerOrderId/confirm-pickup')

@@ -1020,7 +1020,10 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       });
 
       if (!list.ok || !view.ok) throw new Error('read failed');
-      expect(list.value.orders[0]).toEqual(view.value);
+      // The page adds the order's refunds and the refund switch to what the list shows.
+      const { refunds, refundsEnabled, ...listed } = view.value;
+      expect({ refunds, refundsEnabled }).toEqual({ refunds: [], refundsEnabled: false });
+      expect(list.value.orders[0]).toEqual(listed);
       expect(view.value.customer).toEqual({ displayName: null, email: 'jane@example.com' });
       const a = view.value.sellerOrders.find((s) => s.sellerId === SELLER_A)!;
       const b = view.value.sellerOrders.find((s) => s.sellerId === SELLER_B)!;
@@ -2227,6 +2230,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           ...deps,
           refunds: {
             findTarget: (_m: unknown, so: string) => Promise.resolve(refundTargets.get(so) ?? null),
+            listOfSellerOrder: () => Promise.resolve([]),
           } as never,
         };
       });

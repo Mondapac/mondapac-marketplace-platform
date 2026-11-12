@@ -128,6 +128,15 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
     }
   });
 
+  it('accepts topicIds as a list of ids, absent as none, and refuses anything else (T2)', () => {
+    const id = '0197a1b2-0000-7000-8000-000000000001';
+    expect(draftTextsOf({ topicIds: [id] }, supported, defaultLocale).ok).toBe(true);
+    expect(draftTextsOf({}, supported, defaultLocale).ok).toBe(true);
+    for (const bad of [id, [1], ['bad id'], { 0: id }, null]) {
+      expect(draftTextsOf({ topicIds: bad }, supported, defaultLocale).ok).toBe(false);
+    }
+  });
+
   it('accepts an empty draft', () => {
     expect(read({})).toEqual({ ok: true, value: [] });
   });

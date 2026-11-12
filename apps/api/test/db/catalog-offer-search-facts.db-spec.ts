@@ -116,6 +116,7 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
       product_id: created.value.state.id,
       revision_no: 1,
       revision_kind: 'submission',
+      type_code: 'simple',
       base_revision_id: null,
       reverted_from_revision_id: null,
       family_revision_id: familyRevisionId,
@@ -423,6 +424,146 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
     expect(attributes?.searchText).not.toContain('Old halal');
     expect(words).not.toContain('Never');
     expect(attributes?.searchText).not.toContain('Draft words');
+  });
+
+  it('gives the published variants of a sellable Offer with axis facets, label and GTIN (variants V8)', async () => {
+    const tag = uuid7().slice(-8);
+    const size = `vsize-${tag}`;
+    await definition(market, size, {
+      dataType: 'select',
+      canBeFilter: true,
+      names: { 'en-AU': 'Size' },
+      options: { s: { label: 'Small' }, 'old-s': { label: 'Old small', mergedInto: 's' } },
+    });
+    const productId = await product(market, { texts: { 'en-AU': ['Rice', null] }, categories: [] });
+    const { rows } = await owner.query<{ id: string; revision: string }>(
+      `SELECT v.id, p.published_revision_id AS revision
+         FROM catalog.product_variants v JOIN catalog.products p
+           ON p.market_id = v.market_id AND p.id = v.product_id
+        WHERE v.market_id = $1 AND v.product_id = $2`,
+      [market.marketId, productId],
+    );
+    const variantId = rows[0]!.id;
+    await owner.query(
+      `UPDATE catalog.product_variants SET state = 'published', published_at = now()
+        WHERE market_id = $1 AND id = $2`,
+      [market.marketId, variantId],
+    );
+    await insert('product_revision_variants', {
+      market_id: market.marketId,
+      tenant_id: market.tenantId,
+      revision_id: rows[0]!.revision,
+      variant_id: variantId,
+      product_id: productId,
+      position: 0,
+      option_key: `${size}=old-s`,
+      option_values: JSON.stringify({ [size]: 'old-s' }),
+      labels: JSON.stringify({ 'en-AU': `Small ${tag}` }),
+      gtin: '09300633603366',
+    });
+    const sellable = await offer(market, productId, 'published');
+    const draft = await offer(market, productId, 'draft');
+    // A second seller's Offer that switched this variant off (V5), and a third that switched it
+    // back on: a stored row with `selling = true` sells like no row.
+    const switchedOff = await offer(market, productId, 'published');
+    const switchedOn = await offer(market, productId, 'published');
+    for (const [offerId, selling] of [
+      [switchedOff, false],
+      [switchedOn, true],
+    ] as const) {
+      const { rows: owners } = await owner.query<{ seller_id: string }>(
+        'SELECT seller_id FROM catalog.offers WHERE market_id = $1 AND id = $2',
+        [market.marketId, offerId],
+      );
+      await insert('offer_sell_units', {
+        id: uuid7(),
+        market_id: market.marketId,
+        tenant_id: market.tenantId,
+        offer_id: offerId,
+        seller_id: owners[0]!.seller_id,
+        product_id: productId,
+        variant_id: variantId,
+        selling,
+        version: 1,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+    }
+
+    const map = await run(
+      market,
+      () => reader.read(market, [sellable, draft, switchedOff, switchedOn], 'en-AU'),
+      true,
+    );
+
+    expect(map.get(sellable)?.variants).toEqual([
+      {
+        variantId,
+        position: 0,
+        label: `Small ${tag}`,
+        gtin: '09300633603366',
+        facets: [`${size}=s`],
+      },
+    ]);
+    expect(map.get(sellable)?.attributes.searchText).toContain(`Small ${tag}`);
+    // An Offer that is not sellable carries no variants.
+    expect(map.get(draft)?.variants).toEqual([]);
+    // A switched-off sell unit is not indexed for its Offer: no facet, label word or GTIN.
+    expect(map.get(switchedOff)?.sellable).toBe(true);
+    expect(map.get(switchedOff)?.variants).toEqual([]);
+    expect(map.get(switchedOff)?.attributes.searchText ?? '').not.toContain(`Small ${tag}`);
+    expect(map.get(switchedOn)?.variants).toEqual(map.get(sellable)?.variants);
+  });
+
+  it('indexes the values of a merged attribute as its target, with the option map (attributes A8)', async () => {
+    const tag = uuid7().slice(-8);
+    const [pack, container] = [`pack-${tag}`, `container-${tag}`];
+    await definition(market, container, {
+      dataType: 'select',
+      canBeFilter: true,
+      names: { 'en-AU': 'Container' },
+      options: { tin: { label: 'Tin' }, jar: { label: 'Jar' } },
+    });
+    await definition(market, pack, {
+      dataType: 'select',
+      canBeFilter: true,
+      names: { 'en-AU': 'Pack type' },
+      options: { can: { label: 'Can' } },
+    });
+    const idOf = async (attribute: string) =>
+      (
+        await owner.query<{ id: string }>(
+          'SELECT id FROM catalog.attribute_definitions WHERE market_id = $1 AND code = $2',
+          [market.marketId, attribute],
+        )
+      ).rows[0]!.id;
+    const [sourceId, targetId] = [await idOf(pack), await idOf(container)];
+    await owner.query(
+      `INSERT INTO catalog.attribute_merge_options (market_id, tenant_id, source_id, source_code, target_code)
+       VALUES ($1, $2, $3, 'can', 'tin')`,
+      [market.marketId, market.tenantId, sourceId],
+    );
+    await owner.query(
+      `UPDATE catalog.attribute_definitions SET status = 'archived', merged_into_id = $3, version = version + 1
+        WHERE market_id = $1 AND id = $2`,
+      [market.marketId, sourceId, targetId],
+    );
+    const onlySource = await product(market, {
+      texts: { 'en-AU': ['Beans', null] },
+      categories: [],
+      values: { [pack]: 'can' },
+    });
+    const both = await product(market, {
+      texts: { 'en-AU': ['Peas', null] },
+      categories: [],
+      values: { [pack]: 'can', [container]: 'jar' },
+    });
+    const first = await offer(market, onlySource, 'published');
+    const second = await offer(market, both, 'published');
+    const map = await run(market, () => reader.read(market, [first, second], 'en-AU'), true);
+    expect(map.get(first)?.attributes.facets).toEqual([`${container}=tin`]);
+    // The target's own value wins when a product carries both.
+    expect(map.get(second)?.attributes.facets).toEqual([`${container}=jar`]);
   });
 
   it('gives a stamp that holds while nothing changes and changes with a definition or a brand', async () => {

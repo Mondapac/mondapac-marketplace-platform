@@ -33,6 +33,20 @@ export const CATALOG_OWN_PRODUCT_VIEW = definePermission('catalog', {
 });
 
 /**
+ * Upload, confirm and manage a seller import file (catalog design 14c, OFR-10 to OFR-12). Seller scope;
+ * **not protected**: it adds no power over what a row may contain, only volume, and every row still
+ * needs `catalog.own-product.edit` at the gate of each use case it calls. The volume is bounded
+ * (5,000 rows a file, 20 checks an hour, 5 starts and 10,000 rows a day, one running import per
+ * seller) and the result is drafts only. The Seller Owner holds every seller key by definition;
+ * the Store Manager receives it by identity's seed.
+ */
+export const CATALOG_OWN_IMPORT_RUN = definePermission('catalog', {
+  key: 'catalog.own-import.run',
+  scope: 'seller',
+  protected: false,
+});
+
+/**
  * Read the marketplace review queue and the Offers waiting in it (catalog design 8.1, 8.2). Platform
  * scope; unprotected, so Catalogue Moderator and Viewer receive it by identity's seed.
  */
@@ -112,6 +126,21 @@ export const CATALOG_SAVED_FILTER_SHARE = definePermission('catalog', {
 });
 
 /**
+ * Share a saved filter of the seller Products list with everyone in the store (catalog design 9.2e):
+ * "Everyone" in the seller's Save filter dialog, and the rename and delete of a filter somebody
+ * else in the store shared. Without it a member who can see the list still saves and manages
+ * filters for themselves only. Seller scope, unprotected; the Seller Owner holds every seller key by
+ * definition and no default role lists it (the owner puts it in a role of their own). No existing
+ * seller key fits: `sellers.store-settings.edit` is the minimum-order setting and the team keys are
+ * protected.
+ */
+export const CATALOG_OWN_SAVED_FILTER_SHARE = definePermission('catalog', {
+  key: 'catalog.own-saved-filter.share',
+  scope: 'seller',
+  protected: false,
+});
+
+/**
  * Read brands, the brand merge queue and seller brand proposals (catalog brand package). Platform
  * scope; unprotected, so Viewer receives it by identity's seed.
  */
@@ -151,6 +180,40 @@ export const CATALOG_BUSINESS_ACTIVITY_READ = definePermission('catalog', {
  */
 export const CATALOG_BUSINESS_ACTIVITY_EDIT = definePermission('catalog', {
   key: 'catalog.business-activity.edit',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Read the topic list (product tags package T1): the curated tags of the Market with their names,
+ * synonyms and intro. Platform scope; unprotected, so a custom role may grant it; no default role
+ * lists it yet: the Platform Administrator holds every key.
+ */
+export const CATALOG_TOPIC_READ = definePermission('catalog', {
+  key: 'catalog.topic.read',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Create and edit topics, their names, synonyms and intro, and archive or restore them (package
+ * T1). Platform scope; unprotected: a topic moves no money, no access and no certification (a
+ * name or synonym that asserts one is refused by the claim-term matcher).
+ */
+export const CATALOG_TOPIC_MANAGE = definePermission('catalog', {
+  key: 'catalog.topic.manage',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Review the tags sellers suggest (product tags package T5): read the open queue and approve, map
+ * or reject a suggestion. Platform scope; unprotected. Approving also creates a topic, so it needs
+ * `catalog.topic.manage` as well (no escalation through this key); no default role lists either
+ * key yet: the Platform Administrator holds every key.
+ */
+export const CATALOG_TOPIC_SUGGESTION_REVIEW = definePermission('catalog', {
+  key: 'catalog.topic-suggestion.review',
   scope: 'platform',
   protected: false,
 });
@@ -237,6 +300,20 @@ export const CATALOG_ATTRIBUTE_RESTRUCTURE = definePermission('catalog', {
 });
 
 /**
+ * Import attributes and their values from a file (attributes plan 14, package A9). Platform scope;
+ * **protected**: an import is a bulk write of what sellers must declare. Every row still goes
+ * through the editor use cases, so running an import also needs `catalog.attribute.edit`
+ * (protected); this key alone does not let a role change an attribute. No default role lists it;
+ * the Platform Administrator grants it in a custom role. Exporting needs only
+ * `catalog.attribute.view`.
+ */
+export const CATALOG_ATTRIBUTE_IMPORT = definePermission('catalog', {
+  key: 'catalog.attribute.import',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
  * Approve, map or reject a seller's suggestion of a new value for a select attribute (attributes
  * plan 14, package A5). Platform scope; unprotected, so Catalogue Moderator receives it by
  * identity's seed. It does not need `catalog.attribute.edit` (protected): approving adds exactly
@@ -249,10 +326,59 @@ export const CATALOG_ATTRIBUTE_SUGGESTION_DECIDE = definePermission('catalog', {
   protected: false,
 });
 
+/**
+ * Read the Catalogue > Variants page (variants V6; plan section 9, decision tn1): the variant types
+ * with their buyer display settings, every variant of the Market with its issues, and the export.
+ * Platform scope; unprotected, so Catalogue Moderator, Operations Support and Viewer receive it by
+ * identity's seed (the products-only pattern of `catalog.attribute.view`). No step-up.
+ */
+export const CATALOG_VARIANT_VIEW = definePermission('catalog', {
+  key: 'catalog.variant.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Change how buyers choose a variant type (variants V6): the display style, the option order, the
+ * swatch colours and the help sellers see above the variant grid. Platform scope; **protected**,
+ * and the use case also needs `catalog.attribute.edit` (protected): a variant type is an attribute,
+ * so a role that cannot edit attributes cannot change how one is shown. No default role lists it;
+ * the Platform Administrator grants it in a custom role.
+ */
+export const CATALOG_VARIANT_TYPE_EDIT = definePermission('catalog', {
+  key: 'catalog.variant-type.edit',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Read cultures and their category marks (multi-culture package 1; ADR-0047 decision 12). Platform
+ * scope; unprotected, so a custom role may grant it; no default role lists it yet: the Platform
+ * Administrator holds every key.
+ */
+export const CATALOG_CULTURE_READ = definePermission('catalog', {
+  key: 'catalog.culture.read',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Create and edit cultures, their names, the required certification type and the "certification
+ * required" or "neutral" marks on categories. Platform scope; **protected** (ADR-0047 decision 12):
+ * the type and the marks decide whether uncertified Offers are shown in a certified culture. No
+ * default role lists it; the Platform Administrator grants it in a custom role.
+ */
+export const CATALOG_CULTURE_EDIT = definePermission('catalog', {
+  key: 'catalog.culture.edit',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
   CATALOG_OWN_PRODUCT_EDIT,
+  CATALOG_OWN_IMPORT_RUN,
   CATALOG_PRODUCT_VIEW,
   CATALOG_PRODUCT_APPROVE,
   CATALOG_PRODUCT_PAUSE,
@@ -260,16 +386,25 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_PLATFORM_PRODUCT_RETIRE,
   CATALOG_PLATFORM_IMPORT_RUN,
   CATALOG_SAVED_FILTER_SHARE,
+  CATALOG_OWN_SAVED_FILTER_SHARE,
   CATALOG_BRAND_READ,
   CATALOG_BRAND_EDIT,
   CATALOG_BUSINESS_ACTIVITY_READ,
   CATALOG_BUSINESS_ACTIVITY_EDIT,
+  CATALOG_TOPIC_READ,
+  CATALOG_TOPIC_MANAGE,
+  CATALOG_TOPIC_SUGGESTION_REVIEW,
   CATALOG_ATTRIBUTE_VIEW,
   CATALOG_ATTRIBUTE_EDIT,
   CATALOG_ATTRIBUTE_RESTRUCTURE,
+  CATALOG_ATTRIBUTE_IMPORT,
   CATALOG_ATTRIBUTE_SUGGESTION_DECIDE,
   CATALOG_CATEGORY_TREE_VIEW,
   CATALOG_CATEGORY_TREE_EDIT,
   CATALOG_CATEGORY_TREE_RESTRUCTURE,
   CATALOG_CATEGORY_TREE_IMPORT,
+  CATALOG_VARIANT_VIEW,
+  CATALOG_VARIANT_TYPE_EDIT,
+  CATALOG_CULTURE_READ,
+  CATALOG_CULTURE_EDIT,
 ]);

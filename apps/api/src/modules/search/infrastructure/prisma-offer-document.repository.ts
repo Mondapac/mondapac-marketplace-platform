@@ -8,7 +8,7 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
 /**
  * {@link OfferDocumentRepository} over Prisma models. The tsvector is never written here: the
  * trigger `offer_documents_set_vector` builds it from the row's name, short text and
- * configuration. The Market and tenant come from the unit (the market guard fills and checks them).
+ * configuration. The numbers and the sell units (V8) are replaced as sets with the document. The Market and tenant come from the unit (the market guard fills and checks them).
  */
 export class PrismaOfferDocumentRepository implements OfferDocumentRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -56,6 +56,23 @@ export class PrismaOfferDocumentRepository implements OfferDocumentRepository {
       value,
     }));
     if (rows.length > 0) await tx.searchOfferDocumentNumber.createMany({ data: rows });
+    // The sell units (V8), replaced as a set the same way.
+    await tx.searchOfferVariantDocument.deleteMany({
+      where: { marketId: market.marketId, offerId: document.offerId },
+    });
+    const units = document.variants.map((variant) => ({
+      marketId: market.marketId,
+      tenantId: market.tenantId,
+      offerId: document.offerId,
+      variantId: variant.variantId,
+      position: variant.position,
+      facetCodes: [...variant.facetCodes],
+      gtin: variant.gtin,
+      inStock: variant.inStock,
+      priceAmount: variant.price?.amount ?? null,
+      priceCurrency: variant.price?.currency ?? null,
+    }));
+    if (units.length > 0) await tx.searchOfferVariantDocument.createMany({ data: units });
   }
 
   async deleteMany(market: MarketContext, offerIds: readonly Id<'Offer'>[]): Promise<number> {
@@ -83,6 +100,17 @@ export class PrismaOfferDocumentRepository implements OfferDocumentRepository {
   ): Promise<readonly Id<'Offer'>[]> {
     const rows = await this.prisma.tx(market).searchOfferDocument.findMany({
       where: { marketId: market.marketId, sellerId },
+      select: { offerId: true },
+    });
+    return rows.map((row) => row.offerId as Id<'Offer'>);
+  }
+
+  async offerIdsInCategories(
+    market: MarketContext,
+    categoryIds: readonly Id<'Category'>[],
+  ): Promise<readonly Id<'Offer'>[]> {
+    const rows = await this.prisma.tx(market).searchOfferDocument.findMany({
+      where: { marketId: market.marketId, categoryIds: { hasSome: [...categoryIds] } },
       select: { offerId: true },
     });
     return rows.map((row) => row.offerId as Id<'Offer'>);

@@ -45,25 +45,25 @@ describe('storefront Content-Security-Policy', () => {
     expect(policy).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
   });
 
-  it('gives every response its own nonce, on the request for Next.js and on the response', () => {
+  it('gives every response its own nonce, on the request for Next.js and on the response', async () => {
     expect(makeNonce()).not.toBe(makeNonce());
     expect(makeNonce()).toMatch(/^[A-Za-z0-9+/]{22}==$/);
     for (const path of ['/cart', '/checkout']) {
-      const response = proxy(at(path));
+      const response = await proxy(at(path));
       const policy = response.headers.get('Content-Security-Policy');
       expect(policy).toMatch(/'nonce-[A-Za-z0-9+/=]+'/);
       expect(response.headers.get('x-middleware-request-content-security-policy')).toBe(policy);
-      expect(proxy(at(path)).headers.get('Content-Security-Policy')).not.toBe(policy);
+      expect((await proxy(at(path))).headers.get('Content-Security-Policy')).not.toBe(policy);
     }
-    expect(proxy(at('/_next/static/chunks/app.js')).headers.has('Content-Security-Policy')).toBe(
-      false,
-    );
+    expect(
+      (await proxy(at('/_next/static/chunks/app.js'))).headers.has('Content-Security-Policy'),
+    ).toBe(false);
   });
 });
 
 describe('cache headers by language', () => {
-  it('leaves the default (English only) response to the framework', () => {
-    const response = proxy(at('/'));
+  it('leaves the default (English only) response to the framework', async () => {
+    const response = await proxy(at('/'));
     expect(response.headers.get('Cache-Control')).toBeNull();
   });
 
@@ -74,10 +74,10 @@ describe('cache headers by language', () => {
       publishedLocales: () => ['en', 'fa'],
     }));
     const { proxy: multilingual } = await import('../proxy.ts');
-    const page = multilingual(at('/'));
+    const page = await multilingual(at('/'));
     expect(page.headers.get('Cache-Control')).toBe('private, no-store');
     // Build files stay cacheable.
-    expect(multilingual(at('/_next/static/a.js')).headers.get('Cache-Control')).toBeNull();
+    expect((await multilingual(at('/_next/static/a.js'))).headers.get('Cache-Control')).toBeNull();
     vi.doUnmock('../src/i18n/locale.ts');
   });
 });

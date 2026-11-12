@@ -10,6 +10,8 @@ import {
   pickupStatusOf,
   type PickupStatus,
 } from '../domain/pickup-code';
+import { sellerOrderRefundView } from '../domain/refund-views';
+import type { Refund } from '../domain/refund';
 import {
   sellerOrderDetailView,
   type LabelledSellerOrderPageView,
@@ -24,6 +26,7 @@ import { labelSellerOrders } from './order-labels';
 import type { SellerOrderPage, SellerOrderRecord, SellerOrderSort } from './ports/order.repository';
 import type { IssuedPickupCode } from './ports/pickup-code-vault';
 import { pickupStatusFor } from './pickup-flow';
+import { refundedInFull } from '../domain/refund';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, MAX_PAGED_ROWS, openShipTo } from './read-flow';
 
 // The seller's side of an order once it is paid: see it and tell the platform it is ready; the
@@ -52,6 +55,8 @@ export type FulfilmentFailure =
   | { readonly code: 'ordering.seller-order-not-found' }
   /** The seller order is not at the step the request needs (already shipped, not yet shipped). */
   | { readonly code: 'ordering.fulfilment-conflict' }
+  /** Every unit of the seller order was refunded (an admin cancelled it): nothing to prepare. */
+  | { readonly code: 'ordering.seller-order-refunded' }
   /** The pickup code typed was wrong; `attemptsLeft` tries remain before the order is locked. */
   | { readonly code: 'ordering.pickup-code-invalid'; readonly attemptsLeft: number }
   /** Too many wrong pickup codes: only the buyer asking for a new code opens the order again. */
@@ -379,6 +384,15 @@ export async function markSellerOrderReady(
       outcome = 'ordering.fulfilment-conflict';
       return err({ code: 'ordering.fulfilment-conflict' } as const);
     }
+    // The ready time holds the seller order's row lock: a refund that committed before it is
+    // seen here, and an admin cancellation that comes after it sees this ready mark (refund-flow
+    // adminCancelOrder). A seller order whose every unit is refunded (or on its way back) was
+    // cancelled: nothing is left to prepare, and the refusal rolls the ready time back.
+    const target = await deps.refunds.findTarget(context.market, ready.id, record.orderId);
+    if (target !== null && refundedInFull(target, 'not-failed')) {
+      outcome = 'ordering.seller-order-refunded';
+      return err({ code: 'ordering.seller-order-refunded' } as const);
+    }
     let pickup: PickupStatus | null = null;
     if (ready.deliveryMethod === 'pickup') {
       if (issued === null) {
@@ -601,9 +615,16 @@ export async function labelled(
   if (!result.ok) return result;
   const { view, record } = result.value;
   const [one] = await labelSellerOrders(deps.labels, context, [view]);
+  const refunds = await deps.unitOfWork.run<readonly Refund[], never>(
+    context.market,
+    async () =>
+      ok(await deps.refunds.listOfSellerOrder(context.market, view.sellerOrderId, view.sellerId)),
+    { readOnly: true },
+  );
   return ok({
     ...one!,
     shipTo: await openShipTo(deps, context, record.accountId, record.shipToSealed),
+    refunds: refunds.ok ? refunds.value.map((r) => sellerOrderRefundView(r)) : [],
     pickup: result.value.pickup ?? null,
   });
 }

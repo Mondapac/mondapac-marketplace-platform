@@ -505,14 +505,22 @@ describe('claim text matcher: spans on unreliable piece counts (Hassan #380 L1)'
 
 // Timing tests compare against a baseline measured in the same process, so a busy machine slows
 // both sides: a wall-clock bound alone flakes under the parallel load of jest and CI.
-const minMs = (fn: () => void, runs = 5): number => {
-  let best = Infinity;
+// The best time of two functions, taken in alternation: a burst of load (a neighbour job, GC, a
+// CPU-frequency step) then lands on both sides instead of only the one measured during it. Run
+// back to back, a control measured in a quiet moment and a subject measured in a busy one gave a
+// ratio over the bound with nothing wrong in the code (CI 42333353789).
+const minMsPair = (a: () => void, b: () => void, runs = 9): [number, number] => {
+  let bestA = Infinity;
+  let bestB = Infinity;
   for (let i = 0; i < runs; i++) {
-    const start = performance.now();
-    fn();
-    best = Math.min(best, performance.now() - start);
+    const startA = performance.now();
+    a();
+    bestA = Math.min(bestA, performance.now() - startA);
+    const startB = performance.now();
+    b();
+    bestB = Math.min(bestB, performance.now() - startB);
   }
-  return best;
+  return [bestA, bestB];
 };
 
 describe('claim text matcher: speed (Hassan S4, #380 M1)', () => {
@@ -524,12 +532,14 @@ describe('claim text matcher: speed (Hassan S4, #380 M1)', () => {
       normaliseClaimText(text, true);
       // Control: the same length of ASCII, which takes the fast path the memo gives other characters.
       const control = 'a'.repeat(20_000);
-      const base = minMs(() => normaliseClaimText(control, true));
       // Under jest, memoised: 長 about 4x the control, ♪ about 3x; before the memo 長 ran at about
       // 15x and ♪ at 7-12x. 長 is the meaningful check (2x margin each side); ♪ is a smoke test.
       const bound = ch === '長' ? 8 : 15;
       for (const visual of [false, true]) {
-        const ms = minMs(() => normaliseClaimText(text, visual));
+        const [base, ms] = minMsPair(
+          () => normaliseClaimText(control, true),
+          () => normaliseClaimText(text, visual),
+        );
         expect([ch, visual, ms < bound * base]).toEqual([ch, visual, true]);
       }
     },
@@ -551,8 +561,11 @@ describe('claim text matcher: speed (Hassan S4, #380 M1)', () => {
     const one = vocab(1);
     const twenty = vocab(20);
     expect(matchClaimTerms(texts, twenty)[0]!).toHaveLength(20);
-    const base = minMs(() => matchClaimTerms(texts, one), 3);
-    const many = minMs(() => matchClaimTerms(texts, twenty), 3);
+    const [base, many] = minMsPair(
+      () => matchClaimTerms(texts, one),
+      () => matchClaimTerms(texts, twenty),
+      5,
+    );
     // One table per text: 20 types cost about the same as 1; per-type tables cost about 20 times.
     expect([many < 6 * base + 50]).toEqual([true]);
   });

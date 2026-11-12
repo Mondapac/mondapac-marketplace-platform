@@ -20,6 +20,7 @@ import { FocusHeader } from './checkout-focus.tsx';
 import { Dock } from './dock.tsx';
 import { Footer } from './footer.tsx';
 import { Header } from './header.tsx';
+import { NavigationProgress } from './navigation-progress.tsx';
 import { PageFrame } from './page-frame.tsx';
 import { Rail } from './rail.tsx';
 import { SearchView } from './search-view.tsx';
@@ -35,6 +36,7 @@ export function StoreShell({
   photoBase = null,
   locator,
   deliverTo,
+  deliverGuess = null,
   consent,
   analyticsAvailable = false,
   signIn,
@@ -49,6 +51,8 @@ export function StoreShell({
   readonly photoBase?: PhotoBase | null;
   readonly locator: DeliveryLocatorSource;
   readonly deliverTo: DeliverTo | null;
+  /** The approximate area from the edge's location headers, when nothing is confirmed. */
+  readonly deliverGuess?: DeliverTo | null;
   readonly consent: Consent | null;
   /** The Market has a GA4 measurement ID: the cookie bar offers analytics too. */
   readonly analyticsAvailable?: boolean;
@@ -66,9 +70,11 @@ export function StoreShell({
       initialLiveCart={liveCart}
       photoBase={photoBase}
       initialDeliverTo={deliverTo}
+      deliverGuess={deliverGuess}
       live={live}
     >
       <div className="page">
+        <NavigationProgress />
         <BrowsePanel categories={content.categories} />
         <CartDrawer />
         <DeliverModal source={locator} />

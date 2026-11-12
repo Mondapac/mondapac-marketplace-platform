@@ -89,6 +89,47 @@ export const SellerBlogAccessChanged = defineEvent({
 });
 
 /**
+ * An admin allowed a seller to propose categories (SEL-26; sellers design 7.4). The seller id
+ * only. The aggregate id is derived from the seller id (`seller-admin-settings`) and its version
+ * is the version of the seller's admin settings row, so the events of one seller are ordered and
+ * never collide with the business file's. No consumer yet: `catalog` asks
+ * `mayProposeCategories` at every command.
+ */
+export const SellerCategoryProposalsGranted = defineEvent({
+  type: 'sellers.category-proposals-granted.v1',
+  aggregateType: 'seller-admin-settings',
+  payload: { sellerId: eventField.id() },
+});
+
+/**
+ * An admin took away a seller's permission to propose categories (SEL-26; sellers design 7.4).
+ * The seller id only; aggregate as {@link SellerCategoryProposalsGranted}. Consumer: `catalog`
+ * (its pending proposals of the seller become `cancelled`, reason `permission-revoked`; CAT-51).
+ */
+export const SellerCategoryProposalsRevoked = defineEvent({
+  type: 'sellers.category-proposals-revoked.v1',
+  aggregateType: 'seller-admin-settings',
+  payload: { sellerId: eventField.id() },
+});
+
+/**
+ * A seller's membership of a culture changed status: asked for, approved, rejected, or asked for
+ * again after a rejection (multi-culture package 2; ADR-0047 decisions 3 and 8). Ids and the new
+ * status only: no reason, no code, no name. The aggregate id is derived from the seller and the
+ * culture and its version is the membership's own, so the events of one membership are ordered
+ * (ADR-0006 decision 3). Consumer in package 3: search, to re-index the seller's Offers.
+ */
+export const SellerCultureStatusChanged = defineEvent({
+  type: 'sellers.seller-culture-status-changed.v1',
+  aggregateType: 'seller-culture',
+  payload: {
+    sellerId: eventField.id(),
+    cultureId: eventField.id(),
+    status: eventField.enumOf(['requested', 'approved', 'rejected'] as const),
+  },
+});
+
+/**
  * Every event sellers publishes, declared with `defineEvent` and registered with the event
  * catalogue by `SellersModule`. Each new type changes the catalogue snapshot
  * (`apps/api/test/contracts/event-catalogue.snapshot.json`).
@@ -100,4 +141,7 @@ export const SELLERS_EVENTS: readonly EventDefinition[] = [
   BusinessFileWithdrawn,
   StoreProfilePublished,
   SellerBlogAccessChanged,
+  SellerCategoryProposalsGranted,
+  SellerCategoryProposalsRevoked,
+  SellerCultureStatusChanged,
 ];

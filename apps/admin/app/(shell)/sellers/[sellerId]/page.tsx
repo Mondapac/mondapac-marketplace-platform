@@ -11,6 +11,13 @@ import {
   REVIEW_PERMISSION,
   type ReviewRead,
 } from '../../../../src/sellers/review-types.ts';
+import { SellerHealthCard } from '../../../../src/sellers/health-card.tsx';
+import {
+  HEALTH_RECALCULATE_PERMISSION,
+  SELLER_VIEW_PERMISSION,
+  healthPath,
+  type SellerHealthRead,
+} from '../../../../src/sellers/health-types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
 import { BackToSellers, ReviewView } from '../../../../src/sellers/review-view.tsx';
 import { CommissionRateCard } from '../../../../src/commission/rate-card.tsx';
@@ -44,6 +51,14 @@ import {
 async function loadMethods(sellerId: string, canView: boolean): Promise<SellerMethods | null> {
   if (!canView) return null;
   const read = await serverGet<SellerMethods>(sellerMethodsPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? read.body : null;
+}
+
+/** The seller's stored health, or null when the role cannot see it or it cannot be read. */
+async function loadHealth(sellerId: string, canView: boolean): Promise<SellerHealthRead | null> {
+  if (!canView) return null;
+  const read = await serverGet<SellerHealthRead>(healthPath(sellerId));
   if (read.kind === 'signed-out') redirect('/session-ended');
   return read.kind === 'ok' ? read.body : null;
 }
@@ -149,15 +164,24 @@ export default async function SellerReviewPage({
       canCheck: permissionKeys.includes(CHECK_PERMISSION),
       csrfToken,
     };
-    const [commission, methods, terms, holds] = await Promise.all([
+    const [commission, methods, terms, holds, health] = await Promise.all([
       loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
       loadMethods(sellerId, permissionKeys.includes(DELIVERY_VIEW_PERMISSION)),
       loadTerms(sellerId, permissionKeys.includes(TERMS_VIEW_PERMISSION)),
       loadHolds(sellerId, permissionKeys.includes(HOLD_VIEW_PERMISSION)),
+      loadHealth(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
     ]);
     return shell(
       <div className="flex flex-col gap-6">
         <ReviewView review={result.body} decide={decide} />
+        {health === null ? null : (
+          <SellerHealthCard
+            sellerId={sellerId}
+            initial={health}
+            canRecalculate={permissionKeys.includes(HEALTH_RECALCULATE_PERMISSION)}
+            csrfToken={csrfToken}
+          />
+        )}
         {commission.kind === 'hidden' && methods === null ? null : (
           <div className="grid gap-6 lg:grid-cols-2">
             {methods === null ? null : (

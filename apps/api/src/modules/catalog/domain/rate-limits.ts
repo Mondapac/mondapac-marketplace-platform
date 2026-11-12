@@ -6,11 +6,14 @@ import type { Temporal } from '@mondapac/shared-kernel';
  * them (kind, then key), so two units never wait on each other in a cycle.
  */
 export const RATE_COUNTER_KINDS = [
+  'add-sizes.account.hour',
   'ai-suggest.seller.day',
   'claim-text-check.account.day',
   'claim-text-check.account.minute',
   'draft-save.account.day',
   'draft-save.account.minute',
+  'import-photo.seller.day',
+  'import-photo.seller.minute',
   'import-start.seller.day',
   'photo-upload.seller.day',
   'platform-import-check.account.day',
@@ -18,6 +21,8 @@ export const RATE_COUNTER_KINDS = [
   'platform-import-start.account.day',
   'reviewer-mail.market.hour',
   'search.account.minute',
+  'seller-import-check.seller.day',
+  'seller-import-check.seller.hour',
   'submit.seller.hour',
 ] as const;
 export type RateCounterKind = (typeof RATE_COUNTER_KINDS)[number];
@@ -42,6 +47,11 @@ export const SUBMIT_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'submit.seller.hour', limit: 30, windowMinutes: 60 },
 ]);
 
+/** Add sizes per account (D 8.4; variants V9): 20 an hour, a structural change rarely repeated. */
+export const ADD_SIZES_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'add-sizes.account.hour', limit: 20, windowMinutes: 60 },
+]);
+
 /** Claim-text checks per account (D 6.6, L6): 30 per minute and 1,000 per 24 h. */
 export const CLAIM_TEXT_CHECK_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'claim-text-check.account.minute', limit: 30, windowMinutes: 1 },
@@ -62,6 +72,33 @@ export const PLATFORM_IMPORT_CHECK_LIMITS: readonly RateLimit[] = Object.freeze(
 export const PLATFORM_IMPORT_START_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'platform-import-start.account.day', limit: 10, windowMinutes: DAY },
 ]);
+
+/**
+ * Uploads of the seller import per seller (catalog design 14c): 20 an hour and 100 a day. Like the
+ * admin import, every check stores its rows until the seller confirms or discards it, so the daily
+ * cap bounds what one seller can write in a day (data design 3.31).
+ */
+export const SELLER_IMPORT_CHECK_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'seller-import-check.seller.day', limit: 100, windowMinutes: DAY },
+  { kind: 'seller-import-check.seller.hour', limit: 20, windowMinutes: 60 },
+]);
+
+/** Confirmed seller imports per seller (design 14c; the existing kind): 5 a day. */
+export const SELLER_IMPORT_START_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'import-start.seller.day', limit: 5, windowMinutes: DAY },
+]);
+
+/**
+ * Photos of the import's photo step per seller (design 14c): 60 a minute and 2,000 a day. They
+ * replace `photo-upload.seller.day` for that step only.
+ */
+export const IMPORT_PHOTO_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'import-photo.seller.day', limit: 2000, windowMinutes: DAY },
+  { kind: 'import-photo.seller.minute', limit: 60, windowMinutes: 1 },
+]);
+
+/** The rows one seller may start in 24 hours across imports (design 14c): 10,000. */
+export const SELLER_IMPORT_DAILY_ROWS = 10_000;
 
 /** A counter as the reservation unit left it: this attempt is already counted. */
 export interface RateReservation {

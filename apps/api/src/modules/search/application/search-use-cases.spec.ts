@@ -11,9 +11,26 @@ import { ConfigSearchPolicy } from '../infrastructure/config-search-policy';
 import type { OfferDocumentRepository } from './ports/offer-document.repository';
 import type { FeedFacts, OfferFeed } from './ports/offer-feed';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
+import type { OfferFacetReader } from './ports/offer-facet.reader';
+import type { OfferSearchIndex } from './ports/offer-search-index';
+import {
+  StoreRowConflictError,
+  type StoreDocumentRepository,
+} from './ports/store-document.repository';
+import type { StoreDocument, StoreHit } from '../domain/store-document';
+import type { StoreSearchRequest } from './ports/store-search.reader';
+import { SearchStores } from './use-cases/search-stores.use-case';
+import type { NamedCategory, ScopeRow } from '../domain/scope-counts';
 import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { SellerEligibility } from './ports/seller-eligibility';
+import {
+  sellUnitRefKey,
+  type SellUnitRef,
+  type SellUnitState,
+  type SellUnitStates,
+} from './ports/sell-unit-states';
+import type { OfferVariantReader } from './ports/offer-variant.reader';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
 import type { CategorySubtreeSource } from './ports/category-subtree';
 import type { StoreResolver } from './ports/store-resolver';
@@ -39,10 +56,75 @@ const id = <T extends string>(n: number): Id<T> => {
 };
 const offer = (n: number): Id<'Offer'> => id<'Offer'>(0x1000 + n);
 const SELLER = id<'Seller'>(0x51);
+const OTHER_SELLER = id<'Seller'>(0x52);
 const SUSPENDED = id<'Seller'>(0x52);
 const PRODUCT = id<'Product'>(0x91);
 const CATEGORY = id<'Category'>(0xca);
 const SUBCATEGORY = id<'Category'>(0xcb);
+
+/** Stock and price per `offerId/variantId`; an unlisted unit is out of stock and unpriced. */
+class StubSellUnits implements SellUnitStates {
+  readonly states_ = new Map<string, SellUnitState>();
+  readonly asked: SellUnitRef[][] = [];
+  failing = false;
+  states(_context: CallContext, units: readonly SellUnitRef[]) {
+    this.asked.push([...units]);
+    if (this.failing) return Promise.resolve(null);
+    return Promise.resolve(
+      new Map(
+        units.flatMap((unit) => {
+          const state = this.states_.get(sellUnitRefKey(unit));
+          return state === undefined ? [] : [[sellUnitRefKey(unit), state] as const];
+        }),
+      ),
+    );
+  }
+}
+
+/** The variant reads over the memory documents (the hits' sell units and the GTIN lookup). */
+class MemoryVariants implements OfferVariantReader {
+  constructor(private readonly documents: MemoryDocuments) {}
+  private docs(market: MarketContext): OfferDocument[] {
+    return [...this.documents.rows.entries()]
+      .filter(([key]) => key.startsWith(`${market.marketId}:`))
+      .map(([, row]) => row.document);
+  }
+  sellUnitsOf(market: MarketContext, offerIds: readonly Id<'Offer'>[]) {
+    const wanted = new Set(offerIds);
+    return Promise.resolve(
+      new Map(
+        this.docs(market)
+          .filter((doc) => wanted.has(doc.offerId))
+          .map((doc) => [doc.offerId, { facetCodes: doc.facetCodes, variants: doc.variants }]),
+      ),
+    );
+  }
+  unitsWithGtin(market: MarketContext, gtin: string) {
+    return Promise.resolve(
+      this.docs(market).flatMap((doc) =>
+        doc.variants
+          .filter((variant) => variant.gtin === gtin)
+          .map((variant) => ({ offerId: doc.offerId, variantId: variant.variantId })),
+      ),
+    );
+  }
+  hitsOf(market: MarketContext, offerIds: readonly Id<'Offer'>[]) {
+    const wanted = new Set(offerIds);
+    return Promise.resolve(
+      this.docs(market)
+        .filter((doc) => wanted.has(doc.offerId))
+        .map((doc) => ({
+          offerId: doc.offerId,
+          productId: doc.productId,
+          sellerId: doc.sellerId,
+          name: doc.name,
+          shortText: doc.shortText,
+          categoryIds: doc.categoryIds,
+          rank: 0,
+        })),
+    );
+  }
+}
 
 class MemoryDocuments implements OfferDocumentRepository {
   readonly rows = new Map<string, { document: OfferDocument; indexedAt: Temporal.Instant }>();
@@ -67,6 +149,14 @@ class MemoryDocuments implements OfferDocumentRepository {
       [...this.rows.entries()]
         .filter(([key]) => key.startsWith(`${market.marketId}:`))
         .filter(([, row]) => row.document.productId === productId)
+        .map(([, row]) => row.document.offerId),
+    );
+  }
+  offerIdsInCategories(market: MarketContext, categoryIds: readonly Id<'Category'>[]) {
+    return Promise.resolve(
+      [...this.rows.entries()]
+        .filter(([key]) => key.startsWith(`${market.marketId}:`))
+        .filter(([, row]) => row.document.categoryIds.some((c) => categoryIds.includes(c)))
         .map(([, row]) => row.document.offerId),
     );
   }
@@ -150,6 +240,72 @@ class StubReader implements OfferSearchReader {
   search(market: MarketContext, request: OfferSearchRequest) {
     this.requests.push({ market: market.marketId, request });
     return Promise.resolve(this.hits.slice(0, request.limit));
+  }
+}
+
+/** The scope rows the stub index answers (reset by each test's setup). */
+const scopeRowsOf: { rows: readonly ScopeRow[] } = { rows: [] };
+
+/** What the stub store query answers and was asked (reset by each test's setup). */
+const storeSearch: {
+  hits: StoreHit[];
+  counts: Map<Id<'Seller'>, number>;
+  requests: StoreSearchRequest[];
+} = { hits: [], counts: new Map(), requests: [] };
+
+/** The public stores the stub directory answers (reset by each test's setup). */
+const storeNames = new Map<Id<'Seller'>, { slug: string; name: string }>();
+
+const treeOf: { nodes: readonly NamedCategory[] | null } = { nodes: [] };
+
+const noFacets: OfferFacetReader = {
+  searchFiltered: () => Promise.resolve([]),
+  facetRows: () => Promise.resolve([]),
+  numberRows: () => Promise.resolve([]),
+};
+
+/** The index port over the stub reader and the given facet reader (no scope rows). */
+const indexOf = (
+  reader: OfferSearchReader,
+  facets: OfferFacetReader = noFacets,
+): OfferSearchIndex => ({
+  search: (market, request) => reader.search(market, request),
+  searchFiltered: (market, request) => facets.searchFiltered(market, request),
+  facetRows: (market, scope) => facets.facetRows(market, scope),
+  numberRows: (market, scope, attrs) => facets.numberRows(market, scope, attrs),
+  scopeRows: () => Promise.resolve(scopeRowsOf.rows),
+  searchStores: (_market, request) => {
+    storeSearch.requests.push(request);
+    return Promise.resolve(storeSearch.hits.slice(0, request.limit));
+  },
+});
+
+class MemoryStores implements StoreDocumentRepository {
+  readonly rows = new Map<Id<'Seller'>, StoreDocument>();
+  /** Writes that meet a concurrent sync (a handed-over address) before one goes through. */
+  conflicts = 0;
+  writes = 0;
+  onConflict: () => void = () => undefined;
+  upsertMany(_market: MarketContext, documents: readonly StoreDocument[]) {
+    this.writes += 1;
+    if (this.conflicts > 0) {
+      this.conflicts -= 1;
+      this.onConflict();
+      return Promise.reject(new StoreRowConflictError());
+    }
+    for (const document of documents) this.rows.set(document.sellerId, document);
+    return Promise.resolve();
+  }
+  deleteMany(_market: MarketContext, sellerIds: readonly Id<'Seller'>[]) {
+    let count = 0;
+    for (const sellerId of sellerIds) if (this.rows.delete(sellerId)) count += 1;
+    return Promise.resolve(count);
+  }
+  deleteIndexedBefore() {
+    return Promise.resolve(0);
+  }
+  offerCounts() {
+    return Promise.resolve(storeSearch.counts);
   }
 }
 
@@ -273,6 +429,7 @@ const sellable = (overrides: Partial<FeedFacts> = {}): FeedFacts => ({
   shortText: 'Twelve sausages',
   categoryIds: [CATEGORY],
   attributes: { searchText: '', facets: [], numbers: {} },
+  variants: [],
   ...overrides,
 });
 
@@ -298,6 +455,7 @@ describe.each([
   const anonymous = testCallContext(market, 'anonymous', 'search-anon-abcdef');
 
   let documents: MemoryDocuments;
+  let storeRows: MemoryStores;
   let feed: StubFeed;
   let reader: StubReader;
   let visibility: StubVisibility;
@@ -307,10 +465,12 @@ describe.each([
   let brands: StubBrands;
   let shelves: StubShelves;
   let categories: StubCategories;
+  let sellUnits: StubSellUnits;
   let deps: SearchDependencies;
 
   beforeEach(() => {
     documents = new MemoryDocuments();
+    storeRows = new MemoryStores();
     feed = new StubFeed();
     reader = new StubReader();
     visibility = new StubVisibility();
@@ -320,15 +480,20 @@ describe.each([
     brands = new StubBrands();
     shelves = new StubShelves();
     categories = new StubCategories();
+    sellUnits = new StubSellUnits();
+    scopeRowsOf.rows = [];
+    treeOf.nodes = [];
+    storeNames.clear();
+    storeSearch.hits = [];
+    storeSearch.counts = new Map();
+    storeSearch.requests = [];
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       documents,
-      reader,
-      facets: {
-        searchFiltered: () => Promise.resolve([]),
-        facetRows: () => Promise.resolve([]),
-        numberRows: () => Promise.resolve([]),
-      },
+      storeDocuments: storeRows,
+      index: indexOf(reader),
+      categoryTree: { tree: () => Promise.resolve(treeOf.nodes) },
+      storeDirectory: { publicStores: () => Promise.resolve(new Map(storeNames.entries())) },
       filterSource: { filters: () => Promise.resolve([]) },
       policy: new ConfigSearchPolicy(markets),
       feed,
@@ -340,6 +505,8 @@ describe.each([
       brands,
       images,
       categories,
+      sellUnits,
+      variants: new MemoryVariants(documents),
     };
   });
 
@@ -376,9 +543,59 @@ describe.each([
           searchText: null,
           facetCodes: [],
           numbers: {},
+          variants: [],
         },
       ]);
       expect(documents.markets).toEqual(new Set([code]));
+    });
+
+    describe('names in the searchable text (search 1a)', () => {
+      const parent = '00000000-0000-7000-8000-0000000000c1' as Id<'Category'>;
+      const run = () =>
+        new SyncOfferDocuments(gate, deps).execute(system, { offerIds: [offer(1)] });
+
+      it("adds the seller's public store name and the category names of every level", async () => {
+        treeOf.nodes = [
+          { id: parent, parentId: null, name: 'Meat' },
+          { id: CATEGORY, parentId: parent, name: 'Sausages' },
+        ];
+        storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+        feed.facts_.set(offer(1), sellable({ categoryIds: [CATEGORY] }));
+
+        await run();
+
+        const [row] = [...documents.rows.values()];
+        expect(row?.document.searchText).toBe("Ali's Butcher Sausages Meat");
+      });
+
+      it('re-syncs the Offers that name a renamed category, and only those', async () => {
+        treeOf.nodes = [{ id: CATEGORY, parentId: null, name: 'Sausages' }];
+        feed.facts_.set(offer(1), sellable({ categoryIds: [CATEGORY] }));
+        await run();
+        treeOf.nodes = [{ id: CATEGORY, parentId: null, name: 'Smallgoods' }];
+
+        const result = await new SyncOfferDocuments(gate, deps).execute(system, {
+          categoryId: CATEGORY,
+        });
+
+        expect(result).toEqual({ ok: true, value: { upserted: 1, deleted: 0 } });
+        const [row] = [...documents.rows.values()];
+        expect(row?.document.searchText).toBe('Smallgoods');
+      });
+
+      it('indexes without a store name for a seller that has no public store', async () => {
+        feed.facts_.set(offer(1), sellable());
+        await run();
+        const [row] = [...documents.rows.values()];
+        expect(row?.document.searchText).toBeNull();
+      });
+
+      it('throws, so the delivery is retried, when the category tree cannot be read', async () => {
+        treeOf.nodes = null;
+        feed.facts_.set(offer(1), sellable());
+        await expect(run()).rejects.toThrow('category tree unavailable');
+        expect(documents.rows.size).toBe(0);
+      });
     });
 
     it('deletes the document of an Offer that is unlisted, deleted, unknown or has no text', async () => {
@@ -469,6 +686,24 @@ describe.each([
       );
     });
 
+    it('waits for the public store of a just-approved seller: throws until sellers shows it', async () => {
+      feed.facts_.set(offer(1), sellable());
+      feed.published.push(offer(1));
+      const sync = new SyncOfferDocuments(gate, deps);
+
+      // Sellers has not recorded the store yet (its unit runs after identity's approval commits).
+      await expect(
+        sync.execute(system, { sellerId: SELLER, publicStoreRequired: true }),
+      ).rejects.toThrow('no public store yet');
+      expect(documents.rows.size).toBe(0);
+
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      const result = await sync.execute(system, { sellerId: SELLER, publicStoreRequired: true });
+
+      expect(result).toEqual({ ok: true, value: { upserted: 1, deleted: 0 } });
+      expect([...documents.rows.values()][0]?.document.searchText).toContain("Ali's Butcher");
+    });
+
     it('throws when the may-sell contract cannot answer, writing nothing', async () => {
       feed.facts_.set(offer(1), sellable());
       sellers.failing = true;
@@ -549,9 +784,197 @@ describe.each([
     });
   });
 
+  describe('store rows (search 1a)', () => {
+    const run = (offers = [offer(1)]) =>
+      new SyncOfferDocuments(gate, deps).execute(system, { offerIds: offers });
+
+    it('writes a row for the public store of an indexed Offer', async () => {
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      feed.facts_.set(offer(1), sellable());
+
+      await run();
+
+      expect([...storeRows.rows.values()]).toEqual([
+        { sellerId: SELLER, slug: 'alis-butcher', name: "Ali's Butcher", textSearchConfig: config },
+      ]);
+    });
+
+    it('reads sellers again and writes again when a concurrent sync took the address', async () => {
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      feed.facts_.set(offer(1), sellable());
+      storeRows.conflicts = 1;
+      // The address moved on while the first write waited: the second read sees the new one.
+      storeRows.onConflict = () =>
+        storeNames.set(SELLER, { slug: 'alis-new-butcher', name: "Ali's Butcher" });
+
+      const result = await run();
+
+      expect(result.ok).toBe(true);
+      expect(storeRows.writes).toBe(2);
+      expect([...storeRows.rows.values()]).toEqual([
+        {
+          sellerId: SELLER,
+          slug: 'alis-new-butcher',
+          name: "Ali's Butcher",
+          textSearchConfig: config,
+        },
+      ]);
+    });
+
+    it('gives up after three conflicting attempts and throws, so the delivery is retried', async () => {
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      feed.facts_.set(offer(1), sellable());
+      storeRows.conflicts = 3;
+
+      await expect(run()).rejects.toBeInstanceOf(StoreRowConflictError);
+      expect(storeRows.writes).toBe(3);
+      expect(storeRows.rows.size).toBe(0);
+    });
+
+    it('removes the row of a seller that has no public store any more', async () => {
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      feed.facts_.set(offer(1), sellable());
+      await run();
+      storeNames.clear();
+
+      await run();
+
+      expect(storeRows.rows.size).toBe(0);
+    });
+  });
+
+  describe('SearchStores', () => {
+    const search = (input: Parameters<SearchStores['execute']>[1]) =>
+      new SearchStores(gate, deps).execute(anonymous, input);
+    const stored = (seller: Id<'Seller'>, slug: string, name: string): StoreHit => ({
+      sellerId: seller,
+      slug,
+      name,
+      rank: 1,
+    });
+
+    it("asks the index with the Market's configuration and answers address, name and count", async () => {
+      storeSearch.hits = [stored(SELLER, 'alis-butcher', "Ali's Butcher")];
+      storeSearch.counts = new Map([[SELLER, 7]]);
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+
+      const result = await search({ q: '  butcher ', pageSize: 10 });
+
+      expect(result).toEqual({
+        ok: true,
+        value: {
+          items: [{ slug: 'alis-butcher', name: "Ali's Butcher", productCount: 7 }],
+          page: 1,
+          pageSize: 10,
+          hasMore: false,
+        },
+      });
+      expect(storeSearch.requests).toEqual([
+        { textSearchConfig: config, text: 'butcher', limit: 11, offset: 0 },
+      ]);
+    });
+
+    it("uses sellers' live name and address, and drops a store that is not public now", async () => {
+      storeSearch.hits = [
+        stored(SELLER, 'old-address', 'Old name'),
+        stored(OTHER_SELLER, 'gone', 'Gone'),
+      ];
+      storeSearch.counts = new Map([
+        [SELLER, 2],
+        [OTHER_SELLER, 3],
+      ]);
+      storeNames.set(SELLER, { slug: 'new-address', name: 'New name' });
+
+      const result = await search({ q: 'name' });
+
+      expect(result.ok && result.value.items).toEqual([
+        { slug: 'new-address', name: 'New name', productCount: 2 },
+      ]);
+    });
+
+    it('says hasMore only when the next store is visible', async () => {
+      storeSearch.hits = [
+        stored(SELLER, 'one-store', 'One'),
+        stored(OTHER_SELLER, 'two-store', 'Two'),
+      ];
+      storeSearch.counts = new Map([
+        [SELLER, 1],
+        [OTHER_SELLER, 1],
+      ]);
+      storeNames.set(SELLER, { slug: 'one-store', name: 'One' });
+
+      const hidden = await search({ q: 'store', pageSize: 1 });
+      expect(hidden.ok && hidden.value.hasMore).toBe(false);
+
+      storeNames.set(OTHER_SELLER, { slug: 'two-store', name: 'Two' });
+      const shown = await search({ q: 'store', pageSize: 1 });
+      expect(shown.ok && shown.value.hasMore).toBe(true);
+    });
+
+    it('needs a text and refuses a long OR chain', async () => {
+      expect(await search({})).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'q', code: 'required' }] },
+      });
+      const long = Array.from({ length: 9 }, (_, n) => `t${n}`).join(' or ');
+      expect(await search({ q: long })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'q', code: 'too-many-terms' }] },
+      });
+    });
+
+    it('is search.unavailable, never an unchecked list, when sellers cannot answer', async () => {
+      storeSearch.hits = [stored(SELLER, 'one-store', 'One')];
+      deps = { ...deps, storeDirectory: { publicStores: () => Promise.resolve(null) } };
+
+      expect(await search({ q: 'one' })).toEqual({
+        ok: false,
+        error: { code: 'search.unavailable' },
+      });
+    });
+  });
+
   describe('SearchProducts', () => {
     const search = (input: Parameters<SearchProducts['execute']>[1]) =>
       new SearchProducts(gate, deps).execute(anonymous, input);
+
+    describe('counts of the scope (search 1a)', () => {
+      const parent = '00000000-0000-7000-8000-0000000000c1' as Id<'Category'>;
+      const child = '00000000-0000-7000-8000-0000000000c2' as Id<'Category'>;
+      const rows = (): ScopeRow[] => [
+        { productId: PRODUCT, sellerId: SELLER, categoryIds: [child] },
+        { productId: PRODUCT, sellerId: OTHER_SELLER, categoryIds: [child] },
+      ];
+
+      it('counts products once, the stores and the categories right below the asked one', async () => {
+        treeOf.nodes = [
+          { id: parent, parentId: null, name: 'Meat' },
+          { id: child, parentId: parent, name: 'Beef' },
+        ];
+        scopeRowsOf.rows = rows();
+        reader.hits = [hit(1)];
+
+        const result = await search({ q: 'beef' });
+
+        expect(result.ok && result.value.counts).toEqual({
+          total: 1,
+          totalIsCapped: false,
+          categories: [{ categoryId: parent, name: 'Meat', count: 1 }],
+          storeCount: 2,
+        });
+      });
+
+      it('leaves the counts out, not the list, when the tree cannot be read', async () => {
+        treeOf.nodes = null;
+        scopeRowsOf.rows = rows();
+        reader.hits = [hit(1)];
+
+        const result = await search({ q: 'beef' });
+
+        expect(result.ok && result.value.items).toHaveLength(1);
+        expect(result.ok && result.value.counts).toBeNull();
+      });
+    });
 
     it("asks the index with the Market's configuration and returns ids, text and categories", async () => {
       reader.hits = [hit(1), hit(2)];
@@ -570,6 +993,9 @@ describe.each([
               shortText: null,
               categoryIds: [CATEGORY],
               primaryImage: null,
+              images: [],
+              variantId: null,
+              price: null,
             },
             {
               offerId: offer(2),
@@ -579,6 +1005,9 @@ describe.each([
               shortText: null,
               categoryIds: [CATEGORY],
               primaryImage: null,
+              images: [],
+              variantId: null,
+              price: null,
             },
           ],
           page: 1,
@@ -587,6 +1016,8 @@ describe.each([
           filters: [],
           filtered: false,
           countsComplete: true,
+          counts: { total: 0, totalIsCapped: false, categories: [], storeCount: 0 },
+          exactMatch: null,
         },
       });
       expect(reader.requests).toEqual([
@@ -692,6 +1123,35 @@ describe.each([
       expect(reader.requests).toEqual([]);
     });
 
+    it('lists only the category itself with direct (Other {name}), without reading the tree', async () => {
+      categories.children.set(CATEGORY, [SUBCATEGORY]);
+      reader.hits = [hit(1)];
+
+      await search({ category: CATEGORY, direct: 'true' });
+
+      expect(categories.asked).toEqual([]);
+      expect(reader.requests.map(({ request }) => request.categoryIds)).toEqual([[CATEGORY]]);
+    });
+
+    it('refuses direct without a category or with another value, before any read', async () => {
+      const without = await search({ q: 'sausages', direct: 'true' });
+      const other = await search({ category: CATEGORY, direct: '1' });
+
+      expect(without).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: 'direct', code: 'without-category' }],
+        },
+      });
+      expect(other).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'direct', code: 'value' }] },
+      });
+      expect(categories.asked).toEqual([]);
+      expect(reader.requests).toEqual([]);
+    });
+
     it('does not read the category tree for a text query without a category', async () => {
       await search({ q: 'sausages' });
 
@@ -752,6 +1212,40 @@ describe.each([
         expect(images.asked).toEqual([[PRODUCT]]);
       });
 
+      it('lists every public photo of the product in `images`, main one first, alt = the name', async () => {
+        reader.hits = [hit(1)];
+        const second = id<'ProductImage'>(0x702);
+        images.images_.set(PRODUCT, [
+          { imageId: PHOTO, width: 1600, height: 1200 },
+          { imageId: second, width: 800, height: 800 },
+        ]);
+
+        const result = await search({ q: 'product' });
+
+        const item = result.ok ? result.value.items[0] : undefined;
+        expect(item?.images).toEqual([
+          { imageId: PHOTO, width: 1600, height: 1200, alt: 'Product 1' },
+          { imageId: second, width: 800, height: 800, alt: 'Product 1' },
+        ]);
+        expect(item?.primaryImage).toEqual(item?.images[0]);
+      });
+
+      it('lists at most 8 photos', async () => {
+        reader.hits = [hit(1)];
+        images.images_.set(
+          PRODUCT,
+          Array.from({ length: 10 }, (_, n) => ({
+            imageId: id<'ProductImage'>(0x710 + n),
+            width: 100,
+            height: 100,
+          })),
+        );
+
+        const result = await search({ q: 'product' });
+
+        expect(result.ok && result.value.items[0]?.images).toHaveLength(8);
+      });
+
       it('asks for the photos of the shown items only, never of a hidden or extra hit', async () => {
         reader.hits = [hit(1), hit(2), hit(3)];
         visibility.hidden = new Set([offer(2)]);
@@ -772,6 +1266,7 @@ describe.each([
         const result = await search({ q: 'product' });
 
         expect(result.ok && result.value.items.map((item) => item.primaryImage)).toEqual([null]);
+        expect(result.ok && result.value.items[0]?.images).toEqual([]);
       });
     });
 
@@ -837,6 +1332,8 @@ describe.each([
             filters: [],
             filtered: false,
             countsComplete: true,
+            counts: null,
+            exactMatch: null,
           },
         });
         expect(shelves.browsed).toEqual([]);
@@ -957,6 +1454,8 @@ describe.each([
             filters: [],
             filtered: false,
             countsComplete: true,
+            counts: null,
+            exactMatch: null,
           },
         });
         expect(shelves.browsedProducts).toEqual([]);
@@ -1038,6 +1537,213 @@ describe.each([
     });
   });
 
+  describe('variants (V8)', () => {
+    const V1 = id<'Variant'>(0xa1);
+    const V2 = id<'Variant'>(0xa2);
+    const V3 = id<'Variant'>(0xa3);
+    const money = (amount: bigint) => ({ amount, currency });
+    const search = (input: Parameters<SearchProducts['execute']>[1]) =>
+      new SearchProducts(gate, deps).execute(anonymous, input);
+    const riceFacts = () =>
+      sellable({
+        variants: [
+          { variantId: V1, position: 0, label: '1 kg', gtin: null, facets: ['weight=1kg'] },
+          {
+            variantId: V2,
+            position: 1,
+            label: '5 kg',
+            gtin: '09300633603366',
+            facets: ['weight=5kg'],
+          },
+          { variantId: V3, position: 2, label: '10 kg', gtin: null, facets: ['weight=10kg'] },
+        ],
+      });
+    const indexRice = async () => {
+      feed.facts_.set(offer(1), riceFacts());
+      sellUnits.states_.set(`${offer(1)}/${V1}`, { inStock: true, price: money(500n) });
+      sellUnits.states_.set(`${offer(1)}/${V2}`, { inStock: false, price: money(2000n) });
+      sellUnits.states_.set(`${offer(1)}/${V3}`, { inStock: true, price: money(3500n) });
+      const result = await new SyncOfferDocuments(gate, deps).execute(system, {
+        offerIds: [offer(1)],
+      });
+      expect(result.ok).toBe(true);
+    };
+
+    it('indexes each published variant with its stock state and buyer price', async () => {
+      await indexRice();
+
+      expect(sellUnits.asked).toEqual([
+        [
+          { offerId: offer(1), variantId: V1 },
+          { offerId: offer(1), variantId: V2 },
+          { offerId: offer(1), variantId: V3 },
+        ],
+      ]);
+      const stored = [...documents.rows.values()][0]!.document;
+      expect(stored.variants).toEqual([
+        {
+          variantId: V1,
+          position: 0,
+          facetCodes: ['weight=1kg'],
+          gtin: null,
+          inStock: true,
+          price: money(500n),
+        },
+        {
+          variantId: V2,
+          position: 1,
+          facetCodes: ['weight=5kg'],
+          gtin: '09300633603366',
+          inStock: false,
+          price: money(2000n),
+        },
+        {
+          variantId: V3,
+          position: 2,
+          facetCodes: ['weight=10kg'],
+          gtin: null,
+          inStock: true,
+          price: money(3500n),
+        },
+      ]);
+    });
+
+    it('a unit stock or price did not answer is out of stock and unpriced', async () => {
+      feed.facts_.set(offer(1), riceFacts());
+      await new SyncOfferDocuments(gate, deps).execute(system, { offerIds: [offer(1)] });
+
+      const stored = [...documents.rows.values()][0]!.document;
+      expect(stored.variants.map((v) => [v.inStock, v.price])).toEqual([
+        [false, null],
+        [false, null],
+        [false, null],
+      ]);
+    });
+
+    it('asks nothing of a document it will not write, and throws when stock or price fails', async () => {
+      feed.facts_.set(offer(1), riceFacts());
+      feed.facts_.set(offer(2), sellable({ sellable: false, variants: riceFacts().variants }));
+      sellUnits.failing = true;
+
+      await expect(
+        new SyncOfferDocuments(gate, deps).execute(system, { offerIds: [offer(1), offer(2)] }),
+      ).rejects.toThrow('stock or price unavailable');
+      expect(sellUnits.asked).toEqual([
+        [
+          { offerId: offer(1), variantId: V1 },
+          { offerId: offer(1), variantId: V2 },
+          { offerId: offer(1), variantId: V3 },
+        ],
+      ]);
+      expect(documents.rows.size).toBe(0);
+    });
+
+    it('a plain list shows the lowest in-stock price and opens no variant', async () => {
+      await indexRice();
+      reader.hits = [{ ...hit(1), productId: PRODUCT }];
+
+      const result = await search({ q: 'rice' });
+
+      expect(result.ok && result.value.items.map((i) => [i.variantId, i.price])).toEqual([
+        [null, { from: money(500n), varies: true }],
+      ]);
+    });
+
+    it('a variant filter opens the matching in-stock variant at its price', async () => {
+      await indexRice();
+      const narrowed: unknown[] = [];
+      deps = {
+        ...deps,
+        filterSource: {
+          filters: () =>
+            Promise.resolve([
+              {
+                code: 'weight',
+                name: 'Weight',
+                kind: 'choice' as const,
+                options: [
+                  { code: '1kg', label: '1 kg' },
+                  { code: '5kg', label: '5 kg' },
+                  { code: '10kg', label: '10 kg' },
+                ],
+                redirects: {},
+              },
+            ]),
+        },
+        index: indexOf(reader, {
+          searchFiltered: (_market, request) => {
+            narrowed.push(request);
+            return Promise.resolve([hit(1)]);
+          },
+          facetRows: () => Promise.resolve([]),
+          numberRows: () => Promise.resolve([]),
+        }),
+      };
+
+      const result = await search({ category: CATEGORY, filter: 'weight:10kg', price: '1000..' });
+
+      expect(narrowed).toEqual([
+        expect.objectContaining({
+          choiceGroups: [['weight=10kg']],
+          price: { min: 1000n, max: null },
+        }),
+      ]);
+      expect(result.ok && result.value.filtered).toBe(true);
+      expect(result.ok && result.value.items.map((i) => [i.variantId, i.price])).toEqual([
+        [V3, { from: money(3500n), varies: false }],
+      ]);
+    });
+
+    it('an exact GTIN goes straight to its variant, even out of stock', async () => {
+      await indexRice();
+
+      const result = await search({ q: '9300633603366' });
+
+      expect(result).toMatchObject({
+        ok: true,
+        value: {
+          exactMatch: { productId: PRODUCT, variantId: V2 },
+          items: [{ offerId: offer(1), variantId: V2, price: null }],
+        },
+      });
+      expect(reader.requests).toEqual([]);
+    });
+
+    it('stores a unit price in another currency than the Market currency as no price', async () => {
+      feed.facts_.set(offer(1), riceFacts());
+      const other = currency === 'AUD' ? 'NZD' : 'AUD';
+      sellUnits.states_.set(`${offer(1)}/${V1}`, { inStock: true, price: money(500n) });
+      sellUnits.states_.set(`${offer(1)}/${V2}`, {
+        inStock: true,
+        price: { amount: 700n, currency: other },
+      });
+      await new SyncOfferDocuments(gate, deps).execute(system, { offerIds: [offer(1)] });
+
+      const stored = [...documents.rows.values()][0]!.document;
+      expect(stored.variants.map((v) => v.price)).toEqual([money(500n), null, null]);
+    });
+
+    it('an exact GTIN has items and the exact match on page 1 only', async () => {
+      await indexRice();
+
+      const second = await search({ q: '9300633603366', page: 2 });
+
+      expect(second).toMatchObject({ ok: true, value: { items: [], exactMatch: null } });
+    });
+
+    it('a GTIN no visible document has is searched as text', async () => {
+      await indexRice();
+      visibility.hidden.add(offer(1));
+
+      const unknown = await search({ q: '96385074' });
+      const hidden = await search({ q: '9300633603366' });
+
+      expect(unknown.ok && unknown.value.exactMatch).toBe(null);
+      expect(hidden.ok && hidden.value.exactMatch).toBe(null);
+      expect(reader.requests).toHaveLength(2);
+    });
+  });
+
   function documentOf(offerId: Id<'Offer'>): OfferDocument {
     return {
       offerId,
@@ -1051,6 +1757,7 @@ describe.each([
       searchText: null,
       facetCodes: [],
       numbers: {},
+      variants: [],
     };
   }
 });

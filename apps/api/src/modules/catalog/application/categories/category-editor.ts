@@ -1,3 +1,4 @@
+import type { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { err, ok } from '@mondapac/shared-kernel';
 import type {
   CallContext,
@@ -49,6 +50,8 @@ export type CategoryWriteFailure =
   | ValidationFailure;
 
 export interface CategoryWriteDependencies {
+  /** The Market's content filter: category text with a blocked term is refused. */
+  readonly contentFilter: ContentFilter;
   readonly unitOfWork: UnitOfWork;
   readonly store: CategoryEditStore;
   readonly categories: PlatformCategoryRepository;

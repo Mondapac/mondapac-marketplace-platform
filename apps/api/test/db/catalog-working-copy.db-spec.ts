@@ -75,8 +75,11 @@ describe.each(TEST_MARKETS)(
           },
           maxVariantsPerProduct: () => 3,
           maxVariantAttributes: () => 2,
+          units: () => [],
           maxCategoryDepth: () => 4,
           maxCategoryChangeTags: () => 50_000,
+          maxCategoryImportRows: () => 2000,
+          maxCategoryImportBytes: () => 5 * 1024 * 1024,
           productTypes: () => ['simple', 'configurable'],
           defaultFamily: () => 'default',
           conditions: () => ['new'],
@@ -331,6 +334,33 @@ describe.each(TEST_MARKETS)(
         expect(draft?.content).toEqual({ texts: { en: { name: 'Dates' } } });
       });
 
+      it('replaces the import placeholders by the minted ids in the one save (seller import)', async () => {
+        const sellerId = uuid7() as Id<'Seller'>;
+        const product = await storedProduct(sellerId);
+
+        const saved = await service.execute(sellerContext(sellerId), {
+          productId: product.state.id,
+          content: {
+            texts: { en: { name: 'Dates' } },
+            variants: [
+              { variantId: 'new-2', optionValues: { size: 'S' } },
+              { variantId: 'new-3', optionValues: { size: 'L' } },
+            ],
+          },
+          variantIds: [null, null],
+          placeholders: ['new-2', 'new-3'],
+        });
+
+        expect(saved.ok).toBe(true);
+        const minted = saved.ok ? saved.value.variantIds : [];
+        // The stored draft holds the real ids, not the placeholders: no second save is needed.
+        const draft = await inUnit(() => copies.find(market, product.state.id));
+        expect(
+          (draft?.content['variants'] as { variantId: string }[]).map((v) => v.variantId),
+        ).toEqual(minted);
+        expect(JSON.stringify(draft?.content)).not.toContain('new-');
+      });
+
       it('retires a deleted proposed variant in the same unit as the save', async () => {
         const sellerId = uuid7() as Id<'Seller'>;
         const product = await storedProduct(sellerId);
@@ -393,8 +423,11 @@ describe.each(TEST_MARKETS)(
             },
             maxVariantsPerProduct: () => 3,
             maxVariantAttributes: () => 2,
+            units: () => [],
             maxCategoryDepth: () => 4,
             maxCategoryChangeTags: () => 50_000,
+            maxCategoryImportRows: () => 2000,
+            maxCategoryImportBytes: () => 5 * 1024 * 1024,
             productTypes: () => ['simple', 'configurable'],
             defaultFamily: () => 'default',
             conditions: () => ['new'],
@@ -470,8 +503,11 @@ describe.each(TEST_MARKETS)(
             },
             maxVariantsPerProduct: () => 3,
             maxVariantAttributes: () => 2,
+            units: () => [],
             maxCategoryDepth: () => 4,
             maxCategoryChangeTags: () => 50_000,
+            maxCategoryImportRows: () => 2000,
+            maxCategoryImportBytes: () => 5 * 1024 * 1024,
             productTypes: () => ['simple', 'configurable'],
             defaultFamily: () => 'default',
             conditions: () => ['new'],

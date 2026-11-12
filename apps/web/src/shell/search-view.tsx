@@ -2,9 +2,10 @@
 
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Icon } from '../icons/icon.tsx';
 import { useSearchSubmit } from '../search/search-focus.tsx';
+import { useSuggestBox } from '../search/suggest-box.tsx';
 import { useStore } from './store-context.tsx';
 
 /** The full-screen search of the phone and tablet layout. */
@@ -12,7 +13,8 @@ export function SearchView({ popular }: { readonly popular: readonly string[] })
   const t = useTranslations('search');
   const placeholder = useTranslations('header')('search-placeholder');
   const { searchOpen, setSearchOpen } = useStore();
-  const input = useRef<HTMLInputElement>(null);
+  const box = useSuggestBox({ inline: true, onPick: () => setSearchOpen(false) });
+  const { ref: input, ...inputProps } = box.inputProps;
   // Enter or the keyboard's Search key: the panel closes and focus lands on the results heading.
   const onSearch = useSearchSubmit(() => setSearchOpen(false));
 
@@ -51,6 +53,7 @@ export function SearchView({ popular }: { readonly popular: readonly string[] })
           <Icon name="search" />
           <input
             ref={input}
+            {...inputProps}
             type="search"
             name="q"
             placeholder={placeholder}
@@ -60,7 +63,8 @@ export function SearchView({ popular }: { readonly popular: readonly string[] })
           />
         </label>
       </form>
-      <div className="sbody">
+      {box.panel}
+      <div className="sbody" hidden={box.replacing}>
         <h2>{t('recent')}</h2>
         <p className="hint">{t('no-recent')}</p>
         {popular.length > 0 ? (

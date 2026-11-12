@@ -9,6 +9,10 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // The shared CSV rules, from source (the package builds to dist for the API only).
+      '@mondapac/platform-import': fileURLToPath(
+        new URL('../../packages/platform-import/src/index.ts', import.meta.url),
+      ),
       // The real package throws outside React Server Components; the marker means nothing in tests.
       'server-only': fileURLToPath(new URL('./test/server-only.ts', import.meta.url)),
     },

@@ -79,10 +79,20 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // docs/design/data/catalog.md 3.27 (certification slice 15): the sender job's claim order.
   'catalog.offer_owner_notices_market_id_next_attempt_at_pending_idx':
     "CREATE INDEX offer_owner_notices_market_id_next_attempt_at_pending_idx ON catalog.offer_owner_notices USING btree (market_id, next_attempt_at, id) WHERE (state = 'pending'::text)",
-  // docs/design/data/catalog.md 3.28: a shared filter name is unique per list among the filters
-  // shared with everyone.
+  // docs/design/data/catalog.md 2.4 (variants V5): a variant SKU is unique per seller.
+  'catalog.offer_sell_units_market_id_seller_id_variant_sku_key':
+    'CREATE UNIQUE INDEX offer_sell_units_market_id_seller_id_variant_sku_key ON catalog.offer_sell_units USING btree (market_id, seller_id, variant_sku) WHERE (variant_sku IS NOT NULL)',
+  // docs/design/data/catalog.md 3.28: a filter name is unique per owner, and a shared filter name
+  // per list among the filters shared with everyone; each in an admin form (no store) and a seller
+  // form (per store).
+  'catalog.saved_filters_owner_name_key':
+    'CREATE UNIQUE INDEX saved_filters_owner_name_key ON catalog.saved_filters USING btree (market_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NULL)',
   'catalog.saved_filters_shared_name_key':
-    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON catalog.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
+    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON catalog.saved_filters USING btree (market_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NULL))",
+  'catalog.saved_filters_seller_owner_name_key':
+    'CREATE UNIQUE INDEX saved_filters_seller_owner_name_key ON catalog.saved_filters USING btree (market_id, seller_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NOT NULL)',
+  'catalog.saved_filters_seller_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_seller_shared_name_key ON catalog.saved_filters USING btree (market_id, seller_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NOT NULL))",
   // docs/design/data/catalog.md 3.29: the admin product import. One queued or running import per
   // admin, the worker's claim order, and the purge's reach for files still stored.
   'catalog.platform_import_jobs_market_id_file_purge_idx':
@@ -91,6 +101,18 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX platform_import_jobs_market_id_queue_idx ON catalog.platform_import_jobs USING btree (market_id, created_at, id) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))",
   'catalog.platform_import_jobs_market_id_account_running_key':
     "CREATE UNIQUE INDEX platform_import_jobs_market_id_account_running_key ON catalog.platform_import_jobs USING btree (market_id, started_by_account_id) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))",
+  // docs/design/data/catalog.md 3.31: the seller import. One queued or running import per seller,
+  // one unconfirmed check per account, the daily row sum, the claim order and the file purge.
+  'catalog.seller_import_jobs_market_id_seller_running_key':
+    "CREATE UNIQUE INDEX seller_import_jobs_market_id_seller_running_key ON catalog.seller_import_jobs USING btree (market_id, seller_id) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))",
+  'catalog.seller_import_jobs_market_id_account_checked_key':
+    "CREATE UNIQUE INDEX seller_import_jobs_market_id_account_checked_key ON catalog.seller_import_jobs USING btree (market_id, started_by_account_id) WHERE (state = 'checked'::text)",
+  'catalog.seller_import_jobs_market_id_seller_started_at_idx':
+    'CREATE INDEX seller_import_jobs_market_id_seller_started_at_idx ON catalog.seller_import_jobs USING btree (market_id, seller_id, started_at) WHERE (started_at IS NOT NULL)',
+  'catalog.seller_import_jobs_market_id_queue_idx':
+    "CREATE INDEX seller_import_jobs_market_id_queue_idx ON catalog.seller_import_jobs USING btree (market_id, last_turn_at NULLS FIRST, created_at, id) WHERE (state = ANY (ARRAY['queued'::text, 'running'::text]))",
+  'catalog.seller_import_jobs_market_id_file_purge_idx':
+    'CREATE INDEX seller_import_jobs_market_id_file_purge_idx ON catalog.seller_import_jobs USING btree (market_id, checked_at, id) WHERE (file_deleted_at IS NULL)',
   // docs/design/data/catalog.md 3.18 (slice 11): one pending fan-out request per product, one
   // request per published revision, one per consumed event, and the job's claim order.
   'catalog.tag_reevaluation_requests_market_id_created_at_pending_idx':
@@ -101,8 +123,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_product_revision_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, product_revision_id) WHERE (kind = 'revision-published'::text)",
   'catalog.tag_reevaluation_requests_market_id_source_event_id_key':
     'CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_source_event_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, source_event_id, cause) NULLS NOT DISTINCT WHERE (source_event_id IS NOT NULL)',
+  'catalog.topic_suggestions_notice_due_idx':
+    "CREATE INDEX topic_suggestions_notice_due_idx ON catalog.topic_suggestions USING btree (market_id, notice_next_attempt_at, id) WHERE (notice_state = 'pending'::text)",
+  'catalog.topic_suggestions_open_seller_label_key':
+    "CREATE UNIQUE INDEX topic_suggestions_open_seller_label_key ON catalog.topic_suggestions USING btree (market_id, seller_id, label_key) WHERE (status = 'open'::text)",
   'catalog.product_revision_categories_market_id_revision_id_primary_key':
     'CREATE UNIQUE INDEX product_revision_categories_market_id_revision_id_primary_key ON catalog.product_revision_categories USING btree (market_id, revision_id) WHERE is_primary',
+  'catalog.product_revision_variants_market_id_gtin_idx':
+    'CREATE INDEX product_revision_variants_market_id_gtin_idx ON catalog.product_revision_variants USING btree (market_id, gtin) WHERE (gtin IS NOT NULL)',
   'catalog.product_variants_market_id_product_id_single_key':
     "CREATE UNIQUE INDEX product_variants_market_id_product_id_single_key ON catalog.product_variants USING btree (market_id, product_id) WHERE (variant_model = 'single'::text)",
   'catalog.products_market_id_owner_seller_id_created_at_idx':
@@ -274,6 +302,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // docs/design/data/sellers.md 3.2 and 9.5 (slice 5, section 22): one pending and one live
   // approved revision per file, and the reviewer queue by kind and age.
   // Seller health requests: one pending request per seller, and the pick-up order of the job.
+  'search.offer_variant_documents_gtin_idx':
+    'CREATE INDEX offer_variant_documents_gtin_idx ON search.offer_variant_documents USING btree (market_id, gtin) WHERE (gtin IS NOT NULL)',
   'sellers.seller_health_requests_market_id_requested_at_pending_idx':
     "CREATE INDEX seller_health_requests_market_id_requested_at_pending_idx ON sellers.seller_health_requests USING btree (market_id, requested_at) WHERE (status = 'pending'::text)",
   'sellers.seller_health_requests_market_id_seller_id_pending_key':
@@ -288,12 +318,18 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'sellers.seller_business_activities_one_main_key':
     'CREATE UNIQUE INDEX seller_business_activities_one_main_key ON sellers.seller_business_activities USING btree (market_id, seller_id) WHERE is_main',
+  // Multi-culture package 1: at most one default culture per Market.
+  'catalog.cultures_one_default_key':
+    'CREATE UNIQUE INDEX cultures_one_default_key ON catalog.cultures USING btree (market_id) WHERE is_default',
   // Customers (package 5a): the relay's claim index of customers.outbox.
   'customers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON customers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // Shipping (SHP-02/03): the relay's claim index of shipping.outbox.
   'shipping.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON shipping.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // Storefront (SEO settings S1): the relay's claim index of storefront.outbox.
+  'storefront.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON storefront.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // Shipping (package 5e): the status poll's order, never-asked first, over the open bookings.
   'shipping.carrier_bookings_market_id_fleet_polled_at_open_idx':
     "CREATE INDEX carrier_bookings_market_id_fleet_polled_at_open_idx ON shipping.carrier_bookings USING btree (market_id, fleet, polled_at NULLS FIRST, created_at) WHERE (progress = ANY (ARRAY['booked'::text, 'picked-up'::text]))",

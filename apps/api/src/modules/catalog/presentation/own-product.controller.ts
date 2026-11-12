@@ -22,8 +22,10 @@ import {
   ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiExtraModels,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -31,6 +33,7 @@ import {
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
   ApiUnsupportedMediaTypeResponse,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { parseId } from '@mondapac/shared-kernel';
 import type { CallContext } from '@mondapac/shared-kernel';
@@ -41,16 +44,37 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { OwnProductAddSizes } from '../application/use-cases/own-product-add-sizes.use-case';
 import { OwnProductCreate } from '../application/use-cases/own-product-create.use-case';
 import { OwnProductOptions as OwnProductOptionsUseCase } from '../application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from '../application/use-cases/own-product-save-draft.use-case';
 import { OwnProductSetOwnBrand } from '../application/use-cases/own-product-set-own-brand.use-case';
 import { OwnProductSubmit } from '../application/use-cases/own-product-submit.use-case';
 import { OwnProductRead } from '../application/use-cases/own-product-read.use-case';
-import { OwnProductsList } from '../application/use-cases/own-products-list.use-case';
-import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
-import { OwnProductList, OwnProductOptions, OwnProductView } from './own-reads.dto';
 import {
+  EXPORT_FORMATS,
+  OWN_EXPORT_COLUMNS,
+  OWN_EXPORT_MAX_IDS,
+  OWN_EXPORT_MAX_ROWS,
+  OwnProductsExport,
+} from '../application/use-cases/own-products-export.use-case';
+import {
+  OWN_LISTED_STATUSES,
+  OWN_PAGE_SIZES,
+  OWN_PRODUCT_SORTS,
+  OWN_PRODUCT_VIEWS,
+  OwnProductsList,
+} from '../application/use-cases/own-products-list.use-case';
+import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
+import {
+  OwnProductList,
+  OwnProductOptions,
+  OwnProductPageList,
+  OwnProductView,
+} from './own-reads.dto';
+import {
+  AddSizesDone,
+  AddSizesRequest,
   ApiErrorBody,
   PlatformProductDraftSaved,
   PlatformProductSaveDraftRequest,
@@ -64,6 +88,7 @@ import {
   OwnProductOwnBrandSet,
 } from './own-offer.dto';
 import { PLATFORM_PRODUCT_STATUS } from './platform-product.controller';
+import { writeChunks } from './write-chunks';
 
 /**
  * The HTTP status of each refusal of the seller product routes (catalog design 4.2, 8.2): the
@@ -86,6 +111,8 @@ export const OWN_PRODUCT_STATUS: Readonly<Record<string, number>> = Object.freez
   'tag.type-unknown': 422,
   'conflict.retry': 409,
   'claim.check-unavailable': 503,
+  // The export of the list: a request over the row cap or the id cap (design 9.2c).
+  'batch.too-large': 413,
 });
 
 function refusal(error: Refusal, response: Response, context?: CallContext): HttpException {
@@ -101,6 +128,30 @@ function refusal(error: Refusal, response: Response, context?: CallContext): Htt
 function productIdOf(raw: string, response: Response): string | HttpException {
   const parsed = parseId<'Product'>(raw);
   return parsed.ok ? parsed.value : refusal({ code: 'product.not-found' }, response);
+}
+
+const WHOLE_NUMBER = /^\d{1,6}$/;
+
+/**
+ * The query of the product list as the use case reads it: `limit` (keyset mode), `page` and
+ * `pageSize` become numbers and `paused` a boolean; a value that is not of that shape becomes
+ * one the use case refuses (-1 or the text itself), so the answer is a `validation.failed`.
+ */
+function productListQuery(
+  query: Record<string, unknown>,
+  numeric: readonly string[] = ['page', 'pageSize'],
+): Record<string, unknown> {
+  const out: Record<string, unknown> = pageQuery(query);
+  for (const key of numeric) {
+    const value = out[key];
+    if (value !== undefined) {
+      out[key] = typeof value === 'string' && WHOLE_NUMBER.test(value) ? Number(value) : -1;
+    }
+  }
+  const paused = out['paused'];
+  if (paused === 'true') out['paused'] = true;
+  else if (paused === 'false') out['paused'] = false;
+  return out;
 }
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -125,28 +176,62 @@ export class OwnProductController {
     private readonly saveDraft: OwnProductSaveDraft,
     private readonly submitProduct: OwnProductSubmit,
     private readonly listProducts: OwnProductsList,
+    private readonly exportProducts: OwnProductsExport,
     private readonly readProduct: OwnProductRead,
     private readonly productOptions: OwnProductOptionsUseCase,
     private readonly setOwnBrand: OwnProductSetOwnBrand,
+    private readonly addSizes: OwnProductAddSizes,
   ) {}
 
   @Get()
   @Header('Cache-Control', 'no-store')
   @ReadsSession()
+  @ApiExtraModels(OwnProductList, OwnProductPageList)
   @ApiOperation({
     summary: 'List the products of the seller',
     description:
-      'Needs catalog.own-product.view. Newest first, keyset-paged: send `nextAfterId` of the ' +
-      'previous page as `afterId`. `limit` is 1 to 50 (default 25). Discarded and withdrawn ' +
-      'products are not listed.',
+      'Needs catalog.own-product.view. Only the seller’s own products of the Market are listed; ' +
+      'discarded and withdrawn products are not. Two modes. Keyset mode (no list parameter): ' +
+      'newest first, send `nextAfterId` of the previous page as `afterId`; `limit` is 1 to 50 ' +
+      '(default 25); the answer is { items, nextAfterId }. List mode (any of view, q, status, ' +
+      'categoryId, paused, typeCode, sort, direction, page, pageSize; send `page=1` for the first ' +
+      'page): `view` is a tab, all (default), drafts (draft), live (published or matched, a ' +
+      'paused product stays live), inactive (unpublished or retired) or in-review (has a pending ' +
+      'revision; overlaps the others). `q` matches a part of the name (Market default locale) or ' +
+      'of the product code. Filters: status, categoryId, paused (true or false), typeCode. ' +
+      '`sort` is name, updated or created (default updated), `direction` asc or desc (default ' +
+      'asc for name, desc otherwise). `pageSize` is 25, 50 or 100 (default 25); page numbers stop ' +
+      'at row 10,000 (a later page is validation.failed on page). `counts` holds the five tab ' +
+      'counts for the same search and filters. Sorting by name over more than 500 matches is ' +
+      'refused with validation.failed (sort, too-broad). Do not mix afterId or limit with the ' +
+      'list parameters. No price and no stock.',
   })
   @ApiQuery({
     name: 'afterId',
     required: false,
-    description: 'The last product id of the previous page.',
+    description: 'Keyset mode: the last product id of the previous page.',
   })
-  @ApiQuery({ name: 'limit', required: false, description: '1 to 50, default 25.' })
-  @ApiOkResponse({ type: OwnProductList })
+  @ApiQuery({ name: 'limit', required: false, description: 'Keyset mode: 1 to 50, default 25.' })
+  @ApiQuery({ name: 'view', required: false, enum: OWN_PRODUCT_VIEWS })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description: 'Up to 100 characters, no control characters.',
+  })
+  @ApiQuery({ name: 'status', required: false, enum: OWN_LISTED_STATUSES })
+  @ApiQuery({ name: 'categoryId', required: false, description: 'A platform category id.' })
+  @ApiQuery({ name: 'paused', required: false, enum: ['true', 'false'] })
+  @ApiQuery({ name: 'typeCode', required: false, description: 'A product type code.' })
+  @ApiQuery({ name: 'sort', required: false, enum: OWN_PRODUCT_SORTS })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false, description: '1 or more, default 1.' })
+  @ApiQuery({ name: 'pageSize', required: false, enum: OWN_PAGE_SIZES.map(String) })
+  @ApiOkResponse({
+    description: 'OwnProductList in keyset mode, OwnProductPageList in list mode.',
+    schema: {
+      oneOf: [{ $ref: getSchemaPath(OwnProductList) }, { $ref: getSchemaPath(OwnProductPageList) }],
+    },
+  })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
@@ -155,12 +240,112 @@ export class OwnProductController {
     @Call() context: CallContext,
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
-  ): Promise<OwnProductList> {
-    const result = await this.listProducts.execute(context, pageQuery(query));
+  ): Promise<OwnProductList | OwnProductPageList> {
+    const result = await this.listProducts.execute(context, productListQuery(query));
     const outcome = result.ok
-      ? (JSON.parse(JSON.stringify(result.value)) as OwnProductList)
+      ? (JSON.parse(JSON.stringify(result.value)) as OwnProductList | OwnProductPageList)
       : refusal(result.error, response, context);
     return this.settle('catalog.own-products-list', context, outcome);
+  }
+
+  // Declared before `:productId`, so "export" is not read as a product id.
+  @Get('export')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Export the seller’s products of the list as a file',
+    description:
+      'Needs catalog.own-product.view. Only the calling seller’s own products of the Market. ' +
+      'The selector is the list’s: view, q, status, categoryId, paused, typeCode, sort, ' +
+      'direction (page, pageSize, afterId and limit are refused). `productIds` is the ' +
+      `comma-separated rows the seller selected (at most ${OWN_EXPORT_MAX_IDS}): exactly those ` +
+      'products leave, in the order of `sort`; the tab, search and filters are then only ' +
+      'validated, and an id that is not a listed product of the seller is product.not-found. ' +
+      `Without it the selector picks the products, at most ${OWN_EXPORT_MAX_ROWS} (more is ` +
+      'batch.too-large with details.max and details.total). `format` is csv (default) or xlsx, ' +
+      'with the same columns and header row. `columns` is the comma-separated keys in the order ' +
+      'shown; product, status and category are always there, first; absent: code, updated ' +
+      'follow. The header row is in English. The file streams ' +
+      'as an attachment, built like the admin export. CSV: a text cell that starts with = + - @ ' +
+      'is written with a leading quote. XLSX: every cell is a string value, never a formula. ' +
+      'Sorting by name over more than 500 matches is validation.failed (sort, too-broad).',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({
+    name: 'columns',
+    required: false,
+    description: `Any of: ${OWN_EXPORT_COLUMNS.join(', ')}.`,
+  })
+  @ApiQuery({
+    name: 'productIds',
+    required: false,
+    description: 'Comma-separated product ids of the selected rows.',
+  })
+  @ApiQuery({ name: 'view', required: false, enum: OWN_PRODUCT_VIEWS })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'status', required: false, enum: OWN_LISTED_STATUSES })
+  @ApiQuery({ name: 'categoryId', required: false })
+  @ApiQuery({ name: 'paused', required: false, enum: ['true', 'false'] })
+  @ApiQuery({ name: 'typeCode', required: false })
+  @ApiQuery({ name: 'sort', required: false, enum: OWN_PRODUCT_SORTS })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiOkResponse({
+    description:
+      'text/csv; charset=utf-8 (products-<date>.csv) or ' +
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (products-<date>.xlsx), as an attachment',
+  })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiPayloadTooLargeResponse({ type: ApiErrorBody, description: 'batch.too-large' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async download(
+    @Call() context: CallContext,
+    @Res() response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<void> {
+    // `page` and `pageSize` stay as sent (text): the use case refuses them as unknown keys.
+    const result = await this.exportProducts.execute(context, productListQuery(query, []));
+    if (!result.ok) {
+      const error = refusal(result.error, response, context);
+      this.#logger.log({
+        msg: 'catalog.own-products-export',
+        outcome: (error.getResponse() as { code: string }).code,
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      // Backpressure, and a stop as soon as the client disconnects.
+      await writeChunks(response, chunks);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logger.warn({
+        msg: 'catalog.own-products-export',
+        code: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+      return;
+    }
+    this.#logger.log({
+      msg: 'catalog.own-products-export',
+      outcome: 'ok',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
   }
 
   // Declared before `:productId`, so "options" is not read as a product id.
@@ -347,6 +532,7 @@ export class OwnProductController {
         ? {
             variantIds: [...result.value.variantIds],
             refusedFields: result.value.refusedFields.map((field) => ({ ...field })),
+            variantNotices: result.value.variantNotices.map((notice) => ({ ...notice })),
           }
         : refusal(result.error, response, context);
     }
@@ -481,6 +667,68 @@ export class OwnProductController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.own-product-submit', context, outcome);
+  }
+
+  @Post(':productId/add-sizes')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Add sizes: turn an own Simple product into a Configurable one',
+    description:
+      'Needs catalog.own-product.edit and a seller who may sell. Once and never back. Sets the ' +
+      "axes and the option values of the product's one variant, which keeps its id, price and " +
+      'stock, and changes the type; nothing is published, the next submit freezes a ' +
+      'Configurable revision. A pending revision is set aside only with replacePending ' +
+      '(revision.pending-exists otherwise); the working copy keeps its content. The type must ' +
+      'be one the seller may sell (product-type.not-allowed). 20 an hour per account ' +
+      '(request.throttled).',
+  })
+  @ApiParam(PRODUCT_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: AddSizesRequest })
+  @ApiOkResponse({ type: AddSizesDone })
+  @ApiBadRequestResponse({
+    type: ApiErrorBody,
+    description:
+      'validation.failed (details.fields). Body: path version, axes, optionValues, replacePending ' +
+      'or offOfferCount with code range, type, format, too-many or unknown-field; the axes ' +
+      '(path axes) and the option values (path optionValues) with the variants.axes-*, ' +
+      'variants.option-* or variants.option-not-in-family issue codes',
+  })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf, seller.not-eligible or product-type.not-allowed',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description:
+      'product.not-simple, revision.pending-exists, product.not-editable or conflict.stale',
+  })
+  @ApiTooManyRequestsResponse({ type: ApiErrorBody, description: 'request.throttled' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable, revision.schema-unavailable or product.family-invalid',
+  })
+  async addProductSizes(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') rawProductId: string,
+    @Body() body: unknown,
+  ): Promise<AddSizesDone> {
+    const productId = productIdOf(rawProductId, response);
+    const input = closedBody(request, body, ['version', 'axes', 'optionValues', 'replacePending']);
+    let outcome: AddSizesDone | HttpException;
+    if (productId instanceof HttpException) outcome = productId;
+    else if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.addSizes.execute(context, { productId, body: input });
+      outcome = result.ok ? { ...result.value } : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.own-product-add-sizes', context, outcome);
   }
 
   private settle<T extends object>(

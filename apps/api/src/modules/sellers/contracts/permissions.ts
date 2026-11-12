@@ -150,6 +150,19 @@ export const SELLERS_BUSINESS_ACTIVITY_MANAGE = definePermission('sellers', {
   protected: true,
 });
 
+/**
+ * Change a seller's admin settings that are not business identity (sellers design 6.1, 6.2
+ * `seller-settings.change-category-proposals`; SEL-26): today whether the seller may propose
+ * categories. Platform scope, not protected; audited in the same unit. The default role mapping
+ * (Onboarding and Compliance, Catalogue Moderator) is `identity`'s seed and joins there in its own
+ * PR; the Platform Administrator system role holds every key.
+ */
+export const SELLERS_SELLER_SETTINGS_EDIT = definePermission('sellers', {
+  key: 'sellers.seller-settings.edit',
+  scope: 'platform',
+  protected: false,
+});
+
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BLOG_ACCESS_EDIT,
   SELLERS_BUSINESS_ACTIVITY_MANAGE,
@@ -158,6 +171,7 @@ export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BUSINESS_IDENTITY_EDIT,
   SELLERS_SELLER_FILE_REVIEW,
   SELLERS_SELLER_HEALTH_RECALCULATE,
+  SELLERS_SELLER_SETTINGS_EDIT,
   SELLERS_SELLER_VIEW,
   SELLERS_SERVICE_AREA_EDIT,
   SELLERS_STORE_PROFILE_EDIT,

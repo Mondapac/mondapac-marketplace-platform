@@ -36,6 +36,11 @@ import {
   type OfferDocumentRepository,
 } from '../application/ports/offer-document.repository';
 import { OFFER_FEED, type OfferFeed } from '../application/ports/offer-feed';
+import { SELL_UNIT_STATES, type SellUnitStates } from '../application/ports/sell-unit-states';
+import {
+  OFFER_VARIANT_READER,
+  type OfferVariantReader,
+} from '../application/ports/offer-variant.reader';
 import {
   OFFER_SEARCH_READER,
   type OfferSearchReader,
@@ -86,10 +91,25 @@ import {
 import { PrismaShelfDocumentsReader } from './prisma-shelf-documents.reader';
 import { ConfigSearchPolicy } from './config-search-policy';
 import { FacadeOfferFeed } from './facade-offer-feed';
+import { FacadeSellUnitStates } from './facade-sell-unit-states';
+import { PrismaOfferVariantReader } from './prisma-offer-variant.reader';
 import { FacadePublicVisibility } from './facade-public-visibility';
 import { FacadeSellerEligibility } from './facade-seller-eligibility';
 import { PrismaOfferDocumentRepository } from './prisma-offer-document.repository';
 import { OFFER_FACET_READER, type OfferFacetReader } from '../application/ports/offer-facet.reader';
+import { OFFER_SEARCH_INDEX, type OfferSearchIndex } from '../application/ports/offer-search-index';
+import { CATEGORY_TREE_SOURCE, type CategoryTreeSource } from '../application/ports/category-tree';
+import { RawOfferScopeReader } from './raw-offer-scope.reader';
+import { RawStoreSearchReader } from './raw-store-search.reader';
+import { PrismaStoreDocumentRepository } from './prisma-store-document.repository';
+import {
+  STORE_DOCUMENT_REPOSITORY,
+  type StoreDocumentRepository,
+} from '../application/ports/store-document.repository';
+import { PostgresOfferSearchIndex } from './postgres-offer-search-index';
+import { FacadeCategoryTree } from './facade-category-tree';
+import { FacadeStoreDirectory } from './facade-store-directory';
+import { STORE_DIRECTORY, type StoreDirectory } from '../application/ports/store-directory';
 import { RawOfferFacetReader } from './raw-offer-facet.reader';
 import { RawOfferSearchReader } from './raw-offer-search.reader';
 import {
@@ -139,6 +159,17 @@ export const searchProviders: readonly FactoryProvider[] = [
     useFactory: (markets: MarketRegistry): SearchPolicy => new ConfigSearchPolicy(markets),
   },
   {
+    provide: SELL_UNIT_STATES,
+    inject: [INVENTORY_FACADE, PRICING_FACADE],
+    useFactory: (inventory: InventoryFacade, pricing: PricingFacade): SellUnitStates =>
+      new FacadeSellUnitStates(inventory, pricing),
+  },
+  {
+    provide: OFFER_VARIANT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferVariantReader => new PrismaOfferVariantReader(prisma),
+  },
+  {
     provide: OFFER_FEED,
     inject: [CATALOG_INDEX_FACADE],
     useFactory: (catalog: CatalogIndexFacade): OfferFeed => new FacadeOfferFeed(catalog),
@@ -185,6 +216,34 @@ export const searchProviders: readonly FactoryProvider[] = [
     provide: BRAND_PRODUCTS,
     inject: [CATALOG_FACADE],
     useFactory: (catalog: CatalogFacade): BrandProducts => new FacadeBrandProducts(catalog),
+  },
+  {
+    provide: OFFER_SEARCH_INDEX,
+    inject: [RAW_READ_PORT],
+    useFactory: (rawReads: RawReadPort): OfferSearchIndex =>
+      new PostgresOfferSearchIndex(
+        new RawOfferSearchReader(rawReads),
+        new RawOfferFacetReader(rawReads),
+        new RawOfferScopeReader(rawReads),
+        new RawStoreSearchReader(rawReads),
+      ),
+  },
+  {
+    provide: STORE_DOCUMENT_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): StoreDocumentRepository =>
+      new PrismaStoreDocumentRepository(prisma),
+  },
+  {
+    provide: STORE_DIRECTORY,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): StoreDirectory => new FacadeStoreDirectory(sellers),
+  },
+  {
+    provide: CATEGORY_TREE_SOURCE,
+    inject: [CATALOG_ASSISTANT_FACADE],
+    useFactory: (catalog: CatalogAssistantFacade): CategoryTreeSource =>
+      new FacadeCategoryTree(catalog),
   },
   {
     provide: CATEGORY_SUBTREE_SOURCE,

@@ -68,6 +68,18 @@ export interface SellersUnavailable {
   readonly code: 'sellers.unavailable';
 }
 
+/** What `applySignupCultures` did: counts only. */
+export interface SignupCulturesAttached {
+  readonly approved: number;
+  readonly requested: number;
+  readonly unchanged: number;
+}
+
+/** The seller has no file yet (a signup step ran before the file was created); try again. */
+export interface SellerFileNotFound {
+  readonly code: 'file.not-found';
+}
+
 /**
  * The public facade of `sellers` (sellers design 7.1). Every method takes the caller's
  * `CallContext` first, unchanged, and is a thin call of one use case, so the gate runs (PF 6.4
@@ -149,6 +161,18 @@ export interface SellersFacade {
    * behind this method, as for `sellerSummaries`. Not exposed over HTTP.
    */
   blogAccessOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
+
+  /**
+   * `mayProposeCategories` (sellers design 7.1; SEL-26): whether an admin allowed the seller to
+   * propose categories (default off). `catalog` asks it at every proposal command. An unknown
+   * seller, another Market's seller or a read error is `sellers.unavailable`: the caller refuses
+   * and never reads an error as allowed. Two use cases behind this method, as for
+   * `sellerSummaries`. Not exposed over HTTP.
+   */
+  mayProposeCategories(
     context: CallContext,
     sellerId: Id<'Seller'>,
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
@@ -263,6 +287,51 @@ export interface SellersFacade {
   ): Promise<
     Result<
       ReadonlyMap<Id<'Seller'>, string>,
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  >;
+
+  /**
+   * `applySignupCultures` (multi-culture package 2; ADR-0048): attaches a new seller to the
+   * cultures it chose at signup. `cultures` is nothing or `universal` (every ACTIVE culture of the
+   * Market) or a list of culture codes (1 to 20, each an ACTIVE culture; an empty list, an unknown
+   * or an inactive code is `validation.failed` with `cultures.N`). A culture with no required
+   * certification type is approved at once (audited); one with a required type is requested and
+   * only a reviewer approves it, with the seller's valid certificate. A membership the seller
+   * already has is left as it is. Rule `system`. Not exposed over HTTP.
+   */
+  applySignupCultures(
+    context: CallContext,
+    request: { readonly sellerId: Id<'Seller'>; readonly cultures?: unknown },
+  ): Promise<
+    Result<
+      SignupCulturesAttached,
+      AccessDenied | SellersValidationFailed | SellerFileNotFound | SellersUnavailable
+    >
+  >;
+
+  /**
+   * `cultureHasApprovedMembers` (ADR-0048): whether any seller is approved in the culture. Catalog
+   * asks before it changes the culture's required certification type, and refuses on any doubt.
+   * Rule `anonymous`; in process only.
+   */
+  cultureHasApprovedMembers(
+    context: CallContext,
+    cultureId: Id<'Culture'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
+
+  /**
+   * `cultureDemoteApprovals` (ADR-0048, security review M1-R1): takes every approval of the culture
+   * back to `requested`. Catalog's last resort when it could not put a required type back after an
+   * approval raced with the change. Rule `anonymous`; in process only; moves rows only toward
+   * `requested`. `remaining` is true when the per-call cap left approvals behind.
+   */
+  cultureDemoteApprovals(
+    context: CallContext,
+    cultureId: Id<'Culture'>,
+  ): Promise<
+    Result<
+      { readonly demoted: number; readonly remaining: boolean },
       AccessDenied | SellersValidationFailed | SellersUnavailable
     >
   >;

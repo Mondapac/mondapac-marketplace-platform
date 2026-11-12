@@ -63,6 +63,9 @@ export function buildAttributeSchema(
           ...(definition.bounds.max === undefined ? {} : { max: definition.bounds.max }),
           ...(options.length > 0 ? { options } : {}),
         },
+        ...(definition.dataType === 'measure' && definition.bounds.measure !== undefined
+          ? { measure: definition.bounds.measure }
+          : {}),
       });
     }
   }

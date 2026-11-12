@@ -8,6 +8,7 @@ import type { OpenObligationsOfQuery } from '../application/use-cases/open-oblig
 import type { OwnOpenObligationsQuery } from '../application/use-cases/own-open-obligations.use-case';
 import type { SellerOrderCustomerNames } from '../application/use-cases/seller-order-customer-names.use-case';
 import type { SellerHealthCountsQuery } from '../application/use-cases/seller-health-counts.use-case';
+import type { RefundNoticeQuery } from '../application/use-cases/refund-notice.use-case';
 import type { ShipmentNoticeQuery } from '../application/use-cases/shipment-notice.use-case';
 import type { ConfirmPayment } from '../application/use-cases/confirm-payment.use-case';
 import type { AuthorisedPayment, OrderingFacade } from '../contracts';
@@ -26,7 +27,15 @@ export class OrderingFacadeImplementation implements OrderingFacade {
     private readonly paymentRef: OrderPaymentRefQuery,
     private readonly adminOpenObligations: AdminOpenObligationsOfQuery,
     private readonly healthCounts: SellerHealthCountsQuery,
+    private readonly refundNoticeQuery: RefundNoticeQuery,
   ) {}
+
+  refundNotice(
+    context: CallContext,
+    request: { readonly orderId: string; readonly refundId: string },
+  ) {
+    return this.refundNoticeQuery.execute(context, request);
+  }
 
   orderPaymentRef(context: CallContext, orderId: string) {
     return this.paymentRef.execute(context, { orderId });
