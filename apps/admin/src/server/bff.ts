@@ -360,6 +360,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Change a feature set: names, groups and requirement levels, with the version read
     // (catalog, attributes A4).
     'catalog/admin/feature-sets/:id',
+    // Set the feature set and filters of a category, with the version read (attributes A4).
+    'catalog/admin/categories/:id/attribute-links',
     // Set or replace a category's image, with the category version seen (catalog, categories
     // C3c). A base64 picture: the body cap of this path is the larger image one.
     'catalog/admin/categories/:id/image',
@@ -454,6 +456,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // What merging values or archiving an attribute reaches (catalog, attributes A8).
     'catalog/admin/attributes/:id/impact',
     'catalog/admin/feature-sets/:id',
+    // The feature set and filters of one category, with what it ends up with (attributes A4).
+    'catalog/admin/categories/:id/attribute-links',
     // One variant type with its options and settings (catalog, variants V6).
     'catalog/admin/variant-types/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
