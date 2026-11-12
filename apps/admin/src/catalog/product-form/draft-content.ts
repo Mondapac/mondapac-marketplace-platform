@@ -88,6 +88,9 @@ export function attributeInputsOf(
     } else if (field.dataType === 'multi-select') {
       if (Array.isArray(value)) {
         inputs[field.code] = value.filter((item): item is string => typeof item === 'string');
+      } else if (typeof value === 'string') {
+        // Saved while the attribute was a select (before Convert type): a list of one.
+        inputs[field.code] = [value];
       }
     } else if (field.localizable) {
       if (isStringMap(value)) inputs[field.code] = value;

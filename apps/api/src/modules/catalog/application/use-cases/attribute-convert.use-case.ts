@@ -126,7 +126,10 @@ export class AttributeConvert extends UseCase<
   }
 }
 
-/** The audit keeps the four types a conversion moves between; anything else cannot get here. */
+/** The audit keeps the four types a conversion moves between; anything else is a bug. */
 function dataTypeOf(type: string): 'integer' | 'decimal' | 'select' | 'multi-select' {
-  return type === 'integer' || type === 'decimal' || type === 'select' ? type : 'multi-select';
+  if (type === 'integer' || type === 'decimal' || type === 'select' || type === 'multi-select') {
+    return type;
+  }
+  throw new Error(`attribute.convert: ${type} is not a type a conversion moves between`);
 }

@@ -94,7 +94,13 @@ const holdsOption = (
 ): Prisma.CatalogProductRevisionWhereInput => {
   const inValues: Prisma.CatalogProductRevisionWhereInput =
     field.dataType === 'multi-select'
-      ? { attributeValues: { path: [field.code], array_contains: [optionCode] } }
+      ? {
+          // A value stored before Convert type (select to multi-select) is a lone code.
+          OR: [
+            { attributeValues: { path: [field.code], array_contains: [optionCode] } },
+            { attributeValues: { path: [field.code], equals: optionCode } },
+          ],
+        }
       : { attributeValues: { path: [field.code], equals: optionCode } };
   return field.isVariantOption
     ? {

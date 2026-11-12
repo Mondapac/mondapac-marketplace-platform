@@ -156,14 +156,22 @@ describe.each(TEST_MARKETS)('catalog attribute type conversion in market %s (dat
     expect(await read(other, () => definitions.findById(other, select.state.id))).toBeNull();
   });
 
-  it('refuses a stale version and writes nothing', async () => {
+  it('refuses a conversion from a stale read and writes nothing', async () => {
     const select = await published('select');
-    const next = convert(select, 'multi-select');
-    await write(market, () => definitions.saveConversion(market, next, first));
+    await write(market, () =>
+      definitions.saveConversion(market, convert(select, 'multi-select'), first),
+    );
+    // A second reader of the same version, with a revision of its own, loses.
+    const stale = convert(select, 'multi-select');
     const again = await db.unitOfWork
-      .run(market, async () => ok(await definitions.saveConversion(market, next, first)))
+      .run(market, async () => ok(await definitions.saveConversion(market, stale, first)))
       .catch((error: unknown) => error);
-    expect(String(again)).toMatch(/Stale|stale|attribute-definition/);
+    expect(again).toBeInstanceOf(Error);
+    const after = await owner.query<{ n: string }>(
+      'SELECT count(*) AS n FROM catalog.attribute_definition_revisions WHERE definition_id = $1',
+      [select.state.id],
+    );
+    expect(Number(after.rows[0]?.n)).toBe(2);
     expect((await row(select.state.id))?.data_type).toBe('multi-select');
   });
 

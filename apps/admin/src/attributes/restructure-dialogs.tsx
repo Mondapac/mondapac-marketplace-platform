@@ -265,14 +265,18 @@ export function ConvertTypeDialog({
   }
 
   const problem = call.problem;
+  // The conversion cannot be undone, so Cancel has the first focus.
+  const cancel = useRef<HTMLButtonElement>(null);
+  const tt = useTranslations('attributes');
   return (
     <Dialog
       open
       title={t('convert-title', { name })}
       onClose={onClose}
+      initialFocus={cancel}
       actions={
         <>
-          <Button variant="secondary" disabled={call.pending} onClick={onClose}>
+          <Button ref={cancel} variant="secondary" disabled={call.pending} onClick={onClose}>
             {te('cancel')}
           </Button>
           {problem?.reload === true ? (
@@ -293,7 +297,16 @@ export function ConvertTypeDialog({
     >
       <div className="flex flex-col gap-3">
         {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
+        {to === undefined ? null : (
+          <p className="font-medium">
+            {t('convert-from-to', {
+              from: tt(`type.${detail.dataType}`),
+              to: tt(`type.${to}`),
+            })}
+          </p>
+        )}
         <p>{to === 'decimal' ? t('convert-body-decimal') : t('convert-body-multi-select')}</p>
+        <Banner tone="attention">{t('convert-irreversible')}</Banner>
         <ImpactBody load={load} retry={retry}>
           {(answer) => <ImpactList answer={answer} />}
         </ImpactBody>

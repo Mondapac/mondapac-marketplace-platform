@@ -225,7 +225,8 @@ describe('validateAttributeValues', () => {
         bounds: { options: [{ code: 'a' }] },
       }),
     );
-    expect(check(multi, { tags: 'a' }).ok).toBe(false);
+    expect(check(multi, { tags: 'a' }).ok).toBe(true);
+    expect(check(multi, { tags: 5 }).ok).toBe(false);
     expect(check(multi, { tags: [] }).ok).toBe(false);
   });
   it('takes a whole number for a decimal field, as an integer field stored it (attributes A8)', () => {

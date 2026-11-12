@@ -595,6 +595,29 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       ]);
     });
 
+    it('puts the first focus on Cancel, names both types and warns it cannot be undone', async () => {
+      base();
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
+      expect(within(dialog).getByText('This cannot be undone.')).toBeTruthy();
+      expect(within(dialog).getByText(/to/, { selector: 'p.font-medium' })).toBeTruthy();
+    });
+
+    it('offers a reload when the attribute changed since it was opened', async () => {
+      base({
+        [`POST catalog/admin/attributes/${id(1)}/convert`]: refuse(409, 'attribute.stale'),
+      });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Convert type' }));
+      expect(await within(dialog).findByRole('button', { name: 'Reload' })).toBeTruthy();
+    });
+
     it('asks for a decimal when the attribute is a whole number', async () => {
       base({
         [`GET catalog/admin/attributes/${id(1)}`]: ok(
