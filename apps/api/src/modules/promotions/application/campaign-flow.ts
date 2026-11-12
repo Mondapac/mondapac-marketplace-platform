@@ -9,7 +9,6 @@ import { wasPriceEligible } from '../domain/was-price';
 import { sellerCaller } from './caller';
 import type { FieldIssue, PromotionsFailure } from './failures';
 import { activeSettings } from './market-switch';
-import type { UsageRecord } from './ports/promotion.repository';
 import type { PromotionsDependencies } from './promotions-dependencies';
 import { promotionsForCart } from './quote-flow';
 
@@ -232,34 +231,33 @@ export async function previewSellerPayout(
   let split: { discount: bigint; sellerFunded: bigint; platformFunded: bigint };
   if (promotionId !== null && promotionId.ok) {
     const campaignId = promotionId.value;
-    const found = await deps.unitOfWork.run<
-      { record: PromotionRecord; usage: UsageRecord | undefined } | null,
-      PromotionsFailure
-    >(
+    const found = await deps.unitOfWork.run<{ record: PromotionRecord } | null, PromotionsFailure>(
       context.market,
       async () => {
         const open = await deps.promotions.listOpenCampaigns(
           context.market,
           deps.clock.now(),
           seller.sellerId,
+          campaignId,
         );
-        const record = open.find((candidate) => candidate.id === campaignId);
+        const record = open[0];
         if (record === undefined) return ok(null);
-        const usage = await deps.promotions.usageOf(context.market, [record.id]);
-        return ok({ record, usage: usage.get(record.id) });
+        return ok({ record });
       },
       { readOnly: true },
     );
     if (!found.ok) return found;
     if (found.value === null) return err({ code: 'promotions.not-found' });
-    const { record, usage } = found.value;
+    // The platform budget and its spend are not the seller's to learn: the preview calculates
+    // as if the campaign had no budget, so a very large price cannot reveal what is left of it.
+    const record: PromotionRecord = { ...found.value.record, budgetMinor: null };
     // The real calculation, on a cart of one unit of this seller: its caps, its budget, the
     // seller share limit and the commission limit are the ones a real order meets. A campaign
     // that would not apply (platform money before the tax ruling, a minimum spend the price does
     // not reach) gives no discount, as it would at checkout.
     const promotions = promotionsForCart({
       records: [record],
-      usage: usage === undefined ? new Map() : new Map([[record.id, usage]]),
+      usage: new Map(),
       optIns: new Map([[record.id, [seller.sellerId]]]),
       settings,
       firstOrder: null,

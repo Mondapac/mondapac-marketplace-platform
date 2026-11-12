@@ -193,7 +193,7 @@ export async function setOptIn(
     const was = existing !== null && existing.withdrawnAt === null;
     if (was === optIn) return ok({ promotionId: promotion.id, optedIn: optIn });
     // Leaving is for before the campaign starts; once it runs, only support can take a seller out
-    // (owner decision, 11 Nov 2026). Joining stays open while the campaign is.
+    // (owner decision, 12 Nov 2026). Joining stays open while the campaign is.
     if (!optIn && promotion.startsAt.epochMilliseconds <= now.epochMilliseconds) {
       return err({ code: 'promotions.invalid-state' });
     }

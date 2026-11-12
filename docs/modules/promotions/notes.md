@@ -303,6 +303,8 @@ place) and the promotions module.
 - The preview is an estimate **before delivery**: tax uses the provisional rate, and the commission ledger is not
   yet discount-aware. `minSpend` is ignored for item-layer campaigns, as the engine does. A campaign in test mode
   is listed to sellers with `testMode: true`.
+- The preview calculates as if the campaign had no budget, so a very large price cannot reveal what is left of the platform
+  budget. For a test-mode campaign it may show platform money that a real order would not get until the tax ruling.
 - `listOpenCampaigns` is capped at 200 rows (safety). `setOptIn` still accepts a paused campaign; the list hides it.
 
 ## Open points

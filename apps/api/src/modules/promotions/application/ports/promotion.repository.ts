@@ -90,6 +90,8 @@ export interface PromotionRepository {
     market: MarketContext,
     now: Temporal.Instant,
     sellerId: Id<'Seller'>,
+    /** Only this campaign, when given (the preview reads one). */
+    promotionId?: Id<'Promotion'>,
   ): Promise<readonly PromotionRecord[]>;
   usageOf(
     market: MarketContext,

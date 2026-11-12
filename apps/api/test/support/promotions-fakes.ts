@@ -146,11 +146,17 @@ export class MemoryPromotions implements PromotionRepository {
       ),
     );
   }
-  listOpenCampaigns(_market: MarketContext, now: Temporal.Instant, sellerId: Id<'Seller'>) {
+  listOpenCampaigns(
+    _market: MarketContext,
+    now: Temporal.Instant,
+    sellerId: Id<'Seller'>,
+    promotionId?: Id<'Promotion'>,
+  ) {
     return Promise.resolve(
       [...this.records.values()]
         .filter(
           (r) =>
+            (promotionId === undefined || r.id === promotionId) &&
             r.type === 'CO_FUNDED_CAMPAIGN' &&
             r.funding === 'CO_FUNDED' &&
             r.status === 'ACTIVE' &&

@@ -814,6 +814,13 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       );
     });
 
+    it('does not let a large price reveal what is left of the platform budget', async () => {
+      const id = await create({ budgetMinor: '500' });
+      const result = await preview({ promotionId: id, priceMinor: '100000' });
+      if (!result.ok) throw new Error('preview failed');
+      expect(result.value.discount).toBeGreaterThan(500n);
+    });
+
     it('applies the per-order cap of a campaign', async () => {
       const id = await create({ maxPerOrderMinor: '120' });
       const result = await preview({ promotionId: id, priceMinor: '2000' });

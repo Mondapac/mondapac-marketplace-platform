@@ -902,6 +902,11 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
       });
       const plain = await make(CreatePromotion).execute(admin, platformCart({ name: 'Cart' }));
       const paused = await campaign({ name: 'Paused' });
+      const endsNow = await campaign({
+        name: 'Ends now',
+        startsAt: clock.now().subtract({ hours: 2 }).toString(),
+        endsAt: clock.now().toString(),
+      });
       if (
         !everyone.ok ||
         !mineOnly.ok ||
@@ -909,7 +914,8 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
         !ended.ok ||
         !later.ok ||
         !plain.ok ||
-        !paused.ok
+        !paused.ok ||
+        !endsNow.ok
       ) {
         throw new Error('setup failed');
       }
@@ -930,6 +936,7 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
       expect(seen).not.toContain(ended.value.id);
       expect(seen).not.toContain(plain.value.id);
       expect(seen).not.toContain(paused.value.id);
+      expect(seen).not.toContain(endsNow.value.id);
       // Soonest start first: the one that starts later is last.
       expect(seen[seen.length - 1]).toBe(later.value.id);
     });

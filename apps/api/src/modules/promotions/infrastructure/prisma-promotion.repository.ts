@@ -402,11 +402,13 @@ export class PrismaPromotionRepository implements PromotionRepository {
     market: MarketContext,
     now: Temporal.Instant,
     sellerId: Id<'Seller'>,
+    promotionId?: Id<'Promotion'>,
   ): Promise<readonly PromotionRecord[]> {
     const at = toDate(now);
     const rows = await this.prisma.tx(market).promotionsPromotion.findMany({
       where: {
         marketId: market.marketId,
+        ...(promotionId === undefined ? {} : { id: promotionId }),
         status: 'ACTIVE',
         type: 'CO_FUNDED_CAMPAIGN',
         funding: 'CO_FUNDED',
