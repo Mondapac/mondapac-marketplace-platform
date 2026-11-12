@@ -129,6 +129,15 @@ import { SellerBusinessActivities } from './application/use-cases/seller-busines
 import { SellerBusinessActivitiesSystem } from './application/use-cases/seller-business-activities-system.use-case';
 import { CultureApprovedMembers } from './application/use-cases/culture-approved-members.use-case';
 import { CultureDemoteApprovals } from './application/use-cases/culture-demote-approvals.use-case';
+import { CultureDemoteApprovalsSystem } from './application/use-cases/culture-demote-approvals-system.use-case';
+import {
+  SELLERS_CULTURE_DEMOTE_PORT,
+  type CultureDemotePort,
+} from './contracts/culture-demote.port';
+import { SellerApprovedCultures } from './application/use-cases/seller-approved-cultures.use-case';
+import { SellerApprovedCulturesSystem } from './application/use-cases/seller-approved-cultures-system.use-case';
+import { RecheckCultureCertificates } from './application/use-cases/recheck-culture-certificates.use-case';
+import { RecheckCulturesOfIssuer } from './application/use-cases/recheck-cultures-of-issuer.use-case';
 import { ApplySignupCultures } from './application/use-cases/apply-signup-cultures.use-case';
 import { SeedSellerCultures } from './application/use-cases/seed-seller-cultures.use-case';
 import { seedSellerCulturesJob } from './presentation/jobs/seed-seller-cultures.job';
@@ -773,6 +782,30 @@ const REVIEW_DECISION_PORTS = {
       outbox: true,
       clock: true,
     }),
+    useCaseProvider(CultureDemoteApprovalsSystem, {
+      unitOfWork: true,
+      sellerCultures: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(SellerApprovedCultures, { unitOfWork: true, sellerCultures: true }),
+    useCaseProvider(SellerApprovedCulturesSystem, { unitOfWork: true, sellerCultures: true }),
+    useCaseProvider(RecheckCultureCertificates, {
+      unitOfWork: true,
+      sellerCultures: true,
+      cultureDirectory: true,
+      certificateDirectory: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(RecheckCulturesOfIssuer, {
+      unitOfWork: true,
+      sellerCultures: true,
+      cultureDirectory: true,
+      certificateDirectory: true,
+      outbox: true,
+      clock: true,
+    }),
     useCaseProvider(SeedSellerCultures, {
       unitOfWork: true,
       sellerCultures: true,
@@ -867,7 +900,8 @@ const REVIEW_DECISION_PORTS = {
         OperatingZones,
         ApplySignupCultures,
         CultureApprovedMembers,
-        CultureDemoteApprovals,
+        SellerApprovedCultures,
+        SellerApprovedCulturesSystem,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -892,7 +926,8 @@ const REVIEW_DECISION_PORTS = {
         operatingZones: OperatingZones,
         applySignupCultures: ApplySignupCultures,
         cultureApprovedMembers: CultureApprovedMembers,
-        cultureDemoteApprovals: CultureDemoteApprovals,
+        sellerApprovedCultures: SellerApprovedCultures,
+        sellerApprovedCulturesSystem: SellerApprovedCulturesSystem,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -917,8 +952,18 @@ const REVIEW_DECISION_PORTS = {
           operatingZones,
           applySignupCultures,
           cultureApprovedMembers,
-          cultureDemoteApprovals,
+          sellerApprovedCultures,
+          sellerApprovedCulturesSystem,
         }),
+    },
+    // The culture demotion port (ADR-0048 N2): a provider of its own, not a facade method, so only
+    // catalog's adapter can reach it (dependency-cruiser).
+    {
+      provide: SELLERS_CULTURE_DEMOTE_PORT,
+      inject: [CultureDemoteApprovals],
+      useFactory: (demote: CultureDemoteApprovals): CultureDemotePort => ({
+        cultureDemoteApprovals: (context, cultureId) => demote.execute(context, { cultureId }),
+      }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by
     // certification's application layer only (dependency-cruiser).
@@ -1055,6 +1100,13 @@ const REVIEW_DECISION_PORTS = {
     CULTURE_DIRECTORY,
     SELLER_CERTIFICATE_DIRECTORY,
     SELLER_HEALTH_SIGNALS,
+    SELLERS_CULTURE_DEMOTE_PORT,
+    // The handlers of certification's certificate ends and catalog's approvals-invalidated event
+    // (package 3a): SellerStoreProfileModule registers the subscriptions, since certification and
+    // catalog import sellers and their events cannot be imported here without a file cycle.
+    RecheckCultureCertificates,
+    RecheckCulturesOfIssuer,
+    CultureDemoteApprovalsSystem,
   ],
 })
 export class SellersModule {}

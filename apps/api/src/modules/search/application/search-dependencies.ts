@@ -1,3 +1,4 @@
+import type { OfferCultureSource } from './ports/offer-cultures';
 import type { Clock } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { BrandProducts } from './ports/brand-products';
@@ -49,4 +50,6 @@ export interface SearchDependencies {
   readonly storeDirectory: StoreDirectory;
   /** The store read model, written with the Offers' sync (search 1a). */
   readonly storeDocuments: StoreDocumentRepository;
+  /** The cultures each Offer is visible in, from catalog's facade (multi-culture package 3a). */
+  readonly cultures: OfferCultureSource;
 }

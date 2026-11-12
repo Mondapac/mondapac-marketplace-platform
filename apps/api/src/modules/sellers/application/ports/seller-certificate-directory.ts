@@ -13,10 +13,23 @@ export interface SellerCertificateDirectoryUnavailable {
  * unchanged, so certification's own gate decides who may ask; a refusal is unavailable.
  */
 export interface SellerCertificateDirectory {
+  /** Which of `typeCodes` the seller holds a valid certificate of now (a subset of them). */
   validTypeCodes(
     context: CallContext,
     sellerId: Id<'Seller'>,
+    typeCodes: readonly string[],
   ): Promise<Result<ReadonlySet<string>, SellerCertificateDirectoryUnavailable>>;
+
+  /**
+   * One page (at most 200) of the sellers holding an approved certificate that names the issuer,
+   * in seller id order after `afterSellerId` (ADR-0048 security review M3: a derecognised issuer).
+   */
+  sellersOfIssuer(
+    context: CallContext,
+    issuerId: string,
+    afterSellerId: Id<'Seller'> | null,
+    limit: number,
+  ): Promise<Result<readonly Id<'Seller'>[], SellerCertificateDirectoryUnavailable>>;
 }
 
 export const SELLER_CERTIFICATE_DIRECTORY = Symbol('SELLER_CERTIFICATE_DIRECTORY');

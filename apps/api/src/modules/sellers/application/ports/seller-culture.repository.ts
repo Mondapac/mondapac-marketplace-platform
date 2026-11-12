@@ -45,6 +45,16 @@ export interface SellerCultureRepository {
     limit: number,
   ): Promise<readonly SellerCultureState[]>;
 
+  /**
+   * The cultures each of these sellers is `approved` in (multi-culture package 3a: the visibility
+   * rule of ADR-0047 decision 5). A seller with no approval is absent. At most 100 sellers per
+   * call (the caller batches); the primary key `(market_id, seller_id, culture_id)` serves it.
+   */
+  approvedForSellers(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, readonly Id<'Culture'>[]>>;
+
   /** Inserts a first request; false when the seller already has a row for the culture. */
   insert(market: MarketContext, state: SellerCultureState): Promise<boolean>;
 

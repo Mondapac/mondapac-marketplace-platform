@@ -168,6 +168,27 @@ export class PrismaCultureRepository implements CultureRepository {
     }));
   }
 
+  async categoryRowsOf(
+    market: MarketContext,
+    cultureIds: readonly Id<'Culture'>[],
+  ): Promise<ReadonlyMap<Id<'Culture'>, readonly CultureCategoryRow[]>> {
+    const out = new Map<Id<'Culture'>, CultureCategoryRow[]>(cultureIds.map((id) => [id, []]));
+    if (cultureIds.length === 0) return out;
+    const rows = await this.prisma.tx(market).catalogCultureCategory.findMany({
+      where: { marketId: market.marketId, cultureId: { in: [...new Set(cultureIds)] } },
+      select: { cultureId: true, categoryId: true, visible: true, certificationMark: true },
+      orderBy: [{ cultureId: 'asc' }, { categoryId: 'asc' }],
+    });
+    for (const row of rows) {
+      out.get(row.cultureId as Id<'Culture'>)?.push({
+        categoryId: row.categoryId as Id<'Category'>,
+        visible: row.visible,
+        certificationMark: row.certificationMark as CertificationMark | null,
+      });
+    }
+    return out;
+  }
+
   async setCategoryRow(
     market: MarketContext,
     cultureId: Id<'Culture'>,

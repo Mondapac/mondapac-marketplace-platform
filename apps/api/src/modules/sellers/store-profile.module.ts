@@ -26,9 +26,15 @@ import { CertificationStoreTextClaimCheck } from './infrastructure/certification
 import type { LateBoundBusinessActivityDirectory } from './infrastructure/late-bound-business-activity-directory';
 import type { LateBoundStoreTextClaimCheck } from './infrastructure/late-bound-store-text-claim-check';
 import { SellersModule } from './sellers.module';
+import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
+import { CultureDemoteApprovalsSystem } from './application/use-cases/culture-demote-approvals-system.use-case';
+import { RecheckCultureCertificates } from './application/use-cases/recheck-culture-certificates.use-case';
+import { RecheckCulturesOfIssuer } from './application/use-cases/recheck-cultures-of-issuer.use-case';
+import { cultureCertificateSubscriptions } from './presentation/subscribers/culture-certificate.subscriptions';
 
 /**
- * Binds the late-bound ports of sellers whose other side imports sellers:
+ * Binds the late-bound ports of sellers whose other side imports sellers, and registers the
+ * sellers subscriptions to events of those modules (multi-culture package 3a):
  * - the claim check of the store profile texts to certification (sellers design 3.7: a store
  *   text never claims a certification);
  * - the business-activity directory to catalog's `activeBusinessActivityIds` (ADR-0040 decision 4:
@@ -41,7 +47,22 @@ import { SellersModule } from './sellers.module';
  * (which imports all three) is registered beside them in `modules/index.ts`. It is not exported
  * from the sellers entry point, so no file cycle forms.
  */
-@Module({ imports: [SellersModule, CertificationModule, CatalogModule] })
+@Module({
+  imports: [SellersModule, CertificationModule, CatalogModule],
+  providers: [
+    // Multi-culture package 3a: the certificate ends (M2) and catalog's approvals-invalidated
+    // event (N1). Their events come from modules that import sellers, so they are registered here.
+    registerSubscriptionsFrom(
+      'sellers',
+      [RecheckCultureCertificates, CultureDemoteApprovalsSystem, RecheckCulturesOfIssuer],
+      (
+        recheck: RecheckCultureCertificates,
+        demote: CultureDemoteApprovalsSystem,
+        recheckIssuer: RecheckCulturesOfIssuer,
+      ) => cultureCertificateSubscriptions(recheck, demote, recheckIssuer),
+    ),
+  ],
+})
 export class SellerStoreProfileModule implements OnModuleInit {
   constructor(
     @Inject(STORE_TEXT_CLAIM_CHECK) private readonly check: LateBoundStoreTextClaimCheck,

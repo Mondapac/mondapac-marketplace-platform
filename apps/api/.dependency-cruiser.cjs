@@ -28,6 +28,7 @@ const APPROVED_SELLER_ZONES_CONTRACT_FILE =
 // it. Both files export only their own names (asserted in boundaries.spec.ts).
 // inventory's ordering port: importable by ordering only (rule inventory-ordering-port-is-for-ordering).
 const INVENTORY_ORDERING_PORT_FILE = '^src/modules/inventory/contracts/ordering-port\\.ts$';
+const CULTURE_DEMOTE_PORT_FILE = '^src/modules/sellers/contracts/culture-demote\\.port\\.ts$';
 
 const MARKET_EXEMPTION_FILE = '^src/platform/market-context/no-market-context\\.decorator\\.ts$';
 const MARKET_EXEMPTION_IMPORTERS = [
@@ -345,6 +346,7 @@ module.exports = {
           SELLER_ACCESS_CONTRACT_FILE,
           APPROVED_SELLER_ZONES_CONTRACT_FILE,
           INVENTORY_ORDERING_PORT_FILE,
+          CULTURE_DEMOTE_PORT_FILE,
         ],
       },
     },
@@ -368,6 +370,22 @@ module.exports = {
       severity: 'error',
       from: { pathNot: ['^src/modules/inventory/', '^src/modules/ordering/'] },
       to: { path: '^src/modules/inventory/contracts/ordering-port\\.ts$' },
+    },
+    {
+      name: 'culture-demote-port-is-for-catalog-adapter',
+      comment:
+        "Only sellers and catalog's infrastructure/sellers-culture-members.ts import sellers' " +
+        'culture demotion port (cultureDemoteApprovals: every approval of a culture back to ' +
+        'requested). It is not on the sellers facade and the sellers barrels do not export it, so ' +
+        'no other path can mass-demote a culture (ADR-0048 security review N2).',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/modules/sellers/',
+          '^src/modules/catalog/infrastructure/sellers-culture-members\\.ts$',
+        ],
+      },
+      to: { path: CULTURE_DEMOTE_PORT_FILE },
     },
     {
       name: 'approved-seller-zones-contract-is-for-certification',

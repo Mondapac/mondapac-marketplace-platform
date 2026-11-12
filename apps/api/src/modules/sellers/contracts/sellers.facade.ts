@@ -321,17 +321,19 @@ export interface SellersFacade {
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
 
   /**
-   * `cultureDemoteApprovals` (ADR-0048, security review M1-R1): takes every approval of the culture
-   * back to `requested`. Catalog's last resort when it could not put a required type back after an
-   * approval raced with the change. Rule `anonymous`; in process only; moves rows only toward
-   * `requested`. `remaining` is true when the per-call cap left approvals behind.
+   * `approvedCulturesOfSellers` (multi-culture package 3a; ADR-0047 decision 5): per requested
+   * seller (at most 100 distinct ids, else `validation.failed`), the ids of the cultures it is
+   * `approved` in. A seller with none, an unknown id and another Market's id are absent, alike.
+   * Catalog's visibility rule reads it; a failed read is `sellers.unavailable` and the caller
+   * treats the Offers as visible nowhere. Two use cases: `anonymous` for request actors, `system`
+   * for handlers and jobs. In process only.
    */
-  cultureDemoteApprovals(
+  approvedCulturesOfSellers(
     context: CallContext,
-    cultureId: Id<'Culture'>,
+    sellerIds: readonly Id<'Seller'>[],
   ): Promise<
     Result<
-      { readonly demoted: number; readonly remaining: boolean },
+      ReadonlyMap<Id<'Seller'>, readonly Id<'Culture'>[]>,
       AccessDenied | SellersValidationFailed | SellersUnavailable
     >
   >;

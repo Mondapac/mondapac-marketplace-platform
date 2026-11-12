@@ -20,6 +20,7 @@ import { OFFER_SEARCH_INDEX } from './application/ports/offer-search-index';
 import { CATEGORY_TREE_SOURCE } from './application/ports/category-tree';
 import { STORE_DIRECTORY } from './application/ports/store-directory';
 import { STORE_DOCUMENT_REPOSITORY } from './application/ports/store-document.repository';
+import { OFFER_CULTURE_SOURCE } from './application/ports/offer-cultures';
 import { OFFER_SEARCH_READER } from './application/ports/offer-search.reader';
 import { SEARCH_FILTER_SOURCE } from './application/ports/search-filters';
 import { PRODUCT_IMAGES } from './application/ports/product-images';
@@ -62,6 +63,10 @@ import type { RatingSyncDependencies } from './application/rating-sync-dependenc
 import { SyncOfferDocuments } from './application/use-cases/sync-offer-documents.use-case';
 import { searchProviders } from './infrastructure/search-providers';
 import { ReindexOfferAttributes } from './application/use-cases/reindex-offer-attributes.use-case';
+import {
+  RequestOfferReindex,
+  type RequestOfferReindexDependencies,
+} from './application/use-cases/request-offer-reindex.use-case';
 import type { ReindexDependencies } from './application/reindex-dependencies';
 import { INDEX_STAMP, REINDEX_PROGRESS } from './application/ports/reindex';
 import { reindexAttributesJob } from './presentation/jobs/reindex-offer-attributes.job';
@@ -76,6 +81,7 @@ import { ShelfController } from './presentation/shelf.controller';
 import { catalogIndexSubscriptions } from './presentation/subscribers/catalog-index.subscriptions';
 import { namesIndexSubscriptions } from './presentation/subscribers/names-index.subscriptions';
 import { sellerAccessIndexSubscriptions } from './presentation/subscribers/seller-access-index.subscriptions';
+import { cultureIndexSubscriptions } from './presentation/subscribers/culture-index.subscriptions';
 import { SEARCH_ASSISTANT_FACADE } from './contracts';
 import { SearchAssistantFacadeImplementation } from './presentation/search-assistant.facade';
 
@@ -101,6 +107,7 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['categoryTree', CATEGORY_TREE_SOURCE],
   ['storeDirectory', STORE_DIRECTORY],
   ['storeDocuments', STORE_DOCUMENT_REPOSITORY],
+  ['cultures', OFFER_CULTURE_SOURCE],
 ];
 
 /** Every search use case shares one dependency object, built from the same ports. */
@@ -138,6 +145,18 @@ function reindexProvider(): FactoryProvider<ReindexOfferAttributes> {
       ),
   };
 }
+
+/** The reindex request (multi-culture package 3a): one write to the progress row. */
+const requestReindexProvider: FactoryProvider<RequestOfferReindex> = {
+  provide: RequestOfferReindex,
+  inject: [USE_CASE_GATE, UNIT_OF_WORK, REINDEX_PROGRESS, CLOCK],
+  useFactory: (
+    gate: UseCaseGate,
+    unitOfWork: RequestOfferReindexDependencies['unitOfWork'],
+    progress: RequestOfferReindexDependencies['progress'],
+    clock: RequestOfferReindexDependencies['clock'],
+  ) => new RequestOfferReindex(gate, { unitOfWork, progress, clock }),
+};
 
 const SHELF_PORTS: readonly [keyof ShelfDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
@@ -315,17 +334,23 @@ function productDetailProvider<U>(
     ratingSyncProvider(),
     suggestProvider(),
     reindexProvider(),
+    requestReindexProvider,
     {
       provide: SEARCH_ASSISTANT_FACADE,
       inject: [SearchProducts, ListBestsellers, ListSpecials],
       useFactory: (search: SearchProducts, bestsellers: ListBestsellers, specials: ListSpecials) =>
         new SearchAssistantFacadeImplementation(search, bestsellers, specials),
     },
-    registerSubscriptionsFrom('search', [SyncOfferDocuments], (sync: SyncOfferDocuments) => [
-      ...catalogIndexSubscriptions(sync),
-      ...sellerAccessIndexSubscriptions(sync),
-      ...namesIndexSubscriptions(sync),
-    ]),
+    registerSubscriptionsFrom(
+      'search',
+      [SyncOfferDocuments, RequestOfferReindex],
+      (sync: SyncOfferDocuments, reindex: RequestOfferReindex) => [
+        ...catalogIndexSubscriptions(sync),
+        ...sellerAccessIndexSubscriptions(sync),
+        ...namesIndexSubscriptions(sync),
+        ...cultureIndexSubscriptions(sync, reindex),
+      ],
+    ),
     registerJobsFrom(
       'search',
       [RebuildOfferIndex, SyncProductRatings, ReindexOfferAttributes],
