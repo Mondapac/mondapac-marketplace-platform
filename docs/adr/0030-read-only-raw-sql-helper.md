@@ -190,6 +190,14 @@ needs none (data catalog 6.3). Its cycle trigger is migration SQL, ruled outside
   counted by the caller, so no aggregate or other function is needed). They read
   `search.offer_documents` and `search.offer_document_numbers` with `market_id = $1`, and use no
   function beyond `unnest`, `websearch_to_tsquery` and `ts_rank`.
+- Amended 2026-11-11 (search 1a; reviews by the agents Ali, Hassan and Mojtaba to be recorded on the
+  PR): two more statements, in shapes the list already holds. `search.offer-scope-rows` reads
+  `search.offer_documents` of a text or category scope (`@@ websearch_to_tsquery`, `&& $4::uuid[]`)
+  and returns one row per Offer with its product, seller and category ids; the caller counts, so no
+  aggregate is added. `search.store-search` reads `search.store_documents` (`@@
+  websearch_to_tsquery`, `ts_rank`) with an `EXISTS` on `search.offer_documents`, both with
+  `market_id = $1`; its limit and offset travel as text with `::text::int4` casts. All values are
+  bound; no new function or operator.
 
 ## Alternatives considered
 - **Prisma with `relationLoadStrategy: 'join'` (option B):** no raw SQL, but one statement is

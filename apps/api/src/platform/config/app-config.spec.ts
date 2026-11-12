@@ -36,6 +36,7 @@ describe('loadAppConfig', () => {
       externalAccountHmac: { keys: {}, currentVersion: null },
       promotionsCodePepper: null,
       clientAddressTrust: null,
+      storefrontIndexing: { ceiling: 'off', sampleData: true },
       assistantModels: {
         apiKeys: {},
         models: { fast: {}, balanced: {} },

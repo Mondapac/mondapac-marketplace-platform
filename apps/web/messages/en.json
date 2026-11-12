@@ -1472,5 +1472,17 @@
   },
   "areas": {
     "greater-brisbane": "Greater Brisbane"
+  },
+  "suggest": {
+    "label": "Search suggestions",
+    "products": "Products",
+    "stores": "Stores",
+    "store-products": "{count, plural, one {# product} other {# products}}",
+    "see-all": "See all results for \"{q}\" ({n, number}{capped, select, true {+} other {}} {n, plural, one {product} other {products}})",
+    "none": "No suggestions for \"{q}\"",
+    "error": "We could not load suggestions. Press Enter to search.",
+    "loading": "Loading suggestions",
+    "found": "{products, plural, one {# product} other {# products}} and {stores, plural, one {# store} other {# stores}} suggested. Use the up and down arrow keys to choose.",
+    "see-all-none": "See all results for \"{q}\""
   }
 }

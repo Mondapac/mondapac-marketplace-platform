@@ -123,6 +123,8 @@ const requestLimitsSchema = z.strictObject({
   anonymousIdentityPerMinute: perMinute,
   /** Routes marked `@RateLimit('public-media')`: the anonymous buyer photo route. */
   publicMediaPerMinute: perMinute,
+  /** Routes marked `@RateLimit('public-search')`: the storefront product and store search. */
+  publicSearchPerMinute: perMinute,
   /** Every other market-scoped route. */
   defaultPerMinute: perMinute,
 });
@@ -1189,6 +1191,8 @@ const catalogSchema = z
       variantRemoved: z.boolean(),
       /** A GTIN set, changed or cleared on an already published variant (variants V4). */
       gtinChanged: z.boolean(),
+      /** A second variant axis added to a published product (variants V9b). */
+      axisAdded: z.boolean(),
     }),
     /**
      * The most non-retired variants one product may hold (catalog design 2.1; AU 100). Bounded
@@ -1210,6 +1214,20 @@ const catalogSchema = z
      * admin moves the subcategories in parts. Required, no default.
      */
     maxCategoryChangeTags: z.number().int().min(1).max(200_000),
+    /**
+     * The most data rows one category tree import file may hold (categories C7a; AU 2,000). Never
+     * above the platform import ceiling of 5,000 rows. Required, no default.
+     */
+    maxCategoryImportRows: z.number().int().min(1).max(5000),
+    /**
+     * The largest category tree import file in bytes (categories C7a; AU 5 MiB). Never above the
+     * platform import ceiling of 10 MiB. Required, no default.
+     */
+    maxCategoryImportBytes: z
+      .number()
+      .int()
+      .min(1024)
+      .max(10 * 1024 * 1024),
     /**
      * The most variant (option) attributes one product may vary on (attributes plan A2; AU 2). A
      * configurable product whose feature set marks more option attributes is refused by the

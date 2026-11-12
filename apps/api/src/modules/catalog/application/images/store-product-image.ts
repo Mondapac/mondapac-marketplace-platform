@@ -5,7 +5,11 @@ import { IMAGE_BUSY_RETRY_SECONDS } from '../../../../platform/images/image-pipe
 import type { ObjectStore } from '../../../../platform/storage/object-store';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { ImageProcessor, ImageRefusalCode } from '../ports/image-processor';
-import type { ProductImageRepository, StoredRendition } from '../ports/product-image.repository';
+import {
+  renditionObjectKey,
+  type ProductImageRepository,
+  type StoredRendition,
+} from '../ports/product-image.repository';
 import { MAX_UPLOAD_BYTES } from './image-limits';
 import type { ProductImageView } from './own-product-access';
 
@@ -49,7 +53,7 @@ export interface StoreProductImageDependencies {
 
 /**
  * The shared photo pipeline of the seller and admin uploads (catalog design 10): the bytes are
- * decoded and written again as three metadata-free JPEG renditions, the raw upload is never
+ * decoded and written again as three sizes, each as a metadata-free JPEG, WebP and AVIF, the raw upload is never
  * stored, the files go to the object store under keys built by the server, and one `clean` row
  * records them. When the row cannot be written, the files already stored are removed. The caller
  * has checked access, the text and the photo cap.
@@ -77,11 +81,12 @@ export async function storeProductImage(
   const stored: string[] = [];
   try {
     for (const rendition of processed.value) {
-      const objectKey = `${productId}/${imageId}/${rendition.size}`;
+      const objectKey = renditionObjectKey(productId, imageId, rendition.size, rendition.format);
       await deps.objectStore.put(objectKey, rendition.bytes);
       stored.push(objectKey);
       renditions.push({
         size: rendition.size,
+        format: rendition.format,
         objectKey,
         sha256: createHash('sha256').update(rendition.bytes).digest(),
         byteSize: rendition.bytes.length,
@@ -93,7 +98,7 @@ export async function storeProductImage(
     await removeAll(deps.objectStore, stored);
     return err({ code: 'access.unavailable' });
   }
-  const largest = renditions[renditions.length - 1]!;
+  const largest = renditions.filter((r) => r.format === 'jpeg').at(-1)!;
   const createdAt = deps.clock.now();
   const written = await deps.unitOfWork
     .run(market, async () => {

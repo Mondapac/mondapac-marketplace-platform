@@ -103,9 +103,15 @@ const id = <T extends string>(n: number): Id<T> => {
   return parsed.value as Id<T>;
 };
 
-/** The refund store for specs that never refund (the refund specs use the database). */
+/**
+ * The refund store for specs that never refund (the refund specs use the database): a seller
+ * order's page lists no refunds; any other call is unexpected.
+ */
 export const NO_REFUNDS: RefundRepository = new Proxy({} as RefundRepository, {
-  get: (_target, name) => () => Promise.reject(new Error(`refunds.${String(name)} not expected`)),
+  get: (_target, name) =>
+    name === 'listOfSellerOrder'
+      ? () => Promise.resolve([])
+      : () => Promise.reject(new Error(`refunds.${String(name)} not expected`)),
 });
 
 /** The audit writer of tests that write no refund: ordering audits only refunds. */

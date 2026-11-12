@@ -8,6 +8,7 @@ import { callApi } from '../api/client.ts';
 import { CategoryDetails } from './category-details.tsx';
 import { CreateCategoryDialog } from './category-dialogs.tsx';
 import { CategoryTree } from './category-tree.tsx';
+import { TreeFileActions } from './import/tree-file-actions.tsx';
 import { languageName } from '../business-activities/activity-form.ts';
 import { Button } from '@mondapac/ui';
 import { branchIds, indexOf, isFiltering, missingCounts, visibleRows } from './tree-model.ts';
@@ -32,8 +33,11 @@ export function CategoriesView({
   canEdit,
   canRestructure = false,
   csrfToken = '',
+  canImport = false,
 }: {
   readonly canEdit: boolean;
+  /** `catalog.category-tree.import`: Export the tree and Import from a file. */
+  readonly canImport?: boolean;
   /** `catalog.category-tree.restructure`: Move, Merge and Archive. */
   readonly canRestructure?: boolean;
   readonly csrfToken?: string;
@@ -186,6 +190,7 @@ export function CategoriesView({
   return (
     <div className="flex flex-col gap-4">
       <p className="max-w-prose text-fg-muted">{canEdit ? t('intro-edit') : t('intro')}</p>
+      {canImport ? <TreeFileActions /> : null}
       {canEdit ? null : <Banner tone="info">{t('view-only')}</Banner>}
       {tree.complete ? null : <Banner tone="info">{t('counts-partial')}</Banner>}
       <p role="status" className="m-0 min-h-5 text-sm text-fg-muted">
