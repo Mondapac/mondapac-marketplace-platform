@@ -71,6 +71,25 @@ export const ProductRetiredAudit = defineAuditAction({
   },
 });
 
+/**
+ * A Simple product became Configurable by Add sizes (design 4.2a; variants V9): ids, codes and
+ * counts only. `offerCount` is the Offers on the product when it changed, `offOfferCount` those of
+ * sellers who may not sell the new type, which went off sale with the cause `type-not-allowed`.
+ */
+export const ProductTypeChangedAudit = defineAuditAction({
+  action: 'catalog.product.type-changed',
+  targetType: CATALOG_PRODUCT_TARGET,
+  actors: ['authenticated'],
+  before: { typeCode: auditField.enumOf(['simple'] as const) },
+  after: {
+    typeCode: auditField.enumOf(['configurable'] as const),
+    scope,
+    offerCount: auditField.integer(),
+    offOfferCount: auditField.integer(),
+    axisCount: auditField.integer(),
+  },
+});
+
 /** The audit target type of a platform import job. */
 export const CATALOG_PLATFORM_IMPORT_TARGET = 'catalog.platform-import';
 
@@ -328,6 +347,32 @@ export const CATALOG_PLATFORM_CATEGORY_TARGET = 'catalog.platform-category';
 
 const categoryEditStatus = auditField.enumOf(['active', 'hidden', 'archived'] as const);
 
+/**
+ * The audit target type of a category tree import (categories package C7a). The target id is
+ * derived from the file's SHA-256 (see `importFileTargetId`), because the audit vocabulary has no
+ * text field and the file hash is what the entry must carry.
+ */
+export const CATALOG_CATEGORY_TREE_IMPORT_TARGET = 'catalog.category-tree-import';
+
+/**
+ * An admin applied a category tree import file: counts and the format only. The file's SHA-256 is
+ * the target id (its first 122 bits in a UUID v7 layout). No cell, name or slug is recorded; each
+ * created or changed category has its own audit entry from the editor's use cases.
+ */
+export const CategoryTreeImportedAudit = defineAuditAction({
+  action: 'catalog.category-tree.imported',
+  targetType: CATALOG_CATEGORY_TREE_IMPORT_TARGET,
+  actors: ['authenticated'],
+  after: {
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rows: auditField.integer(),
+    created: auditField.integer(),
+    updated: auditField.integer(),
+    unchanged: auditField.integer(),
+    treeVersion: auditField.integer(),
+  },
+});
+
 /** An admin added a category; it starts hidden (plan decision 5). Counts and flags only: no name, no slug. */
 export const PlatformCategoryCreatedAudit = defineAuditAction({
   action: 'catalog.platform-category.created',
@@ -470,6 +515,65 @@ export const PlatformCategoryArchivedAudit = defineAuditAction({
   },
 });
 
+/** The audit target type of a culture (multi-culture package 1; ADR-0047). */
+export const CATALOG_CULTURE_TARGET = 'catalog.culture';
+
+const cultureStatus = auditField.enumOf(['draft', 'active', 'inactive'] as const);
+/** `inherit` is a mark left to the nearest ancestor (or the default, "required"). */
+const cultureMark = auditField.enumOf(['required', 'neutral', 'inherit'] as const);
+
+/** An admin defined a culture (a draft). Whether it names a required certification type, never the text. */
+export const CultureCreatedAudit = defineAuditAction({
+  action: 'catalog.culture.created',
+  targetType: CATALOG_CULTURE_TARGET,
+  actors: ['authenticated'],
+  after: { status: cultureStatus, requiresCertification: auditField.boolean() },
+});
+
+/**
+ * An admin edited a culture. Which parts changed, never the text. The required certification type
+ * decides which Offers a certified culture shows (ADR-0047 decision 12), so a change of it and a
+ * change of the default are recorded as their own flags.
+ */
+export const CultureEditedAudit = defineAuditAction({
+  action: 'catalog.culture.edited',
+  targetType: CATALOG_CULTURE_TARGET,
+  actors: ['authenticated'],
+  before: {
+    status: cultureStatus,
+    isDefault: auditField.boolean(),
+    requiresCertification: auditField.boolean(),
+  },
+  after: {
+    status: cultureStatus,
+    isDefault: auditField.boolean(),
+    requiresCertification: auditField.boolean(),
+    namesChanged: auditField.boolean(),
+    orderChanged: auditField.boolean(),
+    badgeChanged: auditField.boolean(),
+    requiredCertificationTypeChanged: auditField.boolean(),
+  },
+});
+
+/** An admin set or cleared a culture's mark on a category branch (visibility and certification mark). */
+export const CultureCategoryMarkChangedAudit = defineAuditAction({
+  action: 'catalog.culture.category-mark-changed',
+  targetType: CATALOG_CULTURE_TARGET,
+  actors: ['authenticated'],
+  before: {
+    categoryId: auditField.id(),
+    hadRow: auditField.boolean(),
+    visible: auditField.boolean(),
+    certificationMark: cultureMark,
+  },
+  after: {
+    categoryId: auditField.id(),
+    hasRow: auditField.boolean(),
+    visible: auditField.boolean(),
+    certificationMark: cultureMark,
+  },
+});
+
 /** The audit target type of a brand (catalog brand package; attributes package A5). */
 export const CATALOG_BRAND_TARGET = 'catalog.brand';
 
@@ -584,6 +688,31 @@ export const AttributeFamilyRevisedAudit = defineAuditAction({
   after: { ...familyShape, requiredRelaxed: auditField.integer() },
 });
 
+/** The audit target type of an attribute import run (attributes package A9). */
+export const CATALOG_ATTRIBUTE_IMPORT_TARGET = 'catalog.attribute-import';
+
+/**
+ * An admin ran an attribute or value import (A9) after its diff preview. One row per run, written
+ * after the rows were applied through the editor use cases (each of which also wrote its own
+ * `catalog.attribute-definition.*` row). The target is an id made for the run. Counts and the file
+ * kind only: the audit vocabulary has no text field, so no code, name or label of the file is here.
+ */
+export const AttributeImportRanAudit = defineAuditAction({
+  action: 'catalog.attribute-import.ran',
+  targetType: CATALOG_ATTRIBUTE_IMPORT_TARGET,
+  actors: ['authenticated'],
+  after: {
+    kind: auditField.enumOf(['attributes', 'values'] as const),
+    skipErrors: auditField.boolean(),
+    rows: auditField.integer(),
+    created: auditField.integer(),
+    updated: auditField.integer(),
+    unchanged: auditField.integer(),
+    failed: auditField.integer(),
+    skipped: auditField.integer(),
+  },
+});
+
 /** The audit target type of a seller's value suggestion (attributes plan, package A5). */
 export const CATALOG_ATTRIBUTE_SUGGESTION_TARGET = 'catalog.attribute-value-suggestion';
 
@@ -690,6 +819,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   ProductResumedAudit,
   ProductWithdrawnAudit,
   ProductRetiredAudit,
+  ProductTypeChangedAudit,
   PlatformImportStartedAudit,
   OwnImportStartedAudit,
   SavedFilterSharedAudit,
@@ -705,6 +835,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeRelaxationRequestedAudit,
   AttributeRelaxationCancelledAudit,
   AttributeRelaxationExpiredAudit,
+  CategoryTreeImportedAudit,
   PlatformCategoryCreatedAudit,
   PlatformCategoryDetailsChangedAudit,
   PlatformCategoryReorderedAudit,
@@ -720,12 +851,16 @@ export const CATALOG_AUDIT_ACTIONS = [
   BrandCreatedAudit,
   BrandProposedAudit,
   BrandEditedAudit,
+  CultureCreatedAudit,
+  CultureEditedAudit,
+  CultureCategoryMarkChangedAudit,
   BrandApprovedAudit,
   BrandArchivedAudit,
   BrandMergedAudit,
   BrandMergeDismissedAudit,
   AttributeFamilyCreatedAudit,
   AttributeFamilyRevisedAudit,
+  AttributeImportRanAudit,
   AttributeValueSuggestedAudit,
   AttributeValueSuggestionDecidedAudit,
   TopicSuggestedAudit,

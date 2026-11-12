@@ -69,7 +69,9 @@
       "assistant-enabled-words": "smart assistant, on, off, chat",
       "assistant-audience-words": "smart assistant, who sees, visitors, rollout",
       "assistant-model-words": "smart assistant, tier",
-      "assistant-welcome-words": "smart assistant, greeting"
+      "assistant-welcome-words": "smart assistant, greeting",
+      "promotions-switch": "Promotions switched on",
+      "promotions-switch-words": "discounts, offers, codes, campaigns, turn off"
     },
     "empty-hint": "Check the spelling or try a shorter word."
   },
@@ -103,14 +105,17 @@
     "orders": "Orders",
     "price-holds": "Held prices",
     "review-queue": "Review queue",
+    "certificates": "Certificates",
     "payout-accounts": "Connected accounts",
-    "content": "Content",
+    "content": "Slides",
+    "blog": "Blog",
     "settings": "Settings",
     "group": {
       "catalogue": "Catalogue",
       "reviews": "Reviews",
       "content": "Content",
       "sellers": "Sellers",
+      "marketing": "Marketing",
       "orders": "Orders & customers",
       "money": "Money"
     },
@@ -671,10 +676,22 @@
         "store": "Store",
         "owner": "Owner",
         "status": "Status",
+        "health": "Health",
         "kind": "Submission",
         "area": "Service area",
         "submitted": "Submitted",
         "changed": "Last change"
+      },
+      "health": {
+        "band": {
+          "healthy": "Healthy",
+          "at-risk": "At risk",
+          "unhealthy": "Unhealthy"
+        },
+        "new": "New",
+        "no-data": "No data",
+        "none": "Not measured yet",
+        "unavailable": "Unavailable"
       },
       "unnamed": "No store name yet",
       "invited": "Invited by MondaPac",
@@ -974,6 +991,146 @@
       }
     }
   },
+  "certificates": {
+    "title": "Certificates",
+    "queue": {
+      "title": "Certificates waiting for a decision",
+      "no-access": "You don't have access to certificates.",
+      "back-home": "Back to dashboard",
+      "unavailable": "Certificates could not be loaded.",
+      "more": "Next page",
+      "total": "{count, plural, =0 {Nothing is waiting for a decision.} one {# submission is waiting for a decision, oldest first.} other {# submissions are waiting for a decision, oldest first.}}",
+      "empty": "No certificates are waiting for a decision.",
+      "empty-page": "Nothing on this page. Go back to the first page.",
+      "first-page": "First page",
+      "seller-id-sr": ", seller {id}",
+      "seller-fallback": "Not yet approved",
+      "submission-no": "Submission {n}",
+      "no-issuer": "Not named",
+      "col": {
+        "seller": "Seller",
+        "type": "Type",
+        "kind": "Kind",
+        "issuer": "Issuer",
+        "waiting": "Waiting since"
+      },
+      "kind": {
+        "initial": "New",
+        "resubmission": "Resubmitted",
+        "renewal": "Renewal"
+      }
+    },
+    "tabs": {
+      "label": "Certificates sections",
+      "queue": "Review queue",
+      "issuers": "Issuers"
+    },
+    "issuers": {
+      "title": "Certificate issuers",
+      "no-access": "You don't have access to certificate issuers.",
+      "unavailable": "Issuers could not be loaded.",
+      "none-active": "No issuer is active yet, so no certificate that needs an issuer can be approved. Activate one with the expert's approval.",
+      "empty": "No issuers yet. Add one, then activate it with the expert's approval.",
+      "empty-page": "Nothing on this page. Go back to the first page.",
+      "col": {
+        "name": "Issuer",
+        "type": "Type",
+        "state": "State",
+        "accreditation": "Accreditation number",
+        "changed": "State changed (UTC)"
+      },
+      "filter": {
+        "label": "Filter by state",
+        "all": "All"
+      },
+      "state": {
+        "proposed": "Proposed",
+        "active": "Active",
+        "closed-to-new": "Closed to new",
+        "derecognised": "Not recognised"
+      },
+      "new": {
+        "button": "New issuer",
+        "title": "New issuer",
+        "type": "Certificate type",
+        "type-placeholder": "Choose a type",
+        "type-required": "Choose a certificate type.",
+        "name": "Name",
+        "name-help": "Customers see this name on badges. 1 to 200 characters.",
+        "name-required": "Enter a name.",
+        "name-long": "Use 200 characters or fewer.",
+        "accreditation": "Accreditation number (optional)",
+        "accreditation-help": "At most 64 characters.",
+        "accreditation-long": "Use 64 characters or fewer.",
+        "proposed-note": "The issuer starts as Proposed. A seller can't choose it until it's activated.",
+        "cancel": "Cancel",
+        "create": "Create issuer"
+      },
+      "activate": {
+        "button": "Activate",
+        "title": "Activate issuer",
+        "expert-note": "Add the expert's approval before activating this issuer.",
+        "name-label": "Name customers will see",
+        "name-help": "This can't be changed after activation. Check the spelling.",
+        "by": "Confirmed by",
+        "by-help": "1 to 120 characters.",
+        "by-required": "Enter who confirmed the issuer.",
+        "by-long": "Use 120 characters or fewer.",
+        "reference": "Reference",
+        "reference-help": "A document or note reference, 1 to 300 characters.",
+        "reference-required": "Enter a reference.",
+        "reference-long": "Use 300 characters or fewer.",
+        "cancel": "Cancel",
+        "confirm": "Activate",
+        "reload": "Reload"
+      },
+      "expert": {
+        "not-recorded": "Not recorded",
+        "recorded": "Recorded",
+        "view": "View",
+        "confirmed-by": "Confirmed by",
+        "reference": "Reference",
+        "audited": "Viewing is recorded."
+      },
+      "detail": {
+        "title": "Certificate issuer",
+        "back": "Back to issuers",
+        "no-access": "You don't have access to certificate issuers.",
+        "not-found": "This issuer was not found.",
+        "unavailable": "This issuer could not be loaded.",
+        "type": "Type",
+        "accreditation": "Accreditation number",
+        "changed": "State changed (UTC)",
+        "expert": "Expert approval",
+        "affected": "Approved certificates naming this issuer",
+        "by": {
+          "admin": " by an admin",
+          "seed": " by seed"
+        },
+        "name-note": "Customers see this name on badges. Check it before activating: an active issuer can't be renamed.",
+        "reactivation-waiting": "A reactivation is waiting for a second admin.",
+        "view-only": "Your role can't change issuers.",
+        "activated": "Issuer activated. Sellers can now choose it."
+      },
+      "error": {
+        "invalid": "Check the highlighted fields and try again.",
+        "name-taken": "An issuer with this name already exists for this type.",
+        "accreditation-taken": "An issuer with this accreditation number already exists.",
+        "expert-required": "Add the expert's approval to activate this issuer.",
+        "transition": "This issuer's state changed. Reload the page.",
+        "gone": "This issuer no longer exists. Reload the page.",
+        "type-gone": "This certificate type is not available. Reload the page.",
+        "stale": "This issuer changed while you were looking. Reload the page.",
+        "retry": "Something changed at the same time. Try again.",
+        "denied": "Your role can't change issuers.",
+        "acting-as": "This can't be done while you're signed in as the seller.",
+        "throttled": "Too many requests. Try again in a minute.",
+        "csrf": "Your session needs a refresh. Reload the page.",
+        "unavailable": "The service is not available right now. Try again in a few minutes.",
+        "unknown": "Something went wrong. Try again."
+      }
+    }
+  },
   "pricing": {
     "holds": {
       "title": "Held prices",
@@ -1037,9 +1194,10 @@
   },
   "content": {
     "title": "Storefront content",
-    "intro": "Slides on the buyer site, for this Market.",
+    "intro": "Pages and slides on the buyer site, for this Market.",
     "tabs": {
       "label": "Content sections",
+      "pages": "Pages",
       "slides": "Slides"
     },
     "no-access": {
@@ -1510,6 +1668,111 @@
           "reload": "Load current list"
         }
       }
+    },
+    "pages": {
+      "status": {
+        "default": "Template default",
+        "draft": "Draft",
+        "scheduled": "Scheduled",
+        "published": "Published",
+        "ended": "Ended",
+        "archived": "Archived",
+        "unknown": "Unknown"
+      },
+      "level": {
+        "full": "Full",
+        "limited": "Limited",
+        "locked": "Locked",
+        "navigation": "Navigation"
+      },
+      "template": {
+        "system": "System page",
+        "campaign-landing": "Campaign landing",
+        "brand-page": "Brand page",
+        "product-spotlight": "Product spotlight",
+        "info-page": "Info page",
+        "campaign-landing-help": "Banner, benefits and product shelves for a promotion.",
+        "brand-page-help": "A brand or store header, product shelves and an about section.",
+        "product-spotlight-help": "One product in focus, with details and related products.",
+        "info-page-help": "Plain text and images, with an optional FAQ."
+      },
+      "list": {
+        "caption": "Storefront pages",
+        "filters": "Filter pages",
+        "type": "Type",
+        "kind": {
+          "all": "All",
+          "system": "System pages",
+          "dynamic": "Landing pages"
+        },
+        "status": "Status",
+        "any-status": "Any status",
+        "search": "Search by title or address",
+        "clear": "Clear filters",
+        "new": "New page",
+        "loading": "Loading pages",
+        "error": "The pages could not be loaded. Check your connection and try again.",
+        "empty-title": "No pages yet",
+        "empty-body": "Pages you create appear here, next to the system pages of the buyer site.",
+        "none-title": "No page matches",
+        "none-body": "Change or clear the filters to see more pages.",
+        "count": "{count, plural, one {# page} other {# pages}}",
+        "read-only": "You can view pages but not change them. Ask a platform administrator for edit access.",
+        "footnote": "Dates are shown in {zone}.",
+        "system": "System page",
+        "unpublished-changes": "Unpublished changes",
+        "never": "Never published",
+        "col": {
+          "page": "Page",
+          "address": "Address",
+          "template": "Template",
+          "editing": "Editing",
+          "status": "Status",
+          "published": "Last published"
+        }
+      },
+      "new": {
+        "title": "New page",
+        "intro": "Create a landing page from a template. It starts as a draft; buyers see nothing until a platform administrator publishes it.",
+        "back": "Back to pages",
+        "form": "New page",
+        "loading": "Loading templates",
+        "template": "Template",
+        "name": "Page title",
+        "name-help": "Up to {max} characters. Shown at the top of the page.",
+        "slug": "Address",
+        "slug-help": "Lower-case letters, digits and hyphens, up to {max} characters. The page is served at /l/ followed by this.",
+        "linked": "Linked category",
+        "linked-none": "Not linked",
+        "linked-help": "Shelves that follow the page's link show this category.",
+        "starts": "Live from",
+        "ends": "Live until",
+        "window-help": "Optional. Times are in {zone}.",
+        "draft-note": "Creates a draft. Publishing needs a platform administrator.",
+        "cancel": "Cancel",
+        "create": "Create draft",
+        "created": "Draft created.",
+        "error": {
+          "summary": "Check the marked fields and try again.",
+          "generic": "The page could not be created. Try again.",
+          "network": "No connection. Your answers are still here; try again.",
+          "denied": "You don't have permission to create pages.",
+          "load": "The page templates could not be loaded. Check your connection and try again.",
+          "template-required": "Choose a template.",
+          "title-required": "Enter a title.",
+          "title-too-long": "Use at most {max} characters.",
+          "title-invalid": "This title is not accepted.",
+          "slug-required": "Enter an address.",
+          "slug-format": "Use lower-case letters, digits and single hyphens, up to {max} characters.",
+          "slug-reserved": "This address is reserved. Choose another.",
+          "slug-taken": "Another page already uses this address.",
+          "slug-invalid": "This address is not accepted.",
+          "linkedId-invalid": "This category cannot be linked.",
+          "startsAt-invalid": "Enter a valid date and time.",
+          "endsAt-invalid": "Enter a valid date and time.",
+          "endsAt-before-start": "The end must be after the start."
+        }
+      }
     }
   },
   "settings": {
@@ -1610,9 +1873,11 @@
         "delivery": "Delivery rules",
         "fleets": "Delivery fleets",
         "wallet": "Customer wallet",
+        "tax": "Tax",
         "admins": "Admins",
         "roles": "Roles & permissions",
-        "lists": "Lists"
+        "lists": "Lists",
+        "promotions": "Promotions"
       }
     },
     "sub": {
@@ -2671,7 +2936,9 @@
         "unavailable": "The product service is unavailable. Try again shortly.",
         "unknown": "Something went wrong. Try again.",
         "partial": "The new variants were created but the draft wasn't saved with them. Save again.",
-        "pause-failed": "The product could not be turned on or off. Read it again, then retry."
+        "variant-fields": "Fix the highlighted variant fields before saving.",
+        "pause-failed": "The product could not be turned on or off. Read it again, then retry.",
+        "second-missing": "Choose the new type's value for every variant before you publish."
       },
       "discard": {
         "button": "Discard product",
@@ -3051,7 +3318,107 @@
         "remove-dialog": "Remove this variant?",
         "remove-body": "{count, plural, one {This variant may have prices and stock. Removing it ends them. Adding it again later starts from empty.} other {These variants may have prices and stock. Removing them ends them. Adding them again later starts from empty.}}",
         "remove-confirm": "Remove",
-        "step-labels": "4. Name each variant (optional)"
+        "step-labels": "4. Name each variant (optional)",
+        "step-details": "5. Barcode, shipping and photos for each variant",
+        "details-help": "All optional. Shipping left empty uses the product's own values. Photos come from the product's photos above.",
+        "details-none": "Tick a combination first.",
+        "gtin": "Barcode (GTIN)",
+        "gtin-help": "8, 12, 13 or 14 digits.",
+        "weight": "Shipping weight (g)",
+        "length": "Length (mm)",
+        "width": "Width (mm)",
+        "height": "Height (mm)",
+        "photos": "Photos of this variant",
+        "photos-help": "{count, plural, =0 {No photos picked: the product's photos show.} one {1 photo picked. The first one is the main photo.} other {# photos picked. The first one is the main photo.}}",
+        "photos-none": "Add photos to the product first, then pick them here.",
+        "photo-alt": "Photo {number}",
+        "problem": {
+          "gtin": {
+            "invalid": "Not a valid barcode. Check the digits.",
+            "duplicate": "Another variant of this product has the same barcode."
+          },
+          "size": {
+            "invalid": "Enter a whole number, at least 1 and at most {max}.",
+            "required": "Enter all three sides, or none."
+          },
+          "images": "A variant can pick at most {max} photos.",
+          "blocked": "Fix the highlighted variant fields before saving."
+        },
+        "notice": {
+          "duplicate": "{count, plural, one {A barcode of this draft is already used by another product.} other {# barcodes of this draft are already used by other products.}} This is advice only: you can still save.",
+          "sell-on": "Product {code} already carries one of these barcodes. Consider selling on it instead of making a new product."
+        }
+      },
+      "addSizes": {
+        "start": "Add sizes",
+        "card-help": "This product is sold in one size. Add sizes to sell it in more than one size, colour or other type.",
+        "save-first": "Save your changes before you add sizes.",
+        "title": "Add sizes",
+        "intro": "This product becomes a product with sizes. It keeps its prices and stock.",
+        "permanent": "This can't be undone.",
+        "loading": "Checking which offers are affected",
+        "impact-failed": "We could not check which offers are affected, so sizes can't be added now. Close this and try again.",
+        "off-sale": "{count, plural, one {1 offer of another seller will go off sale because that seller can't sell products with sizes.} other {# offers of other sellers will go off sale because those sellers can't sell products with sizes.}}",
+        "off-sale-none": "No offers of other sellers are affected.",
+        "count-changed": "The number changed from {before} to {count}. Check it and confirm again.",
+        "waiting": "A change of this product is waiting for review. If you add sizes, the waiting change is set aside. Its content stays in the draft, and you can publish it again later.",
+        "waiting-agree": "Set aside the change that is waiting",
+        "step-types": "1. What does this product come in?",
+        "types-help": "Choose up to {max} types, such as size or colour.",
+        "step-values": "2. What is this product now?",
+        "values-help": "The product as it is today becomes one of the sizes. Choose its value for each type. Add the other sizes next.",
+        "value-of": "This product's {type}",
+        "note-types": "Choose at least one type to continue.",
+        "note-values": "Choose a value for every type to continue.",
+        "note-agree": "Agree to set aside the waiting change to continue.",
+        "choose": "Choose",
+        "cancel": "Cancel",
+        "confirm": "Add sizes",
+        "confirm-again": "Confirm with the new number",
+        "done": "Sizes added. Now add the other sizes.",
+        "reload": "Read the product again",
+        "error": {
+          "not-simple": "This product already has sizes.",
+          "pending-exists": "A change of this product is waiting for review. Agree to set it aside above, then try again.",
+          "type-not-allowed": "Products with sizes are not offered in this market.",
+          "stale": "The product changed somewhere else. Read it again and try again.",
+          "count-changed": "The number of offers affected changed. Check the new number and confirm again.",
+          "family-invalid": "The product's category is not set up for sizes yet. Try again later.",
+          "not-editable": "This product can't be changed now. Read it again to see its state.",
+          "not-found": "This product was not found.",
+          "denied": "You don't have permission to edit platform products.",
+          "unavailable": "Products are unavailable right now. Try again later.",
+          "throttled": "Too many requests. Try again in {seconds} seconds.",
+          "csrf": "Your session expired. Reload the page and try again.",
+          "invalid": "Check the types and values and try again.",
+          "unknown": "Something went wrong. Try again."
+        },
+        "issue": {
+          "variants": {
+            "axes-none": "Choose at least one type.",
+            "axes-too-many": "This market allows fewer types than you chose.",
+            "axes-duplicate": "A type was chosen twice.",
+            "axes-unknown": "A type you chose is not available for this product.",
+            "axes-locked": "The types of this product can't be changed.",
+            "option-missing": "Choose a value for every type.",
+            "option-unknown": "A value you chose is not available.",
+            "option-not-in-family": "A value you chose is not available for this product.",
+            "option-attribute-missing": "Choose a value for every type."
+          }
+        }
+      },
+      "second": {
+        "title": "Add a second type",
+        "help": "This product comes in one type today. You can add one more, such as colour next to size. You can do this once.",
+        "start": "Add a second type",
+        "pick": "New type",
+        "choose": "Choose",
+        "add": "Add this type",
+        "cancel": "Cancel",
+        "values-title": "Second type: {type}",
+        "review": "When you publish, every variant gets a new name.",
+        "values-help": "Choose the {type} of every variant above. All are required.",
+        "remove": "Don't add a second type"
       }
     },
     "queue": {
@@ -4105,6 +4472,11 @@
         },
         "review": {
           "moderate": "moderate a buyer review"
+        }
+      },
+      "promotions": {
+        "platform-funding": {
+          "approve": "approve platform promotion funding"
         }
       }
     },
@@ -5245,6 +5617,146 @@
         "category_parent-not-found": "The category you chose is no longer available. Reload to choose another.",
         "reason": "Add a reason of 10 to 500 characters."
       }
+    },
+    "import": {
+      "title": "Import categories",
+      "back": "Categories",
+      "no-access": "Your role cannot import categories.",
+      "intro": "Add new categories and change the names, descriptions and search text of existing ones from a CSV or XLSX file. A check shows what each row would do and writes nothing. Moving a category to another parent is not done from a file: use Move on the tree page.",
+      "upload": {
+        "title": "Choose a file",
+        "sub": "Start from an export of the current tree: each row is one category, matched by its slug.",
+        "choose": "Choose a file",
+        "limits": "CSV or XLSX, up to {size} MB.",
+        "export-hint": "Need the current tree as a file?"
+      },
+      "checking": "Checking {name}…",
+      "choose-another": "Choose another file",
+      "upload-corrected": "Upload corrected file",
+      "check-again": "Check the file again",
+      "file-meta": "{rows} rows · {format}",
+      "tiles": {
+        "create": "To create",
+        "update": "To update",
+        "unchanged": "Unchanged",
+        "errors": "Errors",
+        "errors-note": "Rows with an error are not applied"
+      },
+      "result": {
+        "ready": "The file is ready. Applying it writes every row in one step.",
+        "has-errors": "{count, plural, one {# row has an error.} other {# rows have errors.}} Fix the file and upload it again. Nothing is applied while any row has an error.",
+        "nothing": "Every row is already in the tree. There is nothing to apply."
+      },
+      "filter": {
+        "label": "Rows to show",
+        "all": "All rows ({count})",
+        "errors": "Errors only ({count})"
+      },
+      "table": {
+        "caption": "What each row of the file would do",
+        "row": "Row",
+        "category": "Category",
+        "result": "Result",
+        "problem": "Problem",
+        "no-slug": "(no valid slug)",
+        "row-n": "Row {n}"
+      },
+      "action": {
+        "create": "Create",
+        "update": "Update",
+        "unchanged": "Unchanged",
+        "error": "Error"
+      },
+      "row-code": {
+        "slug-invalid": "The slug may hold only lower-case letters, digits and hyphens.",
+        "slug-duplicate": "This slug is used by an earlier row of the file.",
+        "slug-taken": "This slug belongs to another category, or was used in the last 12 months.",
+        "parent-invalid": "The parent slug is not a valid slug.",
+        "parent-not-found": "The parent slug is not in the tree or the file, or the parent itself has an error.",
+        "move-not-supported": "This row names another parent than the category has. Use Move on the tree page.",
+        "depth-exceeded": "This would go deeper than the tree allows.",
+        "required": "This is required.",
+        "sibling-name-taken": "A category with this name is already under the same parent.",
+        "show-in-menu-invalid": "Use yes or no.",
+        "blocked-term": "This text contains a word that is not allowed.",
+        "claim-word": "This text makes a claim that only a certificate can back. Remove the word.",
+        "locale-uncheckable": "This language cannot be checked yet, so its text cannot be saved.",
+        "tree-size-exceeded": "The tree is at its size limit, so no more categories can be added.",
+        "row-invalid": "This row cannot be read.",
+        "format": "This value is too long or has characters that are not allowed.",
+        "repeated": "This value is repeated.",
+        "english-only": "This field takes English only.",
+        "type": "This value is the wrong kind.",
+        "unknown": "This field is not known.",
+        "invalid": "This value cannot be used.",
+        "locale-unsupported": "This language is not supported.",
+        "other": "This value cannot be used ({code})."
+      },
+      "column-code": {
+        "column-blank": "a column has no heading",
+        "column-duplicate": "the heading is used twice",
+        "column-missing": "a required column is missing",
+        "column-unknown": "the heading is not known",
+        "locale-unsupported": "this language is not supported"
+      },
+      "download-report": "Download error report",
+      "apply": "Apply import",
+      "cancel": "Cancel",
+      "confirm": {
+        "title": "Apply {count, plural, one {# change} other {# changes}}?",
+        "body": "{created, plural, one {# new category is} other {# new categories are}} created hidden, last among their siblings, and {updated, plural, one {# category is} other {# categories are}} updated. Nothing is shown to buyers until you show it.",
+        "action": "Apply"
+      },
+      "done": {
+        "title": "The import is applied",
+        "hidden-note": "New categories are hidden. Show them from the tree page when they are ready.",
+        "open-tree": "Open the tree"
+      },
+      "applied-toast": "Import applied: {created} created, {updated} updated.",
+      "export-failed": "The tree could not be exported. Try again.",
+      "problem": {
+        "stale": "The tree changed after the file was checked.",
+        "file-changed": "The file sent is not the one that was checked, so nothing was applied.",
+        "has-errors": "The tree changed and the file now has errors, so nothing was applied.",
+        "forbidden": "Your role cannot import categories.",
+        "claim-check": "The wording check is not available right now, so the file was not read. Try again later.",
+        "busy": "The import is busy. Try again in a moment.",
+        "columns": "The first row of the file is not a valid heading row: {list}.",
+        "unknown": "The file could not be checked. Try again.",
+        "file": {
+          "file-too-large": "The file is larger than {size} MB.",
+          "file-unpacked-too-large": "The file is too large once unpacked.",
+          "file-unsupported-type": "Choose a CSV or XLSX file.",
+          "file-empty": "The file is empty.",
+          "file-unreadable": "The file could not be read. Save it as UTF-8 CSV or as XLSX.",
+          "file-too-many-columns": "The file has too many columns.",
+          "file-cell-too-long": "A cell of the file is too long.",
+          "file-too-many-rows": "The file has more rows than one import takes.",
+          "file-no-rows": "The file has a heading row but no categories.",
+          "file-formula-cell": "The file has a formula cell. Replace it with its value.",
+          "file-too-complex": "The workbook is too complex to read. Save the sheet as CSV.",
+          "validation-failed": "The file could not be sent. Choose it again."
+        },
+        "race": "The tree changed while the file was applied, so nothing was applied."
+      },
+      "announce": {
+        "checking": "Checking the file.",
+        "checked": "{rows, plural, one {# row checked} other {# rows checked}}, {errors} with errors.",
+        "applied": "The import is applied."
+      },
+      "export-csv-label": "Export the tree as CSV",
+      "export-xlsx-label": "Export the tree as XLSX",
+      "apply-blocked": "Apply is off until the file has no errors and at least one change.",
+      "checking-progress": "Checking {name}…"
+    },
+    "export": {
+      "csv": "Export CSV",
+      "xlsx": "Export XLSX",
+      "import": "Import",
+      "failed": "The tree could not be exported. Try again.",
+      "group": "Export and import",
+      "csv-label": "Export the category tree as a CSV file",
+      "xlsx-label": "Export the category tree as an XLSX file"
     }
   },
   "brands": {
@@ -5638,6 +6150,74 @@
         "code-taken": "This code is already used.",
         "refused": "This value was not accepted."
       }
+    }
+  },
+  "blog": {
+    "title": "Blog",
+    "intro": "Posts on the buyer site for this market. A published post stays live while a new version is in review.",
+    "tabs-label": "Post status",
+    "filter-label": "Filter posts",
+    "kind-filter": "Type",
+    "owner-filter": "Author",
+    "zone-note": "Times are shown in {zone}.",
+    "result-count": "{count, plural, one {# post shown} other {# posts shown}}",
+    "loading": "Loading posts",
+    "load-error": "The posts could not be loaded. Check your connection and try again.",
+    "retry": "Try again",
+    "more": "Load more",
+    "more-error": "More posts could not be loaded. Try again.",
+    "empty": "No posts yet. They will show here once the first one is written.",
+    "empty-filtered": "No posts match these filters.",
+    "featured": "Featured on the blog home",
+    "col": {
+      "post": "Post",
+      "kind": "Type",
+      "author": "Author",
+      "status": "Status",
+      "updated": "Updated"
+    },
+    "status": {
+      "all": "All",
+      "draft": "Drafts",
+      "in_review": "In review",
+      "changes_requested": "Changes requested",
+      "approved": "Approved",
+      "scheduled": "Scheduled",
+      "published": "Published",
+      "unpublished": "Unpublished",
+      "archived": "Archived"
+    },
+    "state": {
+      "draft": "Draft",
+      "in_review": "In review",
+      "changes_requested": "Changes requested",
+      "approved": "Approved",
+      "scheduled": "Scheduled",
+      "published": "Published",
+      "unpublished": "Unpublished",
+      "archived": "Archived"
+    },
+    "kind": {
+      "all": "All",
+      "product": "Product",
+      "brand": "Brand",
+      "event": "Event",
+      "news": "News"
+    },
+    "owner": {
+      "all": "All",
+      "platform": "Mondapac team",
+      "seller": "Seller"
+    },
+    "author": {
+      "platform": "Mondapac team",
+      "seller": "Seller"
+    },
+    "open-note": {
+      "draft": "New version being written",
+      "in_review": "New version in review",
+      "returned": "New version sent back for changes",
+      "approved": "New version approved"
     }
   },
   "tags": {
@@ -6394,6 +6974,87 @@
       "title": "Value suggestions from sellers"
     }
   },
+  "tax": {
+    "title": "Tax",
+    "permission-view": "Tax: view strategies",
+    "unavailable": "The tax strategies could not be loaded. Try again later.",
+    "section": "Tax strategy",
+    "intro": "How the tax of an order line is worked out. A new strategy applies to new orders only; the tax already frozen on an order never changes.",
+    "read-only": "You can see the tax strategies but not change them. Changing them needs the tax strategy manage permission.",
+    "built-in": "Built-in rate",
+    "built-in-note": "Built-in rate {rate} applies when none is active.",
+    "active-now": "In force now",
+    "col": {
+      "name": "Name",
+      "kind": "Type",
+      "rate": "Rate",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "kind": {
+      "flat-rate": "Flat rate",
+      "by-category": "By tax category"
+    },
+    "rate-by-category": "Default {rate}, {count} categories",
+    "status-active": "Active",
+    "status-idle": "Not active",
+    "empty-title": "No tax strategies yet",
+    "empty-body": "The built-in rate applies. Add a strategy to charge another rate.",
+    "add": "Add strategy",
+    "edit": "Edit",
+    "edit-label": "Edit {name}",
+    "activate": "Activate",
+    "activate-label": "Activate {name}",
+    "delete": "Delete",
+    "delete-label": "Delete {name}",
+    "back-to-built-in": "Back to built-in rate",
+    "dialog": {
+      "add-title": "Add tax strategy",
+      "edit-title": "Edit {name}",
+      "name": "Name",
+      "name-required": "Enter a name of up to 80 characters.",
+      "kind": "Type",
+      "rate": "Rate (%)",
+      "rate-help": "From 0 to 50, with up to 2 decimals.",
+      "rate-invalid": "Enter a rate from 0 to 50 with up to 2 decimals.",
+      "default-rate": "Default rate (%)",
+      "default-rate-help": "Used for a line in none of the categories below.",
+      "category-rate": "Rate for {code} (%)",
+      "no-categories": "No tax categories are defined, so every line uses the default rate.",
+      "cancel": "Cancel",
+      "save": "Save strategy",
+      "saved": "Strategy saved."
+    },
+    "activate-dialog": {
+      "title": "Activate {name}?",
+      "body": "It applies to new orders only. The tax already frozen on existing orders does not change. The change is recorded in the audit log.",
+      "confirm": "Activate",
+      "done": "{name} is now in force."
+    },
+    "built-in-dialog": {
+      "title": "Go back to the built-in rate?",
+      "body": "The built-in rate of {rate} applies to new orders only. The tax already frozen on existing orders does not change. The change is recorded in the audit log.",
+      "confirm": "Use built-in rate",
+      "done": "The built-in rate is in force."
+    },
+    "delete-dialog": {
+      "title": "Delete {name}?",
+      "body": "This cannot be undone. Orders that already used it keep their tax.",
+      "confirm": "Delete strategy",
+      "done": "Strategy deleted."
+    },
+    "cancel": "Cancel",
+    "error": {
+      "invalid": "The strategy was refused. Check the name and the rates.",
+      "active": "This strategy is in force. Activate another one or the built-in rate first.",
+      "not-found": "This strategy no longer exists. The list was refreshed.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session needs a refresh. Reload the page and try again.",
+      "denied": "Your role cannot change tax strategies.",
+      "unavailable": "Tax is not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
+    }
+  },
   "serviceAreas": {
     "title": "Service areas",
     "section": "Area names",
@@ -6584,6 +7245,88 @@
         "too-large": "More than {max} variants match. Narrow the filter and export again.",
         "unavailable": "The file could not be made. Try again in a moment."
       }
+    }
+  },
+  "promotionsSettings": {
+    "title": "Promotions",
+    "permission-view": "View promotions settings",
+    "intro": "Whether discounts reach carts in this market, the first-order discount and the free-delivery threshold per zone.",
+    "last-changed": "Switch last changed {when}",
+    "optional": "optional",
+    "loading": "Loading promotions settings",
+    "load-failed": "The first-order and free-delivery settings could not be loaded.",
+    "view-only-cards": "You can change the market switch. The first-order discount and the free-delivery thresholds need the promotions manage permission, so they are not shown.",
+    "state": {
+      "on": "On",
+      "off": "Off"
+    },
+    "notice": {
+      "saved": "Promotions settings saved. They apply to orders placed from now on."
+    },
+    "switch": {
+      "title": "Promotions in this market",
+      "intro": "Discounts reach carts only while this is on. Turning it off keeps every promotion; carts just stop getting discounts.",
+      "label": "Promotions",
+      "help": "Needs a fresh sign-in code. Not available while acting as a seller."
+    },
+    "off": {
+      "title": "First-order discount and free delivery",
+      "body": "Promotions are off in this market. Turn them on to set the first-order discount and the free-delivery thresholds."
+    },
+    "first-order": {
+      "title": "First-order discount",
+      "intro": "Give new customers a discount on their first order. Changes apply to orders placed after you save. One per customer; repeat delivery addresses and cards are checked.",
+      "field": {
+        "enabled": "First-order discount",
+        "kind": "Discount",
+        "percent": "Percentage off",
+        "amount": "Amount off",
+        "cap": "Largest discount",
+        "minSpend": "Minimum spend",
+        "budget": "Monthly budget"
+      },
+      "kind": {
+        "PERCENT": "Percentage",
+        "FIXED": "Fixed amount"
+      },
+      "help": {
+        "percent": "From 0.01 to 100, up to two decimals.",
+        "cap": "Leave empty for no limit per order.",
+        "minSpend": "The cart must reach this amount. 0 means no minimum.",
+        "budget": "What the platform spends on this discount each month. 0 means it pays nothing. A budget above the market threshold needs a fresh sign-in code."
+      },
+      "invalid": {
+        "percent": "Enter a percentage from 0.01 to 100, for example 10 or 12.5.",
+        "amount": "Enter an amount above zero, for example 8.00.",
+        "cap": "Enter an amount above zero, or leave it empty.",
+        "minSpend": "Enter an amount, for example 30.00. Use 0 for no minimum.",
+        "budget": "Enter an amount, for example 1000.00. 0 means the discount pays nothing."
+      }
+    },
+    "zones": {
+      "title": "Free delivery threshold",
+      "intro": "Orders at or above the threshold get free delivery. A zone uses the market default unless it has its own.",
+      "default": "Market default",
+      "default-help": "Set in the market configuration.",
+      "uses-default": "Uses the market default.",
+      "use-default": "Use default",
+      "set-own": "Set own",
+      "threshold-for": "Free delivery threshold for {zone}",
+      "invalid": "Enter an amount above zero, for example 60.00.",
+      "add": "Add a zone",
+      "add-help": "The zone code, as in Service areas.",
+      "add-button": "Add",
+      "code-invalid": "Use letters, numbers, dashes and underscores only (up to 64)."
+    },
+    "error": {
+      "invalid": "Some values were not accepted. Check the fields and try again.",
+      "disabled": "Promotions are off in this market. Turn them on first.",
+      "unavailable": "Promotions can't be saved right now. Try again in a minute.",
+      "enrol": "Set up two-step verification in your profile before changing this setting.",
+      "throttled": "Too many attempts. Wait a minute and try again.",
+      "csrf": "The page expired. Reload it and try again.",
+      "denied": "You can't change this. You may be acting as a seller; this setting is not available then.",
+      "unknown": "The change could not be saved. Try again."
     }
   }
 }

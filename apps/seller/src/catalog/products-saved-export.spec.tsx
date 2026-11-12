@@ -639,10 +639,36 @@ describe('saved filter tabs', () => {
       (await screen.findByRole('button', { name: 'Live oils' })).getAttribute('aria-pressed'),
     ).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Drafts (12)' }));
-    await waitFor(() => expect(address()).toContain('view=drafts'));
+    // A saved filter belongs to its own tab: the built-in tab opens without its search,
+    // filters or sort.
+    await waitFor(() => expect(address()).toBe('view=drafts'));
     expect(screen.getByRole('button', { name: 'Live oils' }).getAttribute('aria-pressed')).toBe(
       'false',
     );
+    expect(screen.getByRole<HTMLInputElement>('searchbox').value).toBe('');
+  });
+
+  it('opens All as it is after a saved filter on the All tab', async () => {
+    nav.state.search = new URLSearchParams(`categoryId=${CATEGORY}&sort=created`);
+    mount();
+    await screen.findByText('Olive oil 1L');
+    expect(
+      (await screen.findByRole('button', { name: 'Team picks' })).getAttribute('aria-pressed'),
+    ).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'All (143)' }));
+    await waitFor(() => expect(address()).toBe(''));
+    expect(screen.getByRole('button', { name: 'All (143)' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+  });
+
+  it('keeps an unsaved search when only the tab changes', async () => {
+    nav.state.search = new URLSearchParams('q=beef');
+    mount();
+    await screen.findByText('Olive oil 1L');
+    await screen.findByRole('button', { name: 'Live oils' });
+    fireEvent.click(screen.getByRole('button', { name: 'Drafts (12)' }));
+    await waitFor(() => expect(address()).toBe('view=drafts&q=beef'));
   });
 
   it('keeps the built-in tabs only, with no Manage or Save, when the saved filters cannot load', async () => {

@@ -159,6 +159,23 @@
     }
   },
   {
+    "action": "catalog.attribute-import.ran",
+    "targetType": "catalog.attribute-import",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "created": "integer",
+      "failed": "integer",
+      "kind": "enumOf(attributes|values)",
+      "rows": "integer",
+      "skipErrors": "boolean",
+      "skipped": "integer",
+      "unchanged": "integer",
+      "updated": "integer"
+    }
+  },
+  {
     "action": "catalog.attribute-relaxation.cancelled",
     "targetType": "catalog.attribute-definition",
     "targetId": "id",
@@ -346,6 +363,55 @@
     }
   },
   {
+    "action": "catalog.culture.category-mark-changed",
+    "targetType": "catalog.culture",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "categoryId": "id",
+      "certificationMark": "enumOf(required|neutral|inherit)",
+      "hadRow": "boolean",
+      "visible": "boolean"
+    },
+    "after": {
+      "categoryId": "id",
+      "certificationMark": "enumOf(required|neutral|inherit)",
+      "hasRow": "boolean",
+      "visible": "boolean"
+    }
+  },
+  {
+    "action": "catalog.culture.created",
+    "targetType": "catalog.culture",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "requiresCertification": "boolean",
+      "status": "enumOf(draft|active|inactive)"
+    }
+  },
+  {
+    "action": "catalog.culture.edited",
+    "targetType": "catalog.culture",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "isDefault": "boolean",
+      "requiresCertification": "boolean",
+      "status": "enumOf(draft|active|inactive)"
+    },
+    "after": {
+      "badgeChanged": "boolean",
+      "isDefault": "boolean",
+      "namesChanged": "boolean",
+      "orderChanged": "boolean",
+      "requiredCertificationTypeChanged": "boolean",
+      "requiresCertification": "boolean",
+      "status": "enumOf(draft|active|inactive)"
+    }
+  },
+  {
     "action": "catalog.product.paused",
     "targetType": "catalog.product",
     "targetId": "id",
@@ -387,6 +453,22 @@
       "offerCount": "integer",
       "scope": "enumOf(platform|seller)",
       "status": "enumOf(retired)"
+    }
+  },
+  {
+    "action": "catalog.product.type-changed",
+    "targetType": "catalog.product",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "typeCode": "enumOf(simple)"
+    },
+    "after": {
+      "axisCount": "integer",
+      "offOfferCount": "integer",
+      "offerCount": "integer",
+      "scope": "enumOf(platform|seller)",
+      "typeCode": "enumOf(configurable)"
     }
   },
   {
@@ -1475,7 +1557,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "cause": "enumOf(invalid|locked)",
       "sessionId": "id"
     }
@@ -1487,7 +1569,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "sessionId": "id"
     }
   },
@@ -1780,11 +1862,11 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     },
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     }
   },
@@ -1811,7 +1893,7 @@
       "lineCount": "integer",
       "lossBearer": "enumOf(seller|platform)",
       "lossReasonCode": "optional(enumOf(platform-error|carrier-loss|seller-unrecoverable|fraud-loss|goodwill|other))",
-      "reason": "enumOf(not-received|damaged|wrong-item|not-as-described|seller-cancelled|other)",
+      "reason": "enumOf(not-received|damaged|wrong-item|not-as-described|seller-cancelled|other|item-unavailable)",
       "sellerOrderId": "id",
       "tax": "optional(money)"
     }
@@ -2581,6 +2663,24 @@
     }
   },
   {
+    "action": "storefront.seo-settings.changed",
+    "targetType": "storefront.seo-settings",
+    "targetId": "enumOf(seo-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "indexing": "enumOf(off|on)",
+      "version": "integer"
+    },
+    "after": {
+      "changed": "listOf(enumOf(indexing|site-name|title-template|default-description|default-share-image|logo|seller-pages|trading-name|legal-name|abn|postal-address|contact-email|contact-phone|same-as|google-verification|bing-verification|analytics-id|page-templates), max 18)",
+      "indexing": "enumOf(off|on)",
+      "restoredFrom": "optional(integer)",
+      "stepUpSessionId": "optional(id)",
+      "stepUpVerifiedAt": "optional(instant)",
+      "version": "integer"
+    }
+  },
+  {
     "action": "storefront.slide.archive",
     "targetType": "storefront.slide",
     "targetId": "id",
@@ -2898,6 +2998,21 @@
       "reasonGiven": "boolean",
       "status": "enumOf(active|hidden|archived)",
       "tagsMarked": "integer"
+    }
+  },
+  {
+    "action": "catalog.category-tree.imported",
+    "targetType": "catalog.category-tree-import",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "created": "integer",
+      "format": "enumOf(csv|xlsx)",
+      "rows": "integer",
+      "treeVersion": "integer",
+      "unchanged": "integer",
+      "updated": "integer"
     }
   },
   {

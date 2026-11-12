@@ -50,6 +50,7 @@ class MemoryPublished implements PublishedImagesReader {
     productId: string,
     imageId: string,
     size: string,
+    format = 'jpeg',
   ): Promise<string | null> {
     if (this.failWith !== null) return Promise.reject(this.failWith);
     const row = this.rows.find(
@@ -60,7 +61,8 @@ class MemoryPublished implements PublishedImagesReader {
       row.productPublished &&
       row.revision === this.publishedRevision &&
       row.state === 'clean';
-    return Promise.resolve(open ? `${productId}/${imageId}/${size}` : null);
+    const key = format === 'jpeg' ? size : `${size}-${format}`;
+    return Promise.resolve(open ? `${productId}/${imageId}/${key}` : null);
   }
 }
 
@@ -141,6 +143,36 @@ describe.each(TEST_MARKETS)('public product photos over HTTP in market %s', (cod
       expect((response.body as Buffer).equals(jpeg)).toBe(true);
     },
   );
+
+  it.each([
+    ['webp', 'image/webp'],
+    ['avif', 'image/avif'],
+  ])(
+    'serves the .%s name of a size with its own type and the same headers',
+    async (format, type) => {
+      const bytes = Buffer.from(`${format} bytes`);
+      await store.put(`${PRODUCT}/${PUBLIC}/large-${format}`, bytes);
+
+      const response = await get(url(PUBLIC, `large.${format}`));
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toBe(type);
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      expect(response.headers['cache-control']).toBe('public, max-age=300, s-maxage=300');
+      expect(response.headers['set-cookie']).toBeUndefined();
+      expect((response.body as Buffer).equals(bytes)).toBe(true);
+      // The JPEG name of the same size is untouched.
+      expect(((await get(url(PUBLIC, 'large'))).body as Buffer).equals(jpeg)).toBe(true);
+    },
+  );
+
+  it('answers 404 image.not-found for a format that was never written, and for an unknown extension', async () => {
+    for (const size of ['large.avif', 'large.gif', 'large.jpg']) {
+      const response = await get(url(PUBLIC, size));
+      expect(response.status).toBe(404);
+      expect(response.body).toMatchObject({ code: 'image.not-found' });
+    }
+  });
 
   it('sets no cookie and ignores one even when a session cookie is sent', async () => {
     const response = await get(url(PUBLIC), {

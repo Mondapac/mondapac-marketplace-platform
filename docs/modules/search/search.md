@@ -24,7 +24,8 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   system actor, so the sync throws and is retried rather than dropping sellers who may sell. Reads
   still check may-sell on every request.
 - **Query:** `GET /search/products?q=&category=&page=&pageSize=` (anonymous, Market from `x-market-id`
-  like other storefront routes, default rate-limit class per origin, `no-store`). `q` 2 to 100
+  like other storefront routes, rate-limit class `public-search` per origin (since the 1a
+  follow-ups; it was `default` before), `no-store`). `q` 2 to 100
   characters in web-search syntax (`websearch_to_tsquery`, ranked by `ts_rank`, ties by Offer id, so
   pages are stable); no `q` with `category` browses by name; `category` covers its live
   subcategories: search reads catalog's public category tree (`CATALOG_ASSISTANT_FACADE.categories`,
@@ -49,8 +50,9 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   `FacadeCategorySubtree` (every category request reads it now); have database-designer EXPLAIN a
   root-category browse at scale and consider a `(market_id, name, offer_id)` index; move the tree
   read from `CATALOG_ASSISTANT_FACADE` to a non-AI catalog facade before any AI gating lands on it.
-- **Follow-ups (Hassan L-3):** a dedicated rate-limit class for this anonymous route (it uses `default`
-  now), and a cap on the number of OR terms in `q`.
+- **Hassan L-3 (done):** the route has its own per-origin rate-limit class, `public-search` (see
+  "Search 1a follow-ups" below). The cap on the number of OR terms in `q` is done (8,
+  `validation.failed` `q` / `too-many-terms`).
 
 ## Storefront shelves (storefront reads package, 18 Oct 2026)
 
@@ -209,3 +211,81 @@ and the card price read only the variants that are in stock.
   sell units are Prisma reads.
 - **Waits for V5 (#688).** The seller's Selling switch: a variant switched off must leave the index.
   Added to the catalog facts when #688 is on main.
+
+## Sellers and categories in search (search 1a, 11 Nov 2026)
+
+Option B, package 1a (`handoffs/search-option-b.md`): stores and category names are found through the
+index, the answer carries counts, and the use cases talk to a port.
+
+- **Port.** `OfferSearchIndex` (`application/ports/offer-search-index.ts`) joins the ranked search, the
+  attribute-filter reads, the scope counts and the store query. `PostgresOfferSearchIndex` (ADR-0004) is
+  the only adapter; a dedicated engine would replace it there, with no change to the use cases or to
+  apps/web. No engine code in this package.
+- **Names in the text.** `search_text` (weight C, below name and short text) now also holds the seller's
+  public store name (sellers' `publishedStoreSlugs` and `sellerSummaries`: an approved revision, a held
+  address, may sell now) and the names of the product's categories at every level (catalog's public
+  tree), before the attribute words, within the column's 2000 characters (`domain/index-names.ts`). No
+  migration for this. Refresh: `catalog.platform-category-changed` and `-moved` re-sync the documents
+  that name the category or one under it (`search.sync-offer-documents` with `categoryId`);
+  `identity.seller-access-approved` re-syncs the seller's Offers (with the existing suspended and
+  reinstated events); the six-hourly rebuild repairs the rest. A store name changed by a later revision
+  has no event of its own yet (sellers publishes none): the rebuild repairs it. A failed read of the
+  directory or the tree throws, so the delivery is retried.
+- **Store search.** `GET /search/stores?q=&page=&pageSize=` (anonymous, `no-store`, same `q` rules,
+  `pageSize` 1 to 48 (24), `page` 1 to 100, unknown parameters 400). Answer `{ items: [{ slug, name,
+  productCount }], page, pageSize, hasMore }`. Read model `search.store_documents` (migration
+  `20261111030000_search_store_documents`): one row per public store that has an indexed Offer, name
+  vector (weight A) built by a trigger, address unique per Market. It is written in the same unit as the
+  Offers of the sync (a seller with a public store is upserted; a seller met in the batch with none is
+  removed) and the rebuild deletes rows it did not touch. The query (`search.store-search`) needs an
+  indexed Offer, ranks by `ts_rank`, ties by seller id. The page is re-checked with sellers
+  (`publishedStoreSlugs`): the live name and address are shown and a store that is not public now is
+  dropped; `hasMore` is true only when the next store is visible; a failed check is 503
+  `search.unavailable`. `productCount` is the store's indexed Offers (one per product), not re-checked
+  one by one.
+- **Counts on `GET /search/products`.** A text search or a category list (not a store's or a brand's list,
+  not an exact GTIN hit) adds `counts: { total, totalIsCapped, categories, storeCount }`: products
+  (never Offers) in the scope, the categories right below the asked one (the top level without one;
+  a deeper product rolls up into the line below the asked category) with product counts, most first,
+  at most 12, and the stores that have a product in it. The scope is the text and category before
+  attribute filters and price; it is read from the index (`search.offer-scope-rows`, at most 20,000
+  Offers; over that `totalIsCapped` is true and `total` is a floor) without the query-time visibility
+  check, like the facet counts. A category tree that cannot be read leaves `counts` null, not the list.
+- **Raw SQL.** `search.offer-scope-rows` and `search.store-search` (ADR-0030 amendment of 11 Nov 2026).
+- **Hassan L-3.** The OR cap is in; the own rate-limit class came with the follow-ups below.
+- **Not in this package.** apps/web wiring (it stops using the sample data in a frontend PR after this
+  one), suggest (1b), typo tolerance (1c), halal and price filters (1d).
+
+## Search 1a follow-ups (11 Nov 2026, after #799)
+
+- **Own rate-limit class (Hassan L-3).** `GET /search/products` and `GET /search/stores` are in the
+  per-origin class `public-search` (`@RateLimit('public-search')` on `SearchController`), with its own
+  counter and the Market's `requestLimits.publicSearchPerMinute` (AU 120, the ZZ fixture 90; the
+  default stays 300). Both routes share the one counter per origin. Migration
+  `20261111170000_platform_rate_limit_public_search_class` widens `rate_limit_counters_key_check`. The
+  shelves, product detail and the other `search/*` routes stay in `default`: they do not count a scope.
+- **Tests.** `test/search-stores.e2e.spec.ts` covers `GET /search/stores` over HTTP on both Market
+  fixtures (AU and ZZ): anonymous, `no-store`, strict query string, refusals, the shared limit. The
+  `SearchStores` use-case specs already ran on both fixtures.
+- **Store rows: lock order and address hand-over (Mojtaba).** `upsertMany` writes the store rows in
+  seller id order and the sync writes Offer documents in Offer id order, so two concurrent syncs lock
+  rows in one order (a deadlock left is retried by the unit of work, `40P01`). When a concurrent sync
+  commits a row first under a unique key (an address handed over to another seller, or the same
+  seller's first row), the write fails `23505`; the repository throws `StoreRowConflictError`, the unit
+  rolls back, and the sync reads that batch again from catalog and sellers and writes it again, at most
+  three attempts, then throws so the delivery is retried.
+- **Approval before the store is recorded (Mojtaba D4).** Identity's approval commits and raises
+  `identity.seller-access-approved` before sellers records the public store name and address in its
+  own unit, so the event can arrive first. The approval subscription now calls `SyncOfferDocuments`
+  with `publicStoreRequired`: while sellers shows no public store for the seller, it throws and the
+  delivery is retried (dead-lettered after about three hours; the rebuild still repairs).
+- **Limit to watch (Hassan S1).** `public-search` covers every `GET /search/products` call, not only
+  text: category, store and brand lists, home shelves and the sitemap build (about 105 calls, cached
+  10 minutes). Many buyers behind one shared IPv4 address share the limit. Watch the
+  `request.throttled` logs after launch and raise `publicSearchPerMinute` if needed.
+- **Store name changes.** No event is needed today: after the onboarding approval (which raises
+  `identity.seller-access-approved`, already consumed) nothing on `main` changes a public store name or
+  address. The identity-change approval, the admin edit of an approved identity and the admin address
+  change are designed (sellers design 7.4: `business-identity-change-approved`, `business-identity-edited`,
+  `slug-changed`) but not built. The PR that builds them publishes those events and adds a search
+  subscription in `names-index.subscriptions.ts`; until then the six-hourly rebuild stays the repair.

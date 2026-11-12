@@ -127,7 +127,7 @@ export class CategoryImageSet extends UseCase<
     if (!first.ok) return first;
 
     const bytes = Buffer.from(data, 'base64');
-    const processed = await deps.imageProcessor.process(bytes);
+    const processed = await deps.imageProcessor.process(bytes, { jpegOnly: true });
     if (!processed.ok) {
       // Too many pictures are in flight: the same 503 as a store fault, with a short wait.
       return processed.error.code === 'file.busy'

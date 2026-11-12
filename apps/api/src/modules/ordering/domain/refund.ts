@@ -1,6 +1,6 @@
 import { parseId } from '@mondapac/shared-kernel';
 import type { Id, Temporal } from '@mondapac/shared-kernel';
-import type { OrderStatus, PaymentState } from './order';
+import type { Fulfilment, OrderStatus, PaymentState } from './order';
 import {
   LOSS_BEARERS,
   LOSS_REASON_CODES,
@@ -10,14 +10,15 @@ import {
 
 export { LOSS_BEARERS, LOSS_REASON_CODES, type LossBearer, type LossReasonCode };
 
-// Refunds of a paid seller order by an admin (tax step 3; ADR-0007 decision 11; no seller path,
-// ordering design 97): whole lines, some units of a
-// line, or part or all of the flat shipping fee. Every amount comes from the values frozen on the
+// Refunds of a paid seller order (tax step 3; ADR-0007 decision 11): by an admin, whole lines,
+// some units of a line, or part or all of the flat shipping fee; or by the seller, only units it
+// marks unavailable before the order is ready (order detail decision 6), always borne by the
+// seller, with the rest of the shipping fee once every unit is gone. Every amount comes from the values frozen on the
 // order (unit price, line tax, shipping tax); the tax reversed comes from `tax`, never from a
 // current price or rate. A refund never gives back more than the seller order took.
 
-/** Hadi's list (ordering data design O6a). */
-export const REFUND_REASONS = [
+/** Hadi's list (ordering data design O6a): the reasons an admin can give. */
+export const ADMIN_REFUND_REASONS = [
   'not-received',
   'damaged',
   'wrong-item',
@@ -25,7 +26,19 @@ export const REFUND_REASONS = [
   'seller-cancelled',
   'other',
 ] as const;
+
+/** The only reason of a seller refund: units the seller marked unavailable (decision 6). */
+export const SELLER_UNAVAILABLE_REASON = 'item-unavailable';
+
+/** Every stored reason: an admin's, or the seller's `item-unavailable` (database CHECK). */
+export const REFUND_REASONS = [...ADMIN_REFUND_REASONS, SELLER_UNAVAILABLE_REASON] as const;
 export type RefundReason = (typeof REFUND_REASONS)[number];
+
+/** Who asked for a refund: an admin, or the seller of the seller order (unavailable units). */
+export interface RefundActor {
+  readonly population: 'admin' | 'seller';
+  readonly accountId: Id<'Account'>;
+}
 
 /** `pending` until Stripe answers; then `succeeded` (with a credit note) or `failed`. */
 export type RefundState = 'pending' | 'succeeded' | 'failed';
@@ -65,7 +78,7 @@ export interface Refund {
   readonly lossBearer: LossBearer;
   /** Set exactly when the platform bears the loss. */
   readonly lossReasonCode: LossReasonCode | null;
-  readonly actor: { readonly population: 'admin'; readonly accountId: Id<'Account'> };
+  readonly actor: RefundActor;
   readonly state: RefundState;
   readonly stripeIdempotencyKey: string;
   readonly stripeRefundId: string | null;
@@ -94,6 +107,9 @@ export interface RefundTarget {
   readonly orderStatus: OrderStatus;
   readonly paymentState: PaymentState;
   readonly paymentIntentId: string | null;
+  /** Where the seller order stands, and when the seller said it was ready (null until then). */
+  readonly fulfilment: Fulfilment;
+  readonly readyAt: Temporal.Instant | null;
   readonly shipping: bigint;
   readonly shippingTax: bigint | null;
   readonly shippingTaxRateBps: number | null;
@@ -101,6 +117,8 @@ export interface RefundTarget {
   readonly total: bigint;
   /** The gross of the refunds not failed (the stored running sum). */
   readonly refunded: bigint;
+  /** How many refunds of the seller order have not failed (the seller's page shows them). */
+  readonly refundCount: number;
   /** Whether a refund of this seller order is still waiting for Stripe. */
   readonly pending: boolean;
   readonly lines: readonly RefundableLine[];
@@ -151,7 +169,7 @@ export interface RefundPlan {
 const MAX_LINES = 200;
 const MAX_AMOUNT = 2n ** 53n - 1n;
 
-/** The request body, checked: lines (no line twice), an optional shipping amount and a reason. */
+/** An admin's request body, checked: lines (no line twice), an optional shipping amount and a reason. */
 export function parseRefundRequest(input: {
   readonly lines: unknown;
   readonly shippingAmount: unknown;
@@ -200,8 +218,9 @@ export function parseRefundRequest(input: {
       shipping = BigInt(amount);
     } else fields.push({ path: 'shippingAmount', code: 'format' });
   }
+  // The seller's reason is never accepted here: an admin names one of Hadi's list.
   const reason = input?.reason;
-  if (!REFUND_REASONS.includes(reason as RefundReason))
+  if (!(ADMIN_REFUND_REASONS as readonly unknown[]).includes(reason))
     fields.push({ path: 'reason', code: 'value' });
   // The loss bearer defaults to the seller; the platform needs a reason code from the closed list,
   // and a seller-borne refund names none.
@@ -371,4 +390,84 @@ export function priceRefund(
 export function refundedInFull(target: RefundTarget, by: 'succeeded' | 'not-failed'): boolean {
   const units = by === 'succeeded' ? target.succeededUnits : target.refundedUnits;
   return target.lines.every((line) => (units.get(line.id) ?? 0) >= line.quantity);
+}
+
+/** Why the seller may not mark units unavailable now (the order moved on, or nothing is left). */
+export type UnavailableRefusal =
+  /** The seller order is ready, shipped or delivered: only an admin can refund it now. */
+  { readonly code: 'ordering.fulfilment-conflict' };
+
+/**
+ * The seller's request (decision 6), checked: lines with the units that are unavailable, no line
+ * twice, at least one, and `expectedRefunds`, the count of refunds not failed that the seller's
+ * page showed: a repeat of a request that already went through (a lost answer, a second click)
+ * finds one more and is refused, so units are never refunded twice (Hassan, row 40 F1). No
+ * amount, shipping or reason is taken from the seller: the units are
+ * refunded at their frozen price, and the shipping fee follows only when nothing is left to send.
+ */
+export function parseUnavailableRequest(input: {
+  readonly lines: unknown;
+  readonly expectedRefunds: unknown;
+}):
+  | {
+      readonly ok: true;
+      readonly lines: readonly {
+        readonly orderLineId: Id<'OrderLine'>;
+        readonly quantity: number;
+      }[];
+      readonly expectedRefunds: number;
+    }
+  | { readonly ok: false; readonly fields: readonly { path: string; code: string }[] } {
+  const parsed = parseRefundRequest({ lines: input?.lines, shippingAmount: null, reason: 'other' });
+  const expected = input?.expectedRefunds;
+  const expectedOk =
+    typeof expected === 'number' &&
+    Number.isSafeInteger(expected) &&
+    expected >= 0 &&
+    expected <= 1000;
+  if (!parsed.ok || !expectedOk) {
+    return {
+      ok: false,
+      fields: [
+        ...(parsed.ok ? [] : parsed.fields),
+        ...(expectedOk ? [] : [{ path: 'expectedRefunds', code: 'range' }]),
+      ],
+    };
+  }
+  return { ok: true, lines: parsed.request.lines, expectedRefunds: expected };
+}
+
+/**
+ * The refund request of units a seller marks unavailable: only while the seller order is to ship
+ * and not yet ready (fail closed). When these units leave nothing of the seller order to send, the
+ * shipping fee not yet given back goes back with them (the customer gets nothing delivered).
+ */
+export function unavailableRequest(
+  target: RefundTarget,
+  lines: readonly { readonly orderLineId: Id<'OrderLine'>; readonly quantity: number }[],
+):
+  | { readonly ok: true; readonly request: RefundRequest }
+  | { readonly ok: false; readonly error: UnavailableRefusal } {
+  if (target.fulfilment !== 'to-ship' || target.readyAt !== null) {
+    return { ok: false, error: { code: 'ordering.fulfilment-conflict' } };
+  }
+  const leftAfter = target.lines.every((line) => {
+    const wanted = lines.find((l) => l.orderLineId === line.id)?.quantity ?? 0;
+    return (target.refundedUnits.get(line.id) ?? 0) + wanted >= line.quantity;
+  });
+  const gross = shippingGross(target);
+  const shipping =
+    leftAfter && gross !== null && gross > target.refundedShipping
+      ? gross - target.refundedShipping
+      : 0n;
+  return {
+    ok: true,
+    request: {
+      lines,
+      shipping,
+      reason: SELLER_UNAVAILABLE_REASON,
+      lossBearer: 'seller',
+      lossReasonCode: null,
+    },
+  };
 }
