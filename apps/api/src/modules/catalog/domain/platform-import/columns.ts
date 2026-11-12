@@ -98,7 +98,8 @@ const ATTRIBUTE_HEADER = /^attr\s*\[\s*([a-z][a-z0-9_-]{0,63})\s*\]$/;
 export function attributeCodeOf(header: string): string | null {
   const match = ATTRIBUTE_HEADER.exec(header.normalize('NFKC').trim().toLowerCase());
   const code = match?.[1];
-  if (code === undefined || CERTIFICATION_HEADER.test(code)) return null;
+  // `_` counts as a letter to `\b`, so the guard also reads the code with `-` for `_`.
+  if (code === undefined || CERTIFICATION_HEADER.test(code.replaceAll('_', '-'))) return null;
   return code;
 }
 

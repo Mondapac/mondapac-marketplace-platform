@@ -152,6 +152,14 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
     ['a bad attribute code', { attributeValues: { 'bad code!': 'x' } }],
     ['an object attribute value with a bad locale', { attributeValues: { a: { fr: 'x' } } }],
     [
+      'a measure-shaped object with free text',
+      { attributeValues: { a: { value: 'halal', unit: 'g' } } },
+    ],
+    [
+      'a measure with a unit nobody knows',
+      { attributeValues: { a: { value: '1', unit: 'halal' } } },
+    ],
+    [
       'a measure with a third member',
       { attributeValues: { a: { value: '1', unit: 'g', x: 'y' } } },
     ],

@@ -117,6 +117,9 @@ describe('attributeCodeOf and mapColumns', () => {
 
   it('never reads a certification-looking code as an attribute column', () => {
     expect(attributeCodeOf('attr[halal-status]')).toBeNull();
+    for (const code of ['product_tags', 'listing_status', 'claim_tag', 'halal_note']) {
+      expect(attributeCodeOf(`attr[${code}]`)).toBeNull();
+    }
     const mapped = mapColumns([...FIXED, 'attr[halal-status]', 'attr[cut]']);
     expect(mapped.ok && [...mapped.value.attributes.keys()]).toEqual(['cut']);
     expect(mapped.ok && mapped.value.ignored).toEqual([
