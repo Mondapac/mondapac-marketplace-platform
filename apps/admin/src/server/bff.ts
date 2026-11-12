@@ -223,6 +223,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/saved-filters',
     // A new manufacturer certificate, as a draft (certification): the body names the type only.
     'certification/admin/product-certificates',
+    // A new issuer, as Proposed (certification issuer registry).
+    'certification/admin/issuers',
   ]),
 };
 
@@ -252,6 +254,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
     'identity/admin/sellers/:id/second-factor/reset',
+    // Queue a recount of one seller's health (sellers, seller health package 5).
+    'sellers/admin/:id/health/recalculate',
     'sellers/admin/:id/review/approve',
     'sellers/admin/:id/review/reject',
     'pricing/admin/price-holds/:id/approve',
@@ -265,12 +269,16 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/products/:id/images/:id/take-down',
     // Submit (publish) a platform product's working copy (catalog).
     'catalog/admin/platform-products/:id/submit',
+    // Turn a Simple platform product into one with sizes, once (catalog, variants V9).
+    'catalog/admin/platform-products/:id/add-sizes',
     // Discard a platform product that was never submitted (catalog).
     'catalog/admin/platform-products/:id/discard',
     // A manufacturer certificate (certification): add its document, then send it for review, each
     // with the record version read. Approve, reject, suspend and revoke are not reachable here.
     'certification/admin/product-certificates/:id/documents',
     'certification/admin/product-certificates/:id/submit',
+    // Activate an issuer with the expert's approval, under the version read (certification).
+    'certification/admin/issuers/:id/activate',
     // Add a photo to a platform product's library (catalog, P1): a base64 photo, so the body cap
     // of this path is the larger image one.
     'catalog/admin/platform-products/:id/images',
@@ -406,9 +414,13 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/impact',
     // One platform product with its working copy, for the product form (catalog).
     'catalog/admin/platform-products/:id',
+    // How many offers of other sellers go off sale if sizes are added (catalog, variants V9).
+    'catalog/admin/platform-products/:id/add-sizes-impact',
     // The manufacturer certificates that name one product, one certificate, and its status history
     // (certification), read by the product form's certificates card.
     'certification/admin/product-certificates/for-product/:id',
+    // The expert approval of one issuer (certification): an audited read, edit permission.
+    'certification/admin/issuers/:id/expert-reference',
     'certification/admin/product-certificates/:id',
     'certification/admin/product-certificates/:id/history',
     // The photo library of a platform product, for the form's images card (catalog, P1).

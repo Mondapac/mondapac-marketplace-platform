@@ -56,6 +56,11 @@ import {
 import { PrismaCategoryAttributeLinkStore } from './prisma-category-attribute-link.store';
 import { PrismaAttributeRelaxationStore } from './prisma-attribute-relaxation.store';
 import { PrismaAttributeValueSuggestionStore } from './prisma-attribute-value-suggestion.store';
+import { PrismaTopicSuggestionStore } from './prisma-topic-suggestion.store';
+import {
+  TOPIC_SUGGESTION_STORE,
+  type TopicSuggestionStore,
+} from '../application/ports/topic-suggestion.store';
 import {
   ATTRIBUTE_VALUE_SUGGESTION_STORE,
   type AttributeValueSuggestionStore,
@@ -390,6 +395,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeValueSuggestionStore =>
       new PrismaAttributeValueSuggestionStore(prisma),
+  },
+  {
+    provide: TOPIC_SUGGESTION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TopicSuggestionStore =>
+      new PrismaTopicSuggestionStore(prisma),
   },
   {
     provide: CATALOG_MARKET_POLICY,

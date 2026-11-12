@@ -196,3 +196,43 @@ describe('RateLimitGuard public-media class', () => {
     expect(refused).toBe(429);
   });
 });
+
+@RateLimit('public-search')
+class SearchController {
+  handle(this: void): void {}
+}
+
+describe('RateLimitGuard public-search class (Hassan L-3)', () => {
+  const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+  const limits = markets.get(testMarketContext('ZZ', 'default').marketId).requestLimits;
+  const searchContext = (request: object): ExecutionContext =>
+    ({
+      ...(contextFor(request) as unknown as object),
+      getClass: () => SearchController,
+      getHandler: () => SearchController.prototype.handle,
+    }) as unknown as ExecutionContext;
+  const statusOf = async (activation: Promise<boolean>): Promise<number> => {
+    try {
+      await activation;
+      return 200;
+    } catch (error) {
+      return error instanceof HttpException ? error.getStatus() : -1;
+    }
+  };
+
+  it('has its own, lower limit and its own counter, apart from the default class', async () => {
+    expect(limits.publicSearchPerMinute).toBeLessThan(limits.defaultPerMinute);
+    const counters = new MemoryRateLimitCounters();
+    const guard = new RateLimitGuard(new Reflector(), markets, counters, testAppConfig());
+    const request = resolvedRequest('203.0.113.60');
+    attachMarketContext(request, testMarketContext('ZZ', 'default'));
+
+    for (let i = 0; i < limits.publicSearchPerMinute; i += 1) {
+      await expect(guard.canActivate(searchContext(request))).resolves.toBe(true);
+    }
+    // The search limit is reached: the next search is refused with 429 ...
+    expect(await statusOf(guard.canActivate(searchContext(request)))).toBe(429);
+    // ... while the default class of the same origin is untouched by the searches.
+    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
+  });
+});

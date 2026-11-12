@@ -323,6 +323,30 @@
     }
   },
   {
+    "action": "catalog.topic-suggestion.decided",
+    "targetType": "catalog.topic-suggestion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(open)"
+    },
+    "after": {
+      "sellerId": "id",
+      "status": "enumOf(approved|mapped|rejected)",
+      "topicId": "optional(id)"
+    }
+  },
+  {
+    "action": "catalog.topic-suggestion.suggested",
+    "targetType": "catalog.topic-suggestion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "productId": "id"
+    }
+  },
+  {
     "action": "catalog.category-attributes.changed",
     "targetType": "catalog.category",
     "targetId": "id",

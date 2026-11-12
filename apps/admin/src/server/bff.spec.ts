@@ -706,6 +706,24 @@ describe('relay allowlist for seller decisions', () => {
     expect((await send('DELETE', ledger)).status).toBe(404);
   });
 
+  it('relays the recalculate request of one seller, by POST only', async () => {
+    const send = (method: string, path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, {
+          method,
+          headers: method === 'GET' ? { host: 'admin.localhost:3002' } : sameOrigin,
+          ...(method === 'POST' ? { body: '{}' } : {}),
+        }),
+        path.split('/'),
+        vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 202 }))),
+      );
+    const recalculate = `sellers/admin/${ID}/health/recalculate`;
+    expect((await send('POST', recalculate)).status).toBe(202);
+    expect((await send('GET', recalculate)).status).toBe(404);
+    expect((await send('POST', 'sellers/admin/nope/health/recalculate')).status).toBe(404);
+  });
+
   it('forwards only limit and cursor of the ledger query', async () => {
     const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
     const path = `commission-payouts/admin/sellers/${ID}/ledger`;
@@ -746,6 +764,25 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(404);
     expect((await call('POST', `pricing/admin/price-holds/${ID}/delete`)).status).toBe(404);
   });
+  it('relays add-sizes as a POST and its impact read as a GET, each on its own method only', async () => {
+    const base = `catalog/admin/platform-products/${ID}`;
+    const read = (path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin }),
+        path.split('/'),
+        vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
+      );
+    expect((await call('POST', `${base}/add-sizes`)).status).toBe(200);
+    expect((await read(`${base}/add-sizes`)).status).toBe(404);
+    expect((await call('PUT', `${base}/add-sizes`)).status).toBe(404);
+    expect((await read(`${base}/add-sizes-impact`)).status).toBe(200);
+    expect((await call('POST', `${base}/add-sizes-impact`)).status).toBe(404);
+    expect((await call('DELETE', `${base}/add-sizes-impact`)).status).toBe(404);
+    expect((await call('POST', 'catalog/admin/platform-products/nope/add-sizes')).status).toBe(404);
+    expect((await read('catalog/admin/platform-products/nope/add-sizes-impact')).status).toBe(404);
+  });
+
   it('relays the product version decisions and the photo takedown by UUID, POST only', async () => {
     const id = '0190a000-0000-7000-8000-0000000000c1';
     const request = (method: string, path: string) =>

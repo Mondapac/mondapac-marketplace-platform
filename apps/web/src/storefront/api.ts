@@ -6,6 +6,7 @@ import {
   signForRequest,
 } from '@mondapac/panel-server';
 import { storefrontApiConfig, storefrontHostFor, type StorefrontApiConfig } from './config.ts';
+import { cachedPageRead, keepPageRead, type KeepRule } from './page-read-cache.ts';
 
 // The buyer site's one way to read the API: a GET of a public route from a server component. It
 // sends the Market of the host the buyer came to (`x-market-id`) and, with a signing key, the
@@ -15,6 +16,23 @@ import { storefrontApiConfig, storefrontHostFor, type StorefrontApiConfig } from
 
 /** How long a read may take before the page renders without it. */
 export const READ_TIMEOUT_MS = 3000;
+
+/**
+ * How long the proxy waits for its "does this page exist" read. A time-out leaves the request to
+ * the page, which reads again with the full {@link READ_TIMEOUT_MS} and shows its own error state.
+ */
+export const PROXY_READ_TIMEOUT_MS = 1000;
+
+/** How one read behaves beyond the defaults. */
+export interface ReadOptions {
+  /** Abort after this many milliseconds instead of {@link READ_TIMEOUT_MS}. */
+  readonly timeoutMs?: number;
+  /**
+   * Share the answer through the short page-read cache (./page-read-cache.ts), keyed by the
+   * request's Market and the path, keeping only the answers this rule allows.
+   */
+  readonly share?: KeepRule;
+}
 
 export type ApiRead<T> =
   /** API_BASE_URL is empty: the caller answers sample data. */
@@ -73,6 +91,7 @@ async function readWith<T>(
   nowMilliseconds: () => number,
   accept: string,
   readBody: ReadBody<T>,
+  timeoutMs: number = READ_TIMEOUT_MS,
 ): Promise<ApiRead<T>> {
   if (config === null) return { kind: 'off' };
   const url = urlOf(config.apiBaseUrl, path);
@@ -102,7 +121,7 @@ async function readWith<T>(
       headers: upstream,
       cache: 'no-store',
       redirect: 'error',
-      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
       log({ msg: 'storefront.api-read-refused', path: routeOf(path), status: response.status });
@@ -125,16 +144,35 @@ async function readWith<T>(
   }
 }
 
-/** {@link apiGet} with its inputs given, for tests. */
+/** {@link apiGet} with its inputs given (the proxy's read, and tests). */
 export async function apiGetWith<T>(
   config: StorefrontApiConfig | null,
   incoming: RequestHeaders,
   path: string,
   nowMilliseconds: () => number = Date.now,
+  options: ReadOptions = {},
 ): Promise<ApiRead<T>> {
-  return readWith(config, incoming, path, nowMilliseconds, 'application/json', async (response) => {
-    return (await response.json()) as T;
-  });
+  const read = () =>
+    readWith(
+      config,
+      incoming,
+      path,
+      nowMilliseconds,
+      'application/json',
+      async (response) => (await response.json()) as T,
+      options.timeoutMs,
+    );
+  const keep = options.share;
+  // The Market of the listed host the request came to; an unlisted host is never cached (its read
+  // fails anyway) and the sample (no API) has nothing to cache.
+  const marketId =
+    config === null ? undefined : storefrontHostFor(config, incoming.get('host'))?.marketId;
+  if (keep === undefined || marketId === undefined) return read();
+  const hit = cachedPageRead<T>(marketId, path, nowMilliseconds());
+  if (hit !== undefined) return hit;
+  const answer = await read();
+  keepPageRead(marketId, path, answer, keep, nowMilliseconds());
+  return answer;
 }
 
 /** The most bytes of a picture read from the API: a store image is a rendition of a few hundred KB. */
@@ -196,11 +234,11 @@ export async function apiGetBytesWith(
  * encoded with `encodeURIComponent` by the caller) for the
  * current request. Answers `off` while API_BASE_URL is empty, so the caller keeps its sample.
  */
-export async function apiGet<T>(path: string): Promise<ApiRead<T>> {
+export async function apiGet<T>(path: string, options: ReadOptions = {}): Promise<ApiRead<T>> {
   const config = storefrontApiConfig();
   if (config === null) return { kind: 'off' };
   const incoming = await headers();
-  return apiGetWith<T>(config, incoming, path);
+  return apiGetWith<T>(config, incoming, path, Date.now, options);
 }
 
 /** A GET of a public API route that answers a picture, for the current request (see {@link apiGet}). */

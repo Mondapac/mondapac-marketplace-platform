@@ -21,6 +21,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/seller/roles',
     'sellers/my-file',
     'sellers/own-zone',
+    // The seller's own health (Performance page): the card, the trend and the Refresh state.
+    'sellers/own-health',
     // The store profile page: the About text, the logo and banner references (slice 12 part 2).
     'sellers/store-profile',
     // "View history" of the store profile (query: `after`, `limit`): when, who by display name and
@@ -140,6 +142,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/seller/team/accounts/:id/role',
     'identity/seller/team/accounts/:id/remove',
     'catalog/seller/products/:id/submit',
+    // Turn a Simple product into one with sizes, once (catalog, variants V9).
+    'catalog/seller/products/:id/add-sizes',
     // Ask for a value a select field does not offer (catalog, attributes A5).
     'catalog/seller/products/:id/attribute-suggestions',
     'catalog/seller/products/:id/images',
@@ -156,6 +160,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // One public reply per review, and a report of a review (buyer reviews, package 4c).
     'reviews/seller/:id/reply',
     'reviews/seller/:id/report',
+    // "Refresh now" of the seller's health (queues a recount; 15-minute cooldown).
+    'sellers/own-health/refresh',
   ],
   PATCH: ['reviews/seller/:id/reply'],
   DELETE: [
