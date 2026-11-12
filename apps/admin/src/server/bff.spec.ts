@@ -1004,6 +1004,40 @@ describe('relay of the admin notice routes', () => {
   });
 });
 
+describe('relay of the blog editor', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const put = (path: string, body: string) =>
+    new Request(`http://admin.localhost:3002/api/${path}`, {
+      method: 'PUT',
+      headers: { ...sameOrigin, 'content-type': 'application/json' },
+      body,
+    });
+
+  it('takes a draft of up to 60 KB, more than the usual 16 KB, and refuses more', async () => {
+    const path = `blog/admin/posts/${id}/draft`;
+    const upstream = upstreamOk();
+    const ok = JSON.stringify({ content: { pad: 'x'.repeat(40 * 1024) } });
+    expect((await relay(config, put(path, ok), path.split('/'), upstream)).status).toBe(200);
+    const big = JSON.stringify({ content: { pad: 'x'.repeat(61 * 1024) } });
+    expect((await relay(config, put(path, big), path.split('/'), upstream)).status).toBe(413);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the usual 16 KB cap on the submit and create routes', async () => {
+    const upstream = upstreamOk();
+    const big = JSON.stringify({ pad: 'x'.repeat(17 * 1024) });
+    for (const path of ['blog/admin/posts', `blog/admin/posts/${id}/submit`]) {
+      const request = new Request(`http://admin.localhost:3002/api/${path}`, {
+        method: 'POST',
+        headers: { ...sameOrigin, 'content-type': 'application/json' },
+        body: big,
+      });
+      expect((await relay(config, request, path.split('/'), upstream)).status).toBe(413);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
 describe('relay of the blog posts list', () => {
   const request = (path: string) =>
     new Request(`http://admin.localhost:3002/api/${path}`, {
@@ -1311,6 +1345,12 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `customers/admin/buyers/${id}/deletion-requests`],
     ['DELETE', `customers/admin/deletion-requests/${id}`],
     ['GET', 'blog/admin/posts'],
+    ['POST', 'blog/admin/posts'],
+    ['GET', `blog/admin/posts/${id}`],
+    ['GET', `blog/admin/posts/${id}/checks`],
+    ['PUT', `blog/admin/posts/${id}/draft`],
+    ['POST', `blog/admin/posts/${id}/submit`],
+    ['GET', 'blog/admin/taxonomy'],
     ['GET', 'catalog/admin/brands'],
     ['GET', 'catalog/admin/brands/merge-queue'],
     ['POST', 'catalog/admin/brands'],
