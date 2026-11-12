@@ -212,7 +212,7 @@ describe('orders list', () => {
 });
 
 describe('order detail', () => {
-  it('lists the refunds with their state, and a refused one as not refunded', () => {
+  it('lists the refunds with their state and reason, and a refused one as not refunded', () => {
     const refund = {
       refundId: '0190a000-0000-7000-8000-0000000000f1',
       sellerOrderId: '0190a000-0000-7000-8000-0000000000b1',
@@ -243,7 +243,12 @@ describe('order detail', () => {
             refundsEnabled: true,
             refunds: [
               { ...refund, state: 'failed' },
-              { ...refund, refundId: '0190a000-0000-7000-8000-0000000000f2', state: 'pending' },
+              {
+                ...refund,
+                refundId: '0190a000-0000-7000-8000-0000000000f2',
+                state: 'pending',
+                reason: 'item-unavailable',
+              },
             ],
           })}
         />,
@@ -252,6 +257,8 @@ describe('order detail', () => {
     expect(screen.getByText('Refused by Stripe')).toBeTruthy();
     expect(screen.getByText('Waiting for Stripe')).toBeTruthy();
     expect(screen.getByText(/Not refunded/)).toBeTruthy();
+    // The seller's own reason (row 40) has its own label, not "Other".
+    expect(screen.getByText(/^Item unavailable ·/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Order confirmation' }).getAttribute('href')).toBe(
       '/orders/0190a000-0000-7000-8000-000000000001/document',
     );

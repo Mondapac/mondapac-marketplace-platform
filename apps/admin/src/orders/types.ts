@@ -115,8 +115,8 @@ export interface AdminOrderPage {
   readonly nextCursor: string | null;
 }
 
-/** The refund reasons (apps/api domain/refund.ts REFUND_REASONS). */
-export const REFUND_REASONS = [
+/** The reasons an admin may give (apps/api domain/refund.ts ADMIN_REFUND_REASONS). */
+export const ADMIN_REFUND_REASONS = [
   'not-received',
   'damaged',
   'wrong-item',
@@ -124,6 +124,8 @@ export const REFUND_REASONS = [
   'seller-cancelled',
   'other',
 ] as const;
+/** Every stored reason: an admin's, or the seller's own `item-unavailable` (REFUND_REASONS). */
+export const REFUND_REASONS = [...ADMIN_REFUND_REASONS, 'item-unavailable'] as const;
 export const LOSS_BEARERS = ['seller', 'platform'] as const;
 export const LOSS_REASON_CODES = [
   'platform-error',

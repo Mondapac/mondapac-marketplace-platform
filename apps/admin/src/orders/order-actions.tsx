@@ -10,7 +10,7 @@ import { cancelBlock, refundBlock, refundsOf, shippingLeft, unitsLeft } from './
 import {
   LOSS_BEARERS,
   LOSS_REASON_CODES,
-  REFUND_REASONS,
+  ADMIN_REFUND_REASONS,
   type AdminOrderDetail,
   type CancelAnswer,
   type SellerPart,
@@ -86,7 +86,10 @@ function LossFields({
         value={loss.reason}
         disabled={disabled}
         required
-        options={REFUND_REASONS.map((value) => ({ value, label: t(`refund-reason.${value}`) }))}
+        options={ADMIN_REFUND_REASONS.map((value) => ({
+          value,
+          label: t(`refund-reason.${value}`),
+        }))}
         onChange={(event) => onChange({ ...loss, reason: event.target.value })}
       />
       <Select
