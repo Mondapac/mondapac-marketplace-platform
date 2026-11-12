@@ -101,6 +101,11 @@ import { OFFER_SEARCH_INDEX, type OfferSearchIndex } from '../application/ports/
 import { CATEGORY_TREE_SOURCE, type CategoryTreeSource } from '../application/ports/category-tree';
 import { RawOfferScopeReader } from './raw-offer-scope.reader';
 import { RawStoreSearchReader } from './raw-store-search.reader';
+import { RawSuggestReader } from './raw-suggest.reader';
+import { InMemorySuggestCache } from './in-memory-suggest-cache';
+import { SUGGEST_CACHE, type SuggestCache } from '../application/ports/suggest-cache';
+import { CLOCK } from '../../../platform/clock/clock.module';
+import type { Clock } from '@mondapac/shared-kernel';
 import { PrismaStoreDocumentRepository } from './prisma-store-document.repository';
 import {
   STORE_DOCUMENT_REPOSITORY,
@@ -226,7 +231,14 @@ export const searchProviders: readonly FactoryProvider[] = [
         new RawOfferFacetReader(rawReads),
         new RawOfferScopeReader(rawReads),
         new RawStoreSearchReader(rawReads),
+        new RawSuggestReader(rawReads),
       ),
+  },
+  {
+    // In-process today (no Redis client in the platform); a shared cache replaces it here.
+    provide: SUGGEST_CACHE,
+    inject: [CLOCK],
+    useFactory: (clock: Clock): SuggestCache => new InMemorySuggestCache(clock),
   },
   {
     provide: STORE_DOCUMENT_REPOSITORY,

@@ -278,6 +278,9 @@ const indexOf = (
     storeSearch.requests.push(request);
     return Promise.resolve(storeSearch.hits.slice(0, request.limit));
   },
+  suggestOffers: () => Promise.resolve([]),
+  suggestScopeRows: () => Promise.resolve([]),
+  suggestStores: () => Promise.resolve([]),
 });
 
 class MemoryStores implements StoreDocumentRepository {

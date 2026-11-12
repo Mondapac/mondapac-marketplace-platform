@@ -671,6 +671,7 @@
   { "name": "search.reindex-offer-attributes", "rule": "system" },
   { "name": "search.search-products", "rule": "anonymous" },
   { "name": "search.search-stores", "rule": "anonymous" },
+  { "name": "search.suggest-search", "rule": "anonymous" },
   { "name": "search.sync-offer-documents", "rule": "system" },
   { "name": "search.sync-product-ratings", "rule": "system" },
   { "name": "search.view-product-detail", "rule": "anonymous" },
