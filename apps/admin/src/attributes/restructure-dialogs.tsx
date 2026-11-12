@@ -4,6 +4,7 @@ import { Banner, Button, Dialog, LoadError, Select, SkeletonRows } from '@mondap
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
+import { loadActiveAttributes } from './load-active-attributes.ts';
 import { useAttributeCall } from './use-attribute-call.ts';
 import {
   API_ATTRIBUTES,
@@ -367,20 +368,15 @@ export function MergeAttributesDialog({
 
   const fetchCandidates = useCallback(async () => {
     setCandidates({ state: 'loading' });
-    const query = new URLSearchParams({
-      limit: '100',
-      type: detail.dataType,
-      status: 'active',
-    });
-    const result = await callApi<AttributePage>('GET', `${API_ATTRIBUTES}?${query.toString()}`);
+    const result = await loadActiveAttributes(detail.dataType);
     if (!result.ok) {
-      if (result.failure.status === 401) window.location.assign('/session-ended');
+      if (result.status === 401) window.location.assign('/session-ended');
       else setCandidates({ state: 'failed' });
       return;
     }
     setCandidates({
       state: 'ready',
-      items: result.body.items.filter((item) => item.id !== detail.id),
+      items: result.items.filter((item) => item.id !== detail.id),
     });
   }, [detail.dataType, detail.id]);
   useEffect(() => {
