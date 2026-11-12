@@ -191,6 +191,7 @@ describe('admin attribute reads over HTTP (integration)', () => {
       'feature-set.attribute-unknown': 422,
       'feature-set.attribute-not-active': 422,
       'feature-set.too-many-variant-attributes': 422,
+      'missing-details-email.busy': 409,
       'attribute-family.code-invalid': 400,
       'attribute-family.group-invalid': 400,
       'attribute-family.locale-invalid': 400,

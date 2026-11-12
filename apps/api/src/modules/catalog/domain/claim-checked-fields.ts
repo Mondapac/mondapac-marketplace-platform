@@ -399,6 +399,25 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   TopicSuggestionNoticeMail: {
     noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
   },
+  MissingDetailsEmailFacts: {
+    noCustomerText:
+      'facts of the "Email sellers" mail to a seller: store, product and detail names already stored; never shown to buyers',
+  },
+  MissingDetailsEmailMail: {
+    noCustomerText: 'the plain-text "Email sellers" mail to a seller; never shown to buyers',
+  },
+  PlannedProduct: { noCustomerText: 'a product id, its seller id and attribute codes' },
+  RecentMissingDetailsEmail: { noCustomerText: 'a seller id, a product id and a time' },
+  PlannedProductOutcome: { noCustomerText: 'a product id, a status code and a time' },
+  PlannedSeller: { noCustomerText: 'a seller id, a status code and lists of PlannedProduct' },
+  MissingDetailsEmailPlan: {
+    noCustomerText: 'lists of PlannedSeller and of ids with reason codes',
+  },
+  MissingDetailsEmail: { noCustomerText: 'aggregate class around MissingDetailsEmailState' },
+  MissingDetailsEmailState: {
+    noCustomerText:
+      'a queued mail to a seller: ids, times, notice codes and the rendered plain text; never shown to buyers',
+  },
   AttributeRelaxationRequestState: {
     noCustomerText: 'a two-admin request: ids, kind and status codes, times; no text',
   },
