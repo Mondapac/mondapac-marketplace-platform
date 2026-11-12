@@ -18,6 +18,9 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'request.too-large': 'too-large',
   'request.csrf': 'csrf',
   'blog.self-approval-refused': 'self-approval',
+  'blog.access-off': 'access-off',
+  'blog.seller-owned': 'seller-owned',
+  'blog.quota-used': 'quota-used',
   'second-factor.enrolment-required': 'enrolment',
 };
 

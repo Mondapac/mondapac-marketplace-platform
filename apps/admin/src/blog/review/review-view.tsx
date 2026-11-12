@@ -11,18 +11,23 @@ import {
   TextAreaField,
   toast,
 } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
 import { isStepUpCancelled, useGuardedCall } from '../../step-up/step-up.tsx';
 import { editorProblemOf, type EditorProblem } from '../editor/editor-errors.ts';
 import type { ChecksBody, Finding, PostDetail } from '../editor/types.ts';
 import { API_BLOG_POSTS, BLOG_PATH, postPath } from '../types.ts';
+import { PublishPanel } from './publish-panel.tsx';
 import { changesOf } from './review-model.ts';
 
 const SEVERITY_TONE = { error: 'critical', warning: 'attention', notice: 'info' } as const;
 const NOTE_MAX = 1000;
+const PUBLISH_STATUSES: readonly string[] = ['approved', 'scheduled', 'published', 'unpublished'];
 const PROBLEM_KEYS: readonly string[] = [
+  'problem.access-off',
+  'problem.seller-owned',
+  'problem.quota-used',
   'problem.self-approval',
   'problem.enrolment',
   'problem.checks-failed',
@@ -59,16 +64,24 @@ const problemKey = (problem: EditorProblem): string => {
 export function ReviewView({
   postId,
   canReview,
+  canPublish = false,
+  canPause = false,
+  zone = 'UTC',
   csrfToken,
 }: {
   readonly postId: string;
   readonly canReview: boolean;
+  readonly canPublish?: boolean;
+  readonly canPause?: boolean;
+  /** The IANA zone of the Market: scheduled times are read and shown on its clock. */
+  readonly zone?: string;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('blog.review');
   const te = useTranslations('blog.editor');
   const tc = useTranslations('blog');
   const guarded = useGuardedCall();
+  const locale = useLocale();
   const [load, setLoad] = useState<Load>('loading');
   const [post, setPost] = useState<PostDetail | null>(null);
   const [findings, setFindings] = useState<readonly Finding[] | null>(null);
@@ -204,7 +217,19 @@ export function ReviewView({
         </div>
       </div>
       {!canReview ? <Banner tone="info">{t('read-only')}</Banner> : null}
-      {!waiting ? <Banner tone="info">{t('not-waiting')}</Banner> : null}
+      {!waiting && !PUBLISH_STATUSES.includes(post.status) ? (
+        <Banner tone="info">{t('not-waiting')}</Banner>
+      ) : null}
+      <PublishPanel
+        key={`${post.status}-${post.scheduledAt ?? ''}-${post.featured === true}`}
+        post={post}
+        zone={zone}
+        canPublish={canPublish}
+        canPause={canPause}
+        csrfToken={csrfToken}
+        locale={locale}
+        onChanged={() => void fetchAll()}
+      />
       {open !== null && open.decisionNote !== null ? (
         <Banner tone="attention">{te('changes-requested', { note: open.decisionNote })}</Banner>
       ) : null}
