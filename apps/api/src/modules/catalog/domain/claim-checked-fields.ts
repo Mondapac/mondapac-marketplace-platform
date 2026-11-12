@@ -38,11 +38,11 @@ export const CLAIM_CHECKED_FIELD_IDS = [
   'product.name',
   'product.short-description',
   'product.variant-label',
+  'seller-category.description',
+  'seller-category.name',
   'topic.intro',
   'topic.slug',
   'topic.term',
-  'seller-category.description',
-  'seller-category.name',
 ] as const;
 export type ClaimCheckedFieldId = (typeof CLAIM_CHECKED_FIELD_IDS)[number];
 
