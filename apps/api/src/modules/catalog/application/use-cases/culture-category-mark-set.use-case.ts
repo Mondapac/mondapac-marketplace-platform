@@ -3,7 +3,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CATALOG_CULTURE_EDIT } from '../../contracts/permissions';
-import { CultureCategoryMarkChangedAudit } from '../../domain/audit';
+import { CultureCategoryMarkChangedAudit, cultureVisibleOf } from '../../domain/audit';
 import { parseCategoryMark, type CultureCategoryRow } from '../../domain/culture-category';
 import { announceMarkChanged } from '../cultures/culture-events';
 import { liveTreeOf } from '../cultures/culture-references';
@@ -41,8 +41,8 @@ export type CultureCategoryMarkWriteFailure =
 
 /**
  * `culture.category-mark-set` (multi-culture package 1): an admin sets the row of one culture on one
- * category: `visible` (default true) and `certificationMark` (`required`, `neutral`, or null to
- * inherit). Rule: the key `catalog.culture.edit` (protected) and the admin population. The category
+ * category: `visible` (true, false, or null to inherit; see `parseCategoryMark`) and
+ * `certificationMark` (`required`, `neutral`, or null to inherit). Rule: the key `catalog.culture.edit` (protected) and the admin population. The category
  * must exist and be live. Audited; announces `catalog.culture-category-mark-changed.v1`.
  */
 export class CultureCategoryMarkSet extends UseCase<
@@ -121,13 +121,13 @@ export class CultureCategoryMarkSet extends UseCase<
             before: {
               categoryId: categoryId.value,
               hadRow: before !== undefined,
-              visible: before?.visible ?? true,
+              visible: before === undefined ? 'inherit' : cultureVisibleOf(before.visible),
               certificationMark: before?.certificationMark ?? 'inherit',
             },
             after: {
               categoryId: categoryId.value,
               hasRow: true,
-              visible: row.visible,
+              visible: cultureVisibleOf(row.visible),
               certificationMark: row.certificationMark ?? 'inherit',
             },
           }),

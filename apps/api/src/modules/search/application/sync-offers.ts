@@ -154,6 +154,9 @@ async function syncBatch(
   batch: readonly Id<'Offer'>[],
 ): Promise<SyncCounts> {
   const { market } = context;
+  // The instant the reads begin is the document's `indexed_at`: a write from an earlier read never
+  // replaces one from a later read (security review L2 on #848).
+  const indexedAt = deps.clock.now();
   const facts = await deps.feed.facts(context, batch, settings.locale);
   if (facts === null) throw new Error('search: catalog facts unavailable');
   const sellerIds = [
@@ -215,7 +218,6 @@ async function syncBatch(
     if (document === null) removals.push(offerId);
     else documents.push(document);
   }
-  const indexedAt = deps.clock.now();
   // The store rows follow the same facts (search 1a): a seller of a document that has a public
   // store is written; a seller met in the batch that has none (suspended, unapproved, no address)
   // is removed. A seller with no Offer left keeps a stale row that no query returns (the store
@@ -244,7 +246,7 @@ async function syncBatch(
       a.offerId < b.offerId ? -1 : a.offerId > b.offerId ? 1 : 0,
     );
     for (const document of ordered) await deps.documents.upsert(market, document, indexedAt);
-    const removed = await deps.documents.deleteMany(market, removals);
+    const removed = await deps.documents.deleteMany(market, removals, indexedAt);
     await deps.storeDocuments.upsertMany(market, storeRows, indexedAt);
     await deps.storeDocuments.deleteMany(market, storeRemovals);
     return ok(removed);

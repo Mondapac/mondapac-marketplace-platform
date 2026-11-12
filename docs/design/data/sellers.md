@@ -1677,7 +1677,12 @@ are plain values read through catalog's `culturesByIds` / `activeCultures`.
   (`anonymous` / `system`). Ids only; an unknown seller, one with no approval and another
   Market's seller are all absent; a failed read is `sellers.unavailable` (the caller fails closed).
 - Certificate re-check (ADR-0048 security review M2): `sellers.recheck-culture-certificates`
-  (system) runs on `certification.seller-certification-expired.v1` and `...-revoked.v1`. It reads
+  (system) runs on `certification.seller-certification-expired.v1` and `...-revoked.v1`, and
+  `sellers.recheck-cultures-of-issuer` (system) on `certification.issuer-deactivated.v1` with form
+  `derecognised` (security M3 of #848), for every seller of the issuer's approved certificates
+  (certification's `sellersOfIssuer`, pages of 200 in seller id order). Certification is asked
+  only about the required types (`validTypeCodes(context, sellerId, typeCodes)`); the answer is the
+  canonical `sellerCertificateValidAt`. It reads
   the seller's approved rows, keeps those of cultures with a required type, asks certification
   (`sellerValidCertificateTypes`) and takes each approval without a valid certificate of its type
   back to `requested` with the guarded write and an event. A renewal of the same type keeps the

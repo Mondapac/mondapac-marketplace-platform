@@ -12,6 +12,7 @@ import type { CertifiedCategories } from '../application/use-cases/certified-cat
 import type { SellerCertificateOverview } from '../application/use-cases/seller-certificate-overview.use-case';
 import type { SellerValidCertificateTypes } from '../application/use-cases/seller-valid-certificate-types.use-case';
 import type { SellerValidCertificateTypesSystem } from '../application/use-cases/seller-valid-certificate-types-system.use-case';
+import type { SellersOfIssuerSystem } from '../application/use-cases/sellers-of-issuer-system.use-case';
 import type { ClaimTermList } from '../application/use-cases/claim-term-list.use-case';
 import type { ClaimTermLocales } from '../application/use-cases/claim-term-locales.use-case';
 import type { MatchClaimTerms } from '../application/use-cases/match-claim-terms.use-case';
@@ -43,6 +44,7 @@ export interface CertificationFacadeUseCases {
   readonly sellerCertificateOverview: SellerCertificateOverview;
   readonly sellerValidCertificateTypes: SellerValidCertificateTypes;
   readonly sellerValidCertificateTypesSystem: SellerValidCertificateTypesSystem;
+  readonly sellersOfIssuerSystem: SellersOfIssuerSystem;
   readonly certifiedCategories: CertifiedCategories;
   readonly assertCategoriesRetirable: AssertCategoriesRetirable;
   readonly assertCategoriesRetirableSystem: AssertCategoriesRetirableSystem;
@@ -150,12 +152,30 @@ export class CertificationFacadeImplementation implements CertificationFacade {
   async sellerValidCertificateTypes(
     context: CallContext,
     sellerIds: readonly string[],
+    typeCodes: readonly string[],
   ): Promise<Result<readonly SellerValidCertificateTypesRow[], Failure>> {
     const useCase =
       context.actor.kind === 'system'
         ? this.useCases.sellerValidCertificateTypesSystem
         : this.useCases.sellerValidCertificateTypes;
-    const result = await useCase.execute(context, { sellerIds });
+    const result = await useCase.execute(context, { sellerIds, typeCodes });
+    if (result.ok) return result;
+    const { error } = result;
+    if (error.code === 'access.denied' || error.code === 'validation.failed') return err(error);
+    return err({ code: 'certification.unavailable' });
+  }
+
+  async sellersOfIssuer(
+    context: CallContext,
+    issuerId: string,
+    afterSellerId: string | null,
+    limit: number,
+  ): Promise<Result<readonly Id<'Seller'>[], Failure>> {
+    const result = await this.useCases.sellersOfIssuerSystem.execute(context, {
+      issuerId,
+      afterSellerId,
+      limit,
+    });
     if (result.ok) return result;
     const { error } = result;
     if (error.code === 'access.denied' || error.code === 'validation.failed') return err(error);

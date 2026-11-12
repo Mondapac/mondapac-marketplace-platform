@@ -585,6 +585,56 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
     expect(await stampOf(market)).not.toBe(afterDefinition);
   });
 
+  it("changes the stamp with a culture's status and with its category mark rows (package 3a)", async () => {
+    const stampOf = (target: typeof market) =>
+      run(target, () => reader.searchIndexStamp(target), true);
+    const cultureId = uuid7();
+    const letters = cultureId
+      .replace(/[^0-9]/g, '')
+      .slice(-8)
+      .replace(/\d/g, (d) => 'abcdefghij'[Number(d)]!);
+    await insert('cultures', {
+      id: cultureId,
+      market_id: market.marketId,
+      tenant_id: market.tenantId,
+      code: `stamp-${letters}`,
+      status: 'draft',
+      display_order: 0,
+      is_default: false,
+      created_by: uuid7(),
+      created_at: T0.toString(),
+      updated_at: T0.toString(),
+      version: 1,
+    });
+    const withCulture = await stampOf(market);
+    await owner.query(`UPDATE catalog.cultures SET status = 'active' WHERE id = $1`, [cultureId]);
+    const active = await stampOf(market);
+    expect(active).not.toBe(withCulture);
+
+    const categoryId = await category(market);
+    await insert('culture_categories', {
+      market_id: market.marketId,
+      tenant_id: market.tenantId,
+      culture_id: cultureId,
+      category_id: categoryId,
+      visible: false,
+      certification_mark: null,
+      updated_by: uuid7(),
+      updated_at: T0.toString(),
+    });
+    const marked = await stampOf(market);
+    expect(marked).not.toBe(active);
+    await owner.query(
+      `UPDATE catalog.culture_categories SET visible = NULL, certification_mark = 'neutral',
+         updated_at = $2 WHERE culture_id = $1`,
+      [cultureId, T0.add({ minutes: 1 }).toString()],
+    );
+    const changed = await stampOf(market);
+    expect(changed).not.toBe(marked);
+    await owner.query(`DELETE FROM catalog.culture_categories WHERE culture_id = $1`, [cultureId]);
+    expect(await stampOf(market)).not.toBe(changed);
+  });
+
   it('indexes no brand for a draft or archived brand, and nothing for a product with no revision', async () => {
     const draftBrand = await brand('Draft Brand', [`Dbrand${uuid7().slice(-8)}`], 'draft');
     const productId = await product(market, {

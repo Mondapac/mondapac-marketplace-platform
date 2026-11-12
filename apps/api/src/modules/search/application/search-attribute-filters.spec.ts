@@ -130,7 +130,6 @@ describe('SearchProducts with attribute filters', () => {
       categoryTree: { tree: () => Promise.resolve([]) },
       cultures: {
         visibleCodes: () => Promise.resolve(new Map()),
-        codeOf: () => Promise.resolve(undefined),
       },
       storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
       filterSource,

@@ -2,6 +2,8 @@ import type { Id } from '@mondapac/shared-kernel';
 import {
   CultureCategoryMarkChanged,
   CultureStatusChanged,
+  PlatformCategoryArchived,
+  PlatformCategoryMerged,
   OfferTagAdded,
   OfferTagBasisSwitched,
   OfferTagRemoved,
@@ -9,6 +11,8 @@ import {
   OfferTagSuspended,
 } from '../../../catalog';
 import {
+  CertificationTypeDeactivated,
+  IssuerDeactivated,
   SellerCertificationApproved,
   SellerCertificationExpired,
   SellerCertificationRevoked,
@@ -18,6 +22,10 @@ import {
   subscription,
   type RegisteredSubscription,
 } from '../../../../platform/events/event-subscriptions';
+import type {
+  RequestOfferReindex,
+  ReindexRequestReason,
+} from '../../application/use-cases/request-offer-reindex.use-case';
 import type {
   SyncOfferDocuments,
   SyncOfferDocumentsInput,
@@ -35,23 +43,34 @@ export const INDEX_ON_TAG_RESTORED_SUBSCRIBER = 'search.index-tag-restored';
 export const INDEX_ON_TAG_BASIS_SWITCHED_SUBSCRIBER = 'search.index-tag-basis-switched';
 export const INDEX_ON_CULTURE_MARK_CHANGED_SUBSCRIBER = 'search.index-culture-mark-changed';
 export const INDEX_ON_CULTURE_STATUS_CHANGED_SUBSCRIBER = 'search.index-culture-status-changed';
+export const INDEX_ON_CATEGORY_MERGED_SUBSCRIBER = 'search.index-category-merged';
+export const INDEX_ON_CATEGORY_ARCHIVED_SUBSCRIBER = 'search.index-category-archived';
+export const INDEX_ON_ISSUER_DEACTIVATED_SUBSCRIBER = 'search.index-issuer-deactivated';
+export const INDEX_ON_TYPE_DEACTIVATED_SUBSCRIBER = 'search.index-type-deactivated';
 
 /**
  * Search's subscriptions for the `culture_codes` of its documents (multi-culture package 3a;
- * ADR-0047 decision 8): every change of a membership, a seller certificate, an Offer tag, a
- * culture's category mark or visibility, or a culture's status re-indexes the Offers it can touch.
- * Each event only names what to look at; `SyncOfferDocuments` re-reads catalog, whose one shared
- * function decides the cultures, so a repeated or out-of-order delivery converges. Entry adapters:
- * the delivery's Market system-actor context goes unchanged to one `system` use case; a refusal
- * throws, so the delivery is retried and, after its last attempt, dead-lettered with an alert.
+ * ADR-0047 decision 8; ADR-0048 security review M3): every change of a membership, a seller
+ * certificate, an Offer tag, a culture's category mark or visibility, the category tree (merge,
+ * archive), a culture's status, a certificate issuer or a certification type re-indexes the Offers
+ * it can touch. Each event only names what to look at; `SyncOfferDocuments` re-reads catalog, whose
+ * one shared function decides the cultures, so a repeated or out-of-order delivery converges. Entry
+ * adapters: the delivery's Market system-actor context goes unchanged to one `system` use case; a
+ * refusal throws, so the delivery is retried and, after its last attempt, dead-lettered with an
+ * alert. Nothing here throws because a scope is large.
  *
  * - a membership or a seller certificate (approved, expired, revoked): the seller's Offers;
  * - a tag added, removed, suspended, restored or switched to another basis: that Offer;
- * - a mark or visibility row of a culture on a category: the Offers of that category's subtree;
- * - a culture's status: the Offers whose document holds the culture's code (the attribute
- *   reindex, whose catalog stamp covers the cultures, picks up the Offers it newly shows).
+ * - a culture's mark or visibility row on a category, a merge (source and target) or an archive:
+ *   the Offers of the subtree, directly up to the threshold, else handed to the full reindex;
+ * - a culture's status, a derecognised issuer (closed-to-new changes no validity) or a deactivated
+ *   type: the full reindex is asked for (`RequestOfferReindex`; it runs at its next tick, at most
+ *   five minutes later, resumable).
  */
-export function cultureIndexSubscriptions(sync: SyncOfferDocuments): RegisteredSubscription[] {
+export function cultureIndexSubscriptions(
+  sync: SyncOfferDocuments,
+  reindex: RequestOfferReindex,
+): RegisteredSubscription[] {
   const run = async (
     name: string,
     context: Parameters<SyncOfferDocuments['execute']>[0],
@@ -59,7 +78,18 @@ export function cultureIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
   ): Promise<void> => {
     const result = await sync.execute(context, input);
     if (!result.ok) throw new Error(`${name} refused: ${result.error.code}`);
+    if (result.value.handedOff === true) await ask(name, context, 'scope-too-large');
   };
+  const ask = async (
+    name: string,
+    context: Parameters<SyncOfferDocuments['execute']>[0],
+    reason: ReindexRequestReason,
+  ): Promise<void> => {
+    const result = await reindex.execute(context, { reason });
+    if (!result.ok) throw new Error(`${name} refused: ${result.error.code}`);
+  };
+  const subtree = (name: string, context: Parameters<typeof run>[1], categoryId: string) =>
+    run(name, context, { categoryId: categoryId as Id<'Category'>, handOffAbove: true });
   const seller = (name: string, context: Parameters<typeof run>[1], sellerId: string) =>
     run(name, context, { sellerId: sellerId as Id<'Seller'> });
   const byTag = [
@@ -106,17 +136,42 @@ export function cultureIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
       name: INDEX_ON_CULTURE_MARK_CHANGED_SUBSCRIBER,
       event: CultureCategoryMarkChanged,
       handle: (event, _delivery, context) =>
-        run(INDEX_ON_CULTURE_MARK_CHANGED_SUBSCRIBER, context, {
-          categoryId: event.payload.categoryId as Id<'Category'>,
-        }),
+        subtree(INDEX_ON_CULTURE_MARK_CHANGED_SUBSCRIBER, context, event.payload.categoryId),
+    }),
+    subscription({
+      name: INDEX_ON_CATEGORY_MERGED_SUBSCRIBER,
+      event: PlatformCategoryMerged,
+      handle: async (event, _delivery, context) => {
+        await subtree(INDEX_ON_CATEGORY_MERGED_SUBSCRIBER, context, event.payload.categoryId);
+        await subtree(INDEX_ON_CATEGORY_MERGED_SUBSCRIBER, context, event.payload.mergedIntoId);
+      },
+    }),
+    subscription({
+      name: INDEX_ON_CATEGORY_ARCHIVED_SUBSCRIBER,
+      event: PlatformCategoryArchived,
+      handle: (event, _delivery, context) =>
+        subtree(INDEX_ON_CATEGORY_ARCHIVED_SUBSCRIBER, context, event.payload.categoryId),
     }),
     subscription({
       name: INDEX_ON_CULTURE_STATUS_CHANGED_SUBSCRIBER,
       event: CultureStatusChanged,
-      handle: (event, _delivery, context) =>
-        run(INDEX_ON_CULTURE_STATUS_CHANGED_SUBSCRIBER, context, {
-          cultureId: event.payload.cultureId as Id<'Culture'>,
-        }),
+      handle: (_event, _delivery, context) =>
+        ask(INDEX_ON_CULTURE_STATUS_CHANGED_SUBSCRIBER, context, 'culture-status'),
+    }),
+    subscription({
+      name: INDEX_ON_ISSUER_DEACTIVATED_SUBSCRIBER,
+      event: IssuerDeactivated,
+      handle: async (event, _delivery, context) => {
+        // closed-to-new keeps every approved certificate valid to its boundary (design 3.5).
+        if (event.payload.form !== 'derecognised') return;
+        await ask(INDEX_ON_ISSUER_DEACTIVATED_SUBSCRIBER, context, 'issuer-derecognised');
+      },
+    }),
+    subscription({
+      name: INDEX_ON_TYPE_DEACTIVATED_SUBSCRIBER,
+      event: CertificationTypeDeactivated,
+      handle: (_event, _delivery, context) =>
+        ask(INDEX_ON_TYPE_DEACTIVATED_SUBSCRIBER, context, 'type-deactivated'),
     }),
   ];
 }

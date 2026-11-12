@@ -76,7 +76,7 @@ export class RecheckCultureCertificates extends UseCase<
     if (id === null || !id.ok) {
       return err({ code: 'validation.failed', fields: [{ path: 'sellerId', code: 'format' }] });
     }
-    const result = await this.#recheck(context, id.value);
+    const result = await recheckSellerCultures(this.deps, context, id.value);
     this.#logger.log({
       msg: 'sellers.culture-certificates-rechecked',
       code: result.ok ? 'rechecked' : result.error.code,
@@ -86,65 +86,72 @@ export class RecheckCultureCertificates extends UseCase<
     });
     return result;
   }
+}
 
-  async #recheck(
-    context: CallContext,
-    sellerId: Id<'Seller'>,
-  ): Promise<Result<RecheckCultureCertificatesResult, RecheckCultureCertificatesFailure>> {
-    const { deps } = this;
-    const { market } = context;
-    const unavailable = err({ code: 'sellers.unavailable' } as const);
-    let approved: readonly SellerCultureState[];
-    try {
-      const read = await deps.unitOfWork.run(
-        market,
-        async () => ok(await deps.sellerCultures.forSeller(market, sellerId)),
-        { readOnly: true },
-      );
-      if (!read.ok) return unavailable;
-      approved = read.value.filter((row) => row.status === 'approved');
-    } catch {
-      return unavailable;
-    }
-    if (approved.length === 0) return ok({ demoted: 0 });
-
-    const cultures = await deps.cultureDirectory.byIds(
-      context,
-      approved.map((row) => row.cultureId),
+/**
+ * The body of the re-check for one seller (shared with the re-check of a derecognised issuer's
+ * sellers): the seller's `approved` memberships in certified cultures whose type the seller no
+ * longer holds a valid certificate of go back to `requested`.
+ */
+export async function recheckSellerCultures(
+  deps: RecheckCultureCertificatesDependencies,
+  context: CallContext,
+  sellerId: Id<'Seller'>,
+): Promise<Result<RecheckCultureCertificatesResult, RecheckCultureCertificatesFailure>> {
+  const { market } = context;
+  const unavailable = err({ code: 'sellers.unavailable' } as const);
+  let approved: readonly SellerCultureState[];
+  try {
+    const read = await deps.unitOfWork.run(
+      market,
+      async () => ok(await deps.sellerCultures.forSeller(market, sellerId)),
+      { readOnly: true },
     );
-    if (!cultures.ok) return unavailable;
-    const certified = approved.flatMap((row) => {
-      const type = cultures.value.get(row.cultureId)?.requiredCertificationType ?? null;
-      return type === null ? [] : [{ row, type }];
+    if (!read.ok) return unavailable;
+    approved = read.value.filter((row) => row.status === 'approved');
+  } catch {
+    return unavailable;
+  }
+  if (approved.length === 0) return ok({ demoted: 0 });
+
+  const cultures = await deps.cultureDirectory.byIds(
+    context,
+    approved.map((row) => row.cultureId),
+  );
+  if (!cultures.ok) return unavailable;
+  const certified = approved.flatMap((row) => {
+    const type = cultures.value.get(row.cultureId)?.requiredCertificationType ?? null;
+    return type === null ? [] : [{ row, type }];
+  });
+  if (certified.length === 0) return ok({ demoted: 0 });
+
+  const valid = await deps.certificateDirectory.validTypeCodes(context, sellerId, [
+    ...new Set(certified.map(({ type }) => type)),
+  ]);
+  if (!valid.ok) return unavailable;
+  const lapsed = certified.filter(({ type }) => !valid.value.has(type)).map(({ row }) => row);
+  if (lapsed.length === 0) return ok({ demoted: 0 });
+
+  try {
+    const written = await deps.unitOfWork.run<number, never>(market, async () => {
+      const at = deps.clock.now();
+      let moved = 0;
+      for (const state of lapsed) {
+        const next = demoteMembership(state, at);
+        const won = await deps.sellerCultures.transition(market, next, {
+          version: state.version,
+          status: 'approved',
+        });
+        // Lost: the row changed since (a reviewer or another delivery acted); the next event or
+        // the read-time check covers it.
+        if (!won) continue;
+        await announce(deps.outbox, context, next);
+        moved += 1;
+      }
+      return ok(moved);
     });
-    if (certified.length === 0) return ok({ demoted: 0 });
-
-    const valid = await deps.certificateDirectory.validTypeCodes(context, sellerId);
-    if (!valid.ok) return unavailable;
-    const lapsed = certified.filter(({ type }) => !valid.value.has(type)).map(({ row }) => row);
-    if (lapsed.length === 0) return ok({ demoted: 0 });
-
-    try {
-      const written = await deps.unitOfWork.run<number, never>(market, async () => {
-        const at = deps.clock.now();
-        let moved = 0;
-        for (const state of lapsed) {
-          const next = demoteMembership(state, at);
-          const won = await deps.sellerCultures.transition(market, next, {
-            version: state.version,
-            status: 'approved',
-          });
-          // Lost: the row changed since (a reviewer or another delivery acted); the next event or
-          // the read-time check covers it.
-          if (!won) continue;
-          await announce(deps.outbox, context, next);
-          moved += 1;
-        }
-        return ok(moved);
-      });
-      return written.ok ? ok({ demoted: written.value }) : unavailable;
-    } catch {
-      return unavailable;
-    }
+    return written.ok ? ok({ demoted: written.value }) : unavailable;
+  } catch {
+    return unavailable;
   }
 }

@@ -60,6 +60,10 @@ import type { RatingSyncDependencies } from './application/rating-sync-dependenc
 import { SyncOfferDocuments } from './application/use-cases/sync-offer-documents.use-case';
 import { searchProviders } from './infrastructure/search-providers';
 import { ReindexOfferAttributes } from './application/use-cases/reindex-offer-attributes.use-case';
+import {
+  RequestOfferReindex,
+  type RequestOfferReindexDependencies,
+} from './application/use-cases/request-offer-reindex.use-case';
 import type { ReindexDependencies } from './application/reindex-dependencies';
 import { INDEX_STAMP, REINDEX_PROGRESS } from './application/ports/reindex';
 import { reindexAttributesJob } from './presentation/jobs/reindex-offer-attributes.job';
@@ -138,6 +142,18 @@ function reindexProvider(): FactoryProvider<ReindexOfferAttributes> {
       ),
   };
 }
+
+/** The reindex request (multi-culture package 3a): one write to the progress row. */
+const requestReindexProvider: FactoryProvider<RequestOfferReindex> = {
+  provide: RequestOfferReindex,
+  inject: [USE_CASE_GATE, UNIT_OF_WORK, REINDEX_PROGRESS, CLOCK],
+  useFactory: (
+    gate: UseCaseGate,
+    unitOfWork: RequestOfferReindexDependencies['unitOfWork'],
+    progress: RequestOfferReindexDependencies['progress'],
+    clock: RequestOfferReindexDependencies['clock'],
+  ) => new RequestOfferReindex(gate, { unitOfWork, progress, clock }),
+};
 
 const SHELF_PORTS: readonly [keyof ShelfDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
@@ -287,18 +303,23 @@ function productDetailProvider<U>(
     productDetailProvider(ViewProductDetail),
     ratingSyncProvider(),
     reindexProvider(),
+    requestReindexProvider,
     {
       provide: SEARCH_ASSISTANT_FACADE,
       inject: [SearchProducts, ListBestsellers, ListSpecials],
       useFactory: (search: SearchProducts, bestsellers: ListBestsellers, specials: ListSpecials) =>
         new SearchAssistantFacadeImplementation(search, bestsellers, specials),
     },
-    registerSubscriptionsFrom('search', [SyncOfferDocuments], (sync: SyncOfferDocuments) => [
-      ...catalogIndexSubscriptions(sync),
-      ...sellerAccessIndexSubscriptions(sync),
-      ...namesIndexSubscriptions(sync),
-      ...cultureIndexSubscriptions(sync),
-    ]),
+    registerSubscriptionsFrom(
+      'search',
+      [SyncOfferDocuments, RequestOfferReindex],
+      (sync: SyncOfferDocuments, reindex: RequestOfferReindex) => [
+        ...catalogIndexSubscriptions(sync),
+        ...sellerAccessIndexSubscriptions(sync),
+        ...namesIndexSubscriptions(sync),
+        ...cultureIndexSubscriptions(sync, reindex),
+      ],
+    ),
     registerJobsFrom(
       'search',
       [RebuildOfferIndex, SyncProductRatings, ReindexOfferAttributes],

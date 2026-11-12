@@ -29,6 +29,7 @@ import { SellersModule } from './sellers.module';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { CultureDemoteApprovalsSystem } from './application/use-cases/culture-demote-approvals-system.use-case';
 import { RecheckCultureCertificates } from './application/use-cases/recheck-culture-certificates.use-case';
+import { RecheckCulturesOfIssuer } from './application/use-cases/recheck-cultures-of-issuer.use-case';
 import { cultureCertificateSubscriptions } from './presentation/subscribers/culture-certificate.subscriptions';
 
 /**
@@ -53,9 +54,12 @@ import { cultureCertificateSubscriptions } from './presentation/subscribers/cult
     // event (N1). Their events come from modules that import sellers, so they are registered here.
     registerSubscriptionsFrom(
       'sellers',
-      [RecheckCultureCertificates, CultureDemoteApprovalsSystem],
-      (recheck: RecheckCultureCertificates, demote: CultureDemoteApprovalsSystem) =>
-        cultureCertificateSubscriptions(recheck, demote),
+      [RecheckCultureCertificates, CultureDemoteApprovalsSystem, RecheckCulturesOfIssuer],
+      (
+        recheck: RecheckCultureCertificates,
+        demote: CultureDemoteApprovalsSystem,
+        recheckIssuer: RecheckCulturesOfIssuer,
+      ) => cultureCertificateSubscriptions(recheck, demote, recheckIssuer),
     ),
   ],
 })

@@ -421,7 +421,6 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       categoryTree: { tree: () => Promise.resolve([]) },
       cultures: {
         visibleCodes: () => Promise.resolve(new Map()),
-        codeOf: () => Promise.resolve(undefined),
       },
       storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
       filterSource: { filters: () => Promise.resolve([]) },
@@ -819,7 +818,6 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
 
   describe('culture codes (multi-culture package 3a; ADR-0047 decision 8)', () => {
     const certified = code === 'AU' ? 'muslim' : 'jewish';
-    const cultureId = id<'Culture'>();
     const codesOf = async (offerId: Id<'Offer'>, on: MarketContext = market) => {
       const row = await sql.query<{ c: string[] }>(
         'SELECT culture_codes AS c FROM "search"."offer_documents" WHERE offer_id = $1 AND market_id = $2',
@@ -858,6 +856,62 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       expect(row.rows[0]?.d).toMatch(/USING gin \(culture_codes\)/);
     });
 
+    // The statements Prisma sends for `has` (offerIdsWithCultureCode) and `hasSome` (the shape of
+    // the package 3b filter, and offerIdsInCategories) are `@>` and `&&` on the array: both are
+    // GIN-indexable, where `= ANY (column)` would not be. Sequential scans are switched off for the
+    // EXPLAIN only, so the planner shows whether the index can serve the shape at all (on a near
+    // empty table it would otherwise scan; with the Market and the Offer-id order the planner
+    // weighs the primary key against it by the statistics of the day).
+    it.each([
+      ['has (one code)', `"culture_codes" @> $2::text[]`, 'offer_documents_culture_codes_idx'],
+      ['hasSome (3b filter)', `"culture_codes" && $2::text[]`, 'offer_documents_culture_codes_idx'],
+      ['category hasSome', `"category_ids" && $2::uuid[]`, 'offer_documents_category_ids_idx'],
+    ])('serves the %s shape from the GIN index', async (name, predicate, index) => {
+      await seed(market, doc({ name: 'Indexed', cultureCodes: [certified] }));
+      await sql.query('BEGIN');
+      try {
+        await sql.query('SET LOCAL enable_seqscan = off');
+        const plan = await sql.query<{ 'QUERY PLAN': string }>(
+          `EXPLAIN SELECT offer_id FROM "search"."offer_documents" WHERE ${predicate.replace('$2', '$1')}`,
+          [name.startsWith('category') ? [id<'Category'>()] : [certified]],
+        );
+        const text = plan.rows.map((row) => row['QUERY PLAN']).join('\n');
+        expect(text).toContain(index);
+      } finally {
+        await sql.query('ROLLBACK');
+      }
+    });
+
+    it('never lets an older read overwrite or delete a document from a later read (L2)', async () => {
+      const later = doc({ name: 'Later read', cultureCodes: [certified] });
+      const T1 = T0.add({ seconds: 1 });
+      await inUnit(market, () => documents.upsert(market, later, T1));
+      // A sync that began reading before (T0) commits after: its answer is dropped.
+      await inUnit(market, () =>
+        documents.upsert(market, { ...later, name: 'Earlier read', cultureCodes: [] }, T0),
+      );
+      expect(await codesOf(later.offerId)).toEqual([certified]);
+      expect(await inUnit(market, () => documents.deleteMany(market, [later.offerId], T0))).toBe(0);
+      // An equal or later read writes, and deletes.
+      await inUnit(market, () =>
+        documents.upsert(market, { ...later, cultureCodes: ['general'] }, T1),
+      );
+      expect(await codesOf(later.offerId)).toEqual(['general']);
+      expect(await inUnit(market, () => documents.deleteMany(market, [later.offerId], T1))).toBe(1);
+    });
+
+    it('pages the Offers that name a category subtree by Offer id (keyset)', async () => {
+      const shelf = id<'Category'>();
+      const named = [1, 2, 3].map(() => doc({ name: 'Shelf item', categoryIds: [shelf] }));
+      await seed(market, ...named, doc({ name: 'Elsewhere' }));
+      await seed(other, doc({ name: 'Other market', categoryIds: [shelf] }));
+      const sorted = named.map((d) => d.offerId).sort();
+      const page = (after?: Id<'Offer'>) =>
+        inUnit(market, () => documents.offerIdsInCategories(market, [shelf], 2, after), true);
+      expect(await page()).toEqual(sorted.slice(0, 2));
+      expect(await page(sorted[1])).toEqual(sorted.slice(2));
+    });
+
     it('pages the Offers that hold a code, in this Market only', async () => {
       const holders = [1, 2, 3].map(() => doc({ name: 'Holder', cultureCodes: [certified] }));
       await seed(market, ...holders, doc({ name: 'Other', cultureCodes: ['general'] }));
@@ -871,8 +925,9 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       expect(await page(sorted[2])).toEqual([]);
     });
 
-    it('re-indexes the codes through SyncOfferDocuments: by Offer and by culture', async () => {
+    it('re-indexes the codes through SyncOfferDocuments: by Offer and by category subtree', async () => {
       const sellerId = id<'Seller'>();
+      const shelf = id<'Category'>();
       const first = id<'Offer'>();
       const second = id<'Offer'>();
       const facts = (name: string): FeedFacts => ({
@@ -881,7 +936,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
         sellable: true,
         name,
         shortText: null,
-        categoryIds: [],
+        categoryIds: [shelf],
         attributes: { searchText: '', facets: [], numbers: {} },
         variants: [],
       });
@@ -909,7 +964,6 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
             Promise.resolve(
               new Map(offerIds.flatMap((o) => (visible.has(o) ? [[o, visible.get(o)!]] : []))),
             ),
-          codeOf: (_context, asked) => Promise.resolve(asked === cultureId ? certified : undefined),
         },
         storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
         filterSource: { filters: () => Promise.resolve([]) },
@@ -944,10 +998,13 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       expect(await codesOf(first)).toEqual(['general', certified]);
       expect(await codesOf(second)).toEqual(['general']);
 
-      // The seller's certificate expired: catalog answers the plain culture only, and the
-      // culture-scoped re-sync touches only the document that held the certified code.
+      // A culture hid the category: catalog answers the plain culture only, and the subtree
+      // re-sync of the mark event (keyset paged over the real index) rewrites both documents.
       visible.set(first, ['general']);
-      expect(await sync({ cultureId })).toEqual({ ok: true, value: { upserted: 1, deleted: 0 } });
+      expect(await sync({ categoryId: shelf, handOffAbove: true })).toEqual({
+        ok: true,
+        value: { upserted: 2, deleted: 0 },
+      });
       expect(await codesOf(first)).toEqual(['general']);
 
       // A tag added later: the Offer-scoped re-sync (the tag event's) writes the code back.

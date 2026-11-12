@@ -69,7 +69,22 @@ seller. Package 2 builds the seller side. The buyer side is package 4.
   - M2 is closed both ways: catalog's visibility rule checks for a certified culture that the
     seller holds a valid certificate of the type now (certification's type-codes-only facade
     method `sellerValidCertificateTypes`), and `sellers` demotes an approval to `requested` on
-    the certificate expired and revoked events when no valid certificate of the type remains.
+    the certificate expired and revoked events, and for every seller of a derecognised issuer,
+    when no valid certificate of the type remains.
+  - Review round of #848 (security M1): `sellerValidCertificateTypes` takes the asked type codes
+    and answers by the one canonical `sellerCertificateValidAt` that `evaluateClaims` uses (issuer
+    allow-list of active and closed-to-new, a required expiry present, both seller zones present,
+    the earliest boundary across them). The reviewer's approval and the M2 re-check read it.
+  - Security M2 of #848: a hidden category hides its whole branch for the culture. A row lower
+    down cannot show it again, and a row made only to set a mark leaves `visible` null (inherit;
+    migration `20261112160000_catalog_culture_categories_visible_inherit`).
+  - Security M3 of #848: search re-indexes on a merge (both subtrees), an archive, an issuer
+    derecognised and a type deactivated; the last two and a culture's status ask for the full
+    resumable reindex (`search.request-offer-reindex`), since catalog's stamp cannot see them or
+    the scope is the whole Market. Security L2: a document keeps the answer of the latest read
+    (`indexed_at` is the instant the sync began reading; an older write or delete is dropped).
+  - Package 2 fix found here: the signup job (`ApplySignupCultures`, system) called the
+    anonymous-only culture reads; `activeCultures` and `culturesByIds` now have `system` twins.
   - N1 (a failed revert of a required-type change): the simpler option, an outbox-driven retry.
     Catalog writes `catalog.culture-approvals-invalidated.v1` in its own unit and tries the
     demotion at once; the sellers consumer demotes and throws while approvals remain, so the
@@ -81,6 +96,22 @@ seller. Package 2 builds the seller side. The buyer side is package 4.
   - QA: the decision e2e covers an expired and a wrong-type certificate and another Market's
     seller. QC: `docs/design/data/catalog.md` notes `culture.required-type-locked`,
     `culture.locale-uncheckable` and the visibility facade.
-  - Operations should alert on the log messages `catalog.culture-edit.required-type-revert-failed`
-    and a dead-lettered `sellers.demote-on-culture-approvals-invalidated` delivery; the runbook
-    entry is not yet written.
+  - Operations alerts on `catalog.culture-edit.required-type-revert-failed`, a dead-lettered
+    `sellers.demote-on-culture-approvals-invalidated` delivery and `sellers.culture-guard.demote-failed`
+    are tracked as risk R-11 in `docs/project/risk-register.md` (owner: Kazem, devops-engineer),
+    to be in place before the switch of package 3b is turned on.
+- Package 3b scope (ADR-0047 decisions 2, 3 and 5; nothing of it is built in 3a):
+  - The switch: the `multi-culture` Market setting in `settings` (keys
+    `settings.multi-culture.view` / `.manage`, seeded off, restrictive safe value). Preconditions
+    when it is turned on: at least two Active cultures, each still with an approved seller after
+    the one-time re-check below. The confirmation shows how many Offers and sellers each culture
+    would show or hide, and how many approvals the re-check took back. Audited; turning it off
+    deletes nothing. Security review of the setting (ADR-0026 decision 9).
+  - The one-time re-check at switch-on: every membership in a culture with a required
+    certification type is checked against `sellerValidCertificateTypes` (the M2 re-check, for all
+    sellers); one without a valid certificate of the type goes back to `requested`.
+  - The filter on every buyer read path while the switch is on, through catalog's shared filter
+    (`culture_codes` with `&&` in search, `visibleCultureCodesForOffers` / `isOfferVisibleIn`
+    elsewhere); a seller with no approved culture is shown nowhere (fail closed).
+  - Its contract test: every buyer read path, with the switch on and an Offer visible only in
+    another culture, on both Market fixtures; it fails when a buyer read path skips the filter.

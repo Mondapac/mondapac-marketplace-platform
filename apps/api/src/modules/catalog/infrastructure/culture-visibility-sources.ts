@@ -10,6 +10,9 @@ import type {
 
 const UNAVAILABLE = err({ code: 'culture-visibility.source-unavailable' } as const);
 
+/** A shape check that does not narrow the value's type (an answer from another module). */
+const isList = (value: unknown): boolean => Array.isArray(value);
+
 /**
  * {@link SellerMemberCultures} over `sellers.approvedCulturesOfSellers`. The caller's context goes
  * through unchanged (the facade picks its `anonymous` or `system` use case). Anything but a map of
@@ -55,17 +58,25 @@ export class CertificationSellerCertificateTypes implements SellerCertificateTyp
   async validTypes(
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
+    typeCodes: readonly string[],
   ): Promise<
     Result<ReadonlyMap<Id<'Seller'>, ReadonlySet<string>>, CultureVisibilitySourceUnavailable>
   > {
     const asked = [...new Set(sellerIds)];
     try {
-      const answer = await this.certification.sellerValidCertificateTypes(context, asked);
+      const answer = await this.certification.sellerValidCertificateTypes(
+        context,
+        asked,
+        typeCodes,
+      );
       if (!answer.ok || answer.value.length !== asked.length) return UNAVAILABLE;
       const out = new Map<Id<'Seller'>, ReadonlySet<string>>();
       for (const row of answer.value) {
-        if (!asked.includes(row.sellerId) || !Array.isArray(row.validTypeCodes)) return UNAVAILABLE;
-        out.set(row.sellerId, new Set(row.validTypeCodes));
+        const codes: readonly string[] = row.validTypeCodes;
+        if (!asked.includes(row.sellerId) || !isList(codes)) return UNAVAILABLE;
+        // Never more than was asked: an unasked code is a malformed answer.
+        if (codes.some((code) => !typeCodes.includes(code))) return UNAVAILABLE;
+        out.set(row.sellerId, new Set(codes));
       }
       return out.size === asked.length ? ok(out) : UNAVAILABLE;
     } catch {

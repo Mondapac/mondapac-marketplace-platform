@@ -186,6 +186,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'promotions.qualify-referral-on-delivery',
       'search.index-approved-seller',
       'search.index-availability-changed',
+      'search.index-category-archived',
+      'search.index-category-merged',
       'search.index-certificate-approved',
       'search.index-certificate-expired',
       'search.index-certificate-revoked',
@@ -193,6 +195,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'search.index-culture-mark-changed',
       'search.index-culture-status-changed',
       'search.index-deleted-offer',
+      'search.index-issuer-deactivated',
       'search.index-listing-changed-offer',
       'search.index-moved-category',
       'search.index-moved-offer',
@@ -209,6 +212,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'search.index-tag-removed',
       'search.index-tag-restored',
       'search.index-tag-suspended',
+      'search.index-type-deactivated',
       'search.unindex-suspended-seller',
       'sellers.after-submission',
       // Multi-culture package 2 (ADR-0048): a new seller's default "universal" cultures.
@@ -220,6 +224,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'sellers.demote-on-culture-approvals-invalidated',
       'sellers.recheck-cultures-on-certificate-expired',
       'sellers.recheck-cultures-on-certificate-revoked',
+      'sellers.recheck-cultures-on-issuer-deactivated',
     ]);
     expect(subscriptions.subscribersOf('ordering.order-paid.v1')).toEqual([
       'notifications.order-confirmation-mail',
@@ -309,9 +314,11 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('catalog.platform-category-merged.v1')).toEqual([
       'catalog.report-merged-category',
+      'search.index-category-merged',
     ]);
     expect(subscriptions.subscribersOf('catalog.platform-category-archived.v1')).toEqual([
       'catalog.report-archived-category',
+      'search.index-category-archived',
     ]);
     expect(subscriptions.subscribersOf('catalog.product-revision-published.v1')).toEqual([
       'notifications.seller-product-published-notice',

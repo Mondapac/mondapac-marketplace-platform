@@ -293,17 +293,30 @@ index, the answer carries counts, and the use cases talk to a port.
 ## Culture codes in the index (multi-culture package 3a, 12 Nov 2026)
 
 - **Column.** `search.offer_documents.culture_codes` (`TEXT[]`, default empty, at most 200 codes,
-  no null element; GIN index `offer_documents_culture_codes_idx`; migration
-  `20261112150000_search_offer_culture_codes`). It holds the codes of the cultures the Offer is
-  visible in, as catalog's `visibleCultureCodesForOffers` answers them (ADR-0047 decision 5); an
-  Offer catalog does not name gets an empty list. A failed answer throws, so the delivery is
-  retried and the document is never written as "no culture". **Buyer reads do not filter on it
-  yet** (package 3b, behind the switch).
-- **Re-index.** Re-syncs on seller culture status changes
-  (`search.index-seller-culture-changed`, by seller), certificate approved, expired and revoked
-  (by seller), tag added, removed, suspended, restored and basis switched (by Offer); culture mark
-  changes re-sync the category's subtree (`search.index-culture-mark-changed`); a culture status
-  change re-syncs the documents that hold its code (`{cultureId}` scope, paged by
-  `offerIdsWithCultureCode`). Offers that become visible in a re-activated culture, a required
-  type change and the first fill of the column come from the stamp-driven full reindex (catalog's
-  index stamp now includes each culture's code, status and required type).
+  no null element). Migration `20261112150000_search_offer_culture_codes` adds the column, the
+  CHECK `NOT VALID` then `VALIDATE` on its own, and the grant, with `lock_timeout` 5 s and
+  `statement_timeout` 60 s; `20261112150100_search_offer_culture_codes_index` builds the GIN index
+  `offer_documents_culture_codes_idx` `CONCURRENTLY`, alone in its file (its down is a lone
+  `DROP INDEX CONCURRENTLY`). It holds the codes of the cultures the Offer is visible in, as
+  catalog's `visibleCultureCodesForOffers` answers them (ADR-0047 decision 5), one facade call per
+  sync batch of 200; an Offer catalog does not name gets an empty list. A failed answer throws, so
+  the delivery is retried and the document is never written as "no culture". **Buyer reads do not
+  filter on it yet** (package 3b, behind the switch). The query shapes are `@>` (Prisma `has`) and
+  `&&` (`hasSome`, the 3b filter); both are served by the GIN index (EXPLAIN in the database spec),
+  never `= ANY (column)`.
+- **Re-index.** By seller: a seller culture status change and a seller certificate approved,
+  expired or revoked. By Offer: a tag added, removed, suspended, restored or switched to another
+  basis. By category subtree (keyset paged by Offer id, `offerIdsInCategories(market, ids, limit,
+  after)`): a culture's mark change, a merge (source and target) and an archive; past 5 pages
+  (1000 Offers) the subtree is handed to the full reindex instead of being read on. The full
+  resumable reindex is asked for (`search.request-offer-reindex`, one write that clears the done
+  and target stamps of `search.reindex_state`; the five-minute job then re-reads every Offer, and a
+  run already under way does not mark itself done) on a culture's status change, an issuer
+  derecognised, a certification type deactivated and a handed-off subtree. Catalog's index stamp
+  also covers each culture's code, status and required type and the culture mark rows, so the
+  first fill of the column and a required-type change come from the stamp-driven reindex. Nothing
+  throws because a scope is large.
+- **Ordering (security L2 of #848).** A document's `indexed_at` is the instant its sync began
+  reading; a write or a delete from an earlier read never replaces a document from a later read
+  (`UPDATE ... WHERE indexed_at <= $read`, else an insert that skips an existing row). Every change
+  emits an event whose sync starts after it, so the last answer standing reflects the last change.

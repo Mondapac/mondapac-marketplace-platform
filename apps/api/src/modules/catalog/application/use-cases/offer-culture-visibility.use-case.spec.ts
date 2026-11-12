@@ -136,8 +136,12 @@ describe.each([
     list: () => Promise.resolve(activeCultures),
   } as unknown as CultureReader;
   let rows: Map<string, CultureCategoryRow[]>;
+  const rowReads: Id<'Culture'>[][] = [];
   const cultures = {
-    categoryRows: (_m: MarketContext, id: Id<'Culture'>) => Promise.resolve(rows.get(id) ?? []),
+    categoryRowsOf: (_m: MarketContext, ids: readonly Id<'Culture'>[]) => {
+      rowReads.push([...ids]);
+      return Promise.resolve(new Map(ids.map((id) => [id, rows.get(id) ?? []])));
+    },
   } as unknown as CultureRepository;
 
   let members: Map<Id<'Seller'>, Set<Id<'Culture'>>> | 'down';
@@ -158,14 +162,23 @@ describe.each([
       ),
   };
   let validTypes: Set<string> | 'down';
+  const typeAsks: string[][] = [];
   const certificateCalls: Id<'Seller'>[][] = [];
   const certificateTypes: SellerCertificateTypes = {
-    validTypes: (_c, sellerIds) => {
+    validTypes: (_c, sellerIds, typeCodes) => {
       certificateCalls.push([...sellerIds]);
+      typeAsks.push([...typeCodes]);
       return Promise.resolve(
         validTypes === 'down'
           ? err({ code: 'culture-visibility.source-unavailable' } as const)
-          : ok(new Map(sellerIds.map((s) => [s, validTypes as Set<string>]))),
+          : ok(
+              new Map(
+                sellerIds.map((s) => [
+                  s,
+                  new Set([...(validTypes as Set<string>)].filter((t) => typeCodes.includes(t))),
+                ]),
+              ),
+            ),
       );
     },
   };
@@ -208,6 +221,8 @@ describe.each([
     members = new Map([[sellerId, new Set([certifiedCulture.id, plainCulture.id])]]);
     validTypes = new Set([fx.type]);
     certificateCalls.length = 0;
+    rowReads.length = 0;
+    typeAsks.length = 0;
     units.length = 0;
     insideUnit = false;
     askedInsideUnit = false;
@@ -292,12 +307,30 @@ describe.each([
     rows.set(plainCulture.id, [{ categoryId: root, visible: false, certificationMark: null }]);
     const offerId = add(offerState(), [tag()]);
     expect(await codesOf(offerId)).toEqual([fx.certified]);
-    // A row on the category itself shows it again.
+    // A row lower down cannot show it again, nor can a mark-only row (ADR-0048 M2).
     rows.set(plainCulture.id, [
       { categoryId: root, visible: false, certificationMark: null },
       { categoryId: leaf, visible: true, certificationMark: null },
     ]);
-    expect(await codesOf(offerId)).toEqual([fx.plain, fx.certified]);
+    expect(await codesOf(offerId)).toEqual([fx.certified]);
+    rows.set(certifiedCulture.id, [
+      { categoryId: root, visible: false, certificationMark: null },
+      { categoryId: leaf, visible: null, certificationMark: 'neutral' },
+    ]);
+    expect(await codesOf(offerId)).toEqual([]);
+  });
+
+  it('reads the category rows of every culture in one statement and the products in one batch', async () => {
+    const many = Array.from({ length: 30 }, (_, n) =>
+      add(offerState({ productId: n % 2 === 0 ? productId : ids.next<'Product'>() }), [tag()]),
+    );
+    const answer = await facade().visibleCultureCodesForOffers(anonymous, many);
+    expect(answer.ok && answer.value.size).toBe(30);
+    expect(rowReads).toEqual([[certifiedCulture.id, plainCulture.id]]);
+    expect(claims.publishedBatches).toBe(1);
+    // Certification is asked only about the types the active cultures require.
+    expect(typeAsks).toEqual([[fx.type]]);
+    expect(claims.publishedReads).toBe(0);
   });
 
   it('a seller approved nowhere is visible nowhere; certificates are asked only for certified members', async () => {

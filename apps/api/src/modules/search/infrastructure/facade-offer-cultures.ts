@@ -3,7 +3,7 @@ import { MAX_VISIBILITY_OFFERS, type CatalogCulturesFacade } from '../../catalog
 import type { OfferCultureSource } from '../application/ports/offer-cultures';
 
 /**
- * {@link OfferCultureSource} over catalog's `visibleCultureCodesForOffers` and `culturesByIds`, in
+ * {@link OfferCultureSource} over catalog's `visibleCultureCodesForOffers`, in
  * calls of at most {@link MAX_VISIBILITY_OFFERS} Offers. Any refusal or fault is `null`; there is
  * no partial answer.
  */
@@ -29,15 +29,5 @@ export class FacadeOfferCultures implements OfferCultureSource {
       return null;
     }
     return out;
-  }
-
-  async codeOf(context: CallContext, cultureId: Id<'Culture'>): Promise<string | undefined | null> {
-    try {
-      const answer = await this.cultures.culturesByIds(context, [cultureId]);
-      if (!answer.ok) return null;
-      return answer.value.find((culture) => culture.id === cultureId)?.code;
-    } catch {
-      return null;
-    }
   }
 }

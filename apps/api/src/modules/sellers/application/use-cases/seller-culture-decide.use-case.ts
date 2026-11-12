@@ -145,7 +145,9 @@ export class SellerCultureDecide extends UseCase<
       }
       const required = found.requiredCertificationType;
       if (required !== null) {
-        const held = await this.deps.certificateDirectory.validTypeCodes(context, sellerId);
+        const held = await this.deps.certificateDirectory.validTypeCodes(context, sellerId, [
+          required,
+        ]);
         if (!held.ok) return err({ code: 'culture.certificate-unavailable' });
         if (!held.value.has(required)) {
           return err({ code: 'culture.certificate-required', requiredCertificationType: required });

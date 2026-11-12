@@ -104,7 +104,12 @@ export class MarkSourceBody {
 }
 
 export class CultureCategoryOwnBody {
-  @ApiProperty() visible!: boolean;
+  @ApiProperty({
+    nullable: true,
+    type: Boolean,
+    description: 'null: inherits visibility (a row that only sets a mark).',
+  })
+  visible!: boolean | null;
   @ApiProperty({ nullable: true, enum: ['required', 'neutral'], type: String })
   certificationMark!: string | null;
 }
@@ -139,9 +144,14 @@ export class CultureCategoryMarkWrapBody {
 export class CultureCategoryMarkSetRequest {
   @ApiProperty({
     required: false,
-    description: 'Default true. false hides the branch for the culture.',
+    nullable: true,
+    type: Boolean,
+    description:
+      'false hides the branch for the culture, and a hidden category hides everything below it ' +
+      '(a row lower down cannot show it again). Left out or null with a certificationMark: ' +
+      'visibility is inherited. Left out with no mark: true.',
   })
-  visible?: boolean;
+  visible?: boolean | null;
   @ApiProperty({
     required: false,
     nullable: true,

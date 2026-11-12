@@ -39,7 +39,10 @@ import type { SearchDependencies } from './search-dependencies';
 import { SYNC_BATCH } from './sync-offers';
 import { RebuildOfferIndex } from './use-cases/rebuild-offer-index.use-case';
 import { SearchProducts } from './use-cases/search-products.use-case';
-import { SyncOfferDocuments } from './use-cases/sync-offer-documents.use-case';
+import {
+  CATEGORY_DIRECT_PAGES,
+  SyncOfferDocuments,
+} from './use-cases/sync-offer-documents.use-case';
 
 // The three search use cases in memory on both Market fixtures (AU: english, en-AU; ZZ: simple,
 // ja-JP): the index follows catalog, a rebuild repairs it, a query is checked against catalog and
@@ -152,12 +155,20 @@ class MemoryDocuments implements OfferDocumentRepository {
         .map(([, row]) => row.document.offerId),
     );
   }
-  offerIdsInCategories(market: MarketContext, categoryIds: readonly Id<'Category'>[]) {
+  offerIdsInCategories(
+    market: MarketContext,
+    categoryIds: readonly Id<'Category'>[],
+    limit: number,
+    after?: Id<'Offer'>,
+  ) {
     return Promise.resolve(
       [...this.rows.entries()]
         .filter(([key]) => key.startsWith(`${market.marketId}:`))
         .filter(([, row]) => row.document.categoryIds.some((c) => categoryIds.includes(c)))
-        .map(([, row]) => row.document.offerId),
+        .map(([, row]) => row.document.offerId)
+        .sort()
+        .filter((id) => after === undefined || id > after)
+        .slice(0, limit),
     );
   }
   offerIdsOfSeller(market: MarketContext, sellerId: Id<'Seller'>) {
@@ -481,7 +492,6 @@ describe.each([
   // The cultures catalog's facade answers per Offer (multi-culture package 3a); `down` fails it.
   const cultureSource = {
     codes: new Map<Id<'Offer'>, readonly string[]>(),
-    cultureCodes: new Map<Id<'Culture'>, string>(),
     down: false,
     asked: [] as Id<'Offer'>[][],
     visibleCodes(_c: CallContext, offerIds: readonly Id<'Offer'>[]) {
@@ -490,9 +500,6 @@ describe.each([
       return Promise.resolve(
         new Map(offerIds.flatMap((id) => (this.codes.has(id) ? [[id, this.codes.get(id)!]] : []))),
       );
-    },
-    codeOf(_c: CallContext, cultureId: Id<'Culture'>) {
-      return Promise.resolve(this.down ? null : this.cultureCodes.get(cultureId));
     },
   };
 
@@ -516,7 +523,6 @@ describe.each([
     storeSearch.counts = new Map();
     storeSearch.requests = [];
     cultureSource.codes.clear();
-    cultureSource.cultureCodes.clear();
     cultureSource.down = false;
     cultureSource.asked = [];
     deps = {
@@ -584,7 +590,6 @@ describe.each([
     });
 
     describe('culture codes (multi-culture package 3a; ADR-0047 decision 8)', () => {
-      const culture = '01990000-0000-7000-8000-00000000c001' as Id<'Culture'>;
       const certified = code === 'AU' ? 'muslim' : 'jewish';
       const sync = (input: Parameters<SyncOfferDocuments['execute']>[1]) =>
         new SyncOfferDocuments(gate, deps).execute(system, input);
@@ -621,33 +626,34 @@ describe.each([
         expect(stored(offer(1))?.cultureCodes).toEqual([certified]);
       });
 
-      it("a culture's status change re-syncs the documents that hold its code", async () => {
-        feed.facts_.set(offer(1), sellable());
-        feed.facts_.set(offer(2), sellable());
-        cultureSource.codes.set(offer(1), [certified]);
-        cultureSource.codes.set(offer(2), ['general']);
-        await sync({ offerIds: [offer(1), offer(2)] });
-        cultureSource.cultureCodes.set(culture, certified);
-        // The culture became inactive: catalog no longer answers it.
-        cultureSource.codes.set(offer(1), []);
-        cultureSource.asked = [];
+      it('a culture mark change re-syncs the subtree directly up to the threshold, then hands off', async () => {
+        const many = CATEGORY_DIRECT_PAGES * SYNC_BATCH + 1;
+        for (let n = 1; n <= many; n += 1) {
+          feed.facts_.set(offer(n), sellable());
+          cultureSource.codes.set(offer(n), [certified]);
+        }
+        await sync({ offerIds: Array.from({ length: many }, (_, n) => offer(n + 1)) });
+        for (let n = 1; n <= many; n += 1) cultureSource.codes.set(offer(n), []);
 
-        expect(await sync({ cultureId: culture })).toEqual({
+        const small = await sync({ categoryId: CATEGORY });
+        expect(small).toEqual({ ok: true, value: { upserted: many, deleted: 0 } });
+        const handed = await sync({ categoryId: CATEGORY, handOffAbove: true });
+        expect(handed).toEqual({
+          ok: true,
+          value: { upserted: CATEGORY_DIRECT_PAGES * SYNC_BATCH, deleted: 0, handedOff: true },
+        });
+      });
+
+      it('a small subtree is synced in full and never handed off', async () => {
+        feed.facts_.set(offer(1), sellable());
+        cultureSource.codes.set(offer(1), [certified]);
+        await sync({ offerIds: [offer(1)] });
+        cultureSource.codes.set(offer(1), []);
+        expect(await sync({ categoryId: CATEGORY, handOffAbove: true })).toEqual({
           ok: true,
           value: { upserted: 1, deleted: 0 },
         });
-        expect(cultureSource.asked).toEqual([[offer(1)]]);
         expect(stored(offer(1))?.cultureCodes).toEqual([]);
-        expect(stored(offer(2))?.cultureCodes).toEqual(['general']);
-      });
-
-      it('an unknown culture refreshes nothing; an unreadable one throws', async () => {
-        expect(await sync({ cultureId: culture })).toEqual({
-          ok: true,
-          value: { upserted: 0, deleted: 0 },
-        });
-        cultureSource.down = true;
-        await expect(sync({ cultureId: culture })).rejects.toThrow('culture unavailable');
       });
     });
 

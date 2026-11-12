@@ -521,6 +521,10 @@ export const CATALOG_CULTURE_TARGET = 'catalog.culture';
 const cultureStatus = auditField.enumOf(['draft', 'active', 'inactive'] as const);
 /** `inherit` is a mark left to the nearest ancestor (or the default, "required"). */
 const cultureMark = auditField.enumOf(['required', 'neutral', 'inherit'] as const);
+const cultureVisible = auditField.enumOf(['shown', 'hidden', 'inherit'] as const);
+/** A row's `visible` as the audit keeps it (null = inherit; ADR-0048 security review M2). */
+export const cultureVisibleOf = (visible: boolean | null): 'shown' | 'hidden' | 'inherit' =>
+  visible === null ? 'inherit' : visible ? 'shown' : 'hidden';
 
 /** An admin defined a culture (a draft). Whether it names a required certification type, never the text. */
 export const CultureCreatedAudit = defineAuditAction({
@@ -563,13 +567,13 @@ export const CultureCategoryMarkChangedAudit = defineAuditAction({
   before: {
     categoryId: auditField.id(),
     hadRow: auditField.boolean(),
-    visible: auditField.boolean(),
+    visible: cultureVisible,
     certificationMark: cultureMark,
   },
   after: {
     categoryId: auditField.id(),
     hasRow: auditField.boolean(),
-    visible: auditField.boolean(),
+    visible: cultureVisible,
     certificationMark: cultureMark,
   },
 });

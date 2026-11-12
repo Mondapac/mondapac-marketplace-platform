@@ -274,6 +274,57 @@ describe.each(TEST_MARKETS)('catalog cultures in market %s (database integration
     expect(await inUnit(() => repository.categoryRows(market, state.id))).toHaveLength(1);
   });
 
+  it('keeps a mark-only row with visible NULL, refuses a row that states nothing, and reads rows of many cultures at once (package 3a)', async () => {
+    const [one, two, none] = [
+      culture(letters(tag())),
+      culture(letters(tag())),
+      culture(letters(tag())),
+    ];
+    for (const state of [one, two, none]) await inUnit(() => repository.add(market, state));
+    const category = await insertCategory();
+    const admin = uuid7() as Id<'Account'>;
+    await inUnit(() =>
+      repository.setCategoryRow(
+        market,
+        one.id,
+        { categoryId: category, visible: null, certificationMark: 'neutral' },
+        admin,
+        T0,
+      ),
+    );
+    await inUnit(() =>
+      repository.setCategoryRow(
+        market,
+        two.id,
+        { categoryId: category, visible: false, certificationMark: null },
+        admin,
+        T0,
+      ),
+    );
+
+    const rows = await inUnit(() => repository.categoryRowsOf(market, [one.id, two.id, none.id]));
+    expect(rows).toEqual(
+      new Map([
+        [one.id, [{ categoryId: category, visible: null, certificationMark: 'neutral' }]],
+        [two.id, [{ categoryId: category, visible: false, certificationMark: null }]],
+        [none.id, []],
+      ]),
+    );
+    // Another Market reads none of them.
+    const foreign = await inUnitOf(other)(() => repository.categoryRowsOf(other, [one.id]));
+    expect(foreign).toEqual(new Map([[one.id, []]]));
+    // A row must state a visibility or a mark.
+    expect(
+      await sqlState(
+        sql,
+        `INSERT INTO catalog.culture_categories
+           (market_id, tenant_id, culture_id, category_id, visible, certification_mark, updated_by, updated_at)
+         VALUES ($1, $2, $3, $4, NULL, NULL, $5, $6)`,
+        [market.marketId, market.tenantId, none.id, category, uuid7(), T0.toString()],
+      ),
+    ).toBe('23514');
+  });
+
   it('refuses a mark on a category of another Market or none', async () => {
     const state = culture(letters(tag()));
     await inUnit(() => repository.add(market, state));

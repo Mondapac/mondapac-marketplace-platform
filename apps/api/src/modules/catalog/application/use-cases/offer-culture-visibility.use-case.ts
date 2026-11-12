@@ -71,7 +71,8 @@ class VisibilityUnavailable extends Error {
  * {@link MAX_VISIBILITY_OFFERS} Offers of the context's Market.
  *
  * 1. One read-only unit: the Offers (only `published` ones can be visible), the Market's ACTIVE
- *    cultures and their category rows, and per product the live paths of its published revision's
+ *    cultures and their category rows (one statement for all cultures), and, batched over the
+ *    products (`publishedSnapshots`), the live paths of its published revision's
  *    platform categories, resolved per culture with `resolveEffectiveMarks`; for each stored
  *    `active` tag whose type an active culture requires, the claim queries (`ClaimQueryBuilder`,
  *    the one builder of claim queries).
@@ -133,33 +134,40 @@ async function evaluate(
         requiredCertificationType: c.requiredCertificationType,
       }));
       if (cultures.length === 0) return ok({ cultures, offers: [] });
-      const rowsByCulture = new Map<Id<'Culture'>, readonly CultureCategoryRow[]>();
-      for (const culture of cultures) {
-        rowsByCulture.set(culture.id, await deps.cultures.categoryRows(market, culture.id));
-      }
+      // One statement for the rows of every active culture, one batch of product snapshots.
+      const rowsByCulture = await deps.cultures.categoryRowsOf(
+        market,
+        cultures.map((c) => c.id),
+      );
+      const noRows: readonly CultureCategoryRow[] = [];
       const requiredTypes = new Set(
         cultures.flatMap((c) =>
           c.requiredCertificationType === null ? [] : [c.requiredCertificationType],
         ),
       );
-      const snapshots = new Map<string, PublishedSnapshot>();
+      const published = (await deps.offers.findManyByIds(market, offerIds)).filter(
+        (offer) => offer.state.status === 'published',
+      );
+      const snapshots: ReadonlyMap<string, PublishedSnapshot> =
+        published.length === 0
+          ? new Map()
+          : await deps.claims.publishedSnapshots(
+              market,
+              published.map((offer) => offer.state.productId),
+            );
       const offers: Gathered[] = [];
-      for (const offer of await deps.offers.findManyByIds(market, offerIds)) {
-        if (offer.state.status !== 'published') continue;
+      for (const offer of published) {
         if (!offer.tagsLoaded) throw new VisibilityUnavailable('tags not loaded');
-        const productId = offer.state.productId;
-        let snapshot = snapshots.get(productId);
-        if (snapshot === undefined) {
-          snapshot = await deps.claims.publishedSnapshot(market, productId);
-          snapshots.set(productId, snapshot);
-        }
-        if (snapshot.facts === null) continue;
+        const snapshot = snapshots.get(offer.state.productId);
+        if (snapshot === undefined || snapshot.facts === null) continue;
         // A path is root first; the marks resolve from the category up.
         const chains = snapshot.facts.platformCategoryPaths.map((path) => [...path].reverse());
         const categoryMarks = new Map<Id<'Culture'>, readonly EffectiveCategoryMarks[]>(
           cultures.map((culture) => [
             culture.id,
-            chains.map((chain) => resolveEffectiveMarks(chain, rowsByCulture.get(culture.id)!)),
+            chains.map((chain) =>
+              resolveEffectiveMarks(chain, rowsByCulture.get(culture.id) ?? noRows),
+            ),
           ]),
         );
         const active = offer.tags.filter(
@@ -206,10 +214,15 @@ async function evaluate(
   const needCertificates = sellerIds.filter((sellerId) =>
     [...(members.get(sellerId) ?? [])].some((cultureId) => certified.has(cultureId)),
   );
+  const requiredTypeCodes = new Set(
+    cultures.flatMap((c) =>
+      c.requiredCertificationType === null ? [] : [c.requiredCertificationType],
+    ),
+  );
   const validTypes = new Map<Id<'Seller'>, ReadonlySet<string>>();
   for (let at = 0; at < needCertificates.length; at += VISIBILITY_SOURCE_BATCH) {
     const batch = needCertificates.slice(at, at + VISIBILITY_SOURCE_BATCH);
-    const got = await deps.certificateTypes.validTypes(context, batch);
+    const got = await deps.certificateTypes.validTypes(context, batch, [...requiredTypeCodes]);
     if (!got.ok) throw new VisibilityUnavailable('certificates');
     for (const [sellerId, types] of got.value) validTypes.set(sellerId, types);
   }

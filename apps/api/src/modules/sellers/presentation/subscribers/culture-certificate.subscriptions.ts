@@ -1,11 +1,16 @@
 import { CultureApprovalsInvalidated } from '../../../catalog';
-import { SellerCertificationExpired, SellerCertificationRevoked } from '../../../certification';
+import {
+  IssuerDeactivated,
+  SellerCertificationExpired,
+  SellerCertificationRevoked,
+} from '../../../certification';
 import {
   subscription,
   type RegisteredSubscription,
 } from '../../../../platform/events/event-subscriptions';
 import type { CultureDemoteApprovalsSystem } from '../../application/use-cases/culture-demote-approvals-system.use-case';
 import type { RecheckCultureCertificates } from '../../application/use-cases/recheck-culture-certificates.use-case';
+import type { RecheckCulturesOfIssuer } from '../../application/use-cases/recheck-cultures-of-issuer.use-case';
 
 /** The subscriber names: also the `handler` of `sellers.inbox`. */
 export const RECHECK_ON_CERTIFICATE_EXPIRED_SUBSCRIBER =
@@ -14,6 +19,8 @@ export const RECHECK_ON_CERTIFICATE_REVOKED_SUBSCRIBER =
   'sellers.recheck-cultures-on-certificate-revoked';
 export const DEMOTE_ON_APPROVALS_INVALIDATED_SUBSCRIBER =
   'sellers.demote-on-culture-approvals-invalidated';
+export const RECHECK_ON_ISSUER_DEACTIVATED_SUBSCRIBER =
+  'sellers.recheck-cultures-on-issuer-deactivated';
 
 /**
  * Sellers' subscriptions of multi-culture package 3a. Entry adapters: the Market's system-actor
@@ -26,6 +33,10 @@ export const DEMOTE_ON_APPROVALS_INVALIDATED_SUBSCRIBER =
  *   no "suspended" state for a seller certificate (only for a manufacturer certificate, which is
  *   no membership basis), so these two events are every end of validity besides the stored
  *   boundary itself, which the visibility rule checks at read time.
+ * - An issuer was derecognised (security review M3): every certificate naming it is invalid from
+ *   that instant without an event per certificate, so the certified memberships of each seller
+ *   holding such a certificate are re-checked the same way. `closed-to-new` changes no validity
+ *   and is ignored.
  * - Catalog could not restore a culture's required type nor demote at once (security review N1):
  *   every approval of the culture is taken back to `requested`. While approvals are left
  *   (`remaining`), the handler throws, so the outbox retries it until none is left.
@@ -36,6 +47,7 @@ export const DEMOTE_ON_APPROVALS_INVALIDATED_SUBSCRIBER =
 export function cultureCertificateSubscriptions(
   recheck: RecheckCultureCertificates,
   demote: CultureDemoteApprovalsSystem,
+  recheckIssuer: RecheckCulturesOfIssuer,
 ): RegisteredSubscription[] {
   const rechecked = async (
     name: string,
@@ -57,6 +69,19 @@ export function cultureCertificateSubscriptions(
       event: SellerCertificationRevoked,
       handle: (event, _delivery, context) =>
         rechecked(RECHECK_ON_CERTIFICATE_REVOKED_SUBSCRIBER, context, event.payload.sellerId),
+    }),
+    subscription({
+      name: RECHECK_ON_ISSUER_DEACTIVATED_SUBSCRIBER,
+      event: IssuerDeactivated,
+      async handle(event, _delivery, context) {
+        if (event.payload.form !== 'derecognised') return;
+        const result = await recheckIssuer.execute(context, { issuerId: event.payload.issuerId });
+        if (!result.ok) {
+          throw new Error(
+            `${RECHECK_ON_ISSUER_DEACTIVATED_SUBSCRIBER} refused: ${result.error.code}`,
+          );
+        }
+      },
     }),
     subscription({
       name: DEMOTE_ON_APPROVALS_INVALIDATED_SUBSCRIBER,

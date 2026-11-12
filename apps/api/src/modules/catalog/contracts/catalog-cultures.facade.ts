@@ -5,8 +5,11 @@ import type { CatalogValidationFailed } from './catalog.facade';
 export { lineCultureOf } from '../domain/culture-visibility';
 export type { LineCultureCandidate } from '../domain/culture-visibility';
 
-/** At most this many distinct Offers per visibility call (multi-culture package 3a). */
-export const MAX_VISIBILITY_OFFERS = 50;
+/**
+ * At most this many distinct Offers per visibility call (multi-culture package 3a): one search sync
+ * batch, so the cultures and their category rows are read once per batch.
+ */
+export const MAX_VISIBILITY_OFFERS = 200;
 
 /** Per Offer, the codes of the cultures it is visible in, by display order then code. */
 export type OfferCultureCodes = ReadonlyMap<Id<'Offer'>, readonly string[]>;

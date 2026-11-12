@@ -371,13 +371,13 @@
       "categoryId": "id",
       "certificationMark": "enumOf(required|neutral|inherit)",
       "hadRow": "boolean",
-      "visible": "boolean"
+      "visible": "enumOf(shown|hidden|inherit)"
     },
     "after": {
       "categoryId": "id",
       "certificationMark": "enumOf(required|neutral|inherit)",
       "hasRow": "boolean",
-      "visible": "boolean"
+      "visible": "enumOf(shown|hidden|inherit)"
     }
   },
   {

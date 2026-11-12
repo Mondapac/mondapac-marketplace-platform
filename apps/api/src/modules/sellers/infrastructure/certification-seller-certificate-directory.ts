@@ -22,13 +22,40 @@ export class CertificationSellerCertificateDirectory implements SellerCertificat
   async validTypeCodes(
     context: CallContext,
     sellerId: Id<'Seller'>,
+    typeCodes: readonly string[],
   ): Promise<Result<ReadonlySet<string>, SellerCertificateDirectoryUnavailable>> {
     try {
-      const answer = await this.certification.sellerValidCertificateTypes(context, [sellerId]);
+      const answer = await this.certification.sellerValidCertificateTypes(
+        context,
+        [sellerId],
+        typeCodes,
+      );
       if (!answer.ok) return UNAVAILABLE;
       const [row, ...rest] = answer.value;
       if (row === undefined || rest.length > 0 || row.sellerId !== sellerId) return UNAVAILABLE;
+      // Never more than was asked: an unasked code is a malformed answer.
+      if (row.validTypeCodes.some((code) => !typeCodes.includes(code))) return UNAVAILABLE;
       return ok(new Set(row.validTypeCodes));
+    } catch {
+      return UNAVAILABLE;
+    }
+  }
+
+  async sellersOfIssuer(
+    context: CallContext,
+    issuerId: string,
+    afterSellerId: Id<'Seller'> | null,
+    limit: number,
+  ): Promise<Result<readonly Id<'Seller'>[], SellerCertificateDirectoryUnavailable>> {
+    try {
+      const answer = await this.certification.sellersOfIssuer(
+        context,
+        issuerId,
+        afterSellerId,
+        limit,
+      );
+      if (!answer.ok || answer.value.length > limit) return UNAVAILABLE;
+      return ok(answer.value);
     } catch {
       return UNAVAILABLE;
     }

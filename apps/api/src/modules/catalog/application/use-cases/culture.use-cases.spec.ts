@@ -88,6 +88,7 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
   let staleSavesOnRevert = 0;
   const demoteCalls: string[] = [];
   const cultures: CultureRepository = {
+    categoryRowsOf: () => Promise.resolve(new Map()),
     add: (_m, state) => {
       if ([...rows.values()].some((r) => r.code === state.code)) {
         return Promise.resolve('culture.code-taken');
@@ -944,7 +945,35 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
       expect(audits[0]).toMatchObject({
         action: 'catalog.culture.category-mark-changed',
         before: { hadRow: false, certificationMark: 'inherit' },
-        after: { hasRow: true, visible: false, certificationMark: 'neutral' },
+        after: { hasRow: true, visible: 'hidden', certificationMark: 'neutral' },
+      });
+    });
+
+    it('a mark-only row leaves visibility null, and a hidden parent still hides it (ADR-0048 M2)', async () => {
+      const culture = await created();
+      const { setMark, marks: list } = build();
+      await setMark.execute(admin, { cultureId: culture.id, categoryId: cat(1), visible: false });
+      const child = await setMark.execute(admin, {
+        cultureId: culture.id,
+        categoryId: cat(3),
+        certificationMark: 'neutral',
+      });
+      expect(child).toMatchObject({
+        ok: true,
+        value: {
+          mark: {
+            own: { visible: null, certificationMark: 'neutral' },
+            effective: { visible: false, certificationMark: 'neutral' },
+          },
+        },
+      });
+      // Even an explicit "shown" on the child does not show it under a hidden parent.
+      await setMark.execute(admin, { cultureId: culture.id, categoryId: cat(3), visible: true });
+      const items = await list.execute(admin, { cultureId: culture.id });
+      const three = items.ok ? items.value.items.find((i) => i.categoryId === cat(3)) : undefined;
+      expect(three?.effective).toMatchObject({
+        visible: false,
+        visibleSource: { kind: 'inherited', fromCategoryId: cat(1) },
       });
     });
 

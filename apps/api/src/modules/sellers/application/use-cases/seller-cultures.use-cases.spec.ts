@@ -33,6 +33,10 @@ import { CultureApprovedMembers } from './culture-approved-members.use-case';
 import { CultureDemoteApprovals, DEMOTE_BATCH } from './culture-demote-approvals.use-case';
 import { CultureDemoteApprovalsSystem } from './culture-demote-approvals-system.use-case';
 import { RecheckCultureCertificates } from './recheck-culture-certificates.use-case';
+import {
+  ISSUER_SELLERS_PAGE,
+  RecheckCulturesOfIssuer,
+} from './recheck-cultures-of-issuer.use-case';
 import { SellerApprovedCultures } from './seller-approved-cultures.use-case';
 import { SellerApprovedCulturesSystem } from './seller-approved-cultures-system.use-case';
 import { ApplySignupCultures } from './apply-signup-cultures.use-case';
@@ -215,12 +219,36 @@ function setUp(code: string) {
       return Promise.resolve(answer);
     },
   };
-  const certificates = { held: new Set<string>(), down: false };
+  const certificates = {
+    held: new Set<string>(),
+    down: false,
+    /** Per issuer, the sellers holding an approved certificate naming it. */
+    issuers: new Map<string, Id<'Seller'>[]>(),
+    pages: [] as { issuerId: string; after: Id<'Seller'> | null; limit: number }[],
+  };
   const certificateDirectory: SellerCertificateDirectory = {
-    validTypeCodes: () =>
+    validTypeCodes: (_c, _s, typeCodes) =>
       certificates.down
         ? Promise.resolve(err({ code: 'seller-certificate-directory.unavailable' }))
-        : Promise.resolve(ok(new Set(certificates.held) as ReadonlySet<string>)),
+        : Promise.resolve(
+            ok(
+              new Set(
+                [...certificates.held].filter((t) => typeCodes.includes(t)),
+              ) as ReadonlySet<string>,
+            ),
+          ),
+    sellersOfIssuer: (_c, issuerId, after, limit) => {
+      certificates.pages.push({ issuerId, after, limit });
+      if (certificates.down) {
+        return Promise.resolve(err({ code: 'seller-certificate-directory.unavailable' }));
+      }
+      const all = [...(certificates.issuers.get(issuerId) ?? [])].sort();
+      return Promise.resolve(
+        ok(
+          all.filter((s) => after === null || s > after).slice(0, limit) as readonly Id<'Seller'>[],
+        ),
+      );
+    },
   };
   const files = {
     existingIds: (m: MarketContext, sellerIds: readonly Id<'Seller'>[]) =>
@@ -303,6 +331,14 @@ function setUp(code: string) {
       clock,
     }),
     recheck: new RecheckCultureCertificates(gate, {
+      unitOfWork,
+      sellerCultures: rows,
+      cultureDirectory,
+      certificateDirectory,
+      outbox,
+      clock,
+    }),
+    recheckIssuer: new RecheckCulturesOfIssuer(gate, {
       unitOfWork,
       sellerCultures: rows,
       cultureDirectory,
@@ -1026,6 +1062,44 @@ describe.each([
       // System only.
       t.directory.down = false;
       expect(await t.recheck.execute(t.anonymous, { sellerId })).toMatchObject({ ok: false });
+    });
+
+    it('re-check of a derecognised issuer (M3): every seller of its certificates, page by page', async () => {
+      const { t, sellerId, plain, certified } = await approvedInBoth();
+      const issuer = t.ids.next<'Issuer'>();
+      // More sellers than one page, so the cursor is used; only the first has a membership.
+      const others = Array.from({ length: ISSUER_SELLERS_PAGE }, () => t.ids.next<'Seller'>());
+      t.certificates.issuers.set(issuer, [sellerId, ...others]);
+      t.certificates.held.clear();
+
+      expect(await t.recheckIssuer.execute(t.system, { issuerId: issuer })).toEqual(
+        ok({ demoted: 1 }),
+      );
+      expect(statusOf(t, sellerId, certified.id)).toBe('requested');
+      expect(statusOf(t, sellerId, plain.id)).toBe('approved');
+      expect(t.certificates.pages.map((p) => p.after === null)).toEqual([true, false]);
+      // Idempotent on a repeated delivery.
+      expect(await t.recheckIssuer.execute(t.system, { issuerId: issuer })).toEqual(
+        ok({ demoted: 0 }),
+      );
+    });
+
+    it('re-check of an issuer: a failed page is unavailable (retry); system only; a bad id refused', async () => {
+      const { t, sellerId, certified } = await approvedInBoth();
+      const issuer = t.ids.next<'Issuer'>();
+      t.certificates.issuers.set(issuer, [sellerId]);
+      t.certificates.down = true;
+      expect(await t.recheckIssuer.execute(t.system, { issuerId: issuer })).toEqual(
+        err({ code: 'sellers.unavailable' }),
+      );
+      expect(statusOf(t, sellerId, certified.id)).toBe('approved');
+      t.certificates.down = false;
+      expect(await t.recheckIssuer.execute(t.anonymous, { issuerId: issuer })).toMatchObject({
+        ok: false,
+      });
+      expect(await t.recheckIssuer.execute(t.system, { issuerId: 'x' })).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'issuerId', code: 'format' }] }),
+      );
     });
 
     it('demotion runs one unit per batch of 200 and reports approvals left past the cap', async () => {

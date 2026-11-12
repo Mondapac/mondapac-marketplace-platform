@@ -218,6 +218,7 @@
   { "name": "certification.seed-certification-types", "rule": "system" },
   { "name": "certification.seller-valid-certificate-types", "rule": "anonymous" },
   { "name": "certification.seller-valid-certificate-types-system", "rule": "system" },
+  { "name": "certification.sellers-of-issuer-system", "rule": "system" },
   { "name": "certification.send-decision-mail", "rule": "system" },
   { "name": "certification.send-derecognition-mail", "rule": "system" },
   { "name": "certification.send-expiry-mail", "rule": "system" },
@@ -675,6 +676,7 @@
   { "name": "search.list-specials", "rule": "anonymous" },
   { "name": "search.rebuild-offer-index", "rule": "system" },
   { "name": "search.reindex-offer-attributes", "rule": "system" },
+  { "name": "search.request-offer-reindex", "rule": "system" },
   { "name": "search.search-products", "rule": "anonymous" },
   { "name": "search.search-stores", "rule": "anonymous" },
   { "name": "search.sync-offer-documents", "rule": "system" },
@@ -745,6 +747,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "sellers.recheck-culture-certificates", "rule": "system" },
+  { "name": "sellers.recheck-cultures-of-issuer", "rule": "system" },
   { "name": "sellers.reconcile-decisions", "rule": "system" },
   {
     "name": "sellers.refresh-own-seller-health",

@@ -136,6 +136,7 @@ import {
 import { SellerApprovedCultures } from './application/use-cases/seller-approved-cultures.use-case';
 import { SellerApprovedCulturesSystem } from './application/use-cases/seller-approved-cultures-system.use-case';
 import { RecheckCultureCertificates } from './application/use-cases/recheck-culture-certificates.use-case';
+import { RecheckCulturesOfIssuer } from './application/use-cases/recheck-cultures-of-issuer.use-case';
 import { ApplySignupCultures } from './application/use-cases/apply-signup-cultures.use-case';
 import { SeedSellerCultures } from './application/use-cases/seed-seller-cultures.use-case';
 import { seedSellerCulturesJob } from './presentation/jobs/seed-seller-cultures.job';
@@ -793,6 +794,14 @@ const REVIEW_DECISION_PORTS = {
       outbox: true,
       clock: true,
     }),
+    useCaseProvider(RecheckCulturesOfIssuer, {
+      unitOfWork: true,
+      sellerCultures: true,
+      cultureDirectory: true,
+      certificateDirectory: true,
+      outbox: true,
+      clock: true,
+    }),
     useCaseProvider(SeedSellerCultures, {
       unitOfWork: true,
       sellerCultures: true,
@@ -1092,6 +1101,7 @@ const REVIEW_DECISION_PORTS = {
     // (package 3a): SellerStoreProfileModule registers the subscriptions, since certification and
     // catalog import sellers and their events cannot be imported here without a file cycle.
     RecheckCultureCertificates,
+    RecheckCulturesOfIssuer,
     CultureDemoteApprovalsSystem,
   ],
 })

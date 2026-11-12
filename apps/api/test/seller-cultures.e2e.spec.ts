@@ -159,14 +159,18 @@ describe('seller cultures over HTTP (integration, multi-culture package 2)', () 
           })
           .overrideProvider(CERTIFICATION_FACADE)
           .useValue({
-            sellerValidCertificateTypes: (_c: unknown, ids: readonly string[]) =>
+            sellerValidCertificateTypes: (
+              _c: unknown,
+              ids: readonly string[],
+              typeCodes: readonly string[],
+            ) =>
               Promise.resolve(
                 certificates.down
                   ? { ok: false, error: { code: 'certification.unavailable' } }
                   : ok(
                       ids.map((one) => ({
                         sellerId: one,
-                        validTypeCodes: [...certificates.held],
+                        validTypeCodes: [...certificates.held].filter((t) => typeCodes.includes(t)),
                       })),
                     ),
               ),

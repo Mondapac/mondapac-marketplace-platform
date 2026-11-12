@@ -27,14 +27,16 @@ export interface SellerMemberCultures {
 }
 
 /**
- * The certification types each seller holds a valid certificate of now (ADR-0048 security review
- * M2), bound to certification's `sellerValidCertificateTypes`. At most
- * {@link VISIBILITY_SOURCE_BATCH} sellers per call; unavailable as above.
+ * Which of the asked certification types each seller holds a valid certificate of now (ADR-0048
+ * security review M2), bound to certification's `sellerValidCertificateTypes` (the canonical
+ * `sellerCertificateValidAt`). At most {@link VISIBILITY_SOURCE_BATCH} sellers per call;
+ * unavailable as above.
  */
 export interface SellerCertificateTypes {
   validTypes(
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
+    typeCodes: readonly string[],
   ): Promise<
     Result<ReadonlyMap<Id<'Seller'>, ReadonlySet<string>>, CultureVisibilitySourceUnavailable>
   >;

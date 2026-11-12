@@ -12,9 +12,6 @@ export interface OfferCultureSource {
     context: CallContext,
     offerIds: readonly Id<'Offer'>[],
   ): Promise<ReadonlyMap<Id<'Offer'>, readonly string[]> | null>;
-
-  /** The code of a culture of the context's Market; `undefined` when there is none. */
-  codeOf(context: CallContext, cultureId: Id<'Culture'>): Promise<string | undefined | null>;
 }
 
 export const OFFER_CULTURE_SOURCE = Symbol('SEARCH_OFFER_CULTURE_SOURCE');
