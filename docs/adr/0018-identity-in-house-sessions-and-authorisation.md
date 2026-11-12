@@ -3,6 +3,7 @@
 **Status:** Accepted — 2026-10-02 (owner decision: the owner decided the G1 questions of
 the identity module and accepted this ADR on the same day; drafted by the CTO, reviewed by
 the software-architect and the security-tester)
+**Amended by:** ADR-0045 (decisions 3 to 5: the `agent` population, the named rule `agent-self`, second factor for agents).
 **Amends:** ADR-0003 decision 4, ADR-0004 decision 1, ADR-0008 decisions 2 and 5,
 ADR-0015 decision 3
 **Relates to:** ADR-0001 (tenant seam), ADR-0003 decisions 2 and 5, ADR-0004 decisions 3
