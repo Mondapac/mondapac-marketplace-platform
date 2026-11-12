@@ -64,6 +64,7 @@ import { ApiErrorBody } from './platform-product.dto';
  */
 export const PLATFORM_IMPORT_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
+  'feature-set.unknown': 404,
   'import.pause-not-allowed': 403,
   'import.not-found': 404,
   'import.not-confirmable': 409,
@@ -129,17 +130,25 @@ export class PlatformImportController {
   @ApiOperation({
     summary: 'The import template and column guide',
     description:
-      'Needs catalog.platform-import.run. The template is CSV text in `csv` and an XLSX file as base64 in `xlsx`.',
+      'Needs catalog.platform-import.run. The template is CSV text in `csv` and an XLSX file as base64 in `xlsx`. ' +
+      '`featureSet` (a feature set code) adds an `attr[<code>]` column for each attribute of that set.',
   })
+  @ApiQuery({ name: 'featureSet', required: false })
   @ApiOkResponse({ type: PlatformImportTemplateDto })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'feature-set.unknown' })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (featureSet)' })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
   async getTemplate(
     @Call() context: CallContext,
     @Res({ passthrough: true }) response: Response,
+    @Query('featureSet') featureSet: unknown,
   ): Promise<PlatformImportTemplateDto> {
-    const result = await this.template.execute(context, {});
+    const result = await this.template.execute(
+      context,
+      featureSet === undefined ? {} : ({ featureSet } as { featureSet: string }),
+    );
     if (!result.ok) throw refusalWith(PLATFORM_IMPORT_STATUS, result.error, response, context);
     return JSON.parse(JSON.stringify(result.value)) as PlatformImportTemplateDto;
   }

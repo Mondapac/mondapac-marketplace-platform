@@ -93,8 +93,10 @@ export function checkFilters(
 export function chainOf(
   categoryId: string,
   nodes: readonly StoredCategoryNode[],
+  /** The nodes by id, when the caller resolves many categories against one tree. */
+  index?: ReadonlyMap<string, StoredCategoryNode>,
 ): readonly string[] | null {
-  const byId = new Map(nodes.map((node) => [node.id as string, node]));
+  const byId = index ?? new Map(nodes.map((node) => [node.id as string, node]));
   const chain: string[] = [];
   const seen = new Set<string>();
   let current: string | null = categoryId;
@@ -112,8 +114,10 @@ export function effectiveOf(
   chain: readonly string[],
   links: readonly StoredLinkFact[],
   own?: CategoryAttributeLink | null,
+  /** The links by category id, when the caller resolves many categories against one list. */
+  index?: ReadonlyMap<string, StoredLinkFact>,
 ): EffectiveAttributes {
-  const byCategory = new Map<string, StoredLinkFact>(links.map((l) => [l.categoryId, l]));
+  const byCategory = index ?? new Map<string, StoredLinkFact>(links.map((l) => [l.categoryId, l]));
   return resolveEffective(chain, (id) => {
     if (own !== undefined && own !== null && id === own.state.categoryId) {
       return { familyId: own.state.familyId, filters: own.state.filters };
