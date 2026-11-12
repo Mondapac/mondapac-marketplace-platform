@@ -23,4 +23,18 @@ export class SellersCultureMembers implements CultureMembers {
       return UNAVAILABLE;
     }
   }
+
+  async demoteAll(
+    context: CallContext,
+    cultureId: Id<'Culture'>,
+  ): Promise<Result<boolean, CultureMembersUnavailable>> {
+    try {
+      const done = await this.sellers.cultureDemoteApprovals(context, cultureId);
+      return done.ok && typeof done.value?.remaining === 'boolean'
+        ? ok(!done.value.remaining)
+        : UNAVAILABLE;
+    } catch {
+      return UNAVAILABLE;
+    }
+  }
 }

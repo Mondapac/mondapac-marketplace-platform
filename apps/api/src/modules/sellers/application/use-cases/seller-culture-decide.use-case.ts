@@ -184,6 +184,7 @@ export class SellerCultureDecide extends UseCase<
     const guard = await demoteStaleApprovals(this.deps, context, [
       { state: next.value, verifiedType: found?.requiredCertificationType ?? null },
     ]);
+    if (guard.demoteFailed) return err({ code: 'sellers.unavailable' });
     if (guard.demoted.size > 0) return err({ code: 'culture.changed' });
     if (guard.unreadable) return err({ code: 'sellers.unavailable' });
     return written;

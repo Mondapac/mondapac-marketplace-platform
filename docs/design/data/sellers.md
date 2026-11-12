@@ -1663,6 +1663,9 @@ are plain values read through catalog's `culturesByIds` / `activeCultures`.
 - `culture_code` is a copy of catalog's culture code. It is safe only because catalog never changes
   a code after creation (immutable by ADR-0047); if that ever changed, the copy would need a
   consumer of the change.
+- The seed cursor restarts at the first seller on every run (it is not stored). Revisit trigger:
+  persist the seed cursor if more than 2000 sellers are skipped per run (low ids that are skipped
+  every time would starve newer sellers).
 - Revisit trigger: if the roster query p95 exceeds 50 ms, or one Market holds more than about
   100 000 memberships, replace the anti-join with a keyset over a work table or add a partial
   index on `status = 'requested'`.

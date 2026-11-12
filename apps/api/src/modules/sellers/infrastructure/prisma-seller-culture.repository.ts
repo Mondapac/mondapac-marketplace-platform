@@ -117,9 +117,24 @@ export class PrismaSellerCultureRepository implements SellerCultureRepository {
   async hasApproved(market: MarketContext, cultureId: Id<'Culture'>): Promise<boolean> {
     const row = await this.prisma.tx(market).sellersSellerCulture.findFirst({
       where: { marketId: market.marketId, cultureId, status: 'approved' },
-      select: { sellerId: true },
+      // The index (market_id, culture_id, status) covers the filter and this column: an index-only scan.
+      select: { cultureId: true },
     });
     return row !== null;
+  }
+
+  async approvedIn(
+    market: MarketContext,
+    cultureId: Id<'Culture'>,
+    limit: number,
+  ): Promise<readonly SellerCultureState[]> {
+    const rows = await this.prisma.tx(market).sellersSellerCulture.findMany({
+      where: { marketId: market.marketId, cultureId, status: 'approved' },
+      select: SELECT,
+      orderBy: [{ sellerId: 'asc' }],
+      take: limit,
+    });
+    return rows.map(stateOf);
   }
 
   async insert(market: MarketContext, state: SellerCultureState): Promise<boolean> {

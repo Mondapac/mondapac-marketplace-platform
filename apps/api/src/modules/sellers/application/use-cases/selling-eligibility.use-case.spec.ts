@@ -198,6 +198,7 @@ describe.each([
       operatingZones: undefined as never,
       applySignupCultures: undefined as never,
       cultureApprovedMembers: undefined as never,
+      cultureDemoteApprovals: undefined as never,
     });
   });
 

@@ -63,6 +63,10 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
   const marks = new Map<string, CultureCategoryRow>();
   let audits: AuditEntry[] = [];
   let permissions: string[] = [];
+  // The next N saves fail as stale (another writer got in); set when the revert is about to run.
+  let staleSaves = 0;
+  let staleSavesOnRevert = 0;
+  const demoteCalls: string[] = [];
   const cultures: CultureRepository = {
     add: (_m, state) => {
       if ([...rows.values()].some((r) => r.code === state.code)) {
@@ -76,6 +80,10 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
     defaultId: () => Promise.resolve([...rows.values()].find((r) => r.isDefault)?.id ?? null),
     count: () => Promise.resolve(rows.size),
     save: (_m, state, expectedVersion) => {
+      if (staleSaves > 0) {
+        staleSaves -= 1;
+        throw new StaleAggregateError('culture', state.id);
+      }
       if (rows.get(state.id)?.version !== expectedVersion) {
         throw new StaleAggregateError('culture', state.id);
       }
@@ -180,7 +188,12 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
         return Promise.resolve(err({ code: 'culture-members.unavailable' } as const));
       }
       const answer = approvedMembers === 'some' || (appearAfterCommit && memberCalls.length > 1);
+      if (answer && memberCalls.length > 1) staleSaves = staleSavesOnRevert;
       return Promise.resolve(ok(answer));
+    },
+    demoteAll: (_c, id) => {
+      demoteCalls.push(id);
+      return Promise.resolve(ok(true));
     },
   };
 
@@ -674,7 +687,72 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
     beforeEach(() => {
       approvedMembers = 'none';
       appearAfterCommit = false;
+      staleSaves = 0;
+      staleSavesOnRevert = 0;
+      demoteCalls.length = 0;
       memberCalls.length = 0;
+    });
+
+    it('retries the revert on a stale write and audits it', async () => {
+      const culture = await created();
+      const { edit, get } = build();
+      appearAfterCommit = true;
+      staleSavesOnRevert = 2;
+      memberCalls.length = 0;
+      audits = [];
+
+      const result = await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        requiredCertificationType: type,
+      });
+
+      expect(result).toEqual({ ok: false, error: { code: 'culture.required-type-locked' } });
+      expect(await get.execute(admin, { cultureId: culture.id })).toMatchObject({
+        value: { culture: { requiredCertificationType: null } },
+      });
+      expect(demoteCalls).toEqual([]);
+      // The edit and the revert are both audited.
+      expect(audits).toHaveLength(2);
+    });
+
+    it('takes every approval back when the revert keeps failing', async () => {
+      const culture = await created();
+      const { edit, get } = build();
+      appearAfterCommit = true;
+      staleSavesOnRevert = 3;
+      memberCalls.length = 0;
+
+      const result = await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        requiredCertificationType: type,
+      });
+
+      expect(result).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+      expect(demoteCalls).toEqual([culture.id]);
+      expect(await get.execute(admin, { cultureId: culture.id })).toMatchObject({
+        value: { culture: { requiredCertificationType: type } },
+      });
+    });
+
+    it('writes nothing when the change is locked', async () => {
+      const culture = await created();
+      const { edit, get } = build();
+      approvedMembers = 'some';
+      audits = [];
+
+      await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        requiredCertificationType: type,
+        displayOrder: 9,
+      });
+
+      expect(audits).toEqual([]);
+      expect(await get.execute(admin, { cultureId: culture.id })).toMatchObject({
+        value: { culture: { version: 1, displayOrder: culture.displayOrder } },
+      });
     });
 
     it('refuses a changed required type while a seller is approved', async () => {

@@ -288,6 +288,10 @@ describe.each(TEST_MARKETS)('seller cultures in market %s (database integration)
       repository.transition(market, approved.value, { version: 1, status: 'requested' }),
     );
     expect(await inUnit(() => repository.hasApproved(market, culture))).toBe(true);
+    expect(await inUnit(() => repository.approvedIn(market, culture, 10))).toEqual([
+      approved.value,
+    ]);
+    expect(await inUnitOf(other)(() => repository.approvedIn(other, culture, 10))).toEqual([]);
     expect(await inUnitOf(other)(() => repository.hasApproved(other, culture))).toBe(false);
 
     const demoted = demoteMembership(approved.value, T1);

@@ -17,6 +17,15 @@ export interface CultureMembers {
     context: CallContext,
     cultureId: Id<'Culture'>,
   ): Promise<Result<boolean, CultureMembersUnavailable>>;
+
+  /**
+   * Last resort (security review M1-R1): take every approval of the culture back to requested, when
+   * a required-type change could not be reverted. Ok(true) only when none is left approved.
+   */
+  demoteAll(
+    context: CallContext,
+    cultureId: Id<'Culture'>,
+  ): Promise<Result<boolean, CultureMembersUnavailable>>;
 }
 
 export const CULTURE_MEMBERS = Symbol('CATALOG_CULTURE_MEMBERS');

@@ -30,6 +30,7 @@ import type { SellerCertificateDirectory } from '../ports/seller-certificate-dir
 import type { SellerCultureRepository } from '../ports/seller-culture.repository';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
 import { CultureApprovedMembers } from './culture-approved-members.use-case';
+import { CultureDemoteApprovals } from './culture-demote-approvals.use-case';
 import { ApplySignupCultures } from './apply-signup-cultures.use-case';
 import { SeedSellerCultures } from './seed-seller-cultures.use-case';
 import { SellerCultureDecide } from './seller-culture-decide.use-case';
@@ -51,6 +52,8 @@ class Rows implements SellerCultureRepository {
   readonly sellers = new Set<string>();
   /** Makes the next `transition` lose, as if another unit won the race. */
   loseNextTransition = false;
+  /** Makes the next N demotions (transitions out of `approved`) throw, as a database fault would. */
+  failDemotions = 0;
 
   forSeller(market: MarketContext, sellerId: Id<'Seller'>) {
     return Promise.resolve(
@@ -77,6 +80,20 @@ class Rows implements SellerCultureRepository {
           v.cultureId === cultureId &&
           v.status === 'approved',
       ),
+    );
+  }
+
+  approvedIn(market: MarketContext, cultureId: Id<'Culture'>, limit: number) {
+    return Promise.resolve(
+      [...this.rows]
+        .filter(
+          ([k, v]) =>
+            k.startsWith(`${market.marketId}|`) &&
+            v.cultureId === cultureId &&
+            v.status === 'approved',
+        )
+        .map(([, v]) => v)
+        .slice(0, limit),
     );
   }
 
@@ -108,6 +125,10 @@ class Rows implements SellerCultureRepository {
   ) {
     const k = key(market, state.sellerId, state.cultureId);
     const current = this.rows.get(k);
+    if (expected.status === 'approved' && this.failDemotions > 0) {
+      this.failDemotions -= 1;
+      throw new Error('database fault');
+    }
     if (this.loseNextTransition) {
       this.loseNextTransition = false;
       return Promise.resolve(false);
@@ -248,6 +269,12 @@ function setUp(code: string) {
     }),
     access,
     approvedMembers: new CultureApprovedMembers(gate, { unitOfWork, sellerCultures: rows }),
+    demoteApprovals: new CultureDemoteApprovals(gate, {
+      unitOfWork,
+      sellerCultures: rows,
+      outbox,
+      clock,
+    }),
     admin: (): CallContext =>
       testCallContext(
         market,
@@ -777,6 +804,70 @@ describe.each([
       });
       expect(done).toEqual(err({ code: 'culture.changed' }));
       expect([...t.rows.rows.values()][0]).toMatchObject({ status: 'requested', version: 3 });
+    });
+
+    it('retries a failed take-back once, and answers unavailable when it fails twice', async () => {
+      const once = withSeller();
+      once.t.directory.afterRead = () =>
+        void once.t.cultures.set(once.plain.id, { ...once.plain, status: 'inactive' });
+      once.t.rows.failDemotions = 1;
+      expect(
+        await once.t.applySignup.execute(once.t.system, { sellerId: once.sellerId }),
+      ).toMatchObject({ ok: true });
+      expect([...once.t.rows.rows.values()].map((s) => s.status)).toEqual([
+        'requested',
+        'requested',
+      ]);
+
+      const twice = withSeller();
+      twice.t.directory.afterRead = () =>
+        void twice.t.cultures.set(twice.plain.id, { ...twice.plain, status: 'inactive' });
+      twice.t.rows.failDemotions = 2;
+      expect(
+        await twice.t.applySignup.execute(twice.t.system, { sellerId: twice.sellerId }),
+      ).toEqual(err({ code: 'sellers.unavailable' }));
+
+      const decided = withSeller();
+      await decided.t.request.execute(decided.t.seller(decided.sellerId), {
+        body: { cultureIds: [decided.certified.id] },
+      });
+      decided.t.certificates.held.add(certType);
+      decided.t.directory.afterRead = () =>
+        void decided.t.cultures.set(decided.certified.id, {
+          ...decided.certified,
+          requiredCertificationType: 'other-type',
+        });
+      decided.t.rows.failDemotions = 2;
+      expect(
+        await decided.t.decide.execute(decided.t.admin(), {
+          sellerId: decided.sellerId,
+          cultureId: decided.certified.id,
+          body: { decision: 'approve' },
+        }),
+      ).toEqual(err({ code: 'sellers.unavailable' }));
+    });
+
+    it('takes every approval of a culture back for catalog, one event each', async () => {
+      const { t, sellerId, plain } = withSeller();
+      await t.applySignup.execute(t.system, { sellerId });
+      expect([...t.rows.rows.values()].filter((s) => s.cultureId === plain.id)[0]?.status).toBe(
+        'approved',
+      );
+      const before = t.events.length;
+
+      expect(await t.demoteApprovals.execute(t.anonymous, { cultureId: plain.id })).toEqual(
+        ok({ demoted: 1, remaining: false }),
+      );
+      expect(await t.approvedMembers.execute(t.anonymous, { cultureId: plain.id })).toEqual(
+        ok(false),
+      );
+      expect(t.events.length).toBe(before + 1);
+      expect(await t.demoteApprovals.execute(t.anonymous, { cultureId: plain.id })).toEqual(
+        ok({ demoted: 0, remaining: false }),
+      );
+      expect(await t.demoteApprovals.execute(t.anonymous, { cultureId: 'nope' })).toMatchObject({
+        ok: false,
+      });
     });
 
     it('answers whether anyone is approved in a culture, for catalog', async () => {

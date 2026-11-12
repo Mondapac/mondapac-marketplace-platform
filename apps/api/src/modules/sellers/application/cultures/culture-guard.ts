@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import type { CallContext, Clock, Id } from '@mondapac/shared-kernel';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -26,7 +27,11 @@ export interface GuardOutcome {
   readonly demoted: ReadonlySet<Id<'Culture'>>;
   /** True when the cultures could not be read again: every fresh approval was taken back. */
   readonly unreadable: boolean;
+  /** True when taking a stale approval back failed twice: the approval may still stand (fail closed). */
+  readonly demoteFailed: boolean;
 }
+
+const logger = new Logger('CultureGuard');
 
 /**
  * The guard against a stale read (ADR-0048, security review M1). A membership is approved on a read
@@ -43,7 +48,7 @@ export async function demoteStaleApprovals(
   context: CallContext,
   approvals: readonly FreshApproval[],
 ): Promise<GuardOutcome> {
-  if (approvals.length === 0) return { demoted: new Set(), unreadable: false };
+  if (approvals.length === 0) return { demoted: new Set(), unreadable: false, demoteFailed: false };
   const { market } = context;
   const current = await deps.cultureDirectory.byIds(
     context,
@@ -59,21 +64,42 @@ export async function demoteStaleApprovals(
     );
   });
   const demoted = new Set<Id<'Culture'>>();
+  let demoteFailed = false;
   if (stale.length > 0) {
-    await deps.unitOfWork.run(market, async () => {
-      const at = deps.clock.now();
-      for (const { state } of stale) {
-        const next = demoteMembership(state, at);
-        const won = await deps.sellerCultures.transition(market, next, {
-          version: state.version,
-          status: 'approved',
-        });
-        if (!won) continue;
-        await announce(deps.outbox, context, next);
-        demoted.add(state.cultureId);
+    // One retry: a failed demotion rolls back its whole unit, so the second try starts clean.
+    const attempt = () =>
+      deps.unitOfWork.run(market, async () => {
+        const at = deps.clock.now();
+        for (const { state } of stale) {
+          const next = demoteMembership(state, at);
+          const won = await deps.sellerCultures.transition(market, next, {
+            version: state.version,
+            status: 'approved',
+          });
+          if (!won) continue;
+          await announce(deps.outbox, context, next);
+          demoted.add(state.cultureId);
+        }
+        return { ok: true as const, value: undefined };
+      });
+    for (let tries = 1; tries <= 2; tries += 1) {
+      demoted.clear();
+      try {
+        await attempt();
+        demoteFailed = false;
+        break;
+      } catch {
+        demoteFailed = true;
       }
-      return { ok: true as const, value: undefined };
-    });
+    }
+    if (demoteFailed) {
+      logger.error({
+        msg: 'sellers.culture-guard.demote-failed',
+        approvals: stale.length,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+    }
   }
-  return { demoted, unreadable: !current.ok };
+  return { demoted, unreadable: !current.ok, demoteFailed };
 }

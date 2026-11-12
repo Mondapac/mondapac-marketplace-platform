@@ -35,6 +35,16 @@ export interface SellerCultureRepository {
   /** Whether any seller is approved in the culture (catalog asks before it changes the culture's required type). */
   hasApproved(market: MarketContext, cultureId: Id<'Culture'>): Promise<boolean>;
 
+  /**
+   * Up to `limit` approved rows of one culture, any seller (catalog's emergency take-back when a
+   * required-type change could not be reverted). Rows leave the result as they are demoted.
+   */
+  approvedIn(
+    market: MarketContext,
+    cultureId: Id<'Culture'>,
+    limit: number,
+  ): Promise<readonly SellerCultureState[]>;
+
   /** Inserts a first request; false when the seller already has a row for the culture. */
   insert(market: MarketContext, state: SellerCultureState): Promise<boolean>;
 

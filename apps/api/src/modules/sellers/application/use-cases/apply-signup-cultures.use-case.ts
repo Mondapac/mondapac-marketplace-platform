@@ -199,7 +199,7 @@ export class ApplySignupCultures extends UseCase<
     // The cultures were read before the write. Read them again now: one that became certified or
     // inactive in between must not keep an approval made without a certificate (security review M1).
     const guard = await demoteStaleApprovals(this.deps, context, fresh);
-    if (guard.unreadable) return err({ code: 'sellers.unavailable' });
+    if (guard.demoteFailed || guard.unreadable) return err({ code: 'sellers.unavailable' });
     if (guard.demoted.size === 0) return written;
     this.#logger.warn({
       msg: 'sellers.apply-signup-cultures.demoted-stale-approval',

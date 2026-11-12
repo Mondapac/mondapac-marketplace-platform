@@ -191,18 +191,20 @@ export class CultureEdit extends UseCase<
     const stored = read.value;
     if (stored.version !== version.value) return err({ code: 'conflict.stale' });
 
-    if (change.names !== undefined) {
-      const claim = await refuseClaimWords(this.deps, context, change.names, stored.names);
-      if (claim !== null) return err(claim);
-    }
     const newType = change.requiredCertificationType;
     const typeChanges = newType !== undefined && newType !== stored.requiredCertificationType;
     // An approval was checked against the type the culture had; while anyone is approved the type
-    // does not change (security review M1). Fail closed when sellers cannot answer.
+    // does not change (security review M1); asked before any other
+    // check and before the write unit, so a locked change writes nothing. Fail closed when sellers cannot answer.
     if (typeChanges) {
       const members = await this.deps.cultureMembers.hasApproved(context, id.value);
       if (!members.ok) return err({ code: 'access.unavailable' });
       if (members.value) return err({ code: 'culture.required-type-locked' });
+    }
+
+    if (change.names !== undefined) {
+      const claim = await refuseClaimWords(this.deps, context, change.names, stored.names);
+      if (claim !== null) return err(claim);
     }
     if (typeof newType === 'string' && newType !== stored.requiredCertificationType) {
       const known = await checkRequiredCertificationType(this.deps.evaluator, context, newType);
@@ -273,17 +275,20 @@ export class CultureEdit extends UseCase<
     const { market } = context;
     const members = await this.deps.cultureMembers.hasApproved(context, before.id);
     if (members.ok && !members.value) return ok({ culture: saved });
-    await this.deps.unitOfWork.run(market, async () => {
-      const found = await this.deps.cultures.findById(market, before.id);
-      if (found === null) return ok(null);
-      const back = editCulture(
-        found,
-        { requiredCertificationType: before.requiredCertificationType },
-        this.deps.clock.now(),
-      );
-      if (back.ok) await this.deps.cultures.save(market, back.value, found.version);
-      return ok(null);
-    });
+    const reverted = await this.#revert(context, before);
+    if (!reverted) {
+      // The old type could not be put back (the row kept changing). The approvals were checked
+      // against that old type, so they are all taken back to requested instead (fail closed).
+      const demoted = await this.deps.cultureMembers.demoteAll(context, before.id);
+      this.#logger.error({
+        msg: 'catalog.culture-edit.required-type-revert-failed',
+        cultureId: before.id,
+        approvalsDemoted: demoted.ok && demoted.value,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return err({ code: 'access.unavailable' });
+    }
     this.#logger.warn({
       msg: 'catalog.culture-edit.required-type-reverted',
       marketId: market.marketId,
@@ -291,7 +296,56 @@ export class CultureEdit extends UseCase<
     });
     return err({ code: members.ok ? 'culture.required-type-locked' : 'access.unavailable' });
   }
+
+  /** Puts the old required type back: re-reads and re-applies it, up to 3 times on a stale write. Audited. */
+  async #revert(context: CallContext, before: CultureState): Promise<boolean> {
+    const { market } = context;
+    for (let attempt = 1; attempt <= REVERT_ATTEMPTS; attempt += 1) {
+      try {
+        const done = await this.deps.unitOfWork.run<boolean, never>(market, async () => {
+          const found = await this.deps.cultures.findById(market, before.id);
+          if (found === null) return ok(true);
+          if (found.requiredCertificationType === before.requiredCertificationType) return ok(true);
+          const back = editCulture(
+            found,
+            { requiredCertificationType: before.requiredCertificationType },
+            this.deps.clock.now(),
+          );
+          if (!back.ok) return ok(false);
+          if ((await this.deps.cultures.save(market, back.value, found.version)) !== null) {
+            return ok(false);
+          }
+          await this.deps.audit.record(
+            context,
+            CultureEditedAudit.entry(found.id, {
+              before: {
+                status: found.status,
+                isDefault: found.isDefault,
+                requiresCertification: found.requiredCertificationType !== null,
+              },
+              after: {
+                status: back.value.status,
+                isDefault: back.value.isDefault,
+                requiresCertification: back.value.requiredCertificationType !== null,
+                namesChanged: false,
+                orderChanged: false,
+                badgeChanged: false,
+                requiredCertificationTypeChanged: true,
+              },
+            }),
+          );
+          return ok(true);
+        });
+        if (done.ok && done.value) return true;
+      } catch {
+        // A stale write or a fault: read again and retry.
+      }
+    }
+    return false;
+  }
 }
+
+const REVERT_ATTEMPTS = 3;
 
 const namesChanged = (before: CultureState, after: CultureState): boolean =>
   JSON.stringify(before.names) !== JSON.stringify(after.names);

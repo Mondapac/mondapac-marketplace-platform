@@ -74,6 +74,17 @@ class StubMemberships implements SellerCultureRepository {
   sellerIdsWithoutCultures() {
     return Promise.resolve([]);
   }
+  approvedIn(m: MarketContext, cultureId: Id<'Culture'>, limit: number) {
+    return Promise.resolve(
+      [...this.rows.entries()]
+        .filter(
+          ([k, v]) =>
+            k.startsWith(`${m.marketId}|`) && v.cultureId === cultureId && v.status === 'approved',
+        )
+        .map(([, v]) => v)
+        .slice(0, limit),
+    );
+  }
   hasApproved(m: MarketContext, cultureId: Id<'Culture'>) {
     return Promise.resolve(
       [...this.rows].some(

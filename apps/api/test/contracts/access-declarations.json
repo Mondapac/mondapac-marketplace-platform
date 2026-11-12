@@ -689,6 +689,7 @@
   { "name": "sellers.close-decision", "rule": "system" },
   { "name": "sellers.create-seller-file", "rule": "system" },
   { "name": "sellers.culture-approved-members", "rule": "anonymous" },
+  { "name": "sellers.culture-demote-approvals", "rule": "anonymous" },
   {
     "name": "sellers.form-descriptors-read",
     "rule": "permissions",

@@ -18,6 +18,10 @@ import type { PublishedStoreSlugs } from '../application/use-cases/published-sto
 import type { ReviewerBusinessDetailsRead } from '../application/use-cases/reviewer-business-details.use-case';
 import type { SellingEligibilitySystem } from '../application/use-cases/selling-eligibility-system.use-case';
 import type { CultureApprovedMembers } from '../application/use-cases/culture-approved-members.use-case';
+import type {
+  CultureDemoteApprovals,
+  CultureDemoteApprovalsResult,
+} from '../application/use-cases/culture-demote-approvals.use-case';
 import type { ApplySignupCultures } from '../application/use-cases/apply-signup-cultures.use-case';
 import type { SellingEligibility } from '../application/use-cases/selling-eligibility.use-case';
 import type { SellerSummariesSystem } from '../application/use-cases/seller-summaries-system.use-case';
@@ -61,6 +65,7 @@ export interface SellersFacadeUseCases {
   readonly operatingZones: OperatingZones;
   readonly applySignupCultures: ApplySignupCultures;
   readonly cultureApprovedMembers: CultureApprovedMembers;
+  readonly cultureDemoteApprovals: CultureDemoteApprovals;
 }
 
 /**
@@ -237,5 +242,17 @@ export class SellersFacadeImplementation implements SellersFacade {
     cultureId: Id<'Culture'>,
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>> {
     return this.useCases.cultureApprovedMembers.execute(context, { cultureId });
+  }
+
+  cultureDemoteApprovals(
+    context: CallContext,
+    cultureId: Id<'Culture'>,
+  ): Promise<
+    Result<
+      CultureDemoteApprovalsResult,
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  > {
+    return this.useCases.cultureDemoteApprovals.execute(context, { cultureId });
   }
 }

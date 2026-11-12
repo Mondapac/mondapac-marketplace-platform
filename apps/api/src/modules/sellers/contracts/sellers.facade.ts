@@ -319,6 +319,22 @@ export interface SellersFacade {
     context: CallContext,
     cultureId: Id<'Culture'>,
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
+
+  /**
+   * `cultureDemoteApprovals` (ADR-0048, security review M1-R1): takes every approval of the culture
+   * back to `requested`. Catalog's last resort when it could not put a required type back after an
+   * approval raced with the change. Rule `anonymous`; in process only; moves rows only toward
+   * `requested`. `remaining` is true when the per-call cap left approvals behind.
+   */
+  cultureDemoteApprovals(
+    context: CallContext,
+    cultureId: Id<'Culture'>,
+  ): Promise<
+    Result<
+      { readonly demoted: number; readonly remaining: boolean },
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  >;
 }
 
 /** Nest token of the {@link SellersFacade}, provided and exported by `SellersModule`. */

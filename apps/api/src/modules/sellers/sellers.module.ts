@@ -127,6 +127,7 @@ import { SellerActivitiesSetUseCase } from './application/use-cases/seller-activ
 import { SellerBusinessActivities } from './application/use-cases/seller-business-activities.use-case';
 import { SellerBusinessActivitiesSystem } from './application/use-cases/seller-business-activities-system.use-case';
 import { CultureApprovedMembers } from './application/use-cases/culture-approved-members.use-case';
+import { CultureDemoteApprovals } from './application/use-cases/culture-demote-approvals.use-case';
 import { ApplySignupCultures } from './application/use-cases/apply-signup-cultures.use-case';
 import { SeedSellerCultures } from './application/use-cases/seed-seller-cultures.use-case';
 import { seedSellerCulturesJob } from './presentation/jobs/seed-seller-cultures.job';
@@ -762,6 +763,12 @@ const REVIEW_DECISION_PORTS = {
       clock: true,
     }),
     useCaseProvider(CultureApprovedMembers, { unitOfWork: true, sellerCultures: true }),
+    useCaseProvider(CultureDemoteApprovals, {
+      unitOfWork: true,
+      sellerCultures: true,
+      outbox: true,
+      clock: true,
+    }),
     useCaseProvider(SeedSellerCultures, {
       unitOfWork: true,
       sellerCultures: true,
@@ -856,6 +863,7 @@ const REVIEW_DECISION_PORTS = {
         OperatingZones,
         ApplySignupCultures,
         CultureApprovedMembers,
+        CultureDemoteApprovals,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -880,6 +888,7 @@ const REVIEW_DECISION_PORTS = {
         operatingZones: OperatingZones,
         applySignupCultures: ApplySignupCultures,
         cultureApprovedMembers: CultureApprovedMembers,
+        cultureDemoteApprovals: CultureDemoteApprovals,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -904,6 +913,7 @@ const REVIEW_DECISION_PORTS = {
           operatingZones,
           applySignupCultures,
           cultureApprovedMembers,
+          cultureDemoteApprovals,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by
