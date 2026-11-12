@@ -146,7 +146,7 @@ export {
   Pagination,
   PrevNext,
   pageWindow,
-  type PageItem,
+  type PageItem as PaginationPageItem,
   type PaginationLabels,
 } from './data/pagination.tsx';
 export { CARD_TABLE } from './data/card-table.ts';
