@@ -32,17 +32,20 @@ export class PrismaOfferDocumentRepository implements OfferDocumentRepository {
       indexedAt: toDate(indexedAt),
     };
     const tx = this.prisma.tx(market);
-    // L2 (package 3a): update only a document read no later than this one; else insert, unless a
-    // row appeared meanwhile (written from a later read, or a concurrent first write): then this
-    // older answer is dropped, children included.
-    const updated = await tx.searchOfferDocument.updateMany({
-      where: {
-        marketId: market.marketId,
-        offerId: document.offerId,
-        indexedAt: { lte: toDate(indexedAt) },
-      },
-      data,
-    });
+    // L2 (package 3a): update only a document read no later than this one; else insert. If a row
+    // appeared meanwhile (a concurrent first write), the guarded update runs once more, so that row
+    // is replaced only when it was read no later than this one; else this older answer is dropped,
+    // children included.
+    const guardedUpdate = () =>
+      tx.searchOfferDocument.updateMany({
+        where: {
+          marketId: market.marketId,
+          offerId: document.offerId,
+          indexedAt: { lte: toDate(indexedAt) },
+        },
+        data,
+      });
+    const updated = await guardedUpdate();
     if (updated.count === 0) {
       const created = await tx.searchOfferDocument.createMany({
         data: [
@@ -55,7 +58,7 @@ export class PrismaOfferDocumentRepository implements OfferDocumentRepository {
         ],
         skipDuplicates: true,
       });
-      if (created.count === 0) return;
+      if (created.count === 0 && (await guardedUpdate()).count === 0) return;
     }
     // The numbers are replaced as a set: the document's own rows go, the current ones come.
     await tx.searchOfferDocumentNumber.deleteMany({

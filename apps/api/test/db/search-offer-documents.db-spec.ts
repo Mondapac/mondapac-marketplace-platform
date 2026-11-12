@@ -900,6 +900,40 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       expect(await inUnit(market, () => documents.deleteMany(market, [later.offerId], T1))).toBe(1);
     });
 
+    it('lets a later read replace a concurrent first write of an earlier read (L2, N1)', async () => {
+      const template = doc({ name: 'Template', cultureCodes: [certified] });
+      await seed(market, template);
+      const raced = doc({ name: 'Raced', cultureCodes: [certified] });
+      const T1 = T0.add({ seconds: 1 });
+      // Another unit inserts the first row of `raced`, read at T0, and has not committed yet.
+      const racer = new Client({ connectionString: searchDocumentsTestDatabaseUrl() });
+      await racer.connect();
+      try {
+        await racer.query('BEGIN');
+        await racer.query(
+          `INSERT INTO search.offer_documents (market_id, tenant_id, offer_id, product_id, seller_id,
+             locale, name, short_text, category_ids, text_search_config, search_text, facet_codes,
+             culture_codes, indexed_at)
+           SELECT market_id, tenant_id, $2::uuid, product_id, seller_id, locale, 'Earlier read',
+             short_text, category_ids, text_search_config, search_text, facet_codes,
+             ARRAY[]::text[], $3::timestamptz
+           FROM search.offer_documents WHERE market_id = $4 AND offer_id = $1::uuid`,
+          [template.offerId, raced.offerId, T0.toString(), market.marketId],
+        );
+        // The later read (T1) finds no row to update, and its insert waits on the racer's row.
+        const write = inUnit(market, () =>
+          documents.upsert(market, { ...raced, name: 'Later read' }, T1),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        await racer.query('COMMIT');
+        await write;
+      } finally {
+        await racer.end();
+      }
+      // The insert skipped the duplicate; the guarded update ran once more and replaced it.
+      expect(await codesOf(raced.offerId)).toEqual([certified]);
+    });
+
     it('pages the Offers that name a category subtree by Offer id (keyset)', async () => {
       const shelf = id<'Category'>();
       const named = [1, 2, 3].map(() => doc({ name: 'Shelf item', categoryIds: [shelf] }));

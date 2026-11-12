@@ -176,6 +176,7 @@ export class PrismaCultureRepository implements CultureRepository {
     if (cultureIds.length === 0) return out;
     const rows = await this.prisma.tx(market).catalogCultureCategory.findMany({
       where: { marketId: market.marketId, cultureId: { in: [...new Set(cultureIds)] } },
+      select: { cultureId: true, categoryId: true, visible: true, certificationMark: true },
       orderBy: [{ cultureId: 'asc' }, { categoryId: 'asc' }],
     });
     for (const row of rows) {

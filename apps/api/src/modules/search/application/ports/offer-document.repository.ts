@@ -5,8 +5,10 @@ import type { OfferDocument } from '../../domain/offer-document';
 export interface OfferDocumentRepository {
   /**
    * Writes the document as read at `indexedAt` (the instant its sync began reading). A stored
-   * document written from a later read is kept (multi-culture package 3a, security review L2: two
-   * syncs of one Offer that overlap never leave the older answer last); equal instants overwrite.
+   * document written from a later read is kept; equal instants overwrite (multi-culture package 3a,
+   * security review L2). This narrows the overlap of two syncs of one Offer; it does not close it
+   * fully (application clock skew, a delete followed by an older write): see ADR-0048, items 3b
+   * closes before it reads `culture_codes`.
    */
   upsert(
     market: MarketContext,

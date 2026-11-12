@@ -1,5 +1,7 @@
 -- Safety: a blocked statement fails instead of queueing.
 SET lock_timeout = '5s';
+-- The build itself may take longer than a statement budget; it holds no write lock meanwhile.
+SET statement_timeout = 0;
 
 -- CreateIndex. The culture filter of package 3b asks for documents holding one of the chosen codes
 -- (`culture_codes && $1`; `@>` for one code). CONCURRENTLY: search.offer_documents holds rows, so

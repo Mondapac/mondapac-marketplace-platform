@@ -115,3 +115,17 @@ seller. Package 2 builds the seller side. The buyer side is package 4.
     elsewhere); a seller with no approved culture is shown nowhere (fail closed).
   - Its contract test: every buyer read path, with the switch on and an Offer visible only in
     another culture, on both Market fixtures; it fails when a buyer read path skips the filter.
+  - Items 3b closes before any read of `culture_codes` (re-reviews of #848 on 87a5e787):
+    - Security L-A: a reindex request can be lost when two runs overlap (the guarded `finish` can
+      still match a request cleared and re-set between them). Fix with a run token or a generation
+      counter on the progress row, so `finish` marks done only the run that saw the last request.
+    - Security L-B / database N2: a deleted document can be resurrected by an older sync that
+      inserts after the delete (no row left to guard against), and `indexed_at` is application time
+      (clock skew between processes). Fix with a tombstone or a per-Offer advisory lock around read
+      and write, and take `indexed_at` from database time.
+    - Security L-C: rolling back migration `20261112160000_catalog_culture_categories_visible_inherit`
+      turns NULL `visible` into `true`, which re-exposes a mark-only child under a hidden parent.
+      Its rollback must be paired with a re-hide (set those rows `false` where an ancestor is
+      hidden) and a reindex request.
+    - Database N5: `sellers-of-issuer` can return a seller once per matching certificate; dedupe it
+      (DISTINCT on seller id in the keyset read) so the issuer re-check visits each seller once.
