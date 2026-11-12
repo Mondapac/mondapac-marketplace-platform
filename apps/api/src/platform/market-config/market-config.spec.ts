@@ -41,6 +41,7 @@ const VALID = {
   requestLimits: {
     anonymousIdentityPerMinute: 20,
     publicMediaPerMinute: 1500,
+    publicSearchPerMinute: 120,
     defaultPerMinute: 300,
   },
   allowedOrigins: {
@@ -205,6 +206,7 @@ describe('loadMarketConfigs', () => {
         requestLimits: {
           anonymousIdentityPerMinute: 0,
           publicMediaPerMinute: 1500,
+          publicSearchPerMinute: 120,
           defaultPerMinute: 300,
         },
       },
