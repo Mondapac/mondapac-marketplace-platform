@@ -21,7 +21,8 @@ import { addressLine, insideArea, locality } from './geo.ts';
 import { deliveryAreaFor } from '../checkout/actions.ts';
 import { SearchProblem, liveLookup, sampleLookup } from './lookup.ts';
 import { MIN_QUERY } from './mapbox.ts';
-import { StubMap } from './stub-map.tsx';
+import { DeliveryMap } from './delivery-map.tsx';
+import { writeAddressPrefill } from './address-prefill.ts';
 
 /** How the pin got where it is: an address picked, the pin moved, or the device location. */
 type Origin = 'place' | 'pin' | 'device';
@@ -88,6 +89,12 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   const [locating, setLocating] = useState<Locating>('idle');
   /** Why the live search shows no list: typed too little, too many searches, or it failed. */
   const [searchNote, setSearchNote] = useState<'short' | SearchProblem['kind'] | null>(null);
+  /** A search is waiting for its answer (the list keeps the last results meanwhile). */
+  const [searching, setSearching] = useState(false);
+  /** A saved address could not be looked up; shown under the saved addresses. */
+  const [savedFailed, setSavedFailed] = useState(false);
+  /** "Save to my addresses": asking for the storable answer, or it failed. */
+  const [keeping, setKeeping] = useState<'idle' | 'busy' | 'failed'>('idle');
   const confirmed = useRef<Pick | null>(null);
   /** The pick made from the guessed area on opening; the guess note shows while it stands. */
   const guessPick = useRef<Pick | null>(null);
@@ -117,6 +124,9 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     setActive(-1);
     setLocating('idle');
     setSearchNote(null);
+    setSearching(false);
+    setSavedFailed(false);
+    setKeeping('idle');
     if (confirmed.current) setPick(confirmed.current);
     else if (deliverTo ?? deliverGuess) {
       const ticket = ++placeTicket.current;
@@ -162,12 +172,14 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   const close = () => setDeliverOpen(false);
   const choose = (place: Place, savedId?: string) => {
     placeTicket.current++;
+    setKeeping('idle');
     setPick({ point: place.point, origin: 'place', place, ...(savedId ? { savedId } : {}) });
     setResults(null);
     setActive(-1);
   };
   const pinAt = (point: GeoPoint, origin: Origin) => {
     const ticket = ++placeTicket.current;
+    setKeeping('idle');
     // The place found before stays until the lookup answers, so the summary does not flicker.
     setPick((before) => ({ point, origin, place: before.place, pending: true }));
     void lookup.suburbAt(point).then((place) => {
@@ -179,6 +191,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     setActive(-1);
     const ticket = ++searchTicket.current;
     setSearchNote(null);
+    setSearching(false);
     if (!value.trim()) {
       setResults(null);
       return;
@@ -190,12 +203,16 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     }
     // Rank towards the pin only once the buyer set it: the start point is the sample area's.
     const near = pick.point === source.start.point ? undefined : pick.point;
+    if (source.live) setSearching(true);
     lookup.search(value, near).then(
       (found) => {
-        if (ticket === searchTicket.current) setResults(found);
+        if (ticket !== searchTicket.current) return;
+        setSearching(false);
+        setResults(found);
       },
       (error: unknown) => {
         if (ticket !== searchTicket.current) return;
+        setSearching(false);
         setResults(null);
         setSearchNote(error instanceof SearchProblem ? error.kind : 'failed');
       },
@@ -209,6 +226,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
   const clear = () => {
     searchTicket.current++;
     setSearchNote(null);
+    setSearching(false);
     setQuery('');
     setResults(null);
     setActive(-1);
@@ -237,16 +255,42 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
     );
   };
   const chooseSaved = (id: string, line: string) => {
+    setSavedFailed(false);
     lookup.search(line).then(
       (found) => {
         const place = found.find((p) => addressLine(p) === line) ?? found[0];
         if (place) {
           setQuery('');
           choose(place, id);
-        }
+        } else setSavedFailed(true);
       },
-      () => setSearchNote('failed'),
+      () => setSavedFailed(true),
     );
+  };
+  /** A street address picked from the search, not yet in the signed-in buyer's address book. */
+  const keepable =
+    customer !== null && pick.origin === 'place' && !pick.savedId && !!pick.place?.street;
+  const keep = () => {
+    if (!pick.place || keeping === 'busy') return;
+    const ticket = placeTicket.current;
+    setKeeping('busy');
+    void lookup.keep(pick.place).then((place) => {
+      if (!openNow.current || ticket !== placeTicket.current) return;
+      if (
+        !place ||
+        !writeAddressPrefill({
+          street: place.street,
+          suburb: place.suburb,
+          postcode: place.postcode,
+        })
+      ) {
+        setKeeping('failed');
+        return;
+      }
+      setKeeping('idle');
+      close();
+      router.push('/account/addresses');
+    });
   };
   const confirm = () => {
     if (!ready || !pick.place) return;
@@ -311,6 +355,12 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
       place: pick.place ? locality(pick.place) : area,
     });
   const listOpen = results !== null && results.length > 0;
+  let status: string;
+  if (checking) status = t('checking');
+  else if (inside) status = t('in-area');
+  else status = t('out-of-area', { area });
+  // One short announcement per settled pick, not the whole summary box on every change.
+  const announced = pick.pending || checking ? '' : `${summary}. ${status}`;
 
   return createPortal(
     <div className="lmw">
@@ -343,6 +393,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                     aria-expanded={listOpen}
                     aria-controls={listId}
                     aria-autocomplete="list"
+                    aria-busy={searching || undefined}
                     aria-activedescendant={listOpen && active >= 0 ? optionId(active) : undefined}
                     autoComplete="off"
                     placeholder={t('search-placeholder')}
@@ -357,7 +408,13 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                   ) : null}
                 </div>
                 {listOpen ? (
-                  <ul className="lmlist" id={listId} role="listbox" aria-label={t('suggestions')}>
+                  <ul
+                    className="lmlist"
+                    id={listId}
+                    role="listbox"
+                    aria-label={t('suggestions')}
+                    aria-busy={searching || undefined}
+                  >
                     {results.map((place, i) => (
                       <li
                         key={place.id}
@@ -386,9 +443,11 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                 <p className="lmnone" role="status">
                   {searchNote
                     ? t(`search-${searchNote}`)
-                    : results?.length === 0
-                      ? t('no-match')
-                      : null}
+                    : searching && !listOpen
+                      ? t('searching')
+                      : results?.length === 0
+                        ? t('no-match')
+                        : null}
                 </p>
               </div>
               <button
@@ -412,7 +471,10 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
               {locating === 'blocked' || locating === 'failed' ? (
                 <Problem>{t(locating)}</Problem>
               ) : null}
-              <div className="lmsel" aria-live="polite">
+              <p className="sr-only" role="status">
+                {announced}
+              </p>
+              <div className="lmsel">
                 <small>{t('delivering-to')}</small>
                 <b>{summary}</b>
                 {checking ? (
@@ -438,7 +500,18 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                 ) : source.live && pick.origin === 'place' && pick.place?.street === '' ? (
                   <small>{t('suburb-hint')}</small>
                 ) : null}
+                {keepable ? (
+                  <button
+                    className="lnk lmkeep"
+                    type="button"
+                    aria-busy={keeping === 'busy' || undefined}
+                    onClick={keep}
+                  >
+                    {keeping === 'busy' ? t('keeping') : t('keep')}
+                  </button>
+                ) : null}
               </div>
+              {keepable && keeping === 'failed' ? <Problem>{t('keep-failed')}</Problem> : null}
               {customer ? (
                 <fieldset className="lmsv">
                   <legend>{t('saved')}</legend>
@@ -460,6 +533,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
                       );
                     })}
                   </div>
+                  {savedFailed ? <Problem>{t('saved-failed')}</Problem> : null}
                 </fieldset>
               ) : (
                 <p className="lmpriv">
@@ -501,7 +575,8 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
               </button>
             </div>
           </div>
-          <StubMap
+          <DeliveryMap
+            map={source.map}
             areaName={area}
             boundary={source.area.boundary}
             bounds={source.bounds}
@@ -518,7 +593,7 @@ export function DeliverModal({ source }: { readonly source: DeliveryLocatorSourc
             <button className="iconbtn lmx" type="button" aria-label={t('close')} onClick={close}>
               <Icon name="close" />
             </button>
-          </StubMap>
+          </DeliveryMap>
         </div>
       </div>
     </div>,

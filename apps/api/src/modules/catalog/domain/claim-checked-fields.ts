@@ -467,6 +467,12 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   CultureCategoryRow: { noCustomerText: 'ids, a visibility flag and a mark code' },
   EffectiveCategoryMarks: { noCustomerText: 'flags, mark codes and category ids' },
   MarkedCategoryNode: { noCustomerText: 'category ids' },
+  // The visibility rule of multi-culture package 3a: codes, ids, flags and type codes only. A
+  // culture's code is claim-checked when it is created (see CultureState).
+  VisibilityCulture: { noCustomerText: 'a culture id, code, status, order and a type code' },
+  OfferCultureFacts: { noCustomerText: 'culture ids, type codes and category marks' },
+  CultureVisibility: { noCustomerText: 'a flag and a reason code' },
+  CultureVisibilityUnavailable: { noCustomerText: 'an error code' },
   CultureName: {
     noCustomerText:
       'the name and short description of a culture in one locale; checked by the claim-term matcher on every admin write (a changed text is refused when it asserts a certification); see CultureState',
@@ -670,6 +676,11 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'the public tree view for the buyer assistant: ids, slug, depth and one published category name, already claim-checked when written',
   },
   CatalogActivitiesFacade: { noCustomerText: 'interface of methods' },
+  CatalogCulturesFacade: { noCustomerText: 'interface of methods' },
+  CatalogCultureSummary: {
+    noCustomerText:
+      'id, code, status and required type of a culture, and its names already claim-checked when written; read in process by sellers only',
+  },
   CatalogAssistantFacade: { noCustomerText: 'interface of methods' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },
   ProductTypeHandler: { noCustomerText: 'interface of methods' },

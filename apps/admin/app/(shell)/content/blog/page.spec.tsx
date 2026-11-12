@@ -37,7 +37,9 @@ vi.mock('../../../../src/content/content-no-access.tsx', () => ({
   ContentNoAccess: () => <h1>No access to content</h1>,
 }));
 vi.mock('../../../../src/blog/posts-view.tsx', () => ({
-  PostsView: ({ zone }: { readonly zone: string }) => <p data-testid="view" data-zone={zone} />,
+  PostsView: ({ zone, canEdit }: { readonly zone: string; readonly canEdit: boolean }) => (
+    <p data-testid="view" data-zone={zone} data-can-edit={String(canEdit)} />
+  ),
 }));
 
 const session = (permissionKeys: string[], timezone: string | null = 'Australia/Sydney') =>
@@ -54,6 +56,15 @@ describe('admin blog page', () => {
     expect(screen.getByRole('heading', { name: 'Blog' })).toBeTruthy();
     expect(screen.getByTestId('view').getAttribute('data-zone')).toBe('Australia/Sydney');
     expect(screen.getByTestId('shell').getAttribute('data-active')).toBe('blog');
+  });
+
+  it('tells the list whether the role can write posts', async () => {
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session(['blog.post.read', 'blog.post.edit']),
+    });
+    await open();
+    expect(screen.getByTestId('view').getAttribute('data-can-edit')).toBe('true');
   });
 
   it('falls back to UTC for an unknown zone', async () => {

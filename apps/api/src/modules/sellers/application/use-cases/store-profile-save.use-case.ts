@@ -1,3 +1,4 @@
+import type { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
@@ -16,7 +17,7 @@ import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { StoreImageProcessor } from '../ports/store-image-processor';
 import type { StoreTextClaimCheck } from '../ports/store-text-claim-check';
-import { claimFieldsOf, parseAboutTexts } from '../store-profile/about-input';
+import { blockedFieldsOf, claimFieldsOf, parseAboutTexts } from '../store-profile/about-input';
 import { removeObjects } from '../store-profile/store-image-objects';
 import {
   decodeImageData,
@@ -61,6 +62,8 @@ const withKind = (error: StageImageFailure, kind: StoreImageKind): StoreProfileS
   error.code === 'validation.failed' ? error : { ...error, kind };
 
 export interface StoreProfileSaveDependencies extends StoreProfileReadDependencies {
+  /** The Market's content filter: About text with a blocked term is refused. */
+  readonly contentFilter: ContentFilter;
   readonly audit: AuditWriter;
   readonly outbox: OutboxWriter;
   readonly counters: RateCounterRepository;
@@ -162,6 +165,8 @@ export class StoreProfileSave extends UseCase<
     const checked = parseAboutTexts(input.about, locales.supportedLocales);
     if (!checked.ok) return checked;
     const texts = checked.value;
+    const blocked = blockedFieldsOf(deps.contentFilter, market, texts);
+    if (blocked.length > 0) return err({ code: 'validation.failed', fields: blocked });
     const flagged = await claimFieldsOf(deps.claimCheck, context, texts);
     if (!flagged.ok) return flagged;
     if (flagged.value.length > 0) {

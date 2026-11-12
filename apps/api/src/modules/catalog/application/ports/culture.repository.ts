@@ -52,6 +52,15 @@ export interface CultureRepository {
     cultureId: Id<'Culture'>,
   ): Promise<readonly CultureCategoryRow[]>;
 
+  /**
+   * The category rows of several cultures in one statement (`culture_id = ANY`), per culture; a
+   * culture with no row maps to an empty list.
+   */
+  categoryRowsOf(
+    market: MarketContext,
+    cultureIds: readonly Id<'Culture'>[],
+  ): Promise<ReadonlyMap<Id<'Culture'>, readonly CultureCategoryRow[]>>;
+
   /** Creates or replaces the mark row of one category. */
   setCategoryRow(
     market: MarketContext,

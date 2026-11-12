@@ -1866,13 +1866,15 @@ model CatalogCultureName {
 }
 
 /// A culture's mark on a category branch: visibility and the certification mark. A branch with no
-/// row inherits from its nearest ancestor with one; no row anywhere is visible and required.
+/// row inherits from its nearest ancestor with one; no row anywhere is visible and required. A
+/// hidden row anywhere up the chain hides the branch (ADR-0048 M2).
 model CatalogCultureCategory {
   marketId          String                  @map("market_id") @db.VarChar(8)
   tenantId          String                  @map("tenant_id")
   cultureId         String                  @map("culture_id") @db.Uuid
   categoryId        String                  @map("category_id") @db.Uuid
-  visible           Boolean
+  /// null means inherit (a row that only sets a mark).
+  visible           Boolean?
   /// required | neutral; null means inherit.
   certificationMark String?                 @map("certification_mark")
   updatedBy         String                  @map("updated_by") @db.Uuid

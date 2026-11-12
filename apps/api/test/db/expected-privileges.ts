@@ -317,6 +317,21 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'sellers.seller_business_activity_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Multi-culture package 2 (ADR-0047 decision 3): a membership is never deleted; a request, a
+    // decision and a new request after a rejection update only these columns.
+    'sellers.seller_cultures': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by',
+        'reason',
+        'requested_at',
+        'requested_by',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
     'sellers.seller_admin_settings': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.seller_tax_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.store_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
@@ -1100,6 +1115,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [
         'category_ids',
+        'culture_codes',
         'facet_codes',
         'indexed_at',
         'locale',
@@ -1159,6 +1175,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'ordering.offer_pairs': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.refund_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.credit_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Order detail decision 3: admin internal notes, sealed under the customer; written once, never
+    // changed or removed.
+    'ordering.admin_order_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.
     // Payments (Phase 5 package 3): one connected account row per seller and Market; the state

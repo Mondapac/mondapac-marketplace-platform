@@ -3,7 +3,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CATALOG_CULTURE_EDIT } from '../../contracts/permissions';
-import { CultureCategoryMarkChangedAudit } from '../../domain/audit';
+import { CultureCategoryMarkChangedAudit, cultureVisibleOf } from '../../domain/audit';
 import {
   adminAccountOf,
   categoryIdOf,
@@ -12,6 +12,7 @@ import {
   type ValidationFailure,
 } from '../cultures/culture-views';
 
+import { announceMarkChanged } from '../cultures/culture-events';
 import type { CultureMarkWriteDependencies } from './culture-category-marks.use-case';
 
 type Denied = { readonly code: 'access.denied' };
@@ -45,7 +46,10 @@ export class CultureCategoryMarkClear extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: Pick<CultureMarkWriteDependencies, 'unitOfWork' | 'cultures' | 'audit'>,
+    private readonly deps: Pick<
+      CultureMarkWriteDependencies,
+      'unitOfWork' | 'cultures' | 'audit' | 'outbox' | 'ids' | 'clock'
+    >,
   ) {
     super(gate);
   }
@@ -93,17 +97,18 @@ export class CultureCategoryMarkClear extends UseCase<
             before: {
               categoryId: categoryId.value,
               hadRow: true,
-              visible: before.visible,
+              visible: cultureVisibleOf(before.visible),
               certificationMark: before.certificationMark ?? 'inherit',
             },
             after: {
               categoryId: categoryId.value,
               hasRow: false,
-              visible: true,
+              visible: 'inherit',
               certificationMark: 'inherit',
             },
           }),
         );
+        await announceMarkChanged(this.deps, context, culture.id, categoryId.value);
         return ok({ cleared: true } as const);
       },
     );

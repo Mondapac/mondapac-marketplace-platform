@@ -14,7 +14,8 @@ export interface CultureCategoryMarkView {
   readonly depth: number;
   /** The culture's own row on this category, or null when it inherits everything. */
   readonly own: {
-    readonly visible: boolean;
+    /** null: the row leaves visibility to the chain (a row made only to set a mark). */
+    readonly visible: boolean | null;
     /** null: the row leaves the mark to the nearest ancestor. */
     readonly certificationMark: CertificationMark | null;
   } | null;

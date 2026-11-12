@@ -1,3 +1,4 @@
+import type { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
@@ -9,7 +10,7 @@ import { StoreProfilePublished } from '../../domain/events';
 import { SAVE_LIMITS } from '../../domain/rate-limits';
 import { derivedId } from '../../../../platform/hashing/derived-id';
 import { contentOf } from '../../domain/store-profile-content';
-import { claimFieldsOf, parseAboutTexts } from '../store-profile/about-input';
+import { blockedFieldsOf, claimFieldsOf, parseAboutTexts } from '../store-profile/about-input';
 import { logDraftOutcome, reserveRateLimits, sellerActorOf } from '../draft/draft-support';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
@@ -33,6 +34,8 @@ export interface SaveAboutInput {
 }
 
 export interface StoreProfileSaveAboutDependencies extends StoreProfileReadDependencies {
+  /** The Market's content filter: About text with a blocked term is refused. */
+  readonly contentFilter: ContentFilter;
   readonly audit: AuditWriter;
   readonly outbox: OutboxWriter;
   readonly counters: RateCounterRepository;
@@ -129,6 +132,8 @@ export class StoreProfileSaveAbout extends UseCase<
     const checked = parseAboutTexts(input.about, locales.supportedLocales);
     if (!checked.ok) return checked;
     const texts = checked.value;
+    const blocked = blockedFieldsOf(deps.contentFilter, market, texts);
+    if (blocked.length > 0) return err({ code: 'validation.failed', fields: blocked });
 
     const flagged = await claimFieldsOf(deps.claimCheck, context, texts);
     if (!flagged.ok) return flagged;
