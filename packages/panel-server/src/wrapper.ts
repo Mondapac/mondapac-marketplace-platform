@@ -5,6 +5,7 @@ export {
   applyClientAddress,
   parseClientAddressSource,
   refuseUntrustedAddress,
+  withEdgeOnlyHeaders,
   type ClientAddressSource,
   type RefusalReason,
 } from './client-address-source.ts';

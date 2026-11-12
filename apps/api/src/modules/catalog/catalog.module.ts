@@ -172,6 +172,10 @@ import { PlatformProductRead } from './application/use-cases/platform-product-re
 import { PlatformProductCreate } from './application/use-cases/platform-product-create.use-case';
 import { PlatformProductSaveDraft } from './application/use-cases/platform-product-save-draft.use-case';
 import { PlatformProductSubmit } from './application/use-cases/platform-product-submit.use-case';
+import { AddSizes } from './application/products/add-sizes.service';
+import { PlatformProductAddSizes } from './application/use-cases/platform-product-add-sizes.use-case';
+import { PlatformProductAddSizesImpact } from './application/use-cases/platform-product-add-sizes-impact.use-case';
+import { OwnProductAddSizes } from './application/use-cases/own-product-add-sizes.use-case';
 import { CATALOG_PERMISSIONS } from './contracts/permissions';
 import { CATALOG_STEP_UP_ACTIONS } from './contracts/step-up';
 import { CATEGORY_SEED } from './application/ports/category-seed';
@@ -291,6 +295,19 @@ import { BusinessActivityCreate } from './application/use-cases/business-activit
 import { BusinessActivityEdit } from './application/use-cases/business-activity-edit.use-case';
 import { BusinessActivityGet } from './application/use-cases/business-activity-get.use-case';
 import { BusinessActivityList } from './application/use-cases/business-activity-list.use-case';
+import { CULTURE_READER } from './application/ports/culture.reader';
+import { CULTURE_REPOSITORY } from './application/ports/culture.repository';
+import { CULTURE_SEED } from './application/ports/culture-seed';
+import { CultureCreate } from './application/use-cases/culture-create.use-case';
+import { CultureEdit } from './application/use-cases/culture-edit.use-case';
+import { CultureGet } from './application/use-cases/culture-get.use-case';
+import { CultureList } from './application/use-cases/culture-list.use-case';
+import { CultureCategoryMarks } from './application/use-cases/culture-category-marks.use-case';
+import { CultureCategoryMarkSet } from './application/use-cases/culture-category-mark-set.use-case';
+import { CultureCategoryMarkClear } from './application/use-cases/culture-category-mark-clear.use-case';
+import { SeedCultures } from './application/use-cases/seed-cultures.use-case';
+import { CultureAdminController } from './presentation/culture-admin.controller';
+import { seedCulturesJob } from './presentation/jobs/seed-cultures.job';
 import { BusinessActivityAdminController } from './presentation/business-activity-admin.controller';
 import { TOPIC_READER, type TopicReader } from './application/ports/topic.reader';
 import { TOPIC_REPOSITORY } from './application/ports/topic.repository';
@@ -388,6 +405,10 @@ import { CategoryDiscard } from './application/use-cases/category-discard.use-ca
 import type { CategoryActionProbes } from './application/categories/category-admin-views';
 import { CategoryEditProbe } from './application/use-cases/category-edit-probe.use-case';
 import { CategoryImportProbe } from './application/use-cases/category-import-probe.use-case';
+import { CategoryImportDryRun } from './application/use-cases/category-import-dry-run.use-case';
+import { CategoryImportApply } from './application/use-cases/category-import-apply.use-case';
+import { CategoryTreeExport } from './application/use-cases/category-tree-export.use-case';
+import { CategoryImportController } from './presentation/category-import.controller';
 import { CategoryRestructureProbe } from './application/use-cases/category-restructure-probe.use-case';
 import { CategoryAdminGet } from './application/use-cases/category-admin-get.use-case';
 import { CategoryAdminTree } from './application/use-cases/category-admin-tree.use-case';
@@ -413,6 +434,10 @@ import { AdminVariantTypeGet } from './application/use-cases/admin-variant-type-
 import { AdminVariantTypesList } from './application/use-cases/admin-variant-types-list.use-case';
 import { AdminVariantIssueCounts } from './application/use-cases/admin-variant-issue-counts.use-case';
 import { AdminVariantsExport } from './application/use-cases/admin-variants-export.use-case';
+import { AttributeFilesExport } from './application/use-cases/attribute-files-export.use-case';
+import { AttributeImportCheck } from './application/use-cases/attribute-import-check.use-case';
+import { AttributeImportRun } from './application/use-cases/attribute-import-run.use-case';
+import { AttributeFileController } from './presentation/attribute-file.controller';
 import { AdminVariantsList } from './application/use-cases/admin-variants-list.use-case';
 import { VariantTypeSettingsEdit } from './application/use-cases/variant-type-settings-edit.use-case';
 import { VariantAdminController } from './presentation/variant-admin.controller';
@@ -453,6 +478,7 @@ const PORT = {
   revisions: PRODUCT_REVISION_REPOSITORY,
   freeze: FreezeRevision,
   submit: SubmitProduct,
+  addSizes: AddSizes,
   reader: OFFER_SELL_UNITS_READER,
   searchReader: OFFER_SEARCH_FACTS_READER,
   filterReader: SEARCH_FILTER_READER,
@@ -531,6 +557,8 @@ const PORT = {
   detailsGapReader: PRODUCT_DETAILS_GAP_READER,
   familyResolver: ProductFamilyResolver,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
+  attributeCreate: AttributeDefinitionCreate,
+  attributeEdit: AttributeDefinitionEdit,
   featureSetStore: FEATURE_SET_STORE,
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
@@ -539,6 +567,9 @@ const PORT = {
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
+  cultures: CULTURE_REPOSITORY,
+  cultureReader: CULTURE_READER,
+  cultureSeed: CULTURE_SEED,
   topics: TOPIC_REPOSITORY,
   topicReader: TOPIC_READER,
   contentFilter: ContentFilter,
@@ -656,6 +687,7 @@ const RESTRUCTURE_DEPS = {
     AdminProductListController,
     AdminCustomVariantLabelsController,
     VariantAdminController,
+    AttributeFileController,
     AdminProductBulkController,
     PlatformImportController,
     SellerImportController,
@@ -674,7 +706,9 @@ const RESTRUCTURE_DEPS = {
     OwnAttributeSuggestionController,
     OwnAttributeSuggestionsController,
     CategoryAdminController,
+    CategoryImportController,
     BusinessActivityAdminController,
+    CultureAdminController,
     TopicAdminController,
     OwnBrandController,
     PublicBrandController,
@@ -840,6 +874,52 @@ const RESTRUCTURE_DEPS = {
       matcher: true,
       claimLocales: true,
       clock: true,
+    }),
+    useCaseProvider(CultureList, { unitOfWork: true, cultureReader: true }),
+    useCaseProvider(CultureGet, { unitOfWork: true, cultures: true }),
+    useCaseProvider(CultureCreate, {
+      unitOfWork: true,
+      cultures: true,
+      policy: true,
+      matcher: true,
+      evaluator: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CultureEdit, {
+      unitOfWork: true,
+      cultures: true,
+      policy: true,
+      matcher: true,
+      evaluator: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(CultureCategoryMarks, {
+      unitOfWork: true,
+      cultures: true,
+      treeReader: true,
+      policy: true,
+    }),
+    useCaseProvider(CultureCategoryMarkSet, {
+      unitOfWork: true,
+      cultures: true,
+      treeReader: true,
+      policy: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(CultureCategoryMarkClear, { unitOfWork: true, cultures: true, audit: true }),
+    useCaseProvider(SeedCultures, {
+      unitOfWork: true,
+      cultures: true,
+      cultureSeed: true,
+      policy: true,
+      evaluator: true,
+      matcher: true,
+      clock: true,
+      ids: true,
     }),
     useCaseProvider(BrandList, { unitOfWork: true, brandReader: true }),
     useCaseProvider(AttributeAdminList, {
@@ -1123,6 +1203,43 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       adminCategoryReader: true,
       linkStore: true,
+    }),
+    useCaseProvider(CategoryImportDryRun, {
+      adminCategoryReader: true,
+      contentFilter: true,
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      importParsers: true,
+    }),
+    useCaseProvider(CategoryImportApply, {
+      adminCategoryReader: true,
+      contentFilter: true,
+      unitOfWork: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      importParsers: true,
+    }),
+    useCaseProvider(CategoryTreeExport, {
+      unitOfWork: true,
+      store: true,
+      policy: true,
+      sheetWriter: true,
+      clock: true,
     }),
     useCaseProvider(CategoryCreate, {
       contentFilter: true,
@@ -1465,6 +1582,35 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       sheetWriter: true,
       clock: true,
+    }),
+    useCaseProvider(AttributeFilesExport, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+      sheetWriter: true,
+      clock: true,
+    }),
+    useCaseProvider(AttributeImportCheck, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+      importParsers: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+    }),
+    useCaseProvider(AttributeImportRun, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+      importParsers: true,
+      counters: true,
+      counterKeys: true,
+      attributeCreate: true,
+      attributeEdit: true,
+      audit: true,
+      clock: true,
+      ids: true,
     }),
     useCaseProvider(AdminProductsList, {
       unitOfWork: true,
@@ -2026,6 +2172,26 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       familyResolver: true,
     }),
+    serviceProvider(AddSizes, {
+      unitOfWork: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      offers: true,
+      offerFinder: true,
+      attributes: true,
+      familyResolver: true,
+      policy: true,
+      allowedTypes: true,
+      counters: true,
+      counterKeys: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnProductAddSizes, { addSizes: true, eligibility: true }),
+    useCaseProvider(PlatformProductAddSizes, { addSizes: true }),
+    useCaseProvider(PlatformProductAddSizesImpact, { addSizes: true }),
     useCaseProvider(SeedCategoryTree, {
       unitOfWork: true,
       categories: true,
@@ -2075,6 +2241,7 @@ const RESTRUCTURE_DEPS = {
       [
         SeedCategoryTree,
         SeedAttributes,
+        SeedCultures,
         SweepOrphanImages,
         SweepOrphanImageFiles,
         ReevaluateTags,
@@ -2090,6 +2257,7 @@ const RESTRUCTURE_DEPS = {
       (
         categories: SeedCategoryTree,
         attributes: SeedAttributes,
+        cultures: SeedCultures,
         sweep: SweepOrphanImages,
         sweepFiles: SweepOrphanImageFiles,
         reevaluate: ReevaluateTags,
@@ -2104,6 +2272,7 @@ const RESTRUCTURE_DEPS = {
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
+        seedCulturesJob(cultures),
         sweepOrphanImagesJob(sweep),
         sweepOrphanImageFilesJob(sweepFiles),
         reevaluateTagsJob(reevaluate),

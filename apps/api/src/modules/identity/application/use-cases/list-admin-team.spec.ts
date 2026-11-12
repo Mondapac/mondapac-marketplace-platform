@@ -122,6 +122,7 @@ const LEAD_KEYS = [
   'commission-payouts.dispute.view',
   'settings.cart-mode.view',
   'settings.list-paging.view',
+  'storefront.seo.view',
 ];
 
 type AccountAction = keyof AdminTeamAccountRow['actions'];

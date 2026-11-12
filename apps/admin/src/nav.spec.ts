@@ -332,3 +332,21 @@ describe('admin nav: Tags', () => {
     expect(ids(['catalog.topic.manage'])).not.toContain('tags');
   });
 });
+
+describe('admin nav: Marketing', () => {
+  it('is a group between Sellers and Orders with the tag icon, shown only once it holds an item', () => {
+    const order = (adminNav.groups ?? []).map((group) => group.id);
+    expect(order.indexOf('marketing')).toBe(order.indexOf('sellers') + 1);
+    expect(order.indexOf('orders')).toBe(order.indexOf('marketing') + 1);
+    expect(adminNav.groups).toContainEqual({
+      id: 'marketing',
+      labelKey: 'nav.group.marketing',
+      icon: 'tag',
+    });
+    const everyKey = new Set(adminNav.items.flatMap((item) => item.anyOf ?? []));
+    const sections = navSections(adminNav.groups, visibleNavItems(adminNav, everyKey));
+    expect(
+      sections.some((section) => section.kind === 'group' && section.group.id === 'marketing'),
+    ).toBe(false);
+  });
+});
