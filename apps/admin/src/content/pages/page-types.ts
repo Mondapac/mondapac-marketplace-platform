@@ -5,6 +5,9 @@
 export const PAGE_READ_PERMISSION = 'storefront.page.read';
 export const PAGE_EDIT_PERMISSION = 'storefront.page.edit';
 export const PAGE_CREATE_PERMISSION = 'storefront.page.create';
+/** Protected keys: only a platform administrator holds them. */
+export const PAGE_PUBLISH_PERMISSION = 'storefront.page.publish';
+export const PAGE_ARCHIVE_PERMISSION = 'storefront.page.archive';
 
 export const PAGES_API_PATH = 'storefront/admin/pages';
 export const CATALOGUE_API_PATH = 'storefront/admin/catalogue';
@@ -135,13 +138,18 @@ export interface PageDetail extends PageSummary {
     readonly updatedAt: string | null;
   };
   readonly published: { readonly versionNo: number; readonly placements: Placements } | null;
-  readonly versions: readonly {
-    readonly id: string;
-    readonly versionNo: number;
-    readonly state: string;
-    readonly createdAt: string;
-    readonly publishedAt: string | null;
-  }[];
+  readonly versions: readonly PageVersion[];
+}
+
+export const VERSION_STATES = ['draft', 'published', 'retired'] as const;
+
+export interface PageVersion {
+  readonly id: string;
+  readonly versionNo: number;
+  /** `draft`, `published` (what buyers see) or `retired` (earlier published versions). */
+  readonly state: string;
+  readonly createdAt: string;
+  readonly publishedAt: string | null;
 }
 
 /** The key the editor URL and the draft routes name the page by. */
@@ -161,3 +169,8 @@ export const PAGE_EDIT_LEVEL_LOCKED = 'locked';
 /** A page that takes no change: locked in the app, archived, or no edit permission. */
 export const isReadOnlyPage = (page: PageSummary, canEdit: boolean): boolean =>
   !canEdit || page.status === 'archived' || page.editLevel === 'locked';
+
+export const versionsPagePath = (page: string): string => `${pagePath(page)}/versions`;
+export const restorePath = (page: string): string => `${pageApiPath(page)}/restore`;
+export const publishPath = (page: string): string => `${pageApiPath(page)}/publish`;
+export const archivePath = (page: string): string => `${pageApiPath(page)}/archive`;

@@ -997,7 +997,11 @@
       "no-data": "No data",
       "measured": "Measured {when}",
       "lowest": "The measure pulling the score down most is {metric}.",
-      "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
+      "band": {
+        "healthy": "Healthy",
+        "at-risk": "At risk",
+        "unhealthy": "Unhealthy"
+      },
       "metric": {
         "seller-cancellations": "Cancellations by the seller",
         "late-ready": "Orders ready late",
@@ -1991,7 +1995,8 @@
         "source-name-linked": "The page’s link",
         "source-name-recently-viewed": "Recently viewed",
         "source-name-for-you": "For you",
-        "source-name-bought-together": "Bought together"
+        "source-name-bought-together": "Bought together",
+        "tab-versions": "Versions"
       },
       "settings": {
         "page-title": "Page: settings",
@@ -2051,6 +2056,50 @@
           "imageRef-required": "Choose an image, or clear its description.",
           "imageAlt-required": "Describe the image."
         }
+      },
+      "actions": {
+        "publish": "Publish",
+        "archive": "Archive",
+        "cancel": "Cancel",
+        "reload": "Reload the page",
+        "nothing-to-publish": "Nothing to publish. Change the draft first.",
+        "publish-title": "Publish this page?",
+        "publish-body": "Buyers will see the draft at {path}.",
+        "publish-keeps": "The version buyers see now is kept in Versions, so you can restore it later.",
+        "publish-confirm": "Publish",
+        "archive-title": "Archive this page?",
+        "archive-body": "Buyers will no longer see {path}. An archived page cannot be changed.",
+        "redirect": "Send buyers to (optional)",
+        "redirect-help": "A site path such as /offers. Leave it empty and the address is gone.",
+        "redirect-bad": "Use a site path such as /offers, without spaces or two slashes at the start.",
+        "archive-confirm": "Archive page",
+        "published": "Page published.",
+        "archived": "Page archived.",
+        "error-nothing": "The draft has no changes to publish.",
+        "error-changed": "The draft changed after you opened this page. Reload it and review the change.",
+        "error-denied": "You don’t have permission to do this.",
+        "error-too-few": "A part of the page has fewer switched-on modules than it needs. Add or show modules in the Content tab."
+      },
+      "versions": {
+        "page-title": "Page versions",
+        "list": "Versions of this page",
+        "empty": "No version was saved yet.",
+        "version": "Version {n}",
+        "state-draft": "Draft",
+        "state-published": "Live",
+        "state-retired": "Earlier",
+        "state-unknown": "Unknown",
+        "saved-at": "Saved {when}",
+        "published-on": "Published {when}",
+        "restore": "Restore",
+        "restore-label": "Restore version {n}",
+        "restore-title": "Restore version {n}?",
+        "restore-body": "Its modules replace the modules in the draft. Buyers see no change until the page is published.",
+        "restore-confirm": "Restore to draft",
+        "cancel": "Cancel",
+        "reload": "Reload the page",
+        "restored": "Version {n} copied into the draft.",
+        "error-gone": "This version no longer exists. Reload the page."
       }
     }
   },
@@ -6636,8 +6685,12 @@
         "seo-description": "Search description",
         "invalid": "This value is not valid."
       },
-      "body": { "empty": "No content yet. Add a block below." },
-      "add": { "label": "Add block" },
+      "body": {
+        "empty": "No content yet. Add a block below."
+      },
+      "add": {
+        "label": "Add block"
+      },
       "block": {
         "name": "Block {n}: {type}",
         "text": "Text",
@@ -6680,7 +6733,11 @@
       "checks": {
         "title": "Checks",
         "none": "No findings.",
-        "severity": { "error": "Must fix", "warning": "Check", "notice": "Note" },
+        "severity": {
+          "error": "Must fix",
+          "warning": "Check",
+          "notice": "Note"
+        },
         "code": {
           "cover-missing": "Add a cover image.",
           "cover-alt-missing": "Describe the cover image (alt text).",

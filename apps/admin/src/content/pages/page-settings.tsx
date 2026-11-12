@@ -17,6 +17,7 @@ import { callApi } from '../../api/client.ts';
 import { shortInstantInZone } from '../../shared/format.ts';
 import { instantToLocal, localToInstant } from '../slides/zone-time.ts';
 import { ImageInputs } from './module-form.tsx';
+import { PageActions } from './page-actions.tsx';
 import { PageEditorHeader } from './page-editor-header.tsx';
 import {
   CATALOGUE_API_PATH,
@@ -82,11 +83,15 @@ function Counter({ value, max }: { readonly value: string; readonly max: number 
 export function PageSettings({
   page: initial,
   canEdit,
+  canPublish = false,
+  canArchive = false,
   csrfToken,
   zone,
 }: {
   readonly page: PageDetail;
   readonly canEdit: boolean;
+  readonly canPublish?: boolean;
+  readonly canArchive?: boolean;
   readonly csrfToken: string;
   readonly zone: string;
 }) {
@@ -247,7 +252,20 @@ export function PageSettings({
 
   return (
     <div className="flex flex-col gap-4">
-      <PageEditorHeader page={page} tab="settings" zone={zone} canEdit={canEdit} />
+      <PageEditorHeader
+        page={page}
+        tab="settings"
+        zone={zone}
+        canEdit={canEdit}
+        actions={
+          <PageActions
+            page={page}
+            canPublish={canPublish}
+            canArchive={canArchive}
+            csrfToken={csrfToken}
+          />
+        }
+      />
       {guard.dialog}
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <form
