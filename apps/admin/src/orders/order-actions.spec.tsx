@@ -229,6 +229,18 @@ describe.each(markets)('cancel and refund ($name)', ({ currency, shipping }) => 
         .getAllByRole('button', { name: 'Cancel and refund' })
         .find((button) => button.closest('dialog') !== null)!;
     expect((confirm() as HTMLButtonElement).disabled).toBe(true);
+    // Only the admin reasons: item-unavailable is the seller's own (row 40).
+    const reasons = [...screen.getByLabelText<HTMLSelectElement>('Reason').options]
+      .map((option) => option.value)
+      .filter((value) => value !== '');
+    expect(reasons).toEqual([
+      'not-received',
+      'damaged',
+      'wrong-item',
+      'not-as-described',
+      'seller-cancelled',
+      'other',
+    ]);
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'seller-cancelled' } });
     fireEvent.change(screen.getByLabelText(/Who bears the loss/), {
       target: { value: 'platform' },
