@@ -181,6 +181,7 @@ describe('seller menu structure', () => {
     's_offers',
     's_import',
     's_suggestions',
+    's_categories',
     's_reviews',
     's_earnings',
   ];

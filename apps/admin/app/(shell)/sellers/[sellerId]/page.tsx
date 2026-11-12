@@ -9,6 +9,7 @@ import {
   DECIDE_PERMISSION,
   OWNER_RESET_PERMISSION,
   REVIEW_PERMISSION,
+  SETTINGS_EDIT_PERMISSION,
   type ReviewRead,
 } from '../../../../src/sellers/review-types.ts';
 import { SellerHealthCard } from '../../../../src/sellers/health-card.tsx';
@@ -18,6 +19,8 @@ import {
   healthPath,
   type SellerHealthRead,
 } from '../../../../src/sellers/health-types.ts';
+import { CategoryProposalsCard } from '../../../../src/sellers/category-proposals-card.tsx';
+import { DECIDE_PERMISSION as PROPOSAL_DECIDE_PERMISSION } from '../../../../src/categories/proposals/types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
 import { BackToSellers, ReviewView } from '../../../../src/sellers/review-view.tsx';
 import { CommissionRateCard } from '../../../../src/commission/rate-card.tsx';
@@ -182,6 +185,13 @@ export default async function SellerReviewPage({
             csrfToken={csrfToken}
           />
         )}
+        {permissionKeys.includes(SETTINGS_EDIT_PERMISSION) ? (
+          <CategoryProposalsCard
+            sellerId={sellerId}
+            csrfToken={csrfToken}
+            canSeeQueue={permissionKeys.includes(PROPOSAL_DECIDE_PERMISSION)}
+          />
+        ) : null}
         {commission.kind === 'hidden' && methods === null ? null : (
           <div className="grid gap-6 lg:grid-cols-2">
             {methods === null ? null : (

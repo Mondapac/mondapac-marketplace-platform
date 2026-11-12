@@ -61,6 +61,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/seller/products/export',
     // The saved filters of the Products list (query: `listKey`).
     'catalog/seller/saved-filters',
+    // The seller's category proposals, shelves and whether proposing is on (categories C9b).
+    'catalog/seller/category-proposals',
   ]),
   PUT: new Set([
     // The signed-in member's own display name (profile).
@@ -116,6 +118,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'payments/seller/payout-account',
     'payments/seller/payout-account/link',
     'notifications/seller/notices/read-all',
+    // Propose a category (a shelf of the seller's shop; categories C9b).
+    'catalog/seller/category-proposals',
   ]),
 };
 
@@ -132,6 +136,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/saved-filters/:id',
     // The SKU and the selling switch of the sell units of an offer (variants V5).
     'catalog/seller/offers/:id/sell-units',
+    // Put an Offer on one of the seller's shelves, or take it off (categories C9b).
+    'catalog/seller/offers/:id/shelf',
     'inventory/seller/offers/:id/variants/:id/sources/:id/stock',
     'pricing/seller/offers/:id/variants/:id/regular-price',
     'pricing/seller/offers/:id/variants/:id/special-price',
@@ -148,6 +154,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/products/:id/attribute-suggestions',
     'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
+    // Withdraw a waiting category proposal (categories C9b).
+    'catalog/seller/category-proposals/:id/cancel',
     // The seller import: confirm, retry the rest, cancel a check, and one photo of the photo step.
     'catalog/seller/imports/:id/start',
     'catalog/seller/imports/:id/resume',

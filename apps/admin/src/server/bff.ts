@@ -114,6 +114,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/feature-sets',
     // The value suggestions waiting for a decision (catalog, attributes A5).
     'catalog/admin/attribute-suggestions',
+    // The seller category proposals waiting for a decision (catalog, categories C9a; query:
+    // `afterId`, `limit`).
+    'catalog/admin/category-proposals',
     // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
     'catalog/admin/attribute-relaxations',
     // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
@@ -298,6 +301,13 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/move',
     'catalog/admin/categories/:id/merge',
     'catalog/admin/categories/:id/archive',
+    // Approve or reject a seller's category proposal with the version seen (catalog, categories
+    // C9a: key `catalog.category-proposal.decide`, a prepared reason code on reject), and promote
+    // or merge a seller's shelf (protected key `catalog.seller-category.promote-merge`).
+    'catalog/admin/category-proposals/:id/approve',
+    'catalog/admin/category-proposals/:id/reject',
+    'catalog/admin/shelves/:id/promote',
+    'catalog/admin/shelves/:id/merge',
     // Decide a seller's value suggestion with the version seen (catalog, attributes A5).
     'catalog/admin/attribute-suggestions/:id/approve',
     'catalog/admin/attribute-suggestions/:id/map',
@@ -406,6 +416,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // (catalog, read-only; the impact takes the `action`).
     'catalog/admin/categories/:id',
     'catalog/admin/categories/:id/impact',
+    // One seller's shelves, every status (catalog, categories C9a), read-only.
+    'catalog/admin/sellers/:id/shelves',
     // One platform product with its working copy, for the product form (catalog).
     'catalog/admin/platform-products/:id',
     // How many offers of other sellers go off sale if sizes are added (catalog, variants V9).
@@ -502,6 +514,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/category-proposals': ['afterId', 'limit'],
   'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
@@ -583,6 +596,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     // The API's own cursor: epoch milliseconds of the scheduled date, a dot and the request id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
+  'catalog/admin/category-proposals': { afterId: UUID, limit: /^[0-9]{1,2}$/ },
   'catalog/admin/brands': {
     status: /^(draft|active|archived)$/,
     limit: /^[0-9]{1,3}$/,
