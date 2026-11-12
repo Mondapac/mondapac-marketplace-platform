@@ -5545,6 +5545,146 @@
         "category_parent-not-found": "The category you chose is no longer available. Reload to choose another.",
         "reason": "Add a reason of 10 to 500 characters."
       }
+    },
+    "import": {
+      "title": "Import categories",
+      "back": "Categories",
+      "no-access": "Your role cannot import categories.",
+      "intro": "Add new categories and change the names, descriptions and search text of existing ones from a CSV or XLSX file. A check shows what each row would do and writes nothing. Moving a category to another parent is not done from a file: use Move on the tree page.",
+      "upload": {
+        "title": "Choose a file",
+        "sub": "Start from an export of the current tree: each row is one category, matched by its slug.",
+        "choose": "Choose a file",
+        "limits": "CSV or XLSX, up to {size} MB.",
+        "export-hint": "Need the current tree as a file?"
+      },
+      "checking": "Checking {name}…",
+      "choose-another": "Choose another file",
+      "upload-corrected": "Upload corrected file",
+      "check-again": "Check the file again",
+      "file-meta": "{rows} rows · {format}",
+      "tiles": {
+        "create": "To create",
+        "update": "To update",
+        "unchanged": "Unchanged",
+        "errors": "Errors",
+        "errors-note": "Rows with an error are not applied"
+      },
+      "result": {
+        "ready": "The file is ready. Applying it writes every row in one step.",
+        "has-errors": "{count, plural, one {# row has an error.} other {# rows have errors.}} Fix the file and upload it again. Nothing is applied while any row has an error.",
+        "nothing": "Every row is already in the tree. There is nothing to apply."
+      },
+      "filter": {
+        "label": "Rows to show",
+        "all": "All rows ({count})",
+        "errors": "Errors only ({count})"
+      },
+      "table": {
+        "caption": "What each row of the file would do",
+        "row": "Row",
+        "category": "Category",
+        "result": "Result",
+        "problem": "Problem",
+        "no-slug": "(no valid slug)",
+        "row-n": "Row {n}"
+      },
+      "action": {
+        "create": "Create",
+        "update": "Update",
+        "unchanged": "Unchanged",
+        "error": "Error"
+      },
+      "row-code": {
+        "slug-invalid": "The slug may hold only lower-case letters, digits and hyphens.",
+        "slug-duplicate": "This slug is used by an earlier row of the file.",
+        "slug-taken": "This slug belongs to another category, or was used in the last 12 months.",
+        "parent-invalid": "The parent slug is not a valid slug.",
+        "parent-not-found": "The parent slug is not in the tree or the file, or the parent itself has an error.",
+        "move-not-supported": "This row names another parent than the category has. Use Move on the tree page.",
+        "depth-exceeded": "This would go deeper than the tree allows.",
+        "required": "This is required.",
+        "sibling-name-taken": "A category with this name is already under the same parent.",
+        "show-in-menu-invalid": "Use yes or no.",
+        "blocked-term": "This text contains a word that is not allowed.",
+        "claim-word": "This text makes a claim that only a certificate can back. Remove the word.",
+        "locale-uncheckable": "This language cannot be checked yet, so its text cannot be saved.",
+        "tree-size-exceeded": "The tree is at its size limit, so no more categories can be added.",
+        "row-invalid": "This row cannot be read.",
+        "format": "This value is too long or has characters that are not allowed.",
+        "repeated": "This value is repeated.",
+        "english-only": "This field takes English only.",
+        "type": "This value is the wrong kind.",
+        "unknown": "This field is not known.",
+        "invalid": "This value cannot be used.",
+        "locale-unsupported": "This language is not supported.",
+        "other": "This value cannot be used ({code})."
+      },
+      "column-code": {
+        "column-blank": "a column has no heading",
+        "column-duplicate": "the heading is used twice",
+        "column-missing": "a required column is missing",
+        "column-unknown": "the heading is not known",
+        "locale-unsupported": "this language is not supported"
+      },
+      "download-report": "Download error report",
+      "apply": "Apply import",
+      "cancel": "Cancel",
+      "confirm": {
+        "title": "Apply {count, plural, one {# change} other {# changes}}?",
+        "body": "{created, plural, one {# new category is} other {# new categories are}} created hidden, last among their siblings, and {updated, plural, one {# category is} other {# categories are}} updated. Nothing is shown to buyers until you show it.",
+        "action": "Apply"
+      },
+      "done": {
+        "title": "The import is applied",
+        "hidden-note": "New categories are hidden. Show them from the tree page when they are ready.",
+        "open-tree": "Open the tree"
+      },
+      "applied-toast": "Import applied: {created} created, {updated} updated.",
+      "export-failed": "The tree could not be exported. Try again.",
+      "problem": {
+        "stale": "The tree changed after the file was checked.",
+        "file-changed": "The file sent is not the one that was checked, so nothing was applied.",
+        "has-errors": "The tree changed and the file now has errors, so nothing was applied.",
+        "forbidden": "Your role cannot import categories.",
+        "claim-check": "The wording check is not available right now, so the file was not read. Try again later.",
+        "busy": "The import is busy. Try again in a moment.",
+        "columns": "The first row of the file is not a valid heading row: {list}.",
+        "unknown": "The file could not be checked. Try again.",
+        "file": {
+          "file-too-large": "The file is larger than {size} MB.",
+          "file-unpacked-too-large": "The file is too large once unpacked.",
+          "file-unsupported-type": "Choose a CSV or XLSX file.",
+          "file-empty": "The file is empty.",
+          "file-unreadable": "The file could not be read. Save it as UTF-8 CSV or as XLSX.",
+          "file-too-many-columns": "The file has too many columns.",
+          "file-cell-too-long": "A cell of the file is too long.",
+          "file-too-many-rows": "The file has more rows than one import takes.",
+          "file-no-rows": "The file has a heading row but no categories.",
+          "file-formula-cell": "The file has a formula cell. Replace it with its value.",
+          "file-too-complex": "The workbook is too complex to read. Save the sheet as CSV.",
+          "validation-failed": "The file could not be sent. Choose it again."
+        },
+        "race": "The tree changed while the file was applied, so nothing was applied."
+      },
+      "announce": {
+        "checking": "Checking the file.",
+        "checked": "{rows, plural, one {# row checked} other {# rows checked}}, {errors} with errors.",
+        "applied": "The import is applied."
+      },
+      "export-csv-label": "Export the tree as CSV",
+      "export-xlsx-label": "Export the tree as XLSX",
+      "apply-blocked": "Apply is off until the file has no errors and at least one change.",
+      "checking-progress": "Checking {name}…"
+    },
+    "export": {
+      "csv": "Export CSV",
+      "xlsx": "Export XLSX",
+      "import": "Import",
+      "failed": "The tree could not be exported. Try again.",
+      "group": "Export and import",
+      "csv-label": "Export the category tree as a CSV file",
+      "xlsx-label": "Export the category tree as an XLSX file"
     }
   },
   "brands": {
