@@ -9,7 +9,16 @@ import { syncOffers, SYNC_BATCH, type SyncCounts } from '../sync-offers';
 export type SyncOfferDocumentsInput =
   | { readonly offerIds: readonly Id<'Offer'>[] }
   | { readonly productId: Id<'Product'> }
-  | { readonly sellerId: Id<'Seller'> }
+  | {
+      readonly sellerId: Id<'Seller'>;
+      /**
+       * The seller was just approved, so sellers must already show a public store (its name and
+       * address). Sellers records them in a unit after identity's approval commits, so the event
+       * can arrive first: then the call throws and the delivery is retried, rather than indexing
+       * the seller's Offers without the store name (Mojtaba D4 on #832).
+       */
+      readonly publicStoreRequired?: true;
+    }
   /** The Offers whose document names this category or one under it (a rename or a move). */
   | { readonly categoryId: Id<'Category'> };
 
@@ -42,6 +51,13 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
     context: CallContext,
     input: SyncOfferDocumentsInput,
   ): Promise<Result<SyncCounts, never>> {
+    if ('sellerId' in input && input.publicStoreRequired === true) {
+      const stores = await this.deps.storeDirectory.publicStores(context, [input.sellerId]);
+      if (stores === null) throw new Error('search: store names unavailable');
+      if (!stores.has(input.sellerId)) {
+        throw new Error('search: the approved seller has no public store yet');
+      }
+    }
     const { offers, upserted, deleted } =
       'offerIds' in input
         ? {

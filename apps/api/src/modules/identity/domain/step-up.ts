@@ -16,6 +16,7 @@ export const STEP_UP_ACTION_KEYS = [
   'pricing.price.change',
   'sellers.business-activity.change',
   'sellers.store-terms.change',
+  'storefront.seo.change-protected',
   'wallet.credit.approve',
   'wallet.credit.issue',
   'wallet.settings.change',
