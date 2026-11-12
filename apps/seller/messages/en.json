@@ -103,7 +103,8 @@
       "money": "Money"
     },
     "settings": "Settings",
-    "import": "Import"
+    "import": "Import",
+    "performance": "Performance"
   },
   "home": {
     "title": "Dashboard",
@@ -3248,6 +3249,90 @@
       "who-unnamed": "Someone",
       "changed": "Changed: {fields}",
       "saved": "Saved"
+    }
+  },
+  "performance": {
+    "title": "Performance",
+    "intro": "How your store is doing for customers. This is information for you: nothing here changes your store by itself.",
+    "empty": {
+      "title": "No score yet",
+      "body": "Your first score appears after the nightly check has measured your store. It can take a day."
+    },
+    "unavailable": {
+      "title": "Performance is not available right now",
+      "body": "Try again in a minute."
+    },
+    "card": {
+      "title": "Your store health"
+    },
+    "measured": "Measured {when}",
+    "state": {
+      "new": "New",
+      "no-data": "No data yet"
+    },
+    "summary": {
+      "healthy": "Your store is healthy. {metric} is your lowest of the five measures.",
+      "at-risk": "Your score is in the at-risk range. {metric} is the measure that pulls your score down most, so that is the one to work on first.",
+      "unhealthy": "Your store needs attention. {metric} is the measure that pulls your score down most, so that is the one to work on first. If you would like help, the platform team is happy to talk.",
+      "new": "You are new on MondaPac: you have {orders} orders in the counting window, and a score appears once you have enough.",
+      "no-data": "There is not enough data to score your store yet."
+    },
+    "summary-plain": {
+      "healthy": "Your store is healthy.",
+      "at-risk": "Your store is at risk.",
+      "unhealthy": "Your store needs attention."
+    },
+    "metric": {
+      "band": {
+        "healthy": "Healthy",
+        "at-risk": "At risk",
+        "unhealthy": "Needs attention"
+      },
+      "no-data": "No data",
+      "seller-cancellations": {
+        "name": "Cancelled by you",
+        "what": "Items you cancelled or marked unavailable, over the last 30 days.",
+        "how": "items you cancelled or marked unavailable, divided by items ordered, over 30 days."
+      },
+      "late-ready": {
+        "name": "Ready late",
+        "what": "Orders marked ready after the time you promised, over the last 30 days.",
+        "how": "orders marked ready after the promised time, divided by all orders, over 30 days."
+      },
+      "customer-rating": {
+        "name": "Customer rating",
+        "what": "The average of approved reviews, over the last 90 days.",
+        "how": "the average rating of approved reviews over 90 days. Fewer than 5 reviews means no data."
+      },
+      "lost-disputes": {
+        "name": "Payment disputes lost",
+        "what": "Disputes a customer won against you, over the last 90 days.",
+        "how": "payment disputes you lost, divided by orders, over 90 days."
+      },
+      "reports": {
+        "name": "Reports",
+        "what": "Confirmed reports against your store, over the last 90 days.",
+        "how": "confirmed reports against your store over 90 days. Not measured yet."
+      }
+    },
+    "trend": {
+      "label": "Score line over time: from {first} to {last}",
+      "summary": "Your score went from {first} to {last} over the last {days} measured days.",
+      "too-short": "The score line appears after a few days of measuring."
+    },
+    "refresh": {
+      "title": "Refresh now",
+      "body": "The score is measured every night. If you have just fixed something, you can ask for a new count; it appears within a couple of minutes.",
+      "button": "Refresh now",
+      "pending": "A new count is on its way. This page updates by itself.",
+      "wait": "You can refresh again in about {minutes} min.",
+      "unavailable": "We could not ask for a new count. Try again in a minute."
+    },
+    "how": {
+      "title": "How is it calculated?",
+      "score": "Each of the five measures gets a score from 0 to 100. Your store health is the lowest of them, so one serious problem is not hidden by good numbers elsewhere. 67 to 100 is healthy, 34 to 66 is at risk, and 0 to 33 needs attention.",
+      "fair": "Things that are not your fault are not counted: orders the customer cancelled, failed payments, courier delays, and disputes you won. A measure with too little data is left out. Until you have enough orders, you are shown as New.",
+      "nothing-automatic": "Nothing happens to your store automatically because of this score. If it is low, a person on the platform team may look at it and get in touch before deciding anything."
     }
   }
 }

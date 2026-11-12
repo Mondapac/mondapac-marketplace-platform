@@ -189,6 +189,10 @@ import { SeedCategoryTree } from './application/use-cases/seed-category-tree.use
 import { CATALOG_ASSISTANT_FACADE } from './contracts/catalog-assistant.facade';
 import { CATALOG_FACADE } from './contracts/catalog.facade';
 import { CATALOG_ACTIVITIES_FACADE } from './contracts/catalog-activities.facade';
+import { CATALOG_CULTURES_FACADE } from './contracts/catalog-cultures.facade';
+import { CatalogCulturesFacadeImplementation } from './presentation/catalog-cultures.facade';
+import { ActiveCulturesQuery } from './application/use-cases/active-cultures.use-case';
+import { CulturesByIdsQuery } from './application/use-cases/cultures-by-ids.use-case';
 import { CatalogActivitiesFacadeImplementation } from './presentation/catalog-activities.facade';
 import { BusinessActivitiesActiveQuery } from './application/use-cases/business-activities-active.use-case';
 import { CatalogAssistantFacadeImplementation } from './presentation/catalog-assistant.facade';
@@ -336,6 +340,20 @@ import { AttributeSuggestionList } from './application/use-cases/attribute-sugge
 import { AttributeSuggestionApprove } from './application/use-cases/attribute-suggestion-approve.use-case';
 import { AttributeSuggestionMap } from './application/use-cases/attribute-suggestion-map.use-case';
 import { AttributeSuggestionReject } from './application/use-cases/attribute-suggestion-reject.use-case';
+import { OwnTopicSuggest } from './application/use-cases/own-topic-suggest.use-case';
+import { OwnTopicSuggestionsList } from './application/use-cases/own-topic-suggestions-list.use-case';
+import { TopicSuggestionList } from './application/use-cases/topic-suggestion-list.use-case';
+import { TopicSuggestionApprove } from './application/use-cases/topic-suggestion-approve.use-case';
+import { TopicSuggestionMap } from './application/use-cases/topic-suggestion-map.use-case';
+import { TopicSuggestionReject } from './application/use-cases/topic-suggestion-reject.use-case';
+import { SendTopicSuggestionNotices } from './application/use-cases/send-topic-suggestion-notices.use-case';
+import { sendTopicSuggestionNoticesJob } from './presentation/jobs/send-topic-suggestion-notices.job';
+import { TopicSuggestionController } from './presentation/topic-suggestion.controller';
+import {
+  OwnTopicSuggestController,
+  OwnTopicSuggestionsController,
+} from './presentation/own-topic-suggestion.controller';
+import { TOPIC_SUGGESTION_STORE } from './application/ports/topic-suggestion.store';
 import { SendAttributeSuggestionNotices } from './application/use-cases/send-attribute-suggestion-notices.use-case';
 import { sendAttributeSuggestionNoticesJob } from './presentation/jobs/send-attribute-suggestion-notices.job';
 import { AttributeSuggestionController } from './presentation/attribute-suggestion.controller';
@@ -366,6 +384,7 @@ import { FeatureSetEdit } from './application/use-cases/feature-set-edit.use-cas
 import { CategoryAttributeLinksSet } from './application/use-cases/category-attribute-links-set.use-case';
 import { CategoryAttributeLinksGet } from './application/use-cases/category-attribute-links-get.use-case';
 import { CATEGORY_ATTRIBUTE_LINK_STORE } from './application/ports/category-attribute-link.store';
+import { CULTURE_MEMBERS } from './application/ports/culture-members';
 import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
 import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
 import { AttributeAdminList } from './application/use-cases/attribute-admin-list.use-case';
@@ -563,7 +582,9 @@ const PORT = {
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
   suggestions: ATTRIBUTE_VALUE_SUGGESTION_STORE,
+  topicSuggestions: TOPIC_SUGGESTION_STORE,
   claimLocales: CLAIM_TERM_LOCALES,
+  cultureMembers: CULTURE_MEMBERS,
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
@@ -705,6 +726,9 @@ const RESTRUCTURE_DEPS = {
     AttributeSuggestionController,
     OwnAttributeSuggestionController,
     OwnAttributeSuggestionsController,
+    TopicSuggestionController,
+    OwnTopicSuggestController,
+    OwnTopicSuggestionsController,
     CategoryAdminController,
     CategoryImportController,
     BusinessActivityAdminController,
@@ -877,11 +901,21 @@ const RESTRUCTURE_DEPS = {
     }),
     useCaseProvider(CultureList, { unitOfWork: true, cultureReader: true }),
     useCaseProvider(CultureGet, { unitOfWork: true, cultures: true }),
+    // The culture read for sellers' membership (ADR-0047 decision 3).
+    useCaseProvider(CulturesByIdsQuery, { unitOfWork: true, cultureReader: true }),
+    useCaseProvider(ActiveCulturesQuery, { unitOfWork: true, cultureReader: true }),
+    {
+      provide: CATALOG_CULTURES_FACADE,
+      inject: [CulturesByIdsQuery, ActiveCulturesQuery],
+      useFactory: (byIds: CulturesByIdsQuery, active: ActiveCulturesQuery) =>
+        new CatalogCulturesFacadeImplementation(byIds, active),
+    },
     useCaseProvider(CultureCreate, {
       unitOfWork: true,
       cultures: true,
       policy: true,
       matcher: true,
+      claimLocales: true,
       evaluator: true,
       audit: true,
       clock: true,
@@ -892,6 +926,8 @@ const RESTRUCTURE_DEPS = {
       cultures: true,
       policy: true,
       matcher: true,
+      claimLocales: true,
+      cultureMembers: true,
       evaluator: true,
       audit: true,
       clock: true,
@@ -918,6 +954,7 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       evaluator: true,
       matcher: true,
+      claimLocales: true,
       clock: true,
       ids: true,
     }),
@@ -1096,6 +1133,67 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       suggestions: true,
       attributeStore: true,
+      ownerContacts: true,
+      mailTransport: true,
+      mailSettings: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnTopicSuggest, {
+      unitOfWork: true,
+      products: true,
+      topics: true,
+      topicSuggestions: true,
+      eligibility: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnTopicSuggestionsList, {
+      unitOfWork: true,
+      topicSuggestions: true,
+      topicReader: true,
+      products: true,
+      ownReader: true,
+      policy: true,
+    }),
+    useCaseProvider(TopicSuggestionList, {
+      unitOfWork: true,
+      topicSuggestions: true,
+      products: true,
+      policy: true,
+    }),
+    useCaseProvider(TopicSuggestionApprove, {
+      unitOfWork: true,
+      topicSuggestions: true,
+      topics: true,
+      audit: true,
+      clock: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      ids: true,
+    }),
+    useCaseProvider(TopicSuggestionMap, {
+      unitOfWork: true,
+      topicSuggestions: true,
+      topics: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(TopicSuggestionReject, {
+      unitOfWork: true,
+      topicSuggestions: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SendTopicSuggestionNotices, {
+      unitOfWork: true,
+      topicSuggestions: true,
+      topicReader: true,
       ownerContacts: true,
       mailTransport: true,
       mailSettings: true,
@@ -2253,6 +2351,7 @@ const RESTRUCTURE_DEPS = {
         OwnImportPurge,
         ExpireRelaxationRequests,
         SendAttributeSuggestionNotices,
+        SendTopicSuggestionNotices,
       ],
       (
         categories: SeedCategoryTree,
@@ -2269,6 +2368,7 @@ const RESTRUCTURE_DEPS = {
         sellerPurge: OwnImportPurge,
         expireRelaxations: ExpireRelaxationRequests,
         suggestionNotices: SendAttributeSuggestionNotices,
+        topicSuggestionNotices: SendTopicSuggestionNotices,
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
@@ -2284,6 +2384,7 @@ const RESTRUCTURE_DEPS = {
         purgeSellerImportsJob(sellerPurge),
         expireRelaxationRequestsJob(expireRelaxations),
         sendAttributeSuggestionNoticesJob(suggestionNotices),
+        sendTopicSuggestionNoticesJob(topicSuggestionNotices),
       ],
     ),
     // Certification events consumed (design 5.5, 9.5; slice 12).
@@ -2479,6 +2580,7 @@ const RESTRUCTURE_DEPS = {
     CATALOG_ASSISTANT_FACADE,
     CATALOG_FILTERS_FACADE,
     CATALOG_ACTIVITIES_FACADE,
+    CATALOG_CULTURES_FACADE,
   ],
 })
 export class CatalogModule {}

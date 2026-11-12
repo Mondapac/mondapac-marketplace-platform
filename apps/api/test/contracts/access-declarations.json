@@ -26,10 +26,12 @@
   { "name": "cart.view-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.view-guest-cart", "rule": "anonymous" },
   { "name": "cart.view-saved", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "catalog.active-cultures", "rule": "anonymous" },
   { "name": "catalog.brand-product-ids", "rule": "anonymous" },
   { "name": "catalog.business-activities-active", "rule": "anonymous" },
   { "name": "catalog.category-slug-resolve", "rule": "anonymous" },
   { "name": "catalog.category-tree", "rule": "anonymous" },
+  { "name": "catalog.cultures-by-ids", "rule": "anonymous" },
   { "name": "catalog.expire-relaxation-requests", "rule": "system" },
   { "name": "catalog.offer-badges", "rule": "anonymous" },
   { "name": "catalog.offer-listings", "rule": "anonymous" },
@@ -101,6 +103,11 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "catalog.own-topic-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  {
+    "name": "catalog.own-topic-suggestions-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "catalog.pending-product-revisions", "rule": "system" },
   { "name": "catalog.platform-import-purge", "rule": "system" },
   { "name": "catalog.platform-import-run", "rule": "system" },
@@ -126,6 +133,7 @@
   { "name": "catalog.seller-product-owners", "rule": "system" },
   { "name": "catalog.send-attribute-suggestion-notices", "rule": "system" },
   { "name": "catalog.send-offer-owner-notices", "rule": "system" },
+  { "name": "catalog.send-topic-suggestion-notices", "rule": "system" },
   { "name": "catalog.sweep-orphan-image-files", "rule": "system" },
   { "name": "catalog.sweep-orphan-images", "rule": "system" },
   { "name": "catalog.warn-offer-owners-of-expiry", "rule": "system" },
@@ -522,6 +530,7 @@
   { "name": "notifications.record-seller-notice", "rule": "system" },
   { "name": "notifications.record-seller-order-notices", "rule": "system" },
   { "name": "notifications.send-cart-reminders", "rule": "system" },
+  { "name": "notifications.send-item-unavailable-refund-mail", "rule": "system" },
   { "name": "notifications.send-order-confirmation-mail", "rule": "system" },
   { "name": "notifications.send-order-shipped-mail", "rule": "system" },
   { "name": "notifications.send-seller-new-order-mail", "rule": "system" },
@@ -558,6 +567,7 @@
   { "name": "ordering.record-ledger", "rule": "system" },
   { "name": "ordering.record-refund-ledger", "rule": "system" },
   { "name": "ordering.record-shipments", "rule": "system" },
+  { "name": "ordering.refund-notice", "rule": "system" },
   {
     "name": "ordering.regenerate-pickup-code",
     "rule": "own-resources",
@@ -669,6 +679,7 @@
   { "name": "sellers.after-submission", "rule": "system" },
   { "name": "sellers.allowed-product-types", "rule": "anonymous" },
   { "name": "sellers.allowed-product-types-system", "rule": "system" },
+  { "name": "sellers.apply-signup-cultures", "rule": "system" },
   { "name": "sellers.approved-seller-zones", "rule": "anonymous" },
   { "name": "sellers.approved-seller-zones-system", "rule": "system" },
   { "name": "sellers.backfill-seller-files", "rule": "system" },
@@ -677,6 +688,8 @@
   { "name": "sellers.carrier-pickup", "rule": "system" },
   { "name": "sellers.close-decision", "rule": "system" },
   { "name": "sellers.create-seller-file", "rule": "system" },
+  { "name": "sellers.culture-approved-members", "rule": "anonymous" },
+  { "name": "sellers.culture-demote-approvals", "rule": "anonymous" },
   {
     "name": "sellers.form-descriptors-read",
     "rule": "permissions",
@@ -732,12 +745,23 @@
   },
   { "name": "sellers.run-seller-health", "rule": "system" },
   { "name": "sellers.run-seller-health-requests", "rule": "system" },
+  { "name": "sellers.seed-seller-cultures", "rule": "system" },
   {
     "name": "sellers.seller-business-activities",
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
   { "name": "sellers.seller-business-activities-system", "rule": "system" },
+  {
+    "name": "sellers.seller-cultures-own",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "sellers.seller-cultures-request",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "sellers.seller-summaries", "rule": "anonymous" },
   { "name": "sellers.seller-summaries-system", "rule": "system" },
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },

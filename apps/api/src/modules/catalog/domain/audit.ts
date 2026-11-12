@@ -741,6 +741,33 @@ export const AttributeValueSuggestionDecidedAudit = defineAuditAction({
   },
 });
 
+/** The audit target type of a seller's tag suggestion (product tags package T5). */
+export const CATALOG_TOPIC_SUGGESTION_TARGET = 'catalog.topic-suggestion';
+
+/** A seller suggested a new tag. Ids only: never the text they typed. */
+export const TopicSuggestedAudit = defineAuditAction({
+  action: 'catalog.topic-suggestion.suggested',
+  targetType: CATALOG_TOPIC_SUGGESTION_TARGET,
+  actors: ['authenticated'],
+  after: { productId: auditField.id() },
+});
+
+/**
+ * An admin approved (a topic was created from it), mapped or rejected a tag suggestion. Neither
+ * the seller's text nor the reason is kept here.
+ */
+export const TopicSuggestionDecidedAudit = defineAuditAction({
+  action: 'catalog.topic-suggestion.decided',
+  targetType: CATALOG_TOPIC_SUGGESTION_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['open'] as const) },
+  after: {
+    status: auditField.enumOf(['approved', 'mapped', 'rejected'] as const),
+    topicId: auditField.optional(auditField.id()),
+    sellerId: auditField.id(),
+  },
+});
+
 /** The audit target type of a category's attribute links (A4, categories C8). */
 export const CATALOG_CATEGORY_LINKS_TARGET = 'catalog.category';
 
@@ -836,6 +863,8 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeImportRanAudit,
   AttributeValueSuggestedAudit,
   AttributeValueSuggestionDecidedAudit,
+  TopicSuggestedAudit,
+  TopicSuggestionDecidedAudit,
   CategoryAttributesChangedAudit,
   VariantTypeSettingsChangedAudit,
 ] as const;

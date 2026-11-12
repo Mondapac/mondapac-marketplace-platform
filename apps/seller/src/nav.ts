@@ -14,6 +14,13 @@ export const sellerNav: NavConfig = {
   ],
   items: [
     { id: 's_home', icon: 'home', labelKey: 'nav.home', href: '/' },
+    // Own-resources route (no permission key): shown to every approved seller (health only informs).
+    {
+      id: 's_performance',
+      icon: 'shield-check',
+      labelKey: 'nav.performance',
+      href: '/performance',
+    },
     {
       id: 's_orders',
       icon: 'clipboard',

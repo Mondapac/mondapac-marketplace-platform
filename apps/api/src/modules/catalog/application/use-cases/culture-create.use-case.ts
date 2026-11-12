@@ -28,6 +28,7 @@ import {
 } from '../cultures/culture-views';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
+import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
 import type { CultureRepository } from '../ports/culture.repository';
 
@@ -53,6 +54,7 @@ export interface CultureCreateDependencies {
   readonly cultures: CultureRepository;
   readonly policy: CatalogMarketPolicy;
   readonly matcher: ClaimTextMatcher;
+  readonly claimLocales: ClaimTermLocales;
   readonly evaluator: ClaimEvaluator;
   readonly audit: AuditWriter;
   readonly clock: Clock;
@@ -146,7 +148,10 @@ export class CultureCreate extends UseCase<
     }
     if (problems.length > 0 || !content.ok || !isCultureCode(code)) return invalidFields(problems);
 
-    const claim = await refuseClaimWords(this.deps.matcher, context, content.value.names, [], code);
+    const claim = await refuseClaimWords(this.deps, context, content.value.names, [], {
+      text: code,
+      locale: locales.default,
+    });
     if (claim !== null) return err(claim);
     if (requiredType !== null) {
       const known = await checkRequiredCertificationType(

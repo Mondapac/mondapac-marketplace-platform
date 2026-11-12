@@ -989,6 +989,33 @@
         "unavailable": "The service is not available right now. Try again in a few minutes.",
         "unknown": "Something went wrong. Try again."
       }
+    },
+    "health": {
+      "title": "Seller health",
+      "none": "No night has measured this seller yet.",
+      "new": "New seller",
+      "no-data": "No data",
+      "measured": "Measured {when}",
+      "lowest": "The measure pulling the score down most is {metric}.",
+      "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
+      "metric": {
+        "seller-cancellations": "Cancellations by the seller",
+        "late-ready": "Orders ready late",
+        "customer-rating": "Customer rating",
+        "lost-disputes": "Disputes lost",
+        "reports": "Reports"
+      },
+      "trend": {
+        "too-short": "Not enough days measured to show a trend yet.",
+        "summary": "From {first} to {last} over {days} days."
+      },
+      "recalculate": "Recalculate now",
+      "outcome": {
+        "queued": "Queued. The new score shows within about two minutes; reload the page to see it.",
+        "already-queued": "A recount is already waiting for this seller.",
+        "failed": "The recount could not be queued. Try again in a few minutes."
+      },
+      "informs": "Health only informs. Nothing happens to the seller because of this score."
     }
   },
   "certificates": {
@@ -3662,7 +3689,7 @@
   "orders": {
     "title": "Orders",
     "page-title": "Orders",
-    "intro": "The Market's orders, newest first. Read-only.",
+    "intro": "The Market's orders, newest first.",
     "no-access": "You don't have access to orders.",
     "no-access-title": "You don't have access to this page",
     "not-found": "We couldn't find this order.",
@@ -3823,6 +3850,157 @@
       "delivered": "{seller} delivered",
       "collected": "{seller} handed over for pickup",
       "ready-pickup": "{seller} marked ready for pickup"
+    },
+    "refund-state": {
+      "pending": "Waiting for Stripe",
+      "succeeded": "Refunded",
+      "failed": "Refused by Stripe",
+      "unknown": "Unknown"
+    },
+    "refunds": {
+      "title": "Refunds",
+      "none": "No refunds yet.",
+      "none-disabled": "No refunds. Refunds are switched off for this Market.",
+      "units": "{units, plural, =0 {no items} one {# item} other {# items}}",
+      "with-shipping": "with delivery",
+      "loss": {
+        "seller": "Seller bears the loss",
+        "platform": "Platform bears the loss",
+        "unknown": "Loss: unknown"
+      },
+      "not-refunded": "Not refunded"
+    },
+    "actions": {
+      "more": "More order actions",
+      "reason": "Reason",
+      "reason-placeholder": "Choose a reason",
+      "loss-bearer": "Who bears the loss",
+      "loss-bearer-help": "Seller: the amount comes off the seller's earnings. Platform: the seller keeps its share.",
+      "loss-reason": "Why the platform bears it",
+      "refund-reason": {
+        "not-received": "Not received",
+        "damaged": "Damaged",
+        "wrong-item": "Wrong item",
+        "not-as-described": "Not as described",
+        "seller-cancelled": "Seller cancelled",
+        "item-unavailable": "Item unavailable",
+        "other": "Other",
+        "unknown": "Other"
+      },
+      "loss-bearer-option": {
+        "seller": "Seller",
+        "platform": "Platform"
+      },
+      "loss-reason-option": {
+        "platform-error": "Platform error",
+        "carrier-loss": "Lost by the carrier",
+        "seller-unrecoverable": "Can't be recovered from the seller",
+        "fraud-loss": "Fraud",
+        "goodwill": "Goodwill",
+        "other": "Other"
+      },
+      "cancel": {
+        "open": "Cancel and refund",
+        "title": "Cancel and refund this order?",
+        "body": "Every item not yet refunded and the delivery fee go back to the customer's card, for {sellers, plural, one {the seller} other {all # sellers}}. The sellers can no longer mark their part ready.",
+        "sure": "I understand the customer gets this money back and it can't be undone.",
+        "confirm": "Cancel and refund",
+        "done": "The order was cancelled and refunded.",
+        "done-pending": "The order was cancelled. {count, plural, one {# refund is} other {# refunds are}} waiting for Stripe and will be retried.",
+        "done-failed": "Stripe refused {count, plural, one {# refund} other {# refunds}}. Nothing went back for {count, plural, one {it} other {them}}; refund that seller by hand.",
+        "block": {
+          "disabled": "Refunds are switched off for this Market.",
+          "not-paid": "Only a paid order can be cancelled and refunded.",
+          "too-late": "A seller has started on this order. Refund each seller instead.",
+          "in-progress": "A refund is still waiting for Stripe.",
+          "nothing-left": "Everything was refunded already."
+        },
+        "keep": "Don't cancel"
+      },
+      "refund": {
+        "open": "Refund…",
+        "title": "Refund {seller}",
+        "this-seller": "this seller",
+        "body": "Choose how many units of each item go back, and any part of the delivery fee. Amounts are worked out from the prices and tax at the time of the order.",
+        "items": "Items",
+        "item": "Item",
+        "units-label": "{item}: units to refund (up to {max})",
+        "units-error": "Enter a whole number from 1 to {max}.",
+        "shipping": "Delivery fee to refund ({currency})",
+        "shipping-help": "Up to {left} is left. Leave empty to keep it. Tax included.",
+        "shipping-error": "Enter an amount, like 5.00.",
+        "sure": "I understand the customer gets this money back and it can't be undone.",
+        "confirm": "Refund",
+        "done": "Refund requested. Its state is under Refunds.",
+        "block": {
+          "disabled": "Refunds are switched off for this Market.",
+          "not-paid": "Only a paid order can be refunded.",
+          "in-progress": "A refund is still waiting for Stripe.",
+          "nothing-left": "Everything was refunded already."
+        },
+        "keep": "Don't refund",
+        "confirm-note": "Choose what to refund and a reason, and tick the box to continue.",
+        "shipping-exceeds": "Only {left} of the delivery fee is left to refund."
+      },
+      "problem": {
+        "ordering-cancel-too-late": "A seller started on this order a moment ago. Refund each seller instead.",
+        "ordering-cancel-nothing-left": "Everything was refunded already.",
+        "ordering-refund-in-progress": "A refund is still waiting for Stripe. Try again in a few minutes.",
+        "ordering-refund-disabled": "Refunds are switched off for this Market.",
+        "ordering-refund-not-allowed": "This order can't be refunded: it isn't paid or the payment wasn't captured.",
+        "ordering-refund-tax-unknown": "This order has no recorded tax for an item or the delivery fee, so it can't be refunded here. Ask finance.",
+        "ordering-refund-tax-unavailable": "The tax service isn't available. Try again later.",
+        "ordering-refund-exceeds": "That's more than is left to refund. Reload the page and check the refunds.",
+        "ordering-refund-rejected": "Stripe refused the refund. Nothing went back.",
+        "ordering-seller-order-not-found": "We couldn't find this seller order.",
+        "ordering-order-not-found": "We couldn't find this order.",
+        "conflict-retry": "Someone changed this order at the same time. Try again.",
+        "access-denied": "You don't have permission to refund orders.",
+        "validation-failed": "Check the fields and try again.",
+        "network": "We couldn't reach the server. Check your connection and try again.",
+        "unknown": "Something went wrong. Try again."
+      },
+      "confirm-note": "Choose a reason and tick the box to continue."
+    },
+    "notes": {
+      "title": "Internal notes",
+      "intro": "Only admins see these. The customer and the seller never do.",
+      "empty": "No notes yet.",
+      "unavailable": "We couldn't load the notes.",
+      "erased-body": "The customer's account was deleted, so this note's text was removed.",
+      "by": "{author}, {at}",
+      "you": "You",
+      "unknown-author": "An admin",
+      "add-label": "Add a note",
+      "add": "Add note",
+      "required": "Write a note first.",
+      "too-long": "Keep the note to {max} characters.",
+      "format": "Remove hidden or control characters from the note.",
+      "problem": {
+        "erased": "The customer's account was deleted, so new notes can't be added.",
+        "denied": "You don't have permission to add notes.",
+        "unknown": "We couldn't add the note. Try again."
+      },
+      "added": "Note added."
+    },
+    "documents": {
+      "title": "Documents",
+      "confirmation": "Order confirmation",
+      "credit-notes": "{count, plural, one {# refund has} other {# refunds have}} a credit note.",
+      "not-paid": "Documents are available once the order is paid."
+    },
+    "document": {
+      "title": "Order confirmation",
+      "back": "Back to order",
+      "print": "Print",
+      "paid": "Paid {at}",
+      "not-invoice": "This is not a tax invoice.",
+      "not-paid": "This order isn't paid, so it has no document yet.",
+      "item": "Item",
+      "quantity": "Qty",
+      "unit-price": "Unit price",
+      "amount": "Amount",
+      "tax-included": "Tax incl."
     }
   },
   "load": {
@@ -6155,69 +6333,8 @@
   "blog": {
     "title": "Blog",
     "new": "New post",
-    "review": {
-      "page-title": "Review post",
-      "loading": "Loading the post for review",
-      "load-error": "We couldn't load this post.",
-      "retry": "Try again",
-      "untitled": "Untitled post",
-      "version": "Version {no} in review",
-      "live-version": "Version {no} is live",
-      "not-live": "Not published yet",
-      "open-editor": "Open in editor",
-      "request-changes": "Request changes",
-      "approve": "Approve",
-      "approved": "Post approved.",
-      "sent-back": "Sent back to the author.",
-      "read-only": "You can read this post but not decide on it.",
-      "not-waiting": "This post is not waiting for review.",
-      "note": "Note to the author",
-      "note-help": "A note is required. Say what to change; the author reads it.",
-      "cancel": "Cancel",
-      "send-back": "Send back",
-      "changes": "Changes since the live version",
-      "changes-new": "Content of this first version",
-      "no-changes": "No differences from the live version.",
-      "before": "Live version",
-      "after": "In review",
-      "empty": "Empty",
-      "removed": "Removed",
-      "checks-none-run": "Checks have not run for this version.",
-      "field": {
-        "title": "Title",
-        "excerpt": "Excerpt",
-        "body": "Body",
-        "cover": "Cover image",
-        "category": "Category",
-        "tags": "Tags",
-        "seo": "Search text",
-        "author": "Author shown",
-        "links": "Linked items",
-        "event": "Event details"
-      },
-      "problem": {
-        "self-approval": "You wrote or sent this version, so you cannot approve it. Ask another reviewer.",
-        "enrolment": "Set up two-step verification on your profile page first.",
-        "checks-failed": "The checks found something that must be fixed. See the list.",
-        "wrong-state": "The post changed state meanwhile. It was reloaded; nothing was decided.",
-        "stale": "The post changed meanwhile. It was reloaded; nothing was decided.",
-        "gone": "This post no longer exists.",
-        "archived": "This post is archived.",
-        "invalid": "The note is not valid.",
-        "denied": "You do not have permission to decide on posts.",
-        "throttled": "Too many requests. Wait a moment and try again.",
-        "unavailable": "Blog is not available right now.",
-        "unreachable": "We couldn't reach the server. Try again.",
-        "unknown": "Something went wrong. Try again.",
-        "retry": "Please try again.",
-        "csrf": "The page expired. Reload it and try again.",
-        "too-large": "The note is too long.",
-        "version-limit": "This post reached its version limit."
-      }
-    },
     "editor": {
       "title": "Edit post",
-      "go-review": "Review this version",
       "back": "Blog",
       "loading": "Loading the post",
       "load-error": "The post could not be loaded. Check your connection and try again.",

@@ -385,6 +385,20 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   SuggestionNoticeMail: {
     noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
   },
+  TopicSuggestion: {
+    noCustomerText: 'aggregate class around TopicSuggestionState',
+  },
+  TopicSuggestionState: {
+    noCustomerText:
+      "a seller's tag suggestion: ids, status codes, times and the seller's own text, shown to admins only; the text is claim-checked when it is suggested and again when an approval makes it a topic name",
+  },
+  TopicSuggestionNoticeFacts: {
+    noCustomerText:
+      'facts of the one mail to a seller about a tag suggestion; never shown to buyers',
+  },
+  TopicSuggestionNoticeMail: {
+    noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
+  },
   AttributeRelaxationRequestState: {
     noCustomerText: 'a two-admin request: ids, kind and status codes, times; no text',
   },
@@ -639,6 +653,11 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'the public tree view for the buyer assistant: ids, slug, depth and one published category name, already claim-checked when written',
   },
   CatalogActivitiesFacade: { noCustomerText: 'interface of methods' },
+  CatalogCulturesFacade: { noCustomerText: 'interface of methods' },
+  CatalogCultureSummary: {
+    noCustomerText:
+      'id, code, status and required type of a culture, and its names already claim-checked when written; read in process by sellers only',
+  },
   CatalogAssistantFacade: { noCustomerText: 'interface of methods' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },
   ProductTypeHandler: { noCustomerText: 'interface of methods' },

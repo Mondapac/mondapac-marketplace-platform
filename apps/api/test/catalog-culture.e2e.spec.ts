@@ -5,7 +5,9 @@ import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared
 import request from 'supertest';
 import { CATEGORY_TREE_READER } from '../src/modules/catalog/application/ports/category-tree.reader';
 import { CLAIM_EVALUATOR } from '../src/modules/catalog/application/ports/claim-evaluator';
+import { CLAIM_TERM_LOCALES } from '../src/modules/catalog/application/ports/claim-term-locales';
 import { CLAIM_TEXT_MATCHER } from '../src/modules/catalog/application/ports/claim-text-matcher';
+import { CULTURE_MEMBERS } from '../src/modules/catalog/application/ports/culture-members';
 import { CULTURE_READER } from '../src/modules/catalog/application/ports/culture.reader';
 import { CULTURE_REPOSITORY } from '../src/modules/catalog/application/ports/culture.repository';
 import type { CultureState } from '../src/modules/catalog/domain/culture';
@@ -115,8 +117,12 @@ describe('culture routes over HTTP (integration)', () => {
           .useValue(new FixedClock(START))
           .overrideProvider(CULTURE_REPOSITORY)
           .useValue(cultures)
+          .overrideProvider(CULTURE_MEMBERS)
+          .useValue({ hasApproved: () => Promise.resolve(ok(false)) })
           .overrideProvider(CULTURE_READER)
           .useValue(cultures)
+          .overrideProvider(CLAIM_TERM_LOCALES)
+          .useValue({ covered: () => Promise.resolve(ok(['en-AU', 'ja-JP'])) })
           .overrideProvider(CLAIM_TEXT_MATCHER)
           .useValue({
             match: (_c: unknown, texts: readonly { text: string }[]) =>
@@ -252,8 +258,10 @@ describe('culture routes over HTTP (integration)', () => {
       'culture.not-found': 404,
       'culture.code-taken': 409,
       'culture.default-must-stay-active': 409,
+      'culture.required-type-locked': 409,
       'conflict.stale': 409,
       'culture.claim-word': 422,
+      'culture.locale-uncheckable': 422,
     });
   });
 

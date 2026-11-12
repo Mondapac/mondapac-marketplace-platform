@@ -706,6 +706,24 @@ describe('relay allowlist for seller decisions', () => {
     expect((await send('DELETE', ledger)).status).toBe(404);
   });
 
+  it('relays the recalculate request of one seller, by POST only', async () => {
+    const send = (method: string, path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, {
+          method,
+          headers: method === 'GET' ? { host: 'admin.localhost:3002' } : sameOrigin,
+          ...(method === 'POST' ? { body: '{}' } : {}),
+        }),
+        path.split('/'),
+        vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 202 }))),
+      );
+    const recalculate = `sellers/admin/${ID}/health/recalculate`;
+    expect((await send('POST', recalculate)).status).toBe(202);
+    expect((await send('GET', recalculate)).status).toBe(404);
+    expect((await send('POST', 'sellers/admin/nope/health/recalculate')).status).toBe(404);
+  });
+
   it('forwards only limit and cursor of the ledger query', async () => {
     const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
     const path = `commission-payouts/admin/sellers/${ID}/ledger`;
@@ -1332,8 +1350,6 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', `blog/admin/posts/${id}/checks`],
     ['PUT', `blog/admin/posts/${id}/draft`],
     ['POST', `blog/admin/posts/${id}/submit`],
-    ['POST', `blog/admin/posts/${id}/approve`],
-    ['POST', `blog/admin/posts/${id}/request-changes`],
     ['GET', 'blog/admin/taxonomy'],
     ['GET', 'catalog/admin/brands'],
     ['GET', 'catalog/admin/brands/merge-queue'],

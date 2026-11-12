@@ -35,6 +35,8 @@ import {
   type WorkingCopyRepository,
 } from '../application/ports/working-copy.repository';
 import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
+import { CULTURE_MEMBERS, type CultureMembers } from '../application/ports/culture-members';
+import { SellersCultureMembers } from './sellers-culture-members';
 import { CLAIM_TERM_LOCALES, type ClaimTermLocales } from '../application/ports/claim-term-locales';
 import {
   ATTRIBUTE_DEFINITION_STORE,
@@ -56,6 +58,11 @@ import {
 import { PrismaCategoryAttributeLinkStore } from './prisma-category-attribute-link.store';
 import { PrismaAttributeRelaxationStore } from './prisma-attribute-relaxation.store';
 import { PrismaAttributeValueSuggestionStore } from './prisma-attribute-value-suggestion.store';
+import { PrismaTopicSuggestionStore } from './prisma-topic-suggestion.store';
+import {
+  TOPIC_SUGGESTION_STORE,
+  type TopicSuggestionStore,
+} from '../application/ports/topic-suggestion.store';
 import {
   ATTRIBUTE_VALUE_SUGGESTION_STORE,
   type AttributeValueSuggestionStore,
@@ -392,6 +399,12 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaAttributeValueSuggestionStore(prisma),
   },
   {
+    provide: TOPIC_SUGGESTION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TopicSuggestionStore =>
+      new PrismaTopicSuggestionStore(prisma),
+  },
+  {
     provide: CATALOG_MARKET_POLICY,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): CatalogMarketPolicy =>
@@ -595,6 +608,11 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellerSavedFilterRepository =>
       new PrismaSellerSavedFilterRepository(prisma),
+  },
+  {
+    provide: CULTURE_MEMBERS,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): CultureMembers => new SellersCultureMembers(sellers),
   },
   {
     provide: SELLER_ELIGIBILITY_READER,

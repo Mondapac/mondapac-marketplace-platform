@@ -238,6 +238,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
  */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   POST: [
+    // One order (ordering, order detail decisions 1 and 3): cancel and refund the whole order,
+    // refund one seller order, and write an internal note. The notes and the order are read by the
+    // page server.
+    'ordering/admin/orders/:id/cancel',
+    'ordering/admin/orders/:id/seller-orders/:id/refunds',
+    'ordering/admin/orders/:id/notes',
     // Start, resume or discard one checked import (catalog).
     'catalog/admin/platform-imports/:id/start',
     'catalog/admin/platform-imports/:id/resume',
@@ -252,6 +258,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
     'identity/admin/sellers/:id/second-factor/reset',
+    // Queue a recount of one seller's health (sellers, seller health package 5).
+    'sellers/admin/:id/health/recalculate',
     'sellers/admin/:id/review/approve',
     'sellers/admin/:id/review/reject',
     'pricing/admin/price-holds/:id/approve',
@@ -322,10 +330,6 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'storefront/admin/slides/:id/submit',
     // Send a blog post's draft for review (blog); the backend's automatic checks may refuse.
     'blog/admin/posts/:id/submit',
-    // A reviewer's two decisions on the version in review (blog): approve it (a self-approval asks
-    // for a two-step code) or send it back with a note.
-    'blog/admin/posts/:id/approve',
-    'blog/admin/posts/:id/request-changes',
     'storefront/admin/slides/:id/approve',
     'storefront/admin/slides/:id/pause',
     'storefront/admin/slides/:id/resume',
