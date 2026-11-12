@@ -48,7 +48,8 @@ export class MemoryMissingDetailsEmailStore implements MissingDetailsEmailStore 
             .map((productId) => ({
               sellerId: state.sellerId,
               productId,
-              at: state.sentAt ?? state.requestedAt,
+              requestedAt: state.requestedAt,
+              emailedAt: state.sentAt ?? state.requestedAt,
             })),
         ),
     );

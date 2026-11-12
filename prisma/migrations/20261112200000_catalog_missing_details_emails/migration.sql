@@ -30,9 +30,6 @@ CREATE TABLE "catalog"."missing_details_email_products" (
 );
 
 -- CreateIndex
-CREATE INDEX "missing_details_emails_market_id_seller_id_requested_at_idx" ON "catalog"."missing_details_emails"("market_id", "seller_id", "requested_at");
-
--- CreateIndex
 CREATE INDEX "missing_details_email_products_market_id_product_id_idx" ON "catalog"."missing_details_email_products"("market_id", "product_id");
 
 -- AddForeignKey
@@ -41,7 +38,7 @@ ALTER TABLE "catalog"."missing_details_email_products" ADD CONSTRAINT "missing_d
 -- AddForeignKey
 ALTER TABLE "catalog"."missing_details_email_products" ADD CONSTRAINT "missing_details_email_products_market_id_product_id_fkey" FOREIGN KEY ("market_id", "product_id") REFERENCES "catalog"."products"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
--- Hand-written (database-designer review pending): attributes A4-4, the "Email sellers" action of
+-- Hand-written (reviewed by database-designer, M1 applied): attributes A4-4, the "Email sellers" action of
 -- the Missing details report. One email per seller and request, queued by an admin (pending) and
 -- settled once by the job (sent, skipped: no usable address, failed: attempts used up). Its text
 -- never changes; the products it lists are append-only. Nothing is deleted.

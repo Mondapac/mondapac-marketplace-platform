@@ -113,12 +113,23 @@ describe('planning the emails of a selection', () => {
         {
           sellerId: SELLER_A,
           productId: ID(0x101),
-          at: NOW.subtract({ hours: 168 }).add({ seconds: 1 }),
+          requestedAt: NOW.subtract({ hours: 168 }).add({ seconds: 1 }),
+          emailedAt: NOW.subtract({ hours: 168 }).add({ seconds: 1 }),
         },
         // Exactly 7 days: the window is over.
-        { sellerId: SELLER_A, productId: ID(0x102), at: NOW.subtract({ hours: 168 }) },
+        {
+          sellerId: SELLER_A,
+          productId: ID(0x102),
+          requestedAt: NOW.subtract({ hours: 168 }),
+          emailedAt: NOW.subtract({ hours: 168 }),
+        },
         // Another seller (the product changed hands): does not throttle this seller.
-        { sellerId: SELLER_B, productId: ID(0x103), at: NOW.subtract({ hours: 1 }) },
+        {
+          sellerId: SELLER_B,
+          productId: ID(0x103),
+          requestedAt: NOW.subtract({ hours: 1 }),
+          emailedAt: NOW.subtract({ hours: 1 }),
+        },
       ],
       pendingSellers: new Set(),
       now: NOW,
@@ -137,13 +148,53 @@ describe('planning the emails of a selection', () => {
     expect(seller?.emailed.map((p) => p.productId)).toEqual([ID(0x102), ID(0x103)]);
   });
 
+  it('counts the window from the request time, and reports when the email went', () => {
+    const requested = NOW.subtract({ hours: 168, minutes: 1 });
+    const plan = planMissingDetailsEmails({
+      requested: [ID(0x101), ID(0x102)],
+      found: [product(1), product(2)],
+      recent: [
+        // Requested just over 7 days ago, sent a day later: the window is over.
+        {
+          sellerId: SELLER_A,
+          productId: ID(0x101),
+          requestedAt: requested,
+          emailedAt: requested.add({ hours: 24 }),
+        },
+        // Requested 2 hours ago, sent an hour later: throttled, reported with the send time.
+        {
+          sellerId: SELLER_A,
+          productId: ID(0x102),
+          requestedAt: NOW.subtract({ hours: 2 }),
+          emailedAt: NOW.subtract({ hours: 1 }),
+        },
+      ],
+      pendingSellers: new Set(),
+      now: NOW,
+    });
+    expect(plan.sellers[0]?.products).toEqual([
+      { productId: ID(0x101), status: 'emailed', lastEmailedAt: null },
+      { productId: ID(0x102), status: 'throttled', lastEmailedAt: NOW.subtract({ hours: 1 }) },
+    ]);
+  });
+
   it('reports the latest of several recent emails of a throttled product', () => {
     const plan = planMissingDetailsEmails({
       requested: [ID(0x101)],
       found: [product(1)],
       recent: [
-        { sellerId: SELLER_A, productId: ID(0x101), at: NOW.subtract({ hours: 30 }) },
-        { sellerId: SELLER_A, productId: ID(0x101), at: NOW.subtract({ hours: 2 }) },
+        {
+          sellerId: SELLER_A,
+          productId: ID(0x101),
+          requestedAt: NOW.subtract({ hours: 30 }),
+          emailedAt: NOW.subtract({ hours: 30 }),
+        },
+        {
+          sellerId: SELLER_A,
+          productId: ID(0x101),
+          requestedAt: NOW.subtract({ hours: 2 }),
+          emailedAt: NOW.subtract({ hours: 2 }),
+        },
       ],
       pendingSellers: new Set(),
       now: NOW,
@@ -180,7 +231,14 @@ describe('planning the emails of a selection', () => {
     const plan = planMissingDetailsEmails({
       requested: [ID(0x101), ID(0x102)],
       found: [product(1), product(2)],
-      recent: [{ sellerId: SELLER_A, productId: ID(0x101), at: NOW.subtract({ minutes: 1 }) }],
+      recent: [
+        {
+          sellerId: SELLER_A,
+          productId: ID(0x101),
+          requestedAt: NOW.subtract({ minutes: 1 }),
+          emailedAt: NOW.subtract({ minutes: 1 }),
+        },
+      ],
       pendingSellers: new Set([SELLER_A]),
       now: NOW,
     });

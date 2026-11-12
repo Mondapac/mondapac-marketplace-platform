@@ -14,7 +14,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { ownerTestDatabaseUrl } from './test-database';
+import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // The "Email sellers" emails of the Missing details report on PostgreSQL (attributes A4-4), for
 // both Market fixtures, as the API role: an email and its products are stored together; one
@@ -173,7 +173,9 @@ describe.each(TEST_MARKETS)('catalog missing details emails in market %s (databa
     const recent = await read(market, () =>
       store.recent(market, [a], now().subtract({ hours: 1 })),
     );
-    expect(recent).toEqual([{ sellerId: seller, productId: a, at: sentAt }]);
+    expect(recent).toEqual([
+      { sellerId: seller, productId: a, requestedAt: email.state.requestedAt, emailedAt: sentAt },
+    ]);
     // A sent email never moves again, not even through the owner role.
     expect(
       await sqlState(
@@ -226,16 +228,29 @@ describe.each(TEST_MARKETS)('catalog missing details emails in market %s (databa
         ),
       ),
     ).toBe('23514');
-    // The API role may not change the text (column grants).
-    expect(
-      await sqlState(
-        write(market, () =>
-          db.service.tx(market).catalogMissingDetailsEmail.updateMany({
-            where: { marketId: market.marketId, id: email.state.id },
-            data: { subject: 'changed', version: 2 },
-          }),
+    // The API role may not change the text (column grants): insufficient_privilege.
+    const api = new Client({ connectionString: testDatabaseUrl() });
+    await api.connect();
+    try {
+      expect(
+        await sqlState(
+          api.query(
+            `UPDATE catalog.missing_details_emails SET subject = 'changed', version = version + 1
+              WHERE market_id = $1 AND id = $2`,
+            [market.marketId, email.state.id],
+          ),
         ),
-      ),
-    ).not.toBe('none');
+      ).toBe('42501');
+      expect(
+        await sqlState(
+          api.query(
+            `DELETE FROM catalog.missing_details_email_products WHERE market_id = $1 AND email_id = $2`,
+            [market.marketId, email.state.id],
+          ),
+        ),
+      ).toBe('42501');
+    } finally {
+      await api.end();
+    }
   });
 });

@@ -1810,7 +1810,8 @@ model CatalogTopicSuggestion {
 /// An "Email sellers" email of the Missing details report (attributes A4-4): one per seller and
 /// request, queued by an admin and sent by the job `catalog.send-missing-details-emails`. The text
 /// is rendered when queued (what the admin previewed). Throttle: the same seller and product at
-/// most once in 7 days (pending or sent). The CHECKs, the one-pending index, the guard and the
+/// most once in 7 days from the request time (pending or sent), read through the products'
+/// `(market_id, product_id)` index; a seller's pending email through the one-pending index. The CHECKs, the one-pending index, the guard and the
 /// grants are hand-written in the migration.
 model CatalogMissingDetailsEmail {
   id                   String                              @db.Uuid
@@ -1833,8 +1834,6 @@ model CatalogMissingDetailsEmail {
   products             CatalogMissingDetailsEmailProduct[]
 
   @@id([marketId, id])
-  /// The throttle and the seller's history.
-  @@index([marketId, sellerId, requestedAt], map: "missing_details_emails_market_id_seller_id_requested_at_idx")
   @@map("missing_details_emails")
   @@schema("catalog")
 }

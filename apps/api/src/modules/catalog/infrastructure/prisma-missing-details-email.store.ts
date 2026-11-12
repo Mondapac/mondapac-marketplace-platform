@@ -123,7 +123,8 @@ export class PrismaMissingDetailsEmailStore implements MissingDetailsEmailStore 
     return rows.map((row) => ({
       sellerId: row.email.sellerId,
       productId: row.productId,
-      at: toInstant(row.email.sentAt ?? row.email.requestedAt),
+      requestedAt: toInstant(row.email.requestedAt),
+      emailedAt: toInstant(row.email.sentAt ?? row.email.requestedAt),
     }));
   }
 

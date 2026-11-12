@@ -88,8 +88,10 @@ export interface PlannedProduct {
 export interface RecentMissingDetailsEmail {
   readonly sellerId: string;
   readonly productId: string;
-  /** When it was sent, or requested while it waits. */
-  readonly at: Temporal.Instant;
+  /** When the admin queued it: the throttle window is counted from this instant. */
+  readonly requestedAt: Temporal.Instant;
+  /** When it was sent, or `requestedAt` while it waits: the date reported ("emailed {date}"). */
+  readonly emailedAt: Temporal.Instant;
 }
 
 export type PlannedProductStatus = 'emailed' | 'throttled' | 'no-missing-details' | 'email-pending';
@@ -136,11 +138,13 @@ export function planMissingDetailsEmails(input: {
   const byId = new Map(input.found.map((product) => [product.productId, product]));
   const latest = new Map<string, Temporal.Instant>();
   for (const recent of input.recent) {
-    if (Temporal.Instant.compare(recent.at, since) <= 0) continue;
+    // The window is counted from the request time, as the store's filter is (`requested_at`); a
+    // send that went later does not stretch it. The reported date is when it went.
+    if (Temporal.Instant.compare(recent.requestedAt, since) <= 0) continue;
     const key = `${recent.sellerId}/${recent.productId}`;
     const known = latest.get(key);
-    if (known === undefined || Temporal.Instant.compare(recent.at, known) > 0) {
-      latest.set(key, recent.at);
+    if (known === undefined || Temporal.Instant.compare(recent.emailedAt, known) > 0) {
+      latest.set(key, recent.emailedAt);
     }
   }
   const unmatched: { productId: string; reason: 'not-found' | 'no-seller' }[] = [];
