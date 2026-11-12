@@ -1384,8 +1384,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // material and variant-option flags live in insert-only revisions.
     'catalog.attribute_definitions': {
       table: ['INSERT', 'SELECT'],
-      // `merged_into_id` is set once, with the archive of a merged attribute (attributes A8).
-      columnUpdate: ['merged_into_id', 'published_revision_id', 'status', 'version'],
+      // `merged_into_id` is set once, with the archive of a merged attribute (attributes A8);
+      // `data_type` moves only on the listed conversions, with a new revision (attributes A8).
+      columnUpdate: ['data_type', 'merged_into_id', 'published_revision_id', 'status', 'version'],
     },
     // Attributes A8: where a merged attribute's values go (insert-only).
     'catalog.attribute_merge_options': { table: ['INSERT', 'SELECT'], columnUpdate: [] },

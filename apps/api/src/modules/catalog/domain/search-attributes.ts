@@ -167,7 +167,13 @@ export function buildSearchAttributes(input: {
     switch (definition.dataType) {
       case 'select':
       case 'multi-select': {
-        const picked = definition.dataType === 'select' ? [raw] : Array.isArray(raw) ? raw : [];
+        // A value stored before a select was converted to a multi-select is one code (A8).
+        const picked =
+          definition.dataType === 'select' || typeof raw === 'string'
+            ? [raw]
+            : Array.isArray(raw)
+              ? raw
+              : [];
         for (const entry of picked as unknown[]) {
           const resolved = resolveOption(definition, entry);
           if (resolved === null) continue;

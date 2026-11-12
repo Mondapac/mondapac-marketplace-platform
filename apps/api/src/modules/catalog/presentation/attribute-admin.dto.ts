@@ -575,6 +575,16 @@ export class AttributeMergeRequest {
   options?: Record<string, string>;
 }
 
+export class AttributeConvertRequest {
+  @ApiProperty({ description: 'The attribute version the impact dialog showed.' })
+  version!: number;
+  @ApiProperty({
+    enum: ['decimal', 'multi-select'],
+    description: 'The new type: decimal (from integer) or multi-select (from select).',
+  })
+  to!: string;
+}
+
 export class ValuesMergeRequest {
   @ApiProperty({ description: 'The attribute version the impact dialog showed.' })
   version!: number;

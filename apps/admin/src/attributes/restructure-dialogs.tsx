@@ -223,6 +223,98 @@ export function MergeValuesDialog({
   );
 }
 
+/** What each convertible type becomes (attributes A8): the two listed paths only. */
+export const CONVERSIONS: Readonly<Record<string, 'decimal' | 'multi-select'>> = {
+  integer: 'decimal',
+  select: 'multi-select',
+};
+
+/**
+ * Convert the type of an attribute (attributes A8), along one of the two listed paths: a whole
+ * number to a decimal, a select to a multi-select. The admin reads what the change reaches and
+ * confirms. Products keep what they have; their values are read as the new type.
+ */
+export function ConvertTypeDialog({
+  detail,
+  csrfToken,
+  onClose,
+  onDone,
+  onReload,
+}: {
+  readonly detail: AttributeDetail;
+  readonly csrfToken: string;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+  readonly onReload: () => void;
+}) {
+  const t = useTranslations('attributes.restructure');
+  const te = useTranslations('attributes.editor');
+  const call = useAttributeCall(csrfToken);
+  const { load, retry } = useImpact(detail.id);
+  const name = textIn(detail.names, detail.locales.default, detail.locales.default, detail.code);
+  const to = CONVERSIONS[detail.dataType];
+
+  async function convert(version: number) {
+    if (to === undefined) return;
+    const answer = await call.run<AttributeWrite>(
+      'POST',
+      `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}/convert`,
+      { version, to },
+    );
+    if (answer.ok) onDone();
+  }
+
+  const problem = call.problem;
+  // The conversion cannot be undone, so Cancel has the first focus.
+  const cancel = useRef<HTMLButtonElement>(null);
+  const tt = useTranslations('attributes');
+  return (
+    <Dialog
+      open
+      title={t('convert-title', { name })}
+      onClose={onClose}
+      initialFocus={cancel}
+      actions={
+        <>
+          <Button ref={cancel} variant="secondary" disabled={call.pending} onClick={onClose}>
+            {te('cancel')}
+          </Button>
+          {problem?.reload === true ? (
+            <Button onClick={onReload}>{te('reload')}</Button>
+          ) : (
+            <Button
+              loading={call.pending}
+              disabled={call.pending || load.state !== 'ready' || to === undefined}
+              onClick={() => {
+                if (load.state === 'ready') void convert(load.answer.attribute.version);
+              }}
+            >
+              {t('convert-confirm')}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
+        {to === undefined ? null : (
+          <p className="font-medium">
+            {t('convert-from-to', {
+              from: tt(`type.${detail.dataType}`),
+              to: tt(`type.${to}`),
+            })}
+          </p>
+        )}
+        <p>{to === 'decimal' ? t('convert-body-decimal') : t('convert-body-multi-select')}</p>
+        <Banner tone="attention">{t('convert-irreversible')}</Banner>
+        <ImpactBody load={load} retry={retry}>
+          {(answer) => <ImpactList answer={answer} />}
+        </ImpactBody>
+      </div>
+    </Dialog>
+  );
+}
+
 /**
  * Archive an attribute (attributes A8), after the impact dialog. A `material` attribute is not
  * archived at once: the admin asks, and a different administrator with the same permission

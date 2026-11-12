@@ -335,8 +335,8 @@ model CatalogPlatformCategorySlugHistory {
   @@schema("catalog")
 }
 
-/// An attribute a product can carry (catalog design 3.3; data design 3.5): the code, data type and
-/// localizable flag never change; name, bounds, options and the `material` flag live in
+/// An attribute a product can carry (catalog design 3.3; data design 3.5): the code and
+/// localizable flag never change, and the data type only on the two conversions of attributes A8; name, bounds, options and the `material` flag live in
 /// insert-only revisions. The CHECKs and the grants are hand-written in the migration. The
 /// archive request column and its two-person triggers arrive with slice 21.
 model CatalogAttributeDefinition {
@@ -345,7 +345,7 @@ model CatalogAttributeDefinition {
   tenantId            String                               @map("tenant_id")
   /// Unique per Market, never updated (CA4).
   code                String
-  /// text | long-text | integer | decimal | boolean | select | multi-select | date | measure.
+  /// text | long-text | integer | decimal | boolean | select | multi-select | date | measure. Changes only integer -> decimal and select -> multi-select, with a new revision (attributes A8).
   dataType            String                               @map("data_type")
   localizable         Boolean
   /// draft | active | archived (attributes A2: a draft is invisible to sellers and buyers).
