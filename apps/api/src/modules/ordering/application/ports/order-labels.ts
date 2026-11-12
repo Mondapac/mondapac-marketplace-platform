@@ -56,6 +56,14 @@ export interface OrderLabels {
     context: CallContext,
     accountIds: readonly Id<'Account'>[],
   ): Promise<ReadonlyMap<Id<'Account'>, string>>;
+  /**
+   * identity's `changeActors`: the names of the admins who wrote notes, as the asking admin may
+   * see them (identity decides who is named). An account without a name is absent.
+   */
+  staffNamesOf(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, string>>;
 }
 
 export const ORDER_LABELS = Symbol('ORDER_LABELS');

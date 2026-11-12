@@ -1159,6 +1159,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'ordering.offer_pairs': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.refund_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.credit_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Order detail decision 3: admin internal notes, sealed under the customer; written once, never
+    // changed or removed.
+    'ordering.admin_order_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.
     // Payments (Phase 5 package 3): one connected account row per seller and Market; the state
@@ -1375,6 +1378,21 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.attribute_relaxation_requests': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['cancel_reason', 'closed_at', 'confirmed_by_account_id', 'status', 'version'],
+    },
+    // Product tags T5: same shape as the value suggestions: a decision and a notice move only.
+    'catalog.topic_suggestions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'notice_attempts',
+        'notice_next_attempt_at',
+        'notice_state',
+        'reject_reason',
+        'status',
+        'topic_id',
+        'version',
+      ],
     },
     // Attributes A5: a decision and a notice move are the only updates, in these columns (data
     // design 3.30); a suggestion is never deleted.

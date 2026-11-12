@@ -345,6 +345,20 @@ import { AttributeSuggestionList } from './application/use-cases/attribute-sugge
 import { AttributeSuggestionApprove } from './application/use-cases/attribute-suggestion-approve.use-case';
 import { AttributeSuggestionMap } from './application/use-cases/attribute-suggestion-map.use-case';
 import { AttributeSuggestionReject } from './application/use-cases/attribute-suggestion-reject.use-case';
+import { OwnTopicSuggest } from './application/use-cases/own-topic-suggest.use-case';
+import { OwnTopicSuggestionsList } from './application/use-cases/own-topic-suggestions-list.use-case';
+import { TopicSuggestionList } from './application/use-cases/topic-suggestion-list.use-case';
+import { TopicSuggestionApprove } from './application/use-cases/topic-suggestion-approve.use-case';
+import { TopicSuggestionMap } from './application/use-cases/topic-suggestion-map.use-case';
+import { TopicSuggestionReject } from './application/use-cases/topic-suggestion-reject.use-case';
+import { SendTopicSuggestionNotices } from './application/use-cases/send-topic-suggestion-notices.use-case';
+import { sendTopicSuggestionNoticesJob } from './presentation/jobs/send-topic-suggestion-notices.job';
+import { TopicSuggestionController } from './presentation/topic-suggestion.controller';
+import {
+  OwnTopicSuggestController,
+  OwnTopicSuggestionsController,
+} from './presentation/own-topic-suggestion.controller';
+import { TOPIC_SUGGESTION_STORE } from './application/ports/topic-suggestion.store';
 import { SendAttributeSuggestionNotices } from './application/use-cases/send-attribute-suggestion-notices.use-case';
 import { sendAttributeSuggestionNoticesJob } from './presentation/jobs/send-attribute-suggestion-notices.job';
 import { AttributeSuggestionController } from './presentation/attribute-suggestion.controller';
@@ -574,6 +588,7 @@ const PORT = {
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
   suggestions: ATTRIBUTE_VALUE_SUGGESTION_STORE,
+  topicSuggestions: TOPIC_SUGGESTION_STORE,
   claimLocales: CLAIM_TERM_LOCALES,
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
@@ -716,6 +731,9 @@ const RESTRUCTURE_DEPS = {
     AttributeSuggestionController,
     OwnAttributeSuggestionController,
     OwnAttributeSuggestionsController,
+    TopicSuggestionController,
+    OwnTopicSuggestController,
+    OwnTopicSuggestionsController,
     CategoryAdminController,
     CategoryImportController,
     BusinessActivityAdminController,
@@ -1107,6 +1125,67 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       suggestions: true,
       attributeStore: true,
+      ownerContacts: true,
+      mailTransport: true,
+      mailSettings: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnTopicSuggest, {
+      unitOfWork: true,
+      products: true,
+      topics: true,
+      topicSuggestions: true,
+      eligibility: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnTopicSuggestionsList, {
+      unitOfWork: true,
+      topicSuggestions: true,
+      topicReader: true,
+      products: true,
+      ownReader: true,
+      policy: true,
+    }),
+    useCaseProvider(TopicSuggestionList, {
+      unitOfWork: true,
+      topicSuggestions: true,
+      products: true,
+      policy: true,
+    }),
+    useCaseProvider(TopicSuggestionApprove, {
+      unitOfWork: true,
+      topicSuggestions: true,
+      topics: true,
+      audit: true,
+      clock: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      ids: true,
+    }),
+    useCaseProvider(TopicSuggestionMap, {
+      unitOfWork: true,
+      topicSuggestions: true,
+      topics: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(TopicSuggestionReject, {
+      unitOfWork: true,
+      topicSuggestions: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SendTopicSuggestionNotices, {
+      unitOfWork: true,
+      topicSuggestions: true,
+      topicReader: true,
       ownerContacts: true,
       mailTransport: true,
       mailSettings: true,
@@ -2265,6 +2344,7 @@ const RESTRUCTURE_DEPS = {
         ExpireRelaxationRequests,
         SendAttributeSuggestionNotices,
         SendMissingDetailsEmails,
+        SendTopicSuggestionNotices,
       ],
       (
         categories: SeedCategoryTree,
@@ -2282,6 +2362,7 @@ const RESTRUCTURE_DEPS = {
         expireRelaxations: ExpireRelaxationRequests,
         suggestionNotices: SendAttributeSuggestionNotices,
         missingDetailsEmails: SendMissingDetailsEmails,
+        topicSuggestionNotices: SendTopicSuggestionNotices,
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
@@ -2298,6 +2379,7 @@ const RESTRUCTURE_DEPS = {
         expireRelaxationRequestsJob(expireRelaxations),
         sendAttributeSuggestionNoticesJob(suggestionNotices),
         sendMissingDetailsEmailsJob(missingDetailsEmails),
+        sendTopicSuggestionNoticesJob(topicSuggestionNotices),
       ],
     ),
     // Certification events consumed (design 5.5, 9.5; slice 12).

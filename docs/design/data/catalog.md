@@ -1095,6 +1095,30 @@ account, no FK) and `decided_at`; `notice_state`, `notice_attempts` (0 to 10),
 - Reversible: `pnpm db:check-reversible` passes (`down.sql` drops the trigger functions and the
   table).
 
+### 3.30a `topic_suggestions` (product tags package T5)
+
+One row per seller's request for a tag (topic) the curated list does not have (john's decision 1,
+24 Oct 2026). Same lifecycle and guard as 3.30: born `open` at version 1; an admin moves it once to
+`approved` (a topic was created from it; `topic_id` names it), `mapped` (an existing active topic
+was chosen; `topic_id`) or `rejected` (`reject_reason`); then one mail, with the `notice_*` send
+marker. Only the decision and the notice marker change (guard trigger); nothing is deleted.
+Approving or mapping never adds the tag to the product: the seller picks it, and the change goes to
+review like every tag change. Audit rows: `catalog.topic-suggestion.suggested` and `.decided`
+(ids and the outcome only: never the seller's text or the reason).
+
+`(market_id, id)` primary key; `tenant_id`; `seller_id` (no FK across modules); `product_id` with
+`(market_id, product_id)` → `products`; `label` (the seller's text, 2 to 40 characters) and
+`label_key` (its `normaliseTopicTerm` form); `status`; `topic_id` with `(market_id, topic_id)` →
+`topics`; `reject_reason`; `decided_by_account_id`, `decided_at`; `notice_*`; `version`;
+`created_at`.
+
+- **Partial unique** `topic_suggestions_open_seller_label_key` `(market_id, seller_id, label_key)
+  WHERE status = 'open'`: a seller's second request for the same text is `suggestion.already-open`.
+- At most 10 open per seller and no text a topic already uses (`takenTermKeys`) are use-case rules.
+- Indexes: `(market_id, status, created_at, id)` for the admin queue; `(market_id, seller_id,
+  status)`; `(market_id, product_id)`; the notice-due partial index. Grants as 3.30, with `topic_id`
+  in place of `option_code`.
+
 ### 3.31 `seller_import_jobs`, `seller_import_rows`, `seller_import_photos` (seller Import; domain 14c)
 
 The seller import of 14 as built by domain 14c. It **replaces the outline of 3.24** (`import_jobs`,
@@ -1932,5 +1956,5 @@ Answered in D 19.4 and D 17.1 item 12b (2026-10-07); Q-K8 ruled by Ali at the da
 
 ### 3.32 `missing_details_emails` ("Email sellers" of the Missing details report; attributes package A4-4)
 
-One row per seller and product an admin asked to fill in required details: the primary key `(market_id, seller_id, product_id)` is the 7-day limit (a guarded update claims the pair again only when the earlier request is older than 7 days or did not reach the seller), and the rows with `state = 'pending'` are the queue the job `catalog.send-missing-details-emails` reads, one English mail per seller. The row keeps what the mail says (`seller_name`, `product_name`, `missing_labels` as English names), so the job reads no catalog table; no address is stored. `state` is `pending`, `sent`, `skipped` or `failed`; `outcome` is `no-address` or `send-failed` exactly for the last two; at most 10 attempts, 3 used. The request is audited as `catalog.missing-details-email.requested` (seller id, counts). `outcome` is tied to the state by a CHECK (`skipped` with `no-address`, `failed` with `send-failed`). Index: one partial index on the pending rows `(market_id, requested_at, seller_id, product_id) WHERE state = 'pending'` (hand-written, so the queue scan needs no sort); no index on the sent rows. Retention: rows are never deleted and there is one per seller and product, so size follows the catalog, not time; a pair asked again after 7 days (or after a skip or failure) replaces its row and resets `attempts`. PII: `seller_name` may be a sole trader's name and `requested_by` is an admin account id; no address is stored. The mail is at-least-once: a run that outlives its lock can send twice (follow-up: a send lease). Migration `20261112020000_catalog_missing_details_emails`, with `down.sql`.
+One row per seller and product an admin asked to fill in required details: the primary key `(market_id, seller_id, product_id)` is the 7-day limit (a guarded update claims the pair again only when the earlier request is older than 7 days or did not reach the seller), and the rows with `state = 'pending'` are the queue the job `catalog.send-missing-details-emails` reads, one English mail per seller. The row keeps what the mail says (`seller_name`, `product_name`, `missing_labels` as English names), so the job reads no catalog table; no address is stored. `state` is `pending`, `sent`, `skipped` or `failed`; `outcome` is `no-address` or `send-failed` exactly for the last two; at most 10 attempts, 3 used. The request is audited as `catalog.missing-details-email.requested` (seller id, counts). `outcome` is tied to the state by a CHECK (`skipped` with `no-address`, `failed` with `send-failed`). Index: one partial index on the pending rows `(market_id, requested_at, seller_id, product_id) WHERE state = 'pending'` (hand-written, so the queue scan needs no sort); no index on the sent rows. Retention: rows are never deleted and there is one per seller and product, so size follows the catalog, not time; a pair asked again after 7 days (or after a skip or failure) replaces its row and resets `attempts`. PII: `seller_name` may be a sole trader's name and `requested_by` is an admin account id; no address is stored. The mail is at-least-once: a run that outlives its lock can send twice (follow-up: a send lease). Migration `20261112090000_catalog_missing_details_emails`, with `down.sql`.
 

@@ -323,6 +323,30 @@
     }
   },
   {
+    "action": "catalog.topic-suggestion.decided",
+    "targetType": "catalog.topic-suggestion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(open)"
+    },
+    "after": {
+      "sellerId": "id",
+      "status": "enumOf(approved|mapped|rejected)",
+      "topicId": "optional(id)"
+    }
+  },
+  {
+    "action": "catalog.topic-suggestion.suggested",
+    "targetType": "catalog.topic-suggestion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "productId": "id"
+    }
+  },
+  {
     "action": "catalog.category-attributes.changed",
     "targetType": "catalog.category",
     "targetId": "id",
@@ -1867,6 +1891,31 @@
     },
     "after": {
       "version": "integer"
+    }
+  },
+  {
+    "action": "ordering.order.cancel-requested",
+    "targetType": "ordering.order",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "lossBearer": "enumOf(seller|platform)",
+      "lossReasonCode": "optional(enumOf(platform-error|carrier-loss|seller-unrecoverable|fraud-loss|goodwill|other))",
+      "reason": "enumOf(not-received|damaged|wrong-item|not-as-described|seller-cancelled|other)",
+      "refundCount": "integer"
+    }
+  },
+  {
+    "action": "ordering.order.note-added",
+    "targetType": "ordering.order",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "length": "integer",
+      "noteId": "id"
     }
   },
   {

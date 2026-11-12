@@ -116,6 +116,7 @@ model CatalogProduct {
   images               CatalogProductImage[]
   offers               CatalogOffer[]
   attributeSuggestions CatalogAttributeValueSuggestion[] @relation("ProductValueSuggestions")
+  topicSuggestions     CatalogTopicSuggestion[]          @relation("ProductTopicSuggestions")
 
   /// The target of composite foreign keys (C3).
   @@unique([marketId, id])
@@ -733,28 +734,28 @@ model CatalogProductRevisionTopic {
 /// The variants a revision carries (data design 3.10): only variants of its own product.
 /// Insert-only; the not-retired trigger refuses a retired variant.
 model CatalogProductRevisionVariant {
-  marketId     String                 @map("market_id") @db.VarChar(8)
-  tenantId     String                 @map("tenant_id")
-  revisionId   String                 @map("revision_id") @db.Uuid
-  variantId    String                 @map("variant_id") @db.Uuid
-  productId    String                 @map("product_id") @db.Uuid
-  position     Int                    @db.SmallInt
+  marketId            String                 @map("market_id") @db.VarChar(8)
+  tenantId            String                 @map("tenant_id")
+  revisionId          String                 @map("revision_id") @db.Uuid
+  variantId           String                 @map("variant_id") @db.Uuid
+  productId           String                 @map("product_id") @db.Uuid
+  position            Int                    @db.SmallInt
   /// The canonical string of the option values, built by the handler; unique per revision.
-  optionKey    String                 @map("option_key")
-  optionValues Json                   @map("option_values") @db.JsonB
+  optionKey           String                 @map("option_key")
+  optionValues        Json                   @map("option_values") @db.JsonB
   /// Locale to label (CA6).
-  labels       Json                   @db.JsonB
+  labels              Json                   @db.JsonB
   /// The GTIN as 14 digits, check digit validated by the domain; null = none (variants V4).
-  gtin                String?  @db.VarChar(14)
+  gtin                String?                @db.VarChar(14)
   /// Shipping values of this variant; null takes the product's value (V4).
-  shippingWeightGrams Int?     @map("shipping_weight_grams")
-  shippingLengthMm    Int?     @map("shipping_length_mm")
-  shippingWidthMm     Int?     @map("shipping_width_mm")
-  shippingHeightMm    Int?     @map("shipping_height_mm")
+  shippingWeightGrams Int?                   @map("shipping_weight_grams")
+  shippingLengthMm    Int?                   @map("shipping_length_mm")
+  shippingWidthMm     Int?                   @map("shipping_width_mm")
+  shippingHeightMm    Int?                   @map("shipping_height_mm")
   /// Ordered subset of the revision's images; the first is the variant's primary image (V4).
-  imageIds            String[] @default([]) @map("image_ids") @db.Uuid
-  revision     CatalogProductRevision @relation(fields: [marketId, productId, revisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
-  variant      CatalogProductVariant  @relation(fields: [marketId, productId, variantId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  imageIds            String[]               @default([]) @map("image_ids") @db.Uuid
+  revision            CatalogProductRevision @relation(fields: [marketId, productId, revisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  variant             CatalogProductVariant  @relation(fields: [marketId, productId, variantId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, revisionId, variantId])
   @@unique([marketId, revisionId, optionKey])
@@ -1714,24 +1715,25 @@ model CatalogVariantTypeSettingRevision {
 /// (ADR-0028), which a topic never is. The slug is the key and the future page address
 /// (/t/<slug>); it never changes. The CHECKs and the grants are hand-written in the migration.
 model CatalogTopic {
-  id        String             @id @db.Uuid
-  marketId  String             @map("market_id") @db.VarChar(8)
-  tenantId  String             @map("tenant_id")
+  id          String                        @id @db.Uuid
+  marketId    String                        @map("market_id") @db.VarChar(8)
+  tenantId    String                        @map("tenant_id")
   /// Lowercase ASCII words joined by hyphens; unique per Market; never updated.
-  slug      String
+  slug        String
   /// occasion | cuisine | use: how the admin list groups topics.
-  group     String             @map("topic_group")
+  group       String                        @map("topic_group")
   /// active | archived. An archived topic is offered to nobody but keeps its terms.
-  status    String
+  status      String
   /// The intro of the topic page, written by a person (package T4 indexes a page only with it).
-  intro     String?
-  createdBy String             @map("created_by") @db.Uuid
-  createdAt DateTime           @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime           @map("updated_at") @db.Timestamptz(6)
+  intro       String?
+  createdBy   String                        @map("created_by") @db.Uuid
+  createdAt   DateTime                      @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                      @map("updated_at") @db.Timestamptz(6)
   /// Optimistic version (P 10); 1 at insert.
-  version   Int
-  terms     CatalogTopicTerm[]
-  revisions CatalogProductRevisionTopic[]
+  version     Int
+  terms       CatalogTopicTerm[]
+  revisions   CatalogProductRevisionTopic[]
+  suggestions CatalogTopicSuggestion[]      @relation("TopicSuggestionDecided")
 
   @@unique([marketId, id])
   @@unique([marketId, slug])
@@ -1759,6 +1761,48 @@ model CatalogTopicTerm {
   @@id([marketId, topicId, locale, position])
   @@unique([marketId, locale, termKey])
   @@map("topic_terms")
+  @@schema("catalog")
+}
+
+/// A seller's suggestion of a new tag (topic), product tags package T5. Born open; an admin approves
+/// it (a topic was created), maps it to an existing topic or rejects it with a reason; then one mail
+/// tells the seller. Nothing is deleted.
+model CatalogTopicSuggestion {
+  id                  String         @db.Uuid
+  marketId            String         @map("market_id") @db.VarChar(8)
+  tenantId            String         @map("tenant_id")
+  /// The suggesting seller. No foreign key: sellers are another module's table.
+  sellerId            String         @map("seller_id") @db.Uuid
+  /// The product the seller was filling in when they asked.
+  productId           String         @map("product_id") @db.Uuid
+  /// The seller's text in the Market's default locale, tidied, 2 to 40 characters.
+  label               String
+  /// The normalised form of the label (normaliseTopicTerm): the key repeats are found on.
+  labelKey            String         @map("label_key")
+  /// open | approved | mapped | rejected.
+  status              String
+  /// The topic created (approved) or chosen (mapped); null otherwise.
+  topicId             String?        @map("topic_id") @db.Uuid
+  /// The reviewer's words to the seller; set exactly when rejected.
+  rejectReason        String?        @map("reject_reason")
+  decidedByAccountId  String?        @map("decided_by_account_id") @db.Uuid
+  decidedAt           DateTime?      @map("decided_at") @db.Timestamptz(6)
+  /// none (open) | pending | sent | skipped | failed.
+  noticeState         String         @map("notice_state")
+  noticeAttempts      Int            @map("notice_attempts")
+  noticeNextAttemptAt DateTime?      @map("notice_next_attempt_at") @db.Timestamptz(6)
+  version             Int
+  createdAt           DateTime       @map("created_at") @db.Timestamptz(6)
+  topic               CatalogTopic?  @relation("TopicSuggestionDecided", fields: [marketId, topicId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  product             CatalogProduct @relation("ProductTopicSuggestions", fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, id])
+  /// The admin queue: open suggestions, oldest first.
+  @@index([marketId, status, createdAt, id], map: "topic_suggestions_market_id_status_created_at_idx")
+  /// A seller's open count and list.
+  @@index([marketId, sellerId, status], map: "topic_suggestions_market_id_seller_id_status_idx")
+  @@index([marketId, productId], map: "topic_suggestions_market_id_product_id_idx")
+  @@map("topic_suggestions")
   @@schema("catalog")
 }
 

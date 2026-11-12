@@ -42,6 +42,17 @@ export interface RefundRepository {
   ): Promise<RefundTarget | null>;
 
   /**
+   * Every refund of the order's seller orders (any state), oldest first, each with its credit note
+   * id when it succeeded. Empty for an unknown or another Market's order.
+   */
+  listForOrder(
+    market: MarketContext,
+    orderId: Id<'Order'>,
+  ): Promise<
+    readonly { readonly refund: Refund; readonly creditNoteId: Id<'CreditNote'> | null }[]
+  >;
+
+  /**
    * The seller's own seller order with what earlier refunds gave back, or null: another shop's
    * seller order answers exactly as an unknown one (the seller route names only its id).
    */
@@ -50,6 +61,9 @@ export interface RefundRepository {
     sellerOrderId: Id<'SellerOrder'>,
     sellerId: Id<'Seller'>,
   ): Promise<RefundTarget | null>;
+
+  /** One refund of the Market by id, any state, or null (unknown and foreign are one answer). */
+  findById(market: MarketContext, refundId: Id<'Refund'>): Promise<Refund | null>;
 
   /**
    * Every refund of the seller's own seller order (any state), oldest first, for its page; none
