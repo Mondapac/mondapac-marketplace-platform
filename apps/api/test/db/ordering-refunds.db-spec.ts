@@ -13,6 +13,13 @@ import {
 } from '../../src/modules/ordering/application/refund-flow';
 import { AdminRefundOrder } from '../../src/modules/ordering/application/use-cases/admin-refund-order.use-case';
 import { SellerMarkUnavailable } from '../../src/modules/ordering/application/use-cases/seller-mark-unavailable.use-case';
+import type { AdminNoteDependencies } from '../../src/modules/ordering/application/admin-note-flow';
+import { AdminAddOrderNote } from '../../src/modules/ordering/application/use-cases/admin-add-order-note.use-case';
+import { AdminListOrderNotes } from '../../src/modules/ordering/application/use-cases/admin-list-order-notes.use-case';
+import { PrismaAdminOrderNoteRepository } from '../../src/modules/ordering/infrastructure/prisma-admin-order-notes';
+import { AdminCancelOrder } from '../../src/modules/ordering/application/use-cases/admin-cancel-order.use-case';
+import { AdminViewOrder } from '../../src/modules/ordering/application/use-cases/admin-view-order.use-case';
+import { SellerMarkOrderReady } from '../../src/modules/ordering/application/use-cases/seller-mark-order-ready.use-case';
 import type { CommissionPayoutsDependencies } from '../../src/modules/commission-payouts/application/commission-payouts-dependencies';
 import { RecordRefund } from '../../src/modules/commission-payouts/application/use-cases/record-refund.use-case';
 import { RecordSellerOrderPaid } from '../../src/modules/commission-payouts/application/use-cases/record-seller-order-paid.use-case';
@@ -48,6 +55,7 @@ import { MarketRegistry } from '../../src/platform/market-config/market-registry
 import { PersistenceModule } from '../../src/platform/persistence/persistence.module';
 import {
   AllowAllDeliveryMethods,
+  FakeAdminNoteCipher,
   FakeCart,
   FakeCommission,
   FakeCustomers,
@@ -99,6 +107,25 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
   let admin: CallContext;
   let system: CallContext;
   let audit: AuditWriter;
+  /** The admin in a Login as Seller session: refused by every money and note flow. */
+  const actingAsAdmin = () =>
+    ({
+      ...admin,
+      actor: { ...admin.actor, actingAs: { accountId: ids.next<'Account'>(), sellerId: null } },
+    }) as unknown as CallContext;
+  /** An admin of the other test Market, holding an id of this one. */
+  const otherMarketAdmin = () => {
+    const elsewhere = marketOf(TEST_MARKETS.find((other) => other !== code)!);
+    return testCallContext(
+      elsewhere,
+      testAuthenticatedActor(elsewhere, {
+        population: 'admin',
+        accountId: ids.next<'Account'>(),
+        sessionId: ids.next<'Session'>(),
+        sellerId: null,
+      }),
+    );
+  };
 
   beforeAll(async () => {
     db = createPersistence({ databaseUrl: orderingRefundsTestDatabaseUrl() });
@@ -1400,6 +1427,415 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       );
       const sums = await value(() => ledger.sums(market, o.sellerId));
       expect(totalsOf(Object.fromEntries(sums.map((x) => [x.kind, x.amount]))).balance).toBe(-100n);
+    });
+  });
+
+  describe('cancel and refund (order detail decision 1)', () => {
+    const cancel = (orderId: Id<'Order'>, use: OrderingDependencies = deps, reason = 'other') =>
+      new AdminCancelOrder(gate, use).execute(admin, { orderId, reason });
+    const seller = (sellerId: Id<'Seller'>) =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: ids.next<'Account'>(),
+          sessionId: ids.next<'Session'>(),
+          sellerId,
+        }),
+      );
+    const readyAt = async (sellerOrderId: string) =>
+      (
+        await sql.query<{ ready_at: Date | null }>(
+          'SELECT ready_at FROM ordering.seller_orders WHERE market_id = $1 AND id = $2',
+          [market.marketId, sellerOrderId],
+        )
+      ).rows[0]?.ready_at;
+
+    it('is refused in an acting-as session and from another Market, writing nothing', async () => {
+      const o = await paidOrder();
+      expect(
+        await new AdminCancelOrder(gate, deps).execute(actingAsAdmin(), {
+          orderId: o.orderId,
+          reason: 'other',
+        }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(
+        await new AdminCancelOrder(gate, deps).execute(otherMarketAdmin(), {
+          orderId: o.orderId,
+          reason: 'other',
+        }),
+      ).toEqual({ ok: false, error: { code: 'ordering.order-not-found' } });
+      expect(gateway.refunds).toHaveLength(0);
+      expect((await rowsOf(o.sellerOrderId)).refunds).toHaveLength(0);
+    });
+
+    it('refunds every unit and the whole delivery fee in one step, audited, and lists them on the page', async () => {
+      const o = await paidOrder();
+
+      const done = await cancel(o.orderId);
+
+      if (!done.ok) throw new Error(`cancel: ${done.error.code}`);
+      expect(done.value.refunds).toHaveLength(1);
+      expect(done.value.refunds[0]).toMatchObject({
+        sellerOrderId: o.sellerOrderId,
+        state: 'succeeded',
+        reason: 'other',
+        lossBearer: 'seller',
+        amount: { amount: total, currency },
+        lines: [{ orderLineId: o.lineId, quantity: 3 }],
+      });
+      expect(gateway.refunds.map((r) => r.amount)).toEqual([total]);
+      expect((await rowsOf(o.sellerOrderId)).refunded).toBe(total.toString());
+      const audit = await sql.query<{ action: string; after: unknown }>(
+        `SELECT action, after FROM platform.audit_log
+          WHERE market_id = $1 AND target_type = 'ordering.order' AND target_id = $2`,
+        [market.marketId, o.orderId],
+      );
+      expect(audit.rows).toEqual([
+        {
+          action: 'ordering.order.cancel-requested',
+          after: {
+            amount: { amount: total.toString(), currency },
+            reason: 'other',
+            lossBearer: 'seller',
+            lossReasonCode: null,
+            refundCount: 1,
+          },
+        },
+      ]);
+      const page = await new AdminViewOrder(gate, deps).execute(admin, { orderId: o.orderId });
+      if (!page.ok) throw new Error('page');
+      expect(page.value.refundsEnabled).toBe(true);
+      expect(page.value.sellerOrders[0]!.sellerOrderId).toBe(o.sellerOrderId);
+      expect(page.value.refunds.map((r) => [r.refundId, r.state, r.creditNoteId])).toEqual([
+        [done.value.refunds[0]!.refundId, 'succeeded', done.value.refunds[0]!.creditNoteId],
+      ]);
+
+      expect(await cancel(o.orderId)).toEqual({
+        ok: false,
+        error: { code: 'ordering.cancel-nothing-left' },
+      });
+    });
+
+    it('gives back only what earlier refunds left', async () => {
+      const o = await paidOrder();
+      const first = await refund(o, 1);
+      if (!first.ok) throw new Error('refund');
+
+      const done = await cancel(o.orderId);
+
+      if (!done.ok) throw new Error(`cancel: ${done.error.code}`);
+      expect(done.value.refunds[0]!.lines).toEqual([
+        expect.objectContaining({ orderLineId: o.lineId, quantity: 2 }),
+      ]);
+      expect(BigInt(done.value.refunds[0]!.amount.amount) + BigInt(first.value.amount.amount)).toBe(
+        total,
+      );
+    });
+
+    it('is refused once a seller marked its part ready, writing nothing', async () => {
+      const o = await paidOrder();
+      const ready = await new SellerMarkOrderReady(gate, deps).execute(seller(o.sellerId), {
+        sellerOrderId: o.sellerOrderId,
+      });
+      if (!ready.ok) throw new Error(`ready: ${ready.error.code}`);
+
+      expect(await cancel(o.orderId)).toEqual({
+        ok: false,
+        error: { code: 'ordering.cancel-too-late' },
+      });
+      expect(await rowsOf(o.sellerOrderId)).toEqual({ refunded: '0', refunds: [], notes: [] });
+      expect(gateway.refunds).toHaveLength(0);
+    });
+
+    it('rolls every refund back when a seller marks ready between the read and the write', async () => {
+      const o = await paidOrder();
+      const orders = deps.orders;
+      let reads = 0;
+      const racing = Object.create(orders) as typeof orders;
+      racing.findById = async (m, id) => {
+        const found = await orders.findById(m, id);
+        reads += 1;
+        // The seller's ready mark commits right after the cancellation's first read.
+        if (reads === 1) {
+          await sql.query(
+            `UPDATE ordering.seller_orders SET ready_at = now() WHERE market_id = $1 AND id = $2`,
+            [market.marketId, o.sellerOrderId],
+          );
+        }
+        return found;
+      };
+
+      expect(await cancel(o.orderId, { ...deps, orders: racing })).toEqual({
+        ok: false,
+        error: { code: 'ordering.cancel-too-late' },
+      });
+      expect(await rowsOf(o.sellerOrderId)).toEqual({ refunded: '0', refunds: [], notes: [] });
+      expect(gateway.refunds).toHaveLength(0);
+    });
+
+    it('stops the seller marking a cancelled order ready, and the ready time stays empty', async () => {
+      const o = await paidOrder();
+      const done = await cancel(o.orderId);
+      if (!done.ok) throw new Error(`cancel: ${done.error.code}`);
+
+      const ready = await new SellerMarkOrderReady(gate, deps).execute(seller(o.sellerId), {
+        sellerOrderId: o.sellerOrderId,
+      });
+
+      expect(ready).toEqual({ ok: false, error: { code: 'ordering.seller-order-refunded' } });
+      expect(await readyAt(o.sellerOrderId)).toBeNull();
+    });
+
+    it('still lets the seller mark ready after a partial refund', async () => {
+      const o = await paidOrder();
+      const first = await refund(o, 2);
+      if (!first.ok) throw new Error('refund');
+
+      const ready = await new SellerMarkOrderReady(gate, deps).execute(seller(o.sellerId), {
+        sellerOrderId: o.sellerOrderId,
+      });
+
+      expect(ready.ok).toBe(true);
+      expect(await readyAt(o.sellerOrderId)).not.toBeNull();
+    });
+
+    it('refuses while the switch is off, and a body off the closed lists', async () => {
+      const o = await paidOrder();
+      const off = { ...deps, policy: new ConfigOrderingPolicy(markets) };
+      expect(await cancel(o.orderId, off)).toEqual({
+        ok: false,
+        error: { code: 'ordering.refund-disabled' },
+      });
+      expect(await cancel(o.orderId, deps, 'changed-mind')).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'reason', code: 'value' }] },
+      });
+      expect(
+        await new AdminCancelOrder(gate, deps).execute(admin, {
+          orderId: o.orderId,
+          reason: 'other',
+          lossBearer: 'platform',
+        }),
+      ).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: 'lossReasonCode', code: 'required' }],
+        },
+      });
+      expect(await cancel(ids.next<'Order'>())).toEqual({
+        ok: false,
+        error: { code: 'ordering.order-not-found' },
+      });
+      expect(await rowsOf(o.sellerOrderId)).toEqual({ refunded: '0', refunds: [], notes: [] });
+    });
+
+    it('answers each refund Stripe refused as failed, and that part can be refunded by hand', async () => {
+      const o = await paidOrder();
+      gateway.refundFails = { code: 'payment.provider-rejected' };
+
+      const done = await cancel(o.orderId);
+
+      if (!done.ok) throw new Error(`cancel: ${done.error.code}`);
+      expect(done.value.refunds.map((r) => r.state)).toEqual(['failed']);
+      expect((await rowsOf(o.sellerOrderId)).refunded).toBe('0');
+      gateway.refundFails = null;
+      const again = await cancel(o.orderId);
+      expect(again.ok && again.value.refunds.map((r) => r.state)).toEqual(['succeeded']);
+    });
+  });
+
+  describe('admin notes (order detail decision 3)', () => {
+    let cipher: FakeAdminNoteCipher;
+    let labels: FakeLabels;
+    let noteDeps: AdminNoteDependencies;
+    beforeEach(() => {
+      cipher = new FakeAdminNoteCipher();
+      labels = new FakeLabels();
+      noteDeps = {
+        unitOfWork: db.unitOfWork,
+        notes: new PrismaAdminOrderNoteRepository(db.service),
+        cipher,
+        audit,
+        ids,
+        clock,
+        labels,
+      };
+    });
+    const accountOf = async (orderId: string) =>
+      (
+        await sql.query<{ account_id: string }>(
+          'SELECT account_id FROM ordering.orders WHERE market_id = $1 AND id = $2',
+          [market.marketId, orderId],
+        )
+      ).rows[0]!.account_id as Id<'Account'>;
+
+    it('stores only the sealed text, answers it to admins newest first with names, and audits id and length', async () => {
+      const o = await paidOrder();
+      const me = admin.actor.kind === 'authenticated' ? admin.actor.accountId : null;
+      labels.staff.set(me!, 'Reza');
+      const text = 'Customer called about the bread.\r\nسفارش را لغو کنید';
+
+      const first = await new AdminAddOrderNote(gate, noteDeps).execute(admin, {
+        orderId: o.orderId,
+        body: `  ${text}  `,
+      });
+      clock.advance(Temporal.Duration.from({ minutes: 1 }));
+      const second = await new AdminAddOrderNote(gate, noteDeps).execute(admin, {
+        orderId: o.orderId,
+        body: 'Second',
+      });
+      clock.set(T0);
+
+      if (!first.ok || !second.ok) throw new Error('note');
+      expect(first.value).toMatchObject({
+        body: 'Customer called about the bread.\nسفارش را لغو کنید',
+        authorName: 'Reza',
+        byYou: true,
+      });
+      const stored = await sql.query<{ body_ciphertext: string }>(
+        'SELECT body_ciphertext FROM ordering.admin_order_notes WHERE market_id = $1 AND order_id = $2',
+        [market.marketId, o.orderId],
+      );
+      expect(stored.rows).toHaveLength(2);
+      for (const row of stored.rows) {
+        expect(row.body_ciphertext).toMatch(/^v1\.[A-Za-z0-9_-]+$/);
+        expect(Buffer.from(row.body_ciphertext.slice(3), 'base64url').toString('utf8')).toMatch(
+          new RegExp(`^${await accountOf(o.orderId)}:`),
+        );
+        expect(row.body_ciphertext).not.toContain('bread');
+      }
+      const listed = await new AdminListOrderNotes(gate, noteDeps).execute(admin, {
+        orderId: o.orderId,
+      });
+      expect(listed.ok && listed.value.map((n) => n.body)).toEqual([
+        'Second',
+        'Customer called about the bread.\nسفارش را لغو کنید',
+      ]);
+      const audit = await sql.query<{ after: unknown }>(
+        `SELECT after FROM platform.audit_log WHERE market_id = $1
+          AND action = 'ordering.order.note-added' AND target_id = $2 ORDER BY occurred_at`,
+        [market.marketId, o.orderId],
+      );
+      expect(audit.rows.map((r) => r.after)).toEqual([
+        { noteId: first.value.noteId, length: 50 },
+        { noteId: second.value.noteId, length: 6 },
+      ]);
+    });
+
+    it('shows a note without its text once the customer was erased, and writes no new one', async () => {
+      const o = await paidOrder();
+      const written = await new AdminAddOrderNote(gate, noteDeps).execute(admin, {
+        orderId: o.orderId,
+        body: 'Called twice',
+      });
+      if (!written.ok) throw new Error('note');
+      cipher.destroyed.add(await accountOf(o.orderId));
+
+      const listed = await new AdminListOrderNotes(gate, noteDeps).execute(admin, {
+        orderId: o.orderId,
+      });
+      expect(listed.ok && listed.value.map((n) => [n.noteId, n.body])).toEqual([
+        [written.value.noteId, null],
+      ]);
+      expect(
+        await new AdminAddOrderNote(gate, noteDeps).execute(admin, {
+          orderId: o.orderId,
+          body: 'Again',
+        }),
+      ).toEqual({ ok: false, error: { code: 'ordering.customer-erased' } });
+    });
+
+    it('refuses an unknown order, empty or long text and hidden characters, and a non-admin', async () => {
+      const o = await paidOrder();
+      const add = (body: unknown, orderId: string = o.orderId, who: CallContext = admin) =>
+        new AdminAddOrderNote(gate, noteDeps).execute(who, { orderId, body });
+      expect(await add('Hello', ids.next<'Order'>())).toEqual({
+        ok: false,
+        error: { code: 'ordering.order-not-found' },
+      });
+      expect(
+        await new AdminListOrderNotes(gate, noteDeps).execute(admin, { orderId: ids.next() }),
+      ).toEqual({ ok: false, error: { code: 'ordering.order-not-found' } });
+      for (const [body, code] of [
+        ['   ', 'required'],
+        ['x'.repeat(2001), 'too-long'],
+        ['a\u202Eb', 'format'],
+        ['a\u0000b', 'format'],
+        [42, 'type'],
+      ] as const) {
+        expect(await add(body)).toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'body', code }] },
+        });
+      }
+      expect((await add('ok\u200Cای')).ok).toBe(true);
+      expect((await add('x'.repeat(2000))).ok).toBe(true);
+      expect(await add('Hello', o.orderId, system)).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      // An acting-as (Login as Seller) session neither reads nor writes notes.
+      expect(await add('Hello', o.orderId, actingAsAdmin())).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(
+        await new AdminListOrderNotes(gate, noteDeps).execute(actingAsAdmin(), {
+          orderId: o.orderId,
+        }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      // Another Market's admin does not find this Market's order.
+      expect(await add('Hello', o.orderId, otherMarketAdmin())).toEqual({
+        ok: false,
+        error: { code: 'ordering.order-not-found' },
+      });
+      expect(
+        await new AdminListOrderNotes(gate, noteDeps).execute(otherMarketAdmin(), {
+          orderId: o.orderId,
+        }),
+      ).toEqual({ ok: false, error: { code: 'ordering.order-not-found' } });
+    });
+
+    it('refuses a body in clear at the database (data design O7)', async () => {
+      const o = await paidOrder();
+      await expect(
+        sql.query(
+          `INSERT INTO ordering.admin_order_notes
+             (id, market_id, tenant_id, order_id, author_account_id, body_ciphertext, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, now())`,
+          [
+            ids.next(),
+            market.marketId,
+            market.tenantId,
+            o.orderId,
+            ids.next(),
+            'Customer called about the bread, plain text.',
+          ],
+        ),
+      ).rejects.toThrow(/admin_order_notes_body_ciphertext_check/);
+    });
+
+    it('lets the app role insert and read notes, never change or remove one', async () => {
+      const o = await paidOrder();
+      const written = await new AdminAddOrderNote(gate, noteDeps).execute(admin, {
+        orderId: o.orderId,
+        body: 'Kept',
+      });
+      if (!written.ok) throw new Error('note');
+      await expect(
+        sql.query(
+          `UPDATE ordering.admin_order_notes SET body_ciphertext = 'x' WHERE market_id = $1 AND id = $2`,
+          [market.marketId, written.value.noteId],
+        ),
+      ).rejects.toThrow(/permission denied/);
+      await expect(
+        sql.query('DELETE FROM ordering.admin_order_notes WHERE market_id = $1 AND id = $2', [
+          market.marketId,
+          written.value.noteId,
+        ]),
+      ).rejects.toThrow(/permission denied/);
     });
   });
 });

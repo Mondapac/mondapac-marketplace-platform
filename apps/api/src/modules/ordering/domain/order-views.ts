@@ -34,11 +34,18 @@ export interface OrderLineView {
 }
 
 export interface SellerOrderView {
+  /** The seller order's own id (the reference in the order emails). */
+  readonly sellerOrderId: Id<'SellerOrder'>;
   readonly sellerId: Id<'Seller'>;
   readonly subtotal: Money;
   readonly shipping: Money;
   /** The tax on the delivery fee, frozen at placement; null on older orders. */
   readonly shippingTax: Money | null;
+  /**
+   * The delivery fee as the customer paid it, tax included: what a refund can give back of it at
+   * most. Null when the delivery tax was not recorded (an older order).
+   */
+  readonly shippingGross: Money | null;
   /**
    * The tax of the seller's lines plus the delivery tax where it was recorded; null when any
    * line was placed before tax was recorded.
@@ -248,6 +255,14 @@ const taxOf = (lines: readonly OrderLine[], currency: string, extra = 0n): Money
 const shippingTaxView = (seller: SellerOrder, currency: string): Money | null =>
   seller.shippingTax === null ? null : makeMoney(seller.shippingTax, currency);
 
+const shippingGrossView = (seller: SellerOrder, currency: string): Money | null =>
+  seller.shippingTax === null || seller.shippingTaxInclusive === null
+    ? null
+    : makeMoney(
+        seller.shipping + (seller.shippingTaxInclusive ? 0n : seller.shippingTax),
+        currency,
+      );
+
 /** A seller order as a seller sees it in the panel: its own part of one paid order. */
 export interface SellerOrderDetailView extends SellerOrderView {
   readonly sellerOrderId: Id<'SellerOrder'>;
@@ -278,6 +293,7 @@ export function sellerOrderDetailView(record: {
     subtotal: makeMoney(seller.subtotal, currency),
     shipping: makeMoney(seller.shipping, currency),
     shippingTax: shippingTaxView(seller, currency),
+    shippingGross: shippingGrossView(seller, currency),
     tax: taxOf(lines, currency, shippingTaxOf(seller)),
     total: makeMoney(seller.total, currency),
     fulfilment: seller.fulfilment,
@@ -314,10 +330,12 @@ export function orderView(order: OrderState): OrderView {
     sellerOrders: order.sellerOrders.map((seller) => {
       const lines = order.lines.filter((line) => line.sellerOrderId === seller.id);
       return {
+        sellerOrderId: seller.id,
         sellerId: seller.sellerId,
         subtotal: money(seller.subtotal),
         shipping: money(seller.shipping),
         shippingTax: shippingTaxView(seller, currency),
+        shippingGross: shippingGrossView(seller, currency),
         tax: taxOf(lines, currency, shippingTaxOf(seller)),
         total: money(seller.total),
         fulfilment: seller.fulfilment,
