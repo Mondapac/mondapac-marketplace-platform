@@ -4,7 +4,7 @@ import { Badge, Banner, Button, Dialog, toast, type BadgeTone } from '@mondapac/
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { shortInstantInZone } from '../../shared/format.ts';
+import { formatInstantInZone } from '../../shared/format.ts';
 import { PageActions } from './page-actions.tsx';
 import { PageEditorHeader } from './page-editor-header.tsx';
 import {
@@ -52,7 +52,9 @@ export function PageVersions({
   const readOnly = isReadOnlyPage(page, canEdit);
   const rows = [...page.versions].sort((a, b) => b.versionNo - a.versionNo);
   const problem = command.problem;
-  const stale = problem !== null && STALE_CODES.has(problem.code);
+  const stale =
+    problem !== null &&
+    (STALE_CODES.has(problem.code) || problem.code === 'storefront.version-not-found');
 
   function close() {
     command.reset();
@@ -112,9 +114,9 @@ export function PageVersions({
                 </div>
                 <p className="text-sm text-fg-muted">
                   {version.publishedAt === null
-                    ? t('saved-at', { when: shortInstantInZone(version.createdAt, locale, zone) })
+                    ? t('saved-at', { when: formatInstantInZone(version.createdAt, locale, zone) })
                     : t('published-on', {
-                        when: shortInstantInZone(version.publishedAt, locale, zone),
+                        when: formatInstantInZone(version.publishedAt, locale, zone),
                       })}
                 </p>
               </div>

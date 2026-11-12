@@ -103,7 +103,9 @@ describe('the Versions tab', () => {
     call.mockResolvedValue({ ok: true as const, status: 200, body: page({ versions }) });
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Restore version 1' }));
-    expect(screen.getByText(/replace the modules in the draft/)).toBeTruthy();
+    expect(
+      screen.getByText(/replaces the current draft, including any unpublished changes/),
+    ).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
     const dialog = screen.getByRole('dialog', { hidden: true });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restore to draft', hidden: true }));
@@ -125,5 +127,11 @@ describe('the Versions tab', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restore to draft', hidden: true }));
     await screen.findByText('This version no longer exists. Reload the page.');
     expect(router.refresh).not.toHaveBeenCalled();
+    // Trying again would fail the same way: the dialog offers the reload instead.
+    expect(
+      within(dialog).queryByRole('button', { name: 'Restore to draft', hidden: true }),
+    ).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reload the page', hidden: true }));
+    expect(router.refresh).toHaveBeenCalled();
   });
 });

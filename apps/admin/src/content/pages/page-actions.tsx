@@ -3,7 +3,7 @@
 import { Banner, Button, Dialog, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { archivePath, detailRef, publishPath, type PageDetail } from './page-types.ts';
 import {
   STALE_CODES,
@@ -56,6 +56,7 @@ export function PageActions({
   const [open, setOpen] = useState<Action | null>(null);
   const [redirect, setRedirect] = useState('');
   const [touched, setTouched] = useState(false);
+  const hintId = useId();
 
   const showPublish = canPublish && page.status !== 'archived';
   const showArchive = canArchive && canArchivePage(page);
@@ -98,7 +99,7 @@ export function PageActions({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="mb-1 flex flex-wrap items-center gap-2">
         {showArchive ? (
           <Button
             variant="secondary"
@@ -113,6 +114,7 @@ export function PageActions({
         {showPublish ? (
           <Button
             disabled={!publishable}
+            aria-describedby={publishable ? undefined : hintId}
             onClick={() => {
               command.reset();
               setOpen('publish');
@@ -122,7 +124,9 @@ export function PageActions({
           </Button>
         ) : null}
         {showPublish && !publishable ? (
-          <p className="basis-full text-sm text-fg-muted">{t('nothing-to-publish')}</p>
+          <p id={hintId} className="basis-full text-sm text-fg-muted">
+            {t('nothing-to-publish')}
+          </p>
         ) : null}
       </div>
       {open === null ? null : (

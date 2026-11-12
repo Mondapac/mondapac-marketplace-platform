@@ -59,7 +59,7 @@ export async function PageRoute({
   const canArchive = permissionKeys.includes(PAGE_ARCHIVE_PERMISSION);
   const zone = displayZone(timezone);
   // A new key after a refresh shows the page as it is now (a refused change that found it changed).
-  const key = `${body.updatedAt}:${body.draft.updatedAt}:${body.publishedVersionNo}`;
+  const key = `${body.updatedAt}:${body.draft.updatedAt}:${body.publishedVersionNo}:${body.status}`;
   return (
     <AdminShell session={gate.session} activeId="content" title={title}>
       {tab === 'content' ? (

@@ -73,7 +73,10 @@ describe('who sees what', () => {
   it('explains a disabled Publish when the page has no draft', () => {
     mount(page({ hasDraft: false }));
     expect(screen.getByRole('button', { name: 'Publish' }).matches(':disabled')).toBe(true);
-    expect(screen.getByText('Nothing to publish. Change the draft first.')).toBeTruthy();
+    const hint = screen.getByText('Nothing to publish. Change the draft first.');
+    expect(screen.getByRole('button', { name: 'Publish' }).getAttribute('aria-describedby')).toBe(
+      hint.id,
+    );
   });
 });
 
