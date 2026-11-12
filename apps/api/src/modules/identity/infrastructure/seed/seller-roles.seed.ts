@@ -29,7 +29,9 @@ export const SELLER_ROLES_SEED: readonly SeededRole[] = [
     // Version 4 adds `certification.own-certificate.view` and `.manage` (certification design 7.1).
     // Version 5 adds `catalog.own-import.run` (catalog design 14c: the seller Import page;
     // unprotected, since every row still needs `catalog.own-product.edit`, which this role holds).
-    seedVersion: 5,
+    // Version 6 adds `catalog.own-category.propose` (categories C9: propose a shelf and cancel a
+    // waiting proposal; unprotected, and the command also asks the sellers switch SEL-26).
+    seedVersion: 6,
     nameKey: 'identity.role.store-manager',
     permissionKeys: [
       'identity.team-member.view',
@@ -37,6 +39,7 @@ export const SELLER_ROLES_SEED: readonly SeededRole[] = [
       'catalog.own-product.view',
       'catalog.own-product.edit',
       'catalog.own-import.run',
+      'catalog.own-category.propose',
       'certification.own-certificate.view',
       'certification.own-certificate.manage',
     ],

@@ -76,6 +76,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX offers_market_id_seller_id_seller_sku_open_key ON catalog.offers USING btree (market_id, seller_id, seller_sku) WHERE (status <> 'deleted'::text)",
   'catalog.offers_market_id_submitted_at_pending_idx':
     "CREATE INDEX offers_market_id_submitted_at_pending_idx ON catalog.offers USING btree (market_id, submitted_at, id) WHERE (status = 'pending-first-publish'::text)",
+  // Categories C9a (data design 3.22): the Offers on a shelf (cleared when it closes), the admin
+  // queue of pending proposals, and one pending proposal per seller, parent and name.
+  'catalog.offers_market_id_shelf_category_id_idx':
+    'CREATE INDEX offers_market_id_shelf_category_id_idx ON catalog.offers USING btree (market_id, shelf_category_id) WHERE (shelf_category_id IS NOT NULL)',
+  'catalog.category_proposals_market_id_created_at_pending_idx':
+    "CREATE INDEX category_proposals_market_id_created_at_pending_idx ON catalog.category_proposals USING btree (market_id, created_at, id) WHERE (status = 'pending'::text)",
+  'catalog.category_proposals_pending_name_key':
+    "CREATE UNIQUE INDEX category_proposals_pending_name_key ON catalog.category_proposals USING btree (market_id, seller_id, platform_parent_id, normalised_name) WHERE (status = 'pending'::text)",
   // docs/design/data/catalog.md 3.27 (certification slice 15): the sender job's claim order.
   'catalog.offer_owner_notices_market_id_next_attempt_at_pending_idx':
     "CREATE INDEX offer_owner_notices_market_id_next_attempt_at_pending_idx ON catalog.offer_owner_notices USING btree (market_id, next_attempt_at, id) WHERE (state = 'pending'::text)",

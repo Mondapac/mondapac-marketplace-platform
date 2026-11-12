@@ -1623,6 +1623,46 @@ describe('relay of the Products export and saved filters (catalog design 9.2c, 9
   });
 });
 
+describe('relay allowlist for category proposals and shelves (categories C9b)', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const send = (method: string, path: string[]) =>
+    relay(
+      config,
+      new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method,
+        headers: sameOrigin,
+        ...(method === 'GET' ? {} : { body: '{}' }),
+      }),
+      path,
+      upstreamOk(),
+    );
+
+  it('relays the read, the propose POST, the cancel POST by UUID and the shelf PUT by UUID', async () => {
+    const list = ['catalog', 'seller', 'category-proposals'];
+    expect((await send('GET', list)).status).toBe(200);
+    expect((await send('POST', list)).status).toBe(200);
+    expect((await send('POST', [...list, ID, 'cancel'])).status).toBe(200);
+    expect((await send('PUT', ['catalog', 'seller', 'offers', ID, 'shelf'])).status).toBe(200);
+  });
+
+  it('refuses other methods and shapes near them', async () => {
+    const list = ['catalog', 'seller', 'category-proposals'];
+    for (const [method, path] of [
+      ['PUT', list],
+      ['DELETE', list],
+      ['GET', [...list, ID]],
+      ['POST', [...list, 'x', 'cancel']],
+      ['POST', [...list, ID, 'approve']],
+      ['GET', [...list, ID, 'cancel']],
+      ['POST', ['catalog', 'seller', 'offers', ID, 'shelf']],
+      ['PUT', ['catalog', 'seller', 'offers', 'x', 'shelf']],
+      ['PUT', ['catalog', 'seller', 'offers', ID, 'shelf', 'x']],
+    ] as const) {
+      expect((await send(method, [...path])).status, `${method} ${path.join('/')}`).toBe(404);
+    }
+  });
+});
+
 describe('relay of the seller order list views', () => {
   const ID = '0190a000-0000-7000-8000-0000000000a1';
   const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
