@@ -196,6 +196,9 @@ describe.each([
       carrierPickup: undefined as never,
       pickupPostcodes: undefined as never,
       operatingZones: undefined as never,
+      applySignupCultures: undefined as never,
+      cultureApprovedMembers: undefined as never,
+      cultureDemoteApprovals: undefined as never,
     });
   });
 

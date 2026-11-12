@@ -35,6 +35,8 @@ import {
   type WorkingCopyRepository,
 } from '../application/ports/working-copy.repository';
 import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
+import { CULTURE_MEMBERS, type CultureMembers } from '../application/ports/culture-members';
+import { SellersCultureMembers } from './sellers-culture-members';
 import { CLAIM_TERM_LOCALES, type ClaimTermLocales } from '../application/ports/claim-term-locales';
 import {
   ATTRIBUTE_DEFINITION_STORE,
@@ -606,6 +608,11 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellerSavedFilterRepository =>
       new PrismaSellerSavedFilterRepository(prisma),
+  },
+  {
+    provide: CULTURE_MEMBERS,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): CultureMembers => new SellersCultureMembers(sellers),
   },
   {
     provide: SELLER_ELIGIBILITY_READER,

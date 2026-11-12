@@ -653,6 +653,11 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'the public tree view for the buyer assistant: ids, slug, depth and one published category name, already claim-checked when written',
   },
   CatalogActivitiesFacade: { noCustomerText: 'interface of methods' },
+  CatalogCulturesFacade: { noCustomerText: 'interface of methods' },
+  CatalogCultureSummary: {
+    noCustomerText:
+      'id, code, status and required type of a culture, and its names already claim-checked when written; read in process by sellers only',
+  },
   CatalogAssistantFacade: { noCustomerText: 'interface of methods' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },
   ProductTypeHandler: { noCustomerText: 'interface of methods' },

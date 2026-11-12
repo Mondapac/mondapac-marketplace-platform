@@ -200,6 +200,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'search.index-sell-unit-changed',
       'search.unindex-suspended-seller',
       'sellers.after-submission',
+      // Multi-culture package 2 (ADR-0048): a new seller's default "universal" cultures.
+      'sellers.apply-signup-cultures',
       'sellers.close-decision-approved',
       'sellers.close-decision-rejected',
       'sellers.create-file',
@@ -243,6 +245,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.subscribersOf('identity.seller-registered.v1')).toEqual([
       'identity.welcome-mail',
       'inventory.ensure-seller-inventory',
+      'sellers.apply-signup-cultures',
       'sellers.create-file',
     ]);
     // Inventory retires its items on catalog's retirements (design 3.5).
