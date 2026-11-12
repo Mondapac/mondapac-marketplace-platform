@@ -184,7 +184,8 @@ describe('Deliver to modal', () => {
     renderHeader();
     const dialog = await openModal();
     await type('zzz');
-    const status = within(dialog).getByRole('status');
+    const status = dialog.querySelector('.lmnone')!;
+    expect(status.getAttribute('role')).toBe('status');
     expect(status.textContent).toBe('No match. Try the street and suburb.');
     expect(within(dialog).queryByRole('listbox')).toBeNull();
     expect(within(dialog).getByRole('combobox').getAttribute('aria-expanded')).toBe('false');

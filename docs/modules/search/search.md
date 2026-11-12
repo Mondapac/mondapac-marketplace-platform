@@ -251,10 +251,57 @@ index, the answer carries counts, and the use cases talk to a port.
   attribute filters and price; it is read from the index (`search.offer-scope-rows`, at most 20,000
   Offers; over that `totalIsCapped` is true and `total` is a floor) without the query-time visibility
   check, like the facet counts. A category tree that cannot be read leaves `counts` null, not the list.
-- **Raw SQL.** `search.offer-scope-rows` and `search.store-search` (ADR-0030 amendment of 11 Nov 2026).
+- **Suggest (search 1b).** `GET /search/suggest?q=` (anonymous, Market from the request, `no-store`, rate-limit
+  class `default`, only `q` is accepted: any other parameter is 400 `validation.failed`). `q` is
+  NFC-normalised, trimmed and lower-cased. The 2-character rule counts letters and digits only (not
+  punctuation, white space or zero-width characters): fewer answers 200 with empty lists and `total` 0
+  and makes no index call; over 100 characters, a control character or more than 8 words is 400. Answer
+  `{ products, stores, total, totalIsCapped }`: `products` (at most 5, one per product) hold
+  `{ productId, name, sellerName, categoryName, image }` (`image` is the search's photo shape or null;
+  never a price or any certification text), `stores` (at most 3) hold `{ storeSlug, name,
+  productCount }`. `total` is the number of products in the scope from the index without the
+  query-time check (`search.offer-suggest-scope-rows`, one row per product), capped at 1000
+  (`totalIsCapped` true: `total` is then 1000, a floor); the search's own count has the 20,000-Offer cap.
+  Matching: every word must match the Offer text (name, store name, category names, attribute words),
+  the last word as a prefix (`to_tsquery` with `:*`) when it has at least 2 letters or digits, else as a
+  whole lexeme. Words are letters, digits and combining marks (`domain/suggest-query.ts`), so the text
+  is never an operator. Order, per product's best Offer: tier 0 the name starts with the query
+  (literally, or it has every word and starts with the first word), tier 1 the name has every word
+  (stems, punctuation and word order do not matter: "tomatoes" finds "Tomato", "green tea" finds
+  "Tea, green") or contains the text, tier 2 seller or category only; then `ts_rank`, name, product id.
+  The name test is the index vector at weight A (`word:A`), so no migration and no new function. The
+  candidates are one Offer per product (`DISTINCT ON`), up to 15; if that Offer is hidden by the
+  re-check, the product is not shown even if another seller's Offer of it is visible (a trade-off of the
+  cheap query). No `pg_trgm` (1c adds typo tolerance).
+  Stores: a store shows when its name matches or one of its indexed Offers matches (so a query that
+  matches a product's text shows the store that sells it); the match is read from the index, ordered like
+  the products by the store name (up to 6 candidates, 3 shown), and only then re-checked with sellers.
+  Re-check, every call: `PublicVisibility` (catalog published and listed, seller may sell) on every Offer
+  candidate, `StoreDirectory` for the live store name and address (a product whose seller has no public
+  store now is dropped, as is a store that is not public); a check that fails is 503
+  `search.unavailable`. What is live is the visibility, the store name and address and the photo; the
+  product name, the product order and the counts come from the index (cached, up to 30 s old).
+  `categoryName` is the category whose name has a typed word, else the deepest one in a stable order;
+  photos and category names are decoration (a failing source leaves them out).
+  Cache: `SuggestCache` port, in-process adapter (`infrastructure/in-memory-suggest-cache.ts`: 30 s,
+  3000 entries, oldest evicted first), key `<market>|<canonical tsquery>` (punctuation and case
+  variants share an entry), until a Redis client exists. It holds only what the index said (at most 15
+  Offer candidates, the total, at most 6 store candidates with their Offer counts); a failed read is never
+  cached. Statement timeout: read-only units open no transaction (ADR-0025), so a `SET LOCAL
+  statement_timeout` is not possible without a wider platform change; the login role's own
+  `statement_timeout` (30 s at most) applies. The caps above bound the output, not the rows the
+  statement ranks: a broad two-letter prefix still ranks and sorts every match (a follow-up with the own
+  rate-limit class: a matched-row ceiling or a 3-character prefix, measured on production-size data). The route is in the
+  `default` rate-limit class (its own `@RateLimit('default')` over the controller's `public-search`):
+  it is called once per keystroke, so sharing the search's lower budget would throttle the search
+  itself; an own suggest class is a follow-up. The route logs nothing of the query (the refusal line is the search's: code, Market,
+  correlation id).
+- **Raw SQL.** `search.offer-scope-rows` and `search.store-search` (ADR-0030 amendment of 11 Nov 2026);
+  `search.offer-suggest`, `search.offer-suggest-scope-rows` and `search.store-suggest` with the
+  `to_tsquery` function in the checker (ADR-0030 amendment, search 1b).
 - **Hassan L-3.** The OR cap is in; the own rate-limit class came with the follow-ups below.
 - **Not in this package.** apps/web wiring (it stops using the sample data in a frontend PR after this
-  one), suggest (1b), typo tolerance (1c), halal and price filters (1d).
+  one), typo tolerance (1c), halal and price filters (1d).
 
 ## Search 1a follow-ups (11 Nov 2026, after #799)
 
@@ -289,3 +336,34 @@ index, the answer carries counts, and the use cases talk to a port.
   change are designed (sellers design 7.4: `business-identity-change-approved`, `business-identity-edited`,
   `slug-changed`) but not built. The PR that builds them publishes those events and adds a search
   subscription in `names-index.subscriptions.ts`; until then the six-hourly rebuild stays the repair.
+
+## Culture codes in the index (multi-culture package 3a, 12 Nov 2026)
+
+- **Column.** `search.offer_documents.culture_codes` (`TEXT[]`, default empty, at most 200 codes,
+  no null element). Migration `20261112150000_search_offer_culture_codes` adds the column, the
+  CHECK `NOT VALID` then `VALIDATE` on its own, and the grant, with `lock_timeout` 5 s and
+  `statement_timeout` 60 s; `20261112150100_search_offer_culture_codes_index` builds the GIN index
+  `offer_documents_culture_codes_idx` `CONCURRENTLY`, alone in its file (its down is a lone
+  `DROP INDEX CONCURRENTLY`). It holds the codes of the cultures the Offer is visible in, as
+  catalog's `visibleCultureCodesForOffers` answers them (ADR-0047 decision 5), one facade call per
+  sync batch of 200; an Offer catalog does not name gets an empty list. A failed answer throws, so
+  the delivery is retried and the document is never written as "no culture". **Buyer reads do not
+  filter on it yet** (package 3b, behind the switch). The query shapes are `@>` (Prisma `has`) and
+  `&&` (`hasSome`, the 3b filter); both are served by the GIN index (EXPLAIN in the database spec),
+  never `= ANY (column)`.
+- **Re-index.** By seller: a seller culture status change and a seller certificate approved,
+  expired or revoked. By Offer: a tag added, removed, suspended, restored or switched to another
+  basis. By category subtree (keyset paged by Offer id, `offerIdsInCategories(market, ids, limit,
+  after)`): a culture's mark change, a merge (source and target) and an archive; past 5 pages
+  (1000 Offers) the subtree is handed to the full reindex instead of being read on. The full
+  resumable reindex is asked for (`search.request-offer-reindex`, one write that clears the done
+  and target stamps of `search.reindex_state`; the five-minute job then re-reads every Offer, and a
+  run already under way does not mark itself done) on a culture's status change, an issuer
+  derecognised, a certification type deactivated and a handed-off subtree. Catalog's index stamp
+  also covers each culture's code, status and required type and the culture mark rows, so the
+  first fill of the column and a required-type change come from the stamp-driven reindex. Nothing
+  throws because a scope is large.
+- **Ordering (security L2 of #848).** A document's `indexed_at` is the instant its sync began
+  reading; a write or a delete from an earlier read never replaces a document from a later read
+  (`UPDATE ... WHERE indexed_at <= $read`, else an insert that skips an existing row). Every change
+  emits an event whose sync starts after it, so the last answer standing reflects the last change.

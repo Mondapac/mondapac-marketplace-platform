@@ -65,7 +65,7 @@ export const formOf = (row: TopicRow, defaultLocale: string): TagFormState => {
   };
 };
 
-const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** The slug a name suggests (the same rule as the API): lower case ASCII words joined by hyphens. */
 export function suggestSlug(name: string): string {

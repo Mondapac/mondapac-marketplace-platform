@@ -49,3 +49,9 @@ export interface PostPage {
   readonly pageSize: number;
   readonly hasMore: boolean;
 }
+
+export const BLOG_EDIT_PERMISSION = 'blog.post.edit';
+export const BLOG_REVIEW_PERMISSION = 'blog.post.review';
+export const API_BLOG_TAXONOMY = 'blog/admin/taxonomy';
+export const NEW_POST_PATH = '/content/blog/new';
+export const postPath = (id: string): string => `/content/blog/${id}`;

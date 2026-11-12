@@ -189,6 +189,18 @@ import { SeedCategoryTree } from './application/use-cases/seed-category-tree.use
 import { CATALOG_ASSISTANT_FACADE } from './contracts/catalog-assistant.facade';
 import { CATALOG_FACADE } from './contracts/catalog.facade';
 import { CATALOG_ACTIVITIES_FACADE } from './contracts/catalog-activities.facade';
+import { CATALOG_CULTURES_FACADE } from './contracts/catalog-cultures.facade';
+import { CatalogCulturesFacadeImplementation } from './presentation/catalog-cultures.facade';
+import { ActiveCulturesQuery } from './application/use-cases/active-cultures.use-case';
+import { ActiveCulturesSystemQuery } from './application/use-cases/active-cultures-system.use-case';
+import { CulturesByIdsQuery } from './application/use-cases/cultures-by-ids.use-case';
+import { CulturesByIdsSystemQuery } from './application/use-cases/cultures-by-ids-system.use-case';
+import { OfferCultureVisibility } from './application/use-cases/offer-culture-visibility.use-case';
+import { OfferCultureVisibilitySystem } from './application/use-cases/offer-culture-visibility-system.use-case';
+import {
+  SELLER_CERTIFICATE_TYPES,
+  SELLER_MEMBER_CULTURES,
+} from './application/ports/culture-visibility-sources';
 import { CatalogActivitiesFacadeImplementation } from './presentation/catalog-activities.facade';
 import { BusinessActivitiesActiveQuery } from './application/use-cases/business-activities-active.use-case';
 import { CatalogAssistantFacadeImplementation } from './presentation/catalog-assistant.facade';
@@ -380,6 +392,7 @@ import { FeatureSetEdit } from './application/use-cases/feature-set-edit.use-cas
 import { CategoryAttributeLinksSet } from './application/use-cases/category-attribute-links-set.use-case';
 import { CategoryAttributeLinksGet } from './application/use-cases/category-attribute-links-get.use-case';
 import { CATEGORY_ATTRIBUTE_LINK_STORE } from './application/ports/category-attribute-link.store';
+import { CULTURE_MEMBERS } from './application/ports/culture-members';
 import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
 import { SELLER_CATEGORY_STORE } from './application/ports/seller-category.store';
 import {
@@ -598,6 +611,9 @@ const PORT = {
   suggestions: ATTRIBUTE_VALUE_SUGGESTION_STORE,
   topicSuggestions: TOPIC_SUGGESTION_STORE,
   claimLocales: CLAIM_TERM_LOCALES,
+  cultureMembers: CULTURE_MEMBERS,
+  memberCultures: SELLER_MEMBER_CULTURES,
+  certificateTypes: SELLER_CERTIFICATE_TYPES,
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
@@ -881,6 +897,7 @@ const RESTRUCTURE_DEPS = {
     },
     useCaseProvider(BusinessActivityGet, { unitOfWork: true, activities: true }),
     useCaseProvider(BusinessActivityCreate, {
+      contentFilter: true,
       unitOfWork: true,
       activities: true,
       treeReader: true,
@@ -890,6 +907,7 @@ const RESTRUCTURE_DEPS = {
       ids: true,
     }),
     useCaseProvider(BusinessActivityEdit, {
+      contentFilter: true,
       unitOfWork: true,
       activities: true,
       treeReader: true,
@@ -919,11 +937,65 @@ const RESTRUCTURE_DEPS = {
     }),
     useCaseProvider(CultureList, { unitOfWork: true, cultureReader: true }),
     useCaseProvider(CultureGet, { unitOfWork: true, cultures: true }),
+    // The culture read for sellers' membership (ADR-0047 decision 3).
+    useCaseProvider(CulturesByIdsQuery, { unitOfWork: true, cultureReader: true }),
+    useCaseProvider(CulturesByIdsSystemQuery, { unitOfWork: true, cultureReader: true }),
+    useCaseProvider(ActiveCulturesQuery, { unitOfWork: true, cultureReader: true }),
+    useCaseProvider(ActiveCulturesSystemQuery, { unitOfWork: true, cultureReader: true }),
+    // The culture filter (multi-culture package 3a; ADR-0047 decisions 5 and 6).
+    useCaseProvider(OfferCultureVisibility, {
+      unitOfWork: true,
+      offers: true,
+      claims: true,
+      evaluator: true,
+      cultureReader: true,
+      cultures: true,
+      memberCultures: true,
+      certificateTypes: true,
+    }),
+    useCaseProvider(OfferCultureVisibilitySystem, {
+      unitOfWork: true,
+      offers: true,
+      claims: true,
+      evaluator: true,
+      cultureReader: true,
+      cultures: true,
+      memberCultures: true,
+      certificateTypes: true,
+    }),
+    {
+      provide: CATALOG_CULTURES_FACADE,
+      inject: [
+        CulturesByIdsQuery,
+        CulturesByIdsSystemQuery,
+        ActiveCulturesQuery,
+        ActiveCulturesSystemQuery,
+        OfferCultureVisibility,
+        OfferCultureVisibilitySystem,
+      ],
+      useFactory: (
+        byIds: CulturesByIdsQuery,
+        byIdsSystem: CulturesByIdsSystemQuery,
+        active: ActiveCulturesQuery,
+        activeSystem: ActiveCulturesSystemQuery,
+        visibility: OfferCultureVisibility,
+        visibilitySystem: OfferCultureVisibilitySystem,
+      ) =>
+        new CatalogCulturesFacadeImplementation({
+          byIds,
+          byIdsSystem,
+          active,
+          activeSystem,
+          visibility,
+          visibilitySystem,
+        }),
+    },
     useCaseProvider(CultureCreate, {
       unitOfWork: true,
       cultures: true,
       policy: true,
       matcher: true,
+      claimLocales: true,
       evaluator: true,
       audit: true,
       clock: true,
@@ -934,9 +1006,13 @@ const RESTRUCTURE_DEPS = {
       cultures: true,
       policy: true,
       matcher: true,
+      claimLocales: true,
+      cultureMembers: true,
       evaluator: true,
       audit: true,
       clock: true,
+      outbox: true,
+      ids: true,
     }),
     useCaseProvider(CultureCategoryMarks, {
       unitOfWork: true,
@@ -951,8 +1027,17 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       audit: true,
       clock: true,
+      outbox: true,
+      ids: true,
     }),
-    useCaseProvider(CultureCategoryMarkClear, { unitOfWork: true, cultures: true, audit: true }),
+    useCaseProvider(CultureCategoryMarkClear, {
+      unitOfWork: true,
+      cultures: true,
+      audit: true,
+      outbox: true,
+      ids: true,
+      clock: true,
+    }),
     useCaseProvider(SeedCultures, {
       unitOfWork: true,
       cultures: true,
@@ -960,6 +1045,7 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       evaluator: true,
       matcher: true,
+      claimLocales: true,
       clock: true,
       ids: true,
     }),
@@ -2673,6 +2759,7 @@ const RESTRUCTURE_DEPS = {
     CATALOG_ASSISTANT_FACADE,
     CATALOG_FILTERS_FACADE,
     CATALOG_ACTIVITIES_FACADE,
+    CATALOG_CULTURES_FACADE,
   ],
 })
 export class CatalogModule {}

@@ -428,6 +428,44 @@ export const ProductImageTakenDown = defineEvent({
   },
 });
 
+/** The statuses of a culture as an event enum (multi-culture; ADR-0047 decision 1). */
+export const CULTURE_EVENT_STATUSES = ['draft', 'active', 'inactive'] as const;
+
+/**
+ * An admin changed a culture's status (multi-culture package 3a; ADR-0047 decision 8): which
+ * Offers it can show changes, so search re-indexes. The aggregate version is the culture's version
+ * after the edit. Ids and the new status only; a consumer reads the code through catalog.
+ */
+export const CultureStatusChanged = defineEvent({
+  type: 'catalog.culture-status-changed.v1',
+  aggregateType: 'culture',
+  payload: { cultureId: eventField.id(), status: eventField.enumOf(CULTURE_EVENT_STATUSES) },
+});
+
+/**
+ * An admin set or cleared a culture's row on a category (visible or hidden, the "required" or
+ * "neutral" certification mark; ADR-0047 decisions 4, 5 and 8). The effective marks of the category
+ * and everything under it may have changed, so search re-indexes that subtree. A mark row has no
+ * version of its own: each event has an aggregate id of its own at version 1. Ids only.
+ */
+export const CultureCategoryMarkChanged = defineEvent({
+  type: 'catalog.culture-category-mark-changed.v1',
+  aggregateType: 'culture-category-mark',
+  payload: { cultureId: eventField.id(), categoryId: eventField.id() },
+});
+
+/**
+ * The approvals of a culture were checked against a required certification type the culture no
+ * longer has, and `CultureEdit` could neither put the old type back nor take every approval back
+ * at once (ADR-0048 security review M1-R1 and N1). `sellers` demotes the culture's approvals on
+ * delivery and the delivery is retried until none is left. Its own aggregate id at version 1.
+ */
+export const CultureApprovalsInvalidated = defineEvent({
+  type: 'catalog.culture-approvals-invalidated.v1',
+  aggregateType: 'culture',
+  payload: { cultureId: eventField.id() },
+});
+
 /**
  * Every event catalog publishes, declared with `defineEvent` and registered with the event
  * catalogue by `CatalogModule`. Each new type changes the catalogue snapshot
@@ -527,4 +565,7 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   CategoryProposalCancelled,
   SellerCategoryPromoted,
   SellerCategoryMerged,
+  CultureStatusChanged,
+  CultureCategoryMarkChanged,
+  CultureApprovalsInvalidated,
 ];

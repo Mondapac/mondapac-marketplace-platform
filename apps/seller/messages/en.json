@@ -94,6 +94,7 @@
     "products": "Products",
     "offers": "Offers",
     "suggestions": "Value suggestions",
+    "tagSuggestions": "Tag suggestions",
     "orders": "Orders",
     "reviews": "Reviews",
     "earnings": "Earnings",
@@ -1452,6 +1453,9 @@
         "unknown-chip": "Unavailable tag",
         "load-error": "Tags can't be loaded right now.",
         "load-throttled": "Too many requests. Wait a moment and try again.",
+        "suggest": "Can't find a tag? Suggest one",
+        "suggest-aria": "Can't find a tag? Suggest one for this product",
+        "suggest-help": "An approved tag is not added automatically. Come back and add it here.",
         "too-many": "Pick {max} tags or fewer.",
         "archived-problem": "{name} is archived. Remove it.",
         "unknown-problem": "A tag on this product no longer exists. Remove it.",
@@ -1724,6 +1728,94 @@
         "send": "Send suggestion",
         "cancel": "Cancel",
         "value-exists": "That value is already on the list. Pick it in the product form."
+      }
+    },
+    "tagSuggestions": {
+      "title": "Tag suggestions",
+      "intro": "Ask for a tag the list does not have. We review each one and email you the result.",
+      "back": "Back to tag suggestions",
+      "sent": "Suggestion sent. We will email you the result.",
+      "used": "{count} of {max} open suggestions used",
+      "full": "You have {max} open suggestions, the most allowed. Wait for a decision before suggesting another.",
+      "filter": "Filter by status",
+      "filters": {
+        "all": "All",
+        "open": "Open",
+        "approved": "Approved",
+        "mapped": "Mapped",
+        "rejected": "Rejected"
+      },
+      "col": {
+        "tag": "Tag",
+        "product": "Product",
+        "status": "Status",
+        "outcome": "Outcome",
+        "sent": "Sent"
+      },
+      "status": {
+        "open": "Open",
+        "approved": "Approved",
+        "mapped": "Mapped",
+        "rejected": "Rejected",
+        "unknown": "Unknown"
+      },
+      "outcome": {
+        "open": "Waiting for review",
+        "approved": "New tag “{name}” created",
+        "mapped": "Matched to the existing tag “{name}”",
+        "rejected": "Rejected",
+        "rejected-reason": "Rejected: {reason}",
+        "add-it": "Add it to your product from the Tags field. Approving does not add it for you.",
+        "retired": "This tag has since been retired and can no longer be added.",
+        "open-product": "Open product"
+      },
+      "product-gone": "Product no longer available",
+      "empty": {
+        "title": "No tag suggestions yet",
+        "body": "If the tag you need is missing, suggest it. We email you when it is decided."
+      },
+      "empty-filtered": {
+        "title": "Nothing in this status",
+        "body": "Choose another tab to see your other suggestions."
+      },
+      "more": "Load more",
+      "new": {
+        "start": "Suggest a tag",
+        "title": "Suggest a tag",
+        "intro": "Tags help shoppers find your product. Suggest one only if you cannot find it in the Tags field. Nothing changes on your product: once approved, add the tag yourself.",
+        "product": "Product",
+        "product-placeholder": "Choose a product",
+        "product-help": "The product this tag is for.",
+        "no-products": {
+          "title": "Create a product first",
+          "body": "A tag suggestion is made for one of your products. Create a product, then come back.",
+          "action": "New product"
+        },
+        "label": "Tag",
+        "help": "2 to 40 characters, in {language}. For example: Eid gifts.",
+        "counter": "{count} / 40",
+        "used": "You have used {count} of {max} open suggestions.",
+        "send": "Send suggestion",
+        "cancel": "Cancel",
+        "back-to-product": "Back to my product",
+        "view-suggestions": "View my suggestions",
+        "error": {
+          "length": "Use 2 to 40 characters.",
+          "exists": "A tag like this already exists. Search for it in the Tags field of your product.",
+          "already-open": "You already suggested this tag and it is waiting for review.",
+          "limit": "You can have up to {max} open suggestions. Wait for a decision, then try again.",
+          "invalid": "Use 2 to 40 characters of plain text.",
+          "claim-word": "A tag cannot claim a certification such as halal or organic. Certifications are added from your certificates.",
+          "unchecked": "This text could not be checked. Try different words.",
+          "product-not-found": "That product was not found. Choose another.",
+          "product-not-editable": "That product cannot be changed right now. Choose another.",
+          "not-eligible": "Your seller account cannot suggest tags yet.",
+          "denied": "You do not have permission to suggest tags.",
+          "csrf": "Your session expired. Reload the page.",
+          "throttled": "Too many requests. Wait a moment and try again.",
+          "unreachable": "Could not reach the server. Try again.",
+          "unknown": "Something went wrong. Try again."
+        }
       }
     },
     "import": {

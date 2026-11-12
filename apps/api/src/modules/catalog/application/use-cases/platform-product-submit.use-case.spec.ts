@@ -136,6 +136,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       },
     } as unknown as UnitOfWork;
     const products: ProductRepository = {
+      findManyByIds: () => Promise.resolve([]),
       lockAtVersion: () => Promise.resolve(true),
       nextProductCode: () => Promise.resolve('P00000001'),
       add: () => Promise.resolve(),
@@ -156,6 +157,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
       },
     };
     const revisionRepo: ProductRevisionRepository = {
+      claimShapes: () => Promise.resolve([]),
       nextRevisionNo: (_m, productId) =>
         Promise.resolve(
           [...revisions.values()].filter((revision) => revision.productId === productId).length + 1,

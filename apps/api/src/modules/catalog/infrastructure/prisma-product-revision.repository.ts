@@ -6,6 +6,7 @@ import type {
   ChangeRequestView,
   ProductRevisionRepository,
   ReviewDecision,
+  RevisionClaimShape,
   RevisionHistoryEntry,
 } from '../application/ports/product-revision.repository';
 import type { SensitiveReason } from '../domain/product-revision-policy';
@@ -139,6 +140,34 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         imageIds: [...variant.imageIds],
       })),
     });
+  }
+
+  async claimShapes(
+    market: MarketContext,
+    refs: readonly {
+      readonly productId: Id<'Product'>;
+      readonly revisionId: Id<'ProductRevision'>;
+    }[],
+  ): Promise<readonly RevisionClaimShape[]> {
+    if (refs.length === 0) return [];
+    const wanted = new Map(refs.map((ref) => [ref.revisionId as string, ref.productId as string]));
+    const rows = await this.prisma.tx(market).catalogProductRevision.findMany({
+      where: { marketId: market.marketId, id: { in: [...wanted.keys()] } },
+      select: {
+        id: true,
+        productId: true,
+        categories: { select: { categoryId: true }, orderBy: { position: 'asc' } },
+        variants: { select: { variantId: true }, orderBy: { position: 'asc' } },
+      },
+    });
+    return rows
+      .filter((row) => wanted.get(row.id) === row.productId)
+      .map((row) => ({
+        productId: row.productId as Id<'Product'>,
+        revisionId: row.id as Id<'ProductRevision'>,
+        categoryIds: row.categories.map((category) => category.categoryId),
+        variantIds: row.variants.map((variant) => variant.variantId),
+      }));
   }
 
   async find(

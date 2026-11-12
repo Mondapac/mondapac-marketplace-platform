@@ -144,6 +144,15 @@ export class PrismaRefundRepository implements RefundRepository {
     return rows.map(toRefund);
   }
 
+  async findById(market: MarketContext, refundId: Id<'Refund'>): Promise<Refund | null> {
+    const tx = this.prisma.tx(market);
+    const row = await tx.orderingRefund.findFirst({
+      where: { marketId: market.marketId, id: refundId },
+      include: { lines: true },
+    });
+    return row === null ? null : toRefund(row);
+  }
+
   private async target(
     market: MarketContext,
     where: {
@@ -207,6 +216,28 @@ export class PrismaRefundRepository implements RefundRepository {
       succeededUnits,
       refundedShipping,
     };
+  }
+
+  async listForOrder(market: MarketContext, orderId: Id<'Order'>) {
+    const tx = this.prisma.tx(market);
+    // Through the order's seller orders, so the read uses the (market_id, seller_order_id) index.
+    const sellerOrders = await tx.orderingSellerOrder.findMany({
+      where: { marketId: market.marketId, orderId },
+      select: { id: true },
+    });
+    if (sellerOrders.length === 0) return [];
+    const rows = await tx.orderingRefund.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerOrderId: { in: sellerOrders.map((s) => s.id) },
+      },
+      include: { lines: true, creditNote: { select: { id: true } } },
+      orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map((row) => ({
+      refund: toRefund(row),
+      creditNoteId: (row.creditNote?.id ?? null) as Id<'CreditNote'> | null,
+    }));
   }
 
   async reserve(

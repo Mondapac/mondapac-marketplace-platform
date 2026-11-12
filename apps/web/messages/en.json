@@ -103,7 +103,7 @@
     "about": "Mondapac is a Brisbane marketplace for local food sellers: halal butchers, bakers, pantry makers and more. Every product shows where it comes from, and certificates such as halal are checked by our team before a label appears. Prices include GST, each seller shows its own minimum order, and delivery is priced at checkout.",
     "email": "support@mondapac.com.au",
     "delivering": "Delivering to {area}",
-    "delivering-near": "Delivering near {area} (estimated)",
+    "delivering-near": "Delivering near {area}",
     "social": "Social media",
     "shop": "Shop",
     "shop-links": {
@@ -1024,6 +1024,7 @@
     "search-short": "Keep typing: enter at least 3 characters.",
     "search-failed": "We could not search addresses just now. Try again, or tap the map to set your pin.",
     "search-throttled": "Too many searches. Wait a minute, then try again.",
+    "searching": "Searching…",
     "use-location": "Use my current location",
     "finding": "Finding your location",
     "blocked": "Location access is blocked for this site. Allow it in your browser settings, or search for your address above.",
@@ -1038,7 +1039,11 @@
     "dropped-outside": "Dropped pin outside {area}",
     "device-near": "Near {place}",
     "device-outside": "Your location is outside {area}",
+    "keep": "Add to my addresses…",
+    "keeping": "Opening…",
+    "keep-failed": "We could not prepare this address just now. Try again, or add it in Your addresses.",
     "saved": "Your saved addresses",
+    "saved-failed": "We could not find this address on the map just now. Try again, or search for it above.",
     "log-in": "<login>Log in</login> to choose one of your saved addresses.",
     "privacy-guest": "We use your device location only when you tap the button, and only to find your address. Without an account we keep only your suburb and postcode in this browser, not exact coordinates. The delivery location decides which sellers and delivery times you see.",
     "privacy-account": "We use your device location only when you tap the button, and only to find your address. Your delivery location is saved to your account. The delivery location decides which sellers and delivery times you see.",
@@ -1052,6 +1057,7 @@
     "zoom-in": "Zoom in",
     "zoom-out": "Zoom out",
     "legend": "Delivery area",
+    "map-loading": "Loading map…",
     "attribution": "Map provider and data to be chosen"
   },
   "seller": {

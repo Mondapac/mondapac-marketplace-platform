@@ -182,6 +182,7 @@ describe('seller menu structure', () => {
     's_import',
     's_suggestions',
     's_categories',
+    's_tag_suggestions',
     's_reviews',
     's_earnings',
   ];

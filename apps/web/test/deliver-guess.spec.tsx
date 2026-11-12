@@ -138,7 +138,7 @@ describe('header and modal with a guessed area', () => {
     // The suburb only in the header (320px); the footer and the modal say it is an estimate.
     expect(deliverButton().textContent).toContain('Near Kedron');
     expect(deliverButton().textContent).not.toContain('4031');
-    expect(screen.getByText('Delivering near Kedron 4031 (estimated)')).toBeTruthy();
+    expect(screen.getByText('Delivering near Kedron 4031')).toBeTruthy();
     expect(document.cookie).not.toContain('sf-deliver-to');
     await act(() => {
       fireEvent.click(deliverButton());

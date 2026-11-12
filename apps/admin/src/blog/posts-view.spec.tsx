@@ -47,10 +47,10 @@ const ZONES = [
   { zone: 'Pacific/Auckland', stamp: '27 Oct, 4:20 pm' },
 ] as const;
 
-function show(zone = 'Australia/Sydney') {
+function show(zone = 'Australia/Sydney', canEdit = false) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <PostsView zone={zone} />
+      <PostsView zone={zone} canEdit={canEdit} />
     </NextIntlClientProvider>,
   );
 }
@@ -177,6 +177,18 @@ describe('admin blog posts list', () => {
     expect(await screen.findByText('Post 2')).toBeTruthy();
     expect(lastPath()).toBe('blog/admin/posts?page=2');
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+  });
+
+  it('links each title to its editor, and offers New post only to an editor', async () => {
+    call.mockResolvedValue(answer(page([row(1)])));
+    show('Australia/Sydney', false);
+    const link = await screen.findByRole('link', { name: 'Post 1' });
+    expect(link.getAttribute('href')).toBe(`/content/blog/${id(1)}`);
+    expect(screen.queryByRole('link', { name: 'New post' })).toBeNull();
+    cleanup();
+    show('Australia/Sydney', true);
+    const add = await screen.findByRole('link', { name: 'New post' });
+    expect(add.getAttribute('href')).toBe('/content/blog/new');
   });
 
   it('renders a title as plain text, never as markup', async () => {

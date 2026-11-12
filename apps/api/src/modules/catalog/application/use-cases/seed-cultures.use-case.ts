@@ -6,6 +6,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { newCulture, parseCultureContent, type CultureState } from '../../domain/culture';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
+import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
 import { refuseClaimWords } from '../cultures/culture-views';
 import type { CultureRepository } from '../ports/culture.repository';
@@ -30,6 +31,7 @@ export interface SeedCulturesDependencies {
   readonly policy: CatalogMarketPolicy;
   readonly evaluator: ClaimEvaluator;
   readonly matcher: ClaimTextMatcher;
+  readonly claimLocales: ClaimTermLocales;
   readonly clock: Clock;
   readonly ids: IdGenerator;
 }
@@ -76,6 +78,7 @@ export class SeedCultures extends UseCase<
       policy,
       evaluator,
       matcher,
+      claimLocales,
       clock,
       ids,
     } = this.deps;
@@ -102,11 +105,17 @@ export class SeedCultures extends UseCase<
       }
       // Seed text goes through the claim-term matcher like every other path, and fails closed: a
       // seed that asserts a certification, or a matcher that cannot answer, refuses the run.
-      const claim = await refuseClaimWords(matcher, context, content.value.names, [], seeded.code);
+      const claim = await refuseClaimWords(
+        { matcher, claimLocales },
+        context,
+        content.value.names,
+        [],
+        { text: seeded.code, locale: locales.default },
+      );
       if (claim !== null) {
         return err({
           code:
-            claim.code === 'culture.claim-word'
+            claim.code === 'culture.claim-word' || claim.code === 'culture.locale-uncheckable'
               ? 'culture.seed-claim-text-refused'
               : 'culture.seed-claim-text-unavailable',
           seedCode: seeded.code,

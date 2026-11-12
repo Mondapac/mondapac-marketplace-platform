@@ -402,6 +402,16 @@ describe('raw read statement check: full-text search (ADR-0030 amendment, search
     `SELECT d.offer_id FROM "search"."offer_documents" d WHERE d.market_id = $1 AND ${where}`;
   const TSQ = 'websearch_to_tsquery($2::regconfig, $3::text)';
 
+  it('passes the prefix query of the suggest route (to_tsquery, same exact shape)', async () => {
+    const PREFIX = 'to_tsquery($2::regconfig, $3::text)';
+    const sql = `SELECT d.offer_id, ts_rank(d.search_vector, ${PREFIX}) AS rank,
+             CASE WHEN d.name ~~* $4::text THEN 0 ELSE 1 END AS tier
+      FROM "search"."offer_documents" d
+     WHERE d.market_id = $1 AND d.search_vector @@ ${PREFIX}
+     ORDER BY tier ASC, rank DESC LIMIT $5::text::int4`;
+    expect(await checkSearch(sql, [{}, {}, {}, {}])).toEqual([]);
+  });
+
   it('passes the ranked text query, with and without the array containment', async () => {
     const sql = `SELECT d.offer_id, ts_rank(d.search_vector, ${TSQ}) AS rank
       FROM "search"."offer_documents" d
@@ -546,10 +556,22 @@ describe('raw read statement check: full-text search (ADR-0030 amendment, search
       ['cast-not-allowed:regconfig', 'text-search-shape:websearch_to_tsquery'],
     ],
     [
-      'to_tsquery',
-      'd.search_vector @@ to_tsquery($2::regconfig, $3::text)',
+      'to_tsquery over a literal text',
+      "d.search_vector @@ to_tsquery($2::regconfig, 'tea:*')",
+      [{}],
+      ['text-search-shape:to_tsquery'],
+    ],
+    [
+      'to_tsquery with a column cast to regconfig',
+      'd.search_vector @@ to_tsquery(d.name::regconfig, $2::text)',
+      [{}],
+      ['cast-not-allowed:regconfig', 'text-search-shape:to_tsquery'],
+    ],
+    [
+      'plainto_tsquery',
+      'd.search_vector @@ plainto_tsquery($2::regconfig, $3::text)',
       [{}, {}],
-      ['function-not-allowed:to_tsquery', 'operator-shape:@@'],
+      ['function-not-allowed:plainto_tsquery', 'operator-shape:@@'],
     ],
     ['another operator', 'd.name || $2::text = $3::text', [{}, {}], ['operator-not-allowed:||']],
     ['regclass', '$2::regclass IS NOT NULL', [{}], ['cast-not-allowed:regclass']],

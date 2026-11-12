@@ -105,6 +105,7 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
       run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
     } as unknown as UnitOfWork;
     const products: ProductRepository = {
+      findManyByIds: () => Promise.resolve([]),
       lockAtVersion: () => Promise.resolve(true),
       nextProductCode: () => Promise.resolve('P00000001'),
       add: () => Promise.resolve(),
