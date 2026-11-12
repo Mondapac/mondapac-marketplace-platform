@@ -330,6 +330,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'storefront/admin/slides/:id/submit',
     // Send a blog post's draft for review (blog); the backend's automatic checks may refuse.
     'blog/admin/posts/:id/submit',
+    // A reviewer's two decisions on the version in review (blog): approve it (a self-approval asks
+    // for a two-step code) or send it back with a note.
+    'blog/admin/posts/:id/approve',
+    'blog/admin/posts/:id/request-changes',
     'storefront/admin/slides/:id/approve',
     'storefront/admin/slides/:id/pause',
     'storefront/admin/slides/:id/resume',

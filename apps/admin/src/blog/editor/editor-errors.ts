@@ -17,6 +17,8 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'request.throttled': 'throttled',
   'request.too-large': 'too-large',
   'request.csrf': 'csrf',
+  'blog.self-approval-refused': 'self-approval',
+  'second-factor.enrolment-required': 'enrolment',
 };
 
 export interface EditorProblem {
