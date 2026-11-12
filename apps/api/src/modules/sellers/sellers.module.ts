@@ -289,6 +289,8 @@ const PUBLISHED_STORE_PORTS = {
   minimumOrderPolicy: true,
   publishedContent: true,
   clock: true,
+  onboardingAreas: true,
+  areaNames: true,
 } as const;
 
 /** The ports every use case of the seller's own store profile reads with (slice 12 part 2). */

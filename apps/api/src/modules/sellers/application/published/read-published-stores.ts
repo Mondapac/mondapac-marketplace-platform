@@ -6,6 +6,8 @@ import {
   type ApprovedStoreFacts,
   type PublishedStore,
 } from '../../domain/published-store';
+import type { OnboardingAreas } from '../ports/seller-market-formats';
+import type { AreaNameSource } from '../ports/service-area-names.repository';
 import type { MinimumOrderPolicy } from '../ports/minimum-order-policy';
 import type { PublishedStoreRepository } from '../ports/published-store.repository';
 import type { StoreProfileRepository } from '../ports/store-profile.repository';
@@ -30,6 +32,9 @@ export interface PublishedStoresDependencies extends SellingEligibilityDependenc
   /** The About text, logo and banner of a store (slice 12 part 2). */
   readonly publishedContent: PublishedStoreContentReader;
   readonly clock: Clock;
+  /** The area names: configured, and the admin's English overlay. */
+  readonly onboardingAreas: OnboardingAreas;
+  readonly areaNames: AreaNameSource;
 }
 
 export type PublishedStoresUnavailable = { readonly code: 'sellers.unavailable' };
@@ -109,12 +114,16 @@ export async function publishedStoresOf(
     if (!result.ok) throw new Error('the read unit failed');
     for (const [sellerId, minimum] of result.value) minimums.set(sellerId, minimum);
   }
+  const edited = await deps.areaNames.edited(market);
   const rule = deps.minimumOrderPolicy.rule(market);
   return stores.map((store): PublishedStore => {
     const base: PublishedStore = {
       slug: store.slug,
       name: store.name,
       serviceAreaCode: store.serviceAreaCode,
+      serviceAreaName:
+        edited.get(store.serviceAreaCode)?.['en'] ??
+        deps.onboardingAreas.nameOf(market, store.serviceAreaCode),
       sellingSince: sellingSinceOf(store),
     };
     const minimum = minimums.get(store.sellerId);
