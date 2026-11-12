@@ -196,6 +196,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'search.index-published-revision',
       'search.index-reinstated-seller',
       'search.index-resumed-product',
+      'search.index-sell-unit-changed',
       'search.unindex-suspended-seller',
       'sellers.after-submission',
       'sellers.close-decision-approved',
@@ -273,6 +274,10 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('catalog.offer-listing-changed.v1')).toEqual([
       'search.index-listing-changed-offer',
+    ]);
+    // ... and a sell unit switched off or on (V5) re-syncs its Offer's document (V8).
+    expect(subscriptions.subscribersOf('catalog.offer-sell-unit-changed.v1')).toEqual([
+      'search.index-sell-unit-changed',
     ]);
     // ... and search re-syncs the documents that name a renamed or moved category (search 1a).
     expect(subscriptions.subscribersOf('catalog.platform-category-changed.v1')).toEqual([
