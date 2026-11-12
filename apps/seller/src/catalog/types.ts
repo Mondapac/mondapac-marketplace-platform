@@ -137,6 +137,10 @@ export interface ProductView {
     readonly variantCode: string;
   }[];
   readonly maxVariants: number;
+  /** The Market's cap on the types a product varies on; older answers leave it out. */
+  readonly maxAxes?: number;
+  /** The product version Add sizes names; older answers leave it out. */
+  readonly version?: number;
   readonly sensitiveFields: readonly string[];
   readonly lastChangedAt: string;
   readonly createdAt: string;

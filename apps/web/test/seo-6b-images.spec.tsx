@@ -63,6 +63,44 @@ describe('rendition sizes', () => {
   });
 });
 
+describe('picture sources', () => {
+  it('list AVIF then WebP, each over the same widths as the JPEG', () => {
+    const set = photoSetOf(photo, PRODUCT, ref(P1), 'medium')!;
+    expect(set.sources).toEqual([
+      {
+        type: 'image/avif',
+        srcSet: `${url(P1, 'thumb.avif')} 240w, ${url(P1, 'medium.avif')} 800w, ${url(P1, 'large.avif')} 1600w`,
+      },
+      {
+        type: 'image/webp',
+        srcSet: `${url(P1, 'thumb.webp')} 240w, ${url(P1, 'medium.webp')} 800w, ${url(P1, 'large.webp')} 1600w`,
+      },
+    ]);
+    // The JPEG list, the largest URL (sitemap, JSON-LD) and the size are unchanged.
+    expect(set.largest).toBe(url(P1, 'large'));
+  });
+});
+
+describe('picture sources edge cases', () => {
+  it('keep one entry per width for a small photo, in every format', () => {
+    const set = photoSetOf(photo, PRODUCT, ref(P1, 300, 200), 'large')!;
+    expect(set.sources.map((source) => source.srcSet)).toEqual([
+      `${url(P1, 'thumb.avif')} 240w, ${url(P1, 'large.avif')} 300w`,
+      `${url(P1, 'thumb.webp')} 240w, ${url(P1, 'large.webp')} 300w`,
+    ]);
+  });
+
+  it('drop a format the builder refuses and keep the rest', () => {
+    const noAvif: typeof photo = (product, image, size) =>
+      size.endsWith('.avif') ? undefined : photo(product, image, size);
+    const set = photoSetOf(noAvif, PRODUCT, ref(P1), 'medium')!;
+    expect(set.sources.map((source) => source.type)).toEqual(['image/webp']);
+    const none: typeof photo = (product, image, size) =>
+      size.includes('.') ? undefined : photo(product, image, size);
+    expect(photoSetOf(none, PRODUCT, ref(P1), 'medium')!.sources).toEqual([]);
+  });
+});
+
 describe('card photo', () => {
   it('has srcset, sizes, width and height from the API size', () => {
     const card = cardOf(
@@ -78,6 +116,18 @@ describe('card photo', () => {
     expect(img.getAttribute('srcset')).toContain('1600w');
     expect(img.getAttribute('sizes')).toMatch(/50vw$/u);
     expect([img.getAttribute('width'), img.getAttribute('height')]).toEqual(['800', '600']);
+    const sources = [...container.querySelectorAll('picture > source')];
+    expect(sources.map((s) => s.getAttribute('type'))).toEqual(['image/avif', 'image/webp']);
+    expect(sources[0]!.getAttribute('srcset')).toContain(`${url(P1, 'large.avif')} 1600w`);
+    expect(sources[0]!.getAttribute('sizes')).toBe(img.getAttribute('sizes'));
+    expect(img.parentElement!.tagName).toBe('PICTURE');
+    expect(img.nextElementSibling).toBeNull();
+  });
+
+  it('is a plain img without a set', () => {
+    const { container } = render(<CardPhoto src="/placeholders/meat.jpg" category="meat" />);
+    expect(container.querySelector('picture')).toBeNull();
+    expect(container.querySelector('img')!.getAttribute('src')).toBe('/placeholders/meat.jpg');
   });
 });
 
@@ -139,6 +189,18 @@ describe('gallery photos', () => {
       '1200',
       '1600',
     ]);
+  });
+
+  it('are pictures: AVIF and WebP sources before the JPEG img', () => {
+    const pictures = [...container.querySelectorAll('.gslide picture')];
+    expect(pictures).toHaveLength(2);
+    const kids = [...pictures[0]!.children].map((el) => el.tagName);
+    expect(kids).toEqual(['SOURCE', 'SOURCE', 'IMG']);
+    const first = pictures[0]!.querySelector('source')!;
+    expect(first.getAttribute('type')).toBe('image/avif');
+    expect(first.getAttribute('sizes')).toBe(images[0]!.getAttribute('sizes'));
+    expect(first.getAttribute('srcset')).toContain(`${url(P1, 'large.avif')} 1600w`);
+    expect(images[0]!.getAttribute('src')).toBe(url(P1, 'large'));
   });
 
   it('keep the priority photo and lazy-load the rest', () => {

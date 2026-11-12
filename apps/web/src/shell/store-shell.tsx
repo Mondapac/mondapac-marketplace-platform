@@ -20,6 +20,7 @@ import { FocusHeader } from './checkout-focus.tsx';
 import { Dock } from './dock.tsx';
 import { Footer } from './footer.tsx';
 import { Header } from './header.tsx';
+import { NavigationProgress } from './navigation-progress.tsx';
 import { PageFrame } from './page-frame.tsx';
 import { Rail } from './rail.tsx';
 import { SearchView } from './search-view.tsx';
@@ -73,6 +74,7 @@ export function StoreShell({
       live={live}
     >
       <div className="page">
+        <NavigationProgress />
         <BrowsePanel categories={content.categories} />
         <CartDrawer />
         <DeliverModal source={locator} />

@@ -4,6 +4,7 @@ import {
   OfferListingChanged,
   OfferMoved,
   OfferPublished,
+  OfferSellUnitChanged,
   ProductPaused,
   ProductResumed,
   ProductRevisionPublished,
@@ -26,6 +27,7 @@ export const INDEX_ON_PRODUCT_PAUSED_SUBSCRIBER = 'search.index-paused-product';
 export const INDEX_ON_PRODUCT_RESUMED_SUBSCRIBER = 'search.index-resumed-product';
 export const INDEX_ON_AVAILABILITY_CHANGED_SUBSCRIBER = 'search.index-availability-changed';
 export const INDEX_ON_PRICE_CHANGED_SUBSCRIBER = 'search.index-price-changed';
+export const INDEX_ON_SELL_UNIT_CHANGED_SUBSCRIBER = 'search.index-sell-unit-changed';
 
 /**
  * Search's subscriptions to catalog (speed mode): an Offer published, deleted or moved, and a
@@ -39,7 +41,8 @@ export const INDEX_ON_PRICE_CHANGED_SUBSCRIBER = 'search.index-price-changed';
  * paused product leaves the index at once and comes back on resume.
  * Variants V8: a document holds its sell units' stock state and buyer price, so inventory's
  * availability change and pricing's effective price change re-read that Offer too (the payload
- * names the Offer only; stock and price are re-read from the facades). A new or retired variant comes
+ * names the Offer only; stock and price are re-read from the facades). A seller switching one sell
+ * unit off or on (V5, `OfferSellUnitChanged`) re-reads that Offer as well. A new or retired variant comes
  * with a revision publish. The nightly rebuild repairs anything a lost delivery left behind.
  */
 export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredSubscription[] {
@@ -113,6 +116,14 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
       event: EffectivePriceChanged,
       handle: (event, _delivery, context) =>
         run(INDEX_ON_PRICE_CHANGED_SUBSCRIBER, context, {
+          offerIds: [event.payload.offerId as Id<'Offer'>],
+        }),
+    }),
+    subscription({
+      name: INDEX_ON_SELL_UNIT_CHANGED_SUBSCRIBER,
+      event: OfferSellUnitChanged,
+      handle: (event, _delivery, context) =>
+        run(INDEX_ON_SELL_UNIT_CHANGED_SUBSCRIBER, context, {
           offerIds: [event.payload.offerId as Id<'Offer'>],
         }),
     }),

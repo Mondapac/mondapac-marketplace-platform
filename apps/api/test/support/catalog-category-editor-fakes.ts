@@ -72,6 +72,17 @@ export class MemoryCategoryEditStore implements CategoryEditStore {
     );
   }
 
+  unavailableSlugs(_m: MarketContext, slugs: readonly string[]) {
+    return Promise.resolve(
+      new Set(
+        slugs.filter(
+          (slug) =>
+            this.heldSlugs.has(slug) || [...this.rows.values()].some((row) => row.slug === slug),
+        ),
+      ),
+    );
+  }
+
   discardFacts(_m: MarketContext, id: Id<'Category'>) {
     return Promise.resolve(this.facts.get(id) ?? { everShown: false, productRevisions: 0 });
   }
