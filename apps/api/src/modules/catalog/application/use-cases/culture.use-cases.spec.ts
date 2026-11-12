@@ -24,6 +24,7 @@ import { CheckedInCultureSeed } from '../../infrastructure/seed/checked-in-cultu
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { CategoryTreeReader } from '../ports/category-tree.reader';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
+import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
 import type { CultureReader } from '../ports/culture.reader';
 import type { CultureRepository } from '../ports/culture.repository';
@@ -95,6 +96,7 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
     clearCategoryRow: (_m, _c, categoryId) => Promise.resolve(marks.delete(categoryId)),
   };
   const cultureReader: CultureReader = {
+    byIds: (_m, ids) => Promise.resolve([...rows.values()].filter((r) => ids.includes(r.id))),
     list: (_m, query) =>
       Promise.resolve(
         [...rows.values()].filter((r) => query.status === null || r.status === query.status),
@@ -157,9 +159,18 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
       ),
   };
 
+  // The locales with claim terms; every locale the Market supports unless a test narrows it.
+  let covered: readonly string[] | null = [...locales.supported];
+  const claimLocales: ClaimTermLocales = {
+    covered: () =>
+      Promise.resolve(
+        covered === null ? err({ code: 'claim-text.check-unavailable' } as const) : ok(covered),
+      ),
+  };
+
   const build = (matcher: ClaimTextMatcher = cleanClaimTextMatcher) => {
     const gate = createUseCaseGate(markets, check);
-    const write = { unitOfWork, cultures, policy, matcher, evaluator, audit, clock };
+    const write = { unitOfWork, cultures, policy, matcher, claimLocales, evaluator, audit, clock };
     const markDeps = { unitOfWork, cultures, treeReader, policy };
     return {
       create: new CultureCreate(gate, { ...write, ids }),
@@ -187,6 +198,7 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
         policy,
         evaluator,
         matcher,
+        claimLocales,
         clock,
         ids,
       }),
@@ -369,6 +381,7 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
       cultures: racing,
       policy,
       matcher: cleanClaimTextMatcher,
+      claimLocales,
       evaluator,
       audit,
       clock,
@@ -409,6 +422,40 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
     });
     expect(down).toEqual({ ok: false, error: { code: 'access.unavailable' } });
     expect(rows.size).toBe(0);
+  });
+
+  it('refuses a name in a locale with no claim terms, and fails closed when the locales cannot be read', async () => {
+    const { create, edit } = build();
+    covered = [main];
+    const refused = await create.execute(admin, {
+      code: 'uncovered',
+      names: { [main]: text('Folk'), [second]: text('Folk two') },
+    });
+    covered = null;
+    const down = await create.execute(admin, { code: 'down', names: { [main]: text('Down') } });
+    covered = [...locales.supported];
+    const made = await create.execute(admin, { code: 'ok', names: { [main]: text('Fine') } });
+    const id = made.ok ? made.value.culture.id : '';
+    covered = [main];
+    const edited = await edit.execute(admin, {
+      cultureId: id,
+      version: 1,
+      names: { [main]: text('Fine'), [second]: text('Second') },
+    });
+
+    expect(refused).toEqual({
+      ok: false,
+      error: {
+        code: 'culture.locale-uncheckable',
+        fields: [
+          { path: `names.${second}.name`, code: 'locale-uncheckable' },
+          { path: `names.${second}.description`, code: 'locale-uncheckable' },
+        ],
+      },
+    });
+    expect(down).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+    expect(edited).toMatchObject({ ok: false, error: { code: 'culture.locale-uncheckable' } });
+    covered = [...locales.supported];
   });
 
   it('accepts only an active certification type of the Market, and fails closed when it cannot ask', async () => {

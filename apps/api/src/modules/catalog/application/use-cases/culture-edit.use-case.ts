@@ -33,6 +33,7 @@ import {
 } from '../cultures/culture-views';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
+import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
 import type { CultureRepository } from '../ports/culture.repository';
 
@@ -64,6 +65,7 @@ export interface CultureEditDependencies {
   readonly cultures: CultureRepository;
   readonly policy: CatalogMarketPolicy;
   readonly matcher: ClaimTextMatcher;
+  readonly claimLocales: ClaimTermLocales;
   readonly evaluator: ClaimEvaluator;
   readonly audit: AuditWriter;
   readonly clock: Clock;
@@ -186,7 +188,7 @@ export class CultureEdit extends UseCase<
     if (stored.version !== version.value) return err({ code: 'conflict.stale' });
 
     if (change.names !== undefined) {
-      const claim = await refuseClaimWords(this.deps.matcher, context, change.names, stored.names);
+      const claim = await refuseClaimWords(this.deps, context, change.names, stored.names);
       if (claim !== null) return err(claim);
     }
     const newType = change.requiredCertificationType;

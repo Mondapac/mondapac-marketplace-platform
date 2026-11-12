@@ -1001,6 +1001,15 @@
     }
   },
   {
+    "type": "sellers.seller-culture-status-changed.v1",
+    "aggregateType": "seller-culture",
+    "fields": {
+      "sellerId": "id",
+      "cultureId": "id",
+      "status": "enumOf(requested|approved|rejected)"
+    }
+  },
+  {
     "type": "sellers.seller-file-created.v1",
     "aggregateType": "seller-file",
     "fields": {

@@ -1,4 +1,4 @@
-import type { MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { CultureListQuery, CultureReader } from '../application/ports/culture.reader';
@@ -25,6 +25,19 @@ export class PrismaCultureReader implements CultureReader {
       include: CULTURE_INCLUDE,
       orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }, { id: 'asc' }],
       take: 200,
+    });
+    return rows.map(cultureStateOf);
+  }
+
+  async byIds(
+    market: MarketContext,
+    ids: readonly Id<'Culture'>[],
+  ): Promise<readonly CultureState[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.tx(market).catalogCulture.findMany({
+      where: { marketId: market.marketId, id: { in: [...ids] } },
+      include: CULTURE_INCLUDE,
+      orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }, { id: 'asc' }],
     });
     return rows.map(cultureStateOf);
   }

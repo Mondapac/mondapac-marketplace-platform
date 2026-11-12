@@ -189,6 +189,10 @@ import { SeedCategoryTree } from './application/use-cases/seed-category-tree.use
 import { CATALOG_ASSISTANT_FACADE } from './contracts/catalog-assistant.facade';
 import { CATALOG_FACADE } from './contracts/catalog.facade';
 import { CATALOG_ACTIVITIES_FACADE } from './contracts/catalog-activities.facade';
+import { CATALOG_CULTURES_FACADE } from './contracts/catalog-cultures.facade';
+import { CatalogCulturesFacadeImplementation } from './presentation/catalog-cultures.facade';
+import { ActiveCulturesQuery } from './application/use-cases/active-cultures.use-case';
+import { CulturesByIdsQuery } from './application/use-cases/cultures-by-ids.use-case';
 import { CatalogActivitiesFacadeImplementation } from './presentation/catalog-activities.facade';
 import { BusinessActivitiesActiveQuery } from './application/use-cases/business-activities-active.use-case';
 import { CatalogAssistantFacadeImplementation } from './presentation/catalog-assistant.facade';
@@ -895,11 +899,21 @@ const RESTRUCTURE_DEPS = {
     }),
     useCaseProvider(CultureList, { unitOfWork: true, cultureReader: true }),
     useCaseProvider(CultureGet, { unitOfWork: true, cultures: true }),
+    // The culture read for sellers' membership (ADR-0047 decision 3).
+    useCaseProvider(CulturesByIdsQuery, { unitOfWork: true, cultureReader: true }),
+    useCaseProvider(ActiveCulturesQuery, { unitOfWork: true, cultureReader: true }),
+    {
+      provide: CATALOG_CULTURES_FACADE,
+      inject: [CulturesByIdsQuery, ActiveCulturesQuery],
+      useFactory: (byIds: CulturesByIdsQuery, active: ActiveCulturesQuery) =>
+        new CatalogCulturesFacadeImplementation(byIds, active),
+    },
     useCaseProvider(CultureCreate, {
       unitOfWork: true,
       cultures: true,
       policy: true,
       matcher: true,
+      claimLocales: true,
       evaluator: true,
       audit: true,
       clock: true,
@@ -910,6 +924,7 @@ const RESTRUCTURE_DEPS = {
       cultures: true,
       policy: true,
       matcher: true,
+      claimLocales: true,
       evaluator: true,
       audit: true,
       clock: true,
@@ -936,6 +951,7 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       evaluator: true,
       matcher: true,
+      claimLocales: true,
       clock: true,
       ids: true,
     }),
@@ -2561,6 +2577,7 @@ const RESTRUCTURE_DEPS = {
     CATALOG_ASSISTANT_FACADE,
     CATALOG_FILTERS_FACADE,
     CATALOG_ACTIVITIES_FACADE,
+    CATALOG_CULTURES_FACADE,
   ],
 })
 export class CatalogModule {}

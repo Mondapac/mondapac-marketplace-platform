@@ -68,6 +68,18 @@ export interface SellersUnavailable {
   readonly code: 'sellers.unavailable';
 }
 
+/** What `applySignupCultures` did: counts only. */
+export interface SignupCulturesAttached {
+  readonly approved: number;
+  readonly requested: number;
+  readonly unchanged: number;
+}
+
+/** The seller has no file yet (a signup step ran before the file was created); try again. */
+export interface SellerFileNotFound {
+  readonly code: 'file.not-found';
+}
+
 /**
  * The public facade of `sellers` (sellers design 7.1). Every method takes the caller's
  * `CallContext` first, unchanged, and is a thin call of one use case, so the gate runs (PF 6.4
@@ -276,6 +288,25 @@ export interface SellersFacade {
     Result<
       ReadonlyMap<Id<'Seller'>, string>,
       AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  >;
+
+  /**
+   * `applySignupCultures` (multi-culture package 2; ADR-0048): attaches a new seller to the
+   * cultures it chose at signup. `cultures` is nothing or `universal` (every ACTIVE culture of the
+   * Market) or a list of culture codes (1 to 20, each an ACTIVE culture; an empty list, an unknown
+   * or an inactive code is `validation.failed` with `cultures.N`). A culture with no required
+   * certification type is approved at once (audited); one with a required type is requested and
+   * only a reviewer approves it, with the seller's valid certificate. A membership the seller
+   * already has is left as it is. Rule `system`. Not exposed over HTTP.
+   */
+  applySignupCultures(
+    context: CallContext,
+    request: { readonly sellerId: Id<'Seller'>; readonly cultures?: unknown },
+  ): Promise<
+    Result<
+      SignupCulturesAttached,
+      AccessDenied | SellersValidationFailed | SellerFileNotFound | SellersUnavailable
     >
   >;
 }

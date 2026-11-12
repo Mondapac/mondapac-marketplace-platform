@@ -2434,6 +2434,17 @@
     }
   },
   {
+    "action": "sellers.cultures.attached-at-signup",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "approvedCultureIds": "listOf(id, max 200)",
+      "requestedCultureIds": "listOf(id, max 200)"
+    }
+  },
+  {
     "action": "sellers.minimum-order.changed",
     "targetType": "sellers.seller",
     "targetId": "id",

@@ -126,6 +126,20 @@ import { SellerActivitiesGetUseCase } from './application/use-cases/seller-activ
 import { SellerActivitiesSetUseCase } from './application/use-cases/seller-activities-set.use-case';
 import { SellerBusinessActivities } from './application/use-cases/seller-business-activities.use-case';
 import { SellerBusinessActivitiesSystem } from './application/use-cases/seller-business-activities-system.use-case';
+import { ApplySignupCultures } from './application/use-cases/apply-signup-cultures.use-case';
+import { SeedSellerCultures } from './application/use-cases/seed-seller-cultures.use-case';
+import { seedSellerCulturesJob } from './presentation/jobs/seed-seller-cultures.job';
+import { SellerCultureDecide } from './application/use-cases/seller-culture-decide.use-case';
+import { SellerCulturesAdminList } from './application/use-cases/seller-cultures-admin-list.use-case';
+import { SellerCulturesOwn } from './application/use-cases/seller-cultures-own.use-case';
+import { SellerCulturesRequest } from './application/use-cases/seller-cultures-request.use-case';
+import { CULTURE_DIRECTORY } from './application/ports/culture-directory';
+import { SELLER_CERTIFICATE_DIRECTORY } from './application/ports/seller-certificate-directory';
+import { SELLER_CULTURE_REPOSITORY } from './application/ports/seller-culture.repository';
+import {
+  SellerCulturesAdminController,
+  SellerOwnCulturesController,
+} from './presentation/seller-cultures.controller';
 import { SellerActivitiesController } from './presentation/seller-activities.controller';
 import { AllowedProductTypesSystem } from './application/use-cases/allowed-product-types-system.use-case';
 import { AllowedProductTypes } from './application/use-cases/allowed-product-types.use-case';
@@ -232,6 +246,10 @@ const PORT = {
   categoryProposalsSetting: CATEGORY_PROPOSALS_SETTING_REPOSITORY,
   businessActivities: SELLER_BUSINESS_ACTIVITY_REPOSITORY,
   activityDirectory: BUSINESS_ACTIVITY_DIRECTORY,
+  sellerCultures: SELLER_CULTURE_REPOSITORY,
+  applySignup: ApplySignupCultures,
+  cultureDirectory: CULTURE_DIRECTORY,
+  certificateDirectory: SELLER_CERTIFICATE_DIRECTORY,
   storeProfiles: STORE_PROFILE_REPOSITORY,
   publishedStores: PUBLISHED_STORE_REPOSITORY,
   minimumOrderPolicy: MINIMUM_ORDER_POLICY,
@@ -341,6 +359,8 @@ const REVIEW_DECISION_PORTS = {
     BlogAccessController,
     CategoryProposalsSettingController,
     SellerActivitiesController,
+    SellerOwnCulturesController,
+    SellerCulturesAdminController,
     SellerListController,
     ServiceAreaNamesController,
     SellerHealthController,
@@ -730,6 +750,50 @@ const REVIEW_DECISION_PORTS = {
       ids: true,
       clock: true,
     }),
+    // A seller's culture memberships (multi-culture package 2; ADR-0047 decision 3).
+    useCaseProvider(ApplySignupCultures, {
+      unitOfWork: true,
+      files: true,
+      sellerCultures: true,
+      cultureDirectory: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(SeedSellerCultures, {
+      unitOfWork: true,
+      sellerCultures: true,
+      applySignup: true,
+    }),
+    useCaseProvider(SellerCulturesOwn, {
+      unitOfWork: true,
+      sellerCultures: true,
+      cultureDirectory: true,
+    }),
+    useCaseProvider(SellerCulturesRequest, {
+      unitOfWork: true,
+      files: true,
+      sellerCultures: true,
+      cultureDirectory: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(SellerCulturesAdminList, {
+      unitOfWork: true,
+      files: true,
+      sellerCultures: true,
+      cultureDirectory: true,
+      certificateDirectory: true,
+    }),
+    useCaseProvider(SellerCultureDecide, {
+      unitOfWork: true,
+      files: true,
+      sellerCultures: true,
+      cultureDirectory: true,
+      certificateDirectory: true,
+      outbox: true,
+      clock: true,
+    }),
     useCaseProvider(SellerBusinessActivities, { unitOfWork: true, businessActivities: true }),
     useCaseProvider(SellerBusinessActivitiesSystem, {
       unitOfWork: true,
@@ -787,6 +851,7 @@ const REVIEW_DECISION_PORTS = {
         CarrierPickupRead,
         PickupPostcodes,
         OperatingZones,
+        ApplySignupCultures,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -809,6 +874,7 @@ const REVIEW_DECISION_PORTS = {
         carrierPickup: CarrierPickupRead,
         pickupPostcodes: PickupPostcodes,
         operatingZones: OperatingZones,
+        applySignupCultures: ApplySignupCultures,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -831,6 +897,7 @@ const REVIEW_DECISION_PORTS = {
           carrierPickup,
           pickupPostcodes,
           operatingZones,
+          applySignupCultures,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by
@@ -921,6 +988,7 @@ const REVIEW_DECISION_PORTS = {
         RunSellerHealth,
         RunSellerHealthRequests,
         PurgeSellerHealth,
+        SeedSellerCultures,
       ],
       (
         backfill: BackfillSellerFiles,
@@ -930,6 +998,7 @@ const REVIEW_DECISION_PORTS = {
         health: RunSellerHealth,
         healthRequests: RunSellerHealthRequests,
         purgeHealth: PurgeSellerHealth,
+        seedCultures: SeedSellerCultures,
       ) => [
         backfillSellerFilesJob(backfill),
         purgeExpiredJob(purge),
@@ -938,28 +1007,33 @@ const REVIEW_DECISION_PORTS = {
         sellerHealthJob(health),
         sellerHealthRequestsJob(healthRequests),
         purgeSellerHealthJob(purgeHealth),
+        seedSellerCulturesJob(seedCultures),
       ],
     ),
     registerSubscriptionsFrom(
       'sellers',
-      [CreateSellerFile, AfterSubmission, CloseDecision],
+      [CreateSellerFile, AfterSubmission, CloseDecision, ApplySignupCultures],
       (
         createFile: CreateSellerFile,
         afterSubmission: AfterSubmission,
         closeDecision: CloseDecision,
+        applySignupCultures: ApplySignupCultures,
       ) => [
-        ...sellerFileSubscriptions(createFile, afterSubmission),
+        ...sellerFileSubscriptions(createFile, afterSubmission, applySignupCultures),
         ...decisionSubscriptions(closeDecision),
       ],
     ),
   ],
-  // STORE_TEXT_CLAIM_CHECK and BUSINESS_ACTIVITY_DIRECTORY: SellerStoreProfileModule binds them.
+  // STORE_TEXT_CLAIM_CHECK, BUSINESS_ACTIVITY_DIRECTORY, CULTURE_DIRECTORY and
+  // SELLER_CERTIFICATE_DIRECTORY: SellerStoreProfileModule binds them.
   // SELLER_HEALTH_SIGNALS: SellerHealthModule binds the three feeds to it at start.
   exports: [
     SELLERS_FACADE,
     APPROVED_SELLER_ZONES,
     STORE_TEXT_CLAIM_CHECK,
     BUSINESS_ACTIVITY_DIRECTORY,
+    CULTURE_DIRECTORY,
+    SELLER_CERTIFICATE_DIRECTORY,
     SELLER_HEALTH_SIGNALS,
   ],
 })

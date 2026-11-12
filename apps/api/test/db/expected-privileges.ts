@@ -317,6 +317,21 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'sellers.seller_business_activity_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Multi-culture package 2 (ADR-0047 decision 3): a membership is never deleted; a request, a
+    // decision and a new request after a rejection update only these columns.
+    'sellers.seller_cultures': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by',
+        'reason',
+        'requested_at',
+        'requested_by',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
     'sellers.seller_admin_settings': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.seller_tax_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.store_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
