@@ -990,6 +990,38 @@
         "unknown": "Something went wrong. Try again."
       }
     },
+    "health-queue": {
+      "title": "Sellers that need a look",
+      "link": "Sellers that need a look",
+      "back": "Back to sellers",
+      "intro": "Sellers whose latest health is Unhealthy, worst score first. Open a seller to see the measures and the trend.",
+      "col": {
+        "seller": "Seller",
+        "score": "Score",
+        "lowest": "Lowest measure",
+        "measured": "Measured"
+      },
+      "unnamed": "Unnamed store",
+      "unhealthy": "Unhealthy",
+      "metric": {
+        "seller-cancellations": "Cancellations by the seller",
+        "late-ready": "Orders ready late",
+        "customer-rating": "Customer rating",
+        "lost-disputes": "Disputes lost",
+        "reports": "Reports"
+      },
+      "empty": {
+        "title": "No seller needs a look",
+        "body": "No seller is in the Unhealthy band right now."
+      },
+      "truncated": "Only the worst sellers are shown.",
+      "unavailable": "We couldn't load the sellers. Try again.",
+      "no-access": {
+        "title": "You don't have access to this page",
+        "body": "Ask an administrator for the permission to view sellers."
+      },
+      "informs": "Health only informs. Nothing happens to a seller because of its score."
+    },
     "health": {
       "title": "Seller health",
       "none": "No night has measured this seller yet.",
@@ -6963,6 +6995,88 @@
         "too-many": "Use at most {maxSynonyms} synonyms per language.",
         "name-missing": "Add a name in this language before its synonyms.",
         "refused": "This value was not accepted."
+      }
+    },
+    "suggestions": {
+      "title": "Tag suggestions",
+      "intro": "Sellers ask for tags the list does not have. Decide each one; the seller is told by email.",
+      "tabs": "Tags sections",
+      "tab": {
+        "tags": "Tags",
+        "suggestions": "Suggestions",
+        "suggestions-count": "Suggestions ({count})"
+      },
+      "waiting": "{count} waiting",
+      "list-label": "Open tag suggestions",
+      "loading": "Loading tag suggestions",
+      "load-failed": "Could not load tag suggestions.",
+      "empty": "No tag suggestions waiting",
+      "empty-body": "When a seller suggests a tag you will see it here.",
+      "no-access": {
+        "title": "You do not have access to tag suggestions",
+        "body": "Deciding tag suggestions needs the tag suggestion review permission. Ask an owner of the team to grant it."
+      },
+      "open": "Open",
+      "product": "Product {product}",
+      "unknown-product": "unknown product",
+      "seller": "Seller",
+      "approve": "Approve",
+      "map": "Map to existing tag",
+      "reject": "Reject",
+      "cancel": "Cancel",
+      "approve-for": "Approve “{label}”",
+      "map-for": "Map “{label}” to an existing tag",
+      "reject-for": "Reject “{label}”",
+      "approve-needs-manage": "Approving needs permission to manage tags.",
+      "approve-note": "This creates a new tag. The seller is emailed. Their product is not changed; they add the tag themselves.",
+      "name": "Tag name",
+      "name-help": "Shown to shoppers in the default language ({language}).",
+      "group-label": "Group",
+      "group-choose": "Choose a group",
+      "group": {
+        "occasion": "Occasion",
+        "cuisine": "Cuisine",
+        "use": "Use"
+      },
+      "slug": "Slug",
+      "slug-help": "Used in addresses and filters. Letters, digits and hyphens.",
+      "slug-bad": "Use lower case letters, digits and single hyphens.",
+      "approve-confirm": "Create tag",
+      "map-to": "Existing tag",
+      "map-placeholder": "Search tags",
+      "map-confirm": "Map tag",
+      "map-none": "There are no active tags to map to.",
+      "picker": {
+        "search": "Search tags",
+        "empty": "No active tags match",
+        "loading": "Loading tags...",
+        "retry": "Try again",
+        "failed": "Could not load tags. Try again."
+      },
+      "reason": "Reason",
+      "reason-help": "The seller reads this in the email and on their Tag suggestions page.",
+      "reject-confirm": "Reject suggestion",
+      "field-error": "Check this field.",
+      "decided": {
+        "approved": "Tag created. The seller has been emailed.",
+        "mapped": "Suggestion mapped to the tag. The seller has been emailed.",
+        "rejected": "Suggestion rejected. The seller has been emailed."
+      },
+      "notice": {
+        "stale": "That suggestion was already decided or changed by someone else. The list has been refreshed.",
+        "reload-failed": "The list may be out of date. Reload to see the latest."
+      },
+      "error": {
+        "invalid": "Check the fields and try again.",
+        "claim-word": "A tag name cannot claim a certification such as halal or organic. Change the name or slug.",
+        "locale-uncheckable": "The name could not be checked in this language. Try a different name.",
+        "term-taken": "A tag with this name, slug or synonym already exists. Map the suggestion to it instead.",
+        "topic-invalid": "That tag cannot be used. Pick another active tag.",
+        "denied": "You do not have permission to do this.",
+        "csrf": "Your session expired. Reload the page.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "unavailable": "Could not reach the server. Try again.",
+        "unknown": "Something went wrong. Try again."
       }
     }
   },

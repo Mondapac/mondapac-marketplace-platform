@@ -34,11 +34,18 @@ const ALLOWED_FUNCTIONS: readonly (readonly string[])[] = [
   ['pg_catalog', 'unnest'],
   // Full-text search (ADR-0030 amendment, `search` module): pure, read-only and deterministic.
   ['websearch_to_tsquery'],
+  // The prefix query of the suggest route (search 1b): the caller builds the text from letters and
+  // digits only (`word & word:*`), so it is never a syntax error; same exact shape as above.
+  ['to_tsquery'],
   ['ts_rank'],
 ];
 
 /** The text-search functions; each is allowed in one exact shape only (see `checkFunction`). */
-const TEXT_SEARCH_FUNCTIONS: ReadonlySet<string> = new Set(['websearch_to_tsquery', 'ts_rank']);
+const TEXT_SEARCH_FUNCTIONS: ReadonlySet<string> = new Set([
+  'websearch_to_tsquery',
+  'to_tsquery',
+  'ts_rank',
+]);
 
 /** The comparison operators a statement may use; a qualified or other operator is refused. */
 const ALLOWED_OPERATORS: ReadonlySet<string> = new Set([
@@ -242,15 +249,15 @@ function isParamCast(node: unknown, type: string): boolean {
   );
 }
 
-/** `websearch_to_tsquery(...)` as an operand; its own arguments are checked when it is visited. */
+/**
+ * `websearch_to_tsquery(...)` or `to_tsquery(...)` as an operand; its own arguments are checked
+ * when it is visited.
+ */
 function isTsQueryCall(node: unknown): boolean {
   const entry = only(node);
-  return (
-    entry !== null &&
-    entry[0] === 'FuncCall' &&
-    isNode(entry[1]) &&
-    strings(entry[1].funcname)?.join('.') === 'websearch_to_tsquery'
-  );
+  if (entry === null || entry[0] !== 'FuncCall' || !isNode(entry[1])) return false;
+  const name = strings(entry[1].funcname)?.join('.');
+  return name === 'websearch_to_tsquery' || name === 'to_tsquery';
 }
 
 /** `ts_rank(...)` as an operand; its own arguments are checked when it is visited. */
@@ -304,7 +311,8 @@ function checkFunction(call: Node, walk: Walk): void {
   const args = Array.isArray(call.args) ? call.args : [];
   if (name !== null && TEXT_SEARCH_FUNCTIONS.has(name[name.length - 1]!)) {
     // Exact shapes only (ADR-0030 amendment): ts_rank(<column>, websearch_to_tsquery(...)) and
-    // websearch_to_tsquery($n::regconfig, $m::text), both arguments casts of bound parameters.
+    // websearch_to_tsquery or to_tsquery ($n::regconfig, $m::text), both arguments casts of bound
+    // parameters.
     const last = name[name.length - 1]!;
     const shaped =
       name.length === 1 &&

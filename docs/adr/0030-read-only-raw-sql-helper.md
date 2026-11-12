@@ -198,6 +198,20 @@ needs none (data catalog 6.3). Its cycle trigger is migration SQL, ruled outside
   websearch_to_tsquery`, `ts_rank`) with an `EXISTS` on `search.offer_documents`, both with
   `market_id = $1`; its limit and offset travel as text with `::text::int4` casts. All values are
   bound; no new function or operator.
+- Amended 2026-11-11 (search 1b; reviews by the agents Ali, Hassan and Mojtaba to be recorded on the
+  PR): one more function, `to_tsquery`, in the exact shape `websearch_to_tsquery` already has
+  (`to_tsquery($n::regconfig, $m::text)`, both arguments casts of bound parameters, also as the
+  operand of `@@` and of `ts_rank`). It serves the header suggestions (prefix match on the last typed
+  word, `word & word:*`). The application builds the text from letters and digits only (no operator,
+  quote or space is left in a word), so it cannot raise a syntax error, and it travels as a bound
+  value like every other. Building safe text is a caller obligation, not something the helper checks:
+  the only builder is `parseSuggestQuery` (`modules/search/domain/suggest-query.ts`), and a spec fails
+  when a statement other than the three below contains `to_tsquery`. Three statements: `search.offer-suggest`
+  (one Offer per product by `DISTINCT ON`, a `CASE` of `~~*` comparisons of the name with bound
+  patterns and `@@` against a weight-A copy of the query as the order tier, then `ts_rank`), `search.offer-suggest-scope-rows` (one row per product,
+  counted by the caller, capped at 1000) and `search.store-suggest` (like
+  `search.store-search`, with the same `EXISTS`). `~~*` was already an allowed operator, and `DISTINCT ON` is a select clause, not a function. No
+  aggregate, no other function, no new cast.
 
 ## Alternatives considered
 - **Prisma with `relationLoadStrategy: 'join'` (option B):** no raw SQL, but one statement is

@@ -55,6 +55,9 @@ import { RebuildOfferIndex } from './application/use-cases/rebuild-offer-index.u
 import { ViewProductDetail } from './application/use-cases/view-product-detail.use-case';
 import { SearchProducts } from './application/use-cases/search-products.use-case';
 import { SearchStores } from './application/use-cases/search-stores.use-case';
+import { SuggestSearch } from './application/use-cases/suggest-search.use-case';
+import type { SuggestDependencies } from './application/suggest-dependencies';
+import { SUGGEST_CACHE } from './application/ports/suggest-cache';
 import { SyncProductRatings } from './application/use-cases/sync-product-ratings.use-case';
 import type { RatingSyncDependencies } from './application/rating-sync-dependencies';
 import { SyncOfferDocuments } from './application/use-cases/sync-offer-documents.use-case';
@@ -206,6 +209,33 @@ function recommendationProvider<U>(
   };
 }
 
+const SUGGEST_PORTS: readonly [keyof SuggestDependencies, InjectionToken][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['index', OFFER_SEARCH_INDEX],
+  ['policy', SEARCH_POLICY],
+  ['visibility', PUBLIC_VISIBILITY],
+  ['images', PRODUCT_IMAGES],
+  ['categoryTree', CATEGORY_TREE_SOURCE],
+  ['storeDirectory', STORE_DIRECTORY],
+  ['storeDocuments', STORE_DOCUMENT_REPOSITORY],
+  ['cache', SUGGEST_CACHE],
+];
+
+/** The suggest read has its own dependency object. */
+function suggestProvider(): FactoryProvider<SuggestSearch> {
+  return {
+    provide: SuggestSearch,
+    inject: [USE_CASE_GATE, ...SUGGEST_PORTS.map(([, token]) => token)],
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+      new SuggestSearch(
+        gate,
+        Object.fromEntries(
+          SUGGEST_PORTS.map(([name], index) => [name, values[index]]),
+        ) as unknown as SuggestDependencies,
+      ),
+  };
+}
+
 const RATING_SYNC_PORTS: readonly [keyof RatingSyncDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['ratings', PRODUCT_RATING_REPOSITORY],
@@ -302,6 +332,7 @@ function productDetailProvider<U>(
     recommendationProvider(ListRecentlyViewedGuest),
     productDetailProvider(ViewProductDetail),
     ratingSyncProvider(),
+    suggestProvider(),
     reindexProvider(),
     requestReindexProvider,
     {
