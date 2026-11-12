@@ -43,6 +43,7 @@ import { ConfirmPayment } from './application/use-cases/confirm-payment.use-case
 import { SellerHealthCountsQuery } from './application/use-cases/seller-health-counts.use-case';
 import { MyDeliveredSellerOrders } from './application/use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './application/use-cases/seller-order-customer-names.use-case';
+import { RefundNoticeQuery } from './application/use-cases/refund-notice.use-case';
 import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
 import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deliveries.use-case';
 import { RecordCarrierProgress } from './application/use-cases/record-carrier-progress.use-case';
@@ -232,6 +233,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OrderNoticeQuery,
       OrderPaymentRefQuery,
       ShipmentNoticeQuery,
+      RefundNoticeQuery,
       SellerOrderCustomerNames,
       OwnOpenObligationsQuery,
       OpenObligationsOfQuery,
@@ -260,6 +262,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         OrderPaymentRefQuery,
         AdminOpenObligationsOfQuery,
         SellerHealthCountsQuery,
+        RefundNoticeQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -273,6 +276,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         paymentRef: OrderPaymentRefQuery,
         adminOpenObligations: AdminOpenObligationsOfQuery,
         healthCounts: SellerHealthCountsQuery,
+        refundNotice: RefundNoticeQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -286,6 +290,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           paymentRef,
           adminOpenObligations,
           healthCounts,
+          refundNotice,
         ),
     },
     {

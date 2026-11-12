@@ -1,6 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { EventDelivery } from '../../../../platform/events/event-delivery';
 import type { SubscriberContext } from '../../../../platform/events/event-subscriptions';
+import type { SendItemUnavailableRefundMail } from '../../application/use-cases/send-item-unavailable-refund-mail.use-case';
 import type { SendOrderConfirmationMail } from '../../application/use-cases/send-order-confirmation-mail.use-case';
 import type { SendOrderShippedMail } from '../../application/use-cases/send-order-shipped-mail.use-case';
 import type { SendSellerNewOrderMail } from '../../application/use-cases/send-seller-new-order-mail.use-case';
@@ -14,7 +15,7 @@ const accepting = { execute: () => Promise.resolve(ok({ code: 'order-mail.sent',
 const delivery = {} as EventDelivery;
 const context = {} as SubscriberContext;
 const envelope = {
-  payload: { orderId: 'o', sellerOrderId: 's', sellerId: 'x' },
+  payload: { orderId: 'o', sellerOrderId: 's', sellerId: 'x', refundId: 'r' },
 } as never;
 
 describe('order mail subscriptions', () => {
@@ -23,8 +24,12 @@ describe('order mail subscriptions', () => {
       refusing as unknown as SendOrderConfirmationMail,
       refusing as unknown as SendSellerNewOrderMail,
       refusing as unknown as SendOrderShippedMail,
+      refusing as unknown as SendItemUnavailableRefundMail,
     );
     expect(subscriptions.map((s) => s.name)).toContain('notifications.order-shipped-mail');
+    expect(subscriptions.map((s) => s.name)).toContain(
+      'notifications.item-unavailable-refund-mail',
+    );
     for (const subscription of subscriptions) {
       await expect(subscription.handle(envelope, delivery, context)).rejects.toThrow(/refused/);
     }
@@ -35,6 +40,7 @@ describe('order mail subscriptions', () => {
       accepting as unknown as SendOrderConfirmationMail,
       accepting as unknown as SendSellerNewOrderMail,
       accepting as unknown as SendOrderShippedMail,
+      accepting as unknown as SendItemUnavailableRefundMail,
     );
     for (const subscription of subscriptions) {
       await expect(subscription.handle(envelope, delivery, context)).resolves.toBeUndefined();

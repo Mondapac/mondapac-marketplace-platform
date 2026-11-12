@@ -10,7 +10,14 @@ export {
   ORDERING_SELLER_ORDER_MARK_UNAVAILABLE,
   ORDERING_SELLER_ORDER_VIEW,
 } from './permissions';
-export { ORDERING_EVENTS, OrderPaid, OrderShipped, SellerOrderDelivered } from '../domain/events';
+export {
+  ORDERING_EVENTS,
+  OrderPaid,
+  OrderShipped,
+  RefundSucceeded,
+  SellerOrderDelivered,
+} from '../domain/events';
+export { SELLER_UNAVAILABLE_REASON, type RefundReason } from '../domain/refund';
 export {
   MAX_DELIVERED_SELLER_ORDERS,
   ORDERING_FACADE,
@@ -26,6 +33,8 @@ export {
   type OrderPaymentRefFailure,
   type SellerOrderCustomerName,
   type SellerOrderCustomerNamesFailure,
+  type RefundNotice,
+  type RefundNoticeFailure,
   type ShipmentNotice,
   type ShipmentNoticeFailure,
   type AuthorisedPayment,
