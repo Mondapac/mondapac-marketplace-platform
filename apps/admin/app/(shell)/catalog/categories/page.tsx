@@ -6,6 +6,7 @@ import {
   READ_PERMISSION,
   RESTRUCTURE_PERMISSION,
 } from '../../../../src/categories/types.ts';
+import { IMPORT_PERMISSION } from '../../../../src/categories/import/import-model.ts';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
 
@@ -29,6 +30,7 @@ export default async function CategoriesPage() {
         <CategoriesView
           canEdit={permissionKeys.includes(EDIT_PERMISSION)}
           canRestructure={permissionKeys.includes(RESTRUCTURE_PERMISSION)}
+          canImport={permissionKeys.includes(IMPORT_PERMISSION)}
           csrfToken={gate.session.csrfToken}
         />
       ) : (

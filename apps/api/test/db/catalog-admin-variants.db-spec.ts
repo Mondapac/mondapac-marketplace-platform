@@ -198,6 +198,7 @@ describe.each(TEST_MARKETS)('catalog admin variants reader in market %s (databas
       revision_kind: 'submission',
       base_revision_id: null,
       reverted_from_revision_id: null,
+      type_code: 'configurable',
       family_revision_id: familyRevisionId,
       definition_revision_ids: [],
       tax_category_code: 'standard',

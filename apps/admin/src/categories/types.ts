@@ -142,7 +142,7 @@ export interface DetailBody {
   readonly treeVersion: number;
 }
 
-export const DETAIL_TABS = ['details', 'products', 'history'] as const;
+export const DETAIL_TABS = ['details', 'attribute-links', 'products', 'history'] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 
 export interface ImpactBody {

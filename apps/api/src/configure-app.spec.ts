@@ -1,5 +1,7 @@
 import {
   isCategoryImageUploadRequest,
+  isCategoryImportUploadRequest,
+  isSlideImageUploadRequest,
   isPlatformProductImageUploadRequest,
   isStoreImageUploadRequest,
   isStoreProfileSaveRequest,
@@ -82,6 +84,34 @@ describe('isStoreProfileSaveRequest', () => {
     ['PUT', undefined],
   ])('is false for %s %s even with a session', (method, url) => {
     expect(isStoreProfileSaveRequest(method, url, OK)).toBe(false);
+  });
+});
+
+describe('isSlideImageUploadRequest', () => {
+  const ADMIN_OK = { cookie: '__Host-session-admin-AU=abc123_-XYZ', 'x-csrf-token': 'token' };
+
+  it('takes the large body of a POST of a slide image with an admin session and CSRF header', () => {
+    expect(isSlideImageUploadRequest('POST', '/storefront/admin/slide-images', ADMIN_OK)).toBe(
+      true,
+    );
+    expect(isSlideImageUploadRequest('POST', '/storefront/admin/slide-images/?x=1', ADMIN_OK)).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ['a GET', 'GET', '/storefront/admin/slide-images', ADMIN_OK],
+    ['another path', 'POST', '/storefront/admin/slides', ADMIN_OK],
+    ['no headers', 'POST', '/storefront/admin/slide-images', undefined],
+    ['no CSRF header', 'POST', '/storefront/admin/slide-images', { cookie: ADMIN_OK.cookie }],
+    [
+      'a seller cookie',
+      'POST',
+      '/storefront/admin/slide-images',
+      { cookie: '__Host-session-seller-AU=abc', 'x-csrf-token': 't' },
+    ],
+  ])('keeps the small body for %s', (_name, method, url, headers) => {
+    expect(isSlideImageUploadRequest(method, url, headers)).toBe(false);
   });
 });
 
@@ -172,5 +202,53 @@ describe('isPlatformProductImageUploadRequest', () => {
     ['POST', undefined],
   ])('is false for %s %s even with a session', (method, url) => {
     expect(isPlatformProductImageUploadRequest(method, url, ADMIN_OK)).toBe(false);
+  });
+});
+
+describe('isCategoryImportUploadRequest', () => {
+  const ADMIN = '__Host-session-admin-AU=abc123_-XYZ';
+  const ADMIN_OK = { cookie: ADMIN, 'x-csrf-token': 'token' };
+
+  it.each(['dry-run', 'apply'])(
+    'takes the large body of a POST to import/%s with an admin session and CSRF header',
+    (step) => {
+      expect(
+        isCategoryImportUploadRequest(
+          'POST',
+          `/catalog/admin/category-tree/import/${step}`,
+          ADMIN_OK,
+        ),
+      ).toBe(true);
+      expect(
+        isCategoryImportUploadRequest(
+          'POST',
+          `/catalog/admin/category-tree/import/${step}/?x=1`,
+          ADMIN_OK,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    ['no headers at all', undefined],
+    ['no CSRF header', { cookie: ADMIN }],
+    ['a seller cookie', { cookie: COOKIE, 'x-csrf-token': 't' }],
+  ])('keeps the 64 KiB parser for %s', (_, headers) => {
+    expect(
+      isCategoryImportUploadRequest('POST', '/catalog/admin/category-tree/import/dry-run', headers),
+    ).toBe(false);
+  });
+
+  it.each([
+    ['GET', '/catalog/admin/category-tree/import/dry-run'],
+    ['PUT', '/catalog/admin/category-tree/import/apply'],
+    ['POST', '/catalog/admin/category-tree/export'],
+    ['POST', '/catalog/admin/category-tree/import'],
+    ['POST', '/catalog/admin/category-tree/import/other'],
+    ['POST', '/catalog/admin/category-tree/import/dry-run/x'],
+    [undefined, '/catalog/admin/category-tree/import/apply'],
+    ['POST', undefined],
+  ])('keeps the 64 KiB parser for %s %s', (method, url) => {
+    expect(isCategoryImportUploadRequest(method, url, ADMIN_OK)).toBe(false);
   });
 });

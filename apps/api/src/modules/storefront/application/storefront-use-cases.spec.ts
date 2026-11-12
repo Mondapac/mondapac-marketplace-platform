@@ -48,6 +48,7 @@ import { ViewPublishedLandingPage } from './use-cases/view-published-landing-pag
 import { ViewPublishedStorefrontNavigation } from './use-cases/view-published-navigation.use-case';
 import { ViewPublishedStorefrontPage } from './use-cases/view-published-page.use-case';
 import { ViewServedPlacements } from './use-cases/view-served-placements.use-case';
+import { MemorySlideImageStore } from './slide-images/memory-slide-image-store';
 
 // The storefront use cases in memory on both Market fixtures, behind a gate that grants each
 // actor only its own keys: a content editor (read, edit, create, navigation edit) drafts pages
@@ -308,6 +309,9 @@ describe.each([['AU'], ['ZZ']] as const)('storefront pages and navigation in mar
       slides: new MemorySlides(),
       targets: new MemoryTargets(),
       links: undefined as never,
+      slideImages: new MemorySlideImageStore(),
+      imageProcessor: undefined as never,
+      objectStore: undefined as never,
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,

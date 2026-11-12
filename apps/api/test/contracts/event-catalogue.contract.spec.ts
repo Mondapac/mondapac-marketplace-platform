@@ -142,6 +142,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.admin-review-held-notice',
       'notifications.admin-review-reported-notice',
       'notifications.admin-seller-file-notice',
+      'notifications.item-unavailable-refund-mail',
       'notifications.order-confirmation-mail',
       'notifications.order-shipped-mail',
       'notifications.seller-access-approved-notice',
@@ -183,9 +184,12 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'pricing.retire-series-for-removed-variant',
       'promotions.cashback-on-delivery',
       'promotions.qualify-referral-on-delivery',
+      'search.index-approved-seller',
       'search.index-availability-changed',
+      'search.index-changed-category',
       'search.index-deleted-offer',
       'search.index-listing-changed-offer',
+      'search.index-moved-category',
       'search.index-moved-offer',
       'search.index-paused-product',
       'search.index-price-changed',
@@ -193,8 +197,11 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'search.index-published-revision',
       'search.index-reinstated-seller',
       'search.index-resumed-product',
+      'search.index-sell-unit-changed',
       'search.unindex-suspended-seller',
       'sellers.after-submission',
+      // Multi-culture package 2 (ADR-0048): a new seller's default "universal" cultures.
+      'sellers.apply-signup-cultures',
       'sellers.close-decision-approved',
       'sellers.close-decision-rejected',
       'sellers.create-file',
@@ -214,6 +221,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'promotions.qualify-referral-on-delivery',
     ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
+      'notifications.item-unavailable-refund-mail',
       'ordering.cancel-carrier-after-refund',
     ]);
     expect(subscriptions.subscribersOf('shipping.carrier-delivery-progressed.v1')).toEqual([
@@ -237,6 +245,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.subscribersOf('identity.seller-registered.v1')).toEqual([
       'identity.welcome-mail',
       'inventory.ensure-seller-inventory',
+      'sellers.apply-signup-cultures',
       'sellers.create-file',
     ]);
     // Inventory retires its items on catalog's retirements (design 3.5).
@@ -271,8 +280,17 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.subscribersOf('catalog.offer-listing-changed.v1')).toEqual([
       'search.index-listing-changed-offer',
     ]);
+    // ... and a sell unit switched off or on (V5) re-syncs its Offer's document (V8).
+    expect(subscriptions.subscribersOf('catalog.offer-sell-unit-changed.v1')).toEqual([
+      'search.index-sell-unit-changed',
+    ]);
+    // ... and search re-syncs the documents that name a renamed or moved category (search 1a).
+    expect(subscriptions.subscribersOf('catalog.platform-category-changed.v1')).toEqual([
+      'search.index-changed-category',
+    ]);
     expect(subscriptions.subscribersOf('catalog.platform-category-moved.v1')).toEqual([
       'catalog.report-moved-category',
+      'search.index-moved-category',
     ]);
     expect(subscriptions.subscribersOf('catalog.platform-category-merged.v1')).toEqual([
       'catalog.report-merged-category',
@@ -298,6 +316,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.seller-approved-mail',
       'inventory.ensure-seller-inventory-approved',
       'notifications.seller-access-approved-notice',
+      'search.index-approved-seller',
       'sellers.close-decision-approved',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-rejected.v1')).toEqual([

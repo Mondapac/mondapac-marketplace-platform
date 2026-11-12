@@ -1,4 +1,4 @@
-import { err, ok, parseId } from '@mondapac/shared-kernel';
+import { err, money, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import { expectSystemOnly } from '../../../../test/support/system-only-denial';
@@ -11,9 +11,11 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { CatalogFacade } from '../../catalog';
 import type { ContactEmailTarget, IdentityFacade } from '../../identity';
-import type { OrderingFacade, OrderNotice, ShipmentNotice } from '../../ordering';
+import type { OrderingFacade, OrderNotice, RefundNotice, ShipmentNotice } from '../../ordering';
 import { ConfigNotificationsPolicy } from '../infrastructure/config-notifications-policy';
 import type { OrderMailDependencies } from './order-mail-flow';
+import { mailAmount } from '../domain/order-mail';
+import { SendItemUnavailableRefundMail } from './use-cases/send-item-unavailable-refund-mail.use-case';
 import { SendOrderConfirmationMail } from './use-cases/send-order-confirmation-mail.use-case';
 import { SendOrderShippedMail } from './use-cases/send-order-shipped-mail.use-case';
 import { SendSellerNewOrderMail } from './use-cases/send-seller-new-order-mail.use-case';
@@ -66,6 +68,17 @@ const SHIPMENT: ShipmentNotice = {
   trackingUrl: null,
 };
 
+/** A refund of two units a seller marked unavailable: A$15.00 in AU, ¥1,500 in the ZZ fixture. */
+const refundOf = (code: 'AU' | 'ZZ'): RefundNotice => ({
+  orderId: ORDER,
+  accountId: ACCOUNT,
+  refundId: id<'Refund'>(0x31),
+  reason: 'item-unavailable',
+  requestedBy: 'seller',
+  amount: code === 'AU' ? money(1500n, 'AUD') : money(1500n, 'JPY'),
+  units: 2,
+});
+
 describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => {
   const market = testMarketContext(code, 'default');
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
@@ -76,6 +89,7 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
   let sendError: Error | null;
   let notice: ReturnType<OrderingFacade['orderNotice']>;
   let shipment: ReturnType<OrderingFacade['shipmentNotice']>;
+  let refundNotice: ReturnType<OrderingFacade['refundNotice']>;
   let addresses: Map<string, string | null>;
   let names: Map<Id<'Offer'>, string>;
   let unitOfWork: FakeUnitOfWork;
@@ -96,6 +110,7 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
     nextEvent = 1;
     notice = Promise.resolve(ok(NOTICE));
     shipment = Promise.resolve(ok(SHIPMENT));
+    refundNotice = Promise.resolve(ok(refundOf(code)));
     addresses = new Map<string, string | null>([
       [ACCOUNT, CUSTOMER_EMAIL],
       [SELLER_A, OWNER_A],
@@ -109,6 +124,7 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
     const ordering = {
       orderNotice: () => notice,
       shipmentNotice: () => shipment,
+      refundNotice: () => refundNotice,
     } as unknown as OrderingFacade;
     const catalog = {
       offerNames: () => Promise.resolve(ok(names)),
@@ -437,6 +453,81 @@ describe.each([['AU'], ['ZZ']] as const)('order emails in market %s', (code) => 
 
     it('is for the system actor only', async () => {
       await expectSystemOnly(code, (context) => shipped(1, context));
+      expect(sent).toEqual([]);
+    });
+  });
+  describe('item unavailable, refunded (customer, decision 6)', () => {
+    const unavailableMail = (eventNo = nextEvent++, context = system) =>
+      new SendItemUnavailableRefundMail(gate, deps).execute(context, {
+        delivery: delivery('notifications.item-unavailable-refund-mail', eventNo),
+        orderId: ORDER,
+        refundId: id<'Refund'>(0x31),
+      });
+
+    it('tells the customer how many units went back, the amount and the order link', async () => {
+      expect(await unavailableMail()).toEqual(ok({ code: 'order-mail.sent', sent: 1 }));
+      const mail = sent[0]!;
+      const page = markets.get(market.marketId).notifications?.customerOrderPage;
+      expect(mail.to).toBe(CUSTOMER_EMAIL);
+      expect(mail.subject).toBe('Part of your order is unavailable');
+      expect(mail.text).toContain(`Order reference: ${ORDER}`);
+      expect(mail.text).toContain('Items not supplied: 2');
+      expect(mail.text).toMatch(code === 'AU' ? /Refunded: .*15\.00/ : /Refunded: .*1,500/);
+      expect(mail.text).toContain(`${page}/${ORDER}`);
+    });
+
+    it('sends nothing for an admin refund, a refund that is gone, no order page or no address', async () => {
+      refundNotice = Promise.resolve(
+        ok({ ...refundOf(code), reason: 'damaged', requestedBy: 'admin' }),
+      );
+      expect(await unavailableMail()).toEqual(
+        ok({ code: 'order-mail.skipped', reason: 'refund.not-unavailable' }),
+      );
+      refundNotice = Promise.resolve(err({ code: 'ordering.refund-not-found' as const }));
+      expect(await unavailableMail()).toEqual(
+        ok({ code: 'order-mail.skipped', reason: 'order.gone' }),
+      );
+      refundNotice = Promise.resolve(ok(refundOf(code)));
+      addresses.set(ACCOUNT, null);
+      expect(await unavailableMail()).toEqual(
+        ok({ code: 'order-mail.skipped', reason: 'recipient.none' }),
+      );
+      addresses.set(ACCOUNT, CUSTOMER_EMAIL);
+      deps = { ...deps, policy: { ...deps.policy, customerOrderUrl: () => null } };
+      expect(await unavailableMail()).toEqual(
+        ok({ code: 'order-mail.skipped', reason: 'link.unconfigured' }),
+      );
+      expect(sent).toEqual([]);
+    });
+
+    it('throws a send failure back to the delivery and marks a repeat once', async () => {
+      sendError = new MailSendError('mail.transport-unreachable');
+      await expect(unavailableMail(1)).rejects.toThrow(MailSendError);
+      expect(unitOfWork.handled.size).toBe(0);
+      sendError = null;
+      await unavailableMail(1);
+      expect(await unavailableMail(1)).toEqual(ok({ code: 'order-mail.already-handled' }));
+    });
+
+    it('answers access denied when ordering refuses, and throws on an unexpected refusal', async () => {
+      refundNotice = Promise.resolve(err({ code: 'access.denied' as const }));
+      expect(await unavailableMail()).toEqual(err({ code: 'access.denied' }));
+      refundNotice = Promise.resolve(err({ code: 'validation.failed' as const }));
+      await expect(unavailableMail()).rejects.toThrow('the refund could not be read');
+      expect(sent).toEqual([]);
+      expect(unitOfWork.handled.size).toBe(0);
+    });
+
+    it('formats amounts from exact minor units, with no float rounding', () => {
+      expect(mailAmount(money(900719925474099312n, 'AUD'), 'en-AU')).toContain(
+        '9,007,199,254,740,993.12',
+      );
+      expect(mailAmount(money(7n, 'AUD'), 'en-AU')).toContain('0.07');
+      expect(mailAmount(money(1500n, 'JPY'), 'en-AU')).toMatch(/1,500$/);
+    });
+
+    it('is for the system actor only', async () => {
+      await expectSystemOnly(code, (context) => unavailableMail(1, context));
       expect(sent).toEqual([]);
     });
   });

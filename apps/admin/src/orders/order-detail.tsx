@@ -1,35 +1,67 @@
-import { BackLink, Banner, Card, DataList, EmailText, type DataListRow } from '@mondapac/ui';
+import {
+  BackLink,
+  Badge,
+  Banner,
+  Card,
+  DataList,
+  EmailText,
+  LinkButton,
+  type BadgeTone,
+  type DataListRow,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
+import type { ReactNode } from 'react';
 import { formatMoney } from '../pricing/format.ts';
 import { known } from '../sellers/format.ts';
 import { formatInstant } from '../shared/format.ts';
 import { numberFormat } from '../shared/intl.ts';
 import { shortId } from '../shared/short-id.ts';
 import { CopyOrderId } from './copy-order-id.tsx';
+import { NotesCard } from './notes-card.tsx';
+import { OrderMoreMenu, RefundButton } from './order-actions.tsx';
 import { FallbackId, FullId } from './fallback-id.tsx';
 import { orderEvents, type OrderEvent } from './order-activity.ts';
 import { FulfilmentBadge, OrderStatusBadge } from './status-badge.tsx';
 import {
   CANCEL_REASONS,
   DELIVERY_METHODS,
+  LOSS_BEARERS,
   PAYMENT_STATES,
+  REFUND_REASONS,
+  REFUND_STATES,
+  type AdminNote,
   type AdminOrder,
+  type AdminOrderDetail,
   type OrderLine,
+  type Refund,
   type SellerPart,
 } from './types.ts';
 
 /**
- * One order for support and oversight (read-only). The main column follows the money and the
- * goods: each seller's part, then the payment. The side column holds who ordered and what has
- * happened. The panel is English and left to right.
+ * One order for support and oversight. The main column follows the money and the goods: each
+ * seller's part, then the payment with its refunds. The side column holds who ordered, what has
+ * happened, the documents and the internal notes. With ordering.order.refund the More menu cancels
+ * and refunds the whole order while no seller has started, and each seller's card refunds that
+ * part (order detail decision 1). The panel is English and left to right.
  */
 export function OrderDetail({
   order,
   canViewCustomer,
+  canRefund,
+  canNote,
+  notes,
+  csrfToken,
 }: {
-  readonly order: AdminOrder;
+  readonly order: AdminOrderDetail;
   /** Whether the admin holds identity.customer-account.view; tells "hidden" from "failed to load". */
   readonly canViewCustomer: boolean;
+  /** ordering.order.refund: Cancel and refund, and Refund… per seller order. */
+  readonly canRefund: boolean;
+  /** ordering.order.note: add an internal note. */
+  readonly canNote: boolean;
+  /** The internal notes; null when they did not load. */
+  readonly notes: readonly AdminNote[] | null;
+  readonly csrfToken: string;
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -42,6 +74,7 @@ export function OrderDetail({
             {t('reference', { id: shortId(order.orderId) })}
           </h1>
           <OrderStatusBadge status={order.status} />
+          <OrderMoreMenu order={order} canRefund={canRefund} csrfToken={csrfToken} />
         </div>
         <p className="text-sm text-fg-muted break-all">{order.orderId}</p>
         <p className="text-sm text-fg-muted">
@@ -72,6 +105,14 @@ export function OrderDetail({
                 paid={order.status === 'confirmed'}
                 index={index + 1}
                 count={order.sellerOrders.length}
+                action={
+                  <RefundButton
+                    order={order}
+                    part={part}
+                    canRefund={canRefund}
+                    csrfToken={csrfToken}
+                  />
+                }
               />
             ))
           )}
@@ -80,13 +121,20 @@ export function OrderDetail({
         <div className="flex min-w-0 flex-col gap-4">
           <CustomerCard order={order} canView={canViewCustomer} />
           <ActivityCard order={order} />
+          <DocumentsCard order={order} />
+          <NotesCard
+            orderId={order.orderId}
+            notes={notes}
+            canWrite={canNote}
+            csrfToken={csrfToken}
+          />
         </div>
       </div>
     </div>
   );
 }
 
-function PaymentCard({ order }: { readonly order: AdminOrder }) {
+function PaymentCard({ order }: { readonly order: AdminOrderDetail }) {
   const t = useTranslations('orders');
   const locale = useLocale();
   const rows: readonly DataListRow[] = [
@@ -126,6 +174,109 @@ function PaymentCard({ order }: { readonly order: AdminOrder }) {
   return (
     <Card title={t('detail.payment')}>
       <DataList rows={rows} missing={t('none')} />
+      <RefundList order={order} />
+    </Card>
+  );
+}
+
+/** The refunds of the order, newest first, with the seller order each gave back from. */
+function RefundList({ order }: { readonly order: AdminOrderDetail }) {
+  const t = useTranslations('orders');
+  const locale = useLocale();
+  return (
+    <section className="flex flex-col gap-2 border-t border-line pt-3">
+      <h3 className="font-semibold">{t('refunds.title')}</h3>
+      {order.refunds.length === 0 ? (
+        <p className="text-sm text-fg-muted">
+          {order.refundsEnabled ? t('refunds.none') : t('refunds.none-disabled')}
+        </p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-line-row">
+          {order.refunds.map((refund) => (
+            <RefundRow key={refund.refundId} order={order} refund={refund} locale={locale} />
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+const REFUND_TONE: Readonly<Record<string, BadgeTone>> = {
+  pending: 'attention',
+  succeeded: 'success',
+  failed: 'critical',
+};
+
+function RefundRow({
+  order,
+  refund,
+  locale,
+}: {
+  readonly order: AdminOrderDetail;
+  readonly refund: Refund;
+  readonly locale: string;
+}) {
+  const t = useTranslations('orders');
+  const part = order.sellerOrders.find((each) => each.sellerOrderId === refund.sellerOrderId);
+  const seller =
+    part === undefined
+      ? t('detail.seller', { id: shortId(refund.sellerOrderId) })
+      : part.storeName?.trim() || t('detail.seller', { id: shortId(part.sellerId) });
+  const units = refund.lines.reduce((sum, line) => sum + line.quantity, 0);
+  return (
+    <li className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2 font-medium">
+          <span>{seller}</span>
+          <Badge tone={REFUND_TONE[refund.state] ?? 'neutral'}>
+            {t(`refund-state.${known(refund.state, REFUND_STATES)}`)}
+          </Badge>
+        </div>
+        <div className="text-sm text-fg-muted">
+          {t(`actions.refund-reason.${known(refund.reason, REFUND_REASONS)}`)}
+          {' · '}
+          {t('refunds.units', { units })}
+          {refund.shipping === null ? '' : ` · ${t('refunds.with-shipping')}`}
+          {' · '}
+          {t(`refunds.loss.${known(refund.lossBearer, LOSS_BEARERS)}`)}
+          {' · '}
+          {formatInstant(refund.requestedAt, locale)}
+        </div>
+      </div>
+      {refund.state === 'failed' ? (
+        <div className="text-fg-muted tabular-nums">
+          <span className="line-through">{formatMoney(refund.amount, locale)}</span>{' '}
+          {t('refunds.not-refunded')}
+        </div>
+      ) : (
+        <div className="font-medium tabular-nums">{formatMoney(refund.amount, locale)}</div>
+      )}
+    </li>
+  );
+}
+
+/**
+ * The order's document: an order confirmation, printed from its own page, once the order is
+ * paid. A credit note is named on its refund when one exists.
+ */
+function DocumentsCard({ order }: { readonly order: AdminOrderDetail }) {
+  const t = useTranslations('orders.documents');
+  const paid = order.status === 'confirmed' && order.confirmedAt !== null;
+  const credits = order.refunds.filter((refund) => refund.creditNoteId !== null).length;
+  return (
+    <Card title={t('title')}>
+      {paid ? (
+        <div className="flex flex-col items-start gap-2">
+          <LinkButton variant="secondary" href={`/orders/${order.orderId}/document`}>
+            {t('confirmation')}
+          </LinkButton>
+          {credits === 0 ? null : (
+            <p className="text-sm text-fg-muted">{t('credit-notes', { count: credits })}</p>
+          )}
+        </div>
+      ) : (
+        <p className="text-sm text-fg-muted">{t('not-paid')}</p>
+      )}
     </Card>
   );
 }
@@ -241,11 +392,14 @@ function SellerPartCard({
   paid,
   index,
   count,
+  action,
 }: {
   readonly part: SellerPart;
   readonly paid: boolean;
   readonly index: number;
   readonly count: number;
+  /** Refund… for this part (rendered by the page with the admin's permission). */
+  readonly action: ReactNode;
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -295,6 +449,7 @@ function SellerPartCard({
         <dt className="font-semibold">{t('field.part-total')}</dt>
         <dd className="text-end font-semibold tabular-nums">{formatMoney(part.total, locale)}</dd>
       </dl>
+      {action}
     </Card>
   );
 }

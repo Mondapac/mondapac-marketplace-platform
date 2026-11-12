@@ -9,7 +9,18 @@ import { syncOffers, SYNC_BATCH, type SyncCounts } from '../sync-offers';
 export type SyncOfferDocumentsInput =
   | { readonly offerIds: readonly Id<'Offer'>[] }
   | { readonly productId: Id<'Product'> }
-  | { readonly sellerId: Id<'Seller'> };
+  | {
+      readonly sellerId: Id<'Seller'>;
+      /**
+       * The seller was just approved, so sellers must already show a public store (its name and
+       * address). Sellers records them in a unit after identity's approval commits, so the event
+       * can arrive first: then the call throws and the delivery is retried, rather than indexing
+       * the seller's Offers without the store name (Mojtaba D4 on #832).
+       */
+      readonly publicStoreRequired?: true;
+    }
+  /** The Offers whose document names this category or one under it (a rename or a move). */
+  | { readonly categoryId: Id<'Category'> };
 
 /** The most pages of one product's or seller's Offers read in one call (a safety stop). */
 const MAX_PRODUCT_PAGES = 50;
@@ -40,13 +51,22 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
     context: CallContext,
     input: SyncOfferDocumentsInput,
   ): Promise<Result<SyncCounts, never>> {
+    if ('sellerId' in input && input.publicStoreRequired === true) {
+      const stores = await this.deps.storeDirectory.publicStores(context, [input.sellerId]);
+      if (stores === null) throw new Error('search: store names unavailable');
+      if (!stores.has(input.sellerId)) {
+        throw new Error('search: the approved seller has no public store yet');
+      }
+    }
     const { offers, upserted, deleted } =
       'offerIds' in input
         ? {
             offers: input.offerIds.length,
             ...(await syncOffers(this.deps, context, input.offerIds)),
           }
-        : await this.#syncScope(context, input);
+        : 'categoryId' in input
+          ? await this.#syncCategory(context, input.categoryId)
+          : await this.#syncScope(context, input);
     const counts = { upserted, deleted };
     this.#logger.log({
       msg: 'search.documents-synced',
@@ -56,6 +76,28 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
       correlationId: context.correlationId,
     });
     return ok(counts);
+  }
+
+  /**
+   * A category was renamed or moved: re-syncs the Offers whose document names it or a category
+   * under it (their text holds the names of every level). Offers with no document have nothing
+   * to refresh; a published Offer not yet indexed is picked up by its own events and the rebuild.
+   */
+  async #syncCategory(
+    context: CallContext,
+    categoryId: Id<'Category'>,
+  ): Promise<SyncCounts & { readonly offers: number }> {
+    const { market } = context;
+    const subtree = await this.deps.categories.subtreeOf(context, categoryId);
+    if (subtree === null) throw new Error('search: category tree unavailable');
+    const indexed = await this.deps.unitOfWork.run(
+      market,
+      async () => ok(await this.deps.documents.offerIdsInCategories(market, subtree)),
+      { readOnly: true },
+    );
+    if (!indexed.ok) throw new Error('search: the index read failed');
+    const counts = await syncOffers(this.deps, context, indexed.value);
+    return { offers: indexed.value.length, ...counts };
   }
 
   /**

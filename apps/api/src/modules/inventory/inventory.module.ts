@@ -47,6 +47,9 @@ import { ReorderSources } from './application/use-cases/reorder-sources.use-case
 import { INVENTORY_PERMISSIONS } from './contracts/permissions';
 import { INVENTORY_FACADE } from './contracts/inventory.facade';
 import { InventoryFacadeImplementation } from './presentation/inventory.facade';
+import { AdminInventoryController } from './presentation/admin-inventory.controller';
+import { AdminOutOfStockVariants } from './application/use-cases/admin-out-of-stock-variants.use-case';
+import { VARIANT_STOCK_READER } from './application/ports/variant-stock.reader';
 import { SellerInventoryController } from './presentation/seller-inventory.controller';
 import { RekeyMovedOffer } from './application/use-cases/rekey-moved-offer.use-case';
 import { RetireSellUnits } from './application/use-cases/retire-sell-units.use-case';
@@ -68,6 +71,7 @@ const PORT = {
   policies: INVENTORY_POLICY_PROVIDER,
   stock: STOCK_REPOSITORY,
   offerStock: OFFER_STOCK_READER,
+  variantStock: VARIANT_STOCK_READER,
   reservations: RESERVATION_REPOSITORY,
   counters: RATE_COUNTER_REPOSITORY,
   counterKeys: RATE_COUNTER_KEYS,
@@ -124,7 +128,7 @@ function useCaseProvider<D, U>(
  */
 @Module({
   imports: [IdentityModule, CatalogModule],
-  controllers: [SellerInventoryController],
+  controllers: [SellerInventoryController, AdminInventoryController],
   providers: [
     PersistenceModule.outboxWriterFor('inventory'),
     registerEvents('inventory', INVENTORY_EVENTS),
@@ -166,6 +170,10 @@ function useCaseProvider<D, U>(
       offerStock: true,
       offers: true,
       clock: true,
+    }),
+    useCaseProvider(AdminOutOfStockVariants, {
+      unitOfWork: true,
+      variantStock: true,
     }),
     useCaseProvider(ListLowStock, {
       unitOfWork: true,

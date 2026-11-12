@@ -37,8 +37,14 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `position`, `scope`, `scopeId`). A fixed path, so `order` is never read as a slide id: the
     // slide route reads a UUID only, and one slide is read by the page server.
     'storefront/admin/slides/order',
+    // The storefront pages (storefront), read-only: the list, and the templates and modules the
+    // new-page form offers. One page is read by the page server.
+    'storefront/admin/pages',
+    'storefront/admin/catalogue',
     // The Market's wallet switch, and the admin credit requests (query: `status`, `cursor`, `limit`).
     'wallet/admin/settings',
+    // The Market's tax strategies and the active one (tax), read again after a change.
+    'tax/admin/strategies',
     'wallet/admin/credit-requests',
     // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
     // `limit`); one case is read by the page server and again after a decision.
@@ -80,14 +86,26 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'shipping/admin/delivery-settings/history',
     'shipping/admin/fleet-selection/history',
     'wallet/admin/settings/history',
+    // The promotions settings page (promotions): the Market switch, the first-order discount and
+    // the free-delivery thresholds, read again after a save.
+    'promotions/admin/settings',
+    'promotions/admin/first-order',
+    'promotions/admin/free-shipping',
     // The editable Market settings (settings; List paging), read again after a conflict.
     'settings/admin/market-settings',
+    // The blog posts of the Market (blog; query: `status`, `kind`, `owner`, `page`), read only.
+    'blog/admin/posts',
+    // The blog categories and tags the editor offers (blog), read only.
+    'blog/admin/taxonomy',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
     'catalog/admin/brands/merge-queue',
     // The category tree and one category with its path and history (catalog), read-only.
     'catalog/admin/categories',
+    // The export of the category tree as a file (catalog, categories C7a; query: `format`,
+    // `status`, `q`).
+    'catalog/admin/category-tree/export',
     // The business activities (catalog; query: `status`, `search`, `afterId`, `limit`).
     'catalog/admin/business-activities',
     // The product tags (catalog topics; query: `status`, `group`, `search`, `afterId`, `limit`).
@@ -98,6 +116,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/feature-sets',
     // The value suggestions waiting for a decision (catalog, attributes A5).
     'catalog/admin/attribute-suggestions',
+    // The tag suggestions waiting for a decision (catalog topics, product tags T5).
+    'catalog/admin/topic-suggestions',
     // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
     'catalog/admin/attribute-relaxations',
     // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
@@ -135,6 +155,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'customers/admin/account-deletion-settings',
     // One editable Market setting (settings): code, value and `expectedVersion`.
     'settings/admin/market-settings',
+    // The promotions Market switch and the first-order discount (promotions); a monthly budget
+    // above the Market threshold asks a fresh two-step code. The zone thresholds are below.
+    'promotions/admin/settings',
+    'promotions/admin/first-order',
   ]),
   DELETE: new Set([]),
   POST: new Set([
@@ -165,12 +189,19 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'notifications/admin/notices/read-all',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
+    // A new tax strategy, and the choice of the active one (tax; protected key).
+    'tax/admin/strategies',
+    'tax/admin/strategies/active',
     // A new storefront slide, as a draft (storefront).
     'storefront/admin/slides',
+    // A new storefront page from a template, as a draft (storefront).
+    'storefront/admin/pages',
     // Admin store credit (wallet), behind a fresh two-step code.
     'wallet/admin/credits',
     // A fresh two-step code for one admin action (identity).
     'identity/admin/step-up/verify',
+    // A new blog post, as a draft (blog).
+    'blog/admin/posts',
     // A new brand (catalog), and keeping a group of the merge queue apart.
     'catalog/admin/brands',
     'catalog/admin/brands/merge-queue/dismiss',
@@ -180,6 +211,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/topics',
     // A new platform category, as a hidden one (catalog, categories C3).
     'catalog/admin/categories',
+    // The category tree import (catalog, categories C7a): check a file, then apply it. Both carry
+    // the file as base64 and take the larger upload cap.
+    'catalog/admin/category-tree/import/dry-run',
+    'catalog/admin/category-tree/import/apply',
     // Add an attribute as a draft (catalog, attributes package A2).
     'catalog/admin/attributes',
     // The Bulk action menu of the product list (catalog): Activate, Deactivate and Delete over
@@ -194,6 +229,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/saved-filters',
     // A new manufacturer certificate, as a draft (certification): the body names the type only.
     'certification/admin/product-certificates',
+    // A new issuer, as Proposed (certification issuer registry).
+    'certification/admin/issuers',
   ]),
 };
 
@@ -203,6 +240,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
  */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   POST: [
+    // One order (ordering, order detail decisions 1 and 3): cancel and refund the whole order,
+    // refund one seller order, and write an internal note. The notes and the order are read by the
+    // page server.
+    'ordering/admin/orders/:id/cancel',
+    'ordering/admin/orders/:id/seller-orders/:id/refunds',
+    'ordering/admin/orders/:id/notes',
     // Start, resume or discard one checked import (catalog).
     'catalog/admin/platform-imports/:id/start',
     'catalog/admin/platform-imports/:id/resume',
@@ -217,6 +260,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
     'identity/admin/sellers/:id/second-factor/reset',
+    // Queue a recount of one seller's health (sellers, seller health package 5).
+    'sellers/admin/:id/health/recalculate',
     'sellers/admin/:id/review/approve',
     'sellers/admin/:id/review/reject',
     'pricing/admin/price-holds/:id/approve',
@@ -230,12 +275,16 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/products/:id/images/:id/take-down',
     // Submit (publish) a platform product's working copy (catalog).
     'catalog/admin/platform-products/:id/submit',
+    // Turn a Simple platform product into one with sizes, once (catalog, variants V9).
+    'catalog/admin/platform-products/:id/add-sizes',
     // Discard a platform product that was never submitted (catalog).
     'catalog/admin/platform-products/:id/discard',
     // A manufacturer certificate (certification): add its document, then send it for review, each
     // with the record version read. Approve, reject, suspend and revoke are not reachable here.
     'certification/admin/product-certificates/:id/documents',
     'certification/admin/product-certificates/:id/submit',
+    // Activate an issuer with the expert's approval, under the version read (certification).
+    'certification/admin/issuers/:id/activate',
     // Add a photo to a platform product's library (catalog, P1): a base64 photo, so the body cap
     // of this path is the larger image one.
     'catalog/admin/platform-products/:id/images',
@@ -265,6 +314,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/attribute-suggestions/:id/approve',
     'catalog/admin/attribute-suggestions/:id/map',
     'catalog/admin/attribute-suggestions/:id/reject',
+    // Decide a seller's tag suggestion with the version seen (catalog topics, product tags T5).
+    'catalog/admin/topic-suggestions/:id/approve',
+    'catalog/admin/topic-suggestions/:id/map',
+    'catalog/admin/topic-suggestions/:id/reject',
     // Ask to turn off Material on a published attribute, and confirm or withdraw such a request
     // (catalog, attributes A2 part 3: two administrators).
     'catalog/admin/attributes/:id/relaxation-requests',
@@ -281,6 +334,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A storefront slide's approval side and its other changes (storefront): send the draft for
     // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.
     'storefront/admin/slides/:id/submit',
+    // Send a blog post's draft for review (blog); the backend's automatic checks may refuse.
+    'blog/admin/posts/:id/submit',
+    // A reviewer's two decisions on the version in review (blog): approve it (a self-approval asks
+    // for a two-step code) or send it back with a note.
+    'blog/admin/posts/:id/approve',
+    'blog/admin/posts/:id/request-changes',
     'storefront/admin/slides/:id/approve',
     'storefront/admin/slides/:id/pause',
     'storefront/admin/slides/:id/resume',
@@ -311,6 +370,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Change a feature set: names, groups and requirement levels, with the version read
     // (catalog, attributes A4).
     'catalog/admin/feature-sets/:id',
+    // Set the feature set and filters of a category, with the version read (attributes A4).
+    'catalog/admin/categories/:id/attribute-links',
     // Set or replace a category's image, with the category version seen (catalog, categories
     // C3c). A base64 picture: the body cap of this path is the larger image one.
     'catalog/admin/categories/:id/image',
@@ -320,6 +381,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'sellers/admin/:id/category-proposals',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
+    // A tax strategy edited by its id (tax).
+    'tax/admin/strategies/:id',
     // A fleet-selection model edited by its id (shipping).
     'shipping/admin/fleet-selection/models/:id',
     // The seller's own commission rate (commission-payouts), set from the seller review page.
@@ -328,6 +391,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/sellers/:id/payout-terms',
     // A storefront slide's whole draft (storefront).
     'storefront/admin/slides/:id',
+    // A blog post's whole draft: the content and the address (blog).
+    'blog/admin/posts/:id/draft',
     // The whole content of a brand, with the version seen (catalog).
     'catalog/admin/brands/:id',
     // The whole content of a business activity, with the version seen (catalog).
@@ -349,6 +414,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   PATCH: ['catalog/admin/categories/:id'],
   DELETE: [
     'identity/admin/roles/:id',
+    // A tax strategy that is not active (tax).
+    'tax/admin/strategies/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
     // Back to the Market's payout terms; the version and reason code are in the query.
     'commission-payouts/admin/sellers/:id/payout-terms',
@@ -365,11 +432,18 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // (catalog, read-only; the impact takes the `action`).
     'catalog/admin/categories/:id',
     'catalog/admin/categories/:id/impact',
+    // One blog post with its working and live versions, and its automatic checks (blog).
+    'blog/admin/posts/:id',
+    'blog/admin/posts/:id/checks',
     // One platform product with its working copy, for the product form (catalog).
     'catalog/admin/platform-products/:id',
+    // How many offers of other sellers go off sale if sizes are added (catalog, variants V9).
+    'catalog/admin/platform-products/:id/add-sizes-impact',
     // The manufacturer certificates that name one product, one certificate, and its status history
     // (certification), read by the product form's certificates card.
     'certification/admin/product-certificates/for-product/:id',
+    // The expert approval of one issuer (certification): an audited read, edit permission.
+    'certification/admin/issuers/:id/expert-reference',
     'certification/admin/product-certificates/:id',
     'certification/admin/product-certificates/:id/history',
     // The photo library of a platform product, for the form's images card (catalog, P1).
@@ -392,6 +466,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // What merging values or archiving an attribute reaches (catalog, attributes A8).
     'catalog/admin/attributes/:id/impact',
     'catalog/admin/feature-sets/:id',
+    // The feature set and filters of one category, with what it ends up with (attributes A4).
+    'catalog/admin/categories/:id/attribute-links',
     // One variant type with its options and settings (catalog, variants V6).
     'catalog/admin/variant-types/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
@@ -423,6 +499,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
+  'blog/admin/posts': ['status', 'kind', 'owner', 'page'],
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
   'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
   'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
@@ -440,6 +517,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'pageSize',
   ],
   'catalog/admin/saved-filters': ['listKey'],
+  'catalog/admin/category-tree/export': ['format', 'status', 'q'],
   'catalog/admin/products/export': [
     'format',
     'columns',
@@ -508,6 +586,10 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
   },
+  'catalog/admin/category-tree/export': {
+    format: /^(csv|xlsx)$/,
+    status: /^(active|hidden|merged|archived)(,(active|hidden|merged|archived)){0,3}$/,
+  },
   'catalog/admin/variants': {
     typeCode: /^[a-z][a-z0-9_-]{0,63}$/,
     issue: /^(no-seller-selling|missing-gtin|duplicate-gtin|no-image|missing-language)$/,
@@ -574,6 +656,13 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     state: /^(draft|pending|scheduled|live|ended|paused|archived)$/,
     position: /^[a-z]+(?:\.[a-z-]+)+$/,
   },
+  'blog/admin/posts': {
+    status:
+      /^(draft|in_review|changes_requested|approved|scheduled|published|unpublished|archived)$/,
+    kind: /^(product|brand|event|news)$/,
+    owner: /^(platform|seller)$/,
+    page: /^[0-9]{1,4}$/,
+  },
   'storefront/admin/slides/order': {
     position: /^[a-z]+(?:\.[a-z-]+)+$/,
     scope: /^(all|category|product|seller|page)$/,
@@ -633,8 +722,72 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
   return text === '' ? '' : `?${text}`;
 }
 
+/**
+ * The storefront page editor's routes (storefront): a page is named by its id or, while a system
+ * page was never changed, by its key; a slot by its key; a module by its id. Each segment is
+ * checked on its own, so no other path shape reaches the API. The navigation page has its own
+ * routes and is not a page key here.
+ */
+const PAGE_KEYS = [
+  'home',
+  'offers',
+  'express',
+  'category',
+  'search',
+  'product',
+  'sellers',
+  'seller',
+  'cart',
+  'checkout',
+  'order-confirmation',
+  'account',
+];
+const PAGE_SEGMENTS: Readonly<Record<string, (value: string) => boolean>> = {
+  ':page': (value) => UUID.test(value) || PAGE_KEYS.includes(value),
+  ':slot': (value) => /^[a-z][a-z0-9-]{0,31}$/.test(value),
+  ':placement': (value) => UUID.test(value),
+};
+const PAGE_ROUTES: Readonly<Record<string, readonly string[]>> = {
+  // The page's settings, replaced as a whole (a draft change; publishing is another route).
+  PUT: [
+    'storefront/admin/pages/:page',
+    // One module's settings and switch, and the order of a slot's modules.
+    'storefront/admin/pages/:page/slots/:slot/modules/:placement',
+    'storefront/admin/pages/:page/slots/:slot/order',
+  ],
+  // A module added to a slot.
+  POST: ['storefront/admin/pages/:page/slots/:slot/modules'],
+  // A module removed from a slot.
+  DELETE: ['storefront/admin/pages/:page/slots/:slot/modules/:placement'],
+};
+
+/** A delivery zone code as the API takes it (promotions free-shipping threshold of one zone). */
+const ZONE_CODE = /^[A-Za-z0-9_-]{1,64}$/;
+
 function isAllowed(method: string, path: readonly string[]): boolean {
   if (ALLOWED[method]?.has(path.join('/')) === true) return true;
+  const pageRoute = (PAGE_ROUTES[method] ?? []).some((template) => {
+    const parts = template.split('/');
+    return (
+      parts.length === path.length &&
+      parts.every((part, index) => {
+        const check = PAGE_SEGMENTS[part];
+        return check === undefined ? part === path[index] : check(path[index] ?? '');
+      })
+    );
+  });
+  if (pageRoute) return true;
+  // The free-delivery threshold of one zone (promotions): the code is not a UUID.
+  if (
+    method === 'PUT' &&
+    path.length === 4 &&
+    path[0] === 'promotions' &&
+    path[1] === 'admin' &&
+    path[2] === 'free-shipping' &&
+    ZONE_CODE.test(path[3] ?? '')
+  ) {
+    return true;
+  }
   return (ALLOWED_WITH_ID[method] ?? []).some((template) => {
     const parts = template.split('/');
     return (
@@ -679,11 +832,15 @@ const MAX_BODY_BYTES = 16 * 1024;
  * 14500 kB for this one path and checks the real size itself; every other path keeps 16 KB.
  */
 const UPLOAD_PATH = 'catalog/admin/platform-imports';
+/** A blog post's draft: up to 200 blocks of plain text, so more than the usual cap, still under the API's 64 kB JSON limit (blog). */
+const BLOG_DRAFT_PATH = /^blog\/admin\/posts\/[0-9a-f-]{36}\/draft$/i;
+const MAX_BLOG_DRAFT_BYTES = 60 * 1024;
 const MAX_UPLOAD_BODY_BYTES = 14_500 * 1024;
 /**
  * A category image (categories C3c) is a picture of at most 4 MiB as base64 (about 5.6 MB). The API
  * accepts 5800 kB for this one route and checks the real size itself.
  */
+const CATEGORY_IMPORT_PATH = /^catalog\/admin\/category-tree\/import\/(?:dry-run|apply)$/;
 const CATEGORY_IMAGE_PATH = /^catalog\/admin\/categories\/[0-9a-f-]{36}\/image$/i;
 const MAX_IMAGE_BODY_BYTES = 5_800 * 1024;
 /**
@@ -698,6 +855,8 @@ const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/i
 /** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
 function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
+  if (method === 'PUT' && BLOG_DRAFT_PATH.test(target)) return MAX_BLOG_DRAFT_BYTES;
+  if (method === 'POST' && CATEGORY_IMPORT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
   if (method === 'POST' && CERT_DOCUMENT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'POST' && PRODUCT_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;

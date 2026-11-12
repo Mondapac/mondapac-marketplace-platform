@@ -532,6 +532,31 @@ describe('relay allowlist for stock locations', () => {
     const bad = ['catalog', 'seller', 'products', 'x', 'draft'];
     expect((await relay(config, put(bad.join('/')), bad, upstream)).status).toBe(404);
   });
+  it('relays add-sizes as a POST by UUID only, and neither a GET of it nor an impact read', async () => {
+    const upstream = upstreamOk();
+    const send = (method: string, path: string[]) =>
+      relay(
+        config,
+        new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+          method,
+          headers: sameOrigin,
+          ...(method === 'GET' ? {} : { body: '{}' }),
+        }),
+        path,
+        upstream,
+      );
+    const sizes = ['catalog', 'seller', 'products', ID, 'add-sizes'];
+    expect((await send('POST', sizes)).status).toBe(200);
+    expect((await send('GET', sizes)).status).toBe(404);
+    expect((await send('PUT', sizes)).status).toBe(404);
+    expect((await send('POST', ['catalog', 'seller', 'products', 'x', 'add-sizes'])).status).toBe(
+      404,
+    );
+    // The seller route never asks for a count, so there is no impact read to relay.
+    const impact = ['catalog', 'seller', 'products', ID, 'add-sizes-impact'];
+    expect((await send('POST', impact)).status).toBe(404);
+    expect((await send('GET', impact)).status).toBe(404);
+  });
   it('relays an offer edit and a stock level write by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     const offer = ['catalog', 'seller', 'offers', ID];
@@ -1172,6 +1197,21 @@ describe('relay allowlist for the seller reviews', () => {
       ['PUT', path],
       ['POST', ['catalog', 'seller', 'products', 'not-a-uuid', 'attribute-suggestions']],
       ['POST', ['catalog', 'admin', 'attribute-suggestions']],
+      ['POST', [...path, 'approve']],
+    ] as const) {
+      expect((await relay(config, send(method, 'x'), [...bad], upstream)).status).toBe(404);
+    }
+  });
+
+  it("relays only the seller's own tag suggestion write", async () => {
+    const upstream = upstreamOk();
+    const path = ['catalog', 'seller', 'products', ID, 'topic-suggestions'];
+    expect((await relay(config, send('POST', 'x'), path, upstream)).status).toBe(200);
+    for (const [method, bad] of [
+      ['GET', path],
+      ['PUT', path],
+      ['POST', ['catalog', 'seller', 'products', 'not-a-uuid', 'topic-suggestions']],
+      ['POST', ['catalog', 'admin', 'topic-suggestions']],
       ['POST', [...path, 'approve']],
     ] as const) {
       expect((await relay(config, send(method, 'x'), [...bad], upstream)).status).toBe(404);

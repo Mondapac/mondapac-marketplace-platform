@@ -9,6 +9,19 @@ import { ConfigSearchPolicy } from '../../src/modules/search/infrastructure/conf
 import { PrismaOfferDocumentRepository } from '../../src/modules/search/infrastructure/prisma-offer-document.repository';
 import { PrismaShelfDocumentsReader } from '../../src/modules/search/infrastructure/prisma-shelf-documents.reader';
 import { PrismaOfferVariantReader } from '../../src/modules/search/infrastructure/prisma-offer-variant.reader';
+import { PostgresOfferSearchIndex } from '../../src/modules/search/infrastructure/postgres-offer-search-index';
+import { RawStoreSearchReader } from '../../src/modules/search/infrastructure/raw-store-search.reader';
+import { InMemorySuggestCache } from '../../src/modules/search/infrastructure/in-memory-suggest-cache';
+import {
+  parseSuggestQuery,
+  type SuggestQuery,
+} from '../../src/modules/search/domain/suggest-query';
+import type { SuggestDependencies } from '../../src/modules/search/application/suggest-dependencies';
+import { SuggestSearch } from '../../src/modules/search/application/use-cases/suggest-search.use-case';
+import { RawSuggestReader } from '../../src/modules/search/infrastructure/raw-suggest.reader';
+import { PrismaStoreDocumentRepository } from '../../src/modules/search/infrastructure/prisma-store-document.repository';
+import { StoreRowConflictError } from '../../src/modules/search/application/ports/store-document.repository';
+import { RawOfferScopeReader } from '../../src/modules/search/infrastructure/raw-offer-scope.reader';
 import { RawOfferFacetReader } from '../../src/modules/search/infrastructure/raw-offer-facet.reader';
 import { RawOfferSearchReader } from '../../src/modules/search/infrastructure/raw-offer-search.reader';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
@@ -117,6 +130,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
   });
   beforeEach(async () => {
     await sql.query('DELETE FROM "search"."offer_documents"');
+    await sql.query('DELETE FROM "search"."store_documents"');
   });
 
   it('builds the vector in the database from the name (weight A) and the short text (B)', async () => {
@@ -402,8 +416,16 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
     const deps: SearchDependencies = {
       unitOfWork: db.unitOfWork,
       documents,
-      reader,
-      facets: facetReader,
+      index: new PostgresOfferSearchIndex(
+        reader,
+        facetReader,
+        new RawOfferScopeReader(new PrismaRawReadPort(db.root).forModule('search')),
+        new RawStoreSearchReader(new PrismaRawReadPort(db.root).forModule('search')),
+        new RawSuggestReader(new PrismaRawReadPort(db.root).forModule('search')),
+      ),
+      storeDocuments: new PrismaStoreDocumentRepository(db.service),
+      categoryTree: { tree: () => Promise.resolve([]) },
+      storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
       filterSource: { filters: () => Promise.resolve([]) },
       policy,
       feed: { facts: () => Promise.resolve(null), publishedIds: () => Promise.resolve(null) },
@@ -579,6 +601,563 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
 
       expect(names(await browseProducts([product]))).toEqual(['Here']);
       expect(names(await browseProducts([product], { on: other }))).toEqual(['There']);
+    });
+  });
+
+  describe('store rows and the store query (search 1a)', () => {
+    let storeDocs: PrismaStoreDocumentRepository;
+    let storeReader: RawStoreSearchReader;
+    let scopeReader: RawOfferScopeReader;
+    const store = (sellerId: Id<'Seller'>, slug: string, name: string) => ({
+      sellerId,
+      slug,
+      name,
+      textSearchConfig: settings.textSearchConfig,
+    });
+    const findStores = (text: string, on: MarketContext = market, limit = 25, offset = 0) =>
+      inUnit(
+        on,
+        () =>
+          storeReader.searchStores(on, {
+            textSearchConfig: markets.get(on.marketId).search?.textSearchConfig ?? 'simple',
+            text,
+            limit,
+            offset,
+          }),
+        true,
+      );
+    const seedStores = (target: MarketContext, ...rows: ReturnType<typeof store>[]) =>
+      inUnit(target, () => storeDocs.upsertMany(target, rows, T0));
+
+    beforeAll(() => {
+      storeDocs = new PrismaStoreDocumentRepository(db.service);
+      storeReader = new RawStoreSearchReader(new PrismaRawReadPort(db.root).forModule('search'));
+      scopeReader = new RawOfferScopeReader(new PrismaRawReadPort(db.root).forModule('search'));
+    });
+
+    it('builds the store vector in the database from the name', async () => {
+      const seller = id<'Seller'>();
+      await seedStores(market, store(seller, 'alis-butcher', "Ali's Butcher"));
+
+      const row = await sql.query<{ v: string }>(
+        'SELECT search_vector::text AS v FROM "search"."store_documents" WHERE seller_id = $1 AND market_id = $2',
+        [seller, market.marketId],
+      );
+
+      expect(row.rows[0]?.v).toMatch(/'butcher':\d+A/);
+    });
+
+    it('finds a store by name only while it has an indexed Offer, and ranks by relevance', async () => {
+      const [withOffer, without] = [id<'Seller'>(), id<'Seller'>()];
+      await seedStores(
+        market,
+        store(withOffer, 'green-butcher', 'Green Butcher'),
+        store(without, 'empty-butcher', 'Empty Butcher'),
+      );
+      await seed(market, doc({ name: 'Mince', sellerId: withOffer }));
+
+      const hits = await findStores('butcher');
+
+      expect(hits.map((hit) => hit.slug)).toEqual(['green-butcher']);
+      expect(hits[0]?.sellerId).toBe(withOffer);
+      expect(await findStores('nothingmatches')).toEqual([]);
+    });
+
+    it('pages stably and never shows another Market', async () => {
+      const sellers = [id<'Seller'>(), id<'Seller'>(), id<'Seller'>()];
+      await seedStores(
+        market,
+        ...sellers.map((seller, n) => store(seller, `fresh-store-${n}`, 'Fresh Store')),
+      );
+      const otherSeller = id<'Seller'>();
+      await seedStores(other, store(otherSeller, 'fresh-store-x', 'Fresh Store'));
+      await seed(market, ...sellers.map((sellerId) => doc({ name: 'Bread', sellerId })));
+      await seed(other, doc({ name: 'Bread', sellerId: otherSeller }));
+
+      expect((await findStores('fresh', other)).map((hit) => hit.sellerId)).toEqual([otherSeller]);
+      const first = await findStores('fresh', market, 2, 0);
+      const second = await findStores('fresh', market, 2, 2);
+
+      expect([...first, ...second].map((hit) => hit.sellerId)).toEqual([...sellers].sort());
+    });
+
+    it('hands a store address from one seller to another, and keeps the address unique', async () => {
+      const [first, second] = [id<'Seller'>(), id<'Seller'>()];
+      await seedStores(market, store(first, 'same-address', 'First'));
+      await seedStores(market, store(second, 'same-address', 'Second'));
+
+      const rows = await sql.query<{ seller_id: string }>(
+        'SELECT seller_id FROM "search"."store_documents" WHERE market_id = $1 AND slug = $2',
+        [market.marketId, 'same-address'],
+      );
+      expect(rows.rows.map((row) => row.seller_id)).toEqual([second]);
+    });
+
+    it('throws StoreRowConflictError when a concurrent sync hands the address over first', async () => {
+      const [mine, theirs] = [id<'Seller'>(), id<'Seller'>()];
+      // Another sync holds an uncommitted row of the same address for another seller.
+      await sql.query('BEGIN');
+      let open = true;
+      try {
+        const holder = await sql.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+        const holderPid = holder.rows[0]!.pid;
+        await sql.query(
+          `INSERT INTO "search"."store_documents"
+             (market_id, tenant_id, seller_id, slug, name, text_search_config, indexed_at)
+           VALUES ($1, $2, $3, 'race-address', 'Theirs', $4, now())`,
+          [market.marketId, market.tenantId, theirs, settings.textSearchConfig],
+        );
+        const write = seedStores(market, store(mine, 'race-address', 'Mine'));
+        const settled = write.then(
+          () => 'written',
+          (error: unknown) => error,
+        );
+        // Wait until this write is really blocked on the other row's unique key (a backend that
+        // the holder blocks), never on a fixed delay; then the holder commits.
+        const watcher = new Client({ connectionString: searchDocumentsTestDatabaseUrl() });
+        await watcher.connect();
+        try {
+          const deadline = Date.now() + 10_000;
+          for (;;) {
+            const blocked = await watcher.query(
+              'SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))',
+              [holderPid],
+            );
+            if (blocked.rowCount !== 0) break;
+            if (Date.now() > deadline) throw new Error('the store write never waited');
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+        } finally {
+          await watcher.end();
+        }
+        await sql.query('COMMIT');
+        open = false;
+
+        expect(await settled).toBeInstanceOf(StoreRowConflictError);
+      } finally {
+        if (open) await sql.query('ROLLBACK');
+      }
+      const rows = await sql.query<{ seller_id: string }>(
+        'SELECT seller_id FROM "search"."store_documents" WHERE market_id = $1 AND slug = $2',
+        [market.marketId, 'race-address'],
+      );
+      expect(rows.rows.map((row) => row.seller_id)).toEqual([theirs]);
+    });
+
+    it('counts the indexed Offers of sellers, deletes by seller and deletes stale rows', async () => {
+      const [one, two] = [id<'Seller'>(), id<'Seller'>()];
+      await seedStores(
+        market,
+        store(one, 'store-one', 'Store One'),
+        store(two, 'store-two', 'Store Two'),
+      );
+      await seed(
+        market,
+        doc({ name: 'A', sellerId: one }),
+        doc({ name: 'B', sellerId: one }),
+        doc({ name: 'C', sellerId: two }),
+      );
+
+      const counts = await inUnit(market, () => storeDocs.offerCounts(market, [one, two]), true);
+      expect([...counts]).toEqual(
+        expect.arrayContaining([
+          [one, 2],
+          [two, 1],
+        ]),
+      );
+      expect(await inUnit(market, () => storeDocs.deleteMany(market, [one]))).toBe(1);
+      const stale = await inUnit(market, () =>
+        storeDocs.deleteIndexedBefore(market, T0.add({ hours: 1 }), 10),
+      );
+      expect(stale).toBe(1);
+    });
+
+    it('refuses a store row the application would never write (CHECKs)', async () => {
+      const bad = (slug: string, name: string) =>
+        sql.query(
+          `INSERT INTO "search"."store_documents"
+             (market_id, tenant_id, seller_id, slug, name, text_search_config, indexed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, now())`,
+          [market.marketId, market.tenantId, id<'Seller'>(), slug, name, settings.textSearchConfig],
+        );
+      await expect(bad('Not A Slug', 'Name')).rejects.toMatchObject({ code: CHECK });
+      await expect(bad('ok-slug', '')).rejects.toMatchObject({ code: CHECK });
+    });
+
+    it('lists the scope of a text or a category with product, seller and category ids', async () => {
+      const tea = id<'Category'>();
+      const [sellerA, sellerB] = [id<'Seller'>(), id<'Seller'>()];
+      const product = id<'Product'>();
+      await seed(
+        market,
+        doc({ name: 'Green tea', productId: product, sellerId: sellerA, categoryIds: [tea] }),
+        doc({ name: 'Green tea', productId: product, sellerId: sellerB, categoryIds: [tea] }),
+        doc({ name: 'Coffee beans', sellerId: sellerA }),
+      );
+      const scope = (text: string | null, categoryIds: readonly Id<'Category'>[] | null) =>
+        inUnit(
+          market,
+          () =>
+            scopeReader.scopeRows(market, {
+              textSearchConfig: settings.textSearchConfig,
+              text,
+              categoryIds,
+            }),
+          true,
+        );
+
+      const byText = await scope('tea', null);
+      expect(byText.map((row) => [row.productId, row.sellerId]).sort()).toEqual(
+        [
+          [product, sellerA],
+          [product, sellerB],
+        ].sort(),
+      );
+      expect((await scope(null, [tea])).every((row) => row.categoryIds.includes(tea))).toBe(true);
+      expect(await scope('coffee', [tea])).toEqual([]);
+      await expect(scope(null, null)).rejects.toThrow('a count needs a text or a category');
+    });
+  });
+
+  describe('suggestions (search 1b)', () => {
+    let storeDocs: PrismaStoreDocumentRepository;
+    let suggestReader: RawSuggestReader;
+    const queryOf = (text: string): SuggestQuery => {
+      const parsed = parseSuggestQuery(text);
+      if (!parsed.ok || parsed.value.kind !== 'query') throw new Error('not a query');
+      return parsed.value.query;
+    };
+    const requestOf = (text: string, on: MarketContext = market) => ({
+      textSearchConfig: markets.get(on.marketId).search?.textSearchConfig ?? 'simple',
+      query: queryOf(text),
+    });
+    const suggestOffers = (text: string, on: MarketContext = market, limit = 15) =>
+      inUnit(on, () => suggestReader.suggestOffers(on, requestOf(text, on), limit), true);
+    const suggestStores = (text: string, on: MarketContext = market) =>
+      inUnit(on, () => suggestReader.suggestStores(on, requestOf(text, on), 6), true);
+    const suggestScope = (text: string, on: MarketContext = market) =>
+      inUnit(on, () => suggestReader.suggestScopeRows(on, requestOf(text, on)), true);
+
+    beforeAll(() => {
+      storeDocs = new PrismaStoreDocumentRepository(db.service);
+      suggestReader = new RawSuggestReader(new PrismaRawReadPort(db.root).forModule('search'));
+    });
+
+    it('needs every word and takes the last one as a prefix', async () => {
+      await seed(
+        market,
+        doc({ name: 'Green tea bags' }),
+        doc({ name: 'Green coffee' }),
+        doc({ name: 'Black tea' }),
+        doc({ name: 'Teapot' }),
+      );
+
+      expect(names(await suggestOffers('green te'))).toEqual(['Green tea bags']);
+      expect(names(await suggestOffers('green'))).toEqual(['Green coffee', 'Green tea bags']);
+      expect(names(await suggestOffers('tea'))).toEqual(
+        expect.arrayContaining(['Black tea', 'Green tea bags', 'Teapot']),
+      );
+      // Only the last word is a prefix: an earlier word must be whole.
+      expect(await suggestOffers('gre te')).toEqual([]);
+      expect(await suggestOffers('green pot')).toEqual([]);
+    });
+
+    it('orders name starts with, then name contains, then seller or category only', async () => {
+      await seed(
+        market,
+        doc({ name: 'Iced tea mix' }),
+        doc({ name: 'Mug', searchText: 'Tea House Ceramics' }),
+        doc({ name: 'Tea cups' }),
+        doc({ name: 'Another tea cups' }),
+      );
+
+      const hits = await suggestOffers('tea');
+
+      expect(hits.map((hit) => [hit.name, hit.tier])).toEqual([
+        ['Tea cups', 0],
+        ['Another tea cups', 1],
+        ['Iced tea mix', 1],
+        ['Mug', 2],
+      ]);
+    });
+
+    it('matches words of the store name and the category name held in the index text', async () => {
+      await seed(
+        market,
+        doc({ name: 'Mug', searchText: 'Kedron Halal Beverages' }),
+        doc({ name: 'Plate', searchText: 'Other Shop Tableware' }),
+      );
+
+      expect(names(await suggestOffers('kedron bev'))).toEqual(['Mug']);
+      expect(names(await suggestOffers('mug kedron'))).toEqual(['Mug']);
+      expect(await suggestOffers('kedron table')).toEqual([]);
+    });
+
+    it('treats LIKE wildcards and tsquery operators in the text as plain text', async () => {
+      await seed(market, doc({ name: '100% cotton' }), doc({ name: 'Cotton socks' }));
+
+      expect(names(await suggestOffers('100%'))).toEqual(['100% cotton']);
+      expect(await suggestOffers(`x'); DROP TABLE search.offer_documents; --`)).toEqual([]);
+      expect(await suggestOffers('cot & | ! ( ) <-> :*')).toBeDefined();
+      expect(
+        (await sql.query('SELECT count(*)::int AS n FROM "search"."offer_documents"')).rows[0],
+      ).toEqual({ n: 2 });
+    });
+
+    it('limits the candidates and never shows the documents of the other Market', async () => {
+      const shared = doc({ name: 'Shared tea' });
+      await seed(market, shared, doc({ name: 'Tea two' }), doc({ name: 'Tea three' }));
+      await seed(other, { ...shared });
+      await seed(other, doc({ name: 'Other market tea' }));
+
+      expect(await suggestOffers('tea', market, 2)).toHaveLength(2);
+      expect(names(await suggestOffers('tea', other))).toEqual(['Other market tea', 'Shared tea']);
+      expect(await suggestScope('tea', market)).toHaveLength(3);
+      expect(await suggestScope('tea', other)).toHaveLength(2);
+    });
+
+    it('lists the scope with one row per product, for the product count', async () => {
+      const product = id<'Product'>();
+      await seed(
+        market,
+        doc({ name: 'Green tea', productId: product }),
+        doc({ name: 'Green tea', productId: product }),
+        doc({ name: 'Green tea' }),
+        doc({ name: 'Coffee' }),
+      );
+
+      const rows = await suggestScope('gre');
+
+      expect(rows).toHaveLength(2);
+      expect(rows.map((row) => row.productId)).toContain(product);
+    });
+
+    it('takes one Offer per product, so the candidates cover distinct products', async () => {
+      const products = [id<'Product'>(), id<'Product'>(), id<'Product'>()];
+      const many: OfferDocument[] = [];
+      for (const [index, productId] of products.entries()) {
+        for (let n = 0; n < 20; n += 1) {
+          many.push(doc({ name: `Tea ${index}`, productId, sellerId: id<'Seller'>() }));
+        }
+      }
+      await seed(market, ...many);
+
+      const hits = await suggestOffers('tea', market, 15);
+
+      expect(hits.map((hit) => hit.name)).toEqual(['Tea 0', 'Tea 1', 'Tea 2']);
+      expect(new Set(hits.map((hit) => hit.productId)).size).toBe(3);
+    });
+
+    describe('the tier of a name', () => {
+      const tiers = async (text: string) =>
+        Object.fromEntries((await suggestOffers(text)).map((hit) => [hit.name, hit.tier]));
+
+      it('counts a name with every word as a name match, whatever the punctuation or word order', async () => {
+        await seed(
+          market,
+          doc({ name: 'Tea, green' }),
+          doc({ name: 'Green-tea sampler' }),
+          doc({ name: 'Mug', searchText: 'Green Tea Shop' }),
+          doc({ name: 'Tea green box' }),
+        );
+
+        expect(await tiers('green tea')).toEqual({
+          'Tea, green': 1,
+          'Green-tea sampler': 0,
+          Mug: 2,
+          'Tea green box': 1,
+        });
+        // The first word starts the name, with the rest in any order: tier 0.
+        expect(await tiers('tea green')).toMatchObject({ 'Tea, green': 0, 'Tea green box': 0 });
+      });
+
+      it('counts a prefix of the last word inside the name', async () => {
+        await seed(
+          market,
+          doc({ name: 'Big green teapot' }),
+          doc({ name: 'Mug', searchText: 'teapot' }),
+        );
+
+        expect(await tiers('green te')).toEqual({ 'Big green teapot': 1 });
+        expect(await tiers('teap')).toEqual({ 'Big green teapot': 1, Mug: 2 });
+      });
+
+      it("uses the Market's stemming: tomatoes finds Tomato where the configuration stems", async () => {
+        await seed(
+          market,
+          doc({ name: 'Tomato' }),
+          doc({ name: 'Mug', searchText: 'tomatoes shop' }),
+        );
+
+        const found = await tiers('tomatoes');
+
+        if (settings.textSearchConfig === 'english') {
+          expect(found).toEqual({ Tomato: 1, Mug: 2 });
+        } else {
+          // `simple` does not stem: the name is not a match, the exact word still is.
+          expect(found).toEqual({ Mug: 2 });
+          expect(await tiers('tomato')).toEqual({ Tomato: 0, Mug: 2 });
+        }
+      });
+
+      it('orders stores by the same tiers, with a stem or punctuation in the name', async () => {
+        const [first, second] = [id<'Seller'>(), id<'Seller'>()];
+        await inUnit(market, () =>
+          storeDocs.upsertMany(
+            market,
+            [
+              {
+                sellerId: first,
+                slug: 'the-tea-house',
+                name: 'The Tea, House',
+                textSearchConfig: settings.textSearchConfig,
+              },
+              {
+                sellerId: second,
+                slug: 'house-of-tea',
+                name: 'Tea House',
+                textSearchConfig: settings.textSearchConfig,
+              },
+            ],
+            T0,
+          ),
+        );
+        await seed(
+          market,
+          doc({ name: 'Cup', sellerId: first, searchText: 'The Tea, House' }),
+          doc({ name: 'Cup', sellerId: second, searchText: 'Tea House' }),
+        );
+
+        const stores = await suggestStores('house tea');
+
+        expect(stores.map((row) => `${row.slug}:${row.tier}`).sort()).toEqual([
+          'house-of-tea:1',
+          'the-tea-house:1',
+        ]);
+        // The name starts with the first word: tier 0 (the stop word "the" is not the first word).
+        expect(
+          (await suggestStores('tea house')).find((r) => r.slug === 'house-of-tea')?.tier,
+        ).toBe(0);
+      });
+    });
+
+    it('finds a store by its name or by a product, in the order name starts with, contains, product', async () => {
+      const [byName, contains, byProduct, noOffer] = [
+        id<'Seller'>(),
+        id<'Seller'>(),
+        id<'Seller'>(),
+        id<'Seller'>(),
+      ];
+      const settings_ = settings.textSearchConfig;
+      const store = (sellerId: Id<'Seller'>, slug: string, name: string) => ({
+        sellerId,
+        slug,
+        name,
+        textSearchConfig: settings_,
+      });
+      await inUnit(market, () =>
+        storeDocs.upsertMany(
+          market,
+          [
+            store(byName, 'tea-house', 'Tea House'),
+            store(contains, 'the-best-tea', 'The Best Tea'),
+            store(byProduct, 'corner-shop', 'Corner Shop'),
+            store(noOffer, 'tea-empty', 'Tea Empty'),
+          ],
+          T0,
+        ),
+      );
+      await seed(
+        market,
+        doc({ name: 'Tea House cups', sellerId: byName, searchText: 'Tea House' }),
+        doc({ name: 'Biscuits', sellerId: contains, searchText: 'The Best Tea' }),
+        doc({ name: 'Green tea', sellerId: byProduct, searchText: 'Corner Shop' }),
+      );
+
+      const stores = await suggestStores('tea');
+
+      expect(stores.map((row) => [row.slug, row.tier])).toEqual([
+        ['tea-house', 0],
+        ['the-best-tea', 1],
+        ['corner-shop', 2],
+      ]);
+      expect((await suggestStores('corner sh')).map((row) => row.slug)).toEqual(['corner-shop']);
+      expect(await suggestStores('tea', other)).toEqual([]);
+    });
+
+    it('answers through SuggestSearch on the real index, hiding an unlisted Offer and a seller that may not sell', async () => {
+      const [hiddenSeller, goodSeller] = [id<'Seller'>(), id<'Seller'>()];
+      const shown = doc({ name: 'Visible mug', sellerId: goodSeller, searchText: 'Good Shop' });
+      const unlisted = doc({ name: 'Unlisted mug', sellerId: goodSeller, searchText: 'Good Shop' });
+      const suspended = doc({
+        name: 'Suspended mug',
+        sellerId: hiddenSeller,
+        searchText: 'Hidden Shop',
+      });
+      await seed(market, shown, unlisted, suspended);
+      await inUnit(market, () =>
+        storeDocs.upsertMany(
+          market,
+          [
+            {
+              sellerId: goodSeller,
+              slug: 'good-shop',
+              name: 'Good Shop',
+              textSearchConfig: settings.textSearchConfig,
+            },
+            {
+              sellerId: hiddenSeller,
+              slug: 'hidden-shop',
+              name: 'Hidden Shop',
+              textSearchConfig: settings.textSearchConfig,
+            },
+          ],
+          T0,
+        ),
+      );
+      const deps: SuggestDependencies = {
+        unitOfWork: db.unitOfWork,
+        index: new PostgresOfferSearchIndex(
+          reader,
+          facetReader,
+          new RawOfferScopeReader(new PrismaRawReadPort(db.root).forModule('search')),
+          new RawStoreSearchReader(new PrismaRawReadPort(db.root).forModule('search')),
+          suggestReader,
+        ),
+        policy,
+        // Catalog says the unlisted Offer is not listed; sellers says the seller may not sell.
+        visibility: {
+          visible: (_context: CallContext, offers) =>
+            Promise.resolve(
+              new Set(
+                offers
+                  .filter((o) => o.offerId !== unlisted.offerId && o.sellerId !== hiddenSeller)
+                  .map((o) => o.offerId),
+              ),
+            ),
+        },
+        images: { of: () => Promise.resolve(new Map()) },
+        categoryTree: { tree: () => Promise.resolve([]) },
+        storeDirectory: {
+          publicStores: () =>
+            Promise.resolve(new Map([[goodSeller, { slug: 'good-shop', name: 'Good Shop' }]])),
+        },
+        storeDocuments: storeDocs,
+        cache: new InMemorySuggestCache(new FixedClock(T0)),
+      };
+      const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
+      const visitor = testCallContext(market, 'anonymous', 'search-db-suggest-1');
+
+      const result = await new SuggestSearch(gate, deps).execute(visitor, { q: 'mug' });
+
+      expect(result.ok && result.value.products.map((p) => [p.name, p.sellerName])).toEqual([
+        ['Visible mug', 'Good Shop'],
+      ]);
+      expect(result.ok && result.value.stores.map((s) => s.storeSlug)).toEqual(['good-shop']);
+      // The count comes from the index and is not re-checked, like the counts of the search.
+      expect(result.ok && result.value.total).toBe(3);
+      const prefix = await new SuggestSearch(gate, deps).execute(visitor, { q: 'vis' });
+      expect(prefix.ok && prefix.value.products.map((p) => p.name)).toEqual(['Visible mug']);
     });
   });
 });

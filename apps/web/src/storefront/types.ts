@@ -47,6 +47,8 @@ export interface ProductCard {
   readonly imageUrl?: string;
   /** `srcset` and size of the photo at `imageUrl`; absent for a placeholder or sample photo. */
   readonly imageSet?: PhotoSet;
+  /** Large URLs of every photo the read lists (at most 8), for the image sitemap. */
+  readonly largeImages?: readonly string[];
 }
 
 /**
@@ -611,6 +613,10 @@ export interface DeliveryLocatorSource {
    * the API); false or absent: the stubbed lookup on the sample places above.
    */
   readonly live?: boolean;
+  /**
+   * The real map (Mapbox GL JS, ADR-0048): its public token and style. Absent: the drawn stub map.
+   */
+  readonly map?: { readonly token: string; readonly style: string };
 }
 
 /**

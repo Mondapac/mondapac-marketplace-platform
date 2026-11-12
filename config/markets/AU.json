@@ -176,6 +176,7 @@
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,
     "publicMediaPerMinute": 1500,
+    "publicSearchPerMinute": 120,
     "defaultPerMinute": 300
   },
   "customers": {
@@ -473,11 +474,14 @@
       "primaryImage": true,
       "anyImage": true,
       "variantRemoved": true,
-      "gtinChanged": true
+      "gtinChanged": true,
+      "axisAdded": true
     },
     "maxVariantsPerProduct": 100,
     "maxCategoryDepth": 4,
     "maxCategoryChangeTags": 50000,
+    "maxCategoryImportRows": 1000,
+    "maxCategoryImportBytes": 5242880,
     "maxVariantAttributes": 2,
     "units": [
       { "code": "g", "labels": { "en-AU": "g" } },

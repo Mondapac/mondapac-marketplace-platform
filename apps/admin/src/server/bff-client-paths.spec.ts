@@ -35,6 +35,9 @@ const files = [
   ...readdirSync(path.join(src, 'account-deletion'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'account-deletion', name)),
+  ...readdirSync(path.join(src, 'orders'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'orders', name)),
   ...readdirSync(path.join(src, 'lists-settings'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'lists-settings', name)),
@@ -102,6 +105,9 @@ describe('every path the wallet, dispute, review moderation, account deletion an
         'POST commission-payouts/admin/sellers/:id/payout-holds',
         'POST commission-payouts/admin/payout-holds/:id/release',
         'POST identity/admin/step-up/verify',
+        'POST ordering/admin/orders/:id/cancel',
+        'POST ordering/admin/orders/:id/notes',
+        'POST ordering/admin/orders/:id/seller-orders/:id/refunds',
         'GET customers/admin/account-deletion-settings',
         'PUT customers/admin/account-deletion-settings',
         'GET customers/admin/deletion-requests',

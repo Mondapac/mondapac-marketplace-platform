@@ -265,6 +265,16 @@
     "reason": "The public storefront search: a visitor with no session finds sellable Offers by text or category; the answer is ids, text and category ids, re-checked against catalog and sellers, and the route is rate limited per origin."
   },
   {
+    "name": "search.search-stores",
+    "rule": "anonymous",
+    "reason": "The public store search: a visitor with no session finds public stores by name; the answer is the store address, public name and an Offer count, re-checked against sellers' published-store rules, and the route is rate limited per origin."
+  },
+  {
+    "name": "search.suggest-search",
+    "rule": "anonymous",
+    "reason": "The header search suggestions: a visitor with no session types two or more characters and gets up to five products and three stores (no price, no certification text); every Offer is re-checked against catalog and sellers on each call, the index side is cached for seconds, and the route is rate limited per origin."
+  },
+  {
     "name": "search.view-product-detail",
     "rule": "anonymous",
     "reason": "The storefront product page for a visitor with no session: the published product text and variants and its sellable Offers with buyer price (never Cost), public stock state (never the exact count) and the seller's public store name; re-checked against catalog and sellers; rate limited per origin."
@@ -300,6 +310,11 @@
     "reason": "Uber Direct's status webhook: the caller is Uber, which holds no session. The use case answers not-found while the fleet is off for the Market or has no webhook secret there (the same answer, so an unsigned caller cannot tell the configuration apart) and refuses anything without a valid hex HMAC-SHA256 of the raw body (x-uber-signature) under the Market's webhook secret; each event is taken once by its id, the booking is found by Uber's delivery id within the Market and fleet, and it only moves a seller order's carrier delivery forward."
   },
   {
+    "name": "storefront.view-public-seo",
+    "rule": "anonymous",
+    "reason": "The buyer site reads the Market's SEO settings (site name, title templates, organisation details, indexing switch) for a visitor with no session: public fields only, never the version, the editor or a focus keyword; the code defaults while nothing is saved."
+  },
+  {
     "name": "storefront.view-published-landing-page",
     "rule": "anonymous",
     "reason": "A visitor with no session reads a live landing page at /l/<slug>: only a published, unarchived page inside its live window, or the site path an old or archived slug now sends to; layout and settings only, no product data."
@@ -318,5 +333,10 @@
     "name": "storefront.view-published-slides",
     "rule": "anonymous",
     "reason": "The buyer site draws the slider of a position (home hero, ...) for a visitor with no session: only approved slides of the request's Market inside their window whose link target is alive in that Market (a suspended seller or a dead link drops the slide); plain texts, ready-made image keys and site paths only; cache-control at most 60 seconds and never past the next start or end."
+  },
+  {
+    "name": "storefront.view-slide-image",
+    "rule": "anonymous",
+    "reason": "The buyer site loads a slide picture for a visitor with no session: one stored size of an image of the request's Market, found by its unguessable id; always a server-written metadata-free JPEG, hash checked, cached five minutes; nothing else is returned."
   }
 ]
