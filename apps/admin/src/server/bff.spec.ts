@@ -1426,6 +1426,12 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/attribute-suggestions/${id}/approve`],
     ['POST', `catalog/admin/attribute-suggestions/${id}/map`],
     ['POST', `catalog/admin/attribute-suggestions/${id}/reject`],
+    ['GET', 'catalog/admin/category-proposals'],
+    ['POST', `catalog/admin/category-proposals/${id}/approve`],
+    ['POST', `catalog/admin/category-proposals/${id}/reject`],
+    ['GET', `catalog/admin/sellers/${id}/shelves`],
+    ['POST', `catalog/admin/shelves/${id}/promote`],
+    ['POST', `catalog/admin/shelves/${id}/merge`],
     ['GET', 'catalog/admin/topic-suggestions'],
     ['POST', `catalog/admin/topic-suggestions/${id}/approve`],
     ['POST', `catalog/admin/topic-suggestions/${id}/map`],
@@ -1508,6 +1514,16 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/topics/${id}`],
     ['GET', 'catalog/admin/topics/not-a-uuid'],
     ['PUT', 'catalog/admin/attributes'],
+    ['POST', 'catalog/admin/category-proposals'],
+    ['POST', `catalog/admin/category-proposals/${id}`],
+    ['PUT', `catalog/admin/category-proposals/${id}/approve`],
+    ['GET', `catalog/admin/category-proposals/${id}/approve`],
+    ['DELETE', `catalog/admin/shelves/${id}/promote`],
+    ['POST', `catalog/admin/shelves/${id}`],
+    ['GET', `catalog/admin/shelves/${id}/merge`],
+    ['POST', 'catalog/admin/shelves/not-a-uuid/promote'],
+    ['POST', `catalog/admin/sellers/${id}/shelves`],
+    ['GET', 'catalog/admin/sellers/not-a-uuid/shelves'],
     ['POST', 'catalog/admin/attribute-suggestions'],
     ['POST', `catalog/admin/attribute-suggestions/${id}`],
     ['PUT', `catalog/admin/attribute-suggestions/${id}/approve`],
@@ -1584,6 +1600,25 @@ describe('relay of the wallet and step-up routes', () => {
       readHeaders,
     );
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/brands');
+  });
+
+  it('passes only afterId and limit of the category proposal queue, each in its shape', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/category-proposals?afterId=${id}&limit=25&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/category-proposals?afterId=${id}&limit=25`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/category-proposals?afterId=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/category-proposals',
+    );
   });
 
   it('passes only status, search, afterId and limit of the business activity list', async () => {

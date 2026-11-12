@@ -105,7 +105,8 @@
     },
     "settings": "Settings",
     "import": "Import",
-    "performance": "Performance"
+    "performance": "Performance",
+    "categories": "Shelves"
   },
   "home": {
     "title": "Dashboard",
@@ -3447,6 +3448,124 @@
       "score": "Each of the five measures gets a score from 0 to 100. Your store health is the lowest of them, so one serious problem is not hidden by good numbers elsewhere. 67 to 100 is healthy, 34 to 66 is at risk, and 0 to 33 needs attention.",
       "fair": "Things that are not your fault are not counted: orders the customer cancelled, failed payments, courier delays, and disputes you won. A measure with too little data is left out. Until you have enough orders, you are shown as New.",
       "nothing-automatic": "Nothing happens to your store automatically because of this score. If it is low, a person on the platform team may look at it and get in touch before deciding anything."
+    }
+  },
+  "categories": {
+    "proposals": {
+      "title": "Suggest a category",
+      "back": "Back to Suggest a category",
+      "intro": "A suggested category becomes a shelf in your own shop once the platform approves it. It groups your products on your shop page. It is not a platform category and does not change search, filters or badges.",
+      "sent": "Your suggestion was sent. You will see the outcome below.",
+      "not-enabled": "The platform has not turned on category suggestions for your store. Your existing shelves still work.",
+      "waiting": "{count} of {max} waiting",
+      "full": "You have {max} suggestions waiting. Withdraw one or wait for a decision before you suggest another.",
+      "form": {
+        "title": "New suggestion",
+        "parent": "Platform category it belongs under",
+        "parent-help": "Your shelf is shown under this category.",
+        "parent-none": "No categories are available yet. Create a product first, then come back.",
+        "parent-placeholder": "Choose a category",
+        "language": "Language",
+        "language-help": "{language} is required. Other languages are optional.",
+        "language-required": "{language} (required)",
+        "name": "Shelf name",
+        "description": "Short description",
+        "optional": "optional",
+        "send": "Send suggestion",
+        "field": {
+          "name": "name",
+          "shortDescription": "short description"
+        }
+      },
+      "list": {
+        "title": "Your suggestions",
+        "empty": {
+          "title": "No suggestions yet",
+          "body": "Suggest a category above and its outcome will show here."
+        },
+        "unnamed": "Unnamed",
+        "under": "Under {parent}",
+        "parent-unknown": "a platform category",
+        "cancel": "Withdraw",
+        "status": {
+          "pending": "Waiting",
+          "approved": "Approved",
+          "rejected": "Rejected",
+          "cancelled": "Closed"
+        },
+        "reason": {
+          "already-exists": "Rejected: a category like this already exists.",
+          "too-narrow": "Rejected: too narrow for a shelf.",
+          "too-broad": "Rejected: too broad for a shelf.",
+          "misleading": "Rejected: the name could mislead buyers.",
+          "not-sold-here": "Rejected: not something sold here.",
+          "other": "Rejected.",
+          "seller-cancelled": "Closed: you withdrew it.",
+          "permission-revoked": "Closed: permission removed"
+        }
+      },
+      "shelves": {
+        "title": "Your shelves",
+        "note": "Shelves group your products on your shop page. Put an Offer on a shelf from the Offer page.",
+        "empty": {
+          "title": "No shelves yet",
+          "body": "An approved suggestion becomes a shelf."
+        },
+        "status": {
+          "active": "Active",
+          "promoted": "Moved to the platform",
+          "merged": "Merged",
+          "archived": "Archived"
+        }
+      },
+      "error": {
+        "not-allowed": "The platform has not turned on category suggestions for your store.",
+        "not-eligible": "Your store cannot make suggestions yet.",
+        "duplicate": "You already have a suggestion or a shelf with this name under this category.",
+        "limit": "You have {max} suggestions waiting. Withdraw one or wait for a decision.",
+        "parent-not-found": "That category is no longer available. Choose another.",
+        "claim-word": "Some text uses a word that is not allowed. Change the wording and try again.",
+        "locale-uncheckable": "Some text is in a language that cannot be checked yet. Remove it or try again later.",
+        "required-locale-missing": "A name in the required language is needed.",
+        "check-unavailable": "The wording check is not available right now. Nothing was sent. Try again later.",
+        "throttled": "You have sent too many suggestions today. Try again tomorrow.",
+        "stale": "This changed since you opened the page. Refresh and try again.",
+        "not-found": "This suggestion no longer exists. Refresh the page.",
+        "not-pending": "This suggestion was already decided. Refresh the page.",
+        "denied": "You are not allowed to do this.",
+        "validation": "Check the form and try again.",
+        "validation-fields": "Some fields need a change.",
+        "unreachable": "Could not reach the server. Try again.",
+        "unknown": "Something went wrong. Try again.",
+        "in-field": "{language}, {field}: {problem}",
+        "field": {
+          "claim-word": "uses a word that is not allowed. Change the wording.",
+          "blocked-term": "uses a word that is not allowed. Change the wording.",
+          "locale-uncheckable": "cannot be checked yet for this language. Remove it or try again later.",
+          "required": "is needed.",
+          "invalid": "needs a change."
+        }
+      }
+    },
+    "shelf": {
+      "title": "Shop shelf",
+      "label": "Shelf",
+      "help": "Groups this Offer on your shop page. It is not a platform category.",
+      "placeholder": "Choose a shelf",
+      "none": "No shelf",
+      "save": "Save shelf",
+      "saved": {
+        "set": "The Offer is on the shelf.",
+        "cleared": "The Offer is off its shelf."
+      },
+      "error": {
+        "stale": "This Offer changed since you opened the page. Refresh and try again.",
+        "shelf-not-found": "That shelf is no longer available. Refresh the page.",
+        "offer-not-found": "This Offer no longer exists.",
+        "denied": "You are not allowed to do this.",
+        "unreachable": "Could not reach the server. Try again.",
+        "unknown": "Something went wrong. Try again."
+      }
     }
   }
 }

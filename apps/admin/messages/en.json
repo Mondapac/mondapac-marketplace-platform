@@ -683,11 +683,7 @@
         "changed": "Last change"
       },
       "health": {
-        "band": {
-          "healthy": "Healthy",
-          "at-risk": "At risk",
-          "unhealthy": "Unhealthy"
-        },
+        "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
         "new": "New",
         "no-data": "No data",
         "none": "Not measured yet",
@@ -1084,6 +1080,22 @@
         "failed": "The recount could not be queued. Try again in a few minutes."
       },
       "informs": "Health only informs. Nothing happens to the seller because of this score."
+    },
+    "category-proposals": {
+      "title": "May propose categories",
+      "intro": "When allowed, this seller can suggest new categories for an admin to decide. Stopping it closes their waiting proposals.",
+      "allow": "Allow proposals",
+      "stop": "Stop proposals",
+      "now-allowed": "This seller may now propose categories.",
+      "now-stopped": "This seller may no longer propose categories.",
+      "no-change": "It was already set this way.",
+      "view-shelves": "View this seller's proposals and shelves",
+      "error": {
+        "denied": "Your role can't change this setting.",
+        "csrf": "Your session needs refreshing. Reload the page.",
+        "invalid": "The request was not valid. Reload and try again.",
+        "unknown": "That did not work. Try again."
+      }
     }
   },
   "certificates": {
@@ -6327,6 +6339,139 @@
       "group": "Export and import",
       "csv-label": "Export the category tree as a CSV file",
       "xlsx-label": "Export the category tree as an XLSX file"
+    },
+    "proposals": {
+      "tabs": "Categories views",
+      "tab": {
+        "tree": "Category tree",
+        "proposals": "Category proposals"
+      },
+      "title": "Category proposals",
+      "intro": "Categories that sellers asked for. Approving one gives the seller a shelf in their own shop. It does not add a platform category.",
+      "loading": "Loading category proposals",
+      "load-failed": "The category proposals could not be loaded.",
+      "denied": "Your role can't decide category proposals.",
+      "empty": "No proposals are waiting",
+      "empty-body": "When a seller suggests a category, it appears here.",
+      "list-label": "Waiting category proposals",
+      "load-more": "Show more",
+      "waiting": "Waiting",
+      "unknown-store": "Unnamed store",
+      "unknown-parent": "an unknown category",
+      "under": "Under {path}",
+      "names-label": "Names of the proposal {name}",
+      "approve": "Approve",
+      "approve-for": "Approve the proposal {name}",
+      "reject": "Reject",
+      "reject-for": "Reject the proposal {name}",
+      "reject-confirm": "Reject proposal",
+      "cancel": "Cancel",
+      "reason-label": "Reason",
+      "reason-choose": "Choose a reason",
+      "reason-note": "The seller sees this reason. Pick the closest one.",
+      "reason": {
+        "already-exists": "Already exists",
+        "too-narrow": "Too narrow",
+        "too-broad": "Too broad",
+        "misleading": "Misleading",
+        "not-sold-here": "Not sold here",
+        "other": "Other"
+      },
+      "decided": {
+        "approved": "Approved. The seller now has the shelf.",
+        "rejected": "Proposal rejected.",
+        "cancelled": "The seller can no longer propose categories, so the proposal was closed."
+      },
+      "closed": {
+        "approved": "Approved: shelf created",
+        "rejected": "Rejected: {reason}",
+        "permission-revoked": "Closed: permission removed",
+        "cancelled": "Closed: cancelled"
+      },
+      "shelves": {
+        "title": "Shelves of {store}",
+        "this-seller": "this seller",
+        "close": "Close shelves",
+        "intro": "A shelf is a way a seller groups their own Offers in their shop. Promote turns a shelf into a platform category. Merge folds it into a platform category that already exists.",
+        "loading": "Loading shelves",
+        "load-failed": "The shelves could not be loaded.",
+        "denied": "Your role can't see these shelves.",
+        "empty": "This seller has no shelves",
+        "list-label": "Shelves of {store}",
+        "under": "Under {path}",
+        "status": {
+          "active": "Active",
+          "promoted": "Promoted",
+          "merged": "Merged",
+          "archived": "Archived"
+        },
+        "promote": "Promote",
+        "promote-for": "Promote the shelf {name}",
+        "merge": "Merge",
+        "merge-for": "Merge the shelf {name}",
+        "done": {
+          "promote": "Promoted as a hidden platform category. {n, plural, one {# Offer lost} other {# Offers lost}} the shelf.",
+          "merge": "Merged. {n, plural, one {# Offer lost} other {# Offers lost}} the shelf."
+        }
+      },
+      "shelves-for": "Show the shelves of {store}",
+      "error": {
+        "validation_failed": "Something in the request was not valid. Reload the page and try again.",
+        "category-proposal_not-allowed": "This seller may not propose categories any more, so the proposal can't be approved.",
+        "category-proposal_not-found": "This proposal is no longer in the queue. The list has been refreshed.",
+        "category-proposal_not-pending": "Someone else already decided this proposal. The list has been refreshed.",
+        "category-proposal_duplicate": "The seller already has a shelf with this name under the same category.",
+        "seller-category_not-found": "This shelf no longer exists. Reload the shelves.",
+        "seller-category_not-active": "This shelf was already promoted, merged or closed. Reload the shelves.",
+        "category_parent-not-found": "The platform category it sits under is no longer available. Reload.",
+        "category_not-found": "That platform category is no longer available. Reload and pick another.",
+        "category_slug-taken": "That URL name is already used by another category. Choose another.",
+        "category_sibling-name-taken": "A category with this name already exists under the same parent.",
+        "category_depth-exceeded": "The category tree can have at most {max} levels. This shelf sits too deep to promote.",
+        "category_required-locale-missing": "The shelf is missing a name in a required language.",
+        "category_claim-word": "The shelf name or description contains a certification or health claim word, so it can't be promoted.",
+        "category_locale-uncheckable": "A language of this shelf can't be checked for claim words yet, so it can't be promoted.",
+        "claim-text_check-unavailable": "The claim-word check is not available right now. Try again later.",
+        "conflict_stale": "The tree or the shelf changed since you opened it. Reload.",
+        "access_denied": "Your role can't do this.",
+        "access_permission-missing": "Your role can't do this.",
+        "access_acting-as-refused": "This can't be done while signing in as a seller.",
+        "access_unavailable": "This is unavailable right now. Try again in a moment.",
+        "request_csrf": "Your session needs refreshing. Reload the page.",
+        "unknown": "That did not work. Reload the page and try again.",
+        "stale": "Someone else changed the queue. The list has been refreshed.",
+        "reload-failed": "The list could not be refreshed, so it may be out of date."
+      },
+      "promote": {
+        "title": "Promote the shelf {name}",
+        "not-platform": "Shelves are not platform categories. Promoting creates a new platform category that the whole marketplace can use.",
+        "what": "\"{name}\" becomes a platform category under {parent}.",
+        "impact-title": "What will change",
+        "impact-hidden": "The new platform category is created hidden. Show it from the category tree when it is ready.",
+        "impact-offers": "The shelf closes, and every Offer of this seller that uses it loses the shelf. The number is shown when you finish.",
+        "impact-published": "No published product revision changes.",
+        "slug": "URL name",
+        "slug-help": "English lower-case words joined by hyphens, for example fresh-dates.",
+        "slug-bad": "Use 2 to 80 lower-case English letters and digits, joined by single hyphens.",
+        "cancel": "Cancel",
+        "confirm": "Promote shelf",
+        "reload": "Reload"
+      },
+      "merge": {
+        "title": "Merge the shelf {name}",
+        "not-platform": "Shelves are not platform categories. The seller's offers keep no shelf. You can add this category to the products through a revision.",
+        "what": "\"{name}\" is merged into a platform category you pick.",
+        "impact-title": "What will change",
+        "impact-offers": "Every Offer of this seller that uses the shelf loses it. The number is shown when you finish.",
+        "impact-terminal": "The shelf closes for good. Merging can't be undone.",
+        "impact-published": "No published product revision changes.",
+        "target": "Merge into",
+        "target-choose": "Choose a platform category",
+        "cancel": "Cancel",
+        "confirm": "Merge shelf",
+        "reload": "Reload"
+      },
+      "shelves-open": "Seller's shelves"
     }
   },
   "brands": {
