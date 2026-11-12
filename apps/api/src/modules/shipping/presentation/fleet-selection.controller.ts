@@ -7,6 +7,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -21,11 +22,14 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
+import { changeHistoryBody, changeHistoryInputOf } from '../../../platform/audit/change-trail';
+import { ChangeHistoryDto } from '../../../platform/audit/change-trail.dto';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -36,6 +40,7 @@ import { CreateFleetSelectionModel } from '../application/use-cases/create-fleet
 import { SetFleetSelection } from '../application/use-cases/set-fleet-selection.use-case';
 import { UpdateFleetSelectionModel } from '../application/use-cases/update-fleet-selection-model.use-case';
 import { ViewFleetSelection } from '../application/use-cases/view-fleet-selection.use-case';
+import { ViewFleetSelectionHistory } from '../application/use-cases/view-fleet-selection-history.use-case';
 import {
   FleetModelBody,
   FleetModelRequest,
@@ -68,6 +73,7 @@ export class FleetSelectionController {
     private readonly create: CreateFleetSelectionModel,
     private readonly update: UpdateFleetSelectionModel,
     private readonly save: SetFleetSelection,
+    private readonly history: ViewFleetSelectionHistory,
   ) {}
 
   @Get()
@@ -76,7 +82,8 @@ export class FleetSelectionController {
     description:
       'Needs shipping.fleet-selection.view. `active` holds the active model id per delivery ' +
       'method (null: the built-in default order). `fleets` lists every fleet with whether it is ' +
-      'on for the Market and its reliability score.',
+      'on for the Market and its reliability score. `lastChanged` says who changed the page ' +
+      'last and when (null until the first change).',
   })
   @ApiOkResponse({ type: FleetSelectionBody })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
@@ -91,6 +98,37 @@ export class FleetSelectionController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return selectionBody(result.value);
+  }
+
+  @Get('history')
+  @ApiOperation({
+    summary: 'The changes of the delivery fleets page',
+    description:
+      'Needs shipping.fleet-selection.view. Newest first: when, who (a display name, never an ' +
+      'email) and the names of the fields that changed, never their values, from the audit log: ' +
+      'a model made or edited, the active model of a method, a reliability score. Paged with ' +
+      'after (the next of the previous page) and limit (1 to 50, default 20).',
+  })
+  @ApiQuery({ name: 'after', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiOkResponse({ type: ChangeHistoryDto })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async changes(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.history.execute(context, changeHistoryInputOf(query));
+    this.log(
+      'shipping.view-fleet-selection-history-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return changeHistoryBody(result.value);
   }
 
   @Post('models')

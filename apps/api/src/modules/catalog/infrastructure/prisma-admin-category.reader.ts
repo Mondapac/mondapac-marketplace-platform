@@ -2,6 +2,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
+  AdminCategoryDetailRecord,
   AdminCategoryReader,
   AdminCategoryRevisionRecord,
   CategoryProductFacts,
@@ -37,6 +38,8 @@ export class PrismaAdminCategoryReader implements AdminCategoryReader {
         status: true,
         mergedIntoId: true,
         version: true,
+        position: true,
+        showInMenu: true,
         publishedRevision: {
           select: { revisionNo: true, names: { select: { locale: true, name: true } } },
         },
@@ -53,6 +56,8 @@ export class PrismaAdminCategoryReader implements AdminCategoryReader {
       names: row.publishedRevision?.names ?? [],
       revisionNo: row.publishedRevision?.revisionNo ?? 0,
       version: row.version,
+      position: row.position,
+      showInMenu: row.showInMenu,
     }));
   }
 
@@ -108,6 +113,43 @@ export class PrismaAdminCategoryReader implements AdminCategoryReader {
       afterId = page[page.length - 1]!.id;
       if (this.now() - started >= budgetMs) return { facts, complete: false };
     }
+  }
+
+  async detail(
+    market: MarketContext,
+    id: Id<'Category'>,
+  ): Promise<AdminCategoryDetailRecord | null> {
+    const row = await this.prisma.tx(market).catalogPlatformCategory.findFirst({
+      where: { marketId: market.marketId, id },
+      select: {
+        showInMenu: true,
+        imageId: true,
+        seoTitle: true,
+        seoDescription: true,
+        seoNoindex: true,
+        hiddenById: true,
+        publishedRevision: {
+          select: {
+            texts: { select: { locale: true, name: true, shortDescription: true, keywords: true } },
+          },
+        },
+      },
+    });
+    if (row === null) return null;
+    return {
+      texts: [...(row.publishedRevision?.texts ?? [])]
+        .sort((a, b) => (a.locale < b.locale ? -1 : 1))
+        .map((text) => ({
+          locale: text.locale,
+          name: text.name,
+          shortDescription: text.shortDescription,
+          keywords: text.keywords,
+        })),
+      seo: { title: row.seoTitle, description: row.seoDescription, noindex: row.seoNoindex },
+      showInMenu: row.showInMenu,
+      imageId: row.imageId,
+      hiddenById: row.hiddenById as Id<'Category'> | null,
+    };
   }
 
   async revisions(

@@ -744,6 +744,10 @@
     "show-more": "Show more",
     "show-less": "Show less",
     "specifications": "Specifications",
+    "spec-yes": "Yes",
+    "spec-no": "No",
+    "spec-group-general": "General",
+    "spec-group-details": "Details",
     "other-sellers": "Other sellers",
     "similar": "Similar products",
     "show-all": "Show all",
@@ -759,7 +763,9 @@
     "certificate-checked": "{name} certificate checked",
     "seller-page": "View seller page",
     "loading": "Loading product",
-    "buy-options": "Buy options"
+    "buy-options": "Buy options",
+    "variant-choose": "Choose an option",
+    "variant-n": "Option {n}"
   },
   "cart": {
     "title": "Cart",

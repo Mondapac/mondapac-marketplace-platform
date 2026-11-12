@@ -31,6 +31,10 @@ import {
   type SellerHealthPolicy,
 } from '../application/ports/seller-health-policy';
 import {
+  SELLER_HEALTH_REQUEST_STORE,
+  type SellerHealthRequestStore,
+} from '../application/ports/seller-health-request.store';
+import {
   SELLER_HEALTH_ROSTER,
   type SellerHealthRoster,
 } from '../application/ports/seller-health-roster';
@@ -44,6 +48,7 @@ import {
 } from '../application/ports/seller-health.store';
 import { DefaultSellerHealthPolicy } from './default-seller-health-policy';
 import { LateBoundSellerHealthSignals } from './late-bound-seller-health-signals';
+import { PrismaSellerHealthRequestStore } from './prisma-seller-health-request.store';
 import { PrismaSellerHealthRoster } from './prisma-seller-health-roster';
 import { PrismaSellerHealthStore } from './prisma-seller-health.store';
 import {
@@ -72,6 +77,22 @@ import {
   type BlogAccessRepository,
 } from '../application/ports/blog-access.repository';
 import { PrismaBlogAccessRepository } from './prisma-blog-access.repository';
+import {
+  SELLER_BUSINESS_ACTIVITY_REPOSITORY,
+  type SellerBusinessActivityRepository,
+} from '../application/ports/seller-business-activity.repository';
+import { BUSINESS_ACTIVITY_DIRECTORY } from '../application/ports/business-activity-directory';
+import { LateBoundBusinessActivityDirectory } from './late-bound-business-activity-directory';
+import { PrismaSellerBusinessActivityRepository } from './prisma-seller-business-activity.repository';
+import {
+  AREA_NAME_SOURCE,
+  SERVICE_AREA_NAMES_REPOSITORY,
+  type AreaNameSource,
+  type ServiceAreaNamesRepository,
+} from '../application/ports/service-area-names.repository';
+import { CLOCK } from '../../../platform/clock/clock.module';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { Clock } from '@mondapac/shared-kernel';
 import {
   SELLING_FACTS_REPOSITORY,
   type SellingFactsRepository,
@@ -152,6 +173,8 @@ import { DirectoryServiceAreas, MarketConfigSellerFormats } from './market-confi
 import { MarketConfigSellerPolicy } from './market-config-seller-policy';
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
 import { PrismaSellerFileRepository } from './prisma-seller-file.repository';
+import { CachedAreaNameSource } from './cached-area-name-source';
+import { PrismaServiceAreaNamesRepository } from './prisma-service-area-names.repository';
 import { PrismaSellerListRepository } from './prisma-seller-list.repository';
 import { PrismaShopSlugRepository } from './prisma-shop-slug.repository';
 import { PrismaTaxProfileRepository } from './prisma-tax-profile.repository';
@@ -390,6 +413,31 @@ export const sellerProviders: readonly FactoryProvider[] = [
       new PrismaAdminFlagRepository(prisma),
   },
   {
+    provide: SELLER_BUSINESS_ACTIVITY_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerBusinessActivityRepository =>
+      new PrismaSellerBusinessActivityRepository(prisma),
+  },
+  {
+    provide: BUSINESS_ACTIVITY_DIRECTORY,
+    useFactory: (): LateBoundBusinessActivityDirectory => new LateBoundBusinessActivityDirectory(),
+  },
+  {
+    provide: SERVICE_AREA_NAMES_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ServiceAreaNamesRepository =>
+      new PrismaServiceAreaNamesRepository(prisma),
+  },
+  {
+    provide: AREA_NAME_SOURCE,
+    inject: [UNIT_OF_WORK, SERVICE_AREA_NAMES_REPOSITORY, CLOCK],
+    useFactory: (
+      unitOfWork: UnitOfWork,
+      repository: ServiceAreaNamesRepository,
+      clock: Clock,
+    ): AreaNameSource => new CachedAreaNameSource(unitOfWork, repository, clock),
+  },
+  {
     provide: BLOG_ACCESS_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BlogAccessRepository =>
@@ -429,6 +477,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     provide: SELLER_HEALTH_STORE,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellerHealthStore => new PrismaSellerHealthStore(prisma),
+  },
+  {
+    provide: SELLER_HEALTH_REQUEST_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerHealthRequestStore =>
+      new PrismaSellerHealthRequestStore(prisma),
   },
   {
     provide: SELLER_HEALTH_ROSTER,

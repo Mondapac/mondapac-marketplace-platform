@@ -4,10 +4,14 @@ import type { Product } from '../../domain/product';
 import type { ProductTypeHandler, VariantDraft } from '../../domain/product-type-handler';
 import type { RevisionContent } from '../../domain/revision-content';
 import { freezeWorkingCopy, type FreezeIssue } from '../../domain/revision-freeze';
+import { chooseAxes } from '../../domain/variant-axes';
+import { buildVariantLabels } from '../../domain/variant-labels';
 import type { WorkingCopy } from '../../domain/working-copy';
 import type { AttributeRepository } from '../ports/attribute.repository';
+import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductImageRepository } from '../ports/product-image.repository';
+import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import { revisionContentHash } from './revision-content-hash';
 
 /** A place the draft is not ready, from any of the checks. Codes and paths only, never a value. */
@@ -33,6 +37,16 @@ export interface FreezeRevisionDependencies {
   readonly handlerFor: (typeCode: string) => ProductTypeHandler | undefined;
   /** The photo library; without it a draft that lists photos is not ready. */
   readonly images?: ProductImageRepository;
+  /**
+   * The revisions, to read the axes of the published one (variants V3: the axes of a published
+   * product are locked). Without it the lock is not checked.
+   */
+  readonly revisions?: Pick<ProductRevisionRepository, 'find'>;
+  /**
+   * The sellers' value suggestions (attributes A5): a required field that is empty because its
+   * suggestion is still open is reported as `attribute.suggestion-pending`, not `attribute.required`.
+   */
+  readonly suggestions?: AttributeValueSuggestionStore;
 }
 
 /**
@@ -78,6 +92,23 @@ export class FreezeRevision {
     const locales = this.deps.policy.locales(market);
     const maxVariants = this.deps.policy.maxVariantsPerProduct(market);
     const maxOptionAttributes = this.deps.policy.maxVariantAttributes(market);
+    // The axes of a configurable product (V3): the draft's `variantAxes`, else every variant
+    // attribute of the feature set. A Simple product has none.
+    const axesIssues: RevisionIssue[] = [];
+    let variantSchema = schema;
+    if (state.variantModel === 'options') {
+      const raw = copy.content['variantAxes'];
+      const requested =
+        Array.isArray(raw) && raw.every((item) => typeof item === 'string') ? raw : undefined;
+      const chosen = chooseAxes(
+        schema,
+        requested,
+        maxOptionAttributes,
+        await this.#publishedAxes(market, product),
+      );
+      if (chosen.ok) variantSchema = chosen.schema;
+      else axesIssues.push(...chosen.issues);
+    }
     const frozen = freezeWorkingCopy({
       content: copy.content,
       defaultLocale: locales.default,
@@ -86,6 +117,8 @@ export class FreezeRevision {
       variantModel: state.variantModel,
       liveVariantIds: product.liveVariants.map((variant) => variant.id),
       maxVariants,
+      labelsFor: (optionValues) =>
+        buildVariantLabels(variantSchema, optionValues, locales.supported),
       schemaRef: {
         familyRevisionId: schema.schemaRef.familyRevisionId,
         definitionRevisionIds: schema.schemaRef.definitionRevisionIds,
@@ -93,7 +126,7 @@ export class FreezeRevision {
       contentSchemaVersion: copy.contentSchemaVersion,
     });
 
-    const issues: RevisionIssue[] = frozen.ok ? [] : [...frozen.error];
+    const issues: RevisionIssue[] = frozen.ok ? [...axesIssues] : [...frozen.error, ...axesIssues];
     const rawValues = copy.content['attributeValues'];
     // The handler checks every value's type; a non-object is read as no values.
     const values = (
@@ -103,14 +136,31 @@ export class FreezeRevision {
     const ordered = [locales.default, ...locales.supported.filter((l) => l !== locales.default)];
     const attributes = handler.validateAttributes(schema, values, ordered);
     if (!attributes.ok) {
-      issues.push(...attributes.error.map((issue) => ({ path: issue.path, code: issue.code })));
+      const pending =
+        this.deps.suggestions === undefined
+          ? new Set<string>()
+          : await this.deps.suggestions.openAttributeCodesOfProduct(market, state.id);
+      issues.push(
+        ...attributes.error.map((issue) => ({
+          path: issue.path,
+          code:
+            issue.code === 'attribute.required' && pending.has(issue.path)
+              ? 'attribute.suggestion-pending'
+              : issue.code,
+        })),
+      );
     }
-    if (frozen.ok) {
+    if (frozen.ok && axesIssues.length === 0) {
       // A Simple product's one variant carries no options; the handler still sees it (CC2).
       const drafts: VariantDraft[] = frozen.value.variants.map((variant) => ({
         optionValues: variant.optionValues,
       }));
-      const variants = handler.validateVariants(schema, drafts, maxVariants, maxOptionAttributes);
+      const variants = handler.validateVariants(
+        variantSchema,
+        drafts,
+        maxVariants,
+        maxOptionAttributes,
+      );
       if (!variants.ok) {
         issues.push(...variants.issues.map((issue) => ({ path: issue.path, code: issue.code })));
       }
@@ -127,6 +177,19 @@ export class FreezeRevision {
     }
     if (issues.length > 0 || !frozen.ok) return err({ code: 'revision.not-ready', issues });
     return ok({ content: frozen.value, contentHash: revisionContentHash(frozen.value) });
+  }
+
+  /** The axes the published revision varies on, or null for a product with none (no lock). */
+  async #publishedAxes(market: MarketContext, product: Product): Promise<readonly string[] | null> {
+    const published = product.state.publishedRevisionId;
+    if (published === null || this.deps.revisions === undefined) return null;
+    const revision = await this.deps.revisions.find(market, product.state.id, published);
+    if (revision === null) return null;
+    const axes = new Set<string>();
+    for (const variant of revision.content.variants) {
+      for (const code of Object.keys(variant.optionValues)) axes.add(code);
+    }
+    return axes.size === 0 ? null : [...axes];
   }
 }
 

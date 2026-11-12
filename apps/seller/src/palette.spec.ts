@@ -54,6 +54,25 @@ describe('seller palette index', () => {
     expect(labels(['catalog.own-product.edit'])).toContain('Add product');
   });
 
+  it('offers Invite member and Add stock location, each only with its permission, and puts the path on a setting', () => {
+    const entries = (keys: string[]) => sellerPaletteEntries('approved', keys, text);
+    const actions = (keys: string[]) =>
+      entries(keys)
+        .filter((entry) => entry.kind === 'action')
+        .map((entry) => `${entry.label} ${entry.href}`);
+    expect(actions(['identity.team-member.invite', 'inventory.source.edit'])).toEqual([
+      'Invite member /settings/team',
+      'Add stock location /settings/stock-locations',
+    ]);
+    expect(actions(['inventory.source.edit'])).toEqual([
+      'Add stock location /settings/stock-locations',
+    ]);
+    expect(actions([])).toEqual([]);
+    const context = (id: string) => entries(ALL_KEYS).find((entry) => entry.id === id)?.context;
+    expect(context('page:settings/store-profile')).toBe('Settings / Store');
+    expect(context('setting:store-logo')).toBe('Settings / Store / Store profile');
+  });
+
   it('has unique setting ids, each on a page of the settings map', () => {
     const ids = settingEntries.map((entry) => entry.id);
     expect(new Set(ids).size).toBe(ids.length);

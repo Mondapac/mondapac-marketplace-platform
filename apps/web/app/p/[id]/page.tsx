@@ -1,6 +1,4 @@
 import { getTranslations } from 'next-intl/server';
-import { notFound } from 'next/navigation';
-import { UnavailableProductView } from '../../../src/errors/unavailable-product.tsx';
 import { ProductPage } from '../../../src/product/product-page.tsx';
 import { loadProductReviews } from '../../../src/reviews/reviews-source.ts';
 import { JsonLd } from '../../../src/seo/json-ld.tsx';
@@ -11,62 +9,50 @@ import {
   seoDescription,
 } from '../../../src/seo/metadata.ts';
 import { productPageStructuredData } from '../../../src/seo/structured-data.ts';
-import {
-  loadProduct,
-  loadStorefrontContent,
-  loadUnavailableProduct,
-} from '../../../src/storefront/source.ts';
+import { variantFromParam } from '../../../src/storefront/product-detail.ts';
+import { productHref } from '../../../src/storefront/links.ts';
+import { productForMetadata, resolveProduct } from '../../../src/storefront/product-route.ts';
+import { loadStorefrontContent } from '../../../src/storefront/source.ts';
 
 interface Props {
+  /** `[id]` holds `<name>-<id>`: the page is found by the id at its end. */
   readonly params: Promise<{ id: string }>;
+  /** `?v=` names a Variant to open on; the canonical link never carries it. */
+  readonly searchParams?: Promise<{ v?: string | string[] }>;
 }
 
-// The current path; a later URL shape changes only this line (SEO plan, package 5).
-const productPath = (id: string) => `/p/${encodeURIComponent(id)}`;
-
-/** The product of the path, or a removed product; an unknown one is a 404. */
-async function resolve(params: Props['params']) {
-  const { id } = await params;
-  const product = await loadProduct(id);
-  if (product) return { product } as const;
-  const removed = await loadUnavailableProduct(id);
-  if (!removed) notFound();
-  return { removed } as const;
-}
+/** `?v=` and the rest of the query, for the redirect that keeps them. */
+const queryOf = async (searchParams: Props['searchParams']) => (await searchParams) ?? {};
 
 export async function generateMetadata({ params }: Props) {
-  const [found, { id }] = await Promise.all([resolve(params), params]);
-  const path = productPath(id);
-  if (found.product) {
-    const { product } = found;
-    const description =
-      product.description.trim() === ''
-        ? await seoDescription('product', {
-            name: product.name,
-            seller: product.offers[0].seller.name,
-          })
-        : product.description;
-    return pageMetadata({
-      name: product.name,
-      description,
-      path,
-      ...(product.photos[0] === undefined ? {} : { image: product.photos[0] }),
-    });
-  }
-  // A removed product leaves the search index; the page stays for old links.
+  // Never throws: an unknown or removed product is the page's 404, not the head's (see
+  // `productForMetadata`). A path that will redirect still gets the current path as canonical.
+  const product = await productForMetadata((await params).id);
+  if (product === undefined) return {};
+  const path = productHref(product.id, product.name);
+  const description =
+    product.description.trim() === ''
+      ? await seoDescription('product', {
+          name: product.name,
+          seller: product.offers[0].seller.name,
+        })
+      : product.description;
   return pageMetadata({
-    name: found.removed.name,
-    description: await seoDescription('unavailable-product', { name: found.removed.name }),
+    name: product.name,
+    description,
     path,
-    noindex: true,
+    ...(product.photos[0] === undefined ? {} : { image: product.photos[0] }),
   });
 }
 
-export default async function ProductRoute({ params }: Props) {
-  const [found, { id }] = await Promise.all([resolve(params), params]);
-  // A removed product is noindex: no structured data.
-  if (!found.product) return <UnavailableProductView product={found.removed} />;
-  const { product } = found;
+/**
+ * A redirect or a 404 leaves from `resolveProduct`, before anything is sent. There is no loading
+ * boundary above this page for that reason: one would flush the shell with a 200 first.
+ */
+export default async function ProductRoute({ params, searchParams }: Props) {
+  const [{ id }, query] = await Promise.all([params, queryOf(searchParams)]);
+  const { product, path } = await resolveProduct(id, query);
+  const initialVariantId = variantFromParam(product, query.v);
   const [content, origin, t, reviews] = await Promise.all([
     loadStorefrontContent(),
     requestOrigin(),
@@ -76,8 +62,7 @@ export default async function ProductRoute({ params }: Props) {
   ]);
   const category = content.categories.find((c) => c.code === product.category);
   // The markup is built from the same read as the page, so price and stock always match it.
-  const canonical =
-    origin === undefined ? undefined : canonicalOf({ path: productPath(id) }, origin);
+  const canonical = origin === undefined ? undefined : canonicalOf({ path }, origin);
   const data =
     origin === undefined || canonical === undefined
       ? null
@@ -95,7 +80,12 @@ export default async function ProductRoute({ params }: Props) {
   return (
     <>
       <JsonLd data={data} />
-      <ProductPage product={product} category={category} reviews={reviews} />
+      <ProductPage
+        product={product}
+        category={category}
+        reviews={reviews}
+        initialVariantId={initialVariantId}
+      />
     </>
   );
 }

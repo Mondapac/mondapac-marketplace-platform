@@ -200,9 +200,28 @@ export interface ProductOffer {
   readonly minimumOrder?: string;
 }
 
+/**
+ * One Variant of a product the buyer can pick (for example "1 kg" or "5 kg"), with the offers that
+ * sell it, lowest price first. Present on a product only when more than one Variant is on sale.
+ */
+export interface ProductVariant {
+  readonly id: string;
+  /** The unit label the API gives; absent when it has none (the picker then numbers the option). */
+  readonly label?: string;
+  /** False when every seller is out of it: the picker greys it and it cannot be added to the cart. */
+  readonly inStock: boolean;
+  readonly offers: readonly [ProductOffer, ...ProductOffer[]];
+}
+
 export interface ProductSpecification {
+  /** The attribute's code, unique on a product (the row's key); absent on sample rows. */
+  readonly code?: string;
   readonly label: string;
   readonly value: string;
+  /** The family group's code; rows of one group are next to each other. */
+  readonly group?: string;
+  /** The group's heading, when the page has a word for the code. */
+  readonly groupLabel?: string;
 }
 
 /** The product page: the product, its offers (the featured one first) and similar products. */
@@ -220,8 +239,13 @@ export interface ProductDetail {
    * page); absent for a product without one.
    */
   readonly brand?: { readonly slug: string; readonly name: string };
-  /** Never empty: a product without a sellable offer is not shown. */
+  /**
+   * The offers of the page's default Variant; never empty: a product without a sellable offer is
+   * not shown.
+   */
   readonly offers: readonly [ProductOffer, ...ProductOffer[]];
+  /** Every Variant in the owner's order; absent when the product has one. */
+  readonly variants?: readonly [ProductVariant, ProductVariant, ...ProductVariant[]];
   readonly similar: readonly ProductCard[];
 }
 

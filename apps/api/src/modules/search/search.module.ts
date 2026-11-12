@@ -16,7 +16,9 @@ import { SellersModule } from '../sellers';
 import { CATEGORY_SUBTREE_SOURCE } from './application/ports/category-subtree';
 import { OFFER_DOCUMENT_REPOSITORY } from './application/ports/offer-document.repository';
 import { OFFER_FEED } from './application/ports/offer-feed';
+import { OFFER_FACET_READER } from './application/ports/offer-facet.reader';
 import { OFFER_SEARCH_READER } from './application/ports/offer-search.reader';
+import { SEARCH_FILTER_SOURCE } from './application/ports/search-filters';
 import { PRODUCT_IMAGES } from './application/ports/product-images';
 import {
   PRODUCT_RATING_REPOSITORY,
@@ -50,6 +52,10 @@ import { SyncProductRatings } from './application/use-cases/sync-product-ratings
 import type { RatingSyncDependencies } from './application/rating-sync-dependencies';
 import { SyncOfferDocuments } from './application/use-cases/sync-offer-documents.use-case';
 import { searchProviders } from './infrastructure/search-providers';
+import { ReindexOfferAttributes } from './application/use-cases/reindex-offer-attributes.use-case';
+import type { ReindexDependencies } from './application/reindex-dependencies';
+import { INDEX_STAMP, REINDEX_PROGRESS } from './application/ports/reindex';
+import { reindexAttributesJob } from './presentation/jobs/reindex-offer-attributes.job';
 import { rebuildIndexJob } from './presentation/jobs/rebuild-offer-index.job';
 import { syncRatingsJob } from './presentation/jobs/sync-product-ratings.job';
 import { ForYouController } from './presentation/for-you.controller';
@@ -69,6 +75,8 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['documents', OFFER_DOCUMENT_REPOSITORY],
   ['reader', OFFER_SEARCH_READER],
+  ['facets', OFFER_FACET_READER],
+  ['filterSource', SEARCH_FILTER_SOURCE],
   ['policy', SEARCH_POLICY],
   ['feed', OFFER_FEED],
   ['visibility', PUBLIC_VISIBILITY],
@@ -92,6 +100,27 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         Object.fromEntries(
           PORTS.map(([name], index) => [name, values[index]]),
         ) as unknown as SearchDependencies,
+      ),
+  };
+}
+
+const REINDEX_PORTS: readonly [keyof ReindexDependencies, InjectionToken][] = [
+  ...PORTS,
+  ['progress', REINDEX_PROGRESS],
+  ['stamp', INDEX_STAMP],
+];
+
+/** The attribute reindex has its own dependency object: the sync ports, progress and the stamp. */
+function reindexProvider(): FactoryProvider<ReindexOfferAttributes> {
+  return {
+    provide: ReindexOfferAttributes,
+    inject: [USE_CASE_GATE, ...REINDEX_PORTS.map(([, token]) => token)],
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+      new ReindexOfferAttributes(
+        gate,
+        Object.fromEntries(
+          REINDEX_PORTS.map(([name], index) => [name, values[index]]),
+        ) as unknown as ReindexDependencies,
       ),
   };
 }
@@ -243,6 +272,7 @@ function productDetailProvider<U>(
     recommendationProvider(ListRecentlyViewedGuest),
     productDetailProvider(ViewProductDetail),
     ratingSyncProvider(),
+    reindexProvider(),
     {
       provide: SEARCH_ASSISTANT_FACADE,
       inject: [SearchProducts, ListBestsellers, ListSpecials],
@@ -255,11 +285,12 @@ function productDetailProvider<U>(
     ]),
     registerJobsFrom(
       'search',
-      [RebuildOfferIndex, SyncProductRatings],
-      (rebuild: RebuildOfferIndex, ratings: SyncProductRatings) => [
-        rebuildIndexJob(rebuild),
-        syncRatingsJob(ratings),
-      ],
+      [RebuildOfferIndex, SyncProductRatings, ReindexOfferAttributes],
+      (
+        rebuild: RebuildOfferIndex,
+        ratings: SyncProductRatings,
+        reindex: ReindexOfferAttributes,
+      ) => [rebuildIndexJob(rebuild), syncRatingsJob(ratings), reindexAttributesJob(reindex)],
     ),
   ],
   exports: [SEARCH_ASSISTANT_FACADE],

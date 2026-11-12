@@ -38,6 +38,8 @@ import type {
 } from '../draft/draft-support';
 import type { FileNotFound } from '../draft/draft-view';
 import type { BusinessIdentifierSchemes } from '../ports/business-identifier-scheme';
+import type { OnboardingAreas } from '../ports/seller-market-formats';
+import type { AreaNameSource } from '../ports/service-area-names.repository';
 import type { BusinessFileRevisionRepository } from '../ports/business-file-revision.repository';
 import type { RegisterCheckRepository } from '../ports/register-check.repository';
 import type { RegisterLookupPolicy } from '../ports/register-lookup-policy';
@@ -64,6 +66,8 @@ export interface ReviewRevisionView {
   readonly status: RevisionStatus;
   readonly createdAt: Temporal.Instant;
   readonly serviceAreaCode: string;
+  /** The English display name of the area (edited, else configured); null for an unknown code. */
+  readonly serviceAreaName: string | null;
   readonly operatingTimezone: string;
   /** The register answer the submission recorded (design 3.4), never a register value. */
   readonly registerAtSubmission: {
@@ -139,6 +143,8 @@ export interface ReviewReadDependencies {
   readonly reviewChecks: ReviewCheckRepository;
   readonly accessReader: SellerAccessReader;
   readonly identifierSchemes: BusinessIdentifierSchemes;
+  readonly onboardingAreas: OnboardingAreas;
+  readonly areaNames: AreaNameSource;
   readonly audit: AuditWriter;
   readonly clock: Clock;
 }
@@ -226,11 +232,20 @@ export class ReviewRead extends UseCase<ReviewReadInput, ReviewView, ReviewReadF
       if (loaded.value === 'no-revision') return err({ code: 'review.no-revision' });
       const data = loaded.value;
 
-      const current = await this.open(market, sellerId, data.current, data.currentSealed);
+      const edited = await this.deps.areaNames.edited(market);
+      const areaNameOf = (code: string): string | null =>
+        edited.get(code)?.['en'] ?? this.deps.onboardingAreas.nameOf(market, code);
+      const current = await this.open(
+        market,
+        sellerId,
+        data.current,
+        data.currentSealed,
+        areaNameOf,
+      );
       const previous =
         data.previous === null || data.previousSealed === null
           ? null
-          : await this.open(market, sellerId, data.previous, data.previousSealed);
+          : await this.open(market, sellerId, data.previous, data.previousSealed, areaNameOf);
       if (current === null || (data.previous !== null && previous === null)) {
         return err({ code: 'sellers.unavailable' });
       }
@@ -310,6 +325,7 @@ export class ReviewRead extends UseCase<ReviewReadInput, ReviewView, ReviewReadF
     sellerId: Id<'Seller'>,
     revision: BusinessFileRevision,
     sealed: SealedRevisionContent,
+    areaNameOf: (code: string) => string | null,
   ): Promise<ReviewRevisionView | null> {
     const { sealer, identifierSchemes } = this.deps;
     // A fixed, personal-data-free reason: a hash mismatch may mean the stored content was tampered
@@ -335,6 +351,7 @@ export class ReviewRead extends UseCase<ReviewReadInput, ReviewView, ReviewReadF
       status: revision.status,
       createdAt: revision.createdAt,
       serviceAreaCode: revision.serviceAreaCode,
+      serviceAreaName: areaNameOf(revision.serviceAreaCode),
       operatingTimezone: revision.operatingTimezone,
       registerAtSubmission: {
         outcome: revision.register.outcome,

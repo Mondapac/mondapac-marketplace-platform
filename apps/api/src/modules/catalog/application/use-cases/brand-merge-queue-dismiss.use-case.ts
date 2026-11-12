@@ -1,9 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_BRAND_EDIT } from '../../contracts/permissions';
+import { BrandMergeDismissedAudit } from '../../domain/audit';
 import {
   adminAccountOf,
   closedInput,
@@ -31,6 +33,7 @@ export interface BrandMergeQueueDismissDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly brands: BrandRepository;
   readonly clock: Clock;
+  readonly audit: AuditWriter;
 }
 
 const MAX_GROUP_KEY = 200;
@@ -90,13 +93,21 @@ export class BrandMergeQueueDismiss extends UseCase<
     return this.deps.unitOfWork.run<BrandMergeQueueDismissOutput, BrandMergeQueueDismissFailure>(
       market,
       async () => {
-        const resolved = await this.deps.brands.dismissGroup(market, {
+        const brandIds = await this.deps.brands.dismissGroup(market, {
           groupKey,
           accountId,
           now: this.deps.clock.now(),
         });
-        if (resolved === 0) return err({ code: 'brand-merge-queue.group-not-found' } as const);
-        return ok({ resolved });
+        if (brandIds.length === 0) {
+          return err({ code: 'brand-merge-queue.group-not-found' } as const);
+        }
+        for (const brandId of brandIds) {
+          await this.deps.audit.record(
+            context,
+            BrandMergeDismissedAudit.entry(brandId, { after: { groupSize: brandIds.length } }),
+          );
+        }
+        return ok({ resolved: brandIds.length });
       },
     );
   }

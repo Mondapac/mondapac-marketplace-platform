@@ -22,6 +22,10 @@ export interface CatalogMarketPolicy {
   };
   /** The most non-retired variants one product may hold (2.1). */
   maxVariantsPerProduct(market: MarketContext): number;
+  /** The deepest level of the platform category tree (categories C2; AU 4, ZZ 3). */
+  maxCategoryDepth(market: MarketContext): number;
+  /** The most tags one move, merge or archive may mark `rechecking` (C4a; AU 50,000). */
+  maxCategoryChangeTags(market: MarketContext): number;
   /** The most option attributes one product may vary on (attributes A2; AU 2). */
   maxVariantAttributes(market: MarketContext): number;
   /** The product types this Market offers (3.1 rule 4). */

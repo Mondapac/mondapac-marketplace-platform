@@ -248,18 +248,11 @@ describe.each(TEST_MARKETS)('catalog category tree in market %s (database integr
     expect(await insertName('xx', 'نیم‌فاصله')).toBeNull();
   });
 
-  it('has no DELETE on the tree tables, and no UPDATE of a slug', async () => {
+  it('has no DELETE on the tree tables, and no UPDATE of the creator kind (the slug changes only through the editor, C3a)', async () => {
     const id = await insertCategory();
     expect(await sqlState(sql, 'DELETE FROM catalog.platform_categories WHERE id = $1', [id])).toBe(
       '42501',
     );
-    expect(
-      await sqlState(
-        sql,
-        "UPDATE catalog.platform_categories SET slug = 'renamed-slug' WHERE id = $1",
-        [id],
-      ),
-    ).toBe('42501');
     expect(
       await sqlState(
         sql,

@@ -1,3 +1,8 @@
+import {
+  changeTrailOf,
+  FakeChangeActors,
+  InMemoryAuditTrail,
+} from '../../../../test/support/change-trail-fakes';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -31,6 +36,7 @@ import { DeliveryChoice } from './use-cases/delivery-choice.use-case';
 import { PriceDelivery } from './use-cases/price-delivery.use-case';
 import { SetDeliverySettings } from './use-cases/set-delivery-settings.use-case';
 import { SetSellerDeliveryMethods } from './use-cases/set-seller-delivery-methods.use-case';
+import { ViewDeliverySettingsHistory } from './use-cases/view-delivery-settings-history.use-case';
 import { ViewDeliverySettings } from './use-cases/view-delivery-settings.use-case';
 import { ViewSellerDeliveryMethods } from './use-cases/view-seller-delivery-methods.use-case';
 
@@ -51,14 +57,12 @@ const SELLER_A = id<'Seller'>(0x51);
 const SELLER_B = id<'Seller'>(0x52);
 const SELLER_C = id<'Seller'>(0x53);
 
-class RecordingAudit implements AuditWriter {
-  readonly entries: AuditEntry[] = [];
-  record(_context: CallContext, entry: AuditEntry): Promise<void> {
+class RecordingAudit extends InMemoryAuditTrail implements AuditWriter {
+  override record(context: CallContext, entry: AuditEntry): Promise<void> {
     if (!SHIPPING_AUDIT_ACTIONS.some((definition) => definition.action === entry.action)) {
       throw new Error(`audit: unknown action ${entry.action}`);
     }
-    this.entries.push(entry);
-    return Promise.resolve();
+    return super.record(context, entry);
   }
 }
 
@@ -122,6 +126,7 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
 
   let store: MemoryDeliverySettings;
   let audit: RecordingAudit;
+  let actors: FakeChangeActors;
   let clock: FixedClock;
   let pickups: FakePickups;
   let known: Set<string>;
@@ -129,16 +134,18 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
 
   beforeEach(() => {
     store = new MemoryDeliverySettings();
-    audit = new RecordingAudit();
     // 10:00 local on 10 June 2026 in the Market zone.
     clock = new FixedClock(noon('2026-06-10T10:00:00', marketZone));
+    audit = new RecordingAudit(clock);
+    actors = new FakeChangeActors();
     pickups = new FakePickups();
     known = new Set([SELLER_A, SELLER_B, SELLER_C]);
     const sellers: SellerDirectory = {
       exists: (_c, sellerId) => Promise.resolve(known.has(sellerId)),
     };
+    const unitOfWork = new FakeUnitOfWork();
     deps = {
-      unitOfWork: new FakeUnitOfWork(),
+      unitOfWork,
       policy: new ConfigShippingPolicy(markets, areas),
       sellers,
       audit,
@@ -156,6 +163,7 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
       webhookSignature: undefined as never,
       uberWebhookSignature: undefined as never,
       securityEvents: undefined as never,
+      trail: changeTrailOf(unitOfWork, audit, actors),
     };
   });
 
@@ -250,10 +258,52 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
       });
     });
 
+    it('says who saved last and when, on the read, the save and the conflict', async () => {
+      expect((await view()).ok && (await view())).toMatchObject({ value: { lastChanged: null } });
+      actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
+      const saved = await save(SETTINGS);
+      const lastChanged = { at: clock.now(), byDisplayName: 'Sara K.', byKind: 'member' };
+      expect(saved.ok && saved.value.lastChanged).toEqual(lastChanged);
+      expect((await view()).ok && (await view())).toMatchObject({ value: { lastChanged } });
+      const stale = await save({ ...SETTINGS, scheduledDaysAhead: 2 });
+      expect(stale).toEqual({
+        ok: false,
+        error: { code: 'shipping.delivery-settings-conflict', lastChanged },
+      });
+    });
+
+    it('lists the changes with the field names only, the seller methods included', async () => {
+      actors.labels.set(ADMIN, { kind: 'member', displayName: 'Sara K.' });
+      await save({
+        ...SETTINGS,
+        scheduledDaysAhead: 3,
+        margin: { kind: 'percent', basisPoints: 500 },
+      });
+      clock.advance(Temporal.Duration.from({ minutes: 2 }));
+      await setSeller(SELLER_A, ['pickup']);
+      const history = (input: object, context: CallContext = admin) =>
+        new ViewDeliverySettingsHistory(gate, deps).execute(context, input);
+      const page = await history({});
+      expect(page.ok && page.value.items.map((i) => [i.byDisplayName, i.fields])).toEqual([
+        ['Sara K.', ['sellerMethods']],
+        ['Sara K.', ['marginKind', 'marginValue', 'scheduledDaysAhead']],
+      ]);
+      expect(JSON.stringify(page)).not.toContain('500');
+      expect((await history({ limit: 0 })).ok).toBe(false);
+      expect((await history({}, customer)).ok).toBe(false);
+      expect((await history({}, actor('seller'))).ok).toBe(false);
+    });
+
     it('refuses a stale version and writes nothing', async () => {
       await save(SETTINGS);
       const stale = await save({ ...SETTINGS, scheduledDaysAhead: 2 });
-      expect(stale).toEqual({ ok: false, error: { code: 'shipping.delivery-settings-conflict' } });
+      expect(stale).toEqual({
+        ok: false,
+        error: {
+          code: 'shipping.delivery-settings-conflict',
+          lastChanged: { at: clock.now(), byDisplayName: null, byKind: 'member' },
+        },
+      });
       expect(audit.entries).toHaveLength(1);
       expect((await view()).ok && (await view())).toMatchObject({
         value: { settings: { scheduledDaysAhead: 7, version: 1 } },

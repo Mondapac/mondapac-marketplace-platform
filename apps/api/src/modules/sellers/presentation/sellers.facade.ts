@@ -2,6 +2,8 @@ import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel'
 import type { AccessDenied } from '../../../platform/authz';
 import type { ActiveSinceSystem } from '../application/use-cases/active-since-system.use-case';
 import type { ActiveSince } from '../application/use-cases/active-since.use-case';
+import type { SellerBusinessActivities } from '../application/use-cases/seller-business-activities.use-case';
+import type { SellerBusinessActivitiesSystem } from '../application/use-cases/seller-business-activities-system.use-case';
 import type { BlogAccessSystem } from '../application/use-cases/blog-access-system.use-case';
 import type { BlogAccess } from '../application/use-cases/blog-access.use-case';
 import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
@@ -20,6 +22,7 @@ import type {
   AllowedProductTypesOf,
   CarrierPickup,
   ReviewerBusinessDetails,
+  SellerBusinessActivitiesMap,
   SellerDetailsNotFound,
   SellersFacade,
   SellingEligibilityMap,
@@ -36,6 +39,8 @@ export interface SellersFacadeUseCases {
   readonly sellingEligibilitySystem: SellingEligibilitySystem;
   readonly allowedProductTypes: AllowedProductTypes;
   readonly allowedProductTypesSystem: AllowedProductTypesSystem;
+  readonly sellerBusinessActivities: SellerBusinessActivities;
+  readonly sellerBusinessActivitiesSystem: SellerBusinessActivitiesSystem;
   readonly blogAccess: BlogAccess;
   readonly blogAccessSystem: BlogAccessSystem;
   readonly activeSince: ActiveSince;
@@ -94,6 +99,19 @@ export class SellersFacadeImplementation implements SellersFacade {
         ? this.useCases.allowedProductTypesSystem
         : this.useCases.allowedProductTypes;
     return useCase.execute(context, { sellerId });
+  }
+
+  sellerBusinessActivities(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<SellerBusinessActivitiesMap, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  > {
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.sellerBusinessActivitiesSystem
+        : this.useCases.sellerBusinessActivities;
+    return useCase.execute(context, { sellerIds });
   }
 
   blogAccessOf(

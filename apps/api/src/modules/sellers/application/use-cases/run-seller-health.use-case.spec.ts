@@ -59,6 +59,7 @@ class MemoryStore {
       this.snaps.set(`${market.marketId}|${seller}|${snapshot.day.toString()}`, snapshot);
       return Promise.resolve();
     },
+    purgeBefore: () => Promise.resolve({ days: 0, snapshots: 0 }),
     snapshots: (market, seller, from, to) =>
       Promise.resolve(
         [...this.snaps.entries()]
@@ -70,6 +71,8 @@ class MemoryStore {
           )
           .map(([, snap]) => snap),
       ),
+    latest: () => Promise.resolve(new Map()),
+    unhealthy: () => Promise.resolve({ sellers: [], truncated: false }),
   };
 }
 
@@ -89,6 +92,8 @@ function setUp(entries: readonly SellerHealthRosterEntry[], options: { unitFails
       Promise.resolve(
         entries.filter((entry) => after === null || entry.sellerId > after).slice(0, limit),
       ),
+    one: (_m, seller) =>
+      Promise.resolve(entries.find((entry) => entry.sellerId === seller) ?? null),
   };
   const asked: { seller: Id<'Seller'>; days: string[]; zone: string }[] = [];
   const failing = new Set<Id<'Seller'>>();

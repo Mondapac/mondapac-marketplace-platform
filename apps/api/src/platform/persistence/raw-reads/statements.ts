@@ -130,6 +130,18 @@ export interface OfferSearchRow {
   readonly rank: number;
 }
 
+/** One row of `search.offer-facet-rows`: a document of the scope with its facet strings. */
+export interface OfferFacetRow {
+  readonly productId: string;
+  readonly facets: readonly string[];
+}
+
+/** One row of `search.offer-number-rows`: one stored number of the scope. */
+export interface OfferNumberRow {
+  readonly attr: string;
+  readonly value: string;
+}
+
 /** The statements, by id, with the parameters and the rows each one has. Added per entry. */
 export interface RawReadStatements {
   readonly 'certification.seller-basis': {
@@ -201,6 +213,63 @@ export interface RawReadStatements {
     };
     readonly row: OfferSearchRow;
   };
+  readonly 'search.offer-filtered': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly categoryIds: readonly string[];
+      readonly choice1: readonly string[];
+      readonly choice2: readonly string[];
+      readonly choice3: readonly string[];
+      readonly choice4: readonly string[];
+      readonly choice5: readonly string[];
+      readonly choice6: readonly string[];
+      readonly choice7: readonly string[];
+      readonly choice8: readonly string[];
+      readonly range1Attr: string;
+      readonly range1Min: string;
+      readonly range1Max: string;
+      readonly range2Attr: string;
+      readonly range2Min: string;
+      readonly range2Max: string;
+      readonly range3Attr: string;
+      readonly range3Min: string;
+      readonly range3Max: string;
+      readonly mode: string;
+      readonly priorMeanTimes1000: string;
+      readonly limit: string;
+      readonly offset: string;
+    };
+    readonly row: OfferSearchRow;
+  };
+  readonly 'search.offer-facet-rows': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly categoryIds: readonly string[];
+      readonly range1Attr: string;
+      readonly range1Min: string;
+      readonly range1Max: string;
+      readonly range2Attr: string;
+      readonly range2Min: string;
+      readonly range2Max: string;
+      readonly range3Attr: string;
+      readonly range3Min: string;
+      readonly range3Max: string;
+      readonly limit: string;
+    };
+    readonly row: OfferFacetRow;
+  };
+  readonly 'search.offer-number-rows': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly categoryIds: readonly string[];
+      readonly attrs: readonly string[];
+      readonly limit: string;
+    };
+    readonly row: OfferNumberRow;
+  };
   readonly 'search.offer-browse-top-rated': {
     readonly params: {
       readonly categoryIds: readonly string[];
@@ -263,6 +332,15 @@ const parseOfferSearchRow = (raw: unknown): OfferSearchRow => {
     categoryIds: textList(row['category_ids']),
     rank: number(row['rank']),
   };
+};
+
+const parseOfferFacetRow = (raw: unknown): OfferFacetRow => {
+  const row = asRecord(raw);
+  return { productId: text(row['product_id']), facets: textList(row['facets']) };
+};
+const parseOfferNumberRow = (raw: unknown): OfferNumberRow => {
+  const row = asRecord(raw);
+  return { attr: text(row['attr']), value: text(row['value']) };
 };
 
 const SELLER_BASIS_SQL = `SELECT q.ord::int4 AS ord, t.id AS type_id, c.id AS certification_id, c.status,
@@ -398,10 +476,86 @@ const OFFER_BROWSE_TOP_RATED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id
  ORDER BY COALESCE(r.bayes_times_1000, $3::text::int4) DESC, d.name ASC, d.offer_id ASC
  LIMIT $4::text::int4 OFFSET $5::text::int4`;
 
+// Attribute filters (attributes A7). One statement for a text search or a category browse narrowed by up
+// to eight choice groups (a document holds one of a group's facet strings: an empty group is no
+// filter) and up to three number ranges (an empty attribute is no range; a range joins the
+// document's stored number of that attribute). `$3` empty means a browse (by name); the category
+// array empty means no category. The rating boost is joined only when `$22` is not `none`; with
+// `$22 = 'top'` the stored Bayesian average orders first, as in the rated statements.
+const OFFER_FILTERED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, d.short_text,
+       d.category_ids::text[] AS category_ids,
+       ts_rank(d.search_vector, websearch_to_tsquery($2::regconfig, $3::text)) AS rank
+  FROM "search"."offer_documents" d
+  LEFT JOIN "search"."offer_document_numbers" n1 ON n1.market_id = $1 AND n1.offer_id = d.offer_id AND n1.attr = $13::text
+  LEFT JOIN "search"."offer_document_numbers" n2 ON n2.market_id = $1 AND n2.offer_id = d.offer_id AND n2.attr = $16::text
+  LEFT JOIN "search"."offer_document_numbers" n3 ON n3.market_id = $1 AND n3.offer_id = d.offer_id AND n3.attr = $19::text
+  LEFT JOIN "search"."product_ratings" r ON r.market_id = $1 AND r.product_id = d.product_id AND $22::text <> 'none'
+ WHERE d.market_id = $1
+   AND ($3::text = '' OR d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text))
+   AND ($4::uuid[] = '{}'::uuid[] OR d.category_ids && $4::uuid[])
+   AND ($5::text[] = '{}'::text[] OR d.facet_codes && $5::text[])
+   AND ($6::text[] = '{}'::text[] OR d.facet_codes && $6::text[])
+   AND ($7::text[] = '{}'::text[] OR d.facet_codes && $7::text[])
+   AND ($8::text[] = '{}'::text[] OR d.facet_codes && $8::text[])
+   AND ($9::text[] = '{}'::text[] OR d.facet_codes && $9::text[])
+   AND ($10::text[] = '{}'::text[] OR d.facet_codes && $10::text[])
+   AND ($11::text[] = '{}'::text[] OR d.facet_codes && $11::text[])
+   AND ($12::text[] = '{}'::text[] OR d.facet_codes && $12::text[])
+   AND ($13::text = '' OR (n1.value >= $14::text::numeric AND n1.value <= $15::text::numeric))
+   AND ($16::text = '' OR (n2.value >= $17::text::numeric AND n2.value <= $18::text::numeric))
+   AND ($19::text = '' OR (n3.value >= $20::text::numeric AND n3.value <= $21::text::numeric))
+ ORDER BY CASE WHEN $22::text = 'top' THEN COALESCE(r.bayes_times_1000, $23::text::int4) END DESC NULLS LAST,
+          ts_rank(d.search_vector, websearch_to_tsquery($2::regconfig, $3::text)) * COALESCE(r.boost_ppm, 1000000) DESC,
+          CASE WHEN $3::text = '' THEN d.name END ASC,
+          d.offer_id ASC
+ LIMIT $24::text::int4 OFFSET $25::text::int4`;
+
+// The documents of a scope with their facet strings, for counting (the counting is done by the
+// caller, so the statement needs no aggregate). Same scope and range rules as above; the choice
+// groups are applied by the caller so an attribute's own options can ignore its own filter.
+const OFFER_FACET_ROWS_SQL = `SELECT d.product_id, d.facet_codes::text[] AS facets
+  FROM "search"."offer_documents" d
+  LEFT JOIN "search"."offer_document_numbers" n1 ON n1.market_id = $1 AND n1.offer_id = d.offer_id AND n1.attr = $5::text
+  LEFT JOIN "search"."offer_document_numbers" n2 ON n2.market_id = $1 AND n2.offer_id = d.offer_id AND n2.attr = $8::text
+  LEFT JOIN "search"."offer_document_numbers" n3 ON n3.market_id = $1 AND n3.offer_id = d.offer_id AND n3.attr = $11::text
+ WHERE d.market_id = $1
+   AND ($3::text = '' OR d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text))
+   AND ($4::uuid[] = '{}'::uuid[] OR d.category_ids && $4::uuid[])
+   AND ($5::text = '' OR (n1.value >= $6::text::numeric AND n1.value <= $7::text::numeric))
+   AND ($8::text = '' OR (n2.value >= $9::text::numeric AND n2.value <= $10::text::numeric))
+   AND ($11::text = '' OR (n3.value >= $12::text::numeric AND n3.value <= $13::text::numeric))
+ ORDER BY d.offer_id ASC
+ LIMIT $14::text::int4`;
+
+// The stored numbers of some attributes over a scope (their lowest and highest are read by the caller).
+const OFFER_NUMBER_ROWS_SQL = `SELECT n.attr, n.value::text AS value
+  FROM "search"."offer_documents" d
+  JOIN "search"."offer_document_numbers" n ON n.market_id = $1 AND n.offer_id = d.offer_id
+  JOIN unnest($5::text[]) AS a(attr) ON n.attr = a.attr
+ WHERE d.market_id = $1
+   AND ($3::text = '' OR d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text))
+   AND ($4::uuid[] = '{}'::uuid[] OR d.category_ids && $4::uuid[])
+ ORDER BY n.offer_id ASC
+ LIMIT $6::text::int4`;
+
 /**
  * The list. `certification` holds S1 (with the badge columns of slice 10), S2 with the policy
  * rows of slice 13 and S3 of slice 14 (data design 7.3).
  */
+/** The eight choice groups of `search.offer-filtered` (a group is a text array of facet strings). */
+const CHOICE_PARAMS: readonly RawReadParam[] = Array.from({ length: 8 }, (_, index) => ({
+  name: `choice${index + 1}`,
+  type: 'text[]' as const,
+  maxLength: 50,
+}));
+
+/** The three range slots (attribute code, lower and upper bound as decimal text). */
+const RANGE_PARAMS: readonly RawReadParam[] = [1, 2, 3].flatMap((slot) => [
+  { name: `range${slot}Attr`, type: 'text' as const },
+  { name: `range${slot}Min`, type: 'text' as const },
+  { name: `range${slot}Max`, type: 'text' as const },
+]);
+
 export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
   {
     id: 'certification.seller-basis',
@@ -590,5 +744,57 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
       { name: 'offset', type: 'text' },
     ],
     parseRow: parseOfferSearchRow,
+  },
+  {
+    id: 'search.offer-filtered',
+    owner: 'search',
+    reason:
+      'full-text search or category browse narrowed by facet arrays (&& overlap) and number ranges over the offer_documents GIN indexes; Prisma has no ranked text search or array overlap',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_FILTERED_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'categoryIds', type: 'uuid[]', maxLength: 1000 },
+      ...CHOICE_PARAMS,
+      ...RANGE_PARAMS,
+      { name: 'mode', type: 'text' },
+      { name: 'priorMeanTimes1000', type: 'text' },
+      { name: 'limit', type: 'text' },
+      { name: 'offset', type: 'text' },
+    ],
+    parseRow: parseOfferSearchRow,
+  },
+  {
+    id: 'search.offer-facet-rows',
+    owner: 'search',
+    reason:
+      'the documents of a text or category scope with their facet strings, for counting in the caller; full-text search and array overlap are not in Prisma',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_FACET_ROWS_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'categoryIds', type: 'uuid[]', maxLength: 1000 },
+      ...RANGE_PARAMS,
+      { name: 'limit', type: 'text' },
+    ],
+    parseRow: parseOfferFacetRow,
+  },
+  {
+    id: 'search.offer-number-rows',
+    owner: 'search',
+    reason:
+      'the stored numbers of some attributes over a text or category scope, for the bounds of a range filter; full-text search and array overlap are not in Prisma',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_NUMBER_ROWS_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'categoryIds', type: 'uuid[]', maxLength: 1000 },
+      { name: 'attrs', type: 'text[]', maxLength: 20 },
+      { name: 'limit', type: 'text' },
+    ],
+    parseRow: parseOfferNumberRow,
   },
 ];

@@ -13,6 +13,19 @@ export interface OfferSearchText {
 }
 
 /**
+ * What the index keeps of a product's attributes (attributes A7), built from the PUBLISHED
+ * revision and the published definitions. `facets` are `attribute=value` strings (an option code
+ * with merges followed, `true`, `brand=<slug>`, `country-of-origin=<iso code>`); `numbers` are the
+ * values a range filter reads; `searchText` is words only (brand and its aliases, the country,
+ * option labels and text values of searchable attributes). Never a certification claim.
+ */
+export interface OfferSearchAttributes {
+  readonly searchText: string;
+  readonly facets: readonly string[];
+  readonly numbers: Readonly<Record<string, number>>;
+}
+
+/**
  * What a read model (`search`) may know of one Offer: ids, the sellable flag, the text of the
  * product's published revision in the asked locale and its platform categories. No price, stock,
  * Cost or certification: a certification claim never comes from text (CERT rules).
@@ -25,6 +38,8 @@ export interface OfferSearchFacts {
   /** Null when the product has no published revision or none in the asked locale. */
   readonly text: OfferSearchText | null;
   readonly categoryIds: readonly Id<'Category'>[];
+  /** Empty when the product has no published revision. */
+  readonly attributes: OfferSearchAttributes;
 }
 
 /**
@@ -64,6 +79,12 @@ export interface CatalogIndexFacade {
     context: CallContext,
     input: PublishedOfferIdsInput,
   ): Promise<Result<readonly Id<'Offer'>[], AccessDenied | CatalogValidationFailed>>;
+
+  /**
+   * A short text that changes when what the index keeps of the attributes changes (a definition's
+   * flags, options or names, a brand or an alias). Search rebuilds its documents when it changes.
+   */
+  searchIndexStamp(context: CallContext): Promise<Result<string, AccessDenied>>;
 }
 
 /** Nest token of the {@link CatalogIndexFacade}, provided and exported by `CatalogModule`. */

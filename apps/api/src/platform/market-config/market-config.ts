@@ -1189,6 +1189,20 @@ const catalogSchema = z
      */
     maxVariantsPerProduct: z.number().int().min(1).max(100),
     /**
+     * The deepest level of the platform category tree (categories plan v7, Q1): 4 levels are
+     * department, group, category and subcategory; products sit on levels 3 and 4, so a Market
+     * that allows fewer than 3 cannot hold products. Required, no default; a value outside 3 to 4
+     * stops the start-up with the rest of the Market file. The editor reads it, never a literal.
+     */
+    maxCategoryDepth: z.number().int().min(3).max(4),
+    /**
+     * The most certification tags one move, merge or archive of platform categories may mark
+     * `rechecking` in its unit (catalog design 4.6, Q-K4; categories C4a; AU 50,000, about 8 s in
+     * Mojtaba's estimate). Above it the change is refused with `category.impact-too-large` and the
+     * admin moves the subcategories in parts. Required, no default.
+     */
+    maxCategoryChangeTags: z.number().int().min(1).max(200_000),
+    /**
      * The most variant (option) attributes one product may vary on (attributes plan A2; AU 2). A
      * configurable product whose feature set marks more option attributes is refused by the
      * product type's variant check. Required: a Market never defaults it.

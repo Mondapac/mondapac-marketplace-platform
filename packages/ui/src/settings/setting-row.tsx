@@ -62,8 +62,9 @@ export interface SettingRowProps {
 }
 
 /**
- * One setting: label and help on the start side, the control on the end side from 760 px, one
- * column below it. The label is a real label for the control (or names a group); help and error
+ * One setting: label and help on the start side, the control in a fixed 360 px column on the end
+ * side once its section is 39rem (624 px) wide, stacked below that (the section is the container,
+ * so the sidebar and the sub-navigation do not squeeze the label). The label is a real label for the control (or names a group); help and error
  * text are tied to the control with aria-describedby.
  */
 export function SettingRow({
@@ -123,7 +124,7 @@ export function SettingRow({
       role={group ? 'group' : undefined}
       aria-labelledby={group ? labelId : undefined}
       aria-describedby={group ? describedBy || undefined : undefined}
-      className="grid gap-1.5 border-b border-line-row px-5 py-4 transition-colors last:border-b-0 motion-reduce:transition-none data-found:bg-attention-bg data-found:ring-2 data-found:ring-inset data-found:ring-attention-border focus:outline-none md:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] md:gap-4"
+      className="grid gap-1.5 border-b border-line-row px-5 py-4 transition-colors last:border-b-0 motion-reduce:transition-none data-found:bg-attention-bg data-found:ring-2 data-found:ring-inset data-found:ring-attention-border focus:outline-none @[39rem]:grid-cols-[minmax(0,1fr)_22.5rem] @[39rem]:gap-6"
     >
       <div className="flex min-w-0 flex-col gap-0.5">
         {group || plain ? (

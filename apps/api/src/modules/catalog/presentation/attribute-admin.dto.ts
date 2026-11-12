@@ -65,6 +65,12 @@ export class AttributeOptionBody {
   @ApiProperty(LOCALIZED) labels!: Record<string, string>;
   @ApiProperty() active!: boolean;
   @ApiProperty() position!: number;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The value this one was merged into (attributes A8), or null.',
+  })
+  mergedInto!: string | null;
   @ApiProperty({ description: 'Published products whose current revision holds this value.' })
   productCount!: number;
 }
@@ -153,6 +159,8 @@ export class FeatureSetListItemBody {
   @ApiProperty() code!: string;
   @ApiProperty({ enum: ['active', 'archived'] }) status!: string;
   @ApiProperty() revisionNo!: number;
+  @ApiProperty({ ...LOCALIZED, description: 'Empty for the seeded feature set.' })
+  names!: Record<string, string>;
   @ApiProperty() groupCount!: number;
   @ApiProperty() attributeCount!: number;
   @ApiProperty({ description: 'Published products whose current revision uses it.' })
@@ -168,6 +176,7 @@ export class FeatureSetListBody {
 export class FeatureSetAttributeBody {
   @ApiProperty() code!: string;
   @ApiProperty() required!: boolean;
+  @ApiProperty({ enum: ['required', 'recommended', 'optional'] }) level!: string;
   @ApiProperty() isVariantOption!: boolean;
   @ApiProperty({ nullable: true, type: String, format: 'uuid' }) attributeId!: string | null;
   @ApiProperty({ ...LOCALIZED, nullable: true }) names!: Record<string, string> | null;
@@ -178,6 +187,8 @@ export class FeatureSetAttributeBody {
 
 export class FeatureSetGroupBody {
   @ApiProperty() groupCode!: string;
+  @ApiProperty({ ...LOCALIZED, description: 'Empty before package A4.' })
+  names!: Record<string, string>;
   @ApiProperty({ type: [FeatureSetAttributeBody] }) attributes!: FeatureSetAttributeBody[];
 }
 
@@ -186,6 +197,9 @@ export class FeatureSetDetailBody {
   @ApiProperty() code!: string;
   @ApiProperty({ enum: ['active', 'archived'] }) status!: string;
   @ApiProperty() revisionNo!: number;
+  @ApiProperty({ description: 'The version the editor names when it saves.' }) version!: number;
+  @ApiProperty({ ...LOCALIZED, description: 'Empty for the seeded feature set.' })
+  names!: Record<string, string>;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: [FeatureSetGroupBody] }) groups!: FeatureSetGroupBody[];
   @ApiProperty() productCount!: number;
@@ -251,4 +265,287 @@ export class AttributeWriteBody {
 
 export class AttributeWriteWrapBody {
   @ApiProperty({ type: AttributeWriteBody }) attribute!: AttributeWriteBody;
+}
+
+// The two-person request to clear `material` (catalog design 8.2; attributes A2 part 3).
+
+export class RelaxationRequestCreateRequest {
+  @ApiProperty({ description: 'The attribute version the admin saw.' }) version!: number;
+  @ApiProperty({
+    enum: ['clear-material'],
+    description: 'What to relax. Only clear-material today.',
+  })
+  kind!: string;
+}
+
+export class RelaxationVersionRequest {
+  @ApiProperty({ description: 'The request version the admin saw.' }) version!: number;
+}
+
+export class RelaxationWriteBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) attributeId!: string;
+  @ApiProperty({ enum: ['clear-material', 'archive', 'remove-from-family'] }) kind!: string;
+  @ApiProperty({ enum: ['open', 'confirmed', 'cancelled', 'expired'] }) status!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty({ format: 'date-time' }) requestedAt!: string;
+  @ApiProperty({ format: 'date-time' }) expiresAt!: string;
+}
+
+export class RelaxationWriteWrapBody {
+  @ApiProperty({ type: RelaxationWriteBody }) request!: RelaxationWriteBody;
+}
+
+export class RelaxationConfirmBody {
+  @ApiProperty({ type: RelaxationWriteBody }) request!: RelaxationWriteBody;
+  @ApiProperty({ type: AttributeWriteBody }) attribute!: AttributeWriteBody;
+}
+
+class RelaxationActionBody {
+  @ApiProperty() allowed!: boolean;
+  @ApiProperty({
+    required: false,
+    enum: ['relaxation.same-admin', 'relaxation.not-requester'],
+    description: 'Why not, when not allowed.',
+  })
+  reason?: string;
+}
+
+class RelaxationActionsBody {
+  @ApiProperty({ type: RelaxationActionBody }) confirm!: RelaxationActionBody;
+  @ApiProperty({ type: RelaxationActionBody }) cancel!: RelaxationActionBody;
+}
+
+class RelaxationAttributeBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty(LOCALIZED) names!: Record<string, string>;
+  @ApiProperty() version!: number;
+}
+
+export class OpenRelaxationBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty({ enum: ['clear-material', 'archive', 'remove-from-family'] }) kind!: string;
+  @ApiProperty({ type: RelaxationAttributeBody }) attribute!: RelaxationAttributeBody;
+  @ApiProperty({ description: "The reader's own request: cancel, not confirm." }) mine!: boolean;
+  @ApiProperty({ format: 'uuid', description: 'The requesting administrator.' })
+  requestedByAccountId!: string;
+  @ApiProperty({ format: 'date-time' }) requestedAt!: string;
+  @ApiProperty({ format: 'date-time' }) expiresAt!: string;
+  @ApiProperty({ type: RelaxationActionsBody }) allowedActions!: RelaxationActionsBody;
+}
+
+export class OpenRelaxationListBody {
+  @ApiProperty({ type: [OpenRelaxationBody] }) requests!: OpenRelaxationBody[];
+}
+
+// Requests and answers of the feature-set editor (attributes plan, package A4).
+
+export class FeatureSetEntryRequest {
+  @ApiProperty({ description: 'The code of an active attribute.' }) code!: string;
+  @ApiProperty({ enum: ['required', 'recommended', 'optional'] }) level!: string;
+}
+
+export class FeatureSetGroupRequest {
+  @ApiProperty({
+    required: false,
+    description:
+      'Lower-case code; left out, it comes from the default-locale name. The Core group is `core`.',
+  })
+  groupCode?: string;
+  @ApiProperty({ ...LOCALIZED, description: 'Locale to name; the default locale is required.' })
+  names!: Record<string, string>;
+  @ApiProperty({ type: [FeatureSetEntryRequest], description: 'In order.' })
+  attributes!: FeatureSetEntryRequest[];
+}
+
+export class FeatureSetContentRequest {
+  @ApiProperty({ ...LOCALIZED, description: 'Locale to name; the default locale is required.' })
+  names!: Record<string, string>;
+  @ApiProperty({
+    type: [FeatureSetGroupRequest],
+    description: 'In order. The first is the Core group (brand and country of origin).',
+  })
+  groups!: FeatureSetGroupRequest[];
+}
+
+export class FeatureSetCreateRequest extends FeatureSetContentRequest {
+  @ApiProperty({ required: false, description: 'Left out, it comes from the default-locale name.' })
+  code?: string;
+}
+
+export class FeatureSetEditRequest extends FeatureSetContentRequest {
+  @ApiProperty({ description: 'The version the admin saw.' }) version!: number;
+}
+
+export class FeatureSetWriteBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty({ enum: ['active', 'archived'] }) status!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty() revisionNo!: number;
+}
+
+export class FeatureSetWriteWrapBody {
+  @ApiProperty({ type: FeatureSetWriteBody }) featureSet!: FeatureSetWriteBody;
+}
+
+export class CategoryLinksSetRequest {
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    description: 'The feature set the category holds; null means it takes its parent’s.',
+  })
+  featureSetId!: string | null;
+  @ApiProperty({
+    type: [String],
+    description: 'Filterable attribute codes in the order buyers see.',
+  })
+  filters!: string[];
+  @ApiProperty({
+    required: false,
+    description: 'The version the admin saw; omitted when the category has no link yet.',
+  })
+  version?: number;
+}
+
+export class CategoryLinksOwnBody {
+  @ApiProperty({ format: 'uuid', nullable: true }) featureSetId!: string | null;
+  @ApiProperty({ type: [String] }) filters!: string[];
+  @ApiProperty() revisionNo!: number;
+  @ApiProperty({ description: 'The version the editor names when it saves.' }) version!: number;
+}
+
+export class CategoryLinksFeatureSetBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty(LOCALIZED) names!: Record<string, string>;
+  @ApiProperty({ format: 'uuid', description: 'The category that holds it.' })
+  fromCategoryId!: string;
+  @ApiProperty({ description: 'True when an ancestor holds it.' }) inherited!: boolean;
+}
+
+export class CategoryLinksFilterBody {
+  @ApiProperty() code!: string;
+  @ApiProperty({ format: 'uuid' }) fromCategoryId!: string;
+  @ApiProperty() inherited!: boolean;
+  @ApiProperty({ ...LOCALIZED, nullable: true }) names!: Record<string, string> | null;
+  @ApiProperty({ enum: ATTRIBUTE_DATA_TYPES, nullable: true }) dataType!: string | null;
+  @ApiProperty({ nullable: true }) status!: string | null;
+}
+
+export class CategoryLinksEffectiveBody {
+  @ApiProperty({ type: CategoryLinksFeatureSetBody, nullable: true })
+  featureSet!: CategoryLinksFeatureSetBody | null;
+  @ApiProperty({ type: [CategoryLinksFilterBody] }) filters!: CategoryLinksFilterBody[];
+}
+
+export class CategoryLinksBody {
+  @ApiProperty({ format: 'uuid' }) categoryId!: string;
+  @ApiProperty({ type: CategoryLinksOwnBody, nullable: true }) own!: CategoryLinksOwnBody | null;
+  @ApiProperty({ type: CategoryLinksEffectiveBody }) effective!: CategoryLinksEffectiveBody;
+}
+
+export class CategoryLinksSetBody {
+  @ApiProperty({ format: 'uuid' }) categoryId!: string;
+  @ApiProperty({ format: 'uuid', nullable: true }) featureSetId!: string | null;
+  @ApiProperty({ type: [String] }) filters!: string[];
+  @ApiProperty() revisionNo!: number;
+  @ApiProperty() version!: number;
+}
+
+export class CategoryLinksSetWrapBody {
+  @ApiProperty({ type: CategoryLinksSetBody }) links!: CategoryLinksSetBody;
+}
+
+export class MissingDetailsItemBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty() productCode!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'The name in the default locale.' })
+  name!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description: 'Null for a PLATFORM product.',
+  })
+  sellerId!: string | null;
+  @ApiProperty() featureSetCode!: string;
+  @ApiProperty({ type: [String], description: 'Codes of the required attributes with no value.' })
+  missing!: string[];
+}
+
+export class MissingDetailsListBody {
+  @ApiProperty({ type: [MissingDetailsItemBody] }) items!: MissingDetailsItemBody[];
+  @ApiProperty({ nullable: true, type: String, description: 'The `afterId` of the next call.' })
+  nextAfterId!: string | null;
+  @ApiProperty({ description: 'Published products this call read.' }) scanned!: number;
+  @ApiProperty({
+    type: [String],
+    description: 'Feature sets that could not be read; their products are not judged.',
+  })
+  unreadableFeatureSets!: string[];
+}
+
+// The restructure routes (attributes A8): the impact dialog, merging values and archiving.
+
+class ImpactCountBody {
+  @ApiProperty() count!: number;
+  @ApiProperty({ description: 'True when the real number is count or more (the read stopped).' })
+  atLeast!: boolean;
+}
+
+class ImpactFeatureSetBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' } })
+  names!: Record<string, string>;
+}
+
+class ImpactAttributeBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty({ enum: ['draft', 'active', 'archived'] }) status!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty() material!: boolean;
+  @ApiProperty() isVariantOption!: boolean;
+  @ApiProperty() dataType!: string;
+}
+
+class ImpactBody {
+  @ApiProperty({ type: ImpactCountBody }) publishedProducts!: ImpactCountBody;
+  @ApiProperty({ type: ImpactCountBody }) drafts!: ImpactCountBody;
+  @ApiProperty() featureSetCount!: number;
+  @ApiProperty({ type: [ImpactFeatureSetBody] }) featureSets!: ImpactFeatureSetBody[];
+  @ApiProperty({ type: ImpactCountBody }) categories!: ImpactCountBody;
+  @ApiProperty({ type: ImpactCountBody }) filters!: ImpactCountBody;
+  @ApiProperty({ type: ImpactCountBody }) liveVariantProducts!: ImpactCountBody;
+}
+
+export class AttributeImpactBody {
+  @ApiProperty({ type: ImpactAttributeBody }) attribute!: ImpactAttributeBody;
+  @ApiProperty({ type: ImpactBody }) impact!: ImpactBody;
+}
+
+export class AttributeMergeRequest {
+  @ApiProperty({ description: 'The version of the attribute that is merged away.' })
+  version!: number;
+  @ApiProperty({ description: 'The id of the active attribute of the same type it goes into.' })
+  target!: string;
+  @ApiProperty({ description: 'The version of the target the impact dialog showed.' })
+  targetVersion!: number;
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description: 'For a choice attribute: every value code of the source to a target value code.',
+  })
+  options?: Record<string, string>;
+}
+
+export class ValuesMergeRequest {
+  @ApiProperty({ description: 'The attribute version the impact dialog showed.' })
+  version!: number;
+  @ApiProperty({ description: 'The code of the value that is merged away.' }) source!: string;
+  @ApiProperty({ description: 'The code of the active value it is merged into.' }) target!: string;
 }

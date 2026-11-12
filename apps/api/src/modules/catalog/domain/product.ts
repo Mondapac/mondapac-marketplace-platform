@@ -59,6 +59,8 @@ const EDITABLE_STATUSES: readonly ProductStatus[] = ['draft', 'unpublished', 'pu
 
 export interface VariantRecord {
   readonly id: Id<'Variant'>;
+  /** 1, 2, 3 ... within the product in creation order; never reused, also after retirement (V2). */
+  readonly variantNo: number;
   readonly state: VariantState;
   readonly createdAt: Temporal.Instant;
   readonly publishedAt: Temporal.Instant | null;
@@ -187,6 +189,7 @@ export class Product {
         ? [
             {
               id: input.variantId,
+              variantNo: 1,
               state: 'proposed',
               createdAt: input.now,
               publishedAt: null,
@@ -272,8 +275,12 @@ export class Product {
     }
     if (this.liveVariants.length >= maxVariants)
       return err({ code: 'variant.limit-reached', max: maxVariants });
+    // Every variant ever minted stays in the registry (M-1), so the next number is the highest
+    // one plus one and a retired variant's number is never handed out again.
+    const variantNo = this.#state.variants.reduce((top, v) => Math.max(top, v.variantNo), 0) + 1;
     const variant: VariantRecord = {
       id: variantId,
+      variantNo,
       state: 'proposed',
       createdAt: now,
       publishedAt: null,
@@ -351,11 +358,15 @@ export class Product {
       return err({ code: 'variant.limit-reached', max: input.maxVariants });
     }
     const createdVariants: VariantRecord[] = [];
+    // The registry keeps retired variants, so the highest number ever used plus one is never reused.
+    let topNo = this.#state.variants.reduce((top, v) => Math.max(top, v.variantNo), 0);
     const resolved = input.variantIds.map((id) => {
       if (id !== null) return id;
       const minted = input.newId();
+      topNo += 1;
       createdVariants.push({
         id: minted,
+        variantNo: topNo,
         state: 'proposed',
         createdAt: input.now,
         publishedAt: null,
@@ -640,6 +651,30 @@ export class Product {
   }
 
   /**
+   * The seller's mark that the product carries their own brand (attributes A5, closing #552's
+   * open point): it lets the seller propose a brand. SELLER products only, and not once the
+   * product has ended (`discarded`, `withdrawn`, `retired`). Setting the value it already has
+   * changes nothing and returns `false`; the caller writes only when this returns `true`.
+   */
+  setOwnBrand(input: {
+    readonly ownBrand: boolean;
+    readonly now: Temporal.Instant;
+  }): Result<boolean, ProductRefusal> {
+    const state = this.#state;
+    if (state.scope !== 'SELLER') return err({ code: 'product.seller-only' });
+    if (
+      state.status === 'discarded' ||
+      state.status === 'withdrawn' ||
+      state.status === 'retired'
+    ) {
+      return err({ code: 'product.not-editable' });
+    }
+    if (state.ownBrand === input.ownBrand) return ok(false);
+    this.#applyRecords(input.now, { ownBrand: input.ownBrand }, []);
+    return ok(true);
+  }
+
+  /**
    * The admin pause (catalog design 4.1a): a `published` product that is not paused gets the mark
    * `pausedAt` with the admin's account id and `catalog.product-paused.v1`. The status stays
    * `published`; the use case adds the Offer cause `product-paused` in the same unit.
@@ -780,4 +815,12 @@ export class Product {
           : base + 1;
     this.#state = Object.freeze({ ...this.#state, ...changes, lastChangedAt: now, version });
   }
+}
+
+/**
+ * The variant code of a product's variant: `{productCode}-{nn}` (e.g. MP-004127-02). The number is
+ * zero-padded to two digits and grows beyond that only past 99. Read-only; derived, never stored.
+ */
+export function variantCodeOf(productCode: string, variantNo: number): string {
+  return `${productCode}-${String(variantNo).padStart(2, '0')}`;
 }

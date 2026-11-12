@@ -38,13 +38,14 @@ export default async function AccountDeletionSettingsPage() {
   if (!permissionKeys.includes(SETTINGS_VIEW_PERMISSION)) {
     return shell(
       <NoAccess
+        pageTitle={title}
         title={t('settings.no-access-title')}
         body={t('settings.no-access-needs', {
           page: title,
           permission: t('account-deletion.settings.permission-view'),
         })}
-        backHref="/"
-        backLabel={t('settings.back-home')}
+        backHref="/settings"
+        backLabel={t('settings.sub.back')}
       />,
     );
   }
@@ -54,9 +55,10 @@ export default async function AccountDeletionSettingsPage() {
     return shell(
       <SettingsPage title={title}>
         <LoadError
-          message={t('account-deletion.settings.load-failed')}
+          title={t('settings.load-error.title', { page: title })}
+          message={t('settings.load-error.body')}
           retryLabel={t('load.retry')}
-          className="flex flex-col items-start gap-3"
+          className="w-full"
         />
       </SettingsPage>,
     );

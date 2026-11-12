@@ -51,8 +51,10 @@ export function SellerOrders({
   const [next, setNext] = useState(initial.nextCursor);
   const [total, setTotal] = useState<number | null>(initial.total ?? null);
   const [filter, setFilter] = useState<FulfilmentFilter>('all');
-  const [days, setDays] = useState<Days>(NO_DAYS);
-  const [sort, setSort] = useState<SortId>('newest');
+  // What the date and sort controls show. They change at once, so a field never snaps back while
+  // an answer is on its way, and a second quick change builds on the first, not on old days.
+  const [draftDays, setDraftDays] = useState<Days>(NO_DAYS);
+  const [draftSort, setDraftSort] = useState<SortId>('newest');
   const [page, setPage] = useState(1);
   // Previous and next: the cursor that opened each page seen so far (the first page has none).
   const [cursors, setCursors] = useState<readonly (string | null)[]>([null]);
@@ -69,7 +71,7 @@ export function SellerOrders({
   // user starts on the new rows and not on the pager they used.
   const listTop = useRef<HTMLDivElement>(null);
   const focusList = useRef(false);
-  const backwards = rangeIsBackwards(days);
+  const backwards = rangeIsBackwards(draftDays);
   const number = (n: number) => n.toLocaleString(locale);
 
   useEffect(() => {
@@ -90,15 +92,14 @@ export function SellerOrders({
   }) {
     setExportNote(null);
     const nextFilter = want.filter ?? filter;
-    const nextDays = want.days ?? days;
-    const nextSort = want.sort ?? sort;
+    const nextDays = want.days ?? draftDays;
+    const nextSort = want.sort ?? draftSort;
     const nextPage = want.page ?? 1;
     const nextCursors = want.cursors ?? [null];
     const ticket = ++latest.current;
     setFailed(false);
     if (rangeIsBackwards(nextDays)) {
       // Nothing matches; an answer still on its way for the days as they were must not fill it.
-      setDays(nextDays);
       setOrders([]);
       setNext(null);
       setTotal(null);
@@ -124,8 +125,6 @@ export function SellerOrders({
     }
     focusList.current = want.focus === true;
     setFilter(nextFilter);
-    setDays(nextDays);
-    setSort(nextSort);
     setPage(nextPage);
     setCursors(nextCursors);
     setOrders(result.body.sellerOrders);
@@ -134,14 +133,19 @@ export function SellerOrders({
     setLoading(false);
   }
 
-  const filtered = days.from !== '' || days.to !== '';
+  function changeDays(chosen: Days) {
+    setDraftDays(chosen);
+    void ask({ days: chosen });
+  }
+
+  const filtered = draftDays.from !== '' || draftDays.to !== '';
   // The file holds every order the tab and days match, not only the page on screen.
   async function exportFile() {
     setExporting(true);
     setExportNote(null);
     const outcome = await downloadOrders(
       'ordering/seller/orders/export',
-      exportQueryOf(filter, days),
+      exportQueryOf(filter, draftDays),
     );
     setExporting(false);
     if (outcome.ok) {
@@ -193,28 +197,32 @@ export function SellerOrders({
             <TextField
               type="date"
               label={t('filters.from')}
-              value={days.from}
-              onChange={(event) => void ask({ days: { ...days, from: event.target.value } })}
+              value={draftDays.from}
+              onChange={(event) => changeDays({ ...draftDays, from: event.target.value })}
             />
             <TextField
               type="date"
               label={t('filters.to')}
-              value={days.to}
+              value={draftDays.to}
               error={backwards ? t('filters.backwards') : undefined}
-              onChange={(event) => void ask({ days: { ...days, to: event.target.value } })}
+              onChange={(event) => changeDays({ ...draftDays, to: event.target.value })}
             />
             {paging === 'pages' ? (
               <Select
                 label={t('sort.label')}
-                value={sort}
+                value={draftSort}
                 options={SORTS.map((id) => ({ value: id, label: t(`sort.${id}`) }))}
-                onChange={(event) => void ask({ sort: event.target.value as SortId })}
+                onChange={(event) => {
+                  const chosen = event.target.value as SortId;
+                  setDraftSort(chosen);
+                  void ask({ sort: chosen });
+                }}
               />
             ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {filtered ? (
-              <Button variant="secondary" onClick={() => void ask({ days: NO_DAYS })}>
+              <Button variant="secondary" onClick={() => changeDays(NO_DAYS)}>
                 {t('filters.clear')}
               </Button>
             ) : null}
@@ -240,6 +248,11 @@ export function SellerOrders({
               })}
             </p>
           ) : null}
+          {loading ? (
+            <p className="text-sm text-fg-muted" role="status">
+              {t('loading')}
+            </p>
+          ) : null}
           {failed ? <Banner tone="critical">{t('error.unavailable')}</Banner> : null}
           {orders.length === 0 && !loading && !failed ? (
             <EmptyState
@@ -248,7 +261,7 @@ export function SellerOrders({
               body={t('filter.empty.body')}
             />
           ) : orders.length > 0 ? (
-            <div ref={listTop} tabIndex={-1} className="outline-none">
+            <div ref={listTop} tabIndex={-1} aria-busy={loading} className="outline-none">
               <OrdersTable orders={orders} />
             </div>
           ) : null}

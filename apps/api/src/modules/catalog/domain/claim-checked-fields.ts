@@ -3,7 +3,9 @@ import type {
   AttributeDisplaySettings,
   AttributeOption,
 } from './attribute-definition';
+import type { AttributeFamilyState, FamilyAttribute, FamilyGroup } from './attribute-family';
 import type { OfferState } from './offer';
+import type { CategorySeo, CategoryText } from './category-edit';
 import type { CategoryName, PlatformCategoryState } from './platform-category';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
 
@@ -20,8 +22,14 @@ export const CLAIM_CHECKED_FIELD_IDS = [
   'attribute-definition.help-text',
   'attribute-definition.name',
   'attribute-definition.option-label',
+  'feature-set.group-name',
+  'feature-set.name',
   'offer.description',
+  'platform-category.keyword',
   'platform-category.name',
+  'platform-category.seo-description',
+  'platform-category.seo-title',
+  'platform-category.short-description',
   'platform-category.slug',
   'product.attribute-text-value',
   'product.description',
@@ -134,6 +142,19 @@ export const CATEGORY_NAME_FIELDS: Record<keyof CategoryName, FieldDisposition> 
   name: checked('platform-category.name'),
 };
 
+export const CATEGORY_TEXT_FIELDS: Record<keyof CategoryText, FieldDisposition> = {
+  locale: exempt('internal-code'),
+  name: checked('platform-category.name'),
+  shortDescription: checked('platform-category.short-description'),
+  keywords: checked('platform-category.keyword'),
+};
+
+export const CATEGORY_SEO_FIELDS: Record<keyof CategorySeo, FieldDisposition> = {
+  title: checked('platform-category.seo-title'),
+  description: checked('platform-category.seo-description'),
+  noindex: exempt('internal-code'),
+};
+
 export const PLATFORM_CATEGORY_FIELDS: Record<keyof PlatformCategoryState, FieldDisposition> = {
   id: exempt('identifier'),
   marketId: exempt('identifier'),
@@ -173,6 +194,35 @@ export const OFFER_FIELDS: Record<keyof OfferState, FieldDisposition> = {
   createdAt: exempt('timestamp'),
 };
 
+export const FAMILY_ATTRIBUTE_FIELDS: Record<keyof FamilyAttribute, FieldDisposition> = {
+  code: exempt('internal-code'),
+  required: exempt('internal-code'),
+  isVariantOption: exempt('internal-code'),
+  level: exempt('internal-code'),
+};
+
+export const FAMILY_GROUP_FIELDS: Record<keyof FamilyGroup, FieldDisposition> = {
+  groupCode: exempt('internal-code'),
+  // The group heading on the seller form (attributes A4), in every locale.
+  names: checked('feature-set.group-name'),
+  attributes: nested('FAMILY_ATTRIBUTE_FIELDS'),
+};
+
+export const FEATURE_SET_FIELDS: Record<keyof AttributeFamilyState, FieldDisposition> = {
+  id: exempt('identifier'),
+  marketId: exempt('identifier'),
+  code: exempt('internal-code'),
+  status: exempt('internal-code'),
+  createdByKind: exempt('internal-code'),
+  revisionId: exempt('identifier'),
+  revisionNo: exempt('number'),
+  // The feature set's name, shown to admins and in the seller form header (attributes A4).
+  names: checked('feature-set.name'),
+  groups: nested('FAMILY_GROUP_FIELDS'),
+  version: exempt('number'),
+  createdAt: exempt('timestamp'),
+};
+
 /** Every table above by name, so the schema test can walk them and follow `nested`. */
 export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, FieldDisposition>>>> = {
   REVISION_TEXT_FIELDS,
@@ -181,7 +231,12 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
   ATTRIBUTE_OPTION_FIELDS,
   ATTRIBUTE_DISPLAY_FIELDS,
   ATTRIBUTE_DEFINITION_FIELDS,
+  FAMILY_ATTRIBUTE_FIELDS,
+  FAMILY_GROUP_FIELDS,
+  FEATURE_SET_FIELDS,
   CATEGORY_NAME_FIELDS,
+  CATEGORY_TEXT_FIELDS,
+  CATEGORY_SEO_FIELDS,
   PLATFORM_CATEGORY_FIELDS,
   OFFER_FIELDS,
 };
@@ -214,9 +269,42 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   CheckedRow: { noCustomerText: 'the admin check result of a row' },
   AttributeDefinition: { noCustomerText: 'aggregate class around AttributeDefinitionState' },
   AttributeFamily: { noCustomerText: 'aggregate class around AttributeFamilyState' },
+  CategoryAttributeLink: { noCustomerText: 'aggregate class around CategoryAttributeLinkState' },
+  AttributeRelaxationRequest: {
+    noCustomerText: 'aggregate class around AttributeRelaxationRequestState',
+  },
+  AttributeValueSuggestion: {
+    noCustomerText: 'aggregate class around AttributeValueSuggestionState',
+  },
+  AttributeValueSuggestionState: {
+    noCustomerText:
+      "a seller's value suggestion: ids, status codes, times and the seller's own text, shown to admins only; an approval writes the value's labels through the attribute editor, which claim-checks them",
+  },
+  SuggestionNoticeFacts: {
+    noCustomerText: 'facts of the one mail to a seller about a suggestion; never shown to buyers',
+  },
+  SuggestionNoticeMail: {
+    noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
+  },
+  AttributeRelaxationRequestState: {
+    noCustomerText: 'a two-admin request: ids, kind and status codes, times; no text',
+  },
   LocalizedText: { noCustomerText: 'carrier type; every use sits inside a classified type' },
   OfferMovedPayloadRefused: { noCustomerText: 'refusal code with fixed paths' },
   PlatformCategory: { noCustomerText: 'aggregate class around PlatformCategoryState' },
+  CategoryText: { table: 'CATEGORY_TEXT_FIELDS' },
+  CategorySeo: { table: 'CATEGORY_SEO_FIELDS' },
+  EditableCategory: {
+    noCustomerText:
+      'editor read model; its texts and search-result fields are CategoryText and CategorySeo',
+  },
+  FieldIssue: { noCustomerText: 'field path and a problem code' },
+  RestructureChange: {
+    noCustomerText: 'ids, a position, a status and a change kind of a move, merge or archive',
+  },
+  RestructurePlan: { noCustomerText: 'category ids and levels of a move, merge or archive plan' },
+  TreeEdge: { noCustomerText: 'a category id and its parent id' },
+  HiddenChange: { noCustomerText: 'ids and a state code' },
   PublishedOfferIdsInput: { noCustomerText: 'ids and a page size' },
   Product: { noCustomerText: 'aggregate class around ProductState' },
   Brand: { noCustomerText: 'aggregate class around BrandState' },
@@ -244,11 +332,16 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   VariantValidationResult: { noCustomerText: 'issue codes with fixed paths' },
   AttributeBounds: { noCustomerText: 'numbers' },
+  AttributeMergeOption: { noCustomerText: 'two option codes of a merge; no text' },
   AttributeDefinitionState: { table: 'ATTRIBUTE_DEFINITION_FIELDS' },
   AttributeDisplaySettings: { table: 'ATTRIBUTE_DISPLAY_FIELDS' },
-  AttributeFamilyState: { noCustomerText: 'internal codes only; no name or label' },
+  AttributeFamilyState: { table: 'FEATURE_SET_FIELDS' },
   AttributeOption: { table: 'ATTRIBUTE_OPTION_FIELDS' },
   CatalogBatchTooLarge: { noCustomerText: 'refusal code' },
+  CategoryAttributeLinkState: { noCustomerText: 'ids, attribute codes and counts; no text' },
+  EffectiveAttributes: { noCustomerText: 'ids and attribute codes of a resolution; no text' },
+  EffectiveFilter: { noCustomerText: 'an attribute code and a category id; no text' },
+  LinkFact: { noCustomerText: 'a feature set id and attribute codes; no text' },
   CatalogFacade: { noCustomerText: 'interface of methods' },
   CatalogIndexFacade: { noCustomerText: 'interface of methods' },
   CatalogValidationFailed: { noCustomerText: 'refusal code with fixed paths' },
@@ -258,8 +351,11 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   Classification: { noCustomerText: 'sensitive-change verdict: codes and flags' },
   CategoryName: { table: 'CATEGORY_NAME_FIELDS' },
   DraftText: { noCustomerText: 'a text found in a draft, already named by its checked field id' },
-  FamilyAttribute: { noCustomerText: 'internal code and flags' },
-  FamilyGroup: { noCustomerText: 'internal code; the panel names a group by its own label key' },
+  FamilyAttribute: { table: 'FAMILY_ATTRIBUTE_FIELDS' },
+  FamilyGroup: { table: 'FAMILY_GROUP_FIELDS' },
+  FeatureSetContent: {
+    noCustomerText: 'the names and groups of a feature set; see AttributeFamilyState',
+  },
   FreezeInput: { noCustomerText: 'working input of the freeze; its texts are checked as content' },
   FreezeIssue: { noCustomerText: 'issue code with a fixed path' },
   OutcomeInput: { noCustomerText: 'ids and a decision code' },
@@ -281,6 +377,42 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   OfferSearchFacts: {
     noCustomerText: 'read model feed: ids, a flag and OfferSearchText, nothing entered here',
   },
+  OfferSearchAttributes: {
+    noCustomerText:
+      'index words and facet codes read from a published revision: brand name and aliases (an approved brand entity), a country name from the ISO list, option labels and searchable text values (admin text claim-checked when written; seller text claim-checked when the revision was frozen); matching only, never shown and never a certification claim',
+  },
+  SearchOption: {
+    noCustomerText:
+      'read copy of a published definition option label (admin text, claim-checked when written) and a merge target code',
+  },
+  SearchDefinition: {
+    noCustomerText:
+      'read copy of a published definition: type, flags and options (admin text, claim-checked when written)',
+  },
+  LoadedSearchDefinition: {
+    noCustomerText:
+      'read copy of a published definition with its names and options (admin text, claim-checked when written)',
+  },
+  SearchBrand: {
+    noCustomerText: 'an approved brand entity: address, name and aliases (not product content)',
+  },
+  SearchAttributeFacts: {
+    noCustomerText:
+      'the same words and facet codes as OfferSearchAttributes, before they leave catalog',
+  },
+  SearchFilterOption: {
+    noCustomerText:
+      'an option code with its label: admin text claim-checked when written, a brand name or an ISO country name',
+  },
+  SearchFilterDefinition: {
+    noCustomerText:
+      'a filter of a listing: attribute code, name and options (admin text, claim-checked when written)',
+  },
+  SearchFiltersRequest: {
+    noCustomerText: 'a category id, a locale tag, brand addresses and country codes',
+  },
+  SearchFilterUnavailable: { noCustomerText: 'one error code' },
+  CatalogFiltersFacade: { noCustomerText: 'a facade interface: no text of its own' },
   OfferSearchText: {
     noCustomerText:
       'read copy of the published revision text, already claim-checked when the revision was frozen',
@@ -293,6 +425,22 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   PublishedProduct: {
     noCustomerText:
       'read copy of the published revision texts and Variant labels, already claim-checked when the revision was frozen, with ids and the name of the active brand (an approved brand entity, not product content)',
+  },
+  PublishedSpecification: {
+    noCustomerText:
+      'read copy of a published revision attribute value (seller text already claim-checked when the revision was frozen) and the attribute name or option label (admin text, claim-checked when written)',
+  },
+  SpecificationOption: {
+    noCustomerText:
+      'read copy of a published definition option label (admin text, claim-checked when written) and a merge target code',
+  },
+  SpecificationDefinition: {
+    noCustomerText:
+      'read copy of a published definition: type, flags, names and options (admin text, claim-checked when written)',
+  },
+  SpecificationLocales: { noCustomerText: 'two locale tags' },
+  PublishedSpecificationGroup: {
+    noCustomerText: 'a family group code and its PublishedSpecification rows',
   },
   BrandProductIds: { noCustomerText: 'product ids and one flag; no text' },
   PublishedProductVariant: {
@@ -334,6 +482,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText:
       'the public tree view for the buyer assistant: ids, slug, depth and one published category name, already claim-checked when written',
   },
+  CatalogActivitiesFacade: { noCustomerText: 'interface of methods' },
   CatalogAssistantFacade: { noCustomerText: 'interface of methods' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },
   ProductTypeHandler: { noCustomerText: 'interface of methods' },
@@ -352,8 +501,15 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   SensitiveChangesPolicy: { noCustomerText: 'flags per change kind' },
   StoredRevision: { noCustomerText: 'record around the content; the texts are RevisionContent' },
+  LabelDifference: {
+    noCustomerText: 'admin report row: a stored label and the built one, never sent to a buyer',
+  },
+  VariantAxisValue: {
+    noCustomerText: 'option label of the attribute definition, checked there (option-label)',
+  },
   VariantDraft: { noCustomerText: 'ids and option codes; labels are RevisionVariantContent' },
   VariantIssue: { noCustomerText: 'issue code with a fixed path' },
+  AxisIssue: { noCustomerText: 'issue code with a fixed path' },
   VariantRecord: { noCustomerText: 'ids and times' },
   WorkingCopy: { noCustomerText: 'opaque draft; its texts are checked before any write (6.1)' },
 };

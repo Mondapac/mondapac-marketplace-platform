@@ -738,7 +738,6 @@ export class PrismaOrderRepository implements OrderRepository {
 
 const SELLER_INCLUDE = { lines: true, order: true } as const;
 
-/** Rows paid before the cursor, newest first: `(confirmed_at, id) < (cursor)`. */
 /** The seller list's filter as a Market-scoped `where`: paid orders of this seller only. */
 const sellerWhere = (market: MarketContext, sellerId: Id<'Seller'>, filter: SellerOrderFilter) => ({
   marketId: market.marketId,
@@ -757,6 +756,7 @@ const sellerWhere = (market: MarketContext, sellerId: Id<'Seller'>, filter: Sell
   },
 });
 
+/** Rows paid before the cursor, newest first: `(confirmed_at, id) < (cursor)`. */
 const sellerCursor = (page: SellerOrderPage) =>
   page.after === null
     ? {}
