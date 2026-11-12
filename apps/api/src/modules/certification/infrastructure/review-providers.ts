@@ -39,6 +39,8 @@ import {
 } from '../application/ports/review.ports';
 import { SELLER_ZONES_SOURCE } from '../application/ports/tokens';
 import { SellerCertificateOverview } from '../application/use-cases/seller-certificate-overview.use-case';
+import { SellerValidCertificateTypes } from '../application/use-cases/seller-valid-certificate-types.use-case';
+import { SellerValidCertificateTypesSystem } from '../application/use-cases/seller-valid-certificate-types-system.use-case';
 import { ApproveSellerCertificate } from '../application/use-cases/seller-certificate-approve.use-case';
 import { DeclineSellerCertificate } from '../application/use-cases/seller-certificate-decline.use-case';
 import { SellerCertificateRecordCheck } from '../application/use-cases/seller-certificate-record-check.use-case';
@@ -77,6 +79,8 @@ export const reviewUseCases = [
   RevokeSellerCertificate,
   SellerCertificateHistoryRead,
   SellerCertificateOverview,
+  SellerValidCertificateTypes,
+  SellerValidCertificateTypesSystem,
 ] as const;
 
 const reviewUseCaseProviders: readonly FactoryProvider[] = reviewUseCases.map(

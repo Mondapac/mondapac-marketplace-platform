@@ -19,8 +19,17 @@ export type SyncOfferDocumentsInput =
        */
       readonly publicStoreRequired?: true;
     }
-  /** The Offers whose document names this category or one under it (a rename or a move). */
-  | { readonly categoryId: Id<'Category'> };
+  /**
+   * The Offers whose document names this category or one under it (a rename or a move; from
+   * package 3a also a culture's mark or visibility change on it).
+   */
+  | { readonly categoryId: Id<'Category'> }
+  /**
+   * A culture's status changed (multi-culture package 3a): the Offers whose document holds its code.
+   * Offers that may become visible in it are picked up by the attribute reindex, whose catalog stamp
+   * covers the cultures.
+   */
+  | { readonly cultureId: Id<'Culture'> };
 
 /** The most pages of one product's or seller's Offers read in one call (a safety stop). */
 const MAX_PRODUCT_PAGES = 50;
@@ -66,7 +75,9 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
           }
         : 'categoryId' in input
           ? await this.#syncCategory(context, input.categoryId)
-          : await this.#syncScope(context, input);
+          : 'cultureId' in input
+            ? await this.#syncCulture(context, input.cultureId)
+            : await this.#syncScope(context, input);
     const counts = { upserted, deleted };
     this.#logger.log({
       msg: 'search.documents-synced',
@@ -98,6 +109,41 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
     if (!indexed.ok) throw new Error('search: the index read failed');
     const counts = await syncOffers(this.deps, context, indexed.value);
     return { offers: indexed.value.length, ...counts };
+  }
+
+  /**
+   * A culture's status changed: re-syncs the Offers whose document holds its code, page by page in
+   * Offer id order (a re-synced document of an inactive culture no longer holds it). An unknown
+   * culture has nothing to refresh. Never silently partial: past the page cap the call throws.
+   */
+  async #syncCulture(
+    context: CallContext,
+    cultureId: Id<'Culture'>,
+  ): Promise<SyncCounts & { readonly offers: number }> {
+    const { market } = context;
+    const code = await this.deps.cultures.codeOf(context, cultureId);
+    if (code === null) throw new Error('search: culture unavailable');
+    if (code === undefined) return { offers: 0, upserted: 0, deleted: 0 };
+    let offers = 0;
+    let upserted = 0;
+    let deleted = 0;
+    let after: Id<'Offer'> | undefined;
+    for (let page = 0; page < MAX_PRODUCT_PAGES; page += 1) {
+      const ids = await this.deps.unitOfWork.run(
+        market,
+        async () =>
+          ok(await this.deps.documents.offerIdsWithCultureCode(market, code, SYNC_BATCH, after)),
+        { readOnly: true },
+      );
+      if (!ids.ok) throw new Error('search: the index read failed');
+      const counts = await syncOffers(this.deps, context, ids.value);
+      offers += ids.value.length;
+      upserted += counts.upserted;
+      deleted += counts.deleted;
+      if (ids.value.length < SYNC_BATCH) return { offers, upserted, deleted };
+      after = ids.value[ids.value.length - 1];
+    }
+    throw new Error('search: too many Offers in one culture');
   }
 
   /**

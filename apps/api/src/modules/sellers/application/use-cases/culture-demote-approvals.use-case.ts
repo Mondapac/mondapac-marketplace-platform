@@ -40,7 +40,9 @@ export const DEMOTE_MAX_BATCHES = 10;
  * the last resort when it could not put a culture's required certification type back after an
  * approval raced with the change: the approvals were checked against the old type, so they must be
  * decided again. Rule `anonymous`; in process only, and it can only move rows in the safe direction
- * (approved to requested), never grant anything. One unit, at most 10 batches of 200.
+ * (approved to requested), never grant anything. At most 10 batches of 200, one unit each.
+ * Also the handler of `catalog.culture-approvals-invalidated.v1` (security review N1): that
+ * delivery is retried until `remaining` is false.
  */
 export class CultureDemoteApprovals extends UseCase<
   CultureDemoteApprovalsInput,
@@ -59,44 +61,63 @@ export class CultureDemoteApprovals extends UseCase<
     super(gate);
   }
 
-  protected async handle(
+  protected handle(
     context: CallContext,
     input: CultureDemoteApprovalsInput,
   ): Promise<Result<CultureDemoteApprovalsResult, CultureDemoteApprovalsFailure>> {
-    const id = typeof input?.cultureId === 'string' ? parseId<'Culture'>(input.cultureId) : null;
-    if (id === null || !id.ok) {
-      return err({ code: 'validation.failed', fields: [{ path: 'cultureId', code: 'format' }] });
-    }
-    const { market } = context;
-    try {
-      return await this.deps.unitOfWork.run<
-        CultureDemoteApprovalsResult,
-        CultureDemoteApprovalsFailure
+    return demoteApprovals(this.deps, context, input);
+  }
+}
+
+/** The shared body of the pair: at most 10 batches of 200, one unit each. */
+export async function demoteApprovals(
+  deps: CultureDemoteApprovalsDependencies,
+  context: CallContext,
+  input: CultureDemoteApprovalsInput,
+): Promise<Result<CultureDemoteApprovalsResult, CultureDemoteApprovalsFailure>> {
+  const id = typeof input?.cultureId === 'string' ? parseId<'Culture'>(input.cultureId) : null;
+  if (id === null || !id.ok) {
+    return err({ code: 'validation.failed', fields: [{ path: 'cultureId', code: 'format' }] });
+  }
+  const { market } = context;
+  // One unit per batch of 200 (Mojtaba, review of #844): a unit stays far below the 5 s unit
+  // timeout, and a batch that committed stays demoted when a later one fails.
+  let demoted = 0;
+  try {
+    for (let batch = 0; batch < DEMOTE_MAX_BATCHES; batch += 1) {
+      const step = await deps.unitOfWork.run<
+        { readonly moved: number; readonly empty: boolean },
+        never
       >(market, async () => {
-        let demoted = 0;
-        for (let batch = 0; batch < DEMOTE_MAX_BATCHES; batch += 1) {
-          const rows = await this.deps.sellerCultures.approvedIn(market, id.value, DEMOTE_BATCH);
-          if (rows.length === 0) return ok({ demoted, remaining: false });
-          const at = this.deps.clock.now();
-          let moved = 0;
-          for (const state of rows) {
-            const next = demoteMembership(state, at);
-            const won = await this.deps.sellerCultures.transition(market, next, {
-              version: state.version,
-              status: 'approved',
-            });
-            if (!won) continue;
-            await announce(this.deps.outbox, context, next);
-            moved += 1;
-          }
-          demoted += moved;
-          if (moved === 0) return ok({ demoted, remaining: true });
+        const rows = await deps.sellerCultures.approvedIn(market, id.value, DEMOTE_BATCH);
+        if (rows.length === 0) return ok({ moved: 0, empty: true });
+        const at = deps.clock.now();
+        let moved = 0;
+        for (const state of rows) {
+          const next = demoteMembership(state, at);
+          const won = await deps.sellerCultures.transition(market, next, {
+            version: state.version,
+            status: 'approved',
+          });
+          if (!won) continue;
+          await announce(deps.outbox, context, next);
+          moved += 1;
         }
-        const left = await this.deps.sellerCultures.approvedIn(market, id.value, 1);
-        return ok({ demoted, remaining: left.length > 0 });
+        return ok({ moved, empty: false });
       });
-    } catch {
-      return err({ code: 'sellers.unavailable' });
+      if (!step.ok) return err({ code: 'sellers.unavailable' });
+      if (step.value.empty) return ok({ demoted, remaining: false });
+      demoted += step.value.moved;
+      if (step.value.moved === 0) return ok({ demoted, remaining: true });
     }
+    const left = await deps.unitOfWork.run(
+      market,
+      async () => ok(await deps.sellerCultures.approvedIn(market, id.value, 1)),
+      { readOnly: true },
+    );
+    if (!left.ok) return err({ code: 'sellers.unavailable' });
+    return ok({ demoted, remaining: left.value.length > 0 });
+  } catch {
+    return err({ code: 'sellers.unavailable' });
   }
 }

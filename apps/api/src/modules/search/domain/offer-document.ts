@@ -37,6 +37,11 @@ export interface OfferDocument {
   readonly numbers: Readonly<Record<string, number>>;
   /** The sell units, in position order (V8). */
   readonly variants: readonly OfferVariantDocument[];
+  /**
+   * The codes of the cultures the Offer is visible in (multi-culture package 3a), from catalog's
+   * visibility facade at indexing time; empty when it is visible in none.
+   */
+  readonly cultureCodes: readonly string[];
 }
 
 /** A hit of a query: a document without the index fields, plus its rank. */
@@ -59,6 +64,8 @@ export const MAX_FACET_CODES = 100;
 export const MAX_DOCUMENT_VARIANTS = 100;
 /** The most axis facets one sell unit keeps (a product has at most two axes). */
 export const MAX_VARIANT_FACETS = 4;
+/** The most culture codes one document keeps (a Market holds at most 200 cultures; CHECK). */
+export const MAX_CULTURE_CODES = 200;
 
 /** Clips a text to a limit by characters (code points), never in the middle of one. */
 export function clip(value: string, limit: number): string {

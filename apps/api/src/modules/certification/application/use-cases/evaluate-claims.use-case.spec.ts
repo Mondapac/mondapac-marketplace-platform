@@ -175,6 +175,8 @@ describe.each(['AU', 'ZZ'] as const)('evaluateClaims, Market %s', (marketCode) =
     assertCategoriesRetirable: undefined as never,
     assertCategoriesRetirableSystem: undefined as never,
     platformCategoriesRetired: undefined as never,
+    sellerValidCertificateTypes: undefined as never,
+    sellerValidCertificateTypesSystem: undefined as never,
   });
 
   const query = (over: Partial<ClaimQuery> = {}): ClaimQuery => ({

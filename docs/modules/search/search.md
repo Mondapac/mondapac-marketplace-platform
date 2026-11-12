@@ -289,3 +289,21 @@ index, the answer carries counts, and the use cases talk to a port.
   change are designed (sellers design 7.4: `business-identity-change-approved`, `business-identity-edited`,
   `slug-changed`) but not built. The PR that builds them publishes those events and adds a search
   subscription in `names-index.subscriptions.ts`; until then the six-hourly rebuild stays the repair.
+
+## Culture codes in the index (multi-culture package 3a, 12 Nov 2026)
+
+- **Column.** `search.offer_documents.culture_codes` (`TEXT[]`, default empty, at most 200 codes,
+  no null element; GIN index `offer_documents_culture_codes_idx`; migration
+  `20261112150000_search_offer_culture_codes`). It holds the codes of the cultures the Offer is
+  visible in, as catalog's `visibleCultureCodesForOffers` answers them (ADR-0047 decision 5); an
+  Offer catalog does not name gets an empty list. A failed answer throws, so the delivery is
+  retried and the document is never written as "no culture". **Buyer reads do not filter on it
+  yet** (package 3b, behind the switch).
+- **Re-index.** Re-syncs on seller culture status changes
+  (`search.index-seller-culture-changed`, by seller), certificate approved, expired and revoked
+  (by seller), tag added, removed, suspended, restored and basis switched (by Offer); culture mark
+  changes re-sync the category's subtree (`search.index-culture-mark-changed`); a culture status
+  change re-syncs the documents that hold its code (`{cultureId}` scope, paged by
+  `offerIdsWithCultureCode`). Offers that become visible in a re-activated culture, a required
+  type change and the first fill of the column come from the stamp-driven full reindex (catalog's
+  index stamp now includes each culture's code, status and required type).

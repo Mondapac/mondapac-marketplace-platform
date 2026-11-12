@@ -269,6 +269,32 @@ describe.each(TEST_MARKETS)('seller cultures in market %s (database integration)
     expect(await inUnit(() => repository.sellerIdsWithoutCultures(market, 1))).toHaveLength(1);
   });
 
+  it('answers the approved culture ids of a batch of sellers, in this Market only (package 3a)', async () => {
+    const both = await insertSeller();
+    const requestedOnly = await insertSeller();
+    const foreign = await insertSeller(other);
+    const [first, second] = [newCulture(), newCulture()];
+    await inUnit(async () => {
+      await repository.insert(market, approveAtSignup({ ...requestOf(both, first), by: null }));
+      await repository.insert(market, approveAtSignup({ ...requestOf(both, second), by: null }));
+      const made = requestMembership(null, requestOf(requestedOnly, first));
+      if (made.kind !== 'changed') throw new Error('expected a request');
+      await repository.insert(market, made.state);
+    });
+    await inUnitOf(other)(() =>
+      repository.insert(other, approveAtSignup({ ...requestOf(foreign, first), by: null })),
+    );
+
+    const answer = await inUnit(() =>
+      repository.approvedForSellers(market, [both, requestedOnly, foreign]),
+    );
+    expect([...answer.keys()]).toEqual([both]);
+    expect([...(answer.get(both) ?? [])].sort()).toEqual([first, second].sort());
+    expect([
+      ...(await inUnitOf(other)(() => repository.approvedForSellers(other, [both, foreign]))),
+    ]).toEqual([[foreign, [first]]]);
+  });
+
   it('answers whether anyone is approved in a culture, and takes an approval back', async () => {
     const sellerId = await insertSeller();
     const culture = newCulture();

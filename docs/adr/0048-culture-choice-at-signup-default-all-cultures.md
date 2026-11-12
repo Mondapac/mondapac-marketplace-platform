@@ -65,3 +65,22 @@ seller. Package 2 builds the seller side. The buyer side is package 4.
   one side always sees the other (security review M1).
 - The seed job attaches only sellers whose identity access state is pending or approved, never
   rejected or suspended ones, and runs at most 10 batches of 200 per run.
+- Package 3a follow-ups (2026-11-12), all done in that package:
+  - M2 is closed both ways: catalog's visibility rule checks for a certified culture that the
+    seller holds a valid certificate of the type now (certification's type-codes-only facade
+    method `sellerValidCertificateTypes`), and `sellers` demotes an approval to `requested` on
+    the certificate expired and revoked events when no valid certificate of the type remains.
+  - N1 (a failed revert of a required-type change): the simpler option, an outbox-driven retry.
+    Catalog writes `catalog.culture-approvals-invalidated.v1` in its own unit and tries the
+    demotion at once; the sellers consumer demotes and throws while approvals remain, so the
+    outbox retries until none is left. No separate reconciliation job.
+  - The demotion writes one unit per batch of 200 (database review nit 1).
+  - N2: `cultureDemoteApprovals` left `SellersFacade` for a port that only
+    `catalog/infrastructure/sellers-culture-members.ts` may import (boundaries rule
+    `culture-demote-port-is-for-catalog-adapter`).
+  - QA: the decision e2e covers an expired and a wrong-type certificate and another Market's
+    seller. QC: `docs/design/data/catalog.md` notes `culture.required-type-locked`,
+    `culture.locale-uncheckable` and the visibility facade.
+  - Operations should alert on the log messages `catalog.culture-edit.required-type-revert-failed`
+    and a dead-lettered `sellers.demote-on-culture-approvals-invalidated` delivery; the runbook
+    entry is not yet written.

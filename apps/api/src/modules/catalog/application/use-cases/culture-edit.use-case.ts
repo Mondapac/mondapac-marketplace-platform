@@ -1,7 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
+import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -17,6 +18,7 @@ import {
   type CultureRefusal,
   type CultureState,
 } from '../../domain/culture';
+import { announceApprovalsInvalidated, announceCultureStatus } from '../cultures/culture-events';
 import { checkRequiredCertificationType } from '../cultures/culture-references';
 import {
   adminAccountOf,
@@ -73,6 +75,9 @@ export interface CultureEditDependencies {
   readonly evaluator: ClaimEvaluator;
   readonly audit: AuditWriter;
   readonly clock: Clock;
+  /** The status event (package 3a) and the N1 reconciliation event. */
+  readonly outbox: OutboxWriter;
+  readonly ids: IdGenerator;
 }
 
 const EDIT_KEYS = [
@@ -250,6 +255,11 @@ export class CultureEdit extends UseCase<
             },
           }),
         );
+        // Which Offers the culture can show changes with its status: search re-indexes (ADR-0047
+        // decision 8). The version is the one the save wrote.
+        if (next.value.status !== found.status) {
+          await announceCultureStatus(this.deps, context, next.value);
+        }
         return ok({ culture: viewOf(next.value) });
       });
       if (!saved.ok || !typeChanges) return saved;
@@ -279,11 +289,16 @@ export class CultureEdit extends UseCase<
     if (!reverted) {
       // The old type could not be put back (the row kept changing). The approvals were checked
       // against that old type, so they are all taken back to requested instead (fail closed).
+      // First a durable request (security review N1): `sellers` demotes on its delivery, and the
+      // delivery is retried until no approval is left, so a direct call that stops short or fails
+      // is finished later. Then the direct call, so the common case is done at once.
+      const queued = await this.#queueDemotion(context, before.id);
       const demoted = await this.deps.cultureMembers.demoteAll(context, before.id);
       this.#logger.error({
         msg: 'catalog.culture-edit.required-type-revert-failed',
         cultureId: before.id,
         approvalsDemoted: demoted.ok && demoted.value,
+        demotionQueued: queued,
         marketId: market.marketId,
         correlationId: context.correlationId,
       });
@@ -295,6 +310,19 @@ export class CultureEdit extends UseCase<
       correlationId: context.correlationId,
     });
     return err({ code: members.ok ? 'culture.required-type-locked' : 'access.unavailable' });
+  }
+
+  /** Writes `catalog.culture-approvals-invalidated.v1` in a unit of its own; false when it failed. */
+  async #queueDemotion(context: CallContext, cultureId: CultureState['id']): Promise<boolean> {
+    try {
+      const done = await this.deps.unitOfWork.run<true, never>(context.market, async () => {
+        await announceApprovalsInvalidated(this.deps, context, cultureId);
+        return ok(true as const);
+      });
+      return done.ok;
+    } catch {
+      return false;
+    }
   }
 
   /** Puts the old required type back: re-reads and re-applies it, up to 3 times on a stale write. Audited. */

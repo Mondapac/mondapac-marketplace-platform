@@ -14,6 +14,7 @@ export const summaryOf = (row: CultureState): CatalogCultureSummary => ({
   id: row.id,
   code: row.code,
   status: row.status,
+  displayOrder: row.displayOrder,
   requiredCertificationType: row.requiredCertificationType,
   isDefault: row.isDefault,
   names: Object.fromEntries(row.names.map((entry) => [entry.locale, entry.name])),
@@ -26,6 +27,37 @@ export interface CulturesByIdsInput {
 export interface CulturesByIdsDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly cultureReader: CultureReader;
+}
+
+/** The shared body of the pair: the request checked whole, then one read-only unit. */
+export async function culturesByIds(
+  deps: CulturesByIdsDependencies,
+  context: CallContext,
+  input: CulturesByIdsInput,
+): Promise<Result<readonly CatalogCultureSummary[], CatalogValidationFailed>> {
+  if (!Array.isArray(input?.cultureIds)) {
+    return err({ code: 'validation.failed', fields: [{ path: 'cultureIds', code: 'type' }] });
+  }
+  const requested = new Set<Id<'Culture'>>();
+  for (const value of input.cultureIds as readonly unknown[]) {
+    const id = typeof value === 'string' ? parseId<'Culture'>(value) : null;
+    if (id === null || !id.ok) {
+      return err({ code: 'validation.failed', fields: [{ path: 'cultureIds', code: 'format' }] });
+    }
+    requested.add(id.value);
+  }
+  if (requested.size > MAX_CULTURE_IDS) {
+    return err({ code: 'validation.failed', fields: [{ path: 'cultureIds', code: 'length' }] });
+  }
+  if (requested.size === 0) return ok([]);
+  return deps.unitOfWork.run<readonly CatalogCultureSummary[], CatalogValidationFailed>(
+    context.market,
+    async () => {
+      const rows = await deps.cultureReader.byIds(context.market, [...requested]);
+      return ok(rows.map(summaryOf));
+    },
+    { readOnly: true },
+  );
 }
 
 /**
@@ -51,32 +83,10 @@ export class CulturesByIdsQuery extends UseCase<
     super(gate);
   }
 
-  protected async handle(
+  protected handle(
     context: CallContext,
     input: CulturesByIdsInput,
   ): Promise<Result<readonly CatalogCultureSummary[], CatalogValidationFailed>> {
-    if (!Array.isArray(input?.cultureIds)) {
-      return err({ code: 'validation.failed', fields: [{ path: 'cultureIds', code: 'type' }] });
-    }
-    const requested = new Set<Id<'Culture'>>();
-    for (const value of input.cultureIds as readonly unknown[]) {
-      const id = typeof value === 'string' ? parseId<'Culture'>(value) : null;
-      if (id === null || !id.ok) {
-        return err({ code: 'validation.failed', fields: [{ path: 'cultureIds', code: 'format' }] });
-      }
-      requested.add(id.value);
-    }
-    if (requested.size > MAX_CULTURE_IDS) {
-      return err({ code: 'validation.failed', fields: [{ path: 'cultureIds', code: 'length' }] });
-    }
-    if (requested.size === 0) return ok([]);
-    return this.deps.unitOfWork.run<readonly CatalogCultureSummary[], CatalogValidationFailed>(
-      context.market,
-      async () => {
-        const rows = await this.deps.cultureReader.byIds(context.market, [...requested]);
-        return ok(rows.map(summaryOf));
-      },
-      { readOnly: true },
-    );
+    return culturesByIds(this.deps, context, input);
   }
 }

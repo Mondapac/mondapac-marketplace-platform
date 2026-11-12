@@ -12,6 +12,7 @@ import {
   type ValidationFailure,
 } from '../cultures/culture-views';
 
+import { announceMarkChanged } from '../cultures/culture-events';
 import type { CultureMarkWriteDependencies } from './culture-category-marks.use-case';
 
 type Denied = { readonly code: 'access.denied' };
@@ -45,7 +46,10 @@ export class CultureCategoryMarkClear extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: Pick<CultureMarkWriteDependencies, 'unitOfWork' | 'cultures' | 'audit'>,
+    private readonly deps: Pick<
+      CultureMarkWriteDependencies,
+      'unitOfWork' | 'cultures' | 'audit' | 'outbox' | 'ids' | 'clock'
+    >,
   ) {
     super(gate);
   }
@@ -104,6 +108,7 @@ export class CultureCategoryMarkClear extends UseCase<
             },
           }),
         );
+        await announceMarkChanged(this.deps, context, culture.id, categoryId.value);
         return ok({ cleared: true } as const);
       },
     );

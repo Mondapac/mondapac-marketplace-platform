@@ -4,6 +4,7 @@ import {
   clip,
   MAX_DOCUMENT_CATEGORIES,
   MAX_DOCUMENT_VARIANTS,
+  MAX_CULTURE_CODES,
   MAX_FACET_CODES,
   MAX_NAME,
   MAX_SHORT_TEXT,
@@ -56,7 +57,8 @@ const indexable = (
  * `states` hold for it (absent: out of stock, unpriced). A price in another currency than the
  * Market's is stored as no price: the price filter compares minor units of one currency. The
  * seller's public store name and the names of the product's categories (all levels, from the live
- * tree) join the searchable text at weight C (search 1a). Pure.
+ * tree) join the searchable text at weight C (search 1a). `cultureCodes` are the cultures the
+ * Offer is visible in, as catalog's visibility facade answered (multi-culture package 3a). Pure.
  */
 export function documentOf(
   offerId: Id<'Offer'>,
@@ -69,6 +71,7 @@ export function documentOf(
   eligibleSellers: ReadonlySet<Id<'Seller'>>,
   states: ReadonlyMap<string, SellUnitState> = new Map(),
   labels: IndexLabels = NO_LABELS,
+  cultureCodes: readonly string[] = [],
 ): OfferDocument | null {
   if (!indexable(facts, eligibleSellers) || facts.name === null) return null;
   const name = clip(facts.name, MAX_NAME);
@@ -102,6 +105,7 @@ export function documentOf(
         price: state.price?.currency === settings.currency ? state.price : null,
       };
     }),
+    cultureCodes: [...new Set(cultureCodes)].slice(0, MAX_CULTURE_CODES),
   };
 }
 
@@ -187,10 +191,27 @@ async function syncBatch(
     storeNames: new Map([...stores].map(([sellerId, store]) => [sellerId, store.name])),
     tree,
   };
+  // The cultures of the Offers that will have a document (multi-culture package 3a). The rule is
+  // catalog's; a failed read throws, so the delivery is retried rather than indexing an Offer as
+  // visible in no culture by mistake.
+  const documented = batch.filter((offerId) => indexable(facts.get(offerId), eligible));
+  const cultures =
+    documented.length === 0
+      ? new Map<Id<'Offer'>, readonly string[]>()
+      : await deps.cultures.visibleCodes(context, documented);
+  if (cultures === null) throw new Error('search: culture visibility unavailable');
   const documents: OfferDocument[] = [];
   const removals: Id<'Offer'>[] = [];
   for (const offerId of batch) {
-    const document = documentOf(offerId, facts.get(offerId), settings, eligible, states, labels);
+    const document = documentOf(
+      offerId,
+      facts.get(offerId),
+      settings,
+      eligible,
+      states,
+      labels,
+      cultures.get(offerId) ?? [],
+    );
     if (document === null) removals.push(offerId);
     else documents.push(document);
   }

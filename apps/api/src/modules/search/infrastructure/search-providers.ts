@@ -10,6 +10,8 @@ import {
   CATALOG_FACADE,
   CATALOG_FILTERS_FACADE,
   CATALOG_INDEX_FACADE,
+  CATALOG_CULTURES_FACADE,
+  type CatalogCulturesFacade,
 } from '../../catalog';
 import type {
   CatalogAssistantFacade,
@@ -36,6 +38,8 @@ import {
   type OfferDocumentRepository,
 } from '../application/ports/offer-document.repository';
 import { OFFER_FEED, type OfferFeed } from '../application/ports/offer-feed';
+import { OFFER_CULTURE_SOURCE, type OfferCultureSource } from '../application/ports/offer-cultures';
+import { FacadeOfferCultures } from './facade-offer-cultures';
 import { SELL_UNIT_STATES, type SellUnitStates } from '../application/ports/sell-unit-states';
 import {
   OFFER_VARIANT_READER,
@@ -168,6 +172,12 @@ export const searchProviders: readonly FactoryProvider[] = [
     provide: OFFER_VARIANT_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferVariantReader => new PrismaOfferVariantReader(prisma),
+  },
+  {
+    provide: OFFER_CULTURE_SOURCE,
+    inject: [CATALOG_CULTURES_FACADE],
+    useFactory: (cultures: CatalogCulturesFacade): OfferCultureSource =>
+      new FacadeOfferCultures(cultures),
   },
   {
     provide: OFFER_FEED,

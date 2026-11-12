@@ -28,6 +28,7 @@ export class PrismaOfferDocumentRepository implements OfferDocumentRepository {
       textSearchConfig: document.textSearchConfig,
       searchText: document.searchText,
       facetCodes: [...document.facetCodes],
+      cultureCodes: [...document.cultureCodes],
       indexedAt: toDate(indexedAt),
     };
     await this.prisma.tx(market).searchOfferDocument.upsert({
@@ -112,6 +113,25 @@ export class PrismaOfferDocumentRepository implements OfferDocumentRepository {
     const rows = await this.prisma.tx(market).searchOfferDocument.findMany({
       where: { marketId: market.marketId, categoryIds: { hasSome: [...categoryIds] } },
       select: { offerId: true },
+    });
+    return rows.map((row) => row.offerId as Id<'Offer'>);
+  }
+
+  async offerIdsWithCultureCode(
+    market: MarketContext,
+    cultureCode: string,
+    limit: number,
+    after?: Id<'Offer'>,
+  ): Promise<readonly Id<'Offer'>[]> {
+    const rows = await this.prisma.tx(market).searchOfferDocument.findMany({
+      where: {
+        marketId: market.marketId,
+        cultureCodes: { has: cultureCode },
+        ...(after === undefined ? {} : { offerId: { gt: after } }),
+      },
+      select: { offerId: true },
+      orderBy: { offerId: 'asc' },
+      take: limit,
     });
     return rows.map((row) => row.offerId as Id<'Offer'>);
   }

@@ -137,6 +137,26 @@ export class PrismaSellerCultureRepository implements SellerCultureRepository {
     return rows.map(stateOf);
   }
 
+  async approvedForSellers(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<ReadonlyMap<Id<'Seller'>, readonly Id<'Culture'>[]>> {
+    const answer = new Map<Id<'Seller'>, Id<'Culture'>[]>();
+    if (sellerIds.length === 0) return answer;
+    const rows = await this.prisma.tx(market).sellersSellerCulture.findMany({
+      where: { marketId: market.marketId, sellerId: { in: [...sellerIds] }, status: 'approved' },
+      select: { sellerId: true, cultureId: true },
+      orderBy: [{ sellerId: 'asc' }, { cultureId: 'asc' }],
+    });
+    for (const row of rows) {
+      const sellerId = row.sellerId as Id<'Seller'>;
+      const list = answer.get(sellerId) ?? [];
+      list.push(row.cultureId as Id<'Culture'>);
+      answer.set(sellerId, list);
+    }
+    return answer;
+  }
+
   async insert(market: MarketContext, state: SellerCultureState): Promise<boolean> {
     // A concurrent first request of the same pair hits the primary key and inserts nothing.
     const { count } = await this.prisma.tx(market).sellersSellerCulture.createMany({

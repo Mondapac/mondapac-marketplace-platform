@@ -182,6 +182,26 @@ export interface CertificationFacade {
     context: CallContext,
     sellerIds: readonly string[],
   ): Promise<Result<readonly SellerCertificateOverviewRow[], Failure>>;
+
+  /**
+   * Multi-culture (ADR-0047 decisions 3 and 5, ADR-0048 security review M2): per requested seller
+   * (at most 100 distinct ids, one row each), the codes of the types the seller holds a valid
+   * certificate of now (the measure of `sellerCertificateOverview`). Type codes only, no
+   * certificate data and no review state. A membership precondition for a culture with a required
+   * certification type, never a claim (`evaluateClaims` alone decides a tag). Two use cases:
+   * `anonymous` for request actors, `system` for handlers and jobs. A failed read is
+   * `certification.unavailable`, never an empty answer: callers fail closed. Not exposed over HTTP.
+   */
+  sellerValidCertificateTypes(
+    context: CallContext,
+    sellerIds: readonly string[],
+  ): Promise<Result<readonly SellerValidCertificateTypesRow[], Failure>>;
+}
+
+/** What `sellerValidCertificateTypes` answers per seller: type codes only. */
+export interface SellerValidCertificateTypesRow {
+  readonly sellerId: Id<'Seller'>;
+  readonly validTypeCodes: readonly string[];
 }
 
 /** Nest token of the {@link CertificationFacade}, provided and exported by `CertificationModule`. */

@@ -30,7 +30,11 @@ import type { SellerCertificateDirectory } from '../ports/seller-certificate-dir
 import type { SellerCultureRepository } from '../ports/seller-culture.repository';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
 import { CultureApprovedMembers } from './culture-approved-members.use-case';
-import { CultureDemoteApprovals } from './culture-demote-approvals.use-case';
+import { CultureDemoteApprovals, DEMOTE_BATCH } from './culture-demote-approvals.use-case';
+import { CultureDemoteApprovalsSystem } from './culture-demote-approvals-system.use-case';
+import { RecheckCultureCertificates } from './recheck-culture-certificates.use-case';
+import { SellerApprovedCultures } from './seller-approved-cultures.use-case';
+import { SellerApprovedCulturesSystem } from './seller-approved-cultures-system.use-case';
 import { ApplySignupCultures } from './apply-signup-cultures.use-case';
 import { SeedSellerCultures } from './seed-seller-cultures.use-case';
 import { SellerCultureDecide } from './seller-culture-decide.use-case';
@@ -97,6 +101,15 @@ class Rows implements SellerCultureRepository {
     );
   }
 
+  approvedForSellers(m: MarketContext, sellerIds: readonly Id<'Seller'>[]) {
+    const answer = new Map<Id<'Seller'>, Id<'Culture'>[]>();
+    for (const [k, v] of this.rows) {
+      if (!k.startsWith(`${m.marketId}|`) || v.status !== 'approved') continue;
+      if (!sellerIds.includes(v.sellerId)) continue;
+      answer.set(v.sellerId, [...(answer.get(v.sellerId) ?? []), v.cultureId]);
+    }
+    return Promise.resolve(answer as ReadonlyMap<Id<'Seller'>, readonly Id<'Culture'>[]>);
+  }
   sellerIdsWithoutCultures(market: MarketContext, limit: number, after?: Id<'Seller'>) {
     return Promise.resolve(
       [...this.sellers]
@@ -168,7 +181,15 @@ function setUp(code: string) {
       ),
   };
   const gate = createUseCaseGate(markets, authorisation);
-  const unitOfWork: UnitOfWork = { run: (_m, work) => work(), runOnce: noRunOnce };
+  // Each unit opened, read-only or not (package 3a: one unit per demotion batch).
+  const units: string[] = [];
+  const unitOfWork: UnitOfWork = {
+    run: (_m, work, options) => {
+      units.push(options?.readOnly === true ? 'read' : 'write');
+      return work();
+    },
+    runOnce: noRunOnce,
+  };
 
   const cultures = new Map<Id<'Culture'>, CultureInfo>();
   const directory = { down: false, asks: 0, afterRead: null as null | (() => void) };
@@ -275,6 +296,26 @@ function setUp(code: string) {
       outbox,
       clock,
     }),
+    demoteApprovalsSystem: new CultureDemoteApprovalsSystem(gate, {
+      unitOfWork,
+      sellerCultures: rows,
+      outbox,
+      clock,
+    }),
+    recheck: new RecheckCultureCertificates(gate, {
+      unitOfWork,
+      sellerCultures: rows,
+      cultureDirectory,
+      certificateDirectory,
+      outbox,
+      clock,
+    }),
+    approvedCultures: new SellerApprovedCultures(gate, { unitOfWork, sellerCultures: rows }),
+    approvedCulturesSystem: new SellerApprovedCulturesSystem(gate, {
+      unitOfWork,
+      sellerCultures: rows,
+    }),
+    units,
     admin: (): CallContext =>
       testCallContext(
         market,
@@ -887,6 +928,147 @@ describe.each([
       expect(await t.approvedMembers.execute(t.anonymous, { cultureId: 'nope' })).toMatchObject({
         ok: false,
       });
+    });
+  });
+
+  describe('package 3a: visibility reads, certificate re-check (M2), batches and N1', () => {
+    /** A seller approved in the plain and the certified culture, with a valid certificate. */
+    async function approvedInBoth() {
+      const w = withSeller();
+      const { t, sellerId, certified } = w;
+      await t.applySignup.execute(t.system, { sellerId });
+      t.certificates.held.add(certType);
+      expect(
+        await t.decide.execute(t.admin(), {
+          sellerId,
+          cultureId: certified.id,
+          body: { decision: 'approve' },
+        }),
+      ).toMatchObject({ ok: true });
+      return w;
+    }
+    const statusOf = (t: Setup, sellerId: Id<'Seller'>, cultureId: Id<'Culture'>) =>
+      [...t.rows.rows.values()].find((s) => s.sellerId === sellerId && s.cultureId === cultureId)
+        ?.status;
+
+    it('answers the approved cultures per seller, the same for a request actor and the system', async () => {
+      const { t, sellerId, plain, certified } = await approvedInBoth();
+      const other = t.addSeller();
+      const expected = new Map([[sellerId, [plain.id, certified.id].sort()]]);
+      const sorted = (r: Awaited<ReturnType<typeof t.approvedCultures.execute>>) =>
+        r.ok ? new Map([...r.value].map(([k, v]) => [k, [...v].sort()])) : r;
+
+      expect(
+        sorted(await t.approvedCultures.execute(t.anonymous, { sellerIds: [sellerId, other] })),
+      ).toEqual(expected);
+      expect(
+        sorted(await t.approvedCulturesSystem.execute(t.system, { sellerIds: [sellerId] })),
+      ).toEqual(expected);
+      // The anonymous rule never admits the system actor, and the system rule no request actor.
+      expect(await t.approvedCultures.execute(t.system, { sellerIds: [sellerId] })).toMatchObject({
+        ok: false,
+      });
+      expect(
+        await t.approvedCulturesSystem.execute(t.anonymous, { sellerIds: [sellerId] }),
+      ).toMatchObject({ ok: false });
+      expect(await t.approvedCultures.execute(t.anonymous, { sellerIds: ['nope'] })).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'sellerIds', code: 'format' }] }),
+      );
+      const many = Array.from({ length: 101 }, () => t.ids.next<'Seller'>());
+      expect(await t.approvedCultures.execute(t.anonymous, { sellerIds: many })).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'sellerIds', code: 'length' }] }),
+      );
+    });
+
+    it('re-check: a certificate no longer valid takes the certified approval back to requested, one event', async () => {
+      const { t, sellerId, plain, certified } = await approvedInBoth();
+      t.certificates.held.clear();
+      const before = t.events.length;
+
+      expect(await t.recheck.execute(t.system, { sellerId })).toEqual(ok({ demoted: 1 }));
+      expect(statusOf(t, sellerId, certified.id)).toBe('requested');
+      // The uncertified culture is never touched by a certificate.
+      expect(statusOf(t, sellerId, plain.id)).toBe('approved');
+      expect(statusEvents(t).slice(before)).toEqual([
+        { type: 'sellers.seller-culture-status-changed.v1', version: 3, status: 'requested' },
+      ]);
+      // A repeated delivery converges.
+      expect(await t.recheck.execute(t.system, { sellerId })).toEqual(ok({ demoted: 0 }));
+      expect(t.events.length).toBe(before + 1);
+    });
+
+    it('re-check: a certificate of another type is no certificate of the culture type', async () => {
+      const { t, sellerId, certified } = await approvedInBoth();
+      t.certificates.held.clear();
+      t.certificates.held.add(certType === 'halal' ? 'kosher' : 'halal');
+      expect(await t.recheck.execute(t.system, { sellerId })).toEqual(ok({ demoted: 1 }));
+      expect(statusOf(t, sellerId, certified.id)).toBe('requested');
+    });
+
+    it('re-check: a still valid certificate (a renewal) keeps the approval', async () => {
+      const { t, sellerId, certified } = await approvedInBoth();
+      expect(await t.recheck.execute(t.system, { sellerId })).toEqual(ok({ demoted: 0 }));
+      expect(statusOf(t, sellerId, certified.id)).toBe('approved');
+    });
+
+    it('re-check: fails closed for a retry when the certificate or culture cannot be read', async () => {
+      const { t, sellerId, certified } = await approvedInBoth();
+      t.certificates.down = true;
+      expect(await t.recheck.execute(t.system, { sellerId })).toEqual(
+        err({ code: 'sellers.unavailable' }),
+      );
+      t.certificates.down = false;
+      t.directory.down = true;
+      expect(await t.recheck.execute(t.system, { sellerId })).toEqual(
+        err({ code: 'sellers.unavailable' }),
+      );
+      expect(statusOf(t, sellerId, certified.id)).toBe('approved');
+      // System only.
+      t.directory.down = false;
+      expect(await t.recheck.execute(t.anonymous, { sellerId })).toMatchObject({ ok: false });
+    });
+
+    it('demotion runs one unit per batch of 200 and reports approvals left past the cap', async () => {
+      const t = setUp(code);
+      const plain = t.addCulture('plain');
+      for (let n = 0; n < DEMOTE_BATCH + 1; n += 1) {
+        await t.applySignup.execute(t.system, { sellerId: t.addSeller() });
+      }
+      t.units.length = 0;
+
+      expect(await t.demoteApprovalsSystem.execute(t.system, { cultureId: plain.id })).toEqual(
+        ok({ demoted: DEMOTE_BATCH + 1, remaining: false }),
+      );
+      // Two write units with rows and a third that found none.
+      expect(t.units).toEqual(['write', 'write', 'write']);
+      expect(await t.demoteApprovals.execute(t.system, { cultureId: plain.id })).toMatchObject({
+        ok: false,
+      });
+    });
+
+    it('a batch that failed leaves the earlier batches demoted (each committed on its own)', async () => {
+      const t = setUp(code);
+      const plain = t.addCulture('plain');
+      for (let n = 0; n < DEMOTE_BATCH + 1; n += 1) {
+        await t.applySignup.execute(t.system, { sellerId: t.addSeller() });
+      }
+      // The first demotion of the second batch throws, as a database fault would.
+      let seen = 0;
+      const transition = t.rows.transition.bind(t.rows);
+      t.rows.transition = (m, state, expected) => {
+        if (expected.status === 'approved' && ++seen === DEMOTE_BATCH + 1) {
+          return Promise.reject(new Error('database fault'));
+        }
+        return transition(m, state, expected);
+      };
+
+      expect(await t.demoteApprovalsSystem.execute(t.system, { cultureId: plain.id })).toEqual(
+        err({ code: 'sellers.unavailable' }),
+      );
+      const approved = [...t.rows.rows.values()].filter(
+        (s) => s.cultureId === plain.id && s.status === 'approved',
+      );
+      expect(approved).toHaveLength(1);
     });
   });
 

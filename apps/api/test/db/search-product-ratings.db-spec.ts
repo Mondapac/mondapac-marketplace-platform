@@ -84,6 +84,7 @@ describe.each(TEST_MARKETS)('rated search statements in market %s (database)', (
       facetCodes: [],
       numbers: {},
       variants: [],
+      cultureCodes: [],
     };
   };
   const inUnit = async <T>(target: MarketContext, work: () => Promise<T>, readOnly = false) => {

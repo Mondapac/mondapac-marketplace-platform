@@ -10,6 +10,8 @@ import type { AssertCategoriesRetirableSystem } from '../application/use-cases/a
 import type { PlatformCategoriesRetired } from '../application/use-cases/platform-categories-retired.use-case';
 import type { CertifiedCategories } from '../application/use-cases/certified-categories.use-case';
 import type { SellerCertificateOverview } from '../application/use-cases/seller-certificate-overview.use-case';
+import type { SellerValidCertificateTypes } from '../application/use-cases/seller-valid-certificate-types.use-case';
+import type { SellerValidCertificateTypesSystem } from '../application/use-cases/seller-valid-certificate-types-system.use-case';
 import type { ClaimTermList } from '../application/use-cases/claim-term-list.use-case';
 import type { ClaimTermLocales } from '../application/use-cases/claim-term-locales.use-case';
 import type { MatchClaimTerms } from '../application/use-cases/match-claim-terms.use-case';
@@ -23,6 +25,7 @@ import type {
   ClaimTextInput,
   RetiredCategoriesFlagged,
   SellerCertificateOverviewRow,
+  SellerValidCertificateTypesRow,
 } from '../contracts/certification.facade';
 import type { ClaimTermMatch } from '../domain/claim-text-matcher';
 import type { ClaimDecision, ClaimQuery } from '../domain/claim-types';
@@ -38,6 +41,8 @@ export interface CertificationFacadeUseCases {
   readonly certificationTypes: CertificationTypes;
   readonly certificationTypesSystem: CertificationTypesSystem;
   readonly sellerCertificateOverview: SellerCertificateOverview;
+  readonly sellerValidCertificateTypes: SellerValidCertificateTypes;
+  readonly sellerValidCertificateTypesSystem: SellerValidCertificateTypesSystem;
   readonly certifiedCategories: CertifiedCategories;
   readonly assertCategoriesRetirable: AssertCategoriesRetirable;
   readonly assertCategoriesRetirableSystem: AssertCategoriesRetirableSystem;
@@ -139,6 +144,21 @@ export class CertificationFacadeImplementation implements CertificationFacade {
     if (error.code === 'access.denied' || error.code === 'validation.failed') {
       return err(error);
     }
+    return err({ code: 'certification.unavailable' });
+  }
+
+  async sellerValidCertificateTypes(
+    context: CallContext,
+    sellerIds: readonly string[],
+  ): Promise<Result<readonly SellerValidCertificateTypesRow[], Failure>> {
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.sellerValidCertificateTypesSystem
+        : this.useCases.sellerValidCertificateTypes;
+    const result = await useCase.execute(context, { sellerIds });
+    if (result.ok) return result;
+    const { error } = result;
+    if (error.code === 'access.denied' || error.code === 'validation.failed') return err(error);
     return err({ code: 'certification.unavailable' });
   }
 }

@@ -22,6 +22,16 @@ export interface OfferDocumentRepository {
     market: MarketContext,
     categoryIds: readonly Id<'Category'>[],
   ): Promise<readonly Id<'Offer'>[]>;
+  /**
+   * Up to `limit` Offers whose document holds this culture code, by Offer id after `after`
+   * (multi-culture package 3a: a culture's status changed).
+   */
+  offerIdsWithCultureCode(
+    market: MarketContext,
+    cultureCode: string,
+    limit: number,
+    after?: Id<'Offer'>,
+  ): Promise<readonly Id<'Offer'>[]>;
   /** Removes up to `limit` documents last written before `before`; returns how many. */
   deleteIndexedBefore(
     market: MarketContext,

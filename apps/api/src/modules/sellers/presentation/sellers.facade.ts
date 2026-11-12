@@ -18,11 +18,9 @@ import type { PublishedStoreSlugs } from '../application/use-cases/published-sto
 import type { ReviewerBusinessDetailsRead } from '../application/use-cases/reviewer-business-details.use-case';
 import type { SellingEligibilitySystem } from '../application/use-cases/selling-eligibility-system.use-case';
 import type { CultureApprovedMembers } from '../application/use-cases/culture-approved-members.use-case';
-import type {
-  CultureDemoteApprovals,
-  CultureDemoteApprovalsResult,
-} from '../application/use-cases/culture-demote-approvals.use-case';
 import type { ApplySignupCultures } from '../application/use-cases/apply-signup-cultures.use-case';
+import type { SellerApprovedCultures } from '../application/use-cases/seller-approved-cultures.use-case';
+import type { SellerApprovedCulturesSystem } from '../application/use-cases/seller-approved-cultures-system.use-case';
 import type { SellingEligibility } from '../application/use-cases/selling-eligibility.use-case';
 import type { SellerSummariesSystem } from '../application/use-cases/seller-summaries-system.use-case';
 import type { SellerSummaries } from '../application/use-cases/seller-summaries.use-case';
@@ -65,7 +63,8 @@ export interface SellersFacadeUseCases {
   readonly operatingZones: OperatingZones;
   readonly applySignupCultures: ApplySignupCultures;
   readonly cultureApprovedMembers: CultureApprovedMembers;
-  readonly cultureDemoteApprovals: CultureDemoteApprovals;
+  readonly sellerApprovedCultures: SellerApprovedCultures;
+  readonly sellerApprovedCulturesSystem: SellerApprovedCulturesSystem;
 }
 
 /**
@@ -244,15 +243,19 @@ export class SellersFacadeImplementation implements SellersFacade {
     return this.useCases.cultureApprovedMembers.execute(context, { cultureId });
   }
 
-  cultureDemoteApprovals(
+  approvedCulturesOfSellers(
     context: CallContext,
-    cultureId: Id<'Culture'>,
+    sellerIds: readonly Id<'Seller'>[],
   ): Promise<
     Result<
-      CultureDemoteApprovalsResult,
+      ReadonlyMap<Id<'Seller'>, readonly Id<'Culture'>[]>,
       AccessDenied | SellersValidationFailed | SellersUnavailable
     >
   > {
-    return this.useCases.cultureDemoteApprovals.execute(context, { cultureId });
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.sellerApprovedCulturesSystem
+        : this.useCases.sellerApprovedCultures;
+    return useCase.execute(context, { sellerIds });
   }
 }

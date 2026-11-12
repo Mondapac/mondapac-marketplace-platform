@@ -9,9 +9,11 @@ import type {
 const UNAVAILABLE = err({ code: 'seller-certificate-directory.unavailable' } as const);
 
 /**
- * {@link SellerCertificateDirectory} over certification's `sellerCertificateOverview`. The answer
- * must hold exactly one row for the asked seller; a refusal (the caller lacks
- * `certification.seller-certificate.view`), a fault or any other shape is unavailable, never "the
+ * {@link SellerCertificateDirectory} over certification's `sellerValidCertificateTypes` (package 3a:
+ * an `anonymous` / `system` pair, so the reviewer's decision and the system's re-check after a
+ * certificate ended read the same measure; before 3a it was `sellerCertificateOverview`, which only
+ * an admin holding `certification.seller-certificate.view` may call). The answer must hold exactly
+ * one row for the asked seller; a refusal, a fault or any other shape is unavailable, never "the
  * seller has none" and never "has it".
  */
 export class CertificationSellerCertificateDirectory implements SellerCertificateDirectory {
@@ -22,7 +24,7 @@ export class CertificationSellerCertificateDirectory implements SellerCertificat
     sellerId: Id<'Seller'>,
   ): Promise<Result<ReadonlySet<string>, SellerCertificateDirectoryUnavailable>> {
     try {
-      const answer = await this.certification.sellerCertificateOverview(context, [sellerId]);
+      const answer = await this.certification.sellerValidCertificateTypes(context, [sellerId]);
       if (!answer.ok) return UNAVAILABLE;
       const [row, ...rest] = answer.value;
       if (row === undefined || rest.length > 0 || row.sellerId !== sellerId) return UNAVAILABLE;

@@ -128,6 +128,10 @@ describe('SearchProducts with attribute filters', () => {
       index: { ...reader, ...facets, scopeRows: () => Promise.resolve([]) },
       storeDocuments: { upsertMany: () => Promise.resolve(), deleteMany: () => Promise.resolve(0) },
       categoryTree: { tree: () => Promise.resolve([]) },
+      cultures: {
+        visibleCodes: () => Promise.resolve(new Map()),
+        codeOf: () => Promise.resolve(undefined),
+      },
       storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
       filterSource,
       policy: new ConfigSearchPolicy(markets),

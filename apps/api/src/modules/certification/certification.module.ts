@@ -55,6 +55,8 @@ import { CERTIFICATION_PERMISSIONS } from './contracts/permissions';
 import { CERTIFICATION_AUDIT_ACTIONS } from './domain/audit';
 import { CERTIFICATION_EVENTS } from './domain/events';
 import { SellerCertificateOverview } from './application/use-cases/seller-certificate-overview.use-case';
+import { SellerValidCertificateTypes } from './application/use-cases/seller-valid-certificate-types.use-case';
+import { SellerValidCertificateTypesSystem } from './application/use-cases/seller-valid-certificate-types-system.use-case';
 import { SendDecisionMail } from './application/use-cases/send-decision-mail.use-case';
 import { reviewProviders } from './infrastructure/review-providers';
 import { AdminCertificateReviewController } from './presentation/admin-certificate-review.controller';
@@ -262,6 +264,8 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         CertificationTypes,
         CertificationTypesSystem,
         SellerCertificateOverview,
+        SellerValidCertificateTypes,
+        SellerValidCertificateTypesSystem,
         CertifiedCategories,
         AssertCategoriesRetirable,
         AssertCategoriesRetirableSystem,
@@ -277,6 +281,8 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         certificationTypes: CertificationTypes,
         certificationTypesSystem: CertificationTypesSystem,
         sellerCertificateOverview: SellerCertificateOverview,
+        sellerValidCertificateTypes: SellerValidCertificateTypes,
+        sellerValidCertificateTypesSystem: SellerValidCertificateTypesSystem,
         certifiedCategories: CertifiedCategories,
         assertCategoriesRetirable: AssertCategoriesRetirable,
         assertCategoriesRetirableSystem: AssertCategoriesRetirableSystem,
@@ -292,6 +298,8 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
           certificationTypes,
           certificationTypesSystem,
           sellerCertificateOverview,
+          sellerValidCertificateTypes,
+          sellerValidCertificateTypesSystem,
           certifiedCategories,
           assertCategoriesRetirable,
           assertCategoriesRetirableSystem,

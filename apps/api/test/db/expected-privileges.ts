@@ -1115,6 +1115,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [
         'category_ids',
+        'culture_codes',
         'facet_codes',
         'indexed_at',
         'locale',

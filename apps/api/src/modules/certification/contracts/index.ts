@@ -18,6 +18,7 @@ export {
   type ClaimTextInput,
   type RetiredCategoriesFlagged,
   type SellerCertificateOverviewRow,
+  type SellerValidCertificateTypesRow,
 } from './certification.facade';
 export {
   CERTIFICATION_OWN_CERTIFICATE_VIEW,

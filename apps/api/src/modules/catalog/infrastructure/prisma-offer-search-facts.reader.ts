@@ -300,10 +300,19 @@ export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
       _max: { updatedAt: true },
     });
     const aliases = await tx.catalogBrandAlias.count();
+    // Multi-culture package 3a: a culture's status or required type changes which Offers its code
+    // belongs to (`culture_codes`), so it is part of the stamp; the reindex that follows is also the
+    // backfill of the column. At most 200 cultures per Market.
+    const cultures = await tx.catalogCulture.findMany({
+      where: { marketId: market.marketId },
+      select: { code: true, status: true, requiredCertificationType: true },
+      orderBy: { code: 'asc' },
+    });
     const text = [
       ...definitions.map((d) => `${d.code}:${d.status}:${d.publishedRevisionId ?? '-'}`),
       `brands:${brands._count._all}:${brands._max.updatedAt?.toISOString() ?? '-'}`,
       `aliases:${aliases}`,
+      ...cultures.map((c) => `culture:${c.code}:${c.status}:${c.requiredCertificationType ?? '-'}`),
     ].join('|');
     return createHash('sha256').update(text).digest('hex').slice(0, 32);
   }

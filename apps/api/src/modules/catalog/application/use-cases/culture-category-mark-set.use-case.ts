@@ -5,6 +5,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { CATALOG_CULTURE_EDIT } from '../../contracts/permissions';
 import { CultureCategoryMarkChangedAudit } from '../../domain/audit';
 import { parseCategoryMark, type CultureCategoryRow } from '../../domain/culture-category';
+import { announceMarkChanged } from '../cultures/culture-events';
 import { liveTreeOf } from '../cultures/culture-references';
 import { markViewsOf, type CultureCategoryMarkView } from '../cultures/culture-mark-views';
 import {
@@ -42,7 +43,7 @@ export type CultureCategoryMarkWriteFailure =
  * `culture.category-mark-set` (multi-culture package 1): an admin sets the row of one culture on one
  * category: `visible` (default true) and `certificationMark` (`required`, `neutral`, or null to
  * inherit). Rule: the key `catalog.culture.edit` (protected) and the admin population. The category
- * must exist and be live. Audited.
+ * must exist and be live. Audited; announces `catalog.culture-category-mark-changed.v1`.
  */
 export class CultureCategoryMarkSet extends UseCase<
   CultureCategoryMarkSetInput,
@@ -131,6 +132,7 @@ export class CultureCategoryMarkSet extends UseCase<
             },
           }),
         );
+        await announceMarkChanged(this.deps, context, culture.id, categoryId.value);
         const rows = await cultures.categoryRows(market, cultureId.value);
         const view = markViewsOf(live.value, rows).find((v) => v.categoryId === categoryId.value)!;
         return ok({ mark: view });

@@ -71,6 +71,7 @@ describe.each(TEST_MARKETS)('attribute filters in market %s (database)', (code) 
     facetCodes: [],
     numbers: {},
     variants: [],
+    cultureCodes: [],
     ...overrides,
   });
   const inUnit = async <T>(target: MarketContext, work: () => Promise<T>, readOnly = false) => {
@@ -438,6 +439,7 @@ describe.each(TEST_MARKETS)('variant filters in market %s (database)', (code) =>
     facetCodes: [],
     numbers: {},
     variants: [],
+    cultureCodes: [],
     ...overrides,
   });
   const inUnit = async <T>(target: MarketContext, work: () => Promise<T>, readOnly = false) => {
