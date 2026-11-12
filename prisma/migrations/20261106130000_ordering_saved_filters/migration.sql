@@ -41,6 +41,9 @@ ALTER TABLE "ordering"."saved_filters"
   -- The payload is a JSON object of at most 2 KB; its keys are checked by the application.
   ADD CONSTRAINT "saved_filters_payload_check" CHECK (
     jsonb_typeof("payload") = 'object' AND octet_length("payload"::text) <= 2048),
+  -- A seller's filters are personal: no `seller.*` list can hold a filter shared with everyone.
+  ADD CONSTRAINT "saved_filters_seller_personal_check" CHECK (
+    "visibility" = 'me' OR "list_key" NOT LIKE 'seller.%'),
   ADD CONSTRAINT "saved_filters_position_check" CHECK ("position" >= 1),
   ADD CONSTRAINT "saved_filters_updated_check" CHECK ("updated_at" >= "created_at");
 

@@ -376,6 +376,10 @@ describe.each(TEST_MARKETS)('order list saved filters in market %s (database)', 
       ['position 0', { position: 0 }],
       ['an update time before the creation time', { updated_at: new Date('2026-11-05T00:00:00Z') }],
       ['a Market code in lower case', { market_id: 'au' }],
+      [
+        'a filter shared with everyone on a seller list',
+        { list_key: SELLER_LIST, visibility: 'everyone' },
+      ],
     ])('refuses %s (CHECK)', async (_label, overrides) => {
       await expect(insertAs(app, overrides)).rejects.toMatchObject({ code: CHECK });
     });

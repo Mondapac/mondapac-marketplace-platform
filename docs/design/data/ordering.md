@@ -676,9 +676,9 @@ Keyed hashes (O15): `checkouts.request_hash` (customer subject, purpose `orderin
 
 The version-guarded update of the sub-order is the lock. Two invoices on one sub-order: the second waits on the row, then finds the version changed and fails `conflict.stale` (AC 11). An invoice against a cancellation: the same. The counter CHECKs (3.6) stop any path that forgot the version. The unit positions of the next document are read after the lock (READ COMMITTED: a new statement sees the committed counters).
 
-### 6.3 Isolation: no serializable unit
+### 6.3 Isolation: no serializable unit, except the saved-filter caps
 
-I agree with D 9. Each cross-row rule has a holder:
+I agree with D 9 for the order flow. The one exception is `ordering.saved_filters` (3.15): its caps are the application's, held by a `SERIALIZABLE` unit with the 40001 retry. Each cross-row rule has a holder:
 
 | Rule | Holder |
 |---|---|
@@ -688,6 +688,7 @@ I agree with D 9. Each cross-row rule has a holder:
 | Quantities per line | Sub-order row (6.2) + CHECKs |
 | Refund cap per Order across sub-orders | Order row (F11) |
 | One shipment application per shipping id; one reversal per application; one correction per mark | Unique keys |
+| At most 50 saved filters per owner and list, 20 shared per list (3.15) | `SERIALIZABLE` unit + 40001 retry |
 | At most N saved addresses | Slot unique key (3.13) |
 | No unit position invoiced twice, or refunded twice | `invoice_lines_positions_excl` (3.9) |
 | The fee invoiced once; no part of the fee refunded twice | `invoice_lines_charge_ranges_excl` (3.9) |

@@ -638,6 +638,24 @@ describe('order list saved filters', () => {
     );
   });
 
+  it('leaves the saved tab when the sort changes', async () => {
+    answers({ 'ordering/admin/orders': rows, [SAVED_PATH]: savedAnswer([saved()]) });
+    render(wrap(<OrdersList {...LIST} paging="pages" />));
+    fireEvent.click(await screen.findByRole('button', { name: 'Paid, captured' }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Paid, captured' }).getAttribute('aria-pressed'),
+      ).toBe('true'),
+    );
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'oldest' } });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Paid, captured' }).getAttribute('aria-pressed'),
+      ).toBe('false'),
+    );
+    expect(screen.getByRole('button', { name: 'Save filter…' })).toBeTruthy();
+  });
+
   it('saves the current filters as a private filter and shows it as the open tab', async () => {
     let items: SavedFilter[] = [];
     call.mockImplementation(((method: string, path: string, body?: unknown) => {

@@ -80,7 +80,12 @@ export class SavedFilterCreateRequest {
 
 export class SavedFilterUpdateRequest {
   @ApiProperty({ maxLength: SAVED_FILTER_NAME_MAX }) name!: string;
-  @ApiPropertyOptional({ enum: SAVED_FILTER_VISIBILITIES }) visibility?: string;
+  @ApiPropertyOptional({
+    enum: SAVED_FILTER_VISIBILITIES,
+    description:
+      'Required on the admin list (name and visibility are both given); left out on the seller list, which is always me.',
+  })
+  visibility?: string;
 }
 
 export class SavedFilterDeletedDto {

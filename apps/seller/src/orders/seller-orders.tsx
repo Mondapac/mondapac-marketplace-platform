@@ -27,7 +27,7 @@ import {
   type OrderColumn,
 } from './orders-columns.ts';
 import { OrdersSavedViews } from './orders-saved-views.tsx';
-import { LIST_KEY, stateOf, type SavedFiltersAnswer } from './orders-saved.ts';
+import { LIST_KEY, stateOf, type SavedFilter, type SavedFiltersAnswer } from './orders-saved.ts';
 import { OrdersTable } from './orders-table.tsx';
 import {
   MAX_PAGED_ROWS,
@@ -95,17 +95,19 @@ export function SellerOrders({
   const backwards = rangeIsBackwards(draftDays);
   const number = (n: number) => n.toLocaleString(locale);
 
-  const loadSaved = useCallback(async () => {
+  const loadSaved = useCallback(async (): Promise<readonly SavedFilter[] | null> => {
     const result = await callApi<SavedFiltersAnswer>(
       'GET',
       `ordering/seller/saved-filters?listKey=${LIST_KEY}`,
     );
-    if (!result.ok || !Array.isArray(result.body?.items)) return;
+    if (!result.ok || !Array.isArray(result.body?.items)) return null;
     setSaved(result.body);
     // A saved filter that was deleted is no longer the one on show.
     setSavedId((current) =>
       current !== null && result.body.items.some((item) => item.id === current) ? current : null,
     );
+    const items: readonly SavedFilter[] = result.body.items;
+    return items;
   }, []);
 
   useEffect(() => {
@@ -393,7 +395,10 @@ export function SellerOrders({
           saved={saved}
           csrfToken={csrfToken}
           onSaved={(view) => {
-            void loadSaved().then(() => setSavedId(view.id));
+            void loadSaved().then((items) => {
+              // Only a filter that is in the reloaded list can be the tab on show.
+              if (items?.some((item) => item.id === view.id) === true) setSavedId(view.id);
+            });
           }}
           onChanged={() => void loadSaved()}
         />
