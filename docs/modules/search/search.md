@@ -24,7 +24,8 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   system actor, so the sync throws and is retried rather than dropping sellers who may sell. Reads
   still check may-sell on every request.
 - **Query:** `GET /search/products?q=&category=&page=&pageSize=` (anonymous, Market from `x-market-id`
-  like other storefront routes, default rate-limit class per origin, `no-store`). `q` 2 to 100
+  like other storefront routes, rate-limit class `public-search` per origin (since the 1a
+  follow-ups; it was `default` before), `no-store`). `q` 2 to 100
   characters in web-search syntax (`websearch_to_tsquery`, ranked by `ts_rank`, ties by Offer id, so
   pages are stable); no `q` with `category` browses by name; `category` covers its live
   subcategories: search reads catalog's public category tree (`CATALOG_ASSISTANT_FACADE.categories`,
@@ -49,9 +50,9 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   `FacadeCategorySubtree` (every category request reads it now); have database-designer EXPLAIN a
   root-category browse at scale and consider a `(market_id, name, offer_id)` index; move the tree
   read from `CATALOG_ASSISTANT_FACADE` to a non-AI catalog facade before any AI gating lands on it.
-- **Follow-ups (Hassan L-3):** a dedicated rate-limit class for this anonymous route (it uses `default`
-  now; it needs a platform change, see "Sellers and categories in search" below). The cap on the number
-  of OR terms in `q` is done (8, `validation.failed` `q` / `too-many-terms`).
+- **Hassan L-3 (done):** the route has its own per-origin rate-limit class, `public-search` (see
+  "Search 1a follow-ups" below). The cap on the number of OR terms in `q` is done (8,
+  `validation.failed` `q` / `too-many-terms`).
 
 ## Storefront shelves (storefront reads package, 18 Oct 2026)
 
@@ -250,8 +251,8 @@ index, the answer carries counts, and the use cases talk to a port.
   attribute filters and price; it is read from the index (`search.offer-scope-rows`, at most 20,000
   Offers; over that `totalIsCapped` is true and `total` is a floor) without the query-time visibility
   check, like the facet counts. A category tree that cannot be read leaves `counts` null, not the list.
-- **Suggest (search 1b).** `GET /search/suggest?q=` (anonymous, Market from the request, `no-store`, default
-  rate-limit class, only `q` is accepted: any other parameter is 400 `validation.failed`). `q` is
+- **Suggest (search 1b).** `GET /search/suggest?q=` (anonymous, Market from the request, `no-store`, rate-limit
+  class `default`, only `q` is accepted: any other parameter is 400 `validation.failed`). `q` is
   NFC-normalised, trimmed and lower-cased. The 2-character rule counts letters and digits only (not
   punctuation, white space or zero-width characters): fewer answers 200 with empty lists and `total` 0
   and makes no index call; over 100 characters, a control character or more than 8 words is 400. Answer
@@ -290,15 +291,48 @@ index, the answer carries counts, and the use cases talk to a port.
   statement_timeout` is not possible without a wider platform change; the login role's own
   `statement_timeout` (30 s at most) applies. The caps above bound the output, not the rows the
   statement ranks: a broad two-letter prefix still ranks and sorts every match (a follow-up with the own
-  rate-limit class: a matched-row ceiling or a 3-character prefix, measured on production-size data). The rate limit is
-  the `default` class like `/search/products`; an own class needs the shared platform change (see Hassan
-  L-3 below). The route logs nothing of the query (the refusal line is the search's: code, Market,
+  rate-limit class: a matched-row ceiling or a 3-character prefix, measured on production-size data). The route is in the
+  `default` rate-limit class (its own `@RateLimit('default')` over the controller's `public-search`):
+  it is called once per keystroke, so sharing the search's lower budget would throttle the search
+  itself; an own suggest class is a follow-up. The route logs nothing of the query (the refusal line is the search's: code, Market,
   correlation id).
 - **Raw SQL.** `search.offer-scope-rows` and `search.store-search` (ADR-0030 amendment of 11 Nov 2026);
   `search.offer-suggest`, `search.offer-suggest-scope-rows` and `search.store-suggest` with the
   `to_tsquery` function in the checker (ADR-0030 amendment, search 1b).
-- **Hassan L-3.** The OR cap is in. The own rate-limit class is not: a class needs a platform change
-  (`RATE_LIMIT_CLASSES`, a migration that widens `rate_limit_counters_key_check`, the Market files'
-  `requestLimits`), which is a shared-file PR of its own, announced on the board.
+- **Hassan L-3.** The OR cap is in; the own rate-limit class came with the follow-ups below.
 - **Not in this package.** apps/web wiring (it stops using the sample data in a frontend PR after this
-  one), the suggest wiring in apps/web (1b frontend PR), typo tolerance (1c), halal and price filters (1d).
+  one), typo tolerance (1c), halal and price filters (1d).
+
+## Search 1a follow-ups (11 Nov 2026, after #799)
+
+- **Own rate-limit class (Hassan L-3).** `GET /search/products` and `GET /search/stores` are in the
+  per-origin class `public-search` (`@RateLimit('public-search')` on `SearchController`), with its own
+  counter and the Market's `requestLimits.publicSearchPerMinute` (AU 120, the ZZ fixture 90; the
+  default stays 300). Both routes share the one counter per origin. Migration
+  `20261111170000_platform_rate_limit_public_search_class` widens `rate_limit_counters_key_check`. The
+  shelves, product detail and the other `search/*` routes stay in `default`: they do not count a scope.
+- **Tests.** `test/search-stores.e2e.spec.ts` covers `GET /search/stores` over HTTP on both Market
+  fixtures (AU and ZZ): anonymous, `no-store`, strict query string, refusals, the shared limit. The
+  `SearchStores` use-case specs already ran on both fixtures.
+- **Store rows: lock order and address hand-over (Mojtaba).** `upsertMany` writes the store rows in
+  seller id order and the sync writes Offer documents in Offer id order, so two concurrent syncs lock
+  rows in one order (a deadlock left is retried by the unit of work, `40P01`). When a concurrent sync
+  commits a row first under a unique key (an address handed over to another seller, or the same
+  seller's first row), the write fails `23505`; the repository throws `StoreRowConflictError`, the unit
+  rolls back, and the sync reads that batch again from catalog and sellers and writes it again, at most
+  three attempts, then throws so the delivery is retried.
+- **Approval before the store is recorded (Mojtaba D4).** Identity's approval commits and raises
+  `identity.seller-access-approved` before sellers records the public store name and address in its
+  own unit, so the event can arrive first. The approval subscription now calls `SyncOfferDocuments`
+  with `publicStoreRequired`: while sellers shows no public store for the seller, it throws and the
+  delivery is retried (dead-lettered after about three hours; the rebuild still repairs).
+- **Limit to watch (Hassan S1).** `public-search` covers every `GET /search/products` call, not only
+  text: category, store and brand lists, home shelves and the sitemap build (about 105 calls, cached
+  10 minutes). Many buyers behind one shared IPv4 address share the limit. Watch the
+  `request.throttled` logs after launch and raise `publicSearchPerMinute` if needed.
+- **Store name changes.** No event is needed today: after the onboarding approval (which raises
+  `identity.seller-access-approved`, already consumed) nothing on `main` changes a public store name or
+  address. The identity-change approval, the admin edit of an approved identity and the admin address
+  change are designed (sellers design 7.4: `business-identity-change-approved`, `business-identity-edited`,
+  `slug-changed`) but not built. The PR that builds them publishes those events and adds a search
+  subscription in `names-index.subscriptions.ts`; until then the six-hourly rebuild stays the repair.

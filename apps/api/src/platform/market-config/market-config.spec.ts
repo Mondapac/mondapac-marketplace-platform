@@ -41,6 +41,7 @@ const VALID = {
   requestLimits: {
     anonymousIdentityPerMinute: 20,
     publicMediaPerMinute: 1500,
+    publicSearchPerMinute: 120,
     defaultPerMinute: 300,
   },
   allowedOrigins: {
@@ -205,6 +206,7 @@ describe('loadMarketConfigs', () => {
         requestLimits: {
           anonymousIdentityPerMinute: 0,
           publicMediaPerMinute: 1500,
+          publicSearchPerMinute: 120,
           defaultPerMinute: 300,
         },
       },
@@ -2105,6 +2107,8 @@ describe('loadMarketConfigs', () => {
       maxVariantsPerProduct: 100,
       maxCategoryDepth: 4,
       maxCategoryChangeTags: 50_000,
+      maxCategoryImportRows: 2000,
+      maxCategoryImportBytes: 5 * 1024 * 1024,
       maxVariantAttributes: 2,
       units: [
         { code: 'g', labels: { 'en-NZ': 'g' } },
@@ -2143,6 +2147,10 @@ describe('loadMarketConfigs', () => {
       expect(zz?.maxCategoryDepth).toBe(3);
       expect(au?.maxCategoryChangeTags).toBe(50_000);
       expect(zz?.maxCategoryChangeTags).toBe(20_000);
+      expect(au?.maxCategoryImportRows).toBe(1000);
+      expect(zz?.maxCategoryImportRows).toBe(500);
+      expect(au?.maxCategoryImportBytes).toBe(5 * 1024 * 1024);
+      expect(zz?.maxCategoryImportBytes).toBe(1024 * 1024);
       expect(au?.maxVariantAttributes).toBe(2);
       expect(zz?.maxVariantAttributes).toBe(3);
       expect(au?.approvalRequired).toBe(true);
@@ -2212,6 +2220,15 @@ describe('loadMarketConfigs', () => {
         { ...VALID_CATALOG, maxCategoryChangeTags: 200_001 },
       ],
       ['a fractional category change tag cap', { ...VALID_CATALOG, maxCategoryChangeTags: 1.5 }],
+      ['no category import row cap', without('maxCategoryImportRows')],
+      ['a zero category import row cap', { ...VALID_CATALOG, maxCategoryImportRows: 0 }],
+      ['a category import row cap above 5,000', { ...VALID_CATALOG, maxCategoryImportRows: 5001 }],
+      ['no category import size cap', without('maxCategoryImportBytes')],
+      ['a category import size cap of 1 byte', { ...VALID_CATALOG, maxCategoryImportBytes: 1 }],
+      [
+        'a category import size cap above 10 MiB',
+        { ...VALID_CATALOG, maxCategoryImportBytes: 10 * 1024 * 1024 + 1 },
+      ],
       ['no variant attribute limit', without('maxVariantAttributes')],
       ['a zero variant attribute limit', { ...VALID_CATALOG, maxVariantAttributes: 0 }],
       ['a variant attribute limit above 5', { ...VALID_CATALOG, maxVariantAttributes: 6 }],

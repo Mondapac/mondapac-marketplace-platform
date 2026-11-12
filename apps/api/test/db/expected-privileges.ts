@@ -930,6 +930,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     // File storage pilot F9: a slide image and its renditions are inserted once and never changed.
     'storefront.slide_images': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // SEO settings (S1): insert-only versions, and the module's outbox.
+    'storefront.seo_settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'storefront.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'storefront.slide_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'storefront.slide_saved_orders': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'storefront.slide_position_locks': {
@@ -1292,6 +1295,28 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.business_activity_categories': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [],
+    },
+    // Multi-culture package 1: a culture's code, creator and creation time never change and it is
+    // never deleted (made inactive); names are deleted and re-inserted as a set; a mark row is upserted or deleted.
+    'catalog.cultures': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'badge_colour',
+        'display_order',
+        'is_default',
+        'required_certification_type',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
+    'catalog.culture_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'catalog.culture_categories': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['certification_mark', 'updated_at', 'updated_by', 'visible'],
     },
     // Product tags package T1: a topic's slug and creator never change and a topic is archived,
     // never deleted; its terms are replaced as a set, so they may be deleted, never updated.

@@ -339,6 +339,29 @@ export const CATALOG_VARIANT_TYPE_EDIT = definePermission('catalog', {
   protected: true,
 });
 
+/**
+ * Read cultures and their category marks (multi-culture package 1; ADR-0047 decision 12). Platform
+ * scope; unprotected, so a custom role may grant it; no default role lists it yet: the Platform
+ * Administrator holds every key.
+ */
+export const CATALOG_CULTURE_READ = definePermission('catalog', {
+  key: 'catalog.culture.read',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Create and edit cultures, their names, the required certification type and the "certification
+ * required" or "neutral" marks on categories. Platform scope; **protected** (ADR-0047 decision 12):
+ * the type and the marks decide whether uncertified Offers are shown in a certified culture. No
+ * default role lists it; the Platform Administrator grants it in a custom role.
+ */
+export const CATALOG_CULTURE_EDIT = definePermission('catalog', {
+  key: 'catalog.culture.edit',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
@@ -369,4 +392,6 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_CATEGORY_TREE_IMPORT,
   CATALOG_VARIANT_VIEW,
   CATALOG_VARIANT_TYPE_EDIT,
+  CATALOG_CULTURE_READ,
+  CATALOG_CULTURE_EDIT,
 ]);

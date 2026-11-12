@@ -30,6 +30,11 @@ import {
   type AvailabilityReader,
 } from '../application/ports/availability-reader';
 import { STOCK_REPOSITORY, type StockRepository } from '../application/ports/stock.repository';
+import {
+  VARIANT_STOCK_READER,
+  type VariantStockReader,
+} from '../application/ports/variant-stock.reader';
+import { PrismaVariantStockReader } from './prisma-variant-stock.reader';
 import { OFFER_STOCK_READER, type OfferStockReader } from '../application/ports/offer-stock.reader';
 import { PrismaOfferStockReader } from './prisma-offer-stock.reader';
 import { CatalogOfferSellUnits } from './catalog-offer-sell-units';
@@ -73,6 +78,11 @@ export const inventoryProviders: readonly FactoryProvider[] = [
     provide: OFFER_STOCK_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferStockReader => new PrismaOfferStockReader(prisma),
+  },
+  {
+    provide: VARIANT_STOCK_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantStockReader => new PrismaVariantStockReader(prisma),
   },
   {
     provide: RESERVATION_REPOSITORY,

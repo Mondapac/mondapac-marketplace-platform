@@ -15,6 +15,9 @@ import type { AssistantSetup } from '../assistant/assistant.ts';
 import { liveCartOf, type LiveCart } from '../cart/live-cart.ts';
 import { categoriesOf, loadHome, type HomeContent } from './home-source.ts';
 import { photoUrls } from './photo-source.ts';
+import { sampleSuggestions } from './sample-suggest.ts';
+import { suggestOf } from './suggest-source.ts';
+import type { SuggestAnswer } from '../search/suggest-types.ts';
 import { loadSlides as readSlides, type SlideScope } from './slides-source.ts';
 import { loadShellContent } from './shell-source.ts';
 import { storeProductsOf, storeProductsPath } from './store-products.ts';
@@ -649,4 +652,25 @@ export async function loadBuyerSession(): Promise<BuyerSession> {
     csrfToken: session.body.csrfToken,
     cartLines,
   };
+}
+
+/** The header suggestions' read: the answer, or why there is none. */
+export type SuggestRead =
+  | { readonly kind: 'ok'; readonly answer: SuggestAnswer }
+  /** The API refused (429, 503) or answered nothing usable; the panel says so and Enter still searches. */
+  | { readonly kind: 'failed'; readonly status?: number };
+
+/**
+ * Suggestions for what the buyer has typed (`GET search/suggest?q=`, at least 2 characters; the
+ * caller has trimmed and cut the text). With the API off, the sample catalog answers in the same
+ * shape. The text is sent encoded and is never logged (./api.ts logs the route only).
+ */
+export async function loadSuggestions(q: string): Promise<SuggestRead> {
+  const read = await apiGet<unknown>(`search/suggest?q=${encodeURIComponent(q)}`);
+  if (read.kind === 'off') return { kind: 'ok', answer: await sampleSuggestions(q) };
+  if (read.kind !== 'ok') {
+    return read.status === undefined ? { kind: 'failed' } : { kind: 'failed', status: read.status };
+  }
+  const answer = suggestOf(read.body, await photoUrls());
+  return answer === undefined ? { kind: 'failed' } : { kind: 'ok', answer };
 }

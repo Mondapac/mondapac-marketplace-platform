@@ -12,6 +12,7 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
+import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import type { SearchProductsRequest } from '../domain/search-query';
 import { SearchProducts } from '../application/use-cases/search-products.use-case';
 import { SearchStores } from '../application/use-cases/search-stores.use-case';
@@ -153,12 +154,14 @@ function suggestRequestOf(query: Record<string, unknown>): { q: string | undefin
 
 /**
  * The storefront product search (speed mode, Phase 6 package 2). No session is read: the actor is
- * the Market's anonymous actor and the Market is the request's. In the default rate-limit class
- * (per origin, from the Market's `requestLimits`). Not cacheable: the answer is re-checked against
- * catalog and sellers on every call.
+ * the Market's anonymous actor and the Market is the request's. In its own per-origin rate-limit
+ * class `public-search` (Market `requestLimits.publicSearchPerMinute`; Hassan L-3 on search 1a),
+ * because a text search also counts its whole scope. Not cacheable: the answer is re-checked
+ * against catalog and sellers on every call.
  */
 @ApiTags('search')
 @RoutePopulation('customer')
+@RateLimit('public-search')
 @Controller('search')
 export class SearchController {
   readonly #logger = new Logger('SearchController');
@@ -314,7 +317,12 @@ export class SearchController {
     throw fail(503, 'search.unavailable');
   }
 
+  /**
+   * In `default`, not the controller's `public-search`: it is called once per keystroke, so sharing
+   * the search's lower budget would throttle the search itself. Its own class is a follow-up.
+   */
   @Get('suggest')
+  @RateLimit('default')
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
     summary: 'Header search suggestions (public)',
