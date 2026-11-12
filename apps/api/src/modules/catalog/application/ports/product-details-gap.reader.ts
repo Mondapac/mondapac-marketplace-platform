@@ -20,8 +20,10 @@ export interface PublishedProductsFilter {
   /** Products with an id after this one, by id; null for the first page. */
   readonly afterId: string | null;
   readonly sellerId: string | null;
+  /** Only these products (the "Email sellers" selection); absent or null for all. */
+  readonly productIds?: readonly string[] | null;
   readonly limit: number;
-  /** The locale of the name (the Market's default). */
+  /** The locale of the name (the report: the Market's default; the email: its English locale). */
   readonly locale: string;
 }
 

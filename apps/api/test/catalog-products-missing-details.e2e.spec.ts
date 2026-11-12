@@ -4,6 +4,13 @@ import type { AttributeSchema, Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { ATTRIBUTE_REPOSITORY } from '../src/modules/catalog/application/ports/attribute.repository';
+import { ATTRIBUTE_DEFINITION_STORE } from '../src/modules/catalog/application/ports/attribute-definition.store';
+import { MISSING_DETAILS_EMAIL_STORE } from '../src/modules/catalog/application/ports/missing-details-email.store';
+import {
+  SELLER_NAMES_READER,
+  type SellerNamesReader,
+} from '../src/modules/catalog/application/ports/seller-names.reader';
+import { MemoryMissingDetailsEmailStore } from './support/catalog-missing-details-email-fakes';
 import {
   PRODUCT_DETAILS_GAP_READER,
   type ProductDetailsGapReader,
@@ -26,6 +33,9 @@ import { panelHeaders, TEST_MARKETS } from './support/test-config';
 // feature-set schema as in-memory fakes. Proved in both Market fixtures: the route needs the
 // attribute view key (a role without it is refused), an admin session is required, the answer
 // lists the products that miss required fields and pages by id, and a malformed query is 400.
+// "Email sellers" (A4-4): the route needs the attribute edit key and the CSRF token, a dry run
+// previews the email, a send queues one email per seller (memory store), audits it and throttles
+// a repeat, and a malformed body is 400.
 
 const START = Temporal.Instant.from('2026-11-02T00:00:00Z');
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 };
@@ -38,6 +48,9 @@ const id = <T extends string>(n: number): Id<T> => {
 const MODERATOR = id<'Account'>(0xb701);
 const EDITOR = id<'Account'>(0xb702);
 const EDITOR_ROLE = id<'Role'>(0xb801);
+const WRITER = id<'Account'>(0xb703);
+const WRITER_ROLE = id<'Role'>(0xb802);
+const SELLER = id<'Seller'>(0xc001);
 
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
@@ -50,6 +63,7 @@ describe('products missing required details over HTTP (integration)', () => {
       Promise.resolve(
         (rows.get(market.marketId) ?? [])
           .filter((row) => filter.afterId === null || row.productId > filter.afterId)
+          .filter((row) => filter.productIds == null || filter.productIds.includes(row.productId))
           .sort((a, b) => (a.productId < b.productId ? -1 : 1))
           .slice(0, filter.limit),
       ),
@@ -69,7 +83,20 @@ describe('products missing required details over HTTP (integration)', () => {
       },
     ],
   };
-  const attributes = { loadSchema: () => Promise.resolve(schema) };
+  const attributes = {
+    loadSchema: () => Promise.resolve(schema),
+    definitionIdByCode: () => Promise.resolve('def-origin'),
+  };
+  const definitions = {
+    findById: () =>
+      Promise.resolve({
+        state: { names: { 'en-AU': 'Country of origin', 'en-US': 'Country of origin' } },
+      }),
+  };
+  const sellerNames: SellerNamesReader = {
+    storeNames: (_c, ids) => Promise.resolve(new Map(ids.map((s) => [s, 'Fuego Pantry'] as const))),
+  };
+  const emails = new MemoryMissingDetailsEmailStore();
   // Every product's category holds the one feature set of this spec.
   const resolver = {
     open: () =>
@@ -90,6 +117,12 @@ describe('products missing required details over HTTP (integration)', () => {
           .useValue(gap)
           .overrideProvider(ATTRIBUTE_REPOSITORY)
           .useValue(attributes)
+          .overrideProvider(ATTRIBUTE_DEFINITION_STORE)
+          .useValue(definitions)
+          .overrideProvider(MISSING_DETAILS_EMAIL_STORE)
+          .useValue(emails)
+          .overrideProvider(SELLER_NAMES_READER)
+          .useValue(sellerNames)
           .overrideProvider(ProductFamilyResolver)
           .useValue(resolver),
     }));
@@ -116,10 +149,24 @@ describe('products missing required details over HTTP (integration)', () => {
       version: 1,
       createdAt: START,
     });
+    fakes.seedRole({
+      id: WRITER_ROLE,
+      marketId,
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      name: 'Attribute writer',
+      permissionKeys: ['catalog.attribute.view', 'catalog.attribute.edit'],
+      version: 1,
+      createdAt: START,
+    });
     let n = 0;
     for (const [accountId, label, roleId] of [
       [MODERATOR, 'moderator', roleOf('catalogue-moderator')],
       [EDITOR, 'editor', EDITOR_ROLE],
+      [WRITER, 'writer', WRITER_ROLE],
     ] as const) {
       n += 1;
       fakes.seedAccount({
@@ -151,7 +198,7 @@ describe('products missing required details over HTTP (integration)', () => {
       [1, 2, 3].map((n) => ({
         productId: id<'Product'>(0x3000 + n),
         productCode: `P${n}`,
-        ownerSellerId: null,
+        ownerSellerId: n === 3 ? SELLER : null,
         revisionFamilyCode: 'pantry',
         primaryCategoryId: null,
         name: null,
@@ -185,10 +232,12 @@ describe('products missing required details over HTTP (integration)', () => {
   }
 
   const REPORT = '/catalog/admin/reports/products-missing-details';
+  const EMAIL = `${REPORT}/email-sellers`;
 
   beforeEach(() => {
     fakes.reset();
     rows.clear();
+    emails.rows.clear();
   });
   afterEach(async () => {
     await app?.close();
@@ -200,6 +249,7 @@ describe('products missing required details over HTTP (integration)', () => {
       paths: Record<string, Record<string, unknown>>;
     };
     expect(document.paths[REPORT]).toHaveProperty('get');
+    expect(document.paths[EMAIL]).toHaveProperty('post');
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
@@ -217,14 +267,16 @@ describe('products missing required details over HTTP (integration)', () => {
             sellerId: null,
             featureSetCode: 'pantry',
             missing: ['origin'],
+            lastEmailedAt: null,
           },
           {
             productId: id<'Product'>(0x3003),
             productCode: 'P3',
             name: null,
-            sellerId: null,
+            sellerId: SELLER,
             featureSetCode: 'pantry',
             missing: ['origin'],
+            lastEmailedAt: null,
           },
         ],
         nextAfterId: null,
@@ -261,6 +313,97 @@ describe('products missing required details over HTTP (integration)', () => {
         .get(REPORT)
         .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') })
         .expect(401);
+    }, 30_000);
+
+    it('previews, queues one email per seller, audits it and throttles a repeat', async () => {
+      await boot();
+      await seeded(code);
+      const writer = adminSession(code, WRITER, 3);
+      const productIds = [id<'Product'>(0x3001), id<'Product'>(0x3003)];
+      const preview = await http()
+        .post(EMAIL)
+        .set(writer)
+        .send({ productIds, dryRun: true })
+        .expect(200);
+      expect(preview.body).toEqual({
+        dryRun: true,
+        sellers: [
+          {
+            sellerId: SELLER,
+            storeName: 'Fuego Pantry',
+            status: 'queued',
+            emailId: null,
+            products: [{ productId: productIds[1], status: 'emailed', lastEmailedAt: null }],
+            preview: {
+              subject: '1 of your products needs more details',
+              text: expect.stringContaining('Hi Fuego Pantry,\n') as unknown,
+            },
+          },
+        ],
+        notEmailed: [{ productId: productIds[0], reason: 'no-seller' }],
+      });
+      expect(
+        (preview.body as { sellers: { preview: { text: string } }[] }).sellers[0]?.preview.text,
+      ).toContain('- P3: Country of origin');
+      expect(emails.rows.size).toBe(0);
+
+      const queued = await http().post(EMAIL).set(writer).send({ productIds }).expect(200);
+      expect(queued.body).toMatchObject({
+        dryRun: false,
+        sellers: [{ sellerId: SELLER, status: 'queued', preview: null }],
+      });
+      expect(emails.rows.size).toBe(1);
+      expect(fakes.audits.filter((a) => a.action.startsWith('catalog.'))).toEqual([
+        expect.objectContaining({
+          action: 'catalog.missing-details-email.queued',
+          actor: 'authenticated',
+          marketId: code,
+          after: { sellerId: SELLER, productCount: 1, throttledCount: 0 },
+        }),
+      ]);
+
+      const again = await http().post(EMAIL).set(writer).send({ productIds }).expect(200);
+      expect(again.body).toMatchObject({
+        sellers: [
+          {
+            status: 'throttled',
+            emailId: null,
+            products: [{ status: 'throttled', lastEmailedAt: START.toString() }],
+          },
+        ],
+      });
+      expect(emails.rows.size).toBe(1);
+    }, 30_000);
+
+    it('refuses the view-only role, a missing CSRF token and a malformed body', async () => {
+      await boot();
+      await seeded(code);
+      const productIds = [id<'Product'>(0x3003)];
+      const viewer = adminSession(code, EDITOR, 4);
+      const refused = await http().post(EMAIL).set(viewer).send({ productIds }).expect(403);
+      expect(refused.body).toMatchObject({ code: 'access.denied' });
+      const writer = adminSession(code, WRITER, 5);
+      const noCsrf = Object.fromEntries(
+        Object.entries(writer).filter(([header]) => header !== 'x-csrf-token'),
+      );
+      await http().post(EMAIL).set(noCsrf).send({ productIds }).expect(403);
+      for (const body of [
+        {},
+        { productIds: [] },
+        { productIds: ['x'] },
+        { productIds, extra: 1 },
+      ]) {
+        const bad = await http().post(EMAIL).set(writer).send(body).expect(400);
+        expect(bad.body).toMatchObject({ code: 'validation.failed' });
+      }
+      await http()
+        .post(EMAIL)
+        .set(writer)
+        .set('content-type', 'text/plain')
+        .send('productIds')
+        .expect(415);
+      expect(emails.rows.size).toBe(0);
+      expect(fakes.audits.filter((a) => a.action.startsWith('catalog.'))).toEqual([]);
     }, 30_000);
   });
 });

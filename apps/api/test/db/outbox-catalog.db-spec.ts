@@ -123,6 +123,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_product_revision_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, product_revision_id) WHERE (kind = 'revision-published'::text)",
   'catalog.tag_reevaluation_requests_market_id_source_event_id_key':
     'CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_source_event_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, source_event_id, cause) NULLS NOT DISTINCT WHERE (source_event_id IS NOT NULL)',
+  // Attributes A4-4: one pending "Email sellers" email per seller, and the job's due list.
+  'catalog.missing_details_emails_one_pending_key':
+    "CREATE UNIQUE INDEX missing_details_emails_one_pending_key ON catalog.missing_details_emails USING btree (market_id, seller_id) WHERE (notice_state = 'pending'::text)",
+  'catalog.missing_details_emails_notice_due_idx':
+    "CREATE INDEX missing_details_emails_notice_due_idx ON catalog.missing_details_emails USING btree (market_id, notice_next_attempt_at, id) WHERE (notice_state = 'pending'::text)",
   'catalog.topic_suggestions_notice_due_idx':
     "CREATE INDEX topic_suggestions_notice_due_idx ON catalog.topic_suggestions USING btree (market_id, notice_next_attempt_at, id) WHERE (notice_state = 'pending'::text)",
   'catalog.topic_suggestions_open_seller_label_key':

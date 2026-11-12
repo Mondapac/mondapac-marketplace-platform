@@ -18,8 +18,8 @@ import { ownerTestDatabaseUrl } from './test-database';
 // package A4), for both Market fixtures, as the API role: only published products with a
 // published revision are read, by id; a draft, a product only pending review and the other Market
 // are not; the seller and feature-set filters, the cursor and the limit; and the name in the asked
-// locale (null without one). Each test works on its own feature-set code, because other specs
-// share the database.
+// locale (null without one); the "Email sellers" selection by id (A4-4). Each test works on its
+// own feature-set code, because other specs share the database.
 
 const T0 = Temporal.Instant.from('2026-11-04T00:00:00Z');
 let sequence = 0;
@@ -235,6 +235,23 @@ describe.each(TEST_MARKETS)('product details gap reader in market %s (database)'
       name: null,
       attributeValues: {},
     });
+  });
+
+  it('reads only the asked products for "Email sellers", still only the published ones', async () => {
+    const set = await family(market, []);
+    const a = await product(market, set.code, set.revisionId, {});
+    await product(market, set.code, set.revisionId, {});
+    const draft = await product(market, set.code, set.revisionId, {}, { status: 'draft' });
+    const rows = await run(market, () =>
+      reader.published(market, {
+        afterId: null,
+        sellerId: null,
+        productIds: [a, draft, uuid7()],
+        limit: 3,
+        locale,
+      }),
+    );
+    expect(rows.map((row) => row.productId)).toEqual([a]);
   });
 
   it('filters by seller and pages by the cursor, carrying the revision feature set', async () => {

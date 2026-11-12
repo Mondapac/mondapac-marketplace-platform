@@ -1119,6 +1119,38 @@ review like every tag change. Audit rows: `catalog.topic-suggestion.suggested` a
   status)`; `(market_id, product_id)`; the notice-due partial index. Grants as 3.30, with `topic_id`
   in place of `option_code`.
 
+### 3.30b `missing_details_emails`, `missing_details_email_products` (attributes A4-4)
+
+**Status: proposed in the "Email sellers" PR; database-designer review pending.** The admin action
+"Email sellers" of the Missing details report (`catalog.products-missing-details-email-sellers`,
+`POST /catalog/admin/reports/products-missing-details/email-sellers`): one email per seller and
+request, listing only that seller's selected products that still lack required details, in the
+text john approved on 11 Nov 2026 (English only). The admin's request queues it (`pending`); the job
+`catalog.send-missing-details-emails` sends it as the `system` actor, because `identity` gives a
+seller's address to that actor only, and settles it `sent` (with `sent_at`), `skipped` (no usable
+address) or `failed` (attempts used up, as the other notices). The text is rendered when queued and
+stored, so what goes is what the dialog previewed (`dryRun: true`). Throttle (use case, injected
+Clock): the same seller and product at most once in 7 days, counting `pending` and `sent` emails.
+Audit row per queued email: `catalog.missing-details-email.queued` (ids and counts only).
+
+`missing_details_emails`: `(market_id, id)` primary key; `tenant_id`; `seller_id` (no FK across
+modules); `requested_by_account_id`; `requested_at`; `subject` (one line, 1 to 200), `body` (1 to
+200 000 characters); `notice_state` `pending | sent | skipped | failed`; `notice_attempts`;
+`notice_next_attempt_at` (set exactly when pending); `sent_at` (set exactly when sent); `version`.
+`missing_details_email_products`: `(market_id, email_id, product_id)` primary key; `tenant_id`;
+`(market_id, email_id)` → `missing_details_emails`; `(market_id, product_id)` → `products`.
+
+- **Partial unique** `missing_details_emails_one_pending_key` `(market_id, seller_id) WHERE
+  notice_state = 'pending'`: one waiting email per seller; a concurrent second request is refused as
+  `missing-details-email.busy` (409), a later one reports the seller's products as `email-pending`.
+- Indexes: `(market_id, seller_id, requested_at)`; the notice-due partial index; the products'
+  `(market_id, product_id)` for the throttle and the report's "Last emailed" (latest `sent_at`).
+- Guard trigger: born pending at version 1 with `requested_at` within five minutes of the
+  statement; the seller, the requester, the time and the text never change; only a pending email
+  moves, its version by one; no DELETE or TRUNCATE. The products are append-only.
+- Grants: `SELECT, INSERT` and `UPDATE (notice_state, notice_attempts, notice_next_attempt_at,
+  sent_at, version)` on the emails; `SELECT, INSERT` on the products.
+
 ### 3.31 `seller_import_jobs`, `seller_import_rows`, `seller_import_photos` (seller Import; domain 14c)
 
 The seller import of 14 as built by domain 14c. It **replaces the outline of 3.24** (`import_jobs`,

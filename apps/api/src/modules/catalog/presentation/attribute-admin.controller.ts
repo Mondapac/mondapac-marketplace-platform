@@ -41,6 +41,7 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { ProductsMissingDetailsList } from '../application/use-cases/products-missing-details-list.use-case';
+import { ProductsMissingDetailsEmailSellers } from '../application/use-cases/products-missing-details-email-sellers.use-case';
 import { CategoryAttributeLinksGet } from '../application/use-cases/category-attribute-links-get.use-case';
 import { CategoryAttributeLinksSet } from '../application/use-cases/category-attribute-links-set.use-case';
 import { AttributeAdminGet } from '../application/use-cases/attribute-admin-get.use-case';
@@ -67,6 +68,8 @@ import {
   FeatureSetWriteWrapBody,
   CategoryLinksBody,
   MissingDetailsListBody,
+  MissingDetailsEmailSellersBody,
+  MissingDetailsEmailSellersRequest,
   CategoryLinksSetRequest,
   CategoryLinksSetWrapBody,
 } from './attribute-admin.dto';
@@ -97,6 +100,7 @@ export const ATTRIBUTE_ADMIN_STATUS: Readonly<Record<string, number>> = Object.f
   'category-links.filter-invalid': 422,
   'category-links.filter-repeated': 422,
   'category-links.too-many-filters': 422,
+  'missing-details-email.busy': 409,
   'feature-set.code-taken': 409,
   'feature-set.stale': 409,
   'feature-set.material-removal-needs-request': 409,
@@ -215,6 +219,7 @@ export class AttributeAdminController {
     private readonly getCategoryLinks: CategoryAttributeLinksGet,
     private readonly setCategoryLinks: CategoryAttributeLinksSet,
     private readonly listMissingDetails: ProductsMissingDetailsList,
+    private readonly emailSellers: ProductsMissingDetailsEmailSellers,
   ) {}
 
   @Post('attributes')
@@ -657,6 +662,50 @@ export class AttributeAdminController {
       ? (JSON.parse(JSON.stringify(result.value)) as MissingDetailsListBody)
       : refusal(result.error, response, context);
     return this.settle('catalog.products-missing-details-list', context, outcome);
+  }
+
+  @Post('reports/products-missing-details/email-sellers')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Email the sellers of selected products missing required details',
+    description:
+      `${EDITS} The products the admin selected in the report are judged again; each seller ` +
+      'gets one email (the approved English text) listing only their selected products that ' +
+      'still lack required details. The same seller and product are emailed at most once in 7 ' +
+      'days (throttled, with the date). The email is queued and sent by a job within minutes; a ' +
+      'seller without a usable address gets none. Each queued email is audited. `dryRun: true` ' +
+      'answers the same plan with each email preview and queues nothing (the confirm dialog).',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: MissingDetailsEmailSellersRequest })
+  @ApiOkResponse({ type: MissingDetailsEmailSellersBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description:
+      'missing-details-email.busy: another request queued an email to a seller; ask again',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async emailMissingDetailsSellers(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<MissingDetailsEmailSellersBody> {
+    const input = closedBody(request, body, ['productIds'], ['dryRun']);
+    let outcome: MissingDetailsEmailSellersBody | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.emailSellers.execute(context, input);
+      outcome = result.ok
+        ? (JSON.parse(JSON.stringify(result.value)) as MissingDetailsEmailSellersBody)
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.products-missing-details-email-sellers', context, outcome);
   }
 
   @Get('categories/:categoryId/attribute-links')

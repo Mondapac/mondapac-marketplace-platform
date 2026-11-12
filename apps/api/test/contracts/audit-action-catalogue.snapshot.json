@@ -3223,5 +3223,17 @@
       "sellerHelpCount": "integer",
       "swatchCount": "integer"
     }
+  },
+  {
+    "action": "catalog.missing-details-email.queued",
+    "targetType": "catalog.missing-details-email",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "productCount": "integer",
+      "sellerId": "id",
+      "throttledCount": "integer"
+    }
   }
 ]

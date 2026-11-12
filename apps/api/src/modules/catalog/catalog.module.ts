@@ -409,6 +409,11 @@ import { AttributeArchiveConfirm } from './application/use-cases/attribute-archi
 import { AttributeRestructureController } from './presentation/attribute-restructure.controller';
 import { PRODUCT_DETAILS_GAP_READER } from './application/ports/product-details-gap.reader';
 import { ProductsMissingDetailsList } from './application/use-cases/products-missing-details-list.use-case';
+import { ProductsMissingDetailsEmailSellers } from './application/use-cases/products-missing-details-email-sellers.use-case';
+import { SendMissingDetailsEmails } from './application/use-cases/send-missing-details-emails.use-case';
+import { sendMissingDetailsEmailsJob } from './presentation/jobs/send-missing-details-emails.job';
+import { MISSING_DETAILS_EMAIL_STORE } from './application/ports/missing-details-email.store';
+import { SELLER_PANEL_LINKS } from './application/ports/seller-panel-links';
 import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
 import { CATEGORY_EDIT_STORE } from './application/ports/category-edit.store';
 import { CATEGORY_IMAGE_STORE } from './application/ports/category-image.store';
@@ -582,6 +587,8 @@ const PORT = {
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   impact: ATTRIBUTE_IMPACT_READER,
   detailsGapReader: PRODUCT_DETAILS_GAP_READER,
+  detailsEmails: MISSING_DETAILS_EMAIL_STORE,
+  sellerLinks: SELLER_PANEL_LINKS,
   familyResolver: ProductFamilyResolver,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
   attributeCreate: AttributeDefinitionCreate,
@@ -1330,6 +1337,29 @@ const RESTRUCTURE_DEPS = {
       attributes: true,
       policy: true,
       familyResolver: true,
+      detailsEmails: true,
+    }),
+    useCaseProvider(ProductsMissingDetailsEmailSellers, {
+      unitOfWork: true,
+      detailsGapReader: true,
+      attributes: true,
+      attributeStore: true,
+      policy: true,
+      familyResolver: true,
+      detailsEmails: true,
+      sellerNames: true,
+      sellerLinks: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(SendMissingDetailsEmails, {
+      unitOfWork: true,
+      detailsEmails: true,
+      ownerContacts: true,
+      mailTransport: true,
+      mailSettings: true,
+      clock: true,
     }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,
@@ -2419,6 +2449,7 @@ const RESTRUCTURE_DEPS = {
         ExpireRelaxationRequests,
         SendAttributeSuggestionNotices,
         SendTopicSuggestionNotices,
+        SendMissingDetailsEmails,
       ],
       (
         categories: SeedCategoryTree,
@@ -2436,6 +2467,7 @@ const RESTRUCTURE_DEPS = {
         expireRelaxations: ExpireRelaxationRequests,
         suggestionNotices: SendAttributeSuggestionNotices,
         topicSuggestionNotices: SendTopicSuggestionNotices,
+        missingDetailsEmails: SendMissingDetailsEmails,
       ) => [
         seedCategoryTreeJob(categories),
         seedAttributesJob(attributes),
@@ -2452,6 +2484,7 @@ const RESTRUCTURE_DEPS = {
         expireRelaxationRequestsJob(expireRelaxations),
         sendAttributeSuggestionNoticesJob(suggestionNotices),
         sendTopicSuggestionNoticesJob(topicSuggestionNotices),
+        sendMissingDetailsEmailsJob(missingDetailsEmails),
       ],
     ),
     // Certification events consumed (design 5.5, 9.5; slice 12).

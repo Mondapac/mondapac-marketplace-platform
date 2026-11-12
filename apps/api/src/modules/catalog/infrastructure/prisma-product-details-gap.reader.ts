@@ -19,12 +19,20 @@ export class PrismaProductDetailsGapReader implements ProductDetailsGapReader {
     market: MarketContext,
     filter: PublishedProductsFilter,
   ): Promise<readonly PublishedProductValues[]> {
+    const ids = filter.productIds ?? null;
+    const idFilter =
+      filter.afterId === null && ids === null
+        ? null
+        : {
+            ...(filter.afterId === null ? {} : { gt: filter.afterId }),
+            ...(ids === null ? {} : { in: [...ids] }),
+          };
     const rows = await this.prisma.tx(market).catalogProduct.findMany({
       where: {
         marketId: market.marketId,
         status: 'published',
         publishedRevisionId: { not: null },
-        ...(filter.afterId === null ? {} : { id: { gt: filter.afterId } }),
+        ...(idFilter === null ? {} : { id: idFilter }),
         ...(filter.sellerId === null ? {} : { ownerSellerId: filter.sellerId }),
       },
       select: {

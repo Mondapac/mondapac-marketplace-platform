@@ -818,6 +818,25 @@ export const VariantTypeSettingsChangedAudit = defineAuditAction({
   after: variantTypeShape,
 });
 
+/** The audit target type of an "Email sellers" email of the Missing details report (A4-4). */
+export const CATALOG_MISSING_DETAILS_EMAIL_TARGET = 'catalog.missing-details-email';
+
+/**
+ * An admin queued one "Email sellers" email to a seller (attributes A4-4): ids and counts only,
+ * never the text, a name or an address. `throttledCount` is the seller's selected products left
+ * out because they were emailed in the last 7 days. The job's send is not audited (logged).
+ */
+export const MissingDetailsEmailQueuedAudit = defineAuditAction({
+  action: 'catalog.missing-details-email.queued',
+  targetType: CATALOG_MISSING_DETAILS_EMAIL_TARGET,
+  actors: ['authenticated'],
+  after: {
+    sellerId: auditField.id(),
+    productCount: auditField.integer(),
+    throttledCount: auditField.integer(),
+  },
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -871,4 +890,5 @@ export const CATALOG_AUDIT_ACTIONS = [
   TopicSuggestionDecidedAudit,
   CategoryAttributesChangedAudit,
   VariantTypeSettingsChangedAudit,
+  MissingDetailsEmailQueuedAudit,
 ] as const;

@@ -1,19 +1,15 @@
 import { Logger } from '@nestjs/common';
-import { err, ok, validateAttributeValues } from '@mondapac/shared-kernel';
-import type {
-  AttributeSchema,
-  AttributeValues,
-  CallContext,
-  MarketContext,
-  Result,
-} from '@mondapac/shared-kernel';
+import { err, ok } from '@mondapac/shared-kernel';
+import type { CallContext, MarketContext, Result, Temporal } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_ATTRIBUTE_VIEW } from '../../contracts/permissions';
 import { closedInput, invalid, type ValidationFailure } from '../brands/brand-views';
+import { MissingDetailsJudge } from '../attributes/missing-details-judge';
 import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { MissingDetailsEmailStore } from '../ports/missing-details-email.store';
 import type { ProductDetailsGapReader } from '../ports/product-details-gap.reader';
 
 /** Rows one page may return. */
@@ -40,6 +36,8 @@ export interface MissingDetailsItem {
   readonly featureSetCode: string;
   /** Codes of the required attributes with no value, in the feature set's order. */
   readonly missing: readonly string[];
+  /** When an "Email sellers" email naming it was last sent (ISO instant); null when never. */
+  readonly lastEmailedAt: string | null;
 }
 
 export interface ProductsMissingDetailsListOutput {
@@ -61,6 +59,7 @@ export interface ProductsMissingDetailsListDependencies {
   readonly attributes: AttributeRepository;
   readonly policy: CatalogMarketPolicy;
   readonly familyResolver: ProductFamilyResolver;
+  readonly detailsEmails: MissingDetailsEmailStore;
 }
 
 /**
@@ -70,7 +69,8 @@ export interface ProductsMissingDetailsListDependencies {
  * sale; the seller is refused at the next submit until the field is filled. Judged with the same
  * rule as a submit (`validateAttributeValues`: a localizable text needs its default-locale
  * value), against the feature set's current published revision. Keyset-paged by product id; one
- * call reads at most {@link GAP_SCAN_MAX} products and returns `nextAfterId` to continue.
+ * call reads at most {@link GAP_SCAN_MAX} products and returns `nextAfterId` to continue. Each row
+ * says when an "Email sellers" email naming it was last sent (A4-4).
  * Rule: `catalog.attribute.view` and the admin population. One read-only unit.
  */
 export class ProductsMissingDetailsList extends UseCase<
@@ -142,20 +142,10 @@ export class ProductsMissingDetailsList extends UseCase<
     }
 
     const { market } = context;
-    const locales = this.deps.policy.locales(market);
-    // The validator reads the first locale as the default.
-    const ordered = [locales.default, ...locales.supported.filter((l) => l !== locales.default)];
+    const locale = this.deps.policy.locales(market).default;
     const read = await this.deps.unitOfWork.run(
       market,
-      async () =>
-        ok(
-          await this.#scan(
-            market,
-            { afterId, sellerId, familyCode, limit },
-            locales.default,
-            ordered,
-          ),
-        ),
+      async () => ok(await this.#scan(market, { afterId, sellerId, familyCode, limit }, locale)),
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
@@ -171,18 +161,16 @@ export class ProductsMissingDetailsList extends UseCase<
       readonly limit: number;
     },
     locale: string,
-    ordered: readonly string[],
   ): Promise<ProductsMissingDetailsListOutput> {
     // The feature set a product is judged against is the one its published revision's primary
     // category holds now: what its next submit will ask (CAT-10). When that cannot be resolved the
     // product is judged against the feature set its revision was frozen under.
-    const session = await this.deps.familyResolver.open(market);
-    const schemas = new Map<string, AttributeSchema | null>();
-    const items: MissingDetailsItem[] = [];
+    const judge = await MissingDetailsJudge.open(market, this.deps);
+    const found: Omit<MissingDetailsItem, 'lastEmailedAt'>[] = [];
     let cursor = filter.afterId;
     let scanned = 0;
     let exhausted = false;
-    while (items.length < filter.limit && scanned < GAP_SCAN_MAX) {
+    while (found.length < filter.limit && scanned < GAP_SCAN_MAX) {
       const requested = Math.min(GAP_BATCH, GAP_SCAN_MAX - scanned);
       const batch = await this.deps.detailsGapReader.published(market, {
         afterId: cursor,
@@ -195,40 +183,22 @@ export class ProductsMissingDetailsList extends UseCase<
         break;
       }
       for (const [index, product] of batch.entries()) {
-        const resolved = await session.resolve(product.primaryCategoryId);
-        const familyCode = resolved.ok ? resolved.familyCode : product.revisionFamilyCode;
-        if (!schemas.has(familyCode)) {
-          schemas.set(familyCode, await this.deps.attributes.loadSchema(market, familyCode));
-        }
-        const schema = schemas.get(familyCode) ?? null;
+        const verdict = await judge.judge(product);
         cursor = product.productId;
         scanned += 1;
-        if (schema === null) continue;
-        if (filter.familyCode !== null && familyCode !== filter.familyCode) continue;
-        const raw = product.attributeValues;
-        const values = (typeof raw === 'object' && raw !== null ? raw : {}) as AttributeValues;
-        const checked = validateAttributeValues(schema, values, ordered);
-        if (!checked.ok) {
-          const missing = [
-            ...new Set(
-              checked.error
-                .filter((issue) => issue.code === 'attribute.required')
-                // A localizable text reports `code.locale`; attribute codes hold no dot.
-                .map((issue) => issue.path.split('.')[0] ?? issue.path),
-            ),
-          ];
-          if (missing.length > 0) {
-            items.push({
-              productId: product.productId,
-              productCode: product.productCode,
-              name: product.name,
-              sellerId: product.ownerSellerId,
-              featureSetCode: familyCode,
-              missing,
-            });
-          }
+        if (verdict === null) continue;
+        if (filter.familyCode !== null && verdict.featureSetCode !== filter.familyCode) continue;
+        if (verdict.missing.length > 0) {
+          found.push({
+            productId: product.productId,
+            productCode: product.productCode,
+            name: product.name,
+            sellerId: product.ownerSellerId,
+            featureSetCode: verdict.featureSetCode,
+            missing: verdict.missing,
+          });
         }
-        if (items.length >= filter.limit) {
+        if (found.length >= filter.limit) {
           // The page is full; the rest of this batch is read by the next call.
           exhausted = index === batch.length - 1 && batch.length < requested;
           break;
@@ -236,14 +206,21 @@ export class ProductsMissingDetailsList extends UseCase<
       }
     }
     const nextAfterId = exhausted ? null : cursor;
+    const emailed =
+      found.length === 0
+        ? new Map<string, Temporal.Instant>()
+        : await this.deps.detailsEmails.lastEmailed(
+            market,
+            found.map((item) => item.productId),
+          );
     return {
-      items,
+      items: found.map((item) => ({
+        ...item,
+        lastEmailedAt: emailed.get(item.productId)?.toString() ?? null,
+      })),
       nextAfterId,
       scanned,
-      unreadableFeatureSets: [...schemas.entries()]
-        .filter(([, schema]) => schema === null)
-        .map(([code]) => code)
-        .sort(),
+      unreadableFeatureSets: judge.unreadable(),
     };
   }
 }

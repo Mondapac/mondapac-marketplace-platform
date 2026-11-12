@@ -1395,6 +1395,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['cancel_reason', 'closed_at', 'confirmed_by_account_id', 'status', 'version'],
     },
+    // Attributes A4-4: an "Email sellers" email moves only its notice marker; its products are
+    // append-only; nothing is deleted.
+    'catalog.missing_details_emails': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'notice_attempts',
+        'notice_next_attempt_at',
+        'notice_state',
+        'sent_at',
+        'version',
+      ],
+    },
+    'catalog.missing_details_email_products': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
     // Product tags T5: same shape as the value suggestions: a decision and a notice move only.
     'catalog.topic_suggestions': {
       table: ['INSERT', 'SELECT'],

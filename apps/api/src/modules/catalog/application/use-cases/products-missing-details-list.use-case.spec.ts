@@ -1,3 +1,4 @@
+import { Temporal } from '@mondapac/shared-kernel';
 import type {
   AttributeField,
   AttributeSchema,
@@ -24,6 +25,7 @@ import type {
 } from '../ports/product-details-gap.reader';
 import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
+import type { MissingDetailsEmailStore } from '../ports/missing-details-email.store';
 import { GAP_SCAN_MAX, ProductsMissingDetailsList } from './products-missing-details-list.use-case';
 
 // The report "Products missing required details" in memory (attributes plan, package A4, decision
@@ -123,6 +125,17 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
           ),
       }),
   } as unknown as ProductFamilyResolver;
+  // "Last emailed" (A4-4): product 1 was emailed once.
+  const detailsEmails = {
+    lastEmailed: (_m: MarketContext, ids: readonly string[]) =>
+      Promise.resolve(
+        new Map(
+          ids
+            .filter((productId) => productId === ID(0x1001))
+            .map((productId) => [productId, Temporal.Instant.from('2026-11-10T01:02:03Z')]),
+        ),
+      ),
+  } as unknown as MissingDetailsEmailStore;
   const useCase = () =>
     new ProductsMissingDetailsList(createUseCaseGate(markets, check), {
       unitOfWork,
@@ -130,6 +143,7 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
       attributes,
       policy,
       familyResolver,
+      detailsEmails,
     });
 
   const product = (
@@ -177,6 +191,7 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
             sellerId: ID(0x2000),
             featureSetCode: 'pantry',
             missing: ['origin', 'storage'],
+            lastEmailedAt: '2026-11-10T01:02:03Z',
           },
         ],
         nextAfterId: null,

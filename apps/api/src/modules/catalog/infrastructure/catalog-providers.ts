@@ -298,6 +298,13 @@ import {
   type ProductDetailsGapReader,
 } from '../application/ports/product-details-gap.reader';
 import { PrismaProductDetailsGapReader } from './prisma-product-details-gap.reader';
+import {
+  MISSING_DETAILS_EMAIL_STORE,
+  type MissingDetailsEmailStore,
+} from '../application/ports/missing-details-email.store';
+import { PrismaMissingDetailsEmailStore } from './prisma-missing-details-email.store';
+import { SELLER_PANEL_LINKS, type SellerPanelLinks } from '../application/ports/seller-panel-links';
+import { ConfigSellerPanelLinks } from './config-seller-panel-links';
 import { BRAND_ASSIGNER, type BrandAssigner } from '../application/ports/brand-assigner';
 import {
   BUSINESS_ACTIVITY_REPOSITORY,
@@ -474,6 +481,17 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): ProductDetailsGapReader =>
       new PrismaProductDetailsGapReader(prisma),
+  },
+  {
+    provide: MISSING_DETAILS_EMAIL_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): MissingDetailsEmailStore =>
+      new PrismaMissingDetailsEmailStore(prisma),
+  },
+  {
+    provide: SELLER_PANEL_LINKS,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): SellerPanelLinks => new ConfigSellerPanelLinks(markets),
   },
   {
     provide: BUSINESS_ACTIVITY_REPOSITORY,

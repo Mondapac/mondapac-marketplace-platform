@@ -506,6 +506,13 @@ export class MissingDetailsItemBody {
   @ApiProperty() featureSetCode!: string;
   @ApiProperty({ type: [String], description: 'Codes of the required attributes with no value.' })
   missing!: string[];
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'date-time',
+    description: 'When an "Email sellers" email naming it was last sent; null when never.',
+  })
+  lastEmailedAt!: string | null;
 }
 
 export class MissingDetailsListBody {
@@ -518,6 +525,81 @@ export class MissingDetailsListBody {
     description: 'Feature sets that could not be read; their products are not judged.',
   })
   unreadableFeatureSets!: string[];
+}
+
+// "Email sellers" of the Missing details report (attributes A4-4, screen 06).
+
+export class MissingDetailsEmailSellersRequest {
+  @ApiProperty({
+    type: [String],
+    format: 'uuid',
+    minItems: 1,
+    maxItems: 100,
+    description: 'The products the admin selected in the report (repeats count once).',
+  })
+  productIds!: string[];
+  @ApiProperty({
+    required: false,
+    description: 'True: answer the plan with each email preview and queue nothing (the dialog).',
+  })
+  dryRun?: boolean;
+}
+
+class EmailSellersProductBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({
+    enum: ['emailed', 'throttled', 'no-missing-details', 'email-pending'],
+    description:
+      'emailed: listed in the email; throttled: the seller was emailed about it in the last 7 ' +
+      'days; no-missing-details: it is complete now; email-pending: an earlier email to the ' +
+      'seller is still waiting to be sent, ask again in a minute.',
+  })
+  status!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'date-time',
+    description: 'The email that throttles it (throttled only).',
+  })
+  lastEmailedAt!: string | null;
+}
+
+class EmailPreviewBody {
+  @ApiProperty() subject!: string;
+  @ApiProperty({ description: 'Plain text, English only.' }) text!: string;
+}
+
+class EmailSellersSellerBody {
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'The public store name.' })
+  storeName!: string | null;
+  @ApiProperty({
+    enum: ['queued', 'throttled', 'skipped'],
+    description:
+      'queued: one email goes (on a dry run: would go); throttled: none, every candidate was ' +
+      'emailed in the last 7 days; skipped: nothing to send.',
+  })
+  status!: string;
+  @ApiProperty({ nullable: true, type: String, format: 'uuid', description: 'Null on a dry run.' })
+  emailId!: string | null;
+  @ApiProperty({ type: [EmailSellersProductBody] }) products!: EmailSellersProductBody[];
+  @ApiProperty({ nullable: true, type: EmailPreviewBody, description: 'Dry run only.' })
+  preview!: EmailPreviewBody | null;
+}
+
+class EmailSellersUnmatchedBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({
+    enum: ['not-found', 'no-seller'],
+    description: 'not-found: not a published product of the Market; no-seller: a PLATFORM product.',
+  })
+  reason!: string;
+}
+
+export class MissingDetailsEmailSellersBody {
+  @ApiProperty() dryRun!: boolean;
+  @ApiProperty({ type: [EmailSellersSellerBody] }) sellers!: EmailSellersSellerBody[];
+  @ApiProperty({ type: [EmailSellersUnmatchedBody] }) notEmailed!: EmailSellersUnmatchedBody[];
 }
 
 // The restructure routes (attributes A8): the impact dialog, merging values and archiving.

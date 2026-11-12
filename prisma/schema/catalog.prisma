@@ -59,64 +59,65 @@ model CatalogInbox {
 /// grants). The CHECKs, the case-sensitive product-code collation and the grants are
 /// hand-written in the migration.
 model CatalogProduct {
-  id                   String                            @id @db.Uuid
-  marketId             String                            @map("market_id") @db.VarChar(8)
-  tenantId             String                            @map("tenant_id")
+  id                   String                              @id @db.Uuid
+  marketId             String                              @map("market_id") @db.VarChar(8)
+  tenantId             String                              @map("tenant_id")
   /// PLATFORM | SELLER (ADR-0010).
   scope                String
   /// The owning seller of a SELLER product; null for PLATFORM (CHECK products_owner_check).
-  ownerSellerId        String?                           @map("owner_seller_id") @db.Uuid
+  ownerSellerId        String?                             @map("owner_seller_id") @db.Uuid
   /// The seller who created it; never updated, so the origin survives promotion.
-  createdBySellerId    String?                           @map("created_by_seller_id") @db.Uuid
+  createdBySellerId    String?                             @map("created_by_seller_id") @db.Uuid
   /// Changes once, with `variantModel`, from simple to configurable (Add sizes, trigger
   /// `products_type_change_guard`); never back.
-  typeCode             String                            @map("type_code")
+  typeCode             String                              @map("type_code")
   /// single | options: the handler's variantModel; the target of the variant foreign key, which
   /// cascades the single -> options change to the variant row.
-  variantModel         String                            @map("variant_model")
-  familyCode           String                            @map("family_code")
+  variantModel         String                              @map("variant_model")
+  familyCode           String                              @map("family_code")
   /// Minted from product_code_counters, never from input. Collation "C" is set in the migration.
-  productCode          String                            @map("product_code")
+  productCode          String                              @map("product_code")
   /// draft | discarded | unpublished | published | matched | withdrawn | retired.
   status               String
-  discardedAt          DateTime?                         @map("discarded_at") @db.Timestamptz(6)
-  ownBrand             Boolean                           @map("own_brand")
+  discardedAt          DateTime?                           @map("discarded_at") @db.Timestamptz(6)
+  ownBrand             Boolean                             @map("own_brand")
   /// The brand entity this product's published `brand` attribute resolved to; null when the value
   /// names no active brand. A plain column, not a Prisma relation: `catalog.brands` is exempt from
   /// the market scope and the schema checks forbid relating it to this scoped model, so no foreign
   /// key exists: a hand-written trigger refuses a value that names no brand, and brands are never
   /// deleted.
-  brandId              String?                           @map("brand_id") @db.Uuid
-  matchedIntoProductId String?                           @map("matched_into_product_id") @db.Uuid
-  promotedAt           DateTime?                         @map("promoted_at") @db.Timestamptz(6)
-  retiredAt            DateTime?                         @map("retired_at") @db.Timestamptz(6)
-  withdrawnAt          DateTime?                         @map("withdrawn_at") @db.Timestamptz(6)
+  brandId              String?                             @map("brand_id") @db.Uuid
+  matchedIntoProductId String?                             @map("matched_into_product_id") @db.Uuid
+  promotedAt           DateTime?                           @map("promoted_at") @db.Timestamptz(6)
+  retiredAt            DateTime?                           @map("retired_at") @db.Timestamptz(6)
+  withdrawnAt          DateTime?                           @map("withdrawn_at") @db.Timestamptz(6)
   /// The reversible admin pause (catalog design 4.1a): set only on a published product, with the
   /// admin who paused it; both or neither (CHECKs). Cleared by resume, retire and withdraw.
-  pausedAt             DateTime?                         @map("paused_at") @db.Timestamptz(6)
-  pausedByAccountId    String?                           @map("paused_by_account_id") @db.Uuid
+  pausedAt             DateTime?                           @map("paused_at") @db.Timestamptz(6)
+  pausedByAccountId    String?                             @map("paused_by_account_id") @db.Uuid
   /// The published revision (V1 pointer); only a revision of this product (CE4). Null until first publish.
-  publishedRevisionId  String?                           @map("published_revision_id") @db.Uuid
+  publishedRevisionId  String?                             @map("published_revision_id") @db.Uuid
   /// The one pending revision (VER-01), a single column so the rule holds by construction.
-  pendingRevisionId    String?                           @map("pending_revision_id") @db.Uuid
+  pendingRevisionId    String?                             @map("pending_revision_id") @db.Uuid
   /// Queue sort key, written with the pending pointer in the same statement.
-  pendingSubmittedAt   DateTime?                         @map("pending_submitted_at") @db.Timestamptz(6)
+  pendingSubmittedAt   DateTime?                           @map("pending_submitted_at") @db.Timestamptz(6)
   /// Every save of the root.
-  lastChangedAt        DateTime                          @map("last_changed_at") @db.Timestamptz(6)
+  lastChangedAt        DateTime                            @map("last_changed_at") @db.Timestamptz(6)
   /// Optimistic version of the aggregate (P 10); 1 at insert.
   version              Int
-  createdAt            DateTime                          @map("created_at") @db.Timestamptz(6)
+  createdAt            DateTime                            @map("created_at") @db.Timestamptz(6)
   variants             CatalogProductVariant[]
-  matchedInto          CatalogProduct?                   @relation("ProductMatch", fields: [marketId, matchedIntoProductId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  duplicates           CatalogProduct[]                  @relation("ProductMatch")
-  revisions            CatalogProductRevision[]          @relation("ProductRevisions")
-  publishedRevision    CatalogProductRevision?           @relation("ProductPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
-  pendingRevision      CatalogProductRevision?           @relation("ProductPending", fields: [marketId, id, pendingRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  matchedInto          CatalogProduct?                     @relation("ProductMatch", fields: [marketId, matchedIntoProductId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  duplicates           CatalogProduct[]                    @relation("ProductMatch")
+  revisions            CatalogProductRevision[]            @relation("ProductRevisions")
+  publishedRevision    CatalogProductRevision?             @relation("ProductPublished", fields: [marketId, id, publishedRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+  pendingRevision      CatalogProductRevision?             @relation("ProductPending", fields: [marketId, id, pendingRevisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
   workingCopy          CatalogProductWorkingCopy?
   images               CatalogProductImage[]
   offers               CatalogOffer[]
-  attributeSuggestions CatalogAttributeValueSuggestion[] @relation("ProductValueSuggestions")
-  topicSuggestions     CatalogTopicSuggestion[]          @relation("ProductTopicSuggestions")
+  attributeSuggestions CatalogAttributeValueSuggestion[]   @relation("ProductValueSuggestions")
+  topicSuggestions     CatalogTopicSuggestion[]            @relation("ProductTopicSuggestions")
+  missingDetailsEmails CatalogMissingDetailsEmailProduct[] @relation("ProductMissingDetailsEmails")
 
   /// The target of composite foreign keys (C3).
   @@unique([marketId, id])
@@ -1803,6 +1804,54 @@ model CatalogTopicSuggestion {
   @@index([marketId, sellerId, status], map: "topic_suggestions_market_id_seller_id_status_idx")
   @@index([marketId, productId], map: "topic_suggestions_market_id_product_id_idx")
   @@map("topic_suggestions")
+  @@schema("catalog")
+}
+
+/// An "Email sellers" email of the Missing details report (attributes A4-4): one per seller and
+/// request, queued by an admin and sent by the job `catalog.send-missing-details-emails`. The text
+/// is rendered when queued (what the admin previewed). Throttle: the same seller and product at
+/// most once in 7 days (pending or sent). The CHECKs, the one-pending index, the guard and the
+/// grants are hand-written in the migration.
+model CatalogMissingDetailsEmail {
+  id                   String                              @db.Uuid
+  marketId             String                              @map("market_id") @db.VarChar(8)
+  tenantId             String                              @map("tenant_id")
+  /// The seller emailed. No foreign key: sellers are another module's table.
+  sellerId             String                              @map("seller_id") @db.Uuid
+  /// The admin who queued it.
+  requestedByAccountId String                              @map("requested_by_account_id") @db.Uuid
+  requestedAt          DateTime                            @map("requested_at") @db.Timestamptz(6)
+  subject              String
+  body                 String
+  /// pending | sent | skipped | failed.
+  noticeState          String                              @map("notice_state")
+  noticeAttempts       Int                                 @map("notice_attempts")
+  noticeNextAttemptAt  DateTime?                           @map("notice_next_attempt_at") @db.Timestamptz(6)
+  /// When it went (sent only): the report's "Last emailed".
+  sentAt               DateTime?                           @map("sent_at") @db.Timestamptz(6)
+  version              Int
+  products             CatalogMissingDetailsEmailProduct[]
+
+  @@id([marketId, id])
+  /// The throttle and the seller's history.
+  @@index([marketId, sellerId, requestedAt], map: "missing_details_emails_market_id_seller_id_requested_at_idx")
+  @@map("missing_details_emails")
+  @@schema("catalog")
+}
+
+/// A product an "Email sellers" email lists (attributes A4-4).
+model CatalogMissingDetailsEmailProduct {
+  marketId  String                     @map("market_id") @db.VarChar(8)
+  tenantId  String                     @map("tenant_id")
+  emailId   String                     @map("email_id") @db.Uuid
+  productId String                     @map("product_id") @db.Uuid
+  email     CatalogMissingDetailsEmail @relation(fields: [marketId, emailId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  product   CatalogProduct             @relation("ProductMissingDetailsEmails", fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, emailId, productId])
+  /// The throttle and "Last emailed" by product.
+  @@index([marketId, productId], map: "missing_details_email_products_market_id_product_id_idx")
+  @@map("missing_details_email_products")
   @@schema("catalog")
 }
 
