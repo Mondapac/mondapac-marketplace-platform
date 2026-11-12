@@ -114,6 +114,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/feature-sets',
     // The value suggestions waiting for a decision (catalog, attributes A5).
     'catalog/admin/attribute-suggestions',
+    // The tag suggestions waiting for a decision (catalog topics, product tags T5).
+    'catalog/admin/topic-suggestions',
     // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
     'catalog/admin/attribute-relaxations',
     // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
@@ -302,6 +304,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/attribute-suggestions/:id/approve',
     'catalog/admin/attribute-suggestions/:id/map',
     'catalog/admin/attribute-suggestions/:id/reject',
+    // Decide a seller's tag suggestion with the version seen (catalog topics, product tags T5).
+    'catalog/admin/topic-suggestions/:id/approve',
+    'catalog/admin/topic-suggestions/:id/map',
+    'catalog/admin/topic-suggestions/:id/reject',
     // Ask to turn off Material on a published attribute, and confirm or withdraw such a request
     // (catalog, attributes A2 part 3: two administrators).
     'catalog/admin/attributes/:id/relaxation-requests',
