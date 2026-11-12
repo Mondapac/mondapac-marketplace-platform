@@ -1,6 +1,8 @@
 import {
   Body,
   Controller,
+  Get,
+  Header,
   HttpCode,
   HttpException,
   Logger,
@@ -37,15 +39,26 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { PlatformProductOptions } from '../application/use-cases/platform-product-options.use-case';
+import { PlatformProductDiscard } from '../application/use-cases/platform-product-discard.use-case';
+import { PlatformProductRead } from '../application/use-cases/platform-product-read.use-case';
+import { PlatformProductAddSizes } from '../application/use-cases/platform-product-add-sizes.use-case';
+import { PlatformProductAddSizesImpact } from '../application/use-cases/platform-product-add-sizes-impact.use-case';
 import { PlatformProductCreate } from '../application/use-cases/platform-product-create.use-case';
 import { PlatformProductSaveDraft } from '../application/use-cases/platform-product-save-draft.use-case';
 import { PlatformProductSubmit } from '../application/use-cases/platform-product-submit.use-case';
 import { closedBody, refusalWith, type Refusal } from './http-answers';
 import {
+  AddSizesDone,
+  AddSizesImpactView,
   ApiErrorBody,
+  PlatformAddSizesRequest,
   PlatformProductCreated,
   PlatformProductCreateRequest,
+  PlatformProductDiscarded,
   PlatformProductDraftSaved,
+  PlatformProductOptionsView,
+  PlatformProductView,
   PlatformProductSaveDraftRequest,
   PlatformProductSubmitRequest,
   PlatformProductSubmitted,
@@ -75,6 +88,12 @@ export const PLATFORM_PRODUCT_STATUS: Readonly<Record<string, number>> = Object.
   'revision.outcome-not-allowed': 409,
   'review.not-current-revision': 409,
   'product.no-published-revision': 409,
+  // Add sizes (design 4.2a): a type that is not Simple, a count that moved, a type the Market or
+  // the seller's allowed types do not list.
+  'product.not-simple': 409,
+  'confirm.count-changed': 409,
+  'product-type.not-allowed': 403,
+  'product.family-invalid': 503,
   'variant.id-taken': 409,
   'variant.unknown': 422,
   'variant.fixed': 422,
@@ -133,7 +152,68 @@ export class PlatformProductController {
     private readonly createProduct: PlatformProductCreate,
     private readonly saveDraft: PlatformProductSaveDraft,
     private readonly submitProduct: PlatformProductSubmit,
+    private readonly productOptions: PlatformProductOptions,
+    private readonly readProduct: PlatformProductRead,
+    private readonly addSizes: PlatformProductAddSizes,
+    private readonly addSizesImpact: PlatformProductAddSizesImpact,
+    private readonly discardProduct: PlatformProductDiscard,
   ) {}
+
+  // Declared before `:productId`, so "options" is not read as a product id.
+  @Get('options')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Options for the platform product create form',
+    description: "Needs catalog.platform-product.edit. The Market's product types and locales.",
+  })
+  @ApiOkResponse({ type: PlatformProductOptionsView })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async options(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<PlatformProductOptionsView> {
+    const result = await this.productOptions.execute(context, {});
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as PlatformProductOptionsView)
+      : refusal(result.error, response, context);
+    return this.settle('catalog.platform-product-options', context, outcome);
+  }
+
+  @Get(':productId')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Read one PLATFORM product',
+    description:
+      'Needs catalog.platform-product.edit. The product with its variants, working copy and ' +
+      'published revision, and what the form is drawn from. A SELLER product and an unknown id ' +
+      'are one byte-identical product.not-found.',
+  })
+  @ApiParam(PRODUCT_PARAM)
+  @ApiOkResponse({ type: PlatformProductView })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async read(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') rawProductId: string,
+  ): Promise<PlatformProductView> {
+    const productId = productIdOf(rawProductId, response);
+    let outcome: PlatformProductView | HttpException;
+    if (productId instanceof HttpException) outcome = productId;
+    else {
+      const result = await this.readProduct.execute(context, { productId });
+      outcome = result.ok
+        ? (JSON.parse(JSON.stringify(result.value)) as PlatformProductView)
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.platform-product-read', context, outcome);
+  }
 
   @Post()
   @HttpCode(201)
@@ -243,6 +323,7 @@ export class PlatformProductController {
         ? {
             variantIds: [...result.value.variantIds],
             refusedFields: result.value.refusedFields.map((field) => ({ ...field })),
+            variantNotices: result.value.variantNotices.map((notice) => ({ ...notice })),
           }
         : refusal(result.error, response, context);
     }
@@ -315,6 +396,156 @@ export class PlatformProductController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.platform-product-submit', context, outcome);
+  }
+
+  @Post(':productId/add-sizes')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Add sizes: turn a PLATFORM Simple product into a Configurable one',
+    description:
+      'Needs catalog.platform-product.edit. Once and never back. Sets the axes and the option ' +
+      "values of the product's one variant, which keeps its id, prices and stock, and changes " +
+      'the type; nothing is published, the next submit freezes a Configurable revision. ' +
+      'Offers of other sellers who may not sell configurable go off sale (cause type-not-allowed): ' +
+      'read how many from GET :productId/add-sizes-impact and send it as offOfferCount; a ' +
+      'different count answers confirm.count-changed (details.currentCount). 20 an hour per ' +
+      'account (request.throttled).',
+  })
+  @ApiParam(PRODUCT_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: PlatformAddSizesRequest })
+  @ApiOkResponse({ type: AddSizesDone })
+  @ApiBadRequestResponse({
+    type: ApiErrorBody,
+    description:
+      'validation.failed (details.fields). Body: path version, axes, optionValues, replacePending ' +
+      'or offOfferCount with code range, type, format, too-many or unknown-field; the axes ' +
+      '(path axes) and the option values (path optionValues) with the variants.axes-*, ' +
+      'variants.option-* or variants.option-not-in-family issue codes',
+  })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf or product-type.not-allowed',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description:
+      'product.not-simple, revision.pending-exists, product.not-editable, confirm.count-changed ' +
+      '(details.currentCount) or conflict.stale',
+  })
+  @ApiTooManyRequestsResponse({ type: ApiErrorBody, description: 'request.throttled' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable, revision.schema-unavailable or product.family-invalid',
+  })
+  async addProductSizes(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') rawProductId: string,
+    @Body() body: unknown,
+  ): Promise<AddSizesDone> {
+    const productId = productIdOf(rawProductId, response);
+    const input = closedBody(request, body, [
+      'version',
+      'axes',
+      'optionValues',
+      'replacePending',
+      'offOfferCount',
+    ]);
+    let outcome: AddSizesDone | HttpException;
+    if (productId instanceof HttpException) outcome = productId;
+    else if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.addSizes.execute(context, { productId, body: input });
+      outcome = result.ok ? { ...result.value } : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.platform-product-add-sizes', context, outcome);
+  }
+
+  @Get(':productId/add-sizes-impact')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'How many Offers would go off sale if sizes were added',
+    description:
+      'Needs catalog.platform-product.edit. The confirm of Add sizes: the number of other ' +
+      "sellers' Offers on the product whose sellers may not sell configurable, and the product " +
+      'version to send with the command. Writes nothing and spends no limit.',
+  })
+  @ApiParam(PRODUCT_PARAM)
+  @ApiOkResponse({ type: AddSizesImpactView })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied or product-type.not-allowed',
+  })
+  @ApiNotFoundResponse({
+    type: ApiErrorBody,
+    description: 'product.not-found (also a SELLER product, as for the command)',
+  })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'product.not-simple or product.not-editable, as for the command',
+  })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async addSizesImpactOf(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') rawProductId: string,
+  ): Promise<AddSizesImpactView> {
+    const productId = productIdOf(rawProductId, response);
+    let outcome: AddSizesImpactView | HttpException;
+    if (productId instanceof HttpException) outcome = productId;
+    else {
+      const result = await this.addSizesImpact.execute(context, { productId });
+      outcome = result.ok ? { ...result.value } : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.platform-product-add-sizes-impact', context, outcome);
+  }
+
+  @Post(':productId/discard')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Discard a PLATFORM product that was never submitted',
+    description:
+      'Needs catalog.platform-product.edit. Only a draft can be discarded (product.not-a-draft ' +
+      'otherwise). A missing product, a SELLER product and one already discarded all answer ' +
+      'product.not-found. Every live variant is retired.',
+  })
+  @ApiParam(PRODUCT_PARAM)
+  @ApiHeader(CSRF)
+  @ApiOkResponse({ type: PlatformProductDiscarded })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'product.not-found' })
+  @ApiConflictResponse({ type: ApiErrorBody, description: 'product.not-a-draft or conflict.stale' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async discard(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') rawProductId: string,
+    @Body() body: unknown,
+  ): Promise<PlatformProductDiscarded> {
+    const productId = productIdOf(rawProductId, response);
+    const input = closedBody(request, body, []);
+    let outcome: PlatformProductDiscarded | HttpException;
+    if (productId instanceof HttpException) outcome = productId;
+    else if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.discardProduct.execute(context, { productId });
+      outcome = result.ok
+        ? { productId: result.value.productId }
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.platform-product-discard', context, outcome);
   }
 
   private settle<T extends object>(

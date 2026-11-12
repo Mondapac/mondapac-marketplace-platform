@@ -34,8 +34,6 @@ function sidebar(props: { activeId?: string; openGroups?: readonly string[] } = 
         activeId={props.activeId ?? 'home'}
         label={(key) => key}
         openGroups={props.openGroups}
-        expandAll="Expand all"
-        collapseAll="Collapse all"
       />
     </div>
   );
@@ -97,28 +95,17 @@ describe('grouped sidebar', () => {
     expect(decodeURIComponent(document.cookie)).toContain('mp-nav-open=a,b');
   });
 
-  it('opens or closes every group from one button', () => {
+  it('has no button that opens or closes every group', () => {
     render(sidebar());
-    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
-    expect(expanded('nav.group.a')).toBe('true');
-    expect(expanded('nav.group.b')).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
-    expect(expanded('nav.group.a')).toBe('false');
-    expect(expanded('nav.group.b')).toBe('false');
+    expect(screen.queryByRole('button', { name: /expand all|collapse all/i })).toBeNull();
   });
 
   it('moves focus with the arrow keys, Home and End across headers and open links', () => {
     render(sidebar({ openGroups: ['a'] }));
-    const order = ['Collapse all', 'nav.home', 'nav.group.a', 'nav.a1', 'nav.a2', 'nav.group.b'];
     const el = (name: string) =>
-      screen.getAllByRole(
-        name.startsWith('nav.group') || name.endsWith('all') ? 'button' : 'link',
-        {
-          name,
-        },
-      )[0] as HTMLElement;
-    // The button for an all-open state is "Expand all" here: not every group is open.
-    order[0] = 'Expand all';
+      screen.getAllByRole(name.startsWith('nav.group') ? 'button' : 'link', {
+        name,
+      })[0] as HTMLElement;
     el('nav.home').focus();
     fireEvent.keyDown(el('nav.home'), { key: 'ArrowDown' });
     expect(document.activeElement).toBe(el('nav.group.a'));
@@ -129,7 +116,7 @@ describe('grouped sidebar', () => {
     fireEvent.keyDown(el('nav.group.a'), { key: 'End' });
     expect(document.activeElement).toBe(el('nav.group.b'));
     fireEvent.keyDown(el('nav.group.b'), { key: 'Home' });
-    expect(document.activeElement).toBe(el('Expand all'));
+    expect(document.activeElement).toBe(el('nav.home'));
   });
 
   it('skips the links of a closed group when moving', () => {
@@ -185,13 +172,16 @@ describe('grouped sidebar', () => {
 });
 
 describe('seller menu structure', () => {
-  const ALL = sellerNav.items.flatMap((item) => item.anyOf ?? []);
+  const ALL = [...sellerNav.items.flatMap((item) => item.anyOf ?? []), 'catalog.own-product.edit'];
   const WORK = [
     's_home',
+    's_performance',
     's_orders',
     's_products',
     's_offers',
+    's_import',
     's_suggestions',
+    's_tag_suggestions',
     's_reviews',
     's_earnings',
   ];
@@ -202,6 +192,14 @@ describe('seller menu structure', () => {
     expect(ids('approved')).toEqual([...WORK, 's_settings']);
     expect(ids('pending')).toEqual(['s_setup']);
     expect(sellerNavItems('pending', ALL).some((item) => item.placement === 'footer')).toBe(false);
+  });
+
+  it('shows Import only with both the import key and the product edit key', () => {
+    const ids = (keys: string[]) => sellerNavItems('approved', keys).map((item) => item.id);
+    expect(ids(['catalog.own-import.run', 'catalog.own-product.edit'])).toContain('s_import');
+    expect(ids(['catalog.own-import.run'])).not.toContain('s_import');
+    expect(ids(['catalog.own-product.edit'])).not.toContain('s_import');
+    expect(ids(['catalog.own-product.view'])).not.toContain('s_import');
   });
 
   it('moves the set-once pages out of the menu, and personal Security out of the sidebar', () => {

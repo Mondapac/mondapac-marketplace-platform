@@ -1,3 +1,4 @@
+import { measureUnit } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { MarketConfig } from '../../../platform/market-config/market-config';
 import type { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -45,8 +46,24 @@ export class ConfigCatalogMarketPolicy implements CatalogMarketPolicy {
     return this.section(market).maxCategoryChangeTags;
   }
 
+  maxCategoryImportRows(market: MarketContext): number {
+    return this.section(market).maxCategoryImportRows;
+  }
+
+  maxCategoryImportBytes(market: MarketContext): number {
+    return this.section(market).maxCategoryImportBytes;
+  }
+
   maxVariantAttributes(market: MarketContext): number {
     return this.section(market).maxVariantAttributes;
+  }
+
+  units(market: MarketContext): ReturnType<CatalogMarketPolicy['units']> {
+    return this.section(market).units.map((unit) => ({
+      code: unit.code,
+      dimension: measureUnit(unit.code)?.dimension ?? 'count',
+      labels: { ...unit.labels },
+    }));
   }
 
   productTypes(market: MarketContext): readonly string[] {

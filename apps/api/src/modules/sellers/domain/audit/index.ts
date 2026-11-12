@@ -119,6 +119,18 @@ export const BlogAccessChanged = defineAuditAction({
 });
 
 /**
+ * An admin switched whether a seller may propose categories (SEL-26; sellers design 9, "who,
+ * when, before and after"). Flags only.
+ */
+export const CategoryProposalsChanged = defineAuditAction({
+  action: 'sellers.category-proposals.changed',
+  targetType: SELLER_TARGET,
+  actors: ['authenticated'],
+  before: { enabled: auditField.boolean() },
+  after: { enabled: auditField.boolean() },
+});
+
+/**
  * An admin replaced a seller's business activities (ADR-0040 decision 4): the main activity and the
  * extras before and after, as ids. The admin's reason is text, so it is never in the row: it is
  * kept in the seller's activity change log (`seller_business_activity_changes`) with the same
@@ -135,6 +147,21 @@ export const BusinessActivitiesChanged = defineAuditAction({
   after: {
     mainActivityId: auditField.id(),
     extraActivityIds: auditField.listOf(auditField.id(), 9),
+  },
+});
+
+/**
+ * The system attached a seller to cultures at signup (multi-culture package 2; ADR-0048): the
+ * ones with no required certificate approved at once, the others requested. Ids and counts only.
+ * One row per attach, in the unit of the memberships.
+ */
+export const CulturesAttachedAtSignup = defineAuditAction({
+  action: 'sellers.cultures.attached-at-signup',
+  targetType: SELLER_TARGET,
+  actors: ['system'],
+  after: {
+    approvedCultureIds: auditField.listOf(auditField.id(), 200),
+    requestedCultureIds: auditField.listOf(auditField.id(), 200),
   },
 });
 
@@ -159,6 +186,8 @@ export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.fr
   StoreImageChanged,
   PickupDetailsReadForCarrier,
   BlogAccessChanged,
+  CategoryProposalsChanged,
   BusinessActivitiesChanged,
+  CulturesAttachedAtSignup,
   ServiceAreaNamesChanged,
 ]);

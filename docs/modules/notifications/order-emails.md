@@ -45,6 +45,21 @@ come with their own packages.
   number), then `identity.contactEmailOf`. No schema change: the outbox and inbox tables already
   exist.
 
+## "Part of your order is unavailable" email (order detail decision 6)
+
+- **Trigger:** `ordering.refund-succeeded.v1`, written when Stripe confirms a refund. Only a refund
+  with reason `item-unavailable` (the seller marked units unavailable before the order was ready,
+  `POST /ordering/seller/orders/:id/unavailable`) sends; every other reason is skipped as
+  `refund.not-unavailable`. Off with the Market switch `tax.refundCredit.enabled`, since no such
+  refund can succeed while it is off.
+- **Customer** (`notifications.item-unavailable-refund-mail`): order reference, how many units were
+  not supplied, the amount refunded (shipping included when it went back with the last units),
+  that it goes back to the card used, and the order link. No product, seller or card data. No
+  `customerOrderPage` in the Market config means no mail.
+- **Reading at send time:** `ordering.refundNotice` (system rule; ids, reason, who asked, amount,
+  unit count; only a succeeded refund of that order), then `identity.contactEmailOf`. The amount is
+  formatted from exact minor units with the currency's exponent. No schema change.
+
 ## Templates (Phase 6 package 4)
 
 - **Templates:** the texts of all messages are data in `domain/message-templates.ts` (`{name}`

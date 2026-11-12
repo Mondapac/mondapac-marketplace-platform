@@ -440,6 +440,8 @@ describe.each(TEST_MARKETS)('storefront reads in market %s (database)', (code) =
       searchText: null,
       facetCodes: [],
       numbers: {},
+      variants: [],
+      cultureCodes: [],
     });
 
     it('reads documents by Offer id and in browse order, in this Market only', async () => {

@@ -1,6 +1,6 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import { LOSS_BEARERS, LOSS_REASON_CODES } from './reason-codes';
-import { REFUND_REASONS } from './refund';
+import { ADMIN_REFUND_REASONS, REFUND_REASONS } from './refund';
 
 // The audited actions of refunds (tax step 3; Hassan M3), registered at boot with
 // `registerAuditActions('ordering', ORDERING_AUDIT_ACTIONS)`. Ids, codes, counts and money only:
@@ -36,6 +36,38 @@ export const RefundSettled = defineAuditAction({
   after: {
     outcome: auditField.enumOf(['succeeded', 'failed'] as const),
     creditNoteId: auditField.optional(auditField.id()),
+  },
+});
+
+/** The audit target type of an order; the target id is the order id. */
+export const ORDER_TARGET = 'ordering.order';
+
+/**
+ * An admin cancelled a paid order before any seller started on it (order detail decision 1):
+ * one refund of everything left per seller order, each also audited as `refund.requested`.
+ */
+export const OrderCancelRequested = defineAuditAction({
+  action: 'ordering.order.cancel-requested',
+  targetType: ORDER_TARGET,
+  actors: ['authenticated'],
+  after: {
+    /** The sum of the refunds written. */
+    amount: auditField.money(),
+    reason: auditField.enumOf(ADMIN_REFUND_REASONS),
+    lossBearer: auditField.enumOf(LOSS_BEARERS),
+    lossReasonCode: auditField.optional(auditField.enumOf(LOSS_REASON_CODES)),
+    refundCount: auditField.integer(),
+  },
+});
+
+/** An admin wrote an internal note on an order (order detail decision 3). Never the text. */
+export const OrderNoteAdded = defineAuditAction({
+  action: 'ordering.order.note-added',
+  targetType: ORDER_TARGET,
+  actors: ['authenticated'],
+  after: {
+    noteId: auditField.id(),
+    length: auditField.integer(),
   },
 });
 
@@ -87,6 +119,8 @@ export const SavedFilterRemovedAudit = defineAuditAction({
 export const ORDERING_AUDIT_ACTIONS = [
   RefundRequested,
   RefundSettled,
+  OrderCancelRequested,
+  OrderNoteAdded,
   SavedFilterSharedAudit,
   SavedFilterChangedAudit,
   SavedFilterRemovedAudit,

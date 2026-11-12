@@ -13,6 +13,7 @@ import type {
   OwnPickupCodeView,
 } from '../domain/order-views';
 import type { ShipTo } from '../domain/order';
+import { REFUND_REASONS } from '../domain/refund';
 import type {
   MethodPrice,
   SellerDeliveryOptions,
@@ -353,6 +354,19 @@ export class OwnSellerOrderBody extends SellerOrderBody {
 
 export class AdminSellerOrderBody extends SellerOrderBody {
   @ApiProperty({
+    format: 'uuid',
+    description: "The seller order's id: the reference in the order emails and the refund routes.",
+  })
+  sellerOrderId!: string;
+  @ApiProperty({
+    type: MoneyView,
+    nullable: true,
+    description:
+      'The delivery fee as paid, tax included: the most a refund gives back of it. Null when ' +
+      'the delivery tax was not recorded (an older order; such a fee is not refunded here).',
+  })
+  shippingGross!: MoneyView | null;
+  @ApiProperty({
     type: String,
     nullable: true,
     description: "The seller's public store name; null when unknown.",
@@ -471,7 +485,40 @@ export class SellerOrderDetailBody extends SellerOrderBody {
   @ApiProperty({ format: 'date-time', description: 'When the customer paid.' }) paidAt!: string;
 }
 
+export class SellerOrderRefundLineBody {
+  @ApiProperty({ format: 'uuid' }) orderLineId!: string;
+  @ApiProperty() quantity!: number;
+}
+
+export class SellerOrderRefundBody {
+  @ApiProperty({ format: 'uuid' }) refundId!: string;
+  @ApiProperty({
+    enum: ['admin', 'seller'],
+    description: 'seller: units the shop marked unavailable before the order was ready.',
+  })
+  requestedBy!: string;
+  @ApiProperty({
+    enum: ['pending', 'succeeded', 'failed'],
+    description: 'failed: nothing went back and the units count as not refunded.',
+  })
+  state!: string;
+  @ApiProperty({ enum: REFUND_REASONS }) reason!: string;
+  @ApiProperty({ type: MoneyView, description: 'Given back to the customer, tax included.' })
+  amount!: MoneyView;
+  @ApiProperty({ type: MoneyView, nullable: true, description: 'The shipping part, if any.' })
+  shipping!: MoneyView | null;
+  @ApiProperty({ type: [SellerOrderRefundLineBody] }) lines!: SellerOrderRefundLineBody[];
+  @ApiProperty({ format: 'date-time' }) requestedAt!: string;
+  @ApiProperty({ format: 'date-time', nullable: true }) settledAt!: string | null;
+}
+
 export class SellerOrderShipBody extends SellerOrderDetailBody {
+  @ApiProperty({
+    type: [SellerOrderRefundBody],
+    description: 'Every refund of this seller order, oldest first, failed ones included.',
+  })
+  refunds!: SellerOrderRefundBody[];
+
   @ApiProperty({
     type: ShipToBody,
     nullable: true,
@@ -553,6 +600,17 @@ const shipToBody = (shipTo: ShipTo | null): ShipToBody | null =>
 export const sellerOrderShipBody = (order: LabelledSellerOrderShipView): SellerOrderShipBody => ({
   ...sellerOrderDetailBody(order),
   shipTo: shipToBody(order.shipTo),
+  refunds: order.refunds.map((refund) => ({
+    refundId: refund.refundId,
+    requestedBy: refund.requestedBy,
+    state: refund.state,
+    reason: refund.reason,
+    amount: moneyBody(refund.amount),
+    shipping: refund.shipping === null ? null : moneyBody(refund.shipping),
+    lines: refund.lines.map((line) => ({ orderLineId: line.orderLineId, quantity: line.quantity })),
+    requestedAt: refund.requestedAt.toString(),
+    settledAt: refund.settledAt?.toString() ?? null,
+  })),
   // A seller reads its own note only.
   buyerNote: order.shipTo?.sellerNotes?.[order.sellerId] ?? null,
   pickup:
@@ -627,6 +685,8 @@ export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody =>
   taxStrategyId: order.taxStrategyId,
   sellerOrders: order.sellerOrders.map((seller) => ({
     ...sellerOrderBody(seller),
+    sellerOrderId: seller.sellerOrderId,
+    shippingGross: seller.shippingGross === null ? null : moneyBody(seller.shippingGross),
     storeName: seller.storeName,
     lines: seller.lines.map(labelledLineBody),
   })),

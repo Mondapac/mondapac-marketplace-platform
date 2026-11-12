@@ -6,14 +6,11 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { CATALOG_CATEGORY_TREE_EDIT } from '../../contracts/permissions';
 import { MAX_TREE_NODES } from '../../domain/category-tree';
 import {
-  isEditable,
+  blockedCategoryFields,
   parseCategorySeo,
   parseCategoryTexts,
-  siblingNameClashes,
 } from '../../domain/category-edit';
-import { PlatformCategoryDetailsChangedAudit } from '../../domain/audit';
 import {
-  announceChanged,
   categoryIdOf,
   checkedPlaces,
   closedInput,
@@ -26,6 +23,7 @@ import {
   type CategoryWriteFailure,
   type CategoryWriteView,
 } from '../categories/category-editor';
+import { editDetailsInUnit } from '../categories/category-write-core';
 
 export interface CategoryEditDetailsInput {
   readonly [key: string]: unknown;
@@ -39,8 +37,9 @@ const KEYS = ['categoryId', 'version', 'texts', 'seo', 'showInMenu', 'imageId'] 
  * search-result fields and the menu flag. The request is the whole content (a field left out is
  * cleared) and the category version the admin saw; a later version is `conflict.stale`. It makes
  * a new revision and announces the change; a save that changes nothing writes nothing. The slug
- * has its own use case. The category image waits for the image intake of purpose `category-image`:
- * a non-null `imageId` is refused (`unsupported`). Rule: the key `catalog.category-tree.edit`.
+ * has its own use case, and so has the category image (C3c, `CategoryImageSet` and
+ * `CategoryImageRemove`): a details save keeps the image, and a non-null `imageId` is refused
+ * (`unsupported`). Rule: the key `catalog.category-tree.edit`.
  * Not a structural change: it does not raise the tree version.
  */
 export class CategoryEditDetails extends UseCase<
@@ -93,7 +92,7 @@ export class CategoryEditDetails extends UseCase<
     const imageId = body.value['imageId'];
     if (imageId !== undefined && imageId !== null) return invalid('imageId', 'unsupported');
     const { market } = context;
-    const { policy, store, ids, clock } = this.deps;
+    const { policy, store } = this.deps;
     let locales: { readonly default: string; readonly supported: readonly string[] };
     let required: readonly string[];
     try {
@@ -109,6 +108,10 @@ export class CategoryEditDetails extends UseCase<
     if (!texts.ok) return texts;
     const seo = parseCategorySeo(body.value['seo']);
     if (!seo.ok) return seo;
+    const blocked = blockedCategoryFields(texts.value, seo.value, (text) =>
+      this.deps.contentFilter.isBlocked(market, text),
+    );
+    if (!blocked.ok) return blocked;
 
     const claim = await refuseClaimTexts(
       this.deps,
@@ -124,72 +127,17 @@ export class CategoryEditDetails extends UseCase<
       >(market, async () => {
         const nodes = await store.loadAll(market, MAX_TREE_NODES + 1);
         if (nodes.length > MAX_TREE_NODES) return err({ code: 'access.unavailable' } as const);
-        const target = nodes.find((node) => node.id === id.value);
-        if (target === undefined) return err({ code: 'category.not-found' } as const);
-        if (!isEditable(target.status)) return err({ code: 'category.not-editable' } as const);
-        if (target.version !== version.value) return err({ code: 'conflict.stale' } as const);
-        const clashes = siblingNameClashes(nodes, target.parentId, target.id, texts.value);
-        if (clashes.length > 0) {
-          return err({ code: 'category.sibling-name-taken', fields: clashes } as const);
-        }
         const treeVersion = (await this.deps.categories.treeVersion(market)).version;
-        const unchanged =
-          JSON.stringify(target.texts) === JSON.stringify(texts.value) &&
-          JSON.stringify(target.seo) === JSON.stringify(seo.value) &&
-          target.showInMenu === showInMenu;
-        if (unchanged) {
-          return ok({
-            category: {
-              id: target.id,
-              slug: target.slug,
-              status: target.status,
-              version: target.version,
-              revisionNo: target.revisionNo,
-              treeVersion,
-            },
-          });
-        }
-        const newVersion = await store.apply(market, {
-          category: target,
-          revisionId: ids.next<'CategoryRevision'>(),
-          kind: 'details-changed',
-          texts: texts.value,
-          patch: { seo: seo.value, showInMenu },
-          authorAccountId: accountId,
-          now: clock.now(),
-        });
-        await this.deps.audit.record(
+        const edited = await editDetailsInUnit(
+          this.deps,
           context,
-          PlatformCategoryDetailsChangedAudit.entry(target.id, {
-            before: {
-              revisionNo: target.revisionNo,
-              localeCount: target.texts.length,
-              showInMenu: target.showInMenu,
-              noindex: target.seo.noindex,
-              seoTitleSet: target.seo.title !== null,
-              seoDescriptionSet: target.seo.description !== null,
-            },
-            after: {
-              revisionNo: target.revisionNo + 1,
-              localeCount: texts.value.length,
-              showInMenu,
-              noindex: seo.value.noindex,
-              seoTitleSet: seo.value.title !== null,
-              seoDescriptionSet: seo.value.description !== null,
-            },
-          }),
+          accountId,
+          nodes,
+          id.value,
+          { texts: texts.value, seo: seo.value, showInMenu, version: version.value },
+          treeVersion,
         );
-        await announceChanged(this.deps, context, target.id, newVersion);
-        return ok({
-          category: {
-            id: target.id,
-            slug: target.slug,
-            status: target.status,
-            version: newVersion,
-            revisionNo: target.revisionNo + 1,
-            treeVersion,
-          },
-        });
+        return edited.ok ? ok({ category: edited.value.category }) : edited;
       });
     } catch (error) {
       if (error instanceof StaleAggregateError) return err({ code: 'conflict.stale' });

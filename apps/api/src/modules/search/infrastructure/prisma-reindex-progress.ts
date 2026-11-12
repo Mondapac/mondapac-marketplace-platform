@@ -59,10 +59,17 @@ export class PrismaReindexProgress implements ReindexProgress {
     });
   }
 
+  async request(market: MarketContext, now: Temporal.Instant): Promise<void> {
+    await this.prisma.tx(market).searchReindexState.updateMany({
+      where: { marketId: market.marketId },
+      data: { doneStamp: null, targetStamp: null, updatedAt: toDate(now) },
+    });
+  }
+
   async finish(market: MarketContext, stamp: string, now: Temporal.Instant): Promise<void> {
     const at = toDate(now);
     await this.prisma.tx(market).searchReindexState.updateMany({
-      where: { marketId: market.marketId },
+      where: { marketId: market.marketId, targetStamp: stamp },
       data: {
         doneStamp: stamp,
         targetStamp: stamp,

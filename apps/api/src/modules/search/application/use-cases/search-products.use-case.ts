@@ -1,5 +1,5 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import {
   parseSearchQuery,
@@ -8,7 +8,10 @@ import {
 } from '../../domain/search-query';
 import type { ImageRef } from '../../domain/image-ref';
 import { splitFacet } from '../../domain/search-filter';
-import { withPrimaryImages } from '../product-images';
+import type { OfferHit } from '../../domain/offer-document';
+import { gtinOfQuery, matchVariants } from '../../domain/variant-match';
+import type { HitSellUnits } from '../ports/offer-variant.reader';
+import { withProductImages } from '../product-images';
 import {
   buildFilterViews,
   choiceGroups,
@@ -20,6 +23,7 @@ import {
 } from '../search-facets';
 import { MAX_FACET_ROWS, type FacetRow, type NumberRow } from '../ports/offer-facet.reader';
 import type { FilterDefinition } from '../ports/search-filters';
+import { countScope, type CategoryCount } from '../../domain/scope-counts';
 import type { SearchDependencies } from '../search-dependencies';
 
 /**
@@ -40,8 +44,31 @@ export interface ProductSearchItem {
 /** A result before its photo is read. */
 export type ProductSearchItemFacts = Omit<ProductSearchItem, 'primaryImage'>;
 
+/**
+ * A result of the search route: a {@link ProductSearchItem} with, from the index (variants V8),
+ * the variant to open and the "From" price. No badge and no stock count.
+ */
+export interface SearchResultItem extends ProductSearchItem {
+  /**
+   * The variant the product page opens on (`?v=`): the matching one when a variant filter, the
+   * price filter or an exact GTIN chose it; else null (the page shows its default variant).
+   */
+  readonly variantId: Id<'Variant'> | null;
+  /**
+   * The lowest buyer price of the matching in-stock variants (of all in-stock variants when nothing
+   * narrowed to a variant) and whether they differ; null when none is in stock and priced. Read
+   * from the index, refreshed on price and stock events; the cart re-reads the live price.
+   */
+  readonly price: { readonly from: Money; readonly varies: boolean } | null;
+  /** Every public photo of the product (at most 8, main one first); `primaryImage` is the first. */
+  readonly images: readonly ImageRef[];
+}
+
+/** A search result before its photo is read. */
+type SearchResultFacts = Omit<SearchResultItem, 'primaryImage' | 'images'>;
+
 export interface ProductSearchPage {
-  readonly items: readonly ProductSearchItem[];
+  readonly items: readonly SearchResultItem[];
   readonly page: number;
   readonly pageSize: number;
   /** Whether the next result is visible; hidden matches never change it. */
@@ -55,9 +82,57 @@ export interface ProductSearchPage {
   readonly filtered: boolean;
   /** False when the scope was too large to count: option counts are then null. */
   readonly countsComplete: boolean;
+  /**
+   * The size of the query's scope (text and category, before attribute filters and price), from the
+   * index without the query-time visibility check (so it may briefly include an Offer that just
+   * became unsellable). Null for a store's or a brand's list and for an exact GTIN hit.
+   */
+  readonly counts: {
+    /** Products (one per product, never Offers); a lower bound when `totalIsCapped`. */
+    readonly total: number;
+    readonly totalIsCapped: boolean;
+    /** "In categories": the categories right below the asked one (top level without one). */
+    readonly categories: readonly CategoryCount[];
+    /** Stores that have a product in the scope. */
+    readonly storeCount: number;
+  } | null;
+  /**
+   * The text was exactly one GTIN of a published variant, in stock or not (V8): the storefront goes straight to that
+   * product page with `?v=`. Null otherwise.
+   */
+  readonly exactMatch: {
+    readonly productId: Id<'Product'>;
+    readonly variantId: Id<'Variant'>;
+  } | null;
 }
 
-const NO_FACETS = { filters: [], filtered: false, countsComplete: true } as const;
+/** The facts of one visible hit, with what its sell units say (none read: no variant, no price). */
+function factsOf(
+  hit: OfferHit,
+  units: HitSellUnits | undefined,
+  match: (units: HitSellUnits) => Pick<SearchResultItem, 'variantId' | 'price'>,
+): SearchResultFacts {
+  const { offerId, productId, sellerId, name, shortText, categoryIds } = hit;
+  const matched = units === undefined ? { variantId: null, price: null } : match(units);
+  return {
+    offerId,
+    productId,
+    sellerId,
+    name,
+    shortText,
+    categoryIds,
+    variantId: matched.variantId,
+    price: matched.price,
+  };
+}
+
+const NO_FACETS = {
+  filters: [],
+  filtered: false,
+  countsComplete: true,
+  counts: null,
+  exactMatch: null,
+} as const;
 
 export type SearchProductsFailure =
   SearchValidationFailed | { readonly code: 'search.unavailable' };
@@ -108,7 +183,8 @@ export class SearchProducts extends UseCase<
     const query = parseSearchQuery(input);
     if (!query.ok) return query;
     const { market } = context;
-    const { text, categoryId, storeSlug, brandSlug, sort, page, pageSize, filters } = query.value;
+    const { text, categoryId, direct, storeSlug, brandSlug, sort, page, pageSize, filters, price } =
+      query.value;
     const asked = filters.choices.length + filters.ranges.length > 0;
     const { textSearchConfig, ratingBoost } = this.deps.policy.settings(market);
     // `top-rated` exists only while the Market's rating boost is on.
@@ -119,6 +195,13 @@ export class SearchProducts extends UseCase<
       });
     }
     const offset = (page - 1) * pageSize;
+    // An exact GTIN goes straight to that variant (V8); an unknown one is searched as text.
+    const gtin = text === null ? null : gtinOfQuery(text);
+    if (gtin !== null) {
+      const exact = await this.#byGtin(context, gtin, page, pageSize);
+      if (exact === 'unavailable') return err({ code: 'search.unavailable' });
+      if (exact !== null) return ok(exact);
+    }
 
     let storeSellerId: Id<'Seller'> | null = null;
     if (storeSlug !== null) {
@@ -137,7 +220,10 @@ export class SearchProducts extends UseCase<
       brandProductIds = brand.productIds;
     }
     let categoryIds: readonly Id<'Category'>[] | null = null;
-    if (categoryId !== null) {
+    if (categoryId !== null && direct) {
+      // "Other {name}" (C6): the products on the category itself, none of a subcategory's.
+      categoryIds = [categoryId];
+    } else if (categoryId !== null) {
       categoryIds = await this.deps.categories.subtreeOf(context, categoryId);
       if (categoryIds === null) return err({ code: 'search.unavailable' });
     }
@@ -161,10 +247,22 @@ export class SearchProducts extends UseCase<
     const selection = filterable
       ? effectiveSelection(filters, new Map(definitions.map((d) => [d.code, d])))
       : NO_SELECTION;
-    const narrowed = selection.choices.length + selection.ranges.length > 0;
-    const scope = { textSearchConfig, text, categoryIds, ranges: selection.ranges };
+    // The price filter (V8) needs no filter list: it reads the sell units of any text or category list.
+    const priceRange = storeSellerId === null && brandProductIds === null ? price : null;
+    const narrowed = selection.choices.length + selection.ranges.length > 0 || priceRange !== null;
+    const groups = choiceGroups(selection);
+    const scope = {
+      textSearchConfig,
+      text,
+      categoryIds,
+      ranges: selection.ranges,
+      price: priceRange,
+    };
     const rangeCodes = definitions.filter((d) => d.kind === 'range').map((d) => d.code);
     const counted = definitions.length > 0 && (text !== null || categoryIds !== null);
+    // The counts of the scope (search 1a): a text search or a category list, never a store's or a
+    // brand's list.
+    const scoped = filterable && (text !== null || categoryIds !== null);
     const hits = await this.deps.unitOfWork.run(
       market,
       async () => {
@@ -186,18 +284,19 @@ export class SearchProducts extends UseCase<
                   offset,
                 )
               : narrowed
-                ? await this.deps.facets.searchFiltered(market, {
+                ? await this.deps.index.searchFiltered(market, {
                     textSearchConfig,
                     text,
                     categoryIds,
                     limit: pageSize + 1,
                     offset,
-                    choiceGroups: choiceGroups(selection),
+                    choiceGroups: groups,
                     ranges: selection.ranges,
+                    price: priceRange,
                     ...(ratingBoost === null ? {} : { ratingBoost }),
                     ...(sort === 'top-rated' ? { sort } : {}),
                   })
-                : await this.deps.reader.search(market, {
+                : await this.deps.index.search(market, {
                     textSearchConfig,
                     text,
                     categoryIds,
@@ -207,14 +306,21 @@ export class SearchProducts extends UseCase<
                     ...(sort === 'top-rated' ? { sort } : {}),
                   });
         const rows: readonly FacetRow[] = counted
-          ? await this.deps.facets.facetRows(market, scope)
+          ? await this.deps.index.facetRows(market, scope)
           : [];
         // The bounds of a range are those of the whole scope, so the slider does not jump.
         const numbers: readonly NumberRow[] =
           counted && rangeCodes.length > 0
-            ? await this.deps.facets.numberRows(market, { ...scope, ranges: [] }, rangeCodes)
+            ? await this.deps.index.numberRows(market, { ...scope, ranges: [] }, rangeCodes)
             : [];
-        return ok({ list, rows, numbers });
+        const scopeRows = scoped
+          ? await this.deps.index.scopeRows(market, { textSearchConfig, text, categoryIds })
+          : [];
+        const units = await this.deps.variants.sellUnitsOf(
+          market,
+          list.map((hit) => hit.offerId),
+        );
+        return ok({ list, rows, numbers, scopeRows, units });
       },
       { readOnly: true },
     );
@@ -229,24 +335,27 @@ export class SearchProducts extends UseCase<
     const hasMore = extra !== undefined && visible.has(extra.offerId);
     const facts = shown
       .filter((hit) => visible.has(hit.offerId))
-      .map(
-        ({
-          offerId,
-          productId,
-          sellerId,
-          name,
-          shortText,
-          categoryIds,
-        }): ProductSearchItemFacts => ({
-          offerId,
-          productId,
-          sellerId,
-          name,
-          shortText,
-          categoryIds,
-        }),
+      .map((hit) =>
+        factsOf(hit, hits.value.units.get(hit.offerId), (units) =>
+          matchVariants({ ...units, groups, price: priceRange }),
+        ),
       );
-    const items = await withPrimaryImages(this.deps.images, context, facts);
+    const items = await withProductImages(this.deps.images, context, facts);
+    let counts: ProductSearchPage['counts'] = null;
+    if (scoped) {
+      // The tree names the "In categories" lines; a tree that cannot be read leaves the counts out
+      // (a count is not a check: the list itself stays right).
+      const tree = await this.deps.categoryTree.tree(context);
+      if (tree !== null) {
+        const scope = countScope(hits.value.scopeRows, tree, categoryId);
+        counts = {
+          total: scope.total,
+          totalIsCapped: scope.totalIsCapped,
+          categories: scope.categoryCounts,
+          storeCount: scope.storeCount,
+        };
+      }
+    }
     const views = counted
       ? await this.filterViews(context, definitions, selection, hits.value.rows, hits.value.numbers)
       : null;
@@ -258,7 +367,74 @@ export class SearchProducts extends UseCase<
       filters: views?.filters ?? [],
       filtered: narrowed,
       countsComplete: views?.complete ?? true,
+      counts,
+      exactMatch: null,
     });
+  }
+
+  /**
+   * The results of an exact GTIN (V8): the documents whose sell unit has it, each opening on that
+   * variant, if any is visible now; null when no indexed unit has it (the text is then searched as
+   * usual). Only page 1 has items. `unavailable` when a read or the visibility check failed.
+   */
+  async #byGtin(
+    context: CallContext,
+    gtin: string,
+    page: number,
+    pageSize: number,
+  ): Promise<ProductSearchPage | null | 'unavailable'> {
+    const { market } = context;
+    const read = await this.deps.unitOfWork.run(
+      market,
+      async () => {
+        const found = await this.deps.variants.unitsWithGtin(market, gtin);
+        const offerIds = [...new Set(found.map((unit) => unit.offerId))];
+        const [list, units] = await Promise.all([
+          this.deps.variants.hitsOf(market, offerIds),
+          this.deps.variants.sellUnitsOf(market, offerIds),
+        ]);
+        return ok({ found, list, units });
+      },
+      { readOnly: true },
+    );
+    if (!read.ok) return 'unavailable';
+    const { found, list, units } = read.value;
+    if (list.length === 0) return null;
+    const visible = await this.deps.visibility.visible(context, list);
+    if (visible === null) return 'unavailable';
+    const shown = list.filter((hit) => visible.has(hit.offerId));
+    if (shown.length === 0) return null;
+    const variantOf = new Map(found.map((unit) => [unit.offerId, unit.variantId]));
+    const facts = (page === 1 ? shown.slice(0, pageSize) : []).map((hit) =>
+      factsOf(hit, units.get(hit.offerId), (sellUnits) => {
+        const variantId = variantOf.get(hit.offerId) ?? null;
+        const unit = sellUnits.variants.find((v) => v.variantId === variantId);
+        return {
+          variantId,
+          price:
+            unit !== undefined && unit.inStock && unit.price !== null
+              ? { from: unit.price, varies: false }
+              : null,
+        };
+      }),
+    );
+    const items = await withProductImages(this.deps.images, context, facts);
+    const first = shown[0]!;
+    return {
+      items,
+      page,
+      pageSize,
+      hasMore: page === 1 && shown.length > pageSize,
+      filters: [],
+      filtered: false,
+      countsComplete: true,
+      counts: null,
+      // A later page has no items, so it names no match to open.
+      exactMatch:
+        page === 1
+          ? { productId: first.productId, variantId: variantOf.get(first.offerId)! }
+          : null,
+    };
   }
 
   /**
@@ -274,8 +450,15 @@ export class SearchProducts extends UseCase<
     numbers: readonly NumberRow[],
   ): Promise<{ filters: FacetFilterView[]; complete: boolean }> {
     // A read cut at the cap (facets or numbers) cannot give true counts or true slider bounds.
-    const complete = allRows.length <= MAX_FACET_ROWS && numbers.length <= MAX_FACET_ROWS;
-    const rows = allRows.length <= MAX_FACET_ROWS ? allRows : allRows.slice(0, MAX_FACET_ROWS);
+    // The facet read is capped in documents, each of which may come once per sell unit (V8).
+    const documents = new Set<string>();
+    const rows = allRows.filter((row) => {
+      if (documents.has(row.offerId)) return true;
+      if (documents.size >= MAX_FACET_ROWS) return false;
+      documents.add(row.offerId);
+      return true;
+    });
+    const complete = rows.length === allRows.length && numbers.length <= MAX_FACET_ROWS;
     const counts = countFacets(
       rows,
       selection.choices,

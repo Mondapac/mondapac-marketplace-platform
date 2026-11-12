@@ -5,14 +5,10 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { CATALOG_CATEGORY_TREE_EDIT } from '../../contracts/permissions';
 import {
   isCategorySlug,
-  isEditable,
-  levelOf,
+  blockedCategoryFields,
   parseCategorySeo,
   parseCategoryTexts,
-  siblingNameClashes,
 } from '../../domain/category-edit';
-import { PlatformCategoryCreatedAudit } from '../../domain/audit';
-import { PlatformCategoryCreated } from '../../domain/events';
 import {
   categoryIdOf,
   checkedPlaces,
@@ -27,6 +23,7 @@ import {
   type CategoryWriteFailure,
   type CategoryWriteView,
 } from '../categories/category-editor';
+import { createCategoryInUnit } from '../categories/category-write-core';
 
 export interface CategoryCreateInput {
   readonly [key: string]: unknown;
@@ -86,7 +83,7 @@ export class CategoryCreate extends UseCase<
     const body = closedInput(input, KEYS);
     if (!body.ok) return body;
     const { market } = context;
-    const { policy, store, ids, clock } = this.deps;
+    const { policy } = this.deps;
 
     const rawParent = body.value['parentId'];
     let parentId: Id<'Category'> | null = null;
@@ -119,6 +116,10 @@ export class CategoryCreate extends UseCase<
     if (!texts.ok) return texts;
     const seo = parseCategorySeo(body.value['seo']);
     if (!seo.ok) return seo;
+    const blocked = blockedCategoryFields(texts.value, seo.value, (text) =>
+      this.deps.contentFilter.isBlocked(market, text),
+    );
+    if (!blocked.ok) return blocked;
 
     const claim = await refuseClaimTexts(
       this.deps,
@@ -132,65 +133,15 @@ export class CategoryCreate extends UseCase<
     if (claim !== null) return err(claim);
 
     return runStructural(this.deps, market, treeVersion.value, async (nodes, nextTreeVersion) => {
-      const byId = new Map(nodes.map((node) => [node.id as string, node] as const));
-      if (parentId !== null) {
-        const parent = byId.get(parentId);
-        if (parent === undefined || !isEditable(parent.status)) {
-          return err({ code: 'category.parent-not-found' } as const);
-        }
-      }
-      if (levelOf(byId, parentId) + 1 > maxDepth) {
-        return err({ code: 'category.depth-exceeded', max: maxDepth } as const);
-      }
-      await store.lockSlugs(market, [slug]);
-      if (await store.slugUnavailable(market, slug, null, clock.now())) {
-        return err({ code: 'category.slug-taken' } as const);
-      }
-      const clashes = siblingNameClashes(nodes, parentId, null, texts.value);
-      if (clashes.length > 0) {
-        return err({ code: 'category.sibling-name-taken', fields: clashes } as const);
-      }
-      const now = clock.now();
-      const id = ids.next<'Category'>();
-      await store.insert(market, {
-        id,
-        revisionId: ids.next<'CategoryRevision'>(),
-        parentId,
-        slug,
-        texts: texts.value,
-        seo: seo.value,
-        showInMenu,
-        authorAccountId: accountId,
-        now,
-      });
-      await this.deps.audit.record(
+      const created = await createCategoryInUnit(
+        this.deps,
         context,
-        PlatformCategoryCreatedAudit.entry(id, {
-          after: {
-            status: 'hidden',
-            level: levelOf(byId, parentId) + 1,
-            localeCount: texts.value.length,
-          },
-        }),
+        accountId,
+        nodes,
+        { parentId, slug, texts: texts.value, seo: seo.value, showInMenu, maxDepth },
+        nextTreeVersion,
       );
-      await this.deps.outbox.append(context, [
-        PlatformCategoryCreated.record({
-          aggregateId: id,
-          aggregateVersion: 1,
-          occurredAt: now,
-          payload: { categoryId: id },
-        }),
-      ]);
-      return ok({
-        category: {
-          id,
-          slug,
-          status: 'hidden',
-          version: 1,
-          revisionNo: 1,
-          treeVersion: nextTreeVersion,
-        },
-      });
+      return created.ok ? ok({ category: created.value.category }) : created;
     });
   }
 }

@@ -47,6 +47,14 @@ import { SellerSavedFiltersList } from './application/use-cases/seller-saved-fil
 import { AdminSavedViewsController } from './presentation/admin-saved-views.controller';
 import { SellerSavedViewsController } from './presentation/seller-saved-views.controller';
 import { AdminRefundOrder } from './application/use-cases/admin-refund-order.use-case';
+import { AdminCancelOrder } from './application/use-cases/admin-cancel-order.use-case';
+import { AdminAddOrderNote } from './application/use-cases/admin-add-order-note.use-case';
+import { AdminListOrderNotes } from './application/use-cases/admin-list-order-notes.use-case';
+import type { AdminNoteDependencies } from './application/admin-note-flow';
+import {
+  ADMIN_NOTE_CIPHER,
+  ADMIN_ORDER_NOTE_REPOSITORY,
+} from './application/ports/admin-order-notes';
 import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
@@ -56,6 +64,7 @@ import { ConfirmPayment } from './application/use-cases/confirm-payment.use-case
 import { SellerHealthCountsQuery } from './application/use-cases/seller-health-counts.use-case';
 import { MyDeliveredSellerOrders } from './application/use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './application/use-cases/seller-order-customer-names.use-case';
+import { RefundNoticeQuery } from './application/use-cases/refund-notice.use-case';
 import { ShipmentNoticeQuery } from './application/use-cases/shipment-notice.use-case';
 import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deliveries.use-case';
 import { RecordCarrierProgress } from './application/use-cases/record-carrier-progress.use-case';
@@ -75,6 +84,7 @@ import { SellerConfirmPickup } from './application/use-cases/seller-confirm-pick
 import { SellerDeliverOrder } from './application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './application/use-cases/seller-list-orders.use-case';
 import { SellerMarkOrderReady } from './application/use-cases/seller-mark-order-ready.use-case';
+import { SellerMarkUnavailable } from './application/use-cases/seller-mark-unavailable.use-case';
 import { BookReadyCarrierDelivery } from './application/use-cases/book-ready-carrier-delivery.use-case';
 import { SellerViewOrder } from './application/use-cases/seller-view-order.use-case';
 import { SellerViewOrderDocument } from './application/use-cases/seller-view-order-document.use-case';
@@ -278,6 +288,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerViewOrder,
       SellerViewOrderDocument,
       SellerMarkOrderReady,
+      SellerMarkUnavailable,
       SellerConfirmPickup,
       RegeneratePickupCode,
       SellerDeliverOrder,
@@ -287,6 +298,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OrderNoticeQuery,
       OrderPaymentRefQuery,
       ShipmentNoticeQuery,
+      RefundNoticeQuery,
       SellerOrderCustomerNames,
       OwnOpenObligationsQuery,
       OpenObligationsOfQuery,
@@ -299,8 +311,32 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CancelCarrierAfterRefund,
       RecordDeliveryAnchor,
       AdminRefundOrder,
+      AdminCancelOrder,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    ...[AdminListOrderNotes, AdminAddOrderNote].map((type) => ({
+      provide: type,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        ADMIN_ORDER_NOTE_REPOSITORY,
+        ADMIN_NOTE_CIPHER,
+        AUDIT_WRITER,
+        ID_GENERATOR,
+        CLOCK,
+        ORDER_LABELS,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: AdminNoteDependencies['unitOfWork'],
+        notes: AdminNoteDependencies['notes'],
+        cipher: AdminNoteDependencies['cipher'],
+        audit: AdminNoteDependencies['audit'],
+        ids: AdminNoteDependencies['ids'],
+        clock: AdminNoteDependencies['clock'],
+        labels: AdminNoteDependencies['labels'],
+      ) => new type(gate, { unitOfWork, notes, cipher, audit, ids, clock, labels }),
+    })),
     {
       provide: SavedFilterShareCheck,
       inject: [USE_CASE_GATE],
@@ -332,6 +368,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         OrderPaymentRefQuery,
         AdminOpenObligationsOfQuery,
         SellerHealthCountsQuery,
+        RefundNoticeQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -345,6 +382,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         paymentRef: OrderPaymentRefQuery,
         adminOpenObligations: AdminOpenObligationsOfQuery,
         healthCounts: SellerHealthCountsQuery,
+        refundNotice: RefundNoticeQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -358,6 +396,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           paymentRef,
           adminOpenObligations,
           healthCounts,
+          refundNotice,
         ),
     },
     {

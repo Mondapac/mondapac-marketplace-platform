@@ -159,8 +159,18 @@ export const ProductRevisionSubmitted = defineEvent({
 });
 
 /**
+ * The product types an event can name (catalog design 3.1, 9.4). The event vocabulary has no kind
+ * for an open code, so the two types core registers are the closed list; a Vertical type that
+ * publishes a revision needs this list (or a vocabulary kind) widened in a new event version.
+ */
+export const EVENT_PRODUCT_TYPE_CODES = ['simple', 'configurable'] as const;
+export type EventProductTypeCode = (typeof EVENT_PRODUCT_TYPE_CODES)[number];
+
+/**
  * A revision became the product's published one (catalog design 4.2 rows 1, 3, 4; AC 36 for a tax
- * override). `previousRevisionId` is absent for the first publication. Ids and the scope.
+ * override). `previousRevisionId` is absent for the first publication. `typeCode` is the type the
+ * revision was frozen with, not the product row's (M-9: between Add sizes and the next publish the
+ * row says Configurable while the published revision is still Simple). Ids, the scope and the type.
  */
 export const ProductRevisionPublished = defineEvent({
   type: 'catalog.product-revision-published.v1',
@@ -170,12 +180,52 @@ export const ProductRevisionPublished = defineEvent({
     revisionId: eventField.id(),
     previousRevisionId: eventField.optional(eventField.id()),
     scope: eventField.enumOf(['platform', 'seller'] as const),
+    typeCode: eventField.enumOf(EVENT_PRODUCT_TYPE_CODES),
   },
 });
 
 /**
- * A reviewer sent a pending product revision back to its seller (catalog design 4.2 row 5). The
- * reason is a code of the Market list, never text. Ids and the scope.
+ * A Simple product became Configurable by Add sizes (catalog design 4.2a, M-9; variants V9): the
+ * only type change there is, once, never back. It fires before buyers see anything: they see the
+ * change at `catalog.product-revision-published.v1`. `variantId` is the product's one variant,
+ * which keeps its id, number, code, prices and stock; `publishedRevisionId` is absent for a
+ * product never published. Ids, the scope and the type codes.
+ */
+export const ProductTypeChanged = defineEvent({
+  type: 'catalog.product-type-changed.v1',
+  aggregateType: 'product',
+  payload: {
+    productId: eventField.id(),
+    scope: eventField.enumOf(['platform', 'seller'] as const),
+    fromTypeCode: eventField.enumOf(['simple'] as const),
+    toTypeCode: eventField.enumOf(['configurable'] as const),
+    variantId: eventField.id(),
+    publishedRevisionId: eventField.optional(eventField.id()),
+  },
+});
+
+/**
+ * The reasons a reviewer may give when a product revision goes back to its seller (catalog design
+ * 4.2 row 5; product version review D2, john 2026-11-07): the Offer reasons plus four of the
+ * product's own. A closed list; the seller panel holds the copy of each code.
+ */
+export const PRODUCT_CHANGE_REASONS = [
+  'content-unclear',
+  'description-claim',
+  'sku-or-condition',
+  'handling-unclear',
+  'photos',
+  'category',
+  'tax-category',
+  'duplicate',
+  'other',
+] as const;
+export type ProductChangeReason = (typeof PRODUCT_CHANGE_REASONS)[number];
+
+/**
+ * A reviewer sent a pending product revision back to its seller (catalog design 4.2 row 5), with a
+ * reason of the Offer list. Superseded by v2, which carries the product list: no new v1 is raised,
+ * and the type stays registered so that a v1 still in an outbox is delivered.
  */
 export const ProductRevisionChangesRequested = defineEvent({
   type: 'catalog.product-revision-changes-requested.v1',
@@ -184,6 +234,38 @@ export const ProductRevisionChangesRequested = defineEvent({
     productId: eventField.id(),
     revisionId: eventField.id(),
     reasonCode: eventField.enumOf(OFFER_CHANGE_REASONS),
+    scope: eventField.enumOf(['platform', 'seller'] as const),
+  },
+});
+
+/**
+ * A reviewer sent a pending product revision back to its seller (catalog design 4.2 row 5): v2 of
+ * the event, whose reason is a code of {@link PRODUCT_CHANGE_REASONS}, never text. Ids and the scope.
+ */
+export const ProductRevisionChangesRequestedV2 = defineEvent({
+  type: 'catalog.product-revision-changes-requested.v2',
+  aggregateType: 'product',
+  payload: {
+    productId: eventField.id(),
+    revisionId: eventField.id(),
+    reasonCode: eventField.enumOf(PRODUCT_CHANGE_REASONS),
+    scope: eventField.enumOf(['platform', 'seller'] as const),
+  },
+});
+
+/**
+ * A product's feature set changed with a revision (attributes plan A4, decision ت۱۰; CAT-10): a
+ * submit whose primary category holds another feature set, or the return to the published one
+ * when the pending revision was sent back. Ids and the scope only: a feature set code is an
+ * open Market code, which the event vocabulary has no kind for, so a consumer reads the current
+ * family through catalog.
+ */
+export const ProductFamilyChanged = defineEvent({
+  type: 'catalog.product-family-changed.v1',
+  aggregateType: 'product',
+  payload: {
+    productId: eventField.id(),
+    revisionId: eventField.id(),
     scope: eventField.enumOf(['platform', 'seller'] as const),
   },
 });
@@ -241,6 +323,16 @@ export const OfferListingChanged = defineEvent({
 });
 
 /**
+ * A seller put one sell unit (Offer, Variant) on sale or off sale (variants V5, plan decision t4).
+ * Reversible; the variant is not retired. Ids and a flag only.
+ */
+export const OfferSellUnitChanged = defineEvent({
+  type: 'catalog.offer-sell-unit-changed.v1',
+  aggregateType: 'offer-sell-unit',
+  payload: { offerId: eventField.id(), variantId: eventField.id(), selling: eventField.boolean() },
+});
+
+/**
  * An admin paused a published product (catalog design 4.1a): the product and all its Offers are
  * off sale until it is resumed. Ids only.
  */
@@ -290,6 +382,27 @@ export const PlatformImportFinished = defineEvent({
   },
 });
 
+/** How a seller import run ended (design 14c): every row it took was tried, or it stopped part way. */
+export const SELLER_IMPORT_OUTCOMES = ['completed', 'stopped'] as const;
+
+/**
+ * A seller import ended its turn for good: finished, or stopped part way (catalog design 14c). Ids,
+ * an enum and counts only. Consumed by notifications, which turns it into the seller's in-app
+ * notice for the members who may see the seller's products.
+ */
+export const SellerImportFinished = defineEvent({
+  type: 'catalog.seller-import-finished.v1',
+  aggregateType: 'import-job',
+  payload: {
+    importId: eventField.id(),
+    sellerId: eventField.id(),
+    outcome: eventField.enumOf(SELLER_IMPORT_OUTCOMES),
+    created: eventField.integer(),
+    updated: eventField.integer(),
+    failed: eventField.integer(),
+  },
+});
+
 /** The reasons a reviewer may give when a photo is taken down (catalog design 10.5). */
 export const IMAGE_TAKEDOWN_REASONS = [
   'certification-mark',
@@ -315,6 +428,44 @@ export const ProductImageTakenDown = defineEvent({
   },
 });
 
+/** The statuses of a culture as an event enum (multi-culture; ADR-0047 decision 1). */
+export const CULTURE_EVENT_STATUSES = ['draft', 'active', 'inactive'] as const;
+
+/**
+ * An admin changed a culture's status (multi-culture package 3a; ADR-0047 decision 8): which
+ * Offers it can show changes, so search re-indexes. The aggregate version is the culture's version
+ * after the edit. Ids and the new status only; a consumer reads the code through catalog.
+ */
+export const CultureStatusChanged = defineEvent({
+  type: 'catalog.culture-status-changed.v1',
+  aggregateType: 'culture',
+  payload: { cultureId: eventField.id(), status: eventField.enumOf(CULTURE_EVENT_STATUSES) },
+});
+
+/**
+ * An admin set or cleared a culture's row on a category (visible or hidden, the "required" or
+ * "neutral" certification mark; ADR-0047 decisions 4, 5 and 8). The effective marks of the category
+ * and everything under it may have changed, so search re-indexes that subtree. A mark row has no
+ * version of its own: each event has an aggregate id of its own at version 1. Ids only.
+ */
+export const CultureCategoryMarkChanged = defineEvent({
+  type: 'catalog.culture-category-mark-changed.v1',
+  aggregateType: 'culture-category-mark',
+  payload: { cultureId: eventField.id(), categoryId: eventField.id() },
+});
+
+/**
+ * The approvals of a culture were checked against a required certification type the culture no
+ * longer has, and `CultureEdit` could neither put the old type back nor take every approval back
+ * at once (ADR-0048 security review M1-R1 and N1). `sellers` demotes the culture's approvals on
+ * delivery and the delivery is retried until none is left. Its own aggregate id at version 1.
+ */
+export const CultureApprovalsInvalidated = defineEvent({
+  type: 'catalog.culture-approvals-invalidated.v1',
+  aggregateType: 'culture',
+  payload: { cultureId: eventField.id() },
+});
+
 /**
  * Every event catalog publishes, declared with `defineEvent` and registered with the event
  * catalogue by `CatalogModule`. Each new type changes the catalogue snapshot
@@ -336,6 +487,9 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   ProductRevisionSubmitted,
   ProductRevisionPublished,
   ProductRevisionChangesRequested,
+  ProductRevisionChangesRequestedV2,
+  ProductFamilyChanged,
+  ProductTypeChanged,
   ProductImageTakenDown,
   OfferTagAdded,
   OfferTagRemoved,
@@ -343,9 +497,14 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   OfferTagRestored,
   OfferTagBasisSwitched,
   OfferListingChanged,
+  OfferSellUnitChanged,
   ProductPaused,
   ProductResumed,
   ProductWithdrawn,
   ProductRetired,
   PlatformImportFinished,
+  SellerImportFinished,
+  CultureStatusChanged,
+  CultureCategoryMarkChanged,
+  CultureApprovalsInvalidated,
 ];

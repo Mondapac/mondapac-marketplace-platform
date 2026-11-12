@@ -326,6 +326,7 @@ export class ProductRevisionApprove extends UseCase<
         const approved = product.approveRevision({
           revisionId,
           baseRevisionId: revision.baseRevisionId,
+          revisionTypeCode: revision.typeCode,
           revisionVariantIds: revision.content.variants.map(
             (variant) => variant.variantId as Id<'Variant'>,
           ),

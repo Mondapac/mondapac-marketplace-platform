@@ -2,7 +2,7 @@
 
 import { ActionRow, Badge, Banner, Button, CheckboxRow, TextField } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { formatInstant } from '../shared/format.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { CancelDeletionDialog, type CancelOutcome } from './cancel-dialog.tsx';
@@ -54,7 +54,7 @@ export function BuyerDeletion({
   const busy = useRef(false);
   const noticeRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (notice !== null) noticeRef.current?.focus();
   }, [notice]);
 

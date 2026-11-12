@@ -17,6 +17,15 @@ export interface RevisionVariantContent {
   readonly optionValues: Readonly<Record<string, string>>;
   /** Locale to label. */
   readonly labels: Readonly<Record<string, string>>;
+  /** The GTIN as 14 digits, or null (V4). */
+  readonly gtin: string | null;
+  /** Shipping values of this variant; null takes the product's value (V4). */
+  readonly shippingWeightGrams: number | null;
+  readonly shippingLengthMm: number | null;
+  readonly shippingWidthMm: number | null;
+  readonly shippingHeightMm: number | null;
+  /** Ordered subset of the revision's `imageIds`; the first is the variant's primary image (V4). */
+  readonly imageIds: readonly string[];
 }
 
 export interface RevisionContent {
@@ -24,6 +33,12 @@ export interface RevisionContent {
   readonly texts: Readonly<Record<string, RevisionText>>;
   /** Platform category ids in the order entered. */
   readonly categoryIds: readonly string[];
+  /**
+   * Topic ids in the order entered: unique, at most `MAX_TOPICS_PER_PRODUCT`. Empty when none. A
+   * topic is a shopping theme and never a certification (ADR-0028). It joins the content hash only
+   * when non-empty, so a revision stored before topics keeps its hash.
+   */
+  readonly topicIds: readonly string[];
   readonly taxCategoryCode: string;
   /** Attribute code to value, or to a locale map for a localizable attribute (CA6). */
   readonly attributeValues: Readonly<Record<string, unknown>>;

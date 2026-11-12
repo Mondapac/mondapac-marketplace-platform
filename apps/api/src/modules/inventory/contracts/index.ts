@@ -6,8 +6,9 @@ export {
   INVENTORY_STOCK_EDIT,
   INVENTORY_STOCK_VIEW,
 } from './permissions';
-// Consumed by notifications' seller notices (in-app notifications package 4).
-export { LowStockReached } from '../domain/events';
+// Consumed by notifications' seller notices (in-app notifications package 4), and by search's
+// index of sell units (variants V8).
+export { AvailabilityChanged, LowStockReached } from '../domain/events';
 export {
   INVENTORY_FACADE,
   MAX_AVAILABILITY_BATCH,

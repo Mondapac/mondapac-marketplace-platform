@@ -18,6 +18,24 @@ export class ProductImageRefBody {
   alt!: string;
 }
 
+export class SearchMoneyBody {
+  @ApiProperty({ description: 'Whole minor units, as decimal text (e.g. "1299").' })
+  amount!: string;
+  @ApiProperty({ description: 'ISO 4217 code.' }) currency!: string;
+}
+
+export class SearchItemPriceBody {
+  @ApiProperty({ type: SearchMoneyBody, description: 'The lowest buyer price.' })
+  from!: SearchMoneyBody;
+  @ApiProperty({ description: 'True when the matching variants differ in price: show "From".' })
+  varies!: boolean;
+}
+
+export class SearchExactMatchBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ format: 'uuid' }) variantId!: string;
+}
+
 export class ProductSearchItemBody {
   @ApiProperty({ format: 'uuid' }) offerId!: string;
   @ApiProperty({ format: 'uuid' }) productId!: string;
@@ -34,6 +52,32 @@ export class ProductSearchItemBody {
       'The first public photo of the product (published revision, not taken down), or null.',
   })
   primaryImage!: ProductImageRefBody | null;
+}
+
+export class SearchResultItemBody extends ProductSearchItemBody {
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    type: String,
+    description:
+      'The variant to open (`/p/{productId}?v={variantId}`): the first matching in-stock variant ' +
+      'by the owner order when a variant filter, `price` or an exact GTIN chose it; else null.',
+  })
+  variantId!: string | null;
+  @ApiProperty({
+    type: SearchItemPriceBody,
+    nullable: true,
+    description:
+      'The lowest buyer price of the matching in-stock variants (all in-stock variants when ' +
+      'nothing narrowed to a variant); null when none is in stock and priced.',
+  })
+  price!: SearchItemPriceBody | null;
+  @ApiProperty({
+    type: [ProductImageRefBody],
+    description:
+      'All public photos of the product in the published revision order (the first is `primaryImage`); at most 8, empty for none.',
+  })
+  images!: ProductImageRefBody[];
 }
 
 export class SearchFilterOptionBody {
@@ -78,9 +122,33 @@ export class SearchFilterBody {
   picked!: SearchFilterPickedBody | null;
 }
 
+export class SearchCategoryCountBody {
+  @ApiProperty({ description: 'A platform category right below the asked one.' })
+  categoryId!: string;
+  @ApiProperty({ description: 'Its public name.' }) name!: string;
+  @ApiProperty({ description: 'Products of the scope in it or under it.' }) count!: number;
+}
+
+export class SearchCountsBody {
+  @ApiProperty({ description: 'Products (one per product, never Offers) in the scope.' })
+  total!: number;
+  @ApiProperty({
+    description: 'True when the scope was too large to count: `total` is then a lower bound.',
+  })
+  totalIsCapped!: boolean;
+  @ApiProperty({
+    type: [SearchCategoryCountBody],
+    description:
+      'The "In categories" lines: the categories right below the asked one (the top level when ' +
+      'none), most products first, at most 12.',
+  })
+  categories!: SearchCategoryCountBody[];
+  @ApiProperty({ description: 'Stores that have a product in the scope.' }) storeCount!: number;
+}
+
 export class ProductSearchPageBody {
-  @ApiProperty({ type: [ProductSearchItemBody], description: 'In rank order for a text query.' })
-  items!: ProductSearchItemBody[];
+  @ApiProperty({ type: [SearchResultItemBody], description: 'In rank order for a text query.' })
+  items!: SearchResultItemBody[];
   @ApiProperty() page!: number;
   @ApiProperty() pageSize!: number;
   @ApiProperty({
@@ -105,6 +173,25 @@ export class ProductSearchPageBody {
   filtered!: boolean;
   @ApiProperty({ description: 'False when the scope was too large to count (counts are null).' })
   countsComplete!: boolean;
+  @ApiProperty({
+    type: SearchCountsBody,
+    nullable: true,
+    description:
+      'The size of the query scope (text and category, before attribute filters and price), from ' +
+      'the index without the query-time visibility check, so it can briefly include an Offer that ' +
+      'just became unsellable. Null for a store or brand list, an exact GTIN hit, and when the ' +
+      'category tree cannot be read.',
+  })
+  counts!: SearchCountsBody | null;
+  @ApiProperty({
+    type: SearchExactMatchBody,
+    nullable: true,
+    description:
+      '`q` was exactly the GTIN of a published variant of a listed Offer, in stock or not (the ' +
+      'product page shows its stock): go straight to that product page with `?v={variantId}`. ' +
+      'Null otherwise, and on any page after the first.',
+  })
+  exactMatch!: SearchExactMatchBody | null;
 }
 
 export class SearchQueryParams {
@@ -298,6 +385,17 @@ export class ProductDetailSpecificationGroupBody {
   specifications!: ProductDetailSpecificationBody[];
 }
 
+export class ProductDetailVariantImagesBody {
+  @ApiProperty({ format: 'uuid' }) variantId!: string;
+  @ApiProperty({
+    type: [String],
+    description:
+      'The photo ids this Variant shows, main photo first. Each is one of the `images` of the ' +
+      'product; build the URL like any photo.',
+  })
+  imageIds!: string[];
+}
+
 export class ProductDetailBody {
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty({ description: 'The published name in the Market default locale.' })
@@ -325,8 +423,82 @@ export class ProductDetailBody {
   })
   images!: ProductImageRefBody[];
   @ApiProperty({
+    type: [ProductDetailVariantImagesBody],
+    description:
+      'The photos of each Variant that picked some of the product photos; a Variant not listed shows the product photos. Never more than the product photos.',
+  })
+  variantImages!: ProductDetailVariantImagesBody[];
+  @ApiProperty({
     type: [ProductDetailOfferBody],
     description: 'At least one Offer, lowest unit price first.',
   })
   offers!: ProductDetailOfferBody[];
+}
+
+export class StoreSearchItemBody {
+  @ApiProperty({ description: 'The store address (`/s/<slug>` on the buyer site).' }) slug!: string;
+  @ApiProperty({ description: 'The public store name of the approved revision.' }) name!: string;
+  @ApiProperty({
+    description:
+      'Indexed (sellable) Offers of the store, one per product it sells; from the index, not ' +
+      're-checked one by one.',
+  })
+  productCount!: number;
+}
+
+export class StoreSearchPageBody {
+  @ApiProperty({ type: [StoreSearchItemBody], description: 'In rank order.' })
+  items!: StoreSearchItemBody[];
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({
+    description:
+      'True when the next store is visible; hidden matches never change it, so it can be false ' +
+      'while a later page still has items.',
+  })
+  hasMore!: boolean;
+}
+
+export class SuggestProductBody {
+  @ApiProperty({
+    format: 'uuid',
+    description: 'The product page id (the same id as `productId` of `GET /search/products`).',
+  })
+  productId!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ description: 'The public name of the store of the shown Offer.' })
+  sellerName!: string;
+  @ApiProperty({ type: String, nullable: true, description: 'Null when no name can be read.' })
+  categoryName!: string | null;
+  @ApiProperty({
+    type: ProductImageRefBody,
+    nullable: true,
+    description: 'The first public photo of the product, or null. No price, by rule.',
+  })
+  image!: ProductImageRefBody | null;
+}
+
+export class SuggestStoreBody {
+  @ApiProperty({ description: 'The store address (`/s/<slug>` on the buyer site).' })
+  storeSlug!: string;
+  @ApiProperty({ description: 'The public store name.' }) name!: string;
+  @ApiProperty({
+    description: 'Indexed (sellable) Offers of the store, one per product it sells.',
+  })
+  productCount!: number;
+}
+
+export class SuggestBody {
+  @ApiProperty({ type: [SuggestProductBody], description: 'At most 5, one per product.' })
+  products!: SuggestProductBody[];
+  @ApiProperty({ type: [SuggestStoreBody], description: 'At most 3.' })
+  stores!: SuggestStoreBody[];
+  @ApiProperty({
+    description:
+      'Products in the query scope, as `GET /search/products` counts them (from the index, without ' +
+      'the query-time check); 0 for a `q` shorter than 2 characters.',
+  })
+  total!: number;
+  @ApiProperty({ description: 'True when the scope was too large to count: `total` is a floor.' })
+  totalIsCapped!: boolean;
 }

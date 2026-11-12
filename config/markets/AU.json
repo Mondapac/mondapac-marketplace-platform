@@ -81,6 +81,41 @@
       "repeatedWordShareBps": 6000
     }
   },
+  "contentFilter": {
+    "blockedTerms": [
+      "fuck",
+      "fucking",
+      "fucker",
+      "motherfucker",
+      "shit",
+      "bullshit",
+      "cunt",
+      "bastard",
+      "asshole",
+      "bitch",
+      "whore",
+      "slut",
+      "wanker",
+      "twat",
+      "nigger",
+      "faggot",
+      "جنده",
+      "جاکش",
+      "کصکش",
+      "کسکش",
+      "کونی",
+      "کوسکش",
+      "حرامزاده",
+      "مادرجنده",
+      "کیر",
+      "کیرخر",
+      "شرموطة",
+      "منيوك",
+      "كسمك",
+      "عرص",
+      "ابن الشرموطة"
+    ]
+  },
   "promotions": {
     "lineDiscountCapBps": 8000,
     "sellerMaxDiscountBps": 7000,
@@ -141,6 +176,7 @@
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,
     "publicMediaPerMinute": 1500,
+    "publicSearchPerMinute": 120,
     "defaultPerMinute": 300
   },
   "customers": {
@@ -437,12 +473,26 @@
       "name": true,
       "primaryImage": true,
       "anyImage": true,
-      "variantRemoved": true
+      "variantRemoved": true,
+      "gtinChanged": true,
+      "axisAdded": true
     },
     "maxVariantsPerProduct": 100,
     "maxCategoryDepth": 4,
     "maxCategoryChangeTags": 50000,
+    "maxCategoryImportRows": 1000,
+    "maxCategoryImportBytes": 5242880,
     "maxVariantAttributes": 2,
+    "units": [
+      { "code": "g", "labels": { "en-AU": "g" } },
+      { "code": "kg", "labels": { "en-AU": "kg" } },
+      { "code": "ml", "labels": { "en-AU": "ml" } },
+      { "code": "l", "labels": { "en-AU": "L" } },
+      { "code": "mm", "labels": { "en-AU": "mm" } },
+      { "code": "cm", "labels": { "en-AU": "cm" } },
+      { "code": "m", "labels": { "en-AU": "m" } },
+      { "code": "count", "labels": { "en-AU": "each" } }
+    ],
     "approvalRequired": true,
     "productTypes": ["simple", "configurable"],
     "defaultFamily": "default",

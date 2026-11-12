@@ -63,6 +63,7 @@ const detail = (locales: MarketLocales, over: Partial<AttributeDetail> = {}): At
   material: false,
   isVariantOption: false,
   revisionNo: 1,
+  units: [],
   missingLocales: [],
   createdByKind: 'admin',
   createdAt: '2026-10-01T01:00:00.000Z',
@@ -118,6 +119,7 @@ const pageOf = (locales: MarketLocales): AttributePage => ({
   total: 0,
   totalAll: 0,
   locales,
+  units: [],
   featureSets: [],
   truncated: false,
 });

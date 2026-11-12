@@ -221,6 +221,32 @@ export function parseCategorySeo(raw: unknown): Result<CategorySeo, CategoryEdit
   return ok({ title, description, noindex: noindex === true });
 }
 
+/**
+ * The fields of a parsed category request that hold a term of the Market's content filter (pure):
+ * the names, short descriptions and keywords of every locale, and the search-result title and
+ * description. Each comes back as `validation.failed` with the stable code `blocked-term`; the
+ * text itself is never put in the answer.
+ */
+export function blockedCategoryFields(
+  texts: readonly CategoryText[],
+  seo: CategorySeo,
+  isBlocked: (text: string) => boolean,
+): Result<true, CategoryEditRefusal> {
+  const issues: FieldIssue[] = [];
+  const check = (path: string, text: string | null): void => {
+    if (text !== null && isBlocked(text)) issues.push({ path, code: 'blocked-term' });
+  };
+  for (const entry of texts) {
+    const base = `texts.${entry.locale}`;
+    check(`${base}.name`, entry.name);
+    check(`${base}.shortDescription`, entry.shortDescription);
+    entry.keywords.forEach((keyword, index) => check(`${base}.keywords.${index}`, keyword));
+  }
+  check('seo.title', seo.title);
+  check('seo.description', seo.description);
+  return issues.length > 0 ? err({ code: 'validation.failed', fields: issues }) : ok(true);
+}
+
 /** Whether a status can still be edited: only `active` and `hidden` categories are live nodes. */
 export const isEditable = (status: CategoryStatus): boolean =>
   status === 'active' || status === 'hidden';

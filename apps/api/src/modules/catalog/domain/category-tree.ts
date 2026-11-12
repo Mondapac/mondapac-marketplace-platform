@@ -13,6 +13,8 @@ export interface StoredCategoryNode {
   readonly status: CategoryStatus;
   readonly mergedIntoId: Id<'Category'> | null;
   readonly slug: string;
+  /** The stored order among the siblings of its stored parent (C3a), from 0. */
+  readonly position: number;
   /** The published revision's names; empty when the category is not active. */
   readonly names: readonly CategoryName[];
 }
@@ -26,7 +28,7 @@ export interface LiveCategory {
   readonly name: string;
   /** 0 for a top-level category. */
   readonly depth: number;
-  /** The place among its siblings, from 0, by name in the locale, then by id. */
+  /** The place among its live siblings, from 0 (stored position, then name, then id). */
   readonly position: number;
 }
 
@@ -44,16 +46,20 @@ export class CategoryTreeUnavailableError extends Error {
  * The live tree of a Market (pure). Only `active` categories appear. A category's parent is its
  * nearest live ancestor, with the rules of `platformCategoryPaths` (catalog design 4.6): a merged
  * ancestor is followed to the one it was merged into, an archived ancestor is skipped and its own
- * parent kept; a hidden ancestor hides the whole subtree below it. The name is the one in `locale` (the Market's default locale), else the first
- * locale in code order (INTL-13); a live category with no name at all is left out with its
- * subtree.
- * The answer is depth first, siblings by name (`Intl.Collator` of `locale`) then id, so the
- * order is stable. A missing ancestor, a loop or a tree deeper than {@link MAX_TREE_DEPTH} throws
+ * parent kept; a hidden ancestor hides the whole subtree below it. The name is the one in `locale`,
+ * else in `fallbackLocale` (the Market's default locale; the same as `locale` when not given),
+ * else the first locale in code order (INTL-13); a live category with no name at all is left
+ * out with its subtree.
+ * The answer is depth first, siblings by their stored position (the admin's manual order, C3a),
+ * then by name (`Intl.Collator` of `locale`), then by id, so the order is stable: two live
+ * siblings share a position only when one came up from under an archived or merged parent.
+ * A missing ancestor, a loop or a tree deeper than {@link MAX_TREE_DEPTH} throws
  * {@link CategoryTreeUnavailableError}: the caller answers unavailable, never a partial tree.
  */
 export function liveCategoryTree(
   nodes: readonly StoredCategoryNode[],
   locale: string,
+  fallbackLocale: string = locale,
 ): readonly LiveCategory[] {
   if (nodes.length > MAX_TREE_NODES) throw new CategoryTreeUnavailableError('too many');
   const byId = new Map(nodes.map((node) => [node.id, node] as const));
@@ -78,8 +84,9 @@ export function liveCategoryTree(
   };
   const nameOf = (node: StoredCategoryNode): string | null => {
     const wanted = node.names.find((entry) => entry.locale === locale);
+    const fallback = node.names.find((entry) => entry.locale === fallbackLocale);
     const first = [...node.names].sort((a, b) => (a.locale < b.locale ? -1 : 1))[0];
-    return (wanted ?? first)?.name ?? null;
+    return (wanted ?? fallback ?? first)?.name ?? null;
   };
 
   const children = new Map<Id<'Category'> | null, { node: StoredCategoryNode; name: string }[]>();
@@ -101,6 +108,7 @@ export function liveCategoryTree(
     if (depth >= MAX_TREE_DEPTH) throw new CategoryTreeUnavailableError('too deep');
     list.sort(
       (a, b) =>
+        a.node.position - b.node.position ||
         collator.compare(a.name, b.name) ||
         (a.node.id < b.node.id ? -1 : a.node.id > b.node.id ? 1 : 0),
     );

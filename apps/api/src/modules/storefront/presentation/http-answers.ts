@@ -1,6 +1,7 @@
 import { HttpException, type Logger } from '@nestjs/common';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request } from 'express';
+import { lastChangedBody, type LastChanged } from '../../../platform/audit/change-trail';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 
 // The parts of a storefront route that every route shares: the error format
@@ -18,6 +19,10 @@ export const STOREFRONT_STATUS: Readonly<Record<string, number>> = Object.freeze
   'storefront.slug-taken': 409,
   'storefront.nothing-to-publish': 409,
   'storefront.draft-changed': 409,
+  'storefront.conflict': 409,
+  'storefront.seo-version-not-found': 404,
+  'second-factor.required': 403,
+  'second-factor.enrolment-required': 403,
   'storefront.slide-not-found': 404,
   'storefront.slide-version-not-found': 404,
   'storefront.slide-archived': 409,
@@ -31,6 +36,12 @@ export const STOREFRONT_STATUS: Readonly<Record<string, number>> = Object.freeze
   'storefront.slide-position-full': 409,
   'storefront.slide-link-invalid': 409,
   'storefront.slide-order-mismatch': 409,
+  'storefront.slide-image-not-found': 404,
+  'file.too-large': 413,
+  'file.unsupported-type': 415,
+  'file.too-many-pixels': 422,
+  'file.too-small': 422,
+  'file.unreadable': 422,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
@@ -79,5 +90,16 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  if (typeof error.actionKey === 'string') {
+    return fail(status, error.code, { actionKey: error.actionKey });
+  }
+  if (error.lastChanged !== undefined && error.lastChanged !== null) {
+    return fail(status, error.code, {
+      lastChanged: lastChangedBody(error.lastChanged as LastChanged),
+    });
+  }
+  if (typeof error.retryAfterSeconds === 'number') {
+    return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
+  }
   return fail(status, error.code);
 }

@@ -120,6 +120,7 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
     id: revisionId,
     productId,
     revisionNo: 1,
+    typeCode: 'simple',
     kind: 'submission',
     baseRevisionId: null,
     revertedFromRevisionId: null,
@@ -133,9 +134,24 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
     content: {
       texts: { [locale]: { name: 'Dates', shortDescription: null, description: null } },
       categoryIds: [],
+      topicIds: [],
       taxCategoryCode: taxCode,
       attributeValues: {},
-      variants: [{ variantId, position: 1, optionKey: '', optionValues: {}, labels: {} }],
+      variants: [
+        {
+          variantId,
+          position: 1,
+          optionKey: '',
+          optionValues: {},
+          labels: {},
+          gtin: null,
+          shippingWeightGrams: null,
+          shippingLengthMm: null,
+          shippingWidthMm: null,
+          shippingHeightMm: null,
+          imageIds: [],
+        },
+      ],
       imageIds: [],
       schemaRef: { familyRevisionId: 'f', definitionRevisionIds: [] },
       contentSchemaVersion: 1,
@@ -282,6 +298,8 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       unitOfWork,
       products,
       revisions,
+      attributes: { familyCodeOfRevision: () => Promise.resolve('default') } as never,
+      policy: { defaultFamily: () => 'default' } as never,
       outbox,
       clock,
     });
@@ -668,7 +686,7 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
       ]);
       expect(r.events).toHaveLength(1);
       expect(r.events[0]).toMatchObject({
-        type: 'catalog.product-revision-changes-requested.v1',
+        type: 'catalog.product-revision-changes-requested.v2',
         payload: { productId, revisionId, reasonCode: 'description-claim', scope: 'seller' },
       });
     });

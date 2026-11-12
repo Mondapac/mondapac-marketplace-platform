@@ -4,7 +4,9 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type {
   ProductCertificationRepository,
+  ProductCertificateForProductRow,
   ProductCertificationSummary,
+  ProductCoverageSource,
   ProductCheckWrite,
   ProductDecisionWrite,
   ProductDocumentWrite,
@@ -926,5 +928,103 @@ export class PrismaProductCertificationRepository implements ProductCertificatio
       lastChangedAt: toInstant(row.lastChangedAt),
       version: row.version,
     }));
+  }
+
+  async forProduct(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    limit: number,
+  ): Promise<readonly ProductCertificateForProductRow[]> {
+    const names = { marketId: market.marketId, productId };
+    const revisionSelect = {
+      expiryDate: true,
+      issuer: { select: { displayName: true } },
+      coverage: {
+        where: names,
+        select: { variantId: true },
+        orderBy: { id: 'asc' },
+      },
+    } as const;
+    const rows = await this.prisma.tx(market).certificationProductCertification.findMany({
+      where: {
+        marketId: market.marketId,
+        OR: [
+          { draftCoverage: { some: names } },
+          { pendingRevision: { is: { coverage: { some: names } } } },
+          { approvedRevision: { is: { coverage: { some: names } } } },
+        ],
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+      select: {
+        id: true,
+        typeId: true,
+        status: true,
+        lastChangedAt: true,
+        version: true,
+        draftExpiryDate: true,
+        draftIssuer: { select: { displayName: true } },
+        draftCoverage: { where: names, select: { variantId: true }, orderBy: { id: 'asc' } },
+        pendingRevision: { select: revisionSelect },
+        approvedRevision: { select: revisionSelect },
+        // The most recent revision's decision tells whether the record was last rejected.
+        revisions: {
+          orderBy: { revisionNo: 'desc' },
+          take: 1,
+          select: { decisions: { select: { outcome: true, reasonCode: true } } },
+        },
+        type: {
+          select: {
+            code: true,
+            publishedRevision: { select: { texts: { select: { locale: true, name: true } } } },
+          },
+        },
+      },
+    });
+    const sourceOf = (
+      expiryDate: Date | null,
+      issuerName: string | undefined,
+      coverage: readonly { variantId: string | null }[],
+    ): ProductCoverageSource | null =>
+      coverage.length === 0
+        ? null
+        : {
+            issuerName: issuerName ?? null,
+            expiryDate: fromDay(expiryDate),
+            variantIds: coverage.map((entry) => entry.variantId as Id<'Variant'> | null),
+          };
+    return rows.map((row) => {
+      const typeNames: Record<string, string> = {};
+      for (const text of row.type.publishedRevision?.texts ?? [])
+        typeNames[text.locale] = text.name;
+      const decision = row.revisions[0]?.decisions[0];
+      return {
+        id: row.id as Id<'ProductCertification'>,
+        typeId: row.typeId as Id<'CertificationType'>,
+        typeCode: row.type.code,
+        typeNames,
+        status: statusOf(row.status),
+        lastChangedAt: toInstant(row.lastChangedAt),
+        version: row.version,
+        draft: sourceOf(row.draftExpiryDate, row.draftIssuer?.displayName, row.draftCoverage),
+        pending:
+          row.pendingRevision === null
+            ? null
+            : sourceOf(
+                row.pendingRevision.expiryDate,
+                row.pendingRevision.issuer.displayName,
+                row.pendingRevision.coverage,
+              ),
+        approved:
+          row.approvedRevision === null
+            ? null
+            : sourceOf(
+                row.approvedRevision.expiryDate,
+                row.approvedRevision.issuer.displayName,
+                row.approvedRevision.coverage,
+              ),
+        rejectionReasonCode: decision?.outcome === 'rejected' ? decision.reasonCode : null,
+      };
+    });
   }
 }

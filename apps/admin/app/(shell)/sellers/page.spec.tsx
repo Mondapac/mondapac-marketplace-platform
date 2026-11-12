@@ -53,6 +53,18 @@ describe('the sellers pages and identity.seller-access.view', () => {
     expect(screen.queryByRole('link', { name: 'Sellers without an owner' })).toBeNull();
   });
 
+  it('shows the "Sellers that need a look" link only with sellers.seller.view', async () => {
+    signedIn('sellers.seller.view');
+    render(await SellersPage());
+    expect(
+      screen.getByRole('link', { name: 'Sellers that need a look' }).getAttribute('href'),
+    ).toBe('/sellers/needs-a-look');
+    cleanup();
+    signedIn('identity.seller-access.view');
+    render(await SellersPage());
+    expect(screen.queryByRole('link', { name: 'Sellers that need a look' })).toBeNull();
+  });
+
   it('renders the list on the new page with the key, and the no-access text without it', async () => {
     signedIn('identity.seller-access.view');
     render(await SellersWithoutOwnerPage());

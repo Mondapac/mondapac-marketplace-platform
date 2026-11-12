@@ -97,6 +97,10 @@ describe('admin product bulk action and export over HTTP (integration)', () => {
     ownerSellerId: SELLER,
     categoryId: null,
     categoryName: 'Meat',
+    topics: [
+      { id: id<'Topic'>(0xd001), slug: 'eid', status: 'active', name: 'Eid' },
+      { id: id<'Topic'>(0xd002), slug: 'barbecue', status: 'archived', name: null },
+    ],
     typeCode: 'simple',
     status: 'published',
     offerCount: 6,
@@ -284,6 +288,21 @@ describe('admin product bulk action and export over HTTP (integration)', () => {
       expect(response.text).toContain('Lamb cutlets 500 g');
       expect(response.text).toContain(`${code}-000184`);
       expect(rowRequests).toEqual([[PRODUCT]]);
+    });
+
+    it('writes the tags of the shown version in the Tags column, in the order entered', async () => {
+      await boot(code);
+      await seeded(code);
+
+      const response = await exportOf(
+        code,
+        `?format=csv&columns=tags&ids=${PRODUCT}`,
+        sessionOf(code, VIEWER, 1),
+      ).buffer(true);
+
+      expect(response.status).toBe(200);
+      expect(response.text).toContain(',Tags\r\n');
+      expect(response.text).toContain(',Eid; barbecue\r\n');
     });
 
     it('streams an XLSX with the same columns and header, as a no-store attachment', async () => {

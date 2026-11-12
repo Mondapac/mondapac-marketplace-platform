@@ -130,6 +130,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.check in market %s', (code
         status: 'active',
         mergedIntoId: null,
         slug: 'meat',
+        position: 0,
         names: [{ locale, name: 'Meat' }],
       },
     ];

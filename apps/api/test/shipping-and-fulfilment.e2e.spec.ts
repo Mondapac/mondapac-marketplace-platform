@@ -11,6 +11,7 @@ import { SellerConfirmPickup } from '../src/modules/ordering/application/use-cas
 import { SellerDeliverOrder } from '../src/modules/ordering/application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from '../src/modules/ordering/application/use-cases/seller-list-orders.use-case';
 import { SellerMarkOrderReady } from '../src/modules/ordering/application/use-cases/seller-mark-order-ready.use-case';
+import { SellerMarkUnavailable } from '../src/modules/ordering/application/use-cases/seller-mark-unavailable.use-case';
 import { SellerViewOrderDocument } from '../src/modules/ordering/application/use-cases/seller-view-order-document.use-case';
 import { SellerViewOrder } from '../src/modules/ordering/application/use-cases/seller-view-order.use-case';
 import { sellerOrderDocument } from '../src/modules/ordering/domain/order-document';
@@ -65,6 +66,7 @@ const detail = (currency: string, patch: object = {}) => ({
   readyAt: null,
   deliveryAttention: null,
   pickup: null,
+  refunds: [],
   lines: [
     {
       lineId: id<'OrderLine'>(0xc030),
@@ -138,7 +140,9 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
           .overrideProvider(SellerConfirmPickup)
           .useValue(stub('confirm-pickup'))
           .overrideProvider(SellerDeliverOrder)
-          .useValue(stub('deliver')),
+          .useValue(stub('deliver'))
+          .overrideProvider(SellerMarkUnavailable)
+          .useValue(stub('unavailable')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'ship-seed-0001'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -575,6 +579,139 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
       const conflict = await call('post', 'seller', path, session, {});
       expect(conflict.status).toBe(409);
       expect(conflict.body).toEqual({ statusCode: 409, code: 'ordering.fulfilment-conflict' });
+    });
+
+    it('lists the refunds of the order, the units the shop marked unavailable included', async () => {
+      await boot();
+      next = ok(
+        detail(currency, {
+          refunds: [
+            {
+              refundId: id<'Refund'>(0xd001),
+              requestedBy: 'seller',
+              state: 'succeeded',
+              reason: 'item-unavailable',
+              amount: money(1500n, currency),
+              shipping: null,
+              lines: [{ orderLineId: id<'OrderLine'>(0xc030), quantity: 1 }],
+              requestedAt: START,
+              settledAt: START.add({ seconds: 2 }),
+            },
+          ],
+        }),
+      );
+
+      const res = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}`, seller());
+
+      expect((res.body as { refunds: unknown }).refunds).toEqual([
+        {
+          refundId: id<'Refund'>(0xd001),
+          requestedBy: 'seller',
+          state: 'succeeded',
+          reason: 'item-unavailable',
+          amount: { amount: '1500', currency },
+          shipping: null,
+          lines: [{ orderLineId: id<'OrderLine'>(0xc030), quantity: 1 }],
+          requestedAt: START.toString(),
+          settledAt: START.add({ seconds: 2 }).toString(),
+        },
+      ]);
+    });
+
+    it('marks units unavailable from a body of lines alone and answers the refund', async () => {
+      await boot();
+      const session = seller();
+      const path = `${ORDERS}/${SELLER_ORDER}/unavailable`;
+      const lines = [{ orderLineId: id<'OrderLine'>(0xc030), quantity: 1 }];
+      next = ok({
+        refundId: id<'Refund'>(0xd002),
+        orderId: ORDER,
+        sellerOrderId: SELLER_ORDER,
+        state: 'succeeded',
+        reason: 'item-unavailable',
+        lossBearer: 'seller',
+        lossReasonCode: null,
+        amount: money(1500n, currency),
+        tax: money(136n, currency),
+        shipping: null,
+        lines: [
+          {
+            orderLineId: id<'OrderLine'>(0xc030),
+            quantity: 1,
+            amount: money(1500n, currency),
+            tax: money(136n, currency),
+            taxRateBps: 1000,
+            taxInclusive: true,
+          },
+        ],
+        requestedAt: START,
+        settledAt: START,
+        creditNoteId: id<'CreditNote'>(0xd003),
+      });
+
+      const done = await call('post', 'seller', path, session, { lines, expectedRefunds: 0 });
+
+      expect(done.status).toBe(200);
+      expect(done.headers['cache-control']).toBe('no-store');
+      expect(done.body).toMatchObject({
+        refundId: id<'Refund'>(0xd002),
+        state: 'succeeded',
+        reason: 'item-unavailable',
+        lossBearer: 'seller',
+        amount: { amount: '1500', currency },
+      });
+      expect(calls).toEqual([
+        { name: 'unavailable', input: { sellerOrderId: SELLER_ORDER, lines, expectedRefunds: 0 } },
+      ]);
+
+      // No CSRF, an amount or a reason of the seller's own, and not JSON: nothing is called.
+      expect(
+        (await call('post', 'seller', path, { cookie: session.cookie }, { lines })).status,
+      ).toBe(403);
+      for (const extra of [{ amount: '1500' }, { reason: 'other' }, { shippingAmount: '500' }]) {
+        const refused = await call('post', 'seller', path, session, { lines, ...extra });
+        expect(refused.status).toBe(400);
+        expect(refused.body).toMatchObject({ code: 'validation.failed' });
+      }
+      const text = await http()
+        .post(path)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...session })
+        .set('content-type', 'text/plain')
+        .send('x');
+      expect(text.status).toBe(415);
+      expect(calls).toHaveLength(1);
+    });
+
+    it('maps the unavailable refusals', async () => {
+      await boot();
+      const session = seller();
+      const path = `${ORDERS}/${SELLER_ORDER}/unavailable`;
+      const lines = [{ orderLineId: id<'OrderLine'>(0xc030), quantity: 1 }];
+      for (const [code, status] of [
+        ['ordering.seller-order-not-found', 404],
+        ['access.denied', 403],
+        ['ordering.fulfilment-conflict', 409],
+        ['ordering.refund-disabled', 409],
+        ['ordering.refund-in-progress', 409],
+        ['conflict.retry', 409],
+        ['ordering.refund-rejected', 422],
+        ['ordering.refund-tax-unknown', 422],
+        ['ordering.refund-tax-unavailable', 503],
+      ] as const) {
+        next = err({ code });
+        const res = await call('post', 'seller', path, session, { lines });
+        expect([code, res.status]).toEqual([code, status]);
+      }
+      next = err({
+        code: 'ordering.refund-exceeds',
+        fields: [{ path: 'lines.0.quantity', code: 'exceeds' }],
+      });
+      const exceeds = await call('post', 'seller', path, session, { lines });
+      expect(exceeds.status).toBe(422);
+      expect(exceeds.body).toMatchObject({
+        code: 'ordering.refund-exceeds',
+        details: { fields: [{ path: 'lines.0.quantity', code: 'exceeds' }] },
+      });
     });
 
     it('marks a shipped order delivered from an empty body only', async () => {

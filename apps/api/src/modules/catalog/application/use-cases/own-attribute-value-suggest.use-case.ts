@@ -17,6 +17,8 @@ import { sellerOf } from '../own-reads/own-reads.shared';
 import type { AttributeDefinitionStore } from '../ports/attribute-definition.store';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
+import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
 
@@ -60,6 +62,9 @@ export interface OwnAttributeValueSuggestDependencies {
   readonly audit: AuditWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  /** With the working copy: the fields offered are those of the primary category's feature set. */
+  readonly workingCopies?: WorkingCopyRepository;
+  readonly familyResolver?: ProductFamilyResolver;
 }
 
 /** A seller may suggest on a product that is still theirs to work on. */
@@ -158,7 +163,18 @@ export class OwnAttributeValueSuggest extends UseCase<
       if (!SUGGESTING_STATUSES.has(product.state.status)) {
         return err({ code: 'product.not-editable' } as const);
       }
-      const schema = await attributes.loadSchema(market, product.state.familyCode);
+      // The fields offered are those of the feature set the draft's primary category holds now.
+      let familyCode = product.state.familyCode;
+      if (this.deps.familyResolver !== undefined && this.deps.workingCopies !== undefined) {
+        const copy = await this.deps.workingCopies.find(market, product.state.id);
+        const raw = copy?.content['categoryIds'];
+        const resolved = await this.deps.familyResolver.resolve(
+          market,
+          Array.isArray(raw) && typeof raw[0] === 'string' ? raw[0] : null,
+        );
+        if (resolved.ok) familyCode = resolved.familyCode;
+      }
+      const schema = await attributes.loadSchema(market, familyCode);
       if (schema === null) return err({ code: 'attribute.not-suggestable' } as const);
       const field = schema.fields.find((candidate) => candidate.code === attributeCode);
       if (

@@ -11,7 +11,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 import { callApi } from '../api/client.ts';
 import { reviewProblemOf } from './review-errors.ts';
 import { ReviewQueue } from './review-queue.tsx';
-import type { ReviewRow } from './types.ts';
+import { offerRowsOf, type ReviewRow } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
@@ -32,10 +32,10 @@ const row = (over: Partial<ReviewRow> = {}): ReviewRow => ({
   ...over,
 });
 
-function mount(canDecide = true, rows: ReviewRow[] = [row()]) {
+function mount(canDecide = true, rows: ReviewRow[] = [row()], morePages = false) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <ReviewQueue rows={rows} canDecide={canDecide} csrfToken="csrf-1" />
+      <ReviewQueue rows={rows} canDecide={canDecide} csrfToken="csrf-1" morePages={morePages} />
     </NextIntlClientProvider>,
   );
 }
@@ -52,6 +52,14 @@ describe('ReviewQueue', () => {
   it('shows the empty state', () => {
     mount(true, []);
     expect(screen.getByText('No offers are waiting for review.')).toBeTruthy();
+  });
+
+  it('does not call the queue empty when a next page exists', () => {
+    mount(true, [], true);
+    expect(
+      screen.getByText('No offers on this page. More of the queue is on the next page.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('No offers are waiting for review.')).toBeNull();
   });
 
   it('opens a card to show the seller texts, without a table', () => {
@@ -130,6 +138,20 @@ describe('ReviewQueue', () => {
   });
 });
 
+describe('offerRowsOf', () => {
+  it('keeps the Offer rows in order and leaves product revision rows out', () => {
+    const second = row({ offerId: '0190a000-0000-7000-8000-0000000000c2' });
+    const items = [
+      { kind: 'product-revision' as const },
+      row(),
+      { kind: 'product-revision' as const },
+      second,
+    ];
+    expect(offerRowsOf(items).map((r) => r.offerId)).toEqual([ID, second.offerId]);
+    expect(offerRowsOf([{ kind: 'product-revision' }])).toEqual([]);
+  });
+});
+
 describe('reviewProblemOf and nav', () => {
   it('maps codes to message keys', () => {
     expect(reviewProblemOf({ status: 409, code: 'offer.not-pending-review' })).toEqual({
@@ -145,7 +167,7 @@ describe('reviewProblemOf and nav', () => {
   });
   it('shows the nav item only with catalog.product.view', () => {
     const ids = (keys: string[]) => visibleNavItems(adminNav, new Set(keys)).map((i) => i.id);
-    expect(ids(['catalog.product.view'])).toContain('offer-reviews');
-    expect(ids([])).not.toContain('offer-reviews');
+    expect(ids(['catalog.product.view'])).toContain('review-queue');
+    expect(ids([])).not.toContain('review-queue');
   });
 });

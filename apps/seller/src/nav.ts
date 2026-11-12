@@ -14,6 +14,13 @@ export const sellerNav: NavConfig = {
   ],
   items: [
     { id: 's_home', icon: 'home', labelKey: 'nav.home', href: '/' },
+    // Own-resources route (no permission key): shown to every approved seller (health only informs).
+    {
+      id: 's_performance',
+      icon: 'shield-check',
+      labelKey: 'nav.performance',
+      href: '/performance',
+    },
     {
       id: 's_orders',
       icon: 'clipboard',
@@ -39,10 +46,27 @@ export const sellerNav: NavConfig = {
       anyOf: ['catalog.own-product.view'],
     },
     {
+      id: 's_import',
+      icon: 'file',
+      labelKey: 'nav.import',
+      href: '/products/import',
+      group: 'catalogue',
+      // The menu takes any one key; the import needs both (see `IMPORT_KEYS`), checked in sellerNavItems.
+      anyOf: ['catalog.own-import.run'],
+    },
+    {
       id: 's_suggestions',
       icon: 'inbox',
       labelKey: 'nav.suggestions',
       href: '/value-suggestions',
+      group: 'catalogue',
+      anyOf: ['catalog.own-product.view'],
+    },
+    {
+      id: 's_tag_suggestions',
+      icon: 'tag',
+      labelKey: 'nav.tagSuggestions',
+      href: '/tag-suggestions',
       group: 'catalogue',
       anyOf: ['catalog.own-product.view'],
     },
@@ -77,6 +101,10 @@ export const sellerNav: NavConfig = {
 
 const SETUP_ID = 's_setup';
 
+/** Importing needs both keys (catalog design 14c); the menu config only holds one, so the filter checks both. */
+const IMPORT_ID = 's_import';
+const IMPORT_KEYS = ['catalog.own-import.run', 'catalog.own-product.edit'] as const;
+
 /**
  * The items the shell shows. Every page but the setup pages sends a seller who is not approved
  * yet to `/account-setup`, so before approval the setup item is the only one (a link that can
@@ -86,7 +114,8 @@ export function sellerNavItems(
   accessState: 'pending' | 'approved' | 'rejected',
   permissionKeys: readonly string[],
 ): readonly NavItem[] {
-  return visibleNavItems(sellerNav, new Set(permissionKeys)).filter((item) =>
-    accessState === 'approved' ? item.id !== SETUP_ID : item.id === SETUP_ID,
-  );
+  const held = new Set(permissionKeys);
+  return visibleNavItems(sellerNav, held)
+    .filter((item) => (accessState === 'approved' ? item.id !== SETUP_ID : item.id === SETUP_ID))
+    .filter((item) => item.id !== IMPORT_ID || IMPORT_KEYS.every((key) => held.has(key)));
 }

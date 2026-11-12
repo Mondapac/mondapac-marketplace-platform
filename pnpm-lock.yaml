@@ -106,6 +106,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.1161.0
         version: 3.1161.0
+      '@mondapac/platform-import':
+        specifier: workspace:*
+        version: link:../../packages/platform-import
       '@mondapac/shared-kernel':
         specifier: workspace:*
         version: link:../../packages/shared-kernel
@@ -209,6 +212,9 @@ importers:
       '@mondapac/panel-server':
         specifier: workspace:*
         version: link:../../packages/panel-server
+      '@mondapac/platform-import':
+        specifier: workspace:*
+        version: link:../../packages/platform-import
       '@mondapac/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -270,6 +276,9 @@ importers:
       '@mondapac/panel-server':
         specifier: workspace:*
         version: link:../../packages/panel-server
+      mapbox-gl:
+        specifier: 3.33.0
+        version: 3.33.0
       next:
         specifier: 16.4.2
         version: 16.4.2(@types/node@24.19.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
@@ -292,6 +301,9 @@ importers:
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@types/geojson':
+        specifier: 7946.0.16
+        version: 7946.0.16
       '@types/node':
         specifier: ^24.19.0
         version: 24.19.0
@@ -333,6 +345,15 @@ importers:
         specifier: ^4.0.0
         version: 4.1.11(@types/node@24.19.0)(jsdom@30.1.2(@noble/hashes@1.8.0))(vite@8.3.4(@types/node@24.19.0)(jiti@2.7.0))
 
+  packages/platform-import:
+    devDependencies:
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.0.0
+        version: 4.1.11(@types/node@24.19.0)(jsdom@30.1.2(@noble/hashes@1.8.0))(vite@8.3.4(@types/node@24.19.0)(jiti@2.7.0))
+
   packages/shared-kernel:
     dependencies:
       temporal-polyfill:
@@ -361,6 +382,15 @@ importers:
         specifier: 4.3.3
         version: 4.3.3
     devDependencies:
+      '@testing-library/dom':
+        specifier: ^10.4.2
+        version: 10.4.2
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: ^14.6.8
+        version: 14.6.8(@testing-library/dom@10.4.2)
       '@types/react':
         specifier: ^19.2.0
         version: 19.3.0
@@ -370,6 +400,9 @@ importers:
       eslint:
         specifier: ^10.11.0
         version: 10.11.0(jiti@2.7.0)
+      jsdom:
+        specifier: ^30.1.2
+        version: 30.1.2(@noble/hashes@1.8.0)
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
@@ -2001,6 +2034,12 @@ packages:
         optional: true
       '@types/react-dom':
         optional: true
+
+  '@testing-library/user-event@14.6.8':
+    resolution: {integrity: sha512-vgSSqnANMnkcYR/vUNDbwS7aM3OErRLNUG8vCVVlj4oc6cKffUrccX7UAS5AmJQQNZTSibi9z5GvvRZ0aYgUCQ==}
+    engines: {node: '>=12', npm: '>=6'}
+    peerDependencies:
+      '@testing-library/dom': '>=7.21.4'
 
   '@tokenizer/inflate@0.4.1':
     resolution: {integrity: sha512-2mAv+8pkG6GIZiF1kNg1jAjh27IDxEPKwdGul3snfztFerfPGI1LjDezZp3i7BElXompqEtPmoPx6c2wgtWsOA==}
@@ -4148,6 +4187,9 @@ packages:
 
   make-error@1.3.6:
     resolution: {integrity: sha512-s8UhlNe7vPKomQhC1qFelMokr/Sc3AgNbso3n74mVPA5LTZwkB9NlXf4XPamLxJE8h0gh73rM94xvwRT2CVInw==}
+
+  mapbox-gl@3.33.0:
+    resolution: {integrity: sha512-2HpIrVedccHedolZyMVG/7FXdpgmsLTENgEDsX71x3/gKDGfYMf1FCRY0prntknkn/JXcraUKXlBTv7vkr0EXg==}
 
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
@@ -7194,6 +7236,10 @@ snapshots:
       '@types/react': 19.3.0
       '@types/react-dom': 19.3.0(@types/react@19.3.0)
 
+  '@testing-library/user-event@14.6.8(@testing-library/dom@10.4.2)':
+    dependencies:
+      '@testing-library/dom': 10.4.2
+
   '@tokenizer/inflate@0.4.1':
     dependencies:
       debug: 4.4.3
@@ -9677,6 +9723,8 @@ snapshots:
       semver: 7.8.5
 
   make-error@1.3.6: {}
+
+  mapbox-gl@3.33.0: {}
 
   math-intrinsics@1.1.0: {}
 

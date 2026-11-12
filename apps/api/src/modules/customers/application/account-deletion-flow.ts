@@ -508,6 +508,9 @@ export async function executeAccountDeletions(
         market,
         async () => {
           const now = deps.clock.now();
+          // The address-book lock first: a parallel add runs at READ COMMITTED, which a
+          // serializable delete cannot see, so without it an add could outlive the erasure.
+          await deps.addresses.lockBook(market, request.accountId);
           await deps.addresses.removeAllOf(market, request.accountId);
           if (!(await deps.requests.complete(market, request.id, claimedAt, now))) return ok(false);
           await deps.audit.record(
