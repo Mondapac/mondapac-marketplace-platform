@@ -28,6 +28,9 @@ const geoHeaders = ['EDGE_GEO_CITY_HEADER', 'EDGE_GEO_POSTCODE_HEADER', 'EDGE_GE
   .map((name) => process.env[name]?.trim().toLowerCase() ?? '')
   .filter((name) => name !== '');
 const source = withEdgeOnlyHeaders(parseClientAddressSource(process.env), geoHeaders);
+// The Deliver to map's worker (ADR-0048), copied into public/vendor/ from the installed mapbox-gl
+// so the map loads it from this site.
+await import('./scripts/copy-map-worker.mjs');
 // `next dev` sets TURBOPACK for its server process; the programmatic API needs to be told.
 if (dev) process.env.TURBOPACK = '1';
 const app = next({ dir: import.meta.dirname, dev, port, hostname: dev ? 'localhost' : undefined });

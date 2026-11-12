@@ -4,95 +4,122 @@ import {
   Badge,
   Banner,
   Button,
-  IconButton,
+  CheckboxRow,
+  EmptyState,
   LoadError,
-  RadioGroup,
   Select,
   SkeletonRows,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
-import { directionOf } from './tree-model.ts';
+import { loadActiveAttributes } from '../attributes/load-active-attributes.ts';
 import {
-  API_ATTRIBUTES,
   API_FEATURE_SETS,
-  LINKS_SUFFIX,
-  MAX_OWN_FILTERS,
-  draftOf,
-  filterChoices,
-  labelOf,
-  linksErrorKey,
-  moveFilter,
-  sameDraft,
-  type AttributeOption,
-  type FeatureSetOption,
-  type LinksBody,
-  type LinksDraft,
-} from './attribute-links-model.ts';
-import { API_CATEGORIES, type DetailBody } from './types.ts';
+  type AttributePage,
+  type FeatureSetList,
+  type Localized,
+} from '../attributes/types.ts';
 
-type Load =
-  | { readonly state: 'loading' }
-  | { readonly state: 'ready'; readonly links: LinksBody }
-  | { readonly state: 'failed' };
-
-interface Pickers {
-  readonly featureSets: readonly FeatureSetOption[];
-  readonly attributes: readonly AttributeOption[];
+/** What the category links API answers (catalog, attributes A3: category-attribute-links). */
+export interface LinksBody {
+  readonly own: {
+    readonly featureSetId: string | null;
+    readonly filters: readonly string[];
+    readonly version: number;
+  } | null;
+  readonly effective: {
+    readonly featureSet: {
+      readonly id: string;
+      readonly code: string;
+      readonly fromCategoryId: string;
+      readonly inherited: boolean;
+    } | null;
+    readonly filters: readonly {
+      readonly code: string;
+      readonly inherited: boolean;
+      readonly names: Localized | null;
+      readonly dataType: string | null;
+    }[];
+  };
 }
 
-/** The most pages of attributes the editor reads (50 each): a Market has far fewer. */
-const ATTRIBUTE_PAGES = 20;
+/** The data types a page filter can use (design decision ت۸). */
+export const FILTERABLE = ['select', 'multi-select', 'integer', 'decimal', 'boolean'] as const;
+
+/** The message key of a refused save. */
+export function linksErrorKey(code: string, status: number): string {
+  if (code === 'category-links.stale') return 'stale';
+  if (code === 'category.not-active') return 'not-active';
+  if (code === 'category-links.too-many-filters') return 'too-many-filters';
+  if (code.startsWith('category-links.feature-set')) return 'feature-set';
+  if (code.startsWith('category-links.filter')) return 'filter';
+  if (code === 'validation.failed') return 'invalid';
+  return status === 0 || status >= 500 ? 'unavailable' : 'unknown';
+}
+
+/** The name in the preferred language, else in any language, else the code. */
+export function nameOf(names: Localized | null | undefined, code: string, preferred = ''): string {
+  if (!names) return code;
+  return names[preferred] ?? Object.values(names)[0] ?? code;
+}
+
+/** Moves a list entry one place; unchanged when it falls outside. */
+export function shifted<T>(list: readonly T[], index: number, by: -1 | 1): readonly T[] {
+  const target = index + by;
+  if (index < 0 || index >= list.length || target < 0 || target >= list.length) return list;
+  const next = [...list];
+  const [item] = next.splice(index, 1);
+  next.splice(target, 0, item as T);
+  return next;
+}
+
+type Load = 'loading' | 'ready' | 'failed' | 'gone';
 
 /**
- * The "Attribute links" tab of a category (categories C8, inside attributes A4): the feature set
- * the category holds, or "Inherited from {parent}", and the ordered list of attributes buyers may
- * filter it by. Children inherit both; a feature set on a child overrides. Reading needs
- * `catalog.attribute.view`, changing it `catalog.attribute.edit`.
+ * The "Attribute links" tab of a category (attributes A4, screens 03 and 04): the feature set the
+ * category uses (its own, or its parent's) and the attributes that filter its page.
  */
 export function AttributeLinksTab({
-  body,
+  categoryId,
   canEdit,
   csrfToken,
 }: {
-  readonly body: DetailBody;
+  readonly categoryId: string;
   readonly canEdit: boolean;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('categories.links');
   const tl = useTranslations('load');
-  const categoryId = body.category.id;
-  const [load, setLoad] = useState<Load>({ state: 'loading' });
+  const [load, setLoad] = useState<Load>('loading');
+  const [body, setBody] = useState<LinksBody | null>(null);
   const [editing, setEditing] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const latest = useRef(0);
 
   const fetchLinks = useCallback(async () => {
-    const ticket = ++latest.current;
-    setLoad({ state: 'loading' });
+    setLoad('loading');
     const result = await callApi<LinksBody>(
       'GET',
-      `${API_CATEGORIES}/${categoryId}/${LINKS_SUFFIX}`,
+      `catalog/admin/categories/${categoryId}/attribute-links`,
     );
-    if (ticket !== latest.current) return;
     if (result.ok) {
-      setLoad({ state: 'ready', links: result.body });
+      setBody(result.body);
+      setLoad('ready');
       return;
     }
     if (result.failure.status === 401) {
       window.location.assign('/session-ended');
       return;
     }
-    setLoad({ state: 'failed' });
+    setLoad(result.failure.status === 404 ? 'gone' : 'failed');
   }, [categoryId]);
 
   useEffect(() => {
     void fetchLinks();
   }, [fetchLinks]);
 
-  if (load.state === 'loading') return <SkeletonRows label={t('loading')} rows={3} />;
-  if (load.state === 'failed') {
+  if (load === 'loading') return <SkeletonRows label={t('loading')} rows={4} />;
+  if (load === 'gone') return <p className="text-fg-muted">{t('gone')}</p>;
+  if (load === 'failed' || body === null) {
     return (
       <LoadError
         className="flex flex-col items-start gap-3"
@@ -102,232 +129,131 @@ export function AttributeLinksTab({
       />
     );
   }
-  const locale = body.requiredLocales[0] ?? '';
   if (editing) {
     return (
       <LinksEditor
+        categoryId={categoryId}
         body={body}
-        links={load.links}
-        locale={locale}
         csrfToken={csrfToken}
         onCancel={() => setEditing(false)}
-        onReload={() => {
-          setEditing(false);
-          void fetchLinks();
-        }}
         onSaved={() => {
           setEditing(false);
-          setSaved(true);
           void fetchLinks();
         }}
       />
     );
   }
+  const set = body.effective.featureSet;
   return (
-    <LinksView
-      body={body}
-      links={load.links}
-      locale={locale}
-      canEdit={canEdit}
-      saved={saved}
-      onEdit={() => {
-        setSaved(false);
-        setEditing(true);
-      }}
-    />
-  );
-}
-
-/** Where an inherited value comes from: the ancestor's name, or a plain word when not on the path. */
-function parentName(body: DetailBody, fromCategoryId: string): string | null {
-  const entry = body.path.find((step) => step.id === fromCategoryId);
-  return entry === undefined ? null : (entry.name ?? entry.slug);
-}
-
-function LinksView({
-  body,
-  links,
-  locale,
-  canEdit,
-  saved,
-  onEdit,
-}: {
-  readonly body: DetailBody;
-  readonly links: LinksBody;
-  readonly locale: string;
-  readonly canEdit: boolean;
-  readonly saved: boolean;
-  readonly onEdit: () => void;
-}) {
-  const t = useTranslations('categories.links');
-  const { featureSet, filters } = links.effective;
-  return (
-    <section aria-label={t('label')} className="flex flex-col gap-4">
-      {saved ? (
-        <p role="status" className="m-0 text-sm text-fg-muted">
-          {t('saved')}
-        </p>
-      ) : null}
-      {canEdit ? null : <Banner tone="info">{t('view-only')}</Banner>}
-      <div className="flex flex-col gap-2">
-        <h3 className="m-0 text-base font-semibold">{t('feature-set')}</h3>
-        {featureSet === null ? (
-          <p className="m-0 text-fg-muted">{t('no-feature-set')}</p>
+    <div className="flex flex-col gap-5">
+      <section aria-label={t('feature-set')} className="flex flex-col gap-2">
+        <h3 className="font-semibold text-fg">{t('feature-set')}</h3>
+        {set === null ? (
+          <EmptyState size="compact" icon="columns" title={t('no-feature-set')} />
         ) : (
-          <p className="m-0 flex flex-wrap items-center gap-2">
-            <span dir={directionOf(locale)}>
-              {labelOf(featureSet.names, locale, featureSet.code)}
-            </span>
-            <code className="text-sm text-fg-muted">{featureSet.code}</code>
-            {featureSet.inherited ? (
-              <Badge tone="neutral">
-                {t('inherited-from', {
-                  parent: parentName(body, featureSet.fromCategoryId) ?? t('a-parent'),
-                })}
-              </Badge>
-            ) : (
-              <Badge tone="success">{t('own')}</Badge>
-            )}
+          <p className="flex flex-wrap items-center gap-2">
+            <span className="font-medium wrap-anywhere text-fg">{set.code}</span>
+            <Badge tone="neutral">{set.inherited ? t('inherited') : t('own')}</Badge>
           </p>
         )}
-      </div>
-      <div className="flex flex-col gap-2">
-        <h3 className="m-0 text-base font-semibold">{t('filters')}</h3>
-        {filters.length === 0 ? (
-          <p className="m-0 text-fg-muted">{t('no-filters')}</p>
+      </section>
+      <section aria-label={t('filters')} className="flex flex-col gap-2">
+        <h3 className="font-semibold text-fg">{t('filters')}</h3>
+        {body.effective.filters.length === 0 ? (
+          <p className="text-fg-muted">{t('no-filters')}</p>
         ) : (
-          <ol
-            aria-label={t('filters')}
-            className="m-0 flex list-none flex-col divide-y divide-line rounded-lg border border-line bg-surface p-0"
-          >
-            {filters.map((filter, index) => (
-              <li key={filter.code} className="flex flex-wrap items-center gap-2 px-4 py-2">
-                <span className="w-6 text-sm text-fg-muted">{index + 1}</span>
-                <span dir={directionOf(locale)}>{labelOf(filter.names, locale, filter.code)}</span>
-                <code className="text-sm text-fg-muted">{filter.code}</code>
-                {filter.dataType === null ? null : (
-                  <span className="text-sm text-fg-muted">{t(`type.${filter.dataType}`)}</span>
-                )}
-                {filter.status === null || filter.status === 'active' ? null : (
-                  <Badge tone="attention">{t('not-active')}</Badge>
-                )}
-                {filter.inherited ? (
-                  <Badge tone="neutral">
-                    {t('inherited-from', {
-                      parent: parentName(body, filter.fromCategoryId) ?? t('a-parent'),
-                    })}
-                  </Badge>
-                ) : null}
+          <ol className="divide-y divide-line rounded-md border border-line">
+            {body.effective.filters.map((filter, index) => (
+              <li key={filter.code} className="flex flex-wrap items-center gap-2 px-4 py-3">
+                <span className="text-fg-muted">{index + 1}.</span>
+                <span className="font-medium wrap-anywhere text-fg">
+                  {nameOf(filter.names, filter.code)}
+                </span>
+                <span className="text-sm text-fg-muted">{filter.code}</span>
+                {filter.inherited ? <Badge tone="neutral">{t('inherited')}</Badge> : null}
               </li>
             ))}
           </ol>
         )}
-        <p className="m-0 text-sm text-fg-muted">{t('noindex-help')}</p>
-      </div>
+        <p className="text-sm text-fg-muted">{t('noindex')}</p>
+      </section>
       {canEdit ? (
         <div>
-          <Button variant="secondary" onClick={onEdit}>
-            {t('edit')}
-          </Button>
+          <Button onClick={() => setEditing(true)}>{t('edit')}</Button>
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }
 
 function LinksEditor({
+  categoryId,
   body,
-  links,
-  locale,
   csrfToken,
   onCancel,
-  onReload,
   onSaved,
 }: {
-  readonly body: DetailBody;
-  readonly links: LinksBody;
-  readonly locale: string;
+  readonly categoryId: string;
+  readonly body: LinksBody;
   readonly csrfToken: string;
   readonly onCancel: () => void;
-  readonly onReload: () => void;
   readonly onSaved: () => void;
 }) {
   const t = useTranslations('categories.links');
-  const tl = useTranslations('load');
-  const start = useRef(draftOf(links)).current;
-  const [draft, setDraft] = useState<LinksDraft>(start);
-  const [picker, setPicker] = useState('');
-  const [pickers, setPickers] = useState<Pickers | 'loading' | 'failed'>('loading');
+  const [own, setOwn] = useState(body.own?.featureSetId != null);
+  const [featureSetId, setFeatureSetId] = useState(body.own?.featureSetId ?? '');
+  const [inheritFilters, setInheritFilters] = useState((body.own?.filters.length ?? 0) === 0);
+  const [filters, setFilters] = useState<readonly string[]>(body.own?.filters ?? []);
+  const [pick, setPick] = useState('');
+  const [sets, setSets] = useState<FeatureSetList['items']>([]);
+  const [attributes, setAttributes] = useState<AttributePage['items']>([]);
+  const [defaultLocale, setDefaultLocale] = useState('');
+  const [listFailed, setListFailed] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
   const busy = useRef(false);
 
-  const fetchPickers = useCallback(async () => {
-    setPickers('loading');
-    const sets = await callApi<{ readonly items: readonly FeatureSetOption[] }>(
-      'GET',
-      API_FEATURE_SETS,
-    );
-    if (!sets.ok) {
-      if (sets.failure.status === 401) window.location.assign('/session-ended');
-      setPickers('failed');
-      return;
-    }
-    const attributes: AttributeOption[] = [];
-    let after: string | null = null;
-    for (let page = 0; page < ATTRIBUTE_PAGES; page += 1) {
-      const query = new URLSearchParams({ status: 'active', limit: '50' });
-      if (after !== null) query.set('afterId', after);
-      const answer = await callApi<{
-        readonly items: readonly (AttributeOption & { readonly id: string })[];
-        readonly nextAfterId: string | null;
-      }>('GET', `${API_ATTRIBUTES}?${query.toString()}`);
-      if (!answer.ok) {
-        if (answer.failure.status === 401) window.location.assign('/session-ended');
-        setPickers('failed');
-        return;
-      }
-      attributes.push(...answer.body.items);
-      after = answer.body.nextAfterId;
-      if (after === null) break;
-    }
-    setPickers({ featureSets: sets.body.items.filter((s) => s.status === 'active'), attributes });
+  useEffect(() => {
+    let live = true;
+    void callApi<FeatureSetList>('GET', API_FEATURE_SETS).then((r) => {
+      if (live && r.ok) setSets(r.body.items.filter((row) => row.status === 'active'));
+    });
+    void loadActiveAttributes().then((result) => {
+      if (!live) return;
+      if (result.ok) {
+        setAttributes(result.items);
+        setDefaultLocale(result.locale);
+      } else setListFailed(true);
+    });
+    return () => {
+      live = false;
+    };
   }, []);
 
-  useEffect(() => {
-    void fetchPickers();
-  }, [fetchPickers]);
-
-  const changed = !sameDraft(draft, start);
-  const inheritedCodes = links.effective.filters
-    .filter((filter) => filter.inherited)
-    .map((filter) => filter.code);
-  const taken = new Set([...inheritedCodes, ...draft.filters]);
-  const known = pickers === 'loading' || pickers === 'failed' ? [] : pickers.attributes;
-  const nameOfCode = (code: string): string => {
-    const found =
-      known.find((attribute) => attribute.code === code)?.names ??
-      links.effective.filters.find((filter) => filter.code === code)?.names ??
-      null;
-    return labelOf(found, locale, code);
-  };
-  const parent = body.path.length >= 2 ? body.path[body.path.length - 2] : undefined;
-  const parentLabel = parent === undefined ? t('a-parent') : (parent.name ?? parent.slug);
-  const inheritedSet =
-    links.effective.featureSet?.inherited === true ? links.effective.featureSet : null;
+  const byCode = new Map(attributes.map((item) => [item.code, item]));
+  const addable = attributes.filter(
+    (item) =>
+      (FILTERABLE as readonly string[]).includes(item.dataType) && !filters.includes(item.code),
+  );
+  const sent = inheritFilters ? [] : filters;
+  const tightens = (own ? featureSetId : '') !== (body.own?.featureSetId ?? '');
 
   async function save() {
     if (busy.current) return;
+    if (own && featureSetId === '') {
+      setFailure('need-feature-set');
+      return;
+    }
     busy.current = true;
     setPending(true);
-    setProblem(null);
+    setFailure(null);
     const result = await callApi<unknown>(
       'PUT',
-      `${API_CATEGORIES}/${body.category.id}/${LINKS_SUFFIX}`,
+      `catalog/admin/categories/${categoryId}/attribute-links`,
       {
-        featureSetId: draft.featureSetId,
-        filters: draft.filters,
-        ...(links.own === null ? {} : { version: links.own.version }),
+        ...(body.own === null ? {} : { version: body.own.version }),
+        featureSetId: own ? featureSetId : null,
+        filters: sent,
       },
       csrfToken,
     );
@@ -341,152 +267,108 @@ function LinksEditor({
       window.location.assign('/session-ended');
       return;
     }
-    setProblem(linksErrorKey(result.failure.status, result.failure.code));
+    setFailure(linksErrorKey(result.failure.code, result.failure.status));
   }
 
-  if (pickers === 'loading') return <SkeletonRows label={t('loading')} rows={3} />;
-  if (pickers === 'failed') {
-    return (
-      <LoadError
-        className="flex flex-col items-start gap-3"
-        message={t('load-error')}
-        retryLabel={tl('retry')}
-        onRetry={() => void fetchPickers()}
-      />
-    );
-  }
-  const choices = filterChoices(pickers.attributes, taken);
-  const ownSet = draft.featureSetId !== null;
   return (
-    <section aria-label={t('edit-label')} className="flex flex-col gap-5">
-      <Banner tone="info">{t('impact')}</Banner>
-      {problem === null ? null : (
-        <Banner tone="critical">
-          {t(`error.${problem}`)}
-          {problem === 'stale' ? (
-            <>
-              {' '}
-              <Button variant="secondary" onClick={onReload}>
-                {t('reload')}
-              </Button>
-            </>
-          ) : null}
-        </Banner>
-      )}
-      <RadioGroup
-        legend={t('feature-set')}
-        name="feature-set-source"
-        value={ownSet ? 'own' : 'inherit'}
-        disabled={pending}
-        options={[
-          {
-            value: 'inherit',
-            label:
-              inheritedSet === null && links.own?.featureSetId == null
-                ? t('inherit-none', { parent: parentLabel })
-                : t('inherit', { parent: parentLabel }),
-          },
-          { value: 'own', label: t('use-own') },
-        ]}
-        onChange={(value) =>
-          setDraft({
-            ...draft,
-            featureSetId: value === 'inherit' ? null : (pickers.featureSets[0]?.id ?? null),
-          })
-        }
-      />
-      {ownSet ? (
-        <Select
-          label={t('feature-set-pick')}
-          value={draft.featureSetId ?? ''}
-          disabled={pending}
-          options={pickers.featureSets.map((set) => ({
-            value: set.id,
-            label: `${labelOf(set.names, locale, set.code)} (${set.code})`,
-          }))}
-          onChange={(event) => setDraft({ ...draft, featureSetId: event.target.value })}
-        />
-      ) : null}
-      <div className="flex flex-col gap-2">
-        <h3 className="m-0 text-base font-semibold">{t('filters')}</h3>
-        {inheritedCodes.length > 0 ? (
-          <p className="m-0 text-sm text-fg-muted">
-            {t('inherited-filters', { parent: parentLabel, count: inheritedCodes.length })}
-          </p>
+    <section aria-label={t('editor')} className="flex flex-col gap-4">
+      {failure === null ? null : <Banner tone="critical">{t(`error.${failure}`)}</Banner>}
+      {listFailed ? <Banner tone="critical">{t('error.attributes-unavailable')}</Banner> : null}
+      <fieldset className="flex flex-col gap-2">
+        <legend className="font-semibold text-fg">{t('feature-set')}</legend>
+        <label className="flex items-center gap-2">
+          <input type="radio" name="fs-mode" checked={!own} onChange={() => setOwn(false)} />
+          {t('inherit')}
+        </label>
+        <label className="flex items-center gap-2">
+          <input type="radio" name="fs-mode" checked={own} onChange={() => setOwn(true)} />
+          {t('use-own')}
+        </label>
+        {own ? (
+          <Select
+            label={t('feature-set-select')}
+            placeholder={t('choose')}
+            value={featureSetId}
+            onChange={(event) => setFeatureSetId(event.target.value)}
+            options={sets.map((row) => ({ value: row.id, label: row.code }))}
+          />
         ) : null}
-        {draft.filters.length === 0 ? (
-          <p className="m-0 text-fg-muted">{t('no-own-filters')}</p>
-        ) : (
-          <ol
-            aria-label={t('own-filters')}
-            className="m-0 flex list-none flex-col divide-y divide-line rounded-lg border border-line bg-surface p-0"
-          >
-            {draft.filters.map((code, index) => (
-              <li key={code} className="flex flex-wrap items-center gap-2 px-4 py-1">
-                <span className="w-6 text-sm text-fg-muted">
-                  {inheritedCodes.length + index + 1}
-                </span>
-                <span className="min-w-0 flex-1 wrap-anywhere" dir={directionOf(locale)}>
-                  {nameOfCode(code)}
-                  <code className="ms-2 text-sm text-fg-muted">{code}</code>
-                </span>
-                <IconButton
-                  icon="chevron-up"
-                  label={t('move-up', { name: nameOfCode(code) })}
-                  disabled={pending || index === 0}
-                  onClick={() =>
-                    setDraft({ ...draft, filters: moveFilter(draft.filters, index, -1) })
-                  }
-                />
-                <IconButton
-                  icon="chevron-down"
-                  label={t('move-down', { name: nameOfCode(code) })}
-                  disabled={pending || index === draft.filters.length - 1}
-                  onClick={() =>
-                    setDraft({ ...draft, filters: moveFilter(draft.filters, index, 1) })
-                  }
-                />
-                <IconButton
-                  icon="x"
-                  label={t('remove', { name: nameOfCode(code) })}
-                  disabled={pending}
-                  onClick={() =>
-                    setDraft({ ...draft, filters: draft.filters.filter((entry) => entry !== code) })
-                  }
-                />
-              </li>
-            ))}
-          </ol>
+      </fieldset>
+      {tightens ? (
+        <Banner tone="info" title={t('impact.title')}>
+          {t('impact.body')}
+        </Banner>
+      ) : null}
+      <section aria-label={t('filters')} className="flex flex-col gap-2">
+        <h3 className="font-semibold text-fg">{t('filters')}</h3>
+        <CheckboxRow
+          label={t('inherit-filters')}
+          checked={inheritFilters}
+          onChange={(event) => setInheritFilters(event.target.checked)}
+        />
+        {inheritFilters ? null : (
+          <>
+            <ol className="divide-y divide-line rounded-md border border-line">
+              {filters.map((code, index) => (
+                <li key={code} className="flex flex-wrap items-center gap-2 px-4 py-2">
+                  <span className="text-fg-muted">{index + 1}.</span>
+                  <span className="flex-1 font-medium wrap-anywhere text-fg">
+                    {nameOf(byCode.get(code)?.names, code, defaultLocale)} ({code})
+                  </span>
+                  <Button
+                    variant="secondary"
+                    disabled={index === 0}
+                    onClick={() => setFilters(shifted(filters, index, -1))}
+                  >
+                    {t('up', { filter: code })}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={index === filters.length - 1}
+                    onClick={() => setFilters(shifted(filters, index, 1))}
+                  >
+                    {t('down', { filter: code })}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setFilters(filters.filter((entry) => entry !== code))}
+                  >
+                    {t('remove', { filter: code })}
+                  </Button>
+                </li>
+              ))}
+            </ol>
+            <div className="flex flex-wrap items-end gap-2">
+              <Select
+                label={t('add-filter')}
+                placeholder={t('choose')}
+                value={pick}
+                onChange={(event) => setPick(event.target.value)}
+                options={addable.map((item) => ({
+                  value: item.code,
+                  label: `${nameOf(item.names, item.code, defaultLocale)} (${item.code})`,
+                }))}
+              />
+              <Button
+                variant="secondary"
+                disabled={pick === ''}
+                onClick={() => {
+                  setFilters([...filters, pick]);
+                  setPick('');
+                }}
+              >
+                {t('add')}
+              </Button>
+            </div>
+          </>
         )}
-        {draft.filters.length >= MAX_OWN_FILTERS ? (
-          <p className="m-0 text-sm text-fg-muted">{t('error.too-many')}</p>
-        ) : (
-          <div className="flex flex-wrap items-end gap-2">
-            <Select
-              label={t('add-filter')}
-              placeholder={choices.length === 0 ? t('no-choices') : t('pick-filter')}
-              value={picker}
-              disabled={pending || choices.length === 0}
-              options={choices.map((attribute) => ({
-                value: attribute.code,
-                label: `${labelOf(attribute.names, locale, attribute.code)} (${t(`type.${attribute.dataType}`)})`,
-              }))}
-              onChange={(event) => {
-                const code = event.target.value;
-                if (code === '') return;
-                setDraft({ ...draft, filters: [...draft.filters, code] });
-                setPicker('');
-              }}
-            />
-          </div>
-        )}
-        <p className="m-0 text-sm text-fg-muted">{t('noindex-help')}</p>
-      </div>
+        <p className="text-sm text-fg-muted">{t('noindex')}</p>
+      </section>
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" disabled={pending} onClick={onCancel}>
           {t('cancel')}
         </Button>
-        <Button loading={pending} disabled={!changed || pending} onClick={() => void save()}>
+        <Button loading={pending} onClick={() => void save()}>
           {t('save')}
         </Button>
       </div>

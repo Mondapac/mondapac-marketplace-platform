@@ -263,6 +263,19 @@ export const AttributeValuesMergedAudit = defineAuditAction({
 });
 
 /**
+ * An admin converted the type of a published attribute (A8; plan ت۵). The two types are enum
+ * values; no name, label or value is kept.
+ */
+const CONVERTED_TYPES = ['integer', 'decimal', 'select', 'multi-select'] as const;
+export const AttributeDefinitionConvertedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.converted',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: { ...definitionShape, dataType: auditField.enumOf(CONVERTED_TYPES) },
+  after: { ...definitionShape, dataType: auditField.enumOf(CONVERTED_TYPES) },
+});
+
+/**
  * An admin archived a published attribute (A8). For a `material` one the actor is the confirming
  * admin and the row names the request and its requester, as the revision that clears `material`.
  */
@@ -521,6 +534,10 @@ export const CATALOG_CULTURE_TARGET = 'catalog.culture';
 const cultureStatus = auditField.enumOf(['draft', 'active', 'inactive'] as const);
 /** `inherit` is a mark left to the nearest ancestor (or the default, "required"). */
 const cultureMark = auditField.enumOf(['required', 'neutral', 'inherit'] as const);
+const cultureVisible = auditField.enumOf(['shown', 'hidden', 'inherit'] as const);
+/** A row's `visible` as the audit keeps it (null = inherit; ADR-0048 security review M2). */
+export const cultureVisibleOf = (visible: boolean | null): 'shown' | 'hidden' | 'inherit' =>
+  visible === null ? 'inherit' : visible ? 'shown' : 'hidden';
 
 /** An admin defined a culture (a draft). Whether it names a required certification type, never the text. */
 export const CultureCreatedAudit = defineAuditAction({
@@ -563,13 +580,13 @@ export const CultureCategoryMarkChangedAudit = defineAuditAction({
   before: {
     categoryId: auditField.id(),
     hadRow: auditField.boolean(),
-    visible: auditField.boolean(),
+    visible: cultureVisible,
     certificationMark: cultureMark,
   },
   after: {
     categoryId: auditField.id(),
     hasRow: auditField.boolean(),
-    visible: auditField.boolean(),
+    visible: cultureVisible,
     certificationMark: cultureMark,
   },
 });
@@ -830,6 +847,80 @@ export const VariantTypeSettingsChangedAudit = defineAuditAction({
   after: variantTypeShape,
 });
 
+/** The audit target types of seller category proposals and shelves (categories C9a). */
+export const CATALOG_CATEGORY_PROPOSAL_TARGET = 'catalog.category-proposal';
+export const CATALOG_SELLER_CATEGORY_TARGET = 'catalog.seller-category';
+
+/** A seller proposed a shelf under a platform category. Ids and a count, never the names. */
+export const CategoryProposedAudit = defineAuditAction({
+  action: 'catalog.category-proposal.proposed',
+  targetType: CATALOG_CATEGORY_PROPOSAL_TARGET,
+  actors: ['authenticated'],
+  after: { parentId: auditField.id(), localeCount: auditField.integer() },
+});
+
+/** An admin approved a proposal: the shelf it created. Ids only, never the names. */
+export const CategoryProposalApprovedAudit = defineAuditAction({
+  action: 'catalog.category-proposal.approved',
+  targetType: CATALOG_CATEGORY_PROPOSAL_TARGET,
+  actors: ['authenticated'],
+  after: { sellerId: auditField.id(), sellerCategoryId: auditField.id() },
+});
+
+/** An admin rejected a proposal with a prepared reason (a code, never text). */
+export const CategoryProposalRejectedAudit = defineAuditAction({
+  action: 'catalog.category-proposal.rejected',
+  targetType: CATALOG_CATEGORY_PROPOSAL_TARGET,
+  actors: ['authenticated'],
+  after: {
+    sellerId: auditField.id(),
+    reasonCode: auditField.enumOf([
+      'already-exists',
+      'too-narrow',
+      'too-broad',
+      'misleading',
+      'not-sold-here',
+      'other',
+    ] as const),
+  },
+});
+
+/** A proposal was cancelled by the seller, or by the system when SEL-26 was switched off. */
+export const CategoryProposalCancelledAudit = defineAuditAction({
+  action: 'catalog.category-proposal.cancelled',
+  targetType: CATALOG_CATEGORY_PROPOSAL_TARGET,
+  actors: ['authenticated', 'system'],
+  after: {
+    sellerId: auditField.id(),
+    reasonCode: auditField.enumOf(['seller-cancelled', 'permission-revoked'] as const),
+  },
+});
+
+/** An admin promoted a shelf into the platform tree (same id, created hidden). */
+export const SellerCategoryPromotedAudit = defineAuditAction({
+  action: 'catalog.seller-category.promoted',
+  targetType: CATALOG_SELLER_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  after: {
+    sellerId: auditField.id(),
+    parentId: auditField.id(),
+    level: auditField.integer(),
+    offersCleared: auditField.integer(),
+  },
+});
+
+/** An admin merged a shelf into a platform category; the shelf left the seller's Offers. */
+export const SellerCategoryMergedAudit = defineAuditAction({
+  action: 'catalog.seller-category.merged',
+  targetType: CATALOG_SELLER_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  after: {
+    sellerId: auditField.id(),
+    categoryId: auditField.id(),
+    offersCleared: auditField.integer(),
+  },
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
@@ -846,6 +937,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeDefinitionPublishedAudit,
   AttributeDefinitionDiscardedAudit,
   AttributeValuesMergedAudit,
+  AttributeDefinitionConvertedAudit,
   AttributeDefinitionArchivedAudit,
   AttributeDefinitionsMergedAudit,
   AttributeRelaxationRequestedAudit,
@@ -884,4 +976,10 @@ export const CATALOG_AUDIT_ACTIONS = [
   CategoryAttributesChangedAudit,
   MissingDetailsEmailRequestedAudit,
   VariantTypeSettingsChangedAudit,
+  CategoryProposedAudit,
+  CategoryProposalApprovedAudit,
+  CategoryProposalRejectedAudit,
+  CategoryProposalCancelledAudit,
+  SellerCategoryPromotedAudit,
+  SellerCategoryMergedAudit,
 ] as const;

@@ -103,8 +103,9 @@ class MemoryStore implements MissingDetailsEmailStore {
     const row = this.rows.get(this.key(draft));
     if (
       row !== undefined &&
-      row.requestedAt.epochMilliseconds > claim.notAfter.epochMilliseconds &&
-      (row.state === 'pending' || row.state === 'sent')
+      (row.state === 'pending' ||
+        (row.state === 'sent' &&
+          row.requestedAt.epochMilliseconds > claim.notAfter.epochMilliseconds))
     ) {
       return Promise.resolve(false);
     }
@@ -277,6 +278,51 @@ describe.each(['AU', 'ZZ'] as const)('Email sellers in market %s', (code) => {
     );
   });
 
+  it('is refused in a Login as Seller (acting-as) session', async () => {
+    const base = admin();
+    const acting = {
+      ...base,
+      actor: { ...base.actor, actingAs: { sellerId: ID(0x2000) } },
+    } as unknown as CallContext;
+    const result = await request().execute(acting, { productIds: [ID(0x1001)] });
+    expect(result.ok).toBe(false);
+    expect(store.rows.size).toBe(0);
+    expect(audits).toHaveLength(0);
+  });
+
+  it('keeps the claims and the audit entry in one unit: they roll back together', async () => {
+    const snapshot = new Map(store.rows);
+    const rollingBack = {
+      run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => {
+        try {
+          const result = await work();
+          if (!result.ok) throw new Error('rolled back');
+          return result;
+        } catch (error) {
+          store.rows = new Map(snapshot);
+          throw error;
+        }
+      },
+    } as unknown as UnitOfWork;
+    const failingAudit: AuditWriter = { record: () => Promise.reject(new Error('audit down')) };
+    const useCase = new MissingDetailsEmailSellers(createUseCaseGate(markets, check), {
+      unitOfWork: rollingBack,
+      detailsGapReader: gapReader,
+      attributes,
+      attributeAdminReader,
+      familyResolver,
+      policy,
+      sellerNames: { storeNames: () => Promise.resolve(new Map()) },
+      emailStore: store,
+      missingDetailsMailSettings: settings,
+      audit: failingAudit,
+      clock,
+    });
+    await expect(useCase.execute(admin(), { productIds: [ID(0x1001)] })).rejects.toThrow();
+    // No claim survives a failed audit write, so the seller can be asked again at once.
+    expect(store.rows.size).toBe(0);
+  });
+
   it('judges the products again, groups them by seller and names the details in English', async () => {
     const result = await request().execute(admin(), {
       productIds: [ID(0x1001), ID(0x1002), ID(0x1003)],
@@ -319,6 +365,8 @@ describe.each(['AU', 'ZZ'] as const)('Email sellers in market %s', (code) => {
 
   it('asks a seller about a product at most once in 7 days, then again', async () => {
     await request().execute(admin(), { productIds: [ID(0x1001)] });
+    // The mail goes out; a request still waiting in the queue is never replaced.
+    await job().execute(system(), {});
     now = T0.add({ milliseconds: 6 * DAY });
     const early = await request().execute(admin(), { productIds: [ID(0x1001), ID(0x1002)] });
     expect(

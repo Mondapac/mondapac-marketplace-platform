@@ -22,6 +22,12 @@ import type {
 } from '../application/ports/store-search.reader';
 import type { StoreHit } from '../domain/store-document';
 import type { ScopeRow } from '../domain/scope-counts';
+import type {
+  SuggestOfferHit,
+  SuggestReader,
+  SuggestRequest,
+  SuggestStoreHit,
+} from '../application/ports/suggest.reader';
 
 /**
  * {@link OfferSearchIndex} over PostgreSQL full-text search (ADR-0004): the three raw readers behind
@@ -33,6 +39,7 @@ export class PostgresOfferSearchIndex implements OfferSearchIndex {
     private readonly facets_: OfferFacetReader,
     private readonly scope_: OfferScopeReader,
     private readonly stores_: StoreSearchReader,
+    private readonly suggest_: SuggestReader,
   ) {}
 
   search(market: MarketContext, request: OfferSearchRequest): Promise<readonly OfferHit[]> {
@@ -59,5 +66,22 @@ export class PostgresOfferSearchIndex implements OfferSearchIndex {
   }
   searchStores(market: MarketContext, request: StoreSearchRequest): Promise<readonly StoreHit[]> {
     return this.stores_.searchStores(market, request);
+  }
+  suggestOffers(
+    market: MarketContext,
+    request: SuggestRequest,
+    limit: number,
+  ): Promise<readonly SuggestOfferHit[]> {
+    return this.suggest_.suggestOffers(market, request, limit);
+  }
+  suggestScopeRows(market: MarketContext, request: SuggestRequest): Promise<readonly ScopeRow[]> {
+    return this.suggest_.suggestScopeRows(market, request);
+  }
+  suggestStores(
+    market: MarketContext,
+    request: SuggestRequest,
+    limit: number,
+  ): Promise<readonly SuggestStoreHit[]> {
+    return this.suggest_.suggestStores(market, request, limit);
   }
 }

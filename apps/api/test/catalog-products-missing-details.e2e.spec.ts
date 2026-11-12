@@ -333,11 +333,12 @@ describe('products missing required details over HTTP (integration)', () => {
         assignedAt: START,
         version: 1,
       });
-      await http()
+      const viewerRefused = await http()
         .post(url)
         .set(adminSession(code, VIEWER, 5))
         .send(body)
         .expect(403);
+      expect(viewerRefused.body).toMatchObject({ code: 'access.denied' });
       for (const bad of [{}, { productIds: [] }, { productIds: ['nope'] }, { ...body, extra: 1 }]) {
         const refused = await http().post(url).set(editor).send(bad).expect(400);
         expect(refused.body).toMatchObject({ code: 'validation.failed' });

@@ -483,6 +483,7 @@
     "maxCategoryChangeTags": 50000,
     "maxCategoryImportRows": 1000,
     "maxCategoryImportBytes": 5242880,
+    "maxPendingCategoryProposals": 5,
     "maxVariantAttributes": 2,
     "units": [
       { "code": "g", "labels": { "en-AU": "g" } },

@@ -189,6 +189,18 @@ import { SeedCategoryTree } from './application/use-cases/seed-category-tree.use
 import { CATALOG_ASSISTANT_FACADE } from './contracts/catalog-assistant.facade';
 import { CATALOG_FACADE } from './contracts/catalog.facade';
 import { CATALOG_ACTIVITIES_FACADE } from './contracts/catalog-activities.facade';
+import { CATALOG_CULTURES_FACADE } from './contracts/catalog-cultures.facade';
+import { CatalogCulturesFacadeImplementation } from './presentation/catalog-cultures.facade';
+import { ActiveCulturesQuery } from './application/use-cases/active-cultures.use-case';
+import { ActiveCulturesSystemQuery } from './application/use-cases/active-cultures-system.use-case';
+import { CulturesByIdsQuery } from './application/use-cases/cultures-by-ids.use-case';
+import { CulturesByIdsSystemQuery } from './application/use-cases/cultures-by-ids-system.use-case';
+import { OfferCultureVisibility } from './application/use-cases/offer-culture-visibility.use-case';
+import { OfferCultureVisibilitySystem } from './application/use-cases/offer-culture-visibility-system.use-case';
+import {
+  SELLER_CERTIFICATE_TYPES,
+  SELLER_MEMBER_CULTURES,
+} from './application/ports/culture-visibility-sources';
 import { CatalogActivitiesFacadeImplementation } from './presentation/catalog-activities.facade';
 import { BusinessActivitiesActiveQuery } from './application/use-cases/business-activities-active.use-case';
 import { CatalogAssistantFacadeImplementation } from './presentation/catalog-assistant.facade';
@@ -389,7 +401,27 @@ import { FeatureSetEdit } from './application/use-cases/feature-set-edit.use-cas
 import { CategoryAttributeLinksSet } from './application/use-cases/category-attribute-links-set.use-case';
 import { CategoryAttributeLinksGet } from './application/use-cases/category-attribute-links-get.use-case';
 import { CATEGORY_ATTRIBUTE_LINK_STORE } from './application/ports/category-attribute-link.store';
+import { CULTURE_MEMBERS } from './application/ports/culture-members';
 import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
+import { SELLER_CATEGORY_STORE } from './application/ports/seller-category.store';
+import {
+  CATEGORY_PROPOSAL_CAPABILITY,
+  CATEGORY_PROPOSAL_POLICY,
+} from './application/ports/category-proposal-capability';
+import { OwnCategoryPropose } from './application/use-cases/own-category-propose.use-case';
+import { OwnCategoryProposalCancel } from './application/use-cases/own-category-proposal-cancel.use-case';
+import { OwnCategoryProposalsList } from './application/use-cases/own-category-proposals-list.use-case';
+import { CategoryProposalList } from './application/use-cases/category-proposal-list.use-case';
+import { CategoryProposalApprove } from './application/use-cases/category-proposal-approve.use-case';
+import { CategoryProposalReject } from './application/use-cases/category-proposal-reject.use-case';
+import { SellerCategoryAdminList } from './application/use-cases/seller-category-admin-list.use-case';
+import { SellerCategoryPromote } from './application/use-cases/seller-category-promote.use-case';
+import { SellerCategoryMerge } from './application/use-cases/seller-category-merge.use-case';
+import { OwnOfferSetShelf } from './application/use-cases/own-offer-set-shelf.use-case';
+import { CancelPendingProposals } from './application/use-cases/cancel-pending-proposals.use-case';
+import { sellerCategoryProposalSubscriptions } from './presentation/subscribers/seller-category-proposals.subscriptions';
+import { OwnCategoryProposalController } from './presentation/own-category-proposal.controller';
+import { CategoryProposalAdminController } from './presentation/category-proposal-admin.controller';
 import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
 import { AttributeAdminList } from './application/use-cases/attribute-admin-list.use-case';
 import { FeatureSetAdminGet } from './application/use-cases/feature-set-admin-get.use-case';
@@ -397,6 +429,7 @@ import { FeatureSetAdminList } from './application/use-cases/feature-set-admin-l
 import { ATTRIBUTE_ADMIN_READER } from './application/ports/attribute-admin.reader';
 import { ATTRIBUTE_IMPACT_READER } from './application/ports/attribute-impact.reader';
 import { AttributeImpactGet } from './application/use-cases/attribute-impact-get.use-case';
+import { AttributeConvert } from './application/use-cases/attribute-convert.use-case';
 import { AttributeMerge } from './application/use-cases/attribute-merge.use-case';
 import { AttributeValuesMerge } from './application/use-cases/attribute-values-merge.use-case';
 import { AttributeArchive } from './application/use-cases/attribute-archive.use-case';
@@ -590,6 +623,9 @@ const PORT = {
   suggestions: ATTRIBUTE_VALUE_SUGGESTION_STORE,
   topicSuggestions: TOPIC_SUGGESTION_STORE,
   claimLocales: CLAIM_TERM_LOCALES,
+  cultureMembers: CULTURE_MEMBERS,
+  memberCultures: SELLER_MEMBER_CULTURES,
+  certificateTypes: SELLER_CERTIFICATE_TYPES,
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
@@ -601,6 +637,9 @@ const PORT = {
   contentFilter: ContentFilter,
   variantAdminReader: VARIANT_ADMIN_READER,
   variantTypeSettings: VARIANT_TYPE_SETTINGS_STORE,
+  shelves: SELLER_CATEGORY_STORE,
+  capability: CATEGORY_PROPOSAL_CAPABILITY,
+  proposalPolicy: CATEGORY_PROPOSAL_POLICY,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -741,6 +780,8 @@ const RESTRUCTURE_DEPS = {
     TopicAdminController,
     OwnBrandController,
     PublicBrandController,
+    OwnCategoryProposalController,
+    CategoryProposalAdminController,
   ],
   imports: [CertificationModule, SellersModule, CatalogReferencesModule, IdentityModule],
   providers: [
@@ -868,6 +909,7 @@ const RESTRUCTURE_DEPS = {
     },
     useCaseProvider(BusinessActivityGet, { unitOfWork: true, activities: true }),
     useCaseProvider(BusinessActivityCreate, {
+      contentFilter: true,
       unitOfWork: true,
       activities: true,
       treeReader: true,
@@ -877,6 +919,7 @@ const RESTRUCTURE_DEPS = {
       ids: true,
     }),
     useCaseProvider(BusinessActivityEdit, {
+      contentFilter: true,
       unitOfWork: true,
       activities: true,
       treeReader: true,
@@ -906,11 +949,65 @@ const RESTRUCTURE_DEPS = {
     }),
     useCaseProvider(CultureList, { unitOfWork: true, cultureReader: true }),
     useCaseProvider(CultureGet, { unitOfWork: true, cultures: true }),
+    // The culture read for sellers' membership (ADR-0047 decision 3).
+    useCaseProvider(CulturesByIdsQuery, { unitOfWork: true, cultureReader: true }),
+    useCaseProvider(CulturesByIdsSystemQuery, { unitOfWork: true, cultureReader: true }),
+    useCaseProvider(ActiveCulturesQuery, { unitOfWork: true, cultureReader: true }),
+    useCaseProvider(ActiveCulturesSystemQuery, { unitOfWork: true, cultureReader: true }),
+    // The culture filter (multi-culture package 3a; ADR-0047 decisions 5 and 6).
+    useCaseProvider(OfferCultureVisibility, {
+      unitOfWork: true,
+      offers: true,
+      claims: true,
+      evaluator: true,
+      cultureReader: true,
+      cultures: true,
+      memberCultures: true,
+      certificateTypes: true,
+    }),
+    useCaseProvider(OfferCultureVisibilitySystem, {
+      unitOfWork: true,
+      offers: true,
+      claims: true,
+      evaluator: true,
+      cultureReader: true,
+      cultures: true,
+      memberCultures: true,
+      certificateTypes: true,
+    }),
+    {
+      provide: CATALOG_CULTURES_FACADE,
+      inject: [
+        CulturesByIdsQuery,
+        CulturesByIdsSystemQuery,
+        ActiveCulturesQuery,
+        ActiveCulturesSystemQuery,
+        OfferCultureVisibility,
+        OfferCultureVisibilitySystem,
+      ],
+      useFactory: (
+        byIds: CulturesByIdsQuery,
+        byIdsSystem: CulturesByIdsSystemQuery,
+        active: ActiveCulturesQuery,
+        activeSystem: ActiveCulturesSystemQuery,
+        visibility: OfferCultureVisibility,
+        visibilitySystem: OfferCultureVisibilitySystem,
+      ) =>
+        new CatalogCulturesFacadeImplementation({
+          byIds,
+          byIdsSystem,
+          active,
+          activeSystem,
+          visibility,
+          visibilitySystem,
+        }),
+    },
     useCaseProvider(CultureCreate, {
       unitOfWork: true,
       cultures: true,
       policy: true,
       matcher: true,
+      claimLocales: true,
       evaluator: true,
       audit: true,
       clock: true,
@@ -921,9 +1018,13 @@ const RESTRUCTURE_DEPS = {
       cultures: true,
       policy: true,
       matcher: true,
+      claimLocales: true,
+      cultureMembers: true,
       evaluator: true,
       audit: true,
       clock: true,
+      outbox: true,
+      ids: true,
     }),
     useCaseProvider(CultureCategoryMarks, {
       unitOfWork: true,
@@ -938,8 +1039,17 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       audit: true,
       clock: true,
+      outbox: true,
+      ids: true,
     }),
-    useCaseProvider(CultureCategoryMarkClear, { unitOfWork: true, cultures: true, audit: true }),
+    useCaseProvider(CultureCategoryMarkClear, {
+      unitOfWork: true,
+      cultures: true,
+      audit: true,
+      outbox: true,
+      ids: true,
+      clock: true,
+    }),
     useCaseProvider(SeedCultures, {
       unitOfWork: true,
       cultures: true,
@@ -947,6 +1057,7 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       evaluator: true,
       matcher: true,
+      claimLocales: true,
       clock: true,
       ids: true,
     }),
@@ -1013,6 +1124,14 @@ const RESTRUCTURE_DEPS = {
       impact: true,
     }),
     useCaseProvider(AttributeValuesMerge, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeConvert, {
       unitOfWork: true,
       attributeStore: true,
       relaxations: true,
@@ -1488,6 +1607,88 @@ const RESTRUCTURE_DEPS = {
       ids: true,
       audit: true,
       contentFilter: true,
+    }),
+    useCaseProvider(OwnCategoryPropose, {
+      unitOfWork: true,
+      contentFilter: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      capability: true,
+      proposalPolicy: true,
+      eligibility: true,
+      counters: true,
+      counterKeys: true,
+    }),
+    useCaseProvider(OwnCategoryProposalCancel, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnCategoryProposalsList, {
+      unitOfWork: true,
+      shelves: true,
+      capability: true,
+      proposalPolicy: true,
+    }),
+    useCaseProvider(CategoryProposalList, { unitOfWork: true, shelves: true, sellerNames: true }),
+    useCaseProvider(CategoryProposalApprove, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      capability: true,
+      policy: true,
+    }),
+    useCaseProvider(CategoryProposalReject, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(SellerCategoryAdminList, { unitOfWork: true, shelves: true }),
+    useCaseProvider(SellerCategoryPromote, {
+      unitOfWork: true,
+      contentFilter: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      shelves: true,
+    }),
+    useCaseProvider(SellerCategoryMerge, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnOfferSetShelf, { unitOfWork: true, shelves: true, clock: true }),
+    useCaseProvider(CancelPendingProposals, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
     }),
     useCaseProvider(BrandProductIdsQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandQuery, { unitOfWork: true, brandReader: true }),
@@ -2382,6 +2583,12 @@ const RESTRUCTURE_DEPS = {
         sendTopicSuggestionNoticesJob(topicSuggestionNotices),
       ],
     ),
+    // Seller category proposals: SEL-26 switched off cancels the pending ones (categories C9a).
+    registerSubscriptionsFrom(
+      'catalog',
+      [CancelPendingProposals],
+      (cancel: CancelPendingProposals) => sellerCategoryProposalSubscriptions(cancel),
+    ),
     // Certification events consumed (design 5.5, 9.5; slice 12).
     registerSubscriptionsFrom(
       'catalog',
@@ -2604,6 +2811,7 @@ const RESTRUCTURE_DEPS = {
     CATALOG_ASSISTANT_FACADE,
     CATALOG_FILTERS_FACADE,
     CATALOG_ACTIVITIES_FACADE,
+    CATALOG_CULTURES_FACADE,
   ],
 })
 export class CatalogModule {}

@@ -287,14 +287,14 @@ describe('the checked-in role seed (identity design 5.6)', () => {
         .map((r) => [r.scope, r.kind, r.seedCode, r.permissionKeys.length]),
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
-      ['platform', 'default', 'onboarding-compliance', 12],
-      ['platform', 'default', 'catalogue-moderator', 18],
+      ['platform', 'default', 'onboarding-compliance', 13],
+      ['platform', 'default', 'catalogue-moderator', 20],
       ['platform', 'default', 'operations-support', 9],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 30],
+      ['platform', 'default', 'viewer', 31],
       ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
-      ['seller', 'default', 'store-manager', 7],
+      ['seller', 'default', 'store-manager', 8],
       ['seller', 'default', 'order-fulfilment', 0],
       ['seller', 'default', 'catalogue-stock', 3],
       ['seller', 'default', 'customer-service', 1],
@@ -349,11 +349,13 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'sellers.business-details.view',
       'sellers.seller-file.review',
       'sellers.seller-health.recalculate',
+      'sellers.seller-settings.edit',
       'sellers.seller.view',
     ]);
     expect(keysOf('catalogue-moderator')).toEqual([
       'catalog.attribute-suggestion.decide',
       'catalog.attribute.view',
+      'catalog.category-proposal.decide',
       'catalog.category-tree.edit',
       'catalog.category-tree.view',
       'catalog.platform-import.run',
@@ -369,6 +371,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'certification.type.view',
       'identity.seller-access.view',
       'pricing.price-hold.view',
+      'sellers.seller-settings.edit',
       'sellers.seller.view',
     ]);
     expect(keysOf('operations-support')).toEqual([
@@ -398,6 +401,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'sellers.seller.view',
     ]);
     expect(keysOf('store-manager')).toEqual([
+      'catalog.own-category.propose',
       'catalog.own-import.run',
       'catalog.own-product.edit',
       'catalog.own-product.view',

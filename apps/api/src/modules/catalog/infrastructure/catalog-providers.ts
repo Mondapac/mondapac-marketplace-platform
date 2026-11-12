@@ -1,4 +1,16 @@
 import type { Provider } from '@nestjs/common';
+import {
+  CATEGORY_PROPOSAL_CAPABILITY,
+  CATEGORY_PROPOSAL_POLICY,
+  type CategoryProposalCapability,
+  type CategoryProposalPolicy,
+} from '../application/ports/category-proposal-capability';
+import {
+  SELLER_CATEGORY_STORE,
+  type SellerCategoryStore,
+} from '../application/ports/seller-category.store';
+import { PrismaSellerCategoryStore } from './prisma-seller-category.store';
+import { SellersCategoryProposalCapability } from './sellers-category-proposal-capability';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -35,6 +47,17 @@ import {
   type WorkingCopyRepository,
 } from '../application/ports/working-copy.repository';
 import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
+import { cultureMembersProvider } from './sellers-culture-members';
+import {
+  SELLER_CERTIFICATE_TYPES,
+  SELLER_MEMBER_CULTURES,
+  type SellerCertificateTypes,
+  type SellerMemberCultures,
+} from '../application/ports/culture-visibility-sources';
+import {
+  CertificationSellerCertificateTypes,
+  SellersMemberCultures,
+} from './culture-visibility-sources';
 import { CLAIM_TERM_LOCALES, type ClaimTermLocales } from '../application/ports/claim-term-locales';
 import {
   ATTRIBUTE_DEFINITION_STORE,
@@ -619,6 +642,20 @@ export const catalogProviders: readonly Provider[] = [
     useFactory: (prisma: PrismaService): SellerSavedFilterRepository =>
       new PrismaSellerSavedFilterRepository(prisma),
   },
+  cultureMembersProvider,
+  // The sources of the culture visibility rule (multi-culture package 3a).
+  {
+    provide: SELLER_MEMBER_CULTURES,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerMemberCultures =>
+      new SellersMemberCultures(sellers),
+  },
+  {
+    provide: SELLER_CERTIFICATE_TYPES,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): SellerCertificateTypes =>
+      new CertificationSellerCertificateTypes(certification),
+  },
   {
     provide: SELLER_ELIGIBILITY_READER,
     inject: [SELLERS_FACADE],
@@ -817,5 +854,25 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): VariantTypeSettingsStore =>
       new PrismaVariantTypeSettingsStore(prisma),
+  },
+  {
+    provide: SELLER_CATEGORY_STORE,
+    inject: [PrismaService, ID_GENERATOR],
+    useFactory: (prisma: PrismaService, ids: IdGenerator): SellerCategoryStore =>
+      new PrismaSellerCategoryStore(prisma, ids),
+  },
+  {
+    provide: CATEGORY_PROPOSAL_CAPABILITY,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): CategoryProposalCapability =>
+      new SellersCategoryProposalCapability(sellers),
+  },
+  {
+    provide: CATEGORY_PROPOSAL_POLICY,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): CategoryProposalPolicy => {
+      const policy = new ConfigCatalogMarketPolicy(markets);
+      return { maxPending: (market) => policy.maxPendingCategoryProposals(market) };
+    },
   },
 ];

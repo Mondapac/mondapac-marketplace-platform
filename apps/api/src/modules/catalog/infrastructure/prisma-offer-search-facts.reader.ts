@@ -300,10 +300,28 @@ export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
       _max: { updatedAt: true },
     });
     const aliases = await tx.catalogBrandAlias.count();
+    // Multi-culture package 3a: a culture's status or required type changes which Offers its code
+    // belongs to (`culture_codes`), so it is part of the stamp; the reindex that follows is also the
+    // backfill of the column. At most 200 cultures per Market.
+    const cultures = await tx.catalogCulture.findMany({
+      where: { marketId: market.marketId },
+      select: { code: true, status: true, requiredCertificationType: true },
+      orderBy: { code: 'asc' },
+    });
+    // A culture's mark and visibility rows (Mojtaba, #848 item 3): a set moves the latest
+    // `updated_at`, a clear moves the count, so the reindex follows a mark change the direct
+    // subtree sync handed off (or missed).
+    const marks = await tx.catalogCultureCategory.aggregate({
+      where: { marketId: market.marketId },
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    });
     const text = [
       ...definitions.map((d) => `${d.code}:${d.status}:${d.publishedRevisionId ?? '-'}`),
       `brands:${brands._count._all}:${brands._max.updatedAt?.toISOString() ?? '-'}`,
       `aliases:${aliases}`,
+      ...cultures.map((c) => `culture:${c.code}:${c.status}:${c.requiredCertificationType ?? '-'}`),
+      `culture-marks:${marks._count._all}:${marks._max.updatedAt?.toISOString() ?? '-'}`,
     ].join('|');
     return createHash('sha256').update(text).digest('hex').slice(0, 32);
   }

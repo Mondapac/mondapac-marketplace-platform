@@ -90,11 +90,14 @@ describe('pages list', () => {
     expect(screen.getAllByRole('row')).toHaveLength(5);
   });
 
-  it('shows each title as text until the page editor ships', async () => {
+  it('links a saved page by id and an unchanged system page by key', async () => {
     mount();
-    await screen.findByText('Ramadan specials');
-    expect(screen.queryByRole('link', { name: 'Ramadan specials' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Home' })).toBeNull();
+    expect(
+      (await screen.findByRole('link', { name: 'Ramadan specials' })).getAttribute('href'),
+    ).toBe('/content/pages/p1');
+    expect(screen.getByRole('link', { name: 'Home' }).getAttribute('href')).toBe(
+      '/content/pages/home',
+    );
   });
 
   it('shows the status, unpublished changes and the last publish in the Market zone', async () => {

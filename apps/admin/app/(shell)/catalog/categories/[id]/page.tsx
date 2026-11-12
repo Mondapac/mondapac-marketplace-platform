@@ -7,11 +7,6 @@ import {
   READ_PERMISSION,
   RESTRUCTURE_PERMISSION,
 } from '../../../../../src/categories/types.ts';
-import {
-  EDIT_ATTRIBUTES_PERMISSION,
-  VIEW_ATTRIBUTES_PERMISSION,
-  type AttributeAccess,
-} from '../../../../../src/categories/attribute-links-model.ts';
 import { AdminShell } from '../../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../../src/server/session.ts';
 
@@ -36,11 +31,6 @@ export default async function CategoryPage({
   }
   const title = t('categories.title');
   const { permissionKeys } = gate.session;
-  const attributeAccess: AttributeAccess = permissionKeys.includes(EDIT_ATTRIBUTES_PERMISSION)
-    ? 'edit'
-    : permissionKeys.includes(VIEW_ATTRIBUTES_PERMISSION)
-      ? 'view'
-      : 'none';
   return (
     <AdminShell session={gate.session} activeId="categories" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
@@ -49,7 +39,6 @@ export default async function CategoryPage({
           id={id}
           canEdit={permissionKeys.includes(EDIT_PERMISSION)}
           canRestructure={permissionKeys.includes(RESTRUCTURE_PERMISSION)}
-          attributeAccess={attributeAccess}
           csrfToken={gate.session.csrfToken}
         />
       ) : (

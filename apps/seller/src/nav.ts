@@ -63,6 +63,22 @@ export const sellerNav: NavConfig = {
       anyOf: ['catalog.own-product.view'],
     },
     {
+      id: 's_categories',
+      icon: 'layout',
+      labelKey: 'nav.categories',
+      href: '/category-proposals',
+      group: 'catalogue',
+      anyOf: ['catalog.own-category.propose'],
+    },
+    {
+      id: 's_tag_suggestions',
+      icon: 'tag',
+      labelKey: 'nav.tagSuggestions',
+      href: '/tag-suggestions',
+      group: 'catalogue',
+      anyOf: ['catalog.own-product.view'],
+    },
+    {
       id: 's_reviews',
       icon: 'star',
       labelKey: 'nav.reviews',

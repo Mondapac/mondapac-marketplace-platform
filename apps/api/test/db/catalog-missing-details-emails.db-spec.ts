@@ -95,6 +95,18 @@ describe.each(TEST_MARKETS)('missing details email requests in market %s (databa
     });
   });
 
+  it('never replaces a request that is still waiting in the queue, however old', async () => {
+    const d = draft(uuid7(), uuid7());
+    await claim(market, d, T0);
+    const much = T0.add({ milliseconds: 30 * DAY });
+    expect(await claim(market, { ...d, productName: 'Rice' }, much)).toBe(false);
+    const pending = await unit(market, () => store.pending(market, 500));
+    expect(pending.find((row) => row.productId === d.productId)).toMatchObject({
+      productName: 'Dates',
+      requestedAt: T0,
+    });
+  });
+
   it('claims again at once when the seller was not reached', async () => {
     const skipped = draft(uuid7(), uuid7());
     const failed = draft(uuid7(), uuid7());

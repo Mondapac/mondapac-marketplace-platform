@@ -4,9 +4,8 @@ import { Badge, Banner, EmptyState, LoadError, SkeletonRows, Tabs } from '@monda
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
-import { When } from '../shared/when.tsx';
 import { AttributeLinksTab } from './attribute-links-tab.tsx';
-import type { AttributeAccess } from './attribute-links-model.ts';
+import { When } from '../shared/when.tsx';
 import { CategoryImageSection } from './category-image.tsx';
 import { CategoryToolbar } from './category-toolbar.tsx';
 import { directionOf, indexOf } from './tree-model.ts';
@@ -46,7 +45,6 @@ export function CategoryDetails({
   tree,
   canEdit = false,
   canRestructure = false,
-  attributeAccess = 'none',
   csrfToken = '',
   onChanged,
   onCreated,
@@ -57,8 +55,6 @@ export function CategoryDetails({
   readonly canEdit?: boolean;
   /** `catalog.category-tree.restructure`: shows Move, Merge and Archive. */
   readonly canRestructure?: boolean;
-  /** What the person may do with attribute links (`catalog.attribute.view` / `.edit`). */
-  readonly attributeAccess?: AttributeAccess;
   readonly csrfToken?: string;
   /** A change was saved: the owner reads the tree again and remounts this view. */
   readonly onChanged?: (note?: string, focusId?: string) => void;
@@ -135,9 +131,7 @@ export function CategoryDetails({
       ) : null}
       <Tabs
         label={t('details.tabs')}
-        items={DETAIL_TABS.filter(
-          (value) => value !== 'attribute-links' || attributeAccess !== 'none',
-        ).map((value) => ({ id: value, label: t(`details.tab.${value}`) }))}
+        items={DETAIL_TABS.map((value) => ({ id: value, label: t(`details.tab.${value}`) }))}
         activeId={tab}
         onSelect={(value) => setTab(value as DetailTab)}
       />
@@ -149,8 +143,12 @@ export function CategoryDetails({
           onChanged={onChanged ?? noop}
         />
       ) : null}
-      {tab === 'attribute-links' && attributeAccess !== 'none' ? (
-        <AttributeLinksTab body={body} canEdit={attributeAccess === 'edit'} csrfToken={csrfToken} />
+      {tab === 'attribute-links' ? (
+        <AttributeLinksTab
+          categoryId={id}
+          canEdit={canEdit && onChanged !== undefined}
+          csrfToken={csrfToken}
+        />
       ) : null}
       {tab === 'products' ? <ProductsTab body={body} /> : null}
       {tab === 'history' ? <HistoryTab body={body} /> : null}

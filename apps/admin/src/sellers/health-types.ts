@@ -45,3 +45,20 @@ export interface SellerHealthRead {
 export const healthPath = (sellerId: string): string => `sellers/admin/${sellerId}/health`;
 export const recalculatePath = (sellerId: string): string =>
   `sellers/admin/${sellerId}/health/recalculate`;
+
+// Answer of GET sellers/admin/health-queue: unhealthy sellers, worst score first.
+export interface HealthQueueItem {
+  readonly sellerId: string;
+  readonly storeName: string | null;
+  readonly slug: string | null;
+  readonly day: string;
+  readonly score: number;
+  readonly lowestMetric: string;
+}
+
+export interface HealthQueueRead {
+  readonly items: readonly HealthQueueItem[];
+  readonly truncated: boolean;
+}
+
+export const HEALTH_QUEUE_PATH = 'sellers/admin/health-queue';

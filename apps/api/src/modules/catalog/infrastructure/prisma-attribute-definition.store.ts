@@ -146,6 +146,25 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
     if (count !== 1) throw new StaleAggregateError('attribute-definition', state.id);
   }
 
+  async saveConversion(
+    market: MarketContext,
+    definition: AttributeDefinition,
+    authorAccountId: Id<'Account'>,
+  ): Promise<void> {
+    const state = definition.state;
+    this.#sameMarket(market, state);
+    await this.#insertRevision(market, state, authorAccountId, null);
+    const { count } = await this.prisma.tx(market).catalogAttributeDefinition.updateMany({
+      where: { marketId: market.marketId, id: state.id, version: state.version - 1 },
+      data: {
+        publishedRevisionId: state.revisionId,
+        version: state.version,
+        dataType: state.dataType,
+      },
+    });
+    if (count !== 1) throw new StaleAggregateError('attribute-definition', state.id);
+  }
+
   async lockAtVersion(
     market: MarketContext,
     id: Id<'AttributeDefinition'>,

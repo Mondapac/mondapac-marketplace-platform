@@ -95,6 +95,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'settings/admin/market-settings',
     // The blog posts of the Market (blog; query: `status`, `kind`, `owner`, `page`), read only.
     'blog/admin/posts',
+    // The blog categories and tags the editor offers (blog), read only.
+    'blog/admin/taxonomy',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
@@ -114,6 +116,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/feature-sets',
     // The value suggestions waiting for a decision (catalog, attributes A5).
     'catalog/admin/attribute-suggestions',
+    // The seller category proposals waiting for a decision (catalog, categories C9a; query:
+    // `afterId`, `limit`).
+    'catalog/admin/category-proposals',
+    // The tag suggestions waiting for a decision (catalog topics, product tags T5).
+    'catalog/admin/topic-suggestions',
     // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
     'catalog/admin/attribute-relaxations',
     // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
@@ -199,6 +206,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'wallet/admin/credits',
     // A fresh two-step code for one admin action (identity).
     'identity/admin/step-up/verify',
+    // A new blog post, as a draft (blog).
+    'blog/admin/posts',
     // A new brand (catalog), and keeping a group of the merge queue apart.
     'catalog/admin/brands',
     'catalog/admin/brands/merge-queue/dismiss',
@@ -237,6 +246,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
  */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   POST: [
+    // One order (ordering, order detail decisions 1 and 3): cancel and refund the whole order,
+    // refund one seller order, and write an internal note. The notes and the order are read by the
+    // page server.
+    'ordering/admin/orders/:id/cancel',
+    'ordering/admin/orders/:id/seller-orders/:id/refunds',
+    'ordering/admin/orders/:id/notes',
     // Start, resume or discard one checked import (catalog).
     'catalog/admin/platform-imports/:id/start',
     'catalog/admin/platform-imports/:id/resume',
@@ -301,10 +316,21 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/move',
     'catalog/admin/categories/:id/merge',
     'catalog/admin/categories/:id/archive',
+    // Approve or reject a seller's category proposal with the version seen (catalog, categories
+    // C9a: key `catalog.category-proposal.decide`, a prepared reason code on reject), and promote
+    // or merge a seller's shelf (protected key `catalog.seller-category.promote-merge`).
+    'catalog/admin/category-proposals/:id/approve',
+    'catalog/admin/category-proposals/:id/reject',
+    'catalog/admin/shelves/:id/promote',
+    'catalog/admin/shelves/:id/merge',
     // Decide a seller's value suggestion with the version seen (catalog, attributes A5).
     'catalog/admin/attribute-suggestions/:id/approve',
     'catalog/admin/attribute-suggestions/:id/map',
     'catalog/admin/attribute-suggestions/:id/reject',
+    // Decide a seller's tag suggestion with the version seen (catalog topics, product tags T5).
+    'catalog/admin/topic-suggestions/:id/approve',
+    'catalog/admin/topic-suggestions/:id/map',
+    'catalog/admin/topic-suggestions/:id/reject',
     // Ask to turn off Material on a published attribute, and confirm or withdraw such a request
     // (catalog, attributes A2 part 3: two administrators).
     'catalog/admin/attributes/:id/relaxation-requests',
@@ -314,6 +340,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // request (catalog, attributes A8: key `catalog.attribute.restructure`).
     'catalog/admin/attributes/:id/merge-values',
     'catalog/admin/attributes/:id/merge',
+    'catalog/admin/attributes/:id/convert',
     'catalog/admin/attributes/:id/archive',
     'catalog/admin/attributes/:id/archive-requests',
     'catalog/admin/attribute-archive-requests/:id/confirm',
@@ -321,6 +348,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A storefront slide's approval side and its other changes (storefront): send the draft for
     // approval, approve it, pause, resume, archive, and copy an earlier version into the draft.
     'storefront/admin/slides/:id/submit',
+    // Send a blog post's draft for review (blog); the backend's automatic checks may refuse.
+    'blog/admin/posts/:id/submit',
+    // A reviewer's two decisions on the version in review (blog): approve it (a self-approval asks
+    // for a two-step code) or send it back with a note.
+    'blog/admin/posts/:id/approve',
+    'blog/admin/posts/:id/request-changes',
     'storefront/admin/slides/:id/approve',
     'storefront/admin/slides/:id/pause',
     'storefront/admin/slides/:id/resume',
@@ -348,11 +381,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'reviews/admin/moderation/:id/dismiss-reports',
   ],
   PUT: [
-    // A category's feature set and filter list, with the version read (catalog, categories C8).
-    'catalog/admin/categories/:id/attribute-links',
     // Change a feature set: names, groups and requirement levels, with the version read
     // (catalog, attributes A4).
     'catalog/admin/feature-sets/:id',
+    // Set the feature set and filters of a category, with the version read (attributes A4).
+    'catalog/admin/categories/:id/attribute-links',
     // Set or replace a category's image, with the category version seen (catalog, categories
     // C3c). A base64 picture: the body cap of this path is the larger image one.
     'catalog/admin/categories/:id/image',
@@ -372,6 +405,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/sellers/:id/payout-terms',
     // A storefront slide's whole draft (storefront).
     'storefront/admin/slides/:id',
+    // A blog post's whole draft: the content and the address (blog).
+    'blog/admin/posts/:id/draft',
     // The whole content of a brand, with the version seen (catalog).
     'catalog/admin/brands/:id',
     // The whole content of a business activity, with the version seen (catalog).
@@ -407,12 +442,15 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
-    // What a category holds and inherits: feature set and filters (catalog, categories C8).
-    'catalog/admin/categories/:id/attribute-links',
     // One category with its path and history, and the impact of a change on its subtree
     // (catalog, read-only; the impact takes the `action`).
     'catalog/admin/categories/:id',
     'catalog/admin/categories/:id/impact',
+    // One seller's shelves, every status (catalog, categories C9a), read-only.
+    'catalog/admin/sellers/:id/shelves',
+    // One blog post with its working and live versions, and its automatic checks (blog).
+    'blog/admin/posts/:id',
+    'blog/admin/posts/:id/checks',
     // One platform product with its working copy, for the product form (catalog).
     'catalog/admin/platform-products/:id',
     // How many offers of other sellers go off sale if sizes are added (catalog, variants V9).
@@ -444,6 +482,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // What merging values or archiving an attribute reaches (catalog, attributes A8).
     'catalog/admin/attributes/:id/impact',
     'catalog/admin/feature-sets/:id',
+    // The feature set and filters of one category, with what it ends up with (attributes A4).
+    'catalog/admin/categories/:id/attribute-links',
     // One variant type with its options and settings (catalog, variants V6).
     'catalog/admin/variant-types/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
@@ -471,7 +511,20 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'identity/admin/sellers': ['state', 'limit', 'after'],
   'payments/admin/connected-accounts': ['status', 'cursor'],
-  'ordering/admin/orders': ['status', 'cursor'],
+  // The page mode and the filters of the orders list (the API validates every value).
+  'ordering/admin/orders': [
+    'status',
+    'cursor',
+    'page',
+    'pageSize',
+    'sort',
+    'direction',
+    'paymentState',
+    'fulfilment',
+    'sellerId',
+    'from',
+    'to',
+  ],
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
@@ -509,6 +562,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/category-proposals': ['afterId', 'limit'],
   'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
@@ -590,6 +644,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     // The API's own cursor: epoch milliseconds of the scheduled date, a dot and the request id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
+  'catalog/admin/category-proposals': { afterId: UUID, limit: /^[0-9]{1,2}$/ },
   'catalog/admin/brands': {
     status: /^(draft|active|archived)$/,
     limit: /^[0-9]{1,3}$/,
@@ -698,11 +753,61 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
   return text === '' ? '' : `?${text}`;
 }
 
+/**
+ * The storefront page editor's routes (storefront): a page is named by its id or, while a system
+ * page was never changed, by its key; a slot by its key; a module by its id. Each segment is
+ * checked on its own, so no other path shape reaches the API. The navigation page has its own
+ * routes and is not a page key here.
+ */
+const PAGE_KEYS = [
+  'home',
+  'offers',
+  'express',
+  'category',
+  'search',
+  'product',
+  'sellers',
+  'seller',
+  'cart',
+  'checkout',
+  'order-confirmation',
+  'account',
+];
+const PAGE_SEGMENTS: Readonly<Record<string, (value: string) => boolean>> = {
+  ':page': (value) => UUID.test(value) || PAGE_KEYS.includes(value),
+  ':slot': (value) => /^[a-z][a-z0-9-]{0,31}$/.test(value),
+  ':placement': (value) => UUID.test(value),
+};
+const PAGE_ROUTES: Readonly<Record<string, readonly string[]>> = {
+  // The page's settings, replaced as a whole (a draft change; publishing is another route).
+  PUT: [
+    'storefront/admin/pages/:page',
+    // One module's settings and switch, and the order of a slot's modules.
+    'storefront/admin/pages/:page/slots/:slot/modules/:placement',
+    'storefront/admin/pages/:page/slots/:slot/order',
+  ],
+  // A module added to a slot.
+  POST: ['storefront/admin/pages/:page/slots/:slot/modules'],
+  // A module removed from a slot.
+  DELETE: ['storefront/admin/pages/:page/slots/:slot/modules/:placement'],
+};
+
 /** A delivery zone code as the API takes it (promotions free-shipping threshold of one zone). */
 const ZONE_CODE = /^[A-Za-z0-9_-]{1,64}$/;
 
 function isAllowed(method: string, path: readonly string[]): boolean {
   if (ALLOWED[method]?.has(path.join('/')) === true) return true;
+  const pageRoute = (PAGE_ROUTES[method] ?? []).some((template) => {
+    const parts = template.split('/');
+    return (
+      parts.length === path.length &&
+      parts.every((part, index) => {
+        const check = PAGE_SEGMENTS[part];
+        return check === undefined ? part === path[index] : check(path[index] ?? '');
+      })
+    );
+  });
+  if (pageRoute) return true;
   // The free-delivery threshold of one zone (promotions): the code is not a UUID.
   if (
     method === 'PUT' &&
@@ -758,6 +863,9 @@ const MAX_BODY_BYTES = 16 * 1024;
  * 14500 kB for this one path and checks the real size itself; every other path keeps 16 KB.
  */
 const UPLOAD_PATH = 'catalog/admin/platform-imports';
+/** A blog post's draft: up to 200 blocks of plain text, so more than the usual cap, still under the API's 64 kB JSON limit (blog). */
+const BLOG_DRAFT_PATH = /^blog\/admin\/posts\/[0-9a-f-]{36}\/draft$/i;
+const MAX_BLOG_DRAFT_BYTES = 60 * 1024;
 const MAX_UPLOAD_BODY_BYTES = 14_500 * 1024;
 /**
  * A category image (categories C3c) is a picture of at most 4 MiB as base64 (about 5.6 MB). The API
@@ -778,6 +886,7 @@ const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/i
 /** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
 function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
+  if (method === 'PUT' && BLOG_DRAFT_PATH.test(target)) return MAX_BLOG_DRAFT_BYTES;
   if (method === 'POST' && CATEGORY_IMPORT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
   if (method === 'POST' && CERT_DOCUMENT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;

@@ -55,6 +55,13 @@ import { CERTIFICATION_PERMISSIONS } from './contracts/permissions';
 import { CERTIFICATION_AUDIT_ACTIONS } from './domain/audit';
 import { CERTIFICATION_EVENTS } from './domain/events';
 import { SellerCertificateOverview } from './application/use-cases/seller-certificate-overview.use-case';
+import { SellerValidCertificateTypes } from './application/use-cases/seller-valid-certificate-types.use-case';
+import { SellerValidCertificateTypesSystem } from './application/use-cases/seller-valid-certificate-types-system.use-case';
+import { SellersOfIssuerSystem } from './application/use-cases/sellers-of-issuer-system.use-case';
+import {
+  CERTIFICATION_REGISTRY_REPOSITORY,
+  type CertificationRegistryRepository,
+} from './application/ports/registry.repository';
 import { SendDecisionMail } from './application/use-cases/send-decision-mail.use-case';
 import { reviewProviders } from './infrastructure/review-providers';
 import { AdminCertificateReviewController } from './presentation/admin-certificate-review.controller';
@@ -129,6 +136,23 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
       (context) => manufacturerBasisEnabledIn(markets, context.market.marketId),
     ),
 }));
+
+/**
+ * The valid-types pair (multi-culture package 3a; ADR-0048 M1): the claim facts and the seller
+ * zones `evaluateClaims` reads, and the clock, so both answer by `sellerCertificateValidAt`.
+ */
+const validTypesUseCases = [SellerValidCertificateTypes, SellerValidCertificateTypesSystem].map(
+  (type): FactoryProvider => ({
+    provide: type,
+    inject: [USE_CASE_GATE, CLAIM_FACTS_READER, SELLER_ZONES_SOURCE, CLOCK],
+    useFactory: (
+      gate: UseCaseGate,
+      facts: ClaimFactsReader,
+      zones: SellerZonesSource,
+      clock: Clock,
+    ) => new type(gate, { facts, zones, clock }),
+  }),
+);
 
 /**
  * The certification bounded context (docs/design/domain/certification.md; ADR-0013), filled
@@ -250,6 +274,16 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
     ),
     ...readerUseCases,
     ...evaluateUseCases,
+    ...validTypesUseCases,
+    {
+      provide: SellersOfIssuerSystem,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, CERTIFICATION_REGISTRY_REPOSITORY],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        registry: CertificationRegistryRepository,
+      ) => new SellersOfIssuerSystem(gate, { unitOfWork, registry }),
+    },
     {
       provide: CERTIFICATION_FACADE,
       inject: [
@@ -262,6 +296,9 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         CertificationTypes,
         CertificationTypesSystem,
         SellerCertificateOverview,
+        SellerValidCertificateTypes,
+        SellerValidCertificateTypesSystem,
+        SellersOfIssuerSystem,
         CertifiedCategories,
         AssertCategoriesRetirable,
         AssertCategoriesRetirableSystem,
@@ -277,6 +314,9 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
         certificationTypes: CertificationTypes,
         certificationTypesSystem: CertificationTypesSystem,
         sellerCertificateOverview: SellerCertificateOverview,
+        sellerValidCertificateTypes: SellerValidCertificateTypes,
+        sellerValidCertificateTypesSystem: SellerValidCertificateTypesSystem,
+        sellersOfIssuerSystem: SellersOfIssuerSystem,
         certifiedCategories: CertifiedCategories,
         assertCategoriesRetirable: AssertCategoriesRetirable,
         assertCategoriesRetirableSystem: AssertCategoriesRetirableSystem,
@@ -292,6 +332,9 @@ const evaluateUseCases = [EvaluateClaims, EvaluateClaimsSystem].map((type): Fact
           certificationTypes,
           certificationTypesSystem,
           sellerCertificateOverview,
+          sellerValidCertificateTypes,
+          sellerValidCertificateTypesSystem,
+          sellersOfIssuerSystem,
           certifiedCategories,
           assertCategoriesRetirable,
           assertCategoriesRetirableSystem,

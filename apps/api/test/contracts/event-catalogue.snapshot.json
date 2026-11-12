@@ -88,6 +88,29 @@
     }
   },
   {
+    "type": "catalog.culture-approvals-invalidated.v1",
+    "aggregateType": "culture",
+    "fields": {
+      "cultureId": "id"
+    }
+  },
+  {
+    "type": "catalog.culture-category-mark-changed.v1",
+    "aggregateType": "culture-category-mark",
+    "fields": {
+      "cultureId": "id",
+      "categoryId": "id"
+    }
+  },
+  {
+    "type": "catalog.culture-status-changed.v1",
+    "aggregateType": "culture",
+    "fields": {
+      "cultureId": "id",
+      "status": "enumOf(draft|active|inactive)"
+    }
+  },
+  {
     "type": "catalog.image-taken-down.v1",
     "aggregateType": "product-image",
     "fields": {
@@ -210,6 +233,57 @@
     "type": "catalog.platform-category-created.v1",
     "aggregateType": "platform-category",
     "fields": {
+      "categoryId": "id"
+    }
+  },
+  {
+    "type": "catalog.category-proposed.v1",
+    "aggregateType": "category-proposal",
+    "fields": {
+      "proposalId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.category-proposal-approved.v1",
+    "aggregateType": "category-proposal",
+    "fields": {
+      "proposalId": "id",
+      "sellerId": "id",
+      "sellerCategoryId": "id"
+    }
+  },
+  {
+    "type": "catalog.category-proposal-rejected.v1",
+    "aggregateType": "category-proposal",
+    "fields": {
+      "proposalId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.category-proposal-cancelled.v1",
+    "aggregateType": "category-proposal",
+    "fields": {
+      "proposalId": "id",
+      "sellerId": "id",
+      "reasonCode": "enumOf(seller-cancelled|permission-revoked)"
+    }
+  },
+  {
+    "type": "catalog.seller-category-promoted.v1",
+    "aggregateType": "seller-category",
+    "fields": {
+      "sellerCategoryId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.seller-category-merged.v1",
+    "aggregateType": "seller-category",
+    "fields": {
+      "sellerCategoryId": "id",
+      "sellerId": "id",
       "categoryId": "id"
     }
   },
@@ -998,6 +1072,15 @@
       "revisionId": "id",
       "cause": "enumOf(edited|cancelled|reapply-refused)",
       "byKind": "enumOf(seller|admin)"
+    }
+  },
+  {
+    "type": "sellers.seller-culture-status-changed.v1",
+    "aggregateType": "seller-culture",
+    "fields": {
+      "sellerId": "id",
+      "cultureId": "id",
+      "status": "enumOf(requested|approved|rejected)"
     }
   },
   {

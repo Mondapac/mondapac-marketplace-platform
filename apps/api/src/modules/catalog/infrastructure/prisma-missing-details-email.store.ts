@@ -81,7 +81,8 @@ export class PrismaMissingDetailsEmailStore implements MissingDetailsEmailStore 
         sellerId: draft.sellerId,
         productId: draft.productId,
         OR: [
-          { requestedAt: { lte: toDate(claim.notAfter) } },
+          // A request still pending is in the queue: it is never replaced, however old.
+          { state: 'sent', requestedAt: { lte: toDate(claim.notAfter) } },
           { state: { in: ['skipped', 'failed'] } },
         ],
       },
