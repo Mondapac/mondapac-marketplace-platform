@@ -99,6 +99,16 @@ export class SellerOrdersController {
   @ApiQuery({ name: 'status', required: false, enum: ['to-ship', 'shipped', 'delivered'] })
   @ApiQuery({ name: 'cursor', required: false, description: 'The `nextCursor` of the last page.' })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 100; default 25.' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'Page number from 1: answers an offset page with its total (page mode).',
+  })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 100; default 25. Needs page.' })
+  @ApiQuery({ name: 'sort', required: false, enum: ['paid', 'total'], description: 'Needs page.' })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'from', required: false, description: 'ISO instant: paid at or after it.' })
+  @ApiQuery({ name: 'to', required: false, description: 'ISO instant: paid before it.' })
   @ApiOkResponse({ type: SellerOrderPageBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
@@ -108,6 +118,7 @@ export class SellerOrdersController {
     @Query('status') status: unknown,
     @Query('cursor') cursor: unknown,
     @Query('limit') limit: unknown,
+    @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
@@ -115,6 +126,12 @@ export class SellerOrdersController {
       status,
       cursor,
       limit: parseLimit(limit),
+      page: parseLimit(query['page']),
+      pageSize: parseLimit(query['pageSize']),
+      sort: query['sort'],
+      direction: query['direction'],
+      from: query['from'],
+      to: query['to'],
     });
     this.log(
       'ordering.seller-list-orders-route',

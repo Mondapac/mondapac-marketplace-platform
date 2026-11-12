@@ -36,7 +36,7 @@ export default async function OrdersPage() {
   return (
     <SellerShell session={page.session} activeId="s_orders" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-      <SellerOrders initial={page.page} />
+      <SellerOrders initial={page.page} paging={page.paging} />
     </SellerShell>
   );
 }

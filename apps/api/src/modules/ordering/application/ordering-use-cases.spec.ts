@@ -67,6 +67,8 @@ import { OrderPaymentRefQuery } from './use-cases/order-payment-ref.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { ViewOrderDocument } from './use-cases/view-order-document.use-case';
 import { ViewOrder } from './use-cases/view-order.use-case';
+import { encodeSellerCursor } from './fulfilment-flow';
+import { encodeCursor } from './read-flow';
 
 // Checkout, payment confirmation and the order reads in memory on both Market fixtures (AU in
 // AUD, ZZ in JPY): the seller split and totals, stock reserved before the page opens, committed
@@ -1142,9 +1144,108 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           orders: [],
           nextCursor: null,
           counts: { pendingPayment: 0, confirmed: 0, cancelled: 0 },
+          paging: null,
         },
       });
       expect(labels.calls).toEqual([]);
+    });
+
+    describe('page mode', () => {
+      const list = (input: Record<string, unknown>) =>
+        new AdminListOrders(gate, deps).execute(adminContext(), input);
+      const refused = (fields: { path: string; code: string }[]) => ({
+        ok: false,
+        error: { code: 'validation.failed', fields },
+      });
+
+      it('answers an offset page with the total of the filter and no cursor', async () => {
+        const result = await start();
+        if (!result.ok) throw new Error('checkout failed');
+
+        const first = await list({ page: 1, pageSize: 10, sort: 'total', direction: 'asc' });
+        const beyond = await list({ page: 2, pageSize: 10 });
+        const filtered = await list({ page: 1, paymentState: 'captured' });
+
+        expect(first.ok && first.value.orders.map((o) => o.orderId)).toEqual([
+          result.value.orderId,
+        ]);
+        expect(first.ok && first.value.paging).toEqual({ total: 1, page: 1, pageSize: 10 });
+        expect(first.ok && first.value.nextCursor).toBeNull();
+        expect(beyond.ok && beyond.value.orders).toEqual([]);
+        expect(beyond.ok && beyond.value.paging).toEqual({ total: 1, page: 2, pageSize: 10 });
+        expect(filtered.ok && filtered.value.paging?.total).toBe(0);
+        // The counts per status stay the Market's, whatever the filter.
+        expect(filtered.ok && filtered.value.counts.pendingPayment).toBe(1);
+      });
+
+      it('stops page numbers at row 10,000 and names the refusal', async () => {
+        expect(await list({ page: 400, pageSize: 25 })).toMatchObject({ ok: true });
+        expect(await list({ page: 401, pageSize: 25 })).toEqual(
+          refused([{ path: 'page', code: 'too-deep' }]),
+        );
+        expect(await list({ page: 100, pageSize: 100 })).toMatchObject({ ok: true });
+        expect(await list({ page: 101, pageSize: 100 })).toEqual(
+          refused([{ path: 'page', code: 'too-deep' }]),
+        );
+      });
+
+      it('refuses what does not fit, field by field', async () => {
+        expect(await list({ page: 0 })).toEqual(refused([{ path: 'page', code: 'range' }]));
+        expect(await list({ page: 1, pageSize: 101 })).toEqual(
+          refused([{ path: 'pageSize', code: 'range' }]),
+        );
+        expect(await list({ page: 1, sort: 'name', direction: 'up' })).toEqual(
+          refused([
+            { path: 'sort', code: 'value' },
+            { path: 'direction', code: 'value' },
+          ]),
+        );
+        expect(await list({ sort: 'total' })).toEqual(
+          refused([{ path: 'sort', code: 'needs-page' }]),
+        );
+        // A page number and a cursor (or a limit) are two ways to say where to start.
+        expect(
+          await list({ page: 2, cursor: encodeCursor(T0, id<'Order'>(1)), limit: 10 }),
+        ).toEqual(
+          refused([
+            { path: 'cursor', code: 'with-page' },
+            { path: 'limit', code: 'with-page' },
+          ]),
+        );
+        expect(
+          await list({
+            paymentState: 'paid',
+            fulfilment: 'lost',
+            sellerId: 'x',
+            from: 'yesterday',
+          }),
+        ).toEqual(
+          refused([
+            { path: 'paymentState', code: 'value' },
+            { path: 'fulfilment', code: 'value' },
+            { path: 'sellerId', code: 'format' },
+            { path: 'from', code: 'format' },
+          ]),
+        );
+        expect(await list({ from: '2026-11-02T00:00:00Z', to: '2026-11-01T00:00:00Z' })).toEqual(
+          refused([{ path: 'to', code: 'range' }]),
+        );
+      });
+
+      it('takes the new filters in cursor mode too, and none on a customer list', async () => {
+        const result = await start();
+        if (!result.ok) throw new Error('checkout failed');
+
+        const dated = await list({ from: '2000-01-01T00:00:00Z', to: '2100-01-01T00:00:00Z' });
+        const none = await list({ fulfilment: 'delivered' });
+
+        expect(dated.ok && dated.value.orders).toHaveLength(1);
+        expect(dated.ok && dated.value.paging).toBeNull();
+        expect(none.ok && none.value.orders).toEqual([]);
+        expect(
+          await new ListOrders(gate, deps).execute(customer, { paymentState: 'captured' }),
+        ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      });
     });
   });
   describe('delivery quote', () => {
@@ -1550,6 +1651,118 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(bad).toEqual({
         ok: false,
         error: { code: 'validation.failed', fields: [{ path: 'status', code: 'value' }] },
+      });
+    });
+
+    describe('page mode', () => {
+      const refused = (fields: { path: string; code: string }[]) => ({
+        ok: false,
+        error: { code: 'validation.failed', fields },
+      });
+
+      it('answers an offset page with the total of the filter and no cursor', async () => {
+        const order = await paid();
+        await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
+
+        const first = await list(sellerA, {
+          page: 1,
+          pageSize: 10,
+          sort: 'total',
+          direction: 'asc',
+        });
+        const shipped = await list(sellerA, { page: 1, status: 'shipped' });
+        const toShip = await list(sellerA, { page: 1, status: 'to-ship' });
+        const beyond = await list(sellerA, { page: 2, pageSize: 10 });
+
+        expect(first.ok && first.value.paging).toEqual({ total: 1, page: 1, pageSize: 10 });
+        expect(first.ok && first.value.nextCursor).toBeNull();
+        expect(shipped.ok && shipped.value.sellerOrders).toHaveLength(1);
+        expect(toShip.ok && toShip.value.paging?.total).toBe(0);
+        expect(beyond.ok && beyond.value.sellerOrders).toEqual([]);
+        expect(beyond.ok && beyond.value.paging).toEqual({ total: 1, page: 2, pageSize: 10 });
+      });
+
+      it('keeps the cursor page free of paging and refuses stray or deep params', async () => {
+        await paid();
+
+        const cursorMode = await list(sellerA, {});
+        expect(cursorMode.ok && cursorMode.value.paging).toBeNull();
+        expect(await list(sellerA, { sort: 'total' })).toEqual(
+          refused([{ path: 'sort', code: 'needs-page' }]),
+        );
+        expect(await list(sellerA, { page: 400, pageSize: 25 })).toMatchObject({ ok: true });
+        expect(await list(sellerA, { page: 401, pageSize: 25 })).toEqual(
+          refused([{ path: 'page', code: 'too-deep' }]),
+        );
+        expect(await list(sellerA, { page: 0 })).toEqual(
+          refused([{ path: 'page', code: 'range' }]),
+        );
+        expect(await list(sellerA, { page: 1, sort: 'created' })).toEqual(
+          refused([{ path: 'sort', code: 'value' }]),
+        );
+        expect(await list(sellerA, { page: 1, pageSize: 101 })).toEqual(
+          refused([{ path: 'pageSize', code: 'range' }]),
+        );
+        expect(await list(sellerA, { page: 1, direction: 'up' })).toEqual(
+          refused([{ path: 'direction', code: 'value' }]),
+        );
+        // A page number and a cursor (or a limit) are two ways to say where to start.
+        expect(
+          await list(sellerA, {
+            page: 2,
+            cursor: encodeSellerCursor(T0, id<'SellerOrder'>(1)),
+            limit: 10,
+          }),
+        ).toEqual(
+          refused([
+            { path: 'cursor', code: 'with-page' },
+            { path: 'limit', code: 'with-page' },
+          ]),
+        );
+        expect(await list(sellerA, { page: 1, cursor: 'nope' })).toEqual(
+          refused([{ path: 'cursor', code: 'format' }]),
+        );
+      });
+
+      it('counts only the shop itself, and takes the day range in cursor mode too', async () => {
+        await paid();
+
+        const mine = await list(sellerA, { page: 1 });
+        const other = await list(sellerB, { page: 1 });
+        const cursorModeIn = await list(sellerA, { from: '2000-01-01T00:00:00Z' });
+        const cursorModeOut = await list(sellerA, { from: '2999-01-01T00:00:00Z' });
+
+        expect(mine.ok && mine.value.paging?.total).toBe(1);
+        expect(other.ok && other.value.paging?.total).toBe(1);
+        expect(mine.ok && other.ok && mine.value.sellerOrders[0]!.sellerOrderId).not.toBe(
+          other.ok && other.value.sellerOrders[0]!.sellerOrderId,
+        );
+        expect(cursorModeIn.ok && cursorModeIn.value.sellerOrders).toHaveLength(1);
+        expect(cursorModeIn.ok && cursorModeIn.value.paging).toBeNull();
+        expect(cursorModeOut.ok && cursorModeOut.value.sellerOrders).toEqual([]);
+      });
+
+      it('filters by payment time and refuses a backwards or malformed range', async () => {
+        await paid();
+        const far = '2999-01-01T00:00:00Z';
+
+        const before = await list(sellerA, { page: 1, to: '2000-01-01T00:00:00Z' });
+        const after = await list(sellerA, { page: 1, from: far });
+        const inside = await list(sellerA, {
+          page: 1,
+          from: '2000-01-01T00:00:00Z',
+          to: far,
+        });
+
+        expect(before.ok && before.value.paging?.total).toBe(0);
+        expect(after.ok && after.value.paging?.total).toBe(0);
+        expect(inside.ok && inside.value.paging?.total).toBe(1);
+        expect(await list(sellerA, { from: far, to: '2000-01-01T00:00:00Z' })).toEqual(
+          refused([{ path: 'to', code: 'range' }]),
+        );
+        expect(await list(sellerA, { from: 'yesterday' })).toEqual(
+          refused([{ path: 'from', code: 'format' }]),
+        );
       });
     });
 
