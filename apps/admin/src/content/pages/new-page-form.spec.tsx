@@ -117,6 +117,21 @@ describe('new page form', () => {
     expect(select.textContent).not.toContain('Old');
   });
 
+  it('goes back to the list when the answer names no page', async () => {
+    call.mockImplementation((method, path) =>
+      path === 'storefront/admin/catalogue'
+        ? Promise.resolve({ ok: true, status: 200, body: catalogue })
+        : path === 'catalog/admin/categories'
+          ? Promise.resolve({ ok: true, status: 200, body: tree })
+          : Promise.resolve({ ok: true, status: 201, body: { id: null } }),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('radio', { name: /Info page/ }));
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Hours' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/content'));
+  });
+
   it('creates the draft and opens it', async () => {
     mount();
     fireEvent.click(await screen.findByRole('radio', { name: /Campaign landing/ }));
@@ -129,7 +144,7 @@ describe('new page form', () => {
       target: { value: '2026-12-08T09:00' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Create draft' }));
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/content'));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/content/pages/new-id'));
     expect(posts()[0]).toEqual([
       'POST',
       'storefront/admin/pages',

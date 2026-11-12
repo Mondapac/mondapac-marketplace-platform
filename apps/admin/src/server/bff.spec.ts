@@ -1132,13 +1132,49 @@ describe('relay of the storefront slides', () => {
     }
   });
 
-  it('keeps one page, and the other methods on the pages, closed for now', async () => {
+  it('changes one page by its id or system key: settings, modules and their order', async () => {
+    const slot = 'storefront/admin/pages';
     for (const [method, path] of [
-      ['GET', `storefront/admin/pages/${id}`],
-      ['PUT', `storefront/admin/pages/${id}`],
-      ['DELETE', `storefront/admin/pages/${id}`],
-      ['PUT', 'storefront/admin/pages'],
+      ['PUT', `${slot}/${id}`],
+      ['PUT', `${slot}/home`],
+      ['POST', `${slot}/${id}/slots/main/modules`],
+      ['POST', `${slot}/offers/slots/top/modules`],
+      ['PUT', `${slot}/${id}/slots/no-results/modules/${id}`],
+      ['DELETE', `${slot}/${id}/slots/main/modules/${id}`],
+      ['PUT', `${slot}/${id}/slots/main/order`],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+      expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+    }
+  });
+
+  it('keeps every other page shape closed', async () => {
+    const base = 'storefront/admin/pages';
+    for (const [method, path] of [
+      // One page is read by the page server, and a page is never deleted or replaced as a list.
+      ['GET', `${base}/${id}`],
+      ['DELETE', `${base}/${id}`],
+      ['PUT', base],
       ['POST', 'storefront/admin/catalogue'],
+      // The navigation has its own routes; a word that is no system page is no page.
+      ['PUT', `${base}/navigation`],
+      ['PUT', `${base}/Home`],
+      ['PUT', `${base}/nope`],
+      ['PUT', `${base}/${id}/extra`],
+      // A slot is a plain key and a module is a UUID.
+      ['POST', `${base}/${id}/slots/Main/modules`],
+      ['POST', `${base}/${id}/slots/main%2F..%2Fmodules/modules`],
+      ['POST', `${base}/${id}/slots/${'a'.repeat(33)}/modules`],
+      ['PUT', `${base}/${id}/slots/main/modules/not-an-id`],
+      ['DELETE', `${base}/${id}/slots/main/modules/home`],
+      ['PUT', `${base}/${id}/slots/main/modules`],
+      ['POST', `${base}/${id}/slots/main/order`],
+      ['DELETE', `${base}/${id}/slots/main/order`],
+      // Publish, archive and restore come with their own screens.
+      ['POST', `${base}/${id}/publish`],
+      ['POST', `${base}/${id}/archive`],
+      ['POST', `${base}/${id}/restore`],
     ] as const) {
       const ok = upstreamOk();
       expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(404);
