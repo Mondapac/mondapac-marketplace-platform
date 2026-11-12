@@ -519,9 +519,9 @@ No data change is needed now (Mojtaba agrees).
 ### 4.7 Seller category and proposal (CAT-51 to CAT-54)
 `pending` → `approved` | `rejected` | `cancelled`. Proposal by `own-category.propose`
 (`mayProposeCategories` yes at the command; pending cap; claim-text check on names and
-description). The CAT-54 pending cap is a **soft cap** (Q-K7, accepted): two concurrent proposals may
-exceed it by one, since catalog has no per-seller root to serialise on; it is an anti-spam limit, not
-a safety rule, and the next proposal is refused until the count is under the cap. Decision by `category-proposal.approve` / `.reject` (key
+description). The CAT-54 pending cap is **exact**: every write to a seller's shelves and proposals first takes
+the seller's transaction lock (`catalog.lock-seller-shelves`, C9a, 12 Nov 2026), so two concurrent
+proposals cannot both pass the count. This replaces the soft cap that Q-K7 had accepted. Decision by `category-proposal.approve` / `.reject` (key
 `catalog.category-proposal.decide`), always required regardless of CAT-36. On
 `sellers.category-proposals-revoked.v1`, pending proposals become `cancelled` with reason
 `permission-revoked` (CAT-51, AC 35). Promote (same id into the platform tree; free platform slug)
@@ -531,6 +531,8 @@ Hassan G1), so a merge **clears** the shelf on the seller's Offers and the admin
 platform category to the products through a revision (Hadi confirmed: CAT-53 is corrected to "a
 merge clears the shelf; it does not move it"). A promoted category keeps its id and stops being a
 shelf. Neither changes a published revision. Team decision 19.2 item 9.
+
+**Seller proposals and shelves, package C9a (categories plan v8).** Seller routes under `catalog/seller`: `GET category-proposals` (own proposals, shelves, `canPropose`, `maxPending`), `POST category-proposals` (`own-category.propose`), `POST category-proposals/:id/cancel`, `PUT offers/:id/shelf` (`own-offer.set-shelf`, key `catalog.own-product.edit`). Admin routes under `catalog/admin`: `GET category-proposals` (queue, oldest first, keyset), `POST category-proposals/:id/approve` and `/reject` (key `catalog.category-proposal.decide`), `GET sellers/:id/shelves`, `POST shelves/:id/promote` and `/merge` (protected `catalog.seller-category.promote-merge`); none from an acting-as session. The seller is always the session's. Propose asks `mayProposeCategories` and `sellingEligibility`, and only `ok(true)` passes; approve asks `mayProposeCategories` again and refuses otherwise (`category-proposal.not-allowed`; the revocation handler `catalog.cancel-pending-proposals` cancels). Names and descriptions pass the claim-text check per locale, failing closed; at most `maxPendingCategoryProposals` wait (soft) and 20 a day (`category-propose.seller.day`); a name already waiting or already a live shelf under the same parent, after normalisation, is `category-proposal.duplicate`. Approve creates the shelf with a slug unique for the seller (Latin words of the default-locale name, or `shelf`, numbered when taken). Promote is a structural write under the tree rules of an add (level, sibling names, a free slug given by the admin, the claim-text check) and inserts a hidden platform category with the shelf's id; promote and merge close the shelf and clear it on the seller's Offers (`shelf-cleared` history rows). Events `catalog.category-proposed.v1`, `-proposal-approved`, `-rejected`, `-cancelled`, `catalog.seller-category-promoted.v1`, `-merged.v1`; one audit row per write (ids and codes only).
 
 ## 5. Certification tags on Offers (CERT-20 to CERT-22, CERT-15, CERT-45; ADR-0028)
 
@@ -864,6 +866,7 @@ path (SL 4 pattern).
 | `maxCategoryImportBytes` | `5242880` (C7a) | `1048576` | 14, C7a |
 | `maxVariantsPerProduct` | `100` (Ali, Phase 4 ruling) | `3` (so tests reach the limit) | 2.1, 4.2, 9.4 (`offer-moved`), 14 |
 | `maxCategoryDepth` | `4` (categories plan v7, Q1) | `3` | Categories plan; the editor of C3 |
+| `maxPendingCategoryProposals` | `5` (CAT-54; default 5 when unset) | `3` | 4.7; categories C9a |
 | `reviewChecks` | The four check codes and their label keys of 8.3a | Two codes | 8.3a |
 
 Locales come from the Market's `supportedLocales` (INTL-10); the language tab is hidden when the

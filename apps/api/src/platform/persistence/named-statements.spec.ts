@@ -447,6 +447,40 @@ describe.each(['AU', 'ZZ'] as const)('catalog.lock-category-slug in market %s', 
   });
 });
 
+describe.each(['AU', 'ZZ'] as const)('catalog.lock-seller-shelves in market %s', (code) => {
+  const market = testMarketContext(code, 'default');
+  const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+
+  it("takes the exclusive lock of one seller's shelves keyed on the unit Market and tenant", async () => {
+    const { runner, seen } = runnerAnswering([{ locked: true }]);
+    const rows = await runNamedStatement(runner, market, 'catalog.lock-seller-shelves', {
+      sellerId: ID(7),
+    });
+    expect(rows).toEqual([{ locked: true }]);
+    expect(seen[0]!.sql).toContain('pg_advisory_xact_lock(');
+    expect(seen[0]!.sql).toContain('1707::int4');
+    expect(seen[0]!.values).toEqual([market.marketId, market.tenantId, ID(7)]);
+    const request = { operation: '$queryRaw', args: seen[0] };
+    expect(isApprovedStatement(request, market)).toBe(true);
+    expect(isApprovedStatement(request, other)).toBe(false);
+    expect(isApprovedStatement({ operation: '$executeRaw', args: seen[0] }, market)).toBe(false);
+    const forged = { sql: seen[0]!.sql, values: [market.marketId, market.tenantId, "x' OR '1"] };
+    expect(isApprovedStatement({ operation: '$queryRaw', args: forged }, market)).toBe(false);
+  });
+
+  it('refuses a malformed seller id and a missing row', async () => {
+    const { runner } = runnerAnswering([]);
+    for (const sellerId of ["x' OR '1", '', 'not-a-uuid']) {
+      await expect(
+        runNamedStatement(runner, market, 'catalog.lock-seller-shelves', { sellerId }),
+      ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+    }
+    await expect(
+      runNamedStatement(runner, market, 'catalog.lock-seller-shelves', { sellerId: ID(7) }),
+    ).rejects.toBeInstanceOf(NamedStatementRefusedError);
+  });
+});
+
 describe.each(['AU', 'ZZ'] as const)('customers.lock-address-book in market %s', (code) => {
   const market = testMarketContext(code, 'default');
   const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
