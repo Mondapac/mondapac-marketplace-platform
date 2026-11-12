@@ -9,6 +9,7 @@ import type { CategorySeo, CategoryText } from './category-edit';
 import type { CategoryName, PlatformCategoryState } from './platform-category';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
 import type { TopicContent, TopicState, TopicTerm } from './topic';
+import type { ShelfText } from './seller-category';
 
 /**
  * The claim-checked fields (catalog design 6.2, AC 21): every customer- or search-visible text
@@ -40,6 +41,8 @@ export const CLAIM_CHECKED_FIELD_IDS = [
   'topic.intro',
   'topic.slug',
   'topic.term',
+  'seller-category.description',
+  'seller-category.name',
 ] as const;
 export type ClaimCheckedFieldId = (typeof CLAIM_CHECKED_FIELD_IDS)[number];
 
@@ -162,6 +165,13 @@ export const CATEGORY_TEXT_FIELDS: Record<keyof CategoryText, FieldDisposition> 
   keywords: checked('platform-category.keyword'),
 };
 
+/** A seller shelf's and a proposal's names (categories C9a): shown on the seller's shop page. */
+export const SHELF_TEXT_FIELDS: Record<keyof ShelfText, FieldDisposition> = {
+  locale: exempt('internal-code'),
+  name: checked('seller-category.name'),
+  description: checked('seller-category.description'),
+};
+
 export const CATEGORY_SEO_FIELDS: Record<keyof CategorySeo, FieldDisposition> = {
   title: checked('platform-category.seo-title'),
   description: checked('platform-category.seo-description'),
@@ -280,6 +290,7 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
   CATEGORY_NAME_FIELDS,
   CATEGORY_TEXT_FIELDS,
   CATEGORY_SEO_FIELDS,
+  SHELF_TEXT_FIELDS,
   PLATFORM_CATEGORY_FIELDS,
   OFFER_FIELDS,
   TOPIC_TERM_FIELDS,
@@ -407,6 +418,12 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   PlatformCategory: { noCustomerText: 'aggregate class around PlatformCategoryState' },
   CategoryText: { table: 'CATEGORY_TEXT_FIELDS' },
   CategorySeo: { table: 'CATEGORY_SEO_FIELDS' },
+  ShelfText: { table: 'SHELF_TEXT_FIELDS' },
+  CategoryProposalView: {
+    noCustomerText:
+      "a seller's proposal read model; its texts are ShelfText, checked when proposed",
+  },
+  ShelfView: { noCustomerText: 'a shelf read model; its texts are ShelfText' },
   EditableCategory: {
     noCustomerText:
       'editor read model; its texts and search-result fields are CategoryText and CategorySeo',

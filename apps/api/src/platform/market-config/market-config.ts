@@ -1229,6 +1229,12 @@ const catalogSchema = z
       .min(1024)
       .max(10 * 1024 * 1024),
     /**
+     * The most category proposals one seller may have waiting (categories C9a; CAT-54; AU 5). A
+     * soft cap: two concurrent proposals may pass it by one (catalog design 4.7). Optional: a
+     * Market without it uses the catalog default of 5.
+     */
+    maxPendingCategoryProposals: z.number().int().min(1).max(50).optional(),
+    /**
      * The most variant (option) attributes one product may vary on (attributes plan A2; AU 2). A
      * configurable product whose feature set marks more option attributes is refused by the
      * product type's variant check. Required: a Market never defaults it.

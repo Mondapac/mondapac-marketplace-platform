@@ -8,6 +8,7 @@ import type { Temporal } from '@mondapac/shared-kernel';
 export const RATE_COUNTER_KINDS = [
   'add-sizes.account.hour',
   'ai-suggest.seller.day',
+  'category-propose.seller.day',
   'claim-text-check.account.day',
   'claim-text-check.account.minute',
   'draft-save.account.day',
@@ -99,6 +100,11 @@ export const IMPORT_PHOTO_LIMITS: readonly RateLimit[] = Object.freeze([
 
 /** The rows one seller may start in 24 hours across imports (design 14c): 10,000. */
 export const SELLER_IMPORT_DAILY_ROWS = 10_000;
+
+/** Category proposals per seller (categories C9a), on top of the pending cap: 20 a day. */
+export const CATEGORY_PROPOSE_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'category-propose.seller.day', limit: 20, windowMinutes: DAY },
+]);
 
 /** A counter as the reservation unit left it: this attempt is already counted. */
 export interface RateReservation {

@@ -214,6 +214,57 @@
     }
   },
   {
+    "type": "catalog.category-proposed.v1",
+    "aggregateType": "category-proposal",
+    "fields": {
+      "proposalId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.category-proposal-approved.v1",
+    "aggregateType": "category-proposal",
+    "fields": {
+      "proposalId": "id",
+      "sellerId": "id",
+      "sellerCategoryId": "id"
+    }
+  },
+  {
+    "type": "catalog.category-proposal-rejected.v1",
+    "aggregateType": "category-proposal",
+    "fields": {
+      "proposalId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.category-proposal-cancelled.v1",
+    "aggregateType": "category-proposal",
+    "fields": {
+      "proposalId": "id",
+      "sellerId": "id",
+      "reasonCode": "enumOf(seller-cancelled|permission-revoked)"
+    }
+  },
+  {
+    "type": "catalog.seller-category-promoted.v1",
+    "aggregateType": "seller-category",
+    "fields": {
+      "sellerCategoryId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.seller-category-merged.v1",
+    "aggregateType": "seller-category",
+    "fields": {
+      "sellerCategoryId": "id",
+      "sellerId": "id",
+      "categoryId": "id"
+    }
+  },
+  {
     "type": "catalog.platform-import-finished.v1",
     "aggregateType": "platform-import",
     "fields": {

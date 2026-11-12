@@ -433,6 +433,61 @@ export const ProductImageTakenDown = defineEvent({
  * catalogue by `CatalogModule`. Each new type changes the catalogue snapshot
  * (`apps/api/test/contracts/event-catalogue.snapshot.json`).
  */
+/**
+ * Seller category proposals and shelves (categories C9a; catalog design 4.7, 11.4). Ids only. A
+ * proposal's events are ordered by its version; a shelf's by its version. Consumers: catalog's own
+ * mail later; the storefront for shelves.
+ */
+export const CategoryProposed = defineEvent({
+  type: 'catalog.category-proposed.v1',
+  aggregateType: 'category-proposal',
+  payload: { proposalId: eventField.id(), sellerId: eventField.id() },
+});
+
+export const CategoryProposalApproved = defineEvent({
+  type: 'catalog.category-proposal-approved.v1',
+  aggregateType: 'category-proposal',
+  payload: {
+    proposalId: eventField.id(),
+    sellerId: eventField.id(),
+    sellerCategoryId: eventField.id(),
+  },
+});
+
+export const CategoryProposalRejected = defineEvent({
+  type: 'catalog.category-proposal-rejected.v1',
+  aggregateType: 'category-proposal',
+  payload: { proposalId: eventField.id(), sellerId: eventField.id() },
+});
+
+export const CategoryProposalCancelled = defineEvent({
+  type: 'catalog.category-proposal-cancelled.v1',
+  aggregateType: 'category-proposal',
+  payload: {
+    proposalId: eventField.id(),
+    sellerId: eventField.id(),
+    reasonCode: eventField.enumOf(['seller-cancelled', 'permission-revoked'] as const),
+  },
+});
+
+/** A shelf became a platform category with the same id (created hidden, decision 5). */
+export const SellerCategoryPromoted = defineEvent({
+  type: 'catalog.seller-category-promoted.v1',
+  aggregateType: 'seller-category',
+  payload: { sellerCategoryId: eventField.id(), sellerId: eventField.id() },
+});
+
+/** A shelf was folded into a platform category; its Offers lost the shelf (CAT-53 corrected). */
+export const SellerCategoryMerged = defineEvent({
+  type: 'catalog.seller-category-merged.v1',
+  aggregateType: 'seller-category',
+  payload: {
+    sellerCategoryId: eventField.id(),
+    sellerId: eventField.id(),
+    categoryId: eventField.id(),
+  },
+});
+
 export const CATALOG_EVENTS: readonly EventDefinition[] = [
   VariantAdded,
   VariantRemoved,
@@ -466,4 +521,10 @@ export const CATALOG_EVENTS: readonly EventDefinition[] = [
   ProductRetired,
   PlatformImportFinished,
   SellerImportFinished,
+  CategoryProposed,
+  CategoryProposalApproved,
+  CategoryProposalRejected,
+  CategoryProposalCancelled,
+  SellerCategoryPromoted,
+  SellerCategoryMerged,
 ];
