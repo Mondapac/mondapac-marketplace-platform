@@ -135,6 +135,9 @@ class EmptyRefunds implements RefundRepository {
   listOfSellerOrder() {
     return Promise.resolve([]);
   }
+  findById() {
+    return Promise.resolve(null);
+  }
   private unexpected(name: string): Promise<never> {
     return Promise.reject(new Error(`refunds.${name} not expected`));
   }
