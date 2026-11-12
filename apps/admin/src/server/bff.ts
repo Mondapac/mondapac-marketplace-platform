@@ -261,6 +261,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/products/:id/images/:id/take-down',
     // Submit (publish) a platform product's working copy (catalog).
     'catalog/admin/platform-products/:id/submit',
+    // Turn a Simple platform product into one with sizes, once (catalog, variants V9).
+    'catalog/admin/platform-products/:id/add-sizes',
     // Discard a platform product that was never submitted (catalog).
     'catalog/admin/platform-products/:id/discard',
     // A manufacturer certificate (certification): add its document, then send it for review, each
@@ -404,6 +406,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/impact',
     // One platform product with its working copy, for the product form (catalog).
     'catalog/admin/platform-products/:id',
+    // How many offers of other sellers go off sale if sizes are added (catalog, variants V9).
+    'catalog/admin/platform-products/:id/add-sizes-impact',
     // The manufacturer certificates that name one product, one certificate, and its status history
     // (certification), read by the product form's certificates card.
     'certification/admin/product-certificates/for-product/:id',
