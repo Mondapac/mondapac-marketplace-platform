@@ -385,6 +385,20 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   SuggestionNoticeMail: {
     noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
   },
+  TopicSuggestion: {
+    noCustomerText: 'aggregate class around TopicSuggestionState',
+  },
+  TopicSuggestionState: {
+    noCustomerText:
+      "a seller's tag suggestion: ids, status codes, times and the seller's own text, shown to admins only; the text is claim-checked when it is suggested and again when an approval makes it a topic name",
+  },
+  TopicSuggestionNoticeFacts: {
+    noCustomerText:
+      'facts of the one mail to a seller about a tag suggestion; never shown to buyers',
+  },
+  TopicSuggestionNoticeMail: {
+    noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
+  },
   AttributeRelaxationRequestState: {
     noCustomerText: 'a two-admin request: ids, kind and status codes, times; no text',
   },
@@ -398,6 +412,21 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'editor read model; its texts and search-result fields are CategoryText and CategorySeo',
   },
   FieldIssue: { noCustomerText: 'field path and a problem code' },
+  // The category tree import (C7a): file cells are read, claim-checked (and content-filtered)
+  // in every locale before any plan is made, then written through the editor's own functions.
+  ImportRowTexts: {
+    noCustomerText:
+      'cells of an import file row; every cell is claim-checked before the plan and written as CategoryText',
+  },
+  ParsedImportRow: {
+    noCustomerText:
+      'one import file row; its cells are claim-checked before the plan (category import)',
+  },
+  ParsedImport: { noCustomerText: 'the rows of an import file; see ParsedImportRow' },
+  ColumnsRefusal: { noCustomerText: 'column positions and problem codes of an import header' },
+  ImportRowResult: {
+    noCustomerText: 'row number, slug, action and problem codes of a dry run; no text cell',
+  },
   RestructureChange: {
     noCustomerText: 'ids, a position, a status and a change kind of a move, merge or archive',
   },
@@ -416,6 +445,26 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   BrandContent: { noCustomerText: 'the editable text of a brand; see BrandState' },
   BrandFieldProblem: { noCustomerText: 'field path and a problem code' },
   ActivityFieldProblem: { noCustomerText: 'field path and a problem code' },
+  CultureFieldProblem: { noCustomerText: 'field path and a problem code' },
+  CultureLocales: { noCustomerText: 'locale codes' },
+  CultureCategoryRow: { noCustomerText: 'ids, a visibility flag and a mark code' },
+  EffectiveCategoryMarks: { noCustomerText: 'flags, mark codes and category ids' },
+  MarkedCategoryNode: { noCustomerText: 'category ids' },
+  // The visibility rule of multi-culture package 3a: codes, ids, flags and type codes only. A
+  // culture's code is claim-checked when it is created (see CultureState).
+  VisibilityCulture: { noCustomerText: 'a culture id, code, status, order and a type code' },
+  OfferCultureFacts: { noCustomerText: 'culture ids, type codes and category marks' },
+  CultureVisibility: { noCustomerText: 'a flag and a reason code' },
+  CultureVisibilityUnavailable: { noCustomerText: 'an error code' },
+  CultureName: {
+    noCustomerText:
+      'the name and short description of a culture in one locale; checked by the claim-term matcher on every admin write (a changed text is refused when it asserts a certification); see CultureState',
+  },
+  CultureContent: { noCustomerText: 'the names of a culture; see CultureName' },
+  CultureChange: { noCustomerText: 'the fields an admin edit may change; see CultureState' },
+  CultureState: {
+    noCustomerText: 'a culture as stored; its text is claim-checked on write, see CultureName',
+  },
   ActivityLocales: { noCustomerText: 'locale codes' },
   BusinessActivityContent: {
     noCustomerText:
@@ -610,6 +659,11 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'the public tree view for the buyer assistant: ids, slug, depth and one published category name, already claim-checked when written',
   },
   CatalogActivitiesFacade: { noCustomerText: 'interface of methods' },
+  CatalogCulturesFacade: { noCustomerText: 'interface of methods' },
+  CatalogCultureSummary: {
+    noCustomerText:
+      'id, code, status and required type of a culture, and its names already claim-checked when written; read in process by sellers only',
+  },
   CatalogAssistantFacade: { noCustomerText: 'interface of methods' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },
   ProductTypeHandler: { noCustomerText: 'interface of methods' },

@@ -36,6 +36,8 @@ export interface CheckFacts {
   /** The Market's currency code, for a price typed into the text. */
   readonly currencyCode: string;
   readonly healthTerms: readonly string[];
+  /** The Market's content filter: whether a reader-visible text holds a blocked term. */
+  readonly isBlocked: (text: string) => boolean;
   /** Product id to its facts; `null` when the catalog could not be asked. */
   readonly products: ReadonlyMap<string, ProductFact> | null;
   readonly claims: ClaimAnswer;
@@ -169,6 +171,10 @@ export function runChecks(facts: CheckFacts): readonly Finding[] {
   const texts = readableTexts(content);
   for (const { path, text } of texts) {
     if (hasExternalLink(text)) add('error', 'external-link', path);
+  }
+  for (const { path, text } of texts) {
+    // Includes the alt text and caption of images (read aloud by screen readers) and the cover alt.
+    if (facts.isBlocked(text)) add('error', 'blocked-term', path);
   }
   if (facts.claims === null) add('error', 'claims-unverifiable', null);
   else {

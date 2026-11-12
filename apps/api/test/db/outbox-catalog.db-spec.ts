@@ -123,6 +123,10 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_product_revision_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, product_revision_id) WHERE (kind = 'revision-published'::text)",
   'catalog.tag_reevaluation_requests_market_id_source_event_id_key':
     'CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_source_event_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, source_event_id, cause) NULLS NOT DISTINCT WHERE (source_event_id IS NOT NULL)',
+  'catalog.topic_suggestions_notice_due_idx':
+    "CREATE INDEX topic_suggestions_notice_due_idx ON catalog.topic_suggestions USING btree (market_id, notice_next_attempt_at, id) WHERE (notice_state = 'pending'::text)",
+  'catalog.topic_suggestions_open_seller_label_key':
+    "CREATE UNIQUE INDEX topic_suggestions_open_seller_label_key ON catalog.topic_suggestions USING btree (market_id, seller_id, label_key) WHERE (status = 'open'::text)",
   'catalog.product_revision_categories_market_id_revision_id_primary_key':
     'CREATE UNIQUE INDEX product_revision_categories_market_id_revision_id_primary_key ON catalog.product_revision_categories USING btree (market_id, revision_id) WHERE is_primary',
   'catalog.product_revision_variants_market_id_gtin_idx':
@@ -314,12 +318,18 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'sellers.seller_business_activities_one_main_key':
     'CREATE UNIQUE INDEX seller_business_activities_one_main_key ON sellers.seller_business_activities USING btree (market_id, seller_id) WHERE is_main',
+  // Multi-culture package 1: at most one default culture per Market.
+  'catalog.cultures_one_default_key':
+    'CREATE UNIQUE INDEX cultures_one_default_key ON catalog.cultures USING btree (market_id) WHERE is_default',
   // Customers (package 5a): the relay's claim index of customers.outbox.
   'customers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON customers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // Shipping (SHP-02/03): the relay's claim index of shipping.outbox.
   'shipping.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON shipping.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // Storefront (SEO settings S1): the relay's claim index of storefront.outbox.
+  'storefront.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON storefront.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // Shipping (package 5e): the status poll's order, never-asked first, over the open bookings.
   'shipping.carrier_bookings_market_id_fleet_polled_at_open_idx':
     "CREATE INDEX carrier_bookings_market_id_fleet_polled_at_open_idx ON shipping.carrier_bookings USING btree (market_id, fleet, polled_at NULLS FIRST, created_at) WHERE (progress = ANY (ARRAY['booked'::text, 'picked-up'::text]))",

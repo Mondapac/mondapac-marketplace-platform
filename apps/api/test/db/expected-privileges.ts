@@ -317,6 +317,21 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'sellers.seller_business_activity_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Multi-culture package 2 (ADR-0047 decision 3): a membership is never deleted; a request, a
+    // decision and a new request after a rejection update only these columns.
+    'sellers.seller_cultures': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by',
+        'reason',
+        'requested_at',
+        'requested_by',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
     'sellers.seller_admin_settings': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.seller_tax_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.store_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
@@ -930,6 +945,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     // File storage pilot F9: a slide image and its renditions are inserted once and never changed.
     'storefront.slide_images': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // SEO settings (S1): insert-only versions, and the module's outbox.
+    'storefront.seo_settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'storefront.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'storefront.slide_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'storefront.slide_saved_orders': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'storefront.slide_position_locks': {
@@ -1097,6 +1115,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [
         'category_ids',
+        'culture_codes',
         'facet_codes',
         'indexed_at',
         'locale',
@@ -1156,6 +1175,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'ordering.offer_pairs': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.refund_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.credit_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Order detail decision 3: admin internal notes, sealed under the customer; written once, never
+    // changed or removed.
+    'ordering.admin_order_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.
     // Payments (Phase 5 package 3): one connected account row per seller and Market; the state
@@ -1293,6 +1315,28 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [],
     },
+    // Multi-culture package 1: a culture's code, creator and creation time never change and it is
+    // never deleted (made inactive); names are deleted and re-inserted as a set; a mark row is upserted or deleted.
+    'catalog.cultures': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'badge_colour',
+        'display_order',
+        'is_default',
+        'required_certification_type',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
+    'catalog.culture_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'catalog.culture_categories': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['certification_mark', 'updated_at', 'updated_by', 'visible'],
+    },
     // Product tags package T1: a topic's slug and creator never change and a topic is archived,
     // never deleted; its terms are replaced as a set, so they may be deleted, never updated.
     'catalog.topics': {
@@ -1350,6 +1394,21 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.attribute_relaxation_requests': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['cancel_reason', 'closed_at', 'confirmed_by_account_id', 'status', 'version'],
+    },
+    // Product tags T5: same shape as the value suggestions: a decision and a notice move only.
+    'catalog.topic_suggestions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'notice_attempts',
+        'notice_next_attempt_at',
+        'notice_state',
+        'reject_reason',
+        'status',
+        'topic_id',
+        'version',
+      ],
     },
     // Attributes A5: a decision and a notice move are the only updates, in these columns (data
     // design 3.30); a suggestion is never deleted.

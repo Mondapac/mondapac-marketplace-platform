@@ -82,3 +82,82 @@ export const pageRef = (page: PageSummary): string | null => page.id ?? page.sys
 /** The navigation is edited on its own tab, so it is not a row of the list. */
 export const listedPages = (pages: readonly PageSummary[]): readonly PageSummary[] =>
   pages.filter((page) => page.editLevel !== 'navigation' && page.systemKey !== 'navigation');
+
+// The page editor: one page as `GET storefront/admin/pages/:page` answers it (storefront.dto.ts
+// `PageDetailBody`), and the routes of its draft changes.
+
+export interface SlotDefinition {
+  readonly key: string;
+  /** `fixed`: the app fills it (a listing, the results); nothing is added there. */
+  readonly kind: string;
+  readonly modules: readonly string[];
+  readonly min: number;
+  readonly max: number;
+  readonly width: string;
+}
+
+export interface Placement {
+  readonly id: string;
+  readonly module: string;
+  readonly enabled: boolean;
+  /** The module's settings: plain data, never markup (storefront `parseModuleConfig`). */
+  readonly config: Readonly<Record<string, unknown>>;
+}
+export type Placements = Readonly<Record<string, readonly Placement[]>>;
+
+export interface Seo {
+  readonly title?: string;
+  readonly description?: string;
+  readonly image?: { readonly ref: string; readonly alt: string };
+}
+
+export interface PendingSettings {
+  readonly title: string;
+  readonly slug?: string;
+  readonly seo: Seo;
+  readonly linked?: { readonly type: string; readonly id: string } | null;
+  readonly startsAt?: string | null;
+  readonly endsAt?: string | null;
+}
+
+export interface PageDetail extends PageSummary {
+  readonly seo: Seo;
+  readonly linked: { readonly type: string; readonly id: string } | null;
+  readonly startsAt: string | null;
+  readonly endsAt: string | null;
+  readonly archivedRedirect: string | null;
+  readonly slots: readonly SlotDefinition[];
+  readonly draft: {
+    readonly versionNo: number | null;
+    readonly placements: Placements;
+    /** What publishing puts on the page; null: the page's own settings stay. */
+    readonly settings: PendingSettings | null;
+    readonly updatedAt: string | null;
+  };
+  readonly published: { readonly versionNo: number; readonly placements: Placements } | null;
+  readonly versions: readonly {
+    readonly id: string;
+    readonly versionNo: number;
+    readonly state: string;
+    readonly createdAt: string;
+    readonly publishedAt: string | null;
+  }[];
+}
+
+/** The key the editor URL and the draft routes name the page by. */
+export const detailRef = (page: PageDetail): string => page.id ?? page.systemKey ?? '';
+
+export const settingsPagePath = (page: string): string => `${pagePath(page)}/settings`;
+export const slotModulesPath = (page: string, slot: string): string =>
+  `${PAGES_API_PATH}/${encodeURIComponent(page)}/slots/${encodeURIComponent(slot)}/modules`;
+export const modulePath = (page: string, slot: string, placement: string): string =>
+  `${slotModulesPath(page, slot)}/${encodeURIComponent(placement)}`;
+export const slotOrderPath = (page: string, slot: string): string =>
+  `${PAGES_API_PATH}/${encodeURIComponent(page)}/slots/${encodeURIComponent(slot)}/order`;
+export const pageApiPath = (page: string): string =>
+  `${PAGES_API_PATH}/${encodeURIComponent(page)}`;
+
+export const PAGE_EDIT_LEVEL_LOCKED = 'locked';
+/** A page that takes no change: locked in the app, archived, or no edit permission. */
+export const isReadOnlyPage = (page: PageSummary, canEdit: boolean): boolean =>
+  !canEdit || page.status === 'archived' || page.editLevel === 'locked';

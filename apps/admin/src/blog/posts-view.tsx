@@ -3,6 +3,7 @@
 import {
   Badge,
   Button,
+  LinkButton,
   CARD_TABLE,
   EmptyState,
   LoadError,
@@ -16,7 +17,9 @@ import { callApi } from '../api/client.ts';
 import { shortInstantInZone } from '../shared/format.ts';
 import {
   API_BLOG_POSTS,
+  NEW_POST_PATH,
   OWNER_TYPES,
+  postPath,
   POST_KINDS,
   POST_STATUSES,
   type KindFilter,
@@ -61,7 +64,7 @@ function openNote(row: PostRow): 'in_review' | 'returned' | 'draft' | 'approved'
  * The posts of the Market (admin): status tabs, type and author filters, 50 a page. Read only: it
  * has no buttons of its own; the editor and the review pages arrive with their own packages.
  */
-export function PostsView({ zone }: { readonly zone: string }) {
+export function PostsView({ zone, canEdit }: { readonly zone: string; readonly canEdit: boolean }) {
   const t = useTranslations('blog');
   const locale = useLocale();
   const [status, setStatus] = useState<StatusFilter>('all');
@@ -139,6 +142,11 @@ export function PostsView({ zone }: { readonly zone: string }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {canEdit ? (
+        <p>
+          <LinkButton href={NEW_POST_PATH}>{t('new')}</LinkButton>
+        </p>
+      ) : null}
       <Tabs
         label={t('tabs-label')}
         activeId={status}
@@ -207,7 +215,11 @@ export function PostsView({ zone }: { readonly zone: string }) {
                 return (
                   <tr key={row.id} className={CARD_TABLE.row}>
                     <td className={`${CARD_TABLE.cell} min-w-0`}>
-                      <p className="font-semibold wrap-anywhere text-fg">{row.title}</p>
+                      <p className="font-semibold wrap-anywhere text-fg">
+                        <a className="text-link underline" href={postPath(row.id)}>
+                          {row.title}
+                        </a>
+                      </p>
                       <p className="text-sm wrap-anywhere text-fg-muted">{`/blog/${row.slug}`}</p>
                       {note === null ? null : (
                         <p className="text-sm text-fg-muted">{t(`open-note.${note}`)}</p>

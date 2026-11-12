@@ -151,6 +151,21 @@ export const BusinessActivitiesChanged = defineAuditAction({
 });
 
 /**
+ * The system attached a seller to cultures at signup (multi-culture package 2; ADR-0048): the
+ * ones with no required certificate approved at once, the others requested. Ids and counts only.
+ * One row per attach, in the unit of the memberships.
+ */
+export const CulturesAttachedAtSignup = defineAuditAction({
+  action: 'sellers.cultures.attached-at-signup',
+  targetType: SELLER_TARGET,
+  actors: ['system'],
+  after: {
+    approvedCultureIds: auditField.listOf(auditField.id(), 200),
+    requestedCultureIds: auditField.listOf(auditField.id(), 200),
+  },
+});
+
+/**
  * An admin edited the display names of a service area (ADR-0041). The target is an id derived from
  * the Market's area code; a name is free text and is never put in the log, only how many languages
  * were set and how many were restored to the configured name.
@@ -173,5 +188,6 @@ export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.fr
   BlogAccessChanged,
   CategoryProposalsChanged,
   BusinessActivitiesChanged,
+  CulturesAttachedAtSignup,
   ServiceAreaNamesChanged,
 ]);

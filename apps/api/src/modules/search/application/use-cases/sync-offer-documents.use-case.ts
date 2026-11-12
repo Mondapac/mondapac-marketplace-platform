@@ -9,12 +9,33 @@ import { syncOffers, SYNC_BATCH, type SyncCounts } from '../sync-offers';
 export type SyncOfferDocumentsInput =
   | { readonly offerIds: readonly Id<'Offer'>[] }
   | { readonly productId: Id<'Product'> }
-  | { readonly sellerId: Id<'Seller'> }
-  /** The Offers whose document names this category or one under it (a rename or a move). */
-  | { readonly categoryId: Id<'Category'> };
+  | {
+      readonly sellerId: Id<'Seller'>;
+      /**
+       * The seller was just approved, so sellers must already show a public store (its name and
+       * address). Sellers records them in a unit after identity's approval commits, so the event
+       * can arrive first: then the call throws and the delivery is retried, rather than indexing
+       * the seller's Offers without the store name (Mojtaba D4 on #832).
+       */
+      readonly publicStoreRequired?: true;
+    }
+  /**
+   * The Offers whose document names this category or one under it (a rename or a move; from
+   * package 3a also a culture's mark or visibility change on it, and a merge or an archive).
+   * `handOffAbove`: the change is one the full reindex also picks up when asked (the culture
+   * cases), so past {@link CATEGORY_DIRECT_PAGES} pages the call stops and answers `handedOff`
+   * instead of reading on; the subscriber then asks for the reindex. Without it every page is read.
+   */
+  | { readonly categoryId: Id<'Category'>; readonly handOffAbove?: true };
 
 /** The most pages of one product's or seller's Offers read in one call (a safety stop). */
 const MAX_PRODUCT_PAGES = 50;
+
+/** Pages of a category subtree synced directly before a culture change is handed to the reindex. */
+export const CATEGORY_DIRECT_PAGES = 5;
+
+/** What one call did; `handedOff` when a category scope stopped at the threshold (see the input). */
+export type SyncOfferDocumentsResult = SyncCounts & { readonly handedOff?: true };
 
 /**
  * `search.sync-offer-documents`: the handler of the catalog event subscriptions (offer
@@ -23,7 +44,11 @@ const MAX_PRODUCT_PAGES = 50;
  * the envelope (the context). The event only says which Offers to look at: the content is
  * re-read from catalog, so deliveries may repeat and arrive in any order. Logs ids and counts.
  */
-export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCounts, never> {
+export class SyncOfferDocuments extends UseCase<
+  SyncOfferDocumentsInput,
+  SyncOfferDocumentsResult,
+  never
+> {
   static override readonly access: AccessDeclaration = {
     name: 'search.sync-offer-documents',
     rule: { kind: 'system' },
@@ -41,47 +66,74 @@ export class SyncOfferDocuments extends UseCase<SyncOfferDocumentsInput, SyncCou
   protected async handle(
     context: CallContext,
     input: SyncOfferDocumentsInput,
-  ): Promise<Result<SyncCounts, never>> {
-    const { offers, upserted, deleted } =
+  ): Promise<Result<SyncOfferDocumentsResult, never>> {
+    if ('sellerId' in input && input.publicStoreRequired === true) {
+      const stores = await this.deps.storeDirectory.publicStores(context, [input.sellerId]);
+      if (stores === null) throw new Error('search: store names unavailable');
+      if (!stores.has(input.sellerId)) {
+        throw new Error('search: the approved seller has no public store yet');
+      }
+    }
+    const { offers, upserted, deleted, handedOff } =
       'offerIds' in input
         ? {
             offers: input.offerIds.length,
+            handedOff: false,
             ...(await syncOffers(this.deps, context, input.offerIds)),
           }
         : 'categoryId' in input
-          ? await this.#syncCategory(context, input.categoryId)
-          : await this.#syncScope(context, input);
+          ? await this.#syncCategory(context, input.categoryId, input.handOffAbove === true)
+          : { handedOff: false, ...(await this.#syncScope(context, input)) };
     const counts = { upserted, deleted };
     this.#logger.log({
       msg: 'search.documents-synced',
       offers,
       ...counts,
+      ...(handedOff ? { handedOff } : {}),
       marketId: context.market.marketId,
       correlationId: context.correlationId,
     });
-    return ok(counts);
+    return ok(handedOff ? { ...counts, handedOff: true } : counts);
   }
 
   /**
-   * A category was renamed or moved: re-syncs the Offers whose document names it or a category
-   * under it (their text holds the names of every level). Offers with no document have nothing
-   * to refresh; a published Offer not yet indexed is picked up by its own events and the rebuild.
+   * A category was renamed or moved, or a culture's mark, a merge or an archive touched it:
+   * re-syncs the Offers whose document names it or a category under it, page by page in Offer id
+   * order (keyset, never one unbounded read). Offers with no document have nothing to refresh; a
+   * published Offer not yet indexed is picked up by its own events and the rebuild. With
+   * `handOff`, past {@link CATEGORY_DIRECT_PAGES} pages it stops and answers `handedOff` (never a
+   * throw on size).
    */
   async #syncCategory(
     context: CallContext,
     categoryId: Id<'Category'>,
-  ): Promise<SyncCounts & { readonly offers: number }> {
+    handOff: boolean,
+  ): Promise<SyncCounts & { readonly offers: number; readonly handedOff: boolean }> {
     const { market } = context;
     const subtree = await this.deps.categories.subtreeOf(context, categoryId);
     if (subtree === null) throw new Error('search: category tree unavailable');
-    const indexed = await this.deps.unitOfWork.run(
-      market,
-      async () => ok(await this.deps.documents.offerIdsInCategories(market, subtree)),
-      { readOnly: true },
-    );
-    if (!indexed.ok) throw new Error('search: the index read failed');
-    const counts = await syncOffers(this.deps, context, indexed.value);
-    return { offers: indexed.value.length, ...counts };
+    let offers = 0;
+    let upserted = 0;
+    let deleted = 0;
+    let after: Id<'Offer'> | undefined;
+    for (let page = 0; ; page += 1) {
+      if (handOff && page >= CATEGORY_DIRECT_PAGES) {
+        return { offers, upserted, deleted, handedOff: true };
+      }
+      const ids = await this.deps.unitOfWork.run(
+        market,
+        async () =>
+          ok(await this.deps.documents.offerIdsInCategories(market, subtree, SYNC_BATCH, after)),
+        { readOnly: true },
+      );
+      if (!ids.ok) throw new Error('search: the index read failed');
+      const counts = await syncOffers(this.deps, context, ids.value);
+      offers += ids.value.length;
+      upserted += counts.upserted;
+      deleted += counts.deleted;
+      if (ids.value.length < SYNC_BATCH) return { offers, upserted, deleted, handedOff: false };
+      after = ids.value[ids.value.length - 1];
+    }
   }
 
   /**

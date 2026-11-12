@@ -10,6 +10,8 @@ import {
   pickupStatusOf,
   type PickupStatus,
 } from '../domain/pickup-code';
+import { sellerOrderRefundView } from '../domain/refund-views';
+import type { Refund } from '../domain/refund';
 import {
   sellerOrderDetailView,
   type LabelledSellerOrderPageView,
@@ -21,10 +23,11 @@ import {
 import type { OrderingDependencies } from './checkout-flow';
 import { deliveredEvent } from './delivery-event';
 import { labelSellerOrders } from './order-labels';
-import type { SellerOrderPage, SellerOrderRecord } from './ports/order.repository';
+import type { SellerOrderPage, SellerOrderRecord, SellerOrderSort } from './ports/order.repository';
 import type { IssuedPickupCode } from './ports/pickup-code-vault';
 import { pickupStatusFor } from './pickup-flow';
-import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, openShipTo } from './read-flow';
+import { refundedInFull } from '../domain/refund';
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, MAX_PAGED_ROWS, openShipTo } from './read-flow';
 
 // The seller's side of an order once it is paid: see it and tell the platform it is ready; the
 // platform books the delivery, the seller never delivers or names a carrier. The delivery is
@@ -52,6 +55,8 @@ export type FulfilmentFailure =
   | { readonly code: 'ordering.seller-order-not-found' }
   /** The seller order is not at the step the request needs (already shipped, not yet shipped). */
   | { readonly code: 'ordering.fulfilment-conflict' }
+  /** Every unit of the seller order was refunded (an admin cancelled it): nothing to prepare. */
+  | { readonly code: 'ordering.seller-order-refunded' }
   /** The pickup code typed was wrong; `attemptsLeft` tries remain before the order is locked. */
   | { readonly code: 'ordering.pickup-code-invalid'; readonly attemptsLeft: number }
   /** Too many wrong pickup codes: only the buyer asking for a new code opens the order again. */
@@ -88,6 +93,82 @@ export interface SellerListInput {
   readonly cursor?: unknown;
   /** One fulfilment step: `to-ship`, `shipped` or `delivered`. */
   readonly status?: unknown;
+  /**
+   * With `page` the list answers an offset page with its total (the page-number mode of the List
+   * paging setting); without it, the cursor page. `pageSize`, `sort` and `direction` need `page`.
+   */
+  readonly page?: unknown;
+  readonly pageSize?: unknown;
+  readonly sort?: unknown;
+  readonly direction?: unknown;
+  /** ISO instants: paid at or after `from`, before `to`. */
+  readonly from?: unknown;
+  readonly to?: unknown;
+}
+
+const SORT_KEYS: readonly SellerOrderSort['key'][] = ['paid', 'total'];
+
+const instantOf = (
+  fields: { path: string; code: string }[],
+  path: 'from' | 'to',
+  value: unknown,
+): Temporal.Instant | null => {
+  if (value === undefined) return null;
+  try {
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+      return Temporal.Instant.from(value);
+    }
+  } catch {
+    // falls through to the refusal below
+  }
+  fields.push({ path, code: 'format' });
+  return null;
+};
+
+/** The offset-page request of a seller list input, or null for the cursor page. */
+function offsetRequest(
+  input: SellerListInput,
+  fields: { path: string; code: string }[],
+): { page: number; pageSize: number; sort: SellerOrderSort } | null {
+  if (input.page === undefined) {
+    for (const path of ['pageSize', 'sort', 'direction'] as const) {
+      if (input[path] !== undefined) fields.push({ path, code: 'needs-page' });
+    }
+    return null;
+  }
+  const whole = (value: unknown, max: number): number | null =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 && value <= max
+      ? value
+      : null;
+  const page = whole(input.page, MAX_PAGED_ROWS);
+  if (page === null) fields.push({ path: 'page', code: 'range' });
+  // A page number and a cursor (or a limit) are two ways to say where to start.
+  for (const path of ['cursor', 'limit'] as const) {
+    if (input[path] !== undefined && !fields.some((field) => field.path === path)) {
+      fields.push({ path, code: 'with-page' });
+    }
+  }
+  let pageSize = DEFAULT_PAGE_SIZE;
+  if (input.pageSize !== undefined) {
+    const given = whole(input.pageSize, MAX_PAGE_SIZE);
+    if (given === null) fields.push({ path: 'pageSize', code: 'range' });
+    else pageSize = given;
+  }
+  let key: SellerOrderSort['key'] = 'paid';
+  if (input.sort !== undefined) {
+    if (SORT_KEYS.includes(input.sort as SellerOrderSort['key'])) {
+      key = input.sort as SellerOrderSort['key'];
+    } else fields.push({ path: 'sort', code: 'value' });
+  }
+  let direction: SellerOrderSort['direction'] = 'desc';
+  if (input.direction !== undefined) {
+    if (input.direction === 'asc' || input.direction === 'desc') direction = input.direction;
+    else fields.push({ path: 'direction', code: 'value' });
+  }
+  if (page !== null && fields.length === 0 && page * pageSize > MAX_PAGED_ROWS) {
+    fields.push({ path: 'page', code: 'too-deep' });
+  }
+  return page === null ? null : { page, pageSize, sort: { key, direction } };
 }
 
 const FULFILMENTS: readonly Fulfilment[] = ['to-ship', 'shipped', 'delivered'];
@@ -123,19 +204,46 @@ export async function listSellerOrders(
     if (FULFILMENTS.includes(input.status as Fulfilment)) fulfilment = input.status as Fulfilment;
     else fields.push({ path: 'status', code: 'value' });
   }
+  const from = instantOf(fields, 'from', input?.from);
+  const to = instantOf(fields, 'to', input?.to);
+  if (from !== null && to !== null && Temporal.Instant.compare(from, to) >= 0) {
+    fields.push({ path: 'to', code: 'range' });
+  }
+  const request = offsetRequest(input ?? {}, fields);
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
+  const filter = { fulfilment, from, to };
   const read = await deps.unitOfWork.run<
-    SellerOrderPageView & { readonly counts: SellerOrderCounts },
+    SellerOrderPageView & {
+      readonly counts: SellerOrderCounts;
+      readonly total: number | null;
+    },
     FulfilmentFailure
   >(
     context.market,
     async () => {
-      const rows = await deps.orders.listForSeller(
-        context.market,
-        sellerId,
-        { fulfilment },
-        { limit: limit + 1, after },
-      );
+      if (request !== null) {
+        const [records, total] = await Promise.all([
+          deps.orders.pageForSeller(
+            context.market,
+            sellerId,
+            filter,
+            request.sort,
+            (request.page - 1) * request.pageSize,
+            request.pageSize,
+          ),
+          deps.orders.countMatchingForSeller(context.market, sellerId, filter),
+        ]);
+        return ok({
+          sellerOrders: records.map(sellerOrderDetailView),
+          counts: await deps.orders.countForSeller(context.market, sellerId),
+          nextCursor: null,
+          total,
+        });
+      }
+      const rows = await deps.orders.listForSeller(context.market, sellerId, filter, {
+        limit: limit + 1,
+        after,
+      });
       const page = rows.slice(0, limit);
       const last = page[page.length - 1];
       return ok({
@@ -145,6 +253,7 @@ export async function listSellerOrders(
           rows.length > limit && last !== undefined
             ? encodeSellerCursor(last.confirmedAt, last.sellerOrder.id)
             : null,
+        total: null,
       });
     },
     { readOnly: true },
@@ -154,6 +263,10 @@ export async function listSellerOrders(
     sellerOrders: await labelSellerOrders(deps.labels, context, read.value.sellerOrders),
     nextCursor: read.value.nextCursor,
     counts: read.value.counts,
+    paging:
+      request === null || read.value.total === null
+        ? null
+        : { total: read.value.total, page: request.page, pageSize: request.pageSize },
   });
 }
 
@@ -270,6 +383,15 @@ export async function markSellerOrderReady(
       if (fresh !== null && fresh.sellerOrder.readyAt !== null) return already(fresh);
       outcome = 'ordering.fulfilment-conflict';
       return err({ code: 'ordering.fulfilment-conflict' } as const);
+    }
+    // The ready time holds the seller order's row lock: a refund that committed before it is
+    // seen here, and an admin cancellation that comes after it sees this ready mark (refund-flow
+    // adminCancelOrder). A seller order whose every unit is refunded (or on its way back) was
+    // cancelled: nothing is left to prepare, and the refusal rolls the ready time back.
+    const target = await deps.refunds.findTarget(context.market, ready.id, record.orderId);
+    if (target !== null && refundedInFull(target, 'not-failed')) {
+      outcome = 'ordering.seller-order-refunded';
+      return err({ code: 'ordering.seller-order-refunded' } as const);
     }
     let pickup: PickupStatus | null = null;
     if (ready.deliveryMethod === 'pickup') {
@@ -493,9 +615,16 @@ export async function labelled(
   if (!result.ok) return result;
   const { view, record } = result.value;
   const [one] = await labelSellerOrders(deps.labels, context, [view]);
+  const refunds = await deps.unitOfWork.run<readonly Refund[], never>(
+    context.market,
+    async () =>
+      ok(await deps.refunds.listOfSellerOrder(context.market, view.sellerOrderId, view.sellerId)),
+    { readOnly: true },
+  );
   return ok({
     ...one!,
     shipTo: await openShipTo(deps, context, record.accountId, record.shipToSealed),
+    refunds: refunds.ok ? refunds.value.map((r) => sellerOrderRefundView(r)) : [],
     pickup: result.value.pickup ?? null,
   });
 }

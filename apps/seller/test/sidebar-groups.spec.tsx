@@ -175,11 +175,13 @@ describe('seller menu structure', () => {
   const ALL = [...sellerNav.items.flatMap((item) => item.anyOf ?? []), 'catalog.own-product.edit'];
   const WORK = [
     's_home',
+    's_performance',
     's_orders',
     's_products',
     's_offers',
     's_import',
     's_suggestions',
+    's_tag_suggestions',
     's_reviews',
     's_earnings',
   ];

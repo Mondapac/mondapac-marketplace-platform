@@ -21,6 +21,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/seller/roles',
     'sellers/my-file',
     'sellers/own-zone',
+    // The seller's own health (Performance page): the card, the trend and the Refresh state.
+    'sellers/own-health',
     // The store profile page: the About text, the logo and banner references (slice 12 part 2).
     'sellers/store-profile',
     // "View history" of the store profile (query: `after`, `limit`): when, who by display name and
@@ -140,8 +142,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/seller/team/accounts/:id/role',
     'identity/seller/team/accounts/:id/remove',
     'catalog/seller/products/:id/submit',
+    // Turn a Simple product into one with sizes, once (catalog, variants V9).
+    'catalog/seller/products/:id/add-sizes',
     // Ask for a value a select field does not offer (catalog, attributes A5).
     'catalog/seller/products/:id/attribute-suggestions',
+    // Ask for a tag the list does not have (catalog, product tags T5).
+    'catalog/seller/products/:id/topic-suggestions',
     'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
     // The seller import: confirm, retry the rest, cancel a check, and one photo of the photo step.
@@ -156,6 +162,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // One public reply per review, and a report of a review (buyer reviews, package 4c).
     'reviews/seller/:id/reply',
     'reviews/seller/:id/report',
+    // "Refresh now" of the seller's health (queues a recount; 15-minute cooldown).
+    'sellers/own-health/refresh',
   ],
   PATCH: ['reviews/seller/:id/reply'],
   DELETE: [
@@ -177,7 +185,18 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Per GET target, the query keys passed on and, where set, the shape each value must have. */
 const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
-  'ordering/seller/orders': { limit: null, cursor: null },
+  // The page mode and the filters of the orders list (the API validates every value).
+  'ordering/seller/orders': {
+    limit: null,
+    cursor: null,
+    page: null,
+    pageSize: null,
+    sort: null,
+    direction: null,
+    status: null,
+    from: null,
+    to: null,
+  },
   'commission-payouts/seller/ledger': { limit: null, cursor: null },
   // The API's own cursor: epoch milliseconds of the creation, a dot and the payout id.
   'commission-payouts/seller/payouts': {

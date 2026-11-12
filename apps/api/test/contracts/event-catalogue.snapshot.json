@@ -88,6 +88,29 @@
     }
   },
   {
+    "type": "catalog.culture-approvals-invalidated.v1",
+    "aggregateType": "culture",
+    "fields": {
+      "cultureId": "id"
+    }
+  },
+  {
+    "type": "catalog.culture-category-mark-changed.v1",
+    "aggregateType": "culture-category-mark",
+    "fields": {
+      "cultureId": "id",
+      "categoryId": "id"
+    }
+  },
+  {
+    "type": "catalog.culture-status-changed.v1",
+    "aggregateType": "culture",
+    "fields": {
+      "cultureId": "id",
+      "status": "enumOf(draft|active|inactive)"
+    }
+  },
+  {
     "type": "catalog.image-taken-down.v1",
     "aggregateType": "product-image",
     "fields": {
@@ -1001,6 +1024,15 @@
     }
   },
   {
+    "type": "sellers.seller-culture-status-changed.v1",
+    "aggregateType": "seller-culture",
+    "fields": {
+      "sellerId": "id",
+      "cultureId": "id",
+      "status": "enumOf(requested|approved|rejected)"
+    }
+  },
+  {
     "type": "sellers.seller-file-created.v1",
     "aggregateType": "seller-file",
     "fields": {
@@ -1105,6 +1137,13 @@
       "created": "integer",
       "updated": "integer",
       "failed": "integer"
+    }
+  },
+  {
+    "type": "storefront.seo-indexing-changed.v1",
+    "aggregateType": "seo-settings",
+    "fields": {
+      "version": "integer"
     }
   }
 ]

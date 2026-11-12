@@ -463,8 +463,38 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
     });
     const sellable = await offer(market, productId, 'published');
     const draft = await offer(market, productId, 'draft');
+    // A second seller's Offer that switched this variant off (V5), and a third that switched it
+    // back on: a stored row with `selling = true` sells like no row.
+    const switchedOff = await offer(market, productId, 'published');
+    const switchedOn = await offer(market, productId, 'published');
+    for (const [offerId, selling] of [
+      [switchedOff, false],
+      [switchedOn, true],
+    ] as const) {
+      const { rows: owners } = await owner.query<{ seller_id: string }>(
+        'SELECT seller_id FROM catalog.offers WHERE market_id = $1 AND id = $2',
+        [market.marketId, offerId],
+      );
+      await insert('offer_sell_units', {
+        id: uuid7(),
+        market_id: market.marketId,
+        tenant_id: market.tenantId,
+        offer_id: offerId,
+        seller_id: owners[0]!.seller_id,
+        product_id: productId,
+        variant_id: variantId,
+        selling,
+        version: 1,
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+    }
 
-    const map = await run(market, () => reader.read(market, [sellable, draft], 'en-AU'), true);
+    const map = await run(
+      market,
+      () => reader.read(market, [sellable, draft, switchedOff, switchedOn], 'en-AU'),
+      true,
+    );
 
     expect(map.get(sellable)?.variants).toEqual([
       {
@@ -478,6 +508,11 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
     expect(map.get(sellable)?.attributes.searchText).toContain(`Small ${tag}`);
     // An Offer that is not sellable carries no variants.
     expect(map.get(draft)?.variants).toEqual([]);
+    // A switched-off sell unit is not indexed for its Offer: no facet, label word or GTIN.
+    expect(map.get(switchedOff)?.sellable).toBe(true);
+    expect(map.get(switchedOff)?.variants).toEqual([]);
+    expect(map.get(switchedOff)?.attributes.searchText ?? '').not.toContain(`Small ${tag}`);
+    expect(map.get(switchedOn)?.variants).toEqual(map.get(sellable)?.variants);
   });
 
   it('indexes the values of a merged attribute as its target, with the option map (attributes A8)', async () => {
@@ -548,6 +583,56 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
 
     await brand('Stamp brand', []);
     expect(await stampOf(market)).not.toBe(afterDefinition);
+  });
+
+  it("changes the stamp with a culture's status and with its category mark rows (package 3a)", async () => {
+    const stampOf = (target: typeof market) =>
+      run(target, () => reader.searchIndexStamp(target), true);
+    const cultureId = uuid7();
+    const letters = cultureId
+      .replace(/[^0-9]/g, '')
+      .slice(-8)
+      .replace(/\d/g, (d) => 'abcdefghij'[Number(d)]!);
+    await insert('cultures', {
+      id: cultureId,
+      market_id: market.marketId,
+      tenant_id: market.tenantId,
+      code: `stamp-${letters}`,
+      status: 'draft',
+      display_order: 0,
+      is_default: false,
+      created_by: uuid7(),
+      created_at: T0.toString(),
+      updated_at: T0.toString(),
+      version: 1,
+    });
+    const withCulture = await stampOf(market);
+    await owner.query(`UPDATE catalog.cultures SET status = 'active' WHERE id = $1`, [cultureId]);
+    const active = await stampOf(market);
+    expect(active).not.toBe(withCulture);
+
+    const categoryId = await category(market);
+    await insert('culture_categories', {
+      market_id: market.marketId,
+      tenant_id: market.tenantId,
+      culture_id: cultureId,
+      category_id: categoryId,
+      visible: false,
+      certification_mark: null,
+      updated_by: uuid7(),
+      updated_at: T0.toString(),
+    });
+    const marked = await stampOf(market);
+    expect(marked).not.toBe(active);
+    await owner.query(
+      `UPDATE catalog.culture_categories SET visible = NULL, certification_mark = 'neutral',
+         updated_at = $2 WHERE culture_id = $1`,
+      [cultureId, T0.add({ minutes: 1 }).toString()],
+    );
+    const changed = await stampOf(market);
+    expect(changed).not.toBe(marked);
+    await owner.query(`DELETE FROM catalog.culture_categories WHERE culture_id = $1`, [cultureId]);
+    expect(await stampOf(market)).not.toBe(changed);
   });
 
   it('indexes no brand for a draft or archived brand, and nothing for a product with no revision', async () => {

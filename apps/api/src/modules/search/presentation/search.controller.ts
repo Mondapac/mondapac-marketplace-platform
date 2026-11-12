@@ -12,10 +12,12 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
+import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import type { SearchProductsRequest } from '../domain/search-query';
 import { SearchProducts } from '../application/use-cases/search-products.use-case';
 import { SearchStores } from '../application/use-cases/search-stores.use-case';
-import { ProductSearchPageBody, StoreSearchPageBody } from './search.dto';
+import { SuggestSearch } from '../application/use-cases/suggest-search.use-case';
+import { ProductSearchPageBody, StoreSearchPageBody, SuggestBody } from './search.dto';
 
 const ALLOWED = [
   'q',
@@ -31,6 +33,7 @@ const ALLOWED = [
   'pageSize',
 ] as const;
 const STORE_ALLOWED = ['q', 'page', 'pageSize'] as const;
+const SUGGEST_ALLOWED = ['q'] as const;
 const WHOLE_NUMBER = /^[0-9]{1,6}$/u;
 
 const fail = (status: number, code: string, details?: object): HttpException =>
@@ -133,14 +136,32 @@ function storesRequestOf(query: Record<string, unknown>): {
   return request;
 }
 
+/** Turns the query string of the suggest route into a request (the same rules as `requestOf`). */
+function suggestRequestOf(query: Record<string, unknown>): { q: string | undefined } {
+  const fields = Object.keys(query)
+    .filter((key) => !(SUGGEST_ALLOWED as readonly string[]).includes(key))
+    .sort()
+    .slice(0, 10)
+    .map((key) => ({
+      path: Array.from(key).slice(0, 64).join('').replace(/\p{C}/gu, '�'),
+      code: 'unknown-field',
+    }));
+  const q = query['q'];
+  if (q !== undefined && typeof q !== 'string') fields.push({ path: 'q', code: 'type' });
+  if (fields.length > 0) throw fail(400, 'validation.failed', { fields });
+  return { q: q as string | undefined };
+}
+
 /**
  * The storefront product search (speed mode, Phase 6 package 2). No session is read: the actor is
- * the Market's anonymous actor and the Market is the request's. In the default rate-limit class
- * (per origin, from the Market's `requestLimits`). Not cacheable: the answer is re-checked against
- * catalog and sellers on every call.
+ * the Market's anonymous actor and the Market is the request's. In its own per-origin rate-limit
+ * class `public-search` (Market `requestLimits.publicSearchPerMinute`; Hassan L-3 on search 1a),
+ * because a text search also counts its whole scope. Not cacheable: the answer is re-checked
+ * against catalog and sellers on every call.
  */
 @ApiTags('search')
 @RoutePopulation('customer')
+@RateLimit('public-search')
 @Controller('search')
 export class SearchController {
   readonly #logger = new Logger('SearchController');
@@ -148,6 +169,7 @@ export class SearchController {
   constructor(
     private readonly search: SearchProducts,
     private readonly searchStores: SearchStores,
+    private readonly suggest: SuggestSearch,
   ) {}
 
   @Get('products')
@@ -280,6 +302,50 @@ export class SearchController {
   ): Promise<StoreSearchPageBody> {
     const result = await this.searchStores.execute(context, storesRequestOf(query));
     if (result.ok) return result.value as StoreSearchPageBody;
+    const { error } = result;
+    if (error.code === 'validation.failed') {
+      throw fail(400, error.code, { fields: error.fields });
+    }
+    const denied = ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS];
+    if (denied !== undefined) throw fail(denied, error.code);
+    this.#logger.warn({
+      msg: 'search.refused',
+      code: error.code,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    throw fail(503, 'search.unavailable');
+  }
+
+  /**
+   * In `default`, not the controller's `public-search`: it is called once per keystroke, so sharing
+   * the search's lower budget would throttle the search itself. Its own class is a follow-up.
+   */
+  @Get('suggest')
+  @RateLimit('default')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({
+    summary: 'Header search suggestions (public)',
+    description:
+      'No session needed. `q` of fewer than 2 characters answers 200 with empty lists and `total` 0; ' +
+      'at most 100 characters and 8 words. Every typed word must match (product name, store name or ' +
+      'category), the last one as a prefix. Products (at most 5, one per product) are ordered: name ' +
+      'starts with the query, name contains it, then seller or category matches; stores (at most 3) ' +
+      'the same way. No price and no certification text. Only Offers that are sellable now and ' +
+      'whose seller may sell are shown (the same re-check as `/search/products`); the index ' +
+      'side is cached for a few seconds per Market and query. Unknown parameters are `validation.failed`.',
+  })
+  @ApiQuery({ name: 'q', required: false, description: '2 to 100 characters.' })
+  @ApiOkResponse({ type: SuggestBody })
+  @ApiBadRequestResponse({ description: 'validation.failed (details.fields)' })
+  @ApiTooManyRequestsResponse({ description: 'request.throttled' })
+  @ApiServiceUnavailableResponse({ description: 'search.unavailable' })
+  async suggestions(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+  ): Promise<SuggestBody> {
+    const result = await this.suggest.execute(context, suggestRequestOf(query));
+    if (result.ok) return result.value;
     const { error } = result;
     if (error.code === 'validation.failed') {
       throw fail(400, error.code, { fields: error.fields });

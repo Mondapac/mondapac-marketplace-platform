@@ -35,6 +35,17 @@ import {
   type WorkingCopyRepository,
 } from '../application/ports/working-copy.repository';
 import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
+import { cultureMembersProvider } from './sellers-culture-members';
+import {
+  SELLER_CERTIFICATE_TYPES,
+  SELLER_MEMBER_CULTURES,
+  type SellerCertificateTypes,
+  type SellerMemberCultures,
+} from '../application/ports/culture-visibility-sources';
+import {
+  CertificationSellerCertificateTypes,
+  SellersMemberCultures,
+} from './culture-visibility-sources';
 import { CLAIM_TERM_LOCALES, type ClaimTermLocales } from '../application/ports/claim-term-locales';
 import {
   ATTRIBUTE_DEFINITION_STORE,
@@ -56,6 +67,11 @@ import {
 import { PrismaCategoryAttributeLinkStore } from './prisma-category-attribute-link.store';
 import { PrismaAttributeRelaxationStore } from './prisma-attribute-relaxation.store';
 import { PrismaAttributeValueSuggestionStore } from './prisma-attribute-value-suggestion.store';
+import { PrismaTopicSuggestionStore } from './prisma-topic-suggestion.store';
+import {
+  TOPIC_SUGGESTION_STORE,
+  type TopicSuggestionStore,
+} from '../application/ports/topic-suggestion.store';
 import {
   ATTRIBUTE_VALUE_SUGGESTION_STORE,
   type AttributeValueSuggestionStore,
@@ -226,6 +242,8 @@ import {
 import { CheckedInAttributeSeed } from './seed/checked-in-attribute-seed';
 import { PrismaAttributeRepository } from './prisma-attribute.repository';
 import { CheckedInCategorySeed } from './seed/checked-in-category-seed';
+import { CULTURE_SEED, type CultureSeed } from '../application/ports/culture-seed';
+import { CheckedInCultureSeed } from './seed/checked-in-culture-seed';
 import { PrismaPlatformCategoryRepository } from './prisma-platform-category.repository';
 import { PrismaProductRepository } from './prisma-product.repository';
 import {
@@ -289,6 +307,13 @@ import {
   BUSINESS_ACTIVITY_READER,
   type BusinessActivityReader,
 } from '../application/ports/business-activity.reader';
+import {
+  CULTURE_REPOSITORY,
+  type CultureRepository,
+} from '../application/ports/culture.repository';
+import { CULTURE_READER, type CultureReader } from '../application/ports/culture.reader';
+import { PrismaCultureRepository } from './prisma-culture.repository';
+import { PrismaCultureReader } from './prisma-culture.reader';
 import { PrismaBusinessActivityRepository } from './prisma-business-activity.repository';
 import { PrismaBusinessActivityReader } from './prisma-business-activity.reader';
 import { TOPIC_REPOSITORY, type TopicRepository } from '../application/ports/topic.repository';
@@ -383,6 +408,12 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaAttributeValueSuggestionStore(prisma),
   },
   {
+    provide: TOPIC_SUGGESTION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TopicSuggestionStore =>
+      new PrismaTopicSuggestionStore(prisma),
+  },
+  {
     provide: CATALOG_MARKET_POLICY,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): CatalogMarketPolicy =>
@@ -465,6 +496,16 @@ export const catalogProviders: readonly Provider[] = [
     provide: TOPIC_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): TopicReader => new PrismaTopicReader(prisma),
+  },
+  {
+    provide: CULTURE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CultureRepository => new PrismaCultureRepository(prisma),
+  },
+  {
+    provide: CULTURE_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CultureReader => new PrismaCultureReader(prisma),
   },
   {
     provide: BRAND_ASSIGNER,
@@ -577,6 +618,20 @@ export const catalogProviders: readonly Provider[] = [
     useFactory: (prisma: PrismaService): SellerSavedFilterRepository =>
       new PrismaSellerSavedFilterRepository(prisma),
   },
+  cultureMembersProvider,
+  // The sources of the culture visibility rule (multi-culture package 3a).
+  {
+    provide: SELLER_MEMBER_CULTURES,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerMemberCultures =>
+      new SellersMemberCultures(sellers),
+  },
+  {
+    provide: SELLER_CERTIFICATE_TYPES,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): SellerCertificateTypes =>
+      new CertificationSellerCertificateTypes(certification),
+  },
   {
     provide: SELLER_ELIGIBILITY_READER,
     inject: [SELLERS_FACADE],
@@ -679,6 +734,10 @@ export const catalogProviders: readonly Provider[] = [
   {
     provide: CATEGORY_SEED,
     useFactory: (): CategorySeed => new CheckedInCategorySeed(),
+  },
+  {
+    provide: CULTURE_SEED,
+    useFactory: (): CultureSeed => new CheckedInCultureSeed(),
   },
   {
     provide: ATTRIBUTE_REPOSITORY,

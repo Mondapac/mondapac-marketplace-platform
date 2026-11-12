@@ -207,6 +207,18 @@ export const CATALOG_TOPIC_MANAGE = definePermission('catalog', {
 });
 
 /**
+ * Review the tags sellers suggest (product tags package T5): read the open queue and approve, map
+ * or reject a suggestion. Platform scope; unprotected. Approving also creates a topic, so it needs
+ * `catalog.topic.manage` as well (no escalation through this key); no default role lists either
+ * key yet: the Platform Administrator holds every key.
+ */
+export const CATALOG_TOPIC_SUGGESTION_REVIEW = definePermission('catalog', {
+  key: 'catalog.topic-suggestion.review',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
  * Read the platform category tree, its details, counts, history and the impact of a change
  * (categories package C1; plan section 11). Platform scope; unprotected, so Catalogue Moderator,
  * Operations Support and Viewer receive it by identity's seed. No step-up.
@@ -339,6 +351,29 @@ export const CATALOG_VARIANT_TYPE_EDIT = definePermission('catalog', {
   protected: true,
 });
 
+/**
+ * Read cultures and their category marks (multi-culture package 1; ADR-0047 decision 12). Platform
+ * scope; unprotected, so a custom role may grant it; no default role lists it yet: the Platform
+ * Administrator holds every key.
+ */
+export const CATALOG_CULTURE_READ = definePermission('catalog', {
+  key: 'catalog.culture.read',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Create and edit cultures, their names, the required certification type and the "certification
+ * required" or "neutral" marks on categories. Platform scope; **protected** (ADR-0047 decision 12):
+ * the type and the marks decide whether uncertified Offers are shown in a certified culture. No
+ * default role lists it; the Platform Administrator grants it in a custom role.
+ */
+export const CATALOG_CULTURE_EDIT = definePermission('catalog', {
+  key: 'catalog.culture.edit',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
@@ -358,6 +393,7 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_BUSINESS_ACTIVITY_EDIT,
   CATALOG_TOPIC_READ,
   CATALOG_TOPIC_MANAGE,
+  CATALOG_TOPIC_SUGGESTION_REVIEW,
   CATALOG_ATTRIBUTE_VIEW,
   CATALOG_ATTRIBUTE_EDIT,
   CATALOG_ATTRIBUTE_RESTRUCTURE,
@@ -369,4 +405,6 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_CATEGORY_TREE_IMPORT,
   CATALOG_VARIANT_VIEW,
   CATALOG_VARIANT_TYPE_EDIT,
+  CATALOG_CULTURE_READ,
+  CATALOG_CULTURE_EDIT,
 ]);

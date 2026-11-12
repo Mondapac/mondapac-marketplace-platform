@@ -34,6 +34,7 @@ import {
   PAGES_API_PATH,
   PAGES_PATH,
   SLUG_MAX,
+  pagePath,
   TITLE_MAX,
   type Catalogue,
   type DynamicTemplate,
@@ -204,8 +205,8 @@ export function NewPageFormView({
       );
       if (result.ok) {
         toast.flash('success', t('created'));
-        // The page editor ships in the next PR; until then the new draft is in the list.
-        router.push(PAGES_PATH);
+        // The new draft opens in the editor; an answer with no id (not expected) goes to the list.
+        router.push(result.body.id === null ? PAGES_PATH : pagePath(result.body.id));
         return;
       }
       const failure = result.failure;

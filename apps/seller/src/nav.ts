@@ -14,6 +14,13 @@ export const sellerNav: NavConfig = {
   ],
   items: [
     { id: 's_home', icon: 'home', labelKey: 'nav.home', href: '/' },
+    // Own-resources route (no permission key): shown to every approved seller (health only informs).
+    {
+      id: 's_performance',
+      icon: 'shield-check',
+      labelKey: 'nav.performance',
+      href: '/performance',
+    },
     {
       id: 's_orders',
       icon: 'clipboard',
@@ -52,6 +59,14 @@ export const sellerNav: NavConfig = {
       icon: 'inbox',
       labelKey: 'nav.suggestions',
       href: '/value-suggestions',
+      group: 'catalogue',
+      anyOf: ['catalog.own-product.view'],
+    },
+    {
+      id: 's_tag_suggestions',
+      icon: 'tag',
+      labelKey: 'nav.tagSuggestions',
+      href: '/tag-suggestions',
       group: 'catalogue',
       anyOf: ['catalog.own-product.view'],
     },

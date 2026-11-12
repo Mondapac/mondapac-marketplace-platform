@@ -34,6 +34,7 @@ describe('the per-Market catalog seed files', () => {
   it('is empty when the directory is missing', () => {
     expect(loadFileCatalogSeeds('/nonexistent/catalog-seed')).toEqual({
       categories: {},
+      cultures: {},
       attributes: {},
     });
   });
