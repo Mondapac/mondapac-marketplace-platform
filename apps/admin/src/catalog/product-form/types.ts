@@ -132,6 +132,13 @@ export interface DraftSaved {
     readonly locale: string;
     readonly code: string;
   }[];
+  /** Advice about the saved variants; never a refusal. */
+  readonly variantNotices?: readonly {
+    readonly variantId: string;
+    readonly code: 'gtin.duplicate';
+    /** The PLATFORM product that already carries the barcode, when there is one to sell on. */
+    readonly sellOnProductCode: string | null;
+  }[];
 }
 
 /** `POST catalog/admin/platform-products/:id/submit`. */

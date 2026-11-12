@@ -37,8 +37,14 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // `position`, `scope`, `scopeId`). A fixed path, so `order` is never read as a slide id: the
     // slide route reads a UUID only, and one slide is read by the page server.
     'storefront/admin/slides/order',
+    // The storefront pages (storefront), read-only: the list, and the templates and modules the
+    // new-page form offers. One page is read by the page server.
+    'storefront/admin/pages',
+    'storefront/admin/catalogue',
     // The Market's wallet switch, and the admin credit requests (query: `status`, `cursor`, `limit`).
     'wallet/admin/settings',
+    // The Market's tax strategies and the active one (tax), read again after a change.
+    'tax/admin/strategies',
     'wallet/admin/credit-requests',
     // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
     // `limit`); one case is read by the page server and again after a decision.
@@ -80,14 +86,24 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'shipping/admin/delivery-settings/history',
     'shipping/admin/fleet-selection/history',
     'wallet/admin/settings/history',
+    // The promotions settings page (promotions): the Market switch, the first-order discount and
+    // the free-delivery thresholds, read again after a save.
+    'promotions/admin/settings',
+    'promotions/admin/first-order',
+    'promotions/admin/free-shipping',
     // The editable Market settings (settings; List paging), read again after a conflict.
     'settings/admin/market-settings',
+    // The blog posts of the Market (blog; query: `status`, `kind`, `owner`, `page`), read only.
+    'blog/admin/posts',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
     'catalog/admin/brands/merge-queue',
     // The category tree and one category with its path and history (catalog), read-only.
     'catalog/admin/categories',
+    // The export of the category tree as a file (catalog, categories C7a; query: `format`,
+    // `status`, `q`).
+    'catalog/admin/category-tree/export',
     // The business activities (catalog; query: `status`, `search`, `afterId`, `limit`).
     'catalog/admin/business-activities',
     // The product tags (catalog topics; query: `status`, `group`, `search`, `afterId`, `limit`).
@@ -135,6 +151,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'customers/admin/account-deletion-settings',
     // One editable Market setting (settings): code, value and `expectedVersion`.
     'settings/admin/market-settings',
+    // The promotions Market switch and the first-order discount (promotions); a monthly budget
+    // above the Market threshold asks a fresh two-step code. The zone thresholds are below.
+    'promotions/admin/settings',
+    'promotions/admin/first-order',
   ]),
   DELETE: new Set([]),
   POST: new Set([
@@ -165,8 +185,13 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'notifications/admin/notices/read-all',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
+    // A new tax strategy, and the choice of the active one (tax; protected key).
+    'tax/admin/strategies',
+    'tax/admin/strategies/active',
     // A new storefront slide, as a draft (storefront).
     'storefront/admin/slides',
+    // A new storefront page from a template, as a draft (storefront).
+    'storefront/admin/pages',
     // Admin store credit (wallet), behind a fresh two-step code.
     'wallet/admin/credits',
     // A fresh two-step code for one admin action (identity).
@@ -180,6 +205,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/topics',
     // A new platform category, as a hidden one (catalog, categories C3).
     'catalog/admin/categories',
+    // The category tree import (catalog, categories C7a): check a file, then apply it. Both carry
+    // the file as base64 and take the larger upload cap.
+    'catalog/admin/category-tree/import/dry-run',
+    'catalog/admin/category-tree/import/apply',
     // Add an attribute as a draft (catalog, attributes package A2).
     'catalog/admin/attributes',
     // The Bulk action menu of the product list (catalog): Activate, Deactivate and Delete over
@@ -320,6 +349,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'sellers/admin/:id/category-proposals',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
+    // A tax strategy edited by its id (tax).
+    'tax/admin/strategies/:id',
     // A fleet-selection model edited by its id (shipping).
     'shipping/admin/fleet-selection/models/:id',
     // The seller's own commission rate (commission-payouts), set from the seller review page.
@@ -349,6 +380,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   PATCH: ['catalog/admin/categories/:id'],
   DELETE: [
     'identity/admin/roles/:id',
+    // A tax strategy that is not active (tax).
+    'tax/admin/strategies/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
     // Back to the Market's payout terms; the version and reason code are in the query.
     'commission-payouts/admin/sellers/:id/payout-terms',
@@ -423,6 +456,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
+  'blog/admin/posts': ['status', 'kind', 'owner', 'page'],
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
   'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
   'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
@@ -440,6 +474,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'pageSize',
   ],
   'catalog/admin/saved-filters': ['listKey'],
+  'catalog/admin/category-tree/export': ['format', 'status', 'q'],
   'catalog/admin/products/export': [
     'format',
     'columns',
@@ -508,6 +543,10 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
   },
+  'catalog/admin/category-tree/export': {
+    format: /^(csv|xlsx)$/,
+    status: /^(active|hidden|merged|archived)(,(active|hidden|merged|archived)){0,3}$/,
+  },
   'catalog/admin/variants': {
     typeCode: /^[a-z][a-z0-9_-]{0,63}$/,
     issue: /^(no-seller-selling|missing-gtin|duplicate-gtin|no-image|missing-language)$/,
@@ -574,6 +613,13 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     state: /^(draft|pending|scheduled|live|ended|paused|archived)$/,
     position: /^[a-z]+(?:\.[a-z-]+)+$/,
   },
+  'blog/admin/posts': {
+    status:
+      /^(draft|in_review|changes_requested|approved|scheduled|published|unpublished|archived)$/,
+    kind: /^(product|brand|event|news)$/,
+    owner: /^(platform|seller)$/,
+    page: /^[0-9]{1,4}$/,
+  },
   'storefront/admin/slides/order': {
     position: /^[a-z]+(?:\.[a-z-]+)+$/,
     scope: /^(all|category|product|seller|page)$/,
@@ -633,8 +679,22 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
   return text === '' ? '' : `?${text}`;
 }
 
+/** A delivery zone code as the API takes it (promotions free-shipping threshold of one zone). */
+const ZONE_CODE = /^[A-Za-z0-9_-]{1,64}$/;
+
 function isAllowed(method: string, path: readonly string[]): boolean {
   if (ALLOWED[method]?.has(path.join('/')) === true) return true;
+  // The free-delivery threshold of one zone (promotions): the code is not a UUID.
+  if (
+    method === 'PUT' &&
+    path.length === 4 &&
+    path[0] === 'promotions' &&
+    path[1] === 'admin' &&
+    path[2] === 'free-shipping' &&
+    ZONE_CODE.test(path[3] ?? '')
+  ) {
+    return true;
+  }
   return (ALLOWED_WITH_ID[method] ?? []).some((template) => {
     const parts = template.split('/');
     return (
@@ -684,6 +744,7 @@ const MAX_UPLOAD_BODY_BYTES = 14_500 * 1024;
  * A category image (categories C3c) is a picture of at most 4 MiB as base64 (about 5.6 MB). The API
  * accepts 5800 kB for this one route and checks the real size itself.
  */
+const CATEGORY_IMPORT_PATH = /^catalog\/admin\/category-tree\/import\/(?:dry-run|apply)$/;
 const CATEGORY_IMAGE_PATH = /^catalog\/admin\/categories\/[0-9a-f-]{36}\/image$/i;
 const MAX_IMAGE_BODY_BYTES = 5_800 * 1024;
 /**
@@ -698,6 +759,7 @@ const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/i
 /** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
 function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
+  if (method === 'POST' && CATEGORY_IMPORT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
   if (method === 'POST' && CERT_DOCUMENT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'POST' && PRODUCT_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;

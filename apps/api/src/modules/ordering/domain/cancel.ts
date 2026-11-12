@@ -6,9 +6,8 @@ import {
   type LossReasonCode,
 } from './reason-codes';
 import {
-  REFUND_REASONS,
+  ADMIN_REFUND_REASONS,
   shippingGross,
-  type RefundReason,
   type RefundRequest,
   type RefundTarget,
 } from './refund';
@@ -28,7 +27,8 @@ export interface CancelPart {
 }
 
 export interface CancelRequest {
-  readonly reason: RefundReason;
+  /** An admin's reason: `item-unavailable` is the seller's own. */
+  readonly reason: (typeof ADMIN_REFUND_REASONS)[number];
   readonly lossBearer: LossBearer;
   readonly lossReasonCode: LossReasonCode | null;
 }
@@ -53,7 +53,8 @@ export function parseCancelRequest(input: {
   | { readonly ok: false; readonly fields: readonly { path: string; code: string }[] } {
   const fields: { path: string; code: string }[] = [];
   const reason = input?.reason;
-  if (!REFUND_REASONS.includes(reason as RefundReason)) {
+  // An admin's reasons only: item-unavailable is the seller's own (decision 6).
+  if (!(ADMIN_REFUND_REASONS as readonly unknown[]).includes(reason)) {
     fields.push({ path: 'reason', code: 'value' });
   }
   let lossBearer: LossBearer = 'seller';
@@ -79,7 +80,11 @@ export function parseCancelRequest(input: {
     ? { ok: false, fields }
     : {
         ok: true,
-        request: { reason: reason as RefundReason, lossBearer, lossReasonCode },
+        request: {
+          reason: reason as (typeof ADMIN_REFUND_REASONS)[number],
+          lossBearer,
+          lossReasonCode,
+        },
       };
 }
 

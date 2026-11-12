@@ -1,6 +1,6 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import { LOSS_BEARERS, LOSS_REASON_CODES } from './reason-codes';
-import { REFUND_REASONS } from './refund';
+import { ADMIN_REFUND_REASONS, REFUND_REASONS } from './refund';
 
 // The audited actions of refunds (tax step 3; Hassan M3), registered at boot with
 // `registerAuditActions('ordering', ORDERING_AUDIT_ACTIONS)`. Ids, codes, counts and money only:
@@ -53,7 +53,7 @@ export const OrderCancelRequested = defineAuditAction({
   after: {
     /** The sum of the refunds written. */
     amount: auditField.money(),
-    reason: auditField.enumOf(REFUND_REASONS),
+    reason: auditField.enumOf(ADMIN_REFUND_REASONS),
     lossBearer: auditField.enumOf(LOSS_BEARERS),
     lossReasonCode: auditField.optional(auditField.enumOf(LOSS_REASON_CODES)),
     refundCount: auditField.integer(),

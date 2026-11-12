@@ -70,6 +70,7 @@ import { SellerConfirmPickup } from './application/use-cases/seller-confirm-pick
 import { SellerDeliverOrder } from './application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from './application/use-cases/seller-list-orders.use-case';
 import { SellerMarkOrderReady } from './application/use-cases/seller-mark-order-ready.use-case';
+import { SellerMarkUnavailable } from './application/use-cases/seller-mark-unavailable.use-case';
 import { BookReadyCarrierDelivery } from './application/use-cases/book-ready-carrier-delivery.use-case';
 import { SellerViewOrder } from './application/use-cases/seller-view-order.use-case';
 import { SellerViewOrderDocument } from './application/use-cases/seller-view-order-document.use-case';
@@ -229,6 +230,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerViewOrder,
       SellerViewOrderDocument,
       SellerMarkOrderReady,
+      SellerMarkUnavailable,
       SellerConfirmPickup,
       RegeneratePickupCode,
       SellerDeliverOrder,

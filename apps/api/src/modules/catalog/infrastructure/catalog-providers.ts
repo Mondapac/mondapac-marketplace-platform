@@ -226,6 +226,8 @@ import {
 import { CheckedInAttributeSeed } from './seed/checked-in-attribute-seed';
 import { PrismaAttributeRepository } from './prisma-attribute.repository';
 import { CheckedInCategorySeed } from './seed/checked-in-category-seed';
+import { CULTURE_SEED, type CultureSeed } from '../application/ports/culture-seed';
+import { CheckedInCultureSeed } from './seed/checked-in-culture-seed';
 import { PrismaPlatformCategoryRepository } from './prisma-platform-category.repository';
 import { PrismaProductRepository } from './prisma-product.repository';
 import {
@@ -289,6 +291,13 @@ import {
   BUSINESS_ACTIVITY_READER,
   type BusinessActivityReader,
 } from '../application/ports/business-activity.reader';
+import {
+  CULTURE_REPOSITORY,
+  type CultureRepository,
+} from '../application/ports/culture.repository';
+import { CULTURE_READER, type CultureReader } from '../application/ports/culture.reader';
+import { PrismaCultureRepository } from './prisma-culture.repository';
+import { PrismaCultureReader } from './prisma-culture.reader';
 import { PrismaBusinessActivityRepository } from './prisma-business-activity.repository';
 import { PrismaBusinessActivityReader } from './prisma-business-activity.reader';
 import { TOPIC_REPOSITORY, type TopicRepository } from '../application/ports/topic.repository';
@@ -465,6 +474,16 @@ export const catalogProviders: readonly Provider[] = [
     provide: TOPIC_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): TopicReader => new PrismaTopicReader(prisma),
+  },
+  {
+    provide: CULTURE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CultureRepository => new PrismaCultureRepository(prisma),
+  },
+  {
+    provide: CULTURE_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CultureReader => new PrismaCultureReader(prisma),
   },
   {
     provide: BRAND_ASSIGNER,
@@ -679,6 +698,10 @@ export const catalogProviders: readonly Provider[] = [
   {
     provide: CATEGORY_SEED,
     useFactory: (): CategorySeed => new CheckedInCategorySeed(),
+  },
+  {
+    provide: CULTURE_SEED,
+    useFactory: (): CultureSeed => new CheckedInCultureSeed(),
   },
   {
     provide: ATTRIBUTE_REPOSITORY,

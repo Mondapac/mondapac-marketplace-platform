@@ -119,7 +119,7 @@ const id = <T extends string>(n: number): Id<T> => {
 
 /**
  * The refund store for specs that never refund (the refund specs use the database): no seller
- * order has a refund (the order page's list is empty, the ready step finds no target); any write
+ * order has a refund (the order pages list none, the ready step finds no target); any write
  * is unexpected.
  */
 class EmptyRefunds implements RefundRepository {
@@ -127,6 +127,12 @@ class EmptyRefunds implements RefundRepository {
     return Promise.resolve(null);
   }
   listForOrder() {
+    return Promise.resolve([]);
+  }
+  findSellerTarget() {
+    return Promise.resolve(null);
+  }
+  listOfSellerOrder() {
     return Promise.resolve([]);
   }
   private unexpected(name: string): Promise<never> {

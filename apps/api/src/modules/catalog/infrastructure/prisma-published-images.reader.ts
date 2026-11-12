@@ -1,7 +1,7 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { PublishedImagesReader } from '../application/ports/published-images.reader';
-import type { RenditionSize } from '../application/ports/product-image.repository';
+import type { RenditionFormat, RenditionSize } from '../application/ports/product-image.repository';
 import type { PublishedImageRef } from '../contracts/catalog.facade';
 
 /**
@@ -75,6 +75,7 @@ export class PrismaPublishedImagesReader implements PublishedImagesReader {
     productId: Id<'Product'>,
     imageId: Id<'ProductImage'>,
     size: RenditionSize,
+    format: RenditionFormat,
   ): Promise<string | null> {
     const tx = this.prisma.tx(market);
     const product = await tx.catalogProduct.findFirst({
@@ -95,7 +96,11 @@ export class PrismaPublishedImagesReader implements PublishedImagesReader {
     const image = await tx.catalogProductImage.findFirst({
       where: { marketId: market.marketId, id: imageId, productId, state: 'clean' },
       select: {
-        renditions: { where: { sizeCode: size }, select: { objectKey: true }, take: 1 },
+        renditions: {
+          where: { sizeCode: size, formatCode: format },
+          select: { objectKey: true },
+          take: 1,
+        },
       },
     });
     return image?.renditions[0]?.objectKey ?? null;

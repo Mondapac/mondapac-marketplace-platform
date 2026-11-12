@@ -26,6 +26,10 @@ export interface CatalogMarketPolicy {
   maxCategoryDepth(market: MarketContext): number;
   /** The most tags one move, merge or archive may mark `rechecking` (C4a; AU 50,000). */
   maxCategoryChangeTags(market: MarketContext): number;
+  /** The most data rows one category tree import file may hold (C7a; AU 2,000). */
+  maxCategoryImportRows(market: MarketContext): number;
+  /** The largest category tree import file in bytes (C7a; AU 5 MiB). */
+  maxCategoryImportBytes(market: MarketContext): number;
   /** The most option attributes one product may vary on (attributes A2; AU 2). */
   maxVariantAttributes(market: MarketContext): number;
   /** The units a number-with-unit attribute may offer in this Market, with labels (attributes A3). */

@@ -10,6 +10,8 @@ import {
   pickupStatusOf,
   type PickupStatus,
 } from '../domain/pickup-code';
+import { sellerOrderRefundView } from '../domain/refund-views';
+import type { Refund } from '../domain/refund';
 import {
   sellerOrderDetailView,
   type LabelledSellerOrderPageView,
@@ -505,9 +507,16 @@ export async function labelled(
   if (!result.ok) return result;
   const { view, record } = result.value;
   const [one] = await labelSellerOrders(deps.labels, context, [view]);
+  const refunds = await deps.unitOfWork.run<readonly Refund[], never>(
+    context.market,
+    async () =>
+      ok(await deps.refunds.listOfSellerOrder(context.market, view.sellerOrderId, view.sellerId)),
+    { readOnly: true },
+  );
   return ok({
     ...one!,
     shipTo: await openShipTo(deps, context, record.accountId, record.shipToSealed),
+    refunds: refunds.ok ? refunds.value.map((r) => sellerOrderRefundView(r)) : [],
     pickup: result.value.pickup ?? null,
   });
 }

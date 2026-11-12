@@ -1,9 +1,10 @@
-import { Controller, HttpCode, Logger, Post, Res } from '@nestjs/common';
+import { Controller, Get, HttpCode, Logger, Post, Res } from '@nestjs/common';
 import {
   ApiAcceptedResponse,
   ApiForbiddenResponse,
   ApiHeader,
   ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -18,10 +19,11 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { ReadOwnSellerHealth } from '../application/use-cases/read-own-seller-health.use-case';
 import { RefreshOwnSellerHealth } from '../application/use-cases/refresh-own-seller-health.use-case';
 import { errorOf } from './my-file.answer';
 import { SellersErrorBody } from './my-file.dto';
-import { SellerHealthRecalculationBody } from './seller-health.dto';
+import { OwnSellerHealthBody, SellerHealthRecalculationBody } from './seller-health.dto';
 
 /**
  * The seller's own "Refresh now" for their health over HTTP (seller health, HLT-03). A thin
@@ -37,7 +39,49 @@ import { SellerHealthRecalculationBody } from './seller-health.dto';
 export class OwnSellerHealthController {
   readonly #logger = new Logger('OwnSellerHealthController');
 
-  constructor(private readonly refresh: RefreshOwnSellerHealth) {}
+  constructor(
+    private readonly refresh: RefreshOwnSellerHealth,
+    private readonly read: ReadOwnSellerHealth,
+  ) {}
+
+  @Get()
+  @ApiOperation({
+    summary: 'My health (seller)',
+    description:
+      "The acting seller's latest stored score with its five metrics, the 90-day trend and the " +
+      'state of "Refresh now" (a recount waiting, seconds left of the cooldown). Read from what ' +
+      'the nightly run stored; nothing is computed here. Approved sellers only.',
+  })
+  @ApiOkResponse({ type: OwnSellerHealthBody })
+  @ApiUnauthorizedResponse({ type: SellersErrorBody, description: 'session.invalid' })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: SellersErrorBody, description: 'file.not-found' })
+  @ApiServiceUnavailableResponse({ type: SellersErrorBody, description: 'sellers.unavailable' })
+  async get(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<OwnSellerHealthBody> {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.read.execute(context, {});
+    this.#logger.log({
+      msg: 'sellers.read-own-seller-health-route',
+      outcome: result.ok ? 'read' : result.error.code,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (!result.ok) throw errorOf(result.error, response);
+    return {
+      current:
+        result.value.current === null
+          ? null
+          : {
+              ...result.value.current,
+              metrics: result.value.current.metrics.map((m) => ({ ...m })),
+            },
+      trend: result.value.trend.map((point) => ({ ...point })),
+      refresh: { ...result.value.refresh },
+    };
+  }
 
   @Post('refresh')
   @HttpCode(202)

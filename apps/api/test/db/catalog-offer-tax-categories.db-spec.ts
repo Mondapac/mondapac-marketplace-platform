@@ -118,6 +118,7 @@ describe.each(TEST_MARKETS)('catalog offer tax categories in market %s (database
         product_id: productId,
         revision_no: no,
         revision_kind: 'submission',
+        type_code: 'simple',
         base_revision_id: null,
         reverted_from_revision_id: null,
         family_revision_id: familyRevisionId,

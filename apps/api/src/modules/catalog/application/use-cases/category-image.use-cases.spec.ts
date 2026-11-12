@@ -114,6 +114,7 @@ describe.each(['AU', 'ZZ'] as const)('category image use cases in market %s', (c
         ok(
           (['thumb', 'medium', 'large'] as const).map((size, index) => ({
             size,
+            format: 'jpeg' as const,
             bytes: Buffer.from(`${size}-jpeg`),
             width: 200 * (index + 1),
             height: 100 * (index + 1),

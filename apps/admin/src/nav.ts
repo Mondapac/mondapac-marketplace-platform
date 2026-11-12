@@ -11,6 +11,8 @@ export const adminNav: NavConfig = {
     { id: 'reviews', labelKey: 'nav.group.reviews', icon: 'shield-check' },
     { id: 'content', labelKey: 'nav.group.content', icon: 'layout' },
     { id: 'sellers', labelKey: 'nav.group.sellers', icon: 'store' },
+    // Marketing holds Promotions once its list page ships (PF2); the group has no item until then.
+    { id: 'marketing', labelKey: 'nav.group.marketing', icon: 'tag' },
     { id: 'orders', labelKey: 'nav.group.orders', icon: 'clipboard' },
     { id: 'money', labelKey: 'nav.group.money', icon: 'wallet' },
   ],
@@ -81,6 +83,14 @@ export const adminNav: NavConfig = {
       anyOf: ['catalog.product.view'],
     },
     {
+      id: 'certificates',
+      icon: 'shield-check',
+      labelKey: 'nav.certificates',
+      href: '/certificates',
+      group: 'reviews',
+      anyOf: ['certification.seller-certificate.view'],
+    },
+    {
       id: 'review-moderation',
       icon: 'shield-check',
       labelKey: 'nav.review-moderation',
@@ -102,7 +112,15 @@ export const adminNav: NavConfig = {
       labelKey: 'nav.content',
       href: '/content',
       group: 'content',
-      anyOf: ['storefront.slide.read'],
+      anyOf: ['storefront.page.read', 'storefront.slide.read'],
+    },
+    {
+      id: 'blog',
+      icon: 'file',
+      labelKey: 'nav.blog',
+      href: '/content/blog',
+      group: 'content',
+      anyOf: ['blog.post.read'],
     },
     {
       id: 'sellers',
