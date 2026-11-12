@@ -316,12 +316,18 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'sellers.seller_business_activities_one_main_key':
     'CREATE UNIQUE INDEX seller_business_activities_one_main_key ON sellers.seller_business_activities USING btree (market_id, seller_id) WHERE is_main',
+  // Multi-culture package 1: at most one default culture per Market.
+  'catalog.cultures_one_default_key':
+    'CREATE UNIQUE INDEX cultures_one_default_key ON catalog.cultures USING btree (market_id) WHERE is_default',
   // Customers (package 5a): the relay's claim index of customers.outbox.
   'customers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON customers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // Shipping (SHP-02/03): the relay's claim index of shipping.outbox.
   'shipping.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON shipping.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // Storefront (SEO settings S1): the relay's claim index of storefront.outbox.
+  'storefront.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON storefront.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // Shipping (package 5e): the status poll's order, never-asked first, over the open bookings.
   'shipping.carrier_bookings_market_id_fleet_polled_at_open_idx':
     "CREATE INDEX carrier_bookings_market_id_fleet_polled_at_open_idx ON shipping.carrier_bookings USING btree (market_id, fleet, polled_at NULLS FIRST, created_at) WHERE (progress = ANY (ARRAY['booked'::text, 'picked-up'::text]))",

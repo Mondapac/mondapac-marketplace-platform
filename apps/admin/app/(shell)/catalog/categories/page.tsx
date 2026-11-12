@@ -11,6 +11,7 @@ import {
   VIEW_ATTRIBUTES_PERMISSION,
   type AttributeAccess,
 } from '../../../../src/categories/attribute-links-model.ts';
+import { IMPORT_PERMISSION } from '../../../../src/categories/import/import-model.ts';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
 
@@ -40,6 +41,7 @@ export default async function CategoriesPage() {
           canEdit={permissionKeys.includes(EDIT_PERMISSION)}
           canRestructure={permissionKeys.includes(RESTRUCTURE_PERMISSION)}
           attributeAccess={attributeAccess}
+          canImport={permissionKeys.includes(IMPORT_PERMISSION)}
           csrfToken={gate.session.csrfToken}
         />
       ) : (

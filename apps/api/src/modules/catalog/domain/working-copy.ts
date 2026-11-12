@@ -1,4 +1,5 @@
 import type { Id, Temporal } from '@mondapac/shared-kernel';
+import type { RevisionContent } from './revision-content';
 
 /** The version of the working-copy `content` shape a save writes (data design 3.6). */
 export const WORKING_COPY_CONTENT_SCHEMA_VERSION = 1;
@@ -53,4 +54,66 @@ export function isStorableContent(value: unknown): value is Record<string, unkno
     json !== undefined &&
     Buffer.byteLength(json, 'utf8') <= MAX_WORKING_COPY_CONTENT_BYTES
   );
+}
+
+/**
+ * The working-copy content a revision starts from (Add sizes creates a working copy from the
+ * published revision when the product has none; catalog design 4.2a): the revision's texts,
+ * categories, tax category, attribute values, photos and, per variant, its id, option values and
+ * V4 fields, in the closed shape of the draft. Variant labels are the server's and stay out.
+ * Nothing is shared with the revision: the result is a fresh object.
+ */
+export function workingContentOfRevision(content: RevisionContent): Record<string, unknown> {
+  return {
+    texts: Object.fromEntries(
+      Object.entries(content.texts).map(([locale, text]) => [locale, { ...text }]),
+    ),
+    categoryIds: [...content.categoryIds],
+    taxCategoryCode: content.taxCategoryCode,
+    attributeValues: structuredClone(content.attributeValues),
+    variants: content.variants.map((variant) => ({
+      variantId: variant.variantId,
+      optionValues: { ...variant.optionValues },
+      gtin: variant.gtin,
+      shippingWeightGrams: variant.shippingWeightGrams,
+      shippingLengthMm: variant.shippingLengthMm,
+      shippingWidthMm: variant.shippingWidthMm,
+      shippingHeightMm: variant.shippingHeightMm,
+      imageIds: [...variant.imageIds],
+    })),
+    imageIds: [...content.imageIds],
+  };
+}
+
+/**
+ * The content of a working copy once Add sizes has set the product's axes and the option values of
+ * its one variant (catalog design 4.2a): `variantAxes` is replaced, and the entry of `variantId`
+ * gets `optionValues` (an entry is added when the draft has none); every other key and entry is
+ * kept as it was. The input is not modified.
+ */
+export function withSizes(
+  content: Readonly<Record<string, unknown>>,
+  input: {
+    readonly variantId: Id<'Variant'>;
+    readonly axes: readonly string[];
+    readonly optionValues: Readonly<Record<string, string>>;
+  },
+): Record<string, unknown> {
+  const existing = Array.isArray(content['variants']) ? (content['variants'] as unknown[]) : [];
+  const entry = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+  const others = existing.filter((item) => !(entry(item) && item['variantId'] === input.variantId));
+  const own = existing.find((item) => entry(item) && item['variantId'] === input.variantId);
+  return {
+    ...content,
+    variantAxes: [...input.axes],
+    variants: [
+      ...others,
+      {
+        ...(entry(own) ? own : {}),
+        variantId: input.variantId,
+        optionValues: { ...input.optionValues },
+      },
+    ],
+  };
 }

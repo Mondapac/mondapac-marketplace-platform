@@ -183,9 +183,12 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'pricing.retire-series-for-removed-variant',
       'promotions.cashback-on-delivery',
       'promotions.qualify-referral-on-delivery',
+      'search.index-approved-seller',
       'search.index-availability-changed',
+      'search.index-changed-category',
       'search.index-deleted-offer',
       'search.index-listing-changed-offer',
+      'search.index-moved-category',
       'search.index-moved-offer',
       'search.index-paused-product',
       'search.index-price-changed',
@@ -193,6 +196,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'search.index-published-revision',
       'search.index-reinstated-seller',
       'search.index-resumed-product',
+      'search.index-sell-unit-changed',
       'search.unindex-suspended-seller',
       'sellers.after-submission',
       'sellers.close-decision-approved',
@@ -271,8 +275,17 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.subscribersOf('catalog.offer-listing-changed.v1')).toEqual([
       'search.index-listing-changed-offer',
     ]);
+    // ... and a sell unit switched off or on (V5) re-syncs its Offer's document (V8).
+    expect(subscriptions.subscribersOf('catalog.offer-sell-unit-changed.v1')).toEqual([
+      'search.index-sell-unit-changed',
+    ]);
+    // ... and search re-syncs the documents that name a renamed or moved category (search 1a).
+    expect(subscriptions.subscribersOf('catalog.platform-category-changed.v1')).toEqual([
+      'search.index-changed-category',
+    ]);
     expect(subscriptions.subscribersOf('catalog.platform-category-moved.v1')).toEqual([
       'catalog.report-moved-category',
+      'search.index-moved-category',
     ]);
     expect(subscriptions.subscribersOf('catalog.platform-category-merged.v1')).toEqual([
       'catalog.report-merged-category',
@@ -298,6 +311,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.seller-approved-mail',
       'inventory.ensure-seller-inventory-approved',
       'notifications.seller-access-approved-notice',
+      'search.index-approved-seller',
       'sellers.close-decision-approved',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-rejected.v1')).toEqual([
