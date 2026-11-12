@@ -543,4 +543,91 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       );
     });
   });
+
+  describe('convert type', () => {
+    it('is offered with the restructure key, for a select and a whole number only', async () => {
+      base();
+      mount(false);
+      await screen.findByRole('heading', { name: 'Pack type' });
+      expect(screen.queryByRole('button', { name: 'Convert type' })).toBeNull();
+      cleanup();
+      mount(true);
+      expect(await screen.findByRole('button', { name: 'Convert type' })).toBeTruthy();
+      for (const over of [
+        { material: true },
+        { isVariantOption: true },
+        { dataType: 'text' as const, options: [] },
+      ]) {
+        cleanup();
+        base({ [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, over)) });
+        mount(true);
+        await screen.findByRole('button', { name: 'Archive' });
+        expect(screen.queryByRole('button', { name: 'Convert type' })).toBeNull();
+      }
+      cleanup();
+      base({
+        [`GET catalog/admin/attributes/${id(1)}`]: ok(
+          detail(locales, { dataType: 'integer', options: [] }),
+        ),
+      });
+      mount(true);
+      expect(await screen.findByRole('button', { name: 'Convert type' })).toBeTruthy();
+    });
+
+    it('shows the impact, then converts with the version it showed', async () => {
+      base({
+        [`POST catalog/admin/attributes/${id(1)}/convert`]: ok({
+          attribute: { id: id(1), code: 'pack-type', status: 'active', version: 5, revisionNo: 2 },
+        }),
+      });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      expect(within(dialog).getByText(/read as a list of one/)).toBeTruthy();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Convert type' }));
+      await expectToast('Type converted.');
+      expect(writes()[0]).toEqual([
+        'POST',
+        `catalog/admin/attributes/${id(1)}/convert`,
+        { version: 4, to: 'multi-select' },
+        'csrf-1',
+      ]);
+    });
+
+    it('asks for a decimal when the attribute is a whole number', async () => {
+      base({
+        [`GET catalog/admin/attributes/${id(1)}`]: ok(
+          detail(locales, { dataType: 'integer', options: [] }),
+        ),
+        [`POST catalog/admin/attributes/${id(1)}/convert`]: ok({
+          attribute: { id: id(1), code: 'pack-type', status: 'active', version: 5, revisionNo: 2 },
+        }),
+      });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Convert type' }));
+      await expectToast('Type converted.');
+      expect(writes()[0]?.[2]).toEqual({ version: 4, to: 'decimal' });
+    });
+
+    it('names why an attribute others were merged into cannot be converted', async () => {
+      base({
+        [`POST catalog/admin/attributes/${id(1)}/convert`]: refuse(
+          409,
+          'attribute-definition.convert-merged',
+        ),
+      });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Convert type' }));
+      await within(dialog).findByText(
+        'Other attributes were merged into this one, so its type has to stay as it is.',
+      );
+    });
+  });
 });

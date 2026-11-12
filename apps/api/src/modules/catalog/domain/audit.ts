@@ -263,6 +263,19 @@ export const AttributeValuesMergedAudit = defineAuditAction({
 });
 
 /**
+ * An admin converted the type of a published attribute (A8; plan ت۵). The two types are enum
+ * values; no name, label or value is kept.
+ */
+const CONVERTED_TYPES = ['integer', 'decimal', 'select', 'multi-select'] as const;
+export const AttributeDefinitionConvertedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.converted',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: { ...definitionShape, dataType: auditField.enumOf(CONVERTED_TYPES) },
+  after: { ...definitionShape, dataType: auditField.enumOf(CONVERTED_TYPES) },
+});
+
+/**
  * An admin archived a published attribute (A8). For a `material` one the actor is the confirming
  * admin and the row names the request and its requester, as the revision that clears `material`.
  */
@@ -830,6 +843,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   AttributeDefinitionPublishedAudit,
   AttributeDefinitionDiscardedAudit,
   AttributeValuesMergedAudit,
+  AttributeDefinitionConvertedAudit,
   AttributeDefinitionArchivedAudit,
   AttributeDefinitionsMergedAudit,
   AttributeRelaxationRequestedAudit,

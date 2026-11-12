@@ -168,6 +168,13 @@ describe('buildPublishedSpecifications', () => {
     expect(out[0]?.specifications[0]?.value).toEqual({ kind: 'list', items: ['New'] });
     expect(build({ a: 'gone' }, { a: def({ dataType: 'select', options }) })).toEqual([]);
   });
+  it('reads the single code of a select that became a multi-select as a list of one', () => {
+    const options = new Map<string, SpecificationOption>([
+      ['hot', { labels: { 'en-AU': 'Hot' }, mergedInto: null }],
+    ]);
+    const out = build({ a: 'hot' }, { a: def({ dataType: 'multi-select', options }) });
+    expect(out[0]?.specifications[0]?.value).toEqual({ kind: 'list', items: ['Hot'] });
+  });
   describe('a merged attribute (attributes A8)', () => {
     const label = (text: string): SpecificationOption => ({
       labels: { 'en-AU': text },

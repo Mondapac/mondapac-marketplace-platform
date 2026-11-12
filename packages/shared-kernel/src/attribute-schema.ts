@@ -180,7 +180,10 @@ function checkScalar(field: AttributeField, value: unknown, issues: AttributeIss
       }
       return;
     case 'decimal': {
-      if (typeof value !== 'string' || !DECIMAL.test(value)) {
+      // A whole number is stored by an attribute that was an integer before its conversion
+      // (attributes A8): it is a valid decimal.
+      const wasInteger = typeof value === 'number' && Number.isSafeInteger(value);
+      if (!wasInteger && (typeof value !== 'string' || !DECIMAL.test(value))) {
         issues.push({ path, code: 'attribute.type' });
         return;
       }

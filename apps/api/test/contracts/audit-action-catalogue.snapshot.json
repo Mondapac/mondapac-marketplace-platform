@@ -121,6 +121,30 @@
     }
   },
   {
+    "action": "catalog.attribute-definition.converted",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "activeOptionCount": "integer",
+      "dataType": "enumOf(integer|decimal|select|multi-select)",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "dataType": "enumOf(integer|decimal|select|multi-select)",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
     "action": "catalog.attribute-family.created",
     "targetType": "catalog.attribute-family",
     "targetId": "id",
