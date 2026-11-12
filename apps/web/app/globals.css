@@ -231,6 +231,39 @@ svg {
   background: var(--sf-white);
 }
 
+/* Navigation progress: a thin bar along the top while a soft navigation loads (shell). */
+.nav-progress {
+  position: fixed;
+  inset: env(safe-area-inset-top, 0px) 0 auto 0;
+  z-index: 60;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+}
+/* Teal: at least 4.5:1 on white in every palette (lagoon is 3:1 in palette D). No track. */
+.nav-progress-bar {
+  height: 100%;
+  background: var(--sf-teal);
+  transform-origin: left center;
+  transform: scaleX(0.9);
+}
+[dir='rtl'] .nav-progress-bar {
+  transform-origin: right center;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nav-progress[data-motion='full'] .nav-progress-bar {
+    animation: nav-progress-grow 8s cubic-bezier(0.1, 0.7, 0.2, 1) both;
+  }
+}
+@keyframes nav-progress-grow {
+  from {
+    transform: scaleX(0.08);
+  }
+  to {
+    transform: scaleX(0.9);
+  }
+}
+
 /* Header */
 .top {
   position: sticky;
