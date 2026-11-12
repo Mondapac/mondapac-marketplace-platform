@@ -223,6 +223,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/saved-filters',
     // A new manufacturer certificate, as a draft (certification): the body names the type only.
     'certification/admin/product-certificates',
+    // A new issuer, as Proposed (certification issuer registry).
+    'certification/admin/issuers',
   ]),
 };
 
@@ -265,6 +267,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // with the record version read. Approve, reject, suspend and revoke are not reachable here.
     'certification/admin/product-certificates/:id/documents',
     'certification/admin/product-certificates/:id/submit',
+    // Activate an issuer with the expert's approval, under the version read (certification).
+    'certification/admin/issuers/:id/activate',
     // Add a photo to a platform product's library (catalog, P1): a base64 photo, so the body cap
     // of this path is the larger image one.
     'catalog/admin/platform-products/:id/images',
@@ -403,6 +407,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // The manufacturer certificates that name one product, one certificate, and its status history
     // (certification), read by the product form's certificates card.
     'certification/admin/product-certificates/for-product/:id',
+    // The expert approval of one issuer (certification): an audited read, edit permission.
+    'certification/admin/issuers/:id/expert-reference',
     'certification/admin/product-certificates/:id',
     'certification/admin/product-certificates/:id/history',
     // The photo library of a platform product, for the form's images card (catalog, P1).

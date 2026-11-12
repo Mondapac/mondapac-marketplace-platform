@@ -67,6 +67,12 @@ const envSchema = z.object({
   HOSTED_MARKETS: hostedMarkets,
   API_DOCS_ENABLED: z.enum(['true', 'false']).default('false'),
   CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: z.enum(['true', 'false']).default('false'),
+  // The ceiling of the SEO indexing switch (SEO admin plan 3.1): `off` (the default) keeps every page
+  // out of the index whatever the panel says; `on` lets the panel setting decide. The buyer app
+  // reads the same two names; keep them in step. STOREFRONT_SAMPLE_DATA is `on` unless set `off`:
+  // while it is on, the panel cannot turn indexing on.
+  STOREFRONT_INDEXING: z.enum(['on', 'off']).default('off'),
+  STOREFRONT_SAMPLE_DATA: z.enum(['on', 'off']).default('on'),
   MARKET_CONFIG_DIR: z.string().min(1).default(DEFAULT_MARKET_CONFIG_DIR),
   SERVICE_AREA_CONFIG_DIR: z.string().min(1).default(DEFAULT_SERVICE_AREA_CONFIG_DIR),
   LOCALE_CONFIG_DIR: z.string().min(1).default(DEFAULT_LOCALE_CONFIG_DIR),
@@ -380,6 +386,11 @@ export interface AppConfig {
   readonly apiDocsEnabled: boolean;
   /** A reviewer may download a submitted certificate file. Off until the PDF scan hardening lands. */
   readonly certificationReviewerDocumentsEnabled: boolean;
+  /** `STOREFRONT_INDEXING` and `STOREFRONT_SAMPLE_DATA`: what bounds the SEO indexing switch. */
+  readonly storefrontIndexing: {
+    readonly ceiling: 'on' | 'off';
+    readonly sampleData: boolean;
+  };
   /** Directories holding `<CODE>.json` Market configuration (ADR-0003 decision 5). */
   readonly marketConfigDirs: readonly string[];
   /** Directories holding `<MARKET>.json` ServiceArea postcode sets (ADR-0005 decision 7). */
@@ -915,6 +926,10 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     apiDocsEnabled: parsed.data.API_DOCS_ENABLED === 'true',
     certificationReviewerDocumentsEnabled:
       parsed.data.CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED === 'true',
+    storefrontIndexing: Object.freeze({
+      ceiling: parsed.data.STOREFRONT_INDEXING,
+      sampleData: parsed.data.STOREFRONT_SAMPLE_DATA === 'on',
+    }),
     marketConfigDirs: Object.freeze([path.resolve(parsed.data.MARKET_CONFIG_DIR)]),
     serviceAreaConfigDirs: Object.freeze([path.resolve(parsed.data.SERVICE_AREA_CONFIG_DIR)]),
     localeConfigDirs: Object.freeze([path.resolve(parsed.data.LOCALE_CONFIG_DIR)]),

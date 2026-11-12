@@ -1114,5 +1114,12 @@
       "updated": "integer",
       "failed": "integer"
     }
+  },
+  {
+    "type": "storefront.seo-indexing-changed.v1",
+    "aggregateType": "seo-settings",
+    "fields": {
+      "version": "integer"
+    }
   }
 ]

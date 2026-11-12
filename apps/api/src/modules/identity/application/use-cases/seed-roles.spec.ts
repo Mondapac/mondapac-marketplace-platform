@@ -221,7 +221,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
   });
 
-  it('upgrades viewer from version 1 to 31: adds ordering.refund-limits.view, catalog.variant.view, sellers.business-activity.view, settings.list-paging.view, catalog.category-tree.view, catalog.attribute.view, catalog.brand.read, customers.account-deletion-requests.view, promotions.promotion.view, blog.post.read, shipping.delivery-settings.view, commission-payouts.dispute.view, shipping.fleet-selection.view, customers.account-deletion-settings.view, assistant.settings.view, certification.product-certificate.view, certification.claim-policy.view, certification.type.view, certification.seller-certificate.view, catalog.product.view, sellers.seller.view, pricing.price-hold.view, ordering.order.view, shipping.flat-fee.view, commission-payouts.settlement.view, payments.connected-account.view and notifications.support-contact.view, one seed-applied row, other roles untouched', async () => {
+  it('upgrades viewer from version 1 to 32: adds ordering.refund-limits.view, storefront.seo.view, catalog.variant.view, sellers.business-activity.view, settings.list-paging.view, catalog.category-tree.view, catalog.attribute.view, catalog.brand.read, customers.account-deletion-requests.view, promotions.promotion.view, blog.post.read, shipping.delivery-settings.view, commission-payouts.dispute.view, shipping.fleet-selection.view, customers.account-deletion-settings.view, assistant.settings.view, certification.product-certificate.view, certification.claim-policy.view, certification.type.view, certification.seller-certificate.view, catalog.product.view, sellers.seller.view, pricing.price-hold.view, ordering.order.view, shipping.flat-fee.view, commission-payouts.settlement.view, payments.connected-account.view and notifications.support-contact.view, one seed-applied row, other roles untouched', async () => {
     const VIEW = 'sellers.seller.view';
     const HOLDS = 'pricing.price-hold.view';
     const ORDERS = 'ordering.order.view';
@@ -247,6 +247,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     const BLOG = 'blog.post.read';
     const PROMOTIONS = 'promotions.promotion.view';
     const VARIANTS = 'catalog.variant.view';
+    const SEO = 'storefront.seo.view';
     const REFUND_LIMITS = 'ordering.refund-limits.view';
     // The previous build's definition: version 1 without the sellers, pricing and catalog keys.
     const v1 = seedWith((role) =>
@@ -281,6 +282,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
                 k !== SETTINGS &&
                 k !== ACTIVITIES &&
                 k !== VARIANTS &&
+                k !== SEO &&
                 k !== REFUND_LIMITS,
             ),
           }
@@ -299,7 +301,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('platform', 'viewer')).toMatchObject({
       id: before.id,
-      seedVersion: 31,
+      seedVersion: 32,
       permissionKeys: [
         ...before.permissionKeys,
         DELETION_REQUESTS,
@@ -327,6 +329,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         SETTINGS,
         ACTIVITIES,
         VARIANTS,
+        SEO,
         REFUND_LIMITS,
       ].sort(),
     });
@@ -336,7 +339,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         ...RoleSeedApplied.entry(before.id, {
           before: { seedVersion: 1 },
           after: {
-            seedVersion: 31,
+            seedVersion: 32,
             addedKeys: [
               ACTIVITIES,
               SETTINGS,
@@ -363,6 +366,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
               HOLDS,
               VIEW,
               VARIANTS,
+              SEO,
               REFUND_LIMITS,
             ].sort(),
             removedKeys: [],
@@ -465,10 +469,11 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     });
   });
 
-  it('upgrades viewer from version 27 to 31: removes commission-payouts.payout-terms.view (design 5.3) and adds sellers.business-activity.view, catalog.variant.view and ordering.refund-limits.view, one seed-applied row', async () => {
+  it('upgrades viewer from version 27 to 32: removes commission-payouts.payout-terms.view (design 5.3) and adds sellers.business-activity.view, catalog.variant.view, storefront.seo.view and ordering.refund-limits.view, one seed-applied row', async () => {
     const PAYOUT_TERMS = 'commission-payouts.payout-terms.view';
     const ACTIVITIES = 'sellers.business-activity.view';
     const VARIANTS = 'catalog.variant.view';
+    const SEO = 'storefront.seo.view';
     const REFUND_LIMITS = 'ordering.refund-limits.view';
     // The previous build's definition: version 27 still listed the payout terms key.
     const v27 = seedWith((role) =>
@@ -478,7 +483,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
             seedVersion: 27,
             permissionKeys: [
               ...role.permissionKeys.filter(
-                (k) => k !== ACTIVITIES && k !== VARIANTS && k !== REFUND_LIMITS,
+                (k) => k !== ACTIVITIES && k !== VARIANTS && k !== SEO && k !== REFUND_LIMITS,
               ),
               PAYOUT_TERMS,
             ],
@@ -498,12 +503,13 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('platform', 'viewer')).toMatchObject({
       id: before.id,
-      seedVersion: 31,
+      seedVersion: 32,
       version: before.version + 1,
       permissionKeys: [
         ...before.permissionKeys.filter((k) => k !== PAYOUT_TERMS),
         ACTIVITIES,
         VARIANTS,
+        SEO,
         REFUND_LIMITS,
       ].sort(),
     });
@@ -514,8 +520,8 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         ...RoleSeedApplied.entry(before.id, {
           before: { seedVersion: 27 },
           after: {
-            seedVersion: 31,
-            addedKeys: [VARIANTS, REFUND_LIMITS, ACTIVITIES],
+            seedVersion: 32,
+            addedKeys: [VARIANTS, ACTIVITIES, SEO, REFUND_LIMITS].sort(),
             removedKeys: [PAYOUT_TERMS],
           },
         }),
@@ -622,7 +628,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
   it('never downgrades a role stored at a newer version (an older build running), and warns', async () => {
     await seedRoles(
-      seedWith((role) => (role.seedCode === 'viewer' ? { ...role, seedVersion: 32 } : role)),
+      seedWith((role) => (role.seedCode === 'viewer' ? { ...role, seedVersion: 33 } : role)),
     ).execute(system, {});
     fakes.audits.length = 0;
 
@@ -631,12 +637,12 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
       value: { created: 0, upgraded: 0 },
     });
 
-    expect(roleOf('platform', 'viewer').seedVersion).toBe(32);
+    expect(roleOf('platform', 'viewer').seedVersion).toBe(33);
     expect(fakes.audits).toEqual([]);
     expect(logged('identity.seed-roles.stored-newer')?.[0]).toMatchObject({
       seedCode: 'viewer',
-      storedSeedVersion: 32,
-      seedVersion: 31,
+      storedSeedVersion: 33,
+      seedVersion: 32,
     });
   });
 

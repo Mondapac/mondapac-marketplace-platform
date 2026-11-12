@@ -4,6 +4,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
+import { CertificatesTabs } from '../../../src/certificates/tabs.tsx';
 import { CertificateQueue } from '../../../src/certificates/queue.tsx';
 import { typeNames } from '../../../src/certificates/format.ts';
 import {
@@ -61,6 +62,10 @@ export default async function CertificatesPage({
     </>
   );
   const keys = gate.session.permissionKeys;
+  // A reader who may only see the issuers lands on them: the menu item has one address.
+  if (!keys.includes(VIEW_PERMISSION) && keys.includes('certification.issuer.view')) {
+    redirect('/certificates/issuers');
+  }
   if (!keys.includes(VIEW_PERMISSION)) return shell(message('no-access'));
 
   const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
@@ -80,6 +85,7 @@ export default async function CertificatesPage({
   const next = result.body.nextAfterId;
   return shell(
     <div className="flex flex-col gap-4">
+      <CertificatesTabs active="queue" permissionKeys={keys} />
       <p className="text-sm text-fg-muted">
         {t('certificates.queue.total', { count: result.body.total })}
       </p>
