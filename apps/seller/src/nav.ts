@@ -63,6 +63,14 @@ export const sellerNav: NavConfig = {
       anyOf: ['catalog.own-product.view'],
     },
     {
+      id: 's_tag_suggestions',
+      icon: 'tag',
+      labelKey: 'nav.tagSuggestions',
+      href: '/tag-suggestions',
+      group: 'catalogue',
+      anyOf: ['catalog.own-product.view'],
+    },
+    {
       id: 's_reviews',
       icon: 'star',
       labelKey: 'nav.reviews',

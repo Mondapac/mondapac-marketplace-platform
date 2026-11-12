@@ -1203,6 +1203,21 @@ describe('relay allowlist for the seller reviews', () => {
     }
   });
 
+  it("relays only the seller's own tag suggestion write", async () => {
+    const upstream = upstreamOk();
+    const path = ['catalog', 'seller', 'products', ID, 'topic-suggestions'];
+    expect((await relay(config, send('POST', 'x'), path, upstream)).status).toBe(200);
+    for (const [method, bad] of [
+      ['GET', path],
+      ['PUT', path],
+      ['POST', ['catalog', 'seller', 'products', 'not-a-uuid', 'topic-suggestions']],
+      ['POST', ['catalog', 'admin', 'topic-suggestions']],
+      ['POST', [...path, 'approve']],
+    ] as const) {
+      expect((await relay(config, send(method, 'x'), [...bad], upstream)).status).toBe(404);
+    }
+  });
+
   it('refuses a cross-site PATCH of a reply', async () => {
     const request = new Request(`http://seller.localhost:3001/api/reviews/seller/${ID}/reply`, {
       method: 'PATCH',
