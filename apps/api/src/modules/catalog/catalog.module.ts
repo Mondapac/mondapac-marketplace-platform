@@ -863,6 +863,7 @@ const RESTRUCTURE_DEPS = {
     },
     useCaseProvider(BusinessActivityGet, { unitOfWork: true, activities: true }),
     useCaseProvider(BusinessActivityCreate, {
+      contentFilter: true,
       unitOfWork: true,
       activities: true,
       treeReader: true,
@@ -872,6 +873,7 @@ const RESTRUCTURE_DEPS = {
       ids: true,
     }),
     useCaseProvider(BusinessActivityEdit, {
+      contentFilter: true,
       unitOfWork: true,
       activities: true,
       treeReader: true,

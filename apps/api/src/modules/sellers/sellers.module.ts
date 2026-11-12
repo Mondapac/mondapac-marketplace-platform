@@ -6,6 +6,7 @@ import {
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
+import { ContentFilter } from '../../platform/content-filter/content-filter';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { AUDIT_TRAIL_READER } from '../../platform/audit/audit-trail-reader';
@@ -261,6 +262,7 @@ const PORT = {
   localesPolicy: STORE_PROFILE_LOCALES_POLICY,
   imageProcessor: STORE_IMAGE_PROCESSOR,
   claimCheck: STORE_TEXT_CLAIM_CHECK,
+  contentFilter: ContentFilter,
   publishedContent: PUBLISHED_STORE_CONTENT,
   objectStore: OBJECT_STORE,
   decider: SELLER_ACCESS_DECIDER,
@@ -425,6 +427,7 @@ const REVIEW_DECISION_PORTS = {
       counters: true,
       counterKeys: true,
       claimCheck: true,
+      contentFilter: true,
       ids: true,
       clock: true,
     }),
@@ -435,6 +438,7 @@ const REVIEW_DECISION_PORTS = {
       counters: true,
       counterKeys: true,
       claimCheck: true,
+      contentFilter: true,
       imageProcessor: true,
       objectStore: true,
       ids: true,

@@ -19,6 +19,7 @@ export class ConfigBlogPolicy implements BlogPolicy {
       pageSize: blog.pageSize,
       defaultAuthorDisplay: blog.defaultAuthorDisplay,
       healthTerms: blog.healthTerms,
+      blockedTerms: config.contentFilter?.blockedTerms ?? [],
       selfApprovalWithStepUp: blog.selfApprovalWithStepUp,
     };
   }
