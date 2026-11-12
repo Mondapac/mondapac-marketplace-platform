@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@mondapac/panel-server": "workspace:*",
+    "mapbox-gl": "3.33.0",
     "next": "16.4.2",
     "next-intl": "4.14.9",
     "react": "19.3.0",
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
+    "@types/geojson": "7946.0.16",
     "@types/node": "^24.19.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

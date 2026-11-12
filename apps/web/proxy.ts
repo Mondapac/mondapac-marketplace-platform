@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { ga4IdFor } from './src/analytics/ga4-config.ts';
 import { DEFAULT_LOCALE, publishedLocales } from './src/i18n/locale.ts';
 import { makeNonce, policyPath, storefrontCsp } from './src/security/storefront-csp.ts';
+import { mapIsOn } from './src/delivery/map-config.ts';
 import { NOINDEX_HEADER, indexingOn } from './src/seo/indexing.ts';
 import { PROXY_READ_TIMEOUT_MS, apiGetWith } from './src/storefront/api.ts';
 import { categoryRedirect, type ResolveRead } from './src/storefront/category-redirect.ts';
@@ -114,6 +115,7 @@ function pageResponse(request?: NextRequest, missing: string | null = null): Nex
       process.env.NODE_ENV === 'development',
       imageOrigin(),
       ga4IdFor(request.headers.get('host')) !== null,
+      mapIsOn(),
     );
     const headers = new Headers(request.headers);
     headers.set('content-security-policy', policy);

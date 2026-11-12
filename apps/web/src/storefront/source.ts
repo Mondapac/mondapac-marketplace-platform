@@ -38,6 +38,7 @@ import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { sampleDeliveryOptions } from './sample-delivery-options.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
 import { lookupIsLive, placesDeps } from '../delivery/places-server.ts';
+import { mapConfig } from '../delivery/map-config.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 import { SAMPLE_SELLER_SIGN_UP } from './sample-seller-sign-up.ts';
@@ -271,7 +272,9 @@ function samplePayment(request: PayRequest): PayAnswer {
  */
 export async function loadDeliveryLocator(): Promise<DeliveryLocatorSource> {
   const live = lookupIsLive(placesDeps(), await headers());
-  return live ? { ...SAMPLE_DELIVERY_LOCATOR, live } : SAMPLE_DELIVERY_LOCATOR;
+  const map = live ? mapConfig() : null;
+  if (!live) return SAMPLE_DELIVERY_LOCATOR;
+  return map ? { ...SAMPLE_DELIVERY_LOCATOR, live, map } : { ...SAMPLE_DELIVERY_LOCATOR, live };
 }
 
 /** The display name of a ServiceArea code ("greater-brisbane"); the code itself when unnamed. */

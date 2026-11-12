@@ -1052,6 +1052,7 @@
     "zoom-in": "Zoom in",
     "zoom-out": "Zoom out",
     "legend": "Delivery area",
+    "map-loading": "Loading map…",
     "attribution": "Map provider and data to be chosen"
   },
   "seller": {
