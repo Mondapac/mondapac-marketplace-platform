@@ -94,6 +94,8 @@ describe('the sellers that need a look page', () => {
     expect(screen.getByText('Unhealthy · 20')).toBeTruthy();
     expect(screen.getByText('Orders ready late')).toBeTruthy();
     expect(screen.getByText('Unnamed store')).toBeTruthy();
+    // The measured day is a date with no time of day.
+    expect(screen.getAllByText('10 Nov 2026')).toHaveLength(2);
     expect(screen.getByText('Only the worst sellers are shown.')).toBeTruthy();
   });
 

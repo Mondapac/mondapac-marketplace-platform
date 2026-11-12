@@ -1,7 +1,14 @@
 import { Badge, EmptyState } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { shortInstant } from '../shared/format.ts';
 import { HEALTH_METRICS, type HealthQueueRead } from './health-types.ts';
+
+/** The measured day is a calendar date (UTC night), so it shows as a date and no time of day. */
+const dayOf = (day: string, locale: string): string => {
+  const date = new Date(`${day}T00:00:00Z`);
+  return Number.isNaN(date.getTime())
+    ? '-'
+    : new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(date);
+};
 
 const known = (metric: string): (typeof HEALTH_METRICS)[number] | null =>
   (HEALTH_METRICS as readonly string[]).includes(metric)
@@ -57,7 +64,7 @@ export function HealthQueue({ queue }: { readonly queue: HealthQueueRead }) {
                   </td>
                   <td className="px-3 py-3">{metric === null ? '-' : t(`metric.${metric}`)}</td>
                   <td className="whitespace-nowrap px-3 py-3">
-                    <time dateTime={item.day}>{shortInstant(item.day, locale)}</time>
+                    <time dateTime={item.day}>{dayOf(item.day, locale)}</time>
                   </td>
                 </tr>
               );

@@ -994,7 +994,7 @@
       "title": "Sellers that need a look",
       "link": "Sellers that need a look",
       "back": "Back to sellers",
-      "intro": "Sellers whose latest stored health is unhealthy, worst score first. Open a seller to see the measures and the trend.",
+      "intro": "Sellers whose latest health is Unhealthy, worst score first. Open a seller to see the measures and the trend.",
       "col": {
         "seller": "Seller",
         "score": "Score",
@@ -1012,7 +1012,7 @@
       },
       "empty": {
         "title": "No seller needs a look",
-        "body": "Sellers whose health is unhealthy appear here."
+        "body": "No seller is in the Unhealthy band right now."
       },
       "truncated": "Only the worst sellers are shown.",
       "unavailable": "We couldn't load the sellers. Try again.",
