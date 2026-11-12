@@ -1,7 +1,11 @@
 import { request as httpRequest, Agent, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { applyClientAddress, parseClientAddressSource } from './client-address-source.ts';
+import {
+  applyClientAddress,
+  parseClientAddressSource,
+  withEdgeOnlyHeaders,
+} from './client-address-source.ts';
 import { createPanelServer } from './server.ts';
 
 interface Seen {
@@ -17,11 +21,15 @@ afterEach(() => {
   server = undefined;
 });
 
-async function start(env: Record<string, string>, host = '127.0.0.1') {
+async function start(
+  env: Record<string, string>,
+  host = '127.0.0.1',
+  edgeOnly: readonly string[] = [],
+) {
   const seen: Seen[] = [];
   const warnings: { reason: string; peer: string }[] = [];
   server = createPanelServer({
-    source: parseClientAddressSource(env),
+    source: withEdgeOnlyHeaders(parseClientAddressSource(env), edgeOnly),
     warn: (line) => warnings.push(line),
     handle: (req: IncomingMessage, res) => {
       seen.push({
@@ -331,5 +339,44 @@ describe('the upgrade handler (dev hot reload)', () => {
     expect(destroyed).toBe(true);
     expect(upgraded).toHaveLength(0);
     expect(warnings).toEqual(['edge-header-missing']);
+  });
+});
+
+describe('edge-only headers (the storefront CDN location headers)', () => {
+  const edge = {
+    CLIENT_ADDRESS_SOURCE: 'edge',
+    EDGE_CIDRS: '127.0.0.0/16',
+    EDGE_CLIENT_ADDRESS_HEADER: 'cf-connecting-ip',
+  };
+  const GEO = ['cf-ipcity', 'cf-postal-code', 'cf-ipcountry'];
+  const sent = ['CF-IPCity', 'Brisbane', 'cf-postal-code', '4000', 'CF-IPCountry', 'AU'];
+
+  it('keeps them from a trusted edge peer', async () => {
+    const target = await start(edge, '127.0.0.1', GEO);
+    await send(target, ['cf-connecting-ip', '203.0.113.7', ...sent]);
+    expect(target.seen[0]?.headers['cf-ipcity']).toBe('Brisbane');
+    expect(target.seen[0]?.headers['cf-ipcountry']).toBe('AU');
+  });
+
+  it('removes them from a peer outside the edge ranges', async () => {
+    const target = await start({ ...edge, EDGE_CIDRS: '203.0.113.0/24' }, '127.0.0.1', GEO);
+    await send(target, sent);
+    const seen = target.seen[0]!;
+    for (const name of GEO) expect(seen.headers[name]).toBeUndefined();
+    expect(seen.rawHeaders.map((h) => h.toLowerCase())).not.toContain('cf-ipcity');
+  });
+
+  it('removes them in socket mode', async () => {
+    const target = await start({ CLIENT_ADDRESS_SOURCE: 'socket' }, '127.0.0.1', GEO);
+    await send(target, sent);
+    for (const name of GEO) expect(target.seen[0]?.headers[name]).toBeUndefined();
+  });
+
+  it('refuses a name that is not lowercase or carries meaning elsewhere', () => {
+    const source = parseClientAddressSource(edge);
+    expect(() => withEdgeOnlyHeaders(source, ['CF-IPCity'])).toThrow(/lowercase/);
+    expect(() => withEdgeOnlyHeaders(source, ['x-forwarded-for'])).toThrow(/cannot be/);
+    expect(() => withEdgeOnlyHeaders(source, ['cf-connecting-ip'])).toThrow(/cannot be/);
+    expect(withEdgeOnlyHeaders(source, [])).toBe(source);
   });
 });

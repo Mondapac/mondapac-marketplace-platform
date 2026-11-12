@@ -21,6 +21,8 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { callApi } from '../../api/client.ts';
+import { AddSizesDialog } from './add-sizes-dialog.tsx';
+import { canAddSizes, maxAxesOf, publishedAxesOf } from './add-sizes.ts';
 import { AttributesSection } from './attributes-section.tsx';
 import { categoryOptions } from './category-options.ts';
 import {
@@ -49,6 +51,7 @@ import {
   StatusBadge,
   StatusCard,
 } from './side-cards.tsx';
+import { hasProblems, problemsOfRows } from './variant-fields.ts';
 import { axesOf } from './variant-grid.ts';
 import { VariantsSection } from './variants-section.tsx';
 import {
@@ -271,9 +274,13 @@ function EditForm({
   const [dirty, setDirty] = useState(
     () => knownImageIds(content, images).length !== imageIdsOf(content).length,
   );
+  const [sizesOpen, setSizesOpen] = useState(false);
+  // A new run of the dialog per opening: nothing of an earlier one (an error, a tick) survives.
+  const [sizesRun, setSizesRun] = useState(0);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<FormProblem | null>(null);
   const [refused, setRefused] = useState<DraftSaved['refusedFields']>([]);
+  const [notices, setNotices] = useState<NonNullable<DraftSaved['variantNotices']>>([]);
   const [status, setStatus] = useState(product.status);
   const [publishedNo, setPublishedNo] = useState(product.published?.revisionNo ?? null);
   const [hasRevision, setHasRevision] = useState(() => hasSavedRevision(product));
@@ -306,6 +313,16 @@ function EditForm({
   const adding = !published && savedName === '';
   const nextNo = (publishedNo ?? 0) + 1;
   const inactive = status === 'published' && pausedAt !== null;
+  const publishedAxes = publishedAxesOf(product.published?.content, form.fields);
+  const maxAxes = maxAxesOf(product.maxAxes);
+  // A second type being added: every live variant must hold a value for it before publishing.
+  const secondCodes =
+    configurable && publishedAxes?.length === 1
+      ? axes.filter((axis) => !publishedAxes.includes(axis))
+      : [];
+  const secondMissing = rows.some((row) =>
+    secondCodes.some((axis) => (row.options[axis] ?? '') === ''),
+  );
 
   const labels: Partial<SearchSelectLabels> = {
     search: t('select.search'),
@@ -350,7 +367,15 @@ function EditForm({
       topicIds,
       taxCategoryCode,
       attributeValues: attributeValuesWith(content, attributeFields, inputs, defaultLocale),
-      variants: configurable ? variantsWith(list) : null,
+      // A photo taken off the product no longer counts as a pick of any variant.
+      variants: configurable
+        ? variantsWith(
+            list.map((row) => ({
+              ...row,
+              imageIds: row.imageIds.filter((id) => imageIds.includes(id)),
+            })),
+          )
+        : null,
       variantAxes: configurable ? axes : null,
     });
     if (imageIds.length > 0) next['imageIds'] = [...imageIds];
@@ -360,6 +385,11 @@ function EditForm({
 
   /** Saves the draft; 'saved' when the API took it whole, 'refused' when it dropped some texts. */
   async function save(): Promise<'saved' | 'refused' | false> {
+    // Barcode, shipping and photo picks that cannot be saved are fixed first, next to their fields.
+    if (configurable && hasProblems(problemsOfRows(rows))) {
+      setProblem({ key: 'variant-fields', details: [], reload: false });
+      return false;
+    }
     let list = rows;
     let idsMinted = false;
     let next = contentOf(list);
@@ -393,6 +423,7 @@ function EditForm({
     }
     setContent(next);
     setRefused(result.body.refusedFields);
+    setNotices(result.body.variantNotices ?? []);
     setDirty(result.body.refusedFields.length > 0);
     if (published) setHasRevision(true);
     return result.body.refusedFields.length === 0 ? 'saved' : 'refused';
@@ -404,6 +435,12 @@ function EditForm({
     setPending(true);
     setProblem(null);
     setJustPublished(false);
+    if (action === 'publish' && secondMissing) {
+      setProblem({ key: 'second-missing', details: [], reload: false });
+      busy.current = false;
+      setPending(false);
+      return;
+    }
     if (dirty || action === 'save' || content === undefined) {
       const saved = await save();
       if (saved !== 'saved' || action === 'save') {
@@ -515,6 +552,25 @@ function EditForm({
   return (
     <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
       {guard.dialog}
+      <AddSizesDialog
+        key={sizesRun}
+        open={sizesOpen}
+        productId={product.productId}
+        fields={form.fields}
+        maxAxes={maxAxes}
+        waiting={(product.pendingSubmittedAt ?? null) !== null}
+        defaultLocale={defaultLocale}
+        csrfToken={csrfToken}
+        onClose={() => setSizesOpen(false)}
+        onDone={() => {
+          setSizesOpen(false);
+          onReload();
+        }}
+        onStale={() => {
+          setSizesOpen(false);
+          onReload();
+        }}
+      />
       <Dialog
         open={confirm === 'discard'}
         title={t('discard.title')}
@@ -624,6 +680,18 @@ function EditForm({
       {justPublished ? (
         <Banner tone="success" title={t('banner.published-title', { title: shownTitle })}>
           {t('banner.published-body')}
+        </Banner>
+      ) : null}
+      {notices.length > 0 ? (
+        <Banner tone="info">
+          <p>{t('grid.notice.duplicate', { count: notices.length })}</p>
+          {[
+            ...new Set(
+              notices.flatMap((n) => (n.sellOnProductCode === null ? [] : [n.sellOnProductCode])),
+            ),
+          ].map((code) => (
+            <p key={code}>{t('grid.notice.sell-on', { code })}</p>
+          ))}
         </Banner>
       ) : null}
       {problem === null ? null : (
@@ -795,12 +863,23 @@ function EditForm({
             defaultLocale={defaultLocale}
             max={product.maxVariants}
             published={published}
+            publishedAxes={publishedAxes}
+            maxAxes={maxAxes}
+            canAddSizes={canAddSizes(product, form.fields)}
+            addSizesBlocked={dirty || pending}
             refused={refused}
+            productId={product.productId}
+            galleryIds={imageIds}
+            notices={notices.map((notice) => notice.variantId)}
             onChange={(next) => {
               setRows(next.rows);
               setAxes(next.axes);
               clearRefused((item) => rows.some((row) => row.variantId === item.ref));
               edited();
+            }}
+            onAddSizes={() => {
+              setSizesRun((run) => run + 1);
+              setSizesOpen(true);
             }}
           />
           <CertificationsSection

@@ -746,6 +746,25 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(404);
     expect((await call('POST', `pricing/admin/price-holds/${ID}/delete`)).status).toBe(404);
   });
+  it('relays add-sizes as a POST and its impact read as a GET, each on its own method only', async () => {
+    const base = `catalog/admin/platform-products/${ID}`;
+    const read = (path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin }),
+        path.split('/'),
+        vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
+      );
+    expect((await call('POST', `${base}/add-sizes`)).status).toBe(200);
+    expect((await read(`${base}/add-sizes`)).status).toBe(404);
+    expect((await call('PUT', `${base}/add-sizes`)).status).toBe(404);
+    expect((await read(`${base}/add-sizes-impact`)).status).toBe(200);
+    expect((await call('POST', `${base}/add-sizes-impact`)).status).toBe(404);
+    expect((await call('DELETE', `${base}/add-sizes-impact`)).status).toBe(404);
+    expect((await call('POST', 'catalog/admin/platform-products/nope/add-sizes')).status).toBe(404);
+    expect((await read('catalog/admin/platform-products/nope/add-sizes-impact')).status).toBe(404);
+  });
+
   it('relays the product version decisions and the photo takedown by UUID, POST only', async () => {
     const id = '0190a000-0000-7000-8000-0000000000c1';
     const request = (method: string, path: string) =>
@@ -1291,6 +1310,13 @@ describe('relay of the wallet and step-up routes', () => {
   it.each([
     ['GET', 'wallet/admin/settings'],
     ['PUT', 'wallet/admin/settings'],
+    ['GET', 'promotions/admin/settings'],
+    ['PUT', 'promotions/admin/settings'],
+    ['GET', 'promotions/admin/first-order'],
+    ['PUT', 'promotions/admin/first-order'],
+    ['GET', 'promotions/admin/free-shipping'],
+    ['PUT', 'promotions/admin/free-shipping/logan'],
+    ['PUT', 'promotions/admin/free-shipping/Gold_Coast-2'],
     ['GET', 'wallet/admin/credit-requests'],
     ['POST', 'wallet/admin/credits'],
     ['POST', 'identity/admin/step-up/verify'],
@@ -1360,6 +1386,15 @@ describe('relay of the wallet and step-up routes', () => {
   it.each([
     ['DELETE', 'wallet/admin/settings'],
     ['POST', 'wallet/admin/settings'],
+    ['POST', 'promotions/admin/settings'],
+    ['DELETE', 'promotions/admin/first-order'],
+    ['GET', 'promotions/admin/free-shipping/logan'],
+    ['PUT', 'promotions/admin/free-shipping'],
+    ['PUT', 'promotions/admin/free-shipping/a.b'],
+    ['PUT', 'promotions/admin/free-shipping/logan/extra'],
+    ['PUT', `promotions/admin/free-shipping/${'z'.repeat(65)}`],
+    ['GET', 'promotions/admin/promotions'],
+    ['PUT', 'promotions/admin/preview-quote'],
     ['PUT', 'wallet/admin/credits'],
     ['GET', 'wallet/admin/credits'],
     ['GET', 'identity/admin/step-up/verify'],
@@ -2331,6 +2366,80 @@ describe('relay of the product import', () => {
       (await relay(config, post(start.join('/'), sameOrigin, large), start, upstream)).status,
     ).toBe(413);
     expect(upstream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('relay of the category tree import and export (categories C7a)', () => {
+  const base = ['catalog', 'admin', 'category-tree'];
+  const dryRun = [...base, 'import', 'dry-run'];
+  const apply = [...base, 'import', 'apply'];
+  const exportPath = [...base, 'export'];
+  const get = (target: string) =>
+    new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+
+  it('relays the dry run and the apply as same-origin POSTs, and the export as a GET, on their exact paths only', async () => {
+    const upstream = upstreamOk();
+    for (const path of [dryRun, apply]) {
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+      expect((await relay(config, get(path.join('/')), path, upstream)).status).toBe(404);
+      expect(
+        (
+          await relay(
+            config,
+            post(path.join('/'), { host: 'admin.localhost:3002' }),
+            path,
+            upstream,
+          )
+        ).status,
+      ).toBe(403);
+      const extra = [...path, 'x'];
+      expect((await relay(config, post(extra.join('/')), extra, upstream)).status).toBe(404);
+    }
+    expect((await relay(config, get(exportPath.join('/')), exportPath, upstream)).status).toBe(200);
+    expect((await relay(config, post(exportPath.join('/')), exportPath, upstream)).status).toBe(
+      404,
+    );
+    const other = [...base, 'import'];
+    expect((await relay(config, post(other.join('/')), other, upstream)).status).toBe(404);
+    expect(upstream).toHaveBeenCalledTimes(3);
+  });
+
+  it('lets only the two import routes carry a large body', async () => {
+    const upstream = upstreamOk();
+    const large = JSON.stringify({ data: 'x'.repeat(2 * 1024 * 1024) });
+    for (const path of [dryRun, apply]) {
+      expect(
+        (await relay(config, post(path.join('/'), sameOrigin, large), path, upstream)).status,
+      ).toBe(200);
+    }
+    const tooLarge = JSON.stringify({ data: 'x'.repeat(15 * 1024 * 1024) });
+    expect(
+      (await relay(config, post(dryRun.join('/'), sameOrigin, tooLarge), dryRun, upstream)).status,
+    ).toBe(413);
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
+
+  it('relays the export query that has the right shape only', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      get(`${exportPath.join('/')}?format=xlsx&status=active,hidden&q=rice&extra=1&format2=x`),
+      exportPath,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/category-tree/export?format=xlsx&status=active%2Chidden&q=rice',
+    );
+    await relay(
+      config,
+      get(`${exportPath.join('/')}?format=pdf&status=gone`),
+      exportPath,
+      upstream,
+    );
+    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/admin/category-tree/export');
   });
 });
 

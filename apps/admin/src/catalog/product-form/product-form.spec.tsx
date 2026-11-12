@@ -563,6 +563,92 @@ describe('the edit form', () => {
     expect(written.variantAxes).toEqual(['size']);
   });
 
+  const sizeProduct = (variant: Record<string, unknown>): ProductView =>
+    view({
+      variantModel: 'configurable',
+      variants: [{ variantId: '0190a000-0000-7000-8000-0000000000e5', state: 'proposed' }],
+      form: {
+        ...view().form,
+        fields: [
+          {
+            code: 'size',
+            dataType: 'select',
+            localizable: false,
+            required: true,
+            isVariantOption: true,
+            bounds: {},
+            names: { en: 'Size' },
+            options: [{ code: 'l', labels: { en: 'Large' } }],
+          },
+        ],
+      },
+      workingCopy: {
+        content: {
+          imageIds: ['img-1'],
+          variantAxes: ['size'],
+          variants: [
+            {
+              variantId: '0190a000-0000-7000-8000-0000000000e5',
+              optionValues: { size: 'l' },
+              ...variant,
+            },
+          ],
+        },
+        lastSavedAt: '2026-11-05T01:00:00.000Z',
+        baseRevisionId: null,
+      },
+    });
+
+  it('writes a variant barcode and keeps only the photo picks that are still on the product', async () => {
+    call.mockResolvedValueOnce(
+      ok(sizeProduct({ gtin: '4006381333931', imageIds: ['img-1', 'gone'] })),
+    );
+    mountEdit();
+    await screen.findByText('Different sizes or flavours');
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Sella rice' } });
+    call.mockResolvedValueOnce(
+      ok({ variantIds: ['0190a000-0000-7000-8000-0000000000e5'], refusedFields: [] }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    const written = lastBody(1)['content'] as { variants: Record<string, unknown>[] };
+    expect(written.variants[0]).toMatchObject({ gtin: '4006381333931', imageIds: ['img-1'] });
+  });
+
+  it('does not save while a variant barcode is not valid, and says to fix it', async () => {
+    call.mockResolvedValueOnce(ok(sizeProduct({ gtin: '12345' })));
+    mountEdit();
+    await screen.findByText('Different sizes or flavours');
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Sella rice' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(
+      await screen.findByText('Fix the highlighted variant fields before saving.'),
+    ).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the advice when another product already carries a barcode of the draft', async () => {
+    call.mockResolvedValueOnce(ok(sizeProduct({ gtin: '4006381333931' })));
+    mountEdit();
+    await screen.findByText('Different sizes or flavours');
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Sella rice' } });
+    call.mockResolvedValueOnce(
+      ok({
+        variantIds: ['0190a000-0000-7000-8000-0000000000e5'],
+        refusedFields: [],
+        variantNotices: [
+          {
+            variantId: '0190a000-0000-7000-8000-0000000000e5',
+            code: 'gtin.duplicate',
+            sellOnProductCode: 'MP-000123',
+          },
+        ],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(await screen.findByText(/Product MP-000123 already carries/)).toBeTruthy();
+  });
+
   it('shows the unsaved bar only after an edit, and asks before leaving with unsaved edits', async () => {
     call.mockResolvedValueOnce(ok(view()));
     mountEdit();

@@ -15,7 +15,7 @@ S2 for a wave against seller or customer accounts. S1 if an admin account signed
 
 ## What exists today
 
-The API already counts sign-in attempts and refuses when a limit is reached. Counters are kept in PostgreSQL, keyed by HMAC of account, origin and account plus origin (no raw emails or IPs in the keys). Limits are set per Market in `config/markets/<MARKET>.json`: `identity.signInThrottles` (`accountOrigin`, `account`, `origin`), `identity.mailThrottles`, and the generic per-origin limiter `requestLimits` (`anonymousIdentityPerMinute`, `publicMediaPerMinute`, `defaultPerMinute`). Passwords are hashed with argon2id and admins have a second factor, so a guessed password alone does not open an admin account.
+The API already counts sign-in attempts and refuses when a limit is reached. Counters are kept in PostgreSQL, keyed by HMAC of account, origin and account plus origin (no raw emails or IPs in the keys). Limits are set per Market in `config/markets/<MARKET>.json`: `identity.signInThrottles` (`accountOrigin`, `account`, `origin`), `identity.mailThrottles`, and the generic per-origin limiter `requestLimits` (`anonymousIdentityPerMinute`, `publicMediaPerMinute`, `publicSearchPerMinute`, `defaultPerMinute`). Passwords are hashed with argon2id and admins have a second factor, so a guessed password alone does not open an admin account.
 
 ## Automatic actions
 

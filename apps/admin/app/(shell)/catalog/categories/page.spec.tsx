@@ -30,8 +30,14 @@ vi.mock('../../../../src/server/admin-shell.tsx', () => ({
   }) => <div data-active={activeId}>{children}</div>,
 }));
 vi.mock('../../../../src/categories/categories-view.tsx', () => ({
-  CategoriesView: ({ canEdit }: { readonly canEdit: boolean }) => (
-    <p data-testid="view" data-can-edit={String(canEdit)}>
+  CategoriesView: ({
+    canEdit,
+    canImport,
+  }: {
+    readonly canEdit: boolean;
+    readonly canImport?: boolean;
+  }) => (
+    <p data-testid="view" data-can-edit={String(canEdit)} data-can-import={String(canImport)}>
       view
     </p>
   ),
@@ -57,6 +63,14 @@ describe('Categories page', () => {
     );
     render(await CategoriesPage());
     expect(screen.getByTestId('view').getAttribute('data-can-edit')).toBe('true');
+  });
+
+  it('passes the import key on, which shows Export and Import', async () => {
+    mocks.session.mockResolvedValue(
+      session(['catalog.category-tree.view', 'catalog.category-tree.import']),
+    );
+    render(await CategoriesPage());
+    expect(screen.getByTestId('view').getAttribute('data-can-import')).toBe('true');
   });
 
   it('says the role cannot see categories without the view key', async () => {

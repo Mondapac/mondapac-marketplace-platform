@@ -28,6 +28,7 @@ vi.mock('../../../src/server/session.ts', () => ({ requireSession: mocks.session
 vi.mock('../../../src/server/admin-shell.tsx', () => ({
   AdminShell: ({ children }: { readonly children: ReactNode }) => <main>{children}</main>,
 }));
+vi.mock('../../../src/certificates/tabs.tsx', () => ({ CertificatesTabs: () => null }));
 vi.mock('../../../src/certificates/queue.tsx', () => ({
   CertificateQueue: ({
     rows,
@@ -104,6 +105,15 @@ describe('certificates page', () => {
     expect(screen.getByRole('link', { name: 'First page' }).getAttribute('href')).toBe(
       '/certificates',
     );
+  });
+
+  it('sends a reader who may only see issuers to the issuers tab', async () => {
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session(['certification.issuer.view']),
+    });
+    await expect(CertificatesPage(search())).rejects.toThrow('redirect:/certificates/issuers');
+    expect(mocks.get).not.toHaveBeenCalled();
   });
 
   it('reads nothing without the queue permission, and has a way back', async () => {

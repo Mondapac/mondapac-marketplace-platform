@@ -106,6 +106,7 @@
   "requestLimits": {
     "anonymousIdentityPerMinute": 10,
     "publicMediaPerMinute": 600,
+    "publicSearchPerMinute": 90,
     "defaultPerMinute": 200
   },
   "notifications": {
@@ -339,11 +340,14 @@
       "primaryImage": false,
       "anyImage": true,
       "variantRemoved": false,
-      "gtinChanged": false
+      "gtinChanged": false,
+      "axisAdded": false
     },
     "maxVariantsPerProduct": 3,
     "maxCategoryDepth": 3,
     "maxCategoryChangeTags": 20000,
+    "maxCategoryImportRows": 500,
+    "maxCategoryImportBytes": 1048576,
     "maxVariantAttributes": 3,
     "units": [
       { "code": "g", "labels": { "ja-JP": "g" } },

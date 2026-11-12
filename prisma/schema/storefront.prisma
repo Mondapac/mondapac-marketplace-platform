@@ -273,3 +273,89 @@ model StorefrontSlideImageRendition {
   @@map("slide_image_renditions")
   @@schema("storefront")
 }
+
+/// One version of a Market's SEO settings (SEO admin plan, package S1). Insert-only: the settings in
+/// force are the row with the highest version, and the rows before it are the history (who, when,
+/// what) that "restore" copies from. No row means version 0, the code defaults. The columns hold the
+/// fields of plan 2.1 (G1 to G7), 2.2 (B1 to B6), 2.3 (T1 to T3) and, as a closed JSON object, the
+/// page-type templates of 2.4. The CHECKs in the migration repeat the API bounds. Per ADR-0026 the
+/// indexing switch belongs in the platform market-settings store; that store is not built, so it sits
+/// here, like `assistant.settings`, and moves when the store lands.
+model StorefrontSeoSettings {
+  marketId             String   @map("market_id") @db.VarChar(8)
+  /// 1 for the first admin change, +1 for each later one. The primary key refuses two admins saving
+  /// from the same version: the second one is told to reload.
+  version              Int
+  tenantId             String   @map("tenant_id")
+  /// off | on (G1).
+  indexing             String   @db.VarChar(3)
+  siteName             String   @map("site_name") @db.VarChar(60)
+  /// Holds {title}; {site} optional (G3).
+  titleTemplate        String   @map("title_template") @db.VarChar(40)
+  defaultDescription   String   @map("default_description") @db.VarChar(160)
+  /// Ready-made image key and alt text, both or neither (G5).
+  shareImageRef        String?  @map("share_image_ref") @db.VarChar(64)
+  shareImageAlt        String?  @map("share_image_alt") @db.VarChar(125)
+  logoRef              String?  @map("logo_ref") @db.VarChar(64)
+  logoAlt              String?  @map("logo_alt") @db.VarChar(125)
+  /// with-products | none (G7).
+  sellerPages          String   @map("seller_pages") @db.VarChar(13)
+  tradingName          String?  @map("trading_name") @db.VarChar(100)
+  legalName            String?  @map("legal_name") @db.VarChar(150)
+  /// 11 digits, ABN checksum (B3).
+  abn                  String?  @db.VarChar(11)
+  /// The five address parts are all set or all null (B4).
+  addressStreet        String?  @map("address_street") @db.VarChar(100)
+  addressCity          String?  @map("address_city") @db.VarChar(60)
+  addressState         String?  @map("address_state") @db.VarChar(30)
+  addressPostcode      String?  @map("address_postcode") @db.VarChar(10)
+  addressCountry       String?  @map("address_country") @db.VarChar(2)
+  contactEmail         String?  @map("contact_email") @db.VarChar(254)
+  /// E.164.
+  contactPhone         String?  @map("contact_phone") @db.VarChar(16)
+  /// At most 10 https URLs (B6).
+  sameAs               String[] @default([]) @map("same_as")
+  googleVerification   String?  @map("google_verification") @db.VarChar(100)
+  bingVerification     String?  @map("bing_verification") @db.VarChar(100)
+  /// GA4 measurement id; stored only, nothing loads it yet (T3).
+  analyticsId          String?  @map("analytics_id") @db.VarChar(15)
+  /// { home, category, product, seller, sellers, landing }: each { title, description } of text or
+  /// null; placeholders checked by the application. Closed shape and size are CHECKs.
+  pageTemplates        Json     @map("page_templates")
+  changedAt            DateTime @map("changed_at") @db.Timestamptz(6)
+  /// The admin account that made the change (a plain id, no foreign key).
+  changedBy            String   @map("changed_by") @db.Uuid
+
+  @@id([marketId, version])
+  @@map("seo_settings")
+  @@schema("storefront")
+}
+
+/// Storefront's outbox: `storefront.seo-indexing-changed.v1` (SEO settings, package S1).
+model StorefrontOutbox {
+  /// UUIDv7 stamped by the outbox writer.
+  eventId          String    @id @map("event_id") @db.Uuid
+  /// "storefront.<subject>-<verb>.v<N>"; the CHECK refuses another module's type.
+  type             String
+  /// The instant the use case took from Clock (UTC).
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  /// Market of the unit that wrote the event (ADR-0003); stamped by the writer.
+  marketId         String    @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); stamped by the writer, no database default.
+  tenantId         String    @map("tenant_id")
+  aggregateType    String    @map("aggregate_type")
+  aggregateId      String    @map("aggregate_id") @db.Uuid
+  /// The aggregate's version after the change; unique per aggregate (P 10).
+  aggregateVersion Int       @map("aggregate_version")
+  correlationId    String    @map("correlation_id")
+  /// The consumed event that caused this one, or null.
+  causationId      String?   @map("causation_id") @db.Uuid
+  payload          Json      @db.JsonB
+  /// Set by the relay when the event was handed to the bus; the only column that changes.
+  publishedAt      DateTime? @map("published_at") @db.Timestamptz(6)
+
+  /// No two events of one aggregate share a version (I7); led by market_id (data design C7).
+  @@unique([marketId, aggregateId, aggregateVersion])
+  @@map("outbox")
+  @@schema("storefront")
+}

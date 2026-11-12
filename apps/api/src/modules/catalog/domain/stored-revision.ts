@@ -16,6 +16,12 @@ export interface StoredRevision {
   readonly productId: Id<'Product'>;
   /** Counts up from 1 per product. */
   readonly revisionNo: number;
+  /**
+   * The product type the revision was frozen with (data design 3.7; M-9). The product row's type
+   * can differ from it after Add sizes, so any reader of a revision's content takes the handler
+   * of this type, never the row's.
+   */
+  readonly typeCode: string;
   readonly kind: RevisionKind;
   /** The published revision it was built on; always set for a tax override. */
   readonly baseRevisionId: Id<'ProductRevision'> | null;

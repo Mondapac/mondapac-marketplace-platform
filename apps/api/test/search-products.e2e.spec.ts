@@ -205,8 +205,9 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
     expect(unavailable.body).toEqual({ statusCode: 503, code: 'search.unavailable' });
   });
 
-  it("is rate limited per origin with the Market's default limit, then 429 with our code", async () => {
-    const limit = code === 'AU' ? 300 : 200;
+  it("is rate limited per origin with the Market's public-search limit, then 429 with our code", async () => {
+    // Its own class (Hassan L-3): AU 120 and ZZ 90 a minute, not the default 300 and 200.
+    const limit = code === 'AU' ? 120 : 90;
     let last = 200;
     for (let sent = 0; sent < limit; sent += 1) last = (await get('?q=tea')).status;
     const refused = await get('?q=tea');
