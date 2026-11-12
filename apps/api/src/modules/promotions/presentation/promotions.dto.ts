@@ -349,7 +349,11 @@ export class SellerPayoutPreviewBody {
   @ApiProperty({ type: String }) shopperPaysMinor!: string;
   @ApiProperty({ description: "The seller's commission rate, basis points." })
   commissionRateBps!: number;
-  @ApiProperty({ type: String, description: 'The price less the seller-funded discount.' })
+  @ApiProperty({
+    type: String,
+    description:
+      'The price less the seller-funded part, less provisional tax when prices include tax.',
+  })
   commissionBaseMinor!: string;
   @ApiProperty({ type: String }) commissionMinor!: string;
   @ApiProperty({ type: String, description: 'Before delivery and GST.' }) sellerGetsMinor!: string;

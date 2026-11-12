@@ -423,6 +423,8 @@ export class PrismaPromotionRepository implements PromotionRepository {
       },
       include: WITH_CHILDREN,
       orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
+      // A safety cap: an admin opens a handful of campaigns, never hundreds.
+      take: 200,
     });
     return rows.map(toRecord);
   }

@@ -756,6 +756,18 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       expect(result.ok && result.value[0]!.eligible).toEqual({ scope: 'LISTED', count: null });
     });
 
+    it('lists a campaign with no end, and says "not started" before it starts', async () => {
+      const id = await create({
+        startsAt: T0.add({ hours: 5 }).toString(),
+        endsAt: null,
+      });
+      const result = await list();
+      if (!result.ok) throw new Error('list failed');
+      const view = result.value.find((v) => v.id === id)!;
+      expect(view.started).toBe(false);
+      expect(view.endsAt).toBeNull();
+    });
+
     it('refuses a customer, an admin and an acting-as seller; is off with the switch off', async () => {
       await create();
       expect((await list(customer)).ok).toBe(false);
@@ -768,22 +780,54 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       expect(await list()).toEqual({ ok: false, error: { code: 'promotions.disabled' } });
     });
 
-    it('previews a campaign: A$20.00, 15% off split 10/5, commission 15%', async () => {
+    // The commission base the ledger would use: the amount, less provisional tax when prices
+    // include tax (the fake works it out the way the ledger does).
+    const baseOf = (amount: bigint) =>
+      policy.settings(market)!.pricesIncludeTax
+        ? (amount * 20000n + (10000n + 1000n)) / ((10000n + 1000n) * 2n)
+        : amount;
+    const commissionOf = (base: bigint) => (base * 1500n * 2n + 10000n) / 20000n;
+
+    it('previews a campaign: A$20.00, 15% off split 10/5, commission 15% on the price after the seller part', async () => {
       const id = await create();
       const result = await preview({ promotionId: id, priceMinor: '2000' });
       if (!result.ok) throw new Error('preview failed');
+      const base = baseOf(1800n);
       expect(result.value).toMatchObject({
         discount: 300n,
         sellerFunded: 200n,
         platformFunded: 100n,
         shopperPays: 1700n,
-        commissionBase: 1800n,
-        commission: 270n,
-        sellerGets: 1530n,
+        commissionBase: base,
+        commission: commissionOf(base),
+        sellerGets: base - commissionOf(base),
         commissionRateBps: 1500,
         currency,
         wasPrice: null,
       });
+      // The commission was asked on the full price (the engine's commission limit) and on the
+      // price after the seller part, with the Market's price convention.
+      const asked = (deps.sellerCommission as FakeSellerCommission).asked;
+      expect(asked.map((a) => a.amount)).toEqual([2000n, 1800n]);
+      expect(asked.every((a) => a.taxInclusive === policy.settings(market)!.pricesIncludeTax)).toBe(
+        true,
+      );
+    });
+
+    it('applies the per-order cap of a campaign', async () => {
+      const id = await create({ maxPerOrderMinor: '120' });
+      const result = await preview({ promotionId: id, priceMinor: '2000' });
+      if (!result.ok) throw new Error('preview failed');
+      expect(result.value.discount).toBe(120n);
+      expect(result.value.sellerFunded + result.value.platformFunded).toBe(120n);
+    });
+
+    it('previews a fixed-amount campaign', async () => {
+      const id = await create({ reward: { kind: 'FIXED', amountMinor: '400' } });
+      const result = await preview({ promotionId: id, priceMinor: '2000' });
+      if (!result.ok) throw new Error('preview failed');
+      expect(result.value.discount).toBe(400n);
+      expect(result.value.shopperPays).toBe(1600n);
     });
 
     it("previews the seller's own percentage sale and refuses a rate above the Market limit", async () => {
@@ -791,7 +835,9 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       if (!ok.ok) throw new Error('preview failed');
       expect(ok.value.sellerFunded).toBe(200n);
       expect(ok.value.platformFunded).toBe(0n);
-      expect(ok.value.sellerGets).toBe(680n);
+      const base = baseOf(800n);
+      expect(ok.value.commissionBase).toBe(base);
+      expect(ok.value.sellerGets).toBe(base - commissionOf(base));
       const over = await preview({
         discountBps: rules.sellerMaxDiscountBps + 1,
         priceMinor: '1000',
@@ -818,6 +864,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
         { promotionId: id, discountBps: 1000, priceMinor: '1000' },
         { promotionId: id, priceMinor: '0' },
         { promotionId: id, priceMinor: '12.5' },
+        { promotionId: id, priceMinor: ['1000', '2000'] },
         { promotionId: 'x', priceMinor: '1000' },
         { discountBps: 1000, priceMinor: '1000', offerId: unit(1).offerId },
       ]) {

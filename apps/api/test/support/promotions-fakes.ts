@@ -362,9 +362,21 @@ export class FakePriceHistory implements PriceHistory {
 }
 
 export class FakeSellerCommission implements SellerCommission {
+  /** Null = unreadable. */
   rate: number | null = 1500;
-  rateBps() {
-    return Promise.resolve(this.rate);
+  /** The provisional tax taken out of a tax-inclusive amount, basis points. */
+  taxBps = 1000;
+  readonly asked: { amount: bigint; taxInclusive: boolean }[] = [];
+  commissionOn(_context: CallContext, amount: bigint, taxInclusive: boolean) {
+    this.asked.push({ amount, taxInclusive });
+    if (this.rate === null) return Promise.resolve(null);
+    const half = (n: bigint, d: bigint) => (n * 2n + d) / (d * 2n);
+    const base = taxInclusive ? half(amount * 10000n, 10000n + BigInt(this.taxBps)) : amount;
+    return Promise.resolve({
+      rateBps: this.rate,
+      commissionBase: base,
+      commission: half(base * BigInt(this.rate), 10000n),
+    });
   }
 }
 

@@ -72,6 +72,7 @@ import { SELLER_RATE_REPOSITORY } from './application/ports/seller-rate.reposito
 import { ClearCommissionRate } from './application/use-cases/clear-commission-rate.use-case';
 import { ClearSellerPayoutTerms } from './application/use-cases/clear-seller-payout-terms.use-case';
 import { CommissionRates } from './application/use-cases/commission-rates.use-case';
+import { OwnCommissionOn } from './application/use-cases/own-commission-on.use-case';
 import { ListSellerPayoutHolds } from './application/use-cases/list-seller-payout-holds.use-case';
 import { NoteSellerReinstated } from './application/use-cases/note-seller-reinstated.use-case';
 import { PlacePayoutHold } from './application/use-cases/place-payout-hold.use-case';
@@ -260,6 +261,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ...commissionPayoutsProviders,
     ...[
       CommissionRates,
+      OwnCommissionOn,
       RecordSellerOrderPaid,
       RecordRefund,
       RecordSellerOrderDelivered,
@@ -314,6 +316,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         RecordRefund,
         RecordSellerOrderDelivered,
         SellerLostDisputes,
+        OwnCommissionOn,
       ],
       useFactory: (
         rates: CommissionRates,
@@ -321,7 +324,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         refund: RecordRefund,
         delivered: RecordSellerOrderDelivered,
         lost: SellerLostDisputes,
-      ) => new CommissionPayoutsFacadeImplementation(rates, record, refund, delivered, lost),
+        own: OwnCommissionOn,
+      ) => new CommissionPayoutsFacadeImplementation(rates, record, refund, delivered, lost, own),
     },
   ],
   // The dispute pieces are exported for the binding module of the same folder only (they are not

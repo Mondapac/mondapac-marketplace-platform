@@ -2,20 +2,25 @@ import type { CallContext, Id } from '@mondapac/shared-kernel';
 import { MAX_FACADE_BATCH, type CatalogFacade } from '../../catalog';
 import type { CommissionPayoutsFacade } from '../../commission-payouts';
 import type { SellerCatalogue } from '../application/ports/seller-catalogue';
-import type { SellerCommission } from '../application/ports/seller-commission';
+import type { OwnCommission, SellerCommission } from '../application/ports/seller-commission';
 
 /**
- * {@link SellerCommission} over `commission-payouts`' `commissionRates`, called with the seller's
+ * {@link SellerCommission} over `commission-payouts`' `ownCommissionOn`, called with the seller's
  * context unchanged. A refusal, a fault or a missing rate is null: the preview shows no money.
  */
 export class FacadeSellerCommission implements SellerCommission {
   constructor(private readonly payouts: CommissionPayoutsFacade) {}
 
-  async rateBps(context: CallContext, sellerId: Id<'Seller'>): Promise<number | null> {
+  async commissionOn(
+    context: CallContext,
+    amount: bigint,
+    taxInclusive: boolean,
+  ): Promise<OwnCommission | null> {
     try {
-      const answer = await this.payouts.commissionRates(context, [sellerId]);
+      const answer = await this.payouts.ownCommissionOn(context, { amount, taxInclusive });
       if (!answer.ok) return null;
-      return answer.value.get(sellerId)?.rateBps ?? null;
+      const { rateBps, commissionBase, commission } = answer.value;
+      return { rateBps, commissionBase, commission };
     } catch {
       return null;
     }

@@ -288,6 +288,23 @@ place) and the promotions module.
   aggregate the credit rows under the promotion lock), and a per-account code version so one customer's code can
   be revoked without rotating the pepper.
 
+### Seller campaigns and payout preview (PB2)
+
+- Two seller reads: `GET /promotions/seller/campaigns` (open co-funded campaigns split into `joined` and
+  `available`; never the platform budget or spend) and `GET /promotions/seller/payout-preview` (what the shopper
+  pays and what the seller gets for one unit; optionally whether the was-price may show).
+- A seller may leave a co-funded campaign **only before it starts** (owner decision, 12 Nov 2026); after
+  `startsAt`, `PUT .../opt-in` with `optIn: false` answers `promotions.invalid-state`. Joining stays possible
+  while the campaign runs.
+- Commission rule in the preview: commission is taken on the price **after the seller-funded part of the
+  discount**; the platform-funded part never lowers the seller share. The rate comes from commission-payouts'
+  seller-only `ownCommissionOn` facade read (own rate, else the Market default); no readable rate means
+  `promotions.unavailable`, never a guess.
+- The preview is an estimate **before delivery**: tax uses the provisional rate, and the commission ledger is not
+  yet discount-aware. `minSpend` is ignored for item-layer campaigns, as the engine does. A campaign in test mode
+  is listed to sellers with `testMode: true`.
+- `listOpenCampaigns` is capped at 200 rows (safety). `setOptIn` still accepts a paused campaign; the list hides it.
+
 ## Open points
 
 - The identity role seed gains one key: the Viewer (seed version 21 on top of blog's 20, with its append-only snapshot entry

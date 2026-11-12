@@ -8,6 +8,8 @@ import { CreatePromotion } from '../src/modules/promotions/application/use-cases
 import { DecidePromotionReview } from '../src/modules/promotions/application/use-cases/decide-promotion-review.use-case';
 import { EditOwnPromotion } from '../src/modules/promotions/application/use-cases/edit-own-promotion.use-case';
 import { EditPromotion } from '../src/modules/promotions/application/use-cases/edit-promotion.use-case';
+import { ListSellerCampaigns } from '../src/modules/promotions/application/use-cases/list-seller-campaigns.use-case';
+import { PreviewSellerPayout } from '../src/modules/promotions/application/use-cases/preview-seller-payout.use-case';
 import { ListFreeShippingThresholds } from '../src/modules/promotions/application/use-cases/list-free-shipping-thresholds.use-case';
 import { ListOwnPromotions } from '../src/modules/promotions/application/use-cases/list-own-promotions.use-case';
 import { ListPromotionReviews } from '../src/modules/promotions/application/use-cases/list-promotion-reviews.use-case';
@@ -123,6 +125,8 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     ['resume-own', ResumeOwnPromotion],
     ['list-own', ListOwnPromotions],
     ['opt-in', SetCoFundingOptIn],
+    ['list-campaigns', ListSellerCampaigns],
+    ['preview-payout', PreviewSellerPayout],
     ['credits', ListPromotionCredits],
     ['my-referral', ViewMyReferral],
     ['apply-referral', ApplyReferralCode],
@@ -911,6 +915,130 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     expect(forged.status).toBe(400);
     expect(forged.body).toMatchObject({
       details: { fields: [{ path: 'ownerSellerId', code: 'unknown-field' }] },
+    });
+  });
+
+  describe('seller campaigns and payout preview', () => {
+    const CAMPAIGN = {
+      id: PROMOTION,
+      name: 'Spring',
+      startsAt: START,
+      endsAt: null,
+      started: false,
+      testMode: false,
+      reward: { kind: 'PERCENT', bps: 1000 },
+      platformShareBps: 5000,
+      sellerPaysBps: 500,
+      platformPaysBps: 500,
+      minSpendMinor: null,
+      currency: 'AUD',
+      optedIn: false,
+      optedInAt: null,
+      eligible: { scope: 'LISTED', count: 2 },
+    };
+    const PREVIEW = {
+      currency: 'AUD',
+      price: 10000n,
+      discount: 1000n,
+      sellerFunded: 500n,
+      platformFunded: 500n,
+      shopperPays: 9000n,
+      commissionRateBps: 1000,
+      commissionBase: 8636n,
+      commission: 864n,
+      sellerGets: 8636n,
+      wasPrice: null,
+    };
+
+    it('splits the campaigns into joined and available, with digit-string amounts and no-store', async () => {
+      await boot();
+      next = ok([CAMPAIGN, { ...CAMPAIGN, optedIn: true, optedInAt: START, minSpendMinor: 5000n }]);
+      const listed = await call('seller', 'get', '/promotions/seller/campaigns', seller());
+      expect(listed.status).toBe(200);
+      expect(listed.headers['cache-control']).toContain('no-store');
+      const body = listed.body as { joined: object[]; available: object[] };
+      expect(body.available).toHaveLength(1);
+      expect(body.joined).toHaveLength(1);
+      expect(body.joined[0]).toMatchObject({ optedIn: true, minSpendMinor: '5000' });
+      expect(body.available[0]).toMatchObject({
+        id: PROMOTION,
+        sellerPaysBps: 500,
+        eligible: { scope: 'LISTED', count: 2 },
+      });
+      expect(body.available[0]).not.toHaveProperty('budgetMinor');
+      expect(calls.map((c) => c.name)).toEqual(['list-campaigns']);
+    });
+
+    it('refuses an unknown query key and a non-seller session on the campaigns route', async () => {
+      await boot();
+      next = ok([]);
+      const stray = await call('seller', 'get', '/promotions/seller/campaigns?x=1', seller());
+      expect(stray.status).toBe(400);
+      await call('seller', 'get', '/promotions/seller/campaigns', admin());
+      expect(actors).toEqual(['anonymous']);
+    });
+
+    it('answers the payout preview with digit strings and turns discountBps into a number', async () => {
+      await boot();
+      next = ok(PREVIEW);
+      const answer = await call(
+        'seller',
+        'get',
+        '/promotions/seller/payout-preview?priceMinor=10000&discountBps=1000',
+        seller(),
+      );
+      expect(answer.status).toBe(200);
+      expect(answer.headers['cache-control']).toContain('no-store');
+      expect(answer.body).toEqual({
+        currency: 'AUD',
+        priceMinor: '10000',
+        discountMinor: '1000',
+        sellerFundedMinor: '500',
+        platformFundedMinor: '500',
+        shopperPaysMinor: '9000',
+        commissionRateBps: 1000,
+        commissionBaseMinor: '8636',
+        commissionMinor: '864',
+        sellerGetsMinor: '8636',
+        wasPrice: null,
+      });
+      expect(calls[0]).toEqual({
+        name: 'preview-payout',
+        input: { priceMinor: '10000', discountBps: 1000 },
+      });
+    });
+
+    it('refuses unknown keys and a non-seller session on the preview route, and hands a repeated key on as an array', async () => {
+      await boot();
+      next = ok(PREVIEW);
+      const path = '/promotions/seller/payout-preview';
+      expect((await call('seller', 'get', `${path}?priceMinor=1&x=1`, seller())).status).toBe(400);
+      expect(calls).toEqual([]);
+      // A repeated key is not text: the use case refuses it (its own spec), the route does not coerce it.
+      await call('seller', 'get', `${path}?priceMinor=1&priceMinor=2`, seller());
+      expect(calls[0]?.input).toEqual({ priceMinor: ['1', '2'] });
+      await call('seller', 'get', `${path}?priceMinor=1`, customer());
+      expect(actors).toEqual(['seller', 'anonymous']);
+    });
+
+    it('maps the refusals of both routes to their statuses', async () => {
+      await boot();
+      const session = seller();
+      for (const [refusal, status] of [
+        ['promotions.disabled', 404],
+        ['promotions.not-found', 404],
+        ['promotions.unavailable', 503],
+        ['access.denied', 403],
+      ] as const) {
+        next = err({ code: refusal });
+        expect((await call('seller', 'get', '/promotions/seller/campaigns', session)).status).toBe(
+          status,
+        );
+        expect(
+          (await call('seller', 'get', '/promotions/seller/payout-preview?priceMinor=1', session))
+            .status,
+        ).toBe(status);
+      }
     });
   });
 

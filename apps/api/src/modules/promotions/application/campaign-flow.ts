@@ -1,14 +1,17 @@
 import { err, ok, parseId, parseMinorUnits } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import { floorShare } from '../domain/calculation/allocation';
+import { calculateDiscounts } from '../domain/calculation/engine';
 import type { Reward } from '../domain/calculation/types';
 import { platformShareBps, type PromotionRecord } from '../domain/promotion';
-import { sellerPayoutPreview, type SellerPayoutPreview } from '../domain/seller-payout';
+import { ownSaleSplit } from '../domain/seller-payout';
 import { wasPriceEligible } from '../domain/was-price';
 import { sellerCaller } from './caller';
 import type { FieldIssue, PromotionsFailure } from './failures';
 import { activeSettings } from './market-switch';
+import type { UsageRecord } from './ports/promotion.repository';
 import type { PromotionsDependencies } from './promotions-dependencies';
+import { promotionsForCart } from './quote-flow';
 
 // A seller's view of the co-funded campaigns it may join, and the preview of what it gets from a
 // sale. The seller comes from the session, never from the request. The seller sees its own share
@@ -84,7 +87,10 @@ export async function listSellerCampaigns(
   const now = deps.clock.now();
 
   const read = await deps.unitOfWork.run<
-    { records: readonly PromotionRecord[]; mine: ReadonlySet<Id<'Promotion'>> },
+    {
+      records: readonly PromotionRecord[];
+      optedAt: ReadonlyMap<Id<'Promotion'>, Temporal.Instant>;
+    },
     PromotionsFailure
   >(
     context.market,
@@ -94,36 +100,18 @@ export async function listSellerCampaigns(
         context.market,
         records.map((record) => record.id),
       );
-      const mine = new Set(
-        records
-          .filter((record) => live.get(record.id)?.includes(seller.sellerId) === true)
-          .map((record) => record.id),
-      );
-      return ok({ records, mine });
+      // One snapshot: who is in and since when, read in the same unit as the campaigns.
+      const optedAt = new Map<Id<'Promotion'>, Temporal.Instant>();
+      for (const record of records) {
+        if (live.get(record.id)?.includes(seller.sellerId) !== true) continue;
+        const row = await deps.optIns.find(context.market, record.id, seller.sellerId);
+        if (row !== null && row.withdrawnAt === null) optedAt.set(record.id, row.optedInAt);
+      }
+      return ok({ records, optedAt });
     },
     { readOnly: true },
   );
   if (!read.ok) return read;
-
-  const optedAt = new Map<Id<'Promotion'>, Temporal.Instant>();
-  if (read.value.mine.size > 0) {
-    const stamped = await deps.unitOfWork.run<
-      readonly [Id<'Promotion'>, Temporal.Instant][],
-      never
-    >(
-      context.market,
-      async () => {
-        const pairs: [Id<'Promotion'>, Temporal.Instant][] = [];
-        for (const promotionId of read.value.mine) {
-          const row = await deps.optIns.find(context.market, promotionId, seller.sellerId);
-          if (row !== null && row.withdrawnAt === null) pairs.push([promotionId, row.optedInAt]);
-        }
-        return ok(pairs);
-      },
-      { readOnly: true },
-    );
-    if (stamped.ok) for (const [promotionId, at] of stamped.value) optedAt.set(promotionId, at);
-  }
 
   // The catalogue is another module's read: outside any unit, one question per campaign that
   // names products.
@@ -138,15 +126,27 @@ export async function listSellerCampaigns(
       );
       soldCount = sold === null ? null : record.productIds.filter((id) => sold.has(id)).length;
     }
-    views.push(campaignView(record, now, optedAt.get(record.id) ?? null, soldCount));
+    views.push(campaignView(record, now, read.value.optedAt.get(record.id) ?? null, soldCount));
   }
   return ok(views);
 }
 
 /** What `previewSellerPayout` answers: the money of one sale, and the was-price verdict. */
-export interface SellerPayoutPreviewView extends SellerPayoutPreview {
+export interface SellerPayoutPreviewView {
   readonly currency: string;
+  readonly price: bigint;
+  readonly discount: bigint;
+  /** The part of the discount the seller pays. */
+  readonly sellerFunded: bigint;
+  /** The part of the discount the platform pays. */
+  readonly platformFunded: bigint;
+  readonly shopperPays: bigint;
   readonly commissionRateBps: number;
+  /** The price less the seller-funded part, less provisional tax when prices include tax. */
+  readonly commissionBase: bigint;
+  readonly commission: bigint;
+  /** Before delivery. */
+  readonly sellerGets: bigint;
   /** Null when no Offer was asked about. */
   readonly wasPrice: { readonly eligible: boolean } | null;
 }
@@ -219,12 +219,23 @@ export async function previewSellerPayout(
     return err({ code: 'validation.failed', fields: issues });
   }
 
-  // The reward and who pays it.
-  let reward: Reward;
-  let shareBps = 0;
+  // The seller's own commission on the full price: the order commission that limits what the
+  // platform may pay of a discount (the engine's rule), and the check that a rate is readable.
+  const gross = await deps.sellerCommission.commissionOn(
+    context,
+    price.value,
+    settings.pricesIncludeTax,
+  );
+  if (gross === null) return err({ code: 'promotions.unavailable' });
+
+  // The discount and who pays it.
+  let split: { discount: bigint; sellerFunded: bigint; platformFunded: bigint };
   if (promotionId !== null && promotionId.ok) {
     const campaignId = promotionId.value;
-    const found = await deps.unitOfWork.run<PromotionRecord | null, PromotionsFailure>(
+    const found = await deps.unitOfWork.run<
+      { record: PromotionRecord; usage: UsageRecord | undefined } | null,
+      PromotionsFailure
+    >(
       context.market,
       async () => {
         const open = await deps.promotions.listOpenCampaigns(
@@ -232,21 +243,70 @@ export async function previewSellerPayout(
           deps.clock.now(),
           seller.sellerId,
         );
-        return ok(open.find((record) => record.id === campaignId) ?? null);
+        const record = open.find((candidate) => candidate.id === campaignId);
+        if (record === undefined) return ok(null);
+        const usage = await deps.promotions.usageOf(context.market, [record.id]);
+        return ok({ record, usage: usage.get(record.id) });
       },
       { readOnly: true },
     );
     if (!found.ok) return found;
     if (found.value === null) return err({ code: 'promotions.not-found' });
-    reward = found.value.reward;
-    shareBps = platformShareBps(found.value.funding, found.value.platformSplitBps);
+    const { record, usage } = found.value;
+    // The real calculation, on a cart of one unit of this seller: its caps, its budget, the
+    // seller share limit and the commission limit are the ones a real order meets. A campaign
+    // that would not apply (platform money before the tax ruling, a minimum spend the price does
+    // not reach) gives no discount, as it would at checkout.
+    const promotions = promotionsForCart({
+      records: [record],
+      usage: usage === undefined ? new Map() : new Map([[record.id, usage]]),
+      optIns: new Map([[record.id, [seller.sellerId]]]),
+      settings,
+      firstOrder: null,
+      thresholds: new Map(),
+      zones: [],
+      testMode: record.testMode,
+    });
+    const calculated = calculateDiscounts({
+      currency: settings.currency,
+      lines: [
+        {
+          id: 'preview',
+          sellerId: seller.sellerId,
+          productId: record.productIds[0] ?? deps.ids.next<'Product'>(),
+          unitPrice: price.value,
+          quantity: 1,
+        },
+      ],
+      shipping: [],
+      promotions,
+      code: null,
+      isFirstOrder: false,
+      customer: null,
+      orderCommission: gross.commission,
+      rules: { lineDiscountCapBps: settings.lineDiscountCapBps },
+    });
+    if (!calculated.ok) return err({ code: 'promotions.unavailable' });
+    const totals = calculated.value.totals;
+    split = {
+      discount: totals.goodsDiscount,
+      sellerFunded: totals.sellerShare,
+      platformFunded: totals.platformShare,
+    };
   } else {
-    reward = { kind: 'PERCENT', bps: input.discountBps as number };
+    split = ownSaleSplit(price.value, input.discountBps as number);
   }
 
-  // The seller's own commission rate; no rate, no money.
-  const rate = await deps.sellerCommission.rateBps(context, seller.sellerId);
-  if (rate === null) return err({ code: 'promotions.unavailable' });
+  // The commission is on the price after the seller-funded part (plan decision 2).
+  const commission =
+    split.sellerFunded === 0n
+      ? gross
+      : await deps.sellerCommission.commissionOn(
+          context,
+          price.value - split.sellerFunded,
+          settings.pricesIncludeTax,
+        );
+  if (commission === null) return err({ code: 'promotions.unavailable' });
 
   // The was-price verdict, only for the seller's own sell unit.
   let wasPrice: { readonly eligible: boolean } | null = null;
@@ -273,11 +333,17 @@ export async function previewSellerPayout(
     wasPrice = { eligible: wasPriceEligible(days, settings.wasPrice) };
   }
 
-  const money = sellerPayoutPreview({
+  return ok({
+    currency: settings.currency,
     price: price.value,
-    reward,
-    platformShareBps: shareBps,
-    commissionRateBps: rate,
+    discount: split.discount,
+    sellerFunded: split.sellerFunded,
+    platformFunded: split.platformFunded,
+    shopperPays: price.value - split.discount,
+    commissionRateBps: commission.rateBps,
+    commissionBase: commission.commissionBase,
+    commission: commission.commission,
+    sellerGets: commission.commissionBase - commission.commission,
+    wasPrice,
   });
-  return ok({ ...money, currency: settings.currency, commissionRateBps: rate, wasPrice });
 }
