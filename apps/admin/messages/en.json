@@ -990,6 +990,38 @@
         "unknown": "Something went wrong. Try again."
       }
     },
+    "health-queue": {
+      "title": "Sellers that need a look",
+      "link": "Sellers that need a look",
+      "back": "Back to sellers",
+      "intro": "Sellers whose latest stored health is unhealthy, worst score first. Open a seller to see the measures and the trend.",
+      "col": {
+        "seller": "Seller",
+        "score": "Score",
+        "lowest": "Lowest measure",
+        "measured": "Measured"
+      },
+      "unnamed": "Unnamed store",
+      "unhealthy": "Unhealthy",
+      "metric": {
+        "seller-cancellations": "Cancellations by the seller",
+        "late-ready": "Orders ready late",
+        "customer-rating": "Customer rating",
+        "lost-disputes": "Disputes lost",
+        "reports": "Reports"
+      },
+      "empty": {
+        "title": "No seller needs a look",
+        "body": "Sellers whose health is unhealthy appear here."
+      },
+      "truncated": "Only the worst sellers are shown.",
+      "unavailable": "We couldn't load the sellers. Try again.",
+      "no-access": {
+        "title": "You don't have access to this page",
+        "body": "Ask an administrator for the permission to view sellers."
+      },
+      "informs": "Health only informs. Nothing happens to a seller because of its score."
+    },
     "health": {
       "title": "Seller health",
       "none": "No night has measured this seller yet.",
