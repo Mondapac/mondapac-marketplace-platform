@@ -182,6 +182,11 @@ describe('parseCancelRequest', () => {
         { path: 'lossBearer', code: 'value' },
       ],
     });
+    // item-unavailable is the seller's own reason; an admin cannot cancel with it.
+    expect(parseCancelRequest({ reason: 'item-unavailable' })).toEqual({
+      ok: false,
+      fields: [{ path: 'reason', code: 'value' }],
+    });
   });
 });
 
