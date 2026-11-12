@@ -1,6 +1,7 @@
 # ADR-0008: Repository Structure and Module Communication Contract
 
 **Status:** Accepted — 2026-09-30
+**Amended by:** ADR-0045 (decision 1 layout note: adds `apps/agent`).
 **Relates to:** ADR-0001 (core vs verticals), ADR-0003/0005 (market and time context),
 ADR-0004 (persistence), ADR-0006 (events)
 
