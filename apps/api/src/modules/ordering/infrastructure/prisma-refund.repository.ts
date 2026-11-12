@@ -7,11 +7,12 @@ import type {
   RefundForLedger,
   RefundRepository,
 } from '../application/ports/refund.repository';
-import type { LedgerState, OrderStatus, PaymentState } from '../domain/order';
+import type { Fulfilment, LedgerState, OrderStatus, PaymentState } from '../domain/order';
 import type {
   LossBearer,
   LossReasonCode,
   Refund,
+  RefundActor,
   RefundReason,
   RefundState,
   RefundTarget,
@@ -80,7 +81,7 @@ function toRefund(row: RefundRow): Refund {
     lossBearer: row.lossBearer as LossBearer,
     lossReasonCode: row.lossReasonCode as LossReasonCode | null,
     actor: {
-      population: row.actorPopulation as 'admin',
+      population: row.actorPopulation as RefundActor['population'],
       accountId: row.actorAccountId as Id<'Account'>,
     },
     state: row.state as RefundState,
@@ -112,14 +113,48 @@ function toRefund(row: RefundRow): Refund {
 export class PrismaRefundRepository implements RefundRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findTarget(
+  findTarget(
     market: MarketContext,
     sellerOrderId: Id<'SellerOrder'>,
     orderId: Id<'Order'>,
   ): Promise<RefundTarget | null> {
+    return this.target(market, { id: sellerOrderId, orderId });
+  }
+
+  findSellerTarget(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+    sellerId: Id<'Seller'>,
+  ): Promise<RefundTarget | null> {
+    return this.target(market, { id: sellerOrderId, sellerId });
+  }
+
+  async listOfSellerOrder(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+    sellerId: Id<'Seller'>,
+  ): Promise<readonly Refund[]> {
+    const tx = this.prisma.tx(market);
+    const rows = await tx.orderingRefund.findMany({
+      where: { marketId: market.marketId, sellerOrderId, sellerId },
+      include: { lines: true },
+      orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
+      take: 200,
+    });
+    return rows.map(toRefund);
+  }
+
+  private async target(
+    market: MarketContext,
+    where: {
+      readonly id: Id<'SellerOrder'>;
+      readonly orderId?: Id<'Order'>;
+      readonly sellerId?: Id<'Seller'>;
+    },
+  ): Promise<RefundTarget | null> {
     const tx = this.prisma.tx(market);
     const row = await tx.orderingSellerOrder.findFirst({
-      where: { marketId: market.marketId, id: sellerOrderId, orderId },
+      where: { marketId: market.marketId, ...where },
       include: {
         order: true,
         lines: true,
@@ -148,12 +183,15 @@ export class PrismaRefundRepository implements RefundRepository {
       orderStatus: row.order.status as OrderStatus,
       paymentState: row.order.paymentState as PaymentState,
       paymentIntentId: row.order.stripePaymentIntentId,
+      fulfilment: row.fulfilment as Fulfilment,
+      readyAt: row.readyAt === null ? null : toInstant(row.readyAt),
       shipping: row.shippingAmount,
       shippingTax: row.shippingTaxAmount,
       shippingTaxRateBps: row.shippingTaxRateBps,
       shippingTaxInclusive: row.shippingTaxInclusive,
       total: row.totalAmount,
       refunded: row.refundedAmount,
+      refundCount: row.refunds.length,
       pending: row.refunds.some((refund) => refund.state === 'pending'),
       lines: [...row.lines]
         .sort((a, b) => a.id.localeCompare(b.id))
@@ -197,6 +235,7 @@ export class PrismaRefundRepository implements RefundRepository {
     market: MarketContext,
     refund: Refund,
     expectedRefunded: bigint,
+    options?: { readonly whileNotReady?: boolean },
   ): Promise<'saved' | 'stale'> {
     const tx = this.prisma.tx(market);
     const raised = await tx.orderingSellerOrder.updateMany({
@@ -204,6 +243,7 @@ export class PrismaRefundRepository implements RefundRepository {
         marketId: market.marketId,
         id: refund.sellerOrderId,
         refundedAmount: expectedRefunded,
+        ...(options?.whileNotReady === true ? { fulfilment: 'to-ship', readyAt: null } : {}),
         order: { is: { status: 'confirmed', paymentState: 'captured' } },
       },
       data: { refundedAmount: expectedRefunded + refund.gross },

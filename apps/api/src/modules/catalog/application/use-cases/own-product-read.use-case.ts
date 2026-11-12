@@ -343,6 +343,7 @@ export function sensitiveFieldsOf(
   if (policy.primaryImage) fields.push('primary-image');
   if (policy.variantRemoved) fields.push('variant-removed');
   if (policy.gtinChanged) fields.push('gtin-changed');
+  if (policy.axisAdded) fields.push('axis-added');
   // A change of the topic set is always reviewed (tags decision 3), whatever the Market policy says.
   fields.push('topics', 'images');
   return fields;

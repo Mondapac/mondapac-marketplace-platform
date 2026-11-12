@@ -11,9 +11,31 @@ describe('admin nav: Content', () => {
     expect(item).toMatchObject({ icon: 'layout', href: '/content', labelKey: 'nav.content' });
   });
 
+  it('is there for storefront.page.read too', () => {
+    expect(ids(['storefront.page.read'])).toContain('content');
+  });
+
   it('is hidden without it, also for the other slide keys', () => {
     expect(ids([])).not.toContain('content');
     expect(ids(['storefront.slide.edit', 'storefront.slide.publish'])).not.toContain('content');
+  });
+});
+
+describe('admin nav: Blog', () => {
+  it('is there for blog.post.read, in the content group, beside Slides', () => {
+    expect(ids(['blog.post.read'])).toContain('blog');
+    const item = adminNav.items.find((entry) => entry.id === 'blog');
+    expect(item).toMatchObject({
+      icon: 'file',
+      href: '/content/blog',
+      labelKey: 'nav.blog',
+      group: 'content',
+    });
+  });
+
+  it('is hidden without it, also for the other blog keys', () => {
+    expect(ids([])).not.toContain('blog');
+    expect(ids(['blog.post.edit', 'blog.post.publish'])).not.toContain('blog');
   });
 });
 
@@ -111,9 +133,11 @@ describe('admin nav: daily work only', () => {
       'business-activities',
       'tags',
       'review-queue',
+      'certificates',
       'review-moderation',
       'price-holds',
       'content',
+      'blog',
       'sellers',
       'orders',
       'customers',
@@ -306,5 +330,23 @@ describe('admin nav: Tags', () => {
   it('is hidden without it, also with the manage key alone', () => {
     expect(ids([])).not.toContain('tags');
     expect(ids(['catalog.topic.manage'])).not.toContain('tags');
+  });
+});
+
+describe('admin nav: Marketing', () => {
+  it('is a group between Sellers and Orders with the tag icon, shown only once it holds an item', () => {
+    const order = (adminNav.groups ?? []).map((group) => group.id);
+    expect(order.indexOf('marketing')).toBe(order.indexOf('sellers') + 1);
+    expect(order.indexOf('orders')).toBe(order.indexOf('marketing') + 1);
+    expect(adminNav.groups).toContainEqual({
+      id: 'marketing',
+      labelKey: 'nav.group.marketing',
+      icon: 'tag',
+    });
+    const everyKey = new Set(adminNav.items.flatMap((item) => item.anyOf ?? []));
+    const sections = navSections(adminNav.groups, visibleNavItems(adminNav, everyKey));
+    expect(
+      sections.some((section) => section.kind === 'group' && section.group.id === 'marketing'),
+    ).toBe(false);
   });
 });

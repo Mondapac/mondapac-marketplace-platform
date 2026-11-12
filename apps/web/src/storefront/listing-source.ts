@@ -183,10 +183,11 @@ export function searchCardOf(
   item: unknown,
   slugs: ReadonlyMap<string, string>,
   photo: PhotoUrl | null,
+  allImages = false,
 ): ShelfCard | null {
   if (!isObject(item)) return null;
   const { price: rawPrice, variantId, ...rest } = item;
-  const card = cardOf(rest, slugs, photo);
+  const card = cardOf(rest, slugs, photo, allImages);
   if (card === null) return null;
   const price: Money | undefined = isObject(rawPrice) ? moneyOf(rawPrice.from) : undefined;
   return {
@@ -207,6 +208,7 @@ export async function liveProducts(
   query: LiveQuery,
   read: Reader = readOnce,
   photo: PhotoUrl | null = null,
+  allImages = false,
 ): Promise<LivePage | undefined> {
   const rows = await treeRows(read);
   if (rows === undefined) return undefined;
@@ -236,7 +238,7 @@ export async function liveProducts(
   const seen = new Set<string>();
   const cards: ShelfCard[] = [];
   for (const item of items) {
-    const card = searchCardOf(item, slugs, photo);
+    const card = searchCardOf(item, slugs, photo, allImages);
     if (card === null || seen.has(card.id)) continue;
     seen.add(card.id);
     cards.push(card);

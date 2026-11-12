@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import type { CancelView } from '../application/use-cases/admin-cancel-order.use-case';
 import type { RefundView } from '../application/use-cases/admin-refund-order.use-case';
 import { LOSS_BEARERS, LOSS_REASON_CODES } from '../domain/reason-codes';
-import { REFUND_REASONS } from '../domain/refund';
+import { ADMIN_REFUND_REASONS, REFUND_REASONS } from '../domain/refund';
 import { moneyBody } from './http-answers';
 import { MoneyView } from './orders.dto';
 
@@ -24,7 +24,7 @@ export class RefundRequestBody {
     example: '550',
   })
   shippingAmount?: string;
-  @ApiProperty({ enum: REFUND_REASONS }) reason!: string;
+  @ApiProperty({ enum: ADMIN_REFUND_REASONS }) reason!: string;
   @ApiProperty({
     enum: LOSS_BEARERS,
     required: false,
@@ -84,6 +84,26 @@ export class RefundBody {
   creditNoteId!: string | null;
 }
 
+export class UnavailableRequestBody {
+  @ApiProperty({
+    type: [RefundLineRequest],
+    description:
+      'The lines with the units that are unavailable (quantity 1 up to what is left), at most ' +
+      '200, no line twice. No amount, shipping or reason: the units go back at their frozen ' +
+      'price, and the rest of the shipping fee too once nothing is left to send.',
+  })
+  lines!: RefundLineRequest[];
+  @ApiProperty({
+    description:
+      'How many refunds of the order that are not failed the page showed (its refunds list). ' +
+      'If another went through since (a repeat of this request), 409 conflict.retry: read the ' +
+      'order again; units are never refunded twice.',
+  })
+  expectedRefunds!: number;
+}
+
+export const UNAVAILABLE_BODY_KEYS = ['lines', 'expectedRefunds'] as const;
+
 export const REFUND_BODY_KEYS = [
   'lines',
   'shippingAmount',
@@ -120,7 +140,7 @@ export const refundBody = (refund: RefundView): RefundBody => ({
 });
 
 export class CancelRequestBody {
-  @ApiProperty({ enum: REFUND_REASONS, description: 'Why the order is cancelled.' })
+  @ApiProperty({ enum: ADMIN_REFUND_REASONS, description: 'Why the order is cancelled.' })
   reason!: string;
   @ApiProperty({
     enum: LOSS_BEARERS,

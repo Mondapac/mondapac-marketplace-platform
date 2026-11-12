@@ -43,6 +43,17 @@ export const ORDERING_SELLER_ORDER_MARK_DELIVERED = definePermission('ordering',
   protected: false,
 });
 
+/**
+ * Mark units of the shop's own paid seller order unavailable before it is ready (order detail
+ * decision 6): they are refunded to the customer at once, borne by the seller. Protected: it gives
+ * money back, so only the Seller Owner holds it until a role is given it on purpose (R11).
+ */
+export const ORDERING_SELLER_ORDER_MARK_UNAVAILABLE = definePermission('ordering', {
+  key: 'ordering.seller-order.mark-unavailable',
+  scope: 'seller',
+  protected: true,
+});
+
 /** Refund part or all of a paid seller order of any order of the Market (tax step 3). */
 export const ORDERING_ORDER_REFUND = definePermission('ordering', {
   key: 'ordering.order.refund',
@@ -68,5 +79,6 @@ export const ORDERING_PERMISSIONS = declarePermissions('ordering', [
   ORDERING_SELLER_ORDER_CONFIRM_PICKUP,
   ORDERING_SELLER_ORDER_MARK_DELIVERED,
   ORDERING_SELLER_ORDER_MARK_READY,
+  ORDERING_SELLER_ORDER_MARK_UNAVAILABLE,
   ORDERING_SELLER_ORDER_VIEW,
 ]);
