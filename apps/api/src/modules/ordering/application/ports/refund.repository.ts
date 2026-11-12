@@ -63,6 +63,9 @@ export interface RefundRepository {
     sellerId: Id<'Seller'>,
   ): Promise<RefundTarget | null>;
 
+  /** One refund of the Market by id, any state, or null (unknown and foreign are one answer). */
+  findById(market: MarketContext, refundId: Id<'Refund'>): Promise<Refund | null>;
+
   /**
    * Every refund of the seller's own seller order (any state), oldest first, for its page; none
    * for another shop's seller order (Hassan, row 40 F4).

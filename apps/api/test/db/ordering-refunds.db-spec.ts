@@ -809,6 +809,20 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         { readOnly: true },
       );
       expect(foreign).toEqual(ok([]));
+      // The customer's refund email reads it by id; an unknown id reads nothing.
+      const byId = await db.unitOfWork.run(
+        market,
+        async () =>
+          ok([
+            await deps.refunds.findById(market, result.value.refundId as never),
+            await deps.refunds.findById(market, ids.next<'Refund'>()),
+          ]),
+        { readOnly: true },
+      );
+      expect(byId.ok && byId.value.map((r) => r && [r.id, r.reason, r.actor.population])).toEqual([
+        [result.value.refundId, 'item-unavailable', 'seller'],
+        null,
+      ]);
     });
 
     it('refuses a repeat of a request that went through (lost answer, second click)', async () => {

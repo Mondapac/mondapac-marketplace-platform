@@ -15,11 +15,15 @@ import type { NamedCategory } from '../domain/scope-counts';
 import type { StoreDocument } from '../domain/store-document';
 import type { FeedFacts } from './ports/offer-feed';
 import type { PublicStore } from './ports/store-directory';
+import { StoreRowConflictError } from './ports/store-document.repository';
 import { sellUnitRefKey, type SellUnitRef, type SellUnitState } from './ports/sell-unit-states';
 import type { SearchDependencies } from './search-dependencies';
 
 /** Offers per catalog read (its facade takes at most 200). */
 export const SYNC_BATCH = 200;
+
+/** Attempts of one batch when its store rows meet a concurrent sync (a handed-over address). */
+export const STORE_CONFLICT_ATTEMPTS = 3;
 
 export interface SyncCounts {
   readonly upserted: number;
@@ -120,83 +124,110 @@ export async function syncOffers(
   let deleted = 0;
   for (let at = 0; at < unique.length; at += SYNC_BATCH) {
     const batch = unique.slice(at, at + SYNC_BATCH);
-    const facts = await deps.feed.facts(context, batch, settings.locale);
-    if (facts === null) throw new Error('search: catalog facts unavailable');
-    const sellerIds = [
-      ...new Set([...facts.values()].filter((f) => f.sellable).map((f) => f.sellerId)),
-    ];
-    const eligible =
-      sellerIds.length === 0
-        ? new Set<Id<'Seller'>>()
-        : await deps.sellers.eligible(context, sellerIds);
-    if (eligible === null) throw new Error('search: seller eligibility unavailable');
-    // The stock and price of every variant of the Offers that will have a document (V8).
-    const units: SellUnitRef[] = batch.flatMap((offerId) => {
-      const fact = facts.get(offerId);
-      return indexable(fact, eligible)
-        ? fact.variants
-            .slice(0, MAX_DOCUMENT_VARIANTS)
-            .map((variant) => ({ offerId, variantId: variant.variantId }))
-        : [];
-    });
-    const states = units.length === 0 ? new Map() : await deps.sellUnits.states(context, units);
-    if (states === null) throw new Error('search: stock or price unavailable');
-    // The names that make a store or a category findable through its products (search 1a). A
-    // failed read throws, so the delivery is retried rather than indexing without names.
-    const sellersOfDocuments = [
-      ...new Set([...facts.values()].filter((f) => indexable(f, eligible)).map((f) => f.sellerId)),
-    ];
-    const stores: ReadonlyMap<Id<'Seller'>, PublicStore> | null =
-      sellersOfDocuments.length === 0
-        ? new Map<Id<'Seller'>, PublicStore>()
-        : await deps.storeDirectory.publicStores(context, sellersOfDocuments);
-    if (stores === null) throw new Error('search: store names unavailable');
-    const tree = await deps.categoryTree.tree(context);
-    if (tree === null) throw new Error('search: category tree unavailable');
-    const labels: IndexLabels = {
-      storeNames: new Map([...stores].map(([sellerId, store]) => [sellerId, store.name])),
-      tree,
-    };
-    const documents: OfferDocument[] = [];
-    const removals: Id<'Offer'>[] = [];
-    for (const offerId of batch) {
-      const document = documentOf(offerId, facts.get(offerId), settings, eligible, states, labels);
-      if (document === null) removals.push(offerId);
-      else documents.push(document);
+    // A store row met a concurrent sync on a unique key (an address handed over): the batch is
+    // read again from catalog and sellers and written again, so the newer holder wins.
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        const counts = await syncBatch(deps, context, settings, batch);
+        upserted += counts.upserted;
+        deleted += counts.deleted;
+        break;
+      } catch (error) {
+        if (!(error instanceof StoreRowConflictError) || attempt >= STORE_CONFLICT_ATTEMPTS) {
+          throw error;
+        }
+      }
     }
-    const indexedAt = deps.clock.now();
-    // The store rows follow the same facts (search 1a): a seller of a document that has a public
-    // store is written; a seller met in the batch that has none (suspended, unapproved, no address)
-    // is removed. A seller with no Offer left keeps a stale row that no query returns (the store
-    // query needs an indexed Offer) and the rebuild deletes it.
-    const storeRows: StoreDocument[] = sellersOfDocuments.flatMap((sellerId) => {
-      const store = stores.get(sellerId);
-      return store === undefined
-        ? []
-        : [
-            {
-              sellerId,
-              slug: store.slug,
-              name: store.name,
-              textSearchConfig: settings.textSearchConfig,
-            },
-          ];
-    });
-    const storeRemovals = [
-      ...new Set(
-        [...facts.values()].map((f) => f.sellerId).filter((sellerId) => !stores.has(sellerId)),
-      ),
-    ];
-    const written = await deps.unitOfWork.run(market, async () => {
-      for (const document of documents) await deps.documents.upsert(market, document, indexedAt);
-      const removed = await deps.documents.deleteMany(market, removals);
-      await deps.storeDocuments.upsertMany(market, storeRows, indexedAt);
-      await deps.storeDocuments.deleteMany(market, storeRemovals);
-      return ok(removed);
-    });
-    if (!written.ok) throw new Error('search: the index write failed');
-    upserted += documents.length;
-    deleted += written.value;
   }
   return { upserted, deleted };
+}
+
+/** One batch of {@link syncOffers}: read, then one write unit. Throws on a failed read or write. */
+async function syncBatch(
+  deps: SearchDependencies,
+  context: CallContext,
+  settings: ReturnType<SearchDependencies['policy']['settings']>,
+  batch: readonly Id<'Offer'>[],
+): Promise<SyncCounts> {
+  const { market } = context;
+  const facts = await deps.feed.facts(context, batch, settings.locale);
+  if (facts === null) throw new Error('search: catalog facts unavailable');
+  const sellerIds = [
+    ...new Set([...facts.values()].filter((f) => f.sellable).map((f) => f.sellerId)),
+  ];
+  const eligible =
+    sellerIds.length === 0
+      ? new Set<Id<'Seller'>>()
+      : await deps.sellers.eligible(context, sellerIds);
+  if (eligible === null) throw new Error('search: seller eligibility unavailable');
+  // The stock and price of every variant of the Offers that will have a document (V8).
+  const units: SellUnitRef[] = batch.flatMap((offerId) => {
+    const fact = facts.get(offerId);
+    return indexable(fact, eligible)
+      ? fact.variants
+          .slice(0, MAX_DOCUMENT_VARIANTS)
+          .map((variant) => ({ offerId, variantId: variant.variantId }))
+      : [];
+  });
+  const states = units.length === 0 ? new Map() : await deps.sellUnits.states(context, units);
+  if (states === null) throw new Error('search: stock or price unavailable');
+  // The names that make a store or a category findable through its products (search 1a). A
+  // failed read throws, so the delivery is retried rather than indexing without names.
+  const sellersOfDocuments = [
+    ...new Set([...facts.values()].filter((f) => indexable(f, eligible)).map((f) => f.sellerId)),
+  ];
+  const stores: ReadonlyMap<Id<'Seller'>, PublicStore> | null =
+    sellersOfDocuments.length === 0
+      ? new Map<Id<'Seller'>, PublicStore>()
+      : await deps.storeDirectory.publicStores(context, sellersOfDocuments);
+  if (stores === null) throw new Error('search: store names unavailable');
+  const tree = await deps.categoryTree.tree(context);
+  if (tree === null) throw new Error('search: category tree unavailable');
+  const labels: IndexLabels = {
+    storeNames: new Map([...stores].map(([sellerId, store]) => [sellerId, store.name])),
+    tree,
+  };
+  const documents: OfferDocument[] = [];
+  const removals: Id<'Offer'>[] = [];
+  for (const offerId of batch) {
+    const document = documentOf(offerId, facts.get(offerId), settings, eligible, states, labels);
+    if (document === null) removals.push(offerId);
+    else documents.push(document);
+  }
+  const indexedAt = deps.clock.now();
+  // The store rows follow the same facts (search 1a): a seller of a document that has a public
+  // store is written; a seller met in the batch that has none (suspended, unapproved, no address)
+  // is removed. A seller with no Offer left keeps a stale row that no query returns (the store
+  // query needs an indexed Offer) and the rebuild deletes it.
+  const storeRows: StoreDocument[] = sellersOfDocuments.flatMap((sellerId) => {
+    const store = stores.get(sellerId);
+    return store === undefined
+      ? []
+      : [
+          {
+            sellerId,
+            slug: store.slug,
+            name: store.name,
+            textSearchConfig: settings.textSearchConfig,
+          },
+        ];
+  });
+  const storeRemovals = [
+    ...new Set(
+      [...facts.values()].map((f) => f.sellerId).filter((sellerId) => !stores.has(sellerId)),
+    ),
+  ];
+  const written = await deps.unitOfWork.run(market, async () => {
+    // Offer id order, like the store rows' seller id order: concurrent syncs lock rows in one order.
+    const ordered = [...documents].sort((a, b) =>
+      a.offerId < b.offerId ? -1 : a.offerId > b.offerId ? 1 : 0,
+    );
+    for (const document of ordered) await deps.documents.upsert(market, document, indexedAt);
+    const removed = await deps.documents.deleteMany(market, removals);
+    await deps.storeDocuments.upsertMany(market, storeRows, indexedAt);
+    await deps.storeDocuments.deleteMany(market, storeRemovals);
+    return ok(removed);
+  });
+  if (!written.ok) throw new Error('search: the index write failed');
+  return { upserted: documents.length, deleted: written.value };
 }
