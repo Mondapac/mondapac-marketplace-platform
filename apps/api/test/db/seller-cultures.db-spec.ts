@@ -5,6 +5,7 @@ import { PrismaSellerCultureRepository } from '../../src/modules/sellers/infrast
 import {
   approveAtSignup,
   decideMembership,
+  demoteMembership,
   requestMembership,
 } from '../../src/modules/sellers/domain/seller-culture';
 import { TEST_MARKETS } from '../support/test-config';
@@ -259,6 +260,46 @@ describe.each(TEST_MARKETS)('seller cultures in market %s (database integration)
     expect(roster).toContain(bare);
     expect(roster).not.toContain(having);
     expect(roster).not.toContain(foreign);
+    // The cursor continues after an id, in id order, and a limit caps the page.
+    const ordered = await inUnit(() => repository.sellerIdsWithoutCultures(market, 500));
+    expect([...ordered].sort()).toEqual(ordered);
+    const after = await inUnit(() => repository.sellerIdsWithoutCultures(market, 500, bare));
+    expect(after).not.toContain(bare);
+    expect(after).toEqual(ordered.filter((one) => one > bare));
+    expect(await inUnit(() => repository.sellerIdsWithoutCultures(market, 1))).toHaveLength(1);
+  });
+
+  it('answers whether anyone is approved in a culture, and takes an approval back', async () => {
+    const sellerId = await insertSeller();
+    const culture = newCulture();
+    const made = requestMembership(null, requestOf(sellerId, culture));
+    if (made.kind !== 'changed') throw new Error('expected a request');
+    await inUnit(() => repository.insert(market, made.state));
+    expect(await inUnit(() => repository.hasApproved(market, culture))).toBe(false);
+
+    const approved = decideMembership(made.state, {
+      decision: 'approve',
+      reason: null,
+      by: uuid7() as Id<'Account'>,
+      at: T1,
+    });
+    if (!approved.ok) throw new Error('expected a decision');
+    await inUnit(() =>
+      repository.transition(market, approved.value, { version: 1, status: 'requested' }),
+    );
+    expect(await inUnit(() => repository.hasApproved(market, culture))).toBe(true);
+    expect(await inUnitOf(other)(() => repository.hasApproved(other, culture))).toBe(false);
+
+    const demoted = demoteMembership(approved.value, T1);
+    expect(
+      await inUnit(() =>
+        repository.transition(market, demoted, { version: 2, status: 'approved' }),
+      ),
+    ).toBe(true);
+    expect(await inUnit(() => repository.hasApproved(market, culture))).toBe(false);
+    expect(await inUnit(() => repository.forSeller(market, sellerId))).toMatchObject([
+      { status: 'requested', reason: null, decidedBy: null, decidedAt: null, version: 3 },
+    ]);
   });
 
   describe('constraints', () => {
@@ -268,6 +309,16 @@ describe.each(TEST_MARKETS)('seller cultures in market %s (database integration)
       expect(await insertRaw(sellerId, { culture_code: 'Not A Code' })).toBe('23514');
       expect(await insertRaw(sellerId, { status: 'approved' })).toBe('23514');
       expect(await insertRaw(sellerId, { status: 'requested', decided_at: T1.toString() })).toBe(
+        '23514',
+      );
+      expect(await insertRaw(sellerId, { reason: 'a reason on a request' })).toBe('23514');
+      expect(
+        await insertRaw(sellerId, {
+          status: 'approved',
+          decided_at: T0.subtract({ hours: 1 }).toString(),
+        }),
+      ).toBe('23514');
+      expect(await insertRaw(sellerId, { updated_at: T0.subtract({ hours: 1 }).toString() })).toBe(
         '23514',
       );
       expect(await insertRaw(sellerId, { reason: '' })).toBe('23514');

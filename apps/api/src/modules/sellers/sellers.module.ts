@@ -126,6 +126,7 @@ import { SellerActivitiesGetUseCase } from './application/use-cases/seller-activ
 import { SellerActivitiesSetUseCase } from './application/use-cases/seller-activities-set.use-case';
 import { SellerBusinessActivities } from './application/use-cases/seller-business-activities.use-case';
 import { SellerBusinessActivitiesSystem } from './application/use-cases/seller-business-activities-system.use-case';
+import { CultureApprovedMembers } from './application/use-cases/culture-approved-members.use-case';
 import { ApplySignupCultures } from './application/use-cases/apply-signup-cultures.use-case';
 import { SeedSellerCultures } from './application/use-cases/seed-seller-cultures.use-case';
 import { seedSellerCulturesJob } from './presentation/jobs/seed-seller-cultures.job';
@@ -760,9 +761,11 @@ const REVIEW_DECISION_PORTS = {
       outbox: true,
       clock: true,
     }),
+    useCaseProvider(CultureApprovedMembers, { unitOfWork: true, sellerCultures: true }),
     useCaseProvider(SeedSellerCultures, {
       unitOfWork: true,
       sellerCultures: true,
+      accessReader: true,
       applySignup: true,
     }),
     useCaseProvider(SellerCulturesOwn, {
@@ -852,6 +855,7 @@ const REVIEW_DECISION_PORTS = {
         PickupPostcodes,
         OperatingZones,
         ApplySignupCultures,
+        CultureApprovedMembers,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -875,6 +879,7 @@ const REVIEW_DECISION_PORTS = {
         pickupPostcodes: PickupPostcodes,
         operatingZones: OperatingZones,
         applySignupCultures: ApplySignupCultures,
+        cultureApprovedMembers: CultureApprovedMembers,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -898,6 +903,7 @@ const REVIEW_DECISION_PORTS = {
           pickupPostcodes,
           operatingZones,
           applySignupCultures,
+          cultureApprovedMembers,
         }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by

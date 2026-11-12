@@ -76,6 +76,7 @@ export const CULTURE_ADMIN_STATUS: Readonly<Record<string, number>> = Object.fre
   'culture.code-taken': 409,
   'culture.name-taken': 409,
   'culture.limit-reached': 409,
+  'culture.required-type-locked': 409,
   'culture.status-transition': 409,
   'culture.default-must-stay-active': 409,
   'culture.default-must-be-active': 409,

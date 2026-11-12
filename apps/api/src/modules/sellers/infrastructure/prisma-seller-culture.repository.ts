@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
@@ -7,6 +8,9 @@ import type { SellerCultureState, SellerCultureStatus } from '../domain/seller-c
 const instantOf = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 const dateOf = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
+
+/** The most memberships one seller can have: a Market holds at most 200 cultures. */
+const FOR_SELLER_LIMIT = 200;
 
 const SELECT = {
   sellerId: true,
@@ -52,6 +56,8 @@ const stateOf = (row: Row): SellerCultureState => ({
 
 /** {@link SellerCultureRepository} on `sellers.seller_cultures`, every statement scoped by the Market. */
 export class PrismaSellerCultureRepository implements SellerCultureRepository {
+  readonly #logger = new Logger('PrismaSellerCultureRepository');
+
   constructor(private readonly prisma: PrismaService) {}
 
   async forSeller(
@@ -62,8 +68,17 @@ export class PrismaSellerCultureRepository implements SellerCultureRepository {
       where: { marketId: market.marketId, sellerId },
       select: SELECT,
       orderBy: [{ cultureCode: 'asc' }, { cultureId: 'asc' }],
-      take: 200,
+      take: FOR_SELLER_LIMIT,
     });
+    if (rows.length === FOR_SELLER_LIMIT) {
+      // A Market holds at most 200 cultures, so a seller cannot have more rows; reaching the limit
+      // means the bound no longer holds and the list may be cut short.
+      this.#logger.warn({
+        msg: 'sellers.seller-cultures.for-seller-at-limit',
+        limit: FOR_SELLER_LIMIT,
+        marketId: market.marketId,
+      });
+    }
     return rows.map(stateOf);
   }
 
@@ -83,14 +98,28 @@ export class PrismaSellerCultureRepository implements SellerCultureRepository {
   async sellerIdsWithoutCultures(
     market: MarketContext,
     limit: number,
+    after?: Id<'Seller'>,
   ): Promise<readonly Id<'Seller'>[]> {
+    // `none: { marketId }` keeps the anti-join correlated on the Market and the primary key.
     const rows = await this.prisma.tx(market).sellersSellerFile.findMany({
-      where: { marketId: market.marketId, cultures: { none: {} } },
+      where: {
+        marketId: market.marketId,
+        cultures: { none: { marketId: market.marketId } },
+        ...(after === undefined ? {} : { sellerId: { gt: after } }),
+      },
       select: { sellerId: true },
-      orderBy: [{ createdAt: 'asc' }, { sellerId: 'asc' }],
+      orderBy: [{ sellerId: 'asc' }],
       take: limit,
     });
     return rows.map((row) => row.sellerId as Id<'Seller'>);
+  }
+
+  async hasApproved(market: MarketContext, cultureId: Id<'Culture'>): Promise<boolean> {
+    const row = await this.prisma.tx(market).sellersSellerCulture.findFirst({
+      where: { marketId: market.marketId, cultureId, status: 'approved' },
+      select: { sellerId: true },
+    });
+    return row !== null;
   }
 
   async insert(market: MarketContext, state: SellerCultureState): Promise<boolean> {
@@ -121,7 +150,7 @@ export class PrismaSellerCultureRepository implements SellerCultureRepository {
   async transition(
     market: MarketContext,
     state: SellerCultureState,
-    expected: { readonly version: number; readonly status: 'requested' | 'rejected' },
+    expected: { readonly version: number; readonly status: 'requested' | 'rejected' | 'approved' },
   ): Promise<boolean> {
     const { count } = await this.prisma.tx(market).sellersSellerCulture.updateMany({
       where: {

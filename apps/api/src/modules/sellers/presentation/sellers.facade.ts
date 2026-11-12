@@ -17,6 +17,7 @@ import type { PublishedStoreSellerId } from '../application/use-cases/published-
 import type { PublishedStoreSlugs } from '../application/use-cases/published-store-slugs.use-case';
 import type { ReviewerBusinessDetailsRead } from '../application/use-cases/reviewer-business-details.use-case';
 import type { SellingEligibilitySystem } from '../application/use-cases/selling-eligibility-system.use-case';
+import type { CultureApprovedMembers } from '../application/use-cases/culture-approved-members.use-case';
 import type { ApplySignupCultures } from '../application/use-cases/apply-signup-cultures.use-case';
 import type { SellingEligibility } from '../application/use-cases/selling-eligibility.use-case';
 import type { SellerSummariesSystem } from '../application/use-cases/seller-summaries-system.use-case';
@@ -59,6 +60,7 @@ export interface SellersFacadeUseCases {
   readonly pickupPostcodes: PickupPostcodes;
   readonly operatingZones: OperatingZones;
   readonly applySignupCultures: ApplySignupCultures;
+  readonly cultureApprovedMembers: CultureApprovedMembers;
 }
 
 /**
@@ -228,5 +230,12 @@ export class SellersFacadeImplementation implements SellersFacade {
     >
   > {
     return this.useCases.applySignupCultures.execute(context, request);
+  }
+
+  cultureHasApprovedMembers(
+    context: CallContext,
+    cultureId: Id<'Culture'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>> {
+    return this.useCases.cultureApprovedMembers.execute(context, { cultureId });
   }
 }

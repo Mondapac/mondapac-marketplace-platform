@@ -26,6 +26,7 @@ import type { CategoryTreeReader } from '../ports/category-tree.reader';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
 import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
+import type { CultureMembers } from '../ports/culture-members';
 import type { CultureReader } from '../ports/culture.reader';
 import type { CultureRepository } from '../ports/culture.repository';
 import { CultureCategoryMarkClear } from './culture-category-mark-clear.use-case';
@@ -168,9 +169,34 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
       ),
   };
 
+  // The sellers answer: nobody approved by default; a test flips it, or makes it unreadable.
+  let approvedMembers: 'none' | 'some' | 'unreadable' = 'none';
+  let appearAfterCommit = false;
+  const memberCalls: string[] = [];
+  const cultureMembers: CultureMembers = {
+    hasApproved: (_c, id) => {
+      memberCalls.push(id);
+      if (approvedMembers === 'unreadable') {
+        return Promise.resolve(err({ code: 'culture-members.unavailable' } as const));
+      }
+      const answer = approvedMembers === 'some' || (appearAfterCommit && memberCalls.length > 1);
+      return Promise.resolve(ok(answer));
+    },
+  };
+
   const build = (matcher: ClaimTextMatcher = cleanClaimTextMatcher) => {
     const gate = createUseCaseGate(markets, check);
-    const write = { unitOfWork, cultures, policy, matcher, claimLocales, evaluator, audit, clock };
+    const write = {
+      unitOfWork,
+      cultures,
+      policy,
+      matcher,
+      claimLocales,
+      evaluator,
+      audit,
+      clock,
+      cultureMembers,
+    };
     const markDeps = { unitOfWork, cultures, treeReader, policy };
     return {
       create: new CultureCreate(gate, { ...write, ids }),
@@ -385,6 +411,7 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
       evaluator,
       audit,
       clock,
+      cultureMembers,
     });
 
     expect(
@@ -641,6 +668,82 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
 
     expect(same.ok).toBe(true);
     expect(other).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+  });
+
+  describe('required type lock (security review M1)', () => {
+    beforeEach(() => {
+      approvedMembers = 'none';
+      appearAfterCommit = false;
+      memberCalls.length = 0;
+    });
+
+    it('refuses a changed required type while a seller is approved', async () => {
+      const culture = await created();
+      const { edit, get } = build();
+      approvedMembers = 'some';
+      memberCalls.length = 0;
+
+      const result = await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        requiredCertificationType: type,
+      });
+
+      expect(result).toEqual({ ok: false, error: { code: 'culture.required-type-locked' } });
+      expect(await get.execute(admin, { cultureId: culture.id })).toMatchObject({
+        value: { culture: { requiredCertificationType: null } },
+      });
+    });
+
+    it('fails closed when sellers cannot answer', async () => {
+      const culture = await created();
+      const { edit } = build();
+      approvedMembers = 'unreadable';
+      memberCalls.length = 0;
+
+      expect(
+        await edit.execute(admin, {
+          cultureId: culture.id,
+          version: 1,
+          requiredCertificationType: type,
+        }),
+      ).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+    });
+
+    it('puts the old type back when an approval appears during the edit', async () => {
+      const culture = await created();
+      const { edit, get } = build();
+      appearAfterCommit = true;
+      memberCalls.length = 0;
+
+      const result = await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        requiredCertificationType: type,
+      });
+
+      expect(result).toEqual({ ok: false, error: { code: 'culture.required-type-locked' } });
+      expect(await get.execute(admin, { cultureId: culture.id })).toMatchObject({
+        value: { culture: { requiredCertificationType: null } },
+      });
+    });
+
+    it('does not ask sellers when the type is unchanged', async () => {
+      const culture = await created({ requiredCertificationType: type });
+      const { edit } = build();
+      approvedMembers = 'some';
+      memberCalls.length = 0;
+
+      const result = await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        requiredCertificationType: type,
+        displayOrder: 3,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(memberCalls).toEqual([]);
+    });
   });
 
   it('lists and reads cultures', async () => {

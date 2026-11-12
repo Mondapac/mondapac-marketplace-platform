@@ -4,6 +4,7 @@ import type { Id, Result, Temporal } from '@mondapac/shared-kernel';
 // A seller's membership of a culture (multi-culture package 2; ADR-0047 decision 3).
 //
 //   (none) --request--> requested --approve--> approved
+//                           ^----- demote (system; a culture became certified) ---+
 //                           |  ^
 //                        reject  \--request again--\
 //                           v                       |
@@ -134,6 +135,26 @@ export function decideMembership(
     version: state.version + 1,
     updatedAt: decision.at,
   });
+}
+
+/**
+ * Takes an approved membership back to requested, with the decision cleared (ADR-0048, the guard
+ * against a culture that became certified between a read and the write that approved it). The
+ * system does it; a reviewer then decides again, with the seller's certificate.
+ */
+export function demoteMembership(
+  state: SellerCultureState,
+  at: Temporal.Instant,
+): SellerCultureState {
+  return {
+    ...state,
+    status: 'requested',
+    reason: null,
+    decidedBy: null,
+    decidedAt: null,
+    version: state.version + 1,
+    updatedAt: at,
+  };
 }
 
 /** Control, format and separator characters other than a plain space: never part of a reason. */

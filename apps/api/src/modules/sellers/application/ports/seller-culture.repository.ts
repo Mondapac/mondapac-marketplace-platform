@@ -7,7 +7,10 @@ import type { SellerCultureState } from '../../domain/seller-culture';
  * units that race on one membership cannot both win: the loser's method answers `false`.
  */
 export interface SellerCultureRepository {
-  /** The seller's memberships, by culture code. */
+  /**
+   * The seller's memberships, by culture code. At most 200 are returned (the most a Market has
+   * cultures); the repository logs a warning when it returns exactly 200.
+   */
   forSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<readonly SellerCultureState[]>;
 
   /** The seller's memberships among these cultures. */
@@ -18,10 +21,19 @@ export interface SellerCultureRepository {
   ): Promise<ReadonlyMap<Id<'Culture'>, SellerCultureState>>;
 
   /**
-   * Up to `limit` sellers of the Market that have a file and no membership row at all, oldest file
-   * first (the one-time attach of sellers that predate ADR-0048).
+   * Up to `limit` sellers of the Market that have a file and no membership row of the Market at
+   * all, by seller id ascending and only those after `after` (a cursor, so a seller that fails is
+   * passed over and not asked again first on every batch). The one-time attach of sellers that
+   * predate ADR-0048.
    */
-  sellerIdsWithoutCultures(market: MarketContext, limit: number): Promise<readonly Id<'Seller'>[]>;
+  sellerIdsWithoutCultures(
+    market: MarketContext,
+    limit: number,
+    after?: Id<'Seller'>,
+  ): Promise<readonly Id<'Seller'>[]>;
+
+  /** Whether any seller is approved in the culture (catalog asks before it changes the culture's required type). */
+  hasApproved(market: MarketContext, cultureId: Id<'Culture'>): Promise<boolean>;
 
   /** Inserts a first request; false when the seller already has a row for the culture. */
   insert(market: MarketContext, state: SellerCultureState): Promise<boolean>;
@@ -33,7 +45,7 @@ export interface SellerCultureRepository {
   transition(
     market: MarketContext,
     state: SellerCultureState,
-    expected: { readonly version: number; readonly status: 'requested' | 'rejected' },
+    expected: { readonly version: number; readonly status: 'requested' | 'rejected' | 'approved' },
   ): Promise<boolean>;
 }
 

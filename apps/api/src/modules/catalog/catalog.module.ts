@@ -384,6 +384,7 @@ import { FeatureSetEdit } from './application/use-cases/feature-set-edit.use-cas
 import { CategoryAttributeLinksSet } from './application/use-cases/category-attribute-links-set.use-case';
 import { CategoryAttributeLinksGet } from './application/use-cases/category-attribute-links-get.use-case';
 import { CATEGORY_ATTRIBUTE_LINK_STORE } from './application/ports/category-attribute-link.store';
+import { CULTURE_MEMBERS } from './application/ports/culture-members';
 import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
 import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
 import { AttributeAdminList } from './application/use-cases/attribute-admin-list.use-case';
@@ -583,6 +584,7 @@ const PORT = {
   suggestions: ATTRIBUTE_VALUE_SUGGESTION_STORE,
   topicSuggestions: TOPIC_SUGGESTION_STORE,
   claimLocales: CLAIM_TERM_LOCALES,
+  cultureMembers: CULTURE_MEMBERS,
   brandAssigner: BRAND_ASSIGNER,
   activities: BUSINESS_ACTIVITY_REPOSITORY,
   activityReader: BUSINESS_ACTIVITY_READER,
@@ -925,6 +927,7 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       matcher: true,
       claimLocales: true,
+      cultureMembers: true,
       evaluator: true,
       audit: true,
       clock: true,

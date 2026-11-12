@@ -197,6 +197,7 @@ describe.each([
       pickupPostcodes: undefined as never,
       operatingZones: undefined as never,
       applySignupCultures: undefined as never,
+      cultureApprovedMembers: undefined as never,
     });
   });
 

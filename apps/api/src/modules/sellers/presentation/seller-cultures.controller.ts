@@ -41,6 +41,7 @@ export const SELLER_CULTURE_STATUS = {
   'culture.membership-not-found': 404,
   'culture.not-requested': 409,
   'culture.not-active': 409,
+  'culture.changed': 409,
   'culture.certificate-required': 409,
   'culture.certificate-unavailable': 503,
   'sellers.unavailable': 503,
@@ -303,7 +304,8 @@ export class SellerCulturesAdminController {
   })
   @ApiConflictResponse({
     type: SellersErrorBody,
-    description: 'culture.not-requested, culture.not-active or culture.certificate-required',
+    description:
+      'culture.not-requested, culture.not-active, culture.changed or culture.certificate-required',
   })
   @ApiUnsupportedMediaTypeResponse({ type: SellersErrorBody, description: 'Not application/json' })
   @ApiServiceUnavailableResponse({

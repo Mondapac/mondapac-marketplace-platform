@@ -25,9 +25,11 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { SellerCultureState } from '../../domain/seller-culture';
 import type { CultureDirectory, CultureInfo } from '../ports/culture-directory';
+import type { SellerAccessReader } from '../ports/seller-access-reader';
 import type { SellerCertificateDirectory } from '../ports/seller-certificate-directory';
 import type { SellerCultureRepository } from '../ports/seller-culture.repository';
 import type { SellerFileRepository } from '../ports/seller-file.repository';
+import { CultureApprovedMembers } from './culture-approved-members.use-case';
 import { ApplySignupCultures } from './apply-signup-cultures.use-case';
 import { SeedSellerCultures } from './seed-seller-cultures.use-case';
 import { SellerCultureDecide } from './seller-culture-decide.use-case';
@@ -67,7 +69,18 @@ class Rows implements SellerCultureRepository {
     return Promise.resolve(found as ReadonlyMap<Id<'Culture'>, SellerCultureState>);
   }
 
-  sellerIdsWithoutCultures(market: MarketContext, limit: number) {
+  hasApproved(market: MarketContext, cultureId: Id<'Culture'>) {
+    return Promise.resolve(
+      [...this.rows].some(
+        ([k, v]) =>
+          k.startsWith(`${market.marketId}|`) &&
+          v.cultureId === cultureId &&
+          v.status === 'approved',
+      ),
+    );
+  }
+
+  sellerIdsWithoutCultures(market: MarketContext, limit: number, after?: Id<'Seller'>) {
     return Promise.resolve(
       [...this.sellers]
         .filter((k) => k.startsWith(`${market.marketId}|`))
@@ -75,6 +88,8 @@ class Rows implements SellerCultureRepository {
         .filter(
           (id) => ![...this.rows.keys()].some((k) => k.startsWith(`${market.marketId}|${id}|`)),
         )
+        .sort()
+        .filter((id) => after === undefined || id > after)
         .slice(0, limit),
     );
   }
@@ -135,18 +150,27 @@ function setUp(code: string) {
   const unitOfWork: UnitOfWork = { run: (_m, work) => work(), runOnce: noRunOnce };
 
   const cultures = new Map<Id<'Culture'>, CultureInfo>();
-  const directory = { down: false, asks: 0 };
+  const directory = { down: false, asks: 0, afterRead: null as null | (() => void) };
   const cultureDirectory: CultureDirectory = {
     byIds: (_c, wanted) => {
       directory.asks += 1;
       if (directory.down) return Promise.resolve(err({ code: 'culture-directory.unavailable' }));
-      return Promise.resolve(
-        ok(new Map(wanted.filter((id) => cultures.has(id)).map((id) => [id, cultures.get(id)!]))),
+      const answer = ok(
+        new Map(wanted.filter((id) => cultures.has(id)).map((id) => [id, cultures.get(id)!])),
       );
+      // A change made by an admin right after this read (the stale read of security review M1).
+      const hook = directory.afterRead;
+      directory.afterRead = null;
+      hook?.();
+      return Promise.resolve(answer);
     },
     active: () => {
       if (directory.down) return Promise.resolve(err({ code: 'culture-directory.unavailable' }));
-      return Promise.resolve(ok([...cultures.values()].filter((c) => c.status === 'active')));
+      const answer = ok([...cultures.values()].filter((c) => c.status === 'active'));
+      const hook = directory.afterRead;
+      directory.afterRead = null;
+      hook?.();
+      return Promise.resolve(answer);
     },
   };
   const certificates = { held: new Set<string>(), down: false };
@@ -174,11 +198,21 @@ function setUp(code: string) {
     cultures.set(id, info);
     return info;
   };
-  const addSeller = (): Id<'Seller'> => {
+  const addSeller = (
+    state: 'pending' | 'approved' | 'rejected' | 'suspended' | null = 'approved',
+  ): Id<'Seller'> => {
     const id = ids.next<'Seller'>();
+    if (state !== null) access.set(id, state);
     rows.sellers.add(`${market.marketId}|${id}`);
     return id;
   };
+  const access = new Map<Id<'Seller'>, 'pending' | 'approved' | 'rejected' | 'suspended'>();
+  const accessReader = {
+    accessOfMany: (_c: CallContext, ids: readonly Id<'Seller'>[]) =>
+      Promise.resolve(
+        new Map(ids.filter((id) => access.has(id)).map((id) => [id, access.get(id)!])),
+      ),
+  } as unknown as SellerAccessReader;
   const base = { unitOfWork, files, sellerCultures: rows, cultureDirectory, outbox, clock };
   const applySignup = new ApplySignupCultures(gate, { ...base, audit });
   return {
@@ -194,6 +228,7 @@ function setUp(code: string) {
     addCulture,
     addSeller,
     system: testCallContext(market, 'system'),
+    anonymous: testCallContext(market, 'anonymous'),
     own: new SellerCulturesOwn(gate, { unitOfWork, sellerCultures: rows, cultureDirectory }),
     request: new SellerCulturesRequest(gate, base),
     adminList: new SellerCulturesAdminList(gate, {
@@ -205,7 +240,14 @@ function setUp(code: string) {
     }),
     decide: new SellerCultureDecide(gate, { ...base, certificateDirectory }),
     applySignup,
-    seed: new SeedSellerCultures(gate, { unitOfWork, sellerCultures: rows, applySignup }),
+    seed: new SeedSellerCultures(gate, {
+      unitOfWork,
+      sellerCultures: rows,
+      accessReader,
+      applySignup,
+    }),
+    access,
+    approvedMembers: new CultureApprovedMembers(gate, { unitOfWork, sellerCultures: rows }),
     admin: (): CallContext =>
       testCallContext(
         market,
@@ -674,7 +716,142 @@ describe.each([
     });
   });
 
+  describe('stale reads (security review M1)', () => {
+    /** The culture becomes certified right after the first read of it. */
+    const certifyAfterFirstRead = (t: Setup, culture: CultureInfo) => {
+      t.directory.afterRead = () =>
+        void t.cultures.set(culture.id, { ...culture, requiredCertificationType: certType });
+    };
+
+    it('takes a signup approval back when the culture became certified after it was read', async () => {
+      const { t, sellerId, plain } = withSeller();
+      certifyAfterFirstRead(t, plain);
+      const done = await t.applySignup.execute(t.system, { sellerId });
+      // Both cultures now need a certificate: nothing stays approved, and the event trail shows it.
+      expect(done).toEqual(ok({ approved: 0, requested: 2, unchanged: 0 }));
+      const states = [...t.rows.rows.values()];
+      expect(states.map((s) => s.status)).toEqual(['requested', 'requested']);
+      const demoted = states.find((s) => s.cultureId === plain.id)!;
+      expect(demoted).toMatchObject({ version: 2, decidedBy: null, decidedAt: null, reason: null });
+      expect(statusEvents(t).filter((e) => e.version === 2)).toEqual([
+        { type: 'sellers.seller-culture-status-changed.v1', version: 2, status: 'requested' },
+      ]);
+    });
+
+    it('takes a signup approval back when the culture went inactive, or cannot be read again', async () => {
+      const first = withSeller();
+      first.t.directory.afterRead = () =>
+        void first.t.cultures.set(first.plain.id, { ...first.plain, status: 'inactive' });
+      await first.t.applySignup.execute(first.t.system, { sellerId: first.sellerId });
+      expect([...first.t.rows.rows.values()].map((s) => s.status)).toEqual([
+        'requested',
+        'requested',
+      ]);
+
+      const second = withSeller();
+      // The directory answers the first read (active list) and then goes down for the guard.
+      second.t.directory.afterRead = () => void (second.t.directory.down = true);
+      expect(
+        await second.t.applySignup.execute(second.t.system, { sellerId: second.sellerId }),
+      ).toEqual(err({ code: 'sellers.unavailable' }));
+      expect([...second.t.rows.rows.values()].map((s) => s.status)).toEqual([
+        'requested',
+        'requested',
+      ]);
+    });
+
+    it('takes a reviewer approval back when the required type changed after the certificate was checked', async () => {
+      const { t, sellerId, certified } = withSeller();
+      await t.request.execute(t.seller(sellerId), { body: { cultureIds: [certified.id] } });
+      t.certificates.held.add(certType);
+      // The decision read sees `certType`; the culture then moves to another type.
+      t.directory.afterRead = () =>
+        void t.cultures.set(certified.id, {
+          ...certified,
+          requiredCertificationType: 'other-type',
+        });
+      const done = await t.decide.execute(t.admin(), {
+        sellerId,
+        cultureId: certified.id,
+        body: { decision: 'approve' },
+      });
+      expect(done).toEqual(err({ code: 'culture.changed' }));
+      expect([...t.rows.rows.values()][0]).toMatchObject({ status: 'requested', version: 3 });
+    });
+
+    it('answers whether anyone is approved in a culture, for catalog', async () => {
+      const { t, sellerId, plain } = withSeller();
+      await t.request.execute(t.seller(sellerId), { body: { cultureIds: [plain.id] } });
+      expect(await t.approvedMembers.execute(t.anonymous, { cultureId: plain.id })).toEqual(
+        ok(false),
+      );
+      await t.decide.execute(t.admin(), {
+        sellerId,
+        cultureId: plain.id,
+        body: { decision: 'approve' },
+      });
+      expect(await t.approvedMembers.execute(t.anonymous, { cultureId: plain.id })).toEqual(
+        ok(true),
+      );
+      expect(await t.approvedMembers.execute(t.anonymous, { cultureId: 'nope' })).toMatchObject({
+        ok: false,
+      });
+    });
+  });
+
   describe('seed', () => {
+    it('attaches only sellers whose access is pending or approved', async () => {
+      const t = setUp(code);
+      t.addCulture('plain');
+      const ok1 = t.addSeller('pending');
+      const ok2 = t.addSeller('approved');
+      const rejected = t.addSeller('rejected');
+      const suspended = t.addSeller('suspended');
+      const unknown = t.addSeller(null);
+
+      expect(await t.seed.execute(t.system, {})).toEqual(
+        ok({ attached: 2, skipped: 3, failed: 0, remaining: false }),
+      );
+      const attached = new Set([...t.rows.rows.values()].map((s) => s.sellerId));
+      expect(attached).toEqual(new Set([ok1, ok2]));
+      for (const id of [rejected, suspended, unknown]) expect(attached.has(id)).toBe(false);
+    });
+
+    it('passes over a seller whose attach fails, and still reaches the ones after it', async () => {
+      const t = setUp(code);
+      t.addCulture('plain');
+      const broken = t.addSeller('approved');
+      const later = t.addSeller('approved');
+      // The first seller has no file for the use case (a fault in its own attach).
+      t.rows.sellers.delete(`${t.market.marketId}|${broken}`);
+      t.rows.sellers.add(`${t.market.marketId}|${broken}`);
+      const real = t.rows.insert.bind(t.rows);
+      t.rows.insert = (market, state) =>
+        state.sellerId === broken ? Promise.reject(new Error('boom')) : real(market, state);
+
+      expect(await t.seed.execute(t.system, {})).toEqual(
+        ok({ attached: 1, skipped: 0, failed: 1, remaining: false }),
+      );
+      expect([...t.rows.rows.values()].map((s) => s.sellerId)).toEqual([later]);
+    });
+
+    it('reads in batches with a cursor, up to the cap per run', async () => {
+      const t = setUp(code);
+      t.addCulture('plain');
+      for (let n = 0; n < 5; n += 1) t.addSeller('approved');
+      const seen: (string | undefined)[] = [];
+      const real = t.rows.sellerIdsWithoutCultures.bind(t.rows);
+      t.rows.sellerIdsWithoutCultures = (market, limit, after) => {
+        seen.push(after);
+        return real(market, 2, after);
+      };
+      const done = await t.seed.execute(t.system, {});
+      expect(done.ok && done.value.attached).toBe(5);
+      // Three batches of 2, 2 and 1, each after the last seller of the one before.
+      expect(seen[0]).toBeUndefined();
+      expect(seen.slice(1).every((cursor) => cursor !== undefined)).toBe(true);
+    });
+
     it('gives every seller with no culture the universal treatment, and never touches the others', async () => {
       const { t, sellerId: first } = withSeller();
       const second = t.addSeller();
@@ -688,7 +865,9 @@ describe.each([
         body: { decision: 'reject', reason: 'No' },
       });
 
-      expect(await t.seed.execute(t.system, {})).toEqual(ok({ attached: 2, remaining: false }));
+      expect(await t.seed.execute(t.system, {})).toEqual(
+        ok({ attached: 2, skipped: 0, failed: 0, remaining: false }),
+      );
       const statuses = (sellerId: Id<'Seller'>) =>
         [...t.rows.rows.values()]
           .filter((s) => s.sellerId === sellerId)
@@ -697,7 +876,9 @@ describe.each([
       expect(statuses(first)).toEqual(['certified:requested', 'plain:approved']);
       expect(statuses(second)).toEqual(['certified:requested', 'plain:approved']);
       expect(statuses(chosen)).toEqual(['plain:rejected']);
-      expect(await t.seed.execute(t.system, {})).toEqual(ok({ attached: 0, remaining: false }));
+      expect(await t.seed.execute(t.system, {})).toEqual(
+        ok({ attached: 0, skipped: 0, failed: 0, remaining: false }),
+      );
     });
   });
 });

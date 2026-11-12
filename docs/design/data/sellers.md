@@ -1644,7 +1644,25 @@ are plain values read through catalog's `culturesByIds` / `activeCultures`.
   ends in one winner and one event, with no explicit lock.
 - Grants to `mondapac_app`: SELECT, INSERT and a column-level UPDATE of `status`, `reason`,
   `requested_by`, `requested_at`, `decided_by`, `decided_at`, `version`, `updated_at`. No DELETE.
-- Index `(market_id, culture_id, status)` serves the review queue and the search re-index. The
-  roster query of `sellers.seed-seller-cultures` is an anti-join on the primary key.
-- Revisit trigger: if one Market holds more than about 100 000 memberships, page the roster and add
-  a partial index on `status = 'requested'`.
+- Added in the review round: CHECKs `status <> 'requested' OR reason IS NULL`,
+  `decided_at IS NULL OR decided_at >= requested_at` and `updated_at >= requested_at`. A guarded
+  write can take an approval back to `requested` (security review M1: the culture's required type
+  changed or it was deactivated after the approval was checked); the row then has no reason, no
+  decider and no decision time, and `version` rises.
+- Index `(market_id, culture_id, status)` is kept for package 3: the review queue per culture and
+  the search re-index (and `hasApproved`, the culture-lock check of catalog). Package 2 itself
+  does not need it; package 3 reviews it with its queries.
+- The roster query of `sellers.seed-seller-cultures` lists the seller files of the Market that
+  have no membership row, as a correlated `NOT EXISTS` on `(market_id, seller_id)` (Prisma
+  `none: { marketId }`), ordered by `seller_id` and paged by a `seller_id` cursor. On the local
+  database with 20 000 seller files and 19 800 with a row it is a Hash Anti Join, 9 ms for a page
+  of 200 (plan in the PR). The job runs at most 10 batches of 200 per run.
+- `forSeller` reads at most 200 rows; a seller cannot have more memberships than the Market has
+  cultures, so the cap is far above real use. When a read returns exactly 200 rows the repository
+  logs the warning `sellers.seller-cultures.for-seller-at-limit`; raise the cap or page then.
+- `culture_code` is a copy of catalog's culture code. It is safe only because catalog never changes
+  a code after creation (immutable by ADR-0047); if that ever changed, the copy would need a
+  consumer of the change.
+- Revisit trigger: if the roster query p95 exceeds 50 ms, or one Market holds more than about
+  100 000 memberships, replace the anti-join with a keyset over a work table or add a partial
+  index on `status = 'requested'`.

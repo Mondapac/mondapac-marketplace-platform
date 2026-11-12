@@ -46,6 +46,10 @@ ALTER TABLE "sellers"."seller_cultures"
     OR ("status" <> 'requested' AND "decided_at" IS NOT NULL)),
   ADD CONSTRAINT "seller_cultures_rejection_check" CHECK (
     "status" <> 'rejected' OR ("reason" IS NOT NULL AND "decided_by" IS NOT NULL)),
+  ADD CONSTRAINT "seller_cultures_requested_reason_check" CHECK ("status" <> 'requested' OR "reason" IS NULL),
+  ADD CONSTRAINT "seller_cultures_decided_after_requested_check" CHECK (
+    "decided_at" IS NULL OR "decided_at" >= "requested_at"),
+  ADD CONSTRAINT "seller_cultures_updated_after_requested_check" CHECK ("updated_at" >= "requested_at"),
   ADD CONSTRAINT "seller_cultures_version_check" CHECK ("version" >= 1);
 
 -- Grants (least privilege). A membership is never deleted; a request, a decision and a new request

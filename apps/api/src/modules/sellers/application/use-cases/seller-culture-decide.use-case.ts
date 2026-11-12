@@ -11,6 +11,7 @@ import {
   type CultureFieldProblem,
   type SellerCultureState,
 } from '../../domain/seller-culture';
+import { demoteStaleApprovals } from '../cultures/culture-guard';
 import { announce, viewOf, type SellerCultureView } from '../cultures/seller-culture-views';
 import type { CultureDirectory, CultureInfo } from '../ports/culture-directory';
 import type { SellerCertificateDirectory } from '../ports/seller-certificate-directory';
@@ -30,6 +31,8 @@ export type SellerCultureDecideFailure =
   | { readonly code: 'culture.membership-not-found' }
   | { readonly code: 'culture.not-requested' }
   | { readonly code: 'culture.not-active' }
+  /** The culture changed (inactive, or another required type) between the read and the approval; it was taken back. */
+  | { readonly code: 'culture.changed' }
   /** The seller holds no valid certificate of the type; the UI shows "Needs a valid <type> certificate". */
   | { readonly code: 'culture.certificate-required'; readonly requiredCertificationType: string }
   | { readonly code: 'culture.certificate-unavailable' }
@@ -157,8 +160,9 @@ export class SellerCultureDecide extends UseCase<
       at: clock.now(),
     });
     if (!next.ok) return err(next.error);
+    let written: Result<{ readonly culture: SellerCultureView }, SellerCultureDecideFailure>;
     try {
-      return await unitOfWork.run<
+      written = await unitOfWork.run<
         { readonly culture: SellerCultureView },
         SellerCultureDecideFailure
       >(market, async () => {
@@ -174,5 +178,14 @@ export class SellerCultureDecide extends UseCase<
     } catch {
       return err({ code: 'sellers.unavailable' });
     }
+    if (!written.ok || next.value.status !== 'approved') return written;
+    // The culture was read before the write: read it again, and take the approval back if the culture
+    // went inactive or its required type is no longer the one the certificate was checked for.
+    const guard = await demoteStaleApprovals(this.deps, context, [
+      { state: next.value, verifiedType: found?.requiredCertificationType ?? null },
+    ]);
+    if (guard.demoted.size > 0) return err({ code: 'culture.changed' });
+    if (guard.unreadable) return err({ code: 'sellers.unavailable' });
+    return written;
   }
 }

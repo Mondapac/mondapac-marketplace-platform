@@ -35,6 +35,7 @@ import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
 import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
+import type { CultureMembers } from '../ports/culture-members';
 import type { CultureRepository } from '../ports/culture.repository';
 
 export interface CultureEditInput {
@@ -57,6 +58,8 @@ export type CultureEditFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'culture.not-found' }
   | { readonly code: 'culture.name-taken' }
+  /** A seller is approved in the culture: its required certification type cannot be set or changed. */
+  | { readonly code: 'culture.required-type-locked' }
   | { readonly code: 'conflict.stale' }
   | ValidationFailure;
 
@@ -66,6 +69,7 @@ export interface CultureEditDependencies {
   readonly policy: CatalogMarketPolicy;
   readonly matcher: ClaimTextMatcher;
   readonly claimLocales: ClaimTermLocales;
+  readonly cultureMembers: CultureMembers;
   readonly evaluator: ClaimEvaluator;
   readonly audit: AuditWriter;
   readonly clock: Clock;
@@ -192,56 +196,100 @@ export class CultureEdit extends UseCase<
       if (claim !== null) return err(claim);
     }
     const newType = change.requiredCertificationType;
+    const typeChanges = newType !== undefined && newType !== stored.requiredCertificationType;
+    // An approval was checked against the type the culture had; while anyone is approved the type
+    // does not change (security review M1). Fail closed when sellers cannot answer.
+    if (typeChanges) {
+      const members = await this.deps.cultureMembers.hasApproved(context, id.value);
+      if (!members.ok) return err({ code: 'access.unavailable' });
+      if (members.value) return err({ code: 'culture.required-type-locked' });
+    }
     if (typeof newType === 'string' && newType !== stored.requiredCertificationType) {
       const known = await checkRequiredCertificationType(this.deps.evaluator, context, newType);
       if (!known.ok) return known;
     }
 
     try {
-      return await this.deps.unitOfWork.run<{ readonly culture: CultureView }, CultureEditFailure>(
-        market,
-        async () => {
-          const found = await cultures.findById(market, id.value);
-          if (found === null) return err({ code: 'culture.not-found' } as const);
-          if (found.version !== version.value) return err({ code: 'conflict.stale' } as const);
-          const now = this.deps.clock.now();
-          const next = editCulture(found, change, now);
-          if (!next.ok) return err({ code: next.error } as const);
-          // The single-default index needs the old default cleared before the new one is set.
-          if (next.value.isDefault && !found.isDefault) {
-            await cultures.clearDefaultExcept(market, found.id, now);
-          }
-          const saved = await cultures.save(market, next.value, found.version);
-          if (saved === 'conflict.stale') return err({ code: 'conflict.stale' } as const);
-          // The code of an existing culture never changes, so only a name can collide.
-          if (saved !== null) return err({ code: 'culture.name-taken' } as const);
-          await this.deps.audit.record(
-            context,
-            CultureEditedAudit.entry(found.id, {
-              before: {
-                status: found.status,
-                isDefault: found.isDefault,
-                requiresCertification: found.requiredCertificationType !== null,
-              },
-              after: {
-                status: next.value.status,
-                isDefault: next.value.isDefault,
-                requiresCertification: next.value.requiredCertificationType !== null,
-                namesChanged: namesChanged(found, next.value),
-                orderChanged: found.displayOrder !== next.value.displayOrder,
-                badgeChanged: found.badgeColour !== next.value.badgeColour,
-                requiredCertificationTypeChanged:
-                  found.requiredCertificationType !== next.value.requiredCertificationType,
-              },
-            }),
-          );
-          return ok({ culture: viewOf(next.value) });
-        },
-      );
+      const saved = await this.deps.unitOfWork.run<
+        { readonly culture: CultureView },
+        CultureEditFailure
+      >(market, async () => {
+        const found = await cultures.findById(market, id.value);
+        if (found === null) return err({ code: 'culture.not-found' } as const);
+        if (found.version !== version.value) return err({ code: 'conflict.stale' } as const);
+        const now = this.deps.clock.now();
+        const next = editCulture(found, change, now);
+        if (!next.ok) return err({ code: next.error } as const);
+        // The single-default index needs the old default cleared before the new one is set.
+        if (next.value.isDefault && !found.isDefault) {
+          await cultures.clearDefaultExcept(market, found.id, now);
+        }
+        const saved = await cultures.save(market, next.value, found.version);
+        if (saved === 'conflict.stale') return err({ code: 'conflict.stale' } as const);
+        // The code of an existing culture never changes, so only a name can collide.
+        if (saved !== null) return err({ code: 'culture.name-taken' } as const);
+        await this.deps.audit.record(
+          context,
+          CultureEditedAudit.entry(found.id, {
+            before: {
+              status: found.status,
+              isDefault: found.isDefault,
+              requiresCertification: found.requiredCertificationType !== null,
+            },
+            after: {
+              status: next.value.status,
+              isDefault: next.value.isDefault,
+              requiresCertification: next.value.requiredCertificationType !== null,
+              namesChanged: namesChanged(found, next.value),
+              orderChanged: found.displayOrder !== next.value.displayOrder,
+              badgeChanged: found.badgeColour !== next.value.badgeColour,
+              requiredCertificationTypeChanged:
+                found.requiredCertificationType !== next.value.requiredCertificationType,
+            },
+          }),
+        );
+        return ok({ culture: viewOf(next.value) });
+      });
+      if (!saved.ok || !typeChanges) return saved;
+      return await this.#settleTypeChange(context, saved.value.culture, stored);
     } catch (error) {
       if (error instanceof StaleAggregateError) return err({ code: 'conflict.stale' });
       throw error;
     }
+  }
+
+  /**
+   * The check above ran before the commit, and an approval may have been written in between (a
+   * seller approved in a culture that had no required type a moment ago). Ask again now that the new
+   * type is committed: if anyone is approved, or sellers cannot answer, put the old type back and
+   * refuse. Together with the guard in `sellers` (an approval re-reads the culture after its commit
+   * and takes itself back), no approval can end up outside the type it was checked against.
+   */
+  async #settleTypeChange(
+    context: CallContext,
+    saved: CultureView,
+    before: CultureState,
+  ): Promise<Result<{ readonly culture: CultureView }, CultureEditFailure>> {
+    const { market } = context;
+    const members = await this.deps.cultureMembers.hasApproved(context, before.id);
+    if (members.ok && !members.value) return ok({ culture: saved });
+    await this.deps.unitOfWork.run(market, async () => {
+      const found = await this.deps.cultures.findById(market, before.id);
+      if (found === null) return ok(null);
+      const back = editCulture(
+        found,
+        { requiredCertificationType: before.requiredCertificationType },
+        this.deps.clock.now(),
+      );
+      if (back.ok) await this.deps.cultures.save(market, back.value, found.version);
+      return ok(null);
+    });
+    this.#logger.warn({
+      msg: 'catalog.culture-edit.required-type-reverted',
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return err({ code: members.ok ? 'culture.required-type-locked' : 'access.unavailable' });
   }
 }
 

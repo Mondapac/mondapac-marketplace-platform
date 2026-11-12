@@ -13,6 +13,7 @@ import {
   type CultureFieldProblem,
   type SellerCultureState,
 } from '../../domain/seller-culture';
+import { demoteStaleApprovals, type FreshApproval } from '../cultures/culture-guard';
 import { announce } from '../cultures/seller-culture-views';
 import type { CultureDirectory, CultureInfo } from '../ports/culture-directory';
 import type { SellerCultureRepository } from '../ports/seller-culture.repository';
@@ -135,8 +136,10 @@ export class ApplySignupCultures extends UseCase<
     }
 
     const { unitOfWork, files, sellerCultures, audit, outbox, clock } = this.deps;
+    const fresh: FreshApproval[] = [];
+    let written: Result<ApplySignupCulturesResult, ApplySignupCulturesFailure>;
     try {
-      return await unitOfWork.run<ApplySignupCulturesResult, ApplySignupCulturesFailure>(
+      written = await unitOfWork.run<ApplySignupCulturesResult, ApplySignupCulturesFailure>(
         market,
         async () => {
           if (!(await files.existingIds(market, [input.sellerId])).has(input.sellerId)) {
@@ -175,6 +178,7 @@ export class ApplySignupCultures extends UseCase<
               continue;
             }
             await announce(outbox, context, state);
+            if (state.status === 'approved') fresh.push({ state, verifiedType: null });
             (state.status === 'approved' ? approved : requested).push(culture.id);
           }
           if (approved.length + requested.length > 0) {
@@ -191,5 +195,22 @@ export class ApplySignupCultures extends UseCase<
     } catch {
       return err({ code: 'sellers.unavailable' });
     }
+    if (!written.ok) return written;
+    // The cultures were read before the write. Read them again now: one that became certified or
+    // inactive in between must not keep an approval made without a certificate (security review M1).
+    const guard = await demoteStaleApprovals(this.deps, context, fresh);
+    if (guard.unreadable) return err({ code: 'sellers.unavailable' });
+    if (guard.demoted.size === 0) return written;
+    this.#logger.warn({
+      msg: 'sellers.apply-signup-cultures.demoted-stale-approval',
+      demoted: guard.demoted.size,
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return ok({
+      approved: written.value.approved - guard.demoted.size,
+      requested: written.value.requested + guard.demoted.size,
+      unchanged: written.value.unchanged,
+    });
   }
 }

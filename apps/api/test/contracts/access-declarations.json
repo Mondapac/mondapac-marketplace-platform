@@ -688,6 +688,7 @@
   { "name": "sellers.carrier-pickup", "rule": "system" },
   { "name": "sellers.close-decision", "rule": "system" },
   { "name": "sellers.create-seller-file", "rule": "system" },
+  { "name": "sellers.culture-approved-members", "rule": "anonymous" },
   {
     "name": "sellers.form-descriptors-read",
     "rule": "permissions",

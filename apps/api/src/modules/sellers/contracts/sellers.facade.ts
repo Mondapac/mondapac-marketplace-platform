@@ -309,6 +309,16 @@ export interface SellersFacade {
       AccessDenied | SellersValidationFailed | SellerFileNotFound | SellersUnavailable
     >
   >;
+
+  /**
+   * `cultureHasApprovedMembers` (ADR-0048): whether any seller is approved in the culture. Catalog
+   * asks before it changes the culture's required certification type, and refuses on any doubt.
+   * Rule `anonymous`; in process only.
+   */
+  cultureHasApprovedMembers(
+    context: CallContext,
+    cultureId: Id<'Culture'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
 }
 
 /** Nest token of the {@link SellersFacade}, provided and exported by `SellersModule`. */

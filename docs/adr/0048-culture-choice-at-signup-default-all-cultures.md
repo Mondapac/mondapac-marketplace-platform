@@ -54,3 +54,14 @@ seller. Package 2 builds the seller side. The buyer side is package 4.
 - `sellers.seller_cultures.requested_by` and `decided_by` are null when the system acted.
 - The "universal" meaning for buyers (all Active cultures, later ones included) is a rule package 4
   must implement and test.
+- Membership is not re-checked when a seller's certificate expires or is revoked (security review
+  M2). Package 3 must close this before the visibility switch can be turned on, either by having
+  the visibility function check the seller certificate for a certified culture, or by demoting the
+  membership on the certification events.
+- The required certification type of a culture is locked while any seller is approved in it
+  (`culture.required-type-locked`, 409): catalog asks `sellers` through a facade method, fails
+  closed, and re-checks after its own commit. The approval writers re-read the culture after their
+  commit and take an approval back to `requested` if the culture became inactive or certified, so
+  one side always sees the other (security review M1).
+- The seed job attaches only sellers whose identity access state is pending or approved, never
+  rejected or suspended ones, and runs at most 10 batches of 200 per run.
