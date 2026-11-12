@@ -1229,9 +1229,9 @@ const catalogSchema = z
       .min(1024)
       .max(10 * 1024 * 1024),
     /**
-     * The most category proposals one seller may have waiting (categories C9a; CAT-54; AU 5). A
-     * soft cap: two concurrent proposals may pass it by one (catalog design 4.7). Optional: a
-     * Market without it uses the catalog default of 5.
+     * The most category proposals one seller may have waiting (categories C9a; CAT-54; AU 5).
+     * Exact: proposals of one seller run one after the other under the seller's shelf lock.
+     * Optional: a Market without it uses the catalog default of 5.
      */
     maxPendingCategoryProposals: z.number().int().min(1).max(50).optional(),
     /**

@@ -55,7 +55,7 @@ import { SellerCategoryPromote } from './seller-category-promote.use-case';
 // Seller category proposals and shelves in memory (categories C9a; CAT-51 to CAT-54), on both
 // Market fixtures: the session seller only; `mayProposeCategories` asked at every command and
 // again at approval, anything but yes refusing (Hassan M1, I3); eligibility; the claim-text check
-// per locale, failing closed; the soft pending cap from Market configuration; duplicates after
+// per locale, failing closed; the pending cap from Market configuration; duplicates after
 // normalisation; a shelf on an Offer only from the Offer's seller; revocation cancels the pending
 // proposals; promote creates a hidden platform node with the shelf's id and the tree rules;
 // merge clears the shelf on the Offers. The SQL is in test/db/catalog-seller-categories.db-spec.ts.
@@ -512,7 +512,7 @@ describe.each(['AU', 'ZZ'] as const)('seller category use cases in market %s', (
       );
     });
 
-    it(`keeps the soft pending cap of the Market (${code})`, async () => {
+    it(`keeps the pending cap of the Market (${code})`, async () => {
       for (let n = 0; n < maxPending; n += 1) await proposeOk(`Shelf ${n}`);
       expect(await build().propose.execute(sellerContext(), body('One more'))).toEqual(
         err({ code: 'category-proposal.limit', max: maxPending }),

@@ -77,7 +77,8 @@ const KEYS = ['platformParentId', 'texts'] as const;
  * At every command `sellers.mayProposeCategories` must answer `ok(true)` (anything else is
  * `category-proposal.not-allowed`) and the seller must be eligible to sell. Every name and
  * description passes the claim-text check in its own locale, failing closed. A seller may have at
- * most the Market's `maxPendingCategoryProposals` waiting (a soft cap) and 20 proposals a day; a
+ * most the Market's `maxPendingCategoryProposals` waiting (exact, under the seller's shelf lock) and 20
+ * proposals a day; a
  * name already waiting or already a live shelf of the seller under the same parent (NFKC, case
  * folded, yeh and kaf unified) is `category-proposal.duplicate`.
  */

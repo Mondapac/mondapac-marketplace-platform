@@ -348,20 +348,24 @@ export class PrismaSellerCategoryStore implements SellerCategoryStore {
       select: { id: true },
       orderBy: { id: 'asc' },
     });
-    if (carrying.length === 0) return 0;
-    const ids = carrying.map((offer) => offer.id);
-    await tx.catalogOffer.updateMany({
-      where: { marketId: market.marketId, id: { in: ids }, shelfCategoryId: shelfId },
-      data: { shelfCategoryId: null, version: { increment: 1 } },
-    });
-    const rows = await tx.catalogOffer.findMany({
-      where: { marketId: market.marketId, id: { in: ids } },
-      orderBy: { id: 'asc' },
-    });
-    await tx.catalogOfferHistory.createMany({
-      data: rows.map((row) => this.#historyRow(market, row, 'shelf-cleared', [], actor, now)),
-    });
-    return rows.length;
+    let cleared = 0;
+    // In batches, so a very large shelf stays far below PostgreSQL's bind-parameter limit.
+    for (let start = 0; start < carrying.length; start += CLEAR_BATCH) {
+      const ids = carrying.slice(start, start + CLEAR_BATCH).map((offer) => offer.id);
+      await tx.catalogOffer.updateMany({
+        where: { marketId: market.marketId, id: { in: ids }, shelfCategoryId: shelfId },
+        data: { shelfCategoryId: null, version: { increment: 1 } },
+      });
+      const rows = await tx.catalogOffer.findMany({
+        where: { marketId: market.marketId, id: { in: ids } },
+        orderBy: { id: 'asc' },
+      });
+      await tx.catalogOfferHistory.createMany({
+        data: rows.map((row) => this.#historyRow(market, row, 'shelf-cleared', [], actor, now)),
+      });
+      cleared += rows.length;
+    }
+    return cleared;
   }
 
   async setOfferShelf(
@@ -473,6 +477,9 @@ export class PrismaSellerCategoryStore implements SellerCategoryStore {
     };
   }
 }
+
+/** Offers cleared per statement when a shelf closes. */
+const CLEAR_BATCH = 1000;
 
 interface ShelfRow {
   readonly id: string;

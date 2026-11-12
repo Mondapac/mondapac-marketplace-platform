@@ -58,7 +58,7 @@ export interface SellerCategoryStore {
     proposal: NewCategoryProposal,
   ): Promise<'proposal.duplicate' | null>;
 
-  /** Pending proposals of the seller (the CAT-54 soft cap). */
+  /** Pending proposals of the seller (the CAT-54 cap; counted under the seller lock). */
   /**
    * Takes the seller's shelf lock (`catalog.lock-seller-shelves`) until the unit ends, so the
    * pending cap, the slug probe of an approval, a close of a shelf and an Offer moved onto a shelf
@@ -141,7 +141,8 @@ export interface SellerCategoryStore {
 
   /**
    * Clears the shelf on every Offer that carries it, each with its version raised and an
-   * `offer_history` row `shelf-cleared`; answers how many Offers.
+   * `offer_history` row `shelf-cleared`; answers how many Offers. The caller holds the seller's
+   * shelf lock (`lockSeller`), so no Offer joins the shelf between the read and the update.
    */
   clearShelfOnOffers(
     market: MarketContext,

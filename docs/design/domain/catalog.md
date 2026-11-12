@@ -519,9 +519,9 @@ No data change is needed now (Mojtaba agrees).
 ### 4.7 Seller category and proposal (CAT-51 to CAT-54)
 `pending` → `approved` | `rejected` | `cancelled`. Proposal by `own-category.propose`
 (`mayProposeCategories` yes at the command; pending cap; claim-text check on names and
-description). The CAT-54 pending cap is a **soft cap** (Q-K7, accepted): two concurrent proposals may
-exceed it by one, since catalog has no per-seller root to serialise on; it is an anti-spam limit, not
-a safety rule, and the next proposal is refused until the count is under the cap. Decision by `category-proposal.approve` / `.reject` (key
+description). The CAT-54 pending cap is **exact**: every write to a seller's shelves and proposals first takes
+the seller's transaction lock (`catalog.lock-seller-shelves`, C9a, 12 Nov 2026), so two concurrent
+proposals cannot both pass the count. This replaces the soft cap that Q-K7 had accepted. Decision by `category-proposal.approve` / `.reject` (key
 `catalog.category-proposal.decide`), always required regardless of CAT-36. On
 `sellers.category-proposals-revoked.v1`, pending proposals become `cancelled` with reason
 `permission-revoked` (CAT-51, AC 35). Promote (same id into the platform tree; free platform slug)
