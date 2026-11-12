@@ -5,6 +5,7 @@ import { requireSession } from '../../../src/server/session.ts';
 import { SellersList } from '../../../src/sellers/sellers-list.tsx';
 import { REVIEW_PERMISSION } from '../../../src/sellers/review-types.ts';
 import { ORPHANED_VIEW_PERMISSION } from '../../../src/sellers/orphaned-types.ts';
+import { SELLER_VIEW_PERMISSION } from '../../../src/sellers/health-types.ts';
 import { LIST_PERMISSION } from '../../../src/sellers/types.ts';
 
 export async function generateMetadata() {
@@ -24,6 +25,14 @@ export default async function SellersPage() {
     <AdminShell session={gate.session} activeId="sellers" title={title}>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <h1 className="text-2xl font-semibold">{title}</h1>
+        {gate.session.permissionKeys.includes(SELLER_VIEW_PERMISSION) ? (
+          <a
+            className="inline-flex min-h-12 items-center font-medium text-link underline"
+            href="/sellers/needs-a-look"
+          >
+            {t('sellers.health-queue.link')}
+          </a>
+        ) : null}
         {gate.session.permissionKeys.includes(ORPHANED_VIEW_PERMISSION) ? (
           <a
             className="inline-flex min-h-12 items-center font-medium text-link underline"

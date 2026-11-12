@@ -35,6 +35,17 @@ import {
   type WorkingCopyRepository,
 } from '../application/ports/working-copy.repository';
 import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
+import { cultureMembersProvider } from './sellers-culture-members';
+import {
+  SELLER_CERTIFICATE_TYPES,
+  SELLER_MEMBER_CULTURES,
+  type SellerCertificateTypes,
+  type SellerMemberCultures,
+} from '../application/ports/culture-visibility-sources';
+import {
+  CertificationSellerCertificateTypes,
+  SellersMemberCultures,
+} from './culture-visibility-sources';
 import { CLAIM_TERM_LOCALES, type ClaimTermLocales } from '../application/ports/claim-term-locales';
 import {
   ATTRIBUTE_DEFINITION_STORE,
@@ -606,6 +617,20 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellerSavedFilterRepository =>
       new PrismaSellerSavedFilterRepository(prisma),
+  },
+  cultureMembersProvider,
+  // The sources of the culture visibility rule (multi-culture package 3a).
+  {
+    provide: SELLER_MEMBER_CULTURES,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerMemberCultures =>
+      new SellersMemberCultures(sellers),
+  },
+  {
+    provide: SELLER_CERTIFICATE_TYPES,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): SellerCertificateTypes =>
+      new CertificationSellerCertificateTypes(certification),
   },
   {
     provide: SELLER_ELIGIBILITY_READER,

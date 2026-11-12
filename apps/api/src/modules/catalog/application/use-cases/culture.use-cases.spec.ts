@@ -1,5 +1,12 @@
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
-import type { AuditEntry, CallContext, Id, MarketContext, Result } from '@mondapac/shared-kernel';
+import type {
+  AuditEntry,
+  CallContext,
+  Id,
+  MarketContext,
+  PendingEvent,
+  Result,
+} from '@mondapac/shared-kernel';
 import {
   FixedClock,
   SequenceIdGenerator,
@@ -11,6 +18,7 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/su
 import { cleanClaimTextMatcher } from '../../../../../test/support/clean-claim-text-matcher.fake';
 import { unavailableClaimTextMatcher } from '../../../../../test/support/unavailable-claim-text-matcher.fake';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
+import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
@@ -24,7 +32,9 @@ import { CheckedInCultureSeed } from '../../infrastructure/seed/checked-in-cultu
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { CategoryTreeReader } from '../ports/category-tree.reader';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
+import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
+import type { CultureMembers } from '../ports/culture-members';
 import type { CultureReader } from '../ports/culture.reader';
 import type { CultureRepository } from '../ports/culture.repository';
 import { CultureCategoryMarkClear } from './culture-category-mark-clear.use-case';
@@ -53,6 +63,18 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
   const market: MarketContext = testMarketContext(code, 'default');
   const clock = new FixedClock(T0);
   const ids = new SequenceIdGenerator(clock);
+  // The culture events of package 3a (status, mark, approvals invalidated), as written.
+  const events: PendingEvent[] = [];
+  const outbox: OutboxWriter = {
+    append: (_c, appended) => {
+      events.push(...appended);
+      return Promise.resolve();
+    },
+  };
+  const eventsOf = (type: string) =>
+    events
+      .filter((e) => e.type === type)
+      .map((e) => ({ aggregateVersion: e.aggregateVersion, payload: e.payload }));
   const main = locales.default;
   const second = locales.supported.find((l) => l !== main)!;
   const text = (name: string) => ({ name, description: `About ${name}` });
@@ -61,7 +83,12 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
   const marks = new Map<string, CultureCategoryRow>();
   let audits: AuditEntry[] = [];
   let permissions: string[] = [];
+  // The next N saves fail as stale (another writer got in); set when the revert is about to run.
+  let staleSaves = 0;
+  let staleSavesOnRevert = 0;
+  const demoteCalls: string[] = [];
   const cultures: CultureRepository = {
+    categoryRowsOf: () => Promise.resolve(new Map()),
     add: (_m, state) => {
       if ([...rows.values()].some((r) => r.code === state.code)) {
         return Promise.resolve('culture.code-taken');
@@ -74,6 +101,10 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
     defaultId: () => Promise.resolve([...rows.values()].find((r) => r.isDefault)?.id ?? null),
     count: () => Promise.resolve(rows.size),
     save: (_m, state, expectedVersion) => {
+      if (staleSaves > 0) {
+        staleSaves -= 1;
+        throw new StaleAggregateError('culture', state.id);
+      }
       if (rows.get(state.id)?.version !== expectedVersion) {
         throw new StaleAggregateError('culture', state.id);
       }
@@ -95,6 +126,7 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
     clearCategoryRow: (_m, _c, categoryId) => Promise.resolve(marks.delete(categoryId)),
   };
   const cultureReader: CultureReader = {
+    byIds: (_m, ids) => Promise.resolve([...rows.values()].filter((r) => ids.includes(r.id))),
     list: (_m, query) =>
       Promise.resolve(
         [...rows.values()].filter((r) => query.status === null || r.status === query.status),
@@ -157,18 +189,66 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
       ),
   };
 
+  // The locales with claim terms; every locale the Market supports unless a test narrows it.
+  let covered: readonly string[] | null = [...locales.supported];
+  const claimLocales: ClaimTermLocales = {
+    covered: () =>
+      Promise.resolve(
+        covered === null ? err({ code: 'claim-text.check-unavailable' } as const) : ok(covered),
+      ),
+  };
+
+  // The sellers answer: nobody approved by default; a test flips it, or makes it unreadable.
+  let approvedMembers: 'none' | 'some' | 'unreadable' = 'none';
+  let appearAfterCommit = false;
+  const memberCalls: string[] = [];
+  const cultureMembers: CultureMembers = {
+    hasApproved: (_c, id) => {
+      memberCalls.push(id);
+      if (approvedMembers === 'unreadable') {
+        return Promise.resolve(err({ code: 'culture-members.unavailable' } as const));
+      }
+      const answer = approvedMembers === 'some' || (appearAfterCommit && memberCalls.length > 1);
+      if (answer && memberCalls.length > 1) staleSaves = staleSavesOnRevert;
+      return Promise.resolve(ok(answer));
+    },
+    demoteAll: (_c, id) => {
+      demoteCalls.push(id);
+      return Promise.resolve(ok(true));
+    },
+  };
+
   const build = (matcher: ClaimTextMatcher = cleanClaimTextMatcher) => {
     const gate = createUseCaseGate(markets, check);
-    const write = { unitOfWork, cultures, policy, matcher, evaluator, audit, clock };
+    const write = {
+      unitOfWork,
+      cultures,
+      policy,
+      matcher,
+      claimLocales,
+      evaluator,
+      audit,
+      clock,
+      cultureMembers,
+      outbox,
+      ids,
+    };
     const markDeps = { unitOfWork, cultures, treeReader, policy };
     return {
-      create: new CultureCreate(gate, { ...write, ids }),
+      create: new CultureCreate(gate, write),
       edit: new CultureEdit(gate, write),
       get: new CultureGet(gate, { unitOfWork, cultures }),
       list: new CultureList(gate, { unitOfWork, cultureReader }),
       marks: new CultureCategoryMarks(gate, markDeps),
-      setMark: new CultureCategoryMarkSet(gate, { ...markDeps, audit, clock }),
-      clearMark: new CultureCategoryMarkClear(gate, { unitOfWork, cultures, audit }),
+      setMark: new CultureCategoryMarkSet(gate, { ...markDeps, audit, clock, outbox, ids }),
+      clearMark: new CultureCategoryMarkClear(gate, {
+        unitOfWork,
+        cultures,
+        audit,
+        outbox,
+        ids,
+        clock,
+      }),
       seed: new SeedCultures(gate, {
         unitOfWork,
         cultures,
@@ -187,6 +267,7 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
         policy,
         evaluator,
         matcher,
+        claimLocales,
         clock,
         ids,
       }),
@@ -206,6 +287,7 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
   const admin = contextOf('admin');
 
   beforeEach(() => {
+    events.length = 0;
     rows.clear();
     marks.clear();
     audits = [];
@@ -369,9 +451,13 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
       cultures: racing,
       policy,
       matcher: cleanClaimTextMatcher,
+      claimLocales,
       evaluator,
       audit,
       clock,
+      cultureMembers,
+      outbox,
+      ids,
     });
 
     expect(
@@ -409,6 +495,40 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
     });
     expect(down).toEqual({ ok: false, error: { code: 'access.unavailable' } });
     expect(rows.size).toBe(0);
+  });
+
+  it('refuses a name in a locale with no claim terms, and fails closed when the locales cannot be read', async () => {
+    const { create, edit } = build();
+    covered = [main];
+    const refused = await create.execute(admin, {
+      code: 'uncovered',
+      names: { [main]: text('Folk'), [second]: text('Folk two') },
+    });
+    covered = null;
+    const down = await create.execute(admin, { code: 'down', names: { [main]: text('Down') } });
+    covered = [...locales.supported];
+    const made = await create.execute(admin, { code: 'ok', names: { [main]: text('Fine') } });
+    const id = made.ok ? made.value.culture.id : '';
+    covered = [main];
+    const edited = await edit.execute(admin, {
+      cultureId: id,
+      version: 1,
+      names: { [main]: text('Fine'), [second]: text('Second') },
+    });
+
+    expect(refused).toEqual({
+      ok: false,
+      error: {
+        code: 'culture.locale-uncheckable',
+        fields: [
+          { path: `names.${second}.name`, code: 'locale-uncheckable' },
+          { path: `names.${second}.description`, code: 'locale-uncheckable' },
+        ],
+      },
+    });
+    expect(down).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+    expect(edited).toMatchObject({ ok: false, error: { code: 'culture.locale-uncheckable' } });
+    covered = [...locales.supported];
   });
 
   it('accepts only an active certification type of the Market, and fails closed when it cannot ask', async () => {
@@ -501,11 +621,19 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
     expect(
       await edit.execute(admin, { cultureId: culture.id, version: 1, status: 'inactive' }),
     ).toEqual({ ok: false, error: { code: 'culture.status-transition' } });
+    events.length = 0;
     await edit.execute(admin, { cultureId: culture.id, version: 1, status: 'active' });
     await edit.execute(admin, { cultureId: culture.id, version: 2, status: 'inactive' });
     expect(
       await edit.execute(admin, { cultureId: culture.id, version: 3, status: 'draft' }),
     ).toEqual({ ok: false, error: { code: 'culture.status-transition' } });
+    // Package 3a: each status change is announced at the version the edit wrote, so search
+    // re-indexes; an edit that keeps the status announces nothing.
+    await edit.execute(admin, { cultureId: culture.id, version: 3, displayOrder: 7 });
+    expect(eventsOf('catalog.culture-status-changed.v1')).toEqual([
+      { aggregateVersion: 2, payload: { cultureId: culture.id, status: 'active' } },
+      { aggregateVersion: 3, payload: { cultureId: culture.id, status: 'inactive' } },
+    ]);
   });
 
   it('makes one culture the default at a time and never lets the default go inactive', async () => {
@@ -596,6 +724,152 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
     expect(other).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
   });
 
+  describe('required type lock (security review M1)', () => {
+    beforeEach(() => {
+      approvedMembers = 'none';
+      appearAfterCommit = false;
+      staleSaves = 0;
+      staleSavesOnRevert = 0;
+      demoteCalls.length = 0;
+      memberCalls.length = 0;
+    });
+
+    it('retries the revert on a stale write and audits it', async () => {
+      const culture = await created();
+      const { edit, get } = build();
+      appearAfterCommit = true;
+      staleSavesOnRevert = 2;
+      memberCalls.length = 0;
+      audits = [];
+
+      const result = await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        requiredCertificationType: type,
+      });
+
+      expect(result).toEqual({ ok: false, error: { code: 'culture.required-type-locked' } });
+      expect(await get.execute(admin, { cultureId: culture.id })).toMatchObject({
+        value: { culture: { requiredCertificationType: null } },
+      });
+      expect(demoteCalls).toEqual([]);
+      // The edit and the revert are both audited.
+      expect(audits).toHaveLength(2);
+    });
+
+    it('takes every approval back when the revert keeps failing', async () => {
+      const culture = await created();
+      const { edit, get } = build();
+      appearAfterCommit = true;
+      staleSavesOnRevert = 3;
+      memberCalls.length = 0;
+
+      const result = await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        requiredCertificationType: type,
+      });
+
+      expect(result).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+      expect(demoteCalls).toEqual([culture.id]);
+      // Security review N1: a durable request too, so sellers finishes the demotion on delivery
+      // (retried until none is left) even if the direct call stopped short.
+      expect(eventsOf('catalog.culture-approvals-invalidated.v1')).toEqual([
+        { aggregateVersion: 1, payload: { cultureId: culture.id } },
+      ]);
+      expect(await get.execute(admin, { cultureId: culture.id })).toMatchObject({
+        value: { culture: { requiredCertificationType: type } },
+      });
+    });
+
+    it('writes nothing when the change is locked', async () => {
+      const culture = await created();
+      const { edit, get } = build();
+      approvedMembers = 'some';
+      audits = [];
+
+      await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        requiredCertificationType: type,
+        displayOrder: 9,
+      });
+
+      expect(audits).toEqual([]);
+      expect(await get.execute(admin, { cultureId: culture.id })).toMatchObject({
+        value: { culture: { version: 1, displayOrder: culture.displayOrder } },
+      });
+    });
+
+    it('refuses a changed required type while a seller is approved', async () => {
+      const culture = await created();
+      const { edit, get } = build();
+      approvedMembers = 'some';
+      memberCalls.length = 0;
+
+      const result = await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        requiredCertificationType: type,
+      });
+
+      expect(result).toEqual({ ok: false, error: { code: 'culture.required-type-locked' } });
+      expect(await get.execute(admin, { cultureId: culture.id })).toMatchObject({
+        value: { culture: { requiredCertificationType: null } },
+      });
+    });
+
+    it('fails closed when sellers cannot answer', async () => {
+      const culture = await created();
+      const { edit } = build();
+      approvedMembers = 'unreadable';
+      memberCalls.length = 0;
+
+      expect(
+        await edit.execute(admin, {
+          cultureId: culture.id,
+          version: 1,
+          requiredCertificationType: type,
+        }),
+      ).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+    });
+
+    it('puts the old type back when an approval appears during the edit', async () => {
+      const culture = await created();
+      const { edit, get } = build();
+      appearAfterCommit = true;
+      memberCalls.length = 0;
+
+      const result = await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        requiredCertificationType: type,
+      });
+
+      expect(result).toEqual({ ok: false, error: { code: 'culture.required-type-locked' } });
+      expect(await get.execute(admin, { cultureId: culture.id })).toMatchObject({
+        value: { culture: { requiredCertificationType: null } },
+      });
+    });
+
+    it('does not ask sellers when the type is unchanged', async () => {
+      const culture = await created({ requiredCertificationType: type });
+      const { edit } = build();
+      approvedMembers = 'some';
+      memberCalls.length = 0;
+
+      const result = await edit.execute(admin, {
+        cultureId: culture.id,
+        version: 1,
+        requiredCertificationType: type,
+        displayOrder: 3,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(memberCalls).toEqual([]);
+    });
+  });
+
   it('lists and reads cultures', async () => {
     const culture = await created();
     const { list, get } = build();
@@ -671,7 +945,35 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
       expect(audits[0]).toMatchObject({
         action: 'catalog.culture.category-mark-changed',
         before: { hadRow: false, certificationMark: 'inherit' },
-        after: { hasRow: true, visible: false, certificationMark: 'neutral' },
+        after: { hasRow: true, visible: 'hidden', certificationMark: 'neutral' },
+      });
+    });
+
+    it('a mark-only row leaves visibility null, and a hidden parent still hides it (ADR-0048 M2)', async () => {
+      const culture = await created();
+      const { setMark, marks: list } = build();
+      await setMark.execute(admin, { cultureId: culture.id, categoryId: cat(1), visible: false });
+      const child = await setMark.execute(admin, {
+        cultureId: culture.id,
+        categoryId: cat(3),
+        certificationMark: 'neutral',
+      });
+      expect(child).toMatchObject({
+        ok: true,
+        value: {
+          mark: {
+            own: { visible: null, certificationMark: 'neutral' },
+            effective: { visible: false, certificationMark: 'neutral' },
+          },
+        },
+      });
+      // Even an explicit "shown" on the child does not show it under a hidden parent.
+      await setMark.execute(admin, { cultureId: culture.id, categoryId: cat(3), visible: true });
+      const items = await list.execute(admin, { cultureId: culture.id });
+      const three = items.ok ? items.value.items.find((i) => i.categoryId === cat(3)) : undefined;
+      expect(three?.effective).toMatchObject({
+        visible: false,
+        visibleSource: { kind: 'inherited', fromCategoryId: cat(1) },
       });
     });
 
@@ -707,6 +1009,16 @@ describe.each(FIXTURES)('culture use cases in market $code', ({ code, locales, t
           error: { code: 'culture-category.not-found' },
         },
       );
+      // Package 3a: each write announces the culture and category, every event its own aggregate
+      // at version 1 (a mark row has no version); the refused clear announces nothing.
+      const marked = events.filter((e) => e.type === 'catalog.culture-category-mark-changed.v1');
+      expect(marked.map((e) => e.payload)).toEqual([
+        { cultureId: culture.id, categoryId: cat(1) },
+        { cultureId: culture.id, categoryId: cat(2) },
+        { cultureId: culture.id, categoryId: cat(2) },
+      ]);
+      expect(new Set(marked.map((e) => e.aggregateId)).size).toBe(3);
+      expect(marked.every((e) => e.aggregateVersion === 1)).toBe(true);
     });
 
     it('refuses a category that is archived or unknown, a bad mark and an unknown culture', async () => {

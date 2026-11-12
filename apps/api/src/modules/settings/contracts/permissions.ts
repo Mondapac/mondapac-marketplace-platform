@@ -20,7 +20,23 @@ export const SETTINGS_LIST_PAGING_MANAGE = definePermission('settings', {
   protected: false,
 });
 
+/** See the Cart mode setting. */
+export const SETTINGS_CART_MODE_VIEW = definePermission('settings', {
+  key: 'settings.cart-mode.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/** Change the Cart mode setting (single-store or multi-store cart). */
+export const SETTINGS_CART_MODE_MANAGE = definePermission('settings', {
+  key: 'settings.cart-mode.manage',
+  scope: 'platform',
+  protected: false,
+});
+
 export const SETTINGS_PERMISSIONS = declarePermissions('settings', [
+  SETTINGS_CART_MODE_MANAGE,
+  SETTINGS_CART_MODE_VIEW,
   SETTINGS_LIST_PAGING_MANAGE,
   SETTINGS_LIST_PAGING_VIEW,
 ]);

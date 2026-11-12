@@ -41,6 +41,7 @@ model OrderingOrder {
   shipToCiphertext      String?               @map("ship_to_ciphertext")
   sellerOrders          OrderingSellerOrder[]
   lines                 OrderingOrderLine[]
+  adminNotes            OrderingAdminOrderNote[]
 
   /// The foreign-key target of the children.
   @@unique([marketId, id])
@@ -423,5 +424,27 @@ model OrderingSellerRefundGuard {
 
   @@id([marketId, sellerId])
   @@map("seller_refund_guards")
+  @@schema("ordering")
+}
+
+/// Admins' internal notes on an order (order detail decision 3): never shown to the customer or the
+/// seller, and a seller's own notes are not here. Written once: the application role may insert and
+/// read, never change or remove (grants). Free text is never in clear (data design O8).
+model OrderingAdminOrderNote {
+  id              String        @id @db.Uuid
+  marketId        String        @map("market_id") @db.VarChar(8)
+  tenantId        String        @map("tenant_id")
+  orderId         String        @map("order_id") @db.Uuid
+  /// The admin who wrote it (a plain id, no foreign key: identity owns accounts).
+  authorAccountId String        @map("author_account_id") @db.Uuid
+  /// Personal; the note's text (1 to 2000 characters, checked by the application) sealed under the
+  /// order's customer account subject key. Erasing the customer makes it unreadable. Bound 16384.
+  bodyCiphertext  String        @map("body_ciphertext")
+  createdAt       DateTime      @map("created_at") @db.Timestamptz(6)
+  order           OrderingOrder @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// The order page reads one order's notes, newest first.
+  @@index([marketId, orderId, createdAt(sort: Desc)])
+  @@map("admin_order_notes")
   @@schema("ordering")
 }

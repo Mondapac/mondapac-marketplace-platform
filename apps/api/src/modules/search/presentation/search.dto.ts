@@ -458,3 +458,47 @@ export class StoreSearchPageBody {
   })
   hasMore!: boolean;
 }
+
+export class SuggestProductBody {
+  @ApiProperty({
+    format: 'uuid',
+    description: 'The product page id (the same id as `productId` of `GET /search/products`).',
+  })
+  productId!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ description: 'The public name of the store of the shown Offer.' })
+  sellerName!: string;
+  @ApiProperty({ type: String, nullable: true, description: 'Null when no name can be read.' })
+  categoryName!: string | null;
+  @ApiProperty({
+    type: ProductImageRefBody,
+    nullable: true,
+    description: 'The first public photo of the product, or null. No price, by rule.',
+  })
+  image!: ProductImageRefBody | null;
+}
+
+export class SuggestStoreBody {
+  @ApiProperty({ description: 'The store address (`/s/<slug>` on the buyer site).' })
+  storeSlug!: string;
+  @ApiProperty({ description: 'The public store name.' }) name!: string;
+  @ApiProperty({
+    description: 'Indexed (sellable) Offers of the store, one per product it sells.',
+  })
+  productCount!: number;
+}
+
+export class SuggestBody {
+  @ApiProperty({ type: [SuggestProductBody], description: 'At most 5, one per product.' })
+  products!: SuggestProductBody[];
+  @ApiProperty({ type: [SuggestStoreBody], description: 'At most 3.' })
+  stores!: SuggestStoreBody[];
+  @ApiProperty({
+    description:
+      'Products in the query scope, as `GET /search/products` counts them (from the index, without ' +
+      'the query-time check); 0 for a `q` shorter than 2 characters.',
+  })
+  total!: number;
+  @ApiProperty({ description: 'True when the scope was too large to count: `total` is a floor.' })
+  totalIsCapped!: boolean;
+}

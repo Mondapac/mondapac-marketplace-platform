@@ -76,12 +76,14 @@ export const CULTURE_ADMIN_STATUS: Readonly<Record<string, number>> = Object.fre
   'culture.code-taken': 409,
   'culture.name-taken': 409,
   'culture.limit-reached': 409,
+  'culture.required-type-locked': 409,
   'culture.status-transition': 409,
   'culture.default-must-stay-active': 409,
   'culture.default-must-be-active': 409,
   'culture.default-required': 409,
   'conflict.stale': 409,
   'culture.claim-word': 422,
+  'culture.locale-uncheckable': 422,
   'access.unavailable': 503,
 });
 
@@ -201,7 +203,7 @@ export class CultureAdminController {
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiUnprocessableEntityResponse({
     type: ApiErrorBody,
-    description: 'culture.claim-word (details.fields)',
+    description: 'culture.claim-word or culture.locale-uncheckable (details.fields)',
   })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
   async create(
@@ -251,7 +253,7 @@ export class CultureAdminController {
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiUnprocessableEntityResponse({
     type: ApiErrorBody,
-    description: 'culture.claim-word (details.fields)',
+    description: 'culture.claim-word or culture.locale-uncheckable (details.fields)',
   })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
   async edit(
@@ -312,9 +314,11 @@ export class CultureAdminController {
   @ApiOperation({
     summary: 'Set the mark of a culture on a category',
     description:
-      'Needs catalog.culture.edit (protected). Creates or replaces the row: `visible` (default ' +
-      'true) and `certificationMark` (required, neutral, or null to inherit). The category must ' +
-      'be live. Descendants inherit from the nearest ancestor with a row. Audited.',
+      'Needs catalog.culture.edit (protected). Creates or replaces the row: `visible` (true, ' +
+      'false, or null to inherit; left out with a mark: inherit; left out with no mark: true) and ' +
+      '`certificationMark` (required, neutral, or null to inherit). The category must be live. ' +
+      'Descendants inherit the mark from the nearest ancestor with one; a hidden category hides ' +
+      'its whole branch. Audited.',
   })
   @ApiParam(CULTURE_PARAM)
   @ApiParam(CATEGORY_PARAM)

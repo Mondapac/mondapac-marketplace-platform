@@ -1,7 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
+import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_CULTURE_READ } from '../../contracts/permissions';
@@ -14,7 +15,8 @@ import type { CultureRepository } from '../ports/culture.repository';
 
 // The category marks of a culture (multi-culture package 1; ADR-0047 decisions 4 and 5): list the
 // effective marks of every live category, set a row (visible, certification mark) and clear it.
-// Nothing reads the marks yet; the visibility rule is package 3.
+// The visibility rule (package 3a, `culture-visibility`) reads them; a write announces
+// `catalog.culture-category-mark-changed.v1` so search re-indexes the category's subtree.
 
 type Denied = { readonly code: 'access.denied' };
 type Unavailable = { readonly code: 'access.unavailable' };
@@ -30,6 +32,9 @@ export interface CultureMarkDependencies {
 export interface CultureMarkWriteDependencies extends CultureMarkDependencies {
   readonly audit: AuditWriter;
   readonly clock: Clock;
+  /** `catalog.culture-category-mark-changed.v1` (package 3a): search re-indexes the subtree. */
+  readonly outbox: OutboxWriter;
+  readonly ids: IdGenerator;
 }
 
 export interface CultureCategoryMarksInput {

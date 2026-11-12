@@ -6274,6 +6274,10 @@ svg {
 .lmst.no {
   color: var(--sf-error-ink);
 }
+.lmkeep {
+  justify-self: start;
+  font-weight: 700;
+}
 .lmsv {
   min-width: 0;
   margin: 0;
@@ -6293,7 +6297,7 @@ svg {
 .lmpriv .lnk {
   min-height: 32px;
 }
-.lmpriv,
+/* The privacy lines stay start-aligned: justified, their long words leave wide gaps at 320px. */
 .lmsel > small,
 .lmst.no > span,
 .lmerr span,
@@ -6301,6 +6305,7 @@ svg {
   text-align: justify;
   hyphens: auto;
 }
+
 .lmmap {
   position: relative;
   min-width: 0;
@@ -6359,6 +6364,32 @@ svg {
   filter: drop-shadow(0 3px 4px var(--sf-shadow-control));
   cursor: grab;
   touch-action: none;
+}
+/* The Mapbox map (ADR-0048): the canvas fills the box; the pin is the same button, placed by the
+   map at its tip (anchor bottom); Mapbox's own logo and attribution stay visible, as its terms ask. */
+.lmmap.gl {
+  cursor: default;
+}
+.lmgl {
+  position: absolute;
+  inset: 0;
+}
+.lmpin.gl {
+  position: static;
+  margin: 0;
+}
+/* Above Mapbox's attribution, which sits in the bottom corner (Reza, PR #823). */
+.lmmap.gl .lmlegend {
+  bottom: 40px;
+}
+.lmload {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
 }
 .lmpin svg {
   display: block;

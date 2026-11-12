@@ -1,4 +1,8 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import {
+  ADMIN_NOTE_CIPHER,
+  ADMIN_ORDER_NOTE_REPOSITORY,
+} from '../src/modules/ordering/application/ports/admin-order-notes';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -21,7 +25,7 @@ import { COMMISSION_PAYOUTS_FACADE } from '../src/modules/commission-payouts';
 import { SHIPPING_FACADE } from '../src/modules/shipping';
 import { ORDER_TAX_CATEGORIES } from '../src/modules/ordering/application/ports/order-tax-categories';
 import { TAX_FACADE } from '../src/modules/tax';
-import { AUDIT_WRITER, type AuditWriter } from '../src/platform/audit/audit-writer';
+import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { OUTBOX_WRITER } from '../src/platform/events/outbox-writer';
@@ -43,6 +47,9 @@ import {
   MemoryPickupCodes,
   MemoryRefundLimits,
   TEST_DELIVERY_ADDRESS,
+  FakeAdminNoteCipher,
+  MemoryAdminNotes,
+  OrderingAuditWriter,
 } from './support/ordering-fakes';
 import { FakeUnitOfWork, RecordingOutbox } from './support/pricing-fakes';
 import { createTestApp } from './support/test-app';
@@ -102,6 +109,10 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.card-declined': 402,
     'ordering.seller-order-not-found': 404,
     'ordering.fulfilment-conflict': 409,
+    'ordering.seller-order-refunded': 409,
+    'ordering.cancel-too-late': 409,
+    'ordering.cancel-nothing-left': 409,
+    'ordering.customer-erased': 409,
     'ordering.pickup-code-invalid': 422,
     'ordering.pickup-code-locked': 423,
     'ordering.payment-unavailable': 503,
@@ -131,10 +142,11 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let cart: FakeCart;
   let shipping: FakeShipping;
   let pickupCodes: MemoryPickupCodes;
+  let notes: MemoryAdminNotes;
   let pickupVault: FakePickupVault;
   let refundLimits: MemoryRefundLimits;
-  /** Ordering's audit entries (refund caps); the writer's own checks are tested with it. */
-  let audit: AuditWriter & { readonly actions: string[] };
+  /** Ordering's audit rows, each checked against its definition. */
+  let audit: OrderingAuditWriter;
   const clock = new FixedClock(START);
   const http = () => request(app.getHttpServer());
   const marketOf = () => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -147,16 +159,10 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     cart = new FakeCart();
     shipping = new FakeShipping();
     pickupCodes = new MemoryPickupCodes();
+    notes = new MemoryAdminNotes();
     pickupVault = new FakePickupVault();
     refundLimits = new MemoryRefundLimits();
-    const actions: string[] = [];
-    audit = {
-      actions,
-      record: (_context, entry) => {
-        actions.push(entry.action);
-        return Promise.resolve();
-      },
-    };
+    audit = new OrderingAuditWriter();
     const customers = new FakeCustomers();
     customers.addresses.set(ADDRESS, { accountId: CUSTOMER, address: TEST_DELIVERY_ADDRESS });
     // The seller delivers for a flat 5.00.
@@ -197,6 +203,10 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(customers)
           .overrideProvider(SHIP_TO_CIPHER)
           .useValue(new FakeShipToCipher())
+          .overrideProvider(ADMIN_ORDER_NOTE_REPOSITORY)
+          .useValue(notes)
+          .overrideProvider(ADMIN_NOTE_CIPHER)
+          .useValue(new FakeAdminNoteCipher())
           .overrideProvider(PICKUP_CODE_REPOSITORY)
           .useValue(pickupCodes)
           .overrideProvider(PICKUP_CODE_VAULT)
@@ -1126,26 +1136,97 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(unknownField.status).toBe(400);
     });
 
-    it('lets an admin with the refund-limit keys set the default and a seller’s own cap, audited', async () => {
-      await seedAdmins();
+    /** The Platform Administrator (every key, the protected refund key included). */
+    function seedRoot(accountId: Id<'Account'>, n: number) {
       const rootRole = [...fakes.roles.values()].find(
         (r) => r.marketId === code && r.seedCode === 'platform-administrator',
       )!.id;
-      seedAccount(REFUNDER, 'admin', 'admin9');
+      seedAccount(accountId, 'admin', `admin${n}`);
       fakes.seedAssignment({
-        id: id<'RoleAssignment'>(0xe009),
+        id: id<'RoleAssignment'>(0xe000 + n),
         marketId: code as AccountState['marketId'],
-        accountId: REFUNDER,
+        accountId,
         roleId: rootRole,
         assignedByAccountId: null,
         assignedAt: START,
         version: 1,
       });
-      const writer = (accountId: Id<'Account'>, n: number) => ({
-        'x-market-id': code,
-        ...panelHeaders(code, 'admin'),
-        ...session(accountId, 'admin', n),
+    }
+    const writer = (accountId: Id<'Account'>, n: number) => ({
+      'x-market-id': code,
+      ...panelHeaders(code, 'admin'),
+      ...session(accountId, 'admin', n),
+    });
+
+    it('cancels only for an admin with ordering.order.refund, and not while the Market switch is off', async () => {
+      await seedAdmins();
+      seedRoot(REFUNDER, 9);
+      const route = `/ordering/admin/orders/${id<'Order'>(0xbe11)}/cancel`;
+      const body = { reason: 'other' };
+
+      const off = await http().post(route).set(writer(REFUNDER, 31)).send(body);
+      const noKey = await http().post(route).set(writer(VIEWER, 32)).send(body);
+      const noCsrf = await http().post(route).set(adminHeaders(REFUNDER, 34)).send(body);
+      const unknownField = await http()
+        .post(route)
+        .set(writer(REFUNDER, 33))
+        .send({ ...body, lines: [] });
+
+      expect(off.status).toBe(409);
+      expect(off.body).toEqual({ statusCode: 409, code: 'ordering.refund-disabled' });
+      expect(off.headers['cache-control']).toBe('no-store');
+      expect(gateway.refunds).toHaveLength(0);
+      expect(noKey.status).toBe(403);
+      expect(noCsrf.body).toMatchObject({ code: 'request.csrf' });
+      expect(unknownField.status).toBe(400);
+    });
+
+    it('reads notes with ordering.order.view, writes them only with ordering.order.note', async () => {
+      await seedAdmins();
+      const WRITER = id<'Account'>(0xa00a);
+      seedRoot(WRITER, 10);
+      const orderId = id<'Order'>(0xbe21);
+      notes.orders.set(orderId, id<'Account'>(0xc0de));
+      const route = `/ordering/admin/orders/${orderId}/notes`;
+
+      const written = await http()
+        .post(route)
+        .set(writer(WRITER, 41))
+        .send({ body: 'Customer called <b>twice</b>' });
+      const viewerWrites = await http().post(route).set(writer(VIEWER, 42)).send({ body: 'x' });
+      const empty = await http().post(route).set(writer(WRITER, 43)).send({ body: '  ' });
+      const extra = await http().post(route).set(writer(WRITER, 44)).send({ body: 'x', pin: true });
+      const viewerReads = await http().get(route).set(adminHeaders(VIEWER, 45));
+      const noKeyReads = await http().get(route).set(adminHeaders(NO_KEY, 46));
+      const unknown = await http()
+        .get(`/ordering/admin/orders/${id<'Order'>(0xbe22)}/notes`)
+        .set(adminHeaders(VIEWER, 47));
+
+      expect(written.status).toBe(201);
+      expect(written.headers['cache-control']).toBe('no-store');
+      expect(written.body).toMatchObject({
+        body: 'Customer called <b>twice</b>',
+        authorAccountId: WRITER,
+        byYou: true,
       });
+      expect(notes.rows[0]!.bodySealed).not.toContain('twice');
+      expect(viewerWrites.status).toBe(403);
+      expect(empty.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'body', code: 'required' }] },
+      });
+      expect(extra.status).toBe(400);
+      expect(viewerReads.status).toBe(200);
+      expect(viewerReads.body).toEqual({
+        notes: [{ ...written.body, byYou: false }],
+      });
+      expect(noKeyReads.status).toBe(403);
+      expect(unknown.status).toBe(404);
+    });
+
+    it('lets an admin with the refund-limit keys set the default and a seller’s own cap, audited', async () => {
+      await seedAdmins();
+      seedRoot(REFUNDER, 9);
       const seller = id<'Seller'>(0xbe10);
       const base = '/ordering/admin/refund-limits';
 
@@ -1210,7 +1291,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
         code: 'ordering.refund-limit-not-found',
       });
       expect(noKey.status).toBe(403);
-      expect(audit.actions.filter((a) => a.startsWith('ordering.'))).toEqual([
+      expect(audit.rows.map((r) => r.action)).toEqual([
         'ordering.refund-limit.set',
         'ordering.refund-limit.set',
         'ordering.refund-limit.removed',

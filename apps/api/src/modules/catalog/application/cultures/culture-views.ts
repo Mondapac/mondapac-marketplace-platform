@@ -7,6 +7,7 @@ import {
   type CultureState,
   type CultureStatus,
 } from '../../domain/culture';
+import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
 import { invalid, type ValidationFailure } from '../business-activities/business-activity-views';
 
@@ -92,22 +93,30 @@ export type CultureClaimWordFailure =
       readonly code: 'culture.claim-word';
       readonly fields: readonly { readonly path: string; readonly code: string }[];
     }
+  | {
+      // A text in a locale with no claim terms configured cannot be checked (ADR-0047 decision 10):
+      // refused, never let through.
+      readonly code: 'culture.locale-uncheckable';
+      readonly fields: readonly { readonly path: string; readonly code: string }[];
+    }
   | { readonly code: 'access.unavailable' };
 
 /**
  * Refuses a name or description that asserts a certification (halal and the like): a culture's text
  * is a label for a community, never a claim (ADR-0047 decision 10). Only texts that differ from
  * `stored` are checked, so an edit that does not touch a text (an unchanged text is not asked
- * again) can still be saved; every new or changed text is checked. A `code`
- * (on create and in the seed) is checked as a text too. Runs
+ * again) can still be saved; every new or changed text is checked, and only in a locale in which
+ * certification has claim terms (`claimLocales`; else `culture.locale-uncheckable`, fail closed,
+ * ADR-0047 decision 10). A `code`
+ * (on create and in the seed) is checked as a text too, in the Market's default locale. Runs
  * outside any unit (the matcher opens its own); an unavailable matcher fails closed.
  */
 export async function refuseClaimWords(
-  matcher: ClaimTextMatcher,
+  deps: { readonly matcher: ClaimTextMatcher; readonly claimLocales: ClaimTermLocales },
   context: CallContext,
   names: readonly CultureName[],
   stored: readonly CultureName[] = [],
-  code?: string,
+  code?: { readonly text: string; readonly locale: string },
 ): Promise<CultureClaimWordFailure | null> {
   const before = new Map(stored.map((entry) => [entry.locale, entry] as const));
   const texts: { path: string; locale: string; text: string }[] = [];
@@ -126,10 +135,16 @@ export async function refuseClaimWords(
   }
   if (code !== undefined) {
     // The code is a label too (it may reach an address later): `halal-certified` is refused.
-    texts.push({ path: 'code', locale: names[0]?.locale ?? 'en', text: code });
+    texts.push({ path: 'code', locale: code.locale, text: code.text });
   }
   if (texts.length === 0) return null;
-  const answer = await matcher.match(
+  const covered = await deps.claimLocales.covered(context).catch(() => null);
+  if (covered === null || !covered.ok) return { code: 'access.unavailable' };
+  const uncheckable = texts
+    .filter((t) => !covered.value.includes(t.locale))
+    .map((t) => ({ path: t.path, code: 'locale-uncheckable' }));
+  if (uncheckable.length > 0) return { code: 'culture.locale-uncheckable', fields: uncheckable };
+  const answer = await deps.matcher.match(
     context,
     texts.map(({ locale, text }) => ({ locale, text })),
   );

@@ -146,6 +146,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/products/:id/add-sizes',
     // Ask for a value a select field does not offer (catalog, attributes A5).
     'catalog/seller/products/:id/attribute-suggestions',
+    // Ask for a tag the list does not have (catalog, product tags T5).
+    'catalog/seller/products/:id/topic-suggestions',
     'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
     // The seller import: confirm, retry the rest, cancel a check, and one photo of the photo step.

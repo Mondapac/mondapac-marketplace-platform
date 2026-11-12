@@ -16,7 +16,14 @@ import {
   type RefundState,
   type RefundTarget,
 } from '../domain/refund';
-import { RefundRequested, RefundSettled } from '../domain/audit';
+import { OrderCancelRequested, RefundRequested, RefundSettled } from '../domain/audit';
+import {
+  notStarted,
+  parseCancelRequest,
+  planCancel,
+  type CancelPart,
+  type CancelRefusal,
+} from '../domain/cancel';
 import { RefundSucceeded, SellerRefundLimitReached } from '../domain/events';
 import {
   REFUND_LIMIT_WINDOW,
@@ -594,4 +601,202 @@ export async function settleRefunds(
     }
   }
   return ok({ succeeded, failed, stuck });
+}
+
+export type CancelFailure =
+  | { readonly code: 'access.denied' }
+  | {
+      readonly code: 'validation.failed';
+      readonly fields: readonly { path: string; code: string }[];
+    }
+  /** The Market switch `tax.refundCredit.enabled` is off. */
+  | { readonly code: 'ordering.refund-disabled' }
+  | { readonly code: 'ordering.order-not-found' }
+  | CancelRefusal
+  | Exclude<RefundRefusal, { readonly code: 'ordering.refund-exceeds' }>
+  /** A refund was written or a seller marked an order ready meanwhile: read again and retry. */
+  | { readonly code: 'conflict.retry' }
+  /** `tax` could not work out the tax reversed: nothing was written. */
+  | { readonly code: 'ordering.refund-tax-unavailable' };
+
+/** The outcome of a cancellation: one refund per seller order that had something left. */
+export interface CancelView {
+  readonly orderId: Id<'Order'>;
+  /** `succeeded`, `pending` (the worker settles it) or `failed` (refund that part by hand). */
+  readonly refunds: readonly RefundView[];
+}
+
+export interface CancelInput {
+  readonly orderId: unknown;
+  readonly reason: unknown;
+  readonly lossBearer?: unknown;
+  readonly lossReasonCode?: unknown;
+}
+
+/**
+ * An admin cancels a paid order and refunds all of it (order detail decision 1), while no seller
+ * has marked its part ready. Every refund is written in one unit, with the seller orders' rows
+ * locked by the raised sums, and the order is read again under those locks: a seller who marked
+ * ready meanwhile rolls the whole cancellation back (the seller's side checks the refunds under
+ * the same lock, fulfilment-flow.ts). Then each refund settles with Stripe on its own, as a
+ * refund by hand does; a refused one is failed and that part is refunded by hand.
+ */
+export async function adminCancelOrder(
+  deps: OrderingDependencies,
+  context: CallContext,
+  input: CancelInput,
+): Promise<Result<CancelView, CancelFailure>> {
+  const actor = context.actor;
+  if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAsSession(actor)) {
+    return err({ code: 'access.denied' });
+  }
+  // Off: nothing is read, written or sent (fail closed).
+  if (!deps.policy.refundsEnabled(context.market)) return err({ code: 'ordering.refund-disabled' });
+  const orderId = parseIdField<'Order'>(input?.orderId, 'orderId');
+  const parsed = parseCancelRequest({
+    reason: input?.reason,
+    lossBearer: input?.lossBearer,
+    lossReasonCode: input?.lossReasonCode,
+  });
+  if (typeof orderId !== 'string' || !parsed.ok) {
+    return err({
+      code: 'validation.failed',
+      fields: [
+        ...(typeof orderId === 'string' ? [] : [orderId]),
+        ...(parsed.ok ? [] : parsed.fields),
+      ],
+    });
+  }
+
+  const read = await deps.unitOfWork.run<readonly CancelPart[], CancelFailure>(
+    context.market,
+    async () => {
+      const order = await deps.orders.findById(context.market, orderId);
+      if (order === null) return err({ code: 'ordering.order-not-found' } as const);
+      const parts: CancelPart[] = [];
+      for (const seller of order.sellerOrders) {
+        const target = await deps.refunds.findTarget(context.market, seller.id, orderId);
+        if (target === null) return err({ code: 'ordering.order-not-found' } as const);
+        parts.push({ target, fulfilment: seller.fulfilment, ready: seller.readyAt !== null });
+      }
+      return ok(parts);
+    },
+    { readOnly: true },
+  );
+  if (!read.ok) return read;
+  const planned = planCancel(read.value, parsed.request);
+  if (!planned.ok) return err(planned.error);
+
+  const actorOf: Refund['actor'] = { population: 'admin', accountId: actor.accountId };
+  const priced: { readonly refund: Refund; readonly target: RefundTarget }[] = [];
+  for (const { target, request } of planned.refunds) {
+    const plan = planRefund(target, request);
+    if (!plan.ok) {
+      // Cannot happen from a valid cancel plan, except a fee or line without frozen tax.
+      return err(
+        plan.error.code === 'ordering.refund-exceeds' ? { code: 'conflict.retry' } : plan.error,
+      );
+    }
+    const reversed = await deps.tax.reverseRefundTax(context, {
+      lines: plan.plan.lines.map(({ line, unitsBefore, units }) => ({
+        tax: line.taxAmount!,
+        quantity: line.quantity,
+        unitsBefore,
+        units,
+      })),
+      charges: plan.plan.shipping === null ? [] : [plan.plan.shipping],
+    });
+    if (!reversed.ok) return err({ code: 'ordering.refund-tax-unavailable' });
+    const refundId = deps.ids.next<'Refund'>();
+    const refund = priceRefund(target, plan.plan, reversed.value, {
+      id: refundId,
+      reason: request.reason,
+      lossBearer: request.lossBearer,
+      lossReasonCode: request.lossReasonCode,
+      actor: actorOf,
+      stripeIdempotencyKey: `refund-${refundId}`,
+      requestedAt: deps.clock.now(),
+    });
+    if (refund === null) return err({ code: 'conflict.retry' });
+    priced.push({ refund, target });
+  }
+
+  const reserved = await deps.unitOfWork.run<true, CancelFailure>(context.market, async () => {
+    for (const { refund, target } of priced) {
+      if ((await deps.refunds.reserve(context.market, refund, target.refunded)) === 'stale') {
+        return err({ code: 'conflict.retry' } as const);
+      }
+    }
+    // The raised sums hold every seller order's row lock: this read sees a ready mark that
+    // committed before them, and none can commit after them until this unit ends.
+    const fresh = await deps.orders.findById(context.market, orderId);
+    if (
+      fresh === null ||
+      !fresh.sellerOrders.every((s) =>
+        notStarted({ fulfilment: s.fulfilment, ready: s.readyAt !== null }),
+      )
+    ) {
+      return err({ code: 'ordering.cancel-too-late' } as const);
+    }
+    const currency = priced[0]!.refund.currency;
+    await deps.audit.record(
+      context,
+      OrderCancelRequested.entry(orderId, {
+        after: {
+          amount: money(
+            priced.reduce((sum, { refund }) => sum + refund.gross, 0n),
+            currency,
+          ),
+          reason: parsed.request.reason,
+          lossBearer: parsed.request.lossBearer,
+          lossReasonCode: parsed.request.lossReasonCode,
+          refundCount: priced.length,
+        },
+      }),
+    );
+    for (const { refund } of priced) {
+      await deps.audit.record(
+        context,
+        RefundRequested.entry(refund.id, {
+          after: {
+            sellerOrderId: refund.sellerOrderId,
+            amount: money(refund.gross, refund.currency),
+            tax: refund.tax === 0n ? null : money(refund.tax, refund.currency),
+            reason: refund.reason,
+            lossBearer: refund.lossBearer,
+            lossReasonCode: refund.lossReasonCode,
+            lineCount: refund.lines.length,
+          },
+        }),
+      );
+    }
+    return ok(true as const);
+  });
+  if (!reserved.ok) return reserved;
+
+  const refunds: RefundView[] = [];
+  for (const { refund, target } of priced) {
+    const settled = await settle(deps, context, refund, target.paymentIntentId!);
+    refunds.push(refundView(settled.refund, settled.creditNoteId));
+  }
+  return ok({ orderId, refunds });
+}
+
+/** Every refund of an order, oldest first, for the admin order page (any state). */
+export async function refundsOfOrder(
+  deps: OrderingDependencies,
+  context: CallContext,
+  orderId: Id<'Order'>,
+): Promise<readonly RefundView[]> {
+  const read = await deps.unitOfWork.run<readonly RefundView[], never>(
+    context.market,
+    async () =>
+      ok(
+        (await deps.refunds.listForOrder(context.market, orderId)).map(({ refund, creditNoteId }) =>
+          refundView(refund, creditNoteId),
+        ),
+      ),
+    { readOnly: true },
+  );
+  return read.ok ? read.value : [];
 }

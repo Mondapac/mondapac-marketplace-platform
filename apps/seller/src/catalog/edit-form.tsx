@@ -498,6 +498,7 @@ export function EditForm({
               ids={topicIds}
               known={knownTags}
               defaultLocale={defaultLocale}
+              productId={product.productId}
               issues={tagIssues}
               max={maxTags}
               onMax={setMaxTags}

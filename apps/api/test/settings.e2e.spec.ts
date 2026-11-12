@@ -7,8 +7,10 @@ import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-ro
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
+import { ChangeCartModeSetting } from '../src/modules/settings/application/use-cases/change-cart-mode-setting.use-case';
 import { ChangeListPagingSetting } from '../src/modules/settings/application/use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from '../src/modules/settings/application/use-cases/read-list-paging.use-case';
+import { ViewCartModeSetting } from '../src/modules/settings/application/use-cases/view-cart-mode-setting.use-case';
 import { ViewListPagingSetting } from '../src/modules/settings/application/use-cases/view-list-paging-setting.use-case';
 import { SETTINGS_STATUS } from '../src/modules/settings/presentation/http-answers';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -83,7 +85,11 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
           .overrideProvider(ChangeListPagingSetting)
           .useValue(stub('change'))
           .overrideProvider(ReadListPaging)
-          .useValue(stub('paging')),
+          .useValue(stub('paging'))
+          .overrideProvider(ViewCartModeSetting)
+          .useValue(stub('view-cart'))
+          .overrideProvider(ChangeCartModeSetting)
+          .useValue(stub('change-cart')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'settings-seed-01'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -208,6 +214,48 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     expect(calls).toEqual([
       { name: 'view', input: {} },
       { name: 'change', input: { code: 'list-paging', value: 'prev-next', expectedVersion: 0 } },
+    ]);
+  });
+
+  it('reads and changes Cart mode on its own route, the code coming from the route', async () => {
+    await boot();
+    const session = sessionOf('admin', 3);
+    const cart = '/settings/admin/cart-mode';
+    next = ok([{ code: 'cart-mode', value: 'multi-store', version: 0, updatedAt: null }]);
+    const read = await call('get', cart, 'admin', session);
+    expect(read.status).toBe(200);
+    expect(read.headers['cache-control']).toBe('no-store');
+    expect(read.body).toEqual({
+      code: 'cart-mode',
+      value: 'multi-store',
+      version: 0,
+      updatedAt: null,
+    });
+
+    next = ok({
+      code: 'cart-mode',
+      value: 'single-store',
+      version: 1,
+      updatedAt: START.toString(),
+    });
+    const set = await call('put', cart, 'admin', session, {
+      value: 'single-store',
+      expectedVersion: 0,
+    });
+    expect(set.status).toBe(200);
+    // A stray `code` field is refused: the route fixes the setting.
+    const stray = await call('put', cart, 'admin', session, {
+      code: 'list-paging',
+      value: 'pages',
+      expectedVersion: 0,
+    });
+    expect(stray.status).toBe(400);
+    expect(calls).toEqual([
+      { name: 'view-cart', input: {} },
+      {
+        name: 'change-cart',
+        input: { code: 'cart-mode', value: 'single-store', expectedVersion: 0 },
+      },
     ]);
   });
 

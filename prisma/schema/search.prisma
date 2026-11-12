@@ -27,6 +27,10 @@ model SearchOfferDocument {
   /// Facet values as `attribute=value`: option codes (merges followed), `true`, `brand=<slug>`,
   /// `country-of-origin=<iso code>`. At most 100 (CHECK). A filter asks for one of the values.
   facetCodes       String[]                 @default([]) @map("facet_codes")
+  /// The codes of the cultures the Offer is visible in (multi-culture package 3a; ADR-0047
+  /// decisions 5 and 8), from catalog's visibility facade at indexing time. Empty: visible in no
+  /// culture. Not read by a buyer query until package 3b. At most 200 (CHECK).
+  cultureCodes     String[]                 @default([]) @map("culture_codes")
   /// The last write of this row; a rebuild deletes the rows it did not touch.
   indexedAt        DateTime                 @map("indexed_at") @db.Timestamptz(6)
 
@@ -41,6 +45,8 @@ model SearchOfferDocument {
   @@index([categoryIds], type: Gin, map: "offer_documents_category_ids_idx")
   /// The facet filter (a hand-written index; the migration creates it).
   @@index([facetCodes], type: Gin, map: "offer_documents_facet_codes_idx")
+  /// The culture filter of package 3b (`culture_codes && $chosen`).
+  @@index([cultureCodes], type: Gin, map: "offer_documents_culture_codes_idx")
   @@map("offer_documents")
   @@schema("search")
 }

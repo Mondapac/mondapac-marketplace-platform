@@ -7,13 +7,13 @@ import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 /** The audit target type of an admin-editable Market setting. */
 export const SETTINGS_TARGET = 'settings.market-setting';
 
-const VALUES = ['pages', 'prev-next'] as const;
+const VALUES = ['pages', 'prev-next', 'multi-store', 'single-store'] as const;
 
 /** An admin changed a Market setting. */
 export const MarketSettingChanged = defineAuditAction({
   action: 'settings.market-setting.changed',
   targetType: SETTINGS_TARGET,
-  targetId: auditField.enumOf(['list-paging'] as const),
+  targetId: auditField.enumOf(['list-paging', 'cart-mode'] as const),
   actors: ['authenticated'],
   before: { value: auditField.enumOf(VALUES) },
   after: { value: auditField.enumOf(VALUES), version: auditField.integer() },

@@ -371,13 +371,13 @@
       "categoryId": "id",
       "certificationMark": "enumOf(required|neutral|inherit)",
       "hadRow": "boolean",
-      "visible": "boolean"
+      "visible": "enumOf(shown|hidden|inherit)"
     },
     "after": {
       "categoryId": "id",
       "certificationMark": "enumOf(required|neutral|inherit)",
       "hasRow": "boolean",
-      "visible": "boolean"
+      "visible": "enumOf(shown|hidden|inherit)"
     }
   },
   {
@@ -1883,6 +1883,31 @@
     }
   },
   {
+    "action": "ordering.order.cancel-requested",
+    "targetType": "ordering.order",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "lossBearer": "enumOf(seller|platform)",
+      "lossReasonCode": "optional(enumOf(platform-error|carrier-loss|seller-unrecoverable|fraud-loss|goodwill|other))",
+      "reason": "enumOf(not-received|damaged|wrong-item|not-as-described|seller-cancelled|other)",
+      "refundCount": "integer"
+    }
+  },
+  {
+    "action": "ordering.order.note-added",
+    "targetType": "ordering.order",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "length": "integer",
+      "noteId": "id"
+    }
+  },
+  {
     "action": "ordering.refund-limit.removed",
     "targetType": "ordering.seller-refund-limit",
     "targetId": "id",
@@ -2463,6 +2488,17 @@
     }
   },
   {
+    "action": "sellers.cultures.attached-at-signup",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "approvedCultureIds": "listOf(id, max 200)",
+      "requestedCultureIds": "listOf(id, max 200)"
+    }
+  },
+  {
     "action": "sellers.minimum-order.changed",
     "targetType": "sellers.seller",
     "targetId": "id",
@@ -2523,13 +2559,13 @@
   {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(list-paging)",
+    "targetId": "enumOf(list-paging|cart-mode)",
     "actors": ["authenticated"],
     "before": {
-      "value": "enumOf(pages|prev-next)"
+      "value": "enumOf(pages|prev-next|multi-store|single-store)"
     },
     "after": {
-      "value": "enumOf(pages|prev-next)",
+      "value": "enumOf(pages|prev-next|multi-store|single-store)",
       "version": "integer"
     }
   },
