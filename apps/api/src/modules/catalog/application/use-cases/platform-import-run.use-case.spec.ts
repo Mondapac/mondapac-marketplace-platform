@@ -1,3 +1,4 @@
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import { createHash } from 'node:crypto';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AttributeField, Id, MarketContext, Result } from '@mondapac/shared-kernel';
@@ -223,6 +224,12 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
           fields: [field('brand', true)],
         }),
     } as unknown as AttributeRepository;
+    const familyResolver = {
+      open: () =>
+        Promise.resolve({
+          resolve: () => Promise.resolve({ ok: true, familyCode: 'default' }),
+        }),
+    } as unknown as ProductFamilyResolver;
     const handlers = { simple: simpleProductType, configurable: configurableProductType };
 
     const calls: string[] = [];
@@ -278,6 +285,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
     } as unknown as JobCallContexts;
     const useCase = new PlatformImportRun(gate, {
       unitOfWork,
+      familyResolver,
       importJobs,
       importFiles,
       importParsers: [csvParser],

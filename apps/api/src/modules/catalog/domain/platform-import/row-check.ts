@@ -1,7 +1,19 @@
 import { gtinCheckDigitValid } from '../variant-gtin';
-import type { AttributeSchema, AttributeValues } from '@mondapac/shared-kernel';
+import { measureToBase } from '@mondapac/shared-kernel';
+import type {
+  AttributeField,
+  AttributeSchema,
+  AttributeValue,
+  AttributeValues,
+} from '@mondapac/shared-kernel';
 import type { ProductTypeHandler } from '../product-type-handler';
-import type { ColumnMap, ImportColumnKey } from './columns';
+import {
+  attributeColumn,
+  type AttributeColumn,
+  type AttributeColumnMap,
+  type ColumnMap,
+  type ImportColumnKey,
+} from './columns';
 import type { ParsedRow } from './import-file';
 import { hasControlCharacter, replaceControlCharacters } from './text-safety';
 
@@ -23,16 +35,23 @@ export interface CheckEnvironment {
   readonly handlerFor: (typeCode: string) => ProductTypeHandler | undefined;
   /** The schema of the Market's default family. */
   readonly schema: AttributeSchema;
+  /**
+   * The schema of the feature set each live category resolves to (its own or the nearest above,
+   * else the default). A category with no entry uses `schema`; `null` means its feature set
+   * cannot be read, and a row in it is an error (nothing falls back silently).
+   */
+  readonly schemaByCategory?: ReadonlyMap<string, AttributeSchema | null>;
   readonly taxCategoryCodes: readonly string[];
 }
 
 export type IssueSeverity = 'error' | 'warning';
+export type IssueColumn = ImportColumnKey | AttributeColumn | 'row';
 
 /** One problem in one cell. `value` is the cell as sent, shortened and cleaned for display. */
 export interface RowIssue {
   readonly severity: IssueSeverity;
-  /** The column, or `row` for a problem of the row as a whole. */
-  readonly column: ImportColumnKey | 'row';
+  /** The column (`attr[<code>]` for an attribute), or `row` for a problem of the row as a whole. */
+  readonly column: IssueColumn;
   readonly code: string;
   readonly value: string;
   /** `duplicate-in-file` only: the first row with the same title and brand. */
@@ -108,8 +127,9 @@ function textField(
 }
 
 /** Which column an attribute issue belongs to. */
-function columnOfAttribute(path: string): ImportColumnKey | 'row' {
+function columnOfAttribute(path: string, fileAttributes: AttributeColumnMap): IssueColumn {
   const code = path.split('.')[0];
+  if (code !== undefined && fileAttributes.has(code)) return attributeColumn(code);
   switch (code) {
     case 'brand':
       return 'brand';
@@ -128,14 +148,14 @@ function columnOfAttribute(path: string): ImportColumnKey | 'row' {
  * Checks one row. Errors keep it out of the import; warnings let it in and say what was not
  * stored or was defaulted. Never throws, never reads anything but its arguments.
  */
-export function checkRow(row: ParsedRow, map: ColumnMap, env: CheckEnvironment): CheckedRow {
+export function checkRow(
+  row: ParsedRow,
+  map: ColumnMap,
+  env: CheckEnvironment,
+  fileAttributes: AttributeColumnMap = NO_ATTRIBUTE_COLUMNS,
+): CheckedRow {
   const issues: RowIssue[] = [];
-  const add = (
-    severity: IssueSeverity,
-    column: ImportColumnKey | 'row',
-    code: string,
-    value: string,
-  ): void => {
+  const add = (severity: IssueSeverity, column: IssueColumn, code: string, value: string): void => {
     issues.push({ severity, column, code, value: displayValue(value) });
   };
 
@@ -154,11 +174,14 @@ export function checkRow(row: ParsedRow, map: ColumnMap, env: CheckEnvironment):
     (cell) => hasControlCharacter(cell) || UNPAIRED_SURROGATE.test(cell),
   );
   if (unstorable) {
-    const column = IMPORT_TEXT_COLUMNS.find((key) => {
-      const index = map[key];
+    const unsafe = (index: number | undefined): boolean => {
       const cell = index === undefined ? '' : (row.cells[index] ?? '');
       return hasControlCharacter(cell) || UNPAIRED_SURROGATE.test(cell);
-    });
+    };
+    const textColumn = IMPORT_TEXT_COLUMNS.find((key) => unsafe(map[key]));
+    const attributeCode = [...fileAttributes].find(([, index]) => unsafe(index))?.[0];
+    const column: IssueColumn | undefined =
+      textColumn ?? (attributeCode === undefined ? undefined : attributeColumn(attributeCode));
     add('error', column ?? 'row', 'text.invalid-characters', '');
   }
 
@@ -174,6 +197,14 @@ export function checkRow(row: ParsedRow, map: ColumnMap, env: CheckEnvironment):
     if (found.length === 0) add('error', 'category', 'category.unknown', categoryText);
     else if (found.length > 1) add('error', 'category', 'category.ambiguous', categoryText);
     else categoryId = found[0]!;
+  }
+
+  // The schema is the one of the feature set the category resolves to (attributes plan A4).
+  let schema = env.schema;
+  if (categoryId !== null) {
+    const specific = env.schemaByCategory?.get(categoryId);
+    if (specific === null) add('error', 'category', 'family.unavailable', categoryText);
+    else if (specific !== undefined) schema = specific;
   }
 
   let typeCode: string | null = null;
@@ -222,7 +253,7 @@ export function checkRow(row: ParsedRow, map: ColumnMap, env: CheckEnvironment):
   const attributeValues: Record<string, unknown> = {};
   const put = (code: string, value: string, column: ImportColumnKey, warn = true): void => {
     if (value === '') return;
-    const field = textField(env.schema, code);
+    const field = textField(schema, code);
     if (field === null) {
       // The Market's family has no such attribute: the value is checked and not stored.
       if (warn) add('warning', column, 'column.not-stored', value);
@@ -235,22 +266,41 @@ export function checkRow(row: ParsedRow, map: ColumnMap, env: CheckEnvironment):
   put('description', description, 'description', false);
   put('gtin', gtin, 'gtin');
   put('unit-size', unitSize, 'unitSize');
+  for (const [code, index] of fileAttributes) {
+    const cell = (row.cells[index] ?? '').trim();
+    if (cell === '') continue;
+    const column = attributeColumn(code);
+    const field = schema.fields.find((candidate) => candidate.code === code);
+    if (field === undefined || attributeValues[code] !== undefined) {
+      // The feature set has no such attribute, or a dedicated column already filled it: not stored.
+      add('warning', column, 'column.not-stored', cell);
+      continue;
+    }
+    const parsed = parseCell(field, cell, env);
+    if (parsed.ok) attributeValues[code] = parsed.value;
+    else add('error', column, parsed.code, cell);
+  }
 
   if (typeCode !== null) {
     const handler = env.handlerFor(typeCode);
     const validated = handler?.validateAttributes(
-      env.schema,
+      schema,
       attributeValues as AttributeValues,
       env.locales,
     );
     if (validated !== undefined && !validated.ok) {
       for (const issue of validated.error) {
-        const column = columnOfAttribute(issue.path);
+        const column = columnOfAttribute(issue.path, fileAttributes);
         // One problem per column is enough for the admin to fix.
         if (
           !issues.some((existing) => existing.severity === 'error' && existing.column === column)
         ) {
-          add('error', column, issue.code, column === 'row' ? '' : cellOf(row, map, column));
+          add(
+            'error',
+            column,
+            issue.code,
+            column === 'row' ? '' : cellText(row, map, fileAttributes, column),
+          );
         }
       }
     }
@@ -284,6 +334,114 @@ export function checkRow(row: ParsedRow, map: ColumnMap, env: CheckEnvironment):
       },
     },
   };
+}
+
+const NO_ATTRIBUTE_COLUMNS: AttributeColumnMap = new Map();
+
+/** The cell behind a column: a dedicated column, or an `attr[<code>]` one. */
+function cellText(
+  row: ParsedRow,
+  map: ColumnMap,
+  fileAttributes: AttributeColumnMap,
+  column: ImportColumnKey | AttributeColumn,
+): string {
+  if (column.startsWith('attr[')) {
+    const index = fileAttributes.get(column.slice(5, -1));
+    return index === undefined ? '' : (row.cells[index] ?? '').trim();
+  }
+  return cellOf(row, map, column as ImportColumnKey);
+}
+
+type ParsedCell =
+  | { readonly ok: true; readonly value: AttributeValue }
+  | { readonly ok: false; readonly code: string };
+
+const INTEGER_CELL = /^-?\d{1,15}$/;
+const DECIMAL_CELL = /^-?\d{1,15}(?:\.\d{1,9})?$/;
+const DATE_CELL = /^\d{4}-\d{2}-\d{2}$/;
+const MEASURE_CELL = /^(\d{1,15}(?:\.\d{1,9})?)\s*(\S.{0,19})?$/;
+const YES = new Set(['yes', 'true', '1']);
+const NO = new Set(['no', 'false', '0']);
+
+/** The option of a select field a cell names: its code, or its label in English or the default locale. */
+function optionOf(field: AttributeField, cell: string, env: CheckEnvironment): string | null {
+  const options = field.bounds.options ?? [];
+  const wanted = looseName(cell);
+  const byCode = options.find((option) => option.code === cell.toLowerCase());
+  if (byCode !== undefined) return byCode.code;
+  const byLabel = options.filter((option) =>
+    Object.entries(option.labels ?? {}).some(
+      ([locale, label]) =>
+        (locale === env.defaultLocale || locale.toLowerCase().startsWith('en')) &&
+        looseName(label) === wanted,
+    ),
+  );
+  return byLabel.length === 1 ? byLabel[0]!.code : null;
+}
+
+/**
+ * Reads one `attr[<code>]` cell as the value of its field: text as is (the default locale of a
+ * localizable field), whole and decimal numbers, yes/no, a select option by code or English label
+ * (several, separated by `;`, for a multi-select), a date as `YYYY-MM-DD`, a measure as `500 g`.
+ * The schema's own check (bounds, units, precision, claim-free text) runs after this on the result.
+ */
+function parseCell(field: AttributeField, cell: string, env: CheckEnvironment): ParsedCell {
+  const bad = (code = 'attribute.type'): ParsedCell => ({ ok: false, code });
+  switch (field.dataType) {
+    case 'text':
+    case 'long-text':
+      return {
+        ok: true,
+        value: field.localizable
+          ? { [env.defaultLocale]: cell.normalize('NFC') }
+          : cell.normalize('NFC'),
+      };
+    case 'integer': {
+      if (!INTEGER_CELL.test(cell)) return bad();
+      const value = Number(cell);
+      return Number.isSafeInteger(value) ? { ok: true, value } : bad();
+    }
+    case 'decimal':
+      return DECIMAL_CELL.test(cell) ? { ok: true, value: cell } : bad();
+    case 'boolean': {
+      const word = cell.toLowerCase();
+      if (YES.has(word)) return { ok: true, value: true };
+      return NO.has(word) ? { ok: true, value: false } : bad();
+    }
+    case 'date':
+      return DATE_CELL.test(cell) ? { ok: true, value: cell } : bad();
+    case 'select': {
+      const code = optionOf(field, cell, env);
+      return code === null ? bad('attribute.option-unknown') : { ok: true, value: code };
+    }
+    case 'multi-select': {
+      const codes: string[] = [];
+      for (const part of cell.split(';').map((piece) => piece.trim())) {
+        if (part === '') continue;
+        const code = optionOf(field, part, env);
+        if (code === null) return bad('attribute.option-unknown');
+        if (codes.includes(code)) return bad('attribute.option-duplicate');
+        codes.push(code);
+      }
+      return codes.length === 0 ? bad() : { ok: true, value: codes };
+    }
+    case 'measure': {
+      const settings = field.measure;
+      const match = MEASURE_CELL.exec(cell);
+      if (settings === undefined || match === null) return bad();
+      const text = (match[2] ?? '').trim();
+      const unit =
+        text === ''
+          ? settings.defaultUnit
+          : settings.units.find((candidate) => candidate.toLowerCase() === text.toLowerCase());
+      if (unit === undefined) return bad('attribute.unit-unknown');
+      // The value is stored in the base unit of its dimension ("1.5 kg" is "1500"), exactly.
+      const base = measureToBase(match[1]!, unit, settings.decimals);
+      return base === null
+        ? bad('attribute.precision')
+        : { ok: true, value: { value: base, unit } };
+    }
+  }
 }
 
 const IMPORT_TEXT_COLUMNS: readonly ImportColumnKey[] = [
