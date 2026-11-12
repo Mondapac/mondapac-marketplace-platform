@@ -990,6 +990,38 @@
         "unknown": "Something went wrong. Try again."
       }
     },
+    "activities": {
+      "title": "Business activities",
+      "intro": "What this seller does. The main activity decides which review checks apply; the others widen what the seller may offer.",
+      "none": "No activity set yet.",
+      "main": "Main",
+      "extra": "Other activities",
+      "unknown-activity": "Unknown activity",
+      "last-change": "Last changed {when}. Reason: {reason}",
+      "edit": "Change activities",
+      "save": "Save activities",
+      "cancel": "Cancel",
+      "saved": "Activities saved.",
+      "unchanged": "The seller already had these activities.",
+      "field": {
+        "main": "Main activity",
+        "extra": "Other activities",
+        "extra-help": "Up to {max}.",
+        "reason": "Reason for the change",
+        "reason-help": "Kept in the change log. Up to {max} characters. No personal data."
+      },
+      "error": {
+        "main-required": "Pick the main activity.",
+        "reason-required": "Give a reason.",
+        "invalid": "One of the activities is not available any more. Check the picks and try again.",
+        "gone": "This seller no longer exists.",
+        "denied": "You don't have permission to change activities.",
+        "csrf": "Your session changed. Reload the page and try again.",
+        "unavailable": "The service is not available. Try again in a moment.",
+        "unknown": "The change could not be saved."
+      },
+      "names-unavailable": "Activities can't be changed here because the activity names could not be loaded. Reload the page, or ask for the catalog activity read permission."
+    },
     "health-queue": {
       "title": "Sellers that need a look",
       "link": "Sellers that need a look",
