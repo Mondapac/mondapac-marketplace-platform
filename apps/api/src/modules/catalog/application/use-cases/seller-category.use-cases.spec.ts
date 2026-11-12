@@ -553,6 +553,28 @@ describe.each(['AU', 'ZZ'] as const)('seller category use cases in market %s', (
       );
     });
 
+    it('counts a claim-refused attempt against the daily limit, and proposes under the seller lock', async () => {
+      const before = reserved;
+      await build().propose.execute(sellerContext(), body('Halal spices'));
+      expect(reserved).toBe(before + 1);
+      expect(shelves.proposals.size).toBe(0);
+      expect(shelves.locks).toEqual([]);
+      expect((await build().propose.execute(sellerContext(), body('Spices'))).ok).toBe(true);
+      expect(shelves.locks).toEqual([SELLER]);
+    });
+
+    it('refuses a name that normalisation widens past 120 characters, before any write', async () => {
+      // U+FDFA is one character that NFKC turns into eighteen.
+      const answer = await build().propose.execute(sellerContext(), body('\uFDFA'.repeat(10)));
+      expect(answer).toEqual(
+        err({
+          code: 'validation.failed',
+          fields: [{ path: `texts.${defaultLocale}.name`, code: 'too-long' }],
+        }),
+      );
+      expect(shelves.proposals.size).toBe(0);
+    });
+
     it('throttles more than 20 proposals a day', async () => {
       reserved = 20;
       const answer = await build().propose.execute(sellerContext(), body('Spices'));
@@ -846,6 +868,22 @@ describe.each(['AU', 'ZZ'] as const)('seller category use cases in market %s', (
         'catalog.seller-category-promoted.v1',
         'catalog.platform-category-created.v1',
       ]);
+    });
+
+    it("promote refuses a shelf text that holds a term of the Market's content filter", async () => {
+      const bad = code === 'AU' ? 'shit' : 'zzbad';
+      const stored = shelves.shelves.get(shelf)!;
+      shelves.shelves.set(shelf, {
+        ...stored,
+        texts: stored.texts.map((text) => ({ ...text, name: `${bad} fruit` })),
+      });
+      const answer = await build().promote.execute(adminContext(), {
+        shelfId: shelf,
+        body: { version: 1, slug: 'dried-fruit', treeVersion: 1 },
+      });
+      expect(answer.ok ? null : answer.error).toMatchObject({ code: 'validation.failed' });
+      expect(shelves.shelves.get(shelf)?.status).toBe('active');
+      expect(tree.rows.has(shelf)).toBe(false);
     });
 
     it('promote keeps the tree rules: depth, slug, claim words, tree version', async () => {

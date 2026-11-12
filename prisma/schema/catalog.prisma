@@ -1973,7 +1973,7 @@ model CatalogCategoryProposal {
 
   @@id([marketId, id])
   /// The seller's own list, newest first.
-  @@index([marketId, sellerId, createdAt])
+  @@index([marketId, sellerId, createdAt, id])
   @@map("category_proposals")
   @@schema("catalog")
 }

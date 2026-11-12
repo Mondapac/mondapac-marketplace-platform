@@ -11,6 +11,7 @@ import { normaliseShelfName } from '../../domain/seller-category';
 import {
   categoryIdOf,
   closedInput,
+  invalid,
   refuseClaimTexts,
   requiredCategoryLocales,
 } from '../categories/category-editor';
@@ -26,6 +27,7 @@ import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader
 import {
   defaultNameOf,
   LIVE_PARENT,
+  MAX_NORMALISED_NAME,
   blockedShelfFields,
   parseShelfTexts,
   shelfPlaces,
@@ -150,14 +152,21 @@ export class OwnCategoryPropose extends UseCase<
     if (!(await deps.eligibility.isEligible(context, sellerId))) {
       return err({ code: 'seller.not-eligible' });
     }
-    const claim = await refuseClaimTexts(deps, context, shelfPlaces(texts.value));
-    if (claim !== null) return err(claim as ClaimRefusal);
+    const normalisedName = normaliseShelfName(defaultNameOf(texts.value, defaultLocale));
+    // A name that NFKC widens past the column's 120 characters (U+FDFA and the like).
+    if ([...normalisedName].length > MAX_NORMALISED_NAME) {
+      return invalid(`texts.${defaultLocale}.name`, 'too-long');
+    }
+    // Counted before the claim check, so refused attempts spend the seller's daily budget too.
     const throttled = await reserveForAccount(deps, context, CATEGORY_PROPOSE_LIMITS, sellerId);
     if (throttled !== null) return err(throttled);
+    const claim = await refuseClaimTexts(deps, context, shelfPlaces(texts.value));
+    if (claim !== null) return err(claim as ClaimRefusal);
 
-    const normalisedName = normaliseShelfName(defaultNameOf(texts.value, defaultLocale));
     const parentId: Id<'Category'> = parent.value;
     return deps.unitOfWork.run<OwnCategoryProposed, OwnCategoryProposeFailure>(market, async () => {
+      // One proposal of a seller at a time, so the pending cap holds exactly (Hassan M1).
+      await deps.shelves.lockSeller(market, sellerId);
       const state = await deps.shelves.platformParentState(market, parentId);
       if (state === null || !LIVE_PARENT(state.status)) {
         return err({ code: 'category.parent-not-found' } as const);

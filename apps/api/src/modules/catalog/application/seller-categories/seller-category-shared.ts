@@ -1,5 +1,5 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { Clock, Id, IdGenerator, Result } from '@mondapac/shared-kernel';
+import type { Clock, Id, IdGenerator, MarketContext, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -40,6 +40,24 @@ export interface ShelfTextDependencies {
   readonly claimLocales: ClaimTermLocales;
   /** The Market's blocked terms; a seller's shelf name or description may not hold one. */
   readonly contentFilter: ContentFilter;
+}
+
+/** The `normalised_name` column's length (characters). */
+export const MAX_NORMALISED_NAME = 120;
+
+/**
+ * Reads a shelf, takes its seller's shelf lock, then reads it again under the lock, so a close
+ * and an Offer moved onto the shelf run one after the other. Null when the shelf is unknown.
+ */
+export async function lockedShelf(
+  shelves: SellerCategoryStore,
+  market: MarketContext,
+  id: Id<'SellerCategory'>,
+): Promise<ShelfView | null> {
+  const seen = await shelves.findShelf(market, id);
+  if (seen === null) return null;
+  await shelves.lockSeller(market, seen.sellerId);
+  return shelves.findShelf(market, id);
 }
 
 /**

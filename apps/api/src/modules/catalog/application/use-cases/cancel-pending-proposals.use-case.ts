@@ -53,6 +53,7 @@ export class CancelPendingProposals extends UseCase<
     const { deps } = this;
     const { sellerId } = input;
     const handled = await deps.unitOfWork.runOnce(market, input.delivery, async () => {
+      await deps.shelves.lockSeller(market, sellerId);
       const now = deps.clock.now();
       const cancelled = await deps.shelves.cancelPendingOfSeller(
         market,

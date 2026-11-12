@@ -119,6 +119,10 @@ export class PrismaSellerCategoryStore implements SellerCategoryStore {
     }
   }
 
+  async lockSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<void> {
+    await this.prisma.namedQuery(market, 'catalog.lock-seller-shelves', { sellerId });
+  }
+
   pendingCount(market: MarketContext, sellerId: Id<'Seller'>): Promise<number> {
     return this.prisma.tx(market).catalogCategoryProposal.count({
       where: { marketId: market.marketId, sellerId, status: 'pending' },
@@ -209,8 +213,10 @@ export class PrismaSellerCategoryStore implements SellerCategoryStore {
     const tx = this.prisma.tx(market);
     let after: { createdAt: Date; id: string } | null = null;
     if (page.after !== null) {
+      // Any status: created_at and id never change, so a proposal decided since the last page is
+      // still a valid position (Mojtaba N1).
       after = await tx.catalogCategoryProposal.findFirst({
-        where: { marketId: market.marketId, id: page.after, status: 'pending' },
+        where: { marketId: market.marketId, id: page.after },
         select: { createdAt: true, id: true },
       });
       if (after === null) return [];
@@ -332,28 +338,30 @@ export class PrismaSellerCategoryStore implements SellerCategoryStore {
     actor: ShelfActor,
     now: Temporal.Instant,
   ): Promise<number> {
+    // The caller holds the seller's shelf lock, so no Offer joins the shelf meanwhile. One
+    // set-based update without a version predicate: an Offer edited in between still loses the
+    // shelf (its editor gets `conflict.stale`), never kept on a closed one (Mojtaba B2). Then one
+    // read of the changed rows and one insert of their history rows.
     const tx = this.prisma.tx(market);
     const carrying = await tx.catalogOffer.findMany({
       where: { marketId: market.marketId, shelfCategoryId: shelfId },
-      select: { id: true, version: true },
+      select: { id: true },
       orderBy: { id: 'asc' },
     });
-    let cleared = 0;
-    for (const offer of carrying) {
-      const { count } = await tx.catalogOffer.updateMany({
-        where: {
-          marketId: market.marketId,
-          id: offer.id,
-          shelfCategoryId: shelfId,
-          version: offer.version,
-        },
-        data: { shelfCategoryId: null, version: offer.version + 1 },
-      });
-      if (count !== 1) continue;
-      await this.#history(market, offer.id as Id<'Offer'>, 'shelf-cleared', [], actor, now);
-      cleared += 1;
-    }
-    return cleared;
+    if (carrying.length === 0) return 0;
+    const ids = carrying.map((offer) => offer.id);
+    await tx.catalogOffer.updateMany({
+      where: { marketId: market.marketId, id: { in: ids }, shelfCategoryId: shelfId },
+      data: { shelfCategoryId: null, version: { increment: 1 } },
+    });
+    const rows = await tx.catalogOffer.findMany({
+      where: { marketId: market.marketId, id: { in: ids } },
+      orderBy: { id: 'asc' },
+    });
+    await tx.catalogOfferHistory.createMany({
+      data: rows.map((row) => this.#historyRow(market, row, 'shelf-cleared', [], actor, now)),
+    });
+    return rows.length;
   }
 
   async setOfferShelf(
@@ -424,33 +432,45 @@ export class PrismaSellerCategoryStore implements SellerCategoryStore {
       where: { marketId: market.marketId, id: offerId },
     });
     if (row === null) throw new Error('PrismaSellerCategoryStore: the Offer vanished in the unit');
-    const state = offerFromRow(row).state;
     await tx.catalogOfferHistory.create({
-      data: {
-        id: this.ids.next<'OfferHistory'>(),
-        marketId: market.marketId,
-        tenantId: market.tenantId,
-        offerId,
-        offerVersion: state.version,
-        changeKind,
-        changedFields: [...changedFields],
-        productId: state.productId,
-        status: state.status,
-        sellerSku: state.sellerSku,
-        conditionCode: state.conditionCode,
-        description: { ...state.description },
-        handling: state.handling,
-        attestationRecorded: state.attestationRecordedAt !== null,
-        shelfCategoryId: row.shelfCategoryId,
-        listed: state.listed,
-        offSaleCauses: [...state.offSaleCauses],
-        actorKind: actor.kind,
-        actorAccountId: actor.accountId,
-        actingAdminAccountId: actor.actingAdminAccountId,
-        occurredAt: toDate(now),
-      },
+      data: this.#historyRow(market, row, changeKind, changedFields, actor, now),
       select: { id: true },
     });
+  }
+
+  /** The history row of an Offer row as it now stands. */
+  #historyRow(
+    market: MarketContext,
+    row: Parameters<typeof offerFromRow>[0],
+    changeKind: 'edited' | 'shelf-cleared',
+    changedFields: readonly string[],
+    actor: ShelfActor,
+    now: Temporal.Instant,
+  ) {
+    const state = offerFromRow(row).state;
+    return {
+      id: this.ids.next<'OfferHistory'>(),
+      marketId: market.marketId,
+      tenantId: market.tenantId,
+      offerId: row.id,
+      offerVersion: state.version,
+      changeKind,
+      changedFields: [...changedFields],
+      productId: state.productId,
+      status: state.status,
+      sellerSku: state.sellerSku,
+      conditionCode: state.conditionCode,
+      description: { ...state.description },
+      handling: state.handling,
+      attestationRecorded: state.attestationRecordedAt !== null,
+      shelfCategoryId: row.shelfCategoryId,
+      listed: state.listed,
+      offSaleCauses: [...state.offSaleCauses],
+      actorKind: actor.kind,
+      actorAccountId: actor.accountId,
+      actingAdminAccountId: actor.actingAdminAccountId,
+      occurredAt: toDate(now),
+    };
   }
 }
 

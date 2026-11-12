@@ -17,14 +17,39 @@ function sources(dir: string): string[] {
   });
 }
 
-/** The shelf column of an Offer and the shelf tables, as Prisma and as SQL name them. */
-const SHELF =
-  /\bshelfCategoryId\b|\bshelf_category_id\b|\bcatalogSellerCategory\w*\b|\bseller_categor(y|ies)\w*\b/;
+/**
+ * The shelf column of an Offer and the shelf tables, as Prisma and as SQL name them, and the port,
+ * views and relations a reader would reach them through (Hassan L5 on #842).
+ */
+const SHELF = new RegExp(
+  [
+    String.raw`\bshelfCategoryId\b`,
+    String.raw`\bshelf_category_id\b`,
+    String.raw`\bcatalogSellerCategory\w*\b`,
+    String.raw`\bseller_categor(y|ies)\w*\b`,
+    String.raw`\bcatalogCategoryProposal\w*\b`,
+    String.raw`\bcreatedSellerCategory\w*\b`,
+    String.raw`\bSellerCategoryStore\b`,
+    String.raw`\bSELLER_CATEGORY_STORE\b`,
+    String.raw`\bShelfView\b`,
+  ].join('|'),
+);
 
-/** The only files that may read a shelf. */
+/** The only files that may read a shelf: the store, the Offer history snapshot, C9a's own files. */
 const ALLOWED = new Set([
   'modules/catalog/infrastructure/prisma-seller-category.store.ts',
   'modules/catalog/infrastructure/prisma-offer.repository.ts',
+  'modules/catalog/application/ports/seller-category.store.ts',
+  'modules/catalog/application/seller-categories/seller-category-shared.ts',
+  'modules/catalog/application/use-cases/category-proposal-list.use-case.ts',
+  'modules/catalog/application/use-cases/own-category-proposals-list.use-case.ts',
+  'modules/catalog/application/use-cases/own-offer-set-shelf.use-case.ts',
+  'modules/catalog/application/use-cases/seller-category-admin-list.use-case.ts',
+  'modules/catalog/application/use-cases/seller-category-promote.use-case.ts',
+  'modules/catalog/domain/seller-category.ts',
+  'modules/catalog/domain/claim-checked-fields.ts',
+  'modules/catalog/catalog.module.ts',
+  'modules/catalog/infrastructure/catalog-providers.ts',
 ]);
 
 describe('seller shelves stay out of platform reads (CAT-52)', () => {

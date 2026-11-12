@@ -24,7 +24,12 @@ import {
   type CategoryWriteFailure,
 } from '../categories/category-editor';
 import type { SellerCategoryStore } from '../ports/seller-category.store';
-import { categoryTextOf, shelfIdOf } from '../seller-categories/seller-category-shared';
+import {
+  blockedShelfFields,
+  categoryTextOf,
+  lockedShelf,
+  shelfIdOf,
+} from '../seller-categories/seller-category-shared';
 
 export interface SellerCategoryCommandInput {
   readonly shelfId: string;
@@ -131,6 +136,12 @@ export class SellerCategoryPromote extends UseCase<
     if (seen === null) return err({ code: 'seller-category.not-found' });
     const refusal = shelfRefusal(seen, version.value);
     if (refusal !== null) return err(refusal);
+    // The shelf's texts become platform content: the Market's content filter applies again, as
+    // on a category create (Hassan L3).
+    const blocked = blockedShelfFields(seen.texts, (text) =>
+      deps.contentFilter.isBlocked(market, text),
+    );
+    if (!blocked.ok) return blocked;
     const texts = seen.texts.map(categoryTextOf);
     const claim = await refuseClaimTexts(deps, context, checkedPlaces({ texts, slug }));
     if (claim !== null) return err(claim);
@@ -140,7 +151,7 @@ export class SellerCategoryPromote extends UseCase<
       market,
       treeVersion.value,
       async (nodes, nextTreeVersion) => {
-        const shelf = await deps.shelves.findShelf(market, shelfId);
+        const shelf = await lockedShelf(deps.shelves, market, shelfId);
         if (shelf === null) return err({ code: 'seller-category.not-found' } as const);
         const stale = shelfRefusal(shelf, version.value);
         if (stale !== null) return err(stale);

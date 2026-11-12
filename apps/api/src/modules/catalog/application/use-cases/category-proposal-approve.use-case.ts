@@ -130,6 +130,9 @@ export class CategoryProposalApprove extends UseCase<
     return deps.unitOfWork.run<CategoryProposalApproved, CategoryProposalApproveFailure>(
       market,
       async () => {
+        // Serialises approvals of one seller: the slug probe and a second approval of the same
+        // proposal both see the first one's rows (Mojtaba B3).
+        await deps.shelves.lockSeller(market, seen.sellerId);
         const proposal = await deps.shelves.findProposal(market, id);
         if (proposal === null) return err({ code: 'category-proposal.not-found' } as const);
         if (proposal.status !== 'pending') {

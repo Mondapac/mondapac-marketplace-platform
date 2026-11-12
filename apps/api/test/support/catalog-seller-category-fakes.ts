@@ -87,6 +87,14 @@ export class MemorySellerCategoryStore implements SellerCategoryStore {
     return Promise.resolve(null);
   }
 
+  /** Seller locks taken, in order (the units of the specs run one at a time). */
+  readonly locks: string[] = [];
+
+  lockSeller(_m: MarketContext, sellerId: Id<'Seller'>) {
+    this.locks.push(sellerId);
+    return Promise.resolve();
+  }
+
   pendingCount(_m: MarketContext, sellerId: Id<'Seller'>) {
     return Promise.resolve(
       [...this.proposals.values()].filter(

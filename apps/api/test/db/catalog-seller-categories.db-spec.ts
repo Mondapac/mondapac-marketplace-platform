@@ -326,6 +326,97 @@ describe.each(TEST_MARKETS)('catalog seller category store in market %s (databas
     ]);
   });
 
+  it("serialises one seller's shelf units on the seller lock: a set-shelf waits for a close and sees it (Mojtaba B2)", async () => {
+    const parent = await platformCategory(market);
+    const seller = uuid7();
+    const shelfId = await shelf(market, seller, parent, `s-${uuid7().slice(-8)}`);
+    const steps: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let lockedA!: () => void;
+    const aHoldsLock = new Promise<void>((resolve) => (lockedA = resolve));
+    const close = run(market, async () => {
+      await store.lockSeller(market, seller as Id<'Seller'>);
+      lockedA();
+      await gate;
+      steps.push('close');
+      return store.closeShelf(market, shelfId, 1, { status: 'merged', into: parent });
+    });
+    await aHoldsLock;
+    const setShelf = run(market, async () => {
+      await store.lockSeller(market, seller as Id<'Seller'>);
+      steps.push('set-shelf');
+      return store.findShelf(market, shelfId);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(steps).toEqual([]);
+    release();
+    expect(await close).toBe(true);
+    expect((await setShelf)?.status).toBe('merged');
+    expect(steps).toEqual(['close', 'set-shelf']);
+  });
+
+  it('clears a closed shelf from every Offer, also one edited since it was read (Mojtaba B2)', async () => {
+    const parent = await platformCategory(market);
+    const seller = uuid7();
+    const shelfId = await shelf(market, seller, parent, `s-${uuid7().slice(-8)}`);
+    const first = await offer(market, seller);
+    const second = await offer(market, seller);
+    const put = (offerId: Id<'Offer'>, version: number, to: Id<'SellerCategory'> | null) =>
+      run(market, () =>
+        store.setOfferShelf(market, {
+          offerId,
+          sellerId: seller as Id<'Seller'>,
+          shelfId: to,
+          expectedVersion: version,
+          actor: SELLER_ACTOR,
+          now: T0,
+        }),
+      );
+    expect(await put(first, 1, shelfId)).toEqual({ version: 2 });
+    expect(await put(second, 1, shelfId)).toEqual({ version: 2 });
+    // Another edit raises the second Offer's version; the clear must not skip it.
+    expect(await put(second, 2, shelfId)).toEqual({ version: 3 });
+    expect(
+      await run(market, () =>
+        store.closeShelf(market, shelfId, 1, { status: 'merged', into: parent }),
+      ),
+    ).toBe(true);
+    const cleared = await run(market, () =>
+      store.clearShelfOnOffers(
+        market,
+        shelfId,
+        { kind: 'admin', accountId: ADMIN, actingAdminAccountId: null },
+        T0,
+      ),
+    );
+    expect(cleared).toBe(2);
+    const rows = await owner.query<{
+      id: string;
+      shelf_category_id: string | null;
+      version: number;
+    }>(`SELECT id, shelf_category_id, version FROM catalog.offers WHERE id = ANY($1) ORDER BY id`, [
+      [first, second],
+    ]);
+    expect(rows.rows).toEqual(
+      [
+        { id: first, shelf_category_id: null, version: 3 },
+        { id: second, shelf_category_id: null, version: 4 },
+      ].sort((a, b) => a.id.localeCompare(b.id)),
+    );
+    const history = await owner.query<{ offer_id: string; offer_version: number }>(
+      `SELECT offer_id, offer_version FROM catalog.offer_history
+         WHERE offer_id = ANY($1) AND change_kind = 'shelf-cleared' ORDER BY offer_id`,
+      [[first, second]],
+    );
+    expect(history.rows).toEqual(
+      [
+        { offer_id: first, offer_version: 3 },
+        { offer_id: second, offer_version: 4 },
+      ].sort((a, b) => a.offer_id.localeCompare(b.offer_id)),
+    );
+  });
+
   it('closes a shelf once from active, and its guard refuses any later change', async () => {
     const parent = await platformCategory(market);
     const seller = uuid7();

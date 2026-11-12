@@ -3,9 +3,6 @@ SET statement_timeout = '60s';
 
 -- Categories package C9a (catalog design 4.7, CAT-51..54; data design 3.13 and 3.22): seller
 -- shelves, their names, seller category proposals and the same-seller shelf column of offers.
--- AlterTable
-ALTER TABLE "catalog"."offers" ADD COLUMN     "shelf_category_id" UUID;
-
 -- CreateTable
 CREATE TABLE "catalog"."seller_categories" (
     "id" UUID NOT NULL,
@@ -65,9 +62,6 @@ CREATE UNIQUE INDEX "seller_categories_market_id_id_seller_id_key" ON "catalog".
 CREATE UNIQUE INDEX "seller_categories_market_id_seller_id_slug_key" ON "catalog"."seller_categories"("market_id", "seller_id", "slug");
 
 -- AddForeignKey
-ALTER TABLE "catalog"."offers" ADD CONSTRAINT "offers_market_id_shelf_category_id_seller_id_fkey" FOREIGN KEY ("market_id", "shelf_category_id", "seller_id") REFERENCES "catalog"."seller_categories"("market_id", "id", "seller_id") ON DELETE RESTRICT ON UPDATE RESTRICT NOT VALID;
-
--- AddForeignKey
 ALTER TABLE "catalog"."seller_categories" ADD CONSTRAINT "seller_categories_market_id_platform_parent_id_fkey" FOREIGN KEY ("market_id", "platform_parent_id") REFERENCES "catalog"."platform_categories"("market_id", "id") ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 -- AddForeignKey
@@ -118,6 +112,10 @@ ALTER TABLE "catalog"."category_proposals"
     jsonb_typeof("names") = 'object' AND "names" <> '{}'::jsonb),
   ADD CONSTRAINT "category_proposals_descriptions_check" CHECK (
     "descriptions" IS NULL OR jsonb_typeof("descriptions") = 'object'),
+  -- A backstop against a bypassed validator (the V6 precedent, Mojtaba N5).
+  ADD CONSTRAINT "category_proposals_names_size_check" CHECK (pg_column_size("names") <= 16384),
+  ADD CONSTRAINT "category_proposals_descriptions_size_check" CHECK (
+    "descriptions" IS NULL OR pg_column_size("descriptions") <= 65536),
   ADD CONSTRAINT "category_proposals_normalised_name_check" CHECK (
     char_length("normalised_name") BETWEEN 1 AND 120),
   ADD CONSTRAINT "category_proposals_status_check" CHECK (
@@ -141,18 +139,16 @@ ALTER TABLE "catalog"."category_proposals"
 CREATE UNIQUE INDEX "category_proposals_pending_name_key"
   ON "catalog"."category_proposals" ("market_id", "seller_id", "platform_parent_id", "normalised_name")
   WHERE "status" = 'pending';
--- The CAT-54 cap count and the revocation handler (data design 3.22).
-CREATE INDEX "category_proposals_market_id_seller_id_pending_idx"
-  ON "catalog"."category_proposals" ("market_id", "seller_id") WHERE "status" = 'pending';
+-- The pending name key leads with (market, seller) under the same predicate, so it also serves
+-- the CAT-54 cap count and the revocation handler (Mojtaba N2): no second index.
 -- The admin tab, oldest first.
 CREATE INDEX "category_proposals_market_id_created_at_pending_idx"
   ON "catalog"."category_proposals" ("market_id", "created_at", "id") WHERE "status" = 'pending';
--- The seller's own list.
-CREATE INDEX "category_proposals_market_id_seller_id_created_at_idx"
-  ON "catalog"."category_proposals" ("market_id", "seller_id", "created_at");
--- Merge and promote clear the shelf on the seller's Offers.
-CREATE INDEX "offers_market_id_shelf_category_id_idx"
-  ON "catalog"."offers" ("market_id", "shelf_category_id") WHERE "shelf_category_id" IS NOT NULL;
+-- The seller's own list, newest first: a backward scan with no tie sort (Mojtaba N3).
+CREATE INDEX "category_proposals_market_id_seller_id_created_at_id_idx"
+  ON "catalog"."category_proposals" ("market_id", "seller_id", "created_at", "id");
+-- The index of offers.shelf_category_id is built CONCURRENTLY in 20261112060002, alone in its
+-- file (data design 8.2).
 
 -- A proposal is born pending at version 1 and decided once; nothing about it but the decision
 -- ever changes, and it is never deleted. Data design 5.1 rules (SECURITY INVOKER, pinned path).
@@ -224,9 +220,6 @@ CREATE TRIGGER "seller_categories_no_truncate" BEFORE TRUNCATE
   ON "catalog"."seller_categories"
   FOR EACH STATEMENT EXECUTE FUNCTION "catalog"."reject_mutation"();
 
--- No rows yet, so validation is instant; NOT VALID first keeps the offers lock short anyway.
-ALTER TABLE "catalog"."offers" VALIDATE CONSTRAINT "offers_market_id_shelf_category_id_seller_id_fkey";
-
 -- The proposal rate counter (D 8.4): proposals per seller per day, on top of the pending cap.
 ALTER TABLE "catalog"."rate_counters" DROP CONSTRAINT "rate_counters_kind_check";
 ALTER TABLE "catalog"."rate_counters"
@@ -236,14 +229,28 @@ ALTER TABLE "catalog"."rate_counters"
     'submit.seller.hour', 'photo-upload.seller.day', 'search.account.minute',
     'import-start.seller.day', 'ai-suggest.seller.day', 'reviewer-mail.market.hour',
     'platform-import-check.account.hour', 'platform-import-check.account.day',
-    'platform-import-start.account.day', 'category-propose.seller.day'));
+    'platform-import-start.account.day',
+    'seller-import-check.seller.hour', 'seller-import-check.seller.day',
+    'import-photo.seller.minute', 'import-photo.seller.day', 'add-sizes.account.hour',
+    'category-propose.seller.day'));
 
 -- Grants (data design 7): only the decision moves on a proposal; only status, the merge target
--- and the version on a shelf; names are mutable with their shelf; the Offer's shelf column.
+-- and the version on a shelf; a shelf's names are written once with it (no use case changes or
+-- removes one: Hassan, Mojtaba N4).
 GRANT SELECT, INSERT, UPDATE ("status", "reason_code", "decided_by_account_id", "decided_at",
   "created_seller_category_id", "version")
   ON TABLE "catalog"."category_proposals" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("status", "merged_into_id", "version")
   ON TABLE "catalog"."seller_categories" TO "mondapac_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "catalog"."seller_category_names" TO "mondapac_app";
+GRANT SELECT, INSERT ON TABLE "catalog"."seller_category_names" TO "mondapac_app";
+
+-- The shelf column of offers, last, so the ACCESS EXCLUSIVE lock of offers is held for the
+-- shortest time: ADD COLUMN with no default and the key NOT VALID read no rows. The key is
+-- validated in 20261112060001 under SHARE UPDATE EXCLUSIVE, which lets reads and writes run.
+-- AlterTable
+ALTER TABLE "catalog"."offers" ADD COLUMN     "shelf_category_id" UUID;
+
+-- AddForeignKey
+ALTER TABLE "catalog"."offers" ADD CONSTRAINT "offers_market_id_shelf_category_id_seller_id_fkey" FOREIGN KEY ("market_id", "shelf_category_id", "seller_id") REFERENCES "catalog"."seller_categories"("market_id", "id", "seller_id") ON DELETE RESTRICT ON UPDATE RESTRICT NOT VALID;
+
 GRANT UPDATE ("shelf_category_id") ON TABLE "catalog"."offers" TO "mondapac_app";

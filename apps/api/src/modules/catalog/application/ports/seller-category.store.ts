@@ -59,6 +59,13 @@ export interface SellerCategoryStore {
   ): Promise<'proposal.duplicate' | null>;
 
   /** Pending proposals of the seller (the CAT-54 soft cap). */
+  /**
+   * Takes the seller's shelf lock (`catalog.lock-seller-shelves`) until the unit ends, so the
+   * pending cap, the slug probe of an approval, a close of a shelf and an Offer moved onto a shelf
+   * of that seller run one after the other. Taken first in the unit, before any row lock.
+   */
+  lockSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<void>;
+
   pendingCount(market: MarketContext, sellerId: Id<'Seller'>): Promise<number>;
 
   /**

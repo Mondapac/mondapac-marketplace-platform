@@ -13,6 +13,7 @@ import {
 } from '../categories/category-editor';
 import {
   LIVE_PARENT,
+  lockedShelf,
   shelfIdOf,
   type ShelfWriteDependencies,
   type ValidationFailure,
@@ -96,7 +97,7 @@ export class SellerCategoryMerge extends UseCase<
     return deps.unitOfWork.run<SellerCategoryMergedAnswer, SellerCategoryMergeFailure>(
       market,
       async () => {
-        const shelf = await deps.shelves.findShelf(market, shelfId);
+        const shelf = await lockedShelf(deps.shelves, market, shelfId);
         if (shelf === null) return err({ code: 'seller-category.not-found' } as const);
         const refusal = shelfRefusal(shelf, version.value);
         if (refusal !== null) return err(refusal);

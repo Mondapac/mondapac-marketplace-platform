@@ -8,6 +8,7 @@ import { closedInput, invalid, versionOf } from '../categories/category-editor';
 import { sellerOf } from '../own-reads/own-reads.shared';
 import type { SellerCategoryStore } from '../ports/seller-category.store';
 import { shelfIdOf, type ValidationFailure } from '../seller-categories/seller-category-shared';
+import { actingAdminAccountOf } from '../acting-as';
 
 export interface OwnOfferSetShelfInput {
   readonly offerId: string;
@@ -95,6 +96,9 @@ export class OwnOfferSetShelf extends UseCase<
     return deps.unitOfWork.run<{ readonly version: number }, OwnOfferSetShelfFailure>(
       market,
       async () => {
+        // A close of the shelf (promote, merge) takes the same lock, so the Offer never lands on
+        // a shelf that closed meanwhile (Mojtaba B2, Hassan L4).
+        await deps.shelves.lockSeller(market, sellerId);
         if (shelfId !== null) {
           const shelf = await deps.shelves.findShelf(market, shelfId);
           if (shelf === null || shelf.sellerId !== sellerId || shelf.status !== 'active') {
@@ -109,8 +113,7 @@ export class OwnOfferSetShelf extends UseCase<
           actor: {
             kind: 'seller',
             accountId: actor.accountId,
-            // No session carries the acting-as marker yet (SEL-08); identity fills it then.
-            actingAdminAccountId: null,
+            actingAdminAccountId: actingAdminAccountOf(actor),
           },
           now: deps.clock.now(),
         });
