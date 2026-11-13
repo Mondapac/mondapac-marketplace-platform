@@ -412,6 +412,33 @@ describe('specifications from the API', () => {
     expect(rows('fa')[2]).toMatch(/^-0[.٫]5$/u);
   });
 
+  it('writes a measure as its number and its unit label, and drops one it cannot write', () => {
+    const rows = (locale: string, value: unknown) =>
+      productDetailOf(
+        {
+          ...TWO_SELLERS,
+          specifications: [
+            {
+              groupCode: 'general',
+              specifications: [{ code: 'w', name: 'Net weight', value }],
+            },
+          ],
+        },
+        locale,
+        labels,
+      )!.specifications.map((row) => row.value);
+    expect(rows('en', { kind: 'measure', value: '1250.5', unitLabel: 'kg' })).toEqual([
+      '1,250.5 kg',
+    ]);
+    // The digits stay Latin and the unit is the label the API sent, in the asked language.
+    expect(rows('fa', { kind: 'measure', value: '0.5', unitLabel: 'کیلوگرم' })[0]).toMatch(
+      /^0[.٫]5 کیلوگرم$/u,
+    );
+    expect(rows('en', { kind: 'measure', value: '2' })).toEqual([]);
+    expect(rows('en', { kind: 'measure', value: 'NaN', unitLabel: 'kg' })).toEqual([]);
+    expect(rows('en', { kind: 'measure', value: '2', unitLabel: '' })).toEqual([]);
+  });
+
   it('shows at most 60 rows and 20 list items', () => {
     const many = Array.from({ length: 70 }, (_, index) => ({
       code: `a${index}`,
