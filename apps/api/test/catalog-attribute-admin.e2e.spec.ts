@@ -210,11 +210,13 @@ describe('admin attribute reads over HTTP (integration)', () => {
       'attribute-definition.option-removed': 409,
       'attribute-definition.variant-locked': 409,
       'attribute-definition.material-relaxation-required': 409,
+      'attribute-definition.measure-locked': 409,
       'attribute.claim-word': 422,
       'attribute.locale-uncheckable': 422,
       'attribute-definition.name-required': 422,
       'attribute-definition.text-invalid': 422,
       'attribute-definition.bounds-invalid': 422,
+      'attribute-definition.measure-invalid': 422,
       'attribute-definition.options-required': 422,
       'attribute-definition.options-not-allowed': 422,
       'attribute-definition.option-invalid': 422,
@@ -228,6 +230,7 @@ describe('admin attribute reads over HTTP (integration)', () => {
       'attribute-definition.default-label-required': 422,
       'attribute-definition.active-option-required': 422,
       'access.unavailable': 503,
+      'missing-details-email.unconfigured': 503,
       'claim-text.check-unavailable': 503,
     });
   });

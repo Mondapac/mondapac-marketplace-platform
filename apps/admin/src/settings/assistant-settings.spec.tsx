@@ -200,7 +200,7 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.getByText(/2 need fixing/)).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
     const summary = screen.getByRole('group', { name: /needs? fixing/ });
-    expect(summary.textContent).toContain('2 settings need fixing before you can save');
+    expect(summary.textContent).toContain('2 settings need fixing');
     fireEvent.click(screen.getByRole('link', { name: 'Messages per guest' }));
     expect(document.activeElement).toBe(screen.getByLabelText('Messages per guest'));
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(

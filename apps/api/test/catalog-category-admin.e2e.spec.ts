@@ -6,7 +6,14 @@ import request from 'supertest';
 import { ADMIN_CATEGORY_READER } from '../src/modules/catalog/application/ports/admin-category.reader';
 import type { AdminCategoryReader } from '../src/modules/catalog/application/ports/admin-category.reader';
 import { CATEGORY_ADMIN_STATUS } from '../src/modules/catalog/presentation/category-admin.controller';
-import { CATEGORY_EDIT_STORE } from '../src/modules/catalog/application/ports/category-edit.store';
+import {
+  CATEGORY_EDIT_STORE,
+  CATEGORY_RESTRUCTURE_STORE,
+} from '../src/modules/catalog/application/ports/category-edit.store';
+import { CATEGORY_RETIREMENT_CHECK } from '../src/modules/catalog/application/ports/category-retirement-check';
+import type { CategoryRetirementCheck } from '../src/modules/catalog/application/ports/category-retirement-check';
+import { CATEGORY_IMAGE_STORE } from '../src/modules/catalog/application/ports/category-image.store';
+import { IMAGE_PROCESSOR } from '../src/modules/catalog/application/ports/image-processor';
 import { CLAIM_TERM_LOCALES } from '../src/modules/catalog/application/ports/claim-term-locales';
 import { CLAIM_TEXT_MATCHER } from '../src/modules/catalog/application/ports/claim-text-matcher';
 import { PLATFORM_CATEGORY_REPOSITORY } from '../src/modules/catalog/application/ports/platform-category.repository';
@@ -17,11 +24,15 @@ import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sess
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
+import { MemoryObjectStore } from '../src/platform/storage/disk-object-store';
+import { OBJECT_STORE } from '../src/platform/storage/object-store';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import {
   MemoryCategoryEditStore,
+  MemoryCategoryRestructureStore,
   MemoryTreeVersion,
 } from './support/catalog-category-editor-fakes';
+import { MemoryCategoryImages } from './support/catalog-category-image-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -44,6 +55,8 @@ const NOKEY = id<'Account'>(0xca01);
 const VIEWER = id<'Account'>(0xca02);
 const MODERATOR = id<'Account'>(0xca03);
 const NOKEY_ROLE = id<'Role'>(0xcf11);
+const RESTRUCTURER = id<'Account'>(0xca04);
+const RESTRUCTURE_ROLE = id<'Role'>(0xcf12);
 const ROOT = id<'Category'>(0xcc01);
 const LEAF = id<'Category'>(0xcc02);
 const MISSING = id<'Category'>(0xccff);
@@ -52,6 +65,31 @@ const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
 const editStore = new MemoryCategoryEditStore();
+const categoryImages = new MemoryCategoryImages();
+let imageFiles = new MemoryObjectStore();
+/** Decodes nothing: three fixed renditions for any upload. */
+const imageProcessor = {
+  process: () =>
+    Promise.resolve({
+      ok: true as const,
+      value: (['thumb', 'medium', 'large'] as const).map((size, index) => ({
+        size,
+        bytes: Buffer.from(`${size}-jpeg`),
+        width: 400 * (index + 1),
+        height: 300 * (index + 1),
+      })),
+    }),
+};
+const restructureStore = new MemoryCategoryRestructureStore();
+let retirementAnswer: Awaited<ReturnType<CategoryRetirementCheck['assertRetirable']>>;
+const retirementChecked: string[][] = [];
+const retirement: CategoryRetirementCheck = {
+  assertRetirable: (_context, ids) => {
+    retirementChecked.push([...ids]);
+    return Promise.resolve(retirementAnswer);
+  },
+  retired: () => Promise.resolve({ ok: true, value: undefined }),
+};
 const treeVersion = new MemoryTreeVersion();
 const halalOnlyMatcher = {
   match: (_context: unknown, texts: readonly { text: string }[]) =>
@@ -134,6 +172,13 @@ describe.each(TEST_MARKETS)(
     beforeEach(async () => {
       fakes.reset();
       editStore.reset();
+      categoryImages.reset();
+      imageFiles = new MemoryObjectStore();
+      restructureStore.products.clear();
+      restructureStore.archiveOthers.clear();
+      restructureStore.relinked.length = 0;
+      retirementChecked.length = 0;
+      retirementAnswer = { ok: true, value: undefined };
       treeVersion.version = 1;
       ({ app } = await createTestApp({
         env: { LOG_LEVEL: 'info', API_DOCS_ENABLED: 'true' },
@@ -147,8 +192,18 @@ describe.each(TEST_MARKETS)(
             .useValue(reader)
             .overrideProvider(CATEGORY_EDIT_STORE)
             .useValue(editStore)
+            .overrideProvider(CATEGORY_RESTRUCTURE_STORE)
+            .useValue(restructureStore)
+            .overrideProvider(CATEGORY_RETIREMENT_CHECK)
+            .useValue(retirement)
             .overrideProvider(PLATFORM_CATEGORY_REPOSITORY)
             .useValue(treeVersion)
+            .overrideProvider(CATEGORY_IMAGE_STORE)
+            .useValue(categoryImages)
+            .overrideProvider(OBJECT_STORE)
+            .useValue(imageFiles)
+            .overrideProvider(IMAGE_PROCESSOR)
+            .useValue(imageProcessor)
             .overrideProvider(CLAIM_TEXT_MATCHER)
             .useValue(halalOnlyMatcher)
             .overrideProvider(CLAIM_TERM_LOCALES)
@@ -176,9 +231,27 @@ describe.each(TEST_MARKETS)(
         version: 1,
         createdAt: START,
       });
+      fakes.seedRole({
+        id: RESTRUCTURE_ROLE,
+        marketId,
+        scope: 'platform',
+        kind: 'custom',
+        seedCode: null,
+        seedVersion: null,
+        sellerId: null,
+        name: 'Tree restructurer',
+        permissionKeys: [
+          'catalog.category-tree.view',
+          'catalog.category-tree.edit',
+          'catalog.category-tree.restructure',
+        ],
+        version: 1,
+        createdAt: START,
+      });
       let n = 0;
       for (const [accountId, label, roleId] of [
         [NOKEY, 'nokey', NOKEY_ROLE],
+        [RESTRUCTURER, 'restructurer', RESTRUCTURE_ROLE],
         [VIEWER, 'viewer', roleOf('viewer')],
         [MODERATOR, 'moderator', roleOf('catalogue-moderator')],
       ] as const) {
@@ -483,6 +556,254 @@ describe.each(TEST_MARKETS)(
       });
     });
 
+    describe('the image routes (C3c)', () => {
+      const DATA = 'AAAA';
+
+      it('maps the refusals of the image routes to their status', () => {
+        expect(CATEGORY_ADMIN_STATUS).toMatchObject({
+          'image.not-found': 404,
+          'file.too-large': 413,
+          'file.unsupported-type': 415,
+          'file.unreadable': 422,
+        });
+      });
+
+      it('sets, serves, replaces and removes the image of a category', async () => {
+        categoryImages.rows.set(LEAF, { status: 'active', version: 3, image: null });
+        const session = adminSession(MODERATOR, 30);
+        const set = await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set(session)
+          .send({ version: 3, data: DATA })
+          .expect(200);
+        const first = set.body as {
+          category: { version: number; treeVersion: number };
+          image: { imageId: string; width: number; height: number };
+        };
+        expect(first.category.version).toBe(4);
+        expect(first.image).toMatchObject({ width: 1200, height: 900 });
+
+        const served = await http()
+          .get(`${BASE}/${LEAF}/images/${first.image.imageId}/medium`)
+          .set(adminSession(VIEWER, 31))
+          .expect(200);
+        expect(served.headers['content-type']).toBe('image/jpeg');
+        expect(served.headers['cache-control']).toBe('private, no-store');
+        expect(served.headers['content-security-policy']).toBe('sandbox');
+        expect(Buffer.from(served.body as Buffer).toString()).toBe('medium-jpeg');
+
+        const replaced = await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set(session)
+          .send({ version: 4, data: DATA })
+          .expect(200);
+        const second = replaced.body as { image: { imageId: string } };
+        expect(second.image.imageId).not.toBe(first.image.imageId);
+        await http()
+          .get(`${BASE}/${LEAF}/images/${first.image.imageId}/medium`)
+          .set(adminSession(VIEWER, 32))
+          .expect(404);
+
+        const removed = await http()
+          .post(`${BASE}/${LEAF}/image/remove`)
+          .set(session)
+          .send({ version: 5 })
+          .expect(200);
+        expect(removed.body).toMatchObject({ category: { version: 6 }, image: null });
+        expect(imageFiles.objects.size).toBe(0);
+      });
+
+      it('answers 409 for a stale version and 404 for an unknown category, and writes no file', async () => {
+        categoryImages.rows.set(LEAF, { status: 'active', version: 3, image: null });
+        const session = adminSession(MODERATOR, 33);
+        const stale = await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set(session)
+          .send({ version: 2, data: DATA })
+          .expect(409);
+        expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.stale' });
+        await http()
+          .put(`${BASE}/${MISSING}/image`)
+          .set(session)
+          .send({ version: 1, data: DATA })
+          .expect(404);
+        await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set(session)
+          .send({ version: 3, data: DATA, colour: 'red' })
+          .expect(400);
+        expect(imageFiles.objects.size).toBe(0);
+      });
+
+      it('refuses a Viewer with 403 on both image writes and no session with 401', async () => {
+        categoryImages.rows.set(LEAF, { status: 'active', version: 3, image: null });
+        const viewer = adminSession(VIEWER, 34);
+        await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set(viewer)
+          .send({ version: 3, data: DATA })
+          .expect(403);
+        await http()
+          .post(`${BASE}/${LEAF}/image/remove`)
+          .set(viewer)
+          .send({ version: 3 })
+          .expect(403);
+        await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') })
+          .send({ version: 3, data: DATA })
+          .expect(401);
+        await http()
+          .get(`${BASE}/${LEAF}/images/${MISSING}/thumb`)
+          .set(adminSession(NOKEY, 35))
+          .expect(403);
+        expect(categoryImages.rows.get(LEAF)?.version).toBe(3);
+      });
+
+      it('takes a picture larger than the 64 KiB JSON limit on the image route only', async () => {
+        categoryImages.rows.set(LEAF, { status: 'active', version: 3, image: null });
+        const session = adminSession(MODERATOR, 36);
+        // 200 KB of base64: over the JSON parser's limit, under the image route's.
+        const large = 'A'.repeat(200 * 1024);
+        await http()
+          .put(`${BASE}/${LEAF}/image`)
+          .set(session)
+          .send({ version: 3, data: large })
+          .expect(200);
+        await http()
+          .post(`${BASE}/${LEAF}/image/remove`)
+          .set(session)
+          .send({ version: 4, data: large })
+          .expect(413);
+      });
+    });
+
+    describe('the restructure routes (C4a)', () => {
+      const REASON = 'Pantry aisle reorganised';
+      const stored = (n: number, parent: number | null, position = n) => ({
+        id: id<'Category'>(n),
+        parentId: parent === null ? null : id<'Category'>(parent),
+        slug: `c${n.toString(16)}`,
+        status: 'active' as const,
+        hiddenById: null,
+        position,
+        version: 1,
+        revisionNo: 1,
+        createdByKind: 'admin' as const,
+        showInMenu: true,
+        imageId: null,
+        seo: { title: null, description: null, noindex: false },
+        texts: [
+          { locale: 'en', name: `Category ${n}`, shortDescription: null, keywords: [] as string[] },
+        ],
+      });
+      // 0xd1 > 0xd2 > 0xd3, and a second department 0xd4 > 0xd5.
+      const seedTree = () => {
+        editStore.put(stored(0xd1, null, 0));
+        editStore.put(stored(0xd2, 0xd1, 0));
+        editStore.put(stored(0xd3, 0xd2, 0));
+        editStore.put(stored(0xd4, null, 1));
+        editStore.put(stored(0xd5, 0xd4, 0));
+      };
+
+      it('maps the refusals of a move, merge and archive to their status', () => {
+        expect(CATEGORY_ADMIN_STATUS).toMatchObject({
+          'category.target-not-found': 404,
+          'category.move-unchanged': 409,
+          'category.has-subcategories': 409,
+          'category.referenced-by-policy': 409,
+          'category.cycle': 422,
+          'category.only-platform-category': 422,
+          'category.products-on-upper-level': 422,
+          'category.impact-too-large': 422,
+          'category.check-unavailable': 503,
+        });
+      });
+
+      it('refuses the Catalogue Moderator (no restructure key) with 403 on all three routes', async () => {
+        seedTree();
+        const moderator = adminSession(MODERATOR, 30);
+        const target = id<'Category'>(0xd3);
+        for (const [action, payload] of [
+          ['move', { treeVersion: 1, parentId: id<'Category'>(0xd5), reason: REASON }],
+          ['merge', { treeVersion: 1, targetId: id<'Category'>(0xd5), reason: REASON }],
+          ['archive', { treeVersion: 1, reason: REASON }],
+        ] as const) {
+          await http().post(`${BASE}/${target}/${action}`).set(moderator).send(payload).expect(403);
+        }
+        expect(retirementChecked).toEqual([]);
+        expect(editStore.revisions).toEqual([]);
+      });
+
+      it('moves a category for a holder of the key and answers the new tree version', async () => {
+        seedTree();
+        const session = adminSession(RESTRUCTURER, 31);
+        const moved = await http()
+          .post(`${BASE}/${id<'Category'>(0xd3)}/move`)
+          .set(session)
+          .send({ treeVersion: 1, parentId: id<'Category'>(0xd5), reason: REASON })
+          .expect(200);
+        expect(moved.body).toMatchObject({
+          category: { id: id<'Category'>(0xd3), version: 2, treeVersion: 2 },
+        });
+        expect(retirementChecked).toEqual([
+          [id<'Category'>(0xd3), id<'Category'>(0xd2), id<'Category'>(0xd1)],
+        ]);
+      });
+
+      it('answers 409 with the type codes when a certificate rule names the category, 503 when the check is down', async () => {
+        seedTree();
+        const session = adminSession(RESTRUCTURER, 32);
+        retirementAnswer = {
+          ok: false,
+          error: { code: 'category.referenced-by-policy', typeCodes: ['halal', 'kosher'] },
+        };
+        const refused = await http()
+          .post(`${BASE}/${id<'Category'>(0xd3)}/archive`)
+          .set(session)
+          .send({ treeVersion: 1, reason: REASON })
+          .expect(409);
+        expect(refused.body).toEqual({
+          statusCode: 409,
+          code: 'category.referenced-by-policy',
+          details: { typeCodes: ['halal', 'kosher'] },
+        });
+        retirementAnswer = { ok: false, error: { code: 'category.check-unavailable' } };
+        await http()
+          .post(`${BASE}/${id<'Category'>(0xd3)}/archive`)
+          .set(session)
+          .send({ treeVersion: 1, reason: REASON })
+          .expect(503);
+        expect(editStore.revisions).toEqual([]);
+      });
+
+      it('answers 400 for a short reason, 404 for an unknown target, 409 for subcategories, 422 for a cycle', async () => {
+        seedTree();
+        const session = adminSession(RESTRUCTURER, 33);
+        await http()
+          .post(`${BASE}/${id<'Category'>(0xd3)}/move`)
+          .set(session)
+          .send({ treeVersion: 1, parentId: id<'Category'>(0xd5), reason: 'too short' })
+          .expect(400);
+        await http()
+          .post(`${BASE}/${id<'Category'>(0xd3)}/merge`)
+          .set(session)
+          .send({ treeVersion: 1, targetId: MISSING, reason: REASON })
+          .expect(404);
+        await http()
+          .post(`${BASE}/${id<'Category'>(0xd2)}/archive`)
+          .set(session)
+          .send({ treeVersion: 1, reason: REASON })
+          .expect(409);
+        await http()
+          .post(`${BASE}/${id<'Category'>(0xd1)}/move`)
+          .set(session)
+          .send({ treeVersion: 1, parentId: id<'Category'>(0xd3), reason: REASON })
+          .expect(422);
+        expect(retirementChecked).toEqual([]);
+      });
+    });
+
     it('documents the routes in OpenAPI', async () => {
       const document = (await http().get('/docs-json').expect(200)).body as {
         paths: Record<string, Record<string, { responses: Record<string, unknown> }>>;
@@ -492,9 +813,23 @@ describe.each(TEST_MARKETS)(
       expect(document.paths[`${BASE}/{categoryId}/impact`]?.get?.responses).toHaveProperty('400');
       expect(document.paths[BASE]).toHaveProperty('post');
       expect(document.paths[`${BASE}/{categoryId}`]).toHaveProperty('patch');
-      for (const action of ['reorder', 'hide', 'show', 'change-slug', 'discard']) {
+      for (const action of [
+        'reorder',
+        'hide',
+        'show',
+        'change-slug',
+        'discard',
+        'move',
+        'merge',
+        'archive',
+        'image/remove',
+      ]) {
         expect(document.paths[`${BASE}/{categoryId}/${action}`]).toHaveProperty('post');
       }
+      expect(document.paths[`${BASE}/{categoryId}/image`]?.put?.responses).toHaveProperty('413');
+      expect(
+        document.paths[`${BASE}/{categoryId}/images/{imageId}/{size}`]?.get?.responses,
+      ).toHaveProperty('404');
     });
   },
 );

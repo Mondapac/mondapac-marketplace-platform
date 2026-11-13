@@ -1,4 +1,9 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import {
+  ADMIN_NOTE_CIPHER,
+  ADMIN_ORDER_NOTE_REPOSITORY,
+} from '../src/modules/ordering/application/ports/admin-order-notes';
+import { REFUND_REPOSITORY } from '../src/modules/ordering/application/ports/refund.repository';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -41,10 +46,15 @@ import {
   MemoryOrders,
   MemoryPickupCodes,
   TEST_DELIVERY_ADDRESS,
+  NO_REFUNDS,
+  FakeAdminNoteCipher,
+  MemoryAdminNotes,
+  OrderingAuditWriter,
 } from './support/ordering-fakes';
-import { FakeUnitOfWork, RecordingAuditWriter, RecordingOutbox } from './support/pricing-fakes';
+import { FakeUnitOfWork, RecordingOutbox } from './support/pricing-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
+import { encodeCursor } from '../src/modules/ordering/application/read-flow';
 
 // The checkout and order routes over HTTP: the real guards, controllers, gate and use cases; the
 // order store, Stripe, inventory and the cart are in memory. Proves the session and CSRF rules,
@@ -100,6 +110,10 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.card-declined': 402,
     'ordering.seller-order-not-found': 404,
     'ordering.fulfilment-conflict': 409,
+    'ordering.seller-order-refunded': 409,
+    'ordering.cancel-too-late': 409,
+    'ordering.cancel-nothing-left': 409,
+    'ordering.customer-erased': 409,
     'ordering.pickup-code-invalid': 422,
     'ordering.pickup-code-locked': 423,
     'ordering.payment-unavailable': 503,
@@ -126,6 +140,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let cart: FakeCart;
   let shipping: FakeShipping;
   let pickupCodes: MemoryPickupCodes;
+  let notes: MemoryAdminNotes;
   let pickupVault: FakePickupVault;
   const clock = new FixedClock(START);
   const http = () => request(app.getHttpServer());
@@ -139,6 +154,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     cart = new FakeCart();
     shipping = new FakeShipping();
     pickupCodes = new MemoryPickupCodes();
+    notes = new MemoryAdminNotes();
     pickupVault = new FakePickupVault();
     const customers = new FakeCustomers();
     customers.addresses.set(ADDRESS, { accountId: CUSTOMER, address: TEST_DELIVERY_ADDRESS });
@@ -165,7 +181,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .overrideProvider(UNIT_OF_WORK)
           .useValue(new FakeUnitOfWork())
           .overrideProvider(AUDIT_WRITER)
-          .useValue(new RecordingAuditWriter())
+          .useValue(new OrderingAuditWriter())
           .overrideProvider(OUTBOX_WRITER)
           .useValue(new RecordingOutbox())
           .overrideProvider(ORDER_REPOSITORY)
@@ -180,6 +196,12 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(customers)
           .overrideProvider(SHIP_TO_CIPHER)
           .useValue(new FakeShipToCipher())
+          .overrideProvider(REFUND_REPOSITORY)
+          .useValue(NO_REFUNDS)
+          .overrideProvider(ADMIN_ORDER_NOTE_REPOSITORY)
+          .useValue(notes)
+          .overrideProvider(ADMIN_NOTE_CIPHER)
+          .useValue(new FakeAdminNoteCipher())
           .overrideProvider(PICKUP_CODE_REPOSITORY)
           .useValue(pickupCodes)
           .overrideProvider(PICKUP_CODE_VAULT)
@@ -832,7 +854,16 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       const all = JSON.stringify(logLines);
       expect(all).not.toContain(TOKEN);
       expect(all).not.toContain('_secret_');
-      expect(all).not.toMatch(/ctoken_|visa|4242/i);
+      // The card patterns run on what was logged, without the logger's own changing fields: a
+      // millisecond timestamp or a random correlation id can contain "4242" by chance.
+      const logged = JSON.stringify(
+        logLines.map((line) => {
+          const { time, pid, hostname, correlationId, ...rest } = line;
+          void [time, pid, hostname, correlationId];
+          return rest;
+        }),
+      );
+      expect(logged).not.toMatch(/ctoken_|visa|4242/i);
     });
   });
 
@@ -1004,7 +1035,40 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       const badFilter = await http()
         .get('/ordering/admin/orders?status=shipped')
         .set(adminHeaders(VIEWER, 15));
+      const paged = await http()
+        .get('/ordering/admin/orders?page=1&pageSize=10&sort=total&direction=asc')
+        .set(adminHeaders(VIEWER, 16));
+      const tooDeep = await http()
+        .get('/ordering/admin/orders?page=401')
+        .set(adminHeaders(VIEWER, 17));
+      const strayPageSize = await http()
+        .get('/ordering/admin/orders?pageSize=10')
+        .set(adminHeaders(VIEWER, 18));
 
+      const badSort = await http()
+        .get('/ordering/admin/orders?page=1&sort=name')
+        .set(adminHeaders(VIEWER, 19));
+      const notANumber = await http()
+        .get('/ordering/admin/orders?page=abc')
+        .set(adminHeaders(VIEWER, 20));
+      const pageAndCursor = await http()
+        .get(`/ordering/admin/orders?page=1&cursor=${encodeCursor(START, id<'Order'>(1))}&limit=10`)
+        .set(adminHeaders(VIEWER, 21));
+      const backwards = await http()
+        .get('/ordering/admin/orders?from=2026-02-01T00:00:00Z&to=2026-01-01T00:00:00Z')
+        .set(adminHeaders(VIEWER, 22));
+
+      expect([badSort, notANumber, pageAndCursor, backwards].map((r) => r.status)).toEqual([
+        400, 400, 400, 400,
+      ]);
+      expect(body(pageAndCursor)).toMatchObject({
+        details: { fields: [{ path: 'cursor' }, { path: 'limit' }] },
+      });
+      expect(paged.status).toBe(200);
+      expect(body(paged)).toMatchObject({ total: 1, page: 1, pageSize: 10, nextCursor: null });
+      expect(body(list)).toMatchObject({ total: null, page: null, pageSize: null });
+      expect(tooDeep.status).toBe(400);
+      expect(strayPageSize.status).toBe(400);
       expect(list.status).toBe(200);
       expect(list.headers['cache-control']).toBe('no-store');
       expect(body(list).orders).toHaveLength(1);
@@ -1096,6 +1160,94 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(noKey.status).toBe(403);
       expect(noCsrf.body).toMatchObject({ code: 'request.csrf' });
       expect(unknownField.status).toBe(400);
+    });
+
+    /** The Platform Administrator (every key, the protected refund key included). */
+    function seedRoot(accountId: Id<'Account'>, n: number) {
+      const rootRole = [...fakes.roles.values()].find(
+        (r) => r.marketId === code && r.seedCode === 'platform-administrator',
+      )!.id;
+      seedAccount(accountId, 'admin', `admin${n}`);
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(0xe000 + n),
+        marketId: code as AccountState['marketId'],
+        accountId,
+        roleId: rootRole,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+    }
+    const writer = (accountId: Id<'Account'>, n: number) => ({
+      'x-market-id': code,
+      ...panelHeaders(code, 'admin'),
+      ...session(accountId, 'admin', n),
+    });
+
+    it('cancels only for an admin with ordering.order.refund, and not while the Market switch is off', async () => {
+      await seedAdmins();
+      seedRoot(REFUNDER, 9);
+      const route = `/ordering/admin/orders/${id<'Order'>(0xbe11)}/cancel`;
+      const body = { reason: 'other' };
+
+      const off = await http().post(route).set(writer(REFUNDER, 31)).send(body);
+      const noKey = await http().post(route).set(writer(VIEWER, 32)).send(body);
+      const noCsrf = await http().post(route).set(adminHeaders(REFUNDER, 34)).send(body);
+      const unknownField = await http()
+        .post(route)
+        .set(writer(REFUNDER, 33))
+        .send({ ...body, lines: [] });
+
+      expect(off.status).toBe(409);
+      expect(off.body).toEqual({ statusCode: 409, code: 'ordering.refund-disabled' });
+      expect(off.headers['cache-control']).toBe('no-store');
+      expect(gateway.refunds).toHaveLength(0);
+      expect(noKey.status).toBe(403);
+      expect(noCsrf.body).toMatchObject({ code: 'request.csrf' });
+      expect(unknownField.status).toBe(400);
+    });
+
+    it('reads notes with ordering.order.view, writes them only with ordering.order.note', async () => {
+      await seedAdmins();
+      const WRITER = id<'Account'>(0xa00a);
+      seedRoot(WRITER, 10);
+      const orderId = id<'Order'>(0xbe21);
+      notes.orders.set(orderId, id<'Account'>(0xc0de));
+      const route = `/ordering/admin/orders/${orderId}/notes`;
+
+      const written = await http()
+        .post(route)
+        .set(writer(WRITER, 41))
+        .send({ body: 'Customer called <b>twice</b>' });
+      const viewerWrites = await http().post(route).set(writer(VIEWER, 42)).send({ body: 'x' });
+      const empty = await http().post(route).set(writer(WRITER, 43)).send({ body: '  ' });
+      const extra = await http().post(route).set(writer(WRITER, 44)).send({ body: 'x', pin: true });
+      const viewerReads = await http().get(route).set(adminHeaders(VIEWER, 45));
+      const noKeyReads = await http().get(route).set(adminHeaders(NO_KEY, 46));
+      const unknown = await http()
+        .get(`/ordering/admin/orders/${id<'Order'>(0xbe22)}/notes`)
+        .set(adminHeaders(VIEWER, 47));
+
+      expect(written.status).toBe(201);
+      expect(written.headers['cache-control']).toBe('no-store');
+      expect(written.body).toMatchObject({
+        body: 'Customer called <b>twice</b>',
+        authorAccountId: WRITER,
+        byYou: true,
+      });
+      expect(notes.rows[0]!.bodySealed).not.toContain('twice');
+      expect(viewerWrites.status).toBe(403);
+      expect(empty.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'body', code: 'required' }] },
+      });
+      expect(extra.status).toBe(400);
+      expect(viewerReads.status).toBe(200);
+      expect(viewerReads.body).toEqual({
+        notes: [{ ...written.body, byYou: false }],
+      });
+      expect(noKeyReads.status).toBe(403);
+      expect(unknown.status).toBe(404);
     });
   });
 });

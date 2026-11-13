@@ -21,6 +21,7 @@ import {
   type AttributeSummaryView,
   type FeatureSetUse,
   type MarketLocales,
+  type MarketUnit,
 } from '../attributes/attribute-admin-views';
 import type { AttributeAdminReader } from '../ports/attribute-admin.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
@@ -67,6 +68,8 @@ export interface AttributeAdminGetOutput extends AttributeSummaryView {
   /** True when older revisions exist than the history shows. */
   readonly historyTruncated: boolean;
   readonly locales: MarketLocales;
+  /** The units the Market offers for a number-with-unit attribute (attributes A3). */
+  readonly units: readonly MarketUnit[];
 }
 
 export type AttributeAdminGetFailure =
@@ -196,6 +199,7 @@ export class AttributeAdminGet extends UseCase<
       }),
       historyTruncated: revisions.length > ATTRIBUTE_HISTORY_MAX,
       locales,
+      units: this.deps.policy.units(market).map((unit) => ({ ...unit })),
     });
   }
 }

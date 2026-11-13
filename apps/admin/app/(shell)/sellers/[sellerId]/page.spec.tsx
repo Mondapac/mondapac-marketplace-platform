@@ -26,6 +26,11 @@ vi.mock('../../../../src/sellers/review-view.tsx', () => ({ ReviewView: () => <d
 vi.mock('../../../../src/sellers/owner-second-factor-card.tsx', () => ({
   OwnerSecondFactorCard: () => <section>owner reset card</section>,
 }));
+vi.mock('../../../../src/sellers/category-proposals-card.tsx', () => ({
+  CategoryProposalsCard: ({ canSeeQueue }: { canSeeQueue: boolean }) => (
+    <section data-can-see-queue={String(canSeeQueue)}>category proposals card</section>
+  ),
+}));
 vi.mock('../../../../src/commission/rate-card.tsx', () => ({ CommissionRateCard: () => <div /> }));
 vi.mock('../../../../src/commission/ledger-card.tsx', () => ({ LedgerCard: () => <div /> }));
 vi.mock('../../../../src/payouts/terms-card.tsx', () => ({
@@ -54,6 +59,7 @@ const session = (permissionKeys: string[]): AdminSession => ({
   secondFactorActive: true,
   lastSignInAt: null,
   timezone: null,
+  marketTimezone: 'UTC',
   locale: null,
   email: 'ada@example.test',
   displayName: 'Ada',
@@ -86,6 +92,45 @@ describe('admin seller page: the owner two-step reset card', () => {
     });
     await show();
     expect(screen.getByText('owner reset card')).toBeTruthy();
+  });
+});
+
+describe('admin seller page: May propose categories', () => {
+  beforeEach(() => {
+    mocks.get.mockReset();
+    mocks.get.mockResolvedValue({ kind: 'ok', body: {} });
+  });
+  afterEach(cleanup);
+
+  it('shows the switch only to a holder of the seller settings key, and the shelves link by the decide key', async () => {
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session(['sellers.business-details.view']),
+    });
+    await show();
+    expect(screen.queryByText('category proposals card')).toBeNull();
+    cleanup();
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session(['sellers.business-details.view', 'sellers.seller-settings.edit']),
+    });
+    await show();
+    expect(screen.getByText('category proposals card').getAttribute('data-can-see-queue')).toBe(
+      'false',
+    );
+    cleanup();
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session([
+        'sellers.business-details.view',
+        'sellers.seller-settings.edit',
+        'catalog.category-proposal.decide',
+      ]),
+    });
+    await show();
+    expect(screen.getByText('category proposals card').getAttribute('data-can-see-queue')).toBe(
+      'true',
+    );
   });
 });
 

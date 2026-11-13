@@ -62,18 +62,18 @@ describe('noindex header', () => {
     expect(await import('../proxy.ts')).not.toHaveProperty('config');
   });
 
-  it('is set while off', () => {
-    expect(proxy().headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
+  it('is set while off', async () => {
+    expect((await proxy()).headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
   });
 
-  it('is set while the env says `on` but sample data is still in place', () => {
+  it('is set while the env says `on` but sample data is still in place', async () => {
     vi.stubEnv('STOREFRONT_INDEXING', 'on');
-    expect(proxy().headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
+    expect((await proxy()).headers.get('X-Robots-Tag')).toBe('noindex, nofollow');
   });
 
-  it('is absent while on', () => {
+  it('is absent while on', async () => {
     switchOn();
-    expect(proxy().headers.has('X-Robots-Tag')).toBe(false);
+    expect((await proxy()).headers.has('X-Robots-Tag')).toBe(false);
   });
 });
 

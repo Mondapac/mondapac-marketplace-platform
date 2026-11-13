@@ -1,6 +1,9 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Id, Result } from '@mondapac/shared-kernel';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
+import { MAX_TOPICS_PER_PRODUCT } from './topic';
+import { normalizeGtin } from './variant-gtin';
+import { isPositiveInt, VARIANT_FIELD_LIMITS } from './variant-fields';
 
 /**
  * The freeze of a working copy into the content of a revision (catalog design 2.3 M-2, 4.2 row
@@ -15,7 +18,7 @@ import type { RevisionContent, RevisionText, RevisionVariantContent } from './re
 /** Where the draft is not ready and why: a path and a code, never a value. */
 export interface FreezeIssue {
   readonly path: string;
-  readonly code: 'required' | 'invalid' | 'unknown' | 'duplicate' | 'too-many';
+  readonly code: 'required' | 'invalid' | 'unknown' | 'duplicate' | 'too-many' | 'gtin.invalid';
 }
 
 export interface FreezeInput {
@@ -139,20 +142,137 @@ function parseIdList(raw: unknown, path: string, issues: FreezeIssue[]): string[
   return list;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The topic ids of a draft (product tags T2): absent is none; a list of unique ids in the order
+ * entered, at most `MAX_TOPICS_PER_PRODUCT`. A malformed value is `invalid` at `topicIds`, an item
+ * that is not an id is `invalid` at `topicIds.<n>`, a repeat is `duplicate`. Whether a topic exists,
+ * belongs to the Market and may be added is for the service that reads the topics.
+ */
+function parseTopicIds(raw: unknown, issues: FreezeIssue[]): string[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    issues.push({ path: 'topicIds', code: 'invalid' });
+    return [];
+  }
+  const list: string[] = [];
+  raw.forEach((item: unknown, index) => {
+    if (typeof item !== 'string' || !UUID.test(item)) {
+      issues.push({ path: `topicIds.${index}`, code: 'invalid' });
+    } else if (list.includes(item.toLowerCase())) {
+      issues.push({ path: `topicIds.${index}`, code: 'duplicate' });
+    } else {
+      list.push(item.toLowerCase());
+    }
+  });
+  if (raw.length > MAX_TOPICS_PER_PRODUCT) issues.push({ path: 'topicIds', code: 'too-many' });
+  return list;
+}
+
+type VariantFields = Pick<
+  RevisionVariantContent,
+  | 'gtin'
+  | 'shippingWeightGrams'
+  | 'shippingLengthMm'
+  | 'shippingWidthMm'
+  | 'shippingHeightMm'
+  | 'imageIds'
+>;
+
+/**
+ * The V4 fields of one draft variant (GTIN, shipping, image picks). Every field is optional;
+ * a refused one is listed by path and the variant keeps going so the seller sees all places at once.
+ * `galleryIds` is the revision's image list: a pick outside it is `unknown`.
+ */
+function parseVariantFields(
+  entry: Record<string, unknown>,
+  path: string,
+  galleryIds: readonly string[],
+  issues: FreezeIssue[],
+): VariantFields {
+  const absent = (value: unknown): boolean => value === undefined || value === null;
+  let gtin: string | null = null;
+  const rawGtin = entry['gtin'];
+  if (!absent(rawGtin)) {
+    const parsed = typeof rawGtin === 'string' ? normalizeGtin(rawGtin) : null;
+    if (parsed?.ok === true) gtin = parsed.value;
+    else issues.push({ path: `${path}.gtin`, code: 'gtin.invalid' });
+  }
+  const size = (key: string, max: number): number | null => {
+    const value = entry[key];
+    if (absent(value)) return null;
+    if (isPositiveInt(value, max)) return value;
+    issues.push({ path: `${path}.${key}`, code: 'invalid' });
+    return null;
+  };
+  const shippingWeightGrams = size('shippingWeightGrams', VARIANT_FIELD_LIMITS.weightGramsMax);
+  const shippingLengthMm = size('shippingLengthMm', VARIANT_FIELD_LIMITS.dimensionMmMax);
+  const shippingWidthMm = size('shippingWidthMm', VARIANT_FIELD_LIMITS.dimensionMmMax);
+  const shippingHeightMm = size('shippingHeightMm', VARIANT_FIELD_LIMITS.dimensionMmMax);
+  // A box has three sides: all three or none, so a carrier never reads a half-set size.
+  const dims = [shippingLengthMm, shippingWidthMm, shippingHeightMm];
+  if (dims.some((d) => d !== null) && dims.some((d) => d === null)) {
+    for (const [key, d] of [
+      ['shippingLengthMm', shippingLengthMm],
+      ['shippingWidthMm', shippingWidthMm],
+      ['shippingHeightMm', shippingHeightMm],
+    ] as const) {
+      if (d === null && absent(entry[key]))
+        issues.push({ path: `${path}.${key}`, code: 'required' });
+    }
+  }
+  const imageIds: string[] = [];
+  const rawImages = entry['imageIds'];
+  if (!absent(rawImages)) {
+    if (!Array.isArray(rawImages) || rawImages.length > VARIANT_FIELD_LIMITS.imagesMax) {
+      issues.push({
+        path: `${path}.imageIds`,
+        code: Array.isArray(rawImages) ? 'too-many' : 'invalid',
+      });
+    } else {
+      rawImages.forEach((item: unknown, index) => {
+        if (!isNonBlank(item)) issues.push({ path: `${path}.imageIds.${index}`, code: 'invalid' });
+        else if (imageIds.includes(item)) {
+          issues.push({ path: `${path}.imageIds.${index}`, code: 'duplicate' });
+        } else if (!galleryIds.includes(item)) {
+          issues.push({ path: `${path}.imageIds.${index}`, code: 'unknown' });
+        } else imageIds.push(item);
+      });
+    }
+  }
+  return {
+    gtin,
+    shippingWeightGrams,
+    shippingLengthMm,
+    shippingWidthMm,
+    shippingHeightMm,
+    imageIds,
+  };
+}
+
 function parseVariants(
   raw: unknown,
   input: FreezeInput,
+  galleryIds: readonly string[],
   issues: FreezeIssue[],
 ): RevisionVariantContent[] {
   if (input.variantModel === 'single') {
     // The one variant is fixed by the product and carries no options (CC2: Simple has exactly one).
-    return input.liveVariantIds.slice(0, 1).map((variantId) => ({
-      variantId,
-      position: 1,
-      optionKey: '',
-      optionValues: {},
-      labels: {},
-    }));
+    // The draft may still carry its V4 fields, matched by the variant id.
+    return input.liveVariantIds.slice(0, 1).map((variantId) => {
+      const entry = Array.isArray(raw)
+        ? (raw as unknown[]).find((item) => isObject(item) && item['variantId'] === variantId)
+        : undefined;
+      return {
+        variantId,
+        position: 1,
+        optionKey: '',
+        optionValues: {},
+        labels: {},
+        ...parseVariantFields(isObject(entry) ? entry : {}, 'variants.0', galleryIds, issues),
+      };
+    });
   }
   if (!Array.isArray(raw) || raw.length === 0) {
     issues.push({ path: 'variants', code: 'required' });
@@ -165,6 +285,7 @@ function parseVariants(
   const variants: RevisionVariantContent[] = [];
   const ids = new Set<string>();
   const keys = new Set<string>();
+  const gtins = new Set<string>();
   raw.forEach((entry: unknown, index) => {
     const path = `variants.${index}`;
     if (!isObject(entry)) {
@@ -205,12 +326,19 @@ function parseVariants(
       return;
     }
     keys.add(optionKey);
+    const fields = parseVariantFields(entry, path, galleryIds, issues);
+    // One product never carries a GTIN twice: it names one item (V4).
+    if (fields.gtin !== null) {
+      if (gtins.has(fields.gtin)) issues.push({ path: `${path}.gtin`, code: 'duplicate' });
+      gtins.add(fields.gtin);
+    }
     variants.push({
       variantId,
       position: variants.length + 1,
       optionKey,
       optionValues,
       labels: { ...input.labelsFor(optionValues) },
+      ...fields,
     });
   });
   return variants;
@@ -227,6 +355,7 @@ export function freezeWorkingCopy(
   if (categoryIds.length === 0 && !issues.some((issue) => issue.path.startsWith('categoryIds'))) {
     issues.push({ path: 'categoryIds', code: 'required' });
   }
+  const topicIds = parseTopicIds(content['topicIds'], issues);
   const tax = content['taxCategoryCode'];
   if (!isNonBlank(tax)) {
     issues.push({ path: 'taxCategoryCode', code: 'required' });
@@ -236,11 +365,12 @@ export function freezeWorkingCopy(
   const attributeValues = content['attributeValues'] ?? {};
   if (!isObject(attributeValues)) issues.push({ path: 'attributeValues', code: 'invalid' });
   const imageIds = parseIdList(content['imageIds'], 'imageIds', issues);
-  const variants = parseVariants(content['variants'], input, issues);
+  const variants = parseVariants(content['variants'], input, imageIds, issues);
   if (issues.length > 0) return err(issues);
   return ok({
     texts,
     categoryIds,
+    topicIds,
     taxCategoryCode: tax as string,
     attributeValues: attributeValues as Record<string, unknown>,
     variants,

@@ -132,6 +132,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'certification-surface-does-not-reach-reader-adapter',
         'contexts-are-built-by-platform',
         'core-does-not-import-verticals',
+        'culture-demote-port-is-for-catalog-adapter',
         'database-driver-only-in-infrastructure',
         'domain-is-pure',
         'identity-imports-no-module',
@@ -181,6 +182,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'contexts-are-built-by-platform: src/modules/alpha/application/mints-actor-context.ts',
         'contexts-are-built-by-platform: src/modules/alpha/application/uses-context-types.ts',
         'core-does-not-import-verticals: src/platform/uses-vertical.ts',
+        'culture-demote-port-is-for-catalog-adapter: src/modules/catalog/application/calls-culture-demote-port.ts',
         'database-driver-only-in-infrastructure: src/platform/uses-database-driver.ts',
         'domain-is-pure: src/modules/alpha/domain/does-io.ts',
         'domain-is-pure: src/modules/alpha/domain/imports-application.ts',
@@ -247,6 +249,19 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         new Set(['packages/shared-kernel/src/index.ts']),
       );
       expect(found.filter((violation) => violation.endsWith('/uses-kernel.ts'))).toEqual([]);
+    });
+
+    it('lets domain/ import the platform-import package by its package name', () => {
+      const domainFile = cruise.modules.find(
+        (module) => module.source === 'src/modules/alpha/domain/uses-platform-import.ts',
+      );
+
+      expect(new Set(domainFile?.dependencies.map((dependency) => dependency.resolved))).toEqual(
+        new Set(['packages/platform-import/src/index.ts']),
+      );
+      expect(found.filter((violation) => violation.endsWith('/uses-platform-import.ts'))).toEqual(
+        [],
+      );
     });
 
     it.each([

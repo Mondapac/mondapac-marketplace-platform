@@ -404,13 +404,19 @@ describe('Routes', () => {
 
   const productRoute = async (id: string, query?: { v?: string | string[] }) => {
     const { default: route } = await import('../app/p/[id]/page.tsx');
-    return route({
+    const shell = (await route({
       params: Promise.resolve({ id }),
       ...(query === undefined ? {} : { searchParams: Promise.resolve(query) }),
-    });
+    })) as ReactElement<{ children: ReactElement<unknown> }>;
+    // The page decides first and reads the rest inside a Suspense boundary: render that part.
+    const content = shell.props.children as unknown as {
+      type: (props: unknown) => Promise<ReactElement>;
+      props: unknown;
+    };
+    return content.type(content.props);
   };
-  const categoryRoute = async (params: { category: string; sub?: string[] }, query = {}) => {
-    const { default: route } = await import('../app/c/[category]/[[...sub]]/page.tsx');
+  const categoryRoute = async (params: { slug: string }, query = {}) => {
+    const { default: route } = await import('../app/c/[slug]/page.tsx');
     return route({ params: Promise.resolve(params), searchParams: Promise.resolve(query) });
   };
 
@@ -460,8 +466,8 @@ describe('Routes', () => {
     read.product = product({ id: 'free' }, { price: { amount: 0, currency: 'AUD' } });
     expect(scriptOf(jsonLdOf(await productRoute('free')))).toBeNull();
     read.product = undefined;
-    // A removed product renders its own view, without a fragment or script.
-    expect(jsonLdOf(await productRoute('lamb-leg-roast'))).toBeNull();
+    // A removed product is a 404 (its body is the not-found page's), with no fragment or script.
+    await expect(productRoute('lamb-leg-roast')).rejects.toThrow('not found');
     read.product = product({ id: 'lamb-shoulder' });
     request.host = 'evil.example';
     expect(scriptOf(jsonLdOf(await productRoute('lamb-shoulder')))).toBeNull();
@@ -528,18 +534,27 @@ describe('Routes', () => {
     });
   });
 
-  it('gives a category and a subcategory their visible crumbs', async () => {
-    const top = scriptOf(jsonLdOf(await categoryRoute({ category: 'meat' })));
-    expect(top).toMatchObject({
+  it('gives a category and a subcategory a CollectionPage and their visible crumbs', async () => {
+    const top = scriptOf(jsonLdOf(await categoryRoute({ slug: 'meat' })))!;
+    const [page, crumbs] = top['@graph'] as Node[];
+    expect(page).toMatchObject({
+      '@type': 'CollectionPage',
+      name: 'Meat',
+      url: `${ORIGIN}/c/meat`,
+    });
+    expect(crumbs).toMatchObject({
       '@type': 'BreadcrumbList',
       itemListElement: [
         { position: 1, name: 'Home', item: `${ORIGIN}/` },
         { position: 2, name: 'Meat' },
       ],
     });
-    expect((top!.itemListElement as Node[])[1]).not.toHaveProperty('item');
-    const sub = scriptOf(jsonLdOf(await categoryRoute({ category: 'meat', sub: ['lamb'] })));
-    expect(sub).toMatchObject({
+    expect((crumbs!.itemListElement as Node[])[1]).not.toHaveProperty('item');
+    // A subcategory has its own one-segment address; its parent is a crumb.
+    const sub = scriptOf(jsonLdOf(await categoryRoute({ slug: 'lamb' })))!;
+    const [subPage, subCrumbs] = sub['@graph'] as Node[];
+    expect(subPage).toMatchObject({ '@type': 'CollectionPage', url: `${ORIGIN}/c/lamb` });
+    expect(subCrumbs).toMatchObject({
       itemListElement: [
         { position: 1, name: 'Home', item: `${ORIGIN}/` },
         { position: 2, name: 'Meat', item: `${ORIGIN}/c/meat` },
@@ -549,18 +564,17 @@ describe('Routes', () => {
   });
 
   it('gives no crumbs on a filtered or re-ordered listing (noindex) or an unknown host', async () => {
+    expect(scriptOf(jsonLdOf(await categoryRoute({ slug: 'meat' }, { special: '1' })))).toBeNull();
     expect(
-      scriptOf(jsonLdOf(await categoryRoute({ category: 'meat' }, { special: '1' }))),
+      scriptOf(jsonLdOf(await categoryRoute({ slug: 'meat' }, { sort: 'price-asc' }))),
     ).toBeNull();
-    expect(
-      scriptOf(jsonLdOf(await categoryRoute({ category: 'meat' }, { sort: 'price-asc' }))),
-    ).toBeNull();
+    expect(scriptOf(jsonLdOf(await categoryRoute({ slug: 'meat' }, { page: '2' })))).toBeNull();
     request.host = 'evil.example';
-    expect(scriptOf(jsonLdOf(await categoryRoute({ category: 'meat' })))).toBeNull();
+    expect(scriptOf(jsonLdOf(await categoryRoute({ slug: 'meat' })))).toBeNull();
   });
 
   it('gives the home page WebSite and OnlineStore on a listed host only', async () => {
-    const { default: home } = await import('../app/page.tsx');
+    const { default: home } = await import('../app/(home)/page.tsx');
     const data = scriptOf(jsonLdOf(await home()))!;
     expect((data['@graph'] as Node[]).map((n) => n['@type'])).toEqual(['WebSite', 'OnlineStore']);
     expect(JSON.stringify(data)).not.toMatch(/legalName|taxID|address|contactPoint/u);

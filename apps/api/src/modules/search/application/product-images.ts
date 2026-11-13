@@ -49,3 +49,24 @@ export async function withPrimaryImages<
     return { ...item, primaryImage: first === undefined ? null : refOf(first, item.name) };
   });
 }
+
+/**
+ * Adds `primaryImage` and `images` (every public photo of the product, at most 8, main one first;
+ * `alt` is each item's own name even when two items share a product) to each item, with one photo
+ * read for the whole list. `primaryImage` is always `images[0]`.
+ */
+export async function withProductImages<
+  T extends { readonly productId: Id<'Product'>; readonly name: string },
+>(
+  images: ProductImages,
+  context: CallContext,
+  items: readonly T[],
+): Promise<
+  (T & { readonly primaryImage: ImageRef | null; readonly images: readonly ImageRef[] })[]
+> {
+  const refs = await imageRefsOf(images, context, items);
+  return items.map((item) => {
+    const own = (refs.get(item.productId) ?? []).map((ref) => ({ ...ref, alt: item.name }));
+    return { ...item, primaryImage: own[0] ?? null, images: own };
+  });
+}

@@ -13,11 +13,16 @@ export function ProductCard({ product }: { readonly product: ShelfCard }) {
   const locale = useLocale();
   const special = product.wasPrice !== undefined;
   const { price } = product;
+  // A search result a filter narrowed to one variant opens on it (variants V8).
+  const href =
+    product.variantId === undefined
+      ? productHref(product.id, product.name)
+      : `${productHref(product.id, product.name)}?v=${encodeURIComponent(product.variantId)}`;
   return (
     <article className="pc">
       <div className="tile">
         {product.imageUrl ? (
-          <CardPhoto src={product.imageUrl} category={product.category} />
+          <CardPhoto src={product.imageUrl} category={product.category} set={product.imageSet} />
         ) : (
           <CategoryArt code={product.category} />
         )}
@@ -25,12 +30,18 @@ export function ProductCard({ product }: { readonly product: ShelfCard }) {
         {product.certifications.map((badge) => (
           <CertificationSeal key={badge.type} badge={badge} />
         ))}
-        {price === undefined ? null : <AddControl product={{ ...product, price }} />}
+        {price === undefined || product.priceFrom === true ? null : (
+          <AddControl product={{ ...product, price }} />
+        )}
       </div>
       {price === undefined ? null : (
         <>
           <div className="pr num">
-            <b className={special ? 'sp' : undefined}>{formatMoney(price, locale)}</b>
+            <b className={special ? 'sp' : undefined}>
+              {product.priceFrom === true
+                ? t('price-from', { price: formatMoney(price, locale) })
+                : formatMoney(price, locale)}
+            </b>
             {product.wasPrice ? (
               <s>
                 <span className="sr-only">{t('regular-price')}</span>
@@ -42,7 +53,7 @@ export function ProductCard({ product }: { readonly product: ShelfCard }) {
         </>
       )}
       <h3 className="nm">
-        <Link href={productHref(product.id)}>{product.name}</Link>
+        <Link href={href}>{product.name}</Link>
       </h3>
       {product.sellerName === '' ? null : <div className="by">{product.sellerName}</div>}
       {product.lowStock !== undefined ? (

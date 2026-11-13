@@ -70,6 +70,18 @@ export class RebuildOfferIndex extends UseCase<Record<string, never>, RebuildCou
       stale += removed.value;
       if (removed.value < STALE_DELETE_BATCH) break;
     }
+    // The same for the store rows: those this run did not write (no indexed Offer left, no longer a
+    // public store, or another text search configuration).
+    for (;;) {
+      const removed = await this.deps.unitOfWork.run(market, async () =>
+        ok(
+          await this.deps.storeDocuments.deleteIndexedBefore(market, startedAt, STALE_DELETE_BATCH),
+        ),
+      );
+      if (!removed.ok) throw new Error('search: the stale store delete failed');
+      stale += removed.value;
+      if (removed.value < STALE_DELETE_BATCH) break;
+    }
     const counts = { offers, upserted, deleted, stale };
     this.#logger.log({
       msg: 'search.index-rebuilt',

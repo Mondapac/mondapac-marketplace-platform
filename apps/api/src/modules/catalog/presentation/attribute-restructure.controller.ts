@@ -38,6 +38,7 @@ import { AttributeArchive } from '../application/use-cases/attribute-archive.use
 import { AttributeArchiveConfirm } from '../application/use-cases/attribute-archive-confirm.use-case';
 import { AttributeArchiveRequestCreate } from '../application/use-cases/attribute-archive-request.use-case';
 import { AttributeArchiveRequestListOpen } from '../application/use-cases/attribute-archive-request-list-open.use-case';
+import { AttributeConvert } from '../application/use-cases/attribute-convert.use-case';
 import { AttributeMerge } from '../application/use-cases/attribute-merge.use-case';
 import { AttributeImpactGet } from '../application/use-cases/attribute-impact-get.use-case';
 import { AttributeValuesMerge } from '../application/use-cases/attribute-values-merge.use-case';
@@ -49,6 +50,7 @@ import {
   RelaxationConfirmBody,
   RelaxationVersionRequest,
   RelaxationWriteWrapBody,
+  AttributeConvertRequest,
   AttributeMergeRequest,
   ValuesMergeRequest,
 } from './attribute-admin.dto';
@@ -70,6 +72,10 @@ export const RESTRUCTURE_STATUS: Readonly<Record<string, number>> = Object.freez
   'attribute-definition.merge-type-mismatch': 422,
   'attribute-definition.merge-unmapped': 422,
   'attribute-definition.merge-material': 409,
+  'attribute-definition.convert-invalid': 422,
+  'attribute-definition.convert-variant': 409,
+  'attribute-definition.convert-material': 409,
+  'attribute-definition.convert-merged': 409,
   'attribute.merge-blocked': 409,
   'attribute.archive-blocked': 409,
   'attribute.archive-needs-second-admin': 409,
@@ -110,6 +116,7 @@ export class AttributeRestructureController {
     private readonly impact: AttributeImpactGet,
     private readonly mergeValues: AttributeValuesMerge,
     private readonly mergeAttribute: AttributeMerge,
+    private readonly convertAttribute: AttributeConvert,
     private readonly archive: AttributeArchive,
     private readonly requestArchive: AttributeArchiveRequestCreate,
     private readonly confirmArchive: AttributeArchiveConfirm,
@@ -228,6 +235,50 @@ export class AttributeRestructureController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.attribute-merge', context, outcome);
+  }
+
+  @Post('attributes/:attributeId/convert')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Convert the type of a published attribute',
+    description:
+      `${RESTRUCTURES} Two paths only: integer to decimal and select to multi-select. Stored ` +
+      'product values are not changed; they are read as the new type. Refused for a material ' +
+      'attribute, a variant option and an attribute others were merged into.',
+  })
+  @ApiParam(ATTRIBUTE_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: AttributeConvertRequest })
+  @ApiOkResponse({ type: AttributeWriteWrapBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'attribute.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description:
+      'attribute.stale, attribute-definition.convert-variant, .convert-material, ' +
+      '.convert-merged, .not-published or .archived',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  async convert(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('attributeId') attributeId: string,
+    @Body() body: unknown,
+  ): Promise<AttributeWriteWrapBody> {
+    const input = closedBody(request, body, ['version', 'to']);
+    let outcome: AttributeWriteWrapBody | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.convertAttribute.execute(context, { ...input, attributeId });
+      outcome = result.ok
+        ? (JSON.parse(JSON.stringify(result.value)) as AttributeWriteWrapBody)
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.attribute-convert', context, outcome);
   }
 
   @Post('attributes/:attributeId/archive')

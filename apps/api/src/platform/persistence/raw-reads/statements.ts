@@ -130,10 +130,52 @@ export interface OfferSearchRow {
   readonly rank: number;
 }
 
-/** One row of `search.offer-facet-rows`: a document of the scope with its facet strings. */
+/**
+ * One row of `search.offer-facet-rows`: a document of the scope with its facet strings, alone
+ * (`unitFacets` empty) or with one in-stock, priced sell unit's axis values (variants V8).
+ */
 export interface OfferFacetRow {
+  readonly offerId: string;
   readonly productId: string;
   readonly facets: readonly string[];
+  readonly unitFacets: readonly string[];
+}
+
+/** One row of `search.offer-scope-rows`: one indexed Offer of the scope, for the counts. */
+export interface OfferScopeRow {
+  readonly productId: string;
+  readonly sellerId: string;
+  readonly categoryIds: readonly string[];
+}
+
+/** One row of `search.store-search`: a public store that matches the text and has indexed Offers. */
+export interface StoreSearchRow {
+  readonly sellerId: string;
+  readonly slug: string;
+  readonly name: string;
+  readonly rank: number;
+}
+
+/** One row of `search.offer-suggest`: an Offer whose text starts with the typed words (search 1b). */
+export interface OfferSuggestRow {
+  readonly offerId: string;
+  readonly productId: string;
+  readonly sellerId: string;
+  readonly name: string;
+  readonly categoryIds: readonly string[];
+  /** 0: the name starts with the query, 1: the name contains it, 2: seller or category only. */
+  readonly tier: number;
+  readonly rank: number;
+}
+
+/** One row of `search.store-suggest`: a public store with a matching Offer (search 1b). */
+export interface StoreSuggestRow {
+  readonly sellerId: string;
+  readonly slug: string;
+  readonly name: string;
+  /** 0: the store name starts with the query, 1: contains it, 2: one of its products matches. */
+  readonly tier: number;
+  readonly rank: number;
 }
 
 /** One row of `search.offer-number-rows`: one stored number of the scope. */
@@ -239,6 +281,9 @@ export interface RawReadStatements {
       readonly priorMeanTimes1000: string;
       readonly limit: string;
       readonly offset: string;
+      /** Variants V8: the price bounds in minor units, `''` for none. */
+      readonly priceMin: string;
+      readonly priceMax: string;
     };
     readonly row: OfferSearchRow;
   };
@@ -257,8 +302,60 @@ export interface RawReadStatements {
       readonly range3Min: string;
       readonly range3Max: string;
       readonly limit: string;
+      readonly priceMin: string;
+      readonly priceMax: string;
     };
     readonly row: OfferFacetRow;
+  };
+  readonly 'search.offer-scope-rows': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly categoryIds: readonly string[];
+      readonly limit: string;
+    };
+    readonly row: OfferScopeRow;
+  };
+  readonly 'search.store-search': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly limit: string;
+      readonly offset: string;
+    };
+    readonly row: StoreSearchRow;
+  };
+  readonly 'search.offer-suggest': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly nameQuery: string;
+      readonly startsWith: string;
+      readonly firstWordStarts: string;
+      readonly contains: string;
+      readonly limit: string;
+    };
+    readonly row: OfferSuggestRow;
+  };
+  readonly 'search.offer-suggest-scope-rows': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly limit: string;
+    };
+    readonly row: OfferScopeRow;
+  };
+  readonly 'search.store-suggest': {
+    readonly params: {
+      readonly textSearchConfig: string;
+      readonly query: string;
+      readonly nameQuery: string;
+      readonly startsWith: string;
+      readonly firstWordStarts: string;
+      readonly contains: string;
+      readonly limit: string;
+    };
+    readonly row: StoreSuggestRow;
   };
   readonly 'search.offer-number-rows': {
     readonly params: {
@@ -321,6 +418,8 @@ const textList = (value: unknown): string[] => {
   if (!Array.isArray(value)) throw new Error('row');
   return value.map(text);
 };
+/** A text array that a LEFT JOIN may leave null: none. */
+const textListOrNone = (value: unknown): string[] => (value === null ? [] : textList(value));
 const parseOfferSearchRow = (raw: unknown): OfferSearchRow => {
   const row = asRecord(raw);
   return {
@@ -336,7 +435,51 @@ const parseOfferSearchRow = (raw: unknown): OfferSearchRow => {
 
 const parseOfferFacetRow = (raw: unknown): OfferFacetRow => {
   const row = asRecord(raw);
-  return { productId: text(row['product_id']), facets: textList(row['facets']) };
+  return {
+    productId: text(row['product_id']),
+    facets: textList(row['facets']),
+    offerId: text(row['offer_id']),
+    unitFacets: textListOrNone(row['unit_facets']),
+  };
+};
+const parseOfferScopeRow = (raw: unknown): OfferScopeRow => {
+  const row = asRecord(raw);
+  return {
+    productId: text(row['product_id']),
+    sellerId: text(row['seller_id']),
+    categoryIds: textList(row['category_ids']),
+  };
+};
+const parseStoreSearchRow = (raw: unknown): StoreSearchRow => {
+  const row = asRecord(raw);
+  return {
+    sellerId: text(row['seller_id']),
+    slug: text(row['slug']),
+    name: text(row['name']),
+    rank: number(row['rank']),
+  };
+};
+const parseOfferSuggestRow = (raw: unknown): OfferSuggestRow => {
+  const row = asRecord(raw);
+  return {
+    offerId: text(row['offer_id']),
+    productId: text(row['product_id']),
+    sellerId: text(row['seller_id']),
+    name: text(row['name']),
+    categoryIds: textList(row['category_ids']),
+    tier: number(row['tier']),
+    rank: number(row['rank']),
+  };
+};
+const parseStoreSuggestRow = (raw: unknown): StoreSuggestRow => {
+  const row = asRecord(raw);
+  return {
+    sellerId: text(row['seller_id']),
+    slug: text(row['slug']),
+    name: text(row['name']),
+    tier: number(row['tier']),
+    rank: number(row['rank']),
+  };
 };
 const parseOfferNumberRow = (raw: unknown): OfferNumberRow => {
   const row = asRecord(raw);
@@ -479,7 +622,12 @@ const OFFER_BROWSE_TOP_RATED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id
 // Attribute filters (attributes A7). One statement for a text search or a category browse narrowed by up
 // to eight choice groups (a document holds one of a group's facet strings: an empty group is no
 // filter) and up to three number ranges (an empty attribute is no range; a range joins the
-// document's stored number of that attribute). `$3` empty means a browse (by name); the category
+// document's stored number of that attribute). Variant filters and the price filter (variants V8,
+// `$26`/`$27` are the price bounds in minor units, empty for none): a document matches when its own
+// facets satisfy every group and no price is asked (product attributes only: stock is not asked,
+// as before), or when one of its sell units that is in stock and priced satisfies every group with
+// the document's facets and its own axis values, at a price within the bounds. The product is one
+// result either way. `$3` empty means a browse (by name); the category
 // array empty means no category. The rating boost is joined only when `$22` is not `none`; with
 // `$22 = 'top'` the stored Bayesian average orders first, as in the rated statements.
 const OFFER_FILTERED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name, d.short_text,
@@ -493,14 +641,30 @@ const OFFER_FILTERED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name
  WHERE d.market_id = $1
    AND ($3::text = '' OR d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text))
    AND ($4::uuid[] = '{}'::uuid[] OR d.category_ids && $4::uuid[])
-   AND ($5::text[] = '{}'::text[] OR d.facet_codes && $5::text[])
-   AND ($6::text[] = '{}'::text[] OR d.facet_codes && $6::text[])
-   AND ($7::text[] = '{}'::text[] OR d.facet_codes && $7::text[])
-   AND ($8::text[] = '{}'::text[] OR d.facet_codes && $8::text[])
-   AND ($9::text[] = '{}'::text[] OR d.facet_codes && $9::text[])
-   AND ($10::text[] = '{}'::text[] OR d.facet_codes && $10::text[])
-   AND ($11::text[] = '{}'::text[] OR d.facet_codes && $11::text[])
-   AND ($12::text[] = '{}'::text[] OR d.facet_codes && $12::text[])
+   AND (
+        ($26::text = '' AND $27::text = ''
+        AND ($5::text[] = '{}'::text[] OR d.facet_codes && $5::text[])
+        AND ($6::text[] = '{}'::text[] OR d.facet_codes && $6::text[])
+        AND ($7::text[] = '{}'::text[] OR d.facet_codes && $7::text[])
+        AND ($8::text[] = '{}'::text[] OR d.facet_codes && $8::text[])
+        AND ($9::text[] = '{}'::text[] OR d.facet_codes && $9::text[])
+        AND ($10::text[] = '{}'::text[] OR d.facet_codes && $10::text[])
+        AND ($11::text[] = '{}'::text[] OR d.facet_codes && $11::text[])
+        AND ($12::text[] = '{}'::text[] OR d.facet_codes && $12::text[]))
+     OR EXISTS (
+        SELECT 1 FROM "search"."offer_variant_documents" v
+         WHERE v.market_id = $1 AND v.offer_id = d.offer_id
+           AND v.in_stock = true AND v.price_amount >= 0
+          AND ($5::text[] = '{}'::text[] OR d.facet_codes && $5::text[] OR v.facet_codes && $5::text[])
+          AND ($6::text[] = '{}'::text[] OR d.facet_codes && $6::text[] OR v.facet_codes && $6::text[])
+          AND ($7::text[] = '{}'::text[] OR d.facet_codes && $7::text[] OR v.facet_codes && $7::text[])
+          AND ($8::text[] = '{}'::text[] OR d.facet_codes && $8::text[] OR v.facet_codes && $8::text[])
+          AND ($9::text[] = '{}'::text[] OR d.facet_codes && $9::text[] OR v.facet_codes && $9::text[])
+          AND ($10::text[] = '{}'::text[] OR d.facet_codes && $10::text[] OR v.facet_codes && $10::text[])
+          AND ($11::text[] = '{}'::text[] OR d.facet_codes && $11::text[] OR v.facet_codes && $11::text[])
+          AND ($12::text[] = '{}'::text[] OR d.facet_codes && $12::text[] OR v.facet_codes && $12::text[])
+           AND ($26::text = '' OR v.price_amount >= $26::text::int8)
+           AND ($27::text = '' OR v.price_amount <= $27::text::int8)))
    AND ($13::text = '' OR (n1.value >= $14::text::numeric AND n1.value <= $15::text::numeric))
    AND ($16::text = '' OR (n2.value >= $17::text::numeric AND n2.value <= $18::text::numeric))
    AND ($19::text = '' OR (n3.value >= $20::text::numeric AND n3.value <= $21::text::numeric))
@@ -513,19 +677,56 @@ const OFFER_FILTERED_SQL = `SELECT d.offer_id, d.product_id, d.seller_id, d.name
 // The documents of a scope with their facet strings, for counting (the counting is done by the
 // caller, so the statement needs no aggregate). Same scope and range rules as above; the choice
 // groups are applied by the caller so an attribute's own options can ignore its own filter.
-const OFFER_FACET_ROWS_SQL = `SELECT d.product_id, d.facet_codes::text[] AS facets
+// Variants V8: the limit counts documents (Mojtaba, review of #744): at most `$14` documents of
+// the scope, a price asked keeping those with an in-stock unit within the bounds. Each document
+// comes once per such unit, with the unit's axis values beside its own facets, or once with null
+// unit facets when it has none. The caller counts products, never rows.
+const OFFER_FACET_ROWS_SQL = `SELECT s.offer_id, s.product_id, s.facets, v.facet_codes::text[] AS unit_facets
+  FROM (SELECT d.offer_id, d.product_id, d.facet_codes::text[] AS facets
+          FROM "search"."offer_documents" d
+          LEFT JOIN "search"."offer_document_numbers" n1 ON n1.market_id = $1 AND n1.offer_id = d.offer_id AND n1.attr = $5::text
+          LEFT JOIN "search"."offer_document_numbers" n2 ON n2.market_id = $1 AND n2.offer_id = d.offer_id AND n2.attr = $8::text
+          LEFT JOIN "search"."offer_document_numbers" n3 ON n3.market_id = $1 AND n3.offer_id = d.offer_id AND n3.attr = $11::text
+         WHERE d.market_id = $1
+           AND (($15::text = '' AND $16::text = '')
+             OR EXISTS (
+                SELECT 1 FROM "search"."offer_variant_documents" u
+                 WHERE u.market_id = $1 AND u.offer_id = d.offer_id
+                   AND u.in_stock = true AND u.price_amount >= 0
+                   AND ($15::text = '' OR u.price_amount >= $15::text::int8)
+                   AND ($16::text = '' OR u.price_amount <= $16::text::int8)))
+           AND ($3::text = '' OR d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text))
+           AND ($4::uuid[] = '{}'::uuid[] OR d.category_ids && $4::uuid[])
+           AND ($5::text = '' OR (n1.value >= $6::text::numeric AND n1.value <= $7::text::numeric))
+           AND ($8::text = '' OR (n2.value >= $9::text::numeric AND n2.value <= $10::text::numeric))
+           AND ($11::text = '' OR (n3.value >= $12::text::numeric AND n3.value <= $13::text::numeric))
+         ORDER BY d.offer_id ASC
+         LIMIT $14::text::int4) s
+  LEFT JOIN "search"."offer_variant_documents" v ON v.market_id = $1 AND v.offer_id = s.offer_id
+       AND v.in_stock = true AND v.price_amount >= 0
+       AND ($15::text = '' OR v.price_amount >= $15::text::int8)
+       AND ($16::text = '' OR v.price_amount <= $16::text::int8)
+ ORDER BY s.offer_id ASC, v.variant_id ASC`;
+
+// The documents of a text or category scope with the ids the counts need (search 1a): the caller
+// counts products, stores and categories, so no aggregate is needed.
+const OFFER_SCOPE_ROWS_SQL = `SELECT d.product_id, d.seller_id, d.category_ids::text[] AS category_ids
   FROM "search"."offer_documents" d
-  LEFT JOIN "search"."offer_document_numbers" n1 ON n1.market_id = $1 AND n1.offer_id = d.offer_id AND n1.attr = $5::text
-  LEFT JOIN "search"."offer_document_numbers" n2 ON n2.market_id = $1 AND n2.offer_id = d.offer_id AND n2.attr = $8::text
-  LEFT JOIN "search"."offer_document_numbers" n3 ON n3.market_id = $1 AND n3.offer_id = d.offer_id AND n3.attr = $11::text
  WHERE d.market_id = $1
    AND ($3::text = '' OR d.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text))
    AND ($4::uuid[] = '{}'::uuid[] OR d.category_ids && $4::uuid[])
-   AND ($5::text = '' OR (n1.value >= $6::text::numeric AND n1.value <= $7::text::numeric))
-   AND ($8::text = '' OR (n2.value >= $9::text::numeric AND n2.value <= $10::text::numeric))
-   AND ($11::text = '' OR (n3.value >= $12::text::numeric AND n3.value <= $13::text::numeric))
  ORDER BY d.offer_id ASC
- LIMIT $14::text::int4`;
+ LIMIT $5::text::int4`;
+
+// The store query (search 1a): stores whose name matches, with at least one indexed Offer.
+const STORE_SEARCH_SQL = `SELECT s.seller_id, s.slug, s.name,
+       ts_rank(s.search_vector, websearch_to_tsquery($2::regconfig, $3::text)) AS rank
+  FROM "search"."store_documents" s
+ WHERE s.market_id = $1
+   AND s.search_vector @@ websearch_to_tsquery($2::regconfig, $3::text)
+   AND EXISTS (SELECT 1 FROM "search"."offer_documents" d WHERE d.market_id = $1 AND d.seller_id = s.seller_id)
+ ORDER BY rank DESC, s.seller_id ASC
+ LIMIT $4::text::int4 OFFSET $5::text::int4`;
 
 // The stored numbers of some attributes over a scope (their lowest and highest are read by the caller).
 const OFFER_NUMBER_ROWS_SQL = `SELECT n.attr, n.value::text AS value
@@ -537,6 +738,49 @@ const OFFER_NUMBER_ROWS_SQL = `SELECT n.attr, n.value::text AS value
    AND ($4::uuid[] = '{}'::uuid[] OR d.category_ids && $4::uuid[])
  ORDER BY n.offer_id ASC
  LIMIT $6::text::int4`;
+
+// The suggest route (search 1b). `$3` is the prefix query text the application built from letters and
+// digits only (`word & word:*`), `$4` the same words restricted to weight A, the name (`word:A`), `$5`,
+// `$6` and `$7` are ILIKE patterns it built from the words (name starts with the text, with the first
+// word, contains the text). All bound; the visitor's text is never part of the SQL.
+// Tier 0: the name starts with the query (literally, or it has every word and starts with the first
+// word); 1: the name has every word (stems, punctuation and word order do not matter) or contains
+// the text; 2: seller or category only. ts_rank breaks ties. One Offer per product (the best one).
+const SUGGEST_TIER = (alias: string): string => `CASE
+         WHEN ${alias}.name ~~* $5::text
+           OR (${alias}.search_vector @@ to_tsquery($2::regconfig, $4::text) AND ${alias}.name ~~* $6::text) THEN 0
+         WHEN ${alias}.search_vector @@ to_tsquery($2::regconfig, $4::text) OR ${alias}.name ~~* $7::text THEN 1
+         ELSE 2 END`;
+
+const OFFER_SUGGEST_SQL = `SELECT m.offer_id, m.product_id, m.seller_id, m.name, m.category_ids, m.tier, m.rank
+  FROM (SELECT DISTINCT ON (d.product_id) d.offer_id, d.product_id, d.seller_id, d.name,
+               d.category_ids::text[] AS category_ids,
+               ${SUGGEST_TIER('d')} AS tier,
+               ts_rank(d.search_vector, to_tsquery($2::regconfig, $3::text)) AS rank
+          FROM "search"."offer_documents" d
+         WHERE d.market_id = $1
+           AND d.search_vector @@ to_tsquery($2::regconfig, $3::text)
+         ORDER BY d.product_id ASC, tier ASC, rank DESC, d.offer_id ASC) m
+ ORDER BY m.tier ASC, m.rank DESC, m.name ASC, m.product_id ASC
+ LIMIT $8::text::int4`;
+
+const OFFER_SUGGEST_SCOPE_ROWS_SQL = `SELECT DISTINCT ON (d.product_id) d.product_id, d.seller_id, d.category_ids::text[] AS category_ids
+  FROM "search"."offer_documents" d
+ WHERE d.market_id = $1
+   AND d.search_vector @@ to_tsquery($2::regconfig, $3::text)
+ ORDER BY d.product_id ASC, d.offer_id ASC
+ LIMIT $4::text::int4`;
+
+const STORE_SUGGEST_SQL = `SELECT s.seller_id, s.slug, s.name,
+       ${SUGGEST_TIER('s')} AS tier,
+       ts_rank(s.search_vector, to_tsquery($2::regconfig, $3::text)) AS rank
+  FROM "search"."store_documents" s
+ WHERE s.market_id = $1
+   AND EXISTS (SELECT 1 FROM "search"."offer_documents" d
+                WHERE d.market_id = $1 AND d.seller_id = s.seller_id
+                  AND d.search_vector @@ to_tsquery($2::regconfig, $3::text))
+ ORDER BY tier ASC, rank DESC, s.name ASC, s.seller_id ASC
+ LIMIT $8::text::int4`;
 
 /**
  * The list. `certification` holds S1 (with the badge columns of slice 10), S2 with the policy
@@ -762,6 +1006,8 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
       { name: 'priorMeanTimes1000', type: 'text' },
       { name: 'limit', type: 'text' },
       { name: 'offset', type: 'text' },
+      { name: 'priceMin', type: 'text' },
+      { name: 'priceMax', type: 'text' },
     ],
     parseRow: parseOfferSearchRow,
   },
@@ -778,8 +1024,90 @@ export const RAW_READ_STATEMENTS: readonly RawReadEntry[] = [
       { name: 'categoryIds', type: 'uuid[]', maxLength: 1000 },
       ...RANGE_PARAMS,
       { name: 'limit', type: 'text' },
+      { name: 'priceMin', type: 'text' },
+      { name: 'priceMax', type: 'text' },
     ],
     parseRow: parseOfferFacetRow,
+  },
+  {
+    id: 'search.offer-scope-rows',
+    owner: 'search',
+    reason:
+      'the documents of a text or category scope with product, seller and category ids, counted by the caller for the total, the store count and "In categories"; full-text search and array overlap are not in Prisma',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_SCOPE_ROWS_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'categoryIds', type: 'uuid[]', maxLength: 1000 },
+      { name: 'limit', type: 'text' },
+    ],
+    parseRow: parseOfferScopeRow,
+  },
+  {
+    id: 'search.store-search',
+    owner: 'search',
+    reason:
+      'full-text search over the store names with websearch_to_tsquery, @@ and ts_rank on the store_documents GIN index; Prisma has no ranked text search',
+    design: 'docs/modules/search/search.md',
+    sql: STORE_SEARCH_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'limit', type: 'text' },
+      { name: 'offset', type: 'text' },
+    ],
+    parseRow: parseStoreSearchRow,
+  },
+  {
+    id: 'search.offer-suggest',
+    owner: 'search',
+    reason:
+      'the suggest route: prefix full-text match (to_tsquery with :* on the last word) over offer_documents, one Offer per product, ordered by name tier (starts with, has every word, other) then ts_rank; Prisma has no ranked text search',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_SUGGEST_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'nameQuery', type: 'text' },
+      { name: 'startsWith', type: 'text' },
+      { name: 'firstWordStarts', type: 'text' },
+      { name: 'contains', type: 'text' },
+      { name: 'limit', type: 'text' },
+    ],
+    parseRow: parseOfferSuggestRow,
+  },
+  {
+    id: 'search.offer-suggest-scope-rows',
+    owner: 'search',
+    reason:
+      'one row per matching product (its first Offer) with seller and category ids, counted by the caller for the suggest total; full-text search is not in Prisma',
+    design: 'docs/modules/search/search.md',
+    sql: OFFER_SUGGEST_SCOPE_ROWS_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'limit', type: 'text' },
+    ],
+    parseRow: parseOfferScopeRow,
+  },
+  {
+    id: 'search.store-suggest',
+    owner: 'search',
+    reason:
+      'the suggest route: stores with an indexed Offer that matches the prefix query, ordered by name-starts-with, name-contains, other, then ts_rank; full-text search is not in Prisma',
+    design: 'docs/modules/search/search.md',
+    sql: STORE_SUGGEST_SQL,
+    params: [
+      { name: 'textSearchConfig', type: 'text' },
+      { name: 'query', type: 'text' },
+      { name: 'nameQuery', type: 'text' },
+      { name: 'startsWith', type: 'text' },
+      { name: 'firstWordStarts', type: 'text' },
+      { name: 'contains', type: 'text' },
+      { name: 'limit', type: 'text' },
+    ],
+    parseRow: parseStoreSuggestRow,
   },
   {
     id: 'search.offer-number-rows',

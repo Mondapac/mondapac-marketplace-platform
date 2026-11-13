@@ -10,6 +10,7 @@ import {
   type SellUnitKey,
   type VariantAxisValue,
 } from '../contracts/catalog.facade';
+import { sellUnitDisplaySku } from '../domain/offer-sell-unit';
 import { variantCodeOf } from '../domain/product';
 import { readAxisValues } from './variant-axis-values';
 
@@ -79,7 +80,7 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
         id: { in: [...new Set(keys.map((k) => k.offerId))] },
         status: 'published',
       },
-      select: { id: true, sellerId: true, productId: true, listed: true },
+      select: { id: true, sellerId: true, productId: true, listed: true, sellerSku: true },
     });
     if (offers.length === 0) return result;
     const products = await tx.catalogProduct.findMany({
@@ -146,6 +147,17 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
           select: { id: true, productId: true, variantNo: true },
         })
       ).map((row) => [`${row.productId}:${row.id}`, row.variantNo] as const),
+    );
+    const unitRows = await tx.catalogOfferSellUnit.findMany({
+      where: {
+        marketId: market.marketId,
+        offerId: { in: listedOffers.map((offer) => offer.id) },
+        variantId: { in: variantIds },
+      },
+      select: { offerId: true, variantId: true, variantSku: true, selling: true },
+    });
+    const unitOf = new Map(
+      unitRows.map((row) => [`${row.offerId}:${row.variantId}`, row] as const),
     );
     const firstImages = await tx.catalogProductRevisionImage.findMany({
       where: { marketId: market.marketId, revisionId: { in: revisionIds }, position: 1 },
@@ -231,6 +243,16 @@ export class PrismaOfferListingsReader implements OfferListingsReader {
             ? null
             : variantCodeOf(codeOf.get(offer.productId)!, variantNo),
         axes: inRevision ? (axesOf.get(`${revisionId}:${key.variantId}`) ?? []) : [],
+        selling: unitOf.get(`${offer.id}:${key.variantId}`)?.selling ?? true,
+        variantSku: unitOf.get(`${offer.id}:${key.variantId}`)?.variantSku ?? null,
+        displaySku:
+          variantNo === undefined || !inRevision
+            ? null
+            : sellUnitDisplaySku({
+                sellerSku: offer.sellerSku,
+                variantSku: unitOf.get(`${offer.id}:${key.variantId}`)?.variantSku ?? null,
+                variantNo,
+              }),
         primaryImageId: imageOf.get(revisionId) ?? null,
         tags: tagsOf.get(offer.id) ?? [],
       });

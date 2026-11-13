@@ -97,7 +97,9 @@ async function holds(probe: AccessProbe, context: CallContext): Promise<boolean>
 /**
  * The actions of the page and of one category for the calling admin. Each is allowed when the
  * caller holds the key (checked by the gate, through a probe) and is not in an acting-as session;
- * a category that is not `active` allows none of the edits. Advisory: every write checks again.
+ * a category that is not `active` allows none of the edits; move, merge and archive are allowed on
+ * a live (`active` or `hidden`) category, as their use cases are (C4a; review of #713). Advisory:
+ * every write checks again.
  * `status` is null for the page-level actions (create at the top, import, export).
  */
 export async function categoryActions(
@@ -118,12 +120,13 @@ export async function categoryActions(
     return { allowed: true };
   };
   const active = status === null || status === 'active';
+  const live = active || status === 'hidden';
   const actions: Record<string, ActionAnswer> = {};
   if (status === null) {
     actions['platform-category.create'] = answer(canEdit, true);
   } else {
     for (const code of EDIT_ACTIONS) actions[code] = answer(canEdit, active);
-    for (const code of RESTRUCTURE_ACTIONS) actions[code] = answer(canRestructure, active);
+    for (const code of RESTRUCTURE_ACTIONS) actions[code] = answer(canRestructure, live);
   }
   if (status === null) for (const code of IMPORT_ACTIONS) actions[code] = answer(canImport, true);
   return actions;

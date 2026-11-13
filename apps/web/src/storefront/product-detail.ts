@@ -2,7 +2,7 @@ import { formatDate } from '../format/date.ts';
 import { formatMoney } from '../format/money.ts';
 import { intlLocale } from '../i18n/locale.ts';
 import { isBrandSlug } from './brands.ts';
-import { imageIdsOf, type PhotoUrl } from './photos.ts';
+import { imageRefsOf, photoSetOf, type PhotoUrl } from './photos.ts';
 import { defaultVariantOf } from './variants.ts';
 import type {
   CertificationBadge,
@@ -34,8 +34,10 @@ export interface ProductDetailBody {
   readonly brand?: unknown;
   /** Attribute values grouped by family group; untrusted, read through {@link specificationsOf}. */
   readonly specifications?: unknown;
-  /** Photo references (`imageId`, size, alt), at most 8; read through {@link imageIdsOf}. */
+  /** Photo references (`imageId`, size, alt), at most 8; read through {@link imageRefsOf}. */
   readonly images?: unknown;
+  /** Photos a Variant shows (`variantId`, `imageIds`); untrusted, read through {@link variantPhotosOf}. */
+  readonly variantImages?: unknown;
   readonly offers: readonly {
     readonly offerId: string;
     readonly sellerId: string;
@@ -150,6 +152,21 @@ const DECIMAL = /^-?[0-9]{1,15}(\.[0-9]{1,9})?$/u;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+/**
+ * A decimal string (up to 15 integer and 9 fraction digits) as the language writes it, Latin
+ * digits, without passing through a floating point number: the digits shown are the digits stored.
+ */
+function decimalText(value: string, locale: string): string {
+  const negative = value.startsWith('-');
+  const [whole = '0', fraction] = (negative ? value.slice(1) : value).split('.');
+  const format = new Intl.NumberFormat(intlLocale(locale), { numberingSystem: 'latn' });
+  const point = format.formatToParts(1.1).find((part) => part.type === 'decimal')?.value ?? '.';
+  const text = format.format(BigInt(whole)) + (fraction === undefined ? '' : point + fraction);
+  // "-0" and "-0.0" are zero, not a negative number.
+  const zero = /^0*(\.0*)?$/u.test(value.replace('-', ''));
+  return negative && !zero ? `-${text}` : text;
+}
+
 /** One specification value as the line a buyer reads; null when it is malformed (never half a row). */
 function specificationValueOf(
   raw: unknown,
@@ -163,15 +180,14 @@ function specificationValueOf(
     case 'list': {
       if (!Array.isArray(raw.items)) return null;
       const items = (raw.items as unknown[]).filter(isText).slice(0, MAX_LIST);
-      return items.length === 0 ? null : items.join(', ');
+      // The language's own separator, with no "and" (a Persian list uses «،»).
+      return items.length === 0
+        ? null
+        : new Intl.ListFormat(intlLocale(locale), { style: 'short', type: 'unit' }).format(items);
     }
     case 'number':
-      // Latin digits whatever the language; the number is shown as the admin's own digits.
       return typeof raw.value === 'string' && DECIMAL.test(raw.value)
-        ? new Intl.NumberFormat(intlLocale(locale), {
-            numberingSystem: 'latn',
-            maximumFractionDigits: 9,
-          }).format(Number(raw.value))
+        ? decimalText(raw.value, locale)
         : null;
     case 'boolean':
       return typeof raw.value === 'boolean'
@@ -335,6 +351,29 @@ export function variantFromParam(
 }
 
 /**
+ * The positions in `shown` of the photos each Variant picked: a Variant id to indexes, main photo
+ * first. An entry that is not the expected shape, a photo that is not one of the product's shown
+ * photos and a repeated photo are dropped on their own; a Variant left with none is absent (it
+ * shows the product's photos).
+ */
+function variantPhotosOf(raw: unknown, shown: readonly string[]): Map<string, number[]> {
+  const found = new Map<string, number[]>();
+  if (!Array.isArray(raw)) return found;
+  for (const entry of raw as unknown[]) {
+    if (typeof entry !== 'object' || entry === null) continue;
+    const { variantId, imageIds } = entry as { variantId?: unknown; imageIds?: unknown };
+    if (typeof variantId !== 'string' || !Array.isArray(imageIds)) continue;
+    const indexes: number[] = [];
+    for (const id of imageIds as unknown[]) {
+      const at = typeof id === 'string' ? shown.indexOf(id) : -1;
+      if (at >= 0 && !indexes.includes(at)) indexes.push(at);
+    }
+    if (indexes.length > 0) found.set(variantId, indexes);
+  }
+  return found;
+}
+
+/**
  * The page's product from the API answer, or undefined when no offer can be shown. Each Variant
  * keeps the sellers that sell it; the page opens on the default Variant ({@link defaultVariantOf}).
  * A seller without a public store name is left out. "Only N left" is the API's `onlyLeft` in the
@@ -346,7 +385,24 @@ export function productDetailOf(
   labels: ProductDetailLabels,
   photo: PhotoUrl | null = null,
 ): ProductDetail | undefined {
-  const all = variantsOf(body, locale, labels);
+  const refs = photo === null ? [] : imageRefsOf(body.images);
+  // Both sizes or neither: an id the builder refuses drops that photo from all lists.
+  const shots = refs.flatMap((ref) => {
+    const large = photo?.(body.productId, ref.imageId, 'large');
+    const thumb = photo?.(body.productId, ref.imageId, 'thumb');
+    const set = photo === null ? undefined : photoSetOf(photo, body.productId, ref, 'large');
+    return large === undefined || thumb === undefined || set === undefined
+      ? []
+      : [{ id: ref.imageId, large, thumb, set }];
+  });
+  const picks = variantPhotosOf(
+    body.variantImages,
+    shots.map((shot) => shot.id),
+  );
+  const all = variantsOf(body, locale, labels).map((variant) => {
+    const photoIndexes = picks.get(variant.id);
+    return photoIndexes === undefined ? variant : { ...variant, photoIndexes };
+  });
   const [firstVariant, secondVariant, ...restVariants] = all;
   if (firstVariant === undefined) return undefined;
   const variants =
@@ -354,13 +410,6 @@ export function productDetailOf(
       ? undefined
       : ([firstVariant, secondVariant, ...restVariants] as const);
   const offers = variants === undefined ? firstVariant.offers : defaultVariantOf(variants).offers;
-  const ids = photo === null ? [] : imageIdsOf(body.images);
-  // Both sizes or neither: an id the builder refuses drops that photo from both lists.
-  const shots = ids.flatMap((id) => {
-    const large = photo?.(body.productId, id, 'large');
-    const thumb = photo?.(body.productId, id, 'thumb');
-    return large === undefined || thumb === undefined ? [] : [{ large, thumb }];
-  });
   return {
     id: body.productId,
     name: body.name,
@@ -369,6 +418,7 @@ export function productDetailOf(
     specifications: specificationsOf(body.specifications, locale, labels),
     ...(brandRefOf(body.brand) === undefined ? {} : { brand: brandRefOf(body.brand)! }),
     photos: shots.map((shot) => shot.large),
+    ...(shots.length > 0 ? { photoSets: shots.map((shot) => shot.set) } : {}),
     ...(shots.length > 1 ? { photoThumbs: shots.map((shot) => shot.thumb) } : {}),
     offers,
     ...(variants === undefined ? {} : { variants }),

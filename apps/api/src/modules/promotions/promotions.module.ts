@@ -11,6 +11,8 @@ import {
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
+import { CatalogModule } from '../catalog';
+import { CommissionPayoutsModule } from '../commission-payouts';
 import { PricingModule } from '../pricing';
 import { SellersModule } from '../sellers';
 import { WalletModule } from '../wallet';
@@ -31,6 +33,8 @@ import { PROMOTION_REPOSITORY } from './application/ports/promotion.repository';
 import { PROMOTIONS_POLICY } from './application/ports/promotions-policy';
 import { REVIEW_QUEUE_REPOSITORY } from './application/ports/review-queue.repository';
 import { SELLER_ACTIVITY } from './application/ports/seller-activity';
+import { SELLER_CATALOGUE } from './application/ports/seller-catalogue';
+import { SELLER_COMMISSION } from './application/ports/seller-commission';
 import {
   FIRST_ORDER_SETTINGS_REPOSITORY,
   SHIPPING_THRESHOLD_REPOSITORY,
@@ -60,6 +64,8 @@ import { PreviewQuote } from './application/use-cases/preview-quote.use-case';
 import { QuoteDiscounts } from './application/use-cases/quote-discounts.use-case';
 import { ResumeOwnPromotion } from './application/use-cases/resume-own-promotion.use-case';
 import { ResumePromotion } from './application/use-cases/resume-promotion.use-case';
+import { ListSellerCampaigns } from './application/use-cases/list-seller-campaigns.use-case';
+import { PreviewSellerPayout } from './application/use-cases/preview-seller-payout.use-case';
 import { SetCoFundingOptIn } from './application/use-cases/set-co-funding-opt-in.use-case';
 import { SetFirstOrderSettings } from './application/use-cases/set-first-order-settings.use-case';
 import { SetFreeShippingThreshold } from './application/use-cases/set-free-shipping-threshold.use-case';
@@ -99,6 +105,8 @@ const PORTS: readonly [keyof PromotionsDependencies, InjectionToken][] = [
   ['flashSales', FLASH_SALES],
   ['sellerActivity', SELLER_ACTIVITY],
   ['priceHistory', PRICE_HISTORY],
+  ['sellerCommission', SELLER_COMMISSION],
+  ['sellerCatalogue', SELLER_CATALOGUE],
   ['orderHistory', CUSTOMER_ORDER_HISTORY],
   ['storeFollows', STORE_FOLLOWS],
   ['orderFacts', DELIVERED_ORDER_FACTS],
@@ -135,7 +143,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * reservation, the ledger and refunds come in later packages.
  */
 @Module({
-  imports: [PricingModule, SellersModule, WalletModule],
+  imports: [CatalogModule, CommissionPayoutsModule, PricingModule, SellersModule, WalletModule],
   controllers: [AdminPromotionsController, SellerPromotionsController, CustomerReferralController],
   providers: [
     PersistenceModule.auditWriterFor('promotions'),
@@ -169,6 +177,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ResumeOwnPromotion,
       ListOwnPromotions,
       SetCoFundingOptIn,
+      ListSellerCampaigns,
+      PreviewSellerPayout,
       QuoteDiscounts,
       CheckWasPrice,
       ListPromotionCredits,

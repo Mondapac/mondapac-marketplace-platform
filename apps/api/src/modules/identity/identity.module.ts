@@ -37,6 +37,8 @@ import {
 } from './application/access/effective-keys';
 import {
   AdminJobIdentityResolver,
+  jobIdentityResolverOf,
+  SellerJobIdentityResolver,
   SessionAuthenticator,
 } from './application/access/session-authenticator';
 import { ACCESS_DECISION_REPOSITORY } from './application/ports/access-decision.repository';
@@ -488,12 +490,17 @@ function useCaseProvider<D, U>(
     },
     {
       provide: JOB_IDENTITY_RESOLVER,
-      inject: [UNIT_OF_WORK, ACCOUNT_REPOSITORY, SESSION_REPOSITORY],
+      inject: [UNIT_OF_WORK, ACCOUNT_REPOSITORY, SESSION_REPOSITORY, SELLER_MEMBERSHIP_REPOSITORY],
       useFactory: (
         unitOfWork: UnitOfWork,
         accounts: AccountRepository,
         sessions: SessionRepository,
-      ) => new AdminJobIdentityResolver({ unitOfWork, accounts, sessions }),
+        memberships: SellerMembershipRepository,
+      ) =>
+        jobIdentityResolverOf(
+          new AdminJobIdentityResolver({ unitOfWork, accounts, sessions }),
+          new SellerJobIdentityResolver({ unitOfWork, accounts, sessions, memberships }),
+        ),
     },
     {
       provide: JOB_CALL_CONTEXTS,
@@ -590,6 +597,7 @@ function useCaseProvider<D, U>(
       effectiveKeys: true,
       factors: true,
       records: true,
+      policy: true,
     }),
     useCaseProvider(PurgeExpired, {
       unitOfWork: true,

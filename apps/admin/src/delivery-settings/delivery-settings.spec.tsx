@@ -235,7 +235,12 @@ describe('the delivery settings page', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Instant delivery').disabled).toBe(true);
     expect(screen.getByLabelText<HTMLSelectElement>('Window length').disabled).toBe(true);
     expect(screen.getByLabelText<HTMLInputElement>('Cut-off time').disabled).toBe(true);
-    expect(screen.getByText(/You can view these settings but not change them/)).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Your role can see these settings but not change them. An admin who manages roles can give you access.',
+      ),
+    ).toBeTruthy();
   });
 
   it('saves the whole set with the version read and shows the answer', async () => {
@@ -262,7 +267,7 @@ describe('the delivery settings page', () => {
     expect(call).not.toHaveBeenCalled();
     pressInDialog('Confirm and save');
 
-    await expectToast(/Delivery settings saved/);
+    await expectToast('Delivery rules saved.');
     expect(call).toHaveBeenCalledTimes(1);
     expect(call).toHaveBeenCalledWith(
       'PUT',
@@ -321,7 +326,7 @@ describe('the delivery settings page', () => {
     expect(field.getAttribute('aria-describedby')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
     const summary = screen.getByRole('group', { name: /needs? fixing/ });
-    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(summary.textContent).toContain('1 setting needs fixing');
     // The summary names the field and the reason, the same text as under the field.
     expect(summary.textContent).toContain('Percentage: Enter a percentage from 0 to 100');
     expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
@@ -468,6 +473,9 @@ describe('the delivery settings page', () => {
     // The draft stays; the compare list names what is saved now.
     expect(screen.getByLabelText<HTMLInputElement>('Days ahead').value).toBe('9');
     expect(screen.getByText('1 unsaved change')).toBeTruthy();
+    expect(
+      screen.getByText('Your 1 change is kept. Review what changed, then save again.'),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
     expect(compared('Days ahead')).toMatchObject({ saved: '4', yours: '9' });
 

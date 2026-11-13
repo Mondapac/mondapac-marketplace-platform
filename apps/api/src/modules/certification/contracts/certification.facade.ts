@@ -16,6 +16,22 @@ export interface CertificationUnavailable {
   readonly code: 'certification.unavailable';
 }
 
+/**
+ * `assertCategoriesRetirable` refused (design 3.7, 8.1; B2): a `NOT_APPLICABLE` or
+ * `SELLER_REQUIRED` row of a published or pending policy revision names one of the categories.
+ * The codes of those types, sorted; an admin moves or removes the rows first.
+ */
+export interface CategoryReferencedByPolicy {
+  readonly code: 'category.referenced-by-policy';
+  readonly typeCodes: readonly string[];
+}
+
+/** What `platformCategoriesRetired` did: new flags, and how many of them name a relaxing row. */
+export interface RetiredCategoriesFlagged {
+  readonly flagged: number;
+  readonly relaxing: number;
+}
+
 /** What `sellerCertificateOverview` answers per seller: type codes only, no certificate fields. */
 export interface SellerCertificateOverviewRow {
   readonly sellerId: Id<'Seller'>;
@@ -124,6 +140,40 @@ export interface CertificationFacade {
   ): Promise<Result<readonly Id<'Category'>[], AccessDenied | CertificationUnavailable>>;
 
   /**
+   * Before `catalog` moves, merges or archives platform categories (design 3.7, 8.1; C-4; B2;
+   * ADR-0028 d5): `ok`, or `category.referenced-by-policy` with the type codes while a
+   * `NOT_APPLICABLE` or `SELLER_REQUIRED` row of a policy's published revision, or of the revision
+   * a pending relaxation would publish, names one of the ids (such a row stops matching once the
+   * category is gone, and its lapse could relax a claim). `SELLER_OR_MANUFACTURER` rows do not
+   * block. A move passes the moved subtree and its old ancestors that are not ancestors after the
+   * move (a row on such an ancestor stops matching the moved products' paths); a merge passes the
+   * source and its ancestors that are not the target's; an archive passes the category and each
+   * ancestor that some product on it leaves (one its remaining live categories are not under).
+   * Each also passes the `merged` categories whose products resolve to an id it passes. 1 to 5000
+   * distinct ids; an empty, larger or malformed call is refused whole. A failed read is
+   * `certification.unavailable`: the caller refuses its change (fail closed). The answer is the
+   * same for every caller. Two use cases: `anonymous` for request actors, `system` for handlers
+   * and jobs. Not exposed over HTTP.
+   */
+  assertCategoriesRetirable(
+    context: CallContext,
+    categoryIds: readonly string[],
+  ): Promise<Result<void, Failure | CategoryReferencedByPolicy>>;
+
+  /**
+   * The backstop after `catalog`'s commit of a move, merge or archive (design 3.7, 8.1; C-4), with
+   * the same ids the check cleared (for a move: the ids that left the products' paths): flags every
+   * id a published or pending policy row names, once, and alerts the admins (a security event)
+   * when a flagged category has a `NOT_APPLICABLE` or `SELLER_REQUIRED` row. Never rewrites a row.
+   * Idempotent. Rule `system` (`catalog`'s own handler of its events, outside its unit). A fault is
+   * `certification.unavailable`; the handler retries.
+   */
+  platformCategoriesRetired(
+    context: CallContext,
+    categoryIds: readonly string[],
+  ): Promise<Result<RetiredCategoriesFlagged, Failure>>;
+
+  /**
    * For the sellers admin list (SEL-10, CERT-30): per requested seller (at most 100 distinct ids),
    * the type codes with a valid certificate and with one awaiting review. Admin callers holding
    * `certification.seller-certificate.view` only; the claim is decided by `evaluateClaims` alone.
@@ -132,6 +182,43 @@ export interface CertificationFacade {
     context: CallContext,
     sellerIds: readonly string[],
   ): Promise<Result<readonly SellerCertificateOverviewRow[], Failure>>;
+
+  /**
+   * Multi-culture (ADR-0047 decisions 3 and 5, ADR-0048 security review M2): per requested seller
+   * (at most 100 distinct ids, one row each), which of the asked type codes (at most 20) the seller
+   * holds a valid certificate of now, by the one canonical measure `sellerCertificateValidAt`
+   * that `evaluateClaims` uses (issuer allow-list, required expiry, both seller zones, the
+   * earliest boundary). Type codes only, no
+   * certificate data and no review state. A membership precondition for a culture with a required
+   * certification type, never a claim (`evaluateClaims` alone decides a tag). Two use cases:
+   * `anonymous` for request actors, `system` for handlers and jobs. A failed read is
+   * `certification.unavailable`, never an empty answer: callers fail closed. Not exposed over HTTP.
+   */
+  sellerValidCertificateTypes(
+    context: CallContext,
+    sellerIds: readonly string[],
+    typeCodes: readonly string[],
+  ): Promise<Result<readonly SellerValidCertificateTypesRow[], Failure>>;
+
+  /**
+   * Multi-culture package 3a (ADR-0048 security review M3): one page (at most 200) of the sellers
+   * holding an approved certificate whose approved submission names the issuer, in seller id order
+   * after `afterSellerId` (null: from the start). Seller ids only. `system` only (the sellers
+   * handler of a derecognised issuer); any other actor is denied by the gate. A failed read is
+   * `certification.unavailable`.
+   */
+  sellersOfIssuer(
+    context: CallContext,
+    issuerId: string,
+    afterSellerId: string | null,
+    limit: number,
+  ): Promise<Result<readonly Id<'Seller'>[], Failure>>;
+}
+
+/** What `sellerValidCertificateTypes` answers per seller: type codes only. */
+export interface SellerValidCertificateTypesRow {
+  readonly sellerId: Id<'Seller'>;
+  readonly validTypeCodes: readonly string[];
 }
 
 /** Nest token of the {@link CertificationFacade}, provided and exported by `CertificationModule`. */

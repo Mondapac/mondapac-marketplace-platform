@@ -75,6 +75,7 @@ const originFilter: FilterDefinition = {
 };
 
 const row = (n: number, ...facets: string[]): FacetRow => ({
+  offerId: id<'Offer'>(0x90 + n),
   productId: id<'Product'>(0x90 + n),
   facets,
 });
@@ -124,8 +125,13 @@ describe('SearchProducts with attribute filters', () => {
   const deps = (): SearchDependencies =>
     ({
       unitOfWork: new FakeUnitOfWork(),
-      reader,
-      facets,
+      index: { ...reader, ...facets, scopeRows: () => Promise.resolve([]) },
+      storeDocuments: { upsertMany: () => Promise.resolve(), deleteMany: () => Promise.resolve(0) },
+      categoryTree: { tree: () => Promise.resolve([]) },
+      cultures: {
+        visibleCodes: () => Promise.resolve(new Map()),
+      },
+      storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
       filterSource,
       policy: new ConfigSearchPolicy(markets),
       visibility: {
@@ -141,6 +147,11 @@ describe('SearchProducts with attribute filters', () => {
       shelves: {
         browseBySeller: () => Promise.resolve([]),
         browseByProducts: () => Promise.resolve([]),
+      },
+      variants: {
+        sellUnitsOf: () => Promise.resolve(new Map()),
+        unitsWithGtin: () => Promise.resolve([]),
+        hitsOf: () => Promise.resolve([]),
       },
     }) as unknown as SearchDependencies;
   const search = (input: Parameters<SearchProducts['execute']>[1]) =>

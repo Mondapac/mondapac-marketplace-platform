@@ -1,5 +1,20 @@
-import { ATTRIBUTE_DATA_TYPES, err, ok, parsePlainText } from '@mondapac/shared-kernel';
-import type { AttributeDataType, Id, MarketId, Result, Temporal } from '@mondapac/shared-kernel';
+import {
+  ATTRIBUTE_DATA_TYPES,
+  err,
+  MEASURE_DECIMALS_MAX,
+  MEASURE_DIMENSIONS,
+  measureUnit,
+  ok,
+  parsePlainText,
+} from '@mondapac/shared-kernel';
+import type {
+  AttributeDataType,
+  Id,
+  MarketId,
+  MeasureSettings,
+  Result,
+  Temporal,
+} from '@mondapac/shared-kernel';
 import type { CategoryAuthorKind } from './platform-category';
 
 const CODE = /^[a-z][a-z0-9_-]{0,63}$/;
@@ -16,8 +31,11 @@ export type LocalizedText = { readonly [locale: string]: string };
 
 export interface AttributeBounds {
   readonly maxLength?: number;
+  /** For a `measure`: in the dimension's base unit (g, ml, mm, count), not the unit a seller picks. */
   readonly min?: number;
   readonly max?: number;
+  /** A `measure` definition only (attributes A3): dimension, offered units, default, places. */
+  readonly measure?: MeasureSettings;
 }
 
 export interface AttributeOption {
@@ -88,6 +106,10 @@ export type AttributeDefinitionRefusal =
     }
   | { readonly code: 'attribute-definition.locale-invalid' }
   | { readonly code: 'attribute-definition.bounds-invalid' }
+  /** A `measure` without unit settings, settings on another type, or settings that don't add up. */
+  | { readonly code: 'attribute-definition.measure-invalid' }
+  /** A published `measure` keeps its dimension and never drops a unit that stored values use. */
+  | { readonly code: 'attribute-definition.measure-locked' }
   | { readonly code: 'attribute-definition.options-required' }
   | { readonly code: 'attribute-definition.options-not-allowed' }
   | { readonly code: 'attribute-definition.option-invalid' }
@@ -122,7 +144,15 @@ export type AttributeDefinitionRefusal =
   /** A value of the merged attribute has no target value, or a target that cannot be used. */
   | { readonly code: 'attribute-definition.merge-unmapped'; readonly option: string }
   /** A `material` attribute is archived, and so merged, only with a second administrator. */
-  | { readonly code: 'attribute-definition.merge-material' };
+  | { readonly code: 'attribute-definition.merge-material' }
+  /** The type change is not one of the listed paths (attributes A8). */
+  | { readonly code: 'attribute-definition.convert-invalid' }
+  /** A variant option is a select; it never becomes a multi-select (attributes A8). */
+  | { readonly code: 'attribute-definition.convert-variant' }
+  /** A `material` attribute is not converted: a second administrator would be needed. */
+  | { readonly code: 'attribute-definition.convert-material' }
+  /** Attributes were merged into this one, or this one was merged: the types must stay equal. */
+  | { readonly code: 'attribute-definition.convert-merged' };
 
 /** `true` when the text is one an administrator may show a customer (CA5, PlainText). */
 function validText(text: string): boolean {
@@ -181,12 +211,16 @@ function checkContent(input: {
   if (nameProblem !== null) return nameProblem;
 
   const textual = dataType === 'text' || dataType === 'long-text';
-  const numeric = dataType === 'integer' || dataType === 'decimal';
+  const isMeasure = dataType === 'measure';
+  const numeric = dataType === 'integer' || dataType === 'decimal' || isMeasure;
   const { maxLength, min, max } = input.bounds;
+  const measureProblem = measureSettingsRefusal(dataType, input.bounds);
+  if (measureProblem !== null) return measureProblem;
   const boundsOk =
     isFinitePositive(maxLength) &&
     (maxLength === undefined || textual) &&
     ((min === undefined && max === undefined) || numeric) &&
+    (!isMeasure || ((min === undefined || min >= 0) && (max === undefined || max >= 0))) &&
     (min === undefined || Number.isFinite(min)) &&
     (max === undefined || Number.isFinite(max)) &&
     (dataType !== 'integer' ||
@@ -222,6 +256,40 @@ function checkContent(input: {
     if (labelProblem !== null) return labelProblem;
   }
   return checkDisplay(input.display);
+}
+
+/**
+ * A `measure` carries its unit settings in `bounds.measure`; no other type may (attributes A3).
+ * The dimension is one the platform knows, every offered unit belongs to it, the default is one
+ * of them, and the decimal places are 0 to {@link MEASURE_DECIMALS_MAX}. Which units the Market
+ * offers is the use case's check, against the Market's `catalog.units`.
+ */
+function measureSettingsRefusal(
+  dataType: AttributeDataType,
+  bounds: AttributeBounds,
+): AttributeDefinitionRefusal | null {
+  const settings = bounds.measure;
+  const refused = { code: 'attribute-definition.measure-invalid' } as const;
+  if (dataType !== 'measure') return settings === undefined ? null : refused;
+  if (settings === undefined) return refused;
+  if (!(MEASURE_DIMENSIONS as readonly string[]).includes(settings.dimension)) return refused;
+  const offered: readonly string[] = Array.isArray(settings.units)
+    ? (settings.units as readonly string[])
+    : [];
+  if (offered.length === 0) return refused;
+  if (new Set(offered).size !== offered.length) return refused;
+  for (const code of offered) {
+    if (measureUnit(code)?.dimension !== settings.dimension) return refused;
+  }
+  if (!offered.includes(settings.defaultUnit)) return refused;
+  if (
+    !Number.isInteger(settings.decimals) ||
+    settings.decimals < 0 ||
+    settings.decimals > MEASURE_DECIMALS_MAX
+  ) {
+    return refused;
+  }
+  return null;
 }
 
 const isFinitePositive = (value: number | undefined): boolean =>
@@ -396,6 +464,17 @@ export class AttributeDefinition {
     if (published && current.material && !input.material) {
       return err({ code: 'attribute-definition.material-relaxation-required' });
     }
+    if (published && current.dataType === 'measure') {
+      const was = current.bounds.measure;
+      const next = input.bounds.measure;
+      if (
+        was !== undefined &&
+        next !== undefined &&
+        (next.dimension !== was.dimension || was.units.some((unit) => !next.units.includes(unit)))
+      ) {
+        return err({ code: 'attribute-definition.measure-locked' });
+      }
+    }
     const before = new Map(current.options.map((option) => [option.code, option]));
     const kept = new Set(input.options.map((option) => option.code));
     for (const code of before.keys()) {
@@ -527,6 +606,40 @@ export class AttributeDefinition {
         revisionId: input.revisionId,
         revisionNo: current.revisionNo + 1,
         options,
+        version: current.version + 1,
+        revisedAt: input.now,
+      }),
+    );
+  }
+
+  /**
+   * The next revision with another data type (attributes A8, plan decision ت۵), for the listed
+   * paths only: a whole number to a decimal, a select to a multi-select. Nothing else changes.
+   * Every stored value stays valid and is read as the new type (a whole number is a decimal, one
+   * value is a list of one), so no product revision is rewritten. Only a published definition that
+   * is not `material` and not a variant option. Whether others were merged into it is read by
+   * the use case.
+   */
+  convertType(input: {
+    readonly revisionId: Id<'AttributeDefinitionRevision'>;
+    readonly to: string;
+    readonly now: Temporal.Instant;
+  }): Result<AttributeDefinition, AttributeDefinitionRefusal> {
+    const current = this.#state;
+    if (current.status === 'archived') return err({ code: 'attribute-definition.archived' });
+    if (current.status !== 'active') return err({ code: 'attribute-definition.not-published' });
+    const allowed =
+      (current.dataType === 'integer' && input.to === 'decimal') ||
+      (current.dataType === 'select' && input.to === 'multi-select');
+    if (!allowed) return err({ code: 'attribute-definition.convert-invalid' });
+    if (current.material) return err({ code: 'attribute-definition.convert-material' });
+    if (current.isVariantOption) return err({ code: 'attribute-definition.convert-variant' });
+    return ok(
+      new AttributeDefinition({
+        ...current,
+        dataType: input.to,
+        revisionId: input.revisionId,
+        revisionNo: current.revisionNo + 1,
         version: current.version + 1,
         revisedAt: input.now,
       }),

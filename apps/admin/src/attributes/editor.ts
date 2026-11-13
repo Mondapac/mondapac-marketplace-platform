@@ -3,7 +3,13 @@
 // refusal of the API reads. Pure functions, tested without a browser.
 
 import type { ApiFailure } from '../api/client.ts';
-import { CHOICE_TYPES, type AttributeDetail, type DataType, type Localized } from './types.ts';
+import {
+  CHOICE_TYPES,
+  type AttributeDetail,
+  type DataType,
+  type Localized,
+  type MarketUnit,
+} from './types.ts';
 
 /** The longest name or value label the API keeps (domain TEXT_MAX). */
 export const NAME_MAX = 120;
@@ -35,12 +41,47 @@ export interface EditorForm {
   readonly maxLength: string;
   readonly min: string;
   readonly max: string;
+  /** A measure's unit settings (attributes A3); `min` and `max` are then in the base unit. */
+  readonly measureDimension: string;
+  readonly measureUnits: readonly string[];
+  readonly measureDefaultUnit: string;
+  readonly measureDecimals: string;
   readonly values: readonly ValueRow[];
   readonly showOnProductPage: boolean;
   readonly searchable: boolean;
   readonly canBeFilter: boolean;
   readonly internalNote: string;
   readonly position: string;
+}
+
+/** The dimensions a measure can have, and each one's base unit (the stored unit). */
+export const MEASURE_DIMENSIONS = ['mass', 'volume', 'length', 'count'] as const;
+export const BASE_UNIT: Readonly<Record<string, string>> = {
+  mass: 'g',
+  volume: 'ml',
+  length: 'mm',
+  count: 'count',
+};
+/** The most decimal places an administrator may allow. */
+export const DECIMALS_MAX = 6;
+
+/** The Market's units of one dimension, in the Market's order. */
+export function unitsOf(units: readonly MarketUnit[], dimension: string): readonly MarketUnit[] {
+  return units.filter((unit) => unit.dimension === dimension);
+}
+
+/** The unit settings a measure starts with: every unit of the dimension, the base unit as default. */
+export function measureDefaults(
+  units: readonly MarketUnit[],
+  dimension: string,
+): Pick<EditorForm, 'measureDimension' | 'measureUnits' | 'measureDefaultUnit'> {
+  const offered = unitsOf(units, dimension).map((unit) => unit.code);
+  const base = BASE_UNIT[dimension] ?? '';
+  return {
+    measureDimension: dimension,
+    measureUnits: offered,
+    measureDefaultUnit: offered.includes(base) ? base : (offered[0] ?? ''),
+  };
 }
 
 const numberText = (value: number | undefined): string =>
@@ -56,6 +97,10 @@ export function formOf(detail: AttributeDetail): EditorForm {
     maxLength: numberText(detail.bounds.maxLength),
     min: numberText(detail.bounds.min),
     max: numberText(detail.bounds.max),
+    measureDimension: detail.bounds.measure?.dimension ?? 'mass',
+    measureUnits: detail.bounds.measure?.units ?? [],
+    measureDefaultUnit: detail.bounds.measure?.defaultUnit ?? '',
+    measureDecimals: numberText(detail.bounds.measure?.decimals ?? 0),
     values: [...detail.options]
       .sort((a, b) => a.position - b.position)
       .map((option) => ({
@@ -83,6 +128,10 @@ export function emptyForm(): EditorForm {
     maxLength: '',
     min: '',
     max: '',
+    measureDimension: 'mass',
+    measureUnits: [],
+    measureDefaultUnit: '',
+    measureDecimals: '0',
     values: [],
     showOnProductPage: true,
     searchable: false,
@@ -136,17 +185,30 @@ function filled(map: Readonly<Record<string, string>>): Localized {
   return out;
 }
 
-const NUMERIC: ReadonlySet<string> = new Set(['integer', 'decimal']);
+const NUMERIC: ReadonlySet<string> = new Set(['integer', 'decimal', 'measure']);
 const TEXTUAL: ReadonlySet<string> = new Set(['text', 'long-text']);
 
 function boundsOf(form: EditorForm, dataType: DataType) {
-  const out: { maxLength?: number; min?: number; max?: number } = {};
+  const out: {
+    maxLength?: number;
+    min?: number;
+    max?: number;
+    measure?: { dimension: string; units: string[]; defaultUnit: string; decimals: number };
+  } = {};
   if (TEXTUAL.has(dataType) && form.maxLength.trim() !== '') {
     out.maxLength = Number(form.maxLength);
   }
   if (NUMERIC.has(dataType)) {
     if (form.min.trim() !== '') out.min = Number(form.min);
     if (form.max.trim() !== '') out.max = Number(form.max);
+  }
+  if (dataType === 'measure') {
+    out.measure = {
+      dimension: form.measureDimension,
+      units: [...form.measureUnits],
+      defaultUnit: form.measureDefaultUnit,
+      decimals: Number(form.measureDecimals),
+    };
   }
   return out;
 }
@@ -255,8 +317,19 @@ export function checkForm(
   if (TEXTUAL.has(dataType) && form.maxLength.trim() !== '' && !WHOLE.test(form.maxLength.trim())) {
     errors['bounds.maxLength'] = 'number';
   }
+  if (dataType === 'measure') {
+    if (form.measureUnits.length === 0) errors['bounds.measure.units'] = 'required';
+    else if (!form.measureUnits.includes(form.measureDefaultUnit)) {
+      errors['bounds.measure.defaultUnit'] = 'required';
+    }
+    const places = form.measureDecimals.trim();
+    if (!WHOLE.test(places) || Number(places) > DECIMALS_MAX) {
+      errors['bounds.measure.decimals'] = 'number';
+    }
+  }
   if (NUMERIC.has(dataType)) {
-    const pattern = dataType === 'integer' ? /^-?\d+$/ : DECIMAL;
+    const pattern =
+      dataType === 'integer' ? /^-?\d+$/ : dataType === 'measure' ? /^\d+(\.\d+)?$/ : DECIMAL;
     for (const key of ['min', 'max'] as const) {
       const text = form[key].trim();
       if (text !== '' && (!pattern.test(text) || !Number.isFinite(Number(text)))) {
@@ -315,6 +388,8 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'attribute-definition.archived': 'archived',
   'attribute-definition.option-removed': 'option-removed',
   'attribute-definition.variant-locked': 'variant-locked',
+  'attribute-definition.measure-invalid': 'measure-invalid',
+  'attribute-definition.measure-locked': 'measure-locked',
   'attribute-definition.material-relaxation-required': 'material-relaxation',
   'attribute-definition.default-name-required': 'default-name-required',
   'attribute-definition.default-label-required': 'default-label-required',
@@ -339,6 +414,10 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'attribute-definition.merge-type-mismatch': 'merge-type-mismatch',
   'attribute-definition.merge-unmapped': 'merge-unmapped',
   'attribute-definition.merge-material': 'merge-material',
+  'attribute-definition.convert-invalid': 'convert-invalid',
+  'attribute-definition.convert-variant': 'convert-variant',
+  'attribute-definition.convert-material': 'convert-material',
+  'attribute-definition.convert-merged': 'convert-merged',
   'attribute-definition.not-published': 'not-published',
   'attribute.archive-needs-second-admin': 'archive-needs-second-admin',
   'attribute.archive-not-material': 'archive-not-material',
@@ -419,6 +498,7 @@ export function fieldKey(reason: string): string {
     case 'number':
     case 'below-min':
     case 'unavailable':
+    case 'not-offered':
       return reason;
     default:
       return 'other';

@@ -156,7 +156,7 @@ export class FixedFactsClaimQueryBuilder extends ClaimQueryBuilder {
     super({
       products: { findById: unused } as never,
       revisions: { find: unused } as never,
-      categoryPaths: { livePaths: unused },
+      categoryPaths: { livePaths: unused, livePathsMany: unused },
     });
   }
 
@@ -187,6 +187,27 @@ export class FixedFactsClaimQueryBuilder extends ClaimQueryBuilder {
     this.publishedReads += 1;
     this.onPublishedRead?.(this.publishedReads, this);
     return Promise.resolve({ facts: this.published, productVersion: this.productVersion });
+  }
+
+  /** Batched reads so far (`publishedSnapshots`); each answers the fixed facts for every product. */
+  publishedBatches = 0;
+
+  override publishedSnapshots(
+    _market: MarketContext,
+    productIds: readonly Id<'Product'>[],
+  ): Promise<ReadonlyMap<Id<'Product'>, PublishedSnapshot>> {
+    this.publishedBatches += 1;
+    return Promise.resolve(
+      new Map(
+        productIds.map((productId) => [
+          productId,
+          {
+            facts: this.published === null ? null : { ...this.published, productId },
+            productVersion: this.productVersion,
+          },
+        ]),
+      ),
+    );
   }
 
   override revisionFacts(
@@ -280,6 +301,26 @@ export class RecordingReevaluationRequests implements TagReevaluationRequestRepo
     return Promise.resolve();
   }
 
+  /** The published revisions a category change made pending again (categories C4a). */
+  readonly reopened: {
+    readonly productId: Id<'Product'>;
+    readonly productRevisionId: Id<'ProductRevision'>;
+  }[] = [];
+
+  requestForCategoryChange(
+    _market: MarketContext,
+    request: {
+      readonly productId: Id<'Product'>;
+      readonly productRevisionId: Id<'ProductRevision'>;
+    },
+  ): Promise<void> {
+    this.reopened.push({
+      productId: request.productId,
+      productRevisionId: request.productRevisionId,
+    });
+    return Promise.resolve();
+  }
+
   /** The certification-event requests written, in order (Hassan M2). */
   readonly events: {
     readonly cause: string;
@@ -352,6 +393,7 @@ export function ownedRequests(
 ): TagReevaluationRequestRepository {
   return {
     requestForPublish: (...args) => store.requestForPublish(...args),
+    requestForCategoryChange: (...args) => store.requestForCategoryChange(...args),
     requestForEvent: (...args) => store.requestForEvent(...args),
     pendingUnstarted: (...args) => store.pendingUnstarted(...args),
     listPending: async (market, limit) =>

@@ -21,12 +21,15 @@ const DETAIL_KEYS = [
   'tags',
   'brands',
   'total',
+  'unit',
   'currentCount',
   'columns',
   'maxBytes',
   'rows',
   'detected',
   'rowNumber',
+  'typeCodes',
+  'errors',
 ] as const;
 const logger = new Logger('CatalogHttp');
 

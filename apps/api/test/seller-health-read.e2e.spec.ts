@@ -8,6 +8,8 @@ import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { SELLER_FILE_REPOSITORY } from '../src/modules/sellers/application/ports/seller-file.repository';
+import { SELLER_HEALTH_REQUEST_STORE } from '../src/modules/sellers/application/ports/seller-health-request.store';
+import { SELLER_HEALTH_ROSTER } from '../src/modules/sellers/application/ports/seller-health-roster';
 import { SELLER_LIST_REPOSITORY } from '../src/modules/sellers/application/ports/seller-list.repository';
 import {
   SELLER_HEALTH_STORE,
@@ -19,6 +21,7 @@ import {
 } from '../src/modules/sellers/domain/seller-health';
 import { DefaultSellerHealthPolicy } from '../src/modules/sellers/infrastructure/default-seller-health-policy';
 import { CLOCK } from '../src/platform/clock/clock.module';
+import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp } from './support/test-app';
@@ -66,6 +69,8 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
   let app: NestExpressApplication;
   let snapshots: SellerHealthSnapshot[];
   let known: Set<string>;
+  let queued: { market: string; sellerId: string; source: string; by: string }[];
+  let waiting: Set<string>;
   const http = () => request(app.getHttpServer());
 
   async function boot() {
@@ -101,6 +106,31 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
                   })),
                 truncated: false,
               }),
+          })
+          .overrideProvider(SELLER_HEALTH_ROSTER)
+          .useValue({
+            one: (m: MarketContext, one: Id<'Seller'>) =>
+              Promise.resolve(
+                known.has(`${m.marketId}|${one}`) ? { sellerId: one, zone: 'UTC' } : null,
+              ),
+          })
+          .overrideProvider(SELLER_HEALTH_REQUEST_STORE)
+          .useValue({
+            enqueue: (
+              m: MarketContext,
+              request: { sellerId: Id<'Seller'>; source: string; byAccountId: Id<'Account'> },
+            ) => {
+              const key = `${m.marketId}|${request.sellerId}`;
+              if (waiting.has(key)) return Promise.resolve({ queued: false });
+              waiting.add(key);
+              queued.push({
+                market: m.marketId,
+                sellerId: request.sellerId,
+                source: request.source,
+                by: request.byAccountId,
+              });
+              return Promise.resolve({ queued: true });
+            },
           })
           .overrideProvider(SELLER_LIST_REPOSITORY)
           .useValue({
@@ -203,6 +233,20 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
     return headers === null ? call : call.set('cookie', headers.cookie);
   };
 
+  const recalculate = (
+    code: string,
+    headers: { cookie: string } | null,
+    seller: string = SELLER,
+    csrf = true,
+  ) => {
+    const call = http()
+      .post(`/sellers/admin/${seller}/health/recalculate`)
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') });
+    if (headers === null) return call;
+    const token = headers.cookie.slice(headers.cookie.indexOf('=') + 1);
+    return call.set('cookie', headers.cookie).set('x-csrf-token', csrf ? csrfTokenFor(token) : '');
+  };
+
   const getQueue = (code: string, headers: { cookie: string } | null) => {
     const call = http()
       .get('/sellers/admin/health-queue')
@@ -214,6 +258,8 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
     fakes.reset();
     clock = new FixedClock(Temporal.Instant.from('2026-11-10T12:00:00Z'));
     known = new Set();
+    queued = [];
+    waiting = new Set();
     const { thresholds } = await new DefaultSellerHealthPolicy().settings();
     snapshots = [
       {
@@ -305,6 +351,54 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
       expect(noKey.status).toBe(403);
       expect(noKey.body).toMatchObject({ code: 'access.denied' });
       expect(anonymous.status).toBe(401);
+    });
+
+    it('queues a recalculation for an administrator, once, and measures nothing in the request', async () => {
+      await boot();
+      await seeded(code);
+
+      const first = await recalculate(code, sessionHeaders(code, ROOT, 8));
+      const second = await recalculate(code, sessionHeaders(code, ROOT, 9));
+
+      expect(first.status).toBe(202);
+      expect(first.headers['cache-control']).toBe('no-store');
+      expect(first.body).toEqual({ status: 'queued' });
+      expect(second.status).toBe(202);
+      expect(second.body).toEqual({ status: 'already-queued' });
+      expect(queued).toEqual([{ market: code, sellerId: SELLER, source: 'admin', by: ROOT }]);
+    });
+
+    it('answers 404 for an unknown or foreign seller and queues nothing', async () => {
+      await boot();
+      await seeded(code);
+      const other = TEST_MARKETS.find((m) => m !== code)!;
+      known.add(`${other}|${UNKNOWN}`);
+
+      const unknown = await recalculate(code, sessionHeaders(code, ROOT, 10), UNKNOWN);
+      const malformed = await recalculate(code, sessionHeaders(code, ROOT, 11), 'not-an-id');
+
+      expect(unknown.status).toBe(404);
+      expect(malformed.status).toBe(404);
+      expect(unknown.body).toEqual(malformed.body);
+      expect(queued).toEqual([]);
+    });
+
+    it('refuses an admin without the key, a missing CSRF token, a customer and no session', async () => {
+      await boot();
+      await seeded(code);
+
+      const noKey = await recalculate(code, sessionHeaders(code, NO_KEY, 12));
+      const noCsrf = await recalculate(code, sessionHeaders(code, ROOT, 13), SELLER, false);
+      const customer = await recalculate(code, sessionHeaders(code, CUSTOMER, 14, 'customer'));
+      const anonymous = await recalculate(code, null);
+
+      expect(noKey.status).toBe(403);
+      expect(noKey.body).toMatchObject({ code: 'access.denied' });
+      expect(noCsrf.status).toBe(403);
+      expect(noCsrf.body).toMatchObject({ code: 'request.csrf' });
+      expect([401, 403]).toContain(customer.status);
+      expect(anonymous.status).toBe(401);
+      expect(queued).toEqual([]);
     });
   });
 });

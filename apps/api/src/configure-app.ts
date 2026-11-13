@@ -106,6 +106,111 @@ export function isStoreImageUploadRequest(
   );
 }
 
+/** An admin's category image (categories package C3c): `PUT /catalog/admin/categories/<id>/image`. */
+const CATEGORY_IMAGE_PATH = /^\/catalog\/admin\/categories\/[0-9a-fA-F-]{36}\/image\/?(?:\?.*)?$/;
+
+/**
+ * An admin's category tree import (categories C7a): `POST /catalog/admin/category-tree/import/dry-run`
+ * and `.../apply`, a base64 file of at most 10 MiB (the Market's own cap is lower and checked by
+ * the use case).
+ */
+const CATEGORY_IMPORT_PATH =
+  /^\/catalog\/admin\/category-tree\/import\/(?:dry-run|apply)\/?(?:\?.*)?$/;
+
+/** An admin's slide image (file storage pilot F9): `POST /storefront/admin/slide-images`. */
+const SLIDE_IMAGE_PATH = /^\/storefront\/admin\/slide-images\/?(?:\?.*)?$/;
+
+/** An admin session cookie of any Market: `__Host-session-admin-<MARKET>=...`. */
+const ADMIN_SESSION_COOKIE = /(?:^|;\s*)__Host-session-admin-[A-Z][A-Z0-9_]{1,7}=[^;\s]/;
+
+/**
+ * True for a category tree import upload that may carry the large body: a POST to one of the two
+ * routes that holds an admin session cookie and the CSRF header (the same pre-filter as the
+ * category images). A cheap pre-filter only: the actor guard still checks the session and token.
+ */
+export function isCategoryImportUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'POST' || url === undefined || !CATEGORY_IMPORT_PATH.test(url)) return false;
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+
+/**
+ * True for a slide image upload that may carry the large body (up to two pictures): a POST to the
+ * route that holds an admin session cookie and the CSRF header, the same pre-filter as the
+ * category images. A cheap pre-filter only: the actor guard still checks the session and token.
+ */
+export function isSlideImageUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'POST' || url === undefined || !SLIDE_IMAGE_PATH.test(url)) return false;
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+
+/**
+ * True for a category image upload that may carry the large body: a PUT to the route that holds
+ * an admin session cookie and the CSRF header (the same pre-filter as the store images, Hassan H4).
+ * Anything else gets the 64 KiB JSON parser. A cheap pre-filter only: the actor guard still checks
+ * the session and the CSRF token itself.
+ */
+export function isCategoryImageUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'PUT' || url === undefined || !CATEGORY_IMAGE_PATH.test(url)) return false;
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+
+/** An admin's photo of a PLATFORM product (P1): `POST /catalog/admin/platform-products/<id>/images`. */
+const PLATFORM_PRODUCT_IMAGE_PATH =
+  /^\/catalog\/admin\/platform-products\/[0-9a-fA-F-]{36}\/images\/?(?:\?.*)?$/;
+
+/**
+ * True for an admin platform product photo upload that may carry the photo body: a POST to the
+ * route that holds an admin session cookie and the CSRF header (the category image's pre-filter).
+ * Anything else gets the 64 KiB JSON parser. A cheap pre-filter only: the actor guard still checks
+ * the session and the CSRF token itself.
+ */
+export function isPlatformProductImageUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'POST' || url === undefined || !PLATFORM_PRODUCT_IMAGE_PATH.test(url)) {
+    return false;
+  }
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+
 /** A base64 certificate file of 10 MiB is 14 million characters; the rest is the JSON around it. */
 const CERTIFICATE_DOCUMENT_BODY_LIMIT = '14500kb';
 // The admin platform import's upload (catalog design 14a): a base64 CSV file of at most 10 MiB, read
@@ -117,6 +222,72 @@ export function isPlatformImportUploadRequest(
   url: string | undefined,
 ): boolean {
   return method === 'POST' && url !== undefined && PLATFORM_IMPORT_UPLOAD_PATH.test(url);
+}
+// The attribute import's check and run (attributes package A9) take the same body: a base64 file of
+// at most 10 MiB, read as bytes; their controller parses the JSON itself. Only these two routes.
+const ATTRIBUTE_IMPORT_UPLOAD_PATH =
+  /^\/catalog\/admin\/attribute-imports\/(?:check|run)\/?(?:\?.*)?$/;
+
+export function isAttributeImportUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'POST' || url === undefined || !ATTRIBUTE_IMPORT_UPLOAD_PATH.test(url)) {
+    return false;
+  }
+  // A cheap pre-filter (an admin session cookie and the CSRF header) so an anonymous request does
+  // not make the server buffer a large body; the actor guard still checks both itself.
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+// The seller import's upload (catalog design 14c) takes the same body as the admin's, and its photo
+// step (one base64 photo of at most 4 MiB per call) the photo body; both controllers parse the JSON
+// themselves. Only these two routes, and only for a request that carries a seller session cookie and
+// the CSRF header (the pre-filter of the store images): anything else gets the 64 KiB JSON parser.
+const SELLER_IMPORT_UPLOAD_PATH = /^\/catalog\/seller\/imports\/?(?:\?.*)?$/;
+const SELLER_IMPORT_PHOTO_PATH =
+  /^\/catalog\/seller\/imports\/[0-9a-fA-F-]{36}\/photos\/?(?:\?.*)?$/;
+
+function carriesSellerSessionAndCsrf(headers: IncomingHttpHeaders): boolean {
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    SELLER_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+
+export function isSellerImportUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  return (
+    method === 'POST' &&
+    url !== undefined &&
+    SELLER_IMPORT_UPLOAD_PATH.test(url) &&
+    carriesSellerSessionAndCsrf(headers)
+  );
+}
+
+export function isSellerImportPhotoRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  return (
+    method === 'POST' &&
+    url !== undefined &&
+    SELLER_IMPORT_PHOTO_PATH.test(url) &&
+    carriesSellerSessionAndCsrf(headers)
+  );
 }
 const CERTIFICATE_DOCUMENT_PATH =
   /^\/certification\/seller\/certificates\/[0-9a-fA-F-]{36}\/documents\/?(?:\?.*)?$/;
@@ -188,6 +359,34 @@ export function configureApp(app: NestExpressApplication): void {
     limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });
+  // An admin's category image takes the same larger body (categories package C3c), only for a
+  // request that carries an admin session cookie and the CSRF header.
+  app.useBodyParser('raw', {
+    type: (request) => isCategoryImageUploadRequest(request.method, request.url, request.headers),
+    limit: PRODUCT_IMAGE_BODY_LIMIT,
+    inflate: false,
+  });
+  // An admin's category tree import takes a base64 file of at most 10 MiB (categories C7a), only
+  // for a request that carries an admin session cookie and the CSRF header.
+  app.useBodyParser('raw', {
+    type: (request) => isCategoryImportUploadRequest(request.method, request.url, request.headers),
+    limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
+    inflate: false,
+  });
+  // An admin's slide image takes up to two such pictures in one body (file storage pilot F9), only
+  // for a request that carries an admin session cookie and the CSRF header.
+  app.useBodyParser('raw', {
+    type: (request) => isSlideImageUploadRequest(request.method, request.url, request.headers),
+    limit: STORE_PROFILE_SAVE_BODY_LIMIT,
+    inflate: false,
+  });
+  // An admin's photo of a PLATFORM product takes the same body, under the same pre-filter (P1).
+  app.useBodyParser('raw', {
+    type: (request) =>
+      isPlatformProductImageUploadRequest(request.method, request.url, request.headers),
+    limit: PRODUCT_IMAGE_BODY_LIMIT,
+    inflate: false,
+  });
   // The whole-profile save takes up to two such pictures in one body, under the same pre-filter.
   app.useBodyParser('raw', {
     type: (request) => isStoreProfileSaveRequest(request.method, request.url, request.headers),
@@ -207,6 +406,21 @@ export function configureApp(app: NestExpressApplication): void {
   app.useBodyParser('raw', {
     type: (request) => isPlatformImportUploadRequest(request.method, request.url),
     limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
+    inflate: false,
+  });
+  app.useBodyParser('raw', {
+    type: (request) => isAttributeImportUploadRequest(request.method, request.url, request.headers),
+    limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
+    inflate: false,
+  });
+  app.useBodyParser('raw', {
+    type: (request) => isSellerImportUploadRequest(request.method, request.url, request.headers),
+    limit: CERTIFICATE_DOCUMENT_BODY_LIMIT,
+    inflate: false,
+  });
+  app.useBodyParser('raw', {
+    type: (request) => isSellerImportPhotoRequest(request.method, request.url, request.headers),
+    limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });
   app.useBodyParser('json', { limit: '64kb', strict: true, inflate: false });

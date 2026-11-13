@@ -134,7 +134,7 @@ strategy implementation, not in core logic.
 - `docker compose up -d` starts Postgres, Redis, mail catcher (no object storage yet, ADR-0016). Copy `.env.example`
   to `.env` first.
 - `pnpm install` / `pnpm dev` / `pnpm build` / `pnpm lint` / `pnpm typecheck` / `pnpm format`
-- `pnpm dev` builds the shared kernel first; restart it after a kernel change. `pnpm build`
+- `pnpm dev` builds the shared kernel and `packages/platform-import` first; restart it after a change to either. `pnpm build`
   ends with `scripts/check-built-kernel.mjs`, which checks that the built API loads one build
   of the shared kernel.
 - `APP_ROLE` (api | worker) is required, no default (P 8; `.env.example` has `api`). `pnpm dev` runs the
@@ -155,8 +155,8 @@ strategy implementation, not in core logic.
   (`mondapac_migrator`, owner of the database). `pnpm db:bootstrap` re-runs
   `scripts/db/bootstrap-dev.sql` on an existing Compose volume.
 - `pnpm verify` regenerates the Prisma client, then runs typecheck, lint, boundaries, test, db:check-reversible and test:db.
-  It is what CI runs (CI splits it: `pnpm verify:without-test-db` in the Verify jobs, `pnpm test:db --shard=N/2`
-  in two Database tests jobs); run it before saying "done" (rule 3). It needs Postgres running.
+  It is what CI runs (CI splits it: `pnpm verify:static` in the Verify jobs, `pnpm test:api --shard=N/3`, `pnpm test:packages` and `pnpm test:db --shard=N/3`
+  in parallel test jobs); run it before saying "done" (rule 3). It needs Postgres running.
 (Update this section when scripts change.)
 
 ## Working rules for Claude

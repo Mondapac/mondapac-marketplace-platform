@@ -41,6 +41,7 @@ const VALID = {
   requestLimits: {
     anonymousIdentityPerMinute: 20,
     publicMediaPerMinute: 1500,
+    publicSearchPerMinute: 120,
     defaultPerMinute: 300,
   },
   allowedOrigins: {
@@ -205,6 +206,7 @@ describe('loadMarketConfigs', () => {
         requestLimits: {
           anonymousIdentityPerMinute: 0,
           publicMediaPerMinute: 1500,
+          publicSearchPerMinute: 120,
           defaultPerMinute: 300,
         },
       },
@@ -2099,10 +2101,21 @@ describe('loadMarketConfigs', () => {
         primaryImage: true,
         anyImage: true,
         variantRemoved: true,
+        gtinChanged: true,
+        axisAdded: true,
       },
       maxVariantsPerProduct: 100,
       maxCategoryDepth: 4,
+      maxCategoryChangeTags: 50_000,
+      maxCategoryImportRows: 2000,
+      maxCategoryImportBytes: 5 * 1024 * 1024,
       maxVariantAttributes: 2,
+      units: [
+        { code: 'g', labels: { 'en-NZ': 'g' } },
+        { code: 'ml', labels: { 'en-NZ': 'ml' } },
+        { code: 'mm', labels: { 'en-NZ': 'mm' } },
+        { code: 'count', labels: { 'en-NZ': 'each' } },
+      ],
       approvalRequired: true,
       productTypes: ['simple', 'configurable'],
       defaultFamily: 'default',
@@ -2132,6 +2145,12 @@ describe('loadMarketConfigs', () => {
       expect(zz?.maxVariantsPerProduct).toBe(3);
       expect(au?.maxCategoryDepth).toBe(4);
       expect(zz?.maxCategoryDepth).toBe(3);
+      expect(au?.maxCategoryChangeTags).toBe(50_000);
+      expect(zz?.maxCategoryChangeTags).toBe(20_000);
+      expect(au?.maxCategoryImportRows).toBe(1000);
+      expect(zz?.maxCategoryImportRows).toBe(500);
+      expect(au?.maxCategoryImportBytes).toBe(5 * 1024 * 1024);
+      expect(zz?.maxCategoryImportBytes).toBe(1024 * 1024);
       expect(au?.maxVariantAttributes).toBe(2);
       expect(zz?.maxVariantAttributes).toBe(3);
       expect(au?.approvalRequired).toBe(true);
@@ -2194,9 +2213,50 @@ describe('loadMarketConfigs', () => {
       ['a category depth of 5', { ...VALID_CATALOG, maxCategoryDepth: 5 }],
       ['a fractional category depth', { ...VALID_CATALOG, maxCategoryDepth: 3.5 }],
       ['a string category depth', { ...VALID_CATALOG, maxCategoryDepth: '4' }],
+      ['no category change tag cap', without('maxCategoryChangeTags')],
+      ['a zero category change tag cap', { ...VALID_CATALOG, maxCategoryChangeTags: 0 }],
+      [
+        'a category change tag cap above 200,000',
+        { ...VALID_CATALOG, maxCategoryChangeTags: 200_001 },
+      ],
+      ['a fractional category change tag cap', { ...VALID_CATALOG, maxCategoryChangeTags: 1.5 }],
+      ['no category import row cap', without('maxCategoryImportRows')],
+      ['a zero category import row cap', { ...VALID_CATALOG, maxCategoryImportRows: 0 }],
+      ['a category import row cap above 5,000', { ...VALID_CATALOG, maxCategoryImportRows: 5001 }],
+      ['no category import size cap', without('maxCategoryImportBytes')],
+      ['a category import size cap of 1 byte', { ...VALID_CATALOG, maxCategoryImportBytes: 1 }],
+      [
+        'a category import size cap above 10 MiB',
+        { ...VALID_CATALOG, maxCategoryImportBytes: 10 * 1024 * 1024 + 1 },
+      ],
       ['no variant attribute limit', without('maxVariantAttributes')],
       ['a zero variant attribute limit', { ...VALID_CATALOG, maxVariantAttributes: 0 }],
       ['a variant attribute limit above 5', { ...VALID_CATALOG, maxVariantAttributes: 6 }],
+      ['no units', without('units')],
+      ['an empty unit list', { ...VALID_CATALOG, units: [] }],
+      [
+        'a unit the platform does not know',
+        {
+          ...VALID_CATALOG,
+          units: [...VALID_CATALOG.units, { code: 'oz', labels: { 'en-NZ': 'oz' } }],
+        },
+      ],
+      [
+        'a repeated unit',
+        { ...VALID_CATALOG, units: [...VALID_CATALOG.units, VALID_CATALOG.units[0]] },
+      ],
+      ['a base unit missing', { ...VALID_CATALOG, units: VALID_CATALOG.units.slice(1) }],
+      [
+        'a unit without a label',
+        { ...VALID_CATALOG, units: [{ code: 'g', labels: {} }, ...VALID_CATALOG.units.slice(1)] },
+      ],
+      [
+        'a unit label in a malformed locale',
+        {
+          ...VALID_CATALOG,
+          units: [{ code: 'g', labels: { english: 'g' } }, ...VALID_CATALOG.units.slice(1)],
+        },
+      ],
       ['no approval setting', without('approvalRequired')],
       ['a string approval setting', { ...VALID_CATALOG, approvalRequired: 'true' }],
       ['no product types', without('productTypes')],

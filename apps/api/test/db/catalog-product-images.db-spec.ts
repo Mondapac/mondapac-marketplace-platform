@@ -26,9 +26,13 @@ import { OwnProductImageRead } from '../../src/modules/catalog/application/use-c
 import { ProductImageAdminRead } from '../../src/modules/catalog/application/use-cases/product-image-admin-read.use-case';
 import { ProductImageTakeDown } from '../../src/modules/catalog/application/use-cases/product-image-take-down.use-case';
 import { ProductRevisionImageList } from '../../src/modules/catalog/application/use-cases/product-revision-image-list.use-case';
+import { ReprocessImageFormats } from '../../src/modules/catalog/application/use-cases/reprocess-image-formats.use-case';
 import { SweepOrphanImageFiles } from '../../src/modules/catalog/application/use-cases/sweep-orphan-image-files.use-case';
 import { SweepOrphanImages } from '../../src/modules/catalog/application/use-cases/sweep-orphan-images.use-case';
 import { OwnProductImageUpload } from '../../src/modules/catalog/application/use-cases/own-product-image-upload.use-case';
+import { PlatformProductImageDelete } from '../../src/modules/catalog/application/use-cases/platform-product-image-delete.use-case';
+import { PlatformProductImageList } from '../../src/modules/catalog/application/use-cases/platform-product-image-list.use-case';
+import { PlatformProductImageUpload } from '../../src/modules/catalog/application/use-cases/platform-product-image-upload.use-case';
 import type { SaveWorkingCopy } from '../../src/modules/catalog/application/working-copy/save-working-copy.service';
 import { Product } from '../../src/modules/catalog/domain/product';
 import { simpleProductType } from '../../src/modules/catalog/domain/product-types/simple';
@@ -43,6 +47,7 @@ import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/
 import { PrismaTagReevaluationRequests } from '../../src/modules/catalog/infrastructure/prisma-tag-reevaluation-requests';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
+import { fixedFamilyResolver } from '../support/family-resolver';
 
 // Catalog slice 13 (product photos) on PostgreSQL, for both Market fixtures: upload, list, read
 // and delete as a seller over the real stores and the real image library, and the photos of a
@@ -91,6 +96,10 @@ describe.each(TEST_MARKETS)(
     let store: MemoryObjectStore;
     let throttled: boolean;
     let upload: OwnProductImageUpload;
+    let adminUpload: PlatformProductImageUpload;
+    let adminList: PlatformProductImageList;
+    let adminRemove: PlatformProductImageDelete;
+    let adminAudit: unknown[];
     let list: OwnProductImageList;
     let read: OwnProductImageRead;
     let remove: OwnProductImageDelete;
@@ -115,10 +124,16 @@ describe.each(TEST_MARKETS)(
         primaryImage: true,
         anyImage: false,
         variantRemoved: true,
+        gtinChanged: true,
+        axisAdded: true,
       }),
       maxVariantsPerProduct: () => 10,
       maxVariantAttributes: () => 2,
+      units: () => [],
       maxCategoryDepth: () => 4,
+      maxCategoryChangeTags: () => 50_000,
+      maxCategoryImportRows: () => 2000,
+      maxCategoryImportBytes: () => 5 * 1024 * 1024,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],
@@ -211,6 +226,8 @@ describe.each(TEST_MARKETS)(
         workingCopies: copies,
         revisions,
         freeze: new FreezeRevision({
+          revisions,
+          familyResolver: fixedFamilyResolver(),
           attributes,
           policy,
           images,
@@ -241,6 +258,28 @@ describe.each(TEST_MARKETS)(
         save,
         clock,
         ids: { next: <K extends string>() => uuid7() as Id<K> },
+      });
+      adminUpload = new PlatformProductImageUpload(gate, {
+        ...common,
+        imageProcessor: new SharpImageProcessor(),
+        save,
+        clock,
+        ids: { next: <K extends string>() => uuid7() as Id<K> },
+      });
+      adminList = new PlatformProductImageList(gate, {
+        unitOfWork: persistence.unitOfWork,
+        products,
+        images,
+      });
+      adminAudit = [];
+      adminRemove = new PlatformProductImageDelete(gate, {
+        ...common,
+        audit: {
+          record: (_context: unknown, entry: unknown) => {
+            adminAudit.push(entry);
+            return Promise.resolve();
+          },
+        },
       });
       list = new OwnProductImageList(gate, {
         unitOfWork: persistence.unitOfWork,
@@ -370,16 +409,28 @@ describe.each(TEST_MARKETS)(
       expect(view).toMatchObject({ width: 900, height: 600 });
 
       const keys = [...store.objects.keys()].filter((key) => key.includes(view.imageId));
+      // Three sizes, each as JPEG (the key it always had), WebP and AVIF.
       expect(keys.sort()).toEqual(
         ['large', 'medium', 'thumb']
-          .map((size) => `${product.state.id}/${view.imageId}/${size}`)
+          .flatMap((size) => [size, `${size}-webp`, `${size}-avif`])
+          .map((name) => `${product.state.id}/${view.imageId}/${name}`)
           .sort(),
       );
       for (const key of keys) {
         const meta = await sharp(store.objects.get(key)).metadata();
-        expect(meta.format).toBe('jpeg');
+        expect(meta.format).toBe(
+          key.endsWith('-webp') ? 'webp' : key.endsWith('-avif') ? 'heif' : 'jpeg',
+        );
         expect(meta.exif).toBeUndefined();
       }
+      const stored = await inUnit(() =>
+        images.find(market, product.state.id, view.imageId as Id<'ProductImage'>),
+      );
+      expect(stored?.renditions.map((r) => `${r.size}/${r.format}`)).toEqual(
+        ['thumb', 'medium', 'large'].flatMap((s) =>
+          ['jpeg', 'webp', 'avif'].map((f) => `${s}/${f}`),
+        ),
+      );
       const thumb = await sharp(
         store.objects.get(`${product.state.id}/${view.imageId}/thumb`),
       ).metadata();
@@ -770,6 +821,132 @@ describe.each(TEST_MARKETS)(
       ]);
     });
 
+    describe('admin photos of a PLATFORM product (P1)', () => {
+      async function platformProduct(): Promise<Product> {
+        const created = Product.create({
+          id: uuid7() as Id<'Product'>,
+          marketId: market.marketId,
+          scope: 'PLATFORM',
+          sellerId: null,
+          handler: simpleProductType,
+          familyCode: 'default',
+          productCode: `X${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`,
+          variantId: uuid7() as Id<'Variant'>,
+          now: T0,
+        });
+        if (!created.ok) throw new Error(created.error.code);
+        await inUnit(() => products.add(market, created.value));
+        await saveDraft(created.value.state.id, []);
+        return created.value;
+      }
+
+      async function adminUploaded(productId: Id<'Product'>) {
+        const result = await adminUpload.execute(adminContext(), {
+          productId,
+          data: await photo(),
+        });
+        if (!result.ok) throw new Error(result.error.code);
+        return result.value;
+      }
+
+      it('stores, lists and orders the photos through the draft, and keeps a published one', async () => {
+        const product = await platformProduct();
+        const first = await adminUploaded(product.state.id);
+        const second = await adminUploaded(product.state.id);
+        const listed = await adminList.execute(adminContext(), { productId: product.state.id });
+        expect(listed.ok && listed.value.map((image) => image.imageId)).toEqual([
+          first.imageId,
+          second.imageId,
+        ]);
+        expect([...store.objects.keys()].filter((key) => key.includes(first.imageId))).toHaveLength(
+          9,
+        );
+
+        await saveDraft(product.state.id, [second.imageId, first.imageId]);
+        const submitted = await submit.execute(adminContext(), {
+          productId: product.state.id,
+          replacePending: false,
+        });
+        if (!submitted.ok) throw new Error(submitted.error.code);
+        const revision = await inUnit(() =>
+          revisions.find(market, product.state.id, submitted.value.revisionId),
+        );
+        expect(revision?.content.imageIds).toEqual([second.imageId, first.imageId]);
+
+        const refused = await adminRemove.execute(adminContext(), {
+          productId: product.state.id,
+          imageId: first.imageId,
+        });
+        expect(!refused.ok && refused.error.code).toBe('image.in-use');
+      });
+
+      it('deletes an unused photo and its files', async () => {
+        const product = await platformProduct();
+        const photoOf = await adminUploaded(product.state.id);
+        const removed = await adminRemove.execute(adminContext(), {
+          productId: product.state.id,
+          imageId: photoOf.imageId,
+        });
+        expect(removed.ok).toBe(true);
+        expect([...store.objects.keys()].some((key) => key.includes(photoOf.imageId))).toBe(false);
+        expect(adminAudit).toEqual([
+          expect.objectContaining({
+            action: 'catalog.product.image-deleted',
+            targetId: product.state.id,
+          }),
+        ]);
+        const listed = await adminList.execute(adminContext(), { productId: product.state.id });
+        expect(listed.ok && listed.value).toEqual([]);
+      });
+
+      it('answers a SELLER product as product.not-found and stores nothing', async () => {
+        const sellerProduct = await draftedProduct();
+        const before = store.objects.size;
+        const result = await adminUpload.execute(adminContext(), {
+          productId: sellerProduct.state.id,
+          data: await photo(),
+        });
+        expect(!result.ok && result.error.code).toBe('product.not-found');
+        expect(store.objects.size).toBe(before);
+        const listed = await adminList.execute(adminContext(), {
+          productId: sellerProduct.state.id,
+        });
+        expect(!listed.ok && listed.error.code).toBe('product.not-found');
+      });
+
+      it('answers a photo of another product as image.not-found and keeps it', async () => {
+        const mine = await platformProduct();
+        const other = await platformProduct();
+        const theirs = await adminUploaded(other.state.id);
+        const result = await adminRemove.execute(adminContext(), {
+          productId: mine.state.id,
+          imageId: theirs.imageId,
+        });
+        expect(!result.ok && result.error.code).toBe('image.not-found');
+        const listed = await adminList.execute(adminContext(), { productId: other.state.id });
+        expect(listed.ok && listed.value.map((image) => image.imageId)).toEqual([theirs.imageId]);
+      });
+
+      it('refuses a seller actor', async () => {
+        const product = await platformProduct();
+        const result = await adminUpload.execute(sellerContext(), {
+          productId: product.state.id,
+          data: await photo(),
+        });
+        expect(!result.ok && result.error.code).toBe('access.denied');
+      });
+
+      it('stops at the library limit', async () => {
+        const product = await platformProduct();
+        for (let n = 0; n < MAX_IMAGES_PER_PRODUCT; n += 1) await adminUploaded(product.state.id);
+        const result = await adminUpload.execute(adminContext(), {
+          productId: product.state.id,
+          data: await photo(),
+        });
+        expect(!result.ok && result.error.code).toBe('image.limit-reached');
+      });
+    });
+
     describe('the state guard and the grants', () => {
       it('allows clean to taken-down only, never back, never a second move', async () => {
         const product = await draftedProduct();
@@ -864,7 +1041,7 @@ describe.each(TEST_MARKETS)(
         expect(objectsOf(loneOrphan.imageId)).toEqual([]);
         for (const kept of [held, loneNamed]) {
           expect((await stateOf(kept.imageId))?.state).toBe('clean');
-          expect(objectsOf(kept.imageId)).toHaveLength(3);
+          expect(objectsOf(kept.imageId)).toHaveLength(9);
         }
         const again = await sweepLater.execute(systemContext(), {});
         expect(again.ok && again.value.deleted).toBe(0);
@@ -908,12 +1085,82 @@ describe.each(TEST_MARKETS)(
         expect(await store.get(unknownProduct)).not.toBeNull();
         expect(await store.get(unrelated)).not.toBeNull();
         expect(await store.get(young)).not.toBeNull();
-        expect(objectsOf(real.imageId)).toHaveLength(3);
+        expect(objectsOf(real.imageId)).toHaveLength(9);
 
         const again = await sweepFiles.execute(systemContext(), {});
         expect(again.ok && again.value.deleted).toBe(0);
         const asAdmin = await sweepFiles.execute(adminContext(), {});
         expect(!asAdmin.ok && asAdmin.error.code).toBe('access.denied');
+      });
+
+      it('reprocess gives a photo that has only JPEGs its WebP and AVIF, and touches nothing else', async () => {
+        const product = await draftedProduct();
+        const modern = await uploaded(product.state.id);
+        const found = await inUnit(() =>
+          images.find(market, product.state.id, modern.imageId as Id<'ProductImage'>),
+        );
+        // A photo as it was before the formats existed: the same JPEGs, no other rows.
+        const legacyId = uuid7() as Id<'ProductImage'>;
+        const jpegs = found!.renditions.filter((r) => r.format === 'jpeg');
+        for (const r of jpegs)
+          await store.put(
+            `${product.state.id}/${legacyId}/${r.size}`,
+            (await store.get(r.objectKey))!,
+          );
+        await inUnit(() =>
+          images.add(market, {
+            ...found!,
+            id: legacyId,
+            renditions: jpegs.map((r) => ({
+              ...r,
+              objectKey: `${product.state.id}/${legacyId}/${r.size}`,
+            })),
+          }),
+        );
+        const before = objectsOf(modern.imageId).length;
+        const reprocess = new ReprocessImageFormats(gate, {
+          unitOfWork: persistence.unitOfWork,
+          images,
+          objectStore: store,
+        });
+
+        const first = await reprocess.execute(systemContext(), {});
+        // Other photos of this database have no files in this store: they fail and stay as they were.
+        expect(first.ok && first.value.completed).toBe(1);
+        const now = await inUnit(() => images.find(market, product.state.id, legacyId));
+        expect(now!.renditions.map((r) => `${r.size}/${r.format}`)).toEqual(
+          ['thumb', 'medium', 'large'].flatMap((s) =>
+            ['jpeg', 'webp', 'avif'].map((f) => `${s}/${f}`),
+          ),
+        );
+        for (const r of now!.renditions.filter((x) => x.format !== 'jpeg')) {
+          const meta = await sharp((await store.get(r.objectKey))!).metadata();
+          expect(meta.format).toBe(r.format === 'avif' ? 'heif' : 'webp');
+          expect(r.byteSize).toBe((await store.get(r.objectKey))!.length);
+        }
+        expect(objectsOf(modern.imageId)).toHaveLength(before);
+
+        // A second run adds nothing, and the file sweep keeps every file the rows now name.
+        const second = await reprocess.execute(systemContext(), {});
+        expect(second.ok && second.value.completed).toBe(0);
+        const swept = await sweepFiles.execute(systemContext(), {});
+        expect(swept.ok && swept.value.deleted).toBe(0);
+        expect(objectsOf(legacyId)).toHaveLength(9);
+      });
+
+      it('reprocess adds nothing to a photo that was taken down after it was listed', async () => {
+        const product = await draftedProduct();
+        const view = await uploaded(product.state.id);
+        await takeDown.execute(adminContext(), {
+          productId: product.state.id,
+          imageId: view.imageId,
+          reasonCode: 'other',
+        });
+
+        const added = await inUnit(() =>
+          images.addRenditions(market, product.state.id, view.imageId as Id<'ProductImage'>, []),
+        );
+        expect(added).toBe(false);
       });
 
       it('leaves a taken-down photo as the takedown left it', async () => {

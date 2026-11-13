@@ -146,8 +146,10 @@ model SellersSellerFile {
   adminFlags                     SellersAdminFlag[]
   businessActivities             SellersSellerBusinessActivity[]
   businessActivityChanges        SellersSellerBusinessActivityChange[]
+  cultures                       SellersSellerCulture[]
   healthDays                     SellersSellerHealthDay[]
   healthSnapshots                SellersSellerHealthSnapshot[]
+  healthRequests                 SellersSellerHealthRequest[]
 
   /// The target of composite foreign keys, and the batch read of sellerSummaries (S3).
   @@unique([marketId, sellerId])
@@ -676,6 +678,33 @@ model SellersSellerHealthSnapshot {
   @@schema("sellers")
 }
 
+/// A request to measure one seller's health again now (seller health, option A of 5 Nov 2026): the
+/// admin's "Recalculate now" and, later, the seller's "Refresh now". A click only writes this row;
+/// a frequent job reads the pending rows as the system actor, because the three feeds accept only
+/// the system actor. `requestedByAccountId` is a plain id (C4) of the admin or seller account.
+/// The partial unique "one pending request per (Market, seller)", the pick-up index, the CHECKs
+/// and the grants are hand-written in the migration. Only the retention purge deletes a request
+/// (finished ones, after 30 days); `finishedAt` is set exactly when it is not pending (CHECK).
+model SellersSellerHealthRequest {
+  id                   String            @id @db.Uuid
+  marketId             String            @map("market_id") @db.VarChar(8)
+  tenantId             String            @map("tenant_id")
+  sellerId             String            @map("seller_id") @db.Uuid
+  /// admin | seller (CHECK): who asked, for the cooldown a later package puts on the seller's.
+  source               String
+  requestedByAccountId String            @map("requested_by_account_id") @db.Uuid
+  requestedAt          DateTime          @map("requested_at") @db.Timestamptz(6)
+  /// pending | done | failed (CHECK).
+  status               String
+  finishedAt           DateTime?         @map("finished_at") @db.Timestamptz(6)
+  sellerFile           SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  /// The partial indexes (one pending per seller; the pick-up order) are hand-written.
+  @@index([marketId, sellerId, requestedAt(sort: Desc)], map: "seller_health_requests_market_id_seller_id_requested_at_idx")
+  @@map("seller_health_requests")
+  @@schema("sellers")
+}
+
 /// An admin's edit of the display name of a ServiceArea in one language (ADR-0041). Only a name:
 /// the area itself (code, postcodes, flags) stays in `config/service-areas/`. A row overrides the
 /// name the configuration holds for that language; deleting the row restores the configured name.
@@ -691,5 +720,38 @@ model SellersServiceAreaName {
 
   @@id([marketId, areaCode, locale])
   @@map("service_area_names")
+  @@schema("sellers")
+}
+
+/// A seller's membership of a culture (multi-culture package 2; ADR-0047 decision 3). `culture_id`
+/// and `culture_code` are plain values of `catalog`'s culture, with no foreign key across schemas
+/// (the code never changes). A seller asks (requested), a reviewer decides (approved or rejected,
+/// with a reason on a rejection); a rejected membership can be asked for again. One row per seller
+/// and culture; `version` is the aggregate version of the membership's outbox events. The CHECKs
+/// are hand-written in the migration.
+model SellersSellerCulture {
+  marketId    String            @map("market_id") @db.VarChar(8)
+  tenantId    String            @map("tenant_id")
+  sellerId    String            @map("seller_id") @db.Uuid
+  cultureId   String            @map("culture_id") @db.Uuid
+  cultureCode String            @map("culture_code")
+  /// requested, approved or rejected.
+  status      String
+  /// The reviewer's reason (1 to 300 characters); required on a rejection.
+  reason      String?
+  /// Null when the system made the request at signup (ADR-0048).
+  requestedBy String?           @map("requested_by") @db.Uuid
+  requestedAt DateTime          @map("requested_at") @db.Timestamptz(6)
+  /// Null while it waits, and when the system approved it at signup (ADR-0048).
+  decidedBy   String?           @map("decided_by") @db.Uuid
+  decidedAt   DateTime?         @map("decided_at") @db.Timestamptz(6)
+  version     Int
+  updatedAt   DateTime          @map("updated_at") @db.Timestamptz(6)
+  sellerFile  SellersSellerFile @relation(fields: [marketId, sellerId], references: [marketId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, sellerId, cultureId])
+  /// "Which sellers are in this culture, in this state" (the review queue; the search re-index).
+  @@index([marketId, cultureId, status])
+  @@map("seller_cultures")
   @@schema("sellers")
 }

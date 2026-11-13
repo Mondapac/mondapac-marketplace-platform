@@ -90,9 +90,7 @@ describe('product page', () => {
     expect(thumbs[2]!.getAttribute('aria-current')).toBe('true');
     expect(thumbs[0]!.getAttribute('aria-current')).toBeNull();
     expect(
-      screen
-        .getByRole('img', { name: 'Free-range chicken, whole, photo 3 of 4' })
-        .getAttribute('src'),
+      screen.getByRole('img', { name: 'Free-range chicken, whole, photo 3' }).getAttribute('src'),
     ).toBe('/placeholders/egg.jpg');
   });
 

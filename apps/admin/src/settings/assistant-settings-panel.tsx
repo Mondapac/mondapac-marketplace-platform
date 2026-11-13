@@ -10,6 +10,7 @@ import {
   SettingRow,
   SettingSelect,
   SettingsErrorSummary,
+  SettingsViewOnlyBanner,
   useLiveErrors,
   SettingsPage,
   SettingsSection,
@@ -288,9 +289,9 @@ export function AssistantSettingsPanel({
   };
   const banners = [
     canManage ? null : (
-      <Banner key="read-only" tone="info">
+      <SettingsViewOnlyBanner key="read-only" title={t('settings.view-only.title')}>
         {t(`${P}.read-only`)}
-      </Banner>
+      </SettingsViewOnlyBanner>
     ),
     invalid.length === 0 ? null : (
       <SettingsErrorSummary

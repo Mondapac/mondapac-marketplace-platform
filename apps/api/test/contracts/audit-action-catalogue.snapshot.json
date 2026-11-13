@@ -121,6 +121,30 @@
     }
   },
   {
+    "action": "catalog.attribute-definition.converted",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "activeOptionCount": "integer",
+      "dataType": "enumOf(integer|decimal|select|multi-select)",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "dataType": "enumOf(integer|decimal|select|multi-select)",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
     "action": "catalog.attribute-family.created",
     "targetType": "catalog.attribute-family",
     "targetId": "id",
@@ -156,6 +180,23 @@
       "requiredCount": "integer",
       "revisionNo": "integer",
       "requiredRelaxed": "integer"
+    }
+  },
+  {
+    "action": "catalog.attribute-import.ran",
+    "targetType": "catalog.attribute-import",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "created": "integer",
+      "failed": "integer",
+      "kind": "enumOf(attributes|values)",
+      "rows": "integer",
+      "skipErrors": "boolean",
+      "skipped": "integer",
+      "unchanged": "integer",
+      "updated": "integer"
     }
   },
   {
@@ -268,6 +309,75 @@
     }
   },
   {
+    "action": "catalog.category-proposal.proposed",
+    "targetType": "catalog.category-proposal",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "parentId": "id",
+      "localeCount": "integer"
+    }
+  },
+  {
+    "action": "catalog.category-proposal.approved",
+    "targetType": "catalog.category-proposal",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "sellerId": "id",
+      "sellerCategoryId": "id"
+    }
+  },
+  {
+    "action": "catalog.category-proposal.rejected",
+    "targetType": "catalog.category-proposal",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "sellerId": "id",
+      "reasonCode": "enumOf(already-exists|too-narrow|too-broad|misleading|not-sold-here|other)"
+    }
+  },
+  {
+    "action": "catalog.category-proposal.cancelled",
+    "targetType": "catalog.category-proposal",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "sellerId": "id",
+      "reasonCode": "enumOf(seller-cancelled|permission-revoked)"
+    }
+  },
+  {
+    "action": "catalog.seller-category.promoted",
+    "targetType": "catalog.seller-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "sellerId": "id",
+      "parentId": "id",
+      "level": "integer",
+      "offersCleared": "integer"
+    }
+  },
+  {
+    "action": "catalog.seller-category.merged",
+    "targetType": "catalog.seller-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "sellerId": "id",
+      "categoryId": "id",
+      "offersCleared": "integer"
+    }
+  },
+  {
     "action": "catalog.attribute-relaxation.requested",
     "targetType": "catalog.attribute-definition",
     "targetId": "id",
@@ -306,6 +416,30 @@
     }
   },
   {
+    "action": "catalog.topic-suggestion.decided",
+    "targetType": "catalog.topic-suggestion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(open)"
+    },
+    "after": {
+      "sellerId": "id",
+      "status": "enumOf(approved|mapped|rejected)",
+      "topicId": "optional(id)"
+    }
+  },
+  {
+    "action": "catalog.topic-suggestion.suggested",
+    "targetType": "catalog.topic-suggestion",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "productId": "id"
+    }
+  },
+  {
     "action": "catalog.category-attributes.changed",
     "targetType": "catalog.category",
     "targetId": "id",
@@ -319,6 +453,66 @@
       "filterCount": "integer",
       "hasFeatureSet": "boolean",
       "revisionNo": "integer"
+    }
+  },
+  {
+    "action": "catalog.missing-details-email.requested",
+    "targetType": "catalog.missing-details-email",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "productCount": "integer",
+      "skippedCount": "integer"
+    }
+  },
+  {
+    "action": "catalog.culture.category-mark-changed",
+    "targetType": "catalog.culture",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "categoryId": "id",
+      "certificationMark": "enumOf(required|neutral|inherit)",
+      "hadRow": "boolean",
+      "visible": "enumOf(shown|hidden|inherit)"
+    },
+    "after": {
+      "categoryId": "id",
+      "certificationMark": "enumOf(required|neutral|inherit)",
+      "hasRow": "boolean",
+      "visible": "enumOf(shown|hidden|inherit)"
+    }
+  },
+  {
+    "action": "catalog.culture.created",
+    "targetType": "catalog.culture",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "requiresCertification": "boolean",
+      "status": "enumOf(draft|active|inactive)"
+    }
+  },
+  {
+    "action": "catalog.culture.edited",
+    "targetType": "catalog.culture",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "isDefault": "boolean",
+      "requiresCertification": "boolean",
+      "status": "enumOf(draft|active|inactive)"
+    },
+    "after": {
+      "badgeChanged": "boolean",
+      "isDefault": "boolean",
+      "namesChanged": "boolean",
+      "orderChanged": "boolean",
+      "requiredCertificationTypeChanged": "boolean",
+      "requiresCertification": "boolean",
+      "status": "enumOf(draft|active|inactive)"
     }
   },
   {
@@ -366,6 +560,22 @@
     }
   },
   {
+    "action": "catalog.product.type-changed",
+    "targetType": "catalog.product",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "typeCode": "enumOf(simple)"
+    },
+    "after": {
+      "axisCount": "integer",
+      "offOfferCount": "integer",
+      "offerCount": "integer",
+      "scope": "enumOf(platform|seller)",
+      "typeCode": "enumOf(configurable)"
+    }
+  },
+  {
     "action": "catalog.product.withdrawn",
     "targetType": "catalog.product",
     "targetId": "id",
@@ -388,7 +598,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -400,7 +610,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -414,7 +624,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -963,6 +1173,22 @@
     }
   },
   {
+    "action": "certification.retired-category.flagged",
+    "targetType": "certification.retired-category",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": null
+  },
+  {
+    "action": "certification.retired-category.flagged-relaxing",
+    "targetType": "certification.retired-category",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": null
+  },
+  {
     "action": "certification.review-check.recorded",
     "targetType": "certification.seller-certification",
     "targetId": "id",
@@ -1435,7 +1661,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "cause": "enumOf(invalid|locked)",
       "sessionId": "id"
     }
@@ -1447,7 +1673,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "sessionId": "id"
     }
   },
@@ -1740,11 +1966,11 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     },
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     }
   },
@@ -1761,6 +1987,31 @@
     }
   },
   {
+    "action": "ordering.order.cancel-requested",
+    "targetType": "ordering.order",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "lossBearer": "enumOf(seller|platform)",
+      "lossReasonCode": "optional(enumOf(platform-error|carrier-loss|seller-unrecoverable|fraud-loss|goodwill|other))",
+      "reason": "enumOf(not-received|damaged|wrong-item|not-as-described|seller-cancelled|other)",
+      "refundCount": "integer"
+    }
+  },
+  {
+    "action": "ordering.order.note-added",
+    "targetType": "ordering.order",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "length": "integer",
+      "noteId": "id"
+    }
+  },
+  {
     "action": "ordering.refund.requested",
     "targetType": "ordering.refund",
     "targetId": "id",
@@ -1771,7 +2022,7 @@
       "lineCount": "integer",
       "lossBearer": "enumOf(seller|platform)",
       "lossReasonCode": "optional(enumOf(platform-error|carrier-loss|seller-unrecoverable|fraud-loss|goodwill|other))",
-      "reason": "enumOf(not-received|damaged|wrong-item|not-as-described|seller-cancelled|other)",
+      "reason": "enumOf(not-received|damaged|wrong-item|not-as-described|seller-cancelled|other|item-unavailable)",
       "sellerOrderId": "id",
       "tax": "optional(money)"
     }
@@ -2300,6 +2551,29 @@
     }
   },
   {
+    "action": "sellers.category-proposals.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "boolean"
+    },
+    "after": {
+      "enabled": "boolean"
+    }
+  },
+  {
+    "action": "sellers.cultures.attached-at-signup",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "approvedCultureIds": "listOf(id, max 200)",
+      "requestedCultureIds": "listOf(id, max 200)"
+    }
+  },
+  {
     "action": "sellers.minimum-order.changed",
     "targetType": "sellers.seller",
     "targetId": "id",
@@ -2360,13 +2634,13 @@
   {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(list-paging)",
+    "targetId": "enumOf(list-paging|cart-mode)",
     "actors": ["authenticated"],
     "before": {
-      "value": "enumOf(pages|prev-next)"
+      "value": "enumOf(pages|prev-next|multi-store|single-store)"
     },
     "after": {
-      "value": "enumOf(pages|prev-next)",
+      "value": "enumOf(pages|prev-next|multi-store|single-store)",
       "version": "integer"
     }
   },
@@ -2529,6 +2803,24 @@
     }
   },
   {
+    "action": "storefront.seo-settings.changed",
+    "targetType": "storefront.seo-settings",
+    "targetId": "enumOf(seo-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "indexing": "enumOf(off|on)",
+      "version": "integer"
+    },
+    "after": {
+      "changed": "listOf(enumOf(indexing|site-name|title-template|default-description|default-share-image|logo|seller-pages|trading-name|legal-name|abn|postal-address|contact-email|contact-phone|same-as|google-verification|bing-verification|analytics-id|page-templates), max 18)",
+      "indexing": "enumOf(off|on)",
+      "restoredFrom": "optional(integer)",
+      "stepUpSessionId": "optional(id)",
+      "stepUpVerifiedAt": "optional(instant)",
+      "version": "integer"
+    }
+  },
+  {
     "action": "storefront.slide.archive",
     "targetType": "storefront.slide",
     "targetId": "id",
@@ -2536,6 +2828,16 @@
     "before": null,
     "after": {
       "wasApproved": "boolean"
+    }
+  },
+  {
+    "action": "storefront.slide-image.upload",
+    "targetType": "storefront.slide-image",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "hasMobile": "boolean"
     }
   },
   {
@@ -2796,6 +3098,23 @@
     }
   },
   {
+    "action": "catalog.own-import.started",
+    "targetType": "catalog.seller-import",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "state": "enumOf(checked)"
+    },
+    "after": {
+      "errorRows": "integer",
+      "mode": "enumOf(my-products|sell-from-catalogue)",
+      "rows": "integer",
+      "skipErrors": "boolean",
+      "state": "enumOf(queued)",
+      "toImport": "integer"
+    }
+  },
+  {
     "action": "sellers.service-area.change",
     "targetType": "sellers.service-area",
     "targetId": "id",
@@ -2804,6 +3123,36 @@
     "after": {
       "namesRestored": "integer",
       "namesSet": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.archived",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "activitiesUnlinked": "integer",
+      "reasonGiven": "boolean",
+      "status": "enumOf(active|hidden|archived)",
+      "tagsMarked": "integer"
+    }
+  },
+  {
+    "action": "catalog.category-tree.imported",
+    "targetType": "catalog.category-tree-import",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "created": "integer",
+      "format": "enumOf(csv|xlsx)",
+      "rows": "integer",
+      "treeVersion": "integer",
+      "unchanged": "integer",
+      "updated": "integer"
     }
   },
   {
@@ -2866,6 +3215,63 @@
     }
   },
   {
+    "action": "catalog.platform-category.image-changed",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "imageId": "optional(id)"
+    },
+    "after": {
+      "imageId": "optional(id)"
+    }
+  },
+  {
+    "action": "catalog.product.image-deleted",
+    "targetType": "catalog.product",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "imageId": "id"
+    },
+    "after": {
+      "imageId": "optional(id)"
+    }
+  },
+  {
+    "action": "catalog.platform-category.merged",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|hidden|archived)"
+    },
+    "after": {
+      "activitiesRelinked": "integer",
+      "childrenMoved": "integer",
+      "mergedIntoId": "id",
+      "reasonGiven": "boolean",
+      "tagsMarked": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.moved",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "level": "integer",
+      "parentId": "optional(id)"
+    },
+    "after": {
+      "level": "integer",
+      "parentId": "optional(id)",
+      "reasonGiven": "boolean",
+      "subtreeSize": "integer",
+      "tagsMarked": "integer"
+    }
+  },
+  {
     "action": "catalog.platform-category.reordered",
     "targetType": "catalog.platform-category",
     "targetId": "id",
@@ -2900,6 +3306,26 @@
     },
     "after": {
       "revisionNo": "integer"
+    }
+  },
+  {
+    "action": "catalog.variant-type.settings-changed",
+    "targetType": "catalog.variant-type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "displayStyle": "enumOf(buttons|swatches|dropdown)",
+      "optionOrder": "enumOf(manual|alphabetical|by-size)",
+      "revisionNo": "integer",
+      "sellerHelpCount": "integer",
+      "swatchCount": "integer"
+    },
+    "after": {
+      "displayStyle": "enumOf(buttons|swatches|dropdown)",
+      "optionOrder": "enumOf(manual|alphabetical|by-size)",
+      "revisionNo": "integer",
+      "sellerHelpCount": "integer",
+      "swatchCount": "integer"
     }
   }
 ]

@@ -4,12 +4,14 @@ import { Card, CheckboxRow, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import {
   attributeProblem,
+  isMeasureInput,
+  measureProblem,
   pickLabel,
   type AttributeInput,
   type AttributeInputs,
 } from './draft-content.ts';
 import { SuggestValue } from './suggest-value.tsx';
-import type { DraftSaved, FormField, ValueSuggestion } from './types.ts';
+import type { DraftSaved, FormField, FormUnit, ValueSuggestion } from './types.ts';
 
 const INPUT_TYPE: Readonly<Record<string, string>> = {
   integer: 'text',
@@ -20,6 +22,7 @@ const INPUT_TYPE: Readonly<Record<string, string>> = {
 /** The attribute fields of the product's family, one input each by data type. */
 export function AttributesSection({
   fields,
+  units,
   inputs,
   locales,
   defaultLocale,
@@ -31,6 +34,8 @@ export function AttributesSection({
   onSuggested,
 }: {
   readonly fields: readonly FormField[];
+  /** The Market's units with their labels; a measure field names the ones it offers by code. */
+  readonly units: readonly FormUnit[];
   readonly inputs: AttributeInputs;
   readonly locales: readonly string[];
   readonly defaultLocale: string;
@@ -92,6 +97,52 @@ export function AttributesSection({
     );
   }
 
+  /** A number typed in the unit picked beside it; saved in base units (draft-content). */
+  function measure(field: FormField) {
+    const label = pickLabel(field.names, defaultLocale, field.code);
+    const settings = field.measure;
+    if (settings === undefined) return null;
+    const current = inputs[field.code];
+    const input = isMeasureInput(current) ? current : { amount: '', unit: settings.defaultUnit };
+    const problem = measureProblem(field, input);
+    const unitOptions = settings.units.map((code) => ({
+      value: code,
+      label: pickLabel(units.find((unit) => unit.code === code)?.labels ?? {}, defaultLocale, code),
+    }));
+    return (
+      <div key={field.code} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+        <TextField
+          name={`attribute.${field.code}`}
+          label={label}
+          type="text"
+          inputMode="decimal"
+          dir="ltr"
+          {...(field.required ? {} : { optionalLabel: t('catalog.create.optional') })}
+          value={input.amount}
+          error={
+            refusedAt(field.code, defaultLocale)
+              ? t('catalog.edit.refused-field')
+              : problem === null
+                ? undefined
+                : t(`catalog.edit.attribute.problem.${problem}`, { places: settings.decimals })
+          }
+          onChange={(event) =>
+            onChange(field.code, { amount: event.target.value, unit: input.unit })
+          }
+        />
+        <Select
+          name={`attribute.${field.code}.unit`}
+          label={t('catalog.edit.attribute.unit')}
+          options={unitOptions}
+          value={input.unit}
+          onChange={(event) =>
+            onChange(field.code, { amount: input.amount, unit: event.target.value })
+          }
+        />
+      </div>
+    );
+  }
+
   const suggest = (code: string) => (
     <SuggestValue
       productId={productId}
@@ -110,6 +161,8 @@ export function AttributesSection({
       label: pickLabel(option.labels, defaultLocale, option.code),
     }));
     switch (field.dataType) {
+      case 'measure':
+        return measure(field);
       case 'boolean':
         return (
           <Select

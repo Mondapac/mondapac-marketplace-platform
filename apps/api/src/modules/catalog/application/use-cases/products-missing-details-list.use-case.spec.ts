@@ -1,3 +1,4 @@
+import { Temporal } from '@mondapac/shared-kernel';
 import type {
   AttributeField,
   AttributeSchema,
@@ -22,7 +23,13 @@ import type {
   PublishedProductValues,
   PublishedProductsFilter,
 } from '../ports/product-details-gap.reader';
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
+import type {
+  MissingDetailsEmailKey,
+  MissingDetailsEmailRecord,
+  MissingDetailsEmailStore,
+} from '../ports/missing-details-email.store';
 import { GAP_SCAN_MAX, ProductsMissingDetailsList } from './products-missing-details-list.use-case';
 
 // The report "Products missing required details" in memory (attributes plan, package A4, decision
@@ -33,6 +40,7 @@ import { GAP_SCAN_MAX, ProductsMissingDetailsList } from './products-missing-det
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const policy = new ConfigCatalogMarketPolicy(markets);
+const SENT = Temporal.Instant.from('2026-11-10T01:02:03Z');
 const ID = (n: number) => `01990000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`;
 
 const field = (code: string, over: Partial<AttributeField> = {}): AttributeField => ({
@@ -54,6 +62,12 @@ const schemaOf = (fields: AttributeField[]): AttributeSchema => ({
 class MemoryGapReader implements ProductDetailsGapReader {
   rows: PublishedProductValues[] = [];
   calls: PublishedProductsFilter[] = [];
+  publishedByIds(
+    _market: MarketContext,
+    productIds: readonly string[],
+  ): Promise<readonly PublishedProductValues[]> {
+    return Promise.resolve(this.rows.filter((row) => productIds.includes(row.productId)));
+  }
   published(
     _market: MarketContext,
     filter: PublishedProductsFilter,
@@ -64,8 +78,7 @@ class MemoryGapReader implements ProductDetailsGapReader {
         .filter(
           (row) =>
             (filter.afterId === null || row.productId > filter.afterId) &&
-            (filter.sellerId === null || row.ownerSellerId === filter.sellerId) &&
-            (filter.familyCode === null || row.familyCode === filter.familyCode),
+            (filter.sellerId === null || row.ownerSellerId === filter.sellerId),
         )
         .sort((a, b) => (a.productId < b.productId ? -1 : 1))
         .slice(0, filter.limit),
@@ -111,12 +124,49 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     loadSchema: (_m: MarketContext, familyCode: string) =>
       Promise.resolve(schemas[familyCode] ?? null),
   } as unknown as AttributeRepository;
+  // A category `cat:<code>` holds the feature set `<code>`; `cat:unreadable` cannot be resolved.
+  const familyResolver = {
+    open: () =>
+      Promise.resolve({
+        resolve: (categoryId: string | null) =>
+          Promise.resolve(
+            categoryId === null || categoryId === 'cat:unreadable'
+              ? ({ ok: false, code: 'family.unavailable' } as const)
+              : ({ ok: true, familyCode: categoryId.slice(4) } as const),
+          ),
+      }),
+  } as unknown as ProductFamilyResolver;
+  // "Email sellers" requests (A4-4): product 1 was emailed (sent), product 3's request still waits.
+  let emailPairs: MissingDetailsEmailKey[][];
+  const emailStore = {
+    latest: (_m: MarketContext, pairs: readonly MissingDetailsEmailKey[]) => {
+      emailPairs.push([...pairs]);
+      return Promise.resolve(
+        pairs.flatMap((pair): MissingDetailsEmailRecord[] =>
+          pair.productId === ID(0x1001)
+            ? [
+                {
+                  ...pair,
+                  state: 'sent',
+                  requestedAt: SENT.subtract({ minutes: 1 }),
+                  settledAt: SENT,
+                },
+              ]
+            : pair.productId === ID(0x1003)
+              ? [{ ...pair, state: 'pending', requestedAt: SENT, settledAt: null }]
+              : [],
+        ),
+      );
+    },
+  } as unknown as MissingDetailsEmailStore;
   const useCase = () =>
     new ProductsMissingDetailsList(createUseCaseGate(markets, check), {
       unitOfWork,
       detailsGapReader: reader,
       attributes,
       policy,
+      familyResolver,
+      emailStore,
     });
 
   const product = (
@@ -126,13 +176,15 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     productId: ID(0x1000 + n),
     productCode: `P${n}`,
     ownerSellerId: ID(0x2000),
-    familyCode: 'pantry',
+    revisionFamilyCode: 'pantry',
+    primaryCategoryId: 'cat:pantry',
     name: `Product ${n}`,
     attributeValues: {},
     ...over,
   });
 
   beforeEach(() => {
+    emailPairs = [];
     reader = new MemoryGapReader();
     schemas = {
       pantry: schemaOf([
@@ -163,6 +215,7 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
             sellerId: ID(0x2000),
             featureSetCode: 'pantry',
             missing: ['origin', 'storage'],
+            lastEmailedAt: SENT.toString(),
           },
         ],
         nextAfterId: null,
@@ -202,7 +255,7 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     reader.rows = [
       product(1, { ownerSellerId: null }),
       product(2, { ownerSellerId: ID(0x2001) }),
-      product(3, { familyCode: 'other' }),
+      product(3, { primaryCategoryId: 'cat:other', revisionFamilyCode: 'other' }),
     ];
     const all = await useCase().execute(context(), {});
     expect(all.ok && all.value.items.map((i) => [i.productCode, i.sellerId])).toEqual([
@@ -216,6 +269,33 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     expect(byFamily.ok && byFamily.value.items.map((i) => i.productCode)).toEqual(['P3']);
   });
 
+  it('says when each row was last emailed: sent only, never for a PLATFORM product', async () => {
+    reader.rows = [product(1), product(2, { ownerSellerId: null }), product(3), product(4)];
+    const result = await useCase().execute(context(), {});
+    expect(result.ok && result.value.items.map((i) => [i.productCode, i.lastEmailedAt])).toEqual([
+      ['P1', SENT.toString()],
+      ['P2', null],
+      ['P3', null], // its request still waits
+      ['P4', null], // never asked
+    ]);
+    // One read for the page, with the seller of each seller product.
+    expect(emailPairs).toEqual([
+      [ID(0x1001), ID(0x1003), ID(0x1004)].map((productId) => ({
+        sellerId: ID(0x2000),
+        productId,
+      })),
+    ]);
+  });
+
+  it('reads no email state for an empty page', async () => {
+    reader.rows = [
+      product(1, { attributeValues: { origin: 'AU', storage: { [locales.default]: 'x' } } }),
+    ];
+    const result = await useCase().execute(context(), {});
+    expect(result.ok && result.value.items).toEqual([]);
+    expect(emailPairs).toEqual([]);
+  });
+
   it('pages by product id and ends with a null cursor', async () => {
     reader.rows = [1, 2, 3, 4, 5].map((n) => product(n));
     const first = await useCase().execute(context(), { limit: 2 });
@@ -225,6 +305,23 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     expect(second2.ok && second2.value.items.map((i) => i.productCode)).toEqual(['P3', 'P4']);
     const last = await useCase().execute(context(), { limit: 2, afterId: ID(0x1004) });
     expect(last.ok && last.value).toMatchObject({ nextAfterId: null, scanned: 1 });
+  });
+
+  it('ends the report when a page fills on the last row of a short batch', async () => {
+    reader.rows = [1, 2, 3].map((n) => product(n));
+    const result = await useCase().execute(context(), { limit: 3 });
+    expect(result.ok && result.value).toMatchObject({ scanned: 3, nextAfterId: null });
+  });
+
+  it('keeps a cursor when a page fills on the last row the scan cap allows', async () => {
+    const complete = { origin: 'AU', storage: { [locales.default]: 'x' } };
+    reader.rows = Array.from({ length: GAP_SCAN_MAX }, (_, i) =>
+      product(i + 1, i < GAP_SCAN_MAX - 1 ? { attributeValues: complete } : {}),
+    );
+    const result = await useCase().execute(context(), { limit: 1 });
+    expect(result.ok && result.value.items.map((i) => i.productCode)).toEqual([`P${GAP_SCAN_MAX}`]);
+    expect(result.ok && result.value.scanned).toBe(GAP_SCAN_MAX);
+    expect(result.ok && result.value.nextAfterId).toBe(ID(0x1000 + GAP_SCAN_MAX));
   });
 
   it('skips products that are complete and stops a long scan at the cap with a cursor', async () => {
@@ -241,9 +338,34 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     expect(rest.ok && rest.value).toMatchObject({ scanned: 5, nextAfterId: null });
   });
 
+  it('judges a product against the feature set its primary category holds now, not the one it was frozen under', async () => {
+    schemas['other'] = schemaOf([field('size', { required: true })]);
+    reader.rows = [product(1, { primaryCategoryId: 'cat:other' }), product(2)];
+    const result = await useCase().execute(context(), {});
+    expect(result.ok && result.value.items.map((i) => [i.productCode, i.featureSetCode])).toEqual([
+      ['P1', 'other'],
+      ['P2', 'pantry'],
+    ]);
+  });
+
+  it('falls back to the revision feature set when the category cannot be resolved', async () => {
+    reader.rows = [
+      product(1, { primaryCategoryId: 'cat:unreadable' }),
+      product(2, { primaryCategoryId: null }),
+    ];
+    const result = await useCase().execute(context(), {});
+    expect(result.ok && result.value.items.map((i) => i.featureSetCode)).toEqual([
+      'pantry',
+      'pantry',
+    ]);
+  });
+
   it('names a feature set it cannot read and does not judge its products', async () => {
     schemas['gone'] = null;
-    reader.rows = [product(1, { familyCode: 'gone' }), product(2)];
+    reader.rows = [
+      product(1, { primaryCategoryId: 'cat:gone', revisionFamilyCode: 'gone' }),
+      product(2),
+    ];
     const result = await useCase().execute(context(), {});
     expect(result.ok && result.value.items.map((i) => i.productCode)).toEqual(['P2']);
     expect(result.ok && result.value.unreadableFeatureSets).toEqual(['gone']);

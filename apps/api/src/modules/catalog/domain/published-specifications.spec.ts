@@ -168,6 +168,13 @@ describe('buildPublishedSpecifications', () => {
     expect(out[0]?.specifications[0]?.value).toEqual({ kind: 'list', items: ['New'] });
     expect(build({ a: 'gone' }, { a: def({ dataType: 'select', options }) })).toEqual([]);
   });
+  it('reads the single code of a select that became a multi-select as a list of one', () => {
+    const options = new Map<string, SpecificationOption>([
+      ['hot', { labels: { 'en-AU': 'Hot' }, mergedInto: null }],
+    ]);
+    const out = build({ a: 'hot' }, { a: def({ dataType: 'multi-select', options }) });
+    expect(out[0]?.specifications[0]?.value).toEqual({ kind: 'list', items: ['Hot'] });
+  });
   describe('a merged attribute (attributes A8)', () => {
     const label = (text: string): SpecificationOption => ({
       labels: { 'en-AU': text },
@@ -231,5 +238,47 @@ describe('buildPublishedSpecifications', () => {
           ?.specifications[0],
       ).toEqual({ code: 'remark', name: 'Remark', value: { kind: 'text', text: 'Fresh' } });
     });
+  });
+
+  it('lists at most 60 rows and 20 list values', () => {
+    const codes = Array.from({ length: 70 }, (_, i) => `a${i}`);
+    const many = build(
+      Object.fromEntries(codes.map((code) => [code, 'x'])),
+      Object.fromEntries(codes.map((code) => [code, def()])),
+    );
+    expect(many.flatMap((group) => group.specifications)).toHaveLength(60);
+    const options = new Map<string, SpecificationOption>(
+      Array.from({ length: 25 }, (_, i): [string, SpecificationOption] => [
+        `o${i}`,
+        { labels: { 'en-AU': `Option ${i}` }, mergedInto: null },
+      ]),
+    );
+    const list = build(
+      { a: Array.from({ length: 25 }, (_, i) => `o${i}`) },
+      { a: def({ dataType: 'multi-select', options }) },
+    );
+    expect(list[0]?.specifications[0]?.value).toMatchObject({ kind: 'list' });
+    const value = list[0]?.specifications[0]?.value;
+    expect(value?.kind === 'list' ? value.items : []).toHaveLength(20);
+  });
+
+  it('survives odd stored data: localizable non-object, a merge cycle, a name in no locale', () => {
+    // A localizable value that is not a per-locale object is not shown; false is a real value.
+    expect(build({ a: 'plain' }, { a: def({ localizable: true }) })).toEqual([]);
+    expect(
+      build({ a: { 'en-AU': false } }, { a: def({ localizable: true, dataType: 'boolean' }) })[0]
+        ?.specifications[0]?.value,
+    ).toEqual({ kind: 'boolean', value: false });
+    // A cycle of merges ends after the hop cap instead of looping; the option it lands on has a label.
+    const cycle = new Map<string, SpecificationOption>([
+      ['a', { labels: { 'en-AU': 'A' }, mergedInto: 'b' }],
+      ['b', { labels: { 'en-AU': 'B' }, mergedInto: 'a' }],
+    ]);
+    expect(
+      build({ x: 'a' }, { x: def({ dataType: 'select', options: cycle }) })[0]?.specifications[0]
+        ?.value,
+    ).toEqual({ kind: 'text', text: expect.any(String) as string });
+    // An attribute with no name in the asked or fallback locale is left out.
+    expect(build({ a: 'x' }, { a: def({ names: { 'ar-AE': 'س' } }) })).toEqual([]);
   });
 });

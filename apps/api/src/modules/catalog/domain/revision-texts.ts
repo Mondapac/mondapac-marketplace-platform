@@ -18,6 +18,7 @@ export function revisionTextsOf(
     {
       texts: content.texts,
       categoryIds: content.categoryIds,
+      topicIds: content.topicIds,
       taxCategoryCode: content.taxCategoryCode,
       attributeValues: content.attributeValues,
       variants: content.variants.map((variant) => ({
@@ -40,8 +41,15 @@ export function summaryOf(content: RevisionContent): RevisionSummary {
       Object.entries(content.texts).map(([locale, text]) => [locale, text.name]),
     ),
     categoryIds: content.categoryIds,
+    topicIds: content.topicIds,
     taxCategoryCode: content.taxCategoryCode,
     imageIds: content.imageIds,
     variantIds: content.variants.map((variant) => variant.variantId),
+    variantGtins: Object.fromEntries(
+      content.variants.map((variant) => [variant.variantId, variant.gtin] as const),
+    ),
+    variantAxes: [
+      ...new Set(content.variants.flatMap((variant) => Object.keys(variant.optionValues))),
+    ],
   };
 }

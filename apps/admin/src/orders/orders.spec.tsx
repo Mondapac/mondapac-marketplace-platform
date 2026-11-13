@@ -7,20 +7,23 @@ import messages from '../../messages/en.json';
 import { adminNav } from '../nav.ts';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { callApi } from '../api/client.ts';
 import { OrderDetail } from './order-detail.tsx';
 import { OrdersList } from './orders-list.tsx';
 import { FILTERS } from './types.ts';
-import type { AdminOrder, AdminOrderPage, SellerPart } from './types.ts';
+import type { AdminOrder, AdminOrderDetail, AdminOrderPage, SellerPart } from './types.ts';
 
 const call = vi.mocked(callApi);
 const money = (amount: string) => ({ amount, currency: 'AUD' });
 const part = (over: Partial<SellerPart> = {}): SellerPart => ({
+  sellerOrderId: '0190a000-0000-7000-8000-0000000000b1',
   sellerId: '0190a000-0000-7000-8000-0000000000a1',
   storeName: null,
   subtotal: money('2000'),
   shipping: money('500'),
+  shippingGross: money('500'),
   tax: money('182'),
   total: money('2500'),
   fulfilment: 'to-ship',
@@ -28,6 +31,11 @@ const part = (over: Partial<SellerPart> = {}): SellerPart => ({
   trackingRef: null,
   shippedAt: null,
   deliveredAt: null,
+  deliveryMethod: 'scheduled',
+  deliveryWindowStart: null,
+  deliveryWindowEnd: null,
+  readyAt: null,
+  deliveryAttention: null,
   lines: [
     {
       lineId: '0190a000-0000-7000-8000-0000000000b1',
@@ -45,7 +53,7 @@ const part = (over: Partial<SellerPart> = {}): SellerPart => ({
   ],
   ...over,
 });
-const order = (over: Partial<AdminOrder> = {}): AdminOrder => ({
+const order = (over: Partial<AdminOrderDetail> = {}): AdminOrderDetail => ({
   orderId: '0190a000-0000-7000-8000-000000000001',
   status: 'confirmed',
   cancelReason: null,
@@ -61,8 +69,12 @@ const order = (over: Partial<AdminOrder> = {}): AdminOrder => ({
   customer: null,
   paymentIntentId: 'pi_123',
   taxStrategyId: null,
+  refunds: [],
+  refundsEnabled: false,
   ...over,
 });
+/** The page's other props: no refund or note key, no notes loaded. */
+const DETAIL_PROPS = { canRefund: false, canNote: false, notes: [], csrfToken: 'csrf' } as const;
 const page = (orders: AdminOrder[], nextCursor: string | null = null) => ({
   ok: true as const,
   status: 200,
@@ -91,11 +103,11 @@ describe('orders list', () => {
         }),
       ]),
     );
-    render(wrap(<OrdersList />));
+    render(wrap(<OrdersList zone="UTC" />));
     const table = await screen.findByRole('table');
     const link = within(table).getByRole('link', { name: 'Order 00000001' });
     expect(link.getAttribute('href')).toBe('/orders/0190a000-0000-7000-8000-000000000001');
-    expect(within(table).getByText('Paid')).toBeTruthy();
+    expect(within(table).getByText('Paid', { ignore: 'th' })).toBeTruthy();
     expect(within(table).getByText('Awaiting payment')).toBeTruthy();
     expect(within(table).getByText('$25.00')).toBeTruthy();
     expect(within(table).getByText('$50.00')).toBeTruthy();
@@ -121,7 +133,7 @@ describe('orders list', () => {
         }),
       ]),
     );
-    render(wrap(<OrdersList />));
+    render(wrap(<OrdersList zone="UTC" />));
     const table = await screen.findByRole('table');
     expect(within(table).getByText('Amira Haddad')).toBeTruthy();
     expect(within(table).getByText('amira@example.com')).toBeTruthy();
@@ -133,7 +145,7 @@ describe('orders list', () => {
 
   it('falls back to the short id without the customer fields', async () => {
     call.mockResolvedValueOnce(page([order()]));
-    render(wrap(<OrdersList />));
+    render(wrap(<OrdersList zone="UTC" />));
     const table = await screen.findByRole('table');
     expect(within(table).getByText('000000E1')).toBeTruthy();
     expect(within(table).getByText('000000A1')).toBeTruthy();
@@ -141,7 +153,7 @@ describe('orders list', () => {
 
   it('filters by status and asks again', async () => {
     call.mockResolvedValue(page([order()]));
-    render(wrap(<OrdersList />));
+    render(wrap(<OrdersList zone="UTC" />));
     await screen.findByRole('table');
     fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
     await waitFor(() =>
@@ -149,26 +161,33 @@ describe('orders list', () => {
     );
   });
 
-  it('pages by cursor with Show more', async () => {
+  it('pages by cursor with Previous and Next, and walks back to the page it came from', async () => {
     call.mockResolvedValueOnce(page([order()], 'next-1'));
-    render(wrap(<OrdersList />));
+    render(wrap(<OrdersList zone="UTC" />));
     await screen.findByRole('table');
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Previous' }).disabled).toBe(true);
     call.mockResolvedValueOnce(page([order({ orderId: '0190a000-0000-7000-8000-000000000003' })]));
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByRole('link', { name: 'Order 00000003' })).toBeTruthy();
     expect(call).toHaveBeenLastCalledWith('GET', 'ordering/admin/orders?cursor=next-1');
-    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Next' }).disabled).toBe(true);
+    call.mockResolvedValueOnce(page([order()], 'next-1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(await screen.findByRole('link', { name: 'Order 00000001' })).toBeTruthy();
+    expect(call).toHaveBeenLastCalledWith('GET', 'ordering/admin/orders');
+    // Previous and next has no sort: the order is newest first.
+    expect(screen.queryByLabelText('Sort by')).toBeNull();
   });
 
   it('shows an empty state', async () => {
     call.mockResolvedValueOnce(page([]));
-    render(wrap(<OrdersList />));
+    render(wrap(<OrdersList zone="UTC" />));
     expect(await screen.findByText(/No orders yet/)).toBeTruthy();
   });
 
   it('says which status is empty on a filtered tab', async () => {
     call.mockResolvedValue(page([]));
-    render(wrap(<OrdersList />));
+    render(wrap(<OrdersList zone="UTC" />));
     expect(await screen.findByText('No orders yet')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
     expect(await screen.findByText('No cancelled orders')).toBeTruthy();
@@ -177,7 +196,7 @@ describe('orders list', () => {
 
   it('shows the error with a retry that loads again', async () => {
     call.mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
-    render(wrap(<OrdersList />));
+    render(wrap(<OrdersList zone="UTC" />));
     expect(await screen.findByText(/couldn't load the orders/)).toBeTruthy();
     call.mockResolvedValueOnce(page([order()]));
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
@@ -187,7 +206,7 @@ describe('orders list', () => {
   it('offers exactly the statuses the admin API accepts', async () => {
     expect(FILTERS).toEqual(['all', 'pending-payment', 'confirmed', 'cancelled']);
     call.mockResolvedValueOnce(page([]));
-    render(wrap(<OrdersList />));
+    render(wrap(<OrdersList zone="UTC" />));
     const tabs = within(screen.getByRole('navigation')).getAllByRole('button');
     expect(tabs.map((tab) => tab.textContent)).toEqual([
       'All',
@@ -199,9 +218,182 @@ describe('orders list', () => {
   });
 });
 
+const pageOf = (orders: AdminOrder[], total: number, number = 1) => ({
+  ok: true as const,
+  status: 200,
+  body: {
+    orders,
+    nextCursor: null,
+    total,
+    page: number,
+    pageSize: 25,
+  } satisfies AdminOrderPage,
+});
+
+describe('orders list in page-number mode', () => {
+  it('asks for a page with its sort and shows the range of the total', async () => {
+    call.mockResolvedValue(pageOf([order()], 60));
+    render(wrap(<OrdersList paging="pages" zone="UTC" />));
+    await screen.findByRole('table');
+    expect(call).toHaveBeenLastCalledWith(
+      'GET',
+      'ordering/admin/orders?page=1&pageSize=25&sort=created&direction=desc',
+    );
+    expect(screen.getByText('1 to 1 of 60')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Page 3' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Page 4' })).toBeNull();
+  });
+
+  it('goes to the page that is clicked and back to the first after a filter changes', async () => {
+    call.mockResolvedValue(pageOf([order()], 60));
+    render(wrap(<OrdersList paging="pages" zone="UTC" />));
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'GET',
+        'ordering/admin/orders?page=2&pageSize=25&sort=created&direction=desc',
+      ),
+    );
+    // The focus moves from the pager to the top of the new rows.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('table').parentElement?.parentElement),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'GET',
+        'ordering/admin/orders?status=cancelled&page=1&pageSize=25&sort=created&direction=desc',
+      ),
+    );
+  });
+
+  it('sorts by total and filters by payment, delivery and day (the last day is included)', async () => {
+    call.mockResolvedValue(pageOf([order()], 1));
+    render(wrap(<OrdersList paging="pages" zone="UTC" />));
+    await screen.findByRole('table');
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'total-high' } });
+    fireEvent.change(screen.getByLabelText('Payment'), { target: { value: 'captured' } });
+    fireEvent.change(screen.getByLabelText('Delivery'), { target: { value: 'shipped' } });
+    fireEvent.change(screen.getByLabelText('Placed from'), {
+      target: { value: '2026-10-01' },
+    });
+    fireEvent.change(screen.getByLabelText('Placed until'), {
+      target: { value: '2026-10-31' },
+    });
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'GET',
+        'ordering/admin/orders?paymentState=captured&fulfilment=shipped' +
+          '&from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z' +
+          '&page=1&pageSize=25&sort=total&direction=desc',
+      ),
+    );
+    call.mockResolvedValue(pageOf([], 0));
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(await screen.findByText('No orders yet')).toBeTruthy();
+  });
+
+  it('reads the days and shows the times on the clock of its zone, and names the zone', async () => {
+    // 1 Oct 2026 starts at 14:00 UTC the day before in Brisbane (UTC+10, no daylight saving).
+    call.mockResolvedValue(pageOf([order({ createdAt: '2026-10-12T15:30:00.000Z' })], 1));
+    render(wrap(<OrdersList paging="pages" zone="Australia/Brisbane" />));
+    const table = await screen.findByRole('table');
+    expect(screen.getByText('Times and days are in Australia/Brisbane.')).toBeTruthy();
+    // Placed 15:30 UTC on 12 Oct is 1:30 am on 13 Oct in Brisbane.
+    expect(within(table).getByText(/13 Oct.*1:30/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Placed from'), { target: { value: '2026-10-01' } });
+    fireEvent.change(screen.getByLabelText('Placed until'), { target: { value: '2026-10-31' } });
+    await waitFor(() =>
+      expect(call).toHaveBeenLastCalledWith(
+        'GET',
+        'ordering/admin/orders?from=2026-09-30T14%3A00%3A00.000Z' +
+          '&to=2026-10-31T14%3A00%3A00.000Z&page=1&pageSize=25&sort=created&direction=desc',
+      ),
+    );
+  });
+
+  it('does not ask when the end day is before the start day, and says so', async () => {
+    call.mockResolvedValue(pageOf([order()], 1));
+    render(wrap(<OrdersList paging="pages" zone="UTC" />));
+    await screen.findByRole('table');
+    call.mockClear();
+    fireEvent.change(screen.getByLabelText('Placed from'), {
+      target: { value: '2026-10-10' },
+    });
+    fireEvent.change(screen.getByLabelText('Placed until'), {
+      target: { value: '2026-10-01' },
+    });
+    expect(await screen.findByText('The end day is before the start day.')).toBeTruthy();
+    expect(screen.getByText('No orders match')).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops page numbers at the API limit and tells the admin how to go further', async () => {
+    call.mockResolvedValue(pageOf([order()], 12_345));
+    render(wrap(<OrdersList paging="pages" zone="UTC" />));
+    await screen.findByRole('table');
+    expect(screen.getByText(/Page numbers stop at the first 10,000 orders/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Page 400' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Page 401' })).toBeNull();
+  });
+});
+
 describe('order detail', () => {
+  it('lists the refunds with their state and reason, and a refused one as not refunded', () => {
+    const refund = {
+      refundId: '0190a000-0000-7000-8000-0000000000f1',
+      sellerOrderId: '0190a000-0000-7000-8000-0000000000b1',
+      reason: 'damaged',
+      lossBearer: 'seller',
+      lossReasonCode: null,
+      amount: money('1000'),
+      tax: money('91'),
+      shipping: null,
+      lines: [
+        {
+          orderLineId: '0190a000-0000-7000-8000-0000000000b1',
+          quantity: 1,
+          amount: money('1000'),
+          tax: money('91'),
+        },
+      ],
+      requestedAt: '2026-10-14T01:00:00.000Z',
+      settledAt: null,
+      creditNoteId: null,
+    };
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({
+            refundsEnabled: true,
+            refunds: [
+              { ...refund, state: 'failed' },
+              {
+                ...refund,
+                refundId: '0190a000-0000-7000-8000-0000000000f2',
+                state: 'pending',
+                reason: 'item-unavailable',
+              },
+            ],
+          })}
+        />,
+      ),
+    );
+    expect(screen.getByText('Refused by Stripe')).toBeTruthy();
+    expect(screen.getByText('Waiting for Stripe')).toBeTruthy();
+    expect(screen.getByText(/Not refunded/)).toBeTruthy();
+    // The seller's own reason (row 40) has its own label, not "Other".
+    expect(screen.getByText(/^Item unavailable ·/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Order confirmation' }).getAttribute('href')).toBe(
+      '/orders/0190a000-0000-7000-8000-000000000001/document',
+    );
+  });
+
   it('shows the summary, the seller part, its lines and totals', () => {
-    render(wrap(<OrderDetail order={order()} />));
+    render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
     expect(screen.getByRole('heading', { name: 'Order 00000001' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Back to orders' }).getAttribute('href')).toBe(
       '/orders',
@@ -223,6 +415,8 @@ describe('order detail', () => {
     render(
       wrap(
         <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
           order={order({
             customer: { displayName: 'Amira Haddad', email: 'amira@example.com' },
             sellerOrders: [
@@ -253,6 +447,8 @@ describe('order detail', () => {
     render(
       wrap(
         <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
           order={order({
             customer: { displayName: null, email: 'a@example.com' },
             sellerOrders: [
@@ -272,6 +468,8 @@ describe('order detail', () => {
     render(
       wrap(
         <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
           order={order({
             status: 'cancelled',
             cancelReason: 'payment-failed',
@@ -290,17 +488,180 @@ describe('order detail', () => {
         />,
       ),
     );
-    expect(screen.getByText('Payment failed')).toBeTruthy();
+    expect(screen.getByText(/This order was cancelled: Payment failed\./)).toBeTruthy();
     expect(screen.getByText('Australia Post')).toBeTruthy();
     expect(screen.getByText('AP123')).toBeTruthy();
-    expect(screen.getAllByText('Delivered')).toHaveLength(2);
+    expect(screen.getAllByText('Delivered')).toHaveLength(1);
     expect(screen.getByText('Voided')).toBeTruthy();
+  });
+});
+
+describe('order detail layout', () => {
+  it('shows the fulfilment steps, the delivery method and the activity from recorded times', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({
+            sellerOrders: [
+              part({
+                storeName: 'Al Noor Butchery',
+                fulfilment: 'shipped',
+                deliveryMethod: 'same_day',
+                readyAt: '2026-10-13T02:00:00.000Z',
+                shippedAt: '2026-10-13T03:00:00.000Z',
+              }),
+            ],
+          })}
+        />,
+      ),
+    );
+    const steps = screen.getByRole('list', { name: 'Progress' });
+    expect(within(steps).getByText('Waiting')).toBeTruthy();
+    expect(within(steps).getAllByText(/2026/)).toHaveLength(2);
+    expect(screen.getByText('Same-day delivery')).toBeTruthy();
+    const activity = screen.getByRole('heading', { name: 'Activity' }).parentElement!;
+    const items = within(activity).getAllByRole('listitem');
+    expect(items.map((item) => item.firstElementChild?.textContent)).toEqual([
+      'Order placed',
+      'Payment confirmed',
+      'Al Noor Butchery marked ready',
+      'Al Noor Butchery shipped',
+    ]);
+  });
+
+  it('shows a delivery problem the platform must look at', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({ sellerOrders: [part({ deliveryAttention: 'carrier-unknown' })] })}
+        />,
+      ),
+    );
+    expect(screen.getByText(/Delivery needs a look/)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('gives a pickup part its own steps and activity wording, with no shipping', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({
+            sellerOrders: [
+              part({
+                storeName: 'Al Noor Butchery',
+                fulfilment: 'delivered',
+                deliveryMethod: 'pickup',
+                readyAt: '2026-10-13T02:00:00.000Z',
+                deliveredAt: '2026-10-13T03:00:00.000Z',
+              }),
+            ],
+          })}
+        />,
+      ),
+    );
+    const steps = screen.getByRole('list', { name: 'Progress' });
+    expect(
+      within(steps)
+        .getAllByRole('listitem')
+        .map((li) => li.firstElementChild?.textContent),
+    ).toEqual(['Ready for pickup', 'Collected']);
+    expect(within(steps).queryByText('Shipped')).toBeNull();
+    expect(screen.getByText('Al Noor Butchery handed over for pickup')).toBeTruthy();
+    expect(screen.getByText('Al Noor Butchery marked ready for pickup')).toBeTruthy();
+  });
+
+  it('shows no steps before payment or after a cancel', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({ status: 'cancelled', cancelReason: 'expired', confirmedAt: null })}
+        />,
+      ),
+    );
+    expect(screen.queryByRole('list', { name: 'Progress' })).toBeNull();
+  });
+
+  it('shows the customer window with an en dash, and Done for a step with no time', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({
+            sellerOrders: [
+              part({
+                fulfilment: 'delivered',
+                deliveryWindowStart: '2026-10-13T05:00:00.000Z',
+                deliveryWindowEnd: '2026-10-13T07:00:00.000Z',
+              }),
+            ],
+          })}
+        />,
+      ),
+    );
+    expect(screen.getByText(/ \u2013 /)).toBeTruthy();
+    expect(
+      within(screen.getByRole('list', { name: 'Progress' })).getAllByText('Done'),
+    ).toHaveLength(3);
+  });
+
+  it('shows Not recorded for an unknown delivery method', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({ sellerOrders: [part({ deliveryMethod: 'drone' })] })}
+        />,
+      ),
+    );
+    expect(screen.getByText('Not recorded')).toBeTruthy();
+  });
+
+  it('tells a failed customer lookup from hidden details', () => {
+    const { unmount } = render(
+      wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={true} order={order()} />),
+    );
+    expect(screen.getByText(/couldn't be loaded/)).toBeTruthy();
+    expect(screen.queryByText(/hidden for your role/)).toBeNull();
+    unmount();
+    render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
+    expect(screen.getByText(/hidden for your role/)).toBeTruthy();
+    expect(screen.queryByText(/couldn't be loaded/)).toBeNull();
+  });
+
+  it('says so when copying fails', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('no')) },
+      configurable: true,
+    });
+    render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy order ID' }));
+    await waitFor(() => expect(screen.getByText(/Couldn't copy/)).toBeTruthy());
+  });
+
+  it('says when the customer details are hidden, and copies the order id', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
+    expect(screen.getByText(/hidden for your role/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy order ID' }));
+    await waitFor(() => expect(screen.getByText('Copied')).toBeTruthy());
+    expect(writeText).toHaveBeenCalledWith('0190a000-0000-7000-8000-000000000001');
   });
 });
 
 describe('order tax', () => {
   it('shows the tax of the order, of each seller and of each line, and the strategy', () => {
-    render(wrap(<OrderDetail order={order()} />));
+    render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
     expect(screen.getByText('Tax')).toBeTruthy();
     expect(screen.getByText('Market default')).toBeTruthy();
     expect(screen.getByText('Tax in prices')).toBeTruthy();
@@ -316,6 +677,8 @@ describe('order tax', () => {
     render(
       wrap(
         <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
           order={order({
             tax: money('200'),
             taxStrategyId: '0190a000-0000-7000-8000-0000000000f1',
@@ -335,7 +698,15 @@ describe('order tax', () => {
       lines: part().lines.map((line) => ({ ...line, taxRateBps: null, tax: null })),
       tax: null,
     });
-    render(wrap(<OrderDetail order={order({ tax: null, sellerOrders: [old] })} />));
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({ tax: null, sellerOrders: [old] })}
+        />,
+      ),
+    );
     expect(screen.getAllByText('Not recorded')).toHaveLength(2);
     expect(screen.queryByText('Market default')).toBeNull();
     expect(screen.queryByText(/Tax 10%/)).toBeNull();

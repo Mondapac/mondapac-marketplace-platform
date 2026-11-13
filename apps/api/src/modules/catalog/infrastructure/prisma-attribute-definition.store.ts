@@ -1,3 +1,4 @@
+import { boundsJson } from './attribute-bounds-json';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { AttributeDataType, Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
@@ -145,6 +146,25 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
     if (count !== 1) throw new StaleAggregateError('attribute-definition', state.id);
   }
 
+  async saveConversion(
+    market: MarketContext,
+    definition: AttributeDefinition,
+    authorAccountId: Id<'Account'>,
+  ): Promise<void> {
+    const state = definition.state;
+    this.#sameMarket(market, state);
+    await this.#insertRevision(market, state, authorAccountId, null);
+    const { count } = await this.prisma.tx(market).catalogAttributeDefinition.updateMany({
+      where: { marketId: market.marketId, id: state.id, version: state.version - 1 },
+      data: {
+        publishedRevisionId: state.revisionId,
+        version: state.version,
+        dataType: state.dataType,
+      },
+    });
+    if (count !== 1) throw new StaleAggregateError('attribute-definition', state.id);
+  }
+
   async lockAtVersion(
     market: MarketContext,
     id: Id<'AttributeDefinition'>,
@@ -222,7 +242,7 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
           revisionNo: state.revisionNo,
           material: state.material,
           isVariantOption: state.isVariantOption,
-          bounds: { ...state.bounds },
+          bounds: boundsJson(state.bounds),
           names: { ...state.names },
           helpText: { ...state.display.helpText },
           showOnProductPage: state.display.showOnProductPage,

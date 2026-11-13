@@ -1,4 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  OwnProductForm,
+  OwnProductOptionsLocales,
+  OwnVariantView,
+  OwnWorkingCopyView,
+} from './own-reads.dto';
+import { TopicRefBody } from './topic.dto';
 
 // Bodies and answers of the platform product routes (catalog design 4.2, 8.2; CAT-10, CAT-41;
 // slice 6). Ids and codes only: an answer never carries a text the admin typed, except in the
@@ -60,10 +67,16 @@ export class RefusedFieldView {
   locale!: string;
 
   @ApiProperty({
-    enum: ['claim-text.found', 'claim-text.check-unavailable', 'text.invisible-character'],
+    enum: [
+      'claim-text.found',
+      'claim-text.check-unavailable',
+      'text.invisible-character',
+      'text.blocked-term',
+    ],
     description:
       'Why the text kept its last saved value. A certification-like claim in product text is ' +
-      'refused: a claim is made through a certificate, never in free text.',
+      'refused: a claim is made through a certificate, never in free text. text.blocked-term: ' +
+      "the text holds a term of the Market's content filter.",
   })
   code!: string;
 
@@ -82,6 +95,23 @@ export class RefusedFieldView {
   character?: string;
 }
 
+export class VariantNoticeView {
+  @ApiProperty({ format: 'uuid' })
+  variantId!: string;
+
+  @ApiProperty({ enum: ['gtin.duplicate'] })
+  code!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The public code of the PLATFORM product that already carries this GTIN, so the seller can ' +
+      'sell on it; null when the GTIN is on any other product (no name, id or seller is given).',
+  })
+  sellOnProductCode!: string | null;
+}
+
 export class PlatformProductDraftSaved {
   @ApiProperty({ type: [String], description: 'The draft variant list, in order.' })
   variantIds!: string[];
@@ -91,6 +121,13 @@ export class PlatformProductDraftSaved {
     description: 'Texts that kept their last saved value; everything else was saved.',
   })
   refusedFields!: RefusedFieldView[];
+
+  @ApiProperty({
+    type: [VariantNoticeView],
+    description:
+      'Advice about the saved variants (a GTIN another product carries). Never a refusal.',
+  })
+  variantNotices!: VariantNoticeView[];
 }
 
 export class PlatformProductSubmitRequest {
@@ -110,6 +147,151 @@ export class PlatformProductSubmitted {
 
   @ApiProperty({ description: "An admin's revision publishes at once." })
   published!: boolean;
+}
+
+export class PlatformProductDiscarded {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+}
+
+export class PlatformProductOptionsView {
+  @ApiProperty({ type: [String], description: 'The product types the Market offers.' })
+  productTypes!: string[];
+  @ApiProperty({ type: OwnProductOptionsLocales }) locales!: OwnProductOptionsLocales;
+}
+
+export class PlatformRevisionView {
+  @ApiProperty({ format: 'uuid' }) revisionId!: string;
+  @ApiProperty() revisionNo!: number;
+  @ApiProperty() submittedAt!: string;
+  @ApiProperty({ type: 'object', additionalProperties: true, description: 'The frozen content.' })
+  content!: Record<string, unknown>;
+}
+
+export class PlatformProductOffers {
+  @ApiProperty({ description: 'Sellers that hold at least one Offer on the product.' })
+  sellerCount!: number;
+  @ApiProperty({ description: 'Offers on the product that are not deleted, every seller.' })
+  offerCount!: number;
+}
+
+export class PlatformProductView {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ example: 'P00000001' }) productCode!: string;
+  @ApiProperty() typeCode!: string;
+  @ApiProperty() familyCode!: string;
+  @ApiProperty({ description: 'single (one fixed variant) or configurable.' })
+  variantModel!: string;
+  @ApiProperty() status!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'When an admin paused the product (ISO 8601, UTC); null when it is not paused.',
+  })
+  pausedAt!: string | null;
+  @ApiProperty({ type: PlatformProductOffers }) offers!: PlatformProductOffers;
+  @ApiProperty({ type: [OwnVariantView] }) variants!: OwnVariantView[];
+  @ApiProperty({ description: "The Market's cap on non-retired variants." }) maxVariants!: number;
+  @ApiProperty({ description: "The Market's cap on the options a product varies on (1 or 2)." })
+  maxAxes!: number;
+  @ApiProperty({ description: 'The product version, to send back with Add sizes.' })
+  version!: number;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'When the revision that waits for review was submitted; null when none waits.',
+  })
+  pendingSubmittedAt!: string | null;
+  @ApiProperty() lastChangedAt!: string;
+  @ApiProperty() createdAt!: string;
+  @ApiProperty({ type: OwnProductForm }) form!: OwnProductForm;
+  @ApiProperty({ type: OwnProductOptionsLocales }) locales!: OwnProductOptionsLocales;
+  @ApiProperty({ nullable: true, type: OwnWorkingCopyView })
+  workingCopy!: OwnWorkingCopyView | null;
+  @ApiProperty({ nullable: true, type: PlatformRevisionView })
+  published!: PlatformRevisionView | null;
+  @ApiProperty({
+    type: [TopicRefBody],
+    description:
+      'The topics named by the draft and the published revision (`topicIds`), each once. A topic ' +
+      'that no longer exists is absent.',
+  })
+  topicRefs!: TopicRefBody[];
+}
+
+/** The body of Add sizes (catalog design 4.2a; variants V9). A closed object. */
+export class AddSizesRequest {
+  @ApiProperty({ description: 'The product `version` the page read.', minimum: 1 })
+  version!: number;
+
+  @ApiProperty({
+    type: [String],
+    description:
+      'The option attributes the product varies on: 1 to the Market maxVariantAttributes codes ' +
+      'of variant attributes of the feature set its primary category holds.',
+  })
+  axes!: string[];
+
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description: "One option code per axis, for the product's one existing variant.",
+  })
+  optionValues!: Record<string, string>;
+
+  @ApiProperty({
+    description: 'The page showed the warning that a pending revision is set aside by this.',
+    type: Boolean,
+  })
+  replacePending!: boolean;
+}
+
+export class PlatformAddSizesRequest extends AddSizesRequest {
+  @ApiProperty({
+    description:
+      "The number of other sellers' Offers the confirm showed going off sale; a different count " +
+      'answers confirm.count-changed with the current one.',
+    minimum: 0,
+  })
+  offOfferCount!: number;
+}
+
+export class AddSizesDone {
+  @ApiProperty({ format: 'uuid', description: UUID })
+  productId!: string;
+
+  @ApiProperty({ format: 'uuid', description: 'The one variant, which keeps its id.' })
+  variantId!: string;
+
+  @ApiProperty({ description: 'The product version after the change.' })
+  version!: number;
+
+  @ApiProperty({
+    description: "Offers that went off sale (type-not-allowed); 0 for a seller's product.",
+  })
+  offOfferCount!: number;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    format: 'uuid',
+    description: 'The pending revision that was set aside, or null.',
+  })
+  supersededRevisionId!: string | null;
+}
+
+export class AddSizesImpactView {
+  @ApiProperty({ format: 'uuid', description: UUID })
+  productId!: string;
+
+  @ApiProperty({ description: 'The product version to send back.' })
+  version!: number;
+
+  @ApiProperty({
+    description:
+      'Offers of other sellers whose allowed product types leave out configurable: they go off ' +
+      'sale (cause type-not-allowed) when sizes are added.',
+  })
+  offOfferCount!: number;
 }
 
 /** The error format `{ statusCode, code, details? }`: codes only, never a text of the request. */

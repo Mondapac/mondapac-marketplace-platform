@@ -1,5 +1,6 @@
 import type { AttributeDataType } from '@mondapac/shared-kernel';
 import { countryCodeOf, countryName } from './iso-countries';
+import { mergedValue } from './published-specifications';
 
 /** The attribute codes the index treats specially: the brand (a product column) and the origin. */
 export const BRAND_FACET = 'brand';
@@ -30,6 +31,14 @@ export interface SearchDefinition {
   /** May be offered as a category filter: its values are indexed as facets. */
   readonly canBeFilter: boolean;
   readonly options: ReadonlyMap<string, SearchOption>;
+  /**
+   * The attribute this one was merged into (attributes A8): its code, and for a choice attribute
+   * where each of its option codes goes. A product's value is indexed as the target's.
+   */
+  readonly mergedInto?: {
+    readonly code: string;
+    readonly options: ReadonlyMap<string, string>;
+  } | null;
 }
 
 /** A definition's PUBLISHED revision as search reads it, with the names a filter list shows. */
@@ -121,11 +130,29 @@ export function buildSearchAttributes(input: {
   }
   for (const [code, stored] of Object.entries(input.values)) {
     if (code === BRAND_FACET || stored === undefined || stored === null) continue;
-    const definition = input.definitions.get(code);
-    if (definition === undefined || definition.status !== 'active') continue;
-    const raw = plain(stored, definition, input.locale);
+    const own = input.definitions.get(code);
+    if (own === undefined) continue;
+    let definition: SearchDefinition = own;
+    let value: unknown = stored;
+    let at = code;
+    // A merged attribute is indexed as its target (attributes A8): the value is mapped, and the
+    // target's own value wins when the product has both. A target that is not active adds nothing.
+    if (own.mergedInto != null) {
+      const target = input.definitions.get(own.mergedInto.code);
+      const targetValue = input.values[own.mergedInto.code];
+      if (target === undefined || target.status !== 'active') continue;
+      if (targetValue !== undefined && targetValue !== null) continue;
+      const mapped = mergedValue(own.mergedInto.options, stored);
+      if (mapped === null) continue;
+      definition = target;
+      value = mapped;
+      at = own.mergedInto.code;
+    } else if (own.status !== 'active') {
+      continue;
+    }
+    const raw = plain(value, definition, input.locale);
     if (raw === null || raw === undefined) continue;
-    if (code === ORIGIN_ATTRIBUTE) {
+    if (at === ORIGIN_ATTRIBUTE) {
       const countries = Array.isArray(raw) ? raw : [raw];
       for (const entry of countries as unknown[]) {
         if (typeof entry !== 'string') continue;
@@ -140,11 +167,17 @@ export function buildSearchAttributes(input: {
     switch (definition.dataType) {
       case 'select':
       case 'multi-select': {
-        const picked = definition.dataType === 'select' ? [raw] : Array.isArray(raw) ? raw : [];
+        // A value stored before a select was converted to a multi-select is one code (A8).
+        const picked =
+          definition.dataType === 'select' || typeof raw === 'string'
+            ? [raw]
+            : Array.isArray(raw)
+              ? raw
+              : [];
         for (const entry of picked as unknown[]) {
           const resolved = resolveOption(definition, entry);
           if (resolved === null) continue;
-          if (definition.canBeFilter) facets.add(`${code}=${resolved.code}`);
+          if (definition.canBeFilter) facets.add(`${at}=${resolved.code}`);
           if (definition.searchable) {
             const label = labelOf(resolved.option.labels, input.locale);
             if (label !== null) words.push(label);
@@ -153,13 +186,13 @@ export function buildSearchAttributes(input: {
         break;
       }
       case 'boolean':
-        if (raw === true && definition.canBeFilter) facets.add(`${code}=true`);
+        if (raw === true && definition.canBeFilter) facets.add(`${at}=true`);
         break;
       case 'integer':
       case 'decimal': {
         if (!definition.canBeFilter) break;
         const text = typeof raw === 'number' && Number.isFinite(raw) ? String(raw) : raw;
-        if (typeof text === 'string' && NUMBER.test(text)) numbers[code] = Number(text);
+        if (typeof text === 'string' && NUMBER.test(text)) numbers[at] = Number(text);
         break;
       }
       case 'text':
@@ -179,4 +212,59 @@ export function buildSearchAttributes(input: {
     facets: [...facets].sort().slice(0, MAX_FACET_CODES),
     numbers,
   };
+}
+
+/** The most variants of one product the index keeps (Market `maxVariantsPerProduct` is 100). */
+export const MAX_INDEXED_VARIANTS = 100;
+
+/**
+ * The facets of one variant's axis values (variants V8, pure): `attribute=<option code>`, with a
+ * merged attribute or option followed to its target (A8), for active single-choice definitions that
+ * can be a filter. A value the definition cannot read is left out, never indexed raw.
+ */
+export function buildVariantFacets(input: {
+  readonly optionValues: Readonly<Record<string, unknown>>;
+  readonly definitions: ReadonlyMap<string, SearchDefinition>;
+}): string[] {
+  const facets = new Set<string>();
+  for (const [code, stored] of Object.entries(input.optionValues)) {
+    const own = input.definitions.get(code);
+    if (own === undefined || stored === undefined || stored === null) continue;
+    let definition: SearchDefinition = own;
+    let value: unknown = stored;
+    let at = code;
+    if (own.mergedInto != null) {
+      const target = input.definitions.get(own.mergedInto.code);
+      if (target === undefined || target.status !== 'active') continue;
+      const mapped = mergedValue(own.mergedInto.options, stored);
+      if (mapped === null) continue;
+      definition = target;
+      value = mapped;
+      at = own.mergedInto.code;
+    } else if (own.status !== 'active') {
+      continue;
+    }
+    if (definition.dataType !== 'select' || !definition.canBeFilter) continue;
+    const resolved = resolveOption(definition, value);
+    if (resolved !== null) facets.add(`${at}=${resolved.code}`);
+  }
+  return [...facets].sort();
+}
+
+/** A variant's automatic label in the locale, else an English one, else null (pure). */
+export function variantLabelOf(labels: unknown, locale: string): string | null {
+  if (!isRecord(labels)) return null;
+  const texts: Record<string, string> = {};
+  for (const [key, text] of Object.entries(labels)) {
+    if (typeof text === 'string') texts[key] = text;
+  }
+  return labelOf(texts, locale);
+}
+
+/** Adds variant labels to an attribute search text as extra words, within the limit (pure). */
+export function withVariantWords(searchText: string, labels: readonly (string | null)[]): string {
+  const words = [searchText, ...labels.flatMap((label) => (label === null ? [] : [label]))]
+    .map((word) => word.trim())
+    .filter((word) => word !== '');
+  return [...[...new Set(words)].join(' ')].slice(0, MAX_SEARCH_TEXT).join('');
 }

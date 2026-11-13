@@ -224,6 +224,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
         product_id: productId,
         revision_no: index + 1,
         revision_kind: 'submission',
+        type_code: 'simple',
         base_revision_id: null,
         reverted_from_revision_id: null,
         family_revision_id: familyRevisionId,
@@ -250,6 +251,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       pendingSubmittedAt: null,
     });
     const published = stored.submitRevision({
+      familyCode: 'default',
       revisionId: revisionIds[0]!,
       baseRevisionId: null,
       outcome: { outcome: 'published', publishKind: 'auto', sensitive: false, reasons: [] },
@@ -269,6 +271,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       pendingRevisionId: null,
     });
     const pending = again.submitRevision({
+      familyCode: 'default',
       revisionId: revisionIds[1]!,
       baseRevisionId: revisionIds[0]!,
       outcome: { outcome: 'pending', publishKind: null, sensitive: true, reasons: ['name'] },
@@ -293,6 +296,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       last.publishTaxOverride({
         revisionId: revisionIds[2]!,
         fromRevisionId: revisionIds[0]!,
+        revisionTypeCode: last.state.typeCode,
         now: T1,
       }).ok,
     ).toBe(true);
@@ -305,6 +309,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
 
     // Replace the pending revision, then approve it: the pending pair clears together.
     const replaced = overridden.submitRevision({
+      familyCode: 'default',
       revisionId: revisionIds[3]!,
       baseRevisionId: revisionIds[2]!,
       outcome: { outcome: 'pending', publishKind: null, sensitive: true, reasons: ['name'] },
@@ -321,6 +326,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       toApprove.approveRevision({
         revisionId: revisionIds[3]!,
         baseRevisionId: revisionIds[2]!,
+        revisionTypeCode: toApprove.state.typeCode,
         revisionVariantIds: [variantId],
         maxVariants: 5,
         now: T1,
@@ -468,7 +474,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       ).toBe('23514');
     });
 
-    it('lets the application change status columns but not type, family, code or creator', async () => {
+    it('lets the application change status columns but not type, code or creator, and the family only with a revision pointer', async () => {
       const id = await insertProduct();
       expect(
         await sqlState(
@@ -477,15 +483,17 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
           [id, T1.toString()],
         ),
       ).toBeNull();
-      for (const column of [
-        'type_code',
-        'family_code',
-        'product_code',
-        'created_by_seller_id',
-        'variant_model',
-        'market_id',
-        'created_at',
-      ]) {
+      // Type and model are granted for Add sizes only (simple/single to configurable/options, both
+      // in one UPDATE): any other write is refused by the trigger products_type_change_guard.
+      for (const column of ['type_code', 'variant_model']) {
+        expect(
+          await sqlState(app, `UPDATE catalog.products SET ${column} = $2 WHERE id = $1`, [
+            id,
+            'zzz',
+          ]),
+        ).toBe('23514');
+      }
+      for (const column of ['product_code', 'created_by_seller_id', 'market_id', 'created_at']) {
         const value =
           column === 'created_by_seller_id'
             ? uuid7()
@@ -501,6 +509,10 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
           ]),
         ).toBe('42501');
       }
+      // The family is writable, but the trigger refuses it without a revision pointer (A4, CAT-10).
+      expect(
+        await sqlState(app, `UPDATE catalog.products SET family_code = 'zzz' WHERE id = $1`, [id]),
+      ).toBe('23514');
     });
 
     it('lets nobody delete a product, and the application not even try', async () => {

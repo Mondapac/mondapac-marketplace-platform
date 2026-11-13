@@ -63,6 +63,7 @@ const detail = (locales: MarketLocales, over: Partial<AttributeDetail> = {}): At
   material: false,
   isVariantOption: false,
   revisionNo: 1,
+  units: [],
   missingLocales: [],
   createdByKind: 'admin',
   createdAt: '2026-10-01T01:00:00.000Z',
@@ -118,6 +119,7 @@ const pageOf = (locales: MarketLocales): AttributePage => ({
   total: 0,
   totalAll: 0,
   locales,
+  units: [],
   featureSets: [],
   truncated: false,
 });
@@ -186,11 +188,11 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     mount(true);
     fireEvent.click(await screen.findByRole('button', { name: 'Merge values' }));
     const dialog = await screen.findByRole('dialog');
-    const list = await within(dialog)
-      .findByRole('list', { hidden: true })
-      .catch(() => null);
-    expect(list).toBeNull();
     await within(dialog).findByText('Published products');
+    // Once the impact is shown it is a description list: no list (not even the hidden loading
+    // rows) is left in the dialog. Checked after the impact loads, because the loading rows are
+    // a list until then and a check before it races the impact read.
+    expect(within(dialog).queryByRole('list', { hidden: true })).toBeNull();
     expect(within(dialog).getByText('12')).toBeTruthy();
     const confirm = within(dialog).getByRole('button', { name: 'Merge values' });
     expect((confirm as HTMLButtonElement).disabled).toBe(true);
@@ -423,6 +425,13 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     expect(await screen.findByText(/Merged into container\./)).toBeTruthy();
   });
 
+  it('shows no merged-into note on an attribute that was not merged', async () => {
+    base();
+    mount(true);
+    await screen.findByRole('heading', { name: 'Pack type' });
+    expect(screen.queryByText(/Merged into/)).toBeNull();
+  });
+
   describe('merge into another attribute', () => {
     const targetRow = (over: Partial<AttributePage['items'][number]> = {}) => ({
       id: id(2),
@@ -548,6 +557,116 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       fireEvent.click(within(dialog).getByRole('button', { name: 'Merge attributes' }));
       await within(dialog).findByText(
         'It is still in an active feature set. Remove it from those feature sets first.',
+      );
+    });
+  });
+
+  describe('convert type', () => {
+    it('is offered with the restructure key, for a select and a whole number only', async () => {
+      base();
+      mount(false);
+      await screen.findByRole('heading', { name: 'Pack type' });
+      expect(screen.queryByRole('button', { name: 'Convert type' })).toBeNull();
+      cleanup();
+      mount(true);
+      expect(await screen.findByRole('button', { name: 'Convert type' })).toBeTruthy();
+      for (const over of [
+        { material: true },
+        { isVariantOption: true },
+        { dataType: 'text' as const, options: [] },
+      ]) {
+        cleanup();
+        base({ [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, over)) });
+        mount(true);
+        await screen.findByRole('button', { name: 'Archive' });
+        expect(screen.queryByRole('button', { name: 'Convert type' })).toBeNull();
+      }
+      cleanup();
+      base({
+        [`GET catalog/admin/attributes/${id(1)}`]: ok(
+          detail(locales, { dataType: 'integer', options: [] }),
+        ),
+      });
+      mount(true);
+      expect(await screen.findByRole('button', { name: 'Convert type' })).toBeTruthy();
+    });
+
+    it('shows the impact, then converts with the version it showed', async () => {
+      base({
+        [`POST catalog/admin/attributes/${id(1)}/convert`]: ok({
+          attribute: { id: id(1), code: 'pack-type', status: 'active', version: 5, revisionNo: 2 },
+        }),
+      });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      expect(within(dialog).getByText(/read as a list of one/)).toBeTruthy();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Convert type' }));
+      await expectToast('Type converted.');
+      expect(writes()[0]).toEqual([
+        'POST',
+        `catalog/admin/attributes/${id(1)}/convert`,
+        { version: 4, to: 'multi-select' },
+        'csrf-1',
+      ]);
+    });
+
+    it('puts the first focus on Cancel, names both types and warns it cannot be undone', async () => {
+      base();
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
+      expect(within(dialog).getByText('This cannot be undone.')).toBeTruthy();
+      expect(within(dialog).getByText(/to/, { selector: 'p.font-medium' })).toBeTruthy();
+    });
+
+    it('offers a reload when the attribute changed since it was opened', async () => {
+      base({
+        [`POST catalog/admin/attributes/${id(1)}/convert`]: refuse(409, 'attribute.stale'),
+      });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Convert type' }));
+      expect(await within(dialog).findByRole('button', { name: 'Reload' })).toBeTruthy();
+    });
+
+    it('asks for a decimal when the attribute is a whole number', async () => {
+      base({
+        [`GET catalog/admin/attributes/${id(1)}`]: ok(
+          detail(locales, { dataType: 'integer', options: [] }),
+        ),
+        [`POST catalog/admin/attributes/${id(1)}/convert`]: ok({
+          attribute: { id: id(1), code: 'pack-type', status: 'active', version: 5, revisionNo: 2 },
+        }),
+      });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Convert type' }));
+      await expectToast('Type converted.');
+      expect(writes()[0]?.[2]).toEqual({ version: 4, to: 'decimal' });
+    });
+
+    it('names why an attribute others were merged into cannot be converted', async () => {
+      base({
+        [`POST catalog/admin/attributes/${id(1)}/convert`]: refuse(
+          409,
+          'attribute-definition.convert-merged',
+        ),
+      });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Convert type' }));
+      await within(dialog).findByText(
+        'Other attributes were merged into this one, so its type has to stay as it is.',
       );
     });
   });

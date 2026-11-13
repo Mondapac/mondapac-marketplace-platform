@@ -15,6 +15,7 @@ import type { OfferFeed } from './ports/offer-feed';
 import type { IndexStamp, ReindexProgress, ReindexState } from './ports/reindex';
 import type { ReindexDependencies } from './reindex-dependencies';
 import { SYNC_BATCH } from './sync-offers';
+import { RequestOfferReindex } from './use-cases/request-offer-reindex.use-case';
 import { ReindexOfferAttributes } from './use-cases/reindex-offer-attributes.use-case';
 
 // `search.reindex-offer-attributes` in memory on both Market fixtures: nothing happens while the
@@ -48,8 +49,14 @@ class MemoryProgress implements ReindexProgress {
     if (this.state !== null) this.state = { ...this.state, offersDone, cursorOfferId: cursor };
     return Promise.resolve();
   }
+  request(): Promise<void> {
+    this.log.push('request');
+    if (this.state !== null) this.state = { ...this.state, doneStamp: null, targetStamp: null };
+    return Promise.resolve();
+  }
   finish(_m: MarketContext, stamp: string): Promise<void> {
     this.log.push('finish');
+    if (this.state !== null && this.state.targetStamp !== stamp) return Promise.resolve();
     this.state = {
       doneStamp: stamp,
       targetStamp: stamp,
@@ -107,6 +114,15 @@ describe.each(TEST_MARKETS)('attribute reindex in market %s', (code) => {
       documents: { upsert: () => Promise.resolve(), deleteMany: () => Promise.resolve(0) },
       feed,
       sellers: { eligible: () => Promise.resolve(new Set()) },
+      storeDocuments: {
+        upsertMany: () => Promise.resolve(),
+        deleteMany: () => Promise.resolve(0),
+      },
+      categoryTree: { tree: () => Promise.resolve([]) },
+      cultures: {
+        visibleCodes: () => Promise.resolve(new Map()),
+      },
+      storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
       policy: new ConfigSearchPolicy(markets),
       clock: new FixedClock(T0),
       progress,
@@ -169,6 +185,43 @@ describe.each(TEST_MARKETS)('attribute reindex in market %s', (code) => {
 
     expect(result).toEqual({ ok: true, value: { state: 'done', offers: total, resumed: false } });
     expect(seen).toHaveLength(total);
+  });
+
+  it('runs again in full after a request, even with the same stamp (multi-culture package 3a)', async () => {
+    await run();
+    expect(await run()).toEqual({ ok: true, value: { state: 'current' } });
+    await new RequestOfferReindex(gate, {
+      unitOfWork: new FakeUnitOfWork(),
+      progress,
+      clock: new FixedClock(T0),
+    }).execute(system, { reason: 'culture-status' });
+    seen.length = 0;
+
+    expect(await run()).toMatchObject({ ok: true, value: { state: 'done', resumed: false } });
+    expect(seen).toHaveLength(total);
+  });
+
+  it('a request that comes in during a run keeps that run from marking itself done', async () => {
+    failAfterReads = 1;
+    await expect(run()).rejects.toThrow();
+    // The request lands while the run is under way (here: between its failed page and its resume).
+    await progress.request();
+    failAfterReads = null;
+    seen.length = 0;
+
+    expect(await run()).toMatchObject({ ok: true, value: { state: 'done', resumed: false } });
+    expect(seen).toHaveLength(total);
+    expect(progress.state).toMatchObject({ doneStamp: 'stamp-1', status: 'idle' });
+  });
+
+  it('refuses an unknown reason before any write', async () => {
+    const result = await new RequestOfferReindex(gate, {
+      unitOfWork: new FakeUnitOfWork(),
+      progress,
+      clock: new FixedClock(T0),
+    }).execute(system, { reason: 'because' as never });
+    expect(result).toEqual({ ok: false, error: { code: 'validation.failed' } });
+    expect(progress.log).toEqual([]);
   });
 
   it('fails when catalog cannot give its stamp, and writes nothing', async () => {

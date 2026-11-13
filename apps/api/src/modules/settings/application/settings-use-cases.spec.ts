@@ -21,8 +21,10 @@ import type {
   MarketSettingRepository,
 } from './ports/market-setting.repository';
 import type { SettingsDependencies } from './settings-dependencies';
+import { ChangeCartModeSetting } from './use-cases/change-cart-mode-setting.use-case';
 import { ChangeListPagingSetting } from './use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from './use-cases/read-list-paging.use-case';
+import { ViewCartModeSetting } from './use-cases/view-cart-mode-setting.use-case';
 import { ViewListPagingSetting } from './use-cases/view-list-paging-setting.use-case';
 
 // The settings store in memory on both Market fixtures: the default in force before any change,
@@ -234,5 +236,92 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
     } finally {
       warn.mockRestore();
     }
+  });
+
+  describe('Cart mode', () => {
+    const changeCart = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeCartModeSetting(gate, deps).execute(context, input);
+    const viewCart = (context = adminCtx()) =>
+      new ViewCartModeSetting(gate, deps).execute(context, {});
+
+    it('is multi-store at version 0 before any change, and shows only its own setting', async () => {
+      const view = await viewCart();
+      expect(view.ok && view.value).toEqual([
+        { code: 'cart-mode', value: 'multi-store', version: 0, updatedAt: null },
+      ]);
+    });
+
+    it('changes from the version seen, with history and one audit row naming before and after', async () => {
+      const first = await changeCart({
+        code: 'cart-mode',
+        value: 'single-store',
+        expectedVersion: 0,
+      });
+      expect(first.ok && first.value).toMatchObject({ value: 'single-store', version: 1 });
+      expect(store.history).toEqual([
+        expect.objectContaining({
+          code: 'cart-mode',
+          previousValue: null,
+          value: 'single-store',
+          changedBy: ADMIN,
+        }),
+      ]);
+      expect(audit.entries).toHaveLength(1);
+      expect(audit.entries[0]).toMatchObject({
+        action: 'settings.market-setting.changed',
+        targetId: 'cart-mode',
+        before: { value: 'multi-store' },
+        after: { value: 'single-store', version: 1 },
+      });
+      const view = await viewCart();
+      expect(view.ok && view.value[0]).toMatchObject({ value: 'single-store', version: 1 });
+      const back = await changeCart({
+        code: 'cart-mode',
+        value: 'multi-store',
+        expectedVersion: 1,
+      });
+      expect(back.ok && back.value.version).toBe(2);
+      expect(store.history[1]).toMatchObject({ previousValue: 'single-store', version: 2 });
+    });
+
+    it('refuses a stale version, a repeat changes nothing, bad input is refused', async () => {
+      await changeCart({ code: 'cart-mode', value: 'single-store', expectedVersion: 0 });
+      const stale = await changeCart({
+        code: 'cart-mode',
+        value: 'multi-store',
+        expectedVersion: 0,
+      });
+      expect(!stale.ok && stale.error.code).toBe('settings.conflict');
+      const repeat = await changeCart({
+        code: 'cart-mode',
+        value: 'single-store',
+        expectedVersion: 1,
+      });
+      expect(repeat.ok && repeat.value.version).toBe(1);
+      for (const input of [
+        { code: 'cart-mode', value: 'both', expectedVersion: 1 },
+        { code: 'list-paging', value: 'pages', expectedVersion: 0 },
+        { code: 'cart-mode', value: 'multi-store' },
+      ]) {
+        const result = await changeCart(input);
+        expect(!result.ok && result.error.code).toBe('validation.failed');
+      }
+      expect(store.history).toHaveLength(1);
+      expect(audit.entries).toHaveLength(1);
+    });
+
+    it('refuses a change by a seller, an anonymous caller and an acting-as session', async () => {
+      const input = { code: 'cart-mode', value: 'single-store', expectedVersion: 0 };
+      for (const context of [sellerCtx(), anonymous, actingAs(adminCtx())]) {
+        expect((await changeCart(input, context)).ok).toBe(false);
+      }
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('keeps one Market from seeing the value of another', async () => {
+      await changeCart({ code: 'cart-mode', value: 'single-store', expectedVersion: 0 });
+      const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+      expect(await store.find(other, 'cart-mode')).toBeNull();
+    });
   });
 });

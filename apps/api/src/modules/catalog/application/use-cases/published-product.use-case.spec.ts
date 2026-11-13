@@ -44,6 +44,9 @@ const published = (id: Id<'Product'>): PublishedProduct => ({
       variantNo: 1,
       variantCode: 'MP-000001-01',
       axes: [],
+      gtin: null,
+      imageIds: [],
+      shipping: { weightGrams: null, lengthMm: null, widthMm: null, heightMm: null },
     },
   ],
 });

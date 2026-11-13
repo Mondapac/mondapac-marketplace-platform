@@ -87,6 +87,7 @@ const LEAD_KEYS = [
   'catalog.attribute.view',
   'catalog.category-tree.view',
   'catalog.product.view',
+  'catalog.variant.view',
   'identity.admin-account.disable',
   'identity.admin-account.invite',
   'identity.admin-account.reset-second-factor',
@@ -341,11 +342,11 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       roleId: roleOf('viewer'),
       kind: 'default',
       seedCode: 'viewer',
-      permissionCount: 28,
+      permissionCount: 31,
       grantable: true,
     });
     expect(byId(items, roleOf('viewer')).name).toBeNull();
-    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(28);
+    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(31);
     expect(byId(items, LEAD_ROLE)).toMatchObject({
       kind: 'custom',
       seedCode: null,
