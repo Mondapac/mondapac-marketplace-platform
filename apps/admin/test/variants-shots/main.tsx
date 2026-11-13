@@ -123,6 +123,38 @@ const counts = {
     'missing-language': 24,
   },
 };
+const q = new URLSearchParams(location.search);
+const sizeOption = (label: string) => ({
+  attributeCode: 'size',
+  attributeName: 'Size',
+  optionCode: label.toLowerCase(),
+  optionLabel: label,
+});
+const asked = (n: number, product: string, seller: string, label: string, exists = false) => ({
+  id: id(300 + n),
+  version: 1,
+  createdAt: `2026-11-0${n}T09:30:00.000Z`,
+  sellerId: id(400 + n),
+  sellerName: seller,
+  offerId: id(500 + n),
+  productId: id(600 + n),
+  productCode: product,
+  options: [sizeOption(label)],
+  existing: ['S', 'M', 'L'].map((size, index) => ({
+    variantId: id(700 + n * 10 + index),
+    variantNo: index + 1,
+    options: [sizeOption(size)],
+  })),
+  alreadyExists: exists,
+});
+const requests = {
+  items: [
+    asked(2, 'MP-004127', 'Al Noor Grocers', 'XL'),
+    asked(4, 'MP-003310', 'Brisbane Halal Meats', 'M', true),
+    asked(6, 'MP-002208', 'Sunrise Dates', 'XXL'),
+  ],
+  locales: { default: 'en-AU', supported: ['en-AU'] },
+};
 window.fetch = ((input: string) => {
   const path = input.replace(/^\/api\//, '').split('?')[0]!;
   let body: unknown = { code: 'not-found' };
@@ -131,11 +163,13 @@ window.fetch = ((input: string) => {
     body = { variantType: details[path.split('/').pop()!] };
   else if (path === 'catalog/admin/variants') body = page;
   else if (path === 'catalog/admin/variants/issue-counts') body = counts;
+  else if (path === 'catalog/admin/variant-requests')
+    body = q.get('empty') === '1' ? { ...requests, items: [] } : requests;
   return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
 }) as typeof fetch;
 
-const q = new URLSearchParams(location.search);
-const tab = q.get('tab') === 'variants' ? 'variants' : 'types';
+const tab =
+  q.get('tab') === 'variants' ? 'variants' : q.get('tab') === 'waiting' ? 'waiting' : 'types';
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     <main className="mx-auto max-w-7xl p-4 md:p-6">
@@ -143,6 +177,7 @@ createRoot(document.getElementById('root')!).render(
       <VariantsView
         canEdit={q.get('edit') !== '0'}
         canOpenAttributes
+        canReview
         csrfToken="tok"
         initialTab={tab}
         initialId={tab === 'types' ? id(Number(q.get('id') ?? '1')) : null}

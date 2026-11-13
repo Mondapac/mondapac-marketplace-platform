@@ -168,6 +168,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/products/:id/topic-suggestions',
     'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
+    // Ask for a size a platform product does not have (catalog, variants V7).
+    'catalog/seller/offers/:id/variant-requests',
     // Withdraw a waiting category proposal (categories C9b).
     'catalog/seller/category-proposals/:id/cancel',
     // The seller import: confirm, retry the rest, cancel a check, and one photo of the photo step.

@@ -590,6 +590,24 @@ describe('relay allowlist for stock locations', () => {
     });
     expect((await relay(config, read, units, upstream)).status).toBe(404);
   });
+  it('relays a size request by UUID, and refuses other shapes', async () => {
+    const upstream = upstreamOk();
+    const send = (path: string[]) =>
+      new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method: 'POST',
+        headers: { ...sameOrigin, 'content-type': 'application/json' },
+        body: '{}',
+      });
+    const good = ['catalog', 'seller', 'offers', ID, 'variant-requests'];
+    expect((await relay(config, send(good), good, upstream)).status).toBe(200);
+    const bad = [
+      ['catalog', 'seller', 'offers', 'x', 'variant-requests'],
+      ['catalog', 'seller', 'offers', ID, 'variant-requests', 'x'],
+    ];
+    for (const path of bad) {
+      expect((await relay(config, send(path), path, upstream)).status).toBe(404);
+    }
+  });
   it('relays a regular price write by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     const price = ['pricing', 'seller', 'offers', ID, 'variants', ID, 'regular-price'];

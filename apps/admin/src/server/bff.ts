@@ -118,6 +118,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/feature-sets',
     // The value suggestions waiting for a decision (catalog, attributes A5).
     'catalog/admin/attribute-suggestions',
+    // The sizes sellers asked for, waiting for a decision (catalog, variants V7).
+    'catalog/admin/variant-requests',
     // The seller category proposals waiting for a decision (catalog, categories C9a; query:
     // `afterId`, `limit`).
     'catalog/admin/category-proposals',
@@ -342,6 +344,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/attribute-suggestions/:id/approve',
     'catalog/admin/attribute-suggestions/:id/map',
     'catalog/admin/attribute-suggestions/:id/reject',
+    // Decide a seller's size request with the version seen (catalog, variants V7).
+    'catalog/admin/variant-requests/:id/approve',
+    'catalog/admin/variant-requests/:id/map',
+    'catalog/admin/variant-requests/:id/decline',
     // Decide a seller's tag suggestion with the version seen (catalog topics, product tags T5).
     'catalog/admin/topic-suggestions/:id/approve',
     'catalog/admin/topic-suggestions/:id/map',
@@ -590,6 +596,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
+  'catalog/admin/variant-requests': ['limit'],
   'catalog/admin/variants': ['q', 'typeCode', 'issue', 'after', 'limit'],
   'catalog/admin/variants/issue-counts': ['typeCode'],
   'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
@@ -640,6 +647,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
   },
+  'catalog/admin/variant-requests': { limit: /^([1-9][0-9]?|100)$/ },
   'catalog/admin/category-tree/export': {
     format: /^(csv|xlsx)$/,
     status: /^(active|hidden|merged|archived)(,(active|hidden|merged|archived)){0,3}$/,
