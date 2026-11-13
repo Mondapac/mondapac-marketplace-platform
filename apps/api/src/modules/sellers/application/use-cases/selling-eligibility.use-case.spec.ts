@@ -75,6 +75,10 @@ class Store implements SellingFactsRepository {
     return Promise.reject(new Error('not used'));
   }
 
+  aiEnabled(): Promise<boolean | null> {
+    return Promise.reject(new Error('not used'));
+  }
+
   firstApprovedAt(): Promise<null> {
     return Promise.reject(new Error('not used'));
   }
@@ -189,6 +193,8 @@ describe.each([
       blogAccessSystem: undefined as never,
       mayProposeCategories: undefined as never,
       mayProposeCategoriesSystem: undefined as never,
+      aiAccess: undefined as never,
+      aiAccessSystem: undefined as never,
       activeSince: undefined as never,
       activeSinceSystem: undefined as never,
       reviewerBusinessDetails: undefined as never,
