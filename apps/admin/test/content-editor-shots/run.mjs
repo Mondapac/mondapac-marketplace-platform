@@ -30,94 +30,155 @@ const server = createServer((req, res) => {
 const port = server.address().port;
 const { chromium } = createRequire(import.meta.url)('playwright');
 const browser = await chromium.launch();
-const shots = [
-  ['content', '#content', (p) => p.getByRole('heading', { name: 'Hero' }).waitFor()],
-  ['content-system', '#content-system', (p) => p.getByText(/Filled by the app/).waitFor()],
+const navShots = [
+  ['nav', '#nav', (p) => p.getByRole('region', { name: 'Left menu' }).waitFor()],
   [
-    'content-readonly',
-    '#content-readonly',
-    (p) => p.getByText(/view this page but not change/).waitFor(),
+    'nav-empty',
+    '#nav-empty',
+    (p) => p.getByText(/Buyers will see the live category tree/).waitFor(),
   ],
   [
-    'content-edit-banner',
-    '#content',
-    async (p) => {
-      await p.getByRole('button', { name: /^Edit/ }).first().click();
-      await p.getByRole('heading', { name: 'Edit Banner' }).waitFor();
-    },
+    'nav-readonly',
+    '#nav-readonly',
+    (p) => p.getByText(/view the navigation but not change/).waitFor(),
   ],
   [
-    'content-edit-errors',
-    '#edit-errors',
+    'nav-errors',
+    '#nav-errors',
     async (p) => {
-      await p.getByRole('button', { name: /^Edit/ }).first().click();
-      await p.getByLabel(/^Title/).fill('');
+      await p.getByLabel('Label').first().fill('Changed');
       await p.getByRole('button', { name: 'Save to draft' }).click();
       await p.getByText('Check the marked fields and try again.').waitFor();
     },
   ],
   [
-    'content-edit-text',
-    '#content',
+    'nav-dirty-approver',
+    '#nav-approve',
     async (p) => {
-      await p.getByRole('button', { name: /^Edit/ }).nth(4).click();
-      await p.getByRole('heading', { name: 'Edit Text' }).waitFor();
+      await p.getByLabel('Label').first().fill('Changed');
+      await p.getByText('Save the draft first.').waitFor();
     },
   ],
   [
-    'content-add-menu',
-    '#content',
+    'nav-approve-dialog',
+    '#nav-approve',
     async (p) => {
-      await p.getByRole('button', { name: 'Add module' }).nth(2).click();
-      await p.getByRole('menuitem', { name: 'Image and text' }).waitFor();
+      await p.getByRole('button', { name: 'Approve', exact: true }).click();
+      await p.getByRole('heading', { name: 'Approve this navigation?' }).waitFor();
     },
   ],
   [
-    'content-add-shelf',
-    '#content',
+    'nav-changed',
+    '#nav-changed',
     async (p) => {
-      await p.getByRole('button', { name: 'Add module' }).nth(2).click();
-      await p.getByRole('menuitem', { name: 'Product shelf' }).click();
-      await p.getByRole('heading', { name: 'Add Product shelf' }).waitFor();
+      await p.getByRole('button', { name: 'Approve', exact: true }).first().click();
+      await p.getByRole('button', { name: 'Approve', exact: true }).last().click();
+      await p.getByText(/draft changed after you opened/).waitFor();
     },
   ],
   [
-    'content-remove',
-    '#content',
+    'nav-restore',
+    '#nav',
     async (p) => {
-      await p.getByRole('button', { name: 'More actions for Product shelf' }).first().click();
-      await p.getByRole('menuitem', { name: 'Remove' }).click();
-      await p.getByRole('heading', { name: 'Remove Product shelf?' }).waitFor();
+      await p.getByRole('button', { name: 'Restore version 1' }).click();
+      await p.getByRole('heading', { name: 'Restore version 1?' }).waitFor();
     },
-  ],
-  [
-    'content-stale',
-    '#content-stale',
-    async (p) => {
-      await p.getByRole('switch', { name: 'Show Banner to buyers' }).click();
-      await p.getByText(/changed since you opened it/).waitFor();
-    },
-  ],
-  ['settings', '#settings', (p) => p.getByLabel('Page title').waitFor()],
-  ['settings-pending', '#settings-pending', (p) => p.getByText(/wait for publishing/).waitFor()],
-  [
-    'settings-errors',
-    '#settings-errors',
-    async (p) => {
-      await p.getByLabel('Page title').fill('');
-      await p.getByLabel('Address').fill('home');
-      await p.getByLabel('Search and share title').fill('x'.repeat(75));
-      await p.getByRole('button', { name: 'Save to draft' }).click();
-      await p.getByText('Enter a title.').waitFor();
-    },
-  ],
-  ['settings-system', '#settings-system', (p) => p.getByLabel('Page title').waitFor()],
-  [
-    'settings-readonly',
-    '#settings-readonly',
-    (p) => p.getByText(/view this page but not change/).waitFor(),
   ],
 ];
+const shots = process.env.NAV_ONLY
+  ? navShots
+  : [
+      ['content', '#content', (p) => p.getByRole('heading', { name: 'Hero' }).waitFor()],
+      ['content-system', '#content-system', (p) => p.getByText(/Filled by the app/).waitFor()],
+      [
+        'content-readonly',
+        '#content-readonly',
+        (p) => p.getByText(/view this page but not change/).waitFor(),
+      ],
+      [
+        'content-edit-banner',
+        '#content',
+        async (p) => {
+          await p.getByRole('button', { name: /^Edit/ }).first().click();
+          await p.getByRole('heading', { name: 'Edit Banner' }).waitFor();
+        },
+      ],
+      [
+        'content-edit-errors',
+        '#edit-errors',
+        async (p) => {
+          await p.getByRole('button', { name: /^Edit/ }).first().click();
+          await p.getByLabel(/^Title/).fill('');
+          await p.getByRole('button', { name: 'Save to draft' }).click();
+          await p.getByText('Check the marked fields and try again.').waitFor();
+        },
+      ],
+      [
+        'content-edit-text',
+        '#content',
+        async (p) => {
+          await p.getByRole('button', { name: /^Edit/ }).nth(4).click();
+          await p.getByRole('heading', { name: 'Edit Text' }).waitFor();
+        },
+      ],
+      [
+        'content-add-menu',
+        '#content',
+        async (p) => {
+          await p.getByRole('button', { name: 'Add module' }).nth(2).click();
+          await p.getByRole('menuitem', { name: 'Image and text' }).waitFor();
+        },
+      ],
+      [
+        'content-add-shelf',
+        '#content',
+        async (p) => {
+          await p.getByRole('button', { name: 'Add module' }).nth(2).click();
+          await p.getByRole('menuitem', { name: 'Product shelf' }).click();
+          await p.getByRole('heading', { name: 'Add Product shelf' }).waitFor();
+        },
+      ],
+      [
+        'content-remove',
+        '#content',
+        async (p) => {
+          await p.getByRole('button', { name: 'More actions for Product shelf' }).first().click();
+          await p.getByRole('menuitem', { name: 'Remove' }).click();
+          await p.getByRole('heading', { name: 'Remove Product shelf?' }).waitFor();
+        },
+      ],
+      [
+        'content-stale',
+        '#content-stale',
+        async (p) => {
+          await p.getByRole('switch', { name: 'Show Banner to buyers' }).click();
+          await p.getByText(/changed since you opened it/).waitFor();
+        },
+      ],
+      ['settings', '#settings', (p) => p.getByLabel('Page title').waitFor()],
+      [
+        'settings-pending',
+        '#settings-pending',
+        (p) => p.getByText(/wait for publishing/).waitFor(),
+      ],
+      [
+        'settings-errors',
+        '#settings-errors',
+        async (p) => {
+          await p.getByLabel('Page title').fill('');
+          await p.getByLabel('Address').fill('home');
+          await p.getByLabel('Search and share title').fill('x'.repeat(75));
+          await p.getByRole('button', { name: 'Save to draft' }).click();
+          await p.getByText('Enter a title.').waitFor();
+        },
+      ],
+      ['settings-system', '#settings-system', (p) => p.getByLabel('Page title').waitFor()],
+      [
+        'settings-readonly',
+        '#settings-readonly',
+        (p) => p.getByText(/view this page but not change/).waitFor(),
+      ],
+    ];
 for (const scheme of ['light', 'dark']) {
   for (const width of [1280, 768, 375]) {
     for (const [name, hash, ready] of shots) {
