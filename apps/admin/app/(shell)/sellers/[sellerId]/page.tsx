@@ -19,6 +19,12 @@ import {
   healthPath,
   type SellerHealthRead,
 } from '../../../../src/sellers/health-types.ts';
+import {
+  AiAccessCard,
+  aiAccessOf,
+  aiAccessPath,
+  type AiAccessRead,
+} from '../../../../src/sellers/ai-access-card.tsx';
 import { CategoryProposalsCard } from '../../../../src/sellers/category-proposals-card.tsx';
 import { DECIDE_PERMISSION as PROPOSAL_DECIDE_PERMISSION } from '../../../../src/categories/proposals/types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
@@ -73,6 +79,14 @@ async function loadHealth(sellerId: string, canView: boolean): Promise<SellerHea
   const read = await serverGet<SellerHealthRead>(healthPath(sellerId));
   if (read.kind === 'signed-out') redirect('/session-ended');
   return read.kind === 'ok' ? read.body : null;
+}
+
+/** The seller's AI switch, or null when it cannot be read (the card then shows no switch). */
+async function loadAiAccess(sellerId: string, canView: boolean): Promise<AiAccessRead | null> {
+  if (!canView) return null;
+  const read = await serverGet<unknown>(aiAccessPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? aiAccessOf(read.body) : null;
 }
 
 /** The seller's payout terms, or null when the role cannot see them or they cannot be read. */
@@ -203,13 +217,14 @@ export default async function SellerReviewPage({
       canCheck: permissionKeys.includes(CHECK_PERMISSION),
       csrfToken,
     };
-    const [commission, methods, terms, holds, health, activities] = await Promise.all([
+    const [commission, methods, terms, holds, health, activities, aiAccess] = await Promise.all([
       loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
       loadMethods(sellerId, permissionKeys.includes(DELIVERY_VIEW_PERMISSION)),
       loadTerms(sellerId, permissionKeys.includes(TERMS_VIEW_PERMISSION)),
       loadHolds(sellerId, permissionKeys.includes(HOLD_VIEW_PERMISSION)),
       loadHealth(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
       loadActivities(sellerId, permissionKeys),
+      loadAiAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
     ]);
     return shell(
       <div className="flex flex-col gap-6">
@@ -228,6 +243,9 @@ export default async function SellerReviewPage({
             csrfToken={csrfToken}
             canSeeQueue={permissionKeys.includes(PROPOSAL_DECIDE_PERMISSION)}
           />
+        ) : null}
+        {permissionKeys.includes(SETTINGS_EDIT_PERMISSION) ? (
+          <AiAccessCard sellerId={sellerId} csrfToken={csrfToken} initial={aiAccess} />
         ) : null}
         {activities === null ? null : (
           <SellerActivitiesCard
