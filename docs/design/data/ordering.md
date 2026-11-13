@@ -560,7 +560,7 @@ Migration `20261111050000_ordering_seller_unavailable_refunds`. Before a paid se
 
 ### 3.12c `ordering.seller_refund_limits` and `ordering.seller_refund_guards` (decision 6 caps)
 
-Migration `20261113100000_ordering_seller_refund_limits`. A seller refund (3.12b) is refused when, with it, the seller's own refunds not failed in the last 24 hours (a rolling window of instants, so no zone) would pass the cap in force: more than `max_count` refunds or more than `max_amount` minor units. An admin sets the Market's default (`seller_id` NULL, one per Market: partial unique index `seller_refund_limits_default_key`) and any seller's own (one per seller: `seller_refund_limits_seller_key`), which wins (Prisma cannot express partial indexes, so both live in the migration only); with neither the seller path answers `ordering.refund-limit-unset` (fail closed). Routes: `GET/PUT /ordering/admin/refund-limits`, `PUT/DELETE /ordering/admin/refund-limits/sellers/:sellerId`; keys `ordering.refund-limits.view` and `ordering.refund-limits.manage` (protected; the viewer seed role holds `.view` from its version 33). Each set or removal is audited (`ordering.refund-limit.set`, `.removed`, before and after); an edit carries the version read (`conflict.retry` when stale).
+Migration `20261113110000_ordering_seller_refund_limits`. A seller refund (3.12b) is refused when, with it, the seller's own refunds not failed in the last 24 hours (a rolling window of instants, so no zone) would pass the cap in force: more than `max_count` refunds or more than `max_amount` minor units. An admin sets the Market's default (`seller_id` NULL, one per Market: partial unique index `seller_refund_limits_default_key`) and any seller's own (one per seller: `seller_refund_limits_seller_key`), which wins (Prisma cannot express partial indexes, so both live in the migration only); with neither the seller path answers `ordering.refund-limit-unset` (fail closed). Routes: `GET/PUT /ordering/admin/refund-limits`, `PUT/DELETE /ordering/admin/refund-limits/sellers/:sellerId`; keys `ordering.refund-limits.view` and `ordering.refund-limits.manage` (protected; the viewer seed role holds `.view` from its version 34). Each set or removal is audited (`ordering.refund-limit.set`, `.removed`, before and after); an edit carries the version read (`conflict.retry` when stale).
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
@@ -614,6 +614,24 @@ One row per payment or refund event that `ordering` must not act on by itself an
 - Indexes: partial `orphan_facts_market_id_seen_at_open_idx (market_id, seen_at, id) WHERE resolved_at IS NULL` (the open facts in the admin `REVIEW` queue, keyset); partial `orphan_facts_market_id_order_id_idx (market_id, order_id) WHERE order_id IS NOT NULL` (the facts of one `REVIEW` item on its detail page).
 - Volume: a handful a month, from provider or payments bugs only. Kept (an audit trail of money anomalies; ids only, no personal data).
 - Alternative considered: columns on `checkouts` and `refund_requests`. Rejected: an orphan by definition has no matching row, and one Checkout can collect several facts.
+
+### 3.15 `ordering.saved_filters` (saved views of the order lists)
+
+A named saved view of an order list: its tab, filters and sort, for its owner (`me`) or, on the admin list only, for every admin of the Market who can see the list (`everyone`). A preference, not a record: the application deletes it. The design follows catalog 3.28 (the same caps and rules); the table is ordering's own because modules never share a table.
+
+| Column | Type | Null | Notes |
+|---|---|---|---|
+| `id` | `uuid` | no | PK; also `(market_id, id)` unique |
+| `market_id`, `tenant_id` | | no | C1 CHECKs |
+| `owner_account_id` | `uuid` | no | Identity account id, no FK (C4). Never updated |
+| `visibility` | `text` | no | `me` or `everyone`; the only column besides `name` that changes |
+| `list_key` | `text` | no | `admin.ordering.orders` or `seller.ordering.orders`; the application holds the known keys; never updated |
+| `name` | `text` | no | 1 to 60 characters, trimmed, no control character |
+| `payload` | `jsonb` | no | Closed document (tab, filters, sort) of at most 2 KB; keys checked by the application; never updated |
+| `position` | `integer` | no | The order of the owner's filters, 1 and up; never updated |
+| `created_at`, `updated_at` | `timestamptz` | no | `updated_at >= created_at` |
+
+Uniques (case-insensitive on the name): one name per owner and list; one name among `everyone` filters of a list. Grants: `SELECT`, `INSERT`, `DELETE`, and `UPDATE (visibility, name, updated_at)`. Caps (application): 50 filters per owner and list, 20 shared per list. Only the admin list can be shared; a seller filter is always `me`. A filter shared with everyone is audited.
 
 ## 4. What is never stored
 
@@ -686,9 +704,9 @@ Keyed hashes (O15): `checkouts.request_hash` (customer subject, purpose `orderin
 
 The version-guarded update of the sub-order is the lock. Two invoices on one sub-order: the second waits on the row, then finds the version changed and fails `conflict.stale` (AC 11). An invoice against a cancellation: the same. The counter CHECKs (3.6) stop any path that forgot the version. The unit positions of the next document are read after the lock (READ COMMITTED: a new statement sees the committed counters).
 
-### 6.3 Isolation: no serializable unit
+### 6.3 Isolation: no serializable unit, except the saved-filter caps
 
-I agree with D 9. Each cross-row rule has a holder:
+I agree with D 9 for the order flow. The one exception is `ordering.saved_filters` (3.15): its caps are the application's, held by a `SERIALIZABLE` unit with the 40001 retry. Each cross-row rule has a holder:
 
 | Rule | Holder |
 |---|---|
@@ -698,6 +716,7 @@ I agree with D 9. Each cross-row rule has a holder:
 | Quantities per line | Sub-order row (6.2) + CHECKs |
 | Refund cap per Order across sub-orders | Order row (F11) |
 | One shipment application per shipping id; one reversal per application; one correction per mark | Unique keys |
+| At most 50 saved filters per owner and list, 20 shared per list (3.15) | `SERIALIZABLE` unit + 40001 retry |
 | At most N saved addresses | Slot unique key (3.13) |
 | No unit position invoiced twice, or refunded twice | `invoice_lines_positions_excl` (3.9) |
 | The fee invoiced once; no part of the fee refunded twice | `invoice_lines_charge_ranges_excl` (3.9) |

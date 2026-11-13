@@ -33,6 +33,19 @@ import { PICKUP_CODE_VAULT } from './application/ports/pickup-code-vault';
 import { REFUND_REPOSITORY } from './application/ports/refund.repository';
 import { ORDERING_POLICY } from './application/ports/ordering-policy';
 import { SHIP_TO_CIPHER } from './application/ports/ship-to-cipher';
+import { SAVED_FILTER_REPOSITORY } from './application/ports/saved-filter.repository';
+import type { SavedViewDependencies } from './application/saved-views/saved-view-shared';
+import { AdminSavedFilterCreate } from './application/use-cases/admin-saved-filter-create.use-case';
+import { AdminSavedFilterDelete } from './application/use-cases/admin-saved-filter-delete.use-case';
+import { AdminSavedFilterUpdate } from './application/use-cases/admin-saved-filter-update.use-case';
+import { AdminSavedFiltersList } from './application/use-cases/admin-saved-filters-list.use-case';
+import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
+import { SellerSavedFilterCreate } from './application/use-cases/seller-saved-filter-create.use-case';
+import { SellerSavedFilterDelete } from './application/use-cases/seller-saved-filter-delete.use-case';
+import { SellerSavedFilterUpdate } from './application/use-cases/seller-saved-filter-update.use-case';
+import { SellerSavedFiltersList } from './application/use-cases/seller-saved-filters-list.use-case';
+import { AdminSavedViewsController } from './presentation/admin-saved-views.controller';
+import { SellerSavedViewsController } from './presentation/seller-saved-views.controller';
 import { AdminRefundOrder } from './application/use-cases/admin-refund-order.use-case';
 import { AdminCancelOrder } from './application/use-cases/admin-cancel-order.use-case';
 import { AdminAddOrderNote } from './application/use-cases/admin-add-order-note.use-case';
@@ -142,6 +155,44 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['attempts', PAYMENT_ATTEMPT_LIMITS],
 ];
 
+type SavedViewUseCaseClass<U> = new (gate: UseCaseGate, deps: SavedViewDependencies) => U;
+
+/** The saved-filter and list-column use cases: their own, smaller dependency set. */
+function savedViewProvider<U>(
+  type: SavedViewUseCaseClass<U>,
+  withShareCheck: boolean,
+): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      SAVED_FILTER_REPOSITORY,
+      AUDIT_WRITER,
+      CLOCK,
+      ID_GENERATOR,
+      SavedFilterShareCheck,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: SavedViewDependencies['unitOfWork'],
+      savedFilters: SavedViewDependencies['savedFilters'],
+      audit: SavedViewDependencies['audit'],
+      clock: SavedViewDependencies['clock'],
+      ids: SavedViewDependencies['ids'],
+      shareCheck: SavedFilterShareCheck,
+    ) =>
+      new type(gate, {
+        unitOfWork,
+        savedFilters,
+        audit,
+        clock,
+        ids,
+        shareCheck: withShareCheck ? shareCheck : null,
+      }),
+  };
+}
+
 /** Every ordering use case shares one dependency object, built from the same ports. */
 function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   return {
@@ -195,6 +246,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminOrdersController,
     AdminRefundLimitsController,
     SellerOrdersController,
+    AdminSavedViewsController,
+    SellerSavedViewsController,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('ordering'),
@@ -292,6 +345,23 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         labels: AdminNoteDependencies['labels'],
       ) => new type(gate, { unitOfWork, notes, cipher, audit, ids, clock, labels }),
     })),
+    {
+      provide: SavedFilterShareCheck,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate): SavedFilterShareCheck => new SavedFilterShareCheck(gate),
+    },
+    ...[
+      AdminSavedFiltersList,
+      AdminSavedFilterCreate,
+      AdminSavedFilterUpdate,
+      AdminSavedFilterDelete,
+    ].map((type) => savedViewProvider(type as SavedViewUseCaseClass<unknown>, true)),
+    ...[
+      SellerSavedFiltersList,
+      SellerSavedFilterCreate,
+      SellerSavedFilterUpdate,
+      SellerSavedFilterDelete,
+    ].map((type) => savedViewProvider(type as SavedViewUseCaseClass<unknown>, false)),
     {
       provide: ORDERING_FACADE,
       inject: [

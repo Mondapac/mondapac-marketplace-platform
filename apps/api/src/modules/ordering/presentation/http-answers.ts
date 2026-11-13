@@ -47,6 +47,10 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'ordering.refund-limit-not-found': 404,
   'ordering.document-not-available': 409,
   'ordering.invoice-numbering-unavailable': 503,
+  'saved-filter.not-found': 404,
+  'saved-filter.name-taken': 409,
+  'saved-filter.limit-reached': 409,
+  'saved-filter.shared-limit-reached': 409,
   'access.unavailable': 503,
 });
 
@@ -92,6 +96,7 @@ const DETAILS = [
   'attemptsLeft',
   'total',
   'limit',
+  'max',
 ] as const;
 
 /** The sellers of `ordering.cart-not-ready`: the public minimum leaves as a money body. */

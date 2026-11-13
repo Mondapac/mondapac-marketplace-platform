@@ -34,7 +34,26 @@ export const SETTINGS_CART_MODE_MANAGE = definePermission('settings', {
   protected: false,
 });
 
+/** See the Market's AI settings (the description writer's switch and model tier). */
+export const SETTINGS_AI_VIEW = definePermission('settings', {
+  key: 'settings.ai.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Change the Market's AI settings. Protected (ADR-0026 decision 7: the AI Market switch key is
+ * protected): only the Platform Administrator holds it by definition, with the admin second factor.
+ */
+export const SETTINGS_AI_MANAGE = definePermission('settings', {
+  key: 'settings.ai.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const SETTINGS_PERMISSIONS = declarePermissions('settings', [
+  SETTINGS_AI_MANAGE,
+  SETTINGS_AI_VIEW,
   SETTINGS_CART_MODE_MANAGE,
   SETTINGS_CART_MODE_VIEW,
   SETTINGS_LIST_PAGING_MANAGE,

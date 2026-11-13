@@ -3,18 +3,33 @@
 import {
   Banner,
   Button,
+  ColumnPickerPanel,
   EmptyState,
+  Icon,
   Pagination,
   PrevNext,
+  Popover,
   Select,
   Tabs,
   TextField,
+  browserStorage,
+  prefsKey,
+  readIds,
+  writeIds,
 } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { resolveZone } from '../price/zone-time.ts';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { OrdersBoard } from './orders-board.tsx';
+import {
+  DEFAULT_COLUMNS,
+  OPTIONAL_COLUMNS,
+  cleanColumns,
+  type OrderColumn,
+} from './orders-columns.ts';
+import { OrdersSavedViews } from './orders-saved-views.tsx';
+import { LIST_KEY, stateOf, type SavedFilter, type SavedFiltersAnswer } from './orders-saved.ts';
 import { OrdersTable } from './orders-table.tsx';
 import {
   MAX_PAGED_ROWS,
@@ -41,10 +56,16 @@ export type OrdersView = 'table' | 'board';
 export function SellerOrders({
   initial,
   paging = 'prev-next',
+  accountId = '',
+  marketId = '',
+  csrfToken = '',
   initialView = 'table',
 }: {
   readonly initial: SellerOrderPage;
   readonly paging?: ListPaging;
+  readonly accountId?: string;
+  readonly marketId?: string;
+  readonly csrfToken?: string;
   readonly initialView?: OrdersView;
 }) {
   const t = useTranslations('orders');
@@ -68,6 +89,13 @@ export function SellerOrders({
   const [cursors, setCursors] = useState<readonly (string | null)[]>([null]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [columns, setColumns] = useState<readonly OrderColumn[]>(DEFAULT_COLUMNS);
+  // The saved filters: null until they load, and when they cannot (the page then has the
+  // fulfilment tabs only). `savedId` is the saved tab the page is showing.
+  const [saved, setSaved] = useState<SavedFiltersAnswer | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
+  const storageKey = prefsKey('seller', marketId, accountId, 'orders-columns');
   // Only the newest question may fill the list: a slow answer for old filters is dropped.
   const latest = useRef(0);
   // After a page change the focus moves to the top of the list, so a keyboard or screen reader
@@ -76,6 +104,35 @@ export function SellerOrders({
   const focusList = useRef(false);
   const backwards = rangeIsBackwards(draftDays);
   const number = (n: number) => n.toLocaleString(locale);
+
+  const loadSaved = useCallback(async (): Promise<readonly SavedFilter[] | null> => {
+    const result = await callApi<SavedFiltersAnswer>(
+      'GET',
+      `ordering/seller/saved-filters?listKey=${LIST_KEY}`,
+    );
+    if (!result.ok || !Array.isArray(result.body?.items)) return null;
+    setSaved(result.body);
+    // A saved filter that was deleted is no longer the one on show.
+    setSavedId((current) =>
+      current !== null && result.body.items.some((item) => item.id === current) ? current : null,
+    );
+    const items: readonly SavedFilter[] = result.body.items;
+    return items;
+  }, []);
+
+  useEffect(() => {
+    void loadSaved();
+  }, [loadSaved]);
+
+  useEffect(() => {
+    setColumns(cleanColumns(readIds(browserStorage(), storageKey)));
+  }, [storageKey]);
+
+  const saveColumns = (next: readonly string[]) => {
+    const chosen = cleanColumns(next);
+    setColumns(chosen);
+    writeIds(browserStorage(), storageKey, chosen);
+  };
 
   useEffect(() => {
     if (!loading && focusList.current) {
@@ -92,16 +149,22 @@ export function SellerOrders({
     page?: number;
     cursors?: readonly (string | null)[];
     focus?: boolean;
+    /** The saved tab being opened; a change of tab, days or sort leaves the saved tab. */
+    savedId?: string;
   }) {
     const nextFilter = want.filter ?? filter;
     const nextDays = want.days ?? draftDays;
     const nextSort = want.sort ?? draftSort;
     const nextPage = want.page ?? 1;
     const nextCursors = want.cursors ?? [null];
+    // Page changes stay on the saved tab; any other change of what is asked for leaves it.
+    const nextSaved =
+      want.savedId ?? (want.page !== undefined || want.cursors !== undefined ? savedId : null);
     const ticket = ++latest.current;
     setFailed(false);
     if (rangeIsBackwards(nextDays)) {
       // Nothing matches; an answer still on its way for the days as they were must not fill it.
+      setSavedId(null);
       setOrders([]);
       setNext(null);
       setTotal(null);
@@ -128,6 +191,7 @@ export function SellerOrders({
     }
     focusList.current = want.focus === true;
     setFilter(nextFilter);
+    setSavedId(nextSaved);
     setPage(nextPage);
     setCursors(nextCursors);
     setOrders(result.body.sellerOrders);
@@ -141,7 +205,32 @@ export function SellerOrders({
     void ask({ days: chosen });
   }
 
+  const openSaved = (id: string) => {
+    const view = saved?.items.find((item) => item.id === id);
+    if (view === undefined || loading) return;
+    const opened = stateOf(view.payload);
+    // Previous and next keeps to newest first: a saved sort needs page numbers.
+    setDraftDays(opened.days);
+    setDraftSort(paging === 'pages' ? opened.sort : 'newest');
+    void ask({
+      filter: opened.filter,
+      days: opened.days,
+      sort: paging === 'pages' ? opened.sort : 'newest',
+      savedId: id,
+    });
+  };
+
   const filtered = draftDays.from !== '' || draftDays.to !== '';
+  const somethingToSave =
+    filtered || filter !== 'all' || (paging === 'pages' && draftSort !== 'newest');
+  const summary = [
+    t(filter === 'all' || filter === 'to-ship' ? `filter.${filter}` : `status.${filter}`),
+    ...(draftDays.from === '' ? [] : [`${t('filters.from')}: ${draftDays.from}`]),
+    ...(draftDays.to === '' ? [] : [`${t('filters.to')}: ${draftDays.to}`]),
+    ...(paging === 'pages' && draftSort !== 'newest'
+      ? [`${t('sort.label')}: ${t(`sort.${draftSort}`)}`]
+      : []),
+  ].join(' · ');
   const everyState = filter === 'all' && !filtered;
   const pageCount = total === null ? 1 : pageCountOf(total);
   const first = total === null ? 0 : (page - 1) * PAGE_SIZE + 1;
@@ -189,14 +278,20 @@ export function SellerOrders({
         <>
           <Tabs
             label={t('filter.label')}
-            activeId={filter}
+            activeId={savedId ?? filter}
             onSelect={(id) => {
-              if (id !== filter && !loading) void ask({ filter: id as FulfilmentFilter });
+              if (saved?.items.some((item) => item.id === id)) openSaved(id);
+              else if ((id !== filter || savedId !== null) && !loading) {
+                void ask({ filter: id as FulfilmentFilter });
+              }
             }}
-            items={FULFILMENT_FILTERS.map((id) => ({
-              id,
-              label: t(id === 'all' || id === 'to-ship' ? `filter.${id}` : `status.${id}`),
-            }))}
+            items={[
+              ...FULFILMENT_FILTERS.map((id) => ({
+                id,
+                label: t(id === 'all' || id === 'to-ship' ? `filter.${id}` : `status.${id}`),
+              })),
+              ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
+            ]}
           />
           <div
             role="group"
@@ -229,13 +324,55 @@ export function SellerOrders({
               />
             ) : null}
           </div>
-          {filtered ? (
-            <div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <Popover label={t('columns.button')} icon="columns" width="md">
+              {(close) => (
+                <ColumnPickerPanel
+                  all={OPTIONAL_COLUMNS}
+                  fixed={[{ id: 'order', label: t('col.order') }]}
+                  shown={columns}
+                  defaults={DEFAULT_COLUMNS}
+                  labelOf={(column) => t(`col.${column}`)}
+                  labels={{
+                    title: t('columns.title'),
+                    help: t('columns.help'),
+                    always: t('columns.always'),
+                    up: (column) => t('columns.up', { column }),
+                    down: (column) => t('columns.down', { column }),
+                    reset: t('columns.reset'),
+                    save: t('columns.save'),
+                  }}
+                  onSave={saveColumns}
+                  close={close}
+                />
+              )}
+            </Popover>
+            {filtered ? (
               <Button variant="secondary" onClick={() => changeDays(NO_DAYS)}>
                 {t('filters.clear')}
               </Button>
-            </div>
-          ) : null}
+            ) : null}
+            {saved === null || savedId !== null || !somethingToSave ? null : (
+              <Button
+                variant="link"
+                className="min-h-(--mp-size-control-sm)"
+                onClick={() => setDialog('save')}
+              >
+                <Icon name="star" />
+                {t('saved.save-link')}
+              </Button>
+            )}
+            {saved === null ? null : (
+              <Button
+                variant="link"
+                className="min-h-(--mp-size-control-sm)"
+                onClick={() => setDialog('manage')}
+              >
+                <Icon name="sliders" />
+                {t('saved.manage-link')}
+              </Button>
+            )}
+          </div>
           {total !== null && orders.length > 0 ? (
             <p className="text-sm text-fg-muted" aria-live="polite">
               {t('range', {
@@ -259,7 +396,7 @@ export function SellerOrders({
             />
           ) : orders.length > 0 ? (
             <div ref={listTop} tabIndex={-1} aria-busy={loading} className="outline-none">
-              <OrdersTable orders={orders} />
+              <OrdersTable orders={orders} columns={columns} />
             </div>
           ) : null}
         </>
@@ -290,6 +427,25 @@ export function SellerOrders({
             previous: t('paging.previous'),
             next: t('paging.next'),
           }}
+        />
+      )}
+      {saved === null ? null : (
+        <OrdersSavedViews
+          dialog={dialog}
+          onClose={() => setDialog(null)}
+          filter={filter}
+          days={draftDays}
+          sort={draftSort}
+          summary={summary}
+          saved={saved}
+          csrfToken={csrfToken}
+          onSaved={(view) => {
+            void loadSaved().then((items) => {
+              // Only a filter that is in the reloaded list can be the tab on show.
+              if (items?.some((item) => item.id === view.id) === true) setSavedId(view.id);
+            });
+          }}
+          onChanged={() => void loadSaved()}
         />
       )}
     </div>

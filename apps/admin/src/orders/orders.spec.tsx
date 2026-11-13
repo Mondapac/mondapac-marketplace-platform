@@ -12,6 +12,14 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 import { callApi } from '../api/client.ts';
 import { OrderDetail } from './order-detail.tsx';
 import { OrdersList } from './orders-list.tsx';
+import { NO_FILTERS } from './orders-query.ts';
+import {
+  payloadOf,
+  problemOf,
+  stateOf,
+  type SavedFilter,
+  type SavedFiltersAnswer,
+} from './orders-saved.ts';
 import { FILTERS } from './types.ts';
 import type { AdminOrder, AdminOrderDetail, AdminOrderPage, SellerPart } from './types.ts';
 
@@ -86,7 +94,22 @@ const wrap = (node: React.ReactNode) => (
   </NextIntlClientProvider>
 );
 
-beforeEach(() => call.mockReset());
+const LIST = { accountId: '0190a000-0000-7000-8000-0000000000f1', marketId: 'AU' } as const;
+const SAVED_PATH = 'ordering/admin/saved-filters';
+const COLUMNS_KEY = 'mp:admin:AU:0190a000-0000-7000-8000-0000000000f1:orders-columns';
+/** The saved filters cannot load unless a test says so: the list then has the status tabs only. */
+const noSavedFilters = (_method: string, path: string) =>
+  Promise.resolve(
+    path.startsWith(SAVED_PATH)
+      ? { ok: false as const, failure: { status: 503, code: 'access.unavailable' } }
+      : { ok: false as const, failure: { status: 500, code: 'unknown' } },
+  );
+
+beforeEach(() => {
+  call.mockReset();
+  call.mockImplementation(noSavedFilters);
+  window.localStorage.clear();
+});
 afterEach(cleanup);
 
 describe('orders list', () => {
@@ -103,7 +126,7 @@ describe('orders list', () => {
         }),
       ]),
     );
-    render(wrap(<OrdersList zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
     const table = await screen.findByRole('table');
     const link = within(table).getByRole('link', { name: 'Order 00000001' });
     expect(link.getAttribute('href')).toBe('/orders/0190a000-0000-7000-8000-000000000001');
@@ -133,7 +156,7 @@ describe('orders list', () => {
         }),
       ]),
     );
-    render(wrap(<OrdersList zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
     const table = await screen.findByRole('table');
     expect(within(table).getByText('Amira Haddad')).toBeTruthy();
     expect(within(table).getByText('amira@example.com')).toBeTruthy();
@@ -145,7 +168,7 @@ describe('orders list', () => {
 
   it('falls back to the short id without the customer fields', async () => {
     call.mockResolvedValueOnce(page([order()]));
-    render(wrap(<OrdersList zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
     const table = await screen.findByRole('table');
     expect(within(table).getByText('000000E1')).toBeTruthy();
     expect(within(table).getByText('000000A1')).toBeTruthy();
@@ -153,7 +176,7 @@ describe('orders list', () => {
 
   it('filters by status and asks again', async () => {
     call.mockResolvedValue(page([order()]));
-    render(wrap(<OrdersList zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
     await screen.findByRole('table');
     fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
     await waitFor(() =>
@@ -163,7 +186,7 @@ describe('orders list', () => {
 
   it('pages by cursor with Previous and Next, and walks back to the page it came from', async () => {
     call.mockResolvedValueOnce(page([order()], 'next-1'));
-    render(wrap(<OrdersList zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
     await screen.findByRole('table');
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Previous' }).disabled).toBe(true);
     call.mockResolvedValueOnce(page([order({ orderId: '0190a000-0000-7000-8000-000000000003' })]));
@@ -181,13 +204,13 @@ describe('orders list', () => {
 
   it('shows an empty state', async () => {
     call.mockResolvedValueOnce(page([]));
-    render(wrap(<OrdersList zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
     expect(await screen.findByText(/No orders yet/)).toBeTruthy();
   });
 
   it('says which status is empty on a filtered tab', async () => {
     call.mockResolvedValue(page([]));
-    render(wrap(<OrdersList zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
     expect(await screen.findByText('No orders yet')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
     expect(await screen.findByText('No cancelled orders')).toBeTruthy();
@@ -196,7 +219,7 @@ describe('orders list', () => {
 
   it('shows the error with a retry that loads again', async () => {
     call.mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
-    render(wrap(<OrdersList zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
     expect(await screen.findByText(/couldn't load the orders/)).toBeTruthy();
     call.mockResolvedValueOnce(page([order()]));
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
@@ -206,7 +229,7 @@ describe('orders list', () => {
   it('offers exactly the statuses the admin API accepts', async () => {
     expect(FILTERS).toEqual(['all', 'pending-payment', 'confirmed', 'cancelled']);
     call.mockResolvedValueOnce(page([]));
-    render(wrap(<OrdersList zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
     const tabs = within(screen.getByRole('navigation')).getAllByRole('button');
     expect(tabs.map((tab) => tab.textContent)).toEqual([
       'All',
@@ -233,9 +256,9 @@ const pageOf = (orders: AdminOrder[], total: number, number = 1) => ({
 describe('orders list in page-number mode', () => {
   it('asks for a page with its sort and shows the range of the total', async () => {
     call.mockResolvedValue(pageOf([order()], 60));
-    render(wrap(<OrdersList paging="pages" zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" paging="pages" />));
     await screen.findByRole('table');
-    expect(call).toHaveBeenLastCalledWith(
+    expect(call).toHaveBeenCalledWith(
       'GET',
       'ordering/admin/orders?page=1&pageSize=25&sort=created&direction=desc',
     );
@@ -246,7 +269,7 @@ describe('orders list in page-number mode', () => {
 
   it('goes to the page that is clicked and back to the first after a filter changes', async () => {
     call.mockResolvedValue(pageOf([order()], 60));
-    render(wrap(<OrdersList paging="pages" zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" paging="pages" />));
     await screen.findByRole('table');
     fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
     await waitFor(() =>
@@ -270,7 +293,7 @@ describe('orders list in page-number mode', () => {
 
   it('sorts by total and filters by payment, delivery and day (the last day is included)', async () => {
     call.mockResolvedValue(pageOf([order()], 1));
-    render(wrap(<OrdersList paging="pages" zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" paging="pages" />));
     await screen.findByRole('table');
     fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'total-high' } });
     fireEvent.change(screen.getByLabelText('Payment'), { target: { value: 'captured' } });
@@ -297,7 +320,7 @@ describe('orders list in page-number mode', () => {
   it('reads the days and shows the times on the clock of its zone, and names the zone', async () => {
     // 1 Oct 2026 starts at 14:00 UTC the day before in Brisbane (UTC+10, no daylight saving).
     call.mockResolvedValue(pageOf([order({ createdAt: '2026-10-12T15:30:00.000Z' })], 1));
-    render(wrap(<OrdersList paging="pages" zone="Australia/Brisbane" />));
+    render(wrap(<OrdersList paging="pages" {...LIST} zone="Australia/Brisbane" />));
     const table = await screen.findByRole('table');
     expect(screen.getByText('Times and days are in Australia/Brisbane.')).toBeTruthy();
     // Placed 15:30 UTC on 12 Oct is 1:30 am on 13 Oct in Brisbane.
@@ -315,7 +338,7 @@ describe('orders list in page-number mode', () => {
 
   it('does not ask when the end day is before the start day, and says so', async () => {
     call.mockResolvedValue(pageOf([order()], 1));
-    render(wrap(<OrdersList paging="pages" zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" paging="pages" />));
     await screen.findByRole('table');
     call.mockClear();
     fireEvent.change(screen.getByLabelText('Placed from'), {
@@ -331,7 +354,7 @@ describe('orders list in page-number mode', () => {
 
   it('stops page numbers at the API limit and tells the admin how to go further', async () => {
     call.mockResolvedValue(pageOf([order()], 12_345));
-    render(wrap(<OrdersList paging="pages" zone="UTC" />));
+    render(wrap(<OrdersList {...LIST} zone="UTC" paging="pages" />));
     await screen.findByRole('table');
     expect(screen.getByText(/Page numbers stop at the first 10,000 orders/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Page 400' })).toBeTruthy();
@@ -718,5 +741,348 @@ describe('orders nav', () => {
     const ids = (keys: string[]) => visibleNavItems(adminNav, new Set(keys)).map((item) => item.id);
     expect(ids([])).not.toContain('orders');
     expect(ids(['ordering.order.view'])).toContain('orders');
+  });
+});
+
+const saved = (over: Partial<SavedFilter> = {}): SavedFilter => ({
+  id: '0190a000-0000-7000-8000-0000000000aa',
+  listKey: 'admin.ordering.orders',
+  name: 'Paid, captured',
+  visibility: 'me',
+  payload: { v: 1, tab: 'confirmed', filters: { paymentState: 'captured', from: '2026-11-01' } },
+  ownedByMe: true,
+  canManage: true,
+  createdAt: '2026-11-06T00:00:00Z',
+  updatedAt: '2026-11-06T00:00:00Z',
+  ...over,
+});
+const savedAnswer = (items: SavedFilter[], canShare = false) => ({
+  ok: true as const,
+  status: 200,
+  body: { items, canShare, limits: { perOwner: 50, shared: 20 } } satisfies SavedFiltersAnswer,
+});
+/** Answers each path from the table; anything else is an empty page. */
+function answers(table: Record<string, unknown>) {
+  call.mockImplementation(((_method: string, path: string) => {
+    const key = Object.keys(table).find((entry) => path.startsWith(entry));
+    return Promise.resolve(key === undefined ? page([]) : table[key]);
+  }) as never);
+}
+
+describe('order list columns', () => {
+  it('shows every column until the admin chooses', async () => {
+    call.mockResolvedValueOnce(page([order()]));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
+    const table = await screen.findByRole('table');
+    for (const name of ['Order', 'Status', 'Placed', 'Paid', 'Customer', 'Sellers', 'Total']) {
+      expect(within(table).getByRole('columnheader', { name })).toBeTruthy();
+    }
+  });
+
+  it('keeps the choice in this browser, in the chosen order, and reads it back', async () => {
+    call.mockResolvedValueOnce(page([order()]));
+    const first = render(wrap(<OrdersList {...LIST} zone="UTC" />));
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    for (const name of ['Placed', 'Paid', 'Customer', 'Sellers']) {
+      fireEvent.click(within(panel).getByRole('checkbox', { name }));
+    }
+    fireEvent.click(within(panel).getByRole('button', { name: 'Move Total up' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+
+    const headers = () =>
+      within(screen.getByRole('table'))
+        .getAllByRole('columnheader')
+        .map((header) => header.textContent);
+    expect(headers()).toEqual(['Order', 'Total', 'Status']);
+    expect(window.localStorage.getItem(COLUMNS_KEY)).toBe('["total","status"]');
+
+    first.unmount();
+    call.mockResolvedValueOnce(page([order()]));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
+    await screen.findByRole('table');
+    await waitFor(() => expect(headers()).toEqual(['Order', 'Total', 'Status']));
+  });
+
+  it('puts every column back with Reset and ignores a stored column that no longer exists', async () => {
+    window.localStorage.setItem(COLUMNS_KEY, '["margin","paid","paid"]');
+    call.mockResolvedValueOnce(page([order()]));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
+    const table = await screen.findByRole('table');
+    await waitFor(() =>
+      expect(
+        within(table)
+          .getAllByRole('columnheader')
+          .map((h) => h.textContent),
+      ).toEqual(['Order', 'Paid']),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Reset' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    expect(within(screen.getByRole('table')).getAllByRole('columnheader')).toHaveLength(7);
+  });
+
+  it('works when the browser storage refuses', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    call.mockResolvedValueOnce(page([order()]));
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
+    const table = await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Sellers' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    expect(within(table).queryByRole('columnheader', { name: 'Sellers' })).toBeNull();
+    getItem.mockRestore();
+    setItem.mockRestore();
+  });
+});
+
+describe('order list saved filters', () => {
+  const rows = page([order()]);
+
+  beforeEach(() => {
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close() {
+      this.removeAttribute('open');
+    };
+  });
+
+  it('adds a tab for each saved filter and opens its tab, filters and sort', async () => {
+    answers({ 'ordering/admin/orders': rows, [SAVED_PATH]: savedAnswer([saved()]) });
+    render(wrap(<OrdersList {...LIST} zone="UTC" paging="pages" />));
+    await screen.findByRole('table');
+    const tab = await screen.findByRole('button', { name: 'Paid, captured' });
+    call.mockClear();
+
+    fireEvent.click(tab);
+
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'GET',
+        expect.stringContaining(
+          'status=confirmed&paymentState=captured&from=2026-11-01T00%3A00%3A00.000Z',
+        ),
+      ),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Paid, captured' }).getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(screen.getByLabelText<HTMLSelectElement>('Payment').value).toBe('captured');
+    expect(screen.getByLabelText<HTMLInputElement>('Placed from').value).toBe('2026-11-01');
+  });
+
+  it('leaves the saved tab as soon as a filter changes', async () => {
+    answers({ 'ordering/admin/orders': rows, [SAVED_PATH]: savedAnswer([saved()]) });
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
+    fireEvent.click(await screen.findByRole('button', { name: 'Paid, captured' }));
+    fireEvent.change(screen.getByLabelText('Delivery'), { target: { value: 'shipped' } });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Paid, captured' }).getAttribute('aria-pressed'),
+      ).toBe('false'),
+    );
+  });
+
+  it('leaves the saved tab when the sort changes', async () => {
+    answers({ 'ordering/admin/orders': rows, [SAVED_PATH]: savedAnswer([saved()]) });
+    render(wrap(<OrdersList {...LIST} zone="UTC" paging="pages" />));
+    fireEvent.click(await screen.findByRole('button', { name: 'Paid, captured' }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Paid, captured' }).getAttribute('aria-pressed'),
+      ).toBe('true'),
+    );
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'oldest' } });
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Paid, captured' }).getAttribute('aria-pressed'),
+      ).toBe('false'),
+    );
+    expect(screen.getByRole('button', { name: 'Save filter…' })).toBeTruthy();
+  });
+
+  it('saves the current filters as a private filter and shows it as the open tab', async () => {
+    let items: SavedFilter[] = [];
+    call.mockImplementation(((method: string, path: string, body?: unknown) => {
+      if (path.startsWith(SAVED_PATH) && method === 'POST') {
+        const sent = body as { name: string; visibility: string; payload: SavedFilter['payload'] };
+        items = [saved({ name: sent.name, visibility: 'me', payload: sent.payload })];
+        return Promise.resolve({ ok: true, status: 201, body: items[0] });
+      }
+      if (path.startsWith(SAVED_PATH)) return Promise.resolve(savedAnswer(items));
+      return Promise.resolve(rows);
+    }) as never);
+    render(wrap(<OrdersList {...LIST} zone="UTC" paging="pages" csrfToken="csrf-1" />));
+    await screen.findByRole('table');
+    fireEvent.change(screen.getByLabelText('Payment'), { target: { value: 'captured' } });
+    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'total-high' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
+    expect(within(dialog).getByText(/Payment: Captured/)).toBeTruthy();
+    expect(
+      within(dialog).getByText('Saved for you only. Your role can’t share filters.'),
+    ).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText('Name'), {
+      target: { value: ' Big captured ' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save filter' }));
+
+    await screen.findByRole('button', { name: 'Big captured' });
+    expect(call).toHaveBeenCalledWith(
+      'POST',
+      'ordering/admin/saved-filters',
+      {
+        listKey: 'admin.ordering.orders',
+        name: 'Big captured',
+        visibility: 'me',
+        payload: { v: 1, tab: 'all', filters: { paymentState: 'captured' }, sort: 'total-high' },
+      },
+      'csrf-1',
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Big captured' }).getAttribute('aria-pressed'),
+      ).toBe('true'),
+    );
+  });
+
+  it('offers Everyone only to an admin who can share, and says a repeated name under the field', async () => {
+    call.mockImplementation(((method: string, path: string) => {
+      if (path.startsWith(SAVED_PATH) && method === 'POST') {
+        return Promise.resolve({
+          ok: false,
+          failure: { status: 409, code: 'saved-filter.name-taken' },
+        });
+      }
+      if (path.startsWith(SAVED_PATH)) return Promise.resolve(savedAnswer([], true));
+      return Promise.resolve(rows);
+    }) as never);
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: 'Paid' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
+    expect(within(dialog).getByRole('radio', { name: /Everyone/ })).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Paid' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save filter' }));
+    expect(
+      await within(dialog).findByText(
+        'A filter with this name already exists. Choose another name.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('does not offer Save filter without anything to save, or when the filters cannot load', async () => {
+    answers({ 'ordering/admin/orders': rows, [SAVED_PATH]: savedAnswer([]) });
+    const first = render(wrap(<OrdersList {...LIST} zone="UTC" />));
+    await screen.findByRole('table');
+    expect(screen.queryByRole('button', { name: 'Save filter…' })).toBeNull();
+    first.unmount();
+
+    call.mockImplementation(noSavedFilters);
+    call.mockResolvedValueOnce(rows);
+    render(wrap(<OrdersList {...LIST} zone="UTC" />));
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: 'Paid' }));
+    expect(screen.queryByRole('button', { name: 'Save filter…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Manage filters' })).toBeNull();
+  });
+
+  it('manages filters: renames, and deletes after asking once', async () => {
+    let items = [
+      saved(),
+      saved({
+        id: '0190a000-0000-7000-8000-0000000000ab',
+        name: 'Shared by Sam',
+        visibility: 'everyone',
+        ownedByMe: false,
+        canManage: false,
+      }),
+    ];
+    call.mockImplementation(((method: string, path: string, body?: unknown) => {
+      if (path.startsWith(SAVED_PATH) && method === 'PUT') {
+        items = [{ ...items[0]!, name: (body as { name: string }).name }, items[1]!];
+        return Promise.resolve({ ok: true, status: 200, body: items[0] });
+      }
+      if (path.startsWith(SAVED_PATH) && method === 'DELETE') {
+        items = items.slice(1);
+        return Promise.resolve({ ok: true, status: 200, body: { id: 'x' } });
+      }
+      if (path.startsWith(SAVED_PATH)) return Promise.resolve(savedAnswer(items));
+      return Promise.resolve(rows);
+    }) as never);
+    render(wrap(<OrdersList {...LIST} zone="UTC" csrfToken="csrf-2" />));
+    await screen.findByRole('button', { name: 'Shared by Sam' });
+    fireEvent.click(screen.getByRole('button', { name: 'Manage filters' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Manage filters' });
+    expect(within(dialog).getByText('Shared by another admin')).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: 'Edit Shared by Sam' })).toBeNull();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Edit Paid, captured' }));
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Captured' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    await screen.findByRole('button', { name: 'Captured' });
+    expect(call).toHaveBeenCalledWith(
+      'PUT',
+      'ordering/admin/saved-filters/0190a000-0000-7000-8000-0000000000aa',
+      { name: 'Captured', visibility: 'me' },
+      'csrf-2',
+    );
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete Captured' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete filter' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Captured' })).toBeNull());
+    expect(call).toHaveBeenCalledWith(
+      'DELETE',
+      'ordering/admin/saved-filters/0190a000-0000-7000-8000-0000000000aa',
+      undefined,
+      'csrf-2',
+    );
+  });
+});
+
+describe('saved filter documents', () => {
+  it('round-trips the page state and leaves out what is empty', () => {
+    const filters = {
+      ...NO_FILTERS,
+      status: 'confirmed',
+      paymentState: 'captured',
+      to: '2026-11-05',
+    };
+    expect(payloadOf(filters, 'total-low')).toEqual({
+      v: 1,
+      tab: 'confirmed',
+      filters: { paymentState: 'captured', to: '2026-11-05' },
+      sort: 'total-low',
+    });
+    expect(stateOf(payloadOf(filters, 'total-low'))).toEqual({ filters, sort: 'total-low' });
+    expect(payloadOf(NO_FILTERS, 'newest')).toEqual({ v: 1, tab: 'all' });
+    expect(stateOf({ v: 1, tab: 'all' })).toEqual({ filters: NO_FILTERS, sort: 'newest' });
+  });
+
+  it('says what a refusal means', () => {
+    expect(problemOf({ status: 409, code: 'saved-filter.name-taken' })).toBe('name-taken');
+    expect(problemOf({ status: 409, code: 'saved-filter.limit-reached' })).toBe('limit');
+    expect(problemOf({ status: 409, code: 'saved-filter.shared-limit-reached' })).toBe(
+      'shared-limit',
+    );
+    expect(problemOf({ status: 403, code: 'access.denied' })).toBe('denied');
+    expect(
+      problemOf({
+        status: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'name', code: 'required' }] },
+      }),
+    ).toBe('name-empty');
+    expect(problemOf({ status: 503, code: 'access.unavailable' })).toBe('unavailable');
   });
 });

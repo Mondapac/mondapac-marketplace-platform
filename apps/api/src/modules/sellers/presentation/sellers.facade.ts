@@ -6,6 +6,8 @@ import type { SellerBusinessActivities } from '../application/use-cases/seller-b
 import type { SellerBusinessActivitiesSystem } from '../application/use-cases/seller-business-activities-system.use-case';
 import type { BlogAccessSystem } from '../application/use-cases/blog-access-system.use-case';
 import type { BlogAccess } from '../application/use-cases/blog-access.use-case';
+import type { AiAccessSystem } from '../application/use-cases/ai-access-system.use-case';
+import type { AiAccess } from '../application/use-cases/ai-access.use-case';
 import type { MayProposeCategoriesSystem } from '../application/use-cases/may-propose-categories-system.use-case';
 import type { MayProposeCategories } from '../application/use-cases/may-propose-categories.use-case';
 import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
@@ -53,6 +55,8 @@ export interface SellersFacadeUseCases {
   readonly blogAccessSystem: BlogAccessSystem;
   readonly mayProposeCategories: MayProposeCategories;
   readonly mayProposeCategoriesSystem: MayProposeCategoriesSystem;
+  readonly aiAccess: AiAccess;
+  readonly aiAccessSystem: AiAccessSystem;
   readonly activeSince: ActiveSince;
   readonly activeSinceSystem: ActiveSinceSystem;
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
@@ -145,6 +149,15 @@ export class SellersFacadeImplementation implements SellersFacade {
       context.actor.kind === 'system'
         ? this.useCases.mayProposeCategoriesSystem
         : this.useCases.mayProposeCategories;
+    return useCase.execute(context, { sellerId });
+  }
+
+  aiAccessOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>> {
+    const useCase =
+      context.actor.kind === 'system' ? this.useCases.aiAccessSystem : this.useCases.aiAccess;
     return useCase.execute(context, { sellerId });
   }
 
