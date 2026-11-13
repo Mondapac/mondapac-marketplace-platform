@@ -33,6 +33,8 @@ export type ModelCall =
  * configured and nothing is called (fail closed). The key never leaves this class: callers learn
  * only whether a Market is configured.
  *
+ * `AI_KILL_SWITCH` (ADR-0026 decision 8) makes every Market not configured: nothing is called.
+ *
  * Callers never call it inside a UnitOfWork (decision 6): a slow provider must not hold a
  * database transaction. A call is cut at its timeout; any provider failure is `unavailable`,
  * logged with the Market and the failure kind only (never a message, a key or provider text).
@@ -41,12 +43,22 @@ export type ModelCall =
 export class ModelGateway {
   readonly #logger = new Logger('ModelGateway');
   readonly #config: AppConfig['assistantModels'];
+  readonly #killed: boolean;
 
   constructor(
     @Inject(APP_CONFIG) config: AppConfig,
     @Inject(MODEL_PROVIDER) private readonly provider: ModelProvider,
   ) {
     this.#config = config.assistantModels;
+    this.#killed = config.aiKillSwitch;
+    if (this.#killed) {
+      this.#logger.warn({ msg: 'ai.kill-switch.set', detail: 'every AI capability is off' });
+    }
+  }
+
+  /** `AI_KILL_SWITCH` is set: every Market answers not configured and nothing is called. */
+  killSwitchSet(): boolean {
+    return this.#killed;
   }
 
   /** Whether the Market has a provider key (the admin screen shows set or not set). */
@@ -61,9 +73,10 @@ export class ModelGateway {
       : null;
   }
 
-  /** Key, model and price are all set for this tier in the Market. */
+  /** Key, model and price are all set for this tier in the Market, and the kill switch is not. */
   configured(marketId: MarketId, tier: AiModelTier): boolean {
     return (
+      !this.#killed &&
       this.keyConfigured(marketId) &&
       this.modelOf(marketId, tier) !== null &&
       Object.hasOwn(this.#config.prices[tier], marketId)

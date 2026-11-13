@@ -375,7 +375,39 @@ import {
 import { PrismaVariantAdminReader } from './prisma-variant-admin.reader';
 import { PrismaVariantTypeSettingsStore } from './prisma-variant-type-settings.store';
 
+import { ModelGateway } from '../../../platform/ai/model-gateway';
+import { SETTINGS_FACADE, type SettingsFacade } from '../../settings';
+import {
+  DESCRIPTION_WRITER_MODEL,
+  DESCRIPTION_WRITER_SWITCHES,
+  MARKET_DAY_CALENDAR,
+  type DescriptionWriterModel,
+  type DescriptionWriterSwitches,
+  type MarketDayCalendar,
+} from '../application/ports/description-writer';
+import { FacadeDescriptionWriterSwitches } from './description-writer-switches';
+import { GatewayDescriptionWriterModel } from './gateway-description-writer-model';
+import { RegistryMarketDayCalendar } from './registry-market-day-calendar';
+
 export const catalogProviders: readonly Provider[] = [
+  {
+    provide: DESCRIPTION_WRITER_MODEL,
+    inject: [ModelGateway],
+    useFactory: (gateway: ModelGateway): DescriptionWriterModel =>
+      new GatewayDescriptionWriterModel(gateway),
+  },
+  {
+    provide: DESCRIPTION_WRITER_SWITCHES,
+    inject: [SETTINGS_FACADE, SELLERS_FACADE],
+    useFactory: (settings: SettingsFacade, sellers: SellersFacade): DescriptionWriterSwitches =>
+      new FacadeDescriptionWriterSwitches(settings, sellers),
+  },
+  {
+    provide: MARKET_DAY_CALENDAR,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): MarketDayCalendar =>
+      new RegistryMarketDayCalendar(markets),
+  },
   // ADR-0031 decision 3: the binding of `certification.matchClaimTerms` (the placeholder is gone).
   {
     provide: CLAIM_TEXT_MATCHER,

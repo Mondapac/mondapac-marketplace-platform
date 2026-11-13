@@ -36,6 +36,7 @@ describe('loadAppConfig', () => {
       externalAccountHmac: { keys: {}, currentVersion: null },
       promotionsCodePepper: null,
       clientAddressTrust: null,
+      aiKillSwitch: false,
       storefrontIndexing: { ceiling: 'off', sampleData: true },
       assistantModels: {
         apiKeys: {},
@@ -48,6 +49,20 @@ describe('loadAppConfig', () => {
       zoom2u: { apiKeys: {} },
       doordashDrive: { developerIds: {}, keyIds: {}, signingSecrets: {} },
       auspost: { apiKeys: {}, apiPasswords: {}, accountNumbers: {} },
+    });
+  });
+
+  describe('the AI kill switch (ADR-0026 decision 8)', () => {
+    it('is off when unset, on only for true, and fails boot on any other value', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).aiKillSwitch).toBe(false);
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU', AI_KILL_SWITCH: 'false' }).aiKillSwitch).toBe(
+        false,
+      );
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU', AI_KILL_SWITCH: 'true' }).aiKillSwitch).toBe(
+        true,
+      );
+      expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', AI_KILL_SWITCH: 'yes' })).toThrow();
+      expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', AI_KILL_SWITCH: 'TRUE' })).toThrow();
     });
   });
 
