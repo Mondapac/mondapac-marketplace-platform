@@ -7390,6 +7390,8 @@
       "platform-product": "Platform product",
       "seller": "Seller {id}",
       "feature-set-named": "Feature set {code}",
+      "last-emailed": "Last emailed {date}",
+      "never-emailed": "Not emailed yet",
       "missing": "Missing details",
       "load-more": "Load more",
       "email": {
