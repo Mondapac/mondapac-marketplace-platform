@@ -782,6 +782,7 @@
   },
   { "name": "sellers.run-seller-health", "rule": "system" },
   { "name": "sellers.run-seller-health-requests", "rule": "system" },
+  { "name": "sellers.search-store-names", "rule": "anonymous" },
   { "name": "sellers.seed-seller-cultures", "rule": "system" },
   { "name": "sellers.seller-approved-cultures", "rule": "anonymous" },
   { "name": "sellers.seller-approved-cultures-system", "rule": "system" },

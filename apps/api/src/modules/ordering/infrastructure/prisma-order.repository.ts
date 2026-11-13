@@ -210,6 +210,25 @@ const filterWhere = (market: MarketContext, filter: OrderFilter) => ({
           },
         },
       }),
+  ...(filter.parties === null
+    ? {}
+    : {
+        AND: [
+          {
+            OR: [
+              { accountId: { in: [...filter.parties.accountIds] } },
+              {
+                sellerOrders: {
+                  some: {
+                    marketId: market.marketId,
+                    sellerId: { in: [...filter.parties.sellerIds] },
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      }),
   ...(filter.from === null && filter.to === null
     ? {}
     : {

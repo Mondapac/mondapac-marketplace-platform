@@ -67,6 +67,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     fulfilment: null,
     from: null,
     to: null,
+    parties: null,
     ...over,
   });
 
@@ -498,6 +499,58 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     await value(market, () =>
       repository.markInventoryRecorded(market, shipped.sellerOrders[0]!.id, day.add({ hours: 2 })),
     );
+  });
+
+  it('filters the admin list on the customers and sellers a free-text search resolved to', async () => {
+    const day = T0.add({ hours: 24 * 520 });
+    const mine = newOrder(ids.next<'Account'>(), day);
+    const theirs = newOrder(ids.next<'Account'>(), day.add({ minutes: 1 }));
+    const bySeller = newOrder(ids.next<'Account'>(), day.add({ minutes: 2 }));
+    for (const row of [mine, theirs, bySeller]) {
+      await value(market, () => repository.insert(market, row));
+    }
+    const window = { from: day, to: day.add({ hours: 1 }) };
+    const found = (parties: OrderFilter['parties']) =>
+      value(market, () =>
+        repository.pageAll(
+          market,
+          filterOf({ ...window, parties }),
+          { key: 'created', direction: 'asc' },
+          0,
+          10,
+        ),
+      ).then((rows) => rows.map((o) => o.id));
+    const count = (parties: OrderFilter['parties']) =>
+      value(market, () => repository.countMatching(market, filterOf({ ...window, parties })));
+
+    expect(await found({ accountIds: [mine.accountId], sellerIds: [] })).toEqual([mine.id]);
+    expect(
+      await found({
+        accountIds: [theirs.accountId],
+        sellerIds: [bySeller.sellerOrders[0]!.sellerId],
+      }),
+    ).toEqual([theirs.id, bySeller.id]);
+    // Nothing resolved keeps nothing; no search keeps everything.
+    expect(await found({ accountIds: [], sellerIds: [] })).toEqual([]);
+    expect(await count({ accountIds: [], sellerIds: [] })).toBe(0);
+    expect(await found(null)).toEqual([mine.id, theirs.id, bySeller.id]);
+    expect(await count({ accountIds: [mine.accountId], sellerIds: [] })).toBe(1);
+    // Together with another filter, both must hold.
+    expect(
+      await value(market, () =>
+        repository.pageAll(
+          market,
+          filterOf({
+            ...window,
+            sellerId: bySeller.sellerOrders[0]!.sellerId,
+            parties: { accountIds: [mine.accountId], sellerIds: [] },
+          }),
+          { key: 'created', direction: 'asc' },
+          0,
+          10,
+        ),
+      ),
+    ).toEqual([]);
   });
 
   it('refuses what the application never writes', async () => {

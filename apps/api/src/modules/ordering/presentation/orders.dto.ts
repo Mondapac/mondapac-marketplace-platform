@@ -433,6 +433,21 @@ export class AdminOrderPageBody {
   page!: number | null;
   @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: rows per page.' })
   pageSize!: number | null;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'True when `search` matched more than 200 customers or stores, so some matches are left ' +
+      'out; ask the person to type a longer text.',
+  })
+  searchCapped!: boolean;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: ['customers-and-stores', 'stores'],
+    description:
+      'What `search` looked in; `stores` when the admin lacks identity.customer-account.view, so customer names were not searched. Null without `search`.',
+  })
+  searchScope!: 'customers-and-stores' | 'stores' | null;
 }
 
 type SellerOrderLike = OrderView['sellerOrders'][number];
@@ -698,6 +713,8 @@ export const adminOrderPageBody = (page: AdminOrderPageView): AdminOrderPageBody
   total: page.paging?.total ?? null,
   page: page.paging?.page ?? null,
   pageSize: page.paging?.pageSize ?? null,
+  searchCapped: page.searchCapped,
+  searchScope: page.searchScope,
 });
 
 export const pageBody = <V, B>(

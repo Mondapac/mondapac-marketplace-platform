@@ -26,6 +26,7 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'conflict.retry': 409,
   'request.throttled': 429,
   'ordering.check-unavailable': 503,
+  'ordering.search-unavailable': 503,
   'ordering.seller-order-not-found': 404,
   'ordering.fulfilment-conflict': 409,
   'ordering.seller-order-refunded': 409,

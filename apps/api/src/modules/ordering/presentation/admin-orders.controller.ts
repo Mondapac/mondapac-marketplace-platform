@@ -114,6 +114,15 @@ export class AdminOrdersController {
     description: 'An order id or a seller order id (the reference in the order emails), exact.',
   })
   @ApiQuery({
+    name: 'search',
+    required: false,
+    description:
+      'Customer name or store name, 2 to 80 characters, case insensitive, contained text. An ' +
+      'order matches when its customer or one of its stores does. Customer names need ' +
+      'identity.customer-account.view; without it only store names match. Works with every ' +
+      'other filter, in page and cursor mode.',
+  })
+  @ApiQuery({
     name: 'cursor',
     required: false,
     description: 'The `nextCursor` of the previous page.',
@@ -151,7 +160,10 @@ export class AdminOrdersController {
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
-  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'access.unavailable, or ordering.search-unavailable when `search` could not run',
+  })
   async orders(
     @Call() context: CallContext,
     @Query('status') status: unknown,
@@ -165,6 +177,7 @@ export class AdminOrdersController {
     const result = await this.list.execute(context, {
       status,
       q,
+      search: query['search'],
       cursor,
       limit: parseLimit(limit),
       page: parseLimit(query['page']),

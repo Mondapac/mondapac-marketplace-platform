@@ -1,3 +1,4 @@
+import { escapeLikeTerm } from '../../../platform/text/like-escape';
 import { err, ok, parseMarketId, POPULATIONS, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, Population, Result } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
@@ -158,6 +159,24 @@ export class PrismaAccountRepository implements AccountRepository {
       displayName: row.displayName,
       email: row.email,
     }));
+  }
+
+  async searchCustomerIdsByName(
+    market: MarketContext,
+    term: string,
+    limit: number,
+  ): Promise<readonly Id<'Account'>[]> {
+    const rows = await this.prisma.tx(market).identityAccount.findMany({
+      where: {
+        marketId: market.marketId,
+        population: 'customer',
+        displayName: { contains: escapeLikeTerm(term), mode: 'insensitive' },
+      },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+      take: limit,
+    });
+    return rows.map((row) => row.id as Id<'Account'>);
   }
 
   async customerSharesAddressWithSellerMember(
