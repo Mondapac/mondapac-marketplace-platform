@@ -48,6 +48,20 @@ describe('ModelGateway (ADR-0019 R7, R8)', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
+  it('calls nothing while AI_KILL_SWITCH is set (ADR-0026 decision 8)', async () => {
+    const provider = new ScriptedProvider(() => Promise.resolve(TURN));
+    const killed = { ...AU_ONLY, aiKillSwitch: true } as unknown as AppConfig;
+    const gateway = new ModelGateway(killed, provider);
+    expect(gateway.killSwitchSet()).toBe(true);
+    expect(gateway.configured(AU, 'fast')).toBe(false);
+    await expect(gateway.complete(AU, 'fast', REQUEST, 1000)).resolves.toEqual({
+      ok: false,
+      failure: 'not-configured',
+    });
+    expect(provider.calls).toHaveLength(0);
+    expect(warnings).toContainEqual(expect.objectContaining({ msg: 'ai.kill-switch.set' }));
+  });
+
   it('is configured per Market and tier only when key, model and price are all set', () => {
     const gateway = new ModelGateway(AU_ONLY, new ScriptedProvider(() => Promise.resolve(TURN)));
     expect(gateway.keyConfigured(AU)).toBe(true);

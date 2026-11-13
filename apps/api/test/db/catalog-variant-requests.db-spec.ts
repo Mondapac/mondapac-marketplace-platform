@@ -6,7 +6,7 @@ import { marketOf, otherMarketOf } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 import { sqlState } from './sql-state';
 
-// Variants V7 on PostgreSQL (migration 20261113020000_catalog_variant_requests), for both Market
+// Variants V7 on PostgreSQL (migration 20261113110000_catalog_variant_requests), for both Market
 // fixtures, as the API role: the request must sit on an Offer that sells a PLATFORM product, one
 // open request per Offer and combination, the decision's shape, the guard (immutable columns,
 // one move out of open, a notice moves only out of pending), the same-seller, same-product and

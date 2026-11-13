@@ -498,6 +498,21 @@ import { seedCategoryTreeJob } from './presentation/jobs/seed-category-tree.job'
  * The Nest token of each dependency name the use cases of catalog share: a use case's dependency
  * object is built from these by {@link useCaseProvider}, so a name always means the same port.
  */
+import {
+  DESCRIPTION_WRITER_MODEL,
+  DESCRIPTION_WRITER_SWITCHES,
+  MARKET_DAY_CALENDAR,
+} from './application/ports/description-writer';
+import { AdminAiModelSetup } from './application/use-cases/admin-ai-model-setup.use-case';
+import { AdminDescriptionDraft } from './application/use-cases/admin-description-draft.use-case';
+import { AdminDescriptionWriterStatus } from './application/use-cases/admin-description-writer-status.use-case';
+import { OwnDescriptionDraft } from './application/use-cases/own-description-draft.use-case';
+import { OwnDescriptionWriterStatus } from './application/use-cases/own-description-writer-status.use-case';
+import {
+  AdminDescriptionWriterController,
+  OwnDescriptionWriterController,
+} from './presentation/description-writer.controller';
+import { SettingsModule } from '../settings';
 import { VARIANT_ADMIN_READER } from './application/ports/variant-admin.reader';
 import { VARIANT_TYPE_SETTINGS_STORE } from './application/ports/variant-type-settings.store';
 import { AdminVariantTypeGet } from './application/use-cases/admin-variant-type-get.use-case';
@@ -528,6 +543,9 @@ const NO_SAVE_BUDGET = { reserveSaves: (): Promise<null> => Promise.resolve(null
 
 const PORT = {
   unitOfWork: UNIT_OF_WORK,
+  model: DESCRIPTION_WRITER_MODEL,
+  switches: DESCRIPTION_WRITER_SWITCHES,
+  calendar: MARKET_DAY_CALENDAR,
   categories: PLATFORM_CATEGORY_REPOSITORY,
   seed: CATEGORY_SEED,
   attributes: ATTRIBUTE_REPOSITORY,
@@ -800,8 +818,16 @@ const RESTRUCTURE_DEPS = {
     PublicBrandController,
     OwnCategoryProposalController,
     CategoryProposalAdminController,
+    OwnDescriptionWriterController,
+    AdminDescriptionWriterController,
   ],
-  imports: [CertificationModule, SellersModule, CatalogReferencesModule, IdentityModule],
+  imports: [
+    CertificationModule,
+    SellersModule,
+    CatalogReferencesModule,
+    IdentityModule,
+    SettingsModule,
+  ],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
     PersistenceModule.auditWriterFor('catalog'),
@@ -911,6 +937,56 @@ const RESTRUCTURE_DEPS = {
       requests: true,
       audit: true,
       brandAssigner: true,
+    }),
+    useCaseProvider(OwnDescriptionWriterStatus, {
+      unitOfWork: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      matcher: true,
+      model: true,
+      switches: true,
+      calendar: true,
+    }),
+    useCaseProvider(OwnDescriptionDraft, {
+      unitOfWork: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      matcher: true,
+      model: true,
+      switches: true,
+      calendar: true,
+    }),
+    useCaseProvider(AdminDescriptionWriterStatus, {
+      unitOfWork: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      matcher: true,
+      model: true,
+      switches: true,
+      calendar: true,
+    }),
+    useCaseProvider(AdminDescriptionDraft, {
+      unitOfWork: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      matcher: true,
+      model: true,
+      switches: true,
+      calendar: true,
+    }),
+    useCaseProvider(AdminAiModelSetup, {
+      unitOfWork: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      matcher: true,
+      model: true,
+      switches: true,
+      calendar: true,
     }),
     useCaseProvider(BusinessActivityList, {
       unitOfWork: true,
