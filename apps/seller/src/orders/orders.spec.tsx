@@ -91,7 +91,11 @@ const mountDetail = (
     ),
   );
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Saved filters that cannot be read: the list works without them.
+  savedCall.mockResolvedValue({ ok: false, status: 500, body: null });
+});
 afterEach(cleanup);
 
 const shippedOrder = (over: Partial<SellerOrderView> = {}) =>
