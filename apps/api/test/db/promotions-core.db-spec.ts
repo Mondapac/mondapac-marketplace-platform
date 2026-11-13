@@ -1074,6 +1074,7 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
             types: [],
             owner: null,
             funding: null,
+            hideBudget: false,
             criterion: 'NEEDS_REVIEW',
             reviewPromotionIds: [spent],
             sort: 'CREATED',

@@ -157,18 +157,20 @@ export class MemoryPromotions implements PromotionRepository {
       if (search.funding !== null && r.funding !== search.funding) return false;
       if (criterion === null) return true;
       if (criterion === 'NEEDS_REVIEW') return search.reviewPromotionIds.includes(r.id);
+      const shown = displayStatusOf(
+        {
+          type: r.type,
+          status: r.status,
+          startsAt: r.startsAt,
+          endsAt: r.endsAt,
+          budgetMinor: r.budgetMinor,
+          spentMinor: this.usage.get(r.id)?.spentMinor ?? 0n,
+        },
+        now,
+      );
       return (
-        displayStatusOf(
-          {
-            type: r.type,
-            status: r.status,
-            startsAt: r.startsAt,
-            endsAt: r.endsAt,
-            budgetMinor: r.budgetMinor,
-            spentMinor: this.usage.get(r.id)?.spentMinor ?? 0n,
-          },
-          now,
-        ) === criterion
+        shown === criterion ||
+        (search.hideBudget && criterion === 'ACTIVE' && shown === 'BUDGET_USED_UP')
       );
     };
   }

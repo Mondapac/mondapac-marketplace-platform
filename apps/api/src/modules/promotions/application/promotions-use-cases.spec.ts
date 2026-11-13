@@ -497,6 +497,47 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       expect(view.items.every((p) => 'usesCount' in p)).toBe(true);
     });
 
+    it('shows the Viewer no budget state and no review queue', async () => {
+      await seed();
+      const view = await rows({ limit: 100 }, false);
+      // A promotion whose budget is spent is simply active to a Viewer, on the tab and in the count.
+      expect(view.items.find((p) => p.name === 'Used up')?.displayStatus).toBe('ACTIVE');
+      expect(view.items.some((p) => p.displayStatus === 'BUDGET_USED_UP')).toBe(false);
+      expect(view.counts).toMatchObject({ ACTIVE: 4, BUDGET_USED_UP: 0, NEEDS_REVIEW: 0 });
+      expect((await rows({ view: 'ACTIVE' }, false)).items.map((p) => p.name)).toContain('Used up');
+      for (const query of [{ status: 'BUDGET_USED_UP' }, { view: 'NEEDS_REVIEW' }]) {
+        expect(await make(ListPromotions).execute(admin(), query)).toMatchObject({
+          ok: false,
+          error: { code: 'validation.failed' },
+        });
+      }
+      // The manager still sees both.
+      expect((await rows({})).counts).toMatchObject({ BUDGET_USED_UP: 1 });
+      expect(await make(ListPromotions).execute(actingAs(admin()), {})).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+    });
+
+    it('answers a page past the end with no rows and the true total, and shows an ended paused promotion only as Ended', async () => {
+      const live = await seed();
+      const past = await rows({ page: 3, limit: 5 });
+      expect(past.items).toEqual([]);
+      expect(past.total).toBe(8);
+      clone(live, 10, {
+        name: 'Paused and over',
+        status: 'PAUSED',
+        pausedBy: 'ADMIN',
+        startsAt: T0.subtract({ hours: 48 }),
+        endsAt: T0.subtract({ hours: 24 }),
+      });
+      expect((await rows({ view: 'ENDED' })).items.map((p) => p.name).sort()).toEqual([
+        'Old cart',
+        'Paused and over',
+      ]);
+      expect((await rows({ view: 'PAUSED' })).items.map((p) => p.name)).toEqual(['Held']);
+    });
+
     it('lets only an admin manager session read the manager list, activity and sellers', async () => {
       const live = await seed();
       for (const context of [seller(), customer, anonymous, actingAs(admin())]) {

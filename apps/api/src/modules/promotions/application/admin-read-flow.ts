@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AuditTrailRow } from '../../../platform/audit/audit-trail-reader';
@@ -42,6 +43,7 @@ import { promotionViewOf, usageViewOf, type PromotionUsageView, type PromotionVi
 // entries. All of them only read; the Viewer's list carries usage counts only, the rest needs
 // `promotions.promotion.manage`.
 
+const logger = new Logger('PromotionsAdminReads');
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 /** Deepest page: a search is narrowed, not walked to the end. */
@@ -85,6 +87,7 @@ function wholeNumber(raw: unknown): number | null {
 function searchOf(
   query: ListQuery,
   reviewPromotionIds: readonly Id<'Promotion'>[],
+  viewer: boolean,
 ): Result<{ search: PromotionSearch; page: number }, PromotionsFailure> {
   const fields: FieldIssue[] = [];
 
@@ -166,10 +169,16 @@ function searchOf(
     }
   }
 
+  // The Viewer sees no budget state and no review queue: those tabs are the manager's.
+  if (viewer && (criterion === 'BUDGET_USED_UP' || criterion === 'NEEDS_REVIEW')) {
+    fields.push({ path: query.view !== undefined ? 'view' : 'status', code: 'value' });
+  }
+
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
   return ok({
     page,
     search: {
+      hideBudget: viewer,
       text,
       types,
       owner,
@@ -195,18 +204,19 @@ export async function searchPromotions<V>(
   context: CallContext,
   query: ListQuery,
   view: (record: PromotionRecord, usage: UsageRecord | undefined) => V,
+  viewer = false,
 ): Promise<Result<PromotionsPage<V>, PromotionsFailure>> {
   const switched = await activeSettings(deps, context);
   if (!switched.ok) return switched;
   // Parse before the unit opens; the open review entries are read inside it, so parse twice is
   // avoided by validating with an empty id set first.
-  const checked = searchOf(query, []);
+  const checked = searchOf(query, [], viewer);
   if (!checked.ok) return checked;
   return deps.unitOfWork.run<PromotionsPage<V>, PromotionsFailure>(
     context.market,
     async () => {
       const open = await deps.reviews.openSummary(context.market);
-      const parsed = searchOf(query, open.promotionIds);
+      const parsed = searchOf(query, open.promotionIds, viewer);
       if (!parsed.ok) return parsed;
       const { search, page } = parsed.value;
       const now = deps.clock.now();
@@ -220,12 +230,16 @@ export async function searchPromotions<V>(
         await deps.promotions.usageOf(context.market, ids),
       );
       const counts = Object.fromEntries(
-        CRITERIA.map((criterion) => [criterion, counted.get(criterion) ?? 0]),
+        CRITERIA.map((criterion) => [
+          criterion,
+          viewer && (criterion === 'BUDGET_USED_UP' || criterion === 'NEEDS_REVIEW')
+            ? 0
+            : (counted.get(criterion) ?? 0),
+        ]),
       ) as TabCounts;
       return ok({
-        items: found.records.map((record) => ({
-          ...view(record, usage.get(record.id)),
-          displayStatus: displayStatusOf(
+        items: found.records.map((record) => {
+          const shown = displayStatusOf(
             {
               type: record.type,
               status: record.status,
@@ -235,8 +249,12 @@ export async function searchPromotions<V>(
               spentMinor: usage.get(record.id)?.spentMinor ?? 0n,
             },
             now,
-          ),
-        })),
+          );
+          return {
+            ...view(record, usage.get(record.id)),
+            displayStatus: viewer && shown === 'BUDGET_USED_UP' ? ('ACTIVE' as const) : shown,
+          };
+        }),
         total: found.total,
         page,
         limit: search.limit,
@@ -248,8 +266,15 @@ export async function searchPromotions<V>(
 }
 
 /** `promotions.promotion.view`: the list with usage counts only. */
-export const searchUsage = (deps: PromotionsDependencies, context: CallContext, query: ListQuery) =>
-  searchPromotions<PromotionUsageView>(deps, context, query, usageViewOf);
+export function searchUsage(
+  deps: PromotionsDependencies,
+  context: CallContext,
+  query: ListQuery,
+): Promise<Result<PromotionsPage<PromotionUsageView>, PromotionsFailure>> {
+  // Like every other read of the panel, not in an acting-as session.
+  if (adminAccountId(context) === null) return Promise.resolve(err({ code: 'access.denied' }));
+  return searchPromotions<PromotionUsageView>(deps, context, query, usageViewOf, true);
+}
 
 /** `promotions.promotion.manage`: the list with terms, budget and the money used. */
 export function searchFull(
@@ -494,7 +519,13 @@ export async function promotionActivity(
   if (accountIds.length > 0) {
     try {
       labels = await deps.actors.labelsOf(context, accountIds);
-    } catch {
+    } catch (error) {
+      logger.error({
+        msg: 'promotions.activity.names-failed',
+        error: error instanceof Error ? error.name : 'unknown',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
       labels = new Map();
     }
   }

@@ -860,7 +860,7 @@ export const campaignMembersBody = (view: CampaignMembers): CampaignMembersBody 
 });
 
 export class ActivityChangeBody {
-  @ApiProperty({ description: 'The name of the term that changed; never its value.' })
+  @ApiProperty({ description: 'The name of the term that changed.' })
   field!: string;
   @ApiProperty({
     nullable: true,

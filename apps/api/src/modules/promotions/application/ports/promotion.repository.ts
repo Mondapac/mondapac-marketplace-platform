@@ -42,6 +42,11 @@ export interface PromotionSearch {
   readonly criterion: StatusCriterion | null;
   /** The promotions with an open review entry (what `NEEDS_REVIEW` means). */
   readonly reviewPromotionIds: readonly Id<'Promotion'>[];
+  /**
+   * The Viewer sees no budget state: a promotion whose budget is spent is `ACTIVE` here, as it is
+   * for anyone who may not read budgets.
+   */
+  readonly hideBudget: boolean;
   readonly sort: PromotionSort;
   readonly descending: boolean;
   readonly offset: number;

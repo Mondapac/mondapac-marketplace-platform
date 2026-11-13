@@ -230,6 +230,7 @@ function criterionWhere(
   now: Date,
   budgetUsedUpIds: readonly string[],
   reviewIds: readonly string[],
+  hideBudget: boolean,
 ): Where {
   const notEnded: Where = { OR: [{ endsAt: null }, { endsAt: { gt: now } }] };
   switch (criterion) {
@@ -254,7 +255,11 @@ function criterionWhere(
     case 'ACTIVE':
       return {
         AND: [
-          { status: 'ACTIVE', startsAt: { lte: now }, id: { notIn: [...budgetUsedUpIds] } },
+          {
+            status: 'ACTIVE',
+            startsAt: { lte: now },
+            ...(hideBudget ? {} : { id: { notIn: [...budgetUsedUpIds] } }),
+          },
           notEnded,
         ],
       };
@@ -463,7 +468,15 @@ export class PrismaPromotionRepository implements PromotionRepository {
       ...restrictionsOf(search),
       ...(search.criterion === null
         ? []
-        : [criterionWhere(search.criterion, at, budgetIds, search.reviewPromotionIds)]),
+        : [
+            criterionWhere(
+              search.criterion,
+              at,
+              budgetIds,
+              search.reviewPromotionIds,
+              search.hideBudget,
+            ),
+          ]),
     );
     const total = await tx.promotionsPromotion.count({ where });
     const rows = await tx.promotionsPromotion.findMany({
@@ -494,7 +507,7 @@ export class PrismaPromotionRepository implements PromotionRepository {
           where: inMarket(
             market,
             ...base,
-            criterionWhere(criterion, at, budgetIds, search.reviewPromotionIds),
+            criterionWhere(criterion, at, budgetIds, search.reviewPromotionIds, search.hideBudget),
           ),
         }),
       );
