@@ -1,5 +1,4 @@
 import { Body, Controller, Get, Header, HttpCode, Logger, Post, Req, Res } from '@nestjs/common';
-import type { HttpException } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -25,10 +24,8 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
-import type {
-  WriterAvailability,
-  WriterDraft,
-} from '../application/ai/description-writer.flow';
+import type { WriterDraft } from '../application/use-cases/own-description-draft.use-case';
+import type { WriterAvailability } from '../application/use-cases/own-description-writer-status.use-case';
 import { AdminAiModelSetup } from '../application/use-cases/admin-ai-model-setup.use-case';
 import { AdminDescriptionDraft } from '../application/use-cases/admin-description-draft.use-case';
 import { AdminDescriptionWriterStatus } from '../application/use-cases/admin-description-writer-status.use-case';
@@ -72,7 +69,11 @@ export class DescriptionDraftRequest {
   category!: string;
   @ApiPropertyOptional({ type: [WriterDetailRequest], maxItems: MAX_DETAILS })
   details?: WriterDetailRequest[];
-  @ApiPropertyOptional({ type: [String], maxItems: MAX_KEYWORDS, description: `Each at most ${String(MAX_KEYWORD_CHARS)} characters.` })
+  @ApiPropertyOptional({
+    type: [String],
+    maxItems: MAX_KEYWORDS,
+    description: `Each at most ${String(MAX_KEYWORD_CHARS)} characters.`,
+  })
   keywords?: string[];
   @ApiPropertyOptional({ maxLength: MAX_NOTE_CHARS })
   note?: string;
@@ -137,7 +138,7 @@ function settle<T>(
     correlationId: context.correlationId,
   });
   if (result.ok) return result.value;
-  throw refusalWith(DESCRIPTION_WRITER_STATUS, result.error, response, context) as HttpException;
+  throw refusalWith(DESCRIPTION_WRITER_STATUS, result.error, response, context);
 }
 
 function jsonOnly(request: Request): void {
@@ -185,17 +186,32 @@ export class OwnDescriptionWriterController {
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
   @ReadsSession()
-  @ApiOperation({ summary: 'Write a description draft with AI (seller)', description: DRAFT_DESCRIPTION })
+  @ApiOperation({
+    summary: 'Write a description draft with AI (seller)',
+    description: DRAFT_DESCRIPTION,
+  })
   @ApiHeader(CSRF)
   @ApiBody({ type: DescriptionDraftRequest })
   @ApiOkResponse({ type: DescriptionDraftBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
-  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied, access.acting-as-refused or request.csrf' })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, access.acting-as-refused or request.csrf',
+  })
   @ApiConflictResponse({ type: ApiErrorBody, description: 'ai.writer-off' })
-  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: 'ai.draft-withheld (details.leftOut)' })
-  @ApiTooManyRequestsResponse({ type: ApiErrorBody, description: 'ai.limit-reached or request.throttled' })
-  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'ai.writer-failed or access.unavailable' })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorBody,
+    description: 'ai.draft-withheld (details.leftOut)',
+  })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'ai.limit-reached or request.throttled',
+  })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'ai.writer-failed or access.unavailable',
+  })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   async post(
     @Call() context: CallContext,
@@ -242,7 +258,13 @@ export class AdminDescriptionWriterController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<WriterAvailability> {
     const result = await this.status.execute(context, {});
-    return settle(this.#logger, 'catalog.admin-description-writer-status', context, response, result);
+    return settle(
+      this.#logger,
+      'catalog.admin-description-writer-status',
+      context,
+      response,
+      result,
+    );
   }
 
   @Get('model-setup')
@@ -266,17 +288,32 @@ export class AdminDescriptionWriterController {
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
   @ReadsSession()
-  @ApiOperation({ summary: 'Write a description draft with AI (admin)', description: DRAFT_DESCRIPTION })
+  @ApiOperation({
+    summary: 'Write a description draft with AI (admin)',
+    description: DRAFT_DESCRIPTION,
+  })
   @ApiHeader(CSRF)
   @ApiBody({ type: DescriptionDraftRequest })
   @ApiOkResponse({ type: DescriptionDraftBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
-  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied, access.acting-as-refused or request.csrf' })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, access.acting-as-refused or request.csrf',
+  })
   @ApiConflictResponse({ type: ApiErrorBody, description: 'ai.writer-off' })
-  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: 'ai.draft-withheld (details.leftOut)' })
-  @ApiTooManyRequestsResponse({ type: ApiErrorBody, description: 'ai.limit-reached or request.throttled' })
-  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'ai.writer-failed or access.unavailable' })
+  @ApiUnprocessableEntityResponse({
+    type: ApiErrorBody,
+    description: 'ai.draft-withheld (details.leftOut)',
+  })
+  @ApiTooManyRequestsResponse({
+    type: ApiErrorBody,
+    description: 'ai.limit-reached or request.throttled',
+  })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'ai.writer-failed or access.unavailable',
+  })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   async post(
     @Call() context: CallContext,

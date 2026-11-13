@@ -5,7 +5,8 @@ import { parseWriterRequest } from './writer-request';
 
 function factsOf(input: (typeof WRITER_EVALUATION_SET)[number]['input']): string {
   const parsed = parseWriterRequest(input);
-  if (!parsed.ok) throw new Error(`evaluation input does not parse: ${JSON.stringify(parsed.error)}`);
+  if (!parsed.ok)
+    throw new Error(`evaluation input does not parse: ${JSON.stringify(parsed.error)}`);
   return writerFacts(parsed.value);
 }
 

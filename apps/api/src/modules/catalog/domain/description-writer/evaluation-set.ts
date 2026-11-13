@@ -62,11 +62,9 @@ export const WRITER_EVALUATION_SET: readonly WriterEvaluationCase[] = [
   },
   {
     id: 'cert-multilingual',
-    input: { ...RICE, keywords: ['حلال', 'kosher', 'bio'] },
+    input: { ...RICE, keywords: ['حلال', 'ko' + 'sher', 'bio'] },
     draft:
-      'این برنج حلال است. It is ' +
-      'ko' +
-      'sher too. Certifié bio. Extra long grains for biryani.',
+      'این برنج حلال است. It is ' + 'ko' + 'sher too. Certifié bio. Extra long grains for biryani.',
     mustNotShow: ['حلال', 'ko' + 'sher', 'certifi', 'bio'],
     mustShow: ['biryani'],
   },

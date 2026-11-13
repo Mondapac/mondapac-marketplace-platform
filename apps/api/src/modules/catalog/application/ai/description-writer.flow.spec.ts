@@ -136,7 +136,8 @@ describe.each(['AU', 'ZZ'] as const)('description writer in market %s', (code) =
     match: (_c, texts) => {
       matched.push(texts.map((t) => t.text));
       if (matcherState === 'throws') return Promise.reject(new Error('down'));
-      if (matcherState === 'down') return Promise.resolve(err({ code: 'claim-text.check-unavailable' }));
+      if (matcherState === 'down')
+        return Promise.resolve(err({ code: 'claim-text.check-unavailable' }));
       const lists = texts.map((t) =>
         /tayyib/iu.test(t.text) ? [{ typeCode: 'tayyib', span: null }] : [],
       );
@@ -148,7 +149,7 @@ describe.each(['AU', 'ZZ'] as const)('description writer in market %s', (code) =
       run: <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
     } as never,
     counters,
-    counterKeys: counterKeys as never,
+    counterKeys,
     clock: new FixedClock(T0),
     matcher,
     model,

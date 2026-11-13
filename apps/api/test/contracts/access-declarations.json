@@ -801,6 +801,11 @@
   { "name": "sellers.selling-eligibility-system", "rule": "system" },
   { "name": "sellers.sweep-orphan-store-image-files", "rule": "system" },
   {
+    "name": "settings.read-ai-description-writer",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "settings.read-list-paging",
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"

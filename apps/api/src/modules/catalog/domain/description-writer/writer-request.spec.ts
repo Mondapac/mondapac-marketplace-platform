@@ -74,7 +74,9 @@ describe('parseWriterRequest', () => {
 
 describe('writer prompt', () => {
   it('names the tone and length in the instructions', () => {
-    expect(writerInstructions('warm', 150)).toContain('about 150 words, in a warm and inviting tone');
+    expect(writerInstructions('warm', 150)).toContain(
+      'about 150 words, in a warm and inviting tone',
+    );
   });
 
   it('sends only the allow-listed fields, as data', () => {

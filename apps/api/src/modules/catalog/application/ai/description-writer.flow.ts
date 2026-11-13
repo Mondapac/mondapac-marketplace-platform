@@ -99,7 +99,10 @@ export type WriterFailure =
 const logger = new Logger('DescriptionWriter');
 
 /** The caller as the access rule already admitted it, or null (wrong population, no seller). */
-export function writerCallerOf(context: CallContext, kind: WriterCaller['kind']): WriterCaller | null {
+export function writerCallerOf(
+  context: CallContext,
+  kind: WriterCaller['kind'],
+): WriterCaller | null {
   const { actor } = context;
   if (actor.kind !== 'authenticated') return null;
   if (kind === 'admin') {
@@ -248,7 +251,11 @@ async function draft(
     WRITER_TIMEOUT_MS,
   );
   if (!answer.ok) {
-    return err(answer.failure === 'not-configured' ? { code: 'ai.writer-off' } : { code: 'ai.writer-failed' });
+    return err(
+      answer.failure === 'not-configured'
+        ? { code: 'ai.writer-off' }
+        : { code: 'ai.writer-failed' },
+    );
   }
 
   const guarded = guardDraft(answer.text, writerFacts(request.value));

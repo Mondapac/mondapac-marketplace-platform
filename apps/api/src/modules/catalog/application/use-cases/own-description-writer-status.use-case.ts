@@ -8,11 +8,16 @@ import {
   type WriterFailure,
 } from '../ai/description-writer.flow';
 
+export type { WriterAvailability } from '../ai/description-writer.flow';
 /**
  * `catalog.own-description-writer-status` (AIS-03): whether "Write with AI" is offered to this seller now (the Market's switch, the seller's switch and a configured model).
  * Rule: `catalog.own-product.edit`; an acting-as session gets no AI (ADR-0019 R3).
  */
-export class OwnDescriptionWriterStatus extends UseCase<Record<string, never>, WriterAvailability, WriterFailure> {
+export class OwnDescriptionWriterStatus extends UseCase<
+  Record<string, never>,
+  WriterAvailability,
+  WriterFailure
+> {
   static override readonly access: AccessDeclaration = {
     name: 'catalog.own-description-writer-status',
     rule: { kind: 'permissions', allOf: [CATALOG_OWN_PRODUCT_EDIT.key] },
@@ -26,7 +31,7 @@ export class OwnDescriptionWriterStatus extends UseCase<Record<string, never>, W
     super(gate);
   }
 
-  protected handle(context: CallContext, _input: Record<string, never>): Promise<Result<WriterAvailability, WriterFailure>> {
+  protected handle(context: CallContext): Promise<Result<WriterAvailability, WriterFailure>> {
     return writerAvailability(this.deps, context, 'seller');
   }
 }
