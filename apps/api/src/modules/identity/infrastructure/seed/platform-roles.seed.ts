@@ -41,8 +41,10 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // adds `certification.type.view` (certification slice 12: every default admin role reads the
     // types; the protected `certification.type.edit` is not listed). Version 8 adds
     // `sellers.seller-health.recalculate` (seller health: the admin's "Recalculate now" queues a
-    // recount of one seller; owner decision 5 Nov 2026).
-    seedVersion: 8,
+    // recount of one seller; owner decision 5 Nov 2026). Version 9 adds
+    // `sellers.seller-settings.edit` (sellers design 6.1: the "May propose categories" switch,
+    // SEL-26; Hassan I4 on #705).
+    seedVersion: 9,
     nameKey: 'identity.role.onboarding-compliance',
     permissionKeys: [
       'identity.seller-access.view',
@@ -57,6 +59,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'certification.issuer.view',
       'certification.type.view',
       'sellers.seller-health.recalculate',
+      'sellers.seller-settings.edit',
     ],
   },
   {
@@ -90,10 +93,14 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // seller's suggested value; unprotected, it adds one value to a published attribute that is not
     // `material` and nothing else). Version 15 adds `catalog.variant.view` (variants V6: the
     // read-only Catalogue > Variants page); the protected `catalog.variant-type.edit` is not listed.
-    // Version 16 adds `catalog.variant-request.review` (variants V7: decide a seller's request for
+    // Version 16 adds `catalog.category-proposal.decide` (categories C9: approve or reject a
+    // seller's shelf proposal; unprotected; the protected `catalog.seller-category.promote-merge`
+    // is not listed) and `sellers.seller-settings.edit` (sellers design 6.1: the "May propose
+    // categories" switch, SEL-26; Hassan I4 on #705).
+    // Version 17 adds `catalog.variant-request.review` (variants V7: decide a seller's request for
     // a new variant; unprotected, approving also needs `catalog.platform-product.edit`, which this
     // role holds).
-    seedVersion: 16,
+    seedVersion: 17,
     nameKey: 'identity.role.catalogue-moderator',
     permissionKeys: [
       'identity.seller-access.view',
@@ -110,7 +117,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.attribute-suggestion.decide',
       'catalog.variant.view',
       'catalog.variant-request.review',
+      'catalog.category-proposal.decide',
       'sellers.seller.view',
+      'sellers.seller-settings.edit',
       'pricing.price-hold.view',
       'certification.type.view',
       'certification.claim-policy.view',
@@ -208,7 +217,11 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // activities, ADR-0040); the `.manage` key is not a viewer key.
     // Version 30 adds `catalog.variant.view`, likewise unprotected (variants V6); the protected
     // `catalog.variant-type.edit` is not a viewer key.
-    seedVersion: 30,
+    // Version 31 adds `storefront.seo.view`, likewise unprotected (SEO settings S1); the `.edit` and
+    // protected `.manage` keys are not viewer keys.
+    // Version 32 adds `settings.cart-mode.view`, likewise unprotected (settings module: Cart mode,
+    // package B1); the manage key is not a viewer key.
+    seedVersion: 32,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -240,6 +253,8 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'settings.list-paging.view',
       'sellers.business-activity.view',
       'catalog.variant.view',
+      'storefront.seo.view',
+      'settings.cart-mode.view',
     ],
   },
   {

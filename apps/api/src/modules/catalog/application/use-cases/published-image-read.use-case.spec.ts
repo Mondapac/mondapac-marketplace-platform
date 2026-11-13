@@ -28,7 +28,13 @@ describe.each(TEST_MARKETS)('catalog.published-image-read in market %s', (code) 
   const market: MarketContext = testMarketContext(code, 'default');
   const gate = createUseCaseGate(markets, null);
   const units: { market: string; options: UnitOfWorkOptions | undefined }[] = [];
-  const asked: { market: string; productId: string; imageId: string; size: string }[] = [];
+  const asked: {
+    market: string;
+    productId: string;
+    imageId: string;
+    size: string;
+    format: string;
+  }[] = [];
   let key: string | null = KEY;
   let store: MemoryObjectStore;
   let throwing = false;
@@ -45,8 +51,8 @@ describe.each(TEST_MARKETS)('catalog.published-image-read in market %s', (code) 
   } as unknown as UnitOfWork;
   const reader: PublishedImagesReader = {
     imagesOf: () => Promise.resolve(new Map()),
-    renditionKey: (readMarket, productId, imageId, size) => {
-      asked.push({ market: readMarket.marketId, productId, imageId, size });
+    renditionKey: (readMarket, productId, imageId, size, format) => {
+      asked.push({ market: readMarket.marketId, productId, imageId, size, format });
       return Promise.resolve(key);
     },
   };
@@ -67,6 +73,33 @@ describe.each(TEST_MARKETS)('catalog.published-image-read in market %s', (code) 
     await store.put(KEY, BYTES);
   });
 
+  it.each([
+    ['large.webp', 'large', 'webp', 'image/webp'],
+    ['thumb.avif', 'thumb', 'avif', 'image/avif'],
+    ['medium', 'medium', 'jpeg', 'image/jpeg'],
+  ])('reads %s as the %s size in %s and answers %s', async (name, size, format, contentType) => {
+    const result = await run({ productId: PRODUCT, imageId: IMAGE, size: name });
+
+    expect(result).toEqual(ok({ bytes: BYTES, contentType }));
+    expect(asked.map((a) => [a.size, a.format])).toEqual([[size, format]]);
+  });
+
+  it.each([
+    'large.gif',
+    'large.jpg',
+    'large.',
+    '.webp',
+    'large.webp.webp',
+    'huge.webp',
+    'LARGE.WEBP',
+  ])('answers not-found for the name %s without asking the reader', async (name) => {
+    expect(await run({ productId: PRODUCT, imageId: IMAGE, size: name })).toEqual({
+      ok: false,
+      error: { code: 'image.not-found' },
+    });
+    expect(asked).toEqual([]);
+  });
+
   it('declares the anonymous rule under its own name', () => {
     expect(PublishedImageRead.access).toEqual({
       name: 'catalog.published-image-read',
@@ -79,7 +112,9 @@ describe.each(TEST_MARKETS)('catalog.published-image-read in market %s', (code) 
 
     expect(result).toEqual(ok({ bytes: BYTES, contentType: 'image/jpeg' }));
     expect(units).toEqual([{ market: code, options: { readOnly: true } }]);
-    expect(asked).toEqual([{ market: code, productId: PRODUCT, imageId: IMAGE, size: 'thumb' }]);
+    expect(asked).toEqual([
+      { market: code, productId: PRODUCT, imageId: IMAGE, size: 'thumb', format: 'jpeg' },
+    ]);
   });
 
   it.each([

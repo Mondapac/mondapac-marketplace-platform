@@ -11,6 +11,7 @@ import {
   MAX_QUERY,
   MIN_QUERY,
   forwardUrl,
+  keepUrl,
   parseMapboxConfig,
   placesWithPostcodes,
   postcodeOf,
@@ -21,6 +22,7 @@ import {
   type MapboxConfig,
 } from './mapbox.ts';
 import { clientKey, fixedWindowLimiter, type RateLimiter } from './rate-limit.ts';
+import { sessionCookieNames } from '../storefront/session-relay.ts';
 
 interface Incoming {
   get(name: string): string | null;
@@ -35,6 +37,8 @@ export interface PlacesDeps {
    */
   readonly apiOn: boolean;
   readonly limiter: RateLimiter;
+  /** The tighter limit of permanent (storable, dearer) answers: one per address saved. */
+  readonly keepLimiter: RateLimiter;
   readonly fetch: typeof fetch;
 }
 
@@ -42,6 +46,10 @@ export interface PlacesDeps {
 export const REQUESTS_PER_MINUTE = 60;
 /** Requests per process per minute, all clients together: the cost ceiling of one instance. */
 export const PROCESS_REQUESTS_PER_MINUTE = 1200;
+/** Permanent answers per client address per minute: a buyer saves an address now and then. */
+export const KEEPS_PER_MINUTE = 5;
+/** Permanent answers per process per minute, all clients together. */
+export const PROCESS_KEEPS_PER_MINUTE = 100;
 const TIMEOUT_MS = 4000;
 const HEADERS = { 'cache-control': 'no-store' } as const;
 
@@ -85,12 +93,23 @@ export function fromOwnPage(incoming: Incoming, host: StorefrontHost): boolean {
 function admit(
   deps: PlacesDeps,
   incoming: Incoming,
-): { readonly country: string } | { readonly refused: Response } {
+): { readonly country: string; readonly marketId: string } | { readonly refused: Response } {
   const found = hostAndCountry(deps, incoming);
   if (found === null) return { refused: json({ code: 'places.disabled' }, 404) };
   if (!fromOwnPage(incoming, found.host))
     return { refused: json({ code: 'request.forbidden' }, 403) };
-  return { country: found.country };
+  return { country: found.country, marketId: found.host.marketId };
+}
+
+/** Whether the request carries exactly one non-empty session cookie of the host's Market. */
+function hasSession(incoming: Incoming, marketId: string): boolean {
+  const name = sessionCookieNames(marketId).session;
+  const values = (incoming.get('cookie') ?? '')
+    .split(';')
+    .map((pair) => pair.trim())
+    .filter((pair) => pair.startsWith(`${name}=`))
+    .map((pair) => pair.slice(name.length + 1));
+  return values.length === 1 && values[0] !== '';
 }
 
 function throttled(deps: PlacesDeps, incoming: Incoming): Response | null {
@@ -189,6 +208,34 @@ export async function answerSuburb(deps: PlacesDeps, incoming: Incoming, url: UR
   });
 }
 
+/**
+ * GET /api/deliver-to/keep?q=: the street address the buyer is saving to their address book, asked
+ * once more with `permanent=true` so it may be stored. Only a street address; no suburb lookups.
+ */
+export async function answerKeep(deps: PlacesDeps, incoming: Incoming, url: URL) {
+  const admitted = admit(deps, incoming);
+  if ('refused' in admitted) return admitted.refused;
+  // Only a signed-in buyer saves addresses: the permanent answer is the dearer, storable one.
+  // The API checks the session itself when the address is saved; this keeps guests and scripts
+  // without a session cookie off the paid route.
+  if (!hasSession(incoming, admitted.marketId)) return json({ code: 'auth.required' }, 401);
+  const query = (url.searchParams.get('q') ?? '').replace(/\s+/gu, ' ').trim();
+  if (query.length < MIN_QUERY || query.length > MAX_QUERY) {
+    return json({ code: 'validation.failed' }, 400);
+  }
+  if (!deps.keepLimiter.take(clientKey(clientOf(incoming)))) {
+    return json({ code: 'request.throttled' }, 429, { 'retry-after': '60' });
+  }
+  const answer = await askMapbox(
+    deps,
+    keepUrl(deps.config!.token, admitted.country, query),
+    'keep',
+  );
+  if (answer === null) return json({ code: 'places.unavailable' }, 503);
+  const place = placesOf(answer.body).find((found) => found.street !== '') ?? null;
+  return json({ place });
+}
+
 let deps: PlacesDeps | undefined;
 
 /**
@@ -218,6 +265,10 @@ export function placesDepsOf(
       total: PROCESS_REQUESTS_PER_MINUTE,
       // Once per minute at most: an alert rule can watch this message.
       onTotalSpent: () => log({ msg: 'storefront.places-process-limit' }),
+    }),
+    keepLimiter: fixedWindowLimiter(KEEPS_PER_MINUTE, 60_000, {
+      total: PROCESS_KEEPS_PER_MINUTE,
+      onTotalSpent: () => log({ msg: 'storefront.places-keep-process-limit' }),
     }),
     fetch: (input, init) => fetch(input, init),
   };

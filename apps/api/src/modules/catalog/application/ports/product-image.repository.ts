@@ -8,8 +8,36 @@ export function isRenditionSize(value: string): value is RenditionSize {
   return (RENDITION_SIZES as readonly string[]).includes(value);
 }
 
+/** The formats a photo is kept in: JPEG always, WebP and AVIF besides (SEO 6B-2). */
+export type RenditionFormat = 'jpeg' | 'webp' | 'avif';
+
+export const RENDITION_FORMATS: readonly RenditionFormat[] = ['jpeg', 'webp', 'avif'];
+
+/** The route's `size` segment: `large` (JPEG), `large.webp` or `large.avif`. Null for anything else. */
+export function parseRenditionName(
+  value: string,
+): { readonly size: RenditionSize; readonly format: RenditionFormat } | null {
+  const [size, extension, ...rest] = value.split('.');
+  if (size === undefined || !isRenditionSize(size) || rest.length > 0) return null;
+  if (extension === undefined) return { size, format: 'jpeg' };
+  return extension === 'webp' || extension === 'avif' ? { size, format: extension } : null;
+}
+
+/** The object key of a rendition: the JPEG keeps the key it always had. */
+export function renditionObjectKey(
+  productId: string,
+  imageId: string,
+  size: RenditionSize,
+  format: RenditionFormat,
+): string {
+  const base = `${productId}/${imageId}/${size}`;
+  // An object key has no dot (`isValidObjectKey`), so the format is joined with a dash.
+  return format === 'jpeg' ? base : `${base}-${format}`;
+}
+
 export interface StoredRendition {
   readonly size: RenditionSize;
+  readonly format: RenditionFormat;
   readonly objectKey: string;
   readonly sha256: Buffer;
   readonly byteSize: number;
@@ -36,6 +64,17 @@ export interface RevisionImage {
   readonly state: ProductImage['state'];
   readonly width: number;
   readonly height: number;
+}
+
+/** A clean photo that lacks some formats, with its JPEG renditions to derive them from. */
+export interface ImageMissingFormats {
+  readonly id: Id<'ProductImage'>;
+  readonly productId: Id<'Product'>;
+  readonly jpegs: readonly { readonly size: RenditionSize; readonly objectKey: string }[];
+  readonly missing: readonly {
+    readonly size: RenditionSize;
+    readonly format: Exclude<RenditionFormat, 'jpeg'>;
+  }[];
 }
 
 /** A clean photo no revision holds, with the keys of its files (the orphan sweep). */
@@ -104,6 +143,24 @@ export interface ProductImageRepository {
       readonly limit: number;
     },
   ): Promise<readonly UnattachedImage[]>;
+  /**
+   * Clean photos, ordered by id after the given id, that lack the WebP or the AVIF of any size.
+   */
+  listMissingFormats(
+    market: MarketContext,
+    query: { readonly afterId: string | null; readonly limit: number },
+  ): Promise<readonly ImageMissingFormats[]>;
+  /**
+   * Adds rendition rows to an existing clean photo. Insert-only; a row that already exists is
+   * left as it is (a second run of the reprocess adds nothing). False, with nothing added, when
+   * the photo is not clean any more (taken down since it was listed).
+   */
+  addRenditions(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    imageId: Id<'ProductImage'>,
+    renditions: readonly StoredRendition[],
+  ): Promise<boolean>;
   /**
    * True when deleted; false when a revision uses it (also when one joined after the check: the
    * foreign key refuses), it is taken down (the takedown record stays) or it does not exist.

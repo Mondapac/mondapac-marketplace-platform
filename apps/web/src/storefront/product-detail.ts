@@ -152,6 +152,21 @@ const DECIMAL = /^-?[0-9]{1,15}(\.[0-9]{1,9})?$/u;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+/**
+ * A decimal string (up to 15 integer and 9 fraction digits) as the language writes it, Latin
+ * digits, without passing through a floating point number: the digits shown are the digits stored.
+ */
+function decimalText(value: string, locale: string): string {
+  const negative = value.startsWith('-');
+  const [whole = '0', fraction] = (negative ? value.slice(1) : value).split('.');
+  const format = new Intl.NumberFormat(intlLocale(locale), { numberingSystem: 'latn' });
+  const point = format.formatToParts(1.1).find((part) => part.type === 'decimal')?.value ?? '.';
+  const text = format.format(BigInt(whole)) + (fraction === undefined ? '' : point + fraction);
+  // "-0" and "-0.0" are zero, not a negative number.
+  const zero = /^0*(\.0*)?$/u.test(value.replace('-', ''));
+  return negative && !zero ? `-${text}` : text;
+}
+
 /** One specification value as the line a buyer reads; null when it is malformed (never half a row). */
 function specificationValueOf(
   raw: unknown,
@@ -165,15 +180,14 @@ function specificationValueOf(
     case 'list': {
       if (!Array.isArray(raw.items)) return null;
       const items = (raw.items as unknown[]).filter(isText).slice(0, MAX_LIST);
-      return items.length === 0 ? null : items.join(', ');
+      // The language's own separator, with no "and" (a Persian list uses «،»).
+      return items.length === 0
+        ? null
+        : new Intl.ListFormat(intlLocale(locale), { style: 'short', type: 'unit' }).format(items);
     }
     case 'number':
-      // Latin digits whatever the language; the number is shown as the admin's own digits.
       return typeof raw.value === 'string' && DECIMAL.test(raw.value)
-        ? new Intl.NumberFormat(intlLocale(locale), {
-            numberingSystem: 'latn',
-            maximumFractionDigits: 9,
-          }).format(Number(raw.value))
+        ? decimalText(raw.value, locale)
         : null;
     case 'boolean':
       return typeof raw.value === 'boolean'

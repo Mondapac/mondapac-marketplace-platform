@@ -42,15 +42,52 @@ export interface RefundRepository {
   ): Promise<RefundTarget | null>;
 
   /**
+   * Every refund of the order's seller orders (any state), oldest first, each with its credit note
+   * id when it succeeded. Empty for an unknown or another Market's order.
+   */
+  listForOrder(
+    market: MarketContext,
+    orderId: Id<'Order'>,
+  ): Promise<
+    readonly { readonly refund: Refund; readonly creditNoteId: Id<'CreditNote'> | null }[]
+  >;
+
+  /**
+   * The seller's own seller order with what earlier refunds gave back, or null: another shop's
+   * seller order answers exactly as an unknown one (the seller route names only its id).
+   */
+  findSellerTarget(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+    sellerId: Id<'Seller'>,
+  ): Promise<RefundTarget | null>;
+
+  /** One refund of the Market by id, any state, or null (unknown and foreign are one answer). */
+  findById(market: MarketContext, refundId: Id<'Refund'>): Promise<Refund | null>;
+
+  /**
+   * Every refund of the seller's own seller order (any state), oldest first, for its page; none
+   * for another shop's seller order (Hassan, row 40 F4).
+   */
+  listOfSellerOrder(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+    sellerId: Id<'Seller'>,
+  ): Promise<readonly Refund[]>;
+
+  /**
    * Raises the seller order's refunded sum by the refund's gross only if it still is
    * `expectedRefunded` and the order is still confirmed and captured (Hassan L4), then inserts
    * the refund with its lines. `stale` writes nothing, also when another refund of the seller
-   * order became pending meanwhile (the one-pending index; Hassan L3).
+   * order became pending meanwhile (the one-pending index; Hassan L3). With `whileNotReady` (a
+   * seller's unavailable units) the seller order must also still be to ship and not ready, under
+   * the same row lock, so a ready signal racing the request never lets both through.
    */
   reserve(
     market: MarketContext,
     refund: Refund,
     expectedRefunded: bigint,
+    options?: { readonly whileNotReady?: boolean },
   ): Promise<'saved' | 'stale'>;
 
   /**

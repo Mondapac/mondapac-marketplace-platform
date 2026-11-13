@@ -7,6 +7,7 @@ import {
   type CatalogMarketPolicy,
 } from '../application/ports/catalog-market-policy';
 import type { SensitiveChangesPolicy } from '../domain/product-revision-policy';
+import { DEFAULT_MAX_PENDING_PROPOSALS } from '../domain/seller-category';
 
 type CatalogSection = NonNullable<MarketConfig['catalog']>;
 
@@ -44,6 +45,19 @@ export class ConfigCatalogMarketPolicy implements CatalogMarketPolicy {
 
   maxCategoryChangeTags(market: MarketContext): number {
     return this.section(market).maxCategoryChangeTags;
+  }
+
+  maxCategoryImportRows(market: MarketContext): number {
+    return this.section(market).maxCategoryImportRows;
+  }
+
+  maxCategoryImportBytes(market: MarketContext): number {
+    return this.section(market).maxCategoryImportBytes;
+  }
+
+  /** The pending cap of category proposals per seller (CAT-54; AU 5, default 5). */
+  maxPendingCategoryProposals(market: MarketContext): number {
+    return this.section(market).maxPendingCategoryProposals ?? DEFAULT_MAX_PENDING_PROPOSALS;
   }
 
   maxVariantAttributes(market: MarketContext): number {

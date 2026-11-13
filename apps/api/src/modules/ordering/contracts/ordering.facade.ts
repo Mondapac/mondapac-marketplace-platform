@@ -1,5 +1,6 @@
 import type { CallContext, Id, Money, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { RefundReason } from '../domain/refund';
 
 /** A payment the provider holds on a card, as the webhook receiver reports it. */
 export interface AuthorisedPayment {
@@ -69,6 +70,28 @@ export interface ShipmentNotice {
 
 /** An unknown, foreign-Market, unpaid or not yet shipped seller order is `ordering.order-not-found`. */
 export type ShipmentNoticeFailure = OrderNoticeFailure;
+
+/**
+ * What the customer's refund emails need from a refund Stripe confirmed (`ordering.refund-
+ * succeeded.v1`): the customer's account id (for the address lookup in `identity` only), the
+ * reason code, the amount given back and how many units it covered. No name, address or Stripe id.
+ */
+export interface RefundNotice {
+  readonly orderId: string;
+  readonly accountId: Id<'Account'>;
+  readonly refundId: Id<'Refund'>;
+  /** `SELLER_UNAVAILABLE_REASON` when the seller marked the units unavailable (decision 6). */
+  readonly reason: RefundReason;
+  readonly requestedBy: 'admin' | 'seller';
+  readonly amount: Money;
+  readonly units: number;
+}
+
+/** An unknown, foreign-Market or not succeeded refund is `ordering.refund-not-found`. */
+export type RefundNoticeFailure =
+  | AccessDenied
+  | { readonly code: 'validation.failed' }
+  | { readonly code: 'ordering.refund-not-found' };
 
 /**
  * The short customer name of one of the seller's own paid seller orders (in-app notices). PERSONAL
@@ -175,6 +198,15 @@ export interface OrderingFacade {
     context: CallContext,
     request: { readonly orderId: string; readonly sellerOrderId: string },
   ): Promise<Result<ShipmentNotice, ShipmentNoticeFailure>>;
+
+  /**
+   * The succeeded refund behind an `ordering.refund-succeeded.v1` event, for the customer's refund
+   * email. Rule `system`.
+   */
+  refundNotice(
+    context: CallContext,
+    request: { readonly orderId: string; readonly refundId: string },
+  ): Promise<Result<RefundNotice, RefundNoticeFailure>>;
 
   /**
    * The PaymentIntent the order itself holds, for the dispute consumer of `commission-payouts`.

@@ -8,6 +8,7 @@ import { AccountDrawer } from '../src/account/account-drawer.tsx';
 import { AccountArea, backTarget } from '../src/account/account-area.tsx';
 import { AuthForms } from '../src/account/auth-forms.tsx';
 import { AccountAddresses } from '../src/account/addresses.tsx';
+import { writeAddressPrefill } from '../src/delivery/address-prefill.ts';
 import { AccountLists } from '../src/account/lists.tsx';
 import { LoginModal } from '../src/account/login-modal.tsx';
 import { OrderDetails, safeTrackingHref } from '../src/account/order-details.tsx';
@@ -479,6 +480,29 @@ describe('addresses', () => {
     const card = await within(page).findByRole('article', { name: 'Jo Citizen' });
     expect(card.textContent).toContain('1 Beach Road, Surfers Paradise QLD 4217');
     expect(within(card).getByText('Outside our delivery area')).toBeTruthy();
+  });
+
+  it('opens the Add form filled in with the address chosen in Deliver to, once', () => {
+    writeAddressPrefill({ street: '9 Real Street', suburb: 'Kedron', postcode: '4031' });
+    renderStore(<AccountAddresses />);
+    const page = main();
+    expect(within(page).getByLabelText<HTMLInputElement>('Street address and unit').value).toBe(
+      '9 Real Street',
+    );
+    expect(within(page).getByLabelText<HTMLInputElement>('Suburb').value).toBe('Kedron');
+    expect(within(page).getByLabelText<HTMLInputElement>('Postcode').value).toBe('4031');
+    // The buyer still gives the name and phone.
+    expect(within(page).getByLabelText<HTMLInputElement>('First name').value).toBe('');
+    expect(document.activeElement).toBe(within(page).getByLabelText('First name'));
+    cleanup();
+    renderStore(<AccountAddresses />);
+    expect(within(main()).queryByLabelText('Street address and unit')).toBeNull();
+  });
+
+  it('ignores a malformed hand-over', () => {
+    sessionStorage.setItem('sf-address-prefill', '{"street":1}');
+    renderStore(<AccountAddresses />);
+    expect(within(main()).queryByLabelText('Street address and unit')).toBeNull();
   });
 
   it('makes another address the default and deletes after asking', async () => {

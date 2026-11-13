@@ -1,7 +1,8 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, Tabs } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { REVIEW_PERMISSION, SUGGESTIONS_PATH } from '../../../../src/tags/suggestion-types.ts';
 import { TagsView } from '../../../../src/tags/tags-view.tsx';
-import { MANAGE_PERMISSION, READ_PERMISSION } from '../../../../src/tags/types.ts';
+import { MANAGE_PERMISSION, READ_PERMISSION, TAGS_PATH } from '../../../../src/tags/types.ts';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
 
@@ -21,6 +22,22 @@ export default async function TagsPage() {
   return (
     <AdminShell session={gate.session} activeId="tags" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      {permissionKeys.includes(READ_PERMISSION) && permissionKeys.includes(REVIEW_PERMISSION) ? (
+        <div className="mb-4">
+          <Tabs
+            label={t('tags.suggestions.tabs')}
+            activeId="tags"
+            items={[
+              { id: 'tags', label: t('tags.suggestions.tab.tags'), href: TAGS_PATH },
+              {
+                id: 'suggestions',
+                label: t('tags.suggestions.tab.suggestions'),
+                href: SUGGESTIONS_PATH,
+              },
+            ]}
+          />
+        </div>
+      ) : null}
       {permissionKeys.includes(READ_PERMISSION) ? (
         <TagsView canManage={permissionKeys.includes(MANAGE_PERMISSION)} csrfToken={csrfToken} />
       ) : (

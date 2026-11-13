@@ -268,6 +268,7 @@ describe.each(TEST_MARKETS)(
       const SELLER_VIEW = 'sellers.seller.view';
       const DETAILS = 'sellers.business-details.view';
       const RECALCULATE = 'sellers.seller-health.recalculate';
+      const SETTINGS = 'sellers.seller-settings.edit';
       await seedRoles();
       const compliance = await roleRow('platform', 'onboarding-compliance');
       const viewer = await roleRow('platform', 'viewer');
@@ -293,6 +294,7 @@ describe.each(TEST_MARKETS)(
             ISSUER_VIEW,
             TYPE_VIEW,
             RECALCULATE,
+            SETTINGS,
           ],
         ],
       );
@@ -319,7 +321,7 @@ describe.each(TEST_MARKETS)(
       await expect(seedRoles()).resolves.toEqual({ ok: true, value: { created: 0, upgraded: 1 } });
 
       const upgraded = await roleRow('platform', 'onboarding-compliance');
-      expect([upgraded.id, upgraded.seed_version]).toEqual([compliance.id, 8]);
+      expect([upgraded.id, upgraded.seed_version]).toEqual([compliance.id, 9]);
       expect(await keysOf(compliance.id)).toEqual(expectedKeys);
       expect(await keysOf(compliance.id)).toContain(REVIEW);
       const applied = (await auditRowsOf(compliance.id)).filter(
@@ -328,11 +330,12 @@ describe.each(TEST_MARKETS)(
       expect(applied.at(-1)).toMatchObject({
         before: { seedVersion: 1 },
         after: {
-          seedVersion: 8,
+          seedVersion: 9,
           addedKeys: [
             RECALCULATE,
             REVIEW,
             SELLER_VIEW,
+            SETTINGS,
             DETAILS,
             CERT_VIEW,
             CERT_REVIEW,
@@ -743,6 +746,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
             [
               'catalog.attribute-suggestion.decide',
               'catalog.attribute.view',
+              'catalog.category-proposal.decide',
               'catalog.category-tree.edit',
               'catalog.category-tree.view',
               'catalog.platform-import.run',
@@ -759,6 +763,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
               'certification.type.view',
               'certification.claim-policy.view',
               'certification.product-certificate.view',
+              'sellers.seller-settings.edit',
             ],
           ],
         );
@@ -779,6 +784,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
       expect(await keysOf(code, role.id)).toEqual([
         'catalog.attribute-suggestion.decide',
         'catalog.attribute.view',
+        'catalog.category-proposal.decide',
         'catalog.category-tree.edit',
         'catalog.category-tree.view',
         'catalog.platform-import.run',
@@ -795,6 +801,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
         'certification.type.view',
         'identity.seller-access.view',
         'pricing.price-hold.view',
+        'sellers.seller-settings.edit',
         'sellers.seller.view',
       ]);
       const rows = await upgradeRowsOf(code, role.id);
@@ -806,6 +813,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
           addedKeys: [
             'catalog.attribute-suggestion.decide',
             'catalog.attribute.view',
+            'catalog.category-proposal.decide',
             'catalog.category-tree.edit',
             'catalog.category-tree.view',
             'catalog.platform-import.run',
@@ -821,6 +829,7 @@ describe('identity.seed-roles in the worker role (slice I-1a; database integrati
             'certification.product-certificate.view',
             'certification.type.view',
             'pricing.price-hold.view',
+            'sellers.seller-settings.edit',
             'sellers.seller.view',
           ],
           removedKeys: [],

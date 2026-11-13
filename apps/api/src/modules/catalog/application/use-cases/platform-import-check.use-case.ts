@@ -8,6 +8,7 @@ import {
   CATALOG_PLATFORM_IMPORT_RUN,
   CATALOG_PLATFORM_PRODUCT_EDIT,
 } from '../../contracts/permissions';
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import { mapColumns, type ColumnsRefusal } from '../../domain/platform-import/columns';
 import { readImportFile, type FileRefusal } from '../../domain/platform-import/import-file';
 import { IMPORT_LIMITS } from '../../domain/platform-import/limits';
@@ -59,6 +60,7 @@ export type PlatformImportCheckFailure =
     };
 
 export interface PlatformImportCheckDependencies extends CheckEnvironmentDependencies {
+  readonly familyResolver: ProductFamilyResolver;
   readonly unitOfWork: UnitOfWork;
   readonly importJobs: PlatformImportRepository;
   readonly importFiles: ImportFileStore;
@@ -163,10 +165,12 @@ export class PlatformImportCheck extends UseCase<
     const columns = mapColumns(table.value.header);
     if (!columns.ok) return err(columns.error);
 
-    const env = await readCheckEnvironment(deps, market);
+    const env = await readCheckEnvironment(deps, market, deps.familyResolver);
     if (!env.ok) return env;
     const checked: CheckedRow[] = markDuplicates(
-      table.value.rows.map((row) => checkRow(row, columns.value.map, env.value)),
+      table.value.rows.map((row) =>
+        checkRow(row, columns.value.map, env.value, columns.value.attributes),
+      ),
     );
     const counts = countRows(checked);
     const records: ImportRowRecord[] = checked.map((row) => ({

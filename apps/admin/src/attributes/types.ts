@@ -10,6 +10,7 @@ export const BRANDS_PATH = '/catalog/brands';
 export const API_ATTRIBUTES = 'catalog/admin/attributes';
 export const API_FEATURE_SETS = 'catalog/admin/feature-sets';
 export const API_MISSING_DETAILS = 'catalog/admin/reports/products-missing-details';
+export const API_MISSING_DETAILS_EMAIL = `${API_MISSING_DETAILS}/email-sellers`;
 export const PAGE_SIZE = 50;
 
 /** What a write answers (attributes A2): enough to read the attribute again. */
@@ -372,4 +373,24 @@ export interface MissingDetailsPage {
   readonly nextAfterId: string | null;
   readonly scanned: number;
   readonly unreadableFeatureSets: readonly string[];
+}
+
+/** What "Email sellers" answers (apps/api attribute-admin.dto.ts MissingDetailsEmailBody). */
+export interface EmailSellersAnswer {
+  readonly dryRun: boolean;
+  readonly throttleDays: number;
+  readonly sellers: readonly {
+    readonly sellerId: string;
+    readonly sellerName: string | null;
+    readonly products: readonly {
+      readonly productId: string;
+      readonly productCode: string;
+      readonly name: string | null;
+      /** English names of the missing details. */
+      readonly missing: readonly string[];
+      readonly status: 'will-send' | 'queued' | 'recently-emailed';
+      readonly lastRequestedAt: string | null;
+    }[];
+  }[];
+  readonly ignored: readonly { readonly productId: string; readonly reason: string }[];
 }

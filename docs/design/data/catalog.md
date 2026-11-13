@@ -123,8 +123,8 @@ migration in 8. "Privileges" lines are in 7.
 | `scope` | `text` | no | 1 | CHECK `PLATFORM`, `SELLER` (ADR-0010) |
 | `owner_seller_id` | `uuid` | yes | 1 | C4. CHECK `products_owner_check`: `(scope = 'SELLER') = (owner_seller_id IS NOT NULL)` (D 2.1). Promotion (CAT-44) sets `scope` and clears the owner in one statement |
 | `created_by_seller_id` | `uuid` | yes | 1 | The seller who created it; never updated (column grant). Keeps the origin after promotion without a history read |
-| `type_code` | `text` | no | 1 | CA4 pattern; never updated (column grant; CAT-10) |
-| `variant_model` | `text` | no | 1 | CHECK `single`, `options` (the handler's `variantModel`, D 3.2). Never updated. Target of the variant FK (3.2) |
+| `type_code` | `text` | no | 1 | CA4 pattern. Updatable by the application role only together with `variant_model`, and only from `simple`/`single` to `configurable`/`options` (trigger `products_type_change_guard`, variants V9, D 4.2a); every other change is refused (`23514`). Column grant `UPDATE (type_code, variant_model)` only. The partial unique of 3.2, the `variant_no = 1` CHECK and the discard rule are unaffected: after the change the row is `options` |
+| `variant_model` | `text` | no | 1 | CHECK `single`, `options` (the handler's `variantModel`, D 3.2). Changes only with `type_code` (above). Target of the variant FK (3.2), which cascades the change to the variant row |
 | `family_code` | `text` | no | 1 | CA4; changes only with a revision pointer (trigger `products_family_follows_revision`; A4, CAT-10 change): the family of the last accepted submit (the database guards the timing, not the value: the application resolves it from the primary category) |
 | `product_code` | `text COLLATE "C"` | no | 1 | From `product_code_counters` (3.3), never input. CHECK `^[A-Z0-9][A-Z0-9-]{3,31}$`. **Unique `(market_id, product_code)`** (D 17.1). Never updated |
 | `status` | `text` | no | 1 | CHECK `draft`, `discarded`, `unpublished`, `published`, `matched`, `withdrawn`, `retired` (D 4.1; `discarded` terminal, Q-K2) |
@@ -154,7 +154,7 @@ migration in 8. "Privileges" lines are in 7.
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `id` | `uuid` | no | PK. CA7 (UUIDv7 only, server-minted) |
-| `product_id` | `uuid` | no | FK `(market_id, product_id, variant_model)` → `products (market_id, id, variant_model)` |
+| `product_id` | `uuid` | no | FK `(market_id, product_id, variant_model)` → `products (market_id, id, variant_model)`, `ON UPDATE CASCADE` (V9: the Add sizes change reaches the variant row; was RESTRICT; re-added `NOT VALID`, then validated) |
 | `variant_model` | `text` | no | Copy bound by that FK |
 | `variant_no` | `integer` | no | V2. 1, 2, 3 ... per product in creation order, minted by the aggregate (highest ever used + 1, so a retired number is never reused). CHECK `>= 1`; CHECK `variant_model <> 'single' OR variant_no = 1`; unique `(market_id, product_id, variant_no)`; immutable (guard trigger). The variant code `{product_code}-{nn}` is derived, not stored. Migration `20261104030000_catalog_variant_number` backfills in `(created_at, id)` order with the guard trigger off for that one statement |
 | `state` | `text` | no | CHECK `proposed`, `published`, `retired` |
@@ -168,7 +168,7 @@ migration in 8. "Privileges" lines are in 7.
 - Unique `(market_id, id)` and `(market_id, product_id, id)` (target of 3.10's same-product FK; also
   the count path of the variant limit, 6.3 A16).
 - **Guard trigger `product_variants_guard`** (5.1; measured): refuses a change of `id`,
-  `product_id`, `variant_model`, `variant_no`, `created_at`; allows only `proposed → published`, `proposed →
+  `product_id`, `variant_no`, `created_at`, and of `variant_model` except `single` → `options` (the cascade of Add sizes, V9: `variant_model` leaves the `IS DISTINCT FROM` tuple and gets its own rule); allows only `proposed → published`, `proposed →
   retired`, `published → retired`; refuses every `DELETE` (Q-K2). So a retired id is
   never revived and never re-enters `proposed` or `published` (D 17.1 item 2), for every role. A
   second trigger on `product_revision_variants` refuses a retired variant in any new revision (3.10).
@@ -405,13 +405,14 @@ through the PK.
 | `revision_kind` | `text` | no | CHECK `submission`, `revert`, `tax-override` (D 4.2 rows 1 and 6, D 4.3) |
 | `base_revision_id` | `uuid` | yes | The published revision it was built on; same-product FK. CHECK `revision_kind <> 'tax-override' OR base_revision_id IS NOT NULL`: a tax override is always the published revision with one field changed (D 4.3, Hassan 1a) |
 | `reverted_from_revision_id` | `uuid` | yes | Same-product FK. CHECK `(revision_kind = 'revert') = (reverted_from_revision_id IS NOT NULL)` |
+| `type_code` | `text` | no | V9. The type the revision was frozen with (D M-9); backfilled from `products.type_code` (every product is still of its creation type), then NOT NULL; CHECK the CA4 pattern `^[a-z][a-z0-9_-]{0,63}$`. Insert-only like every column here (`product_revisions_no_update_delete`). Readers of a revision's content take the handler from here |
 | `family_revision_id` | `uuid` | no | Schema ref (3.5) |
 | `definition_revision_ids` | `uuid[]` | no | Schema ref |
 | `tax_category_code` | `text` | no | CA4 (Market list; ADR-0007 d5, D 2.3 M-6) |
 | `attribute_values` | `jsonb` | no | Object; code → value or locale → value (CA6). Material-change detection compares two revisions in code (D 5.7); no index |
 | `field_provenance` | `jsonb` | yes | Per field `typed`, `ai-unchanged`, `ai-edited` (D 13.1), server-built; object; no text |
 | `sensitive` | `boolean` | no | Classification at submit (D 4.3) |
-| `sensitive_reasons` | `text[]` | no | CHECK `<@ ARRAY['platform-categories','tax-category','name','primary-image','image-added-or-replaced','variant-removed','never-published','approval-required']` (D 9.2a codes); CHECK `sensitive OR cardinality(sensitive_reasons) = 0` |
+| `sensitive_reasons` | `text[]` | no | CHECK `<@ ARRAY['platform-categories','tax-category','name','primary-image','image-added-or-replaced','variant-removed','never-published','approval-required','axis-added']` (D 9.2a codes); CHECK `sensitive OR cardinality(sensitive_reasons) = 0` |
 | `content_schema_version` | `smallint` | no | |
 | `content_hash` | `text` | no | `ContentHash` over the frozen content (ADR-0009). Plain SHA-256 is enough: the content is public business content, not personal (ADR-0009 d6 applies to personal fields). CHECK `content_hash ~ '^sha256:[0-9a-f]{64}$'` (`ContentHash`, `docs/design/domain/platform-audit.md` 6.3; replaces the length 1 to 128 placeholder; the plain kind only, as this row says; signed off by Mojtaba 2026-10-08) |
 | `author_kind` | `text` | no | CHECK `seller`, `admin` |
@@ -742,7 +743,7 @@ trigger `product_images_delete_guard` (`BEFORE DELETE`, SQL in 5.1) refuses a `D
 is `received`, `scanning`, `clean` or `refused` (`23001`): a `public` or `taken-down` image is never
 deleted (measured).
 
-`product_image_renditions` (insert-only): PK `(market_id, image_id, size_code)`; `size_code` CHECK
+`product_image_renditions` (insert-only): PK `(market_id, image_id, size_code, format_code)`; `format_code` (migration `20261111030000_catalog_image_formats`, SEO 6B-2) is `jpeg` (default, every older row), `webp` or `avif` by CHECK, and an object key has no dot, so the WebP of `large` is `<product>/<image>/large-webp`; `size_code` CHECK
 closed list (`thumb`, `medium`, `large`; final with ADR-0029); `object_key text NOT NULL` with
 **CHECK `object_key LIKE product_id::text || '/%'`** where `product_id` is copied and bound by FK
 `(market_id, image_id, product_id)` → `product_images` (per-product key prefix, Hassan L2); `sha256
@@ -837,25 +838,42 @@ kind (Hassan M2), and a request is used once (unique on each pointer). Lock orde
 confirm and a second request cannot deadlock. The acting-as refusal is the use case's. Both ids are
 account ids (pseudonymous, 9).
 
-### 3.22 Seller categories and proposals (slice 23)
+### 3.22 Seller categories and proposals (slice 23; built in categories C9a)
 
 `seller_categories` (root): `id`; `seller_id`; `platform_parent_id` FK to `platform_categories`; `slug
-text COLLATE "C"`, **unique `(market_id, seller_id, slug)`** (D 17.1); `description text` (≤ 1,000,
-CA5); `status` CHECK `active`, `promoted`, `merged`, `archived`; `version`; `created_at`. Unique
-`(market_id, id, seller_id)` (target of the shelf FK, 3.13). `seller_category_names`: PK
-`(market_id, category_id, locale)`, `name` 1 to 120; mutable with the root (`SELECT, INSERT, UPDATE,
-DELETE`).
+text COLLATE "C"`, **unique `(market_id, seller_id, slug)`** (D 17.1); `status` CHECK `active`,
+`promoted`, `merged`, `archived` (terminal once closed; guard trigger); `merged_into_id` FK to
+`platform_categories`, CHECK `(status = 'merged') = (merged_into_id IS NOT NULL)`; `version`;
+`created_at`. Unique `(market_id, id, seller_id)` (target of the shelf FK, 3.13). No root
+`description`: the description is per locale. `seller_category_names`: PK `(market_id, category_id,
+locale)`, `name` 1 to 120, `description` 1 to 1,000 or NULL (CA5); written once with the shelf (`SELECT,
+INSERT` only; no use case changes or removes a name).
 
-`category_proposals` (root): `id`; `seller_id`; `names jsonb`; `platform_parent_id` FK;
-`description`; `status` CHECK `pending`, `approved`, `rejected`, `cancelled`; `reason_code` (CHECK
-required for `rejected`; `permission-revoked` for the CAT-51 cancellation); `decided_by_account_id`,
-`decided_at` (NULL iff pending); `created_seller_category_id` FK `(market_id,
-created_seller_category_id, seller_id)` → `seller_categories`, CHECK `(status = 'approved') =
-(… IS NOT NULL)`; `version`; `created_at`. Partial `(market_id, seller_id) WHERE status = 'pending'`
-(the CAT-54 cap count and the revocation handler) and `(market_id, created_at, id) WHERE status =
-'pending'` (the admin tab). The cap value is configuration, so not a constraint; the count runs in
-the proposing unit and the seller's proposals are serialised by… nothing: two concurrent proposals
-can both pass a cap of 5 and make 6. Accepted (a soft cap; Q-K7).
+`category_proposals` (root): `id`; `seller_id`; `platform_parent_id` FK; `names jsonb` and
+`descriptions jsonb` (locale to text, objects, `pg_column_size` capped at 16 KB and 64 KB);
+`normalised_name` (the default-locale name, NFKC, case folded, Persian and Arabic yeh and kaf
+unified; 1 to 120); `status` CHECK `pending`, `approved`, `rejected`, `cancelled`; `reason_code`
+(prepared codes only: required for `rejected`, `seller-cancelled` or `permission-revoked` for
+`cancelled`); `decided_by_account_id` (set exactly for `approved` and `rejected`), `decided_at` (NULL
+iff pending); `created_seller_category_id` FK `(market_id, created_seller_category_id, seller_id)` →
+`seller_categories`, CHECK `(status = 'approved') = (… IS NOT NULL)`; `version`; `created_at`. Guard
+trigger: decided once from `pending`, version +1, immutable content, no delete.
+
+Indexes: partial unique `category_proposals_pending_name_key` on `(market_id, seller_id,
+platform_parent_id, normalised_name) WHERE status = 'pending'` (per seller: shelves are per seller);
+it leads with `(market_id, seller_id)` under the same predicate, so it also serves the CAT-54 cap
+count and the revocation handler (no second index); `(market_id, created_at, id) WHERE status =
+'pending'` (the admin tab); `(market_id, seller_id, created_at, id)` (the seller's list, newest first).
+
+The cap value is configuration, so not a constraint. The count runs in the proposing unit under the
+seller's shelf lock (`catalog.lock-seller-shelves`, advisory class 1707), which also serialises
+approvals (slug probe), shelf closes and an Offer moved onto a shelf of that seller; so the cap is
+exact. This replaces the soft cap accepted as Q-K7.
+
+The Offer column `offers.shelf_category_id` (3.13) arrives in three migrations (8.2): the column and
+its key `NOT VALID` last in `20261112170000_catalog_seller_categories`; the key validated alone in
+`20261112170001`; the partial index `(market_id, shelf_category_id) WHERE shelf_category_id IS NOT
+NULL` built `CONCURRENTLY` alone in `20261112170002`.
 
 ### 3.23 `product_url_keys` (slice 22; CAT-12)
 
@@ -1094,6 +1112,30 @@ account, no FK) and `decided_at`; `notice_state`, `notice_attempts` (0 to 10),
 - Reversible: `pnpm db:check-reversible` passes (`down.sql` drops the trigger functions and the
   table).
 
+### 3.30a `topic_suggestions` (product tags package T5)
+
+One row per seller's request for a tag (topic) the curated list does not have (john's decision 1,
+24 Oct 2026). Same lifecycle and guard as 3.30: born `open` at version 1; an admin moves it once to
+`approved` (a topic was created from it; `topic_id` names it), `mapped` (an existing active topic
+was chosen; `topic_id`) or `rejected` (`reject_reason`); then one mail, with the `notice_*` send
+marker. Only the decision and the notice marker change (guard trigger); nothing is deleted.
+Approving or mapping never adds the tag to the product: the seller picks it, and the change goes to
+review like every tag change. Audit rows: `catalog.topic-suggestion.suggested` and `.decided`
+(ids and the outcome only: never the seller's text or the reason).
+
+`(market_id, id)` primary key; `tenant_id`; `seller_id` (no FK across modules); `product_id` with
+`(market_id, product_id)` → `products`; `label` (the seller's text, 2 to 40 characters) and
+`label_key` (its `normaliseTopicTerm` form); `status`; `topic_id` with `(market_id, topic_id)` →
+`topics`; `reject_reason`; `decided_by_account_id`, `decided_at`; `notice_*`; `version`;
+`created_at`.
+
+- **Partial unique** `topic_suggestions_open_seller_label_key` `(market_id, seller_id, label_key)
+  WHERE status = 'open'`: a seller's second request for the same text is `suggestion.already-open`.
+- At most 10 open per seller and no text a topic already uses (`takenTermKeys`) are use-case rules.
+- Indexes: `(market_id, status, created_at, id)` for the admin queue; `(market_id, seller_id,
+  status)`; `(market_id, product_id)`; the notice-due partial index. Grants as 3.30, with `topic_id`
+  in place of `option_code`.
+
 ### 3.31 `seller_import_jobs`, `seller_import_rows`, `seller_import_photos` (seller Import; domain 14c)
 
 The seller import of 14 as built by domain 14c. It **replaces the outline of 3.24** (`import_jobs`,
@@ -1163,6 +1205,10 @@ delete, 10.1, and a photo delete must never conflict with a row that remembers w
   job's cascade, and the narrow `UPDATE (image_id)` grant is its guard (Mojtaba M5).
 - Reversible: `pnpm db:check-reversible` passes (up, down newest-first, up, no drift).
 
+### 3.32 `missing_details_emails` ("Email sellers" of the Missing details report; attributes package A4-4)
+
+One row per seller and product an admin asked to fill in required details: the primary key `(market_id, seller_id, product_id)` is the 7-day limit (a guarded update claims the pair again only when the earlier request was sent more than 7 days ago or did not reach the seller; a request still pending is never replaced), and the rows with `state = 'pending'` are the queue the job `catalog.send-missing-details-emails` reads, one English mail per seller. The row keeps what the mail says (`seller_name`, `product_name`, `missing_labels` as English names), so the job reads no catalog table; no address is stored. `state` is `pending`, `sent`, `skipped` or `failed`; at most 10 attempts, 3 used. The request is audited as `catalog.missing-details-email.requested` (seller id, counts). `outcome` is tied to the state by a CHECK (`skipped` with `no-address`, `failed` with `send-failed`). Index: one partial index on the pending rows `(market_id, requested_at, seller_id, product_id) WHERE state = 'pending'` (hand-written, so the queue scan needs no sort); no index on the sent rows. Retention: rows are never deleted and there is one per seller and product, so size follows the catalog, not time; a pair asked again after 7 days (or after a skip or failure) replaces its row and resets `attempts`. PII: `seller_name` may be a sole trader's name and `requested_by` is an admin account id; no address is stored. The mail is at-least-once: a run that outlives its lock can send twice (follow-up: a send lease). Migration `20261113010000_catalog_missing_details_emails`, with `down.sql`.
+
 ## 4. What is never stored
 
 | Never | Instead |
@@ -1191,7 +1237,7 @@ delete, 10.1, and a photo delete must never conflict with a row that remembers w
 | Tags of a category subtree marked `rechecking` in the move unit (M1) | Cross-table bulk write | Use case (A10); bounded by `catalog.maxCategoryChangeTags` (Q-K4) |
 | Ids of other modules exist | Other schemas | Facades |
 | No claim word in any stored text, drafts included | Matcher in `certification` | Use cases (D 6.1) |
-| One proposal cap per seller | Configuration | Soft cap (3.22, Q-K7) |
+| One proposal cap per seller | Configuration, counted under the seller lock | Exact (3.22; was the Q-K7 soft cap) |
 
 ### 5.1 Triggers
 
@@ -1471,6 +1517,7 @@ No sequence; no function gets a grant.
 | `offer_tags` | `SELECT, INSERT`, `UPDATE` on every column except `id, offer_id, seller_id, type_code, created_at` | Never | |
 | `tag_reevaluation_requests` | `SELECT, INSERT`, `UPDATE (state, cursor_offer_id, counts, settled_at, created_at)` (`created_at` since C4a) | Purge (10.3) | |
 | `offer_owner_notices` | `SELECT, INSERT`, `UPDATE (state, outcome, attempts, next_attempt_at, settled_at)` | Purge (open) | Certification slice 15 (3.27) |
+| `missing_details_emails` | `SELECT, INSERT`, `UPDATE (seller_name, product_name, missing_labels, state, outcome, attempts, requested_at, requested_by, settled_at)` | Never (the table keeps the latest request per seller and product; history is in the audit log) | "Email sellers" (3.32); the keys and the tenant never change |
 | `saved_filters` | `SELECT, INSERT`, `UPDATE (visibility, name, updated_at)` | The application (a filter is a preference, not a record to keep) | Saved filters (3.28); the document, owner, list and position never change after the insert |
 | `platform_import_jobs` | `SELECT, INSERT, DELETE`, `UPDATE (state, file_deleted_at, start_as, skip_errors, to_import, added_rows, failed_rows, stop_reason, not_before, lease_until, version, started_at, finished_at)` | Purge (10.3, 10.4): discarded jobs at once, finished and stopped after 90 days | Admin import (3.29); the owner, file, counts of the check and the creation time never change |
 | `platform_import_rows` | `SELECT, INSERT, DELETE`, `UPDATE (run_state, run_code, product_id, product_code)` | With the job (cascade) | Admin import (3.29); the check result never changes |
@@ -1890,7 +1937,7 @@ Answered in D 19.4 and D 17.1 item 12b (2026-10-07); Q-K8 ruled by Ali at the da
 | Q-K4 | Bound on M1 marking for a root move | **Closed.** One unit, refused with `category.impact-too-large` above `catalog.maxCategoryChangeTags` (AU 50,000; test Market 10). Market configuration, no storage | A10, 5 |
 | Q-K5 | Suspended-tag re-ask from the by-type index | **Closed.** Accepted; partial index only if suspended plus rechecking pass 5% | 3.15 |
 | Q-K6 | Delete or archive a definition | **Closed.** Archive only; no `DELETE` grant | 3.21 `kind`, 7 |
-| Q-K7 | CAT-54 pending cap under concurrency | **Closed.** Soft cap accepted | 3.22 |
+| Q-K7 | CAT-54 pending cap under concurrency | **Closed.** Soft cap accepted; made exact by the seller lock in C9a (12 Nov 2026) | 3.22 |
 | Q-K8 | SQL in the cycle trigger vs ADR-0030 | **Closed (Ali).** Outside ADR-0030, on conditions: `SECURITY INVOKER`, no dynamic `EXECUTE`, fixed `search_path` and schema-qualified names, refusal at the depth cap. Applied to every catalog function | 3.4, 5.1 |
 | Q-K9 | Slice 22 migration | **Closed.** Added to D 15.1 | 8.1 #14 |
 | Q-K10 | Deferred FK or nullable pointer | **Closed.** Nullable pointer, NULL only inside the creating unit; no deferred FK | 3.4, 3.5, 8.4 |
@@ -1924,5 +1971,8 @@ Answered in D 19.4 and D 17.1 item 12b (2026-10-07); Q-K8 ruled by Ali at the da
 | `catalog.product_images`, `product_image_renditions`, `product_revision_images` (migration `20261014120000_catalog_product_images`; slice 13, PR #288) | Simplified media path: one row per uploaded photo plus three JPEG renditions (thumb, medium, large) whose bytes live in the `ObjectStore` port (`platform/storage`, local disk stand-in, key `<productId>/<imageId>/<size>`). Images are insert-only into revisions and only `clean` ones may join (trigger). Limits: 8 per product, 4 MiB upload (raw 5800kb body parser on that one route), 24 MP, sides 200 to 12000 px. Takedown (`20261017100000_catalog_image_takedown`): `clean` to `taken-down` only (trigger `product_images_state_guard`), column-level `UPDATE` on the state and the three takedown columns, key `catalog.product.approve` (not `.delete`, undeclared), event `catalog.image-taken-down.v1`; the clean-image trigger locks the photo `FOR SHARE`. Orphan sweep `catalog.sweep-orphan-images` (hourly, 48 h grace, skips photos a draft names). Not built: S3 adapter, scanner, sweep of files without a row (the `ObjectStore` port cannot list), `photoTakenDownAt` flag | Done in PR #288; handoff `catalog-media.md` |
 | Categories C2 (migration `20261103100000_catalog_category_management_model`; plan v7) | Data model of the category editor: `position` (unique per sibling, deferrable), `hidden` status, `show_in_menu`, `image_id`, SEO columns; revision kinds and `reason`; `platform_category_revision_texts` (name, short description, keywords per locale; names copied by backfill and trigger); `platform_category_slug_history` with the 12-month trigger; `product_revision_categories.is_primary` with its partial unique index. Backfills run in the file (nothing deployed, six seed rows): 8.2 forbids that only for large tables. Market config `catalog.maxCategoryDepth` (AU 4, ZZ 3, schema range 3 to 4). Use cases and UI follow in C3 on; test `catalog-category-model.db-spec.ts` | Done in the C2 PR; Mojtaba, Hassan (grants) |
 | Categories C3 (migration `20261105030000_catalog_category_edit_support`; plan v7) | The tree editor's writes: add, edit details, reorder, hide and show, change URL name, discard. Adds `platform_categories.hidden_by_id` (cascade marker, see 3.4) and grants `UPDATE (slug, hidden_by_id)`. Every write is a new insert-only revision with the full texts (texts row before the name row); `apply` takes the row lock with the version-guarded update first, so a second admin with the same version is `conflict.stale` and never meets the `(category_id, revision_no)` unique. Positions swap through a parking value (no deferred constraint). Review amendment: CHECK `array_ndims(keywords) <= 1` on `platform_category_revision_texts` (added NOT VALID, then validated), and add / change URL name take the named advisory lock `catalog.lock-category-slug` (class 1704) on each slug involved, sorted. Test `catalog-category-editor.db-spec.ts` | Done in the C3a PR; Mojtaba, Hassan (claim-text path) |
+| Categories C9a (migrations `20261112170000_catalog_seller_categories`, `20261112170001_catalog_offers_shelf_key_validate`, `20261112170002_catalog_offers_shelf_index`; brief rewritten 5 Nov 2026) | The tables of 3.22: `seller_categories` (shelf; slug unique per (Market, seller), `COLLATE "C"`; status `active`, `promoted`, `merged`, `archived`, terminal once closed; unique `(market_id, id, seller_id)` for the same-seller keys), `seller_category_names` (name and description per locale) and `category_proposals` (names and descriptions as JSON objects per locale, normalised name, prepared reason codes only, decided once from `pending`). Partial unique `category_proposals_pending_name_key` on (Market, seller, parent, normalised name) where pending; partial indexes for the cap count, the admin queue and the shelf column. `offers.shelf_category_id` with the composite key `(market_id, shelf_category_id, seller_id)` to the shelf (`NOT VALID`, then `VALIDATE`), so a shelf on an Offer is always its own seller's. Guard triggers on both tables (no delete, immutable columns, version +1). Rate counter kind `category-propose.seller.day`. Deviation from 3.22 for review: the description is per locale, not one text column. Market config `catalog.maxPendingCategoryProposals` (optional, AU 5, ZZ 3, default 5). Tests `catalog-seller-categories.db-spec.ts`, `seller-category.use-cases.spec.ts`, contract `catalog-shelf-isolation.contract.spec.ts` | C9a PR; Mojtaba (migration), Hassan (keys, ownership) |
 | Public photo reads (storefront images package; no migration) | Two read-only readers over the slice 13 tables, `PrismaPublishedImagesReader`: the public photos of a published product's `published_revision_id` (revision rows by `position`, joined to the photo's state in one statement, `clean` only, at most 8 per product) and one rendition key of such a photo. Every statement is scoped by `market_id` and the revision's own `product_id`. Uses the existing grants and indexes (`product_revision_images` primary key and `(market_id, revision_id, position)`); no new index needed at this size | Done; `test/db/catalog-published-images.db-spec.ts` |
 | Variant types V6 (migration `20261107010000_catalog_variant_types`; variants plan section 9) | How buyers choose a variant type: `variant_type_settings` (root per attribute definition, `current_revision_id` and `version` the only updatable columns) and the insert-only `variant_type_setting_revisions` (display style `buttons`, `swatches` or `dropdown`; option order `manual`, `alphabetical` or `by-size`; swatch colours `#RRGGBB` per option code; one seller help sentence per locale; `reject_mutation` triggers; JSONB objects with a size cap). The name, options and labels stay in Attributes. Admin reads over published revisions only, through Prisma (no raw SQL): variant types with counts and feature sets, the variants of live products with five issue filters (no seller selling, missing GTIN, duplicate GTIN, no image, missing language; an absent, null or empty label is missing). "Out of stock everywhere" is not read here: stock is inventory's (ADR-0024 decision 5). Test `catalog-variant-admin.db-spec.ts` | V6 backend PR; Mojtaba, Hassan (keys) |
+| Cultures (migration `20261111120000_catalog_cultures`; multi-culture package 1, ADR-0047) | Final table names of ADR-0047 decisions 1 and 4, all in `catalog`, all with `market_id` and `tenant_id`, built like the business activities. `cultures`: `code` (lower case words with hyphens, unique per Market, never updated), `status` `draft` / `active` / `inactive`, `display_order` 0 to 9999, `required_certification_type` (a certification type code as a plain string, no key across schemas; the use cases check it against the active types through certification's facade), `badge_colour` (a design-token name), `is_default`, `created_by` (null for a seeded culture), `version`. At most one default per Market (partial unique index `cultures_one_default_key`), and the CHECK `cultures_default_active_check` keeps it active. `culture_names`: `(market_id, culture_id, locale)` with `name` (1 to 80) and `description` (null or 1 to 300); a locale is published only when the description exists; English (the Market's default locale) needs both, enforced by the use case; a name is unique per Market and locale, case-insensitive. `culture_categories`: `(market_id, culture_id, category_id)` with `visible`, `certification_mark` (`required` / `neutral` / null = inherit), `updated_by`, `updated_at`; foreign key to `platform_categories` (restrict). With no row anywhere up the tree a category is visible and `required`; visibility comes from the nearest row up the chain and the mark from the nearest row that has a mark (pure function `resolveEffectiveMarks`). Grants: no `DELETE` on `cultures` (a culture is made inactive; column `UPDATE` excludes code, creator and creation time); names and mark rows may be deleted. Seed: `config/catalog-seed/<MARKET>.json` key `cultures` (AU: `muslim`, default, requires `halal`; seed text is claim-checked like any other), job `catalog.seed-cultures`. Seller and product counts and the seller link come with packages 2 and 3. Access paths: `(market_id, status, display_order)` serves the list, `(market_id, category_id)` serves the restrict check of the category foreign key, and the name search has no index at this size (at most 200 cultures per Market). A second admin making a culture the default at the same moment gets `conflict.stale` (the one-default index). Test `catalog-cultures.db-spec.ts` | Multi-culture package 1 PR; Mojtaba (sign-off), Hassan (protected key `catalog.culture.edit`) |
+| Culture visibility (multi-culture package 3a, ADR-0047 decision 5, ADR-0048 M2; no catalog migration) | **Rule** (pure function `domain/culture-visibility.ts`, `cultureVisibility`): a published Offer is visible in an `active` culture when its seller is `approved` there (sellers facade `approvedCulturesOfSellers`), every platform category of its product is visible there (`resolveEffectiveMarks`: hidden when any row up the chain says hidden, so a hidden ancestor hides the whole branch, ADR-0048 security M2 of #848; no platform category = not visible), for a culture with a required type the seller holds a valid certificate of that type now (certification facade `sellerValidCertificateTypes` with the required types, answered by the canonical `sellerCertificateValidAt`, M2, for `required` and `neutral` categories alike), and, when any of the product's categories is `required` there, the Offer carries an `active` tag of the type that `evaluateClaims` allows for every variant with the stored basis (as for badges). A `neutral` category needs membership only. Any failed read is not visible; no claim is ever inferred. **Facade** `CatalogCulturesFacade`: `visibleCultureCodesForOffers(context, offerIds)` (at most 200 ids, one search sync batch, so the cultures and their rows are read once per batch, codes in display order; `culture-visibility.unavailable` on any fault) and `isOfferVisibleIn(context, offerId, codes)` (false on any fault); the tie rule of decision 9 is the pure function `lineCultureOf` (a certified culture wins, then the lower `display_order`, then the code), exported for package 7. Each method is an `anonymous` / `system` use-case pair; the culture reads `activeCultures` and `culturesByIds` got their `system` twins too (package 2's signup job called the anonymous-only read). No cross-schema join: one read-only catalog unit (the category rows of all active cultures in one statement, `culture_id IN`; the products, their published revisions' categories and variants, and the live paths batched over the call: `ClaimQueryBuilder.publishedSnapshots`, `ProductRepository.findManyByIds`, `ProductRevisionRepository.claimShapes`, `CategoryPathsReader.livePathsMany`, one statement per tree level), then the two facades. **`culture_categories.visible` nullable** (migration `20261112160000_catalog_culture_categories_visible_inherit`): NULL is inherit, written by a set with a mark and no `visible`; CHECK `culture_categories_states_something_check` (a row states a visibility or a mark); the audit's `visible` is `shown` / `hidden` / `inherit`; the down migration turns NULL into true. **Events** (for the search re-index): `catalog.culture-status-changed.v1` (aggregate `culture`, the culture's version), `catalog.culture-category-mark-changed.v1` (`cultureId`, `categoryId`; set and clear) and `catalog.culture-approvals-invalidated.v1` (N1: written in its own unit when the revert of a required-type change fails; the sellers consumer demotes and throws while approvals remain, so the outbox retries). The search index stamp now includes each culture's code, status and required type, and the count and latest `updated_at` of the Market's `culture_categories` rows, so a required-type change (locked while anyone is approved) and the first fill of `culture_codes` come from the stamp-driven reindex. **Errors.** `culture.required-type-locked` (409): a change of `required_certification_type` while any seller is approved in the culture; catalog asks sellers before the write unit, fails closed (`access.unavailable`) and re-checks after its commit; if the re-check finds an approval it reverts, and if the revert fails it logs `catalog.culture-edit.required-type-revert-failed` and queues the demotion. `culture.locale-uncheckable` (422, `details.fields`): a culture name or description in a locale the claim vocabulary does not cover; fails closed like the category and attribute editors. Tests: `culture-visibility.spec.ts` (truth table, AU/halal and ZZ/kosher), `offer-culture-visibility.use-case.spec.ts`, `culture.use-cases.spec.ts` | Multi-culture package 3a; Hassan (CERT path, certification facade), Mojtaba (search column) |

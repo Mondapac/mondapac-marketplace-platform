@@ -31,6 +31,7 @@ export function VariantDetails({
   productId,
   galleryIds,
   notices,
+  heading,
   onRow,
 }: {
   readonly rows: readonly VariantRow[];
@@ -40,13 +41,15 @@ export function VariantDetails({
   readonly galleryIds: readonly string[];
   /** Variant ids whose barcode another product already carries (advice, not a refusal). */
   readonly notices: readonly string[];
+  /** The heading when the steps are numbered differently (while a second type is being added). */
+  readonly heading?: string;
   readonly onRow: (row: VariantRow, next: VariantRow) => void;
 }) {
   const t = useTranslations();
   const problems = problemsOfRows(rows);
   return (
     <section className="flex flex-col gap-3 border-t border-line pt-3">
-      <h3 className="font-medium">{t('catalog.edit.grid.step-details')}</h3>
+      <h3 className="font-medium">{heading ?? t('catalog.edit.grid.step-details')}</h3>
       <p className="text-sm text-fg-muted">{t('catalog.edit.grid.details-help')}</p>
       {rows.length === 0 ? (
         <p className="text-sm text-fg-muted">{t('catalog.edit.grid.details-none')}</p>

@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { ListPaging } from '../domain/definitions';
-import { LIST_PAGING_VALUES, SETTING_DEFINITIONS } from '../domain/definitions';
+import { CART_MODE_VALUES, LIST_PAGING_VALUES, SETTING_DEFINITIONS } from '../domain/definitions';
 import type { SettingView } from '../application/use-cases/view-list-paging-setting.use-case';
 
 export class SettingBody {
@@ -17,6 +17,12 @@ export class SettingsListBody {
 export class ChangeSettingRequest {
   @ApiProperty() code!: string;
   @ApiProperty() value!: string;
+  @ApiProperty({ description: 'The version the admin saw; a stale edit is refused (409).' })
+  expectedVersion!: number;
+}
+
+export class ChangeCartModeRequest {
+  @ApiProperty({ enum: [...CART_MODE_VALUES] }) value!: string;
   @ApiProperty({ description: 'The version the admin saw; a stale edit is refused (409).' })
   expectedVersion!: number;
 }

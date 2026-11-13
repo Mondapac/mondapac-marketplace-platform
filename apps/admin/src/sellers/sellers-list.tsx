@@ -87,6 +87,7 @@ export function SellersList({
   const [next, setNext] = useState<string | null>(null);
   const [counts, setCounts] = useState<SellerListCounts | null>(null);
   const [stateCounts, setStateCounts] = useState<SellerListStateCounts | null>(null);
+  const [healthDown, setHealthDown] = useState(false);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<Failure | null>(null);
   const latest = useRef(0);
@@ -129,6 +130,7 @@ export function SellersList({
         after === null ? result.body.items : [...current, ...result.body.items],
       );
       setNext(result.body.next);
+      setHealthDown(result.body.healthUnavailable === true);
       setCounts(result.body.counts);
       setAreas(result.body.areas);
       // A later page of a file tab carries no state counts: keep the first page's.
@@ -238,6 +240,7 @@ export function SellersList({
         <SellersTable
           rows={rows}
           canReview={canReview}
+          healthUnavailable={healthDown}
           showOwner={stateCounts !== null}
           empty={
             <EmptyState

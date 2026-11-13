@@ -4,6 +4,7 @@ import type {
   OrderLine,
   OrderState,
   OrderStatus,
+  PaymentState,
   SellerOrder,
 } from '../../domain/order';
 import type { OrderStatusCounts, SellerOrderCounts } from '../../domain/order-views';
@@ -20,11 +21,33 @@ export interface OrderFilter {
   readonly status: OrderStatus | null;
   /** An order id or a seller order id, matched exactly. */
   readonly reference: string | null;
+  readonly paymentState: PaymentState | null;
+  /** Keeps orders that have a seller order of this seller (and this fulfilment, when set). */
+  readonly sellerId: Id<'Seller'> | null;
+  readonly fulfilment: Fulfilment | null;
+  /** Placed at or after `from` and before `to`. */
+  readonly from: Temporal.Instant | null;
+  readonly to: Temporal.Instant | null;
+}
+
+/** The sort of an offset page; ties break on the order id in the same direction. */
+export interface OrderSort {
+  readonly key: 'created' | 'total';
+  readonly direction: 'asc' | 'desc';
 }
 
 /** The seller list's filter; null keeps every paid seller order. */
 export interface SellerOrderFilter {
   readonly fulfilment: Fulfilment | null;
+  /** Paid at or after `from` and before `to`; null keeps every payment time. */
+  readonly from: Temporal.Instant | null;
+  readonly to: Temporal.Instant | null;
+}
+
+/** The sort of a seller's offset page; ties break on the seller order id in the same direction. */
+export interface SellerOrderSort {
+  readonly key: 'paid' | 'total';
+  readonly direction: 'asc' | 'desc';
 }
 
 /** A seller's page of paid seller orders, newest payment first. */
@@ -112,6 +135,18 @@ export interface OrderRepository {
     page: OrderPage,
   ): Promise<readonly OrderState[]>;
 
+  /** One offset page of the orders that match `filter`, in `sort` order. */
+  pageAll(
+    market: MarketContext,
+    filter: OrderFilter,
+    sort: OrderSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly OrderState[]>;
+
+  /** How many orders match `filter` (the total behind page numbers). */
+  countMatching(market: MarketContext, filter: OrderFilter): Promise<number>;
+
   /** The Market's orders per status (one grouped count). */
   countAll(market: MarketContext): Promise<OrderStatusCounts>;
 
@@ -128,6 +163,23 @@ export interface OrderRepository {
     filter: SellerOrderFilter,
     page: SellerOrderPage,
   ): Promise<readonly SellerOrderRecord[]>;
+
+  /** One offset page of the seller's paid seller orders that match `filter`, in `sort` order. */
+  pageForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+    sort: SellerOrderSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly SellerOrderRecord[]>;
+
+  /** How many of the seller's paid seller orders match `filter` (the total behind page numbers). */
+  countMatchingForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+  ): Promise<number>;
 
   /** The seller's paid seller orders per fulfilment step (one grouped count). */
   countForSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerOrderCounts>;

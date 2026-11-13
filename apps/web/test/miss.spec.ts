@@ -135,4 +135,15 @@ describe('a client request for the internal route', () => {
     }
     expect(asked).toEqual([]);
   });
+
+  it('stays the framework 404 when the request carries a router prefetch header', async () => {
+    for (const header of ['next-router-prefetch', 'next-router-segment-prefetch']) {
+      for (const path of ['/missing/p/lamb-shoulder', '/missing/s/kedron']) {
+        const response = await proxy(request(path, { [header]: '1', rsc: '1' }));
+        expect(response.status, `${header} ${path}`).toBe(404);
+        expect(rewrittenTo(response)).toBe('http://shop.example/missing');
+      }
+    }
+    expect(asked).toEqual([]);
+  });
 });

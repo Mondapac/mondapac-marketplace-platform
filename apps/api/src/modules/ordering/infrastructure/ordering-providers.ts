@@ -26,6 +26,14 @@ import {
 import { ORDER_REPOSITORY, type OrderRepository } from '../application/ports/order.repository';
 import { ORDERING_POLICY, type OrderingPolicy } from '../application/ports/ordering-policy';
 import { REFUND_REPOSITORY, type RefundRepository } from '../application/ports/refund.repository';
+import {
+  ADMIN_NOTE_CIPHER,
+  ADMIN_ORDER_NOTE_REPOSITORY,
+  type AdminNoteCipher,
+  type AdminOrderNoteRepository,
+} from '../application/ports/admin-order-notes';
+import { PrismaAdminOrderNoteRepository } from './prisma-admin-order-notes';
+import { SubjectKeyAdminNoteCipher } from './subject-key-admin-note-cipher';
 import { SHIP_TO_CIPHER, type ShipToCipher } from '../application/ports/ship-to-cipher';
 import {
   DELIVERY_METHOD_POLICY,
@@ -65,6 +73,12 @@ export const orderingProviders: readonly FactoryProvider[] = [
     useFactory: (prisma: PrismaService): OrderRepository => new PrismaOrderRepository(prisma),
   },
   {
+    provide: ADMIN_ORDER_NOTE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminOrderNoteRepository =>
+      new PrismaAdminOrderNoteRepository(prisma),
+  },
+  {
     provide: REFUND_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): RefundRepository => new PrismaRefundRepository(prisma),
@@ -79,6 +93,11 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: PICKUP_CODE_VAULT,
     inject: [SUBJECT_KEY_SERVICE],
     useFactory: (keys: SubjectKeyService): PickupCodeVault => new SubjectKeyPickupCodeVault(keys),
+  },
+  {
+    provide: ADMIN_NOTE_CIPHER,
+    inject: [SUBJECT_KEY_SERVICE],
+    useFactory: (keys: SubjectKeyService): AdminNoteCipher => new SubjectKeyAdminNoteCipher(keys),
   },
   {
     provide: SHIP_TO_CIPHER,

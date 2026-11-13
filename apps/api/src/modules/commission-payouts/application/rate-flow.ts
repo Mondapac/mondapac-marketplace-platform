@@ -1,10 +1,14 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
-import type { CommissionRate, CommissionRateMap } from '../contracts/commission-payouts.facade';
+import type {
+  CommissionRate,
+  CommissionRateMap,
+  OwnCommissionPreview,
+} from '../contracts/commission-payouts.facade';
 import { CommissionRateCleared, CommissionRateSet } from '../domain/audit';
-import { parseRateBps } from '../domain/commission';
+import { commissionBase, commissionOn, parseRateBps } from '../domain/commission';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
-import { spendStepUp, type StepUpFailure } from './step-up';
+import { isActingAs, spendStepUp, type StepUpFailure } from './step-up';
 import { COMMISSION_PAYOUTS_RATE_EDIT } from '../contracts/permissions';
 
 // Commission rates (COM-01, COM-02): the Market rate comes from Market config; an admin may set a
@@ -209,6 +213,56 @@ export async function readCommissionRates(
           }),
         ),
       );
+    },
+    { readOnly: true },
+  );
+}
+
+const MAX_PREVIEW_AMOUNT = 10n ** 12n;
+
+/**
+ * The commission the signed-in seller would pay on an amount. The seller is the session's, never a
+ * request field: a seller sees only its own rate. An acting-as session is refused. Reuses the
+ * ledger's own rules (`commissionBase`, `commissionOn`), so the number is the one the ledger posts
+ * for a line of that amount.
+ */
+export async function ownCommissionOn(
+  deps: CommissionPayoutsDependencies,
+  context: CallContext,
+  input: { readonly amount?: unknown; readonly taxInclusive?: unknown },
+): Promise<Result<OwnCommissionPreview, RatesFailure>> {
+  const actor = context.actor;
+  if (actor.kind !== 'authenticated' || actor.population !== 'seller' || isActingAs(context)) {
+    return err({ code: 'access.denied' });
+  }
+  const sellerId = sellerIdOf(actor.sellerId);
+  if (sellerId === null) return err({ code: 'access.denied' });
+  const fields: { path: string; code: string }[] = [];
+  const amount = input?.amount;
+  if (typeof amount !== 'bigint' || amount < 0n || amount > MAX_PREVIEW_AMOUNT) {
+    fields.push({ path: 'amount', code: 'range' });
+  }
+  if (typeof input?.taxInclusive !== 'boolean') fields.push({ path: 'taxInclusive', code: 'type' });
+  if (fields.length > 0 || typeof amount !== 'bigint')
+    return err({ code: 'validation.failed', fields });
+  const settings = deps.policy.settings(context.market);
+  if (settings === null) return err({ code: 'commission-payouts.rate-unavailable' });
+  return deps.unitOfWork.run<OwnCommissionPreview, RatesFailure>(
+    context.market,
+    async () => {
+      const [row] = await deps.rates.findMany(context.market, [sellerId]);
+      const rateBps = row?.rateBps ?? settings.defaultRateBps;
+      const base = commissionBase(
+        amount,
+        input.taxInclusive === true,
+        settings.provisionalTaxRateBps,
+      );
+      return ok({
+        rateBps,
+        source: row === undefined ? 'market' : 'seller',
+        commissionBase: base,
+        commission: commissionOn(base, rateBps),
+      });
     },
     { readOnly: true },
   );

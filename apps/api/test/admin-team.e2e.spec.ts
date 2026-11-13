@@ -332,7 +332,12 @@ describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => 
       const session = await http()
         .get('/identity/admin/session')
         .set({ 'x-market-id': code, cookie: viewer.cookie });
-      expect(session.body).toMatchObject({ displayName: 'Viewer Vee', lastSignInAt: null });
+      expect(session.body).toMatchObject({
+        displayName: 'Viewer Vee',
+        lastSignInAt: null,
+        // The Market's own zone, the panel's fallback for local days (ADR-0005).
+        marketTimezone: code === 'AU' ? 'Australia/Brisbane' : 'Asia/Tokyo',
+      });
     });
 
     it('lists only its own devices and signs out of the others, keeping this one', async () => {
