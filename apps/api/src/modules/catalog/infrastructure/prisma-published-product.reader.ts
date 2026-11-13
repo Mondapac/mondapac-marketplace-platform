@@ -26,7 +26,14 @@ import { readAxisValues } from './variant-axis-values';
  * every one scoped by `market_id`; no image or tag is read.
  */
 export class PrismaPublishedProductReader implements PublishedProductReader {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    /** The Market's measure units with labels (attributes A3), from its catalog settings. */
+    private readonly units: (market: MarketContext) => ReadonlyArray<{
+      readonly code: string;
+      readonly labels: Readonly<Record<string, string>>;
+    }>,
+  ) {}
 
   async read(
     market: MarketContext,
@@ -97,7 +104,7 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
             where: { id: product.brandId, status: 'active' },
             select: { slug: true, name: true },
           });
-    const specifications = await this.specifications(tx, market.marketId, revisionId, locales);
+    const specifications = await this.specifications(tx, market, revisionId, locales);
     const rowsShown = revisionVariants.filter((row) => published.has(row.variantId));
     const axisLists = await readAxisValues(
       tx,
@@ -143,10 +150,11 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
 
   private async specifications(
     tx: MarketTransaction,
-    marketId: string,
+    market: MarketContext,
     revisionId: string,
     locales: { readonly requested: string; readonly fallback: string },
   ) {
+    const { marketId } = market;
     const revision = await tx.catalogProductRevision.findFirst({
       where: { marketId, id: revisionId },
       select: { familyRevisionId: true, attributeValues: true },
@@ -206,7 +214,7 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
     if (revisionIds.length === 0) return [];
     const revisions = await tx.catalogAttributeDefinitionRevision.findMany({
       where: { marketId, id: { in: revisionIds } },
-      select: { id: true, showOnProductPage: true, names: true },
+      select: { id: true, showOnProductPage: true, names: true, bounds: true },
     });
     const optionRows = await tx.catalogAttributeDefinitionRevisionOption.findMany({
       where: { marketId, revisionId: { in: revisionIds } },
@@ -243,6 +251,7 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
         showOnProductPage: published.showOnProductPage,
         names: asTexts(published.names) ?? {},
         options,
+        ...measureDecimalsOf(row.dataType, published.bounds),
       });
     }
     return buildPublishedSpecifications({
@@ -250,6 +259,18 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
       values: values,
       definitions,
       locales,
+      unitLabels: new Map(this.units(market).map((unit) => [unit.code, unit.labels] as const)),
     });
   }
+}
+
+/** A measure's decimal places from its published revision's `bounds.measure`; nothing otherwise. */
+function measureDecimalsOf(dataType: string, bounds: unknown): { measureDecimals?: number } {
+  if (dataType !== 'measure' || typeof bounds !== 'object' || bounds === null) return {};
+  const settings = (bounds as Record<string, unknown>)['measure'];
+  if (typeof settings !== 'object' || settings === null) return {};
+  const decimals = (settings as Record<string, unknown>)['decimals'];
+  return typeof decimals === 'number' && Number.isInteger(decimals)
+    ? { measureDecimals: decimals }
+    : {};
 }

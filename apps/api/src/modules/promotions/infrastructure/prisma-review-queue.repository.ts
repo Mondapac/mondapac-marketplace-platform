@@ -32,6 +32,9 @@ const toEntry = (row: Row): ReviewEntry => ({
   decidedAt: row.decidedAt === null ? null : fromDate(row.decidedAt),
 });
 
+/** The most open promotions the "needs review" tab names; the queue is far smaller. */
+const OPEN_SUMMARY_IDS = 1000;
+
 /** {@link ReviewQueueRepository} on `promotions.promotion_reviews`, scoped by `marketId`. */
 export class PrismaReviewQueueRepository implements ReviewQueueRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -75,6 +78,22 @@ export class PrismaReviewQueueRepository implements ReviewQueueRepository {
       take: limit,
     });
     return rows.map(toEntry);
+  }
+
+  async openSummary(market: MarketContext): Promise<{
+    readonly count: number;
+    readonly promotionIds: readonly Id<'Promotion'>[];
+  }> {
+    const tx = this.prisma.tx(market);
+    const where = { marketId: market.marketId, status: 'OPEN' };
+    const count = await tx.promotionsReview.count({ where });
+    const rows = await tx.promotionsReview.findMany({
+      where,
+      select: { promotionId: true },
+      orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+      take: OPEN_SUMMARY_IDS,
+    });
+    return { count, promotionIds: rows.map((row) => row.promotionId as Id<'Promotion'>) };
   }
 
   async decide(

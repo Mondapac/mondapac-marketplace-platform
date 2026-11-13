@@ -11,9 +11,10 @@ import {
   Select,
   SkeletonRows,
 } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { formatInstant } from '../shared/format.ts';
 import { EmailSellersDialog, emailable } from './email-sellers-dialog.tsx';
 import { API_MISSING_DETAILS, PAGE_SIZE, type MissingDetailsItem } from './types.ts';
 import type { MissingDetailsPage } from './types.ts';
@@ -62,6 +63,7 @@ export function MissingDetailsTab({
 }) {
   const t = useTranslations('attributes.missing-details');
   const tl = useTranslations('load');
+  const locale = useLocale();
   const [load, setLoad] = useState<Load>({ state: 'loading' });
   const [more, setMore] = useState(false);
   const [search, setSearch] = useState('');
@@ -247,6 +249,13 @@ export function MissingDetailsTab({
                         : t('seller', { id: item.sellerId })}
                       {' · '}
                       {t('feature-set-named', { code: item.featureSetCode })}
+                    </p>
+                    <p className="text-sm text-fg-muted">
+                      {item.lastEmailedAt === null
+                        ? t('never-emailed')
+                        : t('last-emailed', {
+                            date: formatInstant(item.lastEmailedAt, locale),
+                          })}
                     </p>
                     <ul role="list" aria-label={t('missing')} className="flex flex-wrap gap-1.5">
                       {item.missing.map((code) => (

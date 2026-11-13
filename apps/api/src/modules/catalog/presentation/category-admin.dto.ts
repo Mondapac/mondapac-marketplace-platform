@@ -42,6 +42,36 @@ export class ActionAnswerBody {
   denial?: string;
 }
 
+/** A row of the admin list: the category and the feature set it ends up with (attributes A4). */
+export class CategoryTreeRowBody extends CategoryRowBody {
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description:
+      "The effective feature set: its own, else the nearest ancestor's; null when none holds one.",
+  })
+  featureSetId!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'The code of that feature set; null with no feature set or when it is not readable.',
+  })
+  featureSetCode!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description: 'The category that holds it: this one or an ancestor; null with no feature set.',
+  })
+  featureSetFromCategoryId!: string | null;
+  @ApiProperty({
+    description: 'True when the feature set comes from an ancestor; false when own or none.',
+  })
+  inherited!: boolean;
+}
+
 export class CategoryTreeBody {
   @ApiProperty({ description: 'The version of the Market tree.' }) treeVersion!: number;
   @ApiProperty() defaultLocale!: string;
@@ -50,8 +80,13 @@ export class CategoryTreeBody {
   requiredLocales!: string[];
   @ApiProperty({ description: 'False when the counts hit their time bound: they are "at least".' })
   complete!: boolean;
-  @ApiProperty({ type: [CategoryRowBody], description: 'Depth first, siblings in order.' })
-  categories!: CategoryRowBody[];
+  @ApiProperty({
+    type: [CategoryTreeRowBody],
+    description:
+      'Depth first, siblings in order. With the `featureSetId` query, only the categories whose ' +
+      'effective feature set it is (parents are not added back).',
+  })
+  categories!: CategoryTreeRowBody[];
   @ApiProperty({
     type: 'object',
     additionalProperties: { type: 'object' },

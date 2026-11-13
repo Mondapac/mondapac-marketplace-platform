@@ -75,6 +75,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/platform-imports/current',
     // The saved views of the product list (catalog), read-only (query: `listKey`).
     'catalog/admin/saved-filters',
+    // The saved views of the order list (ordering; query: `listKey`).
+    'ordering/admin/saved-filters',
     // The buyer account deletion setting, read again after a conflict, and the pending deletion
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
@@ -239,6 +241,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'certification/admin/product-certificates',
     // A new issuer, as Proposed (certification issuer registry).
     'certification/admin/issuers',
+    // Save the order list's current view as a tab (ordering): a closed body, for me or everyone.
+    'ordering/admin/saved-filters',
   ]),
 };
 
@@ -396,6 +400,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // C3c). A base64 picture: the body cap of this path is the larger image one.
     'catalog/admin/categories/:id/image',
     'identity/admin/roles/:id',
+    // A saved view of the order list: its name and who can use it (ordering).
+    'ordering/admin/saved-filters/:id',
     'sellers/admin/:id/review/manual-register-check',
     // Whether the seller may propose categories (sellers, SEL-26; categories C9-0).
     'sellers/admin/:id/category-proposals',
@@ -445,6 +451,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/saved-filters/:id',
     // Delete an unused photo of a platform product (catalog, P1).
     'catalog/admin/platform-products/:id/images/:id',
+    // A saved view of the order list (ordering).
+    'ordering/admin/saved-filters/:id',
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
@@ -531,6 +539,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'from',
     'to',
   ],
+  'ordering/admin/saved-filters': ['listKey'],
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
@@ -568,6 +577,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
+  // The category tree, narrowed to the categories of one feature set (categories, A4).
+  'catalog/admin/categories': ['featureSetId'],
   'catalog/admin/category-proposals': ['afterId', 'limit'],
   'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
@@ -641,6 +652,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     issue: /^(no-seller-selling|missing-gtin|duplicate-gtin|no-image|missing-language)$/,
   },
   'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
+  'ordering/admin/saved-filters': { listKey: /^admin\.ordering\.orders$/ },
   'commission-payouts/admin/payouts': {
     status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,
     limit: /^[0-9]{1,3}$/,
@@ -652,6 +664,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     // The API's own cursor: epoch milliseconds of the scheduled date, a dot and the request id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
+  'catalog/admin/categories': { featureSetId: UUID },
   'catalog/admin/category-proposals': { afterId: UUID, limit: /^[0-9]{1,2}$/ },
   'catalog/admin/brands': {
     status: /^(draft|active|archived)$/,

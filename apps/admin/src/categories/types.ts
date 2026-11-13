@@ -37,6 +37,12 @@ export interface CategoryRow {
   readonly position: number;
   readonly version: number;
   readonly counts: CategoryCounts;
+  /** The feature set the category uses (its own or inherited), or null: none up the tree. */
+  readonly featureSetId: string | null;
+  readonly featureSetCode: string | null;
+  /** The ancestor that owns the set; null when the category has none or sets it itself. */
+  readonly featureSetFromCategoryId: string | null;
+  readonly inherited: boolean;
 }
 
 export interface ActionAnswer {

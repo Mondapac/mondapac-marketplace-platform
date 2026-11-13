@@ -1563,6 +1563,8 @@ const RESTRUCTURE_DEPS = {
       adminCategoryReader: true,
       policy: true,
       categoryProbes: true,
+      linkStore: true,
+      attributeAdminReader: true,
     }),
     useCaseProvider(CategoryAdminGet, {
       unitOfWork: true,

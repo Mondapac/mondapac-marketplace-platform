@@ -592,9 +592,9 @@ export const catalogProviders: readonly Provider[] = [
   },
   {
     provide: PUBLISHED_PRODUCT_READER,
-    inject: [PrismaService],
-    useFactory: (prisma: PrismaService): PublishedProductReader =>
-      new PrismaPublishedProductReader(prisma),
+    inject: [PrismaService, CATALOG_MARKET_POLICY],
+    useFactory: (prisma: PrismaService, policy: CatalogMarketPolicy): PublishedProductReader =>
+      new PrismaPublishedProductReader(prisma, (market) => policy.units(market)),
   },
   {
     provide: VARIANT_GTIN_REGISTRY,

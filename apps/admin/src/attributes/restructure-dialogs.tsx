@@ -426,8 +426,8 @@ type TargetLoad =
  * Merge an attribute into another of the same type (attributes A8). The admin picks the target
  * from the active attributes of the type, maps every value of a choice attribute to a value of the
  * target, reads what the change reaches and confirms. The merged attribute is archived and points
- * at the target: products keep what they have and product pages read the target; filters and
- * search do not read the merge yet. Both versions are the ones the dialog read.
+ * at the target: products keep what they have, and product pages, filters and search read the
+ * target. Both versions are the ones the dialog read.
  */
 export function MergeAttributesDialog({
   detail,

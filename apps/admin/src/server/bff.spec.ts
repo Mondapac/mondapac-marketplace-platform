@@ -1685,6 +1685,25 @@ describe('relay of the wallet and step-up routes', () => {
     expect(tree.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/categories');
   });
 
+  it('passes only featureSetId of the category tree, and only as an id', async () => {
+    const good = await run(
+      'GET',
+      `catalog/admin/categories?featureSetId=${id}&q=x&limit=3`,
+      readHeaders,
+    );
+    expect(good.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories?featureSetId=${id}`,
+    );
+    for (const bad of ['nope', '', `${id}x`, "'; drop"]) {
+      const { upstream } = await run(
+        'GET',
+        `catalog/admin/categories?featureSetId=${encodeURIComponent(bad)}`,
+        readHeaders,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/categories');
+    }
+  });
+
   it('drops a target that is not exactly top or an id: TOP, Top and an empty one (categories C4b)', async () => {
     for (const bad of ['TOP', 'Top', '']) {
       const { upstream } = await run(
@@ -2633,5 +2652,57 @@ describe('relay of the category image (categories C3c)', () => {
       expect((await relay(config, get(other.join('/')), other, upstream)).status).toBe(404);
     }
     expect(upstream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('relay of the order list views', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+    new Request(`http://admin.localhost:3002/api/${path}`, {
+      method,
+      headers,
+      ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
+    });
+
+  it('relays the saved views with the admin list key only', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'ordering/admin/saved-filters?listKey=admin.ordering.orders&extra=1'),
+      ['ordering', 'admin', 'saved-filters'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/ordering/admin/saved-filters?listKey=admin.ordering.orders',
+    );
+    for (const [method, path] of [
+      ['POST', 'ordering/admin/saved-filters'],
+      ['PUT', `ordering/admin/saved-filters/${id}`],
+      ['DELETE', `ordering/admin/saved-filters/${id}`],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+      expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+    }
+  });
+
+  it('refuses other methods and ids on the saved views', async () => {
+    for (const [method, path, headers] of [
+      ['PUT', 'ordering/admin/saved-filters', sameOrigin],
+      ['DELETE', 'ordering/admin/saved-filters', sameOrigin],
+      ['PUT', 'ordering/admin/saved-filters/not-a-uuid', sameOrigin],
+      ['POST', `ordering/admin/saved-filters/${id}`, sameOrigin],
+      ['GET', `ordering/admin/saved-filters/${id}`, sameOrigin],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        request(method, path, headers),
+        path.split('/'),
+        fetchImpl,
+      );
+      expect(response.status, `${method} ${path}`).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
   });
 });
