@@ -7,6 +7,8 @@ import type { Temporal } from '@mondapac/shared-kernel';
  */
 export const RATE_COUNTER_KINDS = [
   'add-sizes.account.hour',
+  'ai-suggest.account.day',
+  'ai-suggest.account.minute',
   'ai-suggest.seller.day',
   'category-propose.seller.day',
   'claim-text-check.account.day',
@@ -100,6 +102,21 @@ export const IMPORT_PHOTO_LIMITS: readonly RateLimit[] = Object.freeze([
 
 /** The rows one seller may start in 24 hours across imports (design 14c): 10,000. */
 export const SELLER_IMPORT_DAILY_ROWS = 10_000;
+
+/**
+ * Drafts of the AI description writer (AIS-03; catalog design 13.1, "plus 50 per seller per 24 h").
+ * The day counters are keyed with the Market's calendar date, so they also end at the Market's
+ * midnight. A seller's drafts count on the seller (all its accounts together); an admin's on the
+ * admin's account. Every account has a burst cap of 6 a minute.
+ */
+export const SELLER_AI_DRAFT_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'ai-suggest.account.minute', limit: 6, windowMinutes: 1 },
+  { kind: 'ai-suggest.seller.day', limit: 50, windowMinutes: DAY },
+]);
+export const ADMIN_AI_DRAFT_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'ai-suggest.account.day', limit: 50, windowMinutes: DAY },
+  { kind: 'ai-suggest.account.minute', limit: 6, windowMinutes: 1 },
+]);
 
 /** Category proposals per seller (categories C9a), on top of the pending cap: 20 a day. */
 export const CATEGORY_PROPOSE_LIMITS: readonly RateLimit[] = Object.freeze([

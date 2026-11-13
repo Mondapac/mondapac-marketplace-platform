@@ -30,6 +30,8 @@ const DETAIL_KEYS = [
   'rowNumber',
   'typeCodes',
   'errors',
+  'leftOut',
+  'resetZone',
 ] as const;
 const logger = new Logger('CatalogHttp');
 
