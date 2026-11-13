@@ -311,6 +311,21 @@ describe.each([['AU'], ['ZZ']])('AI switch (SEL-25) in %s', (code) => {
     expect(t.rows.rows.get(`${code}|${sellerId}`)?.enabled).toBe(false);
   });
 
+  it('refuses an acting-as session and changes nothing (ADR-0019 R3)', async () => {
+    const t = setUp();
+    const sellerId = t.ids.next<'Seller'>();
+    t.rows.seed(market, sellerId);
+    const base = adminOf(t, code);
+    const actingAs = {
+      ...base,
+      actor: { ...base.actor, actingAs: { adminAccountId: t.ids.next<'Account'>() } },
+    } as unknown as CallContext;
+    const result = await t.set.execute(actingAs, { sellerId, body: { enabled: true } });
+    expect(result).toEqual({ ok: false, error: { code: 'access.denied' } });
+    expect(t.rows.rows.get(`${code}|${sellerId}`)?.enabled).toBe(false);
+    expect(t.audits).toEqual([]);
+  });
+
   it('is routed by the facade: the system actor to the system case, a request to the anonymous one', async () => {
     const t = setUp();
     const sellerId = t.ids.next<'Seller'>();

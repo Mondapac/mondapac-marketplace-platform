@@ -48,9 +48,9 @@ const BODY_KEYS = ['enabled'] as const;
  * set with who and when and the audit row `sellers.ai-access.changed` is written. No outbox event:
  * `platform/ai` reads the switch at use time through the `aiAccessOf` facade, nothing consumes a
  * change. A repeat of the value already held is `changed: false` with no audit row. An unknown
- * seller and another Market's seller are both `file.not-found`. The session carries no acting-as
- * marker yet (as for SEL-26 and every sellers write), so the refusal of an acting-as session
- * follows with the acting-as slice (ADR-0019 R3: no AI in an acting-as session).
+ * seller and another Market's seller are both `file.not-found`. An acting-as session is refused
+ * on the reserved `actingAs` marker (identity design 3.4), as the settings store does: no session
+ * carries it yet, and the first one that does is refused here without a change.
  */
 export class ChangeAiAccessUseCase extends UseCase<
   ChangeAiAccessInput,
@@ -92,6 +92,10 @@ export class ChangeAiAccessUseCase extends UseCase<
     const { actor, market } = context;
     if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
       return err({ code: 'access.denied' });
+    }
+    if (Object.hasOwn(actor, 'actingAs')) {
+      const marker = (actor as { readonly actingAs?: unknown }).actingAs;
+      if (marker !== null && marker !== undefined) return err({ code: 'access.denied' });
     }
     const seller = typeof input.sellerId === 'string' ? parseId<'Seller'>(input.sellerId) : null;
     if (seller === null || !seller.ok) return err({ code: 'file.not-found' });
