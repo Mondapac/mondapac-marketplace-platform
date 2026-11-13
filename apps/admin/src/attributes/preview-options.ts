@@ -10,8 +10,8 @@ export type OptionsState =
   | { readonly kind: 'error' }
   | { readonly kind: 'ready'; readonly detail: AttributeDetail };
 
-/** The data types whose preview control needs the attribute's choices. */
-export const NEEDS_OPTIONS: ReadonlySet<string> = new Set(['select', 'multi-select']);
+/** The data types whose preview control needs the attribute read: its choices, or its units. */
+export const NEEDS_OPTIONS: ReadonlySet<string> = new Set(['select', 'multi-select', 'measure']);
 
 /**
  * Reads `GET catalog/admin/attributes/:id` for each id once `enabled`, at most MAX_PARALLEL at a
@@ -23,6 +23,8 @@ export function useAttributeOptions(ids: readonly string[], enabled: boolean) {
   const queue = useRef<string[]>([]);
   const running = useRef(0);
   const alive = useRef(true);
+  // Counts the times the preview was closed: an answer from an earlier opening is dropped.
+  const generation = useRef(0);
 
   useEffect(() => {
     alive.current = true;
@@ -34,11 +36,16 @@ export function useAttributeOptions(ids: readonly string[], enabled: boolean) {
   const pump = useCallback(() => {
     while (alive.current && running.current < MAX_PARALLEL && queue.current.length > 0) {
       const id = queue.current.shift() as string;
+      const mine = generation.current;
       running.current += 1;
       void callApi<AttributeDetail>('GET', `${API_ATTRIBUTES}/${encodeURIComponent(id)}`).then(
         (result) => {
           running.current -= 1;
-          if (alive.current) {
+          if (alive.current && mine === generation.current) {
+            if (!result.ok && result.failure.status === 401) {
+              window.location.assign('/session-ended');
+              return;
+            }
             setStates((prev) => ({
               ...prev,
               [id]: result.ok ? { kind: 'ready', detail: result.body } : { kind: 'error' },
@@ -52,7 +59,14 @@ export function useAttributeOptions(ids: readonly string[], enabled: boolean) {
 
   const key = ids.join('|');
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      // Closed: forget what was read, so the next opening reads the choices again.
+      generation.current += 1;
+      asked.current.clear();
+      queue.current = [];
+      setStates({});
+      return;
+    }
     const fresh = ids.filter((id) => !asked.current.has(id));
     if (fresh.length === 0) return;
     for (const id of fresh) asked.current.add(id);
