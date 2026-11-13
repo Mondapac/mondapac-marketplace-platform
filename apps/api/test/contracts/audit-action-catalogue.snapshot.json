@@ -456,6 +456,17 @@
     }
   },
   {
+    "action": "catalog.missing-details-email.requested",
+    "targetType": "catalog.missing-details-email",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "productCount": "integer",
+      "skippedCount": "integer"
+    }
+  },
+  {
     "action": "catalog.culture.category-mark-changed",
     "targetType": "catalog.culture",
     "targetId": "id",
@@ -2537,6 +2548,18 @@
       "status": "enumOf(published|held|hidden|removed|deleted-by-author)",
       "stepUpSessionId": "optional(id)",
       "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
+    "action": "sellers.ai-access.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "boolean"
+    },
+    "after": {
+      "enabled": "boolean"
     }
   },
   {

@@ -8,6 +8,7 @@ import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { panelHostFor } from '../../../src/server/bff.ts';
 import { panelConfig } from '../../../src/server/config.ts';
 import { requireSession } from '../../../src/server/session.ts';
+import { localZone } from '../../../src/shared/format.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -35,6 +36,7 @@ export default async function OrdersPage() {
           accountId={gate.session.accountId}
           marketId={marketId}
           csrfToken={gate.session.csrfToken}
+          zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
         />
       ) : (
         <>

@@ -60,11 +60,14 @@ export function OrdersList({
   accountId,
   marketId,
   csrfToken = '',
+  zone,
 }: {
   readonly paging?: ListPaging;
   readonly accountId: string;
   readonly marketId: string;
   readonly csrfToken?: string;
+  /** The IANA zone of the table's times and of the day filters (ADR-0005). */
+  readonly zone: string;
 }) {
   const t = useTranslations('orders');
   const tl = useTranslations('load');
@@ -108,7 +111,11 @@ export function OrdersList({
     const ticket = ++latest.current;
     setLoading(true);
     setFailed(false);
-    const text = queryOf(filters, paging === 'pages' ? { paging, page, sort } : { paging, cursor });
+    const text = queryOf(
+      filters,
+      zone,
+      paging === 'pages' ? { paging, page, sort } : { paging, cursor },
+    );
     const result = await callApi<AdminOrderPage>(
       'GET',
       `ordering/admin/orders${text === '' ? '' : `?${text}`}`,
@@ -129,7 +136,7 @@ export function OrdersList({
     setRows(result.body.orders);
     setNext(result.body.nextCursor);
     setTotal(result.body.total ?? null);
-  }, [filters, paging, page, sort, cursor, backwards]);
+  }, [filters, zone, paging, page, sort, cursor, backwards]);
 
   useEffect(() => {
     void load();
@@ -219,6 +226,7 @@ export function OrdersList({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
+      <p className="text-sm text-fg-muted">{t('zone-note', { zone })}</p>
       <div className="flex items-stretch">
         <div className="min-w-0 flex-1">
           <Tabs
@@ -356,7 +364,7 @@ export function OrdersList({
       ) : null}
       {rows.length > 0 ? (
         <div ref={listTop} tabIndex={-1} className="outline-none">
-          <OrdersTable rows={rows} columns={columns} />
+          <OrdersTable rows={rows} columns={columns} zone={zone} />
         </div>
       ) : null}
       {!loading && !failed && rows.length === 0 ? (

@@ -506,6 +506,14 @@ export class MissingDetailsItemBody {
   @ApiProperty() featureSetCode!: string;
   @ApiProperty({ type: [String], description: 'Codes of the required attributes with no value.' })
   missing!: string[];
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'date-time',
+    description:
+      'When an "Email sellers" mail about it last went to its seller; null when never, or while a newer request waits.',
+  })
+  lastEmailedAt!: string | null;
 }
 
 export class MissingDetailsListBody {
@@ -518,6 +526,52 @@ export class MissingDetailsListBody {
     description: 'Feature sets that could not be read; their products are not judged.',
   })
   unreadableFeatureSets!: string[];
+}
+
+export class MissingDetailsEmailRequest {
+  @ApiProperty({
+    type: [String],
+    description: 'The products to ask about, 1 to 200 ids. Judged again on the server.',
+  })
+  productIds!: string[];
+  @ApiProperty({
+    required: false,
+    description: 'True: only report who would be emailed; nothing is written.',
+  })
+  dryRun?: boolean;
+}
+
+class MissingDetailsEmailProductBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty() productCode!: string;
+  @ApiProperty({ nullable: true, type: String }) name!: string | null;
+  @ApiProperty({ type: [String], description: 'English names of the missing details.' })
+  missing!: string[];
+  @ApiProperty({ enum: ['will-send', 'queued', 'recently-emailed'] }) status!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'When the seller was last asked.' })
+  lastRequestedAt!: string | null;
+}
+
+class MissingDetailsEmailSellerBody {
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ nullable: true, type: String }) sellerName!: string | null;
+  @ApiProperty({ type: [MissingDetailsEmailProductBody] })
+  products!: MissingDetailsEmailProductBody[];
+}
+
+class MissingDetailsEmailIgnoredBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ enum: ['not-published', 'platform-product', 'nothing-missing'] }) reason!: string;
+}
+
+export class MissingDetailsEmailBody {
+  @ApiProperty() dryRun!: boolean;
+  @ApiProperty({ description: 'A seller is asked about a product at most once in this many days.' })
+  throttleDays!: number;
+  @ApiProperty({ type: [MissingDetailsEmailSellerBody] })
+  sellers!: MissingDetailsEmailSellerBody[];
+  @ApiProperty({ type: [MissingDetailsEmailIgnoredBody] })
+  ignored!: MissingDetailsEmailIgnoredBody[];
 }
 
 // The restructure routes (attributes A8): the impact dialog, merging values and archiving.

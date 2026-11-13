@@ -116,6 +116,12 @@ import { BlogAccess } from './application/use-cases/blog-access.use-case';
 import { BlogAccessSetUseCase } from './application/use-cases/blog-access-set.use-case';
 import { BlogAccessController } from './presentation/blog-access.controller';
 import { BLOG_ACCESS_REPOSITORY } from './application/ports/blog-access.repository';
+import { AI_ACCESS_SETTING_REPOSITORY } from './application/ports/ai-access-setting.repository';
+import { AiAccessSystem } from './application/use-cases/ai-access-system.use-case';
+import { AiAccess } from './application/use-cases/ai-access.use-case';
+import { ChangeAiAccessUseCase } from './application/use-cases/change-ai-access.use-case';
+import { ViewAiAccessUseCase } from './application/use-cases/view-ai-access.use-case';
+import { AiAccessSettingController } from './presentation/ai-access-setting.controller';
 import { CATEGORY_PROPOSALS_SETTING_REPOSITORY } from './application/ports/category-proposals-setting.repository';
 import { MayProposeCategoriesSystem } from './application/use-cases/may-propose-categories-system.use-case';
 import { MayProposeCategories } from './application/use-cases/may-propose-categories.use-case';
@@ -256,6 +262,7 @@ const PORT = {
   sellingFacts: SELLING_FACTS_REPOSITORY,
   blogAccess: BLOG_ACCESS_REPOSITORY,
   categoryProposalsSetting: CATEGORY_PROPOSALS_SETTING_REPOSITORY,
+  aiAccessSetting: AI_ACCESS_SETTING_REPOSITORY,
   businessActivities: SELLER_BUSINESS_ACTIVITY_REPOSITORY,
   activityDirectory: BUSINESS_ACTIVITY_DIRECTORY,
   sellerCultures: SELLER_CULTURE_REPOSITORY,
@@ -371,6 +378,7 @@ const REVIEW_DECISION_PORTS = {
     ReviewDecisionController,
     BlogAccessController,
     CategoryProposalsSettingController,
+    AiAccessSettingController,
     SellerActivitiesController,
     SellerOwnCulturesController,
     SellerCulturesAdminController,
@@ -750,6 +758,16 @@ const REVIEW_DECISION_PORTS = {
       outbox: true,
       clock: true,
     }),
+    // SEL-25, the per-seller AI switch: the read pair, the admin's change and the admin's read.
+    useCaseProvider(AiAccess, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(AiAccessSystem, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(ChangeAiAccessUseCase, {
+      unitOfWork: true,
+      aiAccessSetting: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(ViewAiAccessUseCase, { unitOfWork: true, aiAccessSetting: true }),
     // A seller's business activities (ADR-0040 decision 4): the admin's get and set, and the read
     // pair behind the facade's `sellerBusinessActivities`.
     useCaseProvider(SellerActivitiesGetUseCase, {
@@ -890,6 +908,8 @@ const REVIEW_DECISION_PORTS = {
         BlogAccessSystem,
         MayProposeCategories,
         MayProposeCategoriesSystem,
+        AiAccess,
+        AiAccessSystem,
         ActiveSince,
         ActiveSinceSystem,
         ReviewerBusinessDetailsRead,
@@ -916,6 +936,8 @@ const REVIEW_DECISION_PORTS = {
         blogAccessSystem: BlogAccessSystem,
         mayProposeCategories: MayProposeCategories,
         mayProposeCategoriesSystem: MayProposeCategoriesSystem,
+        aiAccess: AiAccess,
+        aiAccessSystem: AiAccessSystem,
         activeSince: ActiveSince,
         activeSinceSystem: ActiveSinceSystem,
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
@@ -942,6 +964,8 @@ const REVIEW_DECISION_PORTS = {
           blogAccessSystem,
           mayProposeCategories,
           mayProposeCategoriesSystem,
+          aiAccess,
+          aiAccessSystem,
           activeSince,
           activeSinceSystem,
           reviewerBusinessDetails,

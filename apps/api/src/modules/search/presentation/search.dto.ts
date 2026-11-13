@@ -374,7 +374,11 @@ export class ProductDetailSpecificationValueBody {
 
 export class ProductDetailSpecificationBody {
   @ApiProperty() code!: string;
-  @ApiProperty({ description: 'The attribute name in the Market default locale.' }) name!: string;
+  @ApiProperty({
+    description:
+      "The attribute name in the asked locale, else the Market's fallback locale (English).",
+  })
+  name!: string;
   @ApiProperty({ type: ProductDetailSpecificationValueBody })
   value!: ProductDetailSpecificationValueBody;
 }

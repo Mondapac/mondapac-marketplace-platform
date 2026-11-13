@@ -1,7 +1,7 @@
 import { CARD_TABLE, EmailText } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatMoney } from '../pricing/format.ts';
-import { shortInstant } from '../shared/format.ts';
+import { shortInstantInZone } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { FallbackId } from './fallback-id.tsx';
 import { DEFAULT_COLUMNS, type OrderColumn } from './orders-columns.ts';
@@ -22,14 +22,17 @@ const END: readonly string[] = ['total'];
 
 /**
  * The orders of one page: the reference, then the columns the admin chose (status, dates, customer,
- * seller count and total) in their order. Below 1024 px each order is a labelled card.
+ * seller count and total) in their order. Times are in `zone`, the zone of the day filters, which
+ * the list names once above the table. Below 1024 px each order is a labelled card.
  */
 export function OrdersTable({
   rows,
   columns = DEFAULT_COLUMNS,
+  zone,
 }: {
   readonly rows: readonly AdminOrder[];
   readonly columns?: readonly OrderColumn[];
+  readonly zone: string;
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -50,7 +53,7 @@ export function OrdersTable({
             className={`${CARD_TABLE.labelled} lg:whitespace-nowrap`}
             data-label={t('col.placed')}
           >
-            {shortInstant(order.createdAt, locale)}
+            {shortInstantInZone(order.createdAt, locale, zone, true)}
           </td>
         );
       case 'paid':
@@ -60,7 +63,7 @@ export function OrdersTable({
             className={`${CARD_TABLE.labelled} lg:whitespace-nowrap`}
             data-label={t('col.paid')}
           >
-            {shortInstant(order.confirmedAt, locale)}
+            {shortInstantInZone(order.confirmedAt, locale, zone, true)}
           </td>
         );
       case 'customer':

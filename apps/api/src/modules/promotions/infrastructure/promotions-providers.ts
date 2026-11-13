@@ -2,6 +2,8 @@ import type { FactoryProvider } from '@nestjs/common';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
+import { COMMISSION_PAYOUTS_FACADE, type CommissionPayoutsFacade } from '../../commission-payouts';
 import { PRICING_FACADE, type PricingFacade } from '../../pricing';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { WALLET_FACADE, type WalletFacade } from '../../wallet';
@@ -43,6 +45,8 @@ import {
   type ReviewQueueRepository,
 } from '../application/ports/review-queue.repository';
 import { SELLER_ACTIVITY, type SellerActivity } from '../application/ports/seller-activity';
+import { SELLER_CATALOGUE, type SellerCatalogue } from '../application/ports/seller-catalogue';
+import { SELLER_COMMISSION, type SellerCommission } from '../application/ports/seller-commission';
 import {
   FIRST_ORDER_SETTINGS_REPOSITORY,
   SHIPPING_THRESHOLD_REPOSITORY,
@@ -59,6 +63,7 @@ import {
   UnknownReferralSignals,
   UnknownStoreFollows,
 } from './unknown-customer-facts';
+import { FacadeSellerCatalogue, FacadeSellerCommission } from './facade-seller-campaign-reads';
 import { FacadePriceHistory, FacadeSellerActivity } from './facade-seller-price-reads';
 import { PrismaMarketSettingRepository } from './prisma-market-setting.repository';
 import { PrismaOptInRepository } from './prisma-opt-in.repository';
@@ -139,6 +144,17 @@ export const promotionsProviders: readonly FactoryProvider[] = [
     provide: PRICE_HISTORY,
     inject: [PRICING_FACADE],
     useFactory: (pricing: PricingFacade): PriceHistory => new FacadePriceHistory(pricing),
+  },
+  {
+    provide: SELLER_COMMISSION,
+    inject: [COMMISSION_PAYOUTS_FACADE],
+    useFactory: (payouts: CommissionPayoutsFacade): SellerCommission =>
+      new FacadeSellerCommission(payouts),
+  },
+  {
+    provide: SELLER_CATALOGUE,
+    inject: [CATALOG_FACADE],
+    useFactory: (catalog: CatalogFacade): SellerCatalogue => new FacadeSellerCatalogue(catalog),
   },
   // Phase 3. The reads no module publishes yet are fail-closed adapters (see their file).
   {

@@ -12,7 +12,12 @@ export async function generateMetadata() {
   return { title: t('orders.title') };
 }
 
-export default async function OrdersPage() {
+export default async function OrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string | string[] }>;
+}) {
+  const { view } = await searchParams;
   const t = await getTranslations();
   const title = t('orders.title');
   const page = await loadOrdersPage();
@@ -46,6 +51,7 @@ export default async function OrdersPage() {
         accountId={page.session.accountId}
         marketId={marketId}
         csrfToken={page.session.csrfToken}
+        initialView={view === 'board' ? 'board' : 'table'}
       />
     </SellerShell>
   );

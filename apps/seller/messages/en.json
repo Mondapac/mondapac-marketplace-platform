@@ -2551,8 +2551,8 @@
     },
     "filters": {
       "group": "Filters",
-      "from": "Paid from (UTC)",
-      "to": "Paid until (UTC)",
+      "from": "Paid from",
+      "to": "Paid until",
       "clear": "Clear dates",
       "backwards": "The end day is before the start day."
     },
@@ -2568,6 +2568,16 @@
       "previous": "Previous",
       "next": "Next",
       "page": "Page {n}"
+    },
+    "board": {
+      "view": "Order view",
+      "table": "Table",
+      "board": "Board",
+      "stages": "Order stages",
+      "empty": "No orders at this stage.",
+      "loading": "Loading orders",
+      "retry": "Try again",
+      "more": "Show more"
     },
     "range": "{from} to {to} of {total}",
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the dates to reach the rest, or ask your platform admin to switch List paging to Previous and next."

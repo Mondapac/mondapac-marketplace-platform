@@ -81,6 +81,11 @@ import {
   CATEGORY_PROPOSALS_SETTING_REPOSITORY,
   type CategoryProposalsSettingRepository,
 } from '../application/ports/category-proposals-setting.repository';
+import {
+  AI_ACCESS_SETTING_REPOSITORY,
+  type AiAccessSettingRepository,
+} from '../application/ports/ai-access-setting.repository';
+import { PrismaAiAccessSettingRepository } from './prisma-ai-access-setting.repository';
 import { PrismaCategoryProposalsSettingRepository } from './prisma-category-proposals-setting.repository';
 import {
   SELLER_BUSINESS_ACTIVITY_REPOSITORY,
@@ -479,6 +484,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): CategoryProposalsSettingRepository =>
       new PrismaCategoryProposalsSettingRepository(prisma),
+  },
+  {
+    provide: AI_ACCESS_SETTING_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AiAccessSettingRepository =>
+      new PrismaAiAccessSettingRepository(prisma),
   },
   {
     provide: SELLING_FACTS_REPOSITORY,

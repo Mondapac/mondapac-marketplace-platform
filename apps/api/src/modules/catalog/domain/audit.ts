@@ -807,6 +807,22 @@ export const CategoryAttributesChangedAudit = defineAuditAction({
   after: linkShape,
 });
 
+/** The audit target type of an "Email sellers" request: the seller asked. */
+export const CATALOG_MISSING_DETAILS_EMAIL_TARGET = 'catalog.missing-details-email';
+
+/**
+ * An admin asked one seller, from the Missing details report, to fill in required details (A4-4).
+ * Ids and counts only: no address, no product name, no mail text. `productCount` is the products
+ * named in the mail; `skippedCount` those left out because the seller was asked about them in the
+ * last 7 days.
+ */
+export const MissingDetailsEmailRequestedAudit = defineAuditAction({
+  action: 'catalog.missing-details-email.requested',
+  targetType: CATALOG_MISSING_DETAILS_EMAIL_TARGET,
+  actors: ['authenticated'],
+  after: { productCount: auditField.integer(), skippedCount: auditField.integer() },
+});
+
 /** The audit target type of a variant type's display settings (variants V6): the definition. */
 export const CATALOG_VARIANT_TYPE_TARGET = 'catalog.variant-type';
 
@@ -958,6 +974,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   TopicSuggestedAudit,
   TopicSuggestionDecidedAudit,
   CategoryAttributesChangedAudit,
+  MissingDetailsEmailRequestedAudit,
   VariantTypeSettingsChangedAudit,
   CategoryProposedAudit,
   CategoryProposalApprovedAudit,

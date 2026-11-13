@@ -17,9 +17,11 @@ import {
   readIds,
   writeIds,
 } from '@mondapac/ui';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTimeZone, useTranslations } from 'next-intl';
+import { resolveZone } from '../price/zone-time.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { OrdersBoard } from './orders-board.tsx';
 import {
   DEFAULT_COLUMNS,
   OPTIONAL_COLUMNS,
@@ -43,6 +45,8 @@ import {
 } from './orders-query.ts';
 import { FULFILMENT_FILTERS, type FulfilmentFilter, type SellerOrderPage } from './types.ts';
 
+export type OrdersView = 'table' | 'board';
+
 /**
  * The seller's paid orders: a fulfilment tab, a payment-day range, a sort and either page numbers
  * with the total or "Show more" by cursor, as the Market's List paging setting says. The tab is the
@@ -55,15 +59,21 @@ export function SellerOrders({
   accountId = '',
   marketId = '',
   csrfToken = '',
+  initialView = 'table',
 }: {
   readonly initial: SellerOrderPage;
   readonly paging?: ListPaging;
   readonly accountId?: string;
   readonly marketId?: string;
   readonly csrfToken?: string;
+  readonly initialView?: OrdersView;
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
+  // The seller's own working zone (UTC when it could not be read): the table's times and the
+  // days of the date filters are both on this clock (ADR-0005).
+  const zone = resolveZone(useTimeZone());
+  const [view, setView] = useState<OrdersView>(initialView);
   // What the rows on screen answer. Nothing here changes until an answer arrives, so a failed
   // request leaves the old rows under the old tab, days, sort and range line.
   const [orders, setOrders] = useState(initial.sellerOrders);
@@ -168,6 +178,7 @@ export function SellerOrders({
       queryOf(
         nextFilter,
         nextDays,
+        zone,
         paging === 'pages' ? { paging, page: nextPage, sort: nextSort } : { paging, cursor },
       ),
     );
@@ -224,9 +235,43 @@ export function SellerOrders({
   const pageCount = total === null ? 1 : pageCountOf(total);
   const first = total === null ? 0 : (page - 1) * PAGE_SIZE + 1;
   const cut = total !== null && total > MAX_PAGED_ROWS;
+  function pick(next: OrdersView) {
+    setView(next);
+    // The view stays in the address, so a reload or a shared link opens the same one.
+    const url = new URL(window.location.href);
+    if (next === 'board') url.searchParams.set('view', 'board');
+    else url.searchParams.delete('view');
+    window.history.replaceState(null, '', url);
+  }
+
+  const toggle = (
+    <div role="group" aria-label={t('board.view')} className="flex gap-2">
+      {(['table', 'board'] as const).map((id) => (
+        <Button
+          key={id}
+          variant={view === id ? 'primary' : 'secondary'}
+          aria-pressed={view === id}
+          onClick={() => pick(id)}
+        >
+          {t(`board.${id}`)}
+        </Button>
+      ))}
+    </div>
+  );
+
+  if (view === 'board') {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-fg-muted">{t('intro')}</p>
+        {toggle}
+        <OrdersBoard />
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
+      {orders.length > 0 || !everyState ? toggle : null}
       {orders.length === 0 && everyState && !loading && !failed ? (
         <EmptyState icon="clipboard" title={t('empty-state.title')} body={t('empty-state.body')} />
       ) : (

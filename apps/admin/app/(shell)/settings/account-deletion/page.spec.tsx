@@ -61,6 +61,7 @@ const session = (permissionKeys: string[]): AdminSession => ({
   secondFactorActive: true,
   lastSignInAt: null,
   timezone: null,
+  marketTimezone: 'UTC',
   locale: null,
   email: 'ada@example.test',
   displayName: 'Ada',

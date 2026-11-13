@@ -10,7 +10,8 @@ import {
   type UseCaseGate,
 } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
-import { mapColumns, type ColumnMap } from '../../domain/platform-import/columns';
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
+import { mapColumns, type MappedColumns } from '../../domain/platform-import/columns';
 import { readImportFile, type ParsedRow } from '../../domain/platform-import/import-file';
 import { IMPORT_LIMITS } from '../../domain/platform-import/limits';
 import {
@@ -58,6 +59,7 @@ export type PlatformImportRunOutput =
 export type PlatformImportRunFailure = { readonly code: 'access.denied' };
 
 export interface PlatformImportRunDependencies extends CheckEnvironmentDependencies {
+  readonly familyResolver: ProductFamilyResolver;
   readonly importJobs: PlatformImportRepository;
   readonly importFiles: ImportFileStore;
   readonly importParsers: ImportFileParsers;
@@ -259,7 +261,7 @@ export class PlatformImportRun extends UseCase<
     if (!table.ok) return stop('file-missing');
     const columns = mapColumns(table.value.header);
     if (!columns.ok) return stop('file-missing');
-    const env = await readCheckEnvironment(deps, market);
+    const env = await readCheckEnvironment(deps, market, deps.familyResolver);
     if (!env.ok) return wait(RETRY_SECONDS);
     const byNumber = new Map<number, ParsedRow>(
       table.value.rows.map((row) => [row.rowNumber, row]),
@@ -296,7 +298,7 @@ export class PlatformImportRun extends UseCase<
           job,
           row,
           byNumber.get(row.rowNumber),
-          columns.value.map,
+          columns.value,
           env.value,
           startAs,
         );
@@ -335,14 +337,14 @@ export class PlatformImportRun extends UseCase<
     job: ImportJob,
     row: ImportRowRecord,
     parsed: ParsedRow | undefined,
-    map: ColumnMap,
+    columns: MappedColumns,
     env: CheckEnvironment,
     startAs: 'inactive' | 'active',
   ): Promise<RowOutcome> {
     const { deps } = this;
     const { market } = admin;
     if (parsed === undefined) return { kind: 'failed', code: 'row.changed' };
-    const checked = checkRow(parsed, map, env);
+    const checked = checkRow(parsed, columns.map, env, columns.attributes);
     if (checked.plan === null) return { kind: 'failed', code: 'row.changed' };
 
     let productId = row.productId;
