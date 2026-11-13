@@ -667,6 +667,58 @@ describe('Pickup handover', () => {
   });
 });
 
+describe('SellerOrders export', () => {
+  const click = vi.fn();
+  beforeEach(() => {
+    click.mockReset();
+    URL.createObjectURL = vi.fn(() => 'blob:orders');
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(click);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('downloads the file of the tab and the days, with no page, sort or cursor', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: page([order()]) });
+    const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('Seller order\r\n', {
+        status: 200,
+        headers: { 'content-disposition': 'attachment; filename="seller-orders-2026-11-06.csv"' },
+      }),
+    );
+    mountList();
+    fireEvent.change(screen.getByLabelText('Paid from (UTC)'), { target: { value: '2026-10-01' } });
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+    expect(
+      await screen.findByText('The file of the orders on this list was downloaded.'),
+    ).toBeTruthy();
+    expect(fetched).toHaveBeenCalledWith(
+      '/api/ordering/seller/orders/export?from=2026-10-01T00%3A00%3A00.000Z',
+      { credentials: 'same-origin', cache: 'no-store' },
+    );
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  it('says to narrow the days when the file would be too large', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({ code: 'batch.too-large', details: { max: 10000, matching: 20001 } }),
+        { status: 413 },
+      ),
+    );
+    mountList();
+    fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
+
+    expect(
+      await screen.findByText(
+        '20,001 orders match, and one file holds at most 10,000. Narrow the filters and export again.',
+      ),
+    ).toBeTruthy();
+    expect(click).not.toHaveBeenCalled();
+  });
+});
+
 describe('SellerOrders board', () => {
   const shipped = order({
     sellerOrderId: '0190a000-0000-7000-8000-0000000000a2',

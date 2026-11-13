@@ -43,7 +43,9 @@ import {
   ADMIN_ORDER_NOTE_REPOSITORY,
 } from './application/ports/admin-order-notes';
 import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
+import { AdminExportOrders } from './application/use-cases/admin-export-orders.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
+import { SellerExportOrders } from './application/use-cases/seller-export-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
 import { AdminViewOrderDocument } from './application/use-cases/admin-view-order-document.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
@@ -225,6 +227,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminViewOrder,
       AdminViewOrderDocument,
       AdminListOrders,
+      AdminExportOrders,
+      SellerExportOrders,
       ConfirmPayment,
       CancelPayment,
       SellerListOrders,
