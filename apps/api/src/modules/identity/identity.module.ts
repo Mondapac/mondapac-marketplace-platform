@@ -597,6 +597,7 @@ function useCaseProvider<D, U>(
       effectiveKeys: true,
       factors: true,
       records: true,
+      policy: true,
     }),
     useCaseProvider(PurgeExpired, {
       unitOfWork: true,

@@ -22,9 +22,16 @@ const RESERVED_EDGE_HEADERS = new Set<string>([...SCRUBBED, 'x-market-id']);
 
 const HEADER_TOKEN = /^[a-z0-9][a-z0-9-]*$/;
 
-export type ClientAddressSource =
+export type ClientAddressSource = (
   | { readonly mode: 'socket' }
-  | { readonly mode: 'edge'; readonly cidrs: readonly Cidr[]; readonly header: string };
+  | { readonly mode: 'edge'; readonly cidrs: readonly Cidr[]; readonly header: string }
+) & {
+  /**
+   * Headers only the trusted edge may set (the storefront's CDN location headers): kept from an
+   * edge peer, removed from any other peer and in socket mode. See `withEdgeOnlyHeaders`.
+   */
+  readonly edgeOnly?: readonly string[];
+};
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -58,12 +65,33 @@ export function parseClientAddressSource(env: Env): ClientAddressSource {
   return { mode: 'edge', cidrs: parseCidrList(cidrText), header };
 }
 
+/**
+ * The source with `names` added as edge-only headers. Each must be a lowercase header name that
+ * carries no meaning elsewhere; a bad one throws, so start-up fails.
+ */
+export function withEdgeOnlyHeaders(
+  source: ClientAddressSource,
+  names: readonly string[],
+): ClientAddressSource {
+  for (const name of names) {
+    if (!HEADER_TOKEN.test(name)) throw new Error(`edge-only header '${name}' is not lowercase`);
+    if (RESERVED_EDGE_HEADERS.has(name) || (source.mode === 'edge' && name === source.header)) {
+      throw new Error(`edge-only header cannot be ${name}`);
+    }
+  }
+  return names.length === 0 ? source : { ...source, edgeOnly: [...new Set(names)] };
+}
+
 export type RefusalReason =
   'peer-unknown' | 'edge-header-missing' | 'edge-header-repeated' | 'edge-header-invalid';
 
-type Resolution =
+type Resolution = (
   | { readonly ok: true; readonly address: string }
-  | { readonly ok: false; readonly reason: RefusalReason };
+  | { readonly ok: false; readonly reason: RefusalReason }
+) & {
+  /** The peer is a trusted edge: its edge-only headers stand. */
+  readonly fromEdge: boolean;
+};
 
 /** Removes the scrubbed headers (and the edge one) from `headers` and `rawHeaders`, in place. */
 function scrub(request: IncomingMessage, extra: readonly string[]): void {
@@ -97,20 +125,20 @@ function edgeValues(request: IncomingMessage, header: string): string[] {
 function resolve(request: IncomingMessage, source: ClientAddressSource): Resolution {
   const remote = request.socket.remoteAddress;
   if (remote === undefined || parseAddress(normalisePeer(remote)) === null) {
-    return { ok: false, reason: 'peer-unknown' };
+    return { ok: false, reason: 'peer-unknown', fromEdge: false };
   }
   const peer = normalisePeer(remote);
   if (source.mode === 'socket' || !source.cidrs.some((cidr) => cidrContains(cidr, peer))) {
-    return { ok: true, address: peer };
+    return { ok: true, address: peer, fromEdge: false };
   }
   const values = edgeValues(request, source.header);
-  if (values.length === 0) return { ok: false, reason: 'edge-header-missing' };
-  if (values.length > 1) return { ok: false, reason: 'edge-header-repeated' };
+  if (values.length === 0) return { ok: false, reason: 'edge-header-missing', fromEdge: true };
+  if (values.length > 1) return { ok: false, reason: 'edge-header-repeated', fromEdge: true };
   const value = (values[0] ?? '').trim();
   if (value === '' || isIP(value) === 0 || parseAddress(value) === null) {
-    return { ok: false, reason: 'edge-header-invalid' };
+    return { ok: false, reason: 'edge-header-invalid', fromEdge: true };
   }
-  return { ok: true, address: value };
+  return { ok: true, address: value, fromEdge: true };
 }
 
 /**
@@ -124,7 +152,11 @@ export function applyClientAddress(
   onRefusal?: (reason: RefusalReason, peer: string) => void,
 ): boolean {
   const resolution = resolve(request, source);
-  scrub(request, source.mode === 'edge' ? [source.header] : []);
+  scrub(request, [
+    ...(source.mode === 'edge' ? [source.header] : []),
+    // Only an edge sets these; from anyone else they are the visitor's own words.
+    ...(resolution.fromEdge ? [] : (source.edgeOnly ?? [])),
+  ]);
   if (!resolution.ok) {
     onRefusal?.(resolution.reason, request.socket.remoteAddress ?? '');
     return false;

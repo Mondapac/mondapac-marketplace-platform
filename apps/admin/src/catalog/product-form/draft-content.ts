@@ -1,4 +1,5 @@
 import type { FormField, FormOption } from './types.ts';
+import { DRAFT_KEY, SIZE_KEYS, type VariantFieldValues } from './variant-fields.ts';
 
 // The editable parts of a platform product's working copy beside its texts: categories, tax
 // category, attribute values and variants (the same shapes the seller panel writes). Pure functions: they read the saved `content` into editor state and write
@@ -20,7 +21,25 @@ export interface VariantRow {
   readonly options: Readonly<Record<string, string>>;
   /** Locale to label. */
   readonly labels: Readonly<Record<string, string>>;
+  /** V4 fields as typed: GTIN, shipping weight and box, and the gallery photos it picked. */
+  readonly gtin: string;
+  readonly weightGrams: string;
+  readonly lengthMm: string;
+  readonly widthMm: string;
+  readonly heightMm: string;
+  /** Ids from the product's photos; the first is the variant's main photo. */
+  readonly imageIds: readonly string[];
 }
+
+/** A variant row's V4 fields before anything is filled in. */
+export const NO_VARIANT_FIELDS: VariantFieldValues = {
+  gtin: '',
+  weightGrams: '',
+  lengthMm: '',
+  widthMm: '',
+  heightMm: '',
+  imageIds: [],
+};
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -69,6 +88,9 @@ export function attributeInputsOf(
     } else if (field.dataType === 'multi-select') {
       if (Array.isArray(value)) {
         inputs[field.code] = value.filter((item): item is string => typeof item === 'string');
+      } else if (typeof value === 'string') {
+        // Saved while the attribute was a select (before Convert type): a list of one.
+        inputs[field.code] = [value];
       }
     } else if (field.localizable) {
       if (isStringMap(value)) inputs[field.code] = value;
@@ -165,8 +187,26 @@ export function variantRowsOf(
         state: variant.state === 'proposed' ? 'proposed' : 'published',
         options: isStringMap(options) ? options : {},
         labels: isStringMap(labels) ? labels : {},
+        ...fieldsOf(entry),
       };
     });
+}
+
+/** The V4 fields a saved draft entry holds, as editor text. */
+function fieldsOf(entry: Record<string, unknown> | undefined): VariantFieldValues {
+  const text = (value: unknown): string =>
+    typeof value === 'number' ? String(value) : typeof value === 'string' ? value : '';
+  const images = entry?.['imageIds'];
+  return {
+    gtin: text(entry?.['gtin']),
+    weightGrams: text(entry?.[DRAFT_KEY.weightGrams]),
+    lengthMm: text(entry?.[DRAFT_KEY.lengthMm]),
+    widthMm: text(entry?.[DRAFT_KEY.widthMm]),
+    heightMm: text(entry?.[DRAFT_KEY.heightMm]),
+    imageIds: Array.isArray(images)
+      ? images.filter((item): item is string => typeof item === 'string')
+      : [],
+  };
 }
 
 /** The saved `variants` list for these rows; a new row carries its key until the server mints its id. */
@@ -180,10 +220,18 @@ export function variantsWith(rows: readonly VariantRow[]): Record<string, unknow
         .map(([locale, label]) => [locale, label.trim()] as const)
         .filter(([, label]) => label !== ''),
     );
+    const sizes = Object.fromEntries(
+      SIZE_KEYS.filter((key) => row[key].trim() !== '').map(
+        (key) => [DRAFT_KEY[key], Number(row[key].trim())] as const,
+      ),
+    );
     return {
       variantId: row.variantId ?? row.key,
       ...(Object.keys(options).length > 0 ? { optionValues: options } : {}),
       ...(Object.keys(labels).length > 0 ? { labels } : {}),
+      ...(row.gtin.trim() !== '' ? { gtin: row.gtin.trim() } : {}),
+      ...sizes,
+      ...(row.imageIds.length > 0 ? { imageIds: [...row.imageIds] } : {}),
     };
   });
 }

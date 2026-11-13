@@ -207,6 +207,18 @@ export const CATALOG_TOPIC_MANAGE = definePermission('catalog', {
 });
 
 /**
+ * Review the tags sellers suggest (product tags package T5): read the open queue and approve, map
+ * or reject a suggestion. Platform scope; unprotected. Approving also creates a topic, so it needs
+ * `catalog.topic.manage` as well (no escalation through this key); no default role lists either
+ * key yet: the Platform Administrator holds every key.
+ */
+export const CATALOG_TOPIC_SUGGESTION_REVIEW = definePermission('catalog', {
+  key: 'catalog.topic-suggestion.review',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
  * Read the platform category tree, its details, counts, history and the impact of a change
  * (categories package C1; plan section 11). Platform scope; unprotected, so Catalogue Moderator,
  * Operations Support and Viewer receive it by identity's seed. No step-up.
@@ -288,6 +300,20 @@ export const CATALOG_ATTRIBUTE_RESTRUCTURE = definePermission('catalog', {
 });
 
 /**
+ * Import attributes and their values from a file (attributes plan 14, package A9). Platform scope;
+ * **protected**: an import is a bulk write of what sellers must declare. Every row still goes
+ * through the editor use cases, so running an import also needs `catalog.attribute.edit`
+ * (protected); this key alone does not let a role change an attribute. No default role lists it;
+ * the Platform Administrator grants it in a custom role. Exporting needs only
+ * `catalog.attribute.view`.
+ */
+export const CATALOG_ATTRIBUTE_IMPORT = definePermission('catalog', {
+  key: 'catalog.attribute.import',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
  * Approve, map or reject a seller's suggestion of a new value for a select attribute (attributes
  * plan 14, package A5). Platform scope; unprotected, so Catalogue Moderator receives it by
  * identity's seed. It does not need `catalog.attribute.edit` (protected): approving adds exactly
@@ -308,6 +334,29 @@ export const CATALOG_ATTRIBUTE_SUGGESTION_DECIDE = definePermission('catalog', {
  */
 export const CATALOG_VARIANT_VIEW = definePermission('catalog', {
   key: 'catalog.variant.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Propose a shelf under a platform category, and cancel a waiting proposal (categories C9a; CAT-51;
+ * catalog design 6.1). Seller scope, not protected; the command also asks `sellers`
+ * `mayProposeCategories` (SEL-26), so the key alone is not enough. Default role mapping (Store
+ * Manager) is `identity`'s seed; the Seller Owner holds every seller key.
+ */
+export const CATALOG_OWN_CATEGORY_PROPOSE = definePermission('catalog', {
+  key: 'catalog.own-category.propose',
+  scope: 'seller',
+  protected: false,
+});
+
+/**
+ * Approve or reject seller category proposals (categories C9a; CAT-52; catalog design 6.1).
+ * Platform scope, not protected; always required, whatever CAT-36 says. Default role mapping
+ * (Catalogue Moderator) is `identity`'s seed.
+ */
+export const CATALOG_CATEGORY_PROPOSAL_DECIDE = definePermission('catalog', {
+  key: 'catalog.category-proposal.decide',
   scope: 'platform',
   protected: false,
 });
@@ -339,7 +388,43 @@ export const CATALOG_VARIANT_REQUEST_REVIEW = definePermission('catalog', {
   protected: false,
 });
 
+/**
+ * Read cultures and their category marks (multi-culture package 1; ADR-0047 decision 12). Platform
+ * scope; unprotected, so a custom role may grant it; no default role lists it yet: the Platform
+ * Administrator holds every key.
+ */
+export const CATALOG_CULTURE_READ = definePermission('catalog', {
+  key: 'catalog.culture.read',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Create and edit cultures, their names, the required certification type and the "certification
+ * required" or "neutral" marks on categories. Platform scope; **protected** (ADR-0047 decision 12):
+ * the type and the marks decide whether uncertified Offers are shown in a certified culture. No
+ * default role lists it; the Platform Administrator grants it in a custom role.
+ */
+export const CATALOG_CULTURE_EDIT = definePermission('catalog', {
+  key: 'catalog.culture.edit',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Promote a seller shelf into the platform tree, or merge it into a platform category (categories
+ * C9a; CAT-53; catalog design 6.1). Platform scope and protected: only the Platform Administrator.
+ */
+export const CATALOG_SELLER_CATEGORY_PROMOTE_MERGE = definePermission('catalog', {
+  key: 'catalog.seller-category.promote-merge',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
+  CATALOG_OWN_CATEGORY_PROPOSE,
+  CATALOG_CATEGORY_PROPOSAL_DECIDE,
+  CATALOG_SELLER_CATEGORY_PROMOTE_MERGE,
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
   CATALOG_OWN_PRODUCT_EDIT,
@@ -358,9 +443,11 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_BUSINESS_ACTIVITY_EDIT,
   CATALOG_TOPIC_READ,
   CATALOG_TOPIC_MANAGE,
+  CATALOG_TOPIC_SUGGESTION_REVIEW,
   CATALOG_ATTRIBUTE_VIEW,
   CATALOG_ATTRIBUTE_EDIT,
   CATALOG_ATTRIBUTE_RESTRUCTURE,
+  CATALOG_ATTRIBUTE_IMPORT,
   CATALOG_ATTRIBUTE_SUGGESTION_DECIDE,
   CATALOG_CATEGORY_TREE_VIEW,
   CATALOG_CATEGORY_TREE_EDIT,
@@ -369,4 +456,6 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_VARIANT_VIEW,
   CATALOG_VARIANT_TYPE_EDIT,
   CATALOG_VARIANT_REQUEST_REVIEW,
+  CATALOG_CULTURE_READ,
+  CATALOG_CULTURE_EDIT,
 ]);

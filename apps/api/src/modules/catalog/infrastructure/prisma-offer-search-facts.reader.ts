@@ -25,13 +25,15 @@ import { loadSearchDefinitions } from './search-definitions.loader';
 
 /**
  * {@link OfferSearchFactsReader}: the Offers by `(market_id, id)`, then the published revisions
- * of their products, then the texts and categories of those revisions. Four statements, no join.
+ * of their products, then the texts and categories of those revisions, each its own statement, no
+ * join.
  * An Offer whose product has no published revision, or no text in the asked locale, has
  * `text: null`. The attributes (A7) come from the revisions' attribute values, the product's
  * ACTIVE brand with its aliases (brands are shared by every Market) and the PUBLISHED revisions
  * of the definitions the values name. The variants (V8) are the published revision's variants whose
  * registry state is `published`, with their axis facets, label and GTIN; their labels are added to
- * the search text.
+ * the search text. A variant the seller switched off for an Offer (V5 `selling = false`) is left out
+ * of that Offer's variants, so it gives no facet, price, label word or GTIN match.
  */
 export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
   constructor(private readonly prisma: PrismaService) {}
@@ -88,6 +90,22 @@ export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
       locale,
     );
     const variantsByRevision = await this.variantsOf(tx, market.marketId, revisionIds, locale);
+    // The seller's per-variant switch (V5): a sell unit switched off is not indexed for its Offer.
+    // Only `selling = false` rows matter; a unit with no stored row sells.
+    const offUnits = new Set(
+      offers.length === 0
+        ? []
+        : (
+            await tx.catalogOfferSellUnit.findMany({
+              where: {
+                marketId: market.marketId,
+                offerId: { in: offers.map((offer) => offer.id) },
+                selling: false,
+              },
+              select: { offerId: true, variantId: true },
+            })
+          ).map((row) => `${row.offerId}:${row.variantId}`),
+    );
     const textByRevision = new Map(texts.map((row) => [row.revisionId, row]));
     const categoriesByRevision = new Map<string, Id<'Category'>[]>();
     for (const row of categories) {
@@ -100,7 +118,11 @@ export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
       const text = revisionId === undefined ? undefined : textByRevision.get(revisionId);
       const sellable = offer.status === 'published' && offer.listed;
       const variants =
-        revisionId === undefined || !sellable ? [] : (variantsByRevision.get(revisionId) ?? []);
+        revisionId === undefined || !sellable
+          ? []
+          : (variantsByRevision.get(revisionId) ?? []).filter(
+              (variant) => !offUnits.has(`${offer.id}:${variant.variantId}`),
+            );
       const attributes =
         revisionId === undefined
           ? NO_SEARCH_ATTRIBUTES
@@ -278,10 +300,28 @@ export class PrismaOfferSearchFactsReader implements OfferSearchFactsReader {
       _max: { updatedAt: true },
     });
     const aliases = await tx.catalogBrandAlias.count();
+    // Multi-culture package 3a: a culture's status or required type changes which Offers its code
+    // belongs to (`culture_codes`), so it is part of the stamp; the reindex that follows is also the
+    // backfill of the column. At most 200 cultures per Market.
+    const cultures = await tx.catalogCulture.findMany({
+      where: { marketId: market.marketId },
+      select: { code: true, status: true, requiredCertificationType: true },
+      orderBy: { code: 'asc' },
+    });
+    // A culture's mark and visibility rows (Mojtaba, #848 item 3): a set moves the latest
+    // `updated_at`, a clear moves the count, so the reindex follows a mark change the direct
+    // subtree sync handed off (or missed).
+    const marks = await tx.catalogCultureCategory.aggregate({
+      where: { marketId: market.marketId },
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    });
     const text = [
       ...definitions.map((d) => `${d.code}:${d.status}:${d.publishedRevisionId ?? '-'}`),
       `brands:${brands._count._all}:${brands._max.updatedAt?.toISOString() ?? '-'}`,
       `aliases:${aliases}`,
+      ...cultures.map((c) => `culture:${c.code}:${c.status}:${c.requiredCertificationType ?? '-'}`),
+      `culture-marks:${marks._count._all}:${marks._max.updatedAt?.toISOString() ?? '-'}`,
     ].join('|');
     return createHash('sha256').update(text).digest('hex').slice(0, 32);
   }

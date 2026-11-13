@@ -156,7 +156,7 @@ export class FixedFactsClaimQueryBuilder extends ClaimQueryBuilder {
     super({
       products: { findById: unused } as never,
       revisions: { find: unused } as never,
-      categoryPaths: { livePaths: unused },
+      categoryPaths: { livePaths: unused, livePathsMany: unused },
     });
   }
 
@@ -187,6 +187,27 @@ export class FixedFactsClaimQueryBuilder extends ClaimQueryBuilder {
     this.publishedReads += 1;
     this.onPublishedRead?.(this.publishedReads, this);
     return Promise.resolve({ facts: this.published, productVersion: this.productVersion });
+  }
+
+  /** Batched reads so far (`publishedSnapshots`); each answers the fixed facts for every product. */
+  publishedBatches = 0;
+
+  override publishedSnapshots(
+    _market: MarketContext,
+    productIds: readonly Id<'Product'>[],
+  ): Promise<ReadonlyMap<Id<'Product'>, PublishedSnapshot>> {
+    this.publishedBatches += 1;
+    return Promise.resolve(
+      new Map(
+        productIds.map((productId) => [
+          productId,
+          {
+            facts: this.published === null ? null : { ...this.published, productId },
+            productVersion: this.productVersion,
+          },
+        ]),
+      ),
+    );
   }
 
   override revisionFacts(

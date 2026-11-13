@@ -1,5 +1,5 @@
 import { ok } from '@mondapac/shared-kernel';
-import type { MarketContext, Result } from '@mondapac/shared-kernel';
+import type { AttributeSchema, MarketContext, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
   CategoryTreeUnavailableError,
@@ -7,6 +7,7 @@ import {
   MAX_TREE_NODES,
 } from '../../domain/category-tree';
 import { looseName, type CheckEnvironment } from '../../domain/platform-import/row-check';
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { CategoryTreeReader } from '../ports/category-tree.reader';
@@ -32,6 +33,11 @@ export type CheckEnvironmentFailure = { readonly code: 'access.unavailable' };
 export async function readCheckEnvironment(
   deps: CheckEnvironmentDependencies,
   market: MarketContext,
+  /**
+   * Resolves the feature set of a category. When given, a row is checked against the schema of its
+   * own category's feature set (attributes plan A4); without it every row uses the default family.
+   */
+  familyResolver?: ProductFamilyResolver,
 ): Promise<Result<CheckEnvironment, CheckEnvironmentFailure>> {
   let locales: { readonly default: string; readonly supported: readonly string[] };
   let familyCode: string;
@@ -47,11 +53,32 @@ export async function readCheckEnvironment(
   }
   const read = await deps.unitOfWork.run(
     market,
-    async () =>
-      ok({
-        nodes: await deps.treeReader.nodes(market, MAX_TREE_NODES + 1),
-        schema: await deps.attributes.loadSchema(market, familyCode),
-      }),
+    async () => {
+      const nodes = await deps.treeReader.nodes(market, MAX_TREE_NODES + 1);
+      const schema = await deps.attributes.loadSchema(market, familyCode);
+      // The schema of the feature set of each category, one read per feature set.
+      const bySchema = new Map<string, AttributeSchema | null>();
+      const byCategory = new Map<string, AttributeSchema | null>();
+      if (familyResolver !== undefined && nodes.length <= MAX_TREE_NODES) {
+        const session = await familyResolver.open(market);
+        bySchema.set(familyCode, schema);
+        for (const node of nodes) {
+          const resolved = await session.resolve(node.id);
+          if (!resolved.ok) {
+            byCategory.set(node.id, null);
+            continue;
+          }
+          if (!bySchema.has(resolved.familyCode)) {
+            bySchema.set(
+              resolved.familyCode,
+              await deps.attributes.loadSchema(market, resolved.familyCode),
+            );
+          }
+          byCategory.set(node.id, bySchema.get(resolved.familyCode) ?? null);
+        }
+      }
+      return ok({ nodes, schema, byCategory });
+    },
     { readOnly: true },
   );
   if (!read.ok || read.value.schema === null) {
@@ -81,6 +108,7 @@ export async function readCheckEnvironment(
     typesOffered,
     handlerFor: deps.productTypes,
     schema: read.value.schema,
+    ...(familyResolver === undefined ? {} : { schemaByCategory: read.value.byCategory }),
     taxCategoryCodes,
   });
 }

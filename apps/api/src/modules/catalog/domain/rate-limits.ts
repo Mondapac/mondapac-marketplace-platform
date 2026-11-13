@@ -6,7 +6,9 @@ import type { Temporal } from '@mondapac/shared-kernel';
  * them (kind, then key), so two units never wait on each other in a cycle.
  */
 export const RATE_COUNTER_KINDS = [
+  'add-sizes.account.hour',
   'ai-suggest.seller.day',
+  'category-propose.seller.day',
   'claim-text-check.account.day',
   'claim-text-check.account.minute',
   'draft-save.account.day',
@@ -44,6 +46,11 @@ export const DRAFT_SAVE_LIMITS: readonly RateLimit[] = Object.freeze([
 /** Submits per seller (D 8.4): 30 per hour. */
 export const SUBMIT_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'submit.seller.hour', limit: 30, windowMinutes: 60 },
+]);
+
+/** Add sizes per account (D 8.4; variants V9): 20 an hour, a structural change rarely repeated. */
+export const ADD_SIZES_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'add-sizes.account.hour', limit: 20, windowMinutes: 60 },
 ]);
 
 /** Claim-text checks per account (D 6.6, L6): 30 per minute and 1,000 per 24 h. */
@@ -93,6 +100,11 @@ export const IMPORT_PHOTO_LIMITS: readonly RateLimit[] = Object.freeze([
 
 /** The rows one seller may start in 24 hours across imports (design 14c): 10,000. */
 export const SELLER_IMPORT_DAILY_ROWS = 10_000;
+
+/** Category proposals per seller (categories C9a), on top of the pending cap: 20 a day. */
+export const CATEGORY_PROPOSE_LIMITS: readonly RateLimit[] = Object.freeze([
+  { kind: 'category-propose.seller.day', limit: 20, windowMinutes: DAY },
+]);
 
 /** A counter as the reservation unit left it: this attempt is already counted. */
 export interface RateReservation {

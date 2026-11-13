@@ -1,7 +1,7 @@
 import { CARD_TABLE, EmailText } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatMoney } from '../pricing/format.ts';
-import { shortInstant } from '../shared/format.ts';
+import { shortInstantInZone } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { FallbackId } from './fallback-id.tsx';
 import { OrderStatusBadge } from './status-badge.tsx';
@@ -10,8 +10,17 @@ import type { AdminOrder, OrderCustomer } from './types.ts';
 const COLUMNS = ['order', 'status', 'placed', 'paid', 'customer', 'sellers', 'total'] as const;
 const END: readonly string[] = ['total'];
 
-/** The orders of one page: reference, status, dates, customer, seller count and total. */
-export function OrdersTable({ rows }: { readonly rows: readonly AdminOrder[] }) {
+/**
+ * The orders of one page: reference, status, dates, customer, seller count and total. Times are in
+ * `zone`, the zone of the day filters, which the list names once above the table.
+ */
+export function OrdersTable({
+  rows,
+  zone,
+}: {
+  readonly rows: readonly AdminOrder[];
+  readonly zone: string;
+}) {
   const t = useTranslations('orders');
   const locale = useLocale();
   return (
@@ -59,13 +68,13 @@ export function OrdersTable({ rows }: { readonly rows: readonly AdminOrder[] }) 
                 className={`${CARD_TABLE.labelled} lg:whitespace-nowrap`}
                 data-label={t('col.placed')}
               >
-                {shortInstant(order.createdAt, locale)}
+                {shortInstantInZone(order.createdAt, locale, zone, true)}
               </td>
               <td
                 className={`${CARD_TABLE.labelled} lg:whitespace-nowrap`}
                 data-label={t('col.paid')}
               >
-                {shortInstant(order.confirmedAt, locale)}
+                {shortInstantInZone(order.confirmedAt, locale, zone, true)}
               </td>
               <td className={CARD_TABLE.labelled} data-label={t('col.customer')}>
                 <CustomerCell customer={order.customer} accountId={order.accountId} />

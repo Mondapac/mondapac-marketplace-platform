@@ -613,6 +613,10 @@ export interface DeliveryLocatorSource {
    * the API); false or absent: the stubbed lookup on the sample places above.
    */
   readonly live?: boolean;
+  /**
+   * The real map (Mapbox GL JS, ADR-0048): its public token and style. Absent: the drawn stub map.
+   */
+  readonly map?: { readonly token: string; readonly style: string };
 }
 
 /**

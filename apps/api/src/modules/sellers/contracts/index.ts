@@ -10,6 +10,8 @@ export {
   SellerCategoryProposalsGranted,
   SellerCategoryProposalsRevoked,
   SellerFileCreated,
+  // Consumed by search: a membership change re-indexes the seller's Offers (multi-culture 3a).
+  SellerCultureStatusChanged,
 } from '../domain/events';
 export type { ApprovedSellerZone, SellerSummary } from '../domain/seller-summary';
 export {

@@ -10,6 +10,8 @@ import {
   CATALOG_FACADE,
   CATALOG_FILTERS_FACADE,
   CATALOG_INDEX_FACADE,
+  CATALOG_CULTURES_FACADE,
+  type CatalogCulturesFacade,
 } from '../../catalog';
 import type {
   CatalogAssistantFacade,
@@ -36,6 +38,8 @@ import {
   type OfferDocumentRepository,
 } from '../application/ports/offer-document.repository';
 import { OFFER_FEED, type OfferFeed } from '../application/ports/offer-feed';
+import { OFFER_CULTURE_SOURCE, type OfferCultureSource } from '../application/ports/offer-cultures';
+import { FacadeOfferCultures } from './facade-offer-cultures';
 import { SELL_UNIT_STATES, type SellUnitStates } from '../application/ports/sell-unit-states';
 import {
   OFFER_VARIANT_READER,
@@ -97,6 +101,24 @@ import { FacadePublicVisibility } from './facade-public-visibility';
 import { FacadeSellerEligibility } from './facade-seller-eligibility';
 import { PrismaOfferDocumentRepository } from './prisma-offer-document.repository';
 import { OFFER_FACET_READER, type OfferFacetReader } from '../application/ports/offer-facet.reader';
+import { OFFER_SEARCH_INDEX, type OfferSearchIndex } from '../application/ports/offer-search-index';
+import { CATEGORY_TREE_SOURCE, type CategoryTreeSource } from '../application/ports/category-tree';
+import { RawOfferScopeReader } from './raw-offer-scope.reader';
+import { RawStoreSearchReader } from './raw-store-search.reader';
+import { RawSuggestReader } from './raw-suggest.reader';
+import { InMemorySuggestCache } from './in-memory-suggest-cache';
+import { SUGGEST_CACHE, type SuggestCache } from '../application/ports/suggest-cache';
+import { CLOCK } from '../../../platform/clock/clock.module';
+import type { Clock } from '@mondapac/shared-kernel';
+import { PrismaStoreDocumentRepository } from './prisma-store-document.repository';
+import {
+  STORE_DOCUMENT_REPOSITORY,
+  type StoreDocumentRepository,
+} from '../application/ports/store-document.repository';
+import { PostgresOfferSearchIndex } from './postgres-offer-search-index';
+import { FacadeCategoryTree } from './facade-category-tree';
+import { FacadeStoreDirectory } from './facade-store-directory';
+import { STORE_DIRECTORY, type StoreDirectory } from '../application/ports/store-directory';
 import { RawOfferFacetReader } from './raw-offer-facet.reader';
 import { RawOfferSearchReader } from './raw-offer-search.reader';
 import {
@@ -157,6 +179,12 @@ export const searchProviders: readonly FactoryProvider[] = [
     useFactory: (prisma: PrismaService): OfferVariantReader => new PrismaOfferVariantReader(prisma),
   },
   {
+    provide: OFFER_CULTURE_SOURCE,
+    inject: [CATALOG_CULTURES_FACADE],
+    useFactory: (cultures: CatalogCulturesFacade): OfferCultureSource =>
+      new FacadeOfferCultures(cultures),
+  },
+  {
     provide: OFFER_FEED,
     inject: [CATALOG_INDEX_FACADE],
     useFactory: (catalog: CatalogIndexFacade): OfferFeed => new FacadeOfferFeed(catalog),
@@ -203,6 +231,41 @@ export const searchProviders: readonly FactoryProvider[] = [
     provide: BRAND_PRODUCTS,
     inject: [CATALOG_FACADE],
     useFactory: (catalog: CatalogFacade): BrandProducts => new FacadeBrandProducts(catalog),
+  },
+  {
+    provide: OFFER_SEARCH_INDEX,
+    inject: [RAW_READ_PORT],
+    useFactory: (rawReads: RawReadPort): OfferSearchIndex =>
+      new PostgresOfferSearchIndex(
+        new RawOfferSearchReader(rawReads),
+        new RawOfferFacetReader(rawReads),
+        new RawOfferScopeReader(rawReads),
+        new RawStoreSearchReader(rawReads),
+        new RawSuggestReader(rawReads),
+      ),
+  },
+  {
+    // In-process today (no Redis client in the platform); a shared cache replaces it here.
+    provide: SUGGEST_CACHE,
+    inject: [CLOCK],
+    useFactory: (clock: Clock): SuggestCache => new InMemorySuggestCache(clock),
+  },
+  {
+    provide: STORE_DOCUMENT_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): StoreDocumentRepository =>
+      new PrismaStoreDocumentRepository(prisma),
+  },
+  {
+    provide: STORE_DIRECTORY,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): StoreDirectory => new FacadeStoreDirectory(sellers),
+  },
+  {
+    provide: CATEGORY_TREE_SOURCE,
+    inject: [CATALOG_ASSISTANT_FACADE],
+    useFactory: (catalog: CatalogAssistantFacade): CategoryTreeSource =>
+      new FacadeCategoryTree(catalog),
   },
   {
     provide: CATEGORY_SUBTREE_SOURCE,

@@ -67,6 +67,7 @@ export function TagField({
   ids,
   known,
   defaultLocale,
+  productId,
   issues,
   max,
   onMax,
@@ -75,6 +76,8 @@ export function TagField({
   readonly ids: readonly string[];
   readonly known: KnownTags;
   readonly defaultLocale: string;
+  /** The product being edited: the "Suggest one" link names it. */
+  readonly productId: string;
   /** The freeze refusals about tags, told as one sentence each next to the control. */
   readonly issues: readonly TopicIssue[];
   readonly max: number;
@@ -87,6 +90,7 @@ export function TagField({
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const sequence = useRef(0);
   const lastQuery = useRef('');
+  const [term, setTerm] = useState('');
   const mounted = useRef(true);
   useEffect(
     () => () => {
@@ -98,6 +102,7 @@ export function TagField({
   const search = useCallback(
     async (query: string) => {
       lastQuery.current = query;
+      setTerm(query.trim());
       const mine = ++sequence.current;
       setLoading(true);
       setLoadError(undefined);
@@ -158,39 +163,55 @@ export function TagField({
     ...(archivedCount > 0 ? [t('catalog.edit.tags.archived-help')] : []),
   ].join(' ');
 
+  const suggestHref = `/tag-suggestions/new?${new URLSearchParams({
+    product: productId,
+    ...(term !== '' && results.length === 0 ? { label: term.slice(0, 40) } : {}),
+  }).toString()}`;
   return (
-    <SearchSelect
-      multiple
-      label={t('catalog.edit.tags.label')}
-      placeholder={t('catalog.edit.tags.placeholder')}
-      help={help}
-      error={sentences.length > 0 ? sentences.join(' ') : undefined}
-      options={results.map(optionOf)}
-      value={value}
-      max={max}
-      alwaysSearch
-      loading={loading}
-      loadError={loadError}
-      onRetry={() => void search(lastQuery.current)}
-      onSearch={(query) => void search(query)}
-      labels={{
-        search: t('catalog.edit.tags.labels.search'),
-        noResults: t('catalog.edit.tags.labels.no-results'),
-        loading: t('catalog.edit.tags.labels.loading'),
-        retry: t('catalog.edit.tags.labels.retry'),
-        remove: (name) => t('catalog.edit.tags.labels.remove', { name }),
-        limitReached: (limit) => t('catalog.edit.tags.labels.limit-reached', { max: limit }),
-        none: t('catalog.edit.tags.labels.none'),
-      }}
-      onChange={(next) => {
-        for (const option of next) {
-          const choice = results.find((item) => item.id === option.value);
-          if (choice !== undefined && !known.has(choice.id)) {
-            known.set(choice.id, { name: nameOfChoice(choice, defaultLocale), archived: false });
+    <div className="flex flex-col gap-2">
+      <SearchSelect
+        multiple
+        label={t('catalog.edit.tags.label')}
+        placeholder={t('catalog.edit.tags.placeholder')}
+        help={help}
+        error={sentences.length > 0 ? sentences.join(' ') : undefined}
+        options={results.map(optionOf)}
+        value={value}
+        max={max}
+        alwaysSearch
+        loading={loading}
+        loadError={loadError}
+        onRetry={() => void search(lastQuery.current)}
+        onSearch={(query) => void search(query)}
+        labels={{
+          search: t('catalog.edit.tags.labels.search'),
+          noResults: t('catalog.edit.tags.labels.no-results'),
+          loading: t('catalog.edit.tags.labels.loading'),
+          retry: t('catalog.edit.tags.labels.retry'),
+          remove: (name) => t('catalog.edit.tags.labels.remove', { name }),
+          limitReached: (limit) => t('catalog.edit.tags.labels.limit-reached', { max: limit }),
+          none: t('catalog.edit.tags.labels.none'),
+        }}
+        onChange={(next) => {
+          for (const option of next) {
+            const choice = results.find((item) => item.id === option.value);
+            if (choice !== undefined && !known.has(choice.id)) {
+              known.set(choice.id, { name: nameOfChoice(choice, defaultLocale), archived: false });
+            }
           }
-        }
-        onChange(next.map((option) => option.value));
-      }}
-    />
+          onChange(next.map((option) => option.value));
+        }}
+      />
+      <p className="text-sm">
+        <a
+          className="text-link underline"
+          href={suggestHref}
+          aria-label={t('catalog.edit.tags.suggest-aria')}
+        >
+          {t('catalog.edit.tags.suggest')}
+        </a>
+      </p>
+      <p className="text-sm text-fg-muted">{t('catalog.edit.tags.suggest-help')}</p>
+    </div>
   );
 }

@@ -29,9 +29,25 @@ vi.mock('../../../../src/server/admin-shell.tsx', () => ({
     readonly activeId: string;
   }) => <div data-active={activeId}>{children}</div>,
 }));
-vi.mock('../../../../src/categories/categories-view.tsx', () => ({
-  CategoriesView: ({ canEdit }: { readonly canEdit: boolean }) => (
-    <p data-testid="view" data-can-edit={String(canEdit)}>
+vi.mock('../../../../src/categories/proposals/categories-tabs.tsx', () => ({
+  CategoriesTabs: ({
+    canEdit,
+    canImport,
+    canDecide,
+    canPromote,
+  }: {
+    readonly canEdit: boolean;
+    readonly canImport?: boolean;
+    readonly canDecide: boolean;
+    readonly canPromote: boolean;
+  }) => (
+    <p
+      data-testid="view"
+      data-can-edit={String(canEdit)}
+      data-can-import={String(canImport)}
+      data-can-decide={String(canDecide)}
+      data-can-promote={String(canPromote)}
+    >
       view
     </p>
   ),
@@ -57,6 +73,30 @@ describe('Categories page', () => {
     );
     render(await CategoriesPage());
     expect(screen.getByTestId('view').getAttribute('data-can-edit')).toBe('true');
+  });
+
+  it('passes the import key on, which shows Export and Import', async () => {
+    mocks.session.mockResolvedValue(
+      session(['catalog.category-tree.view', 'catalog.category-tree.import']),
+    );
+    render(await CategoriesPage());
+    expect(screen.getByTestId('view').getAttribute('data-can-import')).toBe('true');
+  });
+
+  it('passes the proposal keys on: decide shows the tab, promote-merge the dialogs', async () => {
+    mocks.session.mockResolvedValue(
+      session(['catalog.category-tree.view', 'catalog.category-proposal.decide']),
+    );
+    render(await CategoriesPage());
+    expect(screen.getByTestId('view').getAttribute('data-can-decide')).toBe('true');
+    expect(screen.getByTestId('view').getAttribute('data-can-promote')).toBe('false');
+    cleanup();
+    mocks.session.mockResolvedValue(
+      session(['catalog.category-tree.view', 'catalog.seller-category.promote-merge']),
+    );
+    render(await CategoriesPage());
+    expect(screen.getByTestId('view').getAttribute('data-can-decide')).toBe('false');
+    expect(screen.getByTestId('view').getAttribute('data-can-promote')).toBe('true');
   });
 
   it('says the role cannot see categories without the view key', async () => {

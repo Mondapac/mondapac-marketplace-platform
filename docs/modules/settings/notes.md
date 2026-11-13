@@ -32,3 +32,14 @@ store of ADR-0026).
 - Not here yet: the Settings › Lists admin page, the panels reading the mode, the registry-driven
   settings search, the `platform.market-setting.changed.v1` outbox event and the senior-admin mail
   of ADR-0026 decision 10 (List paging is not a protected setting).
+
+## Cart mode (package B1)
+
+- Second setting in the same store: code `cart-mode`, values `multi-store` (default) and
+  `single-store`, per Market. No migration: the tables already take any code and value.
+- Routes: `GET /settings/admin/cart-mode` and `PUT /settings/admin/cart-mode` (body `value` and
+  `expectedVersion`; the route fixes the code). Keys `settings.cart-mode.view` and `.manage`, not
+  protected. The view key is in the Viewer role seed (version 32, as the role-seed contract
+  requires for every unprotected `.view` key); the manage key is not a viewer key.
+- Safe value when the store cannot be read: `multi-store` (today's behaviour). This package only
+  stores and reads the choice; the cart (B2) and ordering (B3) read it through their own ports.

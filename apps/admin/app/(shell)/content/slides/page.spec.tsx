@@ -12,6 +12,7 @@ import SlidePlacementPage from './[slideId]/placement/page.tsx';
 import SlideVersionsPage from './[slideId]/versions/page.tsx';
 import SlideOrderPage from './order/page.tsx';
 import ContentPage from '../page.tsx';
+import NewPagePage from '../pages/new/page.tsx';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -61,6 +62,20 @@ vi.mock('../../../../src/content/slides/slides-list.tsx', () => ({
   }) => (
     <p data-testid="list" data-zone={zone} data-csrf={csrfToken}>
       list {permissionKeys.join(',')}
+    </p>
+  ),
+}));
+vi.mock('../../../../src/content/pages/new-page-form.tsx', () => ({
+  NewPageFormView: ({ csrfToken, zone }: { readonly csrfToken: string; readonly zone: string }) => (
+    <p data-testid="new-page" data-csrf={csrfToken} data-zone={zone}>
+      new page
+    </p>
+  ),
+}));
+vi.mock('../../../../src/content/pages/pages-list.tsx', () => ({
+  PagesList: ({ canEdit, zone }: { readonly canEdit: boolean; readonly zone: string }) => (
+    <p data-testid="pages" data-edit={String(canEdit)} data-zone={zone}>
+      pages
     </p>
   ),
 }));
@@ -187,6 +202,7 @@ const session = (permissionKeys: string[], timezone: string | null = null): Admi
   secondFactorActive: true,
   lastSignInAt: null,
   timezone,
+  marketTimezone: 'UTC',
   locale: null,
   email: 'ada@example.test',
   displayName: 'Ada',
@@ -206,8 +222,65 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('content area', () => {
-  it('opens on the Slides tab', () => {
-    expect(() => ContentPage()).toThrow('redirect:/content/slides');
+  it('opens on the Slides tab for a role that can read slides but not pages', async () => {
+    signIn([READ]);
+    await expect(ContentPage()).rejects.toThrow('redirect:/content/slides');
+  });
+
+  it('opens on Pages for a role that can read pages, with both tabs when it can read slides', async () => {
+    signIn(['storefront.page.read', 'storefront.page.create', READ]);
+    render(await ContentPage());
+    expect(screen.getByRole('heading', { level: 1, name: 'Storefront content' })).toBeTruthy();
+    expect(screen.getByTestId('pages').getAttribute('data-edit')).toBe('false');
+    expect(screen.getByRole('link', { name: 'New page' }).getAttribute('href')).toBe(
+      '/content/pages/new',
+    );
+    expect(screen.getByRole('link', { name: 'Pages' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: 'Slides' }).getAttribute('href')).toBe(
+      '/content/slides',
+    );
+  });
+
+  it('shows only the Pages tab, and no New page link, to a role that cannot create or read slides', async () => {
+    signIn(['storefront.page.read']);
+    render(await ContentPage());
+    expect(screen.queryByRole('link', { name: 'Slides' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'New page' })).toBeNull();
+  });
+
+  it('shows the no-access page without either read permission', async () => {
+    signIn([EDIT]);
+    render(await ContentPage());
+    expect(screen.getByRole('heading', { name: 'No access to content' })).toBeTruthy();
+  });
+
+  it('shows the Pages tab on the slides page for a role that can read both', async () => {
+    signIn([READ, 'storefront.page.read']);
+    render(await SlidesPage());
+    expect(screen.getByRole('link', { name: 'Pages' }).getAttribute('href')).toBe('/content');
+    expect(screen.getByRole('link', { name: 'Slides' }).getAttribute('aria-current')).toBe('page');
+  });
+});
+
+describe('new page route', () => {
+  const READ_PAGES = 'storefront.page.read';
+  const CREATE_PAGES = 'storefront.page.create';
+
+  it.each([[[READ_PAGES]], [[CREATE_PAGES]], [[READ, EDIT]]])(
+    'shows the no-access page unless the role can read and create pages (%j)',
+    async (keys) => {
+      signIn(keys);
+      render(await NewPagePage());
+      expect(screen.getByRole('heading', { name: 'No access to content' })).toBeTruthy();
+      expect(screen.queryByTestId('new-page')).toBeNull();
+    },
+  );
+
+  it('shows the form with the session csrf token and the Market zone', async () => {
+    signIn([READ_PAGES, CREATE_PAGES], 'Australia/Brisbane');
+    render(await NewPagePage());
+    expect(screen.getByTestId('new-page').getAttribute('data-csrf')).toBe('csrf-9');
+    expect(screen.getByTestId('new-page').getAttribute('data-zone')).toBe('Australia/Brisbane');
   });
 });
 

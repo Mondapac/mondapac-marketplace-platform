@@ -104,6 +104,12 @@ export interface ProductView {
   readonly offers: { readonly sellerCount: number; readonly offerCount: number };
   readonly variants: readonly { readonly variantId: string; readonly state: string }[];
   readonly maxVariants: number;
+  /** The Market's cap on the types a product varies on; older answers leave it out. */
+  readonly maxAxes?: number;
+  /** The product version Add sizes names; older answers leave it out. */
+  readonly version?: number;
+  /** A revision waits for review; older answers leave it out. */
+  readonly pendingSubmittedAt?: string | null;
   readonly lastChangedAt: string;
   readonly createdAt: string;
   readonly form: ProductForm;
@@ -131,6 +137,13 @@ export interface DraftSaved {
     readonly ref: string | null;
     readonly locale: string;
     readonly code: string;
+  }[];
+  /** Advice about the saved variants; never a refusal. */
+  readonly variantNotices?: readonly {
+    readonly variantId: string;
+    readonly code: 'gtin.duplicate';
+    /** The PLATFORM product that already carries the barcode, when there is one to sell on. */
+    readonly sellOnProductCode: string | null;
   }[];
 }
 

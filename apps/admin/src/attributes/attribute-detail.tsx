@@ -21,7 +21,13 @@ import { callApi } from '../api/client.ts';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
 import { AttributeEditForm } from './attribute-edit-form.tsx';
-import { ArchiveDialog, MergeAttributesDialog, MergeValuesDialog } from './restructure-dialogs.tsx';
+import {
+  ArchiveDialog,
+  CONVERSIONS,
+  ConvertTypeDialog,
+  MergeAttributesDialog,
+  MergeValuesDialog,
+} from './restructure-dialogs.tsx';
 import { BASE_UNIT, type FieldErrors } from './editor.ts';
 import { changeLineOf } from './history.ts';
 import { useRevealWhenStacked } from './reveal.ts';
@@ -46,7 +52,8 @@ type Load =
   | { readonly state: 'missing' }
   | { readonly state: 'failed' };
 
-type Confirm = 'publish' | 'discard' | 'relax' | 'merge' | 'merge-attribute' | 'archive' | null;
+type Confirm =
+  'publish' | 'discard' | 'relax' | 'merge' | 'merge-attribute' | 'convert' | 'archive' | null;
 
 /** Refusals of publish that only an edit of the text clears. */
 const TEXT_FIX: ReadonlySet<string> = new Set(['claim-word', 'locale-uncheckable']);
@@ -187,6 +194,13 @@ export function AttributeDetailPanel({
                           {t('merge-attribute')}
                         </Button>
                       )}
+                      {CONVERSIONS[load.detail.dataType] !== undefined &&
+                      !load.detail.material &&
+                      !load.detail.isVariantOption ? (
+                        <Button variant="secondary" onClick={() => setConfirm('convert')}>
+                          {t('convert-type')}
+                        </Button>
+                      ) : null}
                       <Button variant="secondary" onClick={() => setConfirm('archive')}>
                         {t('archive')}
                       </Button>
@@ -250,6 +264,18 @@ export function AttributeDetailPanel({
               }}
             />
           ) : null}
+          {confirm === 'convert' ? (
+            <ConvertTypeDialog
+              detail={load.detail}
+              csrfToken={csrfToken}
+              onClose={() => setConfirm(null)}
+              onDone={() => changed(t('type-converted'))}
+              onReload={() => {
+                setConfirm(null);
+                void fetchDetail();
+              }}
+            />
+          ) : null}
           {confirm === 'archive' ? (
             <ArchiveDialog
               detail={load.detail}
@@ -271,6 +297,7 @@ export function AttributeDetailPanel({
           confirm === 'relax' ||
           confirm === 'merge' ||
           confirm === 'merge-attribute' ||
+          confirm === 'convert' ||
           confirm === 'archive' ? null : (
             <StatusDialog
               kind={confirm}

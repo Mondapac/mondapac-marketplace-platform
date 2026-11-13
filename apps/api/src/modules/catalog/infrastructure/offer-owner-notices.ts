@@ -1,6 +1,7 @@
 import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
 import type { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { IdentityFacade } from '../../identity';
+import type { MissingDetailsMailSettings } from '../application/ports/missing-details-mail-settings';
 import type {
   OfferOwnerContact,
   OfferOwnerMailSettings,
@@ -32,5 +33,19 @@ export class ConfigOfferOwnerMailSettings implements OfferOwnerMailSettings {
 
   zone(market: MarketContext): string {
     return this.markets.get(market.marketId).timezone;
+  }
+}
+
+/** {@link MissingDetailsMailSettings} from the Market's configuration (no default Market). */
+export class ConfigMissingDetailsMailSettings implements MissingDetailsMailSettings {
+  constructor(private readonly markets: MarketRegistry) {}
+
+  sender(market: MarketContext): { readonly address: string; readonly name: string } {
+    const { fromAddress, fromName } = this.markets.get(market.marketId).identity.mail;
+    return { address: fromAddress, name: fromName };
+  }
+
+  productsPage(market: MarketContext): string | null {
+    return this.markets.get(market.marketId).notifications?.sellerMissingDetailsPage ?? null;
   }
 }

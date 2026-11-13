@@ -13,6 +13,8 @@ import {
   FakeFlashSales,
   MemoryBatchCodes,
   FakePriceHistory,
+  FakeSellerCatalogue,
+  FakeSellerCommission,
   FakeSellerActivity,
   FakeStepUp,
   MemoryFirstOrder,
@@ -43,6 +45,8 @@ import { CreatePromotion } from './use-cases/create-promotion.use-case';
 import { DecidePromotionReview } from './use-cases/decide-promotion-review.use-case';
 import { EditOwnPromotion } from './use-cases/edit-own-promotion.use-case';
 import { EditPromotion } from './use-cases/edit-promotion.use-case';
+import { ListSellerCampaigns } from './use-cases/list-seller-campaigns.use-case';
+import { PreviewSellerPayout } from './use-cases/preview-seller-payout.use-case';
 import { ListOwnPromotions } from './use-cases/list-own-promotions.use-case';
 import { ListPromotionReviews } from './use-cases/list-promotion-reviews.use-case';
 import { ListPromotionsFull } from './use-cases/list-promotions-full.use-case';
@@ -199,6 +203,8 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       flashSales,
       sellerActivity: activity,
       priceHistory: history,
+      sellerCommission: new FakeSellerCommission(),
+      sellerCatalogue: new FakeSellerCatalogue(),
       ...phase3Fakes(),
       stepUp,
       audit,
@@ -636,8 +642,29 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       expect((await optIns.liveSellers(market, [created.value.id])).get(created.value.id)).toEqual([
         SELLER,
       ]);
-      await make(SetCoFundingOptIn).execute(seller(), { ...input, optIn: false });
-      expect((await optIns.liveSellers(market, [created.value.id])).size).toBe(0);
+      // The campaign has started: leaving is no longer the seller's to do.
+      expect(await make(SetCoFundingOptIn).execute(seller(), { ...input, optIn: false })).toEqual({
+        ok: false,
+        error: { code: 'promotions.invalid-state' },
+      });
+      expect((await optIns.liveSellers(market, [created.value.id])).get(created.value.id)).toEqual([
+        SELLER,
+      ]);
+
+      // Before the start, leaving and joining again both work.
+      const later = await make(CreatePromotion).execute(
+        admin(),
+        campaign({ name: 'Later', startsAt: T0.add({ hours: 48 }).toString() }),
+      );
+      if (!later.ok) throw new Error('create failed');
+      const join = { promotionId: later.value.id, optIn: true };
+      await make(SetCoFundingOptIn).execute(seller(), join);
+      await make(SetCoFundingOptIn).execute(seller(), { ...join, optIn: false });
+      expect((await optIns.liveSellers(market, [later.value.id])).size).toBe(0);
+      await make(SetCoFundingOptIn).execute(seller(), join);
+      expect((await optIns.liveSellers(market, [later.value.id])).get(later.value.id)).toEqual([
+        SELLER,
+      ]);
 
       const aimed = await make(CreatePromotion).execute(
         admin(),
@@ -661,6 +688,226 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
           optIn: true,
         }),
       ).toEqual({ ok: false, error: { code: 'access.denied' } });
+    });
+  });
+
+  describe('seller campaigns (PB2)', () => {
+    beforeEach(switchOn);
+
+    const campaign = (extra: Record<string, unknown> = {}) =>
+      platformCart({
+        type: 'CO_FUNDED_CAMPAIGN',
+        funding: 'CO_FUNDED',
+        platformSplitBps: 3334,
+        reward: { kind: 'PERCENT', bps: 1500 },
+        name: 'Local week',
+        ...extra,
+      });
+    const create = async (extra: Record<string, unknown> = {}) => {
+      const created = await make(CreatePromotion).execute(admin(), campaign(extra));
+      if (!created.ok) throw new Error('create failed');
+      return created.value.id;
+    };
+    const commission = () => deps.sellerCommission as FakeSellerCommission;
+    const catalogue = () => deps.sellerCatalogue as FakeSellerCatalogue;
+    const list = (context = seller()) => make(ListSellerCampaigns).execute(context, {});
+    const preview = (input: Record<string, unknown>, context = seller()) =>
+      make(PreviewSellerPayout).execute(context, input);
+
+    it('lists open campaigns with the split, and nothing the seller may not see', async () => {
+      const open = await create();
+      const aimed = await create({ name: 'Aimed', sellerIds: [SELLER_2] });
+      await create({ name: 'Ended', endsAt: T0.subtract({ hours: 1 }).toString() });
+      const result = await list();
+      if (!result.ok) throw new Error('list failed');
+      expect(result.value.map((view) => view.id)).toEqual([open]);
+      expect(result.value.map((view) => view.id)).not.toContain(aimed);
+      const view = result.value[0]!;
+      expect(view.optedIn).toBe(false);
+      expect(view.started).toBe(true);
+      expect(view.sellerPaysBps).toBe(1000);
+      expect(view.platformPaysBps).toBe(500);
+      expect(view.eligible).toEqual({ scope: 'ALL', count: null });
+      expect(view).not.toHaveProperty('budgetMinor');
+      expect(view).not.toHaveProperty('usage');
+    });
+
+    it('marks the campaigns the seller joined, and counts the products it sells', async () => {
+      const id1 = await create({ productIds: [product(1), product(2), product(3)] });
+      const id2 = await create({ name: 'Second' });
+      await make(SetCoFundingOptIn).execute(seller(), { promotionId: id1, optIn: true });
+      catalogue().sells = new Set([product(1), product(3)]);
+      const result = await list();
+      if (!result.ok) throw new Error('list failed');
+      const joined = result.value.find((view) => view.id === id1)!;
+      expect(joined.optedIn).toBe(true);
+      expect(joined.optedInAt).not.toBeNull();
+      expect(joined.eligible).toEqual({ scope: 'LISTED', count: 2 });
+      expect(result.value.find((view) => view.id === id2)!.optedIn).toBe(false);
+      // The other seller did not join anything.
+      const other = await list(seller(SELLER_2, SELLER_2_ACCOUNT));
+      expect(other.ok && other.value.every((view) => !view.optedIn)).toBe(true);
+    });
+
+    it('says "unknown" when the catalogue cannot be read', async () => {
+      await create({ productIds: [product(1)] });
+      catalogue().sells = null;
+      const result = await list();
+      expect(result.ok && result.value[0]!.eligible).toEqual({ scope: 'LISTED', count: null });
+    });
+
+    it('lists a campaign with no end, and says "not started" before it starts', async () => {
+      const id = await create({
+        startsAt: T0.add({ hours: 5 }).toString(),
+        endsAt: null,
+      });
+      const result = await list();
+      if (!result.ok) throw new Error('list failed');
+      const view = result.value.find((v) => v.id === id)!;
+      expect(view.started).toBe(false);
+      expect(view.endsAt).toBeNull();
+    });
+
+    it('refuses a customer, an admin and an acting-as seller; is off with the switch off', async () => {
+      await create();
+      expect((await list(customer)).ok).toBe(false);
+      expect((await list(admin())).ok).toBe(false);
+      expect(await list(actingAs(seller()))).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
+      expect(await list()).toEqual({ ok: false, error: { code: 'promotions.disabled' } });
+    });
+
+    // The commission base the ledger would use: the amount, less provisional tax when prices
+    // include tax (the fake works it out the way the ledger does).
+    const baseOf = (amount: bigint) =>
+      policy.settings(market)!.pricesIncludeTax
+        ? (amount * 20000n + (10000n + 1000n)) / ((10000n + 1000n) * 2n)
+        : amount;
+    const commissionOf = (base: bigint) => (base * 1500n * 2n + 10000n) / 20000n;
+
+    it('previews a campaign: A$20.00, 15% off split 10/5, commission 15% on the price after the seller part', async () => {
+      const id = await create();
+      const result = await preview({ promotionId: id, priceMinor: '2000' });
+      if (!result.ok) throw new Error('preview failed');
+      const base = baseOf(1800n);
+      expect(result.value).toMatchObject({
+        discount: 300n,
+        sellerFunded: 200n,
+        platformFunded: 100n,
+        shopperPays: 1700n,
+        commissionBase: base,
+        commission: commissionOf(base),
+        sellerGets: base - commissionOf(base),
+        commissionRateBps: 1500,
+        currency,
+        wasPrice: null,
+      });
+      // The commission was asked on the full price (the engine's commission limit) and on the
+      // price after the seller part, with the Market's price convention.
+      const asked = (deps.sellerCommission as FakeSellerCommission).asked;
+      expect(asked.map((a) => a.amount)).toEqual([2000n, 1800n]);
+      expect(asked.every((a) => a.taxInclusive === policy.settings(market)!.pricesIncludeTax)).toBe(
+        true,
+      );
+    });
+
+    it('does not let a large price reveal what is left of the platform budget', async () => {
+      const id = await create({ budgetMinor: '500' });
+      const result = await preview({ promotionId: id, priceMinor: '100000' });
+      if (!result.ok) throw new Error('preview failed');
+      expect(result.value.discount).toBeGreaterThan(500n);
+    });
+
+    it('applies the per-order cap of a campaign', async () => {
+      const id = await create({ maxPerOrderMinor: '120' });
+      const result = await preview({ promotionId: id, priceMinor: '2000' });
+      if (!result.ok) throw new Error('preview failed');
+      expect(result.value.discount).toBe(120n);
+      expect(result.value.sellerFunded + result.value.platformFunded).toBe(120n);
+    });
+
+    it('previews a fixed-amount campaign', async () => {
+      const id = await create({ reward: { kind: 'FIXED', amountMinor: '400' } });
+      const result = await preview({ promotionId: id, priceMinor: '2000' });
+      if (!result.ok) throw new Error('preview failed');
+      expect(result.value.discount).toBe(400n);
+      expect(result.value.shopperPays).toBe(1600n);
+    });
+
+    it("previews the seller's own percentage sale and refuses a rate above the Market limit", async () => {
+      const ok = await preview({ discountBps: 2000, priceMinor: '1000' });
+      if (!ok.ok) throw new Error('preview failed');
+      expect(ok.value.sellerFunded).toBe(200n);
+      expect(ok.value.platformFunded).toBe(0n);
+      const base = baseOf(800n);
+      expect(ok.value.commissionBase).toBe(base);
+      expect(ok.value.sellerGets).toBe(base - commissionOf(base));
+      const over = await preview({
+        discountBps: rules.sellerMaxDiscountBps + 1,
+        priceMinor: '1000',
+      });
+      expect(over).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'discountBps', code: 'value' }] },
+      });
+    });
+
+    it('fails closed: no commission rate means no money', async () => {
+      commission().rate = null;
+      expect(await preview({ discountBps: 1000, priceMinor: '1000' })).toEqual({
+        ok: false,
+        error: { code: 'promotions.unavailable' },
+      });
+    });
+
+    it('validates the input', async () => {
+      const id = await create();
+      for (const bad of [
+        {},
+        { priceMinor: '1000' },
+        { promotionId: id, discountBps: 1000, priceMinor: '1000' },
+        { promotionId: id, priceMinor: '0' },
+        { promotionId: id, priceMinor: '12.5' },
+        { promotionId: id, priceMinor: ['1000', '2000'] },
+        { promotionId: 'x', priceMinor: '1000' },
+        { discountBps: 1000, priceMinor: '1000', offerId: unit(1).offerId },
+      ]) {
+        const result = await preview(bad);
+        expect(result.ok ? 'ok' : result.error.code).toBe('validation.failed');
+      }
+    });
+
+    it('does not preview a campaign aimed at other sellers, or one that is unknown', async () => {
+      const aimed = await create({ sellerIds: [SELLER_2] });
+      expect(await preview({ promotionId: aimed, priceMinor: '1000' })).toEqual({
+        ok: false,
+        error: { code: 'promotions.not-found' },
+      });
+      expect(await preview({ promotionId: unit(9).offerId, priceMinor: '1000' })).toEqual({
+        ok: false,
+        error: { code: 'promotions.not-found' },
+      });
+    });
+
+    it('says whether the was-price shows, only for the seller own sell unit', async () => {
+      const u = unit(1);
+      const input = { discountBps: 1000, priceMinor: '1000', ...u };
+      history.days = rules.wasPrice.minDaysAtPrice;
+      const yes = await preview(input);
+      expect(yes.ok && yes.value.wasPrice).toEqual({ eligible: true });
+      history.days = rules.wasPrice.minDaysAtPrice - 1;
+      const no = await preview(input);
+      expect(no.ok && no.value.wasPrice).toEqual({ eligible: false });
+      history.days = null;
+      const unknown = await preview(input);
+      expect(unknown.ok && unknown.value.wasPrice).toEqual({ eligible: false });
+      // Someone else's Offer is "not found", and the history is not even asked.
+      catalogue().owns = false;
+      history.days = 90;
+      expect(await preview(input)).toEqual({ ok: false, error: { code: 'promotions.not-found' } });
     });
   });
 
@@ -1029,10 +1276,8 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
 
       it('leaves a withdrawn opt-in alone and a refused edit changes nothing', async () => {
         const promotionId = await optedIn();
-        await make(SetCoFundingOptIn).execute(seller(SELLER_2, SELLER_2_ACCOUNT), {
-          promotionId,
-          optIn: false,
-        });
+        // The campaign runs, so a seller can no longer leave it by itself (support does it).
+        await optIns.withdraw(market, promotionId, SELLER_2, T0);
         audit.entries.length = 0;
         expect((await edit(promotionId, { platformSplitBps: 6000 })).ok).toBe(true);
         expect(

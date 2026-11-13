@@ -9,6 +9,7 @@ import type { CategorySeo, CategoryText } from './category-edit';
 import type { CategoryName, PlatformCategoryState } from './platform-category';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
 import type { TopicContent, TopicState, TopicTerm } from './topic';
+import type { ShelfText } from './seller-category';
 
 /**
  * The claim-checked fields (catalog design 6.2, AC 21): every customer- or search-visible text
@@ -37,6 +38,8 @@ export const CLAIM_CHECKED_FIELD_IDS = [
   'product.name',
   'product.short-description',
   'product.variant-label',
+  'seller-category.description',
+  'seller-category.name',
   'topic.intro',
   'topic.slug',
   'topic.term',
@@ -162,6 +165,13 @@ export const CATEGORY_TEXT_FIELDS: Record<keyof CategoryText, FieldDisposition> 
   keywords: checked('platform-category.keyword'),
 };
 
+/** A seller shelf's and a proposal's names (categories C9a): shown on the seller's shop page. */
+export const SHELF_TEXT_FIELDS: Record<keyof ShelfText, FieldDisposition> = {
+  locale: exempt('internal-code'),
+  name: checked('seller-category.name'),
+  description: checked('seller-category.description'),
+};
+
 export const CATEGORY_SEO_FIELDS: Record<keyof CategorySeo, FieldDisposition> = {
   title: checked('platform-category.seo-title'),
   description: checked('platform-category.seo-description'),
@@ -280,6 +290,7 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
   CATEGORY_NAME_FIELDS,
   CATEGORY_TEXT_FIELDS,
   CATEGORY_SEO_FIELDS,
+  SHELF_TEXT_FIELDS,
   PLATFORM_CATEGORY_FIELDS,
   OFFER_FIELDS,
   TOPIC_TERM_FIELDS,
@@ -396,6 +407,20 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   VariantRequestNoticeMail: {
     noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
   },
+  TopicSuggestion: {
+    noCustomerText: 'aggregate class around TopicSuggestionState',
+  },
+  TopicSuggestionState: {
+    noCustomerText:
+      "a seller's tag suggestion: ids, status codes, times and the seller's own text, shown to admins only; the text is claim-checked when it is suggested and again when an approval makes it a topic name",
+  },
+  TopicSuggestionNoticeFacts: {
+    noCustomerText:
+      'facts of the one mail to a seller about a tag suggestion; never shown to buyers',
+  },
+  TopicSuggestionNoticeMail: {
+    noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
+  },
   AttributeRelaxationRequestState: {
     noCustomerText: 'a two-admin request: ids, kind and status codes, times; no text',
   },
@@ -404,11 +429,32 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   PlatformCategory: { noCustomerText: 'aggregate class around PlatformCategoryState' },
   CategoryText: { table: 'CATEGORY_TEXT_FIELDS' },
   CategorySeo: { table: 'CATEGORY_SEO_FIELDS' },
+  ShelfText: { table: 'SHELF_TEXT_FIELDS' },
+  CategoryProposalView: {
+    noCustomerText:
+      "a seller's proposal read model; its texts are ShelfText, checked when proposed",
+  },
+  ShelfView: { noCustomerText: 'a shelf read model; its texts are ShelfText' },
   EditableCategory: {
     noCustomerText:
       'editor read model; its texts and search-result fields are CategoryText and CategorySeo',
   },
   FieldIssue: { noCustomerText: 'field path and a problem code' },
+  // The category tree import (C7a): file cells are read, claim-checked (and content-filtered)
+  // in every locale before any plan is made, then written through the editor's own functions.
+  ImportRowTexts: {
+    noCustomerText:
+      'cells of an import file row; every cell is claim-checked before the plan and written as CategoryText',
+  },
+  ParsedImportRow: {
+    noCustomerText:
+      'one import file row; its cells are claim-checked before the plan (category import)',
+  },
+  ParsedImport: { noCustomerText: 'the rows of an import file; see ParsedImportRow' },
+  ColumnsRefusal: { noCustomerText: 'column positions and problem codes of an import header' },
+  ImportRowResult: {
+    noCustomerText: 'row number, slug, action and problem codes of a dry run; no text cell',
+  },
   RestructureChange: {
     noCustomerText: 'ids, a position, a status and a change kind of a move, merge or archive',
   },
@@ -427,6 +473,26 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   BrandContent: { noCustomerText: 'the editable text of a brand; see BrandState' },
   BrandFieldProblem: { noCustomerText: 'field path and a problem code' },
   ActivityFieldProblem: { noCustomerText: 'field path and a problem code' },
+  CultureFieldProblem: { noCustomerText: 'field path and a problem code' },
+  CultureLocales: { noCustomerText: 'locale codes' },
+  CultureCategoryRow: { noCustomerText: 'ids, a visibility flag and a mark code' },
+  EffectiveCategoryMarks: { noCustomerText: 'flags, mark codes and category ids' },
+  MarkedCategoryNode: { noCustomerText: 'category ids' },
+  // The visibility rule of multi-culture package 3a: codes, ids, flags and type codes only. A
+  // culture's code is claim-checked when it is created (see CultureState).
+  VisibilityCulture: { noCustomerText: 'a culture id, code, status, order and a type code' },
+  OfferCultureFacts: { noCustomerText: 'culture ids, type codes and category marks' },
+  CultureVisibility: { noCustomerText: 'a flag and a reason code' },
+  CultureVisibilityUnavailable: { noCustomerText: 'an error code' },
+  CultureName: {
+    noCustomerText:
+      'the name and short description of a culture in one locale; checked by the claim-term matcher on every admin write (a changed text is refused when it asserts a certification); see CultureState',
+  },
+  CultureContent: { noCustomerText: 'the names of a culture; see CultureName' },
+  CultureChange: { noCustomerText: 'the fields an admin edit may change; see CultureState' },
+  CultureState: {
+    noCustomerText: 'a culture as stored; its text is claim-checked on write, see CultureName',
+  },
   ActivityLocales: { noCustomerText: 'locale codes' },
   BusinessActivityContent: {
     noCustomerText:
@@ -475,6 +541,15 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText: 'mail to an Offer owner from a type code, a count and a date; never content',
   },
   Classification: { noCustomerText: 'sensitive-change verdict: codes and flags' },
+  MissingDetailsEmail: {
+    noCustomerText: 'mail to a seller from fixed English text, product names and detail names',
+  },
+  MissingDetailsEmailInput: {
+    noCustomerText: 'input of the seller mail: names already in the catalogue, never typed text',
+  },
+  MissingDetailsEmailProduct: {
+    noCustomerText: 'a product name and detail names already in the catalogue',
+  },
   CategoryName: { table: 'CATEGORY_NAME_FIELDS' },
   DraftText: { noCustomerText: 'a text found in a draft, already named by its checked field id' },
   FamilyAttribute: { table: 'FAMILY_ATTRIBUTE_FIELDS' },
@@ -621,6 +696,11 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
       'the public tree view for the buyer assistant: ids, slug, depth and one published category name, already claim-checked when written',
   },
   CatalogActivitiesFacade: { noCustomerText: 'interface of methods' },
+  CatalogCulturesFacade: { noCustomerText: 'interface of methods' },
+  CatalogCultureSummary: {
+    noCustomerText:
+      'id, code, status and required type of a culture, and its names already claim-checked when written; read in process by sellers only',
+  },
   CatalogAssistantFacade: { noCustomerText: 'interface of methods' },
   ProductState: { noCustomerText: 'ids, codes, status and times; the texts are revision content' },
   ProductTypeHandler: { noCustomerText: 'interface of methods' },

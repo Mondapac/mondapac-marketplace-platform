@@ -82,6 +82,17 @@ export interface PromotionRepository {
     sellerId: Id<'Seller'>,
     now: Temporal.Instant,
   ): Promise<number>;
+  /**
+   * The co-funded campaigns a seller may join now: ACTIVE, not ended at `now` (a campaign that has
+   * not started yet is included), and aimed at all sellers or at this one. Soonest start first.
+   */
+  listOpenCampaigns(
+    market: MarketContext,
+    now: Temporal.Instant,
+    sellerId: Id<'Seller'>,
+    /** Only this campaign, when given (the preview reads one). */
+    promotionId?: Id<'Promotion'>,
+  ): Promise<readonly PromotionRecord[]>;
   usageOf(
     market: MarketContext,
     ids: readonly Id<'Promotion'>[],

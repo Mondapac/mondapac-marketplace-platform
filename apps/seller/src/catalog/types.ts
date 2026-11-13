@@ -137,6 +137,10 @@ export interface ProductView {
     readonly variantCode: string;
   }[];
   readonly maxVariants: number;
+  /** The Market's cap on the types a product varies on; older answers leave it out. */
+  readonly maxAxes?: number;
+  /** The product version Add sizes names; older answers leave it out. */
+  readonly version?: number;
   readonly sensitiveFields: readonly string[];
   readonly lastChangedAt: string;
   readonly createdAt: string;
@@ -295,3 +299,37 @@ export interface OwnSuggestionList {
 }
 
 export const SUGGESTION_STATUSES = ['open', 'approved', 'mapped', 'rejected'] as const;
+
+/** One of the seller's tag suggestions (`GET catalog/seller/topic-suggestions` -> `items`). */
+export interface OwnTopicSuggestion {
+  readonly id: string;
+  readonly status: 'open' | 'approved' | 'mapped' | 'rejected';
+  /** The seller's own text: shown as plain text only. */
+  readonly label: string;
+  readonly createdAt: string;
+  readonly decidedAt: string | null;
+  /** The reviewer's words, when the suggestion was rejected. Plain text. */
+  readonly rejectReason: string | null;
+  /** The tag created (approved) or matched (mapped). */
+  readonly topic: {
+    readonly id: string;
+    readonly slug: string;
+    readonly status: 'active' | 'archived';
+    readonly names: Readonly<Record<string, string>>;
+  } | null;
+  readonly product: {
+    readonly id: string;
+    /** Null when the product can no longer be read. */
+    readonly productCode: string | null;
+    readonly name: string | null;
+  };
+}
+
+export interface OwnTopicSuggestionList {
+  readonly items: readonly OwnTopicSuggestion[];
+  readonly nextAfterId: string | null;
+  /** How many wait for a decision, whatever the filter. */
+  readonly openCount: number;
+  readonly maxOpen: number;
+  readonly locales: { readonly default: string; readonly supported: readonly string[] };
+}

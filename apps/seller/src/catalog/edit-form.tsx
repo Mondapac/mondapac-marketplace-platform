@@ -15,6 +15,8 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { callApi } from '../api/client.ts';
+import { AddSizesDialog } from './add-sizes-dialog.tsx';
+import { canAddSizes, maxAxesOf, publishedAxesOf } from './add-sizes.ts';
 import { AttributesSection } from './attributes-section.tsx';
 import { ClassificationSection } from './classification-section.tsx';
 import { PhotosSection } from './photos-section.tsx';
@@ -156,6 +158,9 @@ export function EditForm({
   const [axes, setAxes] = useState<string[]>(() => axesOf(content, rows, form.fields));
   const [imageIds, setImageIds] = useState<string[]>(() => imageIdsOf(content));
   const [dirty, setDirty] = useState(false);
+  const [sizesOpen, setSizesOpen] = useState(false);
+  // A new run of the dialog per opening: nothing of an earlier one (an error, a tick) survives.
+  const [sizesRun, setSizesRun] = useState(0);
   const [replacePending, setReplacePending] = useState(false);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<EditProblem | null>(null);
@@ -180,6 +185,21 @@ export function EditForm({
   const fixedVariantIds = product.variants
     .filter((variant) => variant.state !== 'retired')
     .map((variant) => variant.variantId);
+  const publishedAxes = publishedAxesOf(product.published?.content, form.fields);
+  const maxAxes = maxAxesOf(product.maxAxes);
+  // The axes are locked once a Configurable revision is published; a Simple one has none yet.
+  // A published revision whose content cannot be read keeps them locked, to be safe.
+  const locked =
+    publishedAxes !== null ||
+    (product.published !== null && !Array.isArray(product.published.content?.['variants']));
+  // A second type being added: every live variant must hold a value for it before submit.
+  const secondMissing =
+    configurable &&
+    publishedAxes?.length === 1 &&
+    axes.some((axis) => !publishedAxes.includes(axis)) &&
+    rows.some((row) =>
+      axes.some((axis) => !publishedAxes.includes(axis) && (row.options[axis] ?? '') === ''),
+    );
   const base = `catalog/seller/products/${product.productId}`;
 
   // What the page can see is missing; the server stays the authority and its not-ready list is
@@ -271,6 +291,12 @@ export function EditForm({
     busy.current = true;
     setPending(true);
     setProblem(null);
+    if (action === 'submit' && secondMissing) {
+      setProblem({ key: 'catalog.edit.second.missing', details: [], reload: false });
+      busy.current = false;
+      setPending(false);
+      return;
+    }
     if (dirty || action === 'save' || content === undefined) {
       const saved = await save();
       if (saved !== 'saved' || action === 'save') {
@@ -472,6 +498,7 @@ export function EditForm({
               ids={topicIds}
               known={knownTags}
               defaultLocale={defaultLocale}
+              productId={product.productId}
               issues={tagIssues}
               max={maxTags}
               onMax={setMaxTags}
@@ -507,7 +534,10 @@ export function EditForm({
               rows={rows}
               fields={form.fields}
               axes={axes}
-              locked={product.published !== null || rows.some((row) => row.state === 'published')}
+              locked={locked}
+              publishedAxes={publishedAxes}
+              maxAxes={maxAxes}
+              review={product.sensitiveFields.includes('axis-added')}
               defaultLocale={defaultLocale}
               max={product.maxVariants}
               productId={product.productId}
@@ -519,7 +549,46 @@ export function EditForm({
                 edited();
               }}
             />
+          ) : canAddSizes(product, form.fields) ? (
+            <Card title={t('catalog.edit.variants')}>
+              <p className="text-sm text-fg-muted">{t('catalog.addSizes.card-help')}</p>
+              {dirty ? (
+                <p className="text-sm text-fg-muted">{t('catalog.addSizes.save-first')}</p>
+              ) : null}
+              <div>
+                <Button
+                  variant="secondary"
+                  disabled={dirty || pending}
+                  onClick={() => {
+                    setSizesRun((run) => run + 1);
+                    setSizesOpen(true);
+                  }}
+                >
+                  {t('catalog.addSizes.start')}
+                </Button>
+              </div>
+            </Card>
           ) : null}
+          <AddSizesDialog
+            key={sizesRun}
+            open={sizesOpen}
+            productId={product.productId}
+            version={product.version ?? null}
+            fields={form.fields}
+            maxAxes={maxAxes}
+            waiting={product.pending !== null}
+            defaultLocale={defaultLocale}
+            csrfToken={csrfToken}
+            onClose={() => setSizesOpen(false)}
+            onDone={() => {
+              setSizesOpen(false);
+              router.refresh();
+            }}
+            onStale={() => {
+              setSizesOpen(false);
+              router.refresh();
+            }}
+          />
           <PhotosSection
             productId={product.productId}
             csrfToken={csrfToken}

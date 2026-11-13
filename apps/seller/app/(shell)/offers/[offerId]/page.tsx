@@ -1,8 +1,9 @@
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { catalogStateFor } from '../../../../src/catalog/catalog-states.tsx';
 import { OfferDetail } from '../../../../src/catalog/offer-detail.tsx';
 import { EDIT_PERMISSION, type OfferView } from '../../../../src/catalog/types.ts';
+import { loadActiveShelves } from '../../../../src/server/category-proposals-page.ts';
 import { isUuid, loadCatalogPage } from '../../../../src/server/catalog-page.ts';
 import { PRICE_VIEW_PERMISSION } from '../../../../src/price/types.ts';
 import { STOCK_VIEW_PERMISSION } from '../../../../src/stock/types.ts';
@@ -25,6 +26,7 @@ export default async function OfferPage({
   const page = await loadCatalogPage<OfferView>(`catalog/seller/offers/${offerId}`);
   const state = await catalogStateFor(page, 's_offers', title);
   if (state !== null || page.kind !== 'ok') return state;
+  const shelves = await loadActiveShelves(page.session.permissionKeys, await getLocale());
   return (
     <SellerShell session={page.session} activeId="s_offers" title={title}>
       <OfferDetail
@@ -33,6 +35,7 @@ export default async function OfferPage({
         canViewStock={page.session.permissionKeys.includes(STOCK_VIEW_PERMISSION)}
         canViewPrices={page.session.permissionKeys.includes(PRICE_VIEW_PERMISSION)}
         csrfToken={page.session.csrfToken}
+        shelves={shelves}
       />
     </SellerShell>
   );

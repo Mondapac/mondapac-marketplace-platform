@@ -144,7 +144,15 @@ export type AttributeDefinitionRefusal =
   /** A value of the merged attribute has no target value, or a target that cannot be used. */
   | { readonly code: 'attribute-definition.merge-unmapped'; readonly option: string }
   /** A `material` attribute is archived, and so merged, only with a second administrator. */
-  | { readonly code: 'attribute-definition.merge-material' };
+  | { readonly code: 'attribute-definition.merge-material' }
+  /** The type change is not one of the listed paths (attributes A8). */
+  | { readonly code: 'attribute-definition.convert-invalid' }
+  /** A variant option is a select; it never becomes a multi-select (attributes A8). */
+  | { readonly code: 'attribute-definition.convert-variant' }
+  /** A `material` attribute is not converted: a second administrator would be needed. */
+  | { readonly code: 'attribute-definition.convert-material' }
+  /** Attributes were merged into this one, or this one was merged: the types must stay equal. */
+  | { readonly code: 'attribute-definition.convert-merged' };
 
 /** `true` when the text is one an administrator may show a customer (CA5, PlainText). */
 function validText(text: string): boolean {
@@ -598,6 +606,40 @@ export class AttributeDefinition {
         revisionId: input.revisionId,
         revisionNo: current.revisionNo + 1,
         options,
+        version: current.version + 1,
+        revisedAt: input.now,
+      }),
+    );
+  }
+
+  /**
+   * The next revision with another data type (attributes A8, plan decision ت۵), for the listed
+   * paths only: a whole number to a decimal, a select to a multi-select. Nothing else changes.
+   * Every stored value stays valid and is read as the new type (a whole number is a decimal, one
+   * value is a list of one), so no product revision is rewritten. Only a published definition that
+   * is not `material` and not a variant option. Whether others were merged into it is read by
+   * the use case.
+   */
+  convertType(input: {
+    readonly revisionId: Id<'AttributeDefinitionRevision'>;
+    readonly to: string;
+    readonly now: Temporal.Instant;
+  }): Result<AttributeDefinition, AttributeDefinitionRefusal> {
+    const current = this.#state;
+    if (current.status === 'archived') return err({ code: 'attribute-definition.archived' });
+    if (current.status !== 'active') return err({ code: 'attribute-definition.not-published' });
+    const allowed =
+      (current.dataType === 'integer' && input.to === 'decimal') ||
+      (current.dataType === 'select' && input.to === 'multi-select');
+    if (!allowed) return err({ code: 'attribute-definition.convert-invalid' });
+    if (current.material) return err({ code: 'attribute-definition.convert-material' });
+    if (current.isVariantOption) return err({ code: 'attribute-definition.convert-variant' });
+    return ok(
+      new AttributeDefinition({
+        ...current,
+        dataType: input.to,
+        revisionId: input.revisionId,
+        revisionNo: current.revisionNo + 1,
         version: current.version + 1,
         revisedAt: input.now,
       }),

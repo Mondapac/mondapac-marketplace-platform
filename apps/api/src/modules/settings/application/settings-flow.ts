@@ -2,7 +2,12 @@ import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import { MarketSettingChanged } from '../domain/audit';
-import { findDefinition, SETTING_DEFINITIONS } from '../domain/definitions';
+import {
+  findDefinition,
+  SETTING_DEFINITIONS,
+  type CartMode,
+  type ListPaging,
+} from '../domain/definitions';
 import type { SettingsDependencies } from './settings-dependencies';
 
 // Admin-editable Market settings (ADR-0026). A change is refused in an acting-as session, checks
@@ -10,6 +15,8 @@ import type { SettingsDependencies } from './settings-dependencies';
 // unit, and is audited. Asking for the value already in force changes nothing.
 
 const logger = new Logger('SettingsFlow');
+
+type SettingValue = ListPaging | CartMode;
 
 export interface FieldIssue {
   readonly path: string;
@@ -166,9 +173,9 @@ export async function changeSetting(
     if (!applied) return err({ code: 'settings.conflict' });
     await deps.audit.record(
       context,
-      MarketSettingChanged.entry(definition.code as 'list-paging', {
-        before: { value: was as 'pages' | 'prev-next' },
-        after: { value: next as 'pages' | 'prev-next', version },
+      MarketSettingChanged.entry(definition.code as 'list-paging' | 'cart-mode', {
+        before: { value: was as SettingValue },
+        after: { value: next as SettingValue, version },
       }),
     );
     return ok({ code: definition.code, value: next, version, updatedAt: now });
