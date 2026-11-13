@@ -1,4 +1,4 @@
--- The AI description writer (AIS-03, admin and seller; catalog design 13.1): two more kinds in the
+-- The AI description writer (AIS-03, admin and seller; catalog design 13.1): three more kinds in the
 -- closed CHECK list of `rate_counters` (data design 3.26). `ai-suggest.account.day` counts an
 -- admin's drafts per Market day (the seller's are `ai-suggest.seller.day`),
 -- `ai-suggest.account.minute` stops bursts from any one account, and `ai-suggest.market.day` is
