@@ -32,6 +32,10 @@ const row = (
   position: 0,
   version: 1,
   counts: { liveProducts: n, liveProductsDirect: 0, offers: 0 },
+  featureSetId: null,
+  featureSetCode: null,
+  featureSetFromCategoryId: null,
+  inherited: false,
   ...over,
 });
 const tree = (over: Partial<TreeBody> = {}): TreeBody => ({

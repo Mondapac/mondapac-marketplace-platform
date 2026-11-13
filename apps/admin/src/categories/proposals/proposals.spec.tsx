@@ -39,6 +39,10 @@ const row = (
   position: 0,
   version: 1,
   counts: { liveProducts: 0, liveProductsDirect: 0, offers: 0 },
+  featureSetId: null,
+  featureSetCode: null,
+  featureSetFromCategoryId: null,
+  inherited: false,
 });
 const tree: TreeBody = {
   treeVersion: 7,
