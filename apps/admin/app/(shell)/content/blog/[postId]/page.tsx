@@ -9,6 +9,7 @@ import {
 } from '../../../../../src/blog/types.ts';
 import { ContentNoAccess } from '../../../../../src/content/content-no-access.tsx';
 import { AdminShell } from '../../../../../src/server/admin-shell.tsx';
+import { displayZone } from '../../../../../src/shared/format.ts';
 import { requireSession } from '../../../../../src/server/session.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -30,7 +31,7 @@ export default async function BlogPostPage({
   if (gate.kind === 'unavailable') {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
-  const { permissionKeys, csrfToken } = gate.session;
+  const { permissionKeys, csrfToken, timezone } = gate.session;
   if (!permissionKeys.includes(BLOG_READ_PERMISSION)) {
     return <ContentNoAccess session={gate.session} />;
   }
@@ -43,6 +44,7 @@ export default async function BlogPostPage({
         canEdit={permissionKeys.includes(BLOG_EDIT_PERMISSION)}
         canReview={permissionKeys.includes(BLOG_REVIEW_PERMISSION)}
         csrfToken={csrfToken}
+        zone={displayZone(timezone)}
       />
     </AdminShell>
   );

@@ -6950,7 +6950,48 @@
       "read-only": "Your role can read this post but not change it.",
       "edited-by-reviewer": "A reviewer edited this version. Read it before you send it again.",
       "changes-requested": "Changes were requested: {note}",
-      "event-later": "Event details (date, place, status) are edited in a later release. They are kept as they are when you save.",
+      "event": {
+        "title": "Event details",
+        "help": "Times are read on the clock of the time zone below.",
+        "starts-at": "Starts",
+        "ends-at": "Ends",
+        "time-zone": "Time zone",
+        "time-zone-help": "A zone name such as Australia/Brisbane. It is the Market zone until you change it.",
+        "attendance": "How people attend",
+        "attendance-option": {
+          "offline": "In person",
+          "online": "Online",
+          "mixed": "In person and online"
+        },
+        "venue": "Venue name",
+        "address": "Address",
+        "registration": "Registration link",
+        "registration-help": "A secure link that starts with https. A reviewer approves it.",
+        "optional": "optional",
+        "invalid": {
+          "value": "Check this field.",
+          "required": "This is required.",
+          "format": "Check the format.",
+          "type": "Check the format.",
+          "length": "This is too long.",
+          "scheme": "Use a link that starts with https.",
+          "before-start": "The end must be after the start.",
+          "too-long": "An event can last 31 days at most."
+        },
+        "status-title": "Event status",
+        "status-help": "A change shows on the live post at once, without a review, and is recorded.",
+        "status": "Status",
+        "status-option": {
+          "scheduled": "Scheduled",
+          "postponed": "Postponed",
+          "rescheduled": "Rescheduled",
+          "cancelled": "Cancelled"
+        },
+        "status-message": "Note for readers",
+        "status-message-help": "Say what changed. Links are not allowed here.",
+        "status-save": "Change status",
+        "status-saved": "Event status changed."
+      },
       "locked": {
         "in_review": "This post is in review and cannot be changed now.",
         "scheduled": "This post is scheduled and cannot be changed now.",

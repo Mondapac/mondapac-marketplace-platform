@@ -82,6 +82,7 @@ function show(props: { canEdit?: boolean; canReview?: boolean } = {}) {
         canEdit={props.canEdit ?? true}
         canReview={props.canReview ?? false}
         csrfToken="csrf-1"
+        zone="Australia/Brisbane"
       />
     </NextIntlClientProvider>,
   );
@@ -276,5 +277,105 @@ describe('admin blog post editor', () => {
     const { container } = show();
     await screen.findByDisplayValue('<img src=x onerror=alert(1)>');
     expect(container.querySelector('img')).toBeNull();
+  });
+
+  const eventPost = (live: boolean): PostDetail => {
+    const event = {
+      startsAt: '2026-11-15T07:00:00.000Z',
+      endsAt: '2026-11-15T09:00:00.000Z',
+      timeZone: 'Australia/Brisbane',
+      attendance: 'offline',
+      venueName: 'Hall',
+      address: null,
+      registrationUrl: null,
+      eventStatus: 'scheduled',
+      statusMessage: null,
+    };
+    const version = { ...post().open!, content: { ...content, event } };
+    return post({
+      kind: 'event',
+      status: live ? 'published' : 'draft',
+      open: live ? null : version,
+      live: live ? { ...version, state: 'published' } : null,
+    });
+  };
+
+  it('edits the event details on the clock of the event zone and saves them as typed', async () => {
+    serve(eventPost(false));
+    show();
+    const starts = await screen.findByLabelText<HTMLInputElement>('Starts');
+    expect(starts.value).toBe('2026-11-15T17:00');
+    fireEvent.change(starts, { target: { value: '2026-11-15T18:30' } });
+    fireEvent.change(screen.getByLabelText('Venue name'), { target: { value: ' Big hall ' } });
+    call.mockResolvedValueOnce(ok(eventPost(false)));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    const sent = writes()[0]![2] as { content: ApiContent };
+    expect(sent.content.event).toEqual({
+      startsAt: '2026-11-15T18:30',
+      endsAt: '2026-11-15T19:00',
+      timeZone: 'Australia/Brisbane',
+      attendance: 'offline',
+      venueName: 'Big hall',
+      address: null,
+      registrationUrl: null,
+    });
+  });
+
+  it('starts an event post that has no details with the Market zone, and says which field failed', async () => {
+    const empty = eventPost(false);
+    serve({
+      ...empty,
+      open: { ...empty.open!, content: { ...content, event: null } },
+    });
+    show();
+    const zoneField = await screen.findByLabelText<HTMLInputElement>('Time zone');
+    expect(zoneField.value).toBe('Australia/Brisbane');
+    expect(screen.getByText('All changes saved')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Venue name'), { target: { value: 'Hall' } });
+    call.mockResolvedValueOnce(
+      failed(400, 'validation.failed', {
+        fields: [{ path: 'content.event.endsAt', code: 'before-start' }],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(await screen.findByText('The end must be after the start.')).toBeTruthy();
+  });
+
+  it('shows no event form on a product post', async () => {
+    serve();
+    show();
+    await screen.findByDisplayValue('Spring pantry');
+    expect(screen.queryByLabelText('Starts')).toBeNull();
+    expect(screen.queryByText('Event status')).toBeNull();
+  });
+
+  it('changes the status of a live event at once, with its note, and reads the post again', async () => {
+    serve(eventPost(true));
+    show();
+    fireEvent.change(await screen.findByLabelText('Status'), { target: { value: 'cancelled' } });
+    fireEvent.change(screen.getByLabelText(/Note for readers/u), { target: { value: ' Rain ' } });
+    call.mockResolvedValueOnce(ok({}));
+    fireEvent.click(screen.getByRole('button', { name: 'Change status' }));
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    const [method, path, body, csrf] = writes()[0]!;
+    expect(method).toBe('PUT');
+    expect(path).toBe(`blog/admin/posts/${POST}/event-status`);
+    expect(body).toEqual({ status: 'cancelled', message: 'Rain' });
+    expect(csrf).toBe('csrf-1');
+  });
+
+  it('shows the reason when the note is refused, and offers no status change to a reader', async () => {
+    serve(eventPost(true));
+    show();
+    fireEvent.change(await screen.findByLabelText('Status'), { target: { value: 'postponed' } });
+    call.mockResolvedValueOnce(failed(422, 'blog.checks-failed'));
+    fireEvent.click(screen.getByRole('button', { name: 'Change status' }));
+    expect(await screen.findByRole('alert')).toBeTruthy();
+    cleanup();
+    serve(eventPost(true));
+    show({ canEdit: false });
+    await screen.findByLabelText('Status');
+    expect(screen.queryByRole('button', { name: 'Change status' })).toBeNull();
   });
 });

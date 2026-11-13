@@ -1393,6 +1393,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', `blog/admin/posts/${id}`],
     ['GET', `blog/admin/posts/${id}/checks`],
     ['PUT', `blog/admin/posts/${id}/draft`],
+    ['PUT', `blog/admin/posts/${id}/event-status`],
     ['POST', `blog/admin/posts/${id}/submit`],
     ['POST', `blog/admin/posts/${id}/approve`],
     ['POST', `blog/admin/posts/${id}/request-changes`],
