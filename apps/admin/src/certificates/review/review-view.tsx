@@ -2,6 +2,7 @@ import { Badge, Banner, type BadgeTone } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { shortId } from '../../shared/short-id.ts';
 import { When } from '../../shared/when.tsx';
+import { wordsFor } from './label.ts';
 import { ChecksForm, DecisionForm, ScopeForm } from './review-forms.tsx';
 import { type ReviewPage } from './types.ts';
 
@@ -32,9 +33,9 @@ function Section({
 }) {
   return (
     <section aria-labelledby={id} className="rounded-lg border border-line bg-surface p-4">
-      <h2 id={id} className="mb-3 text-lg font-semibold">
+      <h3 id={id} className="mb-3 text-lg font-semibold">
         {title}
-      </h2>
+      </h3>
       {children}
     </section>
   );
@@ -59,10 +60,22 @@ export function ReviewView({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('certificates.review');
+  const tr = useTranslations();
   const queue = useTranslations('certificates.queue');
   const { certificate, submission } = page;
   const decided = !submission.pending;
   const missing = page.checks.filter((check) => check.required && check.result === null).length;
+  const issuerBlocks =
+    submission.issuer !== null &&
+    (submission.issuer.state === 'closed-to-new' || submission.issuer.state === 'derecognised');
+  const blockers = [
+    ...(missing > 0 ? [t('decision.checks-missing', { count: missing })] : []),
+    ...(submission.verificationMode === 'THIRD_PARTY_DOCUMENT' && page.scope === null
+      ? [t('decision.blocker.scope')]
+      : []),
+    ...(issuerBlocks ? [t('decision.blocker.issuer')] : []),
+  ];
+  const store = page.business.storeName ?? t('seller-fallback');
   const common = {
     certificateId: certificate.certificateId,
     submissionId: submission.submissionId,
@@ -86,7 +99,7 @@ export function ReviewView({
           <span>{typeName}</span>
           <Badge tone="neutral">{queue(`kind.${submission.kind as 'initial'}`)}</Badge>
           <span>{queue('submission-no', { n: submission.submissionNo })}</span>
-          <Badge tone="info">{certificate.status}</Badge>
+          <Badge tone="info">{wordsFor(tr, 'status', certificate.status)}</Badge>
         </p>
       </header>
 
@@ -210,7 +223,7 @@ export function ReviewView({
                     href={`/certificates/${hint.certificateId}?reason=duplicate-hint`}
                   >
                     {t(`duplicates.${hint.kind}`, {
-                      store: hint.storeName ?? t('seller-fallback'),
+                      store: hint.storeName ?? t('duplicates.other-seller'),
                     })}
                   </a>
                 </li>
@@ -229,9 +242,12 @@ export function ReviewView({
             {page.history.map((entry, index) => (
               <li key={index} className="text-sm">
                 {t('history.entry', {
-                  from: entry.fromStatus ?? '-',
-                  to: entry.toStatus,
-                  by: entry.actorKind,
+                  from:
+                    entry.fromStatus === null
+                      ? t('history.started')
+                      : wordsFor(tr, 'status', entry.fromStatus),
+                  to: wordsFor(tr, 'status', entry.toStatus),
+                  by: wordsFor(tr, 'actor', entry.actorKind),
                 })}{' '}
                 <When iso={entry.occurredAt} missing="-" />
               </li>
@@ -242,7 +258,7 @@ export function ReviewView({
 
       <Section id="rv-decision" title={t('decision.heading')}>
         {page.decision !== null ? (
-          <p>{t('decision.done', { outcome: page.decision.outcome })}</p>
+          <p>{t('decision.done', { outcome: wordsFor(tr, 'outcome', page.decision.outcome) })}</p>
         ) : decided ? (
           <p className="text-fg-muted">{t('decision.closed')}</p>
         ) : (
@@ -251,7 +267,11 @@ export function ReviewView({
             version={certificate.version}
             reasons={page.reasons}
             canDecide={canDecide}
-            missingChecks={missing}
+            blockers={blockers}
+            store={store}
+            typeName={typeName}
+            submissionNo={submission.submissionNo}
+            renewal={submission.kind === 'renewal'}
           />
         )}
       </Section>

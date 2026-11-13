@@ -1298,9 +1298,10 @@
           "not-applicable": "Not applicable"
         },
         "saving": "Saving",
-        "recorded": "Recorded",
+        "recorded": "Recorded: {result}",
         "not-recorded": "Not recorded",
-        "view-only": "Your role can't record checks on this submission."
+        "view-only": "Your role can't record checks on this submission.",
+        "failed": "This result was not saved. The check keeps its earlier value."
       },
       "scope": {
         "title": "Location and scope as read",
@@ -1323,18 +1324,20 @@
         "none": "None found.",
         "number": "Same certificate number as {store}'s certificate.",
         "file": "Same document file as {store}'s certificate.",
-        "hint": "This is a hint. It doesn't stop a decision. Opening a link is recorded."
+        "hint": "This is a hint. It doesn't stop a decision. Opening a link is recorded.",
+        "other-seller": "another seller"
       },
       "history": {
         "title": "History",
         "none": "No history yet.",
-        "entry": "{from} to {to} by {by}"
+        "entry": "{from} to {to}, by {by}",
+        "started": "Started"
       },
       "decision": {
         "title": {
-          "approve": "Approve this certificate",
-          "request-changes": "Request changes",
-          "decline": "Decline this certificate"
+          "approve": "Approve submission {n}?",
+          "request-changes": "Request changes to submission {n}?",
+          "decline": "Decline submission {n}?"
         },
         "done": "Decided: {outcome}.",
         "closed": "No decision can be recorded on this submission.",
@@ -1351,9 +1354,10 @@
           "decline": "Decline certificate"
         },
         "body": {
-          "approve": "The seller is told by email. The certificate counts from now until it expires.",
-          "request-changes": "The seller is told what to fix and can submit again.",
-          "decline": "The seller is told by email. This submission is closed."
+          "approve": "{store} can add the {type} badge to offers. Offers waiting for this certificate are checked again.",
+          "approve-renewal": "This replaces the current certificate. {store} can add the {type} badge to offers. Offers waiting for this certificate are checked again.",
+          "request-changes": "{store} is told what to fix and can submit again.",
+          "decline": "{store} is told by email. The seller can't send this certificate again. They can add a different one."
         },
         "reason": "Prepared reason",
         "reason-placeholder": "Choose a reason",
@@ -1361,9 +1365,14 @@
         "no-reasons": "This Market has no prepared reasons for this outcome. It can't be recorded.",
         "note": "Note for the seller",
         "optional": "optional",
-        "note-help": "Plain text. It goes to the seller with the reason.",
+        "note-help": "Plain text. It goes to the seller with the reason. Don't include personal details from the document.",
         "text-long": "At most {max} characters.",
-        "heading": "Decision"
+        "heading": "Decision",
+        "next-step": "What the seller is told to do: {step}",
+        "blocker": {
+          "scope": "Record the location and scope as read first.",
+          "issuer": "This issuer isn't taking new certificates. Request changes or decline."
+        }
       },
       "decided": {
         "approve": "Certificate approved.",
@@ -1386,7 +1395,63 @@
         "throttled": "Too many requests. Try again in a moment.",
         "csrf": "Your session needs a refresh. Reload the page.",
         "unavailable": "The service is not available. Try again.",
-        "unknown": "Something went wrong. Nothing was recorded."
+        "unknown": "Something went wrong. Nothing was recorded.",
+        "zone": "The seller's time zone isn't set yet. Ask the seller to finish their address.",
+        "type-inactive": "This certificate type is no longer in use."
+      },
+      "check-code": {
+        "holder-name": "The holder name matches the seller's business",
+        "location-scope": "The location and scope cover what the seller sells",
+        "issuer": "The certificate matches the issuer chosen",
+        "dates": "The dates match the certificate",
+        "tampering": "The document shows no signs of tampering",
+        "legibility-language": "The document is readable and in a language we can review",
+        "issuer-enquiry": "The issuer confirmed the certificate when asked",
+        "declaration-read": "The self-declaration was read"
+      },
+      "reason": {
+        "unreadable": "The file could not be read, or it is in a language we cannot review.",
+        "holder-name-mismatch": "The name on the certificate does not match the business.",
+        "location-scope-unclear": "The location or scope on the certificate does not cover what is sold.",
+        "issuer-unclear": "We could not match the certificate to the issuer chosen.",
+        "dates-unclear": "The dates entered do not match the certificate.",
+        "incomplete-file": "The certificate is incomplete: pages or details are missing.",
+        "signs-of-tampering": "The document shows signs of tampering.",
+        "issuer-not-recognised": "The issuer is not recognised.",
+        "not-confirmed-by-issuer": "The issuer did not confirm the certificate.",
+        "declaration-not-accepted": "The self-declaration was not accepted."
+      },
+      "next-step": {
+        "upload-clearer-file": "The seller uploads a clearer file.",
+        "check-holder-name": "The seller checks the holder name.",
+        "check-location-scope": "The seller checks the location and scope.",
+        "choose-issuer": "The seller chooses the issuer again.",
+        "check-dates": "The seller checks the dates.",
+        "upload-all-pages": "The seller uploads every page.",
+        "contact-support": "The seller is told to contact support.",
+        "add-new-certificate": "The seller adds a new certificate."
+      },
+      "status": {
+        "draft": "Draft",
+        "awaiting-review": "Awaiting review",
+        "changes-needed": "Changes needed",
+        "declined": "Declined",
+        "approved": "Approved",
+        "expired": "Expired",
+        "revoked": "Revoked",
+        "withdrawn": "Withdrawn",
+        "pending": "Pending"
+      },
+      "outcome": {
+        "approved": "Approved",
+        "changes-requested": "Changes requested",
+        "declined": "Declined",
+        "revoked": "Revoked"
+      },
+      "actor": {
+        "seller": "the seller",
+        "admin": "an admin",
+        "system": "the system"
       }
     }
   },

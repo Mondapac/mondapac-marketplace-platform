@@ -2,7 +2,8 @@
 
 import { Banner, Button, Dialog, Select, TextAreaField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
+import { wordsFor } from './label.ts';
 import {
   API_CERTIFICATES,
   REASON_TEXT_MAX,
@@ -33,9 +34,11 @@ export function ChecksForm({
   const call = useReviewCall(csrfToken);
   const [saved, setSaved] = useState<Readonly<Record<string, CheckResultCode>>>({});
   const [saving, setSaving] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
 
   async function record(checkCode: string, result: CheckResultCode) {
     setSaving(checkCode);
+    setFailed(null);
     const answer = await call.run(`${API_CERTIFICATES}/${certificateId}/checks`, {
       submissionId,
       checkCode,
@@ -43,24 +46,20 @@ export function ChecksForm({
     });
     setSaving(null);
     if (answer.ok) setSaved((prev) => ({ ...prev, [checkCode]: result }));
+    else setFailed(checkCode);
   }
 
   if (checks.length === 0) return <p className="text-fg-muted">{t('none')}</p>;
   return (
     <div className="flex flex-col gap-3">
-      <div aria-live="polite">
-        {call.problem === null ? null : <Banner tone="critical">{tr(call.problem.key)}</Banner>}
-      </div>
       <ul className="flex flex-col gap-3">
         {checks.map((check) => {
           const current = saved[check.code] ?? check.result;
           return (
             <li key={check.code} className="rounded-md border border-line p-3">
-              <fieldset className="min-w-0" disabled={!canRecord || call.pending}>
+              <fieldset className="min-w-0" disabled={!canRecord || saving === check.code}>
                 <legend className="text-sm font-medium wrap-anywhere">
-                  {tr.has(`certificates.review.check-code.${check.code}` as never)
-                    ? tr(`certificates.review.check-code.${check.code}` as never)
-                    : check.code}
+                  {wordsFor(tr, 'check-code', check.code)}
                   {check.required ? (
                     <span className="font-normal text-fg-muted"> ({t('required')})</span>
                   ) : null}
@@ -83,9 +82,16 @@ export function ChecksForm({
                     ? t('saving')
                     : current === null
                       ? t('not-recorded')
-                      : t('recorded')}
+                      : t('recorded', { result: t(`result.${current}`) })}
                 </p>
               </fieldset>
+              {failed === check.code && call.problem !== null ? (
+                <div className="mt-2">
+                  <Banner tone="critical">
+                    {t('failed')} {tr(call.problem.key as never)}
+                  </Banner>
+                </div>
+              ) : null}
             </li>
           );
         })}
@@ -115,6 +121,7 @@ export function ScopeForm({
   async function submit(event: FormEvent) {
     event.preventDefault();
     setChecked(true);
+    setDone(false);
     if (location.trim() === '' || scope.trim() === '') return;
     const answer = await call.run(`${API_CERTIFICATES}/${certificateId}/scope`, {
       submissionId,
@@ -127,7 +134,9 @@ export function ScopeForm({
   return (
     <form onSubmit={(event) => void submit(event)} noValidate className="flex flex-col gap-3">
       <div aria-live="polite">
-        {call.problem === null ? null : <Banner tone="critical">{tr(call.problem.key)}</Banner>}
+        {call.problem === null ? null : (
+          <Banner tone="critical">{tr(call.problem.key as never)}</Banner>
+        )}
         {done ? <Banner tone="success">{t('saved')}</Banner> : null}
       </div>
       <p className="text-sm text-fg-muted">{recorded ? t('replace-note') : t('help')}</p>
@@ -135,14 +144,20 @@ export function ScopeForm({
         label={t('location')}
         rows={2}
         value={location}
-        onChange={(event) => setLocation(event.target.value)}
+        onChange={(event) => {
+          setLocation(event.target.value);
+          setDone(false);
+        }}
         error={checked && location.trim() === '' ? t('required') : undefined}
       />
       <TextAreaField
         label={t('scope')}
         rows={3}
         value={scope}
-        onChange={(event) => setScope(event.target.value)}
+        onChange={(event) => {
+          setScope(event.target.value);
+          setDone(false);
+        }}
         error={checked && scope.trim() === '' ? t('required') : undefined}
       />
       <div>
@@ -159,6 +174,7 @@ type Decision = 'approve' | 'request-changes' | 'decline';
 /**
  * Approve, request changes or decline. The three are separate choices, none preselected; the
  * confirmation names the record version read. Request changes and Decline need a prepared reason.
+ * Approve stays reachable but says, as text, what has to be done first.
  */
 export function DecisionForm({
   certificateId,
@@ -167,7 +183,11 @@ export function DecisionForm({
   version,
   reasons,
   canDecide,
-  missingChecks,
+  blockers,
+  store,
+  typeName,
+  submissionNo,
+  renewal,
 }: Common & {
   readonly version: number;
   readonly reasons: {
@@ -175,27 +195,31 @@ export function DecisionForm({
     readonly declined?: readonly ReviewReason[];
   };
   readonly canDecide: boolean;
-  /** Required checks not yet recorded: Approve names them as text. */
-  readonly missingChecks: number;
+  /** Why Approve can't be used yet, already worded. */
+  readonly blockers: readonly string[];
+  readonly store: string;
+  readonly typeName: string;
+  readonly submissionNo: number;
+  readonly renewal: boolean;
 }) {
   const t = useTranslations('certificates.review.decision');
-  const tr = useTranslations();
   const [open, setOpen] = useState<Decision | null>(null);
   if (!canDecide) return <p className="text-fg-muted">{t('no-role')}</p>;
+  const blocked = blockers.length > 0;
   return (
     <div className="flex flex-col gap-3">
-      {missingChecks > 0 ? (
-        <p className="text-sm text-fg-muted" id="approve-blocked">
-          {t('checks-missing', { count: missingChecks })}
-        </p>
-      ) : null}
+      <div id="approve-blocked" aria-live="polite" className="text-sm text-fg-muted">
+        {blockers.map((reason) => (
+          <p key={reason}>{reason}</p>
+        ))}
+      </div>
       <div className="flex flex-col gap-2 sm:flex-row">
         <Button
-          className="max-sm:w-full"
-          aria-disabled={missingChecks > 0 ? true : undefined}
-          aria-describedby={missingChecks > 0 ? 'approve-blocked' : undefined}
+          className="max-sm:w-full aria-disabled:cursor-not-allowed aria-disabled:bg-muted aria-disabled:text-fg-muted"
+          aria-disabled={blocked ? true : undefined}
+          aria-describedby={blocked ? 'approve-blocked' : undefined}
           onClick={() => {
-            if (missingChecks === 0) setOpen('approve');
+            if (!blocked) setOpen('approve');
           }}
         >
           {t('approve')}
@@ -226,7 +250,10 @@ export function DecisionForm({
                 : []
           }
           onClose={() => setOpen(null)}
-          title={tr(`certificates.review.decision.title.${open}`)}
+          store={store}
+          typeName={typeName}
+          submissionNo={submissionNo}
+          renewal={renewal}
         />
       )}
     </div>
@@ -241,26 +268,36 @@ function DecisionDialog({
   version,
   reasons,
   onClose,
-  title,
+  store,
+  typeName,
+  submissionNo,
+  renewal,
 }: Common & {
   readonly kind: Decision;
   readonly version: number;
   readonly reasons: readonly ReviewReason[];
   readonly onClose: () => void;
-  readonly title: string;
+  readonly store: string;
+  readonly typeName: string;
+  readonly submissionNo: number;
+  readonly renewal: boolean;
 }) {
   const t = useTranslations('certificates.review.decision');
   const tr = useTranslations();
   const formId = useId();
+  const cancel = useRef<HTMLButtonElement>(null);
   const call = useReviewCall(csrfToken);
   const [reasonCode, setReasonCode] = useState('');
   const [reasonText, setReasonText] = useState('');
   const [checked, setChecked] = useState(false);
   const needsReason = kind !== 'approve';
+  const chosen = reasons.find((reason) => reason.code === reasonCode);
   const reasonError =
     checked && needsReason && reasonCode === '' ? t('reason-required') : undefined;
   const textError =
     reasonText.length > REASON_TEXT_MAX ? t('text-long', { max: REASON_TEXT_MAX }) : undefined;
+  // Typed text is never lost to a stray click or Escape; Cancel is the way out.
+  const dirty = reasonCode !== '' || reasonText !== '';
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -278,11 +315,14 @@ function DecisionDialog({
   return (
     <Dialog
       open
-      title={title}
-      onClose={onClose}
+      title={t(`title.${kind}`, { n: submissionNo })}
+      onClose={() => {
+        if (!dirty && !call.pending) onClose();
+      }}
+      initialFocus={cancel}
       actions={
         <>
-          <Button variant="secondary" disabled={call.pending} onClick={onClose}>
+          <Button variant="secondary" ref={cancel} disabled={call.pending} onClick={onClose}>
             {t('cancel')}
           </Button>
           {call.problem?.reload === true ? (
@@ -301,27 +341,41 @@ function DecisionDialog({
         noValidate
         className="flex flex-col gap-4"
       >
-        <div aria-live="polite">
-          {call.problem === null ? null : <Banner tone="critical">{tr(call.problem.key)}</Banner>}
+        <div role="alert">
+          {call.problem === null ? null : (
+            <Banner tone="critical">{tr(call.problem.key as never)}</Banner>
+          )}
         </div>
-        <p className="text-sm">{t(`body.${kind}`)}</p>
+        <p className="text-sm">
+          {t(`body.${kind === 'approve' && renewal ? 'approve-renewal' : kind}`, {
+            store,
+            type: typeName,
+          })}
+        </p>
         {needsReason ? (
           <>
             {reasons.length === 0 ? (
               <Banner tone="attention">{t('no-reasons')}</Banner>
             ) : (
-              <Select
-                label={t('reason')}
-                required
-                placeholder={t('reason-placeholder')}
-                value={reasonCode}
-                onChange={(event) => setReasonCode(event.target.value)}
-                options={reasons.map((reason) => ({
-                  value: reason.code,
-                  label: reason.nextStep,
-                }))}
-                error={reasonError}
-              />
+              <>
+                <Select
+                  label={t('reason')}
+                  required
+                  placeholder={t('reason-placeholder')}
+                  value={reasonCode}
+                  onChange={(event) => setReasonCode(event.target.value)}
+                  options={reasons.map((reason) => ({
+                    value: reason.code,
+                    label: wordsFor(tr, 'reason', reason.code),
+                  }))}
+                  error={reasonError}
+                />
+                {chosen === undefined ? null : (
+                  <p className="text-sm text-fg-muted">
+                    {t('next-step', { step: wordsFor(tr, 'next-step', chosen.nextStep) })}
+                  </p>
+                )}
+              </>
             )}
             <TextAreaField
               label={t('note')}

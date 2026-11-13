@@ -5,6 +5,7 @@ import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 import { typeNames } from '../../../../src/certificates/format.ts';
+import { pickReviewPage } from '../../../../src/certificates/review/pick.ts';
 import { ReviewView } from '../../../../src/certificates/review/review-view.tsx';
 import {
   API_CERTIFICATES,
@@ -40,9 +41,9 @@ export default async function ReviewPageRoute({
   if (gate.kind === 'unavailable') {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
-  const title = t('certificates.title');
+  const title = t('certificates.review.title');
   const shell = (body: React.ReactNode) => (
-    <AdminShell session={gate.session} activeId="certificates" title={title}>
+    <AdminShell session={gate.session} activeId="certificates" title={t('certificates.title')}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {body}
     </AdminShell>
@@ -84,7 +85,7 @@ export default async function ReviewPageRoute({
   const names = typeNames(types?.kind === 'ok' ? types.body.items : [], locale);
   return shell(
     <ReviewView
-      page={result.body}
+      page={pickReviewPage(result.body)}
       typeName={names.get(result.body.certificate.typeCode) ?? result.body.certificate.typeCode}
       canReview
       canDecide={keys.includes(APPROVE_PERMISSION)}

@@ -107,6 +107,17 @@ describe('certificates page', () => {
     );
   });
 
+  it('says a decision was recorded, for the three outcomes only', async () => {
+    render(await CertificatesPage(search({ decided: 'approve' })));
+    expect(screen.getByText('Certificate approved.')).toBeTruthy();
+    cleanup();
+    render(await CertificatesPage(search({ decided: 'decline' })));
+    expect(screen.getByText('Certificate declined.')).toBeTruthy();
+    cleanup();
+    render(await CertificatesPage(search({ decided: '<b>x</b>' })));
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
   it('sends a reader who may only see issuers to the issuers tab', async () => {
     mocks.session.mockResolvedValue({
       kind: 'ok',

@@ -6,8 +6,12 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'certificate.not-found': 'gone',
   'review.not-current-submission': 'replaced',
   'review.checks-incomplete': 'checks',
+  'review.checks-missing': 'checks',
+  'seller.zone-missing': 'zone',
+  'type.inactive': 'type-inactive',
   'review.scope-missing': 'scope',
   'review.issuer-not-accepting': 'issuer',
+  'certificate.expired': 'expired',
   'issuer.not-active': 'issuer',
   'certificate.incomplete': 'incomplete',
   'certificate.already-expired': 'expired',
@@ -27,7 +31,7 @@ export interface ReviewProblem {
 }
 
 export function reviewProblemOf(failure: ApiFailure): ReviewProblem {
-  const named = BY_CODE[failure.code];
+  const named = Object.hasOwn(BY_CODE, failure.code) ? BY_CODE[failure.code] : undefined;
   const key = named ?? (failure.status === 0 || failure.status >= 500 ? 'unavailable' : 'unknown');
   return {
     key: `certificates.review.error.${key}`,

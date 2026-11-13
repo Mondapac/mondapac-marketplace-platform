@@ -30,7 +30,11 @@ vi.mock('../../../../src/server/admin-shell.tsx', () => ({
   AdminShell: ({ children }: { readonly children: ReactNode }) => <main>{children}</main>,
 }));
 vi.mock('../../../../src/certificates/review/review-view.tsx', () => ({
-  ReviewView: (props: { readonly canDecide: boolean; readonly typeName: string }) => {
+  ReviewView: (props: {
+    readonly canDecide: boolean;
+    readonly typeName: string;
+    readonly page: unknown;
+  }) => {
     mocks.view(props);
     return <p>{`review ${props.typeName} ${props.canDecide ? 'decide' : 'no-decide'}`}</p>;
   },
@@ -55,7 +59,30 @@ const props = (id = ID, reason?: string) => ({
   params: Promise.resolve({ certificateId: id }),
   searchParams: Promise.resolve(reason === undefined ? {} : { reason }),
 });
-const ok = { kind: 'ok', body: { certificate: { typeCode: 'halal' } } };
+const ok = {
+  kind: 'ok',
+  body: {
+    certificate: {
+      certificateId: ID,
+      sellerId: 's',
+      typeCode: 'halal',
+      status: 'x',
+      version: 1,
+      createdAt: 'd',
+    },
+    submission: { submissionId: 'u', issuer: null, secret: 'decrypted-extra' },
+    documents: [],
+    checks: [],
+    scope: null,
+    confirmation: null,
+    reasons: {},
+    duplicateHints: [],
+    business: { status: 'ok' },
+    history: [],
+    decision: null,
+    otherSubmissions: [{ certificateNumber: 'OTHER-SELLER-NUMBER' }],
+  },
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -98,6 +125,16 @@ describe('review page route', () => {
     mocks.session.mockResolvedValue({ kind: 'ok', session: session([REVIEW, APPROVE]) });
     render(await ReviewPageRoute(props()));
     expect(screen.getByText('review halal decide')).toBeTruthy();
+  });
+
+  it('hands the view only the fields it shows, and the permission and token it needs', async () => {
+    render(await ReviewPageRoute(props()));
+    const given = mocks.view.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(JSON.stringify(given.page)).not.toContain('OTHER-SELLER-NUMBER');
+    expect(JSON.stringify(given.page)).not.toContain('decrypted-extra');
+    expect(given.canReview).toBe(true);
+    expect(given.csrfToken).toBe('c');
+    expect(given.typeName).toBe('halal');
   });
 
   it('handles refused, missing, unavailable and signed-out reads', async () => {
