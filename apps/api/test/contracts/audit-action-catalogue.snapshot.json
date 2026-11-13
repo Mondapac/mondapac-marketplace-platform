@@ -2634,13 +2634,13 @@
   {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(list-paging|cart-mode)",
+    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier)",
     "actors": ["authenticated"],
     "before": {
-      "value": "enumOf(pages|prev-next|multi-store|single-store)"
+      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced)"
     },
     "after": {
-      "value": "enumOf(pages|prev-next|multi-store|single-store)",
+      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced)",
       "version": "integer"
     }
   },
