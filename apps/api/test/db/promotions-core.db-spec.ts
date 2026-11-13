@@ -1086,6 +1086,27 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
         ),
       );
       expect(review.ok && review.value.records.map((r) => r.id)).toEqual([spent]);
+      // The Viewer's list hides the budget state: a spent promotion stays in the live tab.
+      const hidden = await inUnit(() =>
+        deps.promotions.search(
+          market,
+          {
+            text: tag,
+            types: [],
+            owner: null,
+            funding: null,
+            hideBudget: true,
+            criterion: 'ACTIVE',
+            reviewPromotionIds: [],
+            sort: 'CREATED',
+            descending: true,
+            offset: 0,
+            limit: 10,
+          },
+          clock.now(),
+        ),
+      );
+      expect(hidden.ok && hidden.value.records.map((r) => r.id)).toContain(spent);
       const open = await make(CountPromotionReviews).execute(admin, {});
       expect(open.ok && open.value.open).toBeGreaterThanOrEqual(0);
     });
@@ -1098,6 +1119,7 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
           type: 'CO_FUNDED_CAMPAIGN',
           funding: 'CO_FUNDED',
           platformSplitBps: 4000,
+          startsAt: clock.now().add({ hours: 48 }).toString(),
           name: `PB1 members ${run}`,
         }),
       );
