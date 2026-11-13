@@ -12,6 +12,7 @@ import {
 } from '../../domain/missing-details-email';
 import { editorAccountOf } from '../attributes/attribute-editor';
 import { ATTRIBUTE_LOAD_MAX } from '../attributes/attribute-admin-views';
+import { englishLocaleOf } from '../attributes/english-locale';
 import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import { closedInput, invalid, type ValidationFailure } from '../brands/brand-views';
 import type { AttributeAdminReader } from '../ports/attribute-admin.reader';
@@ -275,14 +276,13 @@ export class MissingDetailsEmailSellers extends UseCase<
     const { deps } = this;
     const locales = deps.policy.locales(market);
     const ordered = [locales.default, ...locales.supported.filter((l) => l !== locales.default)];
+    // The mail is English only: product and detail names are read in the Market's English locale,
+    // not its default (ZZ: ja-JP); a name missing there falls back to the code.
+    const english = englishLocaleOf(locales);
     const read = await deps.unitOfWork.run(
       market,
       async () => {
-        const rows = await deps.detailsGapReader.publishedByIds(
-          market,
-          productIds,
-          locales.default,
-        );
+        const rows = await deps.detailsGapReader.publishedByIds(market, productIds, english);
         const definitions = await deps.attributeAdminReader.definitions(market, ATTRIBUTE_LOAD_MAX);
         const session = await deps.familyResolver.open(market);
         const schemas = new Map<string, Awaited<ReturnType<AttributeRepository['loadSchema']>>>();
@@ -319,7 +319,7 @@ export class MissingDetailsEmailSellers extends UseCase<
         }
         const labelsByCode = new Map<string, string>();
         for (const definition of definitions) {
-          const label = definition.revision.names[locales.default];
+          const label = definition.revision.names[english];
           if (typeof label === 'string' && label !== '') labelsByCode.set(definition.code, label);
         }
         candidates.sort((a, b) =>

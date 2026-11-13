@@ -142,6 +142,8 @@ export interface AttributeDetail extends AttributeSummary {
   readonly createdByKind: 'seed' | 'admin';
   readonly createdAt: string;
   readonly version: number;
+  /** The attribute this one was merged into (attributes A8); set only on an archived one. */
+  readonly mergedInto?: { readonly id: string; readonly code: string } | null;
   /** For a measure, `min` and `max` are in the dimension's base unit. */
   readonly bounds: {
     readonly maxLength?: number;

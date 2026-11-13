@@ -126,6 +126,10 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.refund-tax-unavailable': 503,
     'ordering.document-not-available': 409,
     'ordering.invoice-numbering-unavailable': 503,
+    'saved-filter.not-found': 404,
+    'saved-filter.name-taken': 409,
+    'saved-filter.limit-reached': 409,
+    'saved-filter.shared-limit-reached': 409,
     'access.unavailable': 503,
   });
 });
