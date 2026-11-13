@@ -20,6 +20,7 @@ import {
 } from '../../domain/description-writer/writer-request';
 import {
   ADMIN_AI_DRAFT_LIMITS,
+  MARKET_AI_DRAFT_LIMITS,
   SELLER_AI_DRAFT_LIMITS,
   rateVerdict,
   type RateLimit,
@@ -148,9 +149,11 @@ export async function writerAvailability(
 }
 
 /**
- * Counts one draft on the caller's counters and the Market's. The day counters are keyed with the Market's date,
- * so they end at the Market's midnight before their 25-hour window does; the refusal then says
- * how long until that midnight. A store that cannot count is `access.unavailable` (no free call).
+ * Counts one draft, in two steps: the caller's counters first, and the Market's ceiling only when
+ * those allowed it, so a caller refused by its own limits never counts on the Market (Hassan M3).
+ * The day counters are keyed with the Market's date, so they end at the Market's midnight before
+ * their 25-hour window does; a used-up day says how long until that midnight. A store that cannot
+ * count is `access.unavailable` (no free call).
  */
 async function reserveDraft(
   deps: DescriptionWriterDependencies,
@@ -160,8 +163,6 @@ async function reserveDraft(
   const { market } = context;
   const now = deps.clock.now();
   const day = deps.calendar.dayOf(market, now);
-  const limits: readonly RateLimit[] =
-    caller.kind === 'seller' ? SELLER_AI_DRAFT_LIMITS : ADMIN_AI_DRAFT_LIMITS;
   const subjectOf = (limit: RateLimit): string => {
     if (limit.kind === 'ai-suggest.seller.day' && caller.kind === 'seller') {
       return `${caller.sellerId}|${day}`;
@@ -171,7 +172,7 @@ async function reserveDraft(
     if (limit.kind === 'ai-suggest.market.day') return day;
     return caller.accountId;
   };
-  try {
+  const reserve = async (limits: readonly RateLimit[]): Promise<WriterFailure | null> => {
     const counters = limits.map((limit) => ({
       limit,
       keyHash: deps.counterKeys.keyOf(market, limit.kind, subjectOf(limit)),
@@ -182,8 +183,7 @@ async function reserveDraft(
     if (!reserved.ok) return { code: 'access.unavailable' };
     const verdict = rateVerdict(limits, reserved.value, now);
     if (verdict.allowed) return null;
-    // Any day counter over its limit (the caller's or the Market's) lasts until the Market's
-    // midnight; otherwise it is the burst cap.
+    // A day counter over its limit lasts until the Market's midnight; otherwise it is the burst cap.
     const dayUsedUp = limits.some(
       (limit) =>
         limit.kind.endsWith('.day') &&
@@ -198,6 +198,13 @@ async function reserveDraft(
       };
     }
     return { code: 'request.throttled', retryAfterSeconds: verdict.retryAfterSeconds };
+  };
+  try {
+    const own = await reserve(
+      caller.kind === 'seller' ? SELLER_AI_DRAFT_LIMITS : ADMIN_AI_DRAFT_LIMITS,
+    );
+    if (own !== null) return own;
+    return await reserve(MARKET_AI_DRAFT_LIMITS);
   } catch {
     return { code: 'access.unavailable' };
   }

@@ -118,12 +118,17 @@ export const MARKET_AI_DRAFTS_PER_DAY = 2000;
 const MARKET_DAY = 25 * 60;
 export const SELLER_AI_DRAFT_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'ai-suggest.account.minute', limit: 6, windowMinutes: 1 },
-  { kind: 'ai-suggest.market.day', limit: MARKET_AI_DRAFTS_PER_DAY, windowMinutes: MARKET_DAY },
   { kind: 'ai-suggest.seller.day', limit: 50, windowMinutes: MARKET_DAY },
 ]);
 export const ADMIN_AI_DRAFT_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'ai-suggest.account.day', limit: 50, windowMinutes: MARKET_DAY },
   { kind: 'ai-suggest.account.minute', limit: 6, windowMinutes: 1 },
+]);
+/**
+ * The Market's ceiling, counted only once the caller's own counters allowed the draft, so a caller
+ * refused by its own limits never uses up the Market's day for everyone (Hassan M3).
+ */
+export const MARKET_AI_DRAFT_LIMITS: readonly RateLimit[] = Object.freeze([
   { kind: 'ai-suggest.market.day', limit: MARKET_AI_DRAFTS_PER_DAY, windowMinutes: MARKET_DAY },
 ]);
 

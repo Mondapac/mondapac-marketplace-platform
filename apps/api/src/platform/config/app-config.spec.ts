@@ -58,7 +58,9 @@ describe('loadAppConfig', () => {
       expect(loadAppConfig({ HOSTED_MARKETS: 'AU', AI_KILL_SWITCH: 'false' }).aiKillSwitch).toBe(
         false,
       );
-      expect(loadAppConfig({ HOSTED_MARKETS: 'AU', AI_KILL_SWITCH: 'true' }).aiKillSwitch).toBe(true);
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU', AI_KILL_SWITCH: 'true' }).aiKillSwitch).toBe(
+        true,
+      );
       expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', AI_KILL_SWITCH: 'yes' })).toThrow();
       expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', AI_KILL_SWITCH: 'TRUE' })).toThrow();
     });
