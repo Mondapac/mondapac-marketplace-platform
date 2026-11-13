@@ -222,6 +222,8 @@ describe('seller accounts over HTTP (integration)', () => {
         .get('/identity/seller/session')
         .set({ 'x-market-id': code, cookie });
       expect(session.status).toBe(200);
+      // The Market zone is for the admin panel only (ADR-0005).
+      expect(session.body).not.toHaveProperty('marketTimezone');
       expect(session.body).toMatchObject({
         population: 'seller',
         sellerId: seller!.sellerId,

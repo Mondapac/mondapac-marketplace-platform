@@ -202,6 +202,7 @@ const session = (permissionKeys: string[], timezone: string | null = null): Admi
   secondFactorActive: true,
   lastSignInAt: null,
   timezone,
+  marketTimezone: 'UTC',
   locale: null,
   email: 'ada@example.test',
   displayName: 'Ada',

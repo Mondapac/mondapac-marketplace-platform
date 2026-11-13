@@ -1374,6 +1374,7 @@ const RESTRUCTURE_DEPS = {
       attributes: true,
       policy: true,
       familyResolver: true,
+      emailStore: true,
     }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,

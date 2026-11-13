@@ -52,17 +52,35 @@ export function formatInstantInZone(iso: string | null, locale: string, zone: st
   }
 }
 
+/** The year of an instant on a zone's clock; UTC's for a zone this runtime does not know. */
+function yearIn(date: Date, zone: string): string {
+  try {
+    return dateFormat('en', { year: 'numeric', numberingSystem: 'latn', timeZone: zone }).format(
+      date,
+    );
+  } catch {
+    return String(date.getUTCFullYear());
+  }
+}
+
 /**
  * A compact instant in an IANA zone for a table cell ("23 Oct, 6:00 am"), without the zone name:
  * the page says once which zone its times are in. A zone this runtime does not know reads in UTC.
  */
-export function shortInstantInZone(iso: string | null, locale: string, zone: string): string {
+export function shortInstantInZone(
+  iso: string | null,
+  locale: string,
+  zone: string,
+  /** Adds the year when it is not this year on the zone's clock, as `shortInstant` does. */
+  pastYear = false,
+): string {
   if (iso === null) return '-';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '-';
   const options: Intl.DateTimeFormatOptions = {
     day: 'numeric',
     month: 'short',
+    ...(pastYear && yearIn(date, zone) !== yearIn(new Date(), zone) ? { year: 'numeric' } : {}),
     hour: 'numeric',
     minute: '2-digit',
   };
@@ -95,6 +113,27 @@ export function displayZone(zone: string | null): string {
   } catch {
     return 'UTC';
   }
+}
+
+/**
+ * The zone for local days and times (ADR-0005): the holder's own when this runtime knows it,
+ * otherwise the Market's, and UTC only when neither can be used.
+ */
+export function localZone(
+  own: string | null | undefined,
+  market: string | null | undefined,
+): string {
+  for (const zone of [own, market]) {
+    // Absent or empty (an API that does not send the field yet): never the browser's own zone.
+    if (zone === null || zone === undefined || zone === '') continue;
+    try {
+      dateFormat('en', { timeZone: zone });
+      return zone;
+    } catch {
+      // Not a zone this runtime knows: try the next one.
+    }
+  }
+  return 'UTC';
 }
 
 /** A day with its year in an IANA zone ("29 Oct 2026"); a zone this runtime does not know reads in UTC. */
