@@ -64,7 +64,7 @@ export function eventContentOf(form: EventForm | null): Readonly<Record<string, 
   return {
     startsAt: orNull(form.startsAt),
     endsAt: orNull(form.endsAt),
-    timeZone: form.timeZone.trim(),
+    timeZone: orNull(form.timeZone),
     attendance: form.attendance,
     venueName: orNull(form.venueName),
     address: orNull(form.address),

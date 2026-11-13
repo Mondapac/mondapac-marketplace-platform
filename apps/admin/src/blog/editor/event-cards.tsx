@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Select, TextAreaField, TextField, toast } from '@mondapac/ui';
+import { Badge, Banner, Button, Select, TextAreaField, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../../api/client.ts';
@@ -46,6 +46,14 @@ export function EventDetailsCard({
       <h2 className="text-base font-semibold">{t('title')}</h2>
       <p className="text-sm text-fg-muted">{t('help')}</p>
       <TextField
+        label={t('time-zone')}
+        help={t('time-zone-help')}
+        value={form.timeZone}
+        disabled={disabled}
+        error={bad('timeZone')}
+        onChange={(event) => set({ timeZone: event.target.value })}
+      />
+      <TextField
         label={t('starts-at')}
         type="datetime-local"
         value={form.startsAt}
@@ -60,14 +68,6 @@ export function EventDetailsCard({
         disabled={disabled}
         error={bad('endsAt')}
         onChange={(event) => set({ endsAt: event.target.value })}
-      />
-      <TextField
-        label={t('time-zone')}
-        help={t('time-zone-help')}
-        value={form.timeZone}
-        disabled={disabled}
-        error={bad('timeZone')}
-        onChange={(event) => set({ timeZone: event.target.value })}
       />
       <Select
         label={t('attendance')}
@@ -108,6 +108,13 @@ export function EventDetailsCard({
     </section>
   );
 }
+
+const NOW_TONE = {
+  scheduled: 'success',
+  postponed: 'attention',
+  rescheduled: 'attention',
+  cancelled: 'critical',
+} as const;
 
 /**
  * The live status of a published event: it changes at once, without a review, and is audited. The
@@ -163,15 +170,27 @@ export function EventStatusCard({
     >
       <h2 className="text-base font-semibold">{t('status-title')}</h2>
       <p className="text-sm text-fg-muted">{t('status-help')}</p>
+      <p className="flex items-center gap-2 text-sm">
+        <span className="text-fg-muted">{t('status-now')}</span>
+        <Badge tone={NOW_TONE[current.status]}>{t(`status-option.${current.status}`)}</Badge>
+      </p>
+      {!canEdit ? <p className="text-sm text-fg-muted">{t('status-read-only')}</p> : null}
       {problem !== null ? (
-        <Banner tone="critical">{te(problem.key.replace('blog.editor.', ''))}</Banner>
+        <Banner tone="critical">
+          {te.has(problem.key.replace('blog.editor.', ''))
+            ? te(problem.key.replace('blog.editor.', ''))
+            : te('error.unknown')}
+        </Banner>
       ) : null}
       <Select
         label={t('status')}
         value={status}
         disabled={!canEdit || busy}
         options={EVENT_STATUSES.map((value) => ({ value, label: t(`status-option.${value}`) }))}
-        onChange={(event) => setStatus(event.target.value as EventStatus)}
+        onChange={(event) => {
+          setProblem(null);
+          setStatus(event.target.value as EventStatus);
+        }}
       />
       <TextAreaField
         label={t('status-message')}
@@ -182,7 +201,10 @@ export function EventStatusCard({
         maxLength={EVENT_LIMITS.message}
         disabled={!canEdit || busy}
         counter={`${message.length} / ${EVENT_LIMITS.message}`}
-        onChange={(event) => setMessage(event.target.value)}
+        onChange={(event) => {
+          setProblem(null);
+          setMessage(event.target.value);
+        }}
       />
       {canEdit ? (
         <Button loading={busy} disabled={!changed} onClick={() => void onSave()}>

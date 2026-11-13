@@ -6952,11 +6952,11 @@
       "changes-requested": "Changes were requested: {note}",
       "event": {
         "title": "Event details",
-        "help": "Times are read on the clock of the time zone below.",
+        "help": "Times are in the time zone you choose first.",
         "starts-at": "Starts",
         "ends-at": "Ends",
         "time-zone": "Time zone",
-        "time-zone-help": "A zone name such as Australia/Brisbane. It is the Market zone until you change it.",
+        "time-zone-help": "A zone name such as Australia/Brisbane. It is your market's zone until you change it.",
         "attendance": "How people attend",
         "attendance-option": {
           "offline": "In person",
@@ -6966,20 +6966,20 @@
         "venue": "Venue name",
         "address": "Address",
         "registration": "Registration link",
-        "registration-help": "A secure link that starts with https. A reviewer approves it.",
+        "registration-help": "A secure link that starts with https. A reviewer checks it before the post goes live.",
         "optional": "optional",
         "invalid": {
           "value": "Check this field.",
           "required": "This is required.",
-          "format": "Check the format.",
-          "type": "Check the format.",
+          "format": "Check the date and time. A time that does not exist in this zone is refused.",
+          "type": "Use a valid date and time.",
           "length": "This is too long.",
           "scheme": "Use a link that starts with https.",
           "before-start": "The end must be after the start.",
           "too-long": "An event can last 31 days at most."
         },
         "status-title": "Event status",
-        "status-help": "A change shows on the live post at once, without a review, and is recorded.",
+        "status-help": "For a published event. A change shows on the live post at once, without a review, and is recorded.",
         "status": "Status",
         "status-option": {
           "scheduled": "Scheduled",
@@ -6988,8 +6988,10 @@
           "cancelled": "Cancelled"
         },
         "status-message": "Note for readers",
-        "status-message-help": "Say what changed. Links are not allowed here.",
+        "status-message-help": "Say what changed. For a new date, write it here. Links are not allowed.",
         "status-save": "Change status",
+        "status-now": "Now",
+        "status-read-only": "You can read this status but not change it.",
         "status-saved": "Event status changed."
       },
       "locked": {

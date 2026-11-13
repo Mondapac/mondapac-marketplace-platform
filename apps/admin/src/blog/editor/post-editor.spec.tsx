@@ -378,4 +378,52 @@ describe('admin blog post editor', () => {
     await screen.findByLabelText('Status');
     expect(screen.queryByRole('button', { name: 'Change status' })).toBeNull();
   });
+
+  it('shows the refusal text of a status note and keeps an unsaved draft when the status changes', async () => {
+    serve(eventPost(true));
+    show();
+    fireEvent.change(await screen.findByLabelText('Title'), { target: { value: 'Changed' } });
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'postponed' } });
+    call.mockResolvedValueOnce(failed(422, 'blog.checks-failed'));
+    fireEvent.click(screen.getByRole('button', { name: 'Change status' }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/checks/iu);
+    call.mockResolvedValueOnce(ok({}));
+    call.mockResolvedValueOnce(ok(eventPost(true)));
+    fireEvent.click(screen.getByRole('button', { name: 'Change status' }));
+    await waitFor(() =>
+      expect(call.mock.calls.filter(([m]) => m === 'GET').length).toBeGreaterThan(2),
+    );
+    expect(screen.getByDisplayValue('Changed')).toBeTruthy();
+  });
+
+  it('marks the venue optional only for an online event and shows a server reason under it', async () => {
+    serve(eventPost(false));
+    show();
+    expect(await screen.findByLabelText('Venue name')).toBeTruthy();
+    expect(screen.queryByLabelText(/Venue name \(optional\)/u)).toBeNull();
+    fireEvent.change(screen.getByLabelText('Venue name'), { target: { value: '' } });
+    call.mockResolvedValueOnce(
+      failed(400, 'validation.failed', {
+        fields: [{ path: 'content.event.venueName', code: 'required' }],
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(await screen.findByText('This is required.')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('How people attend'), { target: { value: 'online' } });
+    expect(screen.getByLabelText(/Venue name \(optional\)/u)).toBeTruthy();
+  });
+
+  it('disables the event form while the post is in review', async () => {
+    const detail = eventPost(false);
+    serve({ ...detail, status: 'in_review' });
+    show();
+    expect((await screen.findByLabelText<HTMLInputElement>('Starts')).disabled).toBe(true);
+  });
+
+  it('offers no status change on an archived event', async () => {
+    serve({ ...eventPost(true), status: 'archived' });
+    show();
+    expect((await screen.findByLabelText<HTMLSelectElement>('Status')).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Change status' })).toBeNull();
+  });
 });

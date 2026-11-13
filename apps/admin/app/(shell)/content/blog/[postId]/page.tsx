@@ -31,7 +31,7 @@ export default async function BlogPostPage({
   if (gate.kind === 'unavailable') {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
-  const { permissionKeys, csrfToken, timezone } = gate.session;
+  const { permissionKeys, csrfToken, marketTimezone } = gate.session;
   if (!permissionKeys.includes(BLOG_READ_PERMISSION)) {
     return <ContentNoAccess session={gate.session} />;
   }
@@ -44,7 +44,7 @@ export default async function BlogPostPage({
         canEdit={permissionKeys.includes(BLOG_EDIT_PERMISSION)}
         canReview={permissionKeys.includes(BLOG_REVIEW_PERMISSION)}
         csrfToken={csrfToken}
-        zone={displayZone(timezone)}
+        zone={displayZone(marketTimezone)}
       />
     </AdminShell>
   );
