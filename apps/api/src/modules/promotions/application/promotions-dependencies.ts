@@ -1,5 +1,7 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
+import type { AuditTrailReader } from '../../../platform/audit/audit-trail-reader';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { ChangeActorSource } from '../../../platform/audit/change-trail';
 import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { BatchCodeCrypto } from './ports/batch-code-crypto';
@@ -17,6 +19,8 @@ import type { PromotionRepository } from './ports/promotion.repository';
 import type { PromotionsPolicy } from './ports/promotions-policy';
 import type { ReviewQueueRepository } from './ports/review-queue.repository';
 import type { SellerActivity } from './ports/seller-activity';
+import type { SellerCatalogue } from './ports/seller-catalogue';
+import type { SellerCommission } from './ports/seller-commission';
 import type {
   FirstOrderSettingsRepository,
   ShippingThresholdRepository,
@@ -37,6 +41,9 @@ export interface PromotionsDependencies {
   readonly flashSales: FlashSales;
   readonly sellerActivity: SellerActivity;
   readonly priceHistory: PriceHistory;
+  /** Seller campaigns (package PB2): the commission rate and the seller's catalogue. */
+  readonly sellerCommission: SellerCommission;
+  readonly sellerCatalogue: SellerCatalogue;
   // Phase 3.
   /** When a customer last ordered (customer-group segment; "new customer" of a referral). */
   readonly orderHistory: CustomerOrderHistory;
@@ -49,6 +56,10 @@ export interface PromotionsDependencies {
   /** Spends an admin's fresh two-step proof inside the use case's own unit. */
   readonly stepUp: StepUpProofConsumer;
   readonly audit: AuditWriter;
+  /** The promotions' own audit rows, for the activity of a promotion (reads only). */
+  readonly auditTrail: AuditTrailReader;
+  /** Names the accounts of those rows (identity's view of who may be named). */
+  readonly actors: ChangeActorSource;
   readonly ids: IdGenerator;
   readonly clock: Clock;
 }

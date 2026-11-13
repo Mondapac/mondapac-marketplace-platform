@@ -5,6 +5,7 @@ import { requireSession } from '../../../../src/server/session.ts';
 import {
   ATTRIBUTE_EDIT_PERMISSION,
   ATTRIBUTE_VIEW_PERMISSION,
+  REVIEW_PERMISSION,
   TABS,
   TYPE_EDIT_PERMISSION,
   VIEW_PERMISSION,
@@ -59,6 +60,7 @@ export default async function VariantsPage({
             permissionKeys.includes(ATTRIBUTE_EDIT_PERMISSION)
           }
           canOpenAttributes={permissionKeys.includes(ATTRIBUTE_VIEW_PERMISSION)}
+          canReview={permissionKeys.includes(REVIEW_PERMISSION)}
           csrfToken={csrfToken}
           initialTab={tab}
           initialId={selectedId}

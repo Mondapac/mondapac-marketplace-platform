@@ -1229,6 +1229,12 @@ const catalogSchema = z
       .min(1024)
       .max(10 * 1024 * 1024),
     /**
+     * The most category proposals one seller may have waiting (categories C9a; CAT-54; AU 5).
+     * Exact: proposals of one seller run one after the other under the seller's shelf lock.
+     * Optional: a Market without it uses the catalog default of 5.
+     */
+    maxPendingCategoryProposals: z.number().int().min(1).max(50).optional(),
+    /**
      * The most variant (option) attributes one product may vary on (attributes plan A2; AU 2). A
      * configurable product whose feature set marks more option attributes is refused by the
      * product type's variant check. Required: a Market never defaults it.
@@ -1996,6 +2002,12 @@ const marketSchema = z
          * the page asks the API and shows the result. Personalization package 1b.
          */
         unsubscribePage: pageUrl.optional(),
+        /**
+         * The seller panel's Products page filtered to "Missing details": the link of the "Email
+         * sellers" mail of the attributes report (package A4-4). Without it the Market sends no
+         * such mail.
+         */
+        sellerMissingDetailsPage: pageUrl.optional(),
         /**
          * The API's one-click unsubscribe route of this Market
          * (`.../notifications/unsubscribe/<MARKET>`), sent in the `List-Unsubscribe` header

@@ -258,6 +258,7 @@ export class AdminSessionController {
           displayName: summary.displayName,
           timezone: summary.timezone,
           locale: summary.locale,
+          marketTimezone: summary.marketTimezone,
           session: summary.session,
           csrfToken,
         };

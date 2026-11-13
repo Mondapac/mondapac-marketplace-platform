@@ -56,6 +56,16 @@ export interface AttributeDefinitionStore {
   /** `true` when another attribute was merged into this one (attributes A8). */
   hasMergedSources(market: MarketContext, id: Id<'AttributeDefinition'>): Promise<boolean>;
 
+  /**
+   * Writes the conversion of a type (attributes A8): the revision built by `convertType`, the new
+   * data type and the pointer, if the stored version is still the one before.
+   */
+  saveConversion(
+    market: MarketContext,
+    definition: AttributeDefinition,
+    authorAccountId: Id<'Account'>,
+  ): Promise<void>;
+
   /** Writes the status of `publish` or `discard`, if the stored version is the one before. */
   saveStatus(market: MarketContext, definition: AttributeDefinition): Promise<void>;
 

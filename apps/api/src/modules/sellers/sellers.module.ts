@@ -6,6 +6,7 @@ import {
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
+import { ContentFilter } from '../../platform/content-filter/content-filter';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { AUDIT_TRAIL_READER } from '../../platform/audit/audit-trail-reader';
@@ -115,6 +116,12 @@ import { BlogAccess } from './application/use-cases/blog-access.use-case';
 import { BlogAccessSetUseCase } from './application/use-cases/blog-access-set.use-case';
 import { BlogAccessController } from './presentation/blog-access.controller';
 import { BLOG_ACCESS_REPOSITORY } from './application/ports/blog-access.repository';
+import { AI_ACCESS_SETTING_REPOSITORY } from './application/ports/ai-access-setting.repository';
+import { AiAccessSystem } from './application/use-cases/ai-access-system.use-case';
+import { AiAccess } from './application/use-cases/ai-access.use-case';
+import { ChangeAiAccessUseCase } from './application/use-cases/change-ai-access.use-case';
+import { ViewAiAccessUseCase } from './application/use-cases/view-ai-access.use-case';
+import { AiAccessSettingController } from './presentation/ai-access-setting.controller';
 import { CATEGORY_PROPOSALS_SETTING_REPOSITORY } from './application/ports/category-proposals-setting.repository';
 import { MayProposeCategoriesSystem } from './application/use-cases/may-propose-categories-system.use-case';
 import { MayProposeCategories } from './application/use-cases/may-propose-categories.use-case';
@@ -128,6 +135,15 @@ import { SellerBusinessActivities } from './application/use-cases/seller-busines
 import { SellerBusinessActivitiesSystem } from './application/use-cases/seller-business-activities-system.use-case';
 import { CultureApprovedMembers } from './application/use-cases/culture-approved-members.use-case';
 import { CultureDemoteApprovals } from './application/use-cases/culture-demote-approvals.use-case';
+import { CultureDemoteApprovalsSystem } from './application/use-cases/culture-demote-approvals-system.use-case';
+import {
+  SELLERS_CULTURE_DEMOTE_PORT,
+  type CultureDemotePort,
+} from './contracts/culture-demote.port';
+import { SellerApprovedCultures } from './application/use-cases/seller-approved-cultures.use-case';
+import { SellerApprovedCulturesSystem } from './application/use-cases/seller-approved-cultures-system.use-case';
+import { RecheckCultureCertificates } from './application/use-cases/recheck-culture-certificates.use-case';
+import { RecheckCulturesOfIssuer } from './application/use-cases/recheck-cultures-of-issuer.use-case';
 import { ApplySignupCultures } from './application/use-cases/apply-signup-cultures.use-case';
 import { SeedSellerCultures } from './application/use-cases/seed-seller-cultures.use-case';
 import { seedSellerCulturesJob } from './presentation/jobs/seed-seller-cultures.job';
@@ -246,6 +262,7 @@ const PORT = {
   sellingFacts: SELLING_FACTS_REPOSITORY,
   blogAccess: BLOG_ACCESS_REPOSITORY,
   categoryProposalsSetting: CATEGORY_PROPOSALS_SETTING_REPOSITORY,
+  aiAccessSetting: AI_ACCESS_SETTING_REPOSITORY,
   businessActivities: SELLER_BUSINESS_ACTIVITY_REPOSITORY,
   activityDirectory: BUSINESS_ACTIVITY_DIRECTORY,
   sellerCultures: SELLER_CULTURE_REPOSITORY,
@@ -261,6 +278,7 @@ const PORT = {
   localesPolicy: STORE_PROFILE_LOCALES_POLICY,
   imageProcessor: STORE_IMAGE_PROCESSOR,
   claimCheck: STORE_TEXT_CLAIM_CHECK,
+  contentFilter: ContentFilter,
   publishedContent: PUBLISHED_STORE_CONTENT,
   objectStore: OBJECT_STORE,
   decider: SELLER_ACCESS_DECIDER,
@@ -360,6 +378,7 @@ const REVIEW_DECISION_PORTS = {
     ReviewDecisionController,
     BlogAccessController,
     CategoryProposalsSettingController,
+    AiAccessSettingController,
     SellerActivitiesController,
     SellerOwnCulturesController,
     SellerCulturesAdminController,
@@ -425,6 +444,7 @@ const REVIEW_DECISION_PORTS = {
       counters: true,
       counterKeys: true,
       claimCheck: true,
+      contentFilter: true,
       ids: true,
       clock: true,
     }),
@@ -435,6 +455,7 @@ const REVIEW_DECISION_PORTS = {
       counters: true,
       counterKeys: true,
       claimCheck: true,
+      contentFilter: true,
       imageProcessor: true,
       objectStore: true,
       ids: true,
@@ -737,6 +758,16 @@ const REVIEW_DECISION_PORTS = {
       outbox: true,
       clock: true,
     }),
+    // SEL-25, the per-seller AI switch: the read pair, the admin's change and the admin's read.
+    useCaseProvider(AiAccess, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(AiAccessSystem, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(ChangeAiAccessUseCase, {
+      unitOfWork: true,
+      aiAccessSetting: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(ViewAiAccessUseCase, { unitOfWork: true, aiAccessSetting: true }),
     // A seller's business activities (ADR-0040 decision 4): the admin's get and set, and the read
     // pair behind the facade's `sellerBusinessActivities`.
     useCaseProvider(SellerActivitiesGetUseCase, {
@@ -766,6 +797,30 @@ const REVIEW_DECISION_PORTS = {
     useCaseProvider(CultureDemoteApprovals, {
       unitOfWork: true,
       sellerCultures: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(CultureDemoteApprovalsSystem, {
+      unitOfWork: true,
+      sellerCultures: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(SellerApprovedCultures, { unitOfWork: true, sellerCultures: true }),
+    useCaseProvider(SellerApprovedCulturesSystem, { unitOfWork: true, sellerCultures: true }),
+    useCaseProvider(RecheckCultureCertificates, {
+      unitOfWork: true,
+      sellerCultures: true,
+      cultureDirectory: true,
+      certificateDirectory: true,
+      outbox: true,
+      clock: true,
+    }),
+    useCaseProvider(RecheckCulturesOfIssuer, {
+      unitOfWork: true,
+      sellerCultures: true,
+      cultureDirectory: true,
+      certificateDirectory: true,
       outbox: true,
       clock: true,
     }),
@@ -853,6 +908,8 @@ const REVIEW_DECISION_PORTS = {
         BlogAccessSystem,
         MayProposeCategories,
         MayProposeCategoriesSystem,
+        AiAccess,
+        AiAccessSystem,
         ActiveSince,
         ActiveSinceSystem,
         ReviewerBusinessDetailsRead,
@@ -863,7 +920,8 @@ const REVIEW_DECISION_PORTS = {
         OperatingZones,
         ApplySignupCultures,
         CultureApprovedMembers,
-        CultureDemoteApprovals,
+        SellerApprovedCultures,
+        SellerApprovedCulturesSystem,
       ],
       useFactory: (
         sellerSummaries: SellerSummaries,
@@ -878,6 +936,8 @@ const REVIEW_DECISION_PORTS = {
         blogAccessSystem: BlogAccessSystem,
         mayProposeCategories: MayProposeCategories,
         mayProposeCategoriesSystem: MayProposeCategoriesSystem,
+        aiAccess: AiAccess,
+        aiAccessSystem: AiAccessSystem,
         activeSince: ActiveSince,
         activeSinceSystem: ActiveSinceSystem,
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
@@ -888,7 +948,8 @@ const REVIEW_DECISION_PORTS = {
         operatingZones: OperatingZones,
         applySignupCultures: ApplySignupCultures,
         cultureApprovedMembers: CultureApprovedMembers,
-        cultureDemoteApprovals: CultureDemoteApprovals,
+        sellerApprovedCultures: SellerApprovedCultures,
+        sellerApprovedCulturesSystem: SellerApprovedCulturesSystem,
       ) =>
         new SellersFacadeImplementation({
           sellerSummaries,
@@ -903,6 +964,8 @@ const REVIEW_DECISION_PORTS = {
           blogAccessSystem,
           mayProposeCategories,
           mayProposeCategoriesSystem,
+          aiAccess,
+          aiAccessSystem,
           activeSince,
           activeSinceSystem,
           reviewerBusinessDetails,
@@ -913,8 +976,18 @@ const REVIEW_DECISION_PORTS = {
           operatingZones,
           applySignupCultures,
           cultureApprovedMembers,
-          cultureDemoteApprovals,
+          sellerApprovedCultures,
+          sellerApprovedCulturesSystem,
         }),
+    },
+    // The culture demotion port (ADR-0048 N2): a provider of its own, not a facade method, so only
+    // catalog's adapter can reach it (dependency-cruiser).
+    {
+      provide: SELLERS_CULTURE_DEMOTE_PORT,
+      inject: [CultureDemoteApprovals],
+      useFactory: (demote: CultureDemoteApprovals): CultureDemotePort => ({
+        cultureDemoteApprovals: (context, cultureId) => demote.execute(context, { cultureId }),
+      }),
     },
     // The zone contract is a provider of its own (not a facade method) and is imported by
     // certification's application layer only (dependency-cruiser).
@@ -1051,6 +1124,13 @@ const REVIEW_DECISION_PORTS = {
     CULTURE_DIRECTORY,
     SELLER_CERTIFICATE_DIRECTORY,
     SELLER_HEALTH_SIGNALS,
+    SELLERS_CULTURE_DEMOTE_PORT,
+    // The handlers of certification's certificate ends and catalog's approvals-invalidated event
+    // (package 3a): SellerStoreProfileModule registers the subscriptions, since certification and
+    // catalog import sellers and their events cannot be imported here without a file cycle.
+    RecheckCultureCertificates,
+    RecheckCulturesOfIssuer,
+    CultureDemoteApprovalsSystem,
   ],
 })
 export class SellersModule {}

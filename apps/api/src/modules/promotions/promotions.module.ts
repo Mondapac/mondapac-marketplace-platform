@@ -1,6 +1,8 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
+import { AUDIT_TRAIL_READER } from '../../platform/audit/audit-trail-reader';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { CHANGE_ACTOR_SOURCE } from '../../platform/audit/change-trail';
 import {
   registerPermissions,
   registerStepUpActions,
@@ -11,6 +13,9 @@ import {
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
+import { CatalogModule } from '../catalog';
+import { CommissionPayoutsModule } from '../commission-payouts';
+import { changeActorSourceOf, IDENTITY_FACADE, IdentityModule } from '../identity';
 import { PricingModule } from '../pricing';
 import { SellersModule } from '../sellers';
 import { WalletModule } from '../wallet';
@@ -31,6 +36,8 @@ import { PROMOTION_REPOSITORY } from './application/ports/promotion.repository';
 import { PROMOTIONS_POLICY } from './application/ports/promotions-policy';
 import { REVIEW_QUEUE_REPOSITORY } from './application/ports/review-queue.repository';
 import { SELLER_ACTIVITY } from './application/ports/seller-activity';
+import { SELLER_CATALOGUE } from './application/ports/seller-catalogue';
+import { SELLER_COMMISSION } from './application/ports/seller-commission';
 import {
   FIRST_ORDER_SETTINGS_REPOSITORY,
   SHIPPING_THRESHOLD_REPOSITORY,
@@ -51,6 +58,9 @@ import { EditOwnPromotion } from './application/use-cases/edit-own-promotion.use
 import { EditPromotion } from './application/use-cases/edit-promotion.use-case';
 import { ListFreeShippingThresholds } from './application/use-cases/list-free-shipping-thresholds.use-case';
 import { ListOwnPromotions } from './application/use-cases/list-own-promotions.use-case';
+import { CountPromotionReviews } from './application/use-cases/count-promotion-reviews.use-case';
+import { ViewCampaignMembers } from './application/use-cases/view-campaign-members.use-case';
+import { ViewPromotionActivity } from './application/use-cases/view-promotion-activity.use-case';
 import { ListPromotionReviews } from './application/use-cases/list-promotion-reviews.use-case';
 import { ListPromotionsFull } from './application/use-cases/list-promotions-full.use-case';
 import { ListPromotions } from './application/use-cases/list-promotions.use-case';
@@ -60,6 +70,8 @@ import { PreviewQuote } from './application/use-cases/preview-quote.use-case';
 import { QuoteDiscounts } from './application/use-cases/quote-discounts.use-case';
 import { ResumeOwnPromotion } from './application/use-cases/resume-own-promotion.use-case';
 import { ResumePromotion } from './application/use-cases/resume-promotion.use-case';
+import { ListSellerCampaigns } from './application/use-cases/list-seller-campaigns.use-case';
+import { PreviewSellerPayout } from './application/use-cases/preview-seller-payout.use-case';
 import { SetCoFundingOptIn } from './application/use-cases/set-co-funding-opt-in.use-case';
 import { SetFirstOrderSettings } from './application/use-cases/set-first-order-settings.use-case';
 import { SetFreeShippingThreshold } from './application/use-cases/set-free-shipping-threshold.use-case';
@@ -99,6 +111,8 @@ const PORTS: readonly [keyof PromotionsDependencies, InjectionToken][] = [
   ['flashSales', FLASH_SALES],
   ['sellerActivity', SELLER_ACTIVITY],
   ['priceHistory', PRICE_HISTORY],
+  ['sellerCommission', SELLER_COMMISSION],
+  ['sellerCatalogue', SELLER_CATALOGUE],
   ['orderHistory', CUSTOMER_ORDER_HISTORY],
   ['storeFollows', STORE_FOLLOWS],
   ['orderFacts', DELIVERED_ORDER_FACTS],
@@ -108,6 +122,8 @@ const PORTS: readonly [keyof PromotionsDependencies, InjectionToken][] = [
   ['referrals', REFERRAL_REPOSITORY],
   ['stepUp', STEP_UP_CONSUMER],
   ['audit', AUDIT_WRITER],
+  ['auditTrail', AUDIT_TRAIL_READER],
+  ['actors', CHANGE_ACTOR_SOURCE],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
@@ -135,10 +151,23 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * reservation, the ledger and refunds come in later packages.
  */
 @Module({
-  imports: [PricingModule, SellersModule, WalletModule],
+  imports: [
+    CatalogModule,
+    CommissionPayoutsModule,
+    IdentityModule,
+    PricingModule,
+    SellersModule,
+    WalletModule,
+  ],
   controllers: [AdminPromotionsController, SellerPromotionsController, CustomerReferralController],
   providers: [
     PersistenceModule.auditWriterFor('promotions'),
+    PersistenceModule.auditTrailReaderFor('promotions'),
+    {
+      provide: CHANGE_ACTOR_SOURCE,
+      inject: [IDENTITY_FACADE],
+      useFactory: changeActorSourceOf,
+    },
     registerAuditActions('promotions', PROMOTIONS_AUDIT_ACTIONS),
     registerPermissions('promotions', PROMOTIONS_PERMISSIONS),
     registerStepUpActions('promotions', PROMOTIONS_STEP_UP_ACTIONS),
@@ -157,6 +186,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       GenerateBatchCodes,
       ViewBatchCodeSummary,
       ListPromotionReviews,
+      CountPromotionReviews,
+      ViewCampaignMembers,
+      ViewPromotionActivity,
       DecidePromotionReview,
       ViewFirstOrderSettings,
       SetFirstOrderSettings,
@@ -169,6 +201,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ResumeOwnPromotion,
       ListOwnPromotions,
       SetCoFundingOptIn,
+      ListSellerCampaigns,
+      PreviewSellerPayout,
       QuoteDiscounts,
       CheckWasPrice,
       ListPromotionCredits,

@@ -42,6 +42,18 @@ export {
   ProductRevisionChangesRequestedV2,
   VariantAdded,
   VariantRemoved,
+  // Multi-culture package 3a: search re-indexes on these (ADR-0047 decision 8); sellers demotes on
+  // the last (ADR-0048 security review N1). Search also consumes the tag events for culture_codes.
+  CultureStatusChanged,
+  CultureCategoryMarkChanged,
+  CultureApprovalsInvalidated,
+  CULTURE_EVENT_STATUSES,
+  OfferTagAdded,
+  OfferTagBasisSwitched,
+  // Multi-culture package 3a (ADR-0048 security review M3): a merge or an archive changes the live
+  // paths, so the culture marks a category's Offers resolve; search re-indexes both subtrees.
+  PlatformCategoryMerged,
+  PlatformCategoryArchived,
 } from '../domain/events';
 export { buildOfferMovedMapping } from '../domain/events/offer-moved-payload';
 export type { OfferMovedPayloadRefused } from '../domain/events/offer-moved-payload';

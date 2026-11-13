@@ -53,6 +53,7 @@ export function definitionRecord(
     readonly canBeFilter?: boolean;
     readonly values?: readonly AttributeOption[];
     readonly revisionNo?: number;
+    readonly mergedInto?: { readonly id: string; readonly code: string };
   } = {},
 ): AttributeDefinitionRecord {
   return {
@@ -64,6 +65,14 @@ export function definitionRecord(
     createdByKind: 'seed',
     createdAt: T0,
     version: 1,
+    ...(options.mergedInto === undefined
+      ? {}
+      : {
+          mergedInto: {
+            id: options.mergedInto.id as Id<'AttributeDefinition'>,
+            code: options.mergedInto.code,
+          },
+        }),
     revision: revisionRecord(`${id.slice(0, -4)}ffff`, options.revisionNo ?? 1, {
       names: options.names ?? { 'en-AU': code },
       material: options.material ?? false,

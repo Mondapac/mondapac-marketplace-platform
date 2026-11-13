@@ -3,7 +3,6 @@ import {
   ADMIN_NOTE_CIPHER,
   ADMIN_ORDER_NOTE_REPOSITORY,
 } from '../src/modules/ordering/application/ports/admin-order-notes';
-import { REFUND_REPOSITORY } from '../src/modules/ordering/application/ports/refund.repository';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -18,6 +17,7 @@ import { INVENTORY_ORDERING_PORT } from '../src/modules/inventory/contracts/orde
 import { CHECKOUT_GATEWAY } from '../src/modules/ordering/application/ports/checkout-gateway';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
 import { PICKUP_CODE_REPOSITORY } from '../src/modules/ordering/application/ports/pickup-code.repository';
+import { REFUND_REPOSITORY } from '../src/modules/ordering/application/ports/refund.repository';
 import { PICKUP_CODE_VAULT } from '../src/modules/ordering/application/ports/pickup-code-vault';
 import { SHIP_TO_CIPHER } from '../src/modules/ordering/application/ports/ship-to-cipher';
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
@@ -45,8 +45,8 @@ import {
   FakeShipToCipher,
   MemoryOrders,
   MemoryPickupCodes,
+  MemoryRefundLimits,
   TEST_DELIVERY_ADDRESS,
-  NO_REFUNDS,
   FakeAdminNoteCipher,
   MemoryAdminNotes,
   OrderingAuditWriter,
@@ -54,6 +54,7 @@ import {
 import { FakeUnitOfWork, RecordingOutbox } from './support/pricing-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
+import { encodeCursor } from '../src/modules/ordering/application/read-flow';
 
 // The checkout and order routes over HTTP: the real guards, controllers, gate and use cases; the
 // order store, Stripe, inventory and the cart are in memory. Proves the session and CSRF rules,
@@ -123,8 +124,15 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.refund-exceeds': 422,
     'ordering.refund-rejected': 422,
     'ordering.refund-tax-unavailable': 503,
+    'ordering.refund-limit-reached': 409,
+    'ordering.refund-limit-unset': 409,
+    'ordering.refund-limit-not-found': 404,
     'ordering.document-not-available': 409,
     'ordering.invoice-numbering-unavailable': 503,
+    'saved-filter.not-found': 404,
+    'saved-filter.name-taken': 409,
+    'saved-filter.limit-reached': 409,
+    'saved-filter.shared-limit-reached': 409,
     'access.unavailable': 503,
   });
 });
@@ -141,6 +149,9 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let pickupCodes: MemoryPickupCodes;
   let notes: MemoryAdminNotes;
   let pickupVault: FakePickupVault;
+  let refundLimits: MemoryRefundLimits;
+  /** Ordering's audit rows, each checked against its definition. */
+  let audit: OrderingAuditWriter;
   const clock = new FixedClock(START);
   const http = () => request(app.getHttpServer());
   const marketOf = () => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -155,6 +166,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     pickupCodes = new MemoryPickupCodes();
     notes = new MemoryAdminNotes();
     pickupVault = new FakePickupVault();
+    refundLimits = new MemoryRefundLimits();
+    audit = new OrderingAuditWriter();
     const customers = new FakeCustomers();
     customers.addresses.set(ADDRESS, { accountId: CUSTOMER, address: TEST_DELIVERY_ADDRESS });
     // The seller delivers for a flat 5.00.
@@ -180,7 +193,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .overrideProvider(UNIT_OF_WORK)
           .useValue(new FakeUnitOfWork())
           .overrideProvider(AUDIT_WRITER)
-          .useValue(new OrderingAuditWriter())
+          .useValue(audit)
           .overrideProvider(OUTBOX_WRITER)
           .useValue(new RecordingOutbox())
           .overrideProvider(ORDER_REPOSITORY)
@@ -195,8 +208,6 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(customers)
           .overrideProvider(SHIP_TO_CIPHER)
           .useValue(new FakeShipToCipher())
-          .overrideProvider(REFUND_REPOSITORY)
-          .useValue(NO_REFUNDS)
           .overrideProvider(ADMIN_ORDER_NOTE_REPOSITORY)
           .useValue(notes)
           .overrideProvider(ADMIN_NOTE_CIPHER)
@@ -205,6 +216,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(pickupCodes)
           .overrideProvider(PICKUP_CODE_VAULT)
           .useValue(pickupVault)
+          .overrideProvider(REFUND_REPOSITORY)
+          .useValue(refundLimits.repository)
           .overrideProvider(SHIPPING_FACADE)
           .useValue(shipping)
           .overrideProvider(TAX_FACADE)
@@ -1034,7 +1047,40 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       const badFilter = await http()
         .get('/ordering/admin/orders?status=shipped')
         .set(adminHeaders(VIEWER, 15));
+      const paged = await http()
+        .get('/ordering/admin/orders?page=1&pageSize=10&sort=total&direction=asc')
+        .set(adminHeaders(VIEWER, 16));
+      const tooDeep = await http()
+        .get('/ordering/admin/orders?page=401')
+        .set(adminHeaders(VIEWER, 17));
+      const strayPageSize = await http()
+        .get('/ordering/admin/orders?pageSize=10')
+        .set(adminHeaders(VIEWER, 18));
 
+      const badSort = await http()
+        .get('/ordering/admin/orders?page=1&sort=name')
+        .set(adminHeaders(VIEWER, 19));
+      const notANumber = await http()
+        .get('/ordering/admin/orders?page=abc')
+        .set(adminHeaders(VIEWER, 20));
+      const pageAndCursor = await http()
+        .get(`/ordering/admin/orders?page=1&cursor=${encodeCursor(START, id<'Order'>(1))}&limit=10`)
+        .set(adminHeaders(VIEWER, 21));
+      const backwards = await http()
+        .get('/ordering/admin/orders?from=2026-02-01T00:00:00Z&to=2026-01-01T00:00:00Z')
+        .set(adminHeaders(VIEWER, 22));
+
+      expect([badSort, notANumber, pageAndCursor, backwards].map((r) => r.status)).toEqual([
+        400, 400, 400, 400,
+      ]);
+      expect(body(pageAndCursor)).toMatchObject({
+        details: { fields: [{ path: 'cursor' }, { path: 'limit' }] },
+      });
+      expect(paged.status).toBe(200);
+      expect(body(paged)).toMatchObject({ total: 1, page: 1, pageSize: 10, nextCursor: null });
+      expect(body(list)).toMatchObject({ total: null, page: null, pageSize: null });
+      expect(tooDeep.status).toBe(400);
+      expect(strayPageSize.status).toBe(400);
       expect(list.status).toBe(200);
       expect(list.headers['cache-control']).toBe('no-store');
       expect(body(list).orders).toHaveLength(1);
@@ -1214,6 +1260,80 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       });
       expect(noKeyReads.status).toBe(403);
       expect(unknown.status).toBe(404);
+    });
+
+    it('lets an admin with the refund-limit keys set the default and a seller’s own cap, audited', async () => {
+      await seedAdmins();
+      seedRoot(REFUNDER, 9);
+      const seller = id<'Seller'>(0xbe10);
+      const base = '/ordering/admin/refund-limits';
+
+      const none = await http().get(`${base}?sellerId=${seller}`).set(adminHeaders(REFUNDER, 40));
+      const setDefault = await http()
+        .put(base)
+        .set(writer(REFUNDER, 41))
+        .send({ maxCount: 20, maxAmount: '50000', expectedVersion: 0 });
+      const setOwn = await http()
+        .put(`${base}/sellers/${seller}`)
+        .set(writer(REFUNDER, 42))
+        .send({ maxCount: 5, maxAmount: '10000', expectedVersion: 0 });
+      const stale = await http()
+        .put(`${base}/sellers/${seller}`)
+        .set(writer(REFUNDER, 43))
+        .send({ maxCount: 6, maxAmount: '10000', expectedVersion: 0 });
+      const viewerSet = await http()
+        .put(base)
+        .set(writer(VIEWER, 44))
+        .send({ maxCount: 1, maxAmount: '1', expectedVersion: 1 });
+      const badBody = await http()
+        .put(base)
+        .set(writer(REFUNDER, 45))
+        .send({ maxCount: 0, maxAmount: 5, expectedVersion: 1, extra: true });
+      const removed = await http()
+        .delete(`${base}/sellers/${seller}?expectedVersion=1`)
+        .set(writer(REFUNDER, 46));
+      const removedAgain = await http()
+        .delete(`${base}/sellers/${seller}?expectedVersion=1`)
+        .set(writer(REFUNDER, 47));
+      const noKey = await http().get(base).set(adminHeaders(NO_KEY, 48));
+
+      expect(none.status).toBe(200);
+      expect(none.headers['cache-control']).toBe('no-store');
+      expect(none.body).toEqual({
+        currency,
+        marketDefault: null,
+        sellerId: seller,
+        own: null,
+        inForce: 'none',
+      });
+      expect(setDefault.status).toBe(200);
+      expect(setDefault.body).toMatchObject({
+        marketDefault: { maxCount: 20, maxAmount: { amount: '50000', currency }, version: 1 },
+        inForce: 'market',
+      });
+      expect(setOwn.body).toMatchObject({
+        sellerId: seller,
+        own: { maxCount: 5, maxAmount: { amount: '10000', currency }, version: 1 },
+        marketDefault: { maxCount: 20 },
+        inForce: 'own',
+      });
+      expect(stale.status).toBe(409);
+      expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.retry' });
+      expect(viewerSet.status).toBe(403);
+      expect(badBody.status).toBe(400);
+      expect(removed.status).toBe(200);
+      expect(removed.body).toMatchObject({ own: null, inForce: 'market' });
+      expect(removedAgain.status).toBe(404);
+      expect(removedAgain.body).toEqual({
+        statusCode: 404,
+        code: 'ordering.refund-limit-not-found',
+      });
+      expect(noKey.status).toBe(403);
+      expect(audit.rows.map((r) => r.action)).toEqual([
+        'ordering.refund-limit.set',
+        'ordering.refund-limit.set',
+        'ordering.refund-limit.removed',
+      ]);
     });
   });
 });

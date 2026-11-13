@@ -232,6 +232,22 @@ const PINNED: readonly (readonly [string, string])[] = [
   ['platform:viewer@31', '62bb9f70d77494aed67bf97f628381ab03838d03c9fc65c3ab06387d922436f6'],
   ['seller:store-manager@5', 'e0c92df586baef19607aa65dd0841e35d880e419e30940a2e3c35c0d51b95240'],
   ['platform:viewer@32', '21141b67d79bdd40e040e042c2df267c7a2e0d1b365fc3fc267d417d76eb1d16'],
+  [
+    'platform:onboarding-compliance@9',
+    '53332077c6c0f2f2507e1de1a04ea3db649c3ab2fac1285a944e8e6ce013ea7c',
+  ],
+  [
+    'platform:catalogue-moderator@16',
+    '326a7cf63b0dceffbf3376d6733406afc6e8d7d537a4944b9a0721bce4efc32a',
+  ],
+  ['seller:store-manager@6', 'c5473749bfccf7c721851556d35e8f2db5e5c1e173d3a404021a755757d85201'],
+  ['platform:viewer@33', '8befd3f202f3e62e18c992b0e4bf1169d16784666926c6bfe2194b4d1564e9da'],
+  // Variants V7: `catalog.variant-request.review` to decide a seller's request for a new variant.
+  [
+    'platform:catalogue-moderator@17',
+    'ceadd4c139d00bd61bb200c6e09c51cd353a7f20000086ad043253edf3a1319b',
+  ],
+  ['platform:viewer@34', 'ee4654a1910274781a530eb715154081e6c31a1923772463aa933cb99f1219fa'],
 ];
 
 const ENTRY = /^(platform|seller):([a-z][a-z0-9-]*)@([1-9][0-9]*)$/;

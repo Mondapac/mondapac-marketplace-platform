@@ -116,6 +116,7 @@ model CatalogProduct {
   images               CatalogProductImage[]
   offers               CatalogOffer[]
   attributeSuggestions CatalogAttributeValueSuggestion[] @relation("ProductValueSuggestions")
+  variantRequests CatalogVariantRequest[] @relation("ProductVariantRequests")
   topicSuggestions     CatalogTopicSuggestion[]          @relation("ProductTopicSuggestions")
 
   /// The target of composite foreign keys (C3).
@@ -154,6 +155,7 @@ model CatalogProductVariant {
   product          CatalogProduct                  @relation(fields: [marketId, productId, variantModel], references: [marketId, id, variantModel], onDelete: Restrict, onUpdate: Cascade)
   revisionVariants CatalogProductRevisionVariant[]
   offerSellUnits   CatalogOfferSellUnit[]
+  variantRequests  CatalogVariantRequest[] @relation("VariantRequestsResolved")
 
   @@unique([marketId, id])
   /// The count path of the variant limit and the target of a same-product foreign key (3.10).
@@ -238,6 +240,9 @@ model CatalogPlatformCategory {
   cultureMarks                  CatalogCultureCategory[]             @relation("CultureCategory")
   slugHistory                   CatalogPlatformCategorySlugHistory[]
   catalogCategoryAttributeLinks CatalogCategoryAttributeLink[]
+  sellerCategories              CatalogSellerCategory[]              @relation("SellerCategoryParent")
+  sellerCategoriesMergedHere    CatalogSellerCategory[]              @relation("SellerCategoryMergedInto")
+  categoryProposals             CatalogCategoryProposal[]
 
   @@unique([marketId, id])
   /// One slug per Market (D 17.1).
@@ -332,8 +337,8 @@ model CatalogPlatformCategorySlugHistory {
   @@schema("catalog")
 }
 
-/// An attribute a product can carry (catalog design 3.3; data design 3.5): the code, data type and
-/// localizable flag never change; name, bounds, options and the `material` flag live in
+/// An attribute a product can carry (catalog design 3.3; data design 3.5): the code and
+/// localizable flag never change, and the data type only on the two conversions of attributes A8; name, bounds, options and the `material` flag live in
 /// insert-only revisions. The CHECKs and the grants are hand-written in the migration. The
 /// archive request column and its two-person triggers arrive with slice 21.
 model CatalogAttributeDefinition {
@@ -342,7 +347,7 @@ model CatalogAttributeDefinition {
   tenantId            String                               @map("tenant_id")
   /// Unique per Market, never updated (CA4).
   code                String
-  /// text | long-text | integer | decimal | boolean | select | multi-select | date | measure.
+  /// text | long-text | integer | decimal | boolean | select | multi-select | date | measure. Changes only integer -> decimal and select -> multi-select, with a new revision (attributes A8).
   dataType            String                               @map("data_type")
   localizable         Boolean
   /// draft | active | archived (attributes A2: a draft is invisible to sellers and buyers).
@@ -559,6 +564,55 @@ model CatalogAttributeValueSuggestion {
   @@index([marketId, sellerId, status], map: "attribute_value_suggestions_market_id_seller_id_status_idx")
   @@index([marketId, productId], map: "attribute_value_suggestions_market_id_product_id_idx")
   @@map("attribute_value_suggestions")
+  @@schema("catalog")
+}
+
+/// A seller's request for a new variant (size) on a PLATFORM product they have an Offer on
+/// (variants V7; plan section 9, decision tn14). It is born `open` and moves once: an admin
+/// approves it (a variant was added to the product's draft: `resolved_variant_id`), maps it to a
+/// variant the product already has (`resolved_variant_id`) or declines it (`decline_reason`). Then
+/// the seller is told by mail: `notice_*` is the send marker of that one notice (pending, sent,
+/// skipped or failed). The option values name active options of the product's variant attributes
+/// and carry no seller text, so nothing here reaches a buyer. The CHECKs, the guard trigger, the
+/// partial uniques and the grants are hand-written in the migration.
+/// The admin queue (open requests, oldest first) is the partial index variant_requests_open_queue_idx,
+/// written by hand in the migration.
+model CatalogVariantRequest {
+  id                  String                 @db.Uuid
+  marketId            String                 @map("market_id") @db.VarChar(8)
+  tenantId            String                 @map("tenant_id")
+  /// The requesting seller, a copy bound to the Offer by the composite foreign key; never updated.
+  sellerId            String                 @map("seller_id") @db.Uuid
+  /// The seller's Offer on the product; the request is about selling that product.
+  offerId             String                 @map("offer_id") @db.Uuid
+  productId           String                 @map("product_id") @db.Uuid
+  /// Variant attribute code to option code, an object (CHECK).
+  optionValues        Json                   @map("option_values") @db.JsonB
+  /// The canonical string of the option values (`colour=red;size=l`), as the revision builds it.
+  optionKey           String                 @map("option_key")
+  /// open | approved | mapped | declined.
+  status              String
+  /// The variant created (approved) or chosen (mapped); null otherwise.
+  resolvedVariantId   String?                @map("resolved_variant_id") @db.Uuid
+  /// The reviewer's words to the seller; set exactly when declined.
+  declineReason       String?                @map("decline_reason")
+  decidedByAccountId  String?                @map("decided_by_account_id") @db.Uuid
+  decidedAt           DateTime?              @map("decided_at") @db.Timestamptz(6)
+  /// none (open) | pending | sent | skipped | failed.
+  noticeState         String                 @map("notice_state")
+  noticeAttempts      Int                    @map("notice_attempts")
+  noticeNextAttemptAt DateTime?              @map("notice_next_attempt_at") @db.Timestamptz(6)
+  version             Int
+  createdAt           DateTime               @map("created_at") @db.Timestamptz(6)
+  offer               CatalogOffer           @relation(fields: [marketId, offerId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  product             CatalogProduct         @relation("ProductVariantRequests", fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  resolvedVariant     CatalogProductVariant? @relation("VariantRequestsResolved", fields: [marketId, productId, resolvedVariantId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, id])
+  /// A seller's requests and their open count.
+  @@index([marketId, sellerId, status, id], map: "variant_requests_market_id_seller_id_status_id_idx")
+  @@index([marketId, productId], map: "variant_requests_market_id_product_id_idx")
+  @@map("variant_requests")
   @@schema("catalog")
 }
 
@@ -816,7 +870,7 @@ model CatalogRateCounter {
 /// seller never changes (no column grant). The CHECKs (status, handling, attestation pair,
 /// `listed` against the causes, SKU), the case-sensitive SKU collation, the two partial uniques,
 /// the two partial indexes and the grants are hand-written in the migration. The shelf column
-/// (`shelf_category_id`) arrives with seller categories in slice 23.
+/// (`shelf_category_id`) and its same-seller foreign key arrived with seller categories (C9a).
 model CatalogOffer {
   id                          String                 @id @db.Uuid
   marketId                    String                 @map("market_id") @db.VarChar(8)
@@ -855,13 +909,18 @@ model CatalogOffer {
   firstPublishedAt            DateTime?              @map("first_published_at") @db.Timestamptz(6)
   /// Set exactly when `status = 'deleted'` (CHECK).
   deletedAt                   DateTime?              @map("deleted_at") @db.Timestamptz(6)
+  /// The seller's own shelf (categories C9; data design 3.13): a seller category of the same
+  /// seller (composite foreign key), never a platform category (CAT-52).
+  shelfCategoryId             String?                @map("shelf_category_id") @db.Uuid
   /// Optimistic version of the aggregate (P 10); 1 at insert.
   version                     Int
   createdAt                   DateTime               @map("created_at") @db.Timestamptz(6)
   product                     CatalogProduct         @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  shelf                       CatalogSellerCategory? @relation(fields: [marketId, shelfCategoryId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
   history                     CatalogOfferHistory[]
   tags                        CatalogOfferTag[]
   sellUnits                   CatalogOfferSellUnit[]
+  variantRequests             CatalogVariantRequest[]
 
   /// The target of composite foreign keys (C3); the A1 batch read.
   @@unique([marketId, id])
@@ -1859,13 +1918,15 @@ model CatalogCultureName {
 }
 
 /// A culture's mark on a category branch: visibility and the certification mark. A branch with no
-/// row inherits from its nearest ancestor with one; no row anywhere is visible and required.
+/// row inherits from its nearest ancestor with one; no row anywhere is visible and required. A
+/// hidden row anywhere up the chain hides the branch (ADR-0048 M2).
 model CatalogCultureCategory {
   marketId          String                  @map("market_id") @db.VarChar(8)
   tenantId          String                  @map("tenant_id")
   cultureId         String                  @map("culture_id") @db.Uuid
   categoryId        String                  @map("category_id") @db.Uuid
-  visible           Boolean
+  /// null means inherit (a row that only sets a mark).
+  visible           Boolean?
   /// required | neutral; null means inherit.
   certificationMark String?                 @map("certification_mark")
   updatedBy         String                  @map("updated_by") @db.Uuid
@@ -1876,5 +1937,127 @@ model CatalogCultureCategory {
   @@id([marketId, cultureId, categoryId])
   @@index([marketId, categoryId])
   @@map("culture_categories")
+  @@schema("catalog")
+}
+
+/// A seller's own shelf (categories C9a; catalog design 4.7; data design 3.22): made only by an
+/// admin's approval of a proposal (CAT-52). It groups the seller's Offers on the seller's shop page
+/// and is never in platform navigation, filters, search facets or badge decisions. `promoted`
+/// means the same id now lives in the platform tree; `merged` names the platform category the
+/// shelf was folded into. The CHECKs, the guard trigger, the "C" collation and the grants are
+/// hand-written in the migration.
+model CatalogSellerCategory {
+  id               String                      @db.Uuid
+  marketId         String                      @map("market_id") @db.VarChar(8)
+  tenantId         String                      @map("tenant_id")
+  /// The owning seller; never changes. No foreign key: sellers are another module's table.
+  sellerId         String                      @map("seller_id") @db.Uuid
+  /// The platform category the shelf hangs under (the proposal's anchor); never changes.
+  platformParentId String                      @map("platform_parent_id") @db.Uuid
+  /// Unique per (Market, seller); collation "C" is set in the migration.
+  slug             String
+  /// active | promoted | merged | archived.
+  status           String
+  /// Set exactly when `merged`.
+  mergedIntoId     String?                     @map("merged_into_id") @db.Uuid
+  version          Int
+  createdAt        DateTime                    @map("created_at") @db.Timestamptz(6)
+  platformParent   CatalogPlatformCategory     @relation("SellerCategoryParent", fields: [marketId, platformParentId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  mergedInto       CatalogPlatformCategory?    @relation("SellerCategoryMergedInto", fields: [marketId, mergedIntoId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  names            CatalogSellerCategoryName[]
+  offers           CatalogOffer[]
+  proposals        CatalogCategoryProposal[]
+
+  @@id([marketId, id])
+  /// The target of the shelf foreign key of `offers` and of the proposal's created shelf.
+  @@unique([marketId, id, sellerId])
+  @@unique([marketId, sellerId, slug])
+  @@index([marketId, platformParentId])
+  @@map("seller_categories")
+  @@schema("catalog")
+}
+
+/// The name and optional description of a seller shelf in one locale (data design 3.22).
+model CatalogSellerCategoryName {
+  marketId    String                @map("market_id") @db.VarChar(8)
+  tenantId    String                @map("tenant_id")
+  categoryId  String                @map("category_id") @db.Uuid
+  locale      String
+  /// 1 to 120 characters.
+  name        String
+  /// At most 1,000 characters.
+  description String?
+  category    CatalogSellerCategory @relation(fields: [marketId, categoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, categoryId, locale])
+  @@map("seller_category_names")
+  @@schema("catalog")
+}
+
+/// A seller's proposal of a shelf under a platform category (CAT-51, CAT-54; data design 3.22).
+/// `pending` is decided once: `approved` (creates the shelf), `rejected` (a prepared reason) or
+/// `cancelled` (by the seller, or `permission-revoked` when SEL-26 is switched off). The CHECKs,
+/// the partial uniques, the guard trigger and the grants are hand-written in the migration.
+model CatalogCategoryProposal {
+  id                      String                  @db.Uuid
+  marketId                String                  @map("market_id") @db.VarChar(8)
+  tenantId                String                  @map("tenant_id")
+  sellerId                String                  @map("seller_id") @db.Uuid
+  platformParentId        String                  @map("platform_parent_id") @db.Uuid
+  /// Locale to name (an object, CHECK); claim-checked per locale at the command.
+  names                   Json                    @db.JsonB
+  /// Locale to description, or null; claim-checked per locale at the command.
+  descriptions            Json?                   @db.JsonB
+  /// The default-locale name, NFKC, case folded, Persian and Arabic yeh and kaf unified.
+  normalisedName          String                  @map("normalised_name")
+  /// pending | approved | rejected | cancelled.
+  status                  String
+  /// Required for rejected and cancelled (CHECK); null otherwise.
+  reasonCode              String?                 @map("reason_code")
+  /// The admin who decided; null while pending and for a seller's or the system's cancellation.
+  decidedByAccountId      String?                 @map("decided_by_account_id") @db.Uuid
+  /// Null exactly while pending.
+  decidedAt               DateTime?               @map("decided_at") @db.Timestamptz(6)
+  /// Set exactly when approved.
+  createdSellerCategoryId String?                 @map("created_seller_category_id") @db.Uuid
+  version                 Int
+  createdAt               DateTime                @map("created_at") @db.Timestamptz(6)
+  platformParent          CatalogPlatformCategory @relation(fields: [marketId, platformParentId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  createdSellerCategory   CatalogSellerCategory?  @relation(fields: [marketId, createdSellerCategoryId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, id])
+  /// The seller's own list, newest first.
+  @@index([marketId, sellerId, createdAt, id])
+  @@map("category_proposals")
+  @@schema("catalog")
+}
+
+/// One "Email sellers" request for one product of one seller (attributes package A4-4, report
+/// "Missing details"). The primary key is the throttle: a seller and a product are asked for at
+/// most once in 7 days, claimed by a guarded update. The row holds what the mail will say (the
+/// product name and the English names of the missing details) so the job needs no catalog read.
+/// No address is stored. The CHECKs and the grants are hand-written in the migration.
+model CatalogMissingDetailsEmail {
+  marketId      String    @map("market_id") @db.VarChar(8)
+  tenantId      String    @map("tenant_id")
+  sellerId      String    @map("seller_id") @db.Uuid
+  productId     String    @map("product_id") @db.Uuid
+  /// The seller's public store name when the request was made; null when it had none.
+  sellerName    String?   @map("seller_name")
+  productName   String    @map("product_name")
+  /// A JSON array of the English names of the missing details.
+  missingLabels Json      @map("missing_labels") @db.JsonB
+  /// pending | sent | skipped | failed.
+  state         String
+  /// no-address | send-failed; NULL while pending and when sent.
+  outcome       String?
+  attempts      Int
+  requestedAt   DateTime  @map("requested_at") @db.Timestamptz(6)
+  /// The admin account that asked (a plain id, no foreign key).
+  requestedBy   String    @map("requested_by") @db.Uuid
+  settledAt     DateTime? @map("settled_at") @db.Timestamptz(6)
+
+  @@id([marketId, sellerId, productId])
+  @@map("missing_details_emails")
   @@schema("catalog")
 }

@@ -339,6 +339,29 @@ export const CATALOG_VARIANT_VIEW = definePermission('catalog', {
 });
 
 /**
+ * Propose a shelf under a platform category, and cancel a waiting proposal (categories C9a; CAT-51;
+ * catalog design 6.1). Seller scope, not protected; the command also asks `sellers`
+ * `mayProposeCategories` (SEL-26), so the key alone is not enough. Default role mapping (Store
+ * Manager) is `identity`'s seed; the Seller Owner holds every seller key.
+ */
+export const CATALOG_OWN_CATEGORY_PROPOSE = definePermission('catalog', {
+  key: 'catalog.own-category.propose',
+  scope: 'seller',
+  protected: false,
+});
+
+/**
+ * Approve or reject seller category proposals (categories C9a; CAT-52; catalog design 6.1).
+ * Platform scope, not protected; always required, whatever CAT-36 says. Default role mapping
+ * (Catalogue Moderator) is `identity`'s seed.
+ */
+export const CATALOG_CATEGORY_PROPOSAL_DECIDE = definePermission('catalog', {
+  key: 'catalog.category-proposal.decide',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
  * Change how buyers choose a variant type (variants V6): the display style, the option order, the
  * swatch colours and the help sellers see above the variant grid. Platform scope; **protected**,
  * and the use case also needs `catalog.attribute.edit` (protected): a variant type is an attribute,
@@ -349,6 +372,20 @@ export const CATALOG_VARIANT_TYPE_EDIT = definePermission('catalog', {
   key: 'catalog.variant-type.edit',
   scope: 'platform',
   protected: true,
+});
+
+/**
+ * Decide a seller's request for a new variant (size) on a PLATFORM product (variants V7; plan
+ * section 9, decision tn14): approve it, map it to a variant the product already has, or decline
+ * it with a reason, and read the queue of waiting requests. Platform scope; unprotected, so
+ * Catalogue Moderator receives it by identity's seed. Approving also adds a variant to the
+ * product's draft, so that use case needs `catalog.platform-product.edit` as well; the draft then
+ * goes through the normal submit and review.
+ */
+export const CATALOG_VARIANT_REQUEST_REVIEW = definePermission('catalog', {
+  key: 'catalog.variant-request.review',
+  scope: 'platform',
+  protected: false,
 });
 
 /**
@@ -374,7 +411,20 @@ export const CATALOG_CULTURE_EDIT = definePermission('catalog', {
   protected: true,
 });
 
+/**
+ * Promote a seller shelf into the platform tree, or merge it into a platform category (categories
+ * C9a; CAT-53; catalog design 6.1). Platform scope and protected: only the Platform Administrator.
+ */
+export const CATALOG_SELLER_CATEGORY_PROMOTE_MERGE = definePermission('catalog', {
+  key: 'catalog.seller-category.promote-merge',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
+  CATALOG_OWN_CATEGORY_PROPOSE,
+  CATALOG_CATEGORY_PROPOSAL_DECIDE,
+  CATALOG_SELLER_CATEGORY_PROMOTE_MERGE,
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PLATFORM_PRODUCT_EDIT,
   CATALOG_OWN_PRODUCT_EDIT,
@@ -405,6 +455,7 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_CATEGORY_TREE_IMPORT,
   CATALOG_VARIANT_VIEW,
   CATALOG_VARIANT_TYPE_EDIT,
+  CATALOG_VARIANT_REQUEST_REVIEW,
   CATALOG_CULTURE_READ,
   CATALOG_CULTURE_EDIT,
 ]);

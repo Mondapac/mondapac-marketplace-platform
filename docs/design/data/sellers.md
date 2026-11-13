@@ -1669,3 +1669,31 @@ are plain values read through catalog's `culturesByIds` / `activeCultures`.
 - Revisit trigger: if the roster query p95 exceeds 50 ms, or one Market holds more than about
   100 000 memberships, replace the anti-join with a keyset over a work table or add a partial
   index on `status = 'requested'`.
+
+### Package 3a additions (2026-11-12; no migration)
+
+- `approvedForSellers(market, sellerIds)` (at most 100 ids) reads the approved rows of a batch of
+  sellers for catalog's visibility rule, through the facade pair `sellers.seller-approved-cultures`
+  (`anonymous` / `system`). Ids only; an unknown seller, one with no approval and another
+  Market's seller are all absent; a failed read is `sellers.unavailable` (the caller fails closed).
+- Certificate re-check (ADR-0048 security review M2): `sellers.recheck-culture-certificates`
+  (system) runs on `certification.seller-certification-expired.v1` and `...-revoked.v1`, and
+  `sellers.recheck-cultures-of-issuer` (system) on `certification.issuer-deactivated.v1` with form
+  `derecognised` (security M3 of #848), for every seller of the issuer's approved certificates
+  (certification's `sellersOfIssuer`, pages of 200 in seller id order). Certification is asked
+  only about the required types (`validTypeCodes(context, sellerId, typeCodes)`); the answer is the
+  canonical `sellerCertificateValidAt`. It reads
+  the seller's approved rows, keeps those of cultures with a required type, asks certification
+  (`sellerValidCertificateTypes`) and takes each approval without a valid certificate of its type
+  back to `requested` with the guarded write and an event. A renewal of the same type keeps the
+  approval. A failed read throws, so the delivery is retried.
+- `cultureDemoteApprovals` now writes one unit per batch of 200 (at most 10 batches a call), then
+  checks in a read-only unit whether approvals remain. It is no longer on `SellersFacade`: the port
+  `SELLERS_CULTURE_DEMOTE_PORT` (`contracts/culture-demote.port.ts`) may be imported only by
+  `catalog/infrastructure/sellers-culture-members.ts` (boundaries rule
+  `culture-demote-port-is-for-catalog-adapter`, N2). The `system` twin
+  `sellers.culture-demote-approvals-system` serves the consumer of
+  `catalog.culture-approvals-invalidated.v1` (N1), which throws while approvals remain.
+- These consumers are registered in `SellerStoreProfileModule`, not in `SellersModule`, because
+  importing certification and catalog event definitions into the sellers module graph would close
+  an import cycle.

@@ -288,6 +288,49 @@ place) and the promotions module.
   aggregate the credit rows under the promotion lock), and a per-account code version so one customer's code can
   be revoked without rotating the pepper.
 
+### Seller campaigns and payout preview (PB2)
+
+- Two seller reads: `GET /promotions/seller/campaigns` (open co-funded campaigns split into `joined` and
+  `available`; never the platform budget or spend) and `GET /promotions/seller/payout-preview` (what the shopper
+  pays and what the seller gets for one unit; optionally whether the was-price may show).
+- A seller may leave a co-funded campaign **only before it starts** (owner decision, 12 Nov 2026); after
+  `startsAt`, `PUT .../opt-in` with `optIn: false` answers `promotions.invalid-state`. Joining stays possible
+  while the campaign runs.
+- Commission rule in the preview: commission is taken on the price **after the seller-funded part of the
+  discount**; the platform-funded part never lowers the seller share. The rate comes from commission-payouts'
+  seller-only `ownCommissionOn` facade read (own rate, else the Market default); no readable rate means
+  `promotions.unavailable`, never a guess.
+- The preview is an estimate **before delivery**: tax uses the provisional rate, and the commission ledger is not
+  yet discount-aware. `minSpend` is ignored for item-layer campaigns, as the engine does. A campaign in test mode
+  is listed to sellers with `testMode: true`.
+- The preview calculates as if the campaign had no budget, so a very large price cannot reveal what is left of the platform
+  budget. For a test-mode campaign it may show platform money that a real order would not get until the tax ruling.
+- `listOpenCampaigns` is capped at 200 rows (safety). `setOptIn` still accepts a paused campaign; the list hides it.
+
+## Admin list reads (panels package PB1)
+
+- `GET /promotions/admin/promotions` (Viewer, usage counts only) and `/promotions/admin/promotions/costs` (manager) take
+  `q` (name contains, or code starts with), `type` (comma-separated), `owner` (`PLATFORM` or `SELLER`), `funding`,
+  `status` or `view` (not both), `sort` (`CREATED`, `STARTS`, `ENDS`, `NAME`, `USES`), `order`, `page` and `limit`
+  (1 to 100, default 25). The answer is `{ items, total, page, limit, counts }`; every item has a `displayStatus`.
+  Before this package the answer was `{ items }` and `status` was the stored status; `status=ACTIVE` now means live at
+  this moment.
+- Display status (`domain/display-status.ts`): the stored `PENDING_APPROVAL` and `REJECTED` show as they are. Otherwise a
+  promotion whose end has passed is `ENDED` (live or paused), a paused one is `PAUSED`, and a live one is `SCHEDULED`
+  before its start, `BUDGET_USED_UP` once its spend reaches its budget, and `ACTIVE` in between. Credit types
+  (referral, cashback) keep their spend in the credits, so they are never `BUDGET_USED_UP`.
+- `counts` holds `ALL` and every status plus `NEEDS_REVIEW` (promotions with an open review entry), for the same text,
+  type, owner and funding filters but not the tab or status, so the tabs keep their numbers while one is open.
+  The query is built in `prisma-promotion.repository.ts` and is checked against the stored rows by the database spec.
+  No raw SQL: the budget compare reads the few promotions that have a budget with their spend and compares them in code.
+- `GET /promotions/admin/promotions/:id/activity` (manager): create, edit, pause, resume and budget changes from the
+  promotion's own audit rows, newest first, with who (named as identity allows) and each term's before and after (scalars
+  and money only; a step-up proof is never shown). Keyset paging with `after` and `limit` (1 to 50, default 20).
+- `GET /promotions/admin/promotions/:id/sellers` (manager): the opt-ins of a co-funded campaign, withdrawn ones kept.
+  No seller names and no per-seller product count or cost share: sellers gives an admin no name through its facade, and
+  the engine records spend per promotion, not per seller.
+- `GET /promotions/admin/reviews/count` (manager): the number of open review entries.
+
 ## Open points
 
 - The identity role seed gains one key: the Viewer (seed version 21 on top of blog's 20, with its append-only snapshot entry

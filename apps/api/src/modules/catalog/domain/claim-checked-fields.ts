@@ -9,6 +9,7 @@ import type { CategorySeo, CategoryText } from './category-edit';
 import type { CategoryName, PlatformCategoryState } from './platform-category';
 import type { RevisionContent, RevisionText, RevisionVariantContent } from './revision-content';
 import type { TopicContent, TopicState, TopicTerm } from './topic';
+import type { ShelfText } from './seller-category';
 
 /**
  * The claim-checked fields (catalog design 6.2, AC 21): every customer- or search-visible text
@@ -37,6 +38,8 @@ export const CLAIM_CHECKED_FIELD_IDS = [
   'product.name',
   'product.short-description',
   'product.variant-label',
+  'seller-category.description',
+  'seller-category.name',
   'topic.intro',
   'topic.slug',
   'topic.term',
@@ -162,6 +165,13 @@ export const CATEGORY_TEXT_FIELDS: Record<keyof CategoryText, FieldDisposition> 
   keywords: checked('platform-category.keyword'),
 };
 
+/** A seller shelf's and a proposal's names (categories C9a): shown on the seller's shop page. */
+export const SHELF_TEXT_FIELDS: Record<keyof ShelfText, FieldDisposition> = {
+  locale: exempt('internal-code'),
+  name: checked('seller-category.name'),
+  description: checked('seller-category.description'),
+};
+
 export const CATEGORY_SEO_FIELDS: Record<keyof CategorySeo, FieldDisposition> = {
   title: checked('platform-category.seo-title'),
   description: checked('platform-category.seo-description'),
@@ -280,6 +290,7 @@ export const FIELD_TABLES: Readonly<Record<string, Readonly<Record<string, Field
   CATEGORY_NAME_FIELDS,
   CATEGORY_TEXT_FIELDS,
   CATEGORY_SEO_FIELDS,
+  SHELF_TEXT_FIELDS,
   PLATFORM_CATEGORY_FIELDS,
   OFFER_FIELDS,
   TOPIC_TERM_FIELDS,
@@ -323,6 +334,16 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   BracketColumn: { noCustomerText: 'column positions' },
   SellerColumnMap: { noCustomerText: 'column positions of a seller import file' },
   KnownBracketCodes: { noCustomerText: 'attribute codes of the Market family' },
+  // The AI description writer: nothing it holds is saved; the draft reaches a field only through
+  // the form, whose save is claim-checked like typed text (CAT-41).
+  DraftSentence: {
+    noCustomerText: 'a guarded draft sentence shown in the modal only, never saved',
+  },
+  GuardedDraft: { noCustomerText: 'guarded draft sentences and counts, never saved' },
+  WriterEvaluationCase: { noCustomerText: 'synthetic evaluation data used in tests' },
+  WriterDetail: { noCustomerText: 'form data sent to the writer, never saved by it' },
+  WriterRequest: { noCustomerText: 'form data sent to the writer, never saved by it' },
+  WriterFieldIssue: { noCustomerText: 'validation path and code' },
   MergeBase: {
     noCustomerText:
       'the stored draft an import row is merged into; saved by the draft save, which checks every text',
@@ -385,6 +406,17 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   SuggestionNoticeMail: {
     noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
   },
+  VariantRequest: { noCustomerText: 'aggregate class around VariantRequestState' },
+  VariantRequestState: {
+    noCustomerText:
+      "a seller's size request: ids, option codes, status codes, times and the reviewer's decline reason, shown to the requesting seller and admins only; no buyer text, and an approval writes the variant through the product draft save",
+  },
+  VariantRequestNoticeFacts: {
+    noCustomerText: 'facts of the one mail to a seller about a size request; never shown to buyers',
+  },
+  VariantRequestNoticeMail: {
+    noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
+  },
   TopicSuggestion: {
     noCustomerText: 'aggregate class around TopicSuggestionState',
   },
@@ -407,6 +439,12 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   PlatformCategory: { noCustomerText: 'aggregate class around PlatformCategoryState' },
   CategoryText: { table: 'CATEGORY_TEXT_FIELDS' },
   CategorySeo: { table: 'CATEGORY_SEO_FIELDS' },
+  ShelfText: { table: 'SHELF_TEXT_FIELDS' },
+  CategoryProposalView: {
+    noCustomerText:
+      "a seller's proposal read model; its texts are ShelfText, checked when proposed",
+  },
+  ShelfView: { noCustomerText: 'a shelf read model; its texts are ShelfText' },
   EditableCategory: {
     noCustomerText:
       'editor read model; its texts and search-result fields are CategoryText and CategorySeo',
@@ -450,6 +488,12 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   CultureCategoryRow: { noCustomerText: 'ids, a visibility flag and a mark code' },
   EffectiveCategoryMarks: { noCustomerText: 'flags, mark codes and category ids' },
   MarkedCategoryNode: { noCustomerText: 'category ids' },
+  // The visibility rule of multi-culture package 3a: codes, ids, flags and type codes only. A
+  // culture's code is claim-checked when it is created (see CultureState).
+  VisibilityCulture: { noCustomerText: 'a culture id, code, status, order and a type code' },
+  OfferCultureFacts: { noCustomerText: 'culture ids, type codes and category marks' },
+  CultureVisibility: { noCustomerText: 'a flag and a reason code' },
+  CultureVisibilityUnavailable: { noCustomerText: 'an error code' },
   CultureName: {
     noCustomerText:
       'the name and short description of a culture in one locale; checked by the claim-term matcher on every admin write (a changed text is refused when it asserts a certification); see CultureState',
@@ -507,6 +551,15 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText: 'mail to an Offer owner from a type code, a count and a date; never content',
   },
   Classification: { noCustomerText: 'sensitive-change verdict: codes and flags' },
+  MissingDetailsEmail: {
+    noCustomerText: 'mail to a seller from fixed English text, product names and detail names',
+  },
+  MissingDetailsEmailInput: {
+    noCustomerText: 'input of the seller mail: names already in the catalogue, never typed text',
+  },
+  MissingDetailsEmailProduct: {
+    noCustomerText: 'a product name and detail names already in the catalogue',
+  },
   CategoryName: { table: 'CATEGORY_NAME_FIELDS' },
   DraftText: { noCustomerText: 'a text found in a draft, already named by its checked field id' },
   FamilyAttribute: { table: 'FAMILY_ATTRIBUTE_FIELDS' },

@@ -115,12 +115,18 @@ export class SellerCulturesAdminList extends UseCase<
       states.map((s) => s.cultureId),
     );
     if (!info.ok) return err({ code: 'sellers.unavailable' });
-    const needsCheck = states.some(
-      (s) => s.status === 'requested' && info.value.get(s.cultureId)?.requiredCertificationType,
-    );
-    const held = needsCheck
-      ? await this.deps.certificateDirectory.validTypeCodes(context, sellerId)
-      : null;
+    const asked = [
+      ...new Set(
+        states.flatMap((s) => {
+          const type = info.value.get(s.cultureId)?.requiredCertificationType ?? null;
+          return s.status === 'requested' && type !== null ? [type] : [];
+        }),
+      ),
+    ];
+    const held =
+      asked.length > 0
+        ? await this.deps.certificateDirectory.validTypeCodes(context, sellerId, asked)
+        : null;
     return ok({
       cultures: states.map((state) => {
         const culture = info.value.get(state.cultureId);

@@ -34,11 +34,23 @@ describe.each([
     expect(queries[1]?.get('afterId')).toBe('id-1');
   });
 
+  it('asks for one data type when given', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { items: [], nextAfterId: null, locales: { default: locale } },
+    } as never);
+    await loadActiveAttributes('select');
+    const query = new URLSearchParams(call.mock.calls[0]?.[1].split('?')[1]);
+    expect(query.get('type')).toBe('select');
+    expect(query.get('limit')).toBe('50');
+  });
+
   it('fails as a whole when a page fails', async () => {
     call.mockResolvedValueOnce({
       ok: false,
       failure: { status: 503, code: 'access.unavailable' },
     } as never);
-    expect(await loadActiveAttributes()).toEqual({ ok: false });
+    expect(await loadActiveAttributes()).toEqual({ ok: false, status: 503 });
   });
 });

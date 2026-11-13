@@ -20,6 +20,7 @@ import {
   PROMOTIONS_SETTINGS_VIEW,
 } from '../promotions-settings/types.ts';
 import { TAX_MANAGE_PERMISSION, TAX_VIEW_PERMISSION } from '../tax/types.ts';
+import { AI_MANAGE_PERMISSION, AI_VIEW_PERMISSION } from '../ai-settings/types.ts';
 import { SUPPORT_MANAGE_PERMISSION, SUPPORT_VIEW_PERMISSION } from './types.ts';
 
 // The one map of the admin Settings pages (settings UX design, hub and roles sections). The hub,
@@ -85,6 +86,13 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/lists',
         view: [LISTS_VIEW_PERMISSION],
         manage: [LISTS_MANAGE_PERMISSION],
+      },
+      {
+        id: 'ai',
+        labelKey: 'settings.hub.link.ai',
+        href: '/settings/ai',
+        view: [AI_VIEW_PERMISSION],
+        manage: [AI_MANAGE_PERMISSION],
       },
     ],
   },

@@ -94,7 +94,13 @@ const holdsOption = (
 ): Prisma.CatalogProductRevisionWhereInput => {
   const inValues: Prisma.CatalogProductRevisionWhereInput =
     field.dataType === 'multi-select'
-      ? { attributeValues: { path: [field.code], array_contains: [optionCode] } }
+      ? {
+          // A value stored before Convert type (select to multi-select) is a lone code.
+          OR: [
+            { attributeValues: { path: [field.code], array_contains: [optionCode] } },
+            { attributeValues: { path: [field.code], equals: optionCode } },
+          ],
+        }
       : { attributeValues: { path: [field.code], equals: optionCode } };
   return field.isVariantOption
     ? {
@@ -134,7 +140,10 @@ export class PrismaAttributeAdminReader implements AttributeAdminReader {
   ): Promise<AttributeDefinitionRecord | null> {
     const row = await this.prisma.tx(market).catalogAttributeDefinition.findFirst({
       where: { marketId: market.marketId, id, publishedRevisionId: { not: null } },
-      include: { publishedRevision: { include: OPTIONS } },
+      include: {
+        publishedRevision: { include: OPTIONS },
+        mergedInto: { select: { id: true, code: true } },
+      },
     });
     return row === null || row.publishedRevision === null ? null : definitionOf(row);
   }
@@ -263,6 +272,7 @@ function definitionOf(row: {
   readonly createdByKind: string;
   readonly createdAt: Date;
   readonly version: number;
+  readonly mergedInto?: { readonly id: string; readonly code: string } | null;
   readonly publishedRevision: RevisionRow | null;
 }): AttributeDefinitionRecord {
   return {
@@ -274,6 +284,10 @@ function definitionOf(row: {
     createdByKind: row.createdByKind as CategoryAuthorKind,
     createdAt: toInstant(row.createdAt),
     version: row.version,
+    mergedInto:
+      row.mergedInto === undefined || row.mergedInto === null
+        ? null
+        : { id: row.mergedInto.id as Id<'AttributeDefinition'>, code: row.mergedInto.code },
     revision: revisionOf(row.publishedRevision!),
   };
 }

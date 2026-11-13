@@ -71,6 +71,15 @@ class StubMemberships implements SellerCultureRepository {
     }
     return Promise.resolve(found as ReadonlyMap<Id<'Culture'>, SellerCultureState>);
   }
+  approvedForSellers(m: MarketContext, sellerIds: readonly Id<'Seller'>[]) {
+    const answer = new Map<Id<'Seller'>, Id<'Culture'>[]>();
+    for (const [k, v] of this.rows) {
+      if (!k.startsWith(`${m.marketId}|`) || v.status !== 'approved') continue;
+      if (!sellerIds.includes(v.sellerId)) continue;
+      answer.set(v.sellerId, [...(answer.get(v.sellerId) ?? []), v.cultureId]);
+    }
+    return Promise.resolve(answer as ReadonlyMap<Id<'Seller'>, readonly Id<'Culture'>[]>);
+  }
   sellerIdsWithoutCultures() {
     return Promise.resolve([]);
   }
@@ -150,15 +159,18 @@ describe('seller cultures over HTTP (integration, multi-culture package 2)', () 
           })
           .overrideProvider(CERTIFICATION_FACADE)
           .useValue({
-            sellerCertificateOverview: (_c: unknown, ids: readonly string[]) =>
+            sellerValidCertificateTypes: (
+              _c: unknown,
+              ids: readonly string[],
+              typeCodes: readonly string[],
+            ) =>
               Promise.resolve(
                 certificates.down
                   ? { ok: false, error: { code: 'certification.unavailable' } }
                   : ok(
                       ids.map((one) => ({
                         sellerId: one,
-                        validTypeCodes: [...certificates.held],
-                        awaitingReviewTypeCodes: [],
+                        validTypeCodes: [...certificates.held].filter((t) => typeCodes.includes(t)),
                       })),
                     ),
               ),
@@ -321,6 +333,7 @@ describe('seller cultures over HTTP (integration, multi-culture package 2)', () 
       id: cultureId(n),
       code: codeOf,
       status: 'active',
+      displayOrder: n,
       requiredCertificationType: null,
       isDefault: false,
       names: { en: codeOf },
@@ -562,6 +575,48 @@ describe('seller cultures over HTTP (integration, multi-culture package 2)', () 
         expect(read.status).toBe(404);
         expect(read.body).toMatchObject({ code: 'file.not-found' });
       }
+    });
+
+    it('refuses an approval for an expired or a wrong-type certificate, and a decision on another Market (package 3a)', async () => {
+      await boot();
+      await seeded(code);
+      addCulture(1, 'certified', { requiredCertificationType: certType });
+      const seller = await signedInSeller(code);
+      memberships.sellers.add(`${code}|${seller.sellerId}`);
+      await http()
+        .post(ownRoute)
+        .set({ ...as(code, 'seller'), ...seller.headers })
+        .send({ cultureIds: [cultureId(1)] })
+        .expect(201);
+      const reviewer = sessionHeaders(code, ROOT, 2);
+      const decide = (target: string) =>
+        http()
+          .post(decisionRoute(target, cultureId(1)))
+          .set({ ...as(code, 'admin'), ...reviewer })
+          .send({ decision: 'approve' });
+
+      // An expired certificate is no longer "valid": certification answers no type for it.
+      certificates.held.clear();
+      const expired = await decide(seller.sellerId);
+      expect(expired.status).toBe(409);
+      expect(expired.body).toMatchObject({
+        code: 'culture.certificate-required',
+        details: { requiredCertificationType: certType },
+      });
+
+      // A valid certificate of another type never stands in for the required one.
+      certificates.held.add(code === 'AU' ? 'kosher' : 'halal');
+      const wrongType = await decide(seller.sellerId);
+      expect(wrongType.status).toBe(409);
+      expect(wrongType.body).toMatchObject({ code: 'culture.certificate-required' });
+      expect([...memberships.rows.values()][0]!.status).toBe('requested');
+
+      // A seller of the other Market is not found, even with a valid certificate of the type.
+      certificates.held.add(certType);
+      memberships.sellers.add(`${other}|${sellerId(5)}`);
+      const foreign = await decide(sellerId(5));
+      expect(foreign.status).toBe(404);
+      expect([...memberships.rows.values()]).toHaveLength(1);
     });
 
     it('fails closed with 503 when the certificate cannot be read', async () => {

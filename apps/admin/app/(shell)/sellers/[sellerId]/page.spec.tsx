@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../messages/en.json';
 import type { AdminSession } from '../../../../src/server/session.ts';
+import type * as AiAccessModule from '../../../../src/sellers/ai-access-card.tsx';
 import SellerReviewPage from './page.tsx';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), session: vi.fn() }));
@@ -25,6 +26,29 @@ vi.mock('../../../../src/server/session.ts', () => ({ requireSession: mocks.sess
 vi.mock('../../../../src/sellers/review-view.tsx', () => ({ ReviewView: () => <div /> }));
 vi.mock('../../../../src/sellers/owner-second-factor-card.tsx', () => ({
   OwnerSecondFactorCard: () => <section>owner reset card</section>,
+}));
+vi.mock('../../../../src/sellers/category-proposals-card.tsx', () => ({
+  CategoryProposalsCard: ({ canSeeQueue }: { canSeeQueue: boolean }) => (
+    <section data-can-see-queue={String(canSeeQueue)}>category proposals card</section>
+  ),
+}));
+vi.mock('../../../../src/sellers/health-card.tsx', () => ({ SellerHealthCard: () => <div /> }));
+vi.mock('../../../../src/sellers/ai-access-card.tsx', async (importOriginal) => ({
+  ...(await importOriginal<typeof AiAccessModule>()),
+  AiAccessCard: ({
+    initial,
+    canView,
+  }: {
+    initial: { enabled: boolean } | null;
+    canView: boolean;
+  }) => (
+    <section
+      data-can-view={String(canView)}
+      data-initial={initial === null ? 'none' : String(initial.enabled)}
+    >
+      ai access card
+    </section>
+  ),
 }));
 vi.mock('../../../../src/commission/rate-card.tsx', () => ({ CommissionRateCard: () => <div /> }));
 vi.mock('../../../../src/commission/ledger-card.tsx', () => ({ LedgerCard: () => <div /> }));
@@ -54,6 +78,7 @@ const session = (permissionKeys: string[]): AdminSession => ({
   secondFactorActive: true,
   lastSignInAt: null,
   timezone: null,
+  marketTimezone: 'UTC',
   locale: null,
   email: 'ada@example.test',
   displayName: 'Ada',
@@ -86,6 +111,87 @@ describe('admin seller page: the owner two-step reset card', () => {
     });
     await show();
     expect(screen.getByText('owner reset card')).toBeTruthy();
+  });
+});
+
+describe('admin seller page: May propose categories', () => {
+  beforeEach(() => {
+    mocks.get.mockReset();
+    mocks.get.mockResolvedValue({ kind: 'ok', body: {} });
+  });
+  afterEach(cleanup);
+
+  it('shows the switch only to a holder of the seller settings key, and the shelves link by the decide key', async () => {
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session(['sellers.business-details.view']),
+    });
+    await show();
+    expect(screen.queryByText('category proposals card')).toBeNull();
+    cleanup();
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session(['sellers.business-details.view', 'sellers.seller-settings.edit']),
+    });
+    await show();
+    expect(screen.getByText('category proposals card').getAttribute('data-can-see-queue')).toBe(
+      'false',
+    );
+    cleanup();
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session([
+        'sellers.business-details.view',
+        'sellers.seller-settings.edit',
+        'catalog.category-proposal.decide',
+      ]),
+    });
+    await show();
+    expect(screen.getByText('category proposals card').getAttribute('data-can-see-queue')).toBe(
+      'true',
+    );
+  });
+});
+
+describe('admin seller page: AI writing help card', () => {
+  const REVIEW = 'sellers.business-details.view';
+  beforeEach(() => {
+    mocks.get.mockReset();
+    mocks.get.mockImplementation((path: string) =>
+      Promise.resolve({
+        kind: 'ok',
+        body: path.endsWith('/ai-access') ? { enabled: true, changedAt: null } : {},
+      }),
+    );
+  });
+  afterEach(cleanup);
+
+  it('shows the card only to an actor who may edit seller settings', async () => {
+    mocks.session.mockResolvedValue({ kind: 'ok', session: session([REVIEW]) });
+    await show();
+    expect(screen.queryByText('ai access card')).toBeNull();
+  });
+
+  it('hands the card the setting it read, with the seller view key', async () => {
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session([REVIEW, 'sellers.seller-settings.edit', 'sellers.seller.view']),
+    });
+    await show();
+    expect(screen.getByText('ai access card').getAttribute('data-initial')).toBe('true');
+    expect(screen.getByText('ai access card').getAttribute('data-can-view')).toBe('true');
+    expect(mocks.get).toHaveBeenCalledWith(`sellers/admin/${SELLER}/ai-access`);
+  });
+
+  it('reads nothing without the view key and the card then shows no switch', async () => {
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session([REVIEW, 'sellers.seller-settings.edit']),
+    });
+    await show();
+    expect(screen.getByText('ai access card').getAttribute('data-initial')).toBe('none');
+    expect(screen.getByText('ai access card').getAttribute('data-can-view')).toBe('false');
+    expect(mocks.get).not.toHaveBeenCalledWith(`sellers/admin/${SELLER}/ai-access`);
   });
 });
 

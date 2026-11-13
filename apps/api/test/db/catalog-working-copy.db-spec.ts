@@ -480,6 +480,7 @@ describe.each(TEST_MARKETS)(
           ...products,
           nextProductCode: products.nextProductCode.bind(products),
           lockAtVersion: products.lockAtVersion.bind(products),
+          findManyByIds: products.findManyByIds.bind(products),
           add: products.add.bind(products),
           findById: async (target: typeof market, id: Id<'Product'>) => {
             const loaded = await products.findById(target, id);

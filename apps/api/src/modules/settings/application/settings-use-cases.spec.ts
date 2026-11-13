@@ -21,9 +21,13 @@ import type {
   MarketSettingRepository,
 } from './ports/market-setting.repository';
 import type { SettingsDependencies } from './settings-dependencies';
+import { SettingsFacadeImplementation } from '../presentation/settings.facade';
+import { ChangeAiSetting } from './use-cases/change-ai-setting.use-case';
 import { ChangeCartModeSetting } from './use-cases/change-cart-mode-setting.use-case';
 import { ChangeListPagingSetting } from './use-cases/change-list-paging-setting.use-case';
+import { ReadAiDescriptionWriter } from './use-cases/read-ai-description-writer.use-case';
 import { ReadListPaging } from './use-cases/read-list-paging.use-case';
+import { ViewAiSettings } from './use-cases/view-ai-settings.use-case';
 import { ViewCartModeSetting } from './use-cases/view-cart-mode-setting.use-case';
 import { ViewListPagingSetting } from './use-cases/view-list-paging-setting.use-case';
 
@@ -322,6 +326,95 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       await changeCart({ code: 'cart-mode', value: 'single-store', expectedVersion: 0 });
       const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
       expect(await store.find(other, 'cart-mode')).toBeNull();
+    });
+  });
+
+  describe('AI description writer', () => {
+    const changeAi = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeAiSetting(gate, deps).execute(context, input);
+    const facade = () => new SettingsFacadeImplementation(new ReadAiDescriptionWriter(gate, deps));
+
+    it('is off on the fast tier before any change, for the admin view and the facade', async () => {
+      const view = await new ViewAiSettings(gate, deps).execute(adminCtx(), {});
+      expect(view.ok && view.value).toEqual([
+        { code: 'ai-description-writer', value: 'off', version: 0, updatedAt: null },
+        { code: 'ai-description-writer-tier', value: 'fast', version: 0, updatedAt: null },
+      ]);
+      expect(await facade().aiDescriptionWriter(sellerCtx())).toEqual({
+        enabled: false,
+        tier: 'fast',
+      });
+    });
+
+    it('switches on and changes the tier, each with history and one audit row', async () => {
+      const on = await changeAi({ code: 'ai-description-writer', value: 'on', expectedVersion: 0 });
+      expect(on.ok && on.value).toMatchObject({ value: 'on', version: 1 });
+      const tier = await changeAi({
+        code: 'ai-description-writer-tier',
+        value: 'balanced',
+        expectedVersion: 0,
+      });
+      expect(tier.ok && tier.value).toMatchObject({ value: 'balanced', version: 1 });
+      expect(audit.entries.map((entry) => entry.targetId)).toEqual([
+        'ai-description-writer',
+        'ai-description-writer-tier',
+      ]);
+      expect(audit.entries[0]).toMatchObject({
+        action: 'settings.market-setting.changed',
+        before: { value: 'off' },
+        after: { value: 'on', version: 1 },
+      });
+      expect(await facade().aiDescriptionWriter(sellerCtx())).toEqual({
+        enabled: true,
+        tier: 'balanced',
+      });
+    });
+
+    it('refuses a code that is not an AI setting, and a value outside the definition', async () => {
+      for (const input of [
+        { code: 'cart-mode', value: 'single-store', expectedVersion: 0 },
+        { code: 'ai-description-writer', value: 'yes', expectedVersion: 0 },
+        { code: 'ai-description-writer-tier', value: 'smartest', expectedVersion: 0 },
+      ]) {
+        const result = await changeAi(input);
+        expect(!result.ok && result.error.code).toBe('validation.failed');
+      }
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('refuses a change by a seller, an anonymous caller and an acting-as session', async () => {
+      const input = { code: 'ai-description-writer', value: 'on', expectedVersion: 0 };
+      for (const context of [sellerCtx(), anonymous, actingAs(adminCtx())]) {
+        expect((await changeAi(input, context)).ok).toBe(false);
+      }
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('keeps the switch of one Market from turning the writer on in another', async () => {
+      await changeAi({ code: 'ai-description-writer', value: 'on', expectedVersion: 0 });
+      const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+      expect(await store.find(other, 'ai-description-writer')).toBeNull();
+    });
+
+    it('is off when the store cannot be read, and the facade never throws', async () => {
+      await changeAi({ code: 'ai-description-writer', value: 'on', expectedVersion: 0 });
+      store.failReads = true;
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        expect(await facade().aiDescriptionWriter(sellerCtx())).toEqual({
+          enabled: false,
+          tier: 'fast',
+        });
+      } finally {
+        warn.mockRestore();
+      }
+      const throwing = new SettingsFacadeImplementation({
+        execute: () => Promise.reject(new Error('boom')),
+      } as unknown as ReadAiDescriptionWriter);
+      expect(await throwing.aiDescriptionWriter(sellerCtx())).toEqual({
+        enabled: false,
+        tier: 'fast',
+      });
     });
   });
 });

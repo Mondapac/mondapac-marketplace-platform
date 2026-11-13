@@ -158,6 +158,7 @@
     "supportEmail": "jnamazi@gmail.com",
     "customerOrderPage": "https://storefront.au.mondapac.test/account/orders",
     "unsubscribePage": "https://storefront.au.mondapac.test/email/unsubscribe",
+    "sellerMissingDetailsPage": "https://seller.au.mondapac.test/products",
     "oneClickUnsubscribeUrl": "https://api.au.mondapac.test/notifications/unsubscribe/AU",
     "cartReminders": {
       "mode": "test",
@@ -482,6 +483,7 @@
     "maxCategoryChangeTags": 50000,
     "maxCategoryImportRows": 1000,
     "maxCategoryImportBytes": 5242880,
+    "maxPendingCategoryProposals": 5,
     "maxVariantAttributes": 2,
     "units": [
       { "code": "g", "labels": { "en-AU": "g" } },

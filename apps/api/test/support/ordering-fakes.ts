@@ -30,6 +30,7 @@ import type {
 } from '../../src/modules/commission-payouts';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
+import type { RefundLimit } from '../../src/modules/ordering/domain/refund-limits';
 import type { PaymentAttemptLimits } from '../../src/modules/ordering/application/ports/payment-attempt-limits';
 import type {
   CardPaymentFailure,
@@ -48,9 +49,11 @@ import {
 } from '../../src/modules/ordering/application/ports/order-labels';
 import type {
   OrderFilter,
+  OrderSort,
   OrderPage,
   OrderRepository,
   SellerOrderFilter,
+  SellerOrderSort,
   SellerOrderPage,
   SellerOrderRecord,
 } from '../../src/modules/ordering/application/ports/order.repository';
@@ -165,8 +168,63 @@ class EmptyRefunds implements RefundRepository {
   findPending() {
     return this.unexpected('findPending');
   }
+  guardSellerRefunds() {
+    return this.unexpected('guardSellerRefunds');
+  }
+  noteRefundLimitAlert() {
+    return this.unexpected('noteRefundLimitAlert');
+  }
+  findRefundLimits() {
+    return Promise.resolve({ own: null, marketDefault: null });
+  }
+  saveRefundLimit() {
+    return this.unexpected('saveRefundLimit');
+  }
+  removeRefundLimit() {
+    return this.unexpected('removeRefundLimit');
+  }
 }
 export const NO_REFUNDS: RefundRepository = new EmptyRefunds();
+
+/**
+ * The caps on seller refunds in memory (decision 6; Hassan F2), with the other refund methods of
+ * {@link NO_REFUNDS}: the admin routes read and write the caps only.
+ */
+export class MemoryRefundLimits {
+  readonly rows = new Map<string, RefundLimit>();
+  // Nest probes a provider for `then` and its lifecycle hooks: those answer undefined, never the
+  // rejecting stand-ins of NO_REFUNDS (a `then` would make the provider look like a promise).
+  readonly repository: RefundRepository = new Proxy(this as unknown as RefundRepository, {
+    get: (target, name) =>
+      name in target
+        ? (target as unknown as Record<string | symbol, unknown>)[name]
+        : typeof name === 'symbol' || name === 'then' || /^on[A-Z]/.test(name)
+          ? undefined
+          : (NO_REFUNDS as unknown as Record<string | symbol, unknown>)[name],
+  });
+  private key(sellerId: Id<'Seller'> | null) {
+    return sellerId ?? 'default';
+  }
+  findRefundLimits(_m: MarketContext, sellerId: Id<'Seller'> | null) {
+    return Promise.resolve({
+      own: sellerId === null ? null : (this.rows.get(sellerId) ?? null),
+      marketDefault: this.rows.get('default') ?? null,
+    });
+  }
+  saveRefundLimit(_m: MarketContext, limit: RefundLimit, expectedVersion: number) {
+    const key = this.key(limit.sellerId);
+    if ((this.rows.get(key)?.version ?? 0) !== expectedVersion)
+      return Promise.resolve('stale' as const);
+    this.rows.set(key, { ...limit, version: expectedVersion + 1 });
+    return Promise.resolve('saved' as const);
+  }
+  removeRefundLimit(_m: MarketContext, sellerId: Id<'Seller'>, expectedVersion: number) {
+    if (this.rows.get(sellerId)?.version !== expectedVersion)
+      return Promise.resolve('stale' as const);
+    this.rows.delete(sellerId);
+    return Promise.resolve('removed' as const);
+  }
+}
 
 /**
  * Collects ordering's audit rows (refunds, cancellations, notes), each checked against its
@@ -243,19 +301,39 @@ export class MemoryOrders implements OrderRepository {
       ),
     );
   }
-  listAll(_m: MarketContext, filter: OrderFilter, page: OrderPage) {
-    return Promise.resolve(
-      this.newestFirst(
-        [...this.rows.values()].filter(
-          (o) =>
-            (filter.status === null || o.status === filter.status) &&
-            (filter.reference === null ||
-              o.id === filter.reference ||
-              o.sellerOrders.some((s) => s.id === filter.reference)),
-        ),
-        page,
-      ),
+  private matching(filter: OrderFilter) {
+    return [...this.rows.values()].filter(
+      (o) =>
+        (filter.status === null || o.status === filter.status) &&
+        (filter.paymentState === null || o.paymentState === filter.paymentState) &&
+        (filter.reference === null ||
+          o.id === filter.reference ||
+          o.sellerOrders.some((s) => s.id === filter.reference)) &&
+        ((filter.sellerId === null && filter.fulfilment === null) ||
+          o.sellerOrders.some(
+            (s) =>
+              (filter.sellerId === null || s.sellerId === filter.sellerId) &&
+              (filter.fulfilment === null || s.fulfilment === filter.fulfilment),
+          )) &&
+        (filter.from === null || o.createdAt.epochMilliseconds >= filter.from.epochMilliseconds) &&
+        (filter.to === null || o.createdAt.epochMilliseconds < filter.to.epochMilliseconds),
     );
+  }
+  listAll(_m: MarketContext, filter: OrderFilter, page: OrderPage) {
+    return Promise.resolve(this.newestFirst(this.matching(filter), page));
+  }
+  pageAll(_m: MarketContext, filter: OrderFilter, sort: OrderSort, offset: number, limit: number) {
+    const sign = sort.direction === 'asc' ? 1 : -1;
+    const value = (o: OrderState) =>
+      sort.key === 'total' ? Number(o.total.amount) : o.createdAt.epochMilliseconds;
+    return Promise.resolve(
+      this.matching(filter)
+        .sort((a, b) => sign * (value(a) - value(b) || a.id.localeCompare(b.id)))
+        .slice(offset, offset + limit),
+    );
+  }
+  countMatching(_m: MarketContext, filter: OrderFilter) {
+    return Promise.resolve(this.matching(filter).length);
   }
   countAll() {
     const all = [...this.rows.values()];
@@ -299,6 +377,37 @@ export class MemoryOrders implements OrderRepository {
           .map((seller) => this.recordOf(order, seller)),
       );
   }
+  private matches(r: SellerOrderRecord, filter: SellerOrderFilter): boolean {
+    return (
+      (filter.fulfilment === null || r.sellerOrder.fulfilment === filter.fulfilment) &&
+      (filter.from === null || Temporal.Instant.compare(r.confirmedAt, filter.from) >= 0) &&
+      (filter.to === null || Temporal.Instant.compare(r.confirmedAt, filter.to) < 0)
+    );
+  }
+  pageForSeller(
+    _m: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+    sort: SellerOrderSort,
+    offset: number,
+    limit: number,
+  ) {
+    const sign = sort.direction === 'asc' ? 1 : -1;
+    const key = (r: SellerOrderRecord) =>
+      sort.key === 'total' ? Number(r.sellerOrder.total) : r.confirmedAt.epochMilliseconds;
+    return Promise.resolve(
+      this.paid(sellerId)
+        .filter((r) => this.matches(r, filter))
+        .sort(
+          (a, b) =>
+            sign * (key(a) - key(b)) || sign * a.sellerOrder.id.localeCompare(b.sellerOrder.id),
+        )
+        .slice(offset, offset + limit),
+    );
+  }
+  countMatchingForSeller(_m: MarketContext, sellerId: Id<'Seller'>, filter: SellerOrderFilter) {
+    return Promise.resolve(this.paid(sellerId).filter((r) => this.matches(r, filter)).length);
+  }
   listForSeller(
     _m: MarketContext,
     sellerId: Id<'Seller'>,
@@ -308,7 +417,7 @@ export class MemoryOrders implements OrderRepository {
     const after = page.after;
     return Promise.resolve(
       this.paid(sellerId)
-        .filter((r) => filter.fulfilment === null || r.sellerOrder.fulfilment === filter.fulfilment)
+        .filter((r) => this.matches(r, filter))
         .sort(
           (a, b) =>
             b.confirmedAt.epochMilliseconds - a.confirmedAt.epochMilliseconds ||
@@ -813,6 +922,10 @@ export class FakeCommission implements CommissionPayoutsFacade {
         ),
       ),
     );
+  }
+  /** Ordering never asks for the seller's own commission preview. */
+  ownCommissionOn(): Promise<never> {
+    return Promise.reject(new Error('not used'));
   }
   recordSellerOrderPaid(
     _c: CallContext,

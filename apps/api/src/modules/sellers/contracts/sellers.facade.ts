@@ -178,6 +178,18 @@ export interface SellersFacade {
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
 
   /**
+   * `aiAccessOf` (SEL-25; ADR-0019 decision 7): whether an admin switched AI on for the seller
+   * (default off). `platform/ai` asks it before every AI use. An unknown seller, another Market's
+   * seller or a read error is `sellers.unavailable`: the caller never reads an error as on, and
+   * `platform/ai` callers treat any error as off (ADR-0019 R8). Two use cases behind this method,
+   * as for `sellerSummaries`. Not exposed over HTTP.
+   */
+  aiAccessOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
+
+  /**
    * `activeSinceOf` (promotions T1): the instant the seller's business file was first approved in
    * the context's Market, the clock of promotions' "a seller active for fewer than N days needs
    * approval" rule. A revision approved and later superseded still counts; a rejected or
@@ -321,17 +333,19 @@ export interface SellersFacade {
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
 
   /**
-   * `cultureDemoteApprovals` (ADR-0048, security review M1-R1): takes every approval of the culture
-   * back to `requested`. Catalog's last resort when it could not put a required type back after an
-   * approval raced with the change. Rule `anonymous`; in process only; moves rows only toward
-   * `requested`. `remaining` is true when the per-call cap left approvals behind.
+   * `approvedCulturesOfSellers` (multi-culture package 3a; ADR-0047 decision 5): per requested
+   * seller (at most 100 distinct ids, else `validation.failed`), the ids of the cultures it is
+   * `approved` in. A seller with none, an unknown id and another Market's id are absent, alike.
+   * Catalog's visibility rule reads it; a failed read is `sellers.unavailable` and the caller
+   * treats the Offers as visible nowhere. Two use cases: `anonymous` for request actors, `system`
+   * for handlers and jobs. In process only.
    */
-  cultureDemoteApprovals(
+  approvedCulturesOfSellers(
     context: CallContext,
-    cultureId: Id<'Culture'>,
+    sellerIds: readonly Id<'Seller'>[],
   ): Promise<
     Result<
-      { readonly demoted: number; readonly remaining: boolean },
+      ReadonlyMap<Id<'Seller'>, readonly Id<'Culture'>[]>,
       AccessDenied | SellersValidationFailed | SellersUnavailable
     >
   >;

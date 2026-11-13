@@ -50,6 +50,11 @@ import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
 import { ShippingDeliveryMethodPolicy } from './shipping-delivery-method-policy';
 import { PrismaOrderRepository } from './prisma-order.repository';
 import { PrismaPickupCodeRepository } from './prisma-pickup-code.repository';
+import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
+import {
+  SAVED_FILTER_REPOSITORY,
+  type SavedFilterRepository,
+} from '../application/ports/saved-filter.repository';
 import { PrismaRefundRepository } from './prisma-refund.repository';
 import {
   SALES_RANKING_READER,
@@ -82,6 +87,12 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: REFUND_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): RefundRepository => new PrismaRefundRepository(prisma),
+  },
+  {
+    provide: SAVED_FILTER_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SavedFilterRepository =>
+      new PrismaSavedFilterRepository(prisma),
   },
   {
     provide: PICKUP_CODE_REPOSITORY,

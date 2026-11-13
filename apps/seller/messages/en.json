@@ -105,7 +105,8 @@
     },
     "settings": "Settings",
     "import": "Import",
-    "performance": "Performance"
+    "performance": "Performance",
+    "categories": "Shelves"
   },
   "home": {
     "title": "Dashboard",
@@ -1537,6 +1538,42 @@
       }
     },
     "not-given": "Not given",
+    "size-requests": {
+      "title": "Sizes you asked for",
+      "help": "Is a size missing? Ask for it. We check the request and tell you by email. You can sell the size once it is added and reviewed.",
+      "request": "Request a size",
+      "choose": "Choose",
+      "send": "Send request",
+      "cancel": "Cancel",
+      "sent": "Request sent.",
+      "none": "You have not asked for a size on this product.",
+      "list-label": "Sizes you asked for",
+      "at-limit": "You have {max} requests waiting. Ask again when one is answered.",
+      "status": {
+        "open": "Waiting",
+        "approved": "Added",
+        "mapped": "Already offered",
+        "declined": "Declined"
+      },
+      "approved-note": "The size was added to the product. It can be sold after review.",
+      "reason": "Reason: {reason}",
+      "error": {
+        "invalid": "Choose a value for every field.",
+        "not-found": "This offer could not be found.",
+        "option-unknown": "One of those values is not available. Reload the page and try again.",
+        "variant-exists": "The product already has this size. Reload the page.",
+        "already-open": "You have already asked for this size.",
+        "limit-reached": "You have {max} requests waiting. Ask again when one is answered.",
+        "daily-limit": "You have sent many requests today. Try again tomorrow.",
+        "not-configurable": "This product cannot take a new size right now.",
+        "not-eligible": "Your store cannot send requests right now.",
+        "denied": "You cannot send requests.",
+        "throttled": "Too many requests. Try again in a moment.",
+        "csrf": "Your session could not be checked. Reload the page and try again.",
+        "unavailable": "The request could not be sent. Try again later.",
+        "unknown": "Something went wrong. Try again."
+      }
+    },
     "variants-table": {
       "title": "Prices and stock by variant",
       "tab": "Variants",
@@ -2381,17 +2418,78 @@
   },
   "orders": {
     "title": "Orders",
+    "loading": "Loading orders…",
     "intro": "Paid orders for your store, newest first. Open an order and mark it ready when it is packed. MondaPac arranges the delivery.",
     "not-found": {
       "title": "Order not found",
       "body": "This order does not exist, or it belongs to another store."
     },
-    "more": "Show more orders",
     "optional": "optional",
     "ref": "#{id}",
     "detail-title": "Order #{id}",
+    "next-step": "Next step",
+    "copy-id": "Copy order ID",
+    "copy-id-done": "Order ID copied.",
+    "copy-id-failed": "Could not copy. Select the ID in the title instead.",
     "back": "Back to orders",
     "not-given": "Not given",
+    "columns": {
+      "button": "Columns",
+      "title": "Columns",
+      "help": "Choose which columns the list shows and in what order. Only you see this choice.",
+      "always": "Always shown",
+      "up": "Move {column} up",
+      "down": "Move {column} down",
+      "reset": "Reset",
+      "save": "Save"
+    },
+    "saved": {
+      "manage-link": "Manage filters",
+      "save-link": "Save filter…",
+      "cancel": "Cancel",
+      "save": {
+        "title": "Save this filter",
+        "name": "Name",
+        "who": "Who can use it",
+        "submit": "Save filter",
+        "everyone-help": "Everyone: not available for seller filters.",
+        "own-only": "Saved for you only. Other people in your store don’t see it."
+      },
+      "visibility": {
+        "me": "Only me",
+        "everyone": "Everyone"
+      },
+      "error": {
+        "name-taken": "A filter with this name already exists. Choose another name.",
+        "name-empty": "Enter a name for the filter.",
+        "limit": "You can keep up to {max} saved filters. Delete one to save another.",
+        "shared-limit": "Up to {max} filters can be shared. Delete one first.",
+        "denied": "Your role can’t do this.",
+        "unavailable": "The filter could not be saved. Try again."
+      },
+      "toast": {
+        "saved": "Saved “{name}”",
+        "updated": "Updated “{name}”",
+        "deleted": "Deleted “{name}”"
+      },
+      "manage": {
+        "title": "Manage filters",
+        "close": "Close",
+        "edit": "Edit",
+        "edit-named": "Edit {name}",
+        "delete": "Delete",
+        "delete-named": "Delete {name}",
+        "delete-confirm": "Delete filter",
+        "delete-own": "Delete “{name}”? It is removed from your tabs.",
+        "delete-shared": "Delete “{name}”? It is removed from the tabs of everyone.",
+        "save": "Save changes",
+        "shared-by-other": "Shared by another person",
+        "empty": "No saved filters yet",
+        "empty-help": "Set up filters, then choose Save filter to keep them as a tab.",
+        "help-share": "Rename, change who can use a filter, or delete it.",
+        "help-own": "Rename or delete your filters. They are only visible to you."
+      }
+    },
     "col": {
       "order": "Order",
       "status": "Status",
@@ -2490,7 +2588,39 @@
         "unavailable": "Orders are not available right now. Try again shortly.",
         "unknown": "Something went wrong. Try again."
       }
-    }
+    },
+    "filters": {
+      "group": "Filters",
+      "from": "Paid from",
+      "to": "Paid until",
+      "clear": "Clear dates",
+      "backwards": "The end day is before the start day."
+    },
+    "sort": {
+      "label": "Sort by",
+      "newest": "Newest first",
+      "oldest": "Oldest first",
+      "total-high": "Total, high to low",
+      "total-low": "Total, low to high"
+    },
+    "paging": {
+      "nav": "Pages",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {n}"
+    },
+    "board": {
+      "view": "Order view",
+      "table": "Table",
+      "board": "Board",
+      "stages": "Order stages",
+      "empty": "No orders at this stage.",
+      "loading": "Loading orders",
+      "retry": "Try again",
+      "more": "Show more"
+    },
+    "range": "{from} to {to} of {total}",
+    "too-many": "Page numbers stop at the first {limit} orders. Narrow the dates to reach the rest, or ask your platform admin to switch List paging to Previous and next."
   },
   "earnings": {
     "title": "Earnings",
@@ -3425,6 +3555,124 @@
       "score": "Each of the five measures gets a score from 0 to 100. Your store health is the lowest of them, so one serious problem is not hidden by good numbers elsewhere. 67 to 100 is healthy, 34 to 66 is at risk, and 0 to 33 needs attention.",
       "fair": "Things that are not your fault are not counted: orders the customer cancelled, failed payments, courier delays, and disputes you won. A measure with too little data is left out. Until you have enough orders, you are shown as New.",
       "nothing-automatic": "Nothing happens to your store automatically because of this score. If it is low, a person on the platform team may look at it and get in touch before deciding anything."
+    }
+  },
+  "categories": {
+    "proposals": {
+      "title": "Suggest a category",
+      "back": "Back to Suggest a category",
+      "intro": "A suggested category becomes a shelf in your own shop once the platform approves it. It groups your products on your shop page. It is not a platform category and does not change search, filters or badges.",
+      "sent": "Your suggestion was sent. You will see the outcome below.",
+      "not-enabled": "The platform has not turned on category suggestions for your store. Your existing shelves still work.",
+      "waiting": "{count} of {max} waiting",
+      "full": "You have {max} suggestions waiting. Withdraw one or wait for a decision before you suggest another.",
+      "form": {
+        "title": "New suggestion",
+        "parent": "Platform category it belongs under",
+        "parent-help": "Your shelf is shown under this category.",
+        "parent-none": "No categories are available yet. Create a product first, then come back.",
+        "parent-placeholder": "Choose a category",
+        "language": "Language",
+        "language-help": "{language} is required. Other languages are optional.",
+        "language-required": "{language} (required)",
+        "name": "Shelf name",
+        "description": "Short description",
+        "optional": "optional",
+        "send": "Send suggestion",
+        "field": {
+          "name": "name",
+          "shortDescription": "short description"
+        }
+      },
+      "list": {
+        "title": "Your suggestions",
+        "empty": {
+          "title": "No suggestions yet",
+          "body": "Suggest a category above and its outcome will show here."
+        },
+        "unnamed": "Unnamed",
+        "under": "Under {parent}",
+        "parent-unknown": "a platform category",
+        "cancel": "Withdraw",
+        "status": {
+          "pending": "Waiting",
+          "approved": "Approved",
+          "rejected": "Rejected",
+          "cancelled": "Closed"
+        },
+        "reason": {
+          "already-exists": "Rejected: a category like this already exists.",
+          "too-narrow": "Rejected: too narrow for a shelf.",
+          "too-broad": "Rejected: too broad for a shelf.",
+          "misleading": "Rejected: the name could mislead buyers.",
+          "not-sold-here": "Rejected: not something sold here.",
+          "other": "Rejected.",
+          "seller-cancelled": "Closed: you withdrew it.",
+          "permission-revoked": "Closed: permission removed"
+        }
+      },
+      "shelves": {
+        "title": "Your shelves",
+        "note": "Shelves group your products on your shop page. Put an Offer on a shelf from the Offer page.",
+        "empty": {
+          "title": "No shelves yet",
+          "body": "An approved suggestion becomes a shelf."
+        },
+        "status": {
+          "active": "Active",
+          "promoted": "Moved to the platform",
+          "merged": "Merged",
+          "archived": "Archived"
+        }
+      },
+      "error": {
+        "not-allowed": "The platform has not turned on category suggestions for your store.",
+        "not-eligible": "Your store cannot make suggestions yet.",
+        "duplicate": "You already have a suggestion or a shelf with this name under this category.",
+        "limit": "You have {max} suggestions waiting. Withdraw one or wait for a decision.",
+        "parent-not-found": "That category is no longer available. Choose another.",
+        "claim-word": "Some text uses a word that is not allowed. Change the wording and try again.",
+        "locale-uncheckable": "Some text is in a language that cannot be checked yet. Remove it or try again later.",
+        "required-locale-missing": "A name in the required language is needed.",
+        "check-unavailable": "The wording check is not available right now. Nothing was sent. Try again later.",
+        "throttled": "You have sent too many suggestions today. Try again tomorrow.",
+        "stale": "This changed since you opened the page. Refresh and try again.",
+        "not-found": "This suggestion no longer exists. Refresh the page.",
+        "not-pending": "This suggestion was already decided. Refresh the page.",
+        "denied": "You are not allowed to do this.",
+        "validation": "Check the form and try again.",
+        "validation-fields": "Some fields need a change.",
+        "unreachable": "Could not reach the server. Try again.",
+        "unknown": "Something went wrong. Try again.",
+        "in-field": "{language}, {field}: {problem}",
+        "field": {
+          "claim-word": "uses a word that is not allowed. Change the wording.",
+          "blocked-term": "uses a word that is not allowed. Change the wording.",
+          "locale-uncheckable": "cannot be checked yet for this language. Remove it or try again later.",
+          "required": "is needed.",
+          "invalid": "needs a change."
+        }
+      }
+    },
+    "shelf": {
+      "title": "Shop shelf",
+      "label": "Shelf",
+      "help": "Groups this Offer on your shop page. It is not a platform category.",
+      "placeholder": "Choose a shelf",
+      "none": "No shelf",
+      "save": "Save shelf",
+      "saved": {
+        "set": "The Offer is on the shelf.",
+        "cleared": "The Offer is off its shelf."
+      },
+      "error": {
+        "stale": "This Offer changed since you opened the page. Refresh and try again.",
+        "shelf-not-found": "That shelf is no longer available. Refresh the page.",
+        "offer-not-found": "This Offer no longer exists.",
+        "denied": "You are not allowed to do this.",
+        "unreachable": "Could not reach the server. Try again.",
+        "unknown": "Something went wrong. Try again."
+      }
     }
   }
 }

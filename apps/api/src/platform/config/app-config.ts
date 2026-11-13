@@ -73,6 +73,9 @@ const envSchema = z.object({
   // while it is on, the panel cannot turn indexing on.
   STOREFRONT_INDEXING: z.enum(['on', 'off']).default('off'),
   STOREFRONT_SAMPLE_DATA: z.enum(['on', 'off']).default('on'),
+  // ADR-0026 decision 8: the AI break-glass of this Region Stack. `true` forces every AI capability
+  // off, never on; unset is `false`; any other value fails boot, so a typo never leaves AI running.
+  AI_KILL_SWITCH: z.enum(['true', 'false']).default('false'),
   MARKET_CONFIG_DIR: z.string().min(1).default(DEFAULT_MARKET_CONFIG_DIR),
   SERVICE_AREA_CONFIG_DIR: z.string().min(1).default(DEFAULT_SERVICE_AREA_CONFIG_DIR),
   LOCALE_CONFIG_DIR: z.string().min(1).default(DEFAULT_LOCALE_CONFIG_DIR),
@@ -386,6 +389,8 @@ export interface AppConfig {
   readonly apiDocsEnabled: boolean;
   /** A reviewer may download a submitted certificate file. Off until the PDF scan hardening lands. */
   readonly certificationReviewerDocumentsEnabled: boolean;
+  /** `AI_KILL_SWITCH` (ADR-0026 decision 8): true forces every AI capability off. */
+  readonly aiKillSwitch: boolean;
   /** `STOREFRONT_INDEXING` and `STOREFRONT_SAMPLE_DATA`: what bounds the SEO indexing switch. */
   readonly storefrontIndexing: {
     readonly ceiling: 'on' | 'off';
@@ -926,6 +931,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     apiDocsEnabled: parsed.data.API_DOCS_ENABLED === 'true',
     certificationReviewerDocumentsEnabled:
       parsed.data.CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED === 'true',
+    aiKillSwitch: parsed.data.AI_KILL_SWITCH === 'true',
     storefrontIndexing: Object.freeze({
       ceiling: parsed.data.STOREFRONT_INDEXING,
       sampleData: parsed.data.STOREFRONT_SAMPLE_DATA === 'on',

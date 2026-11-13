@@ -55,11 +55,16 @@ import type {
   OptInRepository,
 } from '../../src/modules/promotions/application/ports/opt-in.repository';
 import type { PriceHistory } from '../../src/modules/promotions/application/ports/price-history';
+import type { SellerCatalogue } from '../../src/modules/promotions/application/ports/seller-catalogue';
+import type { SellerCommission } from '../../src/modules/promotions/application/ports/seller-commission';
 import { LockContendedError } from '../../src/modules/promotions/application/ports/promotion.repository';
 import type {
+  CriterionCounts,
   LiveScope,
   PromotionFilter,
   PromotionRepository,
+  PromotionSearch,
+  StatusCriterion,
   UsageRecord,
 } from '../../src/modules/promotions/application/ports/promotion.repository';
 import type { FirstOrderSettings } from '../../src/modules/promotions/application/ports/promotions-policy';
@@ -73,6 +78,7 @@ import type {
   ShippingThresholdRecord,
   ShippingThresholdRepository,
 } from '../../src/modules/promotions/application/ports/settings.repository';
+import { displayStatusOf } from '../../src/modules/promotions/domain/display-status';
 import type { PromotionRecord } from '../../src/modules/promotions/domain/promotion';
 
 // The promotions tables in memory, with the rules the tables enforce: a Market-unique code, one
@@ -131,6 +137,85 @@ export class MemoryPromotions implements PromotionRepository {
         .slice(0, filter.limit),
     );
   }
+  private matches(
+    search: PromotionSearch,
+    now: Temporal.Instant,
+    criterion: StatusCriterion | null,
+  ) {
+    return (r: PromotionRecord) => {
+      const text = search.text?.toLowerCase() ?? null;
+      if (
+        text !== null &&
+        !r.name.toLowerCase().includes(text) &&
+        !(r.code ?? '').startsWith(text.toUpperCase())
+      ) {
+        return false;
+      }
+      if (search.types.length > 0 && !search.types.includes(r.type)) return false;
+      if (search.owner === 'PLATFORM' && r.ownerSellerId !== null) return false;
+      if (search.owner === 'SELLER' && r.ownerSellerId === null) return false;
+      if (search.funding !== null && r.funding !== search.funding) return false;
+      if (criterion === null) return true;
+      if (criterion === 'NEEDS_REVIEW') return search.reviewPromotionIds.includes(r.id);
+      const shown = displayStatusOf(
+        {
+          type: r.type,
+          status: r.status,
+          startsAt: r.startsAt,
+          endsAt: r.endsAt,
+          budgetMinor: r.budgetMinor,
+          spentMinor: this.usage.get(r.id)?.spentMinor ?? 0n,
+        },
+        now,
+      );
+      return (
+        shown === criterion ||
+        (search.hideBudget && criterion === 'ACTIVE' && shown === 'BUDGET_USED_UP')
+      );
+    };
+  }
+  search(_market: MarketContext, search: PromotionSearch, now: Temporal.Instant) {
+    const key = (r: PromotionRecord): number | string =>
+      search.sort === 'STARTS'
+        ? r.startsAt.epochMilliseconds
+        : search.sort === 'ENDS'
+          ? (r.endsAt?.epochMilliseconds ?? Number.MAX_SAFE_INTEGER)
+          : search.sort === 'NAME'
+            ? r.name
+            : search.sort === 'USES'
+              ? (this.usage.get(r.id)?.usesCount ?? 0)
+              : r.createdAt.epochMilliseconds;
+    const sign = search.descending ? -1 : 1;
+    const all = [...this.records.values()]
+      .filter(this.matches(search, now, search.criterion))
+      .sort((a, b) => {
+        const x = key(a);
+        const y = key(b);
+        return (x < y ? -1 : x > y ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0) * sign;
+      });
+    return Promise.resolve({
+      records: all.slice(search.offset, search.offset + search.limit),
+      total: all.length,
+    });
+  }
+  countByCriterion(_market: MarketContext, search: PromotionSearch, now: Temporal.Instant) {
+    const counts = new Map<StatusCriterion | 'ALL', number>();
+    const all = [...this.records.values()];
+    counts.set('ALL', all.filter(this.matches(search, now, null)).length);
+    for (const criterion of [
+      'ACTIVE',
+      'SCHEDULED',
+      'PAUSED',
+      'NEEDS_REVIEW',
+      'ENDED',
+      'PENDING_APPROVAL',
+      'REJECTED',
+      'BUDGET_USED_UP',
+    ] as const) {
+      counts.set(criterion, all.filter(this.matches(search, now, criterion)).length);
+    }
+    return Promise.resolve(counts as CriterionCounts);
+  }
   listLive(_market: MarketContext, now: Temporal.Instant, scope: LiveScope) {
     this.lastScope = scope;
     return Promise.resolve(
@@ -142,6 +227,30 @@ export class MemoryPromotions implements PromotionRepository {
           (r.ownerSellerId === null || scope.sellerIds.includes(r.ownerSellerId)) &&
           (r.productIds.length === 0 || r.productIds.some((p) => scope.productIds.includes(p))),
       ),
+    );
+  }
+  listOpenCampaigns(
+    _market: MarketContext,
+    now: Temporal.Instant,
+    sellerId: Id<'Seller'>,
+    promotionId?: Id<'Promotion'>,
+  ) {
+    return Promise.resolve(
+      [...this.records.values()]
+        .filter(
+          (r) =>
+            (promotionId === undefined || r.id === promotionId) &&
+            r.type === 'CO_FUNDED_CAMPAIGN' &&
+            r.funding === 'CO_FUNDED' &&
+            r.status === 'ACTIVE' &&
+            (r.endsAt === null || r.endsAt.epochMilliseconds > now.epochMilliseconds) &&
+            (r.sellerIds.length === 0 || r.sellerIds.includes(sellerId)),
+        )
+        .sort(
+          (a, b) =>
+            a.startsAt.epochMilliseconds - b.startsAt.epochMilliseconds ||
+            (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+        ),
     );
   }
   listLiveOfTypes(
@@ -229,6 +338,13 @@ export class MemoryOptIns implements OptInRepository {
     }
     return Promise.resolve(sellers.sort() as readonly Id<'Seller'>[]);
   }
+  listOf(_market: MarketContext, promotionId: Id<'Promotion'>) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter((row) => row.promotionId === promotionId)
+        .sort((a, b) => a.optedInAt.epochMilliseconds - b.optedInAt.epochMilliseconds),
+    );
+  }
   liveSellers(_market: MarketContext, promotionIds: readonly Id<'Promotion'>[]) {
     const map = new Map<Id<'Promotion'>, Id<'Seller'>[]>();
     for (const row of this.rows.values()) {
@@ -263,6 +379,10 @@ export class MemoryReviewQueue implements ReviewQueueRepository {
         .sort((a, b) => a.openedAt.epochMilliseconds - b.openedAt.epochMilliseconds)
         .slice(0, limit),
     );
+  }
+  openSummary() {
+    const open = [...this.entries.values()].filter((e) => e.status === 'OPEN');
+    return Promise.resolve({ count: open.length, promotionIds: open.map((e) => e.promotionId) });
   }
   decide(
     _market: MarketContext,
@@ -338,6 +458,38 @@ export class FakePriceHistory implements PriceHistory {
   days: number | null = null;
   daysSoldAtPrice() {
     return Promise.resolve(this.days);
+  }
+}
+
+export class FakeSellerCommission implements SellerCommission {
+  /** Null = unreadable. */
+  rate: number | null = 1500;
+  /** The provisional tax taken out of a tax-inclusive amount, basis points. */
+  taxBps = 1000;
+  readonly asked: { amount: bigint; taxInclusive: boolean }[] = [];
+  commissionOn(_context: CallContext, amount: bigint, taxInclusive: boolean) {
+    this.asked.push({ amount, taxInclusive });
+    if (this.rate === null) return Promise.resolve(null);
+    const half = (n: bigint, d: bigint) => (n * 2n + d) / (d * 2n);
+    const base = taxInclusive ? half(amount * 10000n, 10000n + BigInt(this.taxBps)) : amount;
+    return Promise.resolve({
+      rateBps: this.rate,
+      commissionBase: base,
+      commission: half(base * BigInt(this.rate), 10000n),
+    });
+  }
+}
+
+/** A seller's catalogue: the products it sells and the sell units it owns. */
+export class FakeSellerCatalogue implements SellerCatalogue {
+  /** Null = unknown. */
+  sells: ReadonlySet<Id<'Product'>> | null = new Set();
+  owns = true;
+  sellsProducts() {
+    return Promise.resolve(this.sells);
+  }
+  ownsSellUnit() {
+    return Promise.resolve(this.owns);
   }
 }
 
@@ -770,8 +922,18 @@ export class MemoryReferrals implements ReferralRepository {
 }
 
 /** The phase 3 dependencies, fresh: spread into a deps object. */
+/** An audit reader with no rows and an identity that names nobody: the default of a spec that does not read the activity. */
+const NO_ACTIVITY = {
+  auditTrail: {
+    history: () => Promise.resolve(ok([])),
+    historyOf: () => Promise.resolve(ok([])),
+  },
+  actors: { labelsOf: () => Promise.resolve(new Map()) },
+};
+
 export function phase3Fakes() {
   return {
+    ...NO_ACTIVITY,
     orderHistory: new FakeCustomerOrderHistory(),
     storeFollows: new FakeStoreFollows(),
     orderFacts: new FakeOrderFacts(),

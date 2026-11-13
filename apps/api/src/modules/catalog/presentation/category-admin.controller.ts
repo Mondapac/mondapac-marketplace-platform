@@ -206,9 +206,19 @@ export class CategoryAdminController {
       'Needs catalog.category-tree.view. Every category in any status, depth first, with names by ' +
       'locale, depth, position, and the counts of live products and Offers. The counts are ' +
       'bounded at 10 seconds; `complete: false` means "at least". `actions` says what the caller ' +
-      'may do on the page.',
+      'may do on the page. Each row carries its effective feature set (own or inherited from the ' +
+      'nearest ancestor that holds one); `featureSetId` keeps only the rows that end up with it.',
+  })
+  @ApiQuery({
+    name: 'featureSetId',
+    required: false,
+    description: 'Only the categories whose effective feature set is this one. A UUID.',
   })
   @ApiOkResponse({ type: CategoryTreeBody })
+  @ApiBadRequestResponse({
+    type: ApiErrorBody,
+    description: 'validation.failed (details.fields): an unknown query key or a malformed id',
+  })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
   @ApiServiceUnavailableResponse({
@@ -220,7 +230,7 @@ export class CategoryAdminController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<CategoryTreeBody> {
-    const result = await this.tree.execute(context, query as Record<string, never>);
+    const result = await this.tree.execute(context, query);
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as CategoryTreeBody)
       : refusal(result.error, response, context);

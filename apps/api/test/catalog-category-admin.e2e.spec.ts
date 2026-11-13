@@ -5,6 +5,12 @@ import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared
 import request from 'supertest';
 import { ADMIN_CATEGORY_READER } from '../src/modules/catalog/application/ports/admin-category.reader';
 import type { AdminCategoryReader } from '../src/modules/catalog/application/ports/admin-category.reader';
+import { ATTRIBUTE_ADMIN_READER } from '../src/modules/catalog/application/ports/attribute-admin.reader';
+import {
+  CATEGORY_ATTRIBUTE_LINK_STORE,
+  type StoredLinkFact,
+} from '../src/modules/catalog/application/ports/category-attribute-link.store';
+import { CATEGORY_LINKS_LOAD_MAX } from '../src/modules/catalog/application/attributes/category-links';
 import { CATEGORY_ADMIN_STATUS } from '../src/modules/catalog/presentation/category-admin.controller';
 import {
   CATEGORY_EDIT_STORE,
@@ -33,6 +39,10 @@ import {
   MemoryTreeVersion,
 } from './support/catalog-category-editor-fakes';
 import { MemoryCategoryImages } from './support/catalog-category-image-fakes';
+import {
+  featureSetRecord,
+  MemoryAttributeAdminReader,
+} from './support/catalog-attribute-admin-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -60,6 +70,15 @@ const RESTRUCTURE_ROLE = id<'Role'>(0xcf12);
 const ROOT = id<'Category'>(0xcc01);
 const LEAF = id<'Category'>(0xcc02);
 const MISSING = id<'Category'>(0xccff);
+const SET_PANTRY = id<'AttributeFamily'>(0xfa01);
+
+/** The links of each Market: the root holds a feature set, the leaf inherits it. */
+let linkFacts = new Map<string, StoredLinkFact[]>();
+const linkStore = {
+  all: (market: { marketId: string }, limit: number) =>
+    Promise.resolve((linkFacts.get(market.marketId) ?? []).slice(0, limit)),
+};
+const featureSets = new MemoryAttributeAdminReader();
 
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
@@ -101,34 +120,38 @@ const halalOnlyMatcher = {
     }),
 };
 
+/** When set, the categories the reader gives instead of the fixed two. */
+let categoriesOverride: Awaited<ReturnType<AdminCategoryReader['categories']>> | null = null;
 const reader: AdminCategoryReader = {
   categories: () =>
-    Promise.resolve([
-      {
-        id: ROOT,
-        parentId: null,
-        slug: 'pantry',
-        status: 'active' as const,
-        mergedIntoId: null,
-        names: [{ locale: 'en', name: 'Pantry' }],
-        revisionNo: 1,
-        version: 1,
-        position: 0,
-        showInMenu: true,
-      },
-      {
-        id: LEAF,
-        parentId: ROOT,
-        slug: 'rice',
-        status: 'active' as const,
-        mergedIntoId: null,
-        names: [{ locale: 'en', name: 'Rice' }],
-        revisionNo: 1,
-        version: 1,
-        position: 0,
-        showInMenu: true,
-      },
-    ]),
+    Promise.resolve(
+      categoriesOverride ?? [
+        {
+          id: ROOT,
+          parentId: null,
+          slug: 'pantry',
+          status: 'active' as const,
+          mergedIntoId: null,
+          names: [{ locale: 'en', name: 'Pantry' }],
+          revisionNo: 1,
+          version: 1,
+          position: 0,
+          showInMenu: true,
+        },
+        {
+          id: LEAF,
+          parentId: ROOT,
+          slug: 'rice',
+          status: 'active' as const,
+          mergedIntoId: null,
+          names: [{ locale: 'en', name: 'Rice' }],
+          revisionNo: 1,
+          version: 1,
+          position: 0,
+          showInMenu: true,
+        },
+      ],
+    ),
   treeVersion: () => Promise.resolve(4),
   productFacts: () =>
     Promise.resolve({
@@ -180,6 +203,13 @@ describe.each(TEST_MARKETS)(
       retirementChecked.length = 0;
       retirementAnswer = { ok: true, value: undefined };
       treeVersion.version = 1;
+      linkFacts = new Map([[code, [{ categoryId: ROOT, familyId: SET_PANTRY, filters: [] }]]]);
+      categoriesOverride = null;
+      featureSets.reset();
+      featureSets.seedFeatureSet(
+        code,
+        featureSetRecord(SET_PANTRY, `pantry-${code.toLowerCase()}`, []),
+      );
       ({ app } = await createTestApp({
         env: { LOG_LEVEL: 'info', API_DOCS_ENABLED: 'true' },
         panelOrigins: true,
@@ -190,6 +220,10 @@ describe.each(TEST_MARKETS)(
             .useValue(clock)
             .overrideProvider(ADMIN_CATEGORY_READER)
             .useValue(reader)
+            .overrideProvider(CATEGORY_ATTRIBUTE_LINK_STORE)
+            .useValue(linkStore)
+            .overrideProvider(ATTRIBUTE_ADMIN_READER)
+            .useValue(featureSets)
             .overrideProvider(CATEGORY_EDIT_STORE)
             .useValue(editStore)
             .overrideProvider(CATEGORY_RESTRUCTURE_STORE)
@@ -352,6 +386,79 @@ describe.each(TEST_MARKETS)(
         denial: 'access.permission-missing',
       });
       expect(body.actions['platform-category.import']?.allowed).toBe(false);
+    });
+
+    it('gives each row its effective feature set and filters by it', async () => {
+      const response = await http().get(BASE).set(adminSession(VIEWER, 40)).expect(200);
+      const rows = (
+        response.body as {
+          categories: {
+            slug: string;
+            featureSetId: string | null;
+            featureSetCode: string | null;
+            featureSetFromCategoryId: string | null;
+            inherited: boolean;
+          }[];
+        }
+      ).categories.map((c) => [
+        c.slug,
+        c.featureSetId,
+        c.featureSetCode,
+        c.featureSetFromCategoryId,
+        c.inherited,
+      ]);
+      const setCode = `pantry-${code.toLowerCase()}`;
+      expect(rows).toEqual([
+        ['pantry', SET_PANTRY, setCode, ROOT, false],
+        ['rice', SET_PANTRY, setCode, ROOT, true],
+      ]);
+      const other = await http()
+        .get(`${BASE}?featureSetId=${id<'AttributeFamily'>(0xfa02)}`)
+        .set(adminSession(VIEWER, 41))
+        .expect(200);
+      expect((other.body as { categories: unknown[] }).categories).toEqual([]);
+      const same = await http()
+        .get(`${BASE}?featureSetId=${SET_PANTRY}`)
+        .set(adminSession(VIEWER, 42))
+        .expect(200);
+      expect((same.body as { categories: unknown[] }).categories).toHaveLength(2);
+      const bad = await http()
+        .get(`${BASE}?featureSetId=nope`)
+        .set(adminSession(VIEWER, 43))
+        .expect(400);
+      expect(bad.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'featureSetId', code: 'format' }] },
+      });
+      await http().get(`${BASE}?status=active`).set(adminSession(VIEWER, 44)).expect(400);
+    });
+
+    it('answers 503 catalog.categories-unavailable for too many links or an unreadable chain', async () => {
+      linkFacts = new Map([
+        [
+          code,
+          Array.from({ length: CATEGORY_LINKS_LOAD_MAX + 1 }, () => ({
+            categoryId: ROOT,
+            familyId: SET_PANTRY,
+            filters: [],
+          })),
+        ],
+      ]);
+      const many = await http().get(BASE).set(adminSession(VIEWER, 46)).expect(503);
+      expect(many.body).toMatchObject({ code: 'catalog.categories-unavailable' });
+      linkFacts = new Map();
+      // The leaf's parent is missing from the tree: no chain can be read for it.
+      const fixed = await reader.categories(market, 10);
+      categoriesOverride = fixed.map((c) => (c.id === LEAF ? { ...c, parentId: MISSING } : c));
+      const broken = await http().get(BASE).set(adminSession(VIEWER, 47)).expect(503);
+      expect(broken.body).toMatchObject({ code: 'catalog.categories-unavailable' });
+    });
+
+    it("reads another Market's links as none", async () => {
+      linkFacts = new Map([['OTHER', [{ categoryId: ROOT, familyId: SET_PANTRY, filters: [] }]]]);
+      const response = await http().get(BASE).set(adminSession(VIEWER, 45)).expect(200);
+      const body = response.body as { categories: { featureSetId: string | null }[] };
+      expect(body.categories.map((c) => c.featureSetId)).toEqual([null, null]);
     });
 
     it('tells the Catalogue Moderator it can edit but not restructure', async () => {
@@ -809,6 +916,28 @@ describe.each(TEST_MARKETS)(
         paths: Record<string, Record<string, { responses: Record<string, unknown> }>>;
       };
       expect(document.paths[BASE]).toHaveProperty('get');
+      const list = (
+        document.paths[BASE] as unknown as {
+          get: { parameters: { name: string; in: string }[]; responses: Record<string, unknown> };
+        }
+      ).get;
+      expect(list.parameters).toContainEqual(
+        expect.objectContaining({ name: 'featureSetId', in: 'query' }),
+      );
+      expect(list.responses).toHaveProperty('400');
+      const schemas = (
+        document as unknown as {
+          components: { schemas: Record<string, { properties: Record<string, unknown> }> };
+        }
+      ).components.schemas;
+      expect(Object.keys(schemas['CategoryTreeRowBody']!.properties)).toEqual(
+        expect.arrayContaining([
+          'featureSetId',
+          'featureSetCode',
+          'featureSetFromCategoryId',
+          'inherited',
+        ]),
+      );
       expect(document.paths[`${BASE}/{categoryId}`]?.get?.responses).toHaveProperty('404');
       expect(document.paths[`${BASE}/{categoryId}/impact`]?.get?.responses).toHaveProperty('400');
       expect(document.paths[BASE]).toHaveProperty('post');

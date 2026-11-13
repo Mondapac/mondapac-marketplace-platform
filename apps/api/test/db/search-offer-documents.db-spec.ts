@@ -4,6 +4,8 @@ import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import type { SearchDependencies } from '../../src/modules/search/application/search-dependencies';
 import { SearchProducts } from '../../src/modules/search/application/use-cases/search-products.use-case';
+import { SyncOfferDocuments } from '../../src/modules/search/application/use-cases/sync-offer-documents.use-case';
+import type { FeedFacts } from '../../src/modules/search/application/ports/offer-feed';
 import type { OfferDocument } from '../../src/modules/search/domain/offer-document';
 import { ConfigSearchPolicy } from '../../src/modules/search/infrastructure/config-search-policy';
 import { PrismaOfferDocumentRepository } from '../../src/modules/search/infrastructure/prisma-offer-document.repository';
@@ -80,6 +82,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
     facetCodes: [],
     numbers: {},
     variants: [],
+    cultureCodes: [],
     ...overrides,
   });
   const inUnit = async <T>(target: MarketContext, work: () => Promise<T>, readOnly = false) => {
@@ -425,6 +428,9 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       ),
       storeDocuments: new PrismaStoreDocumentRepository(db.service),
       categoryTree: { tree: () => Promise.resolve([]) },
+      cultures: {
+        visibleCodes: () => Promise.resolve(new Map()),
+      },
       storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
       filterSource: { filters: () => Promise.resolve([]) },
       policy,
@@ -1158,6 +1164,243 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
       expect(result.ok && result.value.total).toBe(3);
       const prefix = await new SuggestSearch(gate, deps).execute(visitor, { q: 'vis' });
       expect(prefix.ok && prefix.value.products.map((p) => p.name)).toEqual(['Visible mug']);
+    });
+  });
+
+  describe('culture codes (multi-culture package 3a; ADR-0047 decision 8)', () => {
+    const certified = code === 'AU' ? 'muslim' : 'jewish';
+    const codesOf = async (offerId: Id<'Offer'>, on: MarketContext = market) => {
+      const row = await sql.query<{ c: string[] }>(
+        'SELECT culture_codes AS c FROM "search"."offer_documents" WHERE offer_id = $1 AND market_id = $2',
+        [offerId, on.marketId],
+      );
+      return row.rows[0]?.c;
+    };
+
+    it('defaults to no culture, keeps what upsert writes, and refuses a null or oversized list', async () => {
+      const plain = doc({ name: 'Plain tea' });
+      const tagged = doc({ name: 'Tagged tea', cultureCodes: ['general', certified] });
+      await seed(market, plain, tagged);
+      expect(await codesOf(plain.offerId)).toEqual([]);
+      expect(await codesOf(tagged.offerId)).toEqual(['general', certified]);
+
+      await seed(market, { ...tagged, cultureCodes: [certified] });
+      expect(await codesOf(tagged.offerId)).toEqual([certified]);
+
+      const update = (value: unknown) =>
+        sql.query(
+          'UPDATE "search"."offer_documents" SET culture_codes = $1::text[] WHERE offer_id = $2',
+          [value, plain.offerId],
+        );
+      await expect(update(['a', null])).rejects.toMatchObject({ code: CHECK });
+      await expect(update(Array.from({ length: 201 }, (_, n) => `c${n}`))).rejects.toMatchObject({
+        code: CHECK,
+      });
+      await expect(update(Array.from({ length: 200 }, (_, n) => `c${n}`))).resolves.toBeDefined();
+    });
+
+    it('has a GIN index on the codes', async () => {
+      const row = await sql.query<{ d: string }>(
+        `SELECT indexdef AS d FROM pg_indexes
+          WHERE schemaname = 'search' AND indexname = 'offer_documents_culture_codes_idx'`,
+      );
+      expect(row.rows[0]?.d).toMatch(/USING gin \(culture_codes\)/);
+    });
+
+    // The statements Prisma sends for `has` (offerIdsWithCultureCode) and `hasSome` (the shape of
+    // the package 3b filter, and offerIdsInCategories) are `@>` and `&&` on the array: both are
+    // GIN-indexable, where `= ANY (column)` would not be. Sequential scans are switched off for the
+    // EXPLAIN only, so the planner shows whether the index can serve the shape at all (on a near
+    // empty table it would otherwise scan; with the Market and the Offer-id order the planner
+    // weighs the primary key against it by the statistics of the day).
+    it.each([
+      ['has (one code)', `"culture_codes" @> $2::text[]`, 'offer_documents_culture_codes_idx'],
+      ['hasSome (3b filter)', `"culture_codes" && $2::text[]`, 'offer_documents_culture_codes_idx'],
+      ['category hasSome', `"category_ids" && $2::uuid[]`, 'offer_documents_category_ids_idx'],
+    ])('serves the %s shape from the GIN index', async (name, predicate, index) => {
+      await seed(market, doc({ name: 'Indexed', cultureCodes: [certified] }));
+      await sql.query('BEGIN');
+      try {
+        await sql.query('SET LOCAL enable_seqscan = off');
+        const plan = await sql.query<{ 'QUERY PLAN': string }>(
+          `EXPLAIN SELECT offer_id FROM "search"."offer_documents" WHERE ${predicate.replace('$2', '$1')}`,
+          [name.startsWith('category') ? [id<'Category'>()] : [certified]],
+        );
+        const text = plan.rows.map((row) => row['QUERY PLAN']).join('\n');
+        expect(text).toContain(index);
+      } finally {
+        await sql.query('ROLLBACK');
+      }
+    });
+
+    it('never lets an older read overwrite or delete a document from a later read (L2)', async () => {
+      const later = doc({ name: 'Later read', cultureCodes: [certified] });
+      const T1 = T0.add({ seconds: 1 });
+      await inUnit(market, () => documents.upsert(market, later, T1));
+      // A sync that began reading before (T0) commits after: its answer is dropped.
+      await inUnit(market, () =>
+        documents.upsert(market, { ...later, name: 'Earlier read', cultureCodes: [] }, T0),
+      );
+      expect(await codesOf(later.offerId)).toEqual([certified]);
+      expect(await inUnit(market, () => documents.deleteMany(market, [later.offerId], T0))).toBe(0);
+      // An equal or later read writes, and deletes.
+      await inUnit(market, () =>
+        documents.upsert(market, { ...later, cultureCodes: ['general'] }, T1),
+      );
+      expect(await codesOf(later.offerId)).toEqual(['general']);
+      expect(await inUnit(market, () => documents.deleteMany(market, [later.offerId], T1))).toBe(1);
+    });
+
+    it('lets a later read replace a concurrent first write of an earlier read (L2, N1)', async () => {
+      const template = doc({ name: 'Template', cultureCodes: [certified] });
+      await seed(market, template);
+      const raced = doc({ name: 'Raced', cultureCodes: [certified] });
+      const T1 = T0.add({ seconds: 1 });
+      // Another unit inserts the first row of `raced`, read at T0, and has not committed yet.
+      const racer = new Client({ connectionString: searchDocumentsTestDatabaseUrl() });
+      await racer.connect();
+      try {
+        await racer.query('BEGIN');
+        await racer.query(
+          `INSERT INTO search.offer_documents (market_id, tenant_id, offer_id, product_id, seller_id,
+             locale, name, short_text, category_ids, text_search_config, search_text, facet_codes,
+             culture_codes, indexed_at)
+           SELECT market_id, tenant_id, $2::uuid, product_id, seller_id, locale, 'Earlier read',
+             short_text, category_ids, text_search_config, search_text, facet_codes,
+             ARRAY[]::text[], $3::timestamptz
+           FROM search.offer_documents WHERE market_id = $4 AND offer_id = $1::uuid`,
+          [template.offerId, raced.offerId, T0.toString(), market.marketId],
+        );
+        // The later read (T1) finds no row to update, and its insert waits on the racer's row.
+        const write = inUnit(market, () =>
+          documents.upsert(market, { ...raced, name: 'Later read' }, T1),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        await racer.query('COMMIT');
+        await write;
+      } finally {
+        await racer.end();
+      }
+      // The insert skipped the duplicate; the guarded update ran once more and replaced it.
+      expect(await codesOf(raced.offerId)).toEqual([certified]);
+    });
+
+    it('pages the Offers that name a category subtree by Offer id (keyset)', async () => {
+      const shelf = id<'Category'>();
+      const named = [1, 2, 3].map(() => doc({ name: 'Shelf item', categoryIds: [shelf] }));
+      await seed(market, ...named, doc({ name: 'Elsewhere' }));
+      await seed(other, doc({ name: 'Other market', categoryIds: [shelf] }));
+      const sorted = named.map((d) => d.offerId).sort();
+      const page = (after?: Id<'Offer'>) =>
+        inUnit(market, () => documents.offerIdsInCategories(market, [shelf], 2, after), true);
+      expect(await page()).toEqual(sorted.slice(0, 2));
+      expect(await page(sorted[1])).toEqual(sorted.slice(2));
+    });
+
+    it('pages the Offers that hold a code, in this Market only', async () => {
+      const holders = [1, 2, 3].map(() => doc({ name: 'Holder', cultureCodes: [certified] }));
+      await seed(market, ...holders, doc({ name: 'Other', cultureCodes: ['general'] }));
+      await seed(other, doc({ name: 'Elsewhere', cultureCodes: [certified] }));
+      const sorted = holders.map((h) => h.offerId).sort();
+
+      const page = (after?: Id<'Offer'>) =>
+        inUnit(market, () => documents.offerIdsWithCultureCode(market, certified, 2, after), true);
+      expect(await page()).toEqual(sorted.slice(0, 2));
+      expect(await page(sorted[1])).toEqual(sorted.slice(2));
+      expect(await page(sorted[2])).toEqual([]);
+    });
+
+    it('re-indexes the codes through SyncOfferDocuments: by Offer and by category subtree', async () => {
+      const sellerId = id<'Seller'>();
+      const shelf = id<'Category'>();
+      const first = id<'Offer'>();
+      const second = id<'Offer'>();
+      const facts = (name: string): FeedFacts => ({
+        sellerId,
+        productId: id<'Product'>(),
+        sellable: true,
+        name,
+        shortText: null,
+        categoryIds: [shelf],
+        attributes: { searchText: '', facets: [], numbers: {} },
+        variants: [],
+      });
+      const feedFacts = new Map([
+        [first, facts('First tea')],
+        [second, facts('Second tea')],
+      ]);
+      const visible = new Map<Id<'Offer'>, readonly string[]>([
+        [first, ['general', certified]],
+        [second, ['general']],
+      ]);
+      const deps: SearchDependencies = {
+        unitOfWork: db.unitOfWork,
+        documents,
+        index: new PostgresOfferSearchIndex(
+          reader,
+          facetReader,
+          new RawOfferScopeReader(new PrismaRawReadPort(db.root).forModule('search')),
+          new RawStoreSearchReader(new PrismaRawReadPort(db.root).forModule('search')),
+          new RawSuggestReader(new PrismaRawReadPort(db.root).forModule('search')),
+        ),
+        storeDocuments: new PrismaStoreDocumentRepository(db.service),
+        categoryTree: { tree: () => Promise.resolve([]) },
+        cultures: {
+          visibleCodes: (_context, offerIds) =>
+            Promise.resolve(
+              new Map(offerIds.flatMap((o) => (visible.has(o) ? [[o, visible.get(o)!]] : []))),
+            ),
+        },
+        storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
+        filterSource: { filters: () => Promise.resolve([]) },
+        policy,
+        feed: {
+          facts: (_context, offerIds) =>
+            Promise.resolve(
+              new Map(offerIds.flatMap((o) => (feedFacts.has(o) ? [[o, feedFacts.get(o)!]] : []))),
+            ),
+          publishedIds: () => Promise.resolve([]),
+        },
+        visibility: { visible: () => Promise.resolve(new Set()) },
+        sellers: { eligible: (_context, ids) => Promise.resolve(new Set(ids)) },
+        clock: new FixedClock(T0),
+        shelves,
+        stores: { sellerIdOf: () => Promise.resolve({ sellerId: null }) },
+        brands: { productIdsOf: () => Promise.resolve({ productIds: [], truncated: false }) },
+        images: { of: () => Promise.resolve(new Map()) },
+        categories: { subtreeOf: (_context, categoryId) => Promise.resolve([categoryId]) },
+        sellUnits: { states: () => Promise.resolve(new Map()) },
+        variants: new PrismaOfferVariantReader(db.service),
+      };
+      const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
+      const system = testCallContext(market, 'system', 'search-db-culture-1');
+      const sync = (input: Parameters<SyncOfferDocuments['execute']>[1]) =>
+        new SyncOfferDocuments(gate, deps).execute(system, input);
+
+      expect(await sync({ offerIds: [first, second] })).toEqual({
+        ok: true,
+        value: { upserted: 2, deleted: 0 },
+      });
+      expect(await codesOf(first)).toEqual(['general', certified]);
+      expect(await codesOf(second)).toEqual(['general']);
+
+      // A culture hid the category: catalog answers the plain culture only, and the subtree
+      // re-sync of the mark event (keyset paged over the real index) rewrites both documents.
+      visible.set(first, ['general']);
+      expect(await sync({ categoryId: shelf, handOffAbove: true })).toEqual({
+        ok: true,
+        value: { upserted: 2, deleted: 0 },
+      });
+      expect(await codesOf(first)).toEqual(['general']);
+
+      // A tag added later: the Offer-scoped re-sync (the tag event's) writes the code back.
+      visible.set(second, ['general', certified]);
+      expect(await sync({ offerIds: [second] })).toEqual({
+        ok: true,
+        value: { upserted: 1, deleted: 0 },
+      });
+      expect(await codesOf(second)).toEqual(['general', certified]);
+      expect(await codesOf(second, other)).toBeUndefined();
     });
   });
 });

@@ -10,12 +10,14 @@ import { SETUP_ROOT } from '../setup/steps.ts';
 import { loadOwnDisputes } from './own-disputes.ts';
 import { serverGet } from './server-fetch.ts';
 import { requireSession, type SellerSession } from './session.ts';
+import { queryOf, type ListPaging } from '../orders/orders-query.ts';
 
 export type OrdersPage =
   | {
       readonly kind: 'ok';
       readonly session: SellerSession;
       readonly page: SellerOrderPage;
+      readonly paging: ListPaging;
     }
   | { readonly kind: 'no-access'; readonly session: SellerSession }
   | { readonly kind: 'unavailable' };
@@ -29,10 +31,23 @@ export async function loadOrdersPage(): Promise<OrdersPage> {
   if (!session.permissionKeys.includes(ORDER_VIEW_PERMISSION)) {
     return { kind: 'no-access', session };
   }
-  const orders = await serverGet<SellerOrderPage>('ordering/seller/orders?limit=20');
+  // List paging (settings): page numbers only when the Market says so. A value that cannot be
+  // read means Previous and next, which works for any number of orders.
+  const mode = await serverGet<{ readonly listPaging: string }>('settings/seller/list-paging');
+  const paging: ListPaging =
+    mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  const orders = await serverGet<SellerOrderPage>(
+    queryOf(
+      'all',
+      { from: '', to: '' },
+      // No days on the first page, so the zone reads nothing yet.
+      'UTC',
+      paging === 'pages' ? { paging, page: 1, sort: 'newest' } : { paging, cursor: null },
+    ),
+  );
   if (orders.kind === 'signed-out') redirect('/session-ended');
   if (orders.kind !== 'ok') return { kind: 'unavailable' };
-  return { kind: 'ok', session, page: orders.body };
+  return { kind: 'ok', session, page: orders.body, paging };
 }
 
 export type OrderDetailPage =

@@ -57,10 +57,23 @@ export class LateBoundSellerCertificateDirectory implements SellerCertificateDir
   validTypeCodes(
     context: CallContext,
     sellerId: Id<'Seller'>,
+    typeCodes: readonly string[],
   ): Promise<Result<ReadonlySet<string>, SellerCertificateDirectoryUnavailable>> {
     if (this.#bound === null) {
       return Promise.resolve(err({ code: 'seller-certificate-directory.unavailable' } as const));
     }
-    return this.#bound.validTypeCodes(context, sellerId);
+    return this.#bound.validTypeCodes(context, sellerId, typeCodes);
+  }
+
+  sellersOfIssuer(
+    context: CallContext,
+    issuerId: string,
+    afterSellerId: Id<'Seller'> | null,
+    limit: number,
+  ): Promise<Result<readonly Id<'Seller'>[], SellerCertificateDirectoryUnavailable>> {
+    if (this.#bound === null) {
+      return Promise.resolve(err({ code: 'seller-certificate-directory.unavailable' } as const));
+    }
+    return this.#bound.sellersOfIssuer(context, issuerId, afterSellerId, limit);
   }
 }

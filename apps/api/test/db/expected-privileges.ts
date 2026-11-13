@@ -479,6 +479,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['count', 'window_started_at'],
     },
+    // docs/design/data/ordering.md 3.15: a saved view of an order list; a filter is a preference, so
+    // the application deletes it; only the name and who can use it change.
+    'ordering.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
     // Saved for later: saved again moves the item to the top; removed, moved to the cart or
     // purged a year after it was last saved.
     'cart.saved_items': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: ['saved_at'] },
@@ -1115,6 +1121,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [
         'category_ids',
+        'culture_codes',
         'facet_codes',
         'indexed_at',
         'locale',
@@ -1177,6 +1184,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Order detail decision 3: admin internal notes, sealed under the customer; written once, never
     // changed or removed.
     'ordering.admin_order_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Seller refund caps (owner decision 2026-11-11; ordering.md 3.12c): an admin sets, edits and
+    // removes a cap (the id, Market and seller never change); the guard row per seller is
+    // inserted once, then moves only its check time and alert bookkeeping. No guard is deleted.
+    'ordering.seller_refund_limits': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'currency',
+        'max_amount',
+        'max_count',
+        'updated_at',
+        'updated_by_account_id',
+        'version',
+      ],
+    },
+    'ordering.seller_refund_guards': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['alerts', 'checked_at', 'last_alerted_at'],
+    },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.
     // Payments (Phase 5 package 3): one connected account row per seller and Market; the state
@@ -1383,8 +1408,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // material and variant-option flags live in insert-only revisions.
     'catalog.attribute_definitions': {
       table: ['INSERT', 'SELECT'],
-      // `merged_into_id` is set once, with the archive of a merged attribute (attributes A8).
-      columnUpdate: ['merged_into_id', 'published_revision_id', 'status', 'version'],
+      // `merged_into_id` is set once, with the archive of a merged attribute (attributes A8);
+      // `data_type` moves only on the listed conversions, with a new revision (attributes A8).
+      columnUpdate: ['data_type', 'merged_into_id', 'published_revision_id', 'status', 'version'],
     },
     // Attributes A8: where a merged attribute's values go (insert-only).
     'catalog.attribute_merge_options': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
@@ -1442,6 +1468,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.category_attribute_link_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Variants V6: the variant type settings root moves its current revision and version; the
     // revisions are insert-only.
+    // Variants V7: a decision and a notice move are the only updates, in these columns; a request
+    // is never deleted.
+    'catalog.variant_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decline_reason',
+        'notice_attempts',
+        'notice_next_attempt_at',
+        'notice_state',
+        'resolved_variant_id',
+        'status',
+        'version',
+      ],
+    },
     'catalog.variant_type_settings': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['current_revision_id', 'version'],
@@ -1494,12 +1536,31 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'off_sale_type_not_allowed',
         'product_id',
         'seller_sku',
+        'shelf_category_id',
         'status',
         'submitted_at',
         'version',
       ],
     },
     'catalog.offer_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Categories C9a (data design 3.22): only the decision moves on a proposal; only the status,
+    // the merge target and the version on a shelf; a shelf's names are written once with it.
+    'catalog.category_proposals': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'created_seller_category_id',
+        'decided_at',
+        'decided_by_account_id',
+        'reason_code',
+        'status',
+        'version',
+      ],
+    },
+    'catalog.seller_categories': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['merged_into_id', 'status', 'version'],
+    },
+    'catalog.seller_category_names': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md 3.15, 3.16 (slice 8): a tag's type, Offer, seller and creation
     // never change; its status, claim copy and removal do. The history is insert-only.
     'catalog.offer_tags': {
@@ -1548,6 +1609,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.offer_sell_units': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['selling', 'updated_at', 'variant_sku', 'version'],
+    },
+    // docs/design/data/catalog.md 3.32: "Email sellers". A pair is claimed again by replacing its
+    // content; the keys and the tenant never change, and rows are never deleted.
+    'catalog.missing_details_emails': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'attempts',
+        'missing_labels',
+        'outcome',
+        'product_name',
+        'requested_at',
+        'requested_by',
+        'seller_name',
+        'settled_at',
+        'state',
+      ],
     },
     // docs/design/data/catalog.md 3.28: a saved view of an admin list; a filter is a preference, so
     // the application deletes it; only the name and who can use it change.

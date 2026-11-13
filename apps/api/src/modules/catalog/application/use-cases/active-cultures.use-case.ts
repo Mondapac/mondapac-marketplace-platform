@@ -36,15 +36,23 @@ export class ActiveCulturesQuery extends UseCase<
   protected handle(
     context: CallContext,
   ): Promise<Result<readonly CatalogCultureSummary[], CatalogValidationFailed>> {
-    return this.deps.unitOfWork.run<readonly CatalogCultureSummary[], CatalogValidationFailed>(
-      context.market,
-      async () =>
-        ok(
-          (
-            await this.deps.cultureReader.list(context.market, { status: 'active', search: null })
-          ).map(summaryOf),
-        ),
-      { readOnly: true },
-    );
+    return activeCultures(this.deps, context);
   }
+}
+
+/** The shared body of the pair: one read-only unit. */
+export function activeCultures(
+  deps: ActiveCulturesDependencies,
+  context: CallContext,
+): Promise<Result<readonly CatalogCultureSummary[], CatalogValidationFailed>> {
+  return deps.unitOfWork.run<readonly CatalogCultureSummary[], CatalogValidationFailed>(
+    context.market,
+    async () =>
+      ok(
+        (await deps.cultureReader.list(context.market, { status: 'active', search: null })).map(
+          summaryOf,
+        ),
+      ),
+    { readOnly: true },
+  );
 }
