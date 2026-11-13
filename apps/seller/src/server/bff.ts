@@ -65,6 +65,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/seller/saved-filters',
     // The seller's category proposals, shelves and whether proposing is on (categories C9b).
     'catalog/seller/category-proposals',
+    // Whether "Write with AI" is on for this seller, and the Market zone its daily limit resets in
+    // (catalog, AIS-03). Never the key or the model: those are admin settings.
+    'catalog/own/description-writer',
   ]),
   PUT: new Set([
     // The signed-in member's own display name (profile).
@@ -85,6 +88,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set(['sellers/store-profile/logo', 'sellers/store-profile/banner']),
   POST: new Set([
+    // A description draft from the "Write with AI" modal (catalog, AIS-03): the form's title,
+    // category label, details, keywords and note in; plain text out. Nothing is stored.
+    'catalog/own/description-writer/drafts',
     // The signed-in member's other sessions are ended; this one stays (profile).
     'identity/seller/profile/sessions/sign-out-others',
     'identity/seller/sign-up',

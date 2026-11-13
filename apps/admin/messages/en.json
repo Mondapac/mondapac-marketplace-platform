@@ -1096,6 +1096,27 @@
         "invalid": "The request was not valid. Reload and try again.",
         "unknown": "That did not work. Try again."
       }
+    },
+    "ai-access": {
+      "title": "AI writing help",
+      "help": "Lets this seller draft product descriptions with AI. Off by default.",
+      "on": "On",
+      "off": "Off",
+      "never-changed": "Not changed yet.",
+      "last-changed": "Last changed {when}.",
+      "unreadable": "The current setting could not be read.",
+      "no-access": "You don't have access to this setting.",
+      "now-on": "AI writing help is now on for this seller.",
+      "now-off": "AI writing help is now off for this seller.",
+      "no-change": "It was already set this way.",
+      "error": {
+        "denied": "Your role can't change this setting.",
+        "acting-as": "This can't be changed while you are acting as a seller.",
+        "csrf": "Your session needs refreshing. Reload the page.",
+        "invalid": "The request was not valid. Reload and try again.",
+        "not-found": "This seller could not be found.",
+        "unknown": "That did not work. Try again."
+      }
     }
   },
   "certificates": {
@@ -2236,6 +2257,7 @@
         "admins": "Admins",
         "roles": "Roles & permissions",
         "lists": "Lists",
+        "ai": "AI",
         "promotions": "Promotions"
       }
     },
@@ -8242,6 +8264,57 @@
       "csrf": "Your session needs a refresh. Reload the page and try again.",
       "denied": "Your role cannot change service area names.",
       "unavailable": "Service areas are not available right now. Try again shortly.",
+      "unknown": "Something went wrong. Try again."
+    }
+  },
+  "ai-settings": {
+    "title": "AI",
+    "permission-view": "AI settings: view",
+    "intro": "Turn AI features on or off for this Market and choose the model tier. Changes apply at once.",
+    "load-failed": "Couldn't load the AI settings.",
+    "read-only": "You can view these settings but not change them.",
+    "section-writer": "Write with AI",
+    "saved": "Saved.",
+    "never-changed": "Not changed yet. The default is in force.",
+    "last-changed": "Last changed {when}.",
+    "kill-title": "AI is switched off for the whole platform.",
+    "kill-body": "The server's AI kill switch is set, so nothing here has an effect until it is cleared.",
+    "switch": {
+      "label": "Write with AI (product descriptions)",
+      "help": "Lets admins and sellers draft a product description with AI. Sellers also need their own switch. Off by default.",
+      "on": "On",
+      "off": "Off"
+    },
+    "tier": {
+      "label": "Model tier",
+      "help": "Fast is quicker and cheaper. Balanced takes longer and writes more carefully.",
+      "option": {
+        "fast": "Fast",
+        "balanced": "Balanced"
+      }
+    },
+    "section-setup": "Server setup",
+    "setup-intro": "Set by the platform team, not here. Shown so you can tell why AI is unavailable.",
+    "setup-unavailable": "The server setup could not be read.",
+    "model": {
+      "fast": "Fast model",
+      "balanced": "Balanced model"
+    },
+    "model-none": "Not configured",
+    "key": {
+      "label": "API key",
+      "help": "The key itself is never shown.",
+      "set": "Key set",
+      "missing": "No key"
+    },
+    "error": {
+      "invalid": "This value isn't allowed.",
+      "conflict": "Someone else changed this. The values were reloaded.",
+      "denied": "You don't have permission to change this setting.",
+      "acting-as": "AI settings can't be changed while you are acting as a seller.",
+      "csrf": "Your session expired. Reload the page.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "unavailable": "The service isn't available right now. Try again.",
       "unknown": "Something went wrong. Try again."
     }
   },

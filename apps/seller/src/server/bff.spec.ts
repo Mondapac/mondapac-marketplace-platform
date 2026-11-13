@@ -1663,6 +1663,40 @@ describe('relay allowlist for category proposals and shelves (categories C9b)', 
   });
 });
 
+describe('relay allowlist for Write with AI (AIS-03)', () => {
+  const send = (method: string, path: string[]) =>
+    relay(
+      config,
+      new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method,
+        headers: sameOrigin,
+        ...(method === 'GET' ? {} : { body: '{}' }),
+      }),
+      path,
+      upstreamOk(),
+    );
+  const base = ['catalog', 'own', 'description-writer'];
+
+  it('relays the status read and the draft POST', async () => {
+    expect((await send('GET', base)).status).toBe(200);
+    expect((await send('POST', [...base, 'drafts'])).status).toBe(200);
+  });
+
+  it('refuses other methods, other paths and any admin-only read', async () => {
+    for (const [method, path] of [
+      ['POST', base],
+      ['PUT', [...base, 'drafts']],
+      ['GET', [...base, 'drafts']],
+      ['GET', [...base, 'model-setup']],
+      ['POST', [...base, 'drafts', 'x']],
+      ['GET', ['catalog', 'admin', 'description-writer']],
+      ['GET', ['settings', 'admin', 'ai']],
+    ] as const) {
+      expect((await send(method, [...path])).status, `${method} ${path.join('/')}`).toBe(404);
+    }
+  });
+});
+
 describe('relay of the seller order list views', () => {
   const ID = '0190a000-0000-7000-8000-0000000000a1';
   const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>

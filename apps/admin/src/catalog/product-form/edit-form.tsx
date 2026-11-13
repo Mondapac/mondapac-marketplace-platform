@@ -5,6 +5,7 @@ import {
   Banner,
   Button,
   Card,
+  DescriptionWriter,
   Dialog,
   LoadError,
   SearchSelect,
@@ -25,6 +26,7 @@ import { AddSizesDialog } from './add-sizes-dialog.tsx';
 import { canAddSizes, maxAxesOf, publishedAxesOf } from './add-sizes.ts';
 import { AttributesSection } from './attributes-section.tsx';
 import { categoryOptions } from './category-options.ts';
+import { writerCategory, writerDetails } from './writer-inputs.ts';
 import {
   attributeInputsOf,
   attributeValuesWith,
@@ -773,6 +775,22 @@ function EditForm({
               name="description"
               label={t('field.description')}
               optionalLabel={t('optional')}
+              headAction={
+                <DescriptionWriter
+                  call={callApi}
+                  base="catalog/admin/description-writer"
+                  csrfToken={csrfToken}
+                  title={texts.name}
+                  category={writerCategory(form.categories, categoryIds, defaultLocale)}
+                  details={writerDetails(attributeFields, inputs, defaultLocale)}
+                  current={texts.description}
+                  onText={(next) => {
+                    setTexts({ ...texts, description: next });
+                    clearRefused((item) => item.ref === null && item.field.endsWith('description'));
+                    edited();
+                  }}
+                />
+              }
               value={texts.description}
               error={refusedMessage(refusedAt('description'))}
               onChange={(event) => {

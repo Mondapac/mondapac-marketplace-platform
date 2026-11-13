@@ -757,6 +757,31 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('DELETE', `sellers/admin/${ID}/category-proposals`)).status).toBe(404);
   });
 
+  it('relays the Write with AI routes and the AI settings on their exact methods only (AIS-03)', async () => {
+    const read = (path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin }),
+        path.split('/'),
+        vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
+      );
+    const writer = 'catalog/admin/description-writer';
+    expect((await read(writer)).status).toBe(200);
+    expect((await read(`${writer}/model-setup`)).status).toBe(200);
+    expect((await call('POST', `${writer}/drafts`)).status).toBe(200);
+    expect((await call('PUT', `${writer}/drafts`)).status).toBe(404);
+    expect((await call('PUT', `${writer}/model-setup`)).status).toBe(404);
+    expect((await call('POST', `${writer}/model-setup`)).status).toBe(404);
+    expect((await read('settings/admin/ai')).status).toBe(200);
+    expect((await call('PUT', 'settings/admin/ai')).status).toBe(200);
+    expect((await call('POST', 'settings/admin/ai')).status).toBe(404);
+    expect((await call('DELETE', 'settings/admin/ai')).status).toBe(404);
+    expect((await call('PUT', `sellers/admin/${ID}/ai-access`)).status).toBe(200);
+    expect((await call('PUT', 'sellers/admin/nope/ai-access')).status).toBe(404);
+    expect((await call('POST', `sellers/admin/${ID}/ai-access`)).status).toBe(404);
+    expect((await read(`sellers/admin/${ID}/ai-access`)).status).toBe(404);
+  });
+
   it('relays approve and reject of a held price for a UUID only, and no other method', async () => {
     expect((await call('POST', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(200);
     expect((await call('POST', `pricing/admin/price-holds/${ID}/reject`)).status).toBe(200);
