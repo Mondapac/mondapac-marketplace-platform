@@ -120,6 +120,7 @@ const LEAD_KEYS = [
   'commission-payouts.settlement.view',
   'commission-payouts.payout-terms.view',
   'commission-payouts.dispute.view',
+  'settings.ai.view',
   'settings.cart-mode.view',
   'settings.list-paging.view',
   'storefront.seo.view',

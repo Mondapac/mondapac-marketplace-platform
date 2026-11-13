@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
-import { MarketSettingChanged } from '../domain/audit';
+import { MarketSettingChanged, type SETTING_TARGET_IDS } from '../domain/audit';
 import {
   findDefinition,
   SETTING_DEFINITIONS,
@@ -173,7 +173,7 @@ export async function changeSetting(
     if (!applied) return err({ code: 'settings.conflict' });
     await deps.audit.record(
       context,
-      MarketSettingChanged.entry(definition.code as 'list-paging' | 'cart-mode', {
+      MarketSettingChanged.entry(definition.code as (typeof SETTING_TARGET_IDS)[number], {
         before: { value: was as SettingValue },
         after: { value: next as SettingValue, version },
       }),

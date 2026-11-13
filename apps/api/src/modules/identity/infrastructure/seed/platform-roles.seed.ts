@@ -221,7 +221,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // protected `.manage` keys are not viewer keys.
     // Version 32 adds `settings.cart-mode.view`, likewise unprotected (settings module: Cart mode,
     // package B1); the manage key is not a viewer key.
-    seedVersion: 32,
+    // Version 33 adds `settings.ai.view`, likewise unprotected (the AI description writer's switch
+    // and model tier); the protected `settings.ai.manage` is not a viewer key.
+    seedVersion: 33,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -255,6 +257,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.variant.view',
       'storefront.seo.view',
       'settings.cart-mode.view',
+      'settings.ai.view',
     ],
   },
   {
