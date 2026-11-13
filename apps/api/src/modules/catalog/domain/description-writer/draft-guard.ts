@@ -28,9 +28,12 @@ export const MAX_DRAFT_CHARS = 1500;
 // Market's vocabulary is matched later; these are the words a model reaches for.
 const CERTIFICATION = new RegExp(
   [
-    String.raw`\bhala+l\b`,
+    String.raw`\bh+a+[\s.\-_*]*l+a+[\s.\-_*]*l+\b`,
     String.raw`\bhara+m\b`,
-    String.raw`\bkosher\b`,
+    String.raw`\bk[ao]sh(?:er|rut)\b`,
+    String.raw`\bmuslim\w*`,
+    String.raw`\bpermitted\b`,
+    String.raw`\b(?:pork|alcohol|lard|gelatin)[\s-]*free\b`,
     String.raw`\bvegan\b`,
     String.raw`\bvegetarian\b`,
     String.raw`\borganic\b`,
@@ -40,7 +43,7 @@ const CERTIFICATION = new RegExp(
     String.raw`\bapproved\b`,
     String.raw`\bzabih\w*`,
     String.raw`\bdhabih\w*`,
-    String.raw`\bshariah?\b`,
+    String.raw`\bs[hy]ari'?ah?\b`,
     String.raw`\bislamic\b`,
     String.raw`\bpermissible\b`,
     String.raw`\bforbidden\b`,
@@ -122,15 +125,26 @@ const LOOK_ALIKES: Readonly<Record<string, string>> = {
 };
 const LOOK_ALIKE = new RegExp(`[${Object.keys(LOOK_ALIKES).join('')}]`, 'giu');
 
-/** NFKC, look-alikes folded, and letters split by separators joined ("h.a.l.a.l" -> "halal"). */
+/**
+ * NFKC, accents and vowel marks removed ("ḥalāl" -> "halal", Arabic harakat dropped), look-alikes
+ * folded, and single letters split by separators joined ("h.a.l.a.l", "ح ل ا ل" -> one word). The
+ * letter test uses look-arounds, since `\b` only knows ASCII letters.
+ */
 function folded(sentence: string): string {
   const normal = sentence
     .normalize('NFKC')
+    .normalize('NFD')
+    .replace(/\p{Mn}/gu, '')
+    .normalize('NFC')
     .replace(LOOK_ALIKE, (letter) => LOOK_ALIKES[letter.toLowerCase()] ?? letter);
-  // Single letters joined by dots, dashes, stars, underscores or spaces become one word.
-  return normal.replace(/\b(?:\p{L}[\s.\-*_·]){2,}\p{L}\b/gu, (run) =>
+  return normal.replace(/(?<!\p{L})(?:\p{L}[\s.\-*_·]){2,}\p{L}(?!\p{L})/gu, (run) =>
     run.replace(/[\s.\-*_·]/gu, ''),
   );
+}
+
+/** For the certification words only: a capital I, a one or a bar read as l ("haIaI", "ha1al"). */
+function certificationFolded(sentence: string): string {
+  return folded(sentence).replace(/[I1|]/gu, 'l');
 }
 
 // Inert rendering (R9): no markup, links, images, addresses or invisible characters survive.
@@ -149,8 +163,14 @@ const INVISIBLE =
 const LONG_DIGITS = /\+?\p{Nd}[\p{Nd}\s()-]{6,}\p{Nd}/gu;
 
 function inert(text: string): string {
+  // Invisible characters go first (per row, since line breaks are control characters), so none
+  // can split a link, an address or a phone number past the filters below (Hassan M1).
   return text
     .replace(/\r\n?/g, '\n')
+    .normalize('NFKC')
+    .split('\n')
+    .map((row) => row.replace(INVISIBLE, ''))
+    .join('\n')
     .replace(MARKDOWN_IMAGE, ' ')
     .replace(MARKDOWN_LINK, '$1')
     .replace(TAG, ' ')
@@ -160,31 +180,41 @@ function inert(text: string): string {
     .replace(BARE_DOMAIN, ' ')
     .replace(LONG_DIGITS, ' ')
     .replace(LIST_MARKER, '')
-    .replace(MARKUP_CHARACTERS, ' ')
-    .split('\n')
-    .map((row) => row.replace(INVISIBLE, ''))
-    .join('\n');
+    .replace(MARKUP_CHARACTERS, ' ');
 }
 
 // A sentence ends at . ! ? or ؟ followed by white space ("2.5 kg" stays whole).
 const SENTENCE_BREAK = /(?<=[.!?؟])\s+/u;
 const NUMBER = /\p{Nd}+(?:[.,]\p{Nd}+)*/gu;
 
-/** Whether every number in the sentence appears in the facts the writer gave. */
+// Quantity words a model may spell out ("two hundred grams"). "One" is left out: it is mostly not
+// a quantity ("one of the best").
+const NUMBER_WORD =
+  /\b(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundreds?|thousands?|millions?|dozens?)\b/giu;
+
+/** Whether every number in the sentence, in digits or in words, appears in the facts given. */
 function numbersAreGiven(sentence: string, facts: string): boolean {
-  const known = new Set(facts.normalize('NFKC').match(NUMBER) ?? []);
+  const normalFacts = facts.normalize('NFKC');
+  const known = new Set(normalFacts.match(NUMBER) ?? []);
   for (const number of sentence.normalize('NFKC').match(NUMBER) ?? []) {
     if (!known.has(number)) return false;
+  }
+  const knownWords = new Set((normalFacts.match(NUMBER_WORD) ?? []).map((w) => w.toLowerCase()));
+  for (const word of sentence.match(NUMBER_WORD) ?? []) {
+    if (!knownWords.has(word.toLowerCase())) return false;
   }
   return true;
 }
 
 /** Why a sentence must go, or null when it may stay. */
 export function sentenceVerdict(sentence: string, facts: string): LeftOutReason | null {
-  if (CERTIFICATION.test(folded(sentence))) return 'certification';
-  if (HEALTH.test(folded(sentence))) return 'other';
-  if (COMMERCE.test(sentence)) return 'other';
-  if (!numbersAreGiven(sentence, facts)) return 'other';
+  const plain = folded(sentence);
+  if (CERTIFICATION.test(plain) || CERTIFICATION.test(certificationFolded(sentence))) {
+    return 'certification';
+  }
+  if (HEALTH.test(plain)) return 'other';
+  if (COMMERCE.test(plain) || COMMERCE.test(sentence)) return 'other';
+  if (!numbersAreGiven(plain, facts)) return 'other';
   return null;
 }
 

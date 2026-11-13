@@ -1,7 +1,8 @@
 -- The AI description writer (AIS-03, admin and seller; catalog design 13.1): two more kinds in the
 -- closed CHECK list of `rate_counters` (data design 3.26). `ai-suggest.account.day` counts an
--- admin's drafts per Market day (the seller's are `ai-suggest.seller.day`), and
--- `ai-suggest.account.minute` stops bursts from any one account. No table, no grant.
+-- admin's drafts per Market day (the seller's are `ai-suggest.seller.day`),
+-- `ai-suggest.account.minute` stops bursts from any one account, and `ai-suggest.market.day` is
+-- the Market's hard daily ceiling (ADR-0019 R8, out of budget). No table, no grant.
 
 -- Safety (docs/design/data/catalog.md 8.2): a blocked statement fails instead of queueing.
 SET lock_timeout = '5s';
@@ -18,4 +19,4 @@ ALTER TABLE "catalog"."rate_counters"
     'seller-import-check.seller.hour', 'seller-import-check.seller.day',
     'import-photo.seller.minute', 'import-photo.seller.day', 'add-sizes.account.hour',
     'category-propose.seller.day',
-    'ai-suggest.account.day', 'ai-suggest.account.minute'));
+    'ai-suggest.account.day', 'ai-suggest.account.minute', 'ai-suggest.market.day'));

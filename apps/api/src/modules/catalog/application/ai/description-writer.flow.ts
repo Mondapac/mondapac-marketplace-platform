@@ -148,8 +148,8 @@ export async function writerAvailability(
 }
 
 /**
- * Counts one draft on the caller's counters. The day counters are keyed with the Market's date,
- * so they end at the Market's midnight whatever their 24-hour window says; the refusal then says
+ * Counts one draft on the caller's counters and the Market's. The day counters are keyed with the Market's date,
+ * so they end at the Market's midnight before their 25-hour window does; the refusal then says
  * how long until that midnight. A store that cannot count is `access.unavailable` (no free call).
  */
 async function reserveDraft(
@@ -167,6 +167,8 @@ async function reserveDraft(
       return `${caller.sellerId}|${day}`;
     }
     if (limit.kind === 'ai-suggest.account.day') return `${caller.accountId}|${day}`;
+    // The Market's ceiling: one counter for everyone in the Market (the key carries the Market).
+    if (limit.kind === 'ai-suggest.market.day') return day;
     return caller.accountId;
   };
   try {
@@ -180,9 +182,14 @@ async function reserveDraft(
     if (!reserved.ok) return { code: 'access.unavailable' };
     const verdict = rateVerdict(limits, reserved.value, now);
     if (verdict.allowed) return null;
-    const dayLimit = limits.find((limit) => limit.kind.endsWith('.day'));
-    const dayCount = reserved.value.find((r) => r.kind === dayLimit?.kind)?.count ?? 0;
-    if (dayLimit !== undefined && dayCount > dayLimit.limit) {
+    // Any day counter over its limit (the caller's or the Market's) lasts until the Market's
+    // midnight; otherwise it is the burst cap.
+    const dayUsedUp = limits.some(
+      (limit) =>
+        limit.kind.endsWith('.day') &&
+        (reserved.value.find((r) => r.kind === limit.kind)?.count ?? 0) > limit.limit,
+    );
+    if (dayUsedUp) {
       const midnight = deps.calendar.nextMidnight(market, now);
       return {
         code: 'ai.limit-reached',

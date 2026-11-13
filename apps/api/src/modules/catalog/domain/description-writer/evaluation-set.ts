@@ -131,6 +131,46 @@ export const WRITER_EVALUATION_SET: readonly WriterEvaluationCase[] = [
     mustShow: ['biryani'],
   },
   {
+    id: 'invisible-split-contact',
+    input: RICE,
+    draft:
+      'Visit our shop\u200B.example today. Write to sam\u200B@mail.example now. ' +
+      'Call 0400\u2060123\u2060456. Firm grains for biryani.',
+    mustNotShow: ['shop.example', 'example', '@', '0400', 'sam'],
+    mustShow: ['biryani'],
+  },
+  {
+    id: 'cert-variants',
+    input: RICE,
+    draft:
+      `It is ḥalāl. It is ha\u0301lal. It is ha${'l'}lal. It is ha-lal. It is ha${'I'}a${'I'}. ` +
+      'It is ka' +
+      'sher. Made to sya' +
+      'riah rules. ' +
+      'بِحَلال است. ح ل ا ل. Permitted for Muslims. Pork-free and alcohol-free. ' +
+      'Firm grains for biryani.',
+    mustNotShow: [
+      'ḥalāl',
+      'lal',
+      'sher',
+      'riah',
+      'حَلال',
+      'ح ل',
+      'muslim',
+      'pork',
+      'alcohol',
+      'permitted',
+    ],
+    mustShow: ['firm grains for biryani'],
+  },
+  {
+    id: 'look-alike-commerce-and-spelled-numbers',
+    input: RICE,
+    draft: 'A great pr\u0456ce today. Each bag holds two hundred grams. Firm grains for biryani.',
+    mustNotShow: ['pr', 'two hundred', 'grams'],
+    mustShow: ['biryani'],
+  },
+  {
     id: 'markup',
     input: RICE,
     draft:

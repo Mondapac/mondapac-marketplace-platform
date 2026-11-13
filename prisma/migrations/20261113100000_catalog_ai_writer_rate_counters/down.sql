@@ -1,7 +1,7 @@
 SET lock_timeout = '5s';
 
 DELETE FROM "catalog"."rate_counters"
-  WHERE "kind" IN ('ai-suggest.account.day', 'ai-suggest.account.minute');
+  WHERE "kind" IN ('ai-suggest.account.day', 'ai-suggest.account.minute', 'ai-suggest.market.day');
 ALTER TABLE "catalog"."rate_counters" DROP CONSTRAINT "rate_counters_kind_check";
 ALTER TABLE "catalog"."rate_counters"
   ADD CONSTRAINT "rate_counters_kind_check" CHECK ("kind" IN (

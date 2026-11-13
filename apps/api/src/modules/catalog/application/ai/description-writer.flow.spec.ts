@@ -258,6 +258,24 @@ describe.each(['AU', 'ZZ'] as const)('description writer in market %s', (code) =
     expect(requests).toHaveLength(0);
   });
 
+  it('stops every caller at the Market ceiling until midnight (out of budget, R8)', async () => {
+    preset.set('ai-suggest.market.day', 2000);
+    for (const [context, kind] of [
+      [sellerContext(), 'seller'],
+      [sellerContext(OTHER_SELLER, OTHER_ACCOUNT), 'seller'],
+      [adminContext(), 'admin'],
+    ] as const) {
+      const result = await write(context, BODY, kind);
+      expect(!result.ok && result.error).toEqual({
+        code: 'ai.limit-reached',
+        retryAfterSeconds: 4 * 60 * 60,
+        resetZone: zone,
+      });
+    }
+    expect(requests).toHaveLength(0);
+    expect([...counts.keys()]).toContain(`${market.marketId}|ai-suggest.market.day|2026-11-13`);
+  });
+
   it('uses the admin day counter for an admin', async () => {
     preset.set('ai-suggest.account.day', 50);
     const result = await write(adminContext(), BODY, 'admin');
