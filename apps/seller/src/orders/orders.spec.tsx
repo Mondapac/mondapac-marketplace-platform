@@ -224,7 +224,7 @@ describe('SellerOrders list in page mode', () => {
     expect(call.mock.calls[1]?.[1]).toBe(
       'ordering/seller/orders?page=1&pageSize=25&sort=total&direction=desc',
     );
-    fireEvent.change(screen.getByLabelText('Paid from (UTC)'), { target: { value: '2026-10-01' } });
+    fireEvent.change(screen.getByLabelText('Paid from'), { target: { value: '2026-10-01' } });
     await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
     expect(call.mock.calls[2]?.[1]).toContain('from=2026-10-01T00%3A00%3A00.000Z');
   });
@@ -254,21 +254,21 @@ describe('SellerOrders list in page mode', () => {
     let answer: (value: unknown) => void = () => {};
     call.mockReturnValue(new Promise((resolve) => (answer = resolve)) as never);
     mountPages();
-    fireEvent.change(screen.getByLabelText('Paid from (UTC)'), { target: { value: '2026-10-01' } });
+    fireEvent.change(screen.getByLabelText('Paid from'), { target: { value: '2026-10-01' } });
     fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'total-high' } });
-    expect(screen.getByLabelText<HTMLInputElement>('Paid from (UTC)').value).toBe('2026-10-01');
+    expect(screen.getByLabelText<HTMLInputElement>('Paid from').value).toBe('2026-10-01');
     expect(screen.getByLabelText<HTMLSelectElement>('Sort by').value).toBe('total-high');
     expect(screen.getByRole('status').textContent).toBe('Loading orders…');
     answer({ ok: true, status: 200, body: pagesPage(60) });
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
-    expect(screen.getByLabelText<HTMLInputElement>('Paid from (UTC)').value).toBe('2026-10-01');
+    expect(screen.getByLabelText<HTMLInputElement>('Paid from').value).toBe('2026-10-01');
   });
 
   it('builds a second quick change on the first one, so neither is dropped', () => {
     call.mockReturnValue(new Promise(() => {}) as never);
     mountPages();
-    fireEvent.change(screen.getByLabelText('Paid from (UTC)'), { target: { value: '2026-10-01' } });
-    fireEvent.change(screen.getByLabelText('Paid until (UTC)'), {
+    fireEvent.change(screen.getByLabelText('Paid from'), { target: { value: '2026-10-01' } });
+    fireEvent.change(screen.getByLabelText('Paid until'), {
       target: { value: '2026-10-09' },
     });
     expect(call).toHaveBeenCalledTimes(2);
@@ -280,14 +280,31 @@ describe('SellerOrders list in page mode', () => {
   it('asks nothing for a backwards range and says so', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: pagesPage(0) });
     mountPages();
-    fireEvent.change(screen.getByLabelText('Paid from (UTC)'), { target: { value: '2026-10-05' } });
+    fireEvent.change(screen.getByLabelText('Paid from'), { target: { value: '2026-10-05' } });
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     call.mockClear();
-    fireEvent.change(screen.getByLabelText('Paid until (UTC)'), {
+    fireEvent.change(screen.getByLabelText('Paid until'), {
       target: { value: '2026-10-01' },
     });
     expect(await screen.findByText('The end day is before the start day.')).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
+  });
+
+  it("reads the days on the seller's own clock, not in UTC", async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: pagesPage(60) });
+    render(
+      <NextIntlClientProvider locale="en-AU" timeZone="Australia/Brisbane" messages={messages}>
+        <SellerOrders initial={pagesPage(60)} paging="pages" />
+      </NextIntlClientProvider>,
+    );
+    fireEvent.change(screen.getByLabelText('Paid from'), { target: { value: '2026-10-01' } });
+    fireEvent.change(screen.getByLabelText('Paid until'), { target: { value: '2026-10-31' } });
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    // Brisbane is UTC+10: 1 Oct starts at 14:00 UTC on 30 Sep, and 31 Oct ends at 14:00 UTC.
+    expect(call.mock.calls[1]?.[1]).toBe(
+      'ordering/seller/orders?page=1&pageSize=25&sort=paid&direction=desc' +
+        '&from=2026-09-30T14%3A00%3A00.000Z&to=2026-10-31T14%3A00%3A00.000Z',
+    );
   });
 
   it('says that page numbers stop at 10,000 orders', () => {

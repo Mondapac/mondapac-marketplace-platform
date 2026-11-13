@@ -5,6 +5,7 @@ import { VIEW_PERMISSION } from '../../../src/orders/types.ts';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../src/server/session.ts';
+import { localZone } from '../../../src/shared/format.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -26,7 +27,10 @@ export default async function OrdersPage() {
     <AdminShell session={gate.session} activeId="orders" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {gate.session.permissionKeys.includes(VIEW_PERMISSION) ? (
-        <OrdersList paging={paging} />
+        <OrdersList
+          paging={paging}
+          zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
+        />
       ) : (
         <>
           <p className="text-fg-muted">{t('orders.no-access')}</p>

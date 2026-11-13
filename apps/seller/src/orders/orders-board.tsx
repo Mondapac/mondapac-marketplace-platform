@@ -64,7 +64,8 @@ export function OrdersBoard() {
     setSources((all) => ({ ...all, [source]: { ...all[source], loading: true, failed: false } }));
     const result = await callApi<SellerOrderPage>(
       'GET',
-      queryOf(source, NO_DAYS, { paging: 'prev-next', cursor }),
+      // No days on the board, so the zone reads nothing.
+      queryOf(source, NO_DAYS, 'UTC', { paging: 'prev-next', cursor }),
     );
     if (ticket !== tickets.current[source]) return;
     if (!result.ok) {

@@ -37,7 +37,14 @@ import { FILTERS, type AdminOrder, type AdminOrderPage } from './types.ts';
  * with the total or Previous and next, as the Market's List paging setting says. Previous and next
  * keeps to newest first and walks the API's cursors, so it works for any number of orders.
  */
-export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPaging }) {
+export function OrdersList({
+  paging = 'prev-next',
+  zone,
+}: {
+  readonly paging?: ListPaging;
+  /** The IANA zone of the table's times and of the day filters (ADR-0005). */
+  readonly zone: string;
+}) {
   const t = useTranslations('orders');
   const tl = useTranslations('load');
   const locale = useLocale();
@@ -73,7 +80,11 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
     const ticket = ++latest.current;
     setLoading(true);
     setFailed(false);
-    const text = queryOf(filters, paging === 'pages' ? { paging, page, sort } : { paging, cursor });
+    const text = queryOf(
+      filters,
+      zone,
+      paging === 'pages' ? { paging, page, sort } : { paging, cursor },
+    );
     const result = await callApi<AdminOrderPage>(
       'GET',
       `ordering/admin/orders${text === '' ? '' : `?${text}`}`,
@@ -94,7 +105,7 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
     setRows(result.body.orders);
     setNext(result.body.nextCursor);
     setTotal(result.body.total ?? null);
-  }, [filters, paging, page, sort, cursor, backwards]);
+  }, [filters, zone, paging, page, sort, cursor, backwards]);
 
   useEffect(() => {
     void load();
@@ -127,6 +138,7 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
   return (
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
+      <p className="text-sm text-fg-muted">{t('zone-note', { zone })}</p>
       <Tabs
         label={t('tabs')}
         activeId={status}
@@ -206,7 +218,7 @@ export function OrdersList({ paging = 'prev-next' }: { readonly paging?: ListPag
       ) : null}
       {rows.length > 0 ? (
         <div ref={listTop} tabIndex={-1} className="outline-none">
-          <OrdersTable rows={rows} />
+          <OrdersTable rows={rows} zone={zone} />
         </div>
       ) : null}
       {!loading && !failed && rows.length === 0 ? (

@@ -148,6 +148,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         effectiveKeys: realEffectiveKeys(),
         factors: fakes.factorRepository,
         records: fakes.recordRepository,
+        policy,
       });
     // Only describeActor is called here; the other methods have their own suites.
     const facadeOf = (describe: DescribeActor) =>
@@ -191,6 +192,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
           displayName: null,
           timezone: null,
           locale: null,
+          marketTimezone: markets.get(market.marketId).timezone,
           appearance: null,
           session: {
             idleTimeoutSeconds: lifetime.idleTimeoutSeconds,
