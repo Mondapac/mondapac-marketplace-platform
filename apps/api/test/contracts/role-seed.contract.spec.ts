@@ -242,6 +242,11 @@ const PINNED: readonly (readonly [string, string])[] = [
   ],
   ['seller:store-manager@6', 'c5473749bfccf7c721851556d35e8f2db5e5c1e173d3a404021a755757d85201'],
   ['platform:viewer@33', '8befd3f202f3e62e18c992b0e4bf1169d16784666926c6bfe2194b4d1564e9da'],
+  // Variants V7: `catalog.variant-request.review` to decide a seller's request for a new variant.
+  [
+    'platform:catalogue-moderator@17',
+    'ceadd4c139d00bd61bb200c6e09c51cd353a7f20000086ad043253edf3a1319b',
+  ],
   ['platform:viewer@34', 'ee4654a1910274781a530eb715154081e6c31a1923772463aa933cb99f1219fa'],
 ];
 

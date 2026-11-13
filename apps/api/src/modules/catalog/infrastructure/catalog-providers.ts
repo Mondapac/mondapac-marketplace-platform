@@ -89,6 +89,11 @@ import {
   type AttributeValueSuggestionStore,
 } from '../application/ports/attribute-value-suggestion.store';
 import {
+  VARIANT_REQUEST_STORE,
+  type VariantRequestStore,
+} from '../application/ports/variant-request.store';
+import { PrismaVariantRequestStore } from './prisma-variant-request.store';
+import {
   ATTRIBUTE_RELAXATION_STORE,
   type AttributeRelaxationStore,
 } from '../application/ports/attribute-relaxation.store';
@@ -457,6 +462,12 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaAttributeValueSuggestionStore(prisma),
   },
   {
+    provide: VARIANT_REQUEST_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantRequestStore =>
+      new PrismaVariantRequestStore(prisma),
+  },
+  {
     provide: TOPIC_SUGGESTION_STORE,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): TopicSuggestionStore =>
@@ -581,9 +592,9 @@ export const catalogProviders: readonly Provider[] = [
   },
   {
     provide: PUBLISHED_PRODUCT_READER,
-    inject: [PrismaService],
-    useFactory: (prisma: PrismaService): PublishedProductReader =>
-      new PrismaPublishedProductReader(prisma),
+    inject: [PrismaService, CATALOG_MARKET_POLICY],
+    useFactory: (prisma: PrismaService, policy: CatalogMarketPolicy): PublishedProductReader =>
+      new PrismaPublishedProductReader(prisma, (market) => policy.units(market)),
   },
   {
     provide: VARIANT_GTIN_REGISTRY,

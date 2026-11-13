@@ -44,10 +44,15 @@ export interface Filter {
   readonly status: StatusFilter;
   /** A locale code: only categories with no name in it ("Missing: {language}"). */
   readonly missing?: string | null;
+  /** A feature set id: only categories whose effective set is this one (own or inherited). */
+  readonly featureSetId?: string | null;
 }
 
 export const isFiltering = (filter: Filter): boolean =>
-  filter.q !== '' || filter.status !== 'all' || (filter.missing ?? null) !== null;
+  filter.q !== '' ||
+  filter.status !== 'all' ||
+  (filter.missing ?? null) !== null ||
+  (filter.featureSetId ?? null) !== null;
 
 /** How many categories lack a name in each locale (the tree's "Missing" counts). */
 export function missingCounts(
@@ -73,6 +78,12 @@ export function matches(row: CategoryRow, filter: Filter): boolean {
     filter.missing !== undefined &&
     filter.missing !== null &&
     row.names.some((entry) => entry.locale === filter.missing)
+  )
+    return false;
+  if (
+    filter.featureSetId !== undefined &&
+    filter.featureSetId !== null &&
+    row.featureSetId !== filter.featureSetId
   )
     return false;
   if (filter.q === '') return true;

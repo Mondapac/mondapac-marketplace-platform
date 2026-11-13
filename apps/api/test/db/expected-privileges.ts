@@ -1468,6 +1468,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.category_attribute_link_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Variants V6: the variant type settings root moves its current revision and version; the
     // revisions are insert-only.
+    // Variants V7: a decision and a notice move are the only updates, in these columns; a request
+    // is never deleted.
+    'catalog.variant_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decline_reason',
+        'notice_attempts',
+        'notice_next_attempt_at',
+        'notice_state',
+        'resolved_variant_id',
+        'status',
+        'version',
+      ],
+    },
     'catalog.variant_type_settings': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['current_revision_id', 'version'],

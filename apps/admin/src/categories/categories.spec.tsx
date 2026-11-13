@@ -32,6 +32,10 @@ const row = (
   position: 0,
   version: 1,
   counts: { liveProducts: n, liveProductsDirect: 0, offers: 0 },
+  featureSetId: null,
+  featureSetCode: null,
+  featureSetFromCategoryId: null,
+  inherited: false,
   ...over,
 });
 const tree = (over: Partial<TreeBody> = {}): TreeBody => ({
@@ -144,6 +148,56 @@ describe('CategoriesView', () => {
       screen.queryByRole('button', { name: 'Export the category tree as a CSV file' }),
     ).toBeNull();
     expect(screen.queryByRole('link', { name: 'Import' })).toBeNull();
+  });
+
+  it('filters the tree by feature set, own or inherited, and clears it', async () => {
+    const withSets = tree({
+      categories: [
+        row(1, null, 0, 'Pantry'),
+        row(2, 1, 1, 'Rice', { featureSetId: 'fs-a', featureSetCode: 'grocery' }),
+        row(3, 2, 2, 'Basmati', {
+          featureSetId: 'fs-a',
+          featureSetCode: 'grocery',
+          featureSetFromCategoryId: id(2),
+          inherited: true,
+        }),
+        row(4, 1, 1, 'Oils', { featureSetId: 'fs-b', featureSetCode: 'oils' }),
+        row(5, null, 0, 'Drinks'),
+      ],
+    });
+    serve({
+      'catalog/admin/categories': ok(withSets),
+      'catalog/admin/feature-sets': ok({
+        truncated: false,
+        items: [
+          { id: 'fs-a', code: 'grocery', status: 'active' },
+          { id: 'fs-b', code: 'oils', status: 'draft' },
+        ],
+      }),
+    });
+    view(<CategoriesView canEdit />);
+    await screen.findAllByRole('treeitem');
+    const select = await screen.findByLabelText<HTMLSelectElement>('Feature set');
+    fireEvent.change(select, { target: { value: 'fs-a' } });
+    await waitFor(() =>
+      expect(screen.getAllByRole('treeitem').map((el) => el.textContent)).toEqual([
+        expect.stringContaining('Pantry'),
+        expect.stringContaining('Rice'),
+        expect.stringContaining('Basmati'),
+      ]),
+    );
+    expect(
+      screen.getByText('Matching categories are shown with the categories above them.'),
+    ).toBeTruthy();
+    fireEvent.change(select, { target: { value: '' } });
+    await waitFor(() => expect(screen.getAllByRole('treeitem')).toHaveLength(4));
+  });
+
+  it('leaves the feature set filter out when the sets cannot be read', async () => {
+    serve({ 'catalog/admin/categories': ok(tree()) });
+    view(<CategoriesView canEdit />);
+    await screen.findAllByRole('treeitem');
+    expect(screen.queryByLabelText('Feature set')).toBeNull();
   });
 
   it('lists the departments open one level, as a tree with levels and counts', async () => {

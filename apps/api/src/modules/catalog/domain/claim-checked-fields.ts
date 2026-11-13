@@ -406,6 +406,17 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   SuggestionNoticeMail: {
     noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
   },
+  VariantRequest: { noCustomerText: 'aggregate class around VariantRequestState' },
+  VariantRequestState: {
+    noCustomerText:
+      "a seller's size request: ids, option codes, status codes, times and the reviewer's decline reason, shown to the requesting seller and admins only; no buyer text, and an approval writes the variant through the product draft save",
+  },
+  VariantRequestNoticeFacts: {
+    noCustomerText: 'facts of the one mail to a seller about a size request; never shown to buyers',
+  },
+  VariantRequestNoticeMail: {
+    noCustomerText: 'the plain-text mail to a seller; never shown to buyers',
+  },
   TopicSuggestion: {
     noCustomerText: 'aggregate class around TopicSuggestionState',
   },
