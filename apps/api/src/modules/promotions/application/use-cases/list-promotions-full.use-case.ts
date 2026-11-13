@@ -2,14 +2,14 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { PROMOTIONS_PROMOTION_MANAGE } from '../../contracts/permissions';
 import type { PromotionsFailure } from '../failures';
-import { listFull } from '../read-flow';
+import { searchFull, type ListQuery, type PromotionsPage } from '../admin-read-flow';
 import type { PromotionView } from '../views';
 import type { PromotionsDependencies } from '../promotions-dependencies';
 
 /** `promotions.list-promotions-full`: the promotions list with terms, budget and the money used. */
 export class ListPromotionsFull extends UseCase<
-  { readonly status?: unknown; readonly limit?: unknown },
-  readonly PromotionView[],
+  ListQuery,
+  PromotionsPage<PromotionView>,
   PromotionsFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -26,9 +26,9 @@ export class ListPromotionsFull extends UseCase<
 
   protected handle(
     context: CallContext,
-    input: { readonly status?: unknown; readonly limit?: unknown },
-  ): Promise<Result<readonly PromotionView[], PromotionsFailure>> {
-    return listFull(this.deps, context, input);
+    input: ListQuery,
+  ): Promise<Result<PromotionsPage<PromotionView>, PromotionsFailure>> {
+    return searchFull(this.deps, context, input);
   }
 }
 
