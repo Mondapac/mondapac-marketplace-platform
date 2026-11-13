@@ -59,11 +59,19 @@ describe('Missing details tab', () => {
 
   it('shows when the seller was last emailed, or that they were not', async () => {
     call.mockResolvedValueOnce(
-      ok(page([item(1, { lastEmailedAt: '2026-11-08T03:00:00.000Z' }), item(2)])),
+      ok(
+        page([
+          item(1, { lastEmailedAt: '2026-11-08T03:00:00.000Z' }),
+          item(3, { lastEmailedAt: '2026-11-08T23:30:00.000Z' }),
+          item(2),
+        ]),
+      ),
     );
     mount();
     await screen.findByText('Product 1');
-    expect(screen.getByText(/^Last emailed .*Nov.*2026$/)).toBeTruthy();
+    expect(screen.getByText('Last emailed Nov 8, 2026, 3:00 AM UTC')).toBeTruthy();
+    // Late evening UTC stays on the same UTC day whatever the runtime zone.
+    expect(screen.getByText('Last emailed Nov 8, 2026, 11:30 PM UTC')).toBeTruthy();
     expect(screen.getAllByText('Not emailed yet')).toHaveLength(1);
   });
 
