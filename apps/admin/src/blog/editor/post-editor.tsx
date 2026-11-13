@@ -19,6 +19,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
 import { API_BLOG_POSTS, API_BLOG_TAXONOMY, BLOG_PATH, postPath } from '../types.ts';
 import { BlockEditor } from './block-editor.tsx';
+import { EventDetailsCard, EventStatusCard } from './event-cards.tsx';
+import { blankEvent, eventStatusOf } from './event-model.ts';
 import { contentOf, draftOf, isDirty, type Draft } from './editor-model.ts';
 import { editorProblemOf, reasonFor, type EditorProblem } from './editor-errors.ts';
 import { LIMITS, type ChecksBody, type Finding, type PostDetail, type Taxonomy } from './types.ts';
@@ -37,11 +39,14 @@ export function PostEditor({
   canEdit,
   canReview,
   csrfToken,
+  zone,
 }: {
   readonly postId: string;
   readonly canEdit: boolean;
   readonly canReview: boolean;
   readonly csrfToken: string;
+  /** The Market's zone, the default of an event's time zone. */
+  readonly zone: string;
 }) {
   const t = useTranslations('blog.editor');
   const tc = useTranslations('blog');
@@ -56,15 +61,18 @@ export function PostEditor({
   const [findings, setFindings] = useState<readonly Finding[] | null>(null);
   const working = useRef(false);
 
-  const apply = useCallback((detail: PostDetail) => {
-    const version = detail.open ?? detail.live;
-    setPost(detail);
-    if (version !== null) {
-      const next = draftOf(version.content, detail.slug);
-      setDraft(next);
-      setSaved(next);
-    }
-  }, []);
+  const apply = useCallback(
+    (detail: PostDetail) => {
+      const version = detail.open ?? detail.live;
+      setPost(detail);
+      if (version !== null) {
+        const next = draftOf(version.content, detail.slug, zone);
+        setDraft(next);
+        setSaved(next);
+      }
+    },
+    [zone],
+  );
 
   const fetchAll = useCallback(async () => {
     setLoad('loading');
@@ -107,6 +115,12 @@ export function PostEditor({
       names[locale] ?? names.en ?? Object.values(names)[0] ?? '',
     [locale],
   );
+
+  /** Reads the post again for what is live, leaving the working copy as it is. */
+  async function refreshLive() {
+    const one = await callApi<PostDetail>('GET', `${API_BLOG_POSTS}/${postId}`);
+    if (one.ok) setPost(one.body);
+  }
 
   /** Writes the draft; true when it is saved. */
   async function save(): Promise<boolean> {
@@ -205,6 +219,7 @@ export function PostEditor({
   const set = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
   const disabled = locked || !canEdit || busy !== null;
   const note = post.open?.decisionNote;
+  const liveStatus = eventStatusOf(post.live?.content.event ?? null);
 
   return (
     <div className="flex flex-col gap-4">
@@ -429,7 +444,24 @@ export function PostEditor({
               onChange={(event) => set({ seoDescription: event.target.value })}
             />
           </div>
-          {post.kind === 'event' ? <Banner tone="info">{t('event-later')}</Banner> : null}
+          {post.kind === 'event' ? (
+            <EventDetailsCard
+              form={draft.event ?? blankEvent(zone)}
+              disabled={disabled}
+              problem={problem}
+              onChange={(event) => set({ event })}
+            />
+          ) : null}
+          {post.kind === 'event' && post.live !== null ? (
+            <EventStatusCard
+              key={`${post.live.id}-${liveStatus.status}-${liveStatus.message}`}
+              postId={postId}
+              event={post.live.content.event}
+              canEdit={canEdit && post.status !== 'archived'}
+              csrfToken={csrfToken}
+              onChanged={() => void refreshLive()}
+            />
+          ) : null}
         </div>
       </div>
     </div>

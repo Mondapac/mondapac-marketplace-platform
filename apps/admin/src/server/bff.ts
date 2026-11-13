@@ -432,6 +432,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'storefront/admin/slides/:id',
     // A blog post's whole draft: the content and the address (blog).
     'blog/admin/posts/:id/draft',
+    // The live status of a published blog event and its note for readers (blog).
+    'blog/admin/posts/:id/event-status',
     // The whole content of a brand, with the version seen (catalog).
     'catalog/admin/brands/:id',
     // The whole content of a business activity, with the version seen (catalog).
