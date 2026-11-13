@@ -144,10 +144,10 @@ export function PostsView({ zone, canEdit }: { readonly zone: string; readonly c
   return (
     <div className="flex flex-col gap-4">
       <p className="flex flex-wrap gap-2">
-        {canEdit ? <LinkButton href={NEW_POST_PATH}>{t('new')}</LinkButton> : null}
         <LinkButton variant="secondary" href={TAXONOMY_PATH}>
           {t('taxonomy-link')}
         </LinkButton>
+        {canEdit ? <LinkButton href={NEW_POST_PATH}>{t('new')}</LinkButton> : null}
       </p>
       <Tabs
         label={t('tabs-label')}

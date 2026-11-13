@@ -1,4 +1,4 @@
-// The body of a category or tag the way the blog API takes it (design: taxonomy).
+// The body of a category or tag the way the blog API takes it.
 
 export const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/u;
 export const CATEGORY_NAME_MAX = 60;
@@ -37,7 +37,8 @@ export function categoryProblem(
   defaultLocale: string,
   create: boolean,
 ): 'slug' | 'name' | 'position' | null {
-  if (create && !SLUG_PATTERN.test(form.slug.trim())) return 'slug';
+  const slug = form.slug.trim();
+  if (create && (slug.length < 2 || slug.length > 60 || !SLUG_PATTERN.test(slug))) return 'slug';
   if ((form.names[defaultLocale] ?? '').trim() === '') return 'name';
   const position = form.position.trim();
   if (position !== '' && !/^\d{1,4}$/u.test(position)) return 'position';

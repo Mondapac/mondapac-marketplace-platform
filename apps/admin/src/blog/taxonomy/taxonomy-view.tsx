@@ -11,12 +11,13 @@ import {
   toast,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
 import type { Taxonomy } from '../editor/types.ts';
 import { API_BLOG_TAXONOMY, BLOG_PATH } from '../types.ts';
 import {
   blankCategory,
+  SLUG_PATTERN,
   CATEGORY_NAME_MAX,
   categoryBody,
   categoryProblem,
@@ -30,6 +31,8 @@ type Category = Taxonomy['categories'][number];
 
 const API_CATEGORIES = `${API_BLOG_TAXONOMY}/categories`;
 const API_TAGS = `${API_BLOG_TAXONOMY}/tags`;
+const TAG_SLUG_OK = (slug: string): boolean =>
+  slug.length >= 2 && slug.length <= 40 && SLUG_PATTERN.test(slug);
 
 /** The error key of a refused call, under `blog.taxonomy.error`. */
 function errorKey(status: number, code: string): string {
@@ -79,6 +82,16 @@ export function TaxonomyView({
   const [tagName, setTagName] = useState('');
   const [tagSlug, setTagSlug] = useState('');
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [tagSlugBad, setTagSlugBad] = useState(false);
+  const formHeading = useRef<HTMLHeadingElement>(null);
+  // The button that opened the form, so focus goes back to it when the form closes.
+  const opener = useRef<HTMLElement | null>(null);
+  const categoriesHeading = useRef<HTMLHeadingElement>(null);
+  const tagsHeading = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    if (editing !== null) formHeading.current?.focus();
+  }, [editing]);
 
   const fetchAll = useCallback(async () => {
     const result = await callApi<Taxonomy>('GET', API_BLOG_TAXONOMY);
@@ -109,7 +122,15 @@ export function TaxonomyView({
     if (!result.ok) {
       setBusy(false);
       if (result.failure.status === 401) window.location.assign('/session-ended');
-      else setError(errorKey(result.failure.status, result.failure.code));
+      else {
+        const key = errorKey(result.failure.status, result.failure.code);
+        setError(key);
+        if (key === 'gone') {
+          setEditing(null);
+          setConfirming(null);
+          await fetchAll();
+        }
+      }
       return false;
     }
     await fetchAll();
@@ -138,7 +159,9 @@ export function TaxonomyView({
   const nameOf = (category: Category): string =>
     category.names[locale] ?? category.names[defaultLocale] ?? category.slug;
 
-  function startEdit(category: Category | null) {
+  function startEdit(category: Category | null, from: HTMLElement | null) {
+    opener.current = from;
+    setError(null);
     setFormError(null);
     setEditing(category === null ? 'new' : category.id);
     setForm(
@@ -146,10 +169,21 @@ export function TaxonomyView({
         ? blankCategory()
         : {
             slug: category.slug,
-            names: category.names,
+            // Only the languages the Market supports now; the server refuses any other.
+            names: Object.fromEntries(
+              Object.entries(category.names).filter(([code]) => supported.includes(code)),
+            ),
             position: category.position === undefined ? '' : String(category.position),
           },
     );
+  }
+
+  function closeForm() {
+    setEditing(null);
+    const back = opener.current;
+    opener.current = null;
+    // The form is gone on the next paint; the opener is still in the list.
+    requestAnimationFrame(() => (back?.isConnected ? back : categoriesHeading.current)?.focus());
   }
 
   async function saveCategory() {
@@ -164,19 +198,27 @@ export function TaxonomyView({
       ? await write('POST', API_CATEGORIES, categoryBody(form, true))
       : await write('PUT', `${API_CATEGORIES}/${editing ?? ''}`, categoryBody(form, false));
     if (ok) {
-      setEditing(null);
+      closeForm();
       toast.success(t(isNew ? 'category-added' : 'category-saved'));
     }
   }
 
-  async function remove(path: string, done: string) {
+  async function remove(path: string, done: string, heading: 'categories' | 'tags') {
     const ok = await write('DELETE', path, undefined);
     setConfirming(null);
-    if (ok) toast.success(t(done));
+    if (ok) {
+      toast.success(t(done));
+      (heading === 'tags' ? tagsHeading : categoriesHeading).current?.focus();
+    }
   }
 
   async function addTag() {
     if (tagName.trim() === '') return;
+    if (tagSlug.trim() !== '' && !TAG_SLUG_OK(tagSlug.trim())) {
+      setTagSlugBad(true);
+      return;
+    }
+    setTagSlugBad(false);
     if (await write('POST', API_TAGS, tagBody(tagName, tagSlug))) {
       setTagName('');
       setTagSlug('');
@@ -184,19 +226,46 @@ export function TaxonomyView({
     }
   }
 
-  const confirmRow = (key: string, path: string, done: string) =>
+  const confirmRow = (
+    key: string,
+    label: string,
+    path: string,
+    done: string,
+    heading: 'categories' | 'tags',
+  ) =>
     confirming === key ? (
-      <span className="flex flex-wrap items-center gap-2">
-        <span className="text-sm">{t('delete-sure')}</span>
-        <Button variant="destructive-solid" disabled={busy} onClick={() => void remove(path, done)}>
+      <span className="flex flex-wrap items-center gap-2" role="group" aria-label={label}>
+        <span className="text-sm">{t('delete-sure', { name: label })}</span>
+        <Button
+          variant="destructive-solid"
+          disabled={busy}
+          aria-label={t('delete-confirm-named', { name: label })}
+          onClick={() => void remove(path, done, heading)}
+        >
           {t('delete-confirm')}
         </Button>
-        <Button variant="secondary" onClick={() => setConfirming(null)}>
+        <Button
+          variant="secondary"
+          autoFocus
+          onClick={() => {
+            setConfirming(null);
+            requestAnimationFrame(() => document.getElementById(`delete-${key}`)?.focus());
+          }}
+        >
           {t('cancel')}
         </Button>
       </span>
     ) : (
-      <Button variant="secondary" disabled={busy || !canEdit} onClick={() => setConfirming(key)}>
+      <Button
+        id={`delete-${key}`}
+        variant="secondary"
+        disabled={busy || !canEdit}
+        aria-label={t('delete-named', { name: label })}
+        onClick={() => {
+          setError(null);
+          setConfirming(key);
+        }}
+      >
         {t('delete')}
       </Button>
     );
@@ -212,11 +281,19 @@ export function TaxonomyView({
         className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4"
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 id="categories-title" className="text-lg font-semibold">
+          <h2
+            id="categories-title"
+            ref={categoriesHeading}
+            tabIndex={-1}
+            className="text-lg font-semibold"
+          >
             {t('categories')}
           </h2>
           {canEdit && editing === null ? (
-            <Button onClick={() => startEdit(null)} disabled={locales === null}>
+            <Button
+              onClick={(event) => startEdit(null, event.currentTarget)}
+              disabled={locales === null}
+            >
               {t('add-category')}
             </Button>
           ) : null}
@@ -244,15 +321,18 @@ export function TaxonomyView({
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       variant="secondary"
-                      disabled={busy || locales === null}
-                      onClick={() => startEdit(category)}
+                      disabled={busy || locales === null || editing !== null}
+                      aria-label={t('edit-named', { name: nameOf(category) })}
+                      onClick={(event) => startEdit(category, event.currentTarget)}
                     >
                       {t('edit')}
                     </Button>
                     {confirmRow(
                       category.id,
+                      nameOf(category),
                       `${API_CATEGORIES}/${category.id}`,
                       'category-deleted',
+                      'categories',
                     )}
                   </div>
                 ) : null}
@@ -270,13 +350,15 @@ export function TaxonomyView({
               void saveCategory();
             }}
           >
-            <h3 className="text-base font-semibold">
+            <h3 ref={formHeading} tabIndex={-1} className="text-base font-semibold">
               {t(editing === 'new' ? 'add-category' : 'edit-category')}
             </h3>
             <TextField
               label={t('slug')}
               help={t(editing === 'new' ? 'slug-help' : 'slug-fixed')}
               value={form.slug}
+              dir="ltr"
+              maxLength={60}
               disabled={editing !== 'new' || busy}
               error={formError === 'slug' ? t('error.slug-format') : undefined}
               onChange={(event) => setForm({ ...form, slug: event.target.value })}
@@ -309,7 +391,7 @@ export function TaxonomyView({
               <Button type="submit" loading={busy}>
                 {t('save')}
               </Button>
-              <Button variant="secondary" disabled={busy} onClick={() => setEditing(null)}>
+              <Button variant="secondary" disabled={busy} onClick={closeForm}>
                 {t('cancel')}
               </Button>
             </div>
@@ -321,7 +403,7 @@ export function TaxonomyView({
         aria-labelledby="tags-title"
         className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4"
       >
-        <h2 id="tags-title" className="text-lg font-semibold">
+        <h2 id="tags-title" ref={tagsHeading} tabIndex={-1} className="text-lg font-semibold">
           {t('tags')}
         </h2>
         {data.tags.length === 0 ? (
@@ -334,7 +416,9 @@ export function TaxonomyView({
                   <span className="font-medium">{tag.name}</span>
                   <span className="text-sm text-fg-muted">{tag.slug}</span>
                 </div>
-                {canEdit ? confirmRow(tag.id, `${API_TAGS}/${tag.id}`, 'tag-deleted') : null}
+                {canEdit
+                  ? confirmRow(tag.id, tag.name, `${API_TAGS}/${tag.id}`, 'tag-deleted', 'tags')
+                  : null}
               </li>
             ))}
           </ul>
@@ -361,8 +445,11 @@ export function TaxonomyView({
               label={t('slug')}
               optionalLabel={t('optional')}
               help={t('tag-slug-help')}
+              dir="ltr"
+              maxLength={40}
               value={tagSlug}
               disabled={busy}
+              error={tagSlugBad ? t('error.slug-format') : undefined}
               onChange={(event) => setTagSlug(event.target.value)}
             />
             <div>

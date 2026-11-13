@@ -28,6 +28,7 @@ describe('blog taxonomy model', () => {
   it('stops a bad address, a missing main-language name and a bad order before sending', () => {
     expect(categoryProblem(form(), 'en-AU', true)).toBeNull();
     expect(categoryProblem(form({ slug: 'Bad Slug' }), 'en-AU', true)).toBe('slug');
+    expect(categoryProblem(form({ slug: 'a' }), 'en-AU', true)).toBe('slug');
     expect(categoryProblem(form({ slug: 'Bad Slug' }), 'en-AU', false)).toBeNull();
     expect(categoryProblem(form({ names: { 'ms-MY': 'Resipi' } }), 'en-AU', true)).toBe('name');
     expect(categoryProblem(form({ position: '-1' }), 'en-AU', true)).toBe('position');
