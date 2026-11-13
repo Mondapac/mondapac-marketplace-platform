@@ -15,6 +15,8 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { AdminStoredCategory, CategoryProductFact } from '../../domain/category-admin-tree';
 import type { AdminCategoryReader } from '../ports/admin-category.reader';
+import type { FeatureSetRecord } from '../ports/attribute-admin.reader';
+import { CATEGORY_LINKS_LOAD_MAX } from '../attributes/category-links';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import { CategoryEditProbe } from './category-edit-probe.use-case';
 import { CategoryImportProbe } from './category-import-probe.use-case';
@@ -118,11 +120,31 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
     restructure: new CategoryRestructureProbe(gate),
     importing: new CategoryImportProbe(gate),
   };
+  let links: {
+    categoryId: Id<'Category'>;
+    familyId: Id<'AttributeFamily'> | null;
+    filters: string[];
+  }[] = [];
+  let families: FeatureSetRecord[] = [];
+  /** The Market of every links and feature-set read, to prove one read each, in the caller's Market. */
+  const reads: { port: string; marketId: string }[] = [];
   const tree = new CategoryAdminTree(gate, {
     unitOfWork,
     adminCategoryReader: reader,
     policy,
     categoryProbes,
+    linkStore: {
+      all: (m, limit) => {
+        reads.push({ port: 'links', marketId: m.marketId });
+        return Promise.resolve(links.slice(0, limit));
+      },
+    },
+    attributeAdminReader: {
+      featureSets: (m, limit) => {
+        reads.push({ port: 'featureSets', marketId: m.marketId });
+        return Promise.resolve(families.slice(0, limit));
+      },
+    },
   });
   const get = new CategoryAdminGet(gate, {
     unitOfWork,
@@ -130,11 +152,6 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
     policy,
     categoryProbes,
   });
-  let links: {
-    categoryId: Id<'Category'>;
-    familyId: Id<'AttributeFamily'> | null;
-    filters: string[];
-  }[] = [];
   const impact = new CategoryImpact(gate, {
     unitOfWork,
     adminCategoryReader: reader,
@@ -166,6 +183,9 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
       { categoryIds: [cat(2)], offers: 1, listedOffers: 0, offersWithActiveTag: 0 },
     ];
     complete = true;
+    links = [];
+    families = [];
+    reads.length = 0;
   });
 
   it('declares the view key for every read, under its own name', () => {
@@ -424,6 +444,120 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
     expect(await tree.execute(admin, {})).toMatchObject({
       ok: false,
       error: { code: 'access.denied' },
+    });
+  });
+  describe('the effective feature set of each row (admin Feature set filter)', () => {
+    const family = (n: number) =>
+      `01990000-0000-7000-8000-${(0xfa00 + n).toString(16).padStart(12, '0')}` as Id<'AttributeFamily'>;
+    const record = (n: number, familyCode: string): FeatureSetRecord => ({
+      id: family(n),
+      code: familyCode,
+      status: 'active',
+      createdByKind: 'admin',
+      createdAt: T0,
+      revisionNo: 1,
+      version: 1,
+      names: {},
+      groups: [],
+    });
+    const rowsOf = (answer: Awaited<ReturnType<CategoryAdminTree['execute']>>) =>
+      answer.ok
+        ? answer.value.categories.map((c) => [
+            c.slug,
+            c.featureSetId,
+            c.featureSetCode,
+            c.featureSetFromCategoryId,
+            c.inherited,
+          ])
+        : answer.error;
+
+    beforeEach(() => {
+      // c1 holds A, c2 inherits it, c3 holds B itself, c4 (archived department) has none.
+      links = [
+        { categoryId: cat(1), familyId: family(1), filters: [] },
+        { categoryId: cat(2), familyId: null, filters: ['colour'] },
+        { categoryId: cat(3), familyId: family(2), filters: [] },
+      ];
+      families = [record(1, 'pantry-basics'), record(2, `rice-${code.toLowerCase()}`)];
+    });
+
+    it('resolves own and inherited sets with one read of links and of feature sets', async () => {
+      const answer = await tree.execute(admin, {});
+      expect(rowsOf(answer)).toEqual([
+        ['c1', family(1), 'pantry-basics', cat(1), false],
+        ['c2', family(1), 'pantry-basics', cat(1), true],
+        ['c3', family(2), `rice-${code.toLowerCase()}`, cat(3), false],
+        ['c4', null, null, null, false],
+      ]);
+      expect(reads).toEqual([
+        { port: 'links', marketId: code },
+        { port: 'featureSets', marketId: code },
+      ]);
+    });
+
+    it('agrees with the attribute-links rule: the nearest holder wins over a farther one', async () => {
+      links = [
+        { categoryId: cat(1), familyId: family(1), filters: [] },
+        { categoryId: cat(2), familyId: family(2), filters: [] },
+      ];
+      const answer = await tree.execute(admin, {});
+      expect(rowsOf(answer)).toEqual([
+        ['c1', family(1), 'pantry-basics', cat(1), false],
+        ['c2', family(2), `rice-${code.toLowerCase()}`, cat(2), false],
+        ['c3', family(2), `rice-${code.toLowerCase()}`, cat(2), true],
+        ['c4', null, null, null, false],
+      ]);
+    });
+
+    it('reads no feature set when no category holds one, and gives a null code for an unread set', async () => {
+      links = [{ categoryId: cat(2), familyId: null, filters: ['colour'] }];
+      const none = await tree.execute(admin, {});
+      expect(none.ok && none.value.categories.every((c) => c.featureSetId === null)).toBe(true);
+      expect(reads.map((r) => r.port)).toEqual(['links']);
+      links = [{ categoryId: cat(3), familyId: family(9), filters: [] }];
+      const unread = await tree.execute(admin, {});
+      expect(unread.ok && unread.value.categories[2]).toMatchObject({
+        featureSetId: family(9),
+        featureSetCode: null,
+        inherited: false,
+      });
+    });
+
+    it('keeps only the rows whose effective set is the one asked for', async () => {
+      const a = await tree.execute(admin, { featureSetId: family(1) });
+      expect(rowsOf(a)).toEqual([
+        ['c1', family(1), 'pantry-basics', cat(1), false],
+        ['c2', family(1), 'pantry-basics', cat(1), true],
+      ]);
+      const unknown = await tree.execute(admin, { featureSetId: family(7) });
+      expect(unknown.ok && unknown.value.categories).toEqual([]);
+      // The rest of the answer is the whole tree's.
+      expect(unknown.ok && unknown.value.treeVersion).toBe(7);
+    });
+
+    it('refuses a malformed feature set id and any other query key', async () => {
+      for (const bad of ['nope', ['a', 'b'], '']) {
+        const answer = await tree.execute(admin, { featureSetId: bad });
+        expect(!answer.ok && answer.error).toEqual({
+          code: 'validation.failed',
+          fields: [{ path: 'featureSetId', code: 'format' }],
+        });
+      }
+      const other = await tree.execute(admin, { status: 'active' } as never);
+      expect(!other.ok && other.error).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'status', code: 'unknown' }],
+      });
+    });
+
+    it('fails closed when the links cannot all be read', async () => {
+      links = Array.from({ length: CATEGORY_LINKS_LOAD_MAX + 1 }, () => ({
+        categoryId: cat(1),
+        familyId: family(1),
+        filters: [],
+      }));
+      const answer = await tree.execute(admin, {});
+      expect(!answer.ok && answer.error).toEqual({ code: 'catalog.categories-unavailable' });
     });
   });
 });
