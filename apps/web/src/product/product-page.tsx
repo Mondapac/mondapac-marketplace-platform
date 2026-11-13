@@ -103,8 +103,10 @@ export function ProductPage({
                   >
                     {specGroups(product.specifications).map((group, index) => (
                       <div key={group.code ?? index} className="spec-group">
-                        {group.label === undefined ? null : (
+                        {group.label === undefined ? null : product.description ? (
                           <h4 className="spec-title">{group.label}</h4>
+                        ) : (
+                          <h3 className="spec-title">{group.label}</h3>
                         )}
                         <dl className="spec">
                           {group.rows.map((s) => (

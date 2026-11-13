@@ -9,7 +9,12 @@ export async function generateMetadata() {
   return { title: t('orders.title') };
 }
 
-export default async function OrdersPage() {
+export default async function OrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string | string[] }>;
+}) {
+  const { view } = await searchParams;
   const t = await getTranslations();
   const title = t('orders.title');
   const page = await loadOrdersPage();
@@ -36,7 +41,11 @@ export default async function OrdersPage() {
   return (
     <SellerShell session={page.session} activeId="s_orders" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-      <SellerOrders initial={page.page} />
+      <SellerOrders
+        initial={page.page}
+        paging={page.paging}
+        initialView={view === 'board' ? 'board' : 'table'}
+      />
     </SellerShell>
   );
 }

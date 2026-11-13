@@ -93,7 +93,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     expect(roleOf('platform', 'onboarding-compliance')).toMatchObject({
       kind: 'default',
       sellerId: null,
-      seedVersion: 8,
+      seedVersion: 9,
       permissionKeys: [
         'certification.issuer.view',
         'certification.seller-certificate.review',
@@ -106,10 +106,12 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         'sellers.business-details.view',
         'sellers.seller-file.review',
         'sellers.seller-health.recalculate',
+        'sellers.seller-settings.edit',
         'sellers.seller.view',
       ],
     });
     expect(roleOf('seller', 'store-manager').permissionKeys).toEqual([
+      'catalog.own-category.propose',
       'catalog.own-import.run',
       'catalog.own-product.edit',
       'catalog.own-product.view',
@@ -140,7 +142,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     );
   });
 
-  it('upgrades onboarding-compliance from version 1 to 8: adds the sellers and certification keys, one seed-applied row, other roles untouched', async () => {
+  it('upgrades onboarding-compliance from version 1 to 9: adds the sellers and certification keys, one seed-applied row, other roles untouched', async () => {
     const REVIEW = 'sellers.seller-file.review';
     const VIEW = 'sellers.seller.view';
     const DETAILS = 'sellers.business-details.view';
@@ -149,6 +151,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     const ISSUER_VIEW = 'certification.issuer.view';
     const TYPE_VIEW = 'certification.type.view';
     const RECALCULATE = 'sellers.seller-health.recalculate';
+    const SETTINGS = 'sellers.seller-settings.edit';
     // The previous build's definition: version 1 without the sellers and certification keys.
     const v1 = seedWith((role) =>
       role.seedCode === 'onboarding-compliance'
@@ -164,7 +167,8 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
                 key !== CERT_REVIEW &&
                 key !== ISSUER_VIEW &&
                 key !== TYPE_VIEW &&
-                key !== RECALCULATE,
+                key !== RECALCULATE &&
+                key !== SETTINGS,
             ),
           }
         : role,
@@ -182,7 +186,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('platform', 'onboarding-compliance')).toMatchObject({
       id: before.id,
-      seedVersion: 8,
+      seedVersion: 9,
       permissionKeys: [
         ...before.permissionKeys,
         REVIEW,
@@ -193,6 +197,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         ISSUER_VIEW,
         TYPE_VIEW,
         RECALCULATE,
+        SETTINGS,
       ].sort(),
     });
     expect(roleOf('platform', 'viewer')).toEqual(viewerBefore);
@@ -201,7 +206,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         ...RoleSeedApplied.entry(before.id, {
           before: { seedVersion: 1 },
           after: {
-            seedVersion: 8,
+            seedVersion: 9,
             addedKeys: [
               REVIEW,
               VIEW,
@@ -211,6 +216,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
               ISSUER_VIEW,
               TYPE_VIEW,
               RECALCULATE,
+              SETTINGS,
             ].sort(),
             removedKeys: [],
           },
@@ -378,7 +384,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
   });
 
-  it('upgrades catalogue-moderator from version 1 to 15: adds the catalog keys (view, edit, approve, pause, delete, saved-filter share, platform import, attribute view, category tree view and edit, attribute suggestion decide, variant view), certification.claim-policy.view, certification.product-certificate.view, certification.type.view, pricing.price-hold.view and sellers.seller.view only, one seed-applied row, other roles untouched (I-1a)', async () => {
+  it('upgrades catalogue-moderator from version 1 to 16: adds the catalog keys (view, edit, approve, pause, delete, saved-filter share, platform import, attribute view, category tree view and edit, attribute suggestion decide, variant view, category proposal decide), certification.claim-policy.view, certification.product-certificate.view, certification.type.view, pricing.price-hold.view, sellers.seller.view and sellers.seller-settings.edit only, one seed-applied row, other roles untouched (I-1a)', async () => {
     const EDIT = 'catalog.platform-product.edit';
     // The previous build's definition: version 1 with the identity key only.
     const v1 = seedWith((role) =>
@@ -406,10 +412,11 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('platform', 'catalogue-moderator')).toMatchObject({
       id: before.id,
-      seedVersion: 15,
+      seedVersion: 16,
       permissionKeys: [
         'catalog.attribute-suggestion.decide',
         'catalog.attribute.view',
+        'catalog.category-proposal.decide',
         'catalog.category-tree.edit',
         'catalog.category-tree.view',
         'catalog.platform-import.run',
@@ -425,6 +432,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         'certification.type.view',
         'identity.seller-access.view',
         'pricing.price-hold.view',
+        'sellers.seller-settings.edit',
         'sellers.seller.view',
       ],
     });
@@ -435,10 +443,11 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
         ...RoleSeedApplied.entry(before.id, {
           before: { seedVersion: 1 },
           after: {
-            seedVersion: 15,
+            seedVersion: 16,
             addedKeys: [
               'catalog.attribute-suggestion.decide',
               'catalog.attribute.view',
+              'catalog.category-proposal.decide',
               'catalog.category-tree.edit',
               'catalog.category-tree.view',
               'catalog.platform-import.run',
@@ -453,6 +462,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
               'certification.product-certificate.view',
               'certification.type.view',
               'pricing.price-hold.view',
+              'sellers.seller-settings.edit',
               'sellers.seller.view',
             ],
             removedKeys: [],
@@ -544,7 +554,7 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
       role.seedCode === 'store-manager'
         ? {
             ...role,
-            seedVersion: 6,
+            seedVersion: 7,
             permissionKeys: ['identity.team-member.view', 'identity.seller-access.view'].slice(
               0,
               1,
@@ -560,18 +570,19 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
 
     expect(roleOf('seller', 'store-manager')).toMatchObject({
       id: before.id,
-      seedVersion: 6,
+      seedVersion: 7,
       version: before.version + 1,
       permissionKeys: ['identity.team-member.view'],
     });
     expect(fakes.audits).toEqual([
       {
         ...RoleSeedApplied.entry(before.id, {
-          before: { seedVersion: 5 },
+          before: { seedVersion: 6 },
           after: {
-            seedVersion: 6,
+            seedVersion: 7,
             addedKeys: [],
             removedKeys: [
+              'catalog.own-category.propose',
               'catalog.own-import.run',
               'catalog.own-product.edit',
               'catalog.own-product.view',
@@ -587,8 +598,8 @@ describe.each(TEST_MARKETS)('SeedRoles in market %s (identity design 5.6; slice 
     ]);
     expect(logged('identity.seed-roles.upgraded')?.[0]).toMatchObject({
       roleId: before.id,
-      fromSeedVersion: 5,
-      seedVersion: 6,
+      fromSeedVersion: 6,
+      seedVersion: 7,
     });
 
     // Applied once: the next run finds the role current and writes nothing.

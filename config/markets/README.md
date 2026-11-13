@@ -234,6 +234,9 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
   import file may hold (categories C7). More is refused before any row is read.
 - `maxCategoryImportBytes` (required, 1 KiB to 10 MiB; AU 5 MiB): the largest category tree import
   file. The platform-wide import ceiling (10 MiB, 5,000 rows) still applies above it.
+- `maxPendingCategoryProposals` (optional, 1 to 50; AU 5, ZZ 3; default 5): the most category
+  proposals one seller may have waiting (CAT-54). Exact: one seller's proposals are serialised by a
+  lock.
 - `maxVariantAttributes` (required, 1 to 5; AU 2): the most variant (option) attributes one
   configurable product may vary on (attributes plan A2). A product whose feature set marks more
   option attributes is refused by the configurable type's variant check
@@ -292,6 +295,9 @@ and an audit row. A Market without the section shows no address until an admin s
 `<page>?token=<token>` (same URL rules). `oneClickUnsubscribeUrl`: the API's one-click route of this
 Market, `.../notifications/unsubscribe/<MARKET>`, sent in the `List-Unsubscribe` header (RFC 8058)
 as `<url>?token=<token>`. A Market without both sends no marketing mail (personalization 1b).
+`sellerMissingDetailsPage`: the seller panel's Products page the "Email sellers" mail of the
+attributes report links to (same URL rules; the mail adds `?filter=missing-details`). A Market
+without it sends no such mail (attributes package A4-4).
 
 ## `customers` section (optional)
 

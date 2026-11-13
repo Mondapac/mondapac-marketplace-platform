@@ -14,6 +14,7 @@ import {
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { EmailSellersDialog, emailable } from './email-sellers-dialog.tsx';
 import { API_MISSING_DETAILS, PAGE_SIZE, type MissingDetailsItem } from './types.ts';
 import type { MissingDetailsPage } from './types.ts';
 
@@ -51,7 +52,14 @@ export function csvOf(rows: readonly MissingDetailsItem[]): string {
  * at the next submit until it is filled. The API reads at most 2000 products a call, so "Load more"
  * follows `nextAfterId`. The search box filters the rows already loaded.
  */
-export function MissingDetailsTab() {
+export function MissingDetailsTab({
+  canEdit = false,
+  csrfToken = '',
+}: {
+  /** `catalog.attribute.edit`: shows "Email sellers". */
+  readonly canEdit?: boolean;
+  readonly csrfToken?: string;
+}) {
   const t = useTranslations('attributes.missing-details');
   const tl = useTranslations('load');
   const [load, setLoad] = useState<Load>({ state: 'loading' });
@@ -59,6 +67,8 @@ export function MissingDetailsTab() {
   const [search, setSearch] = useState('');
   const [featureSet, setFeatureSet] = useState('');
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [emailing, setEmailing] = useState(false);
+  const [emailed, setEmailed] = useState<number | null>(null);
 
   const fetchPage = useCallback(async (afterId: string | null, append: boolean) => {
     if (append) setMore(true);
@@ -115,6 +125,7 @@ export function MissingDetailsTab() {
     );
   }, [items, search, featureSet]);
   const chosen = shown.filter((item) => selected.has(item.productId));
+  const askable = emailable(chosen);
 
   function toggle(productId: string, on: boolean) {
     setSelected((previous) => {
@@ -183,7 +194,29 @@ export function MissingDetailsTab() {
             <Button variant="secondary" disabled={shown.length === 0} onClick={exportCsv}>
               {chosen.length > 0 ? t('export-selected', { count: chosen.length }) : t('export')}
             </Button>
+            {canEdit ? (
+              <Button
+                variant="secondary"
+                disabled={askable.length === 0 || askable.length > 200}
+                aria-describedby="email-sellers-note"
+                onClick={() => setEmailing(true)}
+              >
+                {t('email.button')}
+              </Button>
+            ) : null}
           </div>
+          {canEdit ? (
+            <p id="email-sellers-note" className="m-0 text-sm text-fg-muted">
+              {askable.length === 0
+                ? t('email.pick')
+                : askable.length > 200
+                  ? t('email.too-many')
+                  : t('email.picked', { count: askable.length })}
+            </p>
+          ) : null}
+          {emailed === null ? null : (
+            <Banner tone="success">{t('email.sent', { count: emailed })}</Banner>
+          )}
           <p className="text-sm text-fg-muted" aria-live="polite">
             {t('totals', { shown: shown.length, loaded: load.items.length, scanned: load.scanned })}
           </p>
@@ -240,6 +273,18 @@ export function MissingDetailsTab() {
             </div>
           )}
         </>
+      ) : null}
+      {emailing ? (
+        <EmailSellersDialog
+          rows={chosen}
+          csrfToken={csrfToken}
+          onClose={() => setEmailing(false)}
+          onSent={(sellers) => {
+            setEmailing(false);
+            setEmailed(sellers);
+            setSelected(new Set());
+          }}
+        />
       ) : null}
     </section>
   );

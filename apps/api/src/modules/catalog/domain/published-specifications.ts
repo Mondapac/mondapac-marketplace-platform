@@ -125,9 +125,11 @@ function valueOf(
       return label === null ? null : { kind: 'text', text: label };
     }
     case 'multi-select': {
-      if (!Array.isArray(raw)) return null;
+      // A value stored before a select was converted is one code (attributes A8).
+      const list: unknown = typeof raw === 'string' ? [raw] : raw;
+      if (!Array.isArray(list)) return null;
       const items = new Set<string>();
-      for (const code of raw as unknown[]) {
+      for (const code of list as unknown[]) {
         const label = optionLabel(definition, code, locales);
         if (label !== null) items.add(label);
         if (items.size === MAX_SPECIFICATION_VALUES) break;

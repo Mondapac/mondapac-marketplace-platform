@@ -683,11 +683,7 @@
         "changed": "Last change"
       },
       "health": {
-        "band": {
-          "healthy": "Healthy",
-          "at-risk": "At risk",
-          "unhealthy": "Unhealthy"
-        },
+        "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
         "new": "New",
         "no-data": "No data",
         "none": "Not measured yet",
@@ -990,6 +986,38 @@
         "unknown": "Something went wrong. Try again."
       }
     },
+    "activities": {
+      "title": "Business activities",
+      "intro": "What this seller does. The main activity decides which review checks apply; the others widen what the seller may offer.",
+      "none": "No activity set yet.",
+      "main": "Main",
+      "extra": "Other activities",
+      "unknown-activity": "Unknown activity",
+      "last-change": "Last changed {when}. Reason: {reason}",
+      "edit": "Change activities",
+      "save": "Save activities",
+      "cancel": "Cancel",
+      "saved": "Activities saved.",
+      "unchanged": "The seller already had these activities.",
+      "field": {
+        "main": "Main activity",
+        "extra": "Other activities",
+        "extra-help": "Up to {max}.",
+        "reason": "Reason for the change",
+        "reason-help": "Kept in the change log. Up to {max} characters. No personal data."
+      },
+      "error": {
+        "main-required": "Pick the main activity.",
+        "reason-required": "Give a reason.",
+        "invalid": "One of the activities is not available any more. Check the picks and try again.",
+        "gone": "This seller no longer exists.",
+        "denied": "You don't have permission to change activities.",
+        "csrf": "Your session changed. Reload the page and try again.",
+        "unavailable": "The service is not available. Try again in a moment.",
+        "unknown": "The change could not be saved."
+      },
+      "names-unavailable": "Activities can't be changed here because the activity names could not be loaded. Reload the page, or ask for the catalog activity read permission."
+    },
     "health-queue": {
       "title": "Sellers that need a look",
       "link": "Sellers that need a look",
@@ -1029,7 +1057,11 @@
       "no-data": "No data",
       "measured": "Measured {when}",
       "lowest": "The measure pulling the score down most is {metric}.",
-      "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
+      "band": {
+        "healthy": "Healthy",
+        "at-risk": "At risk",
+        "unhealthy": "Unhealthy"
+      },
       "metric": {
         "seller-cancellations": "Cancellations by the seller",
         "late-ready": "Orders ready late",
@@ -1048,6 +1080,22 @@
         "failed": "The recount could not be queued. Try again in a few minutes."
       },
       "informs": "Health only informs. Nothing happens to the seller because of this score."
+    },
+    "category-proposals": {
+      "title": "May propose categories",
+      "intro": "When allowed, this seller can suggest new categories for an admin to decide. Stopping it closes their waiting proposals.",
+      "allow": "Allow proposals",
+      "stop": "Stop proposals",
+      "now-allowed": "This seller may now propose categories.",
+      "now-stopped": "This seller may no longer propose categories.",
+      "no-change": "It was already set this way.",
+      "view-shelves": "View this seller's proposals and shelves",
+      "error": {
+        "denied": "Your role can't change this setting.",
+        "csrf": "Your session needs refreshing. Reload the page.",
+        "invalid": "The request was not valid. Reload and try again.",
+        "unknown": "That did not work. Try again."
+      }
     }
   },
   "certificates": {
@@ -4043,6 +4091,10 @@
       "cancelled": {
         "title": "No cancelled orders",
         "body": "Orders that expired or failed to be paid appear here."
+      },
+      "filtered": {
+        "title": "No orders match",
+        "body": "Change or clear the filters to see more orders."
       }
     },
     "error": {
@@ -4285,6 +4337,31 @@
       "unit-price": "Unit price",
       "amount": "Amount",
       "tax-included": "Tax incl."
+    },
+    "range": "{from} to {to} of {total}",
+    "too-many": "Page numbers stop at the first {limit} orders. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
+    "filters": {
+      "group": "Filters",
+      "payment": "Payment",
+      "fulfilment": "Delivery",
+      "from": "Placed from (UTC)",
+      "to": "Placed until (UTC)",
+      "any": "Any",
+      "clear": "Clear filters",
+      "backwards": "The end day is before the start day."
+    },
+    "sort": {
+      "label": "Sort by",
+      "newest": "Newest first",
+      "oldest": "Oldest first",
+      "total-high": "Total, high to low",
+      "total-low": "Total, low to high"
+    },
+    "paging": {
+      "nav": "Pages",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {n}"
     }
   },
   "load": {
@@ -6262,6 +6339,139 @@
       "group": "Export and import",
       "csv-label": "Export the category tree as a CSV file",
       "xlsx-label": "Export the category tree as an XLSX file"
+    },
+    "proposals": {
+      "tabs": "Categories views",
+      "tab": {
+        "tree": "Category tree",
+        "proposals": "Category proposals"
+      },
+      "title": "Category proposals",
+      "intro": "Categories that sellers asked for. Approving one gives the seller a shelf in their own shop. It does not add a platform category.",
+      "loading": "Loading category proposals",
+      "load-failed": "The category proposals could not be loaded.",
+      "denied": "Your role can't decide category proposals.",
+      "empty": "No proposals are waiting",
+      "empty-body": "When a seller suggests a category, it appears here.",
+      "list-label": "Waiting category proposals",
+      "load-more": "Show more",
+      "waiting": "Waiting",
+      "unknown-store": "Unnamed store",
+      "unknown-parent": "an unknown category",
+      "under": "Under {path}",
+      "names-label": "Names of the proposal {name}",
+      "approve": "Approve",
+      "approve-for": "Approve the proposal {name}",
+      "reject": "Reject",
+      "reject-for": "Reject the proposal {name}",
+      "reject-confirm": "Reject proposal",
+      "cancel": "Cancel",
+      "reason-label": "Reason",
+      "reason-choose": "Choose a reason",
+      "reason-note": "The seller sees this reason. Pick the closest one.",
+      "reason": {
+        "already-exists": "Already exists",
+        "too-narrow": "Too narrow",
+        "too-broad": "Too broad",
+        "misleading": "Misleading",
+        "not-sold-here": "Not sold here",
+        "other": "Other"
+      },
+      "decided": {
+        "approved": "Approved. The seller now has the shelf.",
+        "rejected": "Proposal rejected.",
+        "cancelled": "The seller can no longer propose categories, so the proposal was closed."
+      },
+      "closed": {
+        "approved": "Approved: shelf created",
+        "rejected": "Rejected: {reason}",
+        "permission-revoked": "Closed: permission removed",
+        "cancelled": "Closed: cancelled"
+      },
+      "shelves": {
+        "title": "Shelves of {store}",
+        "this-seller": "this seller",
+        "close": "Close shelves",
+        "intro": "A shelf is a way a seller groups their own Offers in their shop. Promote turns a shelf into a platform category. Merge folds it into a platform category that already exists.",
+        "loading": "Loading shelves",
+        "load-failed": "The shelves could not be loaded.",
+        "denied": "Your role can't see these shelves.",
+        "empty": "This seller has no shelves",
+        "list-label": "Shelves of {store}",
+        "under": "Under {path}",
+        "status": {
+          "active": "Active",
+          "promoted": "Promoted",
+          "merged": "Merged",
+          "archived": "Archived"
+        },
+        "promote": "Promote",
+        "promote-for": "Promote the shelf {name}",
+        "merge": "Merge",
+        "merge-for": "Merge the shelf {name}",
+        "done": {
+          "promote": "Promoted as a hidden platform category. {n, plural, one {# Offer lost} other {# Offers lost}} the shelf.",
+          "merge": "Merged. {n, plural, one {# Offer lost} other {# Offers lost}} the shelf."
+        }
+      },
+      "shelves-for": "Show the shelves of {store}",
+      "error": {
+        "validation_failed": "Something in the request was not valid. Reload the page and try again.",
+        "category-proposal_not-allowed": "This seller may not propose categories any more, so the proposal can't be approved.",
+        "category-proposal_not-found": "This proposal is no longer in the queue. The list has been refreshed.",
+        "category-proposal_not-pending": "Someone else already decided this proposal. The list has been refreshed.",
+        "category-proposal_duplicate": "The seller already has a shelf with this name under the same category.",
+        "seller-category_not-found": "This shelf no longer exists. Reload the shelves.",
+        "seller-category_not-active": "This shelf was already promoted, merged or closed. Reload the shelves.",
+        "category_parent-not-found": "The platform category it sits under is no longer available. Reload.",
+        "category_not-found": "That platform category is no longer available. Reload and pick another.",
+        "category_slug-taken": "That URL name is already used by another category. Choose another.",
+        "category_sibling-name-taken": "A category with this name already exists under the same parent.",
+        "category_depth-exceeded": "The category tree can have at most {max} levels. This shelf sits too deep to promote.",
+        "category_required-locale-missing": "The shelf is missing a name in a required language.",
+        "category_claim-word": "The shelf name or description contains a certification or health claim word, so it can't be promoted.",
+        "category_locale-uncheckable": "A language of this shelf can't be checked for claim words yet, so it can't be promoted.",
+        "claim-text_check-unavailable": "The claim-word check is not available right now. Try again later.",
+        "conflict_stale": "The tree or the shelf changed since you opened it. Reload.",
+        "access_denied": "Your role can't do this.",
+        "access_permission-missing": "Your role can't do this.",
+        "access_acting-as-refused": "This can't be done while signing in as a seller.",
+        "access_unavailable": "This is unavailable right now. Try again in a moment.",
+        "request_csrf": "Your session needs refreshing. Reload the page.",
+        "unknown": "That did not work. Reload the page and try again.",
+        "stale": "Someone else changed the queue. The list has been refreshed.",
+        "reload-failed": "The list could not be refreshed, so it may be out of date."
+      },
+      "promote": {
+        "title": "Promote the shelf {name}",
+        "not-platform": "Shelves are not platform categories. Promoting creates a new platform category that the whole marketplace can use.",
+        "what": "\"{name}\" becomes a platform category under {parent}.",
+        "impact-title": "What will change",
+        "impact-hidden": "The new platform category is created hidden. Show it from the category tree when it is ready.",
+        "impact-offers": "The shelf closes, and every Offer of this seller that uses it loses the shelf. The number is shown when you finish.",
+        "impact-published": "No published product revision changes.",
+        "slug": "URL name",
+        "slug-help": "English lower-case words joined by hyphens, for example fresh-dates.",
+        "slug-bad": "Use 2 to 80 lower-case English letters and digits, joined by single hyphens.",
+        "cancel": "Cancel",
+        "confirm": "Promote shelf",
+        "reload": "Reload"
+      },
+      "merge": {
+        "title": "Merge the shelf {name}",
+        "not-platform": "Shelves are not platform categories. The seller's offers keep no shelf. You can add this category to the products through a revision.",
+        "what": "\"{name}\" is merged into a platform category you pick.",
+        "impact-title": "What will change",
+        "impact-offers": "Every Offer of this seller that uses the shelf loses it. The number is shown when you finish.",
+        "impact-terminal": "The shelf closes for good. Merging can't be undone.",
+        "impact-published": "No published product revision changes.",
+        "target": "Merge into",
+        "target-choose": "Choose a platform category",
+        "cancel": "Cancel",
+        "confirm": "Merge shelf",
+        "reload": "Reload"
+      },
+      "shelves-open": "Seller's shelves"
     }
   },
   "brands": {
@@ -7180,7 +7390,46 @@
       "seller": "Seller {id}",
       "feature-set-named": "Feature set {code}",
       "missing": "Missing details",
-      "load-more": "Load more"
+      "load-more": "Load more",
+      "email": {
+        "button": "Email sellers",
+        "pick": "Select products to email their sellers.",
+        "picked": "{count, plural, one {# product} other {# products}} selected for email.",
+        "too-many": "Select at most 200 products to email.",
+        "sent": "{count, plural, one {# seller will get an email} other {# sellers will get an email}} within a minute.",
+        "title": "{count, plural, one {Email # seller?} other {Email # sellers?}}",
+        "title-pending": "Email sellers?",
+        "loading": "Checking who would be emailed",
+        "intro": "Each seller gets one email listing only their selected products and what is missing. A seller is emailed about a product at most once in {days} days. The email is recorded in the audit log.",
+        "recipients": "Sellers to email",
+        "unnamed-seller": "Unnamed seller",
+        "products": "{count, plural, one {# product} other {# products}}",
+        "will-send": "Will be emailed",
+        "skipped": "Skipped: emailed {date}",
+        "skipped-recent": "Skipped: emailed recently",
+        "ignored": "{count, plural, one {# selected product is} other {# selected products are}} left out: not published, a platform product, or nothing is missing any more.",
+        "nobody": "Nobody can be emailed for these products.",
+        "preview": "Email preview (first seller)",
+        "preview-close": "Adding them now takes a minute and helps buyers find and compare your products.",
+        "preview-button": "[Open your products]",
+        "preview-questions": "Questions? Reply to this email or contact seller support from your panel.",
+        "preview-signature": "The Mondapac team",
+        "subject-label": "Subject:",
+        "subject": "{count, plural, one {1 of your products needs more details} other {# of your products need more details}}",
+        "english-only": "Sent in English. All emails to sellers are English only.",
+        "cancel": "Cancel",
+        "send": "{count, plural, one {Email # seller} other {Email # sellers}}",
+        "error": {
+          "unconfigured": "This Market has no seller panel link set, so the email cannot be sent yet.",
+          "denied": "You do not have permission to email sellers.",
+          "too-many": "Select between 1 and 200 products.",
+          "network": "We couldn't reach the server. Try again.",
+          "unknown": "We couldn't prepare the email. Try again."
+        },
+        "preview-hi": "Hi {name},",
+        "preview-hi-anonymous": "Hi,",
+        "preview-lead": "We have added new required details for some product categories. The products below are still on sale, and nothing changes for buyers right now. The next time you update one of them, you will need to fill in these details:"
+      }
     },
     "waiting": {
       "label": "Requests waiting for a second administrator",
@@ -7355,6 +7604,8 @@
       "merge-values": "Merge values",
       "merge-attribute": "Merge into attribute",
       "attribute-merged": "Attribute merged.",
+      "convert-type": "Convert type",
+      "type-converted": "Type converted.",
       "archive": "Archive",
       "merged": "Values merged.",
       "archived": "Attribute archived.",
@@ -7632,6 +7883,10 @@
         "not-select": "Only attributes with a list of values can have values merged.",
         "merge-type-mismatch": "These attributes differ in type, language setting or limits, so they cannot be merged.",
         "blocked-merge-target": "Other attributes were merged into this one, so it cannot be archived or merged. Their values would disappear from product pages.",
+        "convert-invalid": "This type cannot be converted. Only a whole number to a decimal, or a single choice to a multiple choice.",
+        "convert-variant": "A variant option stays a single choice, so it cannot be converted.",
+        "convert-material": "A Material attribute cannot be converted.",
+        "convert-merged": "Other attributes were merged into this one, so its type has to stay as it is.",
         "merge-unmapped": "Every value of this attribute needs a value to go to. Check the list.",
         "merge-material": "A Material attribute cannot be merged, or merged into. Archive a Material attribute with a second administrator instead.",
         "merge-blocked-in-feature-set": "It is still in an active feature set. Remove it from those feature sets first.",
@@ -7693,6 +7948,12 @@
       "merge-source": "Merge this value",
       "merge-target": "Into this value",
       "merge-confirm": "Merge values",
+      "convert-title": "Convert the type of {name}",
+      "convert-body-decimal": "A whole number becomes a decimal, so it can also take values with decimal places. Products keep what they have: their whole numbers are read as decimals.",
+      "convert-body-multi-select": "A single choice becomes a multiple choice, so a product can pick more than one value. Products keep what they have: the one value they picked is read as a list of one.",
+      "convert-from-to": "{from} to {to}",
+      "convert-irreversible": "This cannot be undone.",
+      "convert-confirm": "Convert type",
       "merge-attributes": "Merge into another attribute",
       "merge-attributes-title": "Merge {name} into another attribute",
       "merge-attributes-body": "{name} is archived and points at the attribute you choose. This cannot be undone. Products keep what they have, and product pages show the other attribute. Filters and search do not read the merge yet.",

@@ -256,6 +256,15 @@ import {
 } from './infrastructure/offer-owner-notices';
 import { IDENTITY_FACADE, IdentityModule, type IdentityFacade } from '../identity';
 import { MAIL_TRANSPORT } from '../../platform/mail/mail-transport';
+import { MissingDetailsEmailSellers } from './application/use-cases/missing-details-email-sellers.use-case';
+import { SendMissingDetailsEmails } from './application/use-cases/send-missing-details-emails.use-case';
+import { sendMissingDetailsEmailsJob } from './presentation/jobs/send-missing-details-emails.job';
+import { MISSING_DETAILS_EMAIL_STORE } from './application/ports/missing-details-email.store';
+import {
+  MISSING_DETAILS_MAIL_SETTINGS,
+  type MissingDetailsMailSettings,
+} from './application/ports/missing-details-mail-settings';
+import { ConfigMissingDetailsMailSettings } from './infrastructure/offer-owner-notices';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { OwnProductImageUpload } from './application/use-cases/own-product-image-upload.use-case';
 import { OwnProductImageList } from './application/use-cases/own-product-image-list.use-case';
@@ -394,6 +403,25 @@ import { CategoryAttributeLinksGet } from './application/use-cases/category-attr
 import { CATEGORY_ATTRIBUTE_LINK_STORE } from './application/ports/category-attribute-link.store';
 import { CULTURE_MEMBERS } from './application/ports/culture-members';
 import { CLAIM_TERM_LOCALES } from './application/ports/claim-term-locales';
+import { SELLER_CATEGORY_STORE } from './application/ports/seller-category.store';
+import {
+  CATEGORY_PROPOSAL_CAPABILITY,
+  CATEGORY_PROPOSAL_POLICY,
+} from './application/ports/category-proposal-capability';
+import { OwnCategoryPropose } from './application/use-cases/own-category-propose.use-case';
+import { OwnCategoryProposalCancel } from './application/use-cases/own-category-proposal-cancel.use-case';
+import { OwnCategoryProposalsList } from './application/use-cases/own-category-proposals-list.use-case';
+import { CategoryProposalList } from './application/use-cases/category-proposal-list.use-case';
+import { CategoryProposalApprove } from './application/use-cases/category-proposal-approve.use-case';
+import { CategoryProposalReject } from './application/use-cases/category-proposal-reject.use-case';
+import { SellerCategoryAdminList } from './application/use-cases/seller-category-admin-list.use-case';
+import { SellerCategoryPromote } from './application/use-cases/seller-category-promote.use-case';
+import { SellerCategoryMerge } from './application/use-cases/seller-category-merge.use-case';
+import { OwnOfferSetShelf } from './application/use-cases/own-offer-set-shelf.use-case';
+import { CancelPendingProposals } from './application/use-cases/cancel-pending-proposals.use-case';
+import { sellerCategoryProposalSubscriptions } from './presentation/subscribers/seller-category-proposals.subscriptions';
+import { OwnCategoryProposalController } from './presentation/own-category-proposal.controller';
+import { CategoryProposalAdminController } from './presentation/category-proposal-admin.controller';
 import { AttributeAdminGet } from './application/use-cases/attribute-admin-get.use-case';
 import { AttributeAdminList } from './application/use-cases/attribute-admin-list.use-case';
 import { FeatureSetAdminGet } from './application/use-cases/feature-set-admin-get.use-case';
@@ -401,6 +429,7 @@ import { FeatureSetAdminList } from './application/use-cases/feature-set-admin-l
 import { ATTRIBUTE_ADMIN_READER } from './application/ports/attribute-admin.reader';
 import { ATTRIBUTE_IMPACT_READER } from './application/ports/attribute-impact.reader';
 import { AttributeImpactGet } from './application/use-cases/attribute-impact-get.use-case';
+import { AttributeConvert } from './application/use-cases/attribute-convert.use-case';
 import { AttributeMerge } from './application/use-cases/attribute-merge.use-case';
 import { AttributeValuesMerge } from './application/use-cases/attribute-values-merge.use-case';
 import { AttributeArchive } from './application/use-cases/attribute-archive.use-case';
@@ -582,6 +611,8 @@ const PORT = {
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   impact: ATTRIBUTE_IMPACT_READER,
   detailsGapReader: PRODUCT_DETAILS_GAP_READER,
+  emailStore: MISSING_DETAILS_EMAIL_STORE,
+  missingDetailsMailSettings: MISSING_DETAILS_MAIL_SETTINGS,
   familyResolver: ProductFamilyResolver,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
   attributeCreate: AttributeDefinitionCreate,
@@ -606,6 +637,9 @@ const PORT = {
   contentFilter: ContentFilter,
   variantAdminReader: VARIANT_ADMIN_READER,
   variantTypeSettings: VARIANT_TYPE_SETTINGS_STORE,
+  shelves: SELLER_CATEGORY_STORE,
+  capability: CATEGORY_PROPOSAL_CAPABILITY,
+  proposalPolicy: CATEGORY_PROPOSAL_POLICY,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -746,6 +780,8 @@ const RESTRUCTURE_DEPS = {
     TopicAdminController,
     OwnBrandController,
     PublicBrandController,
+    OwnCategoryProposalController,
+    CategoryProposalAdminController,
   ],
   imports: [CertificationModule, SellersModule, CatalogReferencesModule, IdentityModule],
   providers: [
@@ -1088,6 +1124,14 @@ const RESTRUCTURE_DEPS = {
       impact: true,
     }),
     useCaseProvider(AttributeValuesMerge, {
+      unitOfWork: true,
+      attributeStore: true,
+      relaxations: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AttributeConvert, {
       unitOfWork: true,
       attributeStore: true,
       relaxations: true,
@@ -1564,6 +1608,88 @@ const RESTRUCTURE_DEPS = {
       audit: true,
       contentFilter: true,
     }),
+    useCaseProvider(OwnCategoryPropose, {
+      unitOfWork: true,
+      contentFilter: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      capability: true,
+      proposalPolicy: true,
+      eligibility: true,
+      counters: true,
+      counterKeys: true,
+    }),
+    useCaseProvider(OwnCategoryProposalCancel, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnCategoryProposalsList, {
+      unitOfWork: true,
+      shelves: true,
+      capability: true,
+      proposalPolicy: true,
+    }),
+    useCaseProvider(CategoryProposalList, { unitOfWork: true, shelves: true, sellerNames: true }),
+    useCaseProvider(CategoryProposalApprove, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      capability: true,
+      policy: true,
+    }),
+    useCaseProvider(CategoryProposalReject, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(SellerCategoryAdminList, { unitOfWork: true, shelves: true }),
+    useCaseProvider(SellerCategoryPromote, {
+      unitOfWork: true,
+      contentFilter: true,
+      store: true,
+      categories: true,
+      policy: true,
+      matcher: true,
+      claimLocales: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+      shelves: true,
+    }),
+    useCaseProvider(SellerCategoryMerge, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(OwnOfferSetShelf, { unitOfWork: true, shelves: true, clock: true }),
+    useCaseProvider(CancelPendingProposals, {
+      unitOfWork: true,
+      shelves: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
     useCaseProvider(BrandProductIdsQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandQuery, { unitOfWork: true, brandReader: true }),
     useCaseProvider(PublicBrandsAzQuery, { unitOfWork: true, brandReader: true }),
@@ -1787,6 +1913,7 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       treeReader: true,
       attributes: true,
+      familyResolver: true,
       policy: true,
       productTypes: true,
       importJobs: true,
@@ -1808,7 +1935,12 @@ const RESTRUCTURE_DEPS = {
     }),
     useCaseProvider(PlatformImportRead, { unitOfWork: true, importJobs: true }),
     useCaseProvider(PlatformImportReport, { unitOfWork: true, importJobs: true, clock: true }),
-    useCaseProvider(PlatformImportTemplate, { policy: true, sheetWriter: true }),
+    useCaseProvider(PlatformImportTemplate, {
+      unitOfWork: true,
+      attributeAdminReader: true,
+      policy: true,
+      sheetWriter: true,
+    }),
     useCaseProvider(PlatformImportDiscard, {
       unitOfWork: true,
       importJobs: true,
@@ -1820,6 +1952,7 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       treeReader: true,
       attributes: true,
+      familyResolver: true,
       policy: true,
       productTypes: true,
       importJobs: true,
@@ -2418,6 +2551,7 @@ const RESTRUCTURE_DEPS = {
         OwnImportPurge,
         ExpireRelaxationRequests,
         SendAttributeSuggestionNotices,
+        SendMissingDetailsEmails,
         SendTopicSuggestionNotices,
       ],
       (
@@ -2435,6 +2569,7 @@ const RESTRUCTURE_DEPS = {
         sellerPurge: OwnImportPurge,
         expireRelaxations: ExpireRelaxationRequests,
         suggestionNotices: SendAttributeSuggestionNotices,
+        missingDetailsEmails: SendMissingDetailsEmails,
         topicSuggestionNotices: SendTopicSuggestionNotices,
       ) => [
         seedCategoryTreeJob(categories),
@@ -2451,8 +2586,15 @@ const RESTRUCTURE_DEPS = {
         purgeSellerImportsJob(sellerPurge),
         expireRelaxationRequestsJob(expireRelaxations),
         sendAttributeSuggestionNoticesJob(suggestionNotices),
+        sendMissingDetailsEmailsJob(missingDetailsEmails),
         sendTopicSuggestionNoticesJob(topicSuggestionNotices),
       ],
+    ),
+    // Seller category proposals: SEL-26 switched off cancels the pending ones (categories C9a).
+    registerSubscriptionsFrom(
+      'catalog',
+      [CancelPendingProposals],
+      (cancel: CancelPendingProposals) => sellerCategoryProposalSubscriptions(cancel),
     ),
     // Certification events consumed (design 5.5, 9.5; slice 12).
     registerSubscriptionsFrom(
@@ -2482,6 +2624,35 @@ const RESTRUCTURE_DEPS = {
       useFactory: (markets: MarketRegistry): OfferOwnerMailSettings =>
         new ConfigOfferOwnerMailSettings(markets),
     },
+    {
+      provide: MISSING_DETAILS_MAIL_SETTINGS,
+      inject: [MarketRegistry],
+      useFactory: (markets: MarketRegistry): MissingDetailsMailSettings =>
+        new ConfigMissingDetailsMailSettings(markets),
+    },
+    // "Email sellers" of the Missing details report (attributes package A4-4): the admin request
+    // writes one row per seller and product; the job sends one mail per seller.
+    useCaseProvider(MissingDetailsEmailSellers, {
+      unitOfWork: true,
+      detailsGapReader: true,
+      attributes: true,
+      attributeAdminReader: true,
+      familyResolver: true,
+      policy: true,
+      sellerNames: true,
+      emailStore: true,
+      missingDetailsMailSettings: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SendMissingDetailsEmails, {
+      unitOfWork: true,
+      emailStore: true,
+      ownerContacts: true,
+      mailTransport: true,
+      missingDetailsMailSettings: true,
+      clock: true,
+    }),
     // Hassan M1, Mojtaba N2: the handler writes one notice per Owner; the job sends each.
     useCaseProvider(WarnOfferOwnersOfExpiry, {
       unitOfWork: true,

@@ -30,6 +30,7 @@
   { "name": "catalog.active-cultures-system", "rule": "system" },
   { "name": "catalog.brand-product-ids", "rule": "anonymous" },
   { "name": "catalog.business-activities-active", "rule": "anonymous" },
+  { "name": "catalog.cancel-pending-proposals", "rule": "system" },
   { "name": "catalog.category-slug-resolve", "rule": "anonymous" },
   { "name": "catalog.category-tree", "rule": "anonymous" },
   { "name": "catalog.cultures-by-ids", "rule": "anonymous" },
@@ -47,6 +48,16 @@
   { "name": "catalog.offer-tax-categories", "rule": "anonymous" },
   {
     "name": "catalog.own-attribute-suggestions-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-category-proposal-cancel",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-category-proposals-list",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
@@ -136,6 +147,7 @@
   { "name": "catalog.sell-unit-labels", "rule": "anonymous" },
   { "name": "catalog.seller-product-owners", "rule": "system" },
   { "name": "catalog.send-attribute-suggestion-notices", "rule": "system" },
+  { "name": "catalog.send-missing-details-emails", "rule": "system" },
   { "name": "catalog.send-offer-owner-notices", "rule": "system" },
   { "name": "catalog.send-topic-suggestion-notices", "rule": "system" },
   { "name": "catalog.sweep-orphan-image-files", "rule": "system" },
@@ -246,6 +258,11 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "commission-payouts.note-seller-reinstated", "rule": "system" },
+  {
+    "name": "commission-payouts.own-commission-on",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "commission-payouts.place-seller-suspended-hold", "rule": "system" },
   { "name": "commission-payouts.reconcile-instructions", "rule": "system" },
   { "name": "commission-payouts.record-refund", "rule": "system" },

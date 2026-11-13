@@ -520,6 +520,52 @@ export class MissingDetailsListBody {
   unreadableFeatureSets!: string[];
 }
 
+export class MissingDetailsEmailRequest {
+  @ApiProperty({
+    type: [String],
+    description: 'The products to ask about, 1 to 200 ids. Judged again on the server.',
+  })
+  productIds!: string[];
+  @ApiProperty({
+    required: false,
+    description: 'True: only report who would be emailed; nothing is written.',
+  })
+  dryRun?: boolean;
+}
+
+class MissingDetailsEmailProductBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty() productCode!: string;
+  @ApiProperty({ nullable: true, type: String }) name!: string | null;
+  @ApiProperty({ type: [String], description: 'English names of the missing details.' })
+  missing!: string[];
+  @ApiProperty({ enum: ['will-send', 'queued', 'recently-emailed'] }) status!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'When the seller was last asked.' })
+  lastRequestedAt!: string | null;
+}
+
+class MissingDetailsEmailSellerBody {
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ nullable: true, type: String }) sellerName!: string | null;
+  @ApiProperty({ type: [MissingDetailsEmailProductBody] })
+  products!: MissingDetailsEmailProductBody[];
+}
+
+class MissingDetailsEmailIgnoredBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ enum: ['not-published', 'platform-product', 'nothing-missing'] }) reason!: string;
+}
+
+export class MissingDetailsEmailBody {
+  @ApiProperty() dryRun!: boolean;
+  @ApiProperty({ description: 'A seller is asked about a product at most once in this many days.' })
+  throttleDays!: number;
+  @ApiProperty({ type: [MissingDetailsEmailSellerBody] })
+  sellers!: MissingDetailsEmailSellerBody[];
+  @ApiProperty({ type: [MissingDetailsEmailIgnoredBody] })
+  ignored!: MissingDetailsEmailIgnoredBody[];
+}
+
 // The restructure routes (attributes A8): the impact dialog, merging values and archiving.
 
 class ImpactCountBody {
@@ -573,6 +619,16 @@ export class AttributeMergeRequest {
     description: 'For a choice attribute: every value code of the source to a target value code.',
   })
   options?: Record<string, string>;
+}
+
+export class AttributeConvertRequest {
+  @ApiProperty({ description: 'The attribute version the impact dialog showed.' })
+  version!: number;
+  @ApiProperty({
+    enum: ['decimal', 'multi-select'],
+    description: 'The new type: decimal (from integer) or multi-select (from select).',
+  })
+  to!: string;
 }
 
 export class ValuesMergeRequest {

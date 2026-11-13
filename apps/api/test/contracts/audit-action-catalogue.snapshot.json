@@ -121,6 +121,30 @@
     }
   },
   {
+    "action": "catalog.attribute-definition.converted",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "activeOptionCount": "integer",
+      "dataType": "enumOf(integer|decimal|select|multi-select)",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "dataType": "enumOf(integer|decimal|select|multi-select)",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
     "action": "catalog.attribute-family.created",
     "targetType": "catalog.attribute-family",
     "targetId": "id",
@@ -285,6 +309,75 @@
     }
   },
   {
+    "action": "catalog.category-proposal.proposed",
+    "targetType": "catalog.category-proposal",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "parentId": "id",
+      "localeCount": "integer"
+    }
+  },
+  {
+    "action": "catalog.category-proposal.approved",
+    "targetType": "catalog.category-proposal",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "sellerId": "id",
+      "sellerCategoryId": "id"
+    }
+  },
+  {
+    "action": "catalog.category-proposal.rejected",
+    "targetType": "catalog.category-proposal",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "sellerId": "id",
+      "reasonCode": "enumOf(already-exists|too-narrow|too-broad|misleading|not-sold-here|other)"
+    }
+  },
+  {
+    "action": "catalog.category-proposal.cancelled",
+    "targetType": "catalog.category-proposal",
+    "targetId": "id",
+    "actors": ["authenticated", "system"],
+    "before": null,
+    "after": {
+      "sellerId": "id",
+      "reasonCode": "enumOf(seller-cancelled|permission-revoked)"
+    }
+  },
+  {
+    "action": "catalog.seller-category.promoted",
+    "targetType": "catalog.seller-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "sellerId": "id",
+      "parentId": "id",
+      "level": "integer",
+      "offersCleared": "integer"
+    }
+  },
+  {
+    "action": "catalog.seller-category.merged",
+    "targetType": "catalog.seller-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "sellerId": "id",
+      "categoryId": "id",
+      "offersCleared": "integer"
+    }
+  },
+  {
     "action": "catalog.attribute-relaxation.requested",
     "targetType": "catalog.attribute-definition",
     "targetId": "id",
@@ -360,6 +453,17 @@
       "filterCount": "integer",
       "hasFeatureSet": "boolean",
       "revisionNo": "integer"
+    }
+  },
+  {
+    "action": "catalog.missing-details-email.requested",
+    "targetType": "catalog.missing-details-email",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "productCount": "integer",
+      "skippedCount": "integer"
     }
   },
   {
