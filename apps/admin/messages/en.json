@@ -2254,6 +2254,7 @@
         "fleets": "Delivery fleets",
         "wallet": "Customer wallet",
         "tax": "Tax",
+        "refund-limits": "Seller refund caps",
         "admins": "Admins",
         "roles": "Roles & permissions",
         "lists": "Lists",
@@ -4858,7 +4859,8 @@
       "other": "Something is waiting for your review",
       "platform-import-finished": "A <strong>product import</strong> {outcome, select, stopped {stopped part way} other {finished}}",
       "review-held": "A <strong>review</strong> is held for moderation",
-      "review-reported": "A seller reported a <strong>review</strong>"
+      "review-reported": "A seller reported a <strong>review</strong>",
+      "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count cap</strong>} amount {A seller reached the <strong>refund amount cap</strong>} unset {A seller tried to refund with <strong>no refund cap set</strong>} other {A seller reached a <strong>refund cap</strong>}}"
     },
     "category": {
       "certificates": "Certificates",
@@ -4867,6 +4869,7 @@
       "prices": "Prices",
       "delivery": "Delivery",
       "reviews": "Reviews",
+      "refunds": "Refunds",
       "other": "Other"
     },
     "empty": {
@@ -8145,6 +8148,80 @@
       "value-code-needed": "Required: the name has no Latin letters or digits. Use letters a to z, digits and hyphens.",
       "value-code-bad": "Start with a letter; use only letters a to z, digits and hyphens.",
       "title": "Value suggestions from sellers"
+    }
+  },
+  "refund-limits": {
+    "title": "Seller refund caps",
+    "permission-view": "Refund caps: view",
+    "unavailable": "The refund caps could not be loaded. Try again later.",
+    "read-only": "You can see the refund caps but not change them. Changing them needs the refund caps manage permission.",
+    "read-only-seller": "You can see this cap but not change it. Changing it needs the refund caps manage permission.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "field": {
+      "count": "Most refunds in 24 hours",
+      "count-help": "A whole number from 1 to {max}.",
+      "amount": "Most refunded in 24 hours ({currency})",
+      "amount-help": "In the Market currency, for example {example}.",
+      "count-view": "Most refunds in 24 hours",
+      "amount-view": "Most refunded in 24 hours"
+    },
+    "error": {
+      "count": "Enter a whole number from 1 to {max}.",
+      "amount-required": "Enter an amount.",
+      "amount": "Enter an amount above zero, with no more decimals than the currency has.",
+      "currency": "This Market's currency is not recognised, so an amount cannot be entered.",
+      "stale": "Another admin changed this cap first. The latest values are shown now; check them and save again.",
+      "not-found": "This seller has no cap of its own any more. The latest values are shown now.",
+      "invalid": "The cap was refused as invalid. Check the values and try again.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session changed. Reload the page and try again.",
+      "denied": "You do not have permission to change refund caps.",
+      "unavailable": "The refund caps could not be saved right now. Try again later.",
+      "unknown": "The refund caps could not be saved. Try again."
+    },
+    "market": {
+      "section": "Market default cap",
+      "intro": "The most refunds a seller may start by marking items unavailable in any 24 hours, and the most money they may refund in that time. It applies to every seller without a cap of its own.",
+      "empty-title": "No default set",
+      "empty-body": "No default set — sellers cannot refund by marking items unavailable until a cap is set.",
+      "empty-view": "No default is set, so sellers cannot refund by marking items unavailable. An admin who can manage refund caps needs to set one.",
+      "set": "Set default cap",
+      "edit": "Edit default cap",
+      "set-title": "Set the default refund cap",
+      "edit-title": "Edit the default refund cap",
+      "dialog-intro": "Applies to every seller without a cap of its own, from the next refund.",
+      "version": "Version",
+      "version-n": "Version {version}",
+      "updated": "Updated {when}",
+      "saved": "Default refund cap saved."
+    },
+    "seller": {
+      "title": "Refund cap",
+      "in-force": "Cap in force",
+      "source-own": "Seller's own cap",
+      "source-market": "Market default",
+      "source-none": "No cap set",
+      "updated": "Cap updated",
+      "note": {
+        "own": "This seller's own cap applies instead of the Market default.",
+        "market": "This seller has no cap of its own, so the Market default applies.",
+        "none": "No cap is set for this seller or the Market, so this seller cannot refund by marking items unavailable."
+      },
+      "market-is": "Market default: {count} refunds, {amount}, in 24 hours.",
+      "set": "Set own cap",
+      "edit": "Edit own cap",
+      "remove": "Remove own cap",
+      "set-title": "Set this seller's refund cap",
+      "edit-title": "Edit this seller's refund cap",
+      "dialog-intro": "Applies to this seller instead of the Market default, from the next refund.",
+      "remove-title": "Remove this seller's own cap?",
+      "remove-body": "The Market default applies to this seller again. If no default is set, this seller cannot refund by marking items unavailable.",
+      "remove-yes": "Remove own cap",
+      "done": {
+        "saved": "The seller's own cap is saved.",
+        "removed": "The seller's own cap is removed."
+      }
     }
   },
   "tax": {

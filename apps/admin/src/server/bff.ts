@@ -45,6 +45,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'wallet/admin/settings',
     // The Market's tax strategies and the active one (tax), read again after a change.
     'tax/admin/strategies',
+    // The caps on seller refunds (ordering): the Market default, and one seller's (query: `sellerId`).
+    'ordering/admin/refund-limits',
     'wallet/admin/credit-requests',
     // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
     // `limit`); one case is read by the page server and again after a decision.
@@ -169,6 +171,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // One AI setting (settings): code, value and `expectedVersion`; protected key
     // `settings.ai.manage`, so it may ask a fresh two-step code.
     'settings/admin/ai',
+    // The Market default cap on seller refunds (ordering); `ordering.refund-limits.manage` is
+    // protected, so it may ask a fresh two-step code.
+    'ordering/admin/refund-limits',
     // The promotions Market switch and the first-order discount (promotions); a monthly budget
     // above the Market threshold asks a fresh two-step code. The zone thresholds are below.
     'promotions/admin/settings',
@@ -414,6 +419,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'sellers/admin/:id/ai-access',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
+    // One seller's own cap on its refunds (ordering), set from the seller review page.
+    'ordering/admin/refund-limits/sellers/:id',
     // A tax strategy edited by its id (tax).
     'tax/admin/strategies/:id',
     // A fleet-selection model edited by its id (shipping).
@@ -446,6 +453,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   // The details of one platform category (catalog, categories C3), with the version seen.
   PATCH: ['catalog/admin/categories/:id'],
   DELETE: [
+    // One seller's own cap on its refunds (ordering); the version seen is in the query.
+    'ordering/admin/refund-limits/sellers/:id',
     'identity/admin/roles/:id',
     // A tax strategy that is not active (tax).
     'tax/admin/strategies/:id',
@@ -594,9 +603,11 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/variants/issue-counts': ['typeCode'],
   'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
   'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
+  'ordering/admin/refund-limits': ['sellerId'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'ordering/admin/refund-limits': { sellerId: UUID },
   // The cursor is the API's own: epoch milliseconds, a dot and a request id.
   'wallet/admin/credit-requests': {
     status: /^(pending|decided|granted)$/,
@@ -734,6 +745,7 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 };
 /** DELETE templates whose query crosses: the version seen and the closed reason code. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'ordering/admin/refund-limits/sellers/:id': { expectedVersion: /^[0-9]{1,9}$/ },
   'commission-payouts/admin/sellers/:id/payout-terms': {
     expectedVersion: /^[0-9]{1,9}$/,
     reasonCode: /^(seller-request|risk-review|correction|policy)$/,

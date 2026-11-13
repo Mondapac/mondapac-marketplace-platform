@@ -9,6 +9,7 @@ export const DELIVERY_FALLBACK_OVER_CAP = 'admin.delivery-fallback-over-cap';
 export const PLATFORM_IMPORT_FINISHED = 'admin.platform-import-finished';
 export const REVIEW_HELD = 'admin.review-held';
 export const REVIEW_REPORTED = 'admin.review-reported';
+export const SELLER_REFUND_LIMIT_REACHED = 'admin.seller-refund-limit-reached';
 
 /** Every admin kind asks for a review, so every one plays the sound when it is switched on. */
 export const RINGING_KINDS: ReadonlySet<string> = new Set([
@@ -20,6 +21,7 @@ export const RINGING_KINDS: ReadonlySet<string> = new Set([
   PLATFORM_IMPORT_FINISHED,
   REVIEW_HELD,
   REVIEW_REPORTED,
+  SELLER_REFUND_LIMIT_REACHED,
 ]);
 
 /**
@@ -34,6 +36,7 @@ export const NOTICES_PERMISSIONS: readonly string[] = [
   'shipping.delivery-settings.view',
   'catalog.platform-import.run',
   'reviews.moderation.queue',
+  'ordering.refund-limits.view',
 ];
 
 /** Whether the admin holds a permission behind at least one notice kind (shows the bell). */
@@ -62,6 +65,8 @@ export interface AdminNoticeParams {
   readonly outcome?: 'completed' | 'stopped';
   /** admin.review-held and admin.review-reported (the report adds nothing else). */
   readonly reviewId?: string;
+  /** admin.seller-refund-limit-reached (sellerId above too): which cap stopped the refund. */
+  readonly limit?: 'count' | 'amount' | 'unset';
 }
 
 export interface AdminNotice {
