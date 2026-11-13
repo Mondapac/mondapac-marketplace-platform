@@ -1,3 +1,4 @@
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import { createHash } from 'node:crypto';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type {
@@ -130,6 +131,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.check in market %s', (code
         status: 'active',
         mergedIntoId: null,
         slug: 'meat',
+        position: 0,
         names: [{ locale, name: 'Meat' }],
       },
     ];
@@ -145,9 +147,16 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.check in market %s', (code
           fields: [field('brand', true)],
         }),
     } as unknown as AttributeRepository;
+    const familyResolver = {
+      open: () =>
+        Promise.resolve({
+          resolve: () => Promise.resolve({ ok: true, familyCode: 'default' }),
+        }),
+    } as unknown as ProductFamilyResolver;
     const handlers = { simple: simpleProductType, configurable: configurableProductType };
     const useCase = new PlatformImportCheck(gate, {
       unitOfWork,
+      familyResolver,
       importJobs,
       importFiles,
       importParsers: options.parsers ?? [csvParser],
@@ -237,6 +246,28 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.check in market %s', (code
     expect(again.value.format).toBe('csv');
     expect(again.value.rows.map((row) => row.rowNumber)).toEqual([2, 3, 4]);
     expect(again.value.rows[0]!.cells).toEqual(['Lamb', 'Meat', 'simple', 'Shoulder', 'Farms']);
+  });
+
+  it('reads an attr[<code>] column and names it in the problems of a row', async () => {
+    const r = rig();
+    const csv = [
+      'Title,Main category,Product type,attr[brand],attr[unknown-thing]',
+      'Lamb,Meat,simple,Farms,x',
+      'Beef,Meat,simple,,',
+    ].join('\n');
+    const result = await r.useCase.execute(contextOf('admin', r.ids), {
+      fileName: 'products.csv',
+      data: Buffer.from(csv).toString('base64'),
+    });
+    if (!result.ok) throw new Error(result.error.code);
+    // The family needs a brand: the first row has it from the attribute column, the second has not.
+    expect(result.value).toMatchObject({ rows: 2, ready: 1, errors: 1 });
+    const columnsOf = (rowNumber: number): string[] =>
+      (r.rows.find((row) => row.rowNumber === rowNumber)?.issues ?? []).map(
+        (issue) => `${issue.severity}:${issue.column}:${issue.code}`,
+      );
+    expect(columnsOf(2)).toContain('warning:attr[unknown-thing]:column.not-stored');
+    expect(columnsOf(3)).toEqual(expect.arrayContaining(['error:attr[brand]:attribute.required']));
   });
 
   it('refuses an XLSX with a formula and stores nothing', async () => {

@@ -123,13 +123,13 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
   const clock = new FixedClock(T0);
   let ids: SequenceIdGenerator;
 
-  const build = () => {
+  const build = (policyOverride: ConfigCatalogMarketPolicy = policy) => {
     const gate = createUseCaseGate(markets, check);
     const deps = {
       unitOfWork,
       attributeStore: store,
       relaxations: new MemoryAttributeRelaxationStore(),
-      policy,
+      policy: policyOverride,
       matcher,
       claimLocales,
       audit,
@@ -269,6 +269,71 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
         err({ code: 'claim-text.check-unavailable' }),
       );
       expect(store.rows.size).toBe(0);
+    });
+
+    describe('a measure (attributes A3)', () => {
+      const measureBody = (overrides: Record<string, unknown> = {}) => ({
+        dataType: 'measure',
+        names: { [english]: 'Net weight' },
+        bounds: {
+          min: 1,
+          max: 5000,
+          measure: { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 2 },
+        },
+        ...overrides,
+      });
+      const withoutKg = Object.assign(Object.create(policy) as ConfigCatalogMarketPolicy, {
+        units: () => policy.units(market).filter((unit) => unit.code !== 'kg'),
+      });
+
+      it('adds a draft that keeps its unit settings and bounds', async () => {
+        const answer = await build().create.execute(context(), measureBody());
+        expect(answer.ok).toBe(true);
+        const stored = [...store.rows.values()][0]!.state;
+        expect(stored.dataType).toBe('measure');
+        expect(stored.bounds).toEqual(measureBody().bounds);
+      });
+
+      it('refuses a measure without unit settings, naming the problem', async () => {
+        const answer = await build().create.execute(context(), measureBody({ bounds: { min: 1 } }));
+        expect(answer).toEqual(err({ code: 'attribute-definition.measure-invalid' }));
+        expect(store.rows.size).toBe(0);
+      });
+
+      it('refuses a unit the Market does not offer, pointing at the units field', async () => {
+        const answer = await build(withoutKg).create.execute(context(), measureBody());
+        expect(answer).toEqual(
+          err({
+            code: 'attribute-definition.measure-invalid',
+            fields: [{ path: 'bounds.measure.units', code: 'not-offered' }],
+          }),
+        );
+        expect(store.rows.size).toBe(0);
+      });
+
+      it('refuses unit settings of the wrong shape before the domain sees them', async () => {
+        for (const measure of [
+          'kg',
+          { dimension: 'mass', units: 'g', defaultUnit: 'g', decimals: 2 },
+          { dimension: 'mass', units: ['g'], defaultUnit: 'g', decimals: '2' },
+          { dimension: 'mass', units: ['g'], defaultUnit: 'g', decimals: 2, factor: 9 },
+        ]) {
+          const answer = await build().create.execute(
+            context(),
+            measureBody({ bounds: { measure } }),
+          );
+          expect(answer.ok).toBe(false);
+        }
+        expect(store.rows.size).toBe(0);
+      });
+
+      it('checks the name of a measure like any other name', async () => {
+        claimWords = /weight/i;
+        const answer = await build().create.execute(context(), measureBody());
+        expect(answer).toEqual(
+          err(<unknown>expect.objectContaining({ code: 'attribute.claim-word' })),
+        );
+      });
     });
 
     it('needs the default-locale name', async () => {

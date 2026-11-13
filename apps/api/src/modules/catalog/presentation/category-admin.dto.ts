@@ -204,7 +204,9 @@ export class CategoryEditDetailsRequest {
   @ApiProperty({
     required: false,
     nullable: true,
-    description: 'Not yet supported: must be null until the category image intake exists.',
+    description:
+      'Null or left out. The image has its own routes (`PUT :categoryId/image`, ' +
+      '`POST :categoryId/image/remove`); a details save never changes it. A value is refused.',
   })
   imageId?: string | null;
 }
@@ -257,4 +259,29 @@ export class CategoryWriteBody {
 
 export class CategoryWriteWrapBody {
   @ApiProperty({ type: CategoryWriteBody }) category!: CategoryWriteBody;
+}
+
+export class CategoryImageSetRequest {
+  @ApiProperty({ description: 'The category version the admin saw.' }) version!: number;
+  @ApiProperty({
+    description:
+      'The picture as standard base64 text: JPEG, PNG or WebP, at most 4 MiB of bytes. The panel ' +
+      'shrinks it before sending. The type is read from the content.',
+  })
+  data!: string;
+}
+
+export class CategoryVersionRequest {
+  @ApiProperty({ description: 'The category version the admin saw.' }) version!: number;
+}
+
+export class CategoryImageBody {
+  @ApiProperty({ format: 'uuid' }) imageId!: string;
+  @ApiProperty({ description: 'The width of the largest rendition in pixels.' }) width!: number;
+  @ApiProperty({ description: 'The height of the largest rendition in pixels.' }) height!: number;
+}
+
+export class CategoryImageWriteBody {
+  @ApiProperty({ type: CategoryWriteBody }) category!: CategoryWriteBody;
+  @ApiProperty({ type: CategoryImageBody, nullable: true }) image!: CategoryImageBody | null;
 }

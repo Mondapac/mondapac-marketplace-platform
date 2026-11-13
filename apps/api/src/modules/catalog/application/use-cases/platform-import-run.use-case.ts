@@ -10,7 +10,8 @@ import {
   type UseCaseGate,
 } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
-import { mapColumns, type ColumnMap } from '../../domain/platform-import/columns';
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
+import { mapColumns, type MappedColumns } from '../../domain/platform-import/columns';
 import { readImportFile, type ParsedRow } from '../../domain/platform-import/import-file';
 import { IMPORT_LIMITS } from '../../domain/platform-import/limits';
 import {
@@ -24,6 +25,15 @@ import {
   readCheckEnvironment,
   type CheckEnvironmentDependencies,
 } from '../platform-import/check-environment';
+import {
+  BATCH,
+  failureActionOf,
+  GIVE_UP_AFTER_HOURS,
+  LEASE_SECONDS,
+  MAX_WAIT_SECONDS,
+  reasonOf,
+  RETRY_SECONDS,
+} from '../import-jobs/run-policy';
 import type { ImportFileParsers } from '../ports/import-file-parsers';
 import type { ImportFileStore } from '../ports/import-file-store';
 import type { PlatformImportRepository } from '../ports/platform-import.repository';
@@ -49,6 +59,7 @@ export type PlatformImportRunOutput =
 export type PlatformImportRunFailure = { readonly code: 'access.denied' };
 
 export interface PlatformImportRunDependencies extends CheckEnvironmentDependencies {
+  readonly familyResolver: ProductFamilyResolver;
   readonly importJobs: PlatformImportRepository;
   readonly importFiles: ImportFileStore;
   readonly importParsers: ImportFileParsers;
@@ -63,17 +74,6 @@ export interface PlatformImportRunDependencies extends CheckEnvironmentDependenc
   readonly rowSubmit: PlatformImportRowSubmit;
 }
 
-/** How long a runner holds a job before another may take it over (it renews the lease per batch). */
-const LEASE_SECONDS = 120;
-/** Rows read from the store at a time. */
-const BATCH = 20;
-/** A wait of this length or shorter is a rate window of a minute: the job waits it out. */
-const MAX_WAIT_SECONDS = 120;
-/** A transient fault is retried after this long. */
-const RETRY_SECONDS = 60;
-/** A job that keeps meeting transient faults for this long stops instead (stop reason `unexpected`). */
-const GIVE_UP_AFTER_HOURS = 24;
-
 /** What happened to one row. */
 type RowOutcome =
   | { readonly kind: 'added'; readonly productId: string; readonly productCode: string }
@@ -81,11 +81,6 @@ type RowOutcome =
   | { readonly kind: 'wait'; readonly seconds: number }
   | { readonly kind: 'transient' }
   | { readonly kind: 'stop'; readonly reason: StopReason };
-
-/** The use-case failure codes a row may be reported with: codes only, never a message. */
-function reasonOf(code: string): string {
-  return /^[a-z][a-z0-9_.-]{0,63}$/.test(code) ? code : 'row.failed';
-}
 
 /**
  * `platform-import.run` (catalog design 14a; handoff steps 6 and 7): the worker's turn on one
@@ -266,7 +261,7 @@ export class PlatformImportRun extends UseCase<
     if (!table.ok) return stop('file-missing');
     const columns = mapColumns(table.value.header);
     if (!columns.ok) return stop('file-missing');
-    const env = await readCheckEnvironment(deps, market);
+    const env = await readCheckEnvironment(deps, market, deps.familyResolver);
     if (!env.ok) return wait(RETRY_SECONDS);
     const byNumber = new Map<number, ParsedRow>(
       table.value.rows.map((row) => [row.rowNumber, row]),
@@ -303,7 +298,7 @@ export class PlatformImportRun extends UseCase<
           job,
           row,
           byNumber.get(row.rowNumber),
-          columns.value.map,
+          columns.value,
           env.value,
           startAs,
         );
@@ -342,14 +337,14 @@ export class PlatformImportRun extends UseCase<
     job: ImportJob,
     row: ImportRowRecord,
     parsed: ParsedRow | undefined,
-    map: ColumnMap,
+    columns: MappedColumns,
     env: CheckEnvironment,
     startAs: 'inactive' | 'active',
   ): Promise<RowOutcome> {
     const { deps } = this;
     const { market } = admin;
     if (parsed === undefined) return { kind: 'failed', code: 'row.changed' };
-    const checked = checkRow(parsed, map, env);
+    const checked = checkRow(parsed, columns.map, env, columns.attributes);
     if (checked.plan === null) return { kind: 'failed', code: 'row.changed' };
 
     let productId = row.productId;
@@ -391,7 +386,12 @@ export class PlatformImportRun extends UseCase<
           (field) => field.code === 'claim-text.check-unavailable',
         )
           ? { kind: 'transient' }
-          : { kind: 'failed', code: 'claim-text.found' };
+          : {
+              kind: 'failed',
+              code: saved.value.refusedFields.some((field) => field.code === 'text.blocked-term')
+                ? 'text.blocked-term'
+                : 'claim-text.found',
+            };
       }
       const submitted = await deps.rowSubmit.execute(admin, { productId, startAs });
       if (!submitted.ok) {
@@ -410,28 +410,19 @@ export class PlatformImportRun extends UseCase<
   }
 }
 
-/** Maps a use case's refusal to what the run does about it. */
+/** Maps a use case's refusal to what the run does about it (the policy both imports share). */
 function failureOf(code: string, detail?: unknown): RowOutcome {
-  switch (code) {
-    case 'request.throttled':
-      return {
-        kind: 'wait',
-        seconds: Math.max(
-          1,
-          Number(
-            (detail as { retryAfterSeconds?: number } | undefined)?.retryAfterSeconds ??
-              RETRY_SECONDS,
-          ),
-        ),
-      };
+  const action = failureActionOf(code, detail);
+  switch (action.kind) {
+    case 'wait':
+      return { kind: 'wait', seconds: action.seconds };
     // The gate refused: the admin lost the permission (or the account) since the start.
-    case 'access.denied':
+    case 'access-lost':
       return { kind: 'stop', reason: 'access-lost' };
     // A store, the matcher or the rate counters could not answer: wait and try the row again.
-    case 'access.unavailable':
-    case 'conflict.stale':
+    case 'transient':
       return { kind: 'transient' };
-    default:
-      return { kind: 'failed', code };
+    case 'failed':
+      return { kind: 'failed', code: action.code };
   }
 }

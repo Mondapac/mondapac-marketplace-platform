@@ -125,9 +125,11 @@ function valueOf(
       return label === null ? null : { kind: 'text', text: label };
     }
     case 'multi-select': {
-      if (!Array.isArray(raw)) return null;
+      // A value stored before a select was converted is one code (attributes A8).
+      const list: unknown = typeof raw === 'string' ? [raw] : raw;
+      if (!Array.isArray(list)) return null;
       const items = new Set<string>();
-      for (const code of raw as unknown[]) {
+      for (const code of list as unknown[]) {
         const label = optionLabel(definition, code, locales);
         if (label !== null) items.add(label);
         if (items.size === MAX_SPECIFICATION_VALUES) break;
@@ -145,7 +147,7 @@ function valueOf(
  * map (a code the map lacks cannot be told, so null), a list maps each code; any other value is
  * the same value, as the types are equal.
  */
-function mergedValue(options: ReadonlyMap<string, string>, stored: unknown): unknown {
+export function mergedValue(options: ReadonlyMap<string, string>, stored: unknown): unknown {
   if (options.size === 0) return stored;
   if (typeof stored === 'string') return options.get(stored) ?? null;
   if (Array.isArray(stored)) {

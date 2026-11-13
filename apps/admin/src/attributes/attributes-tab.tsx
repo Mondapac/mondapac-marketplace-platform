@@ -292,6 +292,7 @@ export function AttributesTab({
       {adding && locales !== null ? (
         <AddAttributeDialog
           locales={locales}
+          units={page?.units ?? []}
           csrfToken={csrfToken}
           onClose={() => setAdding(false)}
           onCreated={(id) => {

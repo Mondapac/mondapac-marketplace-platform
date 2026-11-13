@@ -42,16 +42,26 @@ export class PrismaCategoryPathsReader implements CategoryPathsReader {
     market: MarketContext,
     categoryIds: readonly string[],
   ): Promise<readonly (readonly Id<'Category'>[])[]> {
+    return (await this.livePathsMany(market, [categoryIds]))[0] ?? [];
+  }
+
+  async livePathsMany(
+    market: MarketContext,
+    categoryIdSets: readonly (readonly string[])[],
+  ): Promise<readonly (readonly (readonly Id<'Category'>[])[])[]> {
     const tx = this.prisma.tx(market);
     const nodes = new Map<string, Node>();
-    const walks: Walk[] = categoryIds.map((origin) => ({
-      origin,
-      next: origin,
-      kept: [],
-      steps: 0,
-      atLeaf: true,
-      dropped: false,
-    }));
+    const walks: (Walk & { readonly set: number })[] = categoryIdSets.flatMap((ids, set) =>
+      ids.map((origin) => ({
+        set,
+        origin,
+        next: origin,
+        kept: [],
+        steps: 0,
+        atLeaf: true,
+        dropped: false,
+      })),
+    );
 
     for (let round = 0; ; round += 1) {
       if (round > MAX_STEPS) throw new CategoryPathsUnavailableError('too deep');
@@ -101,15 +111,15 @@ export class PrismaCategoryPathsReader implements CategoryPathsReader {
       if (rows.length !== missing.size) throw new CategoryPathsUnavailableError('unknown');
     }
 
-    const paths: Id<'Category'>[][] = [];
-    const seen = new Set<string>();
+    const paths: Id<'Category'>[][][] = categoryIdSets.map(() => []);
+    const seen: Set<string>[] = categoryIdSets.map(() => new Set<string>());
     for (const walk of walks) {
       if (walk.dropped || walk.kept.length === 0) continue;
       const path = [...walk.kept].reverse();
       const key = path.join('/');
-      if (seen.has(key)) continue;
-      seen.add(key);
-      paths.push(path as Id<'Category'>[]);
+      if (seen[walk.set]!.has(key)) continue;
+      seen[walk.set]!.add(key);
+      paths[walk.set]!.push(path as Id<'Category'>[]);
     }
     return paths;
   }

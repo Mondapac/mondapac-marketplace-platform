@@ -73,6 +73,8 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
         weight: 3,
         organic: true,
         note: null,
+        // A measure is a number with a unit: it holds no text for the claim check.
+        pack: { value: '500', unit: 'g' },
       },
       variants: [{ variantId: 'v1', optionValues: { size: 'l' }, labels: { [first]: 'Large' } }],
       imageIds: [],
@@ -128,6 +130,15 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
     }
   });
 
+  it('accepts topicIds as a list of ids, absent as none, and refuses anything else (T2)', () => {
+    const id = '0197a1b2-0000-7000-8000-000000000001';
+    expect(draftTextsOf({ topicIds: [id] }, supported, defaultLocale).ok).toBe(true);
+    expect(draftTextsOf({}, supported, defaultLocale).ok).toBe(true);
+    for (const bad of [id, [1], ['bad id'], { 0: id }, null]) {
+      expect(draftTextsOf({ topicIds: bad }, supported, defaultLocale).ok).toBe(false);
+    }
+  });
+
   it('accepts an empty draft', () => {
     expect(read({})).toEqual({ ok: true, value: [] });
   });
@@ -140,6 +151,18 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
     ['texts that are not an object', { texts: 'halal' }],
     ['a bad attribute code', { attributeValues: { 'bad code!': 'x' } }],
     ['an object attribute value with a bad locale', { attributeValues: { a: { fr: 'x' } } }],
+    [
+      'a measure-shaped object with free text',
+      { attributeValues: { a: { value: 'halal', unit: 'g' } } },
+    ],
+    [
+      'a measure with a unit nobody knows',
+      { attributeValues: { a: { value: '1', unit: 'halal' } } },
+    ],
+    [
+      'a measure with a third member',
+      { attributeValues: { a: { value: '1', unit: 'g', x: 'y' } } },
+    ],
     ['a nested attribute value', { attributeValues: { a: { en: { x: 'y' } } } }],
     ['an array of non-strings', { attributeValues: { a: [1, 2] } }],
     ['a variant with an unknown key', { variants: [{ variantId: 'v1', note: 'halal' }] }],

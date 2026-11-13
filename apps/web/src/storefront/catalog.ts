@@ -16,7 +16,15 @@ import {
   sampleSellerId,
 } from './sample-catalog.ts';
 import { storefrontApiConfig } from './config.ts';
-import { liveCategory, liveProducts, type CategoryScope, type Reader } from './listing-source.ts';
+import { liveFilterCount, type LiveFilters } from '../catalog/live-filters.ts';
+import {
+  liveCategory,
+  liveProducts,
+  type CategoryScope,
+  type ExactMatch,
+  type LiveFilterGroup,
+  type Reader,
+} from './listing-source.ts';
 import { SAMPLE_CONTENT } from './sample-home.ts';
 import { sampleSellers } from './sample-sellers.ts';
 import type {
@@ -37,9 +45,10 @@ import type {
 // them so the approved design can be built, and the backend adds them as their own package.
 //
 // With API_BASE_URL set the reads below go to the API (./listing-source.ts) and never mix in the
-// sample: what the route cannot do answers nothing. A filter in a shared URL matches nothing, the
-// order is always the route's best match, there is no total, no facet count, no promotion banner,
-// no category counts and no store search. The pages leave those controls out (`listingIsLive`).
+// sample: what the route cannot do answers nothing. The route's own attribute and price filters
+// (`live`, ../catalog/live-filters.ts) are sent; a sample filter in a shared URL matches nothing,
+// the order is always the route's best match, there is no total, no promotion banner, no category
+// counts and no store search. The pages leave those controls out (`listingIsLive`).
 
 export const PAGE_SIZE = 24;
 export const MAX_PAGE = 100;
@@ -52,10 +61,14 @@ export interface ProductQuery {
   /** Category code (the API takes the platform category id). */
   readonly category?: string;
   readonly subcategory?: string;
+  /** Only products on the category itself, none of a subcategory's ("Other {name}"). */
+  readonly direct?: boolean;
   readonly page: number;
   readonly pageSize?: number;
-  /** Listing filters; not in the API yet. */
+  /** Listing filters of the sample; not in the API. */
   readonly filters?: ListingFilters;
+  /** Attribute and price filters of the API (A7, V8); the sample ignores them. */
+  readonly live?: LiveFilters;
   /** Listing order; not in the API yet. */
   readonly sort?: Sort;
 }
@@ -69,7 +82,13 @@ export interface ProductPage {
   readonly hasMore: boolean;
   /** Number of matching products, when the source knows it (the listing's sample does). */
   readonly total?: number;
+  /** The API's filters of the listing with their counts; absent on sample data. */
+  readonly liveFilters?: readonly LiveFilterGroup[];
+  /** The variant a GTIN query names exactly (the search page opens it); API only. */
+  readonly exactMatch?: ExactMatch;
 }
+
+export type { ExactMatch, LiveFilterGroup };
 
 /** One option of a filter group with the number of products it holds in the listing. */
 export interface FacetOption {
@@ -117,7 +136,13 @@ export async function resolveCategory(
   const live = await liveCategory(code, sub);
   if (live !== undefined) return live ?? undefined;
   const category = SAMPLE_CONTENT.categories.find((c) => c.code === code);
-  if (category === undefined) return undefined;
+  if (category === undefined) {
+    // One segment names a category at any depth (categories C6): a sample subcategory's own slug.
+    if (sub !== undefined) return undefined;
+    const parent = SAMPLE_CONTENT.categories.find((c) => c.children.some((k) => k.code === code));
+    const child = parent?.children.find((k) => k.code === code);
+    return parent === undefined || child === undefined ? undefined : { category: parent, child };
+  }
   if (sub === undefined) return { category };
   const child = category.children.find((c) => c.code === sub);
   return child === undefined ? undefined : { category, child };
@@ -176,12 +201,13 @@ const ORDER: Readonly<Record<Sort, (a: ProductCard, b: ProductCard) => number>> 
   name: (a, b) => a.name.localeCompare(b.name),
 };
 
-function inScope(query: Pick<ProductQuery, 'q' | 'category' | 'subcategory'>) {
+function inScope(query: Pick<ProductQuery, 'q' | 'category' | 'subcategory' | 'direct'>) {
   const words = (query.q ?? '').toLowerCase().split(' ').filter(Boolean);
   return SAMPLE_PRODUCTS.filter(
     (p) =>
       (query.category === undefined || p.category === query.category) &&
       (query.subcategory === undefined || SAMPLE_SUBCATEGORY[p.id] === query.subcategory) &&
+      (query.direct !== true || SAMPLE_SUBCATEGORY[p.id] === undefined) &&
       words.every((w) => `${p.name} ${p.sellerName} ${p.category}`.toLowerCase().includes(w)),
   );
 }
@@ -195,7 +221,8 @@ function inScope(query: Pick<ProductQuery, 'q' | 'category' | 'subcategory'>) {
 export async function searchCategory(code: string | undefined): Promise<Category | undefined> {
   if (code === undefined || code === '') return undefined;
   const found = await resolveCategory(code);
-  if (found !== undefined) return found.category;
+  // A sample subcategory's slug alone is not a search scope (the sample search narrows by top level).
+  if (found !== undefined && found.child === undefined) return found.category;
   if (!listingIsLive()) return undefined;
   const name = Array.from(code).slice(0, 40).join('');
   return { code, name, shortName: name, children: [] };
@@ -212,12 +239,19 @@ export async function findProducts(query: ProductQuery, read?: Reader): Promise<
       ...(query.q === undefined ? {} : { q: query.q }),
       ...(query.category === undefined ? {} : { category: query.category }),
       ...(query.subcategory === undefined ? {} : { subcategory: query.subcategory }),
+      ...(query.direct === true ? { direct: true } : {}),
+      ...(query.live === undefined || liveFilterCount(query.live) === 0
+        ? {}
+        : { filters: query.live }),
       page: query.page,
       pageSize,
     },
     read,
   );
-  if (live !== undefined) return { ...live, page: query.page, pageSize };
+  if (live !== undefined) {
+    const { filters, ...rest } = live;
+    return { ...rest, liveFilters: filters, page: query.page, pageSize };
+  }
   const filters = query.filters ?? NO_FILTERS;
   const matches = inScope(query)
     .filter((p) => matchesFilters(p, filters))
@@ -330,4 +364,19 @@ export async function categoryIsEmpty(
 ): Promise<boolean> {
   const all = await findProducts({ ...scope, page: 1, pageSize: 1 }, read);
   return (all.total ?? all.items.length) === 0;
+}
+
+/**
+ * The number of products under each direct child of a category, for its filter chips (categories
+ * C6). The sample counts them here; with the API on, the counts come with the live tree
+ * (`Category.page.childCounts`), so this answers undefined.
+ */
+export function childCounts(
+  category: string,
+  children: readonly string[],
+): ReadonlyMap<string, number> | undefined {
+  if (listingIsLive()) return undefined;
+  return new Map(
+    children.map((code) => [code, inScope({ category, subcategory: code }).length] as const),
+  );
 }

@@ -1,7 +1,14 @@
-import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, MeasureSettings, Temporal } from '@mondapac/shared-kernel';
 import type { Offer } from '../../domain/offer';
-import type { Product } from '../../domain/product';
+import type { Product, ProductStatus } from '../../domain/product';
 import type { WorkingCopy } from '../../domain/working-copy';
+
+/** The stored sell-unit row of an Offer as the seller sees it (V5): a variant with none sells. */
+export interface OwnOfferSellUnitView {
+  readonly variantId: string;
+  readonly variantSku: string | null;
+  readonly selling: boolean;
+}
 
 /** One page request: the last id of the previous page, and at most `limit` rows. */
 export interface ListPage<K extends string> {
@@ -30,8 +37,21 @@ export interface PendingRevisionRow {
   readonly firstPublication: boolean;
   readonly sensitiveReasons: readonly string[];
   readonly hasImages: boolean;
+  /** The 14-digit GTINs of the pending revision's variants (V4), for the duplicate warning. */
+  readonly variantGtins: readonly string[];
   readonly name: string | null;
   readonly submittedAt: Temporal.Instant;
+}
+
+/**
+ * The review queue filters a product revision row can be read by (product version review B1). An
+ * absent key does not filter. `hasImages` is the row's own: the pending revision lists a photo, in
+ * any state (a taken-down photo counts, as on the row).
+ */
+export interface RevisionQueueFilter {
+  readonly sellerId?: Id<'Seller'>;
+  readonly firstPublication?: boolean;
+  readonly hasImages?: boolean;
 }
 
 /** One field of a product family as the product form shows it: names and option labels per locale. */
@@ -42,6 +62,8 @@ export interface ProductFormField {
   readonly required: boolean;
   readonly isVariantOption: boolean;
   readonly bounds: { readonly maxLength?: number; readonly min?: number; readonly max?: number };
+  /** A measure field only: dimension, offered unit codes, default unit and decimal places. */
+  readonly measure?: MeasureSettings;
   readonly names: Readonly<Record<string, string>>;
   readonly options: readonly {
     readonly code: string;
@@ -69,6 +91,77 @@ export interface OfferStatusCounts {
   readonly published: number;
 }
 
+/** The filters of the seller's product list; `statuses` is already narrowed by view and status. */
+export interface OwnProductsFilter {
+  /** A product matches when its status is any of these (none: no product matches). */
+  readonly statuses: readonly ProductStatus[];
+  /** True keeps only products with a pending revision (the In review view). */
+  readonly inReview: boolean;
+  /** True keeps paused products, false the ones not paused, null both. */
+  readonly paused: boolean | null;
+  readonly categoryId: Id<'Category'> | null;
+  readonly typeCode: string | null;
+  /** A case-insensitive part of the name (in `locale`) or of the product code; null for none. */
+  readonly text: string | null;
+  /** The Market's default locale: the language of the name and of the category name. */
+  readonly locale: string;
+  /** Keeps only these products (the rows a seller selected for an export); absent: no limit. */
+  readonly productIds?: readonly Id<'Product'>[];
+}
+
+export const OWN_PRODUCT_SORTS = ['name', 'updated', 'created'] as const;
+export type OwnProductSort = (typeof OWN_PRODUCT_SORTS)[number];
+export type OwnSortDirection = 'asc' | 'desc';
+
+/** One row of the seller's product list. */
+export interface OwnProductRow {
+  readonly productId: Id<'Product'>;
+  readonly productCode: string;
+  readonly typeCode: string;
+  readonly status: ProductStatus;
+  /**
+   * The name the seller sees: the draft's in `locale` while the product has a working copy, else
+   * the shown revision's; null when it has none. The list filters on this same value.
+   */
+  readonly name: string | null;
+  /** The draft's name in `locale` alone (kept for the keyset list's field of the same name). */
+  readonly draftName: string | null;
+  /** The first photo that is not taken down (the draft's, else the shown revision's). */
+  readonly primaryImageId: Id<'ProductImage'> | null;
+  readonly categoryId: Id<'Category'> | null;
+  readonly categoryName: string | null;
+  /** The seller's own Offers on the product that are not deleted. */
+  readonly offerCount: number;
+  readonly pausedAt: Temporal.Instant | null;
+  readonly hasPublishedRevision: boolean;
+  readonly hasPendingRevision: boolean;
+  readonly pendingSubmittedAt: Temporal.Instant | null;
+  readonly lastChangedAt: Temporal.Instant;
+  readonly createdAt: Temporal.Instant;
+}
+
+/** Products kept by a filter: per status (a status with none is absent) and in review. */
+export interface OwnProductViewTotals {
+  readonly byStatus: Readonly<Record<string, number>>;
+  readonly inReview: number;
+}
+
+export type OwnProductsPageResult =
+  | { readonly kind: 'rows'; readonly rows: readonly OwnProductRow[] }
+  /** Sorting by name needs the matching products in memory (at most 500); a search this wide must narrow. */
+  | { readonly kind: 'too-broad' };
+
+export type OwnProductIdsResult =
+  | { readonly kind: 'ids'; readonly ids: readonly Id<'Product'>[] }
+  /** Sorting by name needs the matching products in memory (at most 500); a search this wide must narrow. */
+  | { readonly kind: 'too-broad' };
+
+/** The Offers on one product, deleted ones left out. */
+export interface ProductOfferTotals {
+  readonly sellerCount: number;
+  readonly offerCount: number;
+}
+
 /**
  * The seller's own catalogue lists (catalog design 8.2, 9.2a): products and Offers of one seller,
  * newest first by id (UUID v7). The owner is in every statement, so another seller's row is never
@@ -82,6 +175,53 @@ export interface OwnCatalogReader {
     page: ListPage<'Product'>,
   ): Promise<readonly Product[]>;
 
+  /**
+   * One page of the seller's SELLER products (never the discarded or withdrawn ones) that
+   * `filter` keeps, `limit` rows after `offset` rows, in the given order (ties broken by id).
+   */
+  listProductPage(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnProductsFilter,
+    order: { readonly sort: OwnProductSort; readonly direction: OwnSortDirection },
+    page: { readonly offset: number; readonly limit: number },
+  ): Promise<OwnProductsPageResult>;
+
+  /**
+   * The ids of the seller's SELLER products (never the discarded or withdrawn ones) that `filter`
+   * keeps, at most `limit`, in the given order (ties broken by id): the snapshot an export reads
+   * its rows by. Name order over more matches than the page ceiling is `too-broad`.
+   */
+  listProductIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnProductsFilter,
+    order: { readonly sort: OwnProductSort; readonly direction: OwnSortDirection },
+    limit: number,
+  ): Promise<OwnProductIdsResult>;
+
+  /**
+   * The rows of the given products (at most 100) of the seller, in the order of `productIds`,
+   * whatever the list filter says now; an id that is no longer the seller's listed product is
+   * absent.
+   */
+  listProductRowsByIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    productIds: readonly Id<'Product'>[],
+    locale: string,
+  ): Promise<readonly OwnProductRow[]>;
+
+  /**
+   * How many of the seller's products `filter` keeps, per status, and how many of those have a
+   * pending revision (two reads). `filter.inReview` is ignored: both answers are given.
+   */
+  countProductViews(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnProductsFilter,
+  ): Promise<OwnProductViewTotals>;
+
   /** The seller's Offers that are not deleted. */
   listOffers(
     market: MarketContext,
@@ -92,16 +232,32 @@ export interface OwnCatalogReader {
   /** How many of the seller's Offers are in each status, deleted ones left out (one count). */
   offerStatusCounts(market: MarketContext, sellerId: Id<'Seller'>): Promise<OfferStatusCounts>;
 
-  /** How many Offers of the Market wait for their first publication (the review queue). */
-  pendingReviewCount(market: MarketContext): Promise<number>;
-
-  /** How many SELLER products hold a pending revision (the review queue). */
-  pendingRevisionCount(market: MarketContext): Promise<number>;
+  /**
+   * How many Offers (not deleted) stand on one product and how many sellers hold them, every
+   * seller counted (the admin product form's "Sellers selling it"). Market-scoped.
+   */
+  offerTotalsOfProduct(
+    market: MarketContext,
+    productId: Id<'Product'>,
+  ): Promise<ProductOfferTotals>;
 
   /**
-   * SELLER products with a pending revision, oldest submit first (then by product id), at most
-   * `limit` after `after` (the submit instant and product id of the last row of the previous
-   * page; null for the first). The name is the pending revision's, in `locale`, else null.
+   * How many Offers of the Market wait for their first publication (the review queue), of one
+   * seller when `filter.sellerId` is given.
+   */
+  pendingReviewCount(
+    market: MarketContext,
+    filter?: { readonly sellerId?: Id<'Seller'> },
+  ): Promise<number>;
+
+  /** How many SELLER products hold a pending revision (the review queue) that `filter` keeps. */
+  pendingRevisionCount(market: MarketContext, filter?: RevisionQueueFilter): Promise<number>;
+
+  /**
+   * SELLER products with a pending revision that `filter` keeps, oldest submit first (then by
+   * product id), at most `limit` after `after` (the submit instant and product id of the last row
+   * of the previous page; null for the first). The name is the pending revision's, in `locale`,
+   * else null.
    */
   listPendingRevisions(
     market: MarketContext,
@@ -110,6 +266,7 @@ export interface OwnCatalogReader {
       readonly limit: number;
     },
     locale: string,
+    filter?: RevisionQueueFilter,
   ): Promise<readonly PendingRevisionRow[]>;
 
   /**
@@ -121,6 +278,15 @@ export interface OwnCatalogReader {
     productIds: readonly Id<'Product'>[],
     locale: string,
   ): Promise<readonly ProductLabel[]>;
+
+  /**
+   * The stored sell-unit rows of one Offer (V5, design 2.4): the variant SKU and the selling
+   * switch of the variants that have a row. A variant with no row sells and has no SKU.
+   */
+  sellUnitsOf(
+    market: MarketContext,
+    offerId: Id<'Offer'>,
+  ): Promise<readonly OwnOfferSellUnitView[]>;
 
   /**
    * What the product form needs to be drawn: the fields of the family (published revisions, active

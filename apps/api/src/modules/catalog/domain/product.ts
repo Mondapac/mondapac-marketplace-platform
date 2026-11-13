@@ -4,16 +4,22 @@ import {
   ProductPaused,
   ProductResumed,
   ProductRetired,
-  ProductRevisionChangesRequested,
-  type OfferChangeReason,
+  ProductFamilyChanged,
+  ProductRevisionChangesRequestedV2,
+  type ProductChangeReason,
   ProductRevisionPublished,
   ProductRevisionSubmitted,
+  ProductTypeChanged,
   ProductWithdrawn,
+  EVENT_PRODUCT_TYPE_CODES,
+  type EventProductTypeCode,
   VariantAdded,
   VariantRemoved,
 } from './events';
 import type { RevisionOutcome } from './product-revision-policy';
 import type { ProductTypeCode, ProductTypeHandler, VariantModel } from './product-type-handler';
+import { configurableProductType } from './product-types/configurable';
+import { simpleProductType } from './product-types/simple';
 
 export const PRODUCT_SCOPES = ['PLATFORM', 'SELLER'] as const;
 export type ProductScope = (typeof PRODUCT_SCOPES)[number];
@@ -107,6 +113,33 @@ export interface ProductState {
   readonly pendingSubmittedAt: Temporal.Instant | null;
 }
 
+/** An event a command records: its definition and payload. */
+interface DomainEventRecord {
+  readonly definition: {
+    record(input: {
+      aggregateId: Id;
+      aggregateVersion: number;
+      occurredAt: Temporal.Instant;
+      payload: never;
+    }): PendingEvent;
+  };
+  readonly payload: unknown;
+}
+
+/** A feature set code (the CHECK of `products.family_code`). */
+const FAMILY_CODE = /^[a-z][a-z0-9_-]{0,63}$/;
+
+/**
+ * The type code an event names. The event vocabulary lists the two types core registers; a type
+ * outside the list is a defect to fix with a new event version, never a silent pass.
+ */
+function eventTypeCode(typeCode: ProductTypeCode): EventProductTypeCode {
+  if (!(EVENT_PRODUCT_TYPE_CODES as readonly string[]).includes(typeCode)) {
+    throw new RangeError('Product: the event vocabulary does not list this product type');
+  }
+  return typeCode as EventProductTypeCode;
+}
+
 /** Why a command was refused: a stable code, never data. */
 export type ProductRefusal =
   | { readonly code: 'product.scope-owner-mismatch' }
@@ -131,7 +164,10 @@ export type ProductRefusal =
   | { readonly code: 'product.already-paused' }
   | { readonly code: 'product.not-paused' }
   | { readonly code: 'product.not-withdrawable' }
-  | { readonly code: 'product.platform-only' };
+  | { readonly code: 'product.platform-only' }
+  | { readonly code: 'product.family-invalid' }
+  | { readonly code: 'product.not-simple' }
+  | { readonly code: 'revision.revert-changes-type' };
 
 /** `P` and eight digits: the case-sensitive, enumerable-but-meaningless code of data design 3.1. */
 export function formatProductCode(sequence: number): string {
@@ -294,8 +330,9 @@ export class Product {
 
   /**
    * Retires a variant that was never published, at a draft save (Ali B2): it may already carry a
-   * price, so its removal is announced. A Simple product's variant is retired only by
-   * {@link discard}; a published variant is retired by a publish (slice 11).
+   * price, so its removal is announced. While the product is Simple its one variant is retired only
+   * by {@link discard} (after Add sizes it is an ordinary variant of a Configurable product); a
+   * published variant is retired by a publish (slice 11).
    */
   removeProposedVariant(
     variantId: Id<'Variant'>,
@@ -413,6 +450,12 @@ export class Product {
     readonly baseRevisionId: Id<'ProductRevision'> | null;
     readonly outcome: RevisionOutcome;
     readonly authorKind: AuthorKind;
+    /**
+     * The feature set the revision was frozen under (resolved from its primary category). The
+     * product takes it with the pointer move and raises `catalog.product-family-changed` when
+     * it differs (CAT-10, decision ت۱۰).
+     */
+    readonly familyCode: string;
     readonly replacePending: boolean;
     readonly revisionVariantIds: readonly Id<'Variant'>[];
     readonly maxVariants: number;
@@ -435,6 +478,7 @@ export class Product {
     }
     const variants = this.#checkRevisionVariants(input.revisionVariantIds, input.maxVariants);
     if (!variants.ok) return variants;
+    if (!FAMILY_CODE.test(input.familyCode)) return err({ code: 'product.family-invalid' });
     const submitted = {
       definition: ProductRevisionSubmitted,
       payload: {
@@ -443,19 +487,45 @@ export class Product {
         scope: eventScope(state.scope),
       },
     };
+    const familyChanged = input.familyCode !== state.familyCode;
+    const events: readonly DomainEventRecord[] = familyChanged
+      ? [
+          submitted,
+          {
+            definition: ProductFamilyChanged,
+            payload: {
+              productId: state.id,
+              revisionId: input.revisionId,
+              scope: eventScope(state.scope),
+            },
+          },
+        ]
+      : [submitted];
     if (input.outcome.outcome === 'pending') {
       this.#applyRecords(
         input.now,
         {
           status: state.status === 'draft' ? 'unpublished' : state.status,
+          familyCode: input.familyCode,
           pendingRevisionId: input.revisionId,
           pendingSubmittedAt: input.now,
         },
-        [submitted],
+        events,
       );
       return ok({ published: false });
     }
-    this.#publish(input.revisionId, input.revisionVariantIds, input.now, [submitted]);
+    // The revision was frozen from this row in this unit, so its type is the row's.
+    this.#publish(
+      input.revisionId,
+      input.revisionVariantIds,
+      state.typeCode,
+      input.now,
+      events,
+      false,
+      {
+        familyCode: input.familyCode,
+      },
+    );
     return ok({ published: true });
   }
 
@@ -467,6 +537,8 @@ export class Product {
   approveRevision(input: {
     readonly revisionId: Id<'ProductRevision'>;
     readonly baseRevisionId: Id<'ProductRevision'> | null;
+    /** The type the pending revision was frozen with (M-9), not the row's. */
+    readonly revisionTypeCode: ProductTypeCode;
     readonly revisionVariantIds: readonly Id<'Variant'>[];
     readonly maxVariants: number;
     readonly now: Temporal.Instant;
@@ -483,19 +555,31 @@ export class Product {
     }
     const variants = this.#checkRevisionVariants(input.revisionVariantIds, input.maxVariants);
     if (!variants.ok) return variants;
-    this.#publish(input.revisionId, input.revisionVariantIds, input.now, []);
+    this.#publish(
+      input.revisionId,
+      input.revisionVariantIds,
+      input.revisionTypeCode,
+      input.now,
+      [],
+    );
     return ok(undefined);
   }
 
   /**
    * The reviewer sends the pending revision back (catalog design 4.2 row 5): the revision named
    * must be the pending one, else `review.not-current-revision`. The pending pointer clears; the
-   * published revision, the status and the working copy stay. The reason is a code of the Market
-   * list. Only a SELLER product has a review; the decision row is the store's.
+   * published revision, the status and the working copy stay. The reason is a code of the product
+   * list (D2). Only a SELLER product has a review; the decision row is the store's.
    */
   requestRevisionChanges(input: {
     readonly revisionId: Id<'ProductRevision'>;
-    readonly reasonCode: OfferChangeReason;
+    readonly reasonCode: ProductChangeReason;
+    /**
+     * The feature set the product had before the pending revision: the published revision's, or
+     * the Market default for a product never published. The family follows the accepted state
+     * only (decision ت۷), so the product goes back to it.
+     */
+    readonly revertFamilyCode: string;
     readonly now: Temporal.Instant;
   }): Result<void, ProductRefusal> {
     const state = this.#state;
@@ -504,17 +588,39 @@ export class Product {
     if (state.pendingRevisionId === null || state.pendingRevisionId !== input.revisionId) {
       return err({ code: 'review.not-current-revision' });
     }
-    this.#applyRecords(input.now, { pendingRevisionId: null, pendingSubmittedAt: null }, [
+    if (!FAMILY_CODE.test(input.revertFamilyCode)) return err({ code: 'product.family-invalid' });
+    const reverted = input.revertFamilyCode !== state.familyCode;
+    this.#applyRecords(
+      input.now,
       {
-        definition: ProductRevisionChangesRequested,
-        payload: {
-          productId: state.id,
-          revisionId: input.revisionId,
-          reasonCode: input.reasonCode,
-          scope: eventScope(state.scope),
-        },
+        familyCode: input.revertFamilyCode,
+        pendingRevisionId: null,
+        pendingSubmittedAt: null,
       },
-    ]);
+      [
+        {
+          definition: ProductRevisionChangesRequestedV2,
+          payload: {
+            productId: state.id,
+            revisionId: input.revisionId,
+            reasonCode: input.reasonCode,
+            scope: eventScope(state.scope),
+          },
+        },
+        ...(reverted
+          ? [
+              {
+                definition: ProductFamilyChanged,
+                payload: {
+                  productId: state.id,
+                  revisionId: input.revisionId,
+                  scope: eventScope(state.scope),
+                },
+              },
+            ]
+          : []),
+      ],
+    );
     return ok(undefined);
   }
 
@@ -527,6 +633,8 @@ export class Product {
     readonly revisionId: Id<'ProductRevision'>;
     /** The revision the override content was built from; it must be the published one (Hassan L2). */
     readonly fromRevisionId: Id<'ProductRevision'>;
+    /** The base revision's own type, which the override copies (catalog design 4.3, M-9). */
+    readonly revisionTypeCode: ProductTypeCode;
     readonly now: Temporal.Instant;
   }): Result<void, ProductRefusal> {
     const state = this.#state;
@@ -546,7 +654,7 @@ export class Product {
     const held = this.liveVariants
       .filter((variant) => variant.state === 'published')
       .map((variant) => variant.id);
-    this.#publish(input.revisionId, held, input.now, [], true);
+    this.#publish(input.revisionId, held, input.revisionTypeCode, input.now, [], true);
     return ok(undefined);
   }
 
@@ -581,9 +689,11 @@ export class Product {
   #publish(
     revisionId: Id<'ProductRevision'>,
     named: readonly Id<'Variant'>[],
+    revisionTypeCode: ProductTypeCode,
     now: Temporal.Instant,
-    before: readonly { definition: typeof ProductRevisionSubmitted; payload: unknown }[],
+    before: readonly DomainEventRecord[],
     keepPending = false,
+    extra: Partial<ProductState> = {},
   ): void {
     const state = this.#state;
     const dropped = state.variants.filter(
@@ -598,6 +708,7 @@ export class Product {
     this.#applyRecords(
       now,
       {
+        ...extra,
         status: 'published',
         publishedRevisionId: revisionId,
         ...(keepPending ? {} : { pendingRevisionId: null, pendingSubmittedAt: null }),
@@ -616,6 +727,7 @@ export class Product {
             revisionId,
             previousRevisionId: state.publishedRevisionId,
             scope: eventScope(state.scope),
+            typeCode: eventTypeCode(revisionTypeCode),
           },
         },
         ...dropped.map((variant) => ({
@@ -624,6 +736,115 @@ export class Product {
         })),
       ],
     );
+  }
+
+  /**
+   * The guards of Add sizes that only the aggregate can answer, in the order of design 4.2a: the
+   * author rule (CAT-43), a product that has not ended, a Simple type (`product.not-simple`) and a
+   * pending revision that `replacePending` does not allow. The use case asks it before it reads
+   * anything else, so the first failure answers; {@link addSizes} asks it again.
+   */
+  checkAddSizes(input: {
+    readonly authorKind: AuthorKind;
+    readonly replacePending: boolean;
+  }): Result<void, ProductRefusal> {
+    const state = this.#state;
+    const refusal = authorRefusal(state.scope, input.authorKind);
+    if (refusal !== null) return err(refusal);
+    if (!EDITABLE_STATUSES.includes(state.status)) return err({ code: 'product.not-editable' });
+    if (
+      state.typeCode !== simpleProductType.typeCode ||
+      state.variantModel !== simpleProductType.variantModel
+    ) {
+      return err({ code: 'product.not-simple' });
+    }
+    if (state.pendingRevisionId !== null && !input.replacePending) {
+      return err({ code: 'revision.pending-exists' });
+    }
+    return ok(undefined);
+  }
+
+  /**
+   * Add sizes (catalog design 4.2a, 2.3 M-9; variants V9, CAT-10 change): a Simple product becomes
+   * Configurable, once and never back. The type and the variant model change on the product row
+   * and, through the foreign key, on its one variant, whose id, number, code, prices, stock and sell
+   * units stay (they key on the variant id). Nothing is published: the next submit freezes a
+   * Configurable revision.
+   *
+   * A pending revision (allowed by `replacePending`) is superseded: its pointer clears and, as a
+   * reject does, the family goes back to `revertFamilyCode`, the published revision's feature set
+   * or the Market default for a product never published. The working copy keeps the pending
+   * content, so nothing is lost. Records `catalog.product-type-changed.v1`, then
+   * `catalog.product-family-changed.v1` when the family went back. The use case writes the working
+   * copy's axes and the variant's option values in the same unit.
+   */
+  addSizes(input: {
+    readonly authorKind: AuthorKind;
+    readonly replacePending: boolean;
+    /** The feature set the product goes back to when a pending revision is superseded. */
+    readonly revertFamilyCode: string;
+    readonly now: Temporal.Instant;
+  }): Result<
+    {
+      readonly variantId: Id<'Variant'>;
+      readonly supersededRevisionId: Id<'ProductRevision'> | null;
+    },
+    ProductRefusal
+  > {
+    const checked = this.checkAddSizes(input);
+    if (!checked.ok) return checked;
+    const state = this.#state;
+    const live = this.liveVariants;
+    const variant = live[0];
+    // A Simple product has exactly one variant and keeps it while it can be edited (M-9).
+    if (live.length !== 1 || variant === undefined) {
+      throw new Error('Product.addSizes: a Simple product must hold exactly one live variant');
+    }
+    const superseded = state.pendingRevisionId;
+    if (superseded !== null && !FAMILY_CODE.test(input.revertFamilyCode)) {
+      return err({ code: 'product.family-invalid' });
+    }
+    const familyReverted = superseded !== null && input.revertFamilyCode !== state.familyCode;
+    this.#applyRecords(
+      input.now,
+      {
+        typeCode: configurableProductType.typeCode,
+        variantModel: configurableProductType.variantModel,
+        ...(superseded === null
+          ? {}
+          : {
+              familyCode: input.revertFamilyCode,
+              pendingRevisionId: null,
+              pendingSubmittedAt: null,
+            }),
+      },
+      [
+        {
+          definition: ProductTypeChanged,
+          payload: {
+            productId: state.id,
+            scope: eventScope(state.scope),
+            fromTypeCode: 'simple',
+            toTypeCode: 'configurable',
+            variantId: variant.id,
+            publishedRevisionId: state.publishedRevisionId,
+          },
+        },
+        ...(familyReverted
+          ? [
+              {
+                definition: ProductFamilyChanged,
+                payload: {
+                  productId: state.id,
+                  revisionId: superseded,
+                  scope: eventScope(state.scope),
+                },
+              },
+            ]
+          : []),
+      ],
+    );
+    return ok({ variantId: variant.id, supersededRevisionId: superseded });
   }
 
   /**
@@ -784,17 +1005,7 @@ export class Product {
   #applyRecords(
     now: Temporal.Instant,
     changes: Partial<ProductState>,
-    records: readonly {
-      readonly definition: {
-        record(input: {
-          aggregateId: Id;
-          aggregateVersion: number;
-          occurredAt: Temporal.Instant;
-          payload: never;
-        }): PendingEvent;
-      };
-      readonly payload: unknown;
-    }[],
+    records: readonly DomainEventRecord[],
   ): void {
     const base = this.#persistedVersion ?? 0;
     for (const record of records) {
@@ -823,4 +1034,21 @@ export class Product {
  */
 export function variantCodeOf(productCode: string, variantNo: number): string {
   return `${productCode}-${String(variantNo).padStart(2, '0')}`;
+}
+
+/**
+ * The type guard of a revert (catalog design 4.2 row 6; M-9): a revert to an old revision whose
+ * type is not the product's is refused, so a Configurable product never goes back to Simple
+ * content. `revisionTypeCode` is the old revision's own `typeCode`, the product's the row's.
+ *
+ * TODO(revert use cases, design 4.2 row 6): `own-product.revert` and `platform-product.revert` do
+ * not exist yet and nothing calls this. The first of them calls it before it writes anything and
+ * answers `revision.revert-changes-type`; that code then joins the HTTP status maps
+ * (`PLATFORM_PRODUCT_STATUS`) with a use-case test.
+ */
+export function revertTypeRefusal(
+  productTypeCode: ProductTypeCode,
+  revisionTypeCode: ProductTypeCode,
+): ProductRefusal | null {
+  return productTypeCode === revisionTypeCode ? null : { code: 'revision.revert-changes-type' };
 }

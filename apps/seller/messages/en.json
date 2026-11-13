@@ -94,17 +94,19 @@
     "products": "Products",
     "offers": "Offers",
     "suggestions": "Value suggestions",
+    "tagSuggestions": "Tag suggestions",
     "orders": "Orders",
     "reviews": "Reviews",
     "earnings": "Earnings",
-    "expandAll": "Expand all",
-    "collapseAll": "Collapse all",
     "group": {
       "orders": "Orders",
       "catalogue": "Catalogue",
       "money": "Money"
     },
-    "settings": "Settings"
+    "settings": "Settings",
+    "import": "Import",
+    "performance": "Performance",
+    "categories": "Shelves"
   },
   "home": {
     "title": "Dashboard",
@@ -876,13 +878,99 @@
       "unnamed": "Unnamed product",
       "pending": "Waiting for review",
       "back": "Back to products",
-      "empty": {
-        "title": "No products yet",
-        "body": "Products you add will appear here with their review status."
+      "subtitle": "{count, plural, one {# product} other {# products}} in your store",
+      "add": "Add product",
+      "import": "Import",
+      "view-only": {
+        "title": "View only",
+        "body": "Your role can see products but not add or change them."
+      },
+      "tabs": "Product views",
+      "tab": {
+        "all": "All",
+        "drafts": "Drafts",
+        "live": "Live",
+        "inactive": "Inactive",
+        "in-review": "In review"
+      },
+      "search": {
+        "label": "Search products",
+        "placeholder": "Search by product name or code"
+      },
+      "filter": {
+        "button": "Filter",
+        "title": "Filter products",
+        "match-all": "Match all conditions",
+        "field": "Field",
+        "field-placeholder": "Field",
+        "is": "is",
+        "value": "Value",
+        "value-placeholder": "Value",
+        "remove": "Remove condition",
+        "add": "Add condition",
+        "cancel": "Cancel",
+        "apply": "Apply",
+        "name": {
+          "status": "Status",
+          "categoryId": "Category",
+          "paused": "Paused",
+          "typeCode": "Product type"
+        },
+        "paused": {
+          "true": "Yes",
+          "false": "No"
+        }
+      },
+      "sort": {
+        "button": "Sort",
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "name": "Name",
+          "updated": "Last changed",
+          "created": "Created"
+        },
+        "name": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "columns": {
+        "button": "Columns",
+        "title": "Columns",
+        "help": "Choose what the table shows. Saved for you only, in this browser.",
+        "always": "Always shown",
+        "fixed": {
+          "product": "Product",
+          "status": "Status",
+          "category": "Category"
+        },
+        "optional": {
+          "code": "Product code",
+          "updated": "Last changed",
+          "created": "Created",
+          "offers": "Offers",
+          "type": "Product type"
+        },
+        "up": "Move {column} up",
+        "down": "Move {column} down",
+        "reset": "Reset to default",
+        "save": "Save"
       },
       "col": {
         "product": "Product",
-        "code": "Product code"
+        "category": "Category",
+        "status": "Status",
+        "code": "Product code",
+        "updated": "Last changed",
+        "created": "Created",
+        "offers": "Offers",
+        "type": "Product type"
       },
       "status": {
         "draft": "Draft",
@@ -892,7 +980,133 @@
         "retired": "Retired",
         "unknown": "Unknown"
       },
-      "new": "New product"
+      "paused": "Paused",
+      "in-review": "In review",
+      "no-category": "No category",
+      "chip": "{field} is {value}",
+      "chip-remove": "Remove filter {filter}",
+      "clear-all": "Clear all",
+      "match": "{count, plural, one {# product matches} other {# products match}}",
+      "range": "{from}–{to} of {total} products",
+      "paging": {
+        "rows-per-page": "Rows per page",
+        "previous": "Previous",
+        "next": "Next",
+        "pages": "Pages",
+        "page": "Page {page}",
+        "narrow": "Narrow the list to see more.",
+        "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other products."
+      },
+      "sheet-close": "Close",
+      "loading": "Loading products",
+      "error": {
+        "title": "Products could not be loaded",
+        "unavailable": "Try again. If it keeps happening, check your connection.",
+        "denied": "You don’t have access to products.",
+        "too-broad": "Too many products to sort by name. Narrow the search or sort by date."
+      },
+      "empty": {
+        "none": "No products yet",
+        "none-help": "Add a product or import a list to start your store.",
+        "no-match": "No products match",
+        "no-match-help": "Try another search or remove a filter.",
+        "view": {
+          "all": "No products",
+          "drafts": "No drafts",
+          "live": "No live products",
+          "inactive": "No inactive products",
+          "in-review": "No products in review"
+        }
+      },
+      "export-button": "Export",
+      "select": {
+        "page": "Select all products on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "saved": {
+        "manage-link": "Manage filters",
+        "save-link": "Save filter…",
+        "summary-search": "Search “{q}”",
+        "summary-sort": "Sorted by {field}, {order}",
+        "cancel": "Cancel",
+        "save": {
+          "title": "Save this filter",
+          "name": "Name",
+          "who": "Who can use it",
+          "submit": "Save filter",
+          "everyone-help": "Everyone: everyone in your store gets it as a tab.",
+          "own-only": "Saved for you only. Your role can’t share filters."
+        },
+        "visibility": {
+          "me": "Only me",
+          "everyone": "Everyone"
+        },
+        "error": {
+          "name-taken": "A filter with this name already exists. Choose another name.",
+          "name-empty": "Enter a name for the filter.",
+          "limit": "You can keep up to {max} saved filters. Delete one to save another.",
+          "shared-limit": "Up to {max} filters can be shared with everyone in your store. Delete or unshare one first.",
+          "denied": "Your role can’t do this.",
+          "acting-as": "Filters can’t be changed while you are signed in as this seller.",
+          "not-found": "This filter is no longer there. The list has been refreshed.",
+          "unavailable": "The filter could not be saved. Try again."
+        },
+        "toast": {
+          "saved": "Saved “{name}”",
+          "updated": "Updated “{name}”",
+          "deleted": "Deleted “{name}”"
+        },
+        "manage": {
+          "title": "Manage filters",
+          "close": "Close",
+          "edit": "Edit",
+          "edit-named": "Edit {name}",
+          "delete": "Delete",
+          "delete-named": "Delete {name}",
+          "delete-confirm": "Delete filter",
+          "delete-own": "Delete “{name}”? It is removed from your tabs.",
+          "delete-shared": "Delete “{name}”? It is removed from the tabs of everyone in your store.",
+          "save": "Save changes",
+          "shared-by-other": "Shared by a team member",
+          "empty": "No saved filters yet",
+          "empty-help": "Set up a search or filters, then choose Save filter to keep them as a tab.",
+          "help-share": "Rename, change who can use a filter, or delete it.",
+          "help-own": "Rename or delete your filters. Your role can’t share filters."
+        }
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# product selected} other {# products selected}}",
+        "select-all": "Select all {count, number} products in this filter",
+        "clear": "Clear selection",
+        "menu": {
+          "export": "Export",
+          "export-help": "CSV or XLSX, with the columns shown"
+        }
+      },
+      "export": {
+        "title": "Export {count, plural, one {# product} other {# products}}",
+        "body": "The file has the columns shown in the list.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "confirm": "Export",
+        "cancel": "Cancel",
+        "pending": "Preparing your export…",
+        "done": "{count, plural, one {# product exported.} other {# products exported.}}",
+        "error": {
+          "unavailable": "The export didn’t work. Try again.",
+          "denied": "You don’t have access to export products.",
+          "too-large": "Too many products to export ({total}). Narrow the list to {max} or fewer, then try again.",
+          "too-many-selected": "You can export up to {max} selected products at a time.",
+          "too-broad": "Too many products to put in order by name. Sort by Last changed or narrow the list, then try again.",
+          "not-found": "Some of the selected products are no longer in your store. Reload the list and try again.",
+          "invalid": "That export can’t be done. Reload the page and try again."
+        }
+      }
     },
     "product": {
       "type": "Type",
@@ -1003,19 +1217,19 @@
     },
     "edit": {
       "title": "Edit product",
-      "locale": "Texts ({locale})",
       "field": {
-        "name": "Name",
+        "name": "Title",
+        "name-help": "In English. It is translated when a new buyer language is published.",
         "shortDescription": "Short description",
-        "description": "Description"
+        "description": "Description",
+        "name-claim": "Product text can't include certification words like \"halal\". Badges come from seller offers."
       },
       "save": "Save draft",
       "submit": "Submit for review",
       "back": "Back to product",
       "reload": "Reload the product",
       "replace-pending": "Replace the revision that is waiting for review",
-      "refused": "Some texts were not saved. Change the fields marked below.",
-      "refused-field": "This text was not saved because it makes a claim that needs a matching certificate.",
+      "refused-field": "This text was not saved because it holds a claim or a hidden character.",
       "notice": {
         "saved": "Draft saved.",
         "submitted": "Submitted for review.",
@@ -1040,8 +1254,8 @@
         "partial": "The new variant was created but its details were not saved. Press \"Save draft\" again; do not reload the page.",
         "suggestion-pending": "A value you suggested is still waiting for a reviewer, so a required field is empty. You can submit once it is decided."
       },
-      "attributes": "Details",
-      "classification": "Categories and tax",
+      "attributes": "Product details",
+      "classification": "Category and tags",
       "categories": "Categories",
       "categories-none": "No categories are available yet.",
       "tax-category": "Tax category",
@@ -1064,8 +1278,39 @@
         "axes-body": "Your ticked combinations are cleared and you start the grid again. Combinations that were never saved are deleted.",
         "axes-confirm": "Clear and change",
         "remove-dialog": "Remove this variant?",
-        "remove-body": "{count, plural, one {This variant has live prices and stock. Removing it ends them. Adding it again later starts from empty.} other {These variants have live prices and stock. Removing them ends them. Adding them again later starts from empty.}}",
-        "remove-confirm": "Remove"
+        "remove-body": "{count, plural, one {This variant may have prices and stock. Removing it ends them. Adding it again later starts from empty.} other {These variants may have prices and stock. Removing them ends them. Adding them again later starts from empty.}}",
+        "remove-confirm": "Remove",
+        "step-details": "4. Barcode, shipping and photos for each variant",
+        "details-help": "All optional. Shipping left empty uses the product's own values. Photos come from the product's photos above.",
+        "details-none": "Tick a combination first.",
+        "gtin": "Barcode (GTIN)",
+        "gtin-help": "8, 12, 13 or 14 digits.",
+        "weight": "Shipping weight (g)",
+        "length": "Length (mm)",
+        "width": "Width (mm)",
+        "height": "Height (mm)",
+        "photos": "Photos of this variant",
+        "photos-help": "{count, plural, =0 {No photos picked: the product's photos show.} one {1 photo picked. The first one is the main photo.} other {# photos picked. The first one is the main photo.}}",
+        "photos-none": "Add photos to the product first, then pick them here.",
+        "photo-alt": "Photo {number}",
+        "problem": {
+          "gtin": {
+            "invalid": "Not a valid barcode. Check the digits.",
+            "duplicate": "Another variant of this product has the same barcode."
+          },
+          "size": {
+            "invalid": "Enter a whole number, at least 1 and at most {max}.",
+            "required": "Enter all three sides, or none."
+          },
+          "images": "A variant can pick at most {max} photos.",
+          "blocked": "Fix the highlighted variant fields before saving."
+        },
+        "notice": {
+          "duplicate": "{count, plural, one {A barcode of this draft is already used by another product.} other {# barcodes of this draft are already used by other products.}} This is advice only: you can still save.",
+          "sell-on": "Product {code} already carries one of your barcodes. You may sell on it instead of making a new product."
+        },
+        "step-details-adding": "3. Barcode, shipping and photos for each variant",
+        "axis-adding": "{type} (being added)"
       },
       "photos": {
         "title": "Photos",
@@ -1109,15 +1354,21 @@
         "name": "name",
         "primary-image": "main image",
         "variant-removed": "removed variants",
+        "gtin-changed": "variant barcodes (GTIN)",
+        "axis-added": "the new variant option and variant names",
+        "topics": "tags",
         "images": "images"
       },
       "attribute": {
         "unset": "Not set",
         "yes": "Yes",
         "no": "No",
+        "unit": "Unit",
         "problem": {
           "whole": "Enter a whole number.",
           "decimal": "Enter a number, like 12.5.",
+          "places": "{places, plural, =0 {Enter a whole number.} one {Use at most # decimal place.} other {Use at most # decimal places.}}",
+          "unit": "Pick one of the listed units.",
           "range": "Enter a value within the allowed range.",
           "length": "Use at most {length} characters."
         },
@@ -1149,6 +1400,96 @@
           "approved": "A reviewer added “{label}” to the list. Pick it above.",
           "mapped": "A reviewer matched “{label}” to a value already on the list. Pick that value above."
         }
+      },
+      "product-card": "Product",
+      "page": {
+        "untitled": "Untitled product",
+        "subtitle": "Your product · {market} · {code}"
+      },
+      "bar": {
+        "region": "Unsaved changes",
+        "unsaved": "Unsaved changes",
+        "errors": "{count, plural, one {# field needs fixing} other {# fields need fixing}}",
+        "discard": "Discard",
+        "save-draft": "Save draft",
+        "save-revision": "Save revision"
+      },
+      "status": {
+        "title": "Status",
+        "waiting": "Waiting for review",
+        "draft-help": "We check your product before buyers can find it. Save draft keeps your work.",
+        "published-help": "Changes you submit are checked before they replace what buyers see.",
+        "pending-help": "Your latest version is waiting for review. You can still edit and submit again.",
+        "blockers": "To submit: {items}.",
+        "title-item": "add a title",
+        "category-item": "choose a category",
+        "tax-item": "choose the tax category",
+        "details-item": "fill in the required details"
+      },
+      "organisation": {
+        "title": "Organisation",
+        "market": "Market",
+        "scope": "Scope",
+        "scope-own": "Your product",
+        "type": "Type"
+      },
+      "paused": {
+        "title": "Mondapac paused this product.",
+        "body": "Buyers can't find it and your offers are off sale."
+      },
+      "leave": {
+        "title": "Leave this page?",
+        "message": "Your changes to {title} aren't saved.",
+        "message-untitled": "Your changes aren't saved.",
+        "stay": "Cancel",
+        "leave": "Leave without saving"
+      },
+      "tags": {
+        "label": "Tags",
+        "placeholder": "Choose tags",
+        "help": "Optional. Tags help shoppers find this product. Tag changes are checked by us before they go live.",
+        "archived-help": "Archived tags can't be added. A tag the live product already has can stay.",
+        "archived-chip": "{name} (archived)",
+        "unknown-chip": "Unavailable tag",
+        "load-error": "Tags can't be loaded right now.",
+        "load-throttled": "Too many requests. Wait a moment and try again.",
+        "suggest": "Can't find a tag? Suggest one",
+        "suggest-aria": "Can't find a tag? Suggest one for this product",
+        "suggest-help": "An approved tag is not added automatically. Come back and add it here.",
+        "too-many": "Pick {max} tags or fewer.",
+        "archived-problem": "{name} is archived. Remove it.",
+        "unknown-problem": "A tag on this product no longer exists. Remove it.",
+        "duplicate-problem": "{name} is picked twice. Remove one.",
+        "group": {
+          "occasion": "Occasion",
+          "cuisine": "Cuisine",
+          "use": "Use"
+        },
+        "labels": {
+          "search": "Search tags",
+          "no-results": "No tags found.",
+          "loading": "Loading…",
+          "retry": "Try again",
+          "remove": "Remove {name}",
+          "limit-reached": "You can pick up to {max} tags. Remove one to add another.",
+          "none": "None"
+        }
+      },
+      "second": {
+        "title": "Add a second type",
+        "help": "This product comes in one type today. You can add one more, such as colour next to size. You can do this once.",
+        "start": "Add a second type",
+        "pick": "New type",
+        "choose": "Choose",
+        "add": "Add this type",
+        "cancel": "Cancel",
+        "values-title": "2. Second type: {type}",
+        "review": "Adding a second type goes to review before it is live. It changes how every variant is named.",
+        "no-review": "Adding a second type is published when you submit, like your other changes. It changes how every variant is named.",
+        "values-help": "Choose the {type} of every variant. All are required.",
+        "value-for": "{type} of {variant}",
+        "remove": "Don't add a second type",
+        "missing": "Choose the new type's value for every variant before you submit."
       }
     },
     "offer-edit": {
@@ -1197,6 +1538,129 @@
       }
     },
     "not-given": "Not given",
+    "variants-table": {
+      "title": "Prices and stock by variant",
+      "tab": "Variants",
+      "variant": "Variant",
+      "variant-n": "Variant {number}",
+      "select": "Select {variant}",
+      "select-all": "Select all variants",
+      "price-for": "Price for {variant}",
+      "held": "Waiting for review: {amount}",
+      "special": {
+        "running": "{amount}, running",
+        "scheduled": "{amount}, scheduled"
+      },
+      "special-link": "Set or end a special price on the Prices page.",
+      "bulk": "Bulk actions",
+      "selected": "{count, plural, one {# variant selected} other {# variants selected}}",
+      "set-price": "Set price",
+      "increase": "Increase by %",
+      "set-stock": "Set stock",
+      "location": "Location",
+      "bulk-label": {
+        "price": "New price ({currency}, GST included)",
+        "increase": "Increase prices by (%)",
+        "stock": "Units in stock"
+      },
+      "apply": "{count, plural, one {Apply to # variant} other {Apply to # variants}}",
+      "bulk-help": "Bulk actions only fill the cells below. Nothing is saved until you press Save.",
+      "skipped": "{count, plural, one {# variant has no price yet and was left as it is.} other {# variants have no price yet and were left as they are.}}",
+      "save": "{count, plural, =0 {Save changes} one {Save # change} other {Save # changes}}",
+      "discard": "Discard changes",
+      "saved": "{count, plural, one {Saved # change.} other {Saved # changes.}}",
+      "partial": "Saved {done}, {failed} could not be saved. The cells that failed show why.",
+      "throttled": "Too many changes at once. Saved {done}; the rest are kept as drafts. Press Save again in {minutes, plural, one {# minute} other {# minutes}}.",
+      "throttled-cell": "Not saved yet: too many changes at once. Try again shortly.",
+      "cancelled": "Nothing was saved. The confirmation was cancelled.",
+      "units": {
+        "sku": "SKU",
+        "selling": "On sale",
+        "sku-for": "SKU for {variant}",
+        "selling-for": "On sale: {variant}",
+        "off-sale": "Off sale",
+        "sizes": "Sizes you sell",
+        "sizes-help": "Untick a size to take it off sale. You keep its price and stock and can put it back any time.",
+        "last-hint": "At least one size must stay on sale.",
+        "sku-help": "Empty SKU uses your offer SKU plus the variant number, e.g. {example}.",
+        "error": {
+          "format": "Use 1 to 64 letters, digits or symbols, with no spaces.",
+          "duplicate": "This SKU is typed on more than one variant. Each SKU must be different.",
+          "sku-taken": "You already use this SKU. Pick a different one.",
+          "sku-taken-table": "One of the SKUs you entered is already in use. Check the fields marked below.",
+          "none-selling": "At least one size must stay on sale. Turn one on before you save.",
+          "invalid": "The SKU or Selling changes were not accepted. Check the SKU fields and try again.",
+          "stale": "The sizes changed somewhere else. Reload the page and try again.",
+          "not-found": "This offer was not found. Reload the page.",
+          "denied": "You don't have permission to change SKUs or what you sell.",
+          "not-eligible": "Your seller account can't change this right now.",
+          "csrf": "Your session expired. Reload the page and try again.",
+          "unavailable": "SKUs and Selling are unavailable right now. Try again later.",
+          "unknown": "Something went wrong. Try again.",
+          "sku-maybe": "You may already use this SKU. Change it if so."
+        },
+        "reload": "Reload"
+      },
+      "file": {
+        "export": "Export CSV",
+        "export-drafts": "Save or discard your changes before exporting, so the file matches what is saved.",
+        "import": "Import CSV",
+        "refusal": {
+          "file-too-large": "That file is larger than {maxMb} MB.",
+          "file-unsupported-type": "That is not a CSV text file.",
+          "file-unreadable": "The file could not be read. Save it as UTF-8 CSV and try again.",
+          "file-too-many-columns": "The file has more than {max} columns.",
+          "file-cell-too-long": "A cell in the file is longer than {max} characters.",
+          "file-no-rows": "The file has no variant rows.",
+          "import-too-many-rows": "The file has more than {max} variants, the most a product may have.",
+          "import-column-missing": "The file needs the column {columns}.",
+          "import-column-refused": "These columns can’t be imported: {columns}. Approvals, certifications, handling and status are never set from a file.",
+          "import-column-not-allowed": "Your role can’t change these columns: {columns}. Remove them from the file."
+        },
+        "issue": {
+          "import-other-product": "This row is for another product. It was skipped.",
+          "import-variant-not-found": "No variant of this product matches this row. Variants are never added from a file.",
+          "import-variant-retired": "This variant was retired and can’t be changed.",
+          "import-key-conflict": "The variant code and the options in this row name different variants.",
+          "import-option-missing": "The option {column} is missing.",
+          "import-option-unknown": "The option in {column} is not one of this product’s options. Options are never added from a file.",
+          "import-key-conflict-sku": "The SKU in this row belongs to a different variant than the variant code or options in this row.",
+          "import-duplicate-row-sku": "Another row asks for the same SKU. Both were skipped.",
+          "import-duplicate-row": "Another row in the file is for the same variant. Both were skipped.",
+          "import-invalid-value": "The value in {column} is not valid.",
+          "import-none-selling": "At least one variant must keep selling, so the Selling changes in the file were skipped.",
+          "import-read-only-column": "{column} is for information only and was not changed."
+        },
+        "preview": {
+          "title": "Check the changes",
+          "help": "Only cells that differ from what you have now are listed. Nothing is saved until you apply them and press Save.",
+          "none": "The file has no changes.",
+          "changes": "Changes from the file",
+          "row": "Row",
+          "variant": "Variant",
+          "cell": "Cell",
+          "change": "Current → File",
+          "sku": "Variant SKU",
+          "selling": "Selling",
+          "selling-value": {
+            "yes": "Yes",
+            "no": "No"
+          },
+          "price": "Price",
+          "stock": "Stock at {location}",
+          "from-to": "{from} → {to}",
+          "stock-changed": "Apply anyway: {variant} at {location}",
+          "stock-changed-help": "The stock changed since you exported this file, or the file has no exported stock level (for example a file made by hand).",
+          "stale-help": "A change with a tick box is not applied unless you tick it. Export the file again to start from today’s stock.",
+          "errors": "{count, plural, one {# row has a problem and was skipped} other {# rows have a problem and were skipped}}",
+          "warnings": "{count, plural, one {# note} other {# notes}}",
+          "issue": "Row {row}: {message}",
+          "ignored": "These columns are not used: {columns}.",
+          "cancel": "Cancel",
+          "apply": "{count, plural, =0 {Nothing to apply} one {Apply # change} other {Apply # changes}}"
+        }
+      }
+    },
     "suggestions": {
       "title": "Value suggestions",
       "intro": "When a field of your product does not have the value you need, suggest it here. A reviewer adds it for everyone, matches it to a value already on the list, or tells you why not. We also email you the answer.",
@@ -1264,6 +1728,577 @@
         "send": "Send suggestion",
         "cancel": "Cancel",
         "value-exists": "That value is already on the list. Pick it in the product form."
+      }
+    },
+    "tagSuggestions": {
+      "title": "Tag suggestions",
+      "intro": "Ask for a tag the list does not have. We review each one and email you the result.",
+      "back": "Back to tag suggestions",
+      "sent": "Suggestion sent. We will email you the result.",
+      "used": "{count} of {max} open suggestions used",
+      "full": "You have {max} open suggestions, the most allowed. Wait for a decision before suggesting another.",
+      "filter": "Filter by status",
+      "filters": {
+        "all": "All",
+        "open": "Open",
+        "approved": "Approved",
+        "mapped": "Mapped",
+        "rejected": "Rejected"
+      },
+      "col": {
+        "tag": "Tag",
+        "product": "Product",
+        "status": "Status",
+        "outcome": "Outcome",
+        "sent": "Sent"
+      },
+      "status": {
+        "open": "Open",
+        "approved": "Approved",
+        "mapped": "Mapped",
+        "rejected": "Rejected",
+        "unknown": "Unknown"
+      },
+      "outcome": {
+        "open": "Waiting for review",
+        "approved": "New tag “{name}” created",
+        "mapped": "Matched to the existing tag “{name}”",
+        "rejected": "Rejected",
+        "rejected-reason": "Rejected: {reason}",
+        "add-it": "Add it to your product from the Tags field. Approving does not add it for you.",
+        "retired": "This tag has since been retired and can no longer be added.",
+        "open-product": "Open product"
+      },
+      "product-gone": "Product no longer available",
+      "empty": {
+        "title": "No tag suggestions yet",
+        "body": "If the tag you need is missing, suggest it. We email you when it is decided."
+      },
+      "empty-filtered": {
+        "title": "Nothing in this status",
+        "body": "Choose another tab to see your other suggestions."
+      },
+      "more": "Load more",
+      "new": {
+        "start": "Suggest a tag",
+        "title": "Suggest a tag",
+        "intro": "Tags help shoppers find your product. Suggest one only if you cannot find it in the Tags field. Nothing changes on your product: once approved, add the tag yourself.",
+        "product": "Product",
+        "product-placeholder": "Choose a product",
+        "product-help": "The product this tag is for.",
+        "no-products": {
+          "title": "Create a product first",
+          "body": "A tag suggestion is made for one of your products. Create a product, then come back.",
+          "action": "New product"
+        },
+        "label": "Tag",
+        "help": "2 to 40 characters, in {language}. For example: Eid gifts.",
+        "counter": "{count} / 40",
+        "used": "You have used {count} of {max} open suggestions.",
+        "send": "Send suggestion",
+        "cancel": "Cancel",
+        "back-to-product": "Back to my product",
+        "view-suggestions": "View my suggestions",
+        "error": {
+          "length": "Use 2 to 40 characters.",
+          "exists": "A tag like this already exists. Search for it in the Tags field of your product.",
+          "already-open": "You already suggested this tag and it is waiting for review.",
+          "limit": "You can have up to {max} open suggestions. Wait for a decision, then try again.",
+          "invalid": "Use 2 to 40 characters of plain text.",
+          "claim-word": "A tag cannot claim a certification such as halal or organic. Certifications are added from your certificates.",
+          "unchecked": "This text could not be checked. Try different words.",
+          "product-not-found": "That product was not found. Choose another.",
+          "product-not-editable": "That product cannot be changed right now. Choose another.",
+          "not-eligible": "Your seller account cannot suggest tags yet.",
+          "denied": "You do not have permission to suggest tags.",
+          "csrf": "Your session expired. Reload the page.",
+          "throttled": "Too many requests. Wait a moment and try again.",
+          "unreachable": "Could not reach the server. Try again.",
+          "unknown": "Something went wrong. Try again."
+        }
+      }
+    },
+    "import": {
+      "title": "Import products",
+      "subtitle": "Add or update many products and offers from one file.",
+      "back": "Products",
+      "cancel": "Cancel",
+      "loading": "Loading the import",
+      "problem-load": "The import page could not be loaded. Try again.",
+      "no-access": "You don’t have access to import products.",
+      "steps": {
+        "label": "Import steps",
+        "upload": "Upload file",
+        "check": "Check file",
+        "import": "Import",
+        "done": "(done)"
+      },
+      "mode": {
+        "legend": "What is the file for?",
+        "my-products": {
+          "label": "My products",
+          "help": "Create or update your own products and the offers on them. Products stay drafts until you submit them."
+        },
+        "sell-from-catalogue": {
+          "label": "Sell from the catalogue",
+          "help": "Create offers on products that are already in the catalogue, by product code."
+        }
+      },
+      "upload": {
+        "title": "Upload a file",
+        "sub": "Nothing is saved until you check the file and confirm the import.",
+        "drag": "Drag a CSV or XLSX file here",
+        "or": "or",
+        "choose": "Choose file",
+        "limits": "Up to {rows, number} rows and {size, number} MB"
+      },
+      "template": {
+        "title": "Template",
+        "sub-my-products": "Fill in the template by hand or export from your system with the same columns. One row is one product, or one variant of a product.",
+        "sub-sell-from-catalogue": "Fill in the template by hand or export from your system with the same columns. One row is one offer on a catalogue product.",
+        "download-csv": "CSV template",
+        "download-xlsx": "XLSX template",
+        "required": "Required",
+        "not-imported": "Price, cost, stock and certification columns are not imported. Set prices and stock in Prices and Stock; certification belongs to each offer, not to the file."
+      },
+      "column": {
+        "sku": "Seller SKU",
+        "condition": "Condition",
+        "offerDescription": "Offer description",
+        "productCode": "Product code",
+        "title": "Title",
+        "category": "Main category",
+        "type": "Product type",
+        "shortDescription": "Short description",
+        "description": "Description",
+        "brand": "Brand",
+        "taxCategory": "Tax category",
+        "images": "Images",
+        "gtin": "Barcode (GTIN)",
+        "weight": "Weight (g)",
+        "length": "Length (mm)",
+        "width": "Width (mm)",
+        "height": "Height (mm)",
+        "option": "Option",
+        "attribute": "Attribute",
+        "row": "Whole row"
+      },
+      "column-help": {
+        "sku": "Your own code for this product or variant",
+        "condition": "For example New",
+        "offerDescription": "Plain text shown on your offer",
+        "productCode": "The catalogue product’s code",
+        "title": "Same title on every row of a product",
+        "category": "A category name as it appears in the catalogue",
+        "type": "A product type your store may sell",
+        "shortDescription": "Plain text",
+        "description": "Plain text",
+        "brand": "The brand name",
+        "taxCategory": "A tax category code; the market default is used when empty",
+        "images": "File names of the photos, added in the photo step after the import",
+        "gtin": "8, 12, 13 or 14 digits",
+        "weight": "Whole grams",
+        "length": "Whole millimetres",
+        "width": "Whole millimetres",
+        "height": "Whole millimetres"
+      },
+      "checking": {
+        "title": "Checking your file",
+        "sub": "We read every row and compare it with the catalogue. Nothing is saved.",
+        "meter": "Checking the file",
+        "status": "Checking the rows…",
+        "stop": "Choose another file"
+      },
+      "result": {
+        "checked-at": "Checked at {time} · {rows, plural, one {# row} other {# rows}}",
+        "choose-another": "Choose another file",
+        "upload-corrected": "Upload a corrected file",
+        "all-ready": "{count, plural, one {The row is ready to import} other {All # rows are ready to import}}",
+        "all-ready-body": "Nothing has been saved yet. Import when you are ready.",
+        "has-errors": "{count, plural, one {# row has errors} other {# rows have errors}}",
+        "has-errors-body": "Fix them in your file and upload it again, or import the valid rows now and add the rest later.",
+        "back": "Back",
+        "import": "{mode, select, catalogue {Import {count} offers} other {Import {count} rows}}",
+        "warnings-clean": "Some rows have warnings; see the full report after the import."
+      },
+      "tiles": {
+        "rows": "Rows in the file",
+        "ready": "Ready to import",
+        "errors": "Errors",
+        "errors-note": "These rows are not imported",
+        "warnings": "Warnings",
+        "warnings-note": "Imported; check them later"
+      },
+      "ignored": {
+        "title": "Some columns are not read",
+        "body": "These columns of your file are left out of the import.",
+        "elsewhere": "Set in Prices and Stock",
+        "certification": "Certification is never imported",
+        "unknown": "Not a column of the template"
+      },
+      "errors": {
+        "caption": "Rows with errors",
+        "row": "Row",
+        "column": "Column",
+        "value": "Value in the file",
+        "problem": "Problem",
+        "empty": "(empty)",
+        "showing": "Showing {shown, number} of {total, number} errors. The report has all of them.",
+        "download": "Download error report (CSV)"
+      },
+      "problem": {
+        "required": "{column} is required",
+        "too-long": "{column} is too long",
+        "invalid": "{column} is not valid",
+        "format": "{column} is not in the right format",
+        "enum": "{column} is not one of the allowed values",
+        "category-unknown": "No category with this name",
+        "category-ambiguous": "More than one category has this name",
+        "product-type-unknown": "No product type with this name",
+        "type-not-allowed": "Your account is not set up to sell this product type",
+        "import-type-locked": "The product type of an existing product cannot be changed",
+        "import-wrong-mode": "This row belongs to the other kind of import",
+        "condition-unknown": "No condition with this name",
+        "gtin-invalid": "Not a valid barcode (8, 12, 13 or 14 digits with a correct check digit)",
+        "gtin-duplicate": "Another product already has this barcode",
+        "image-url-not-fetched": "Image links are not fetched: add the photo in the photo step",
+        "column-not-stored": "Checked, not stored: this catalogue has no attribute for it",
+        "tax-category-unknown": "No tax category with this code",
+        "tax-category-default-used": "No tax category given: the market default is used",
+        "text-invalid-characters": "Contains a character that can’t be stored",
+        "sku-invalid": "The Seller SKU has a character that is not allowed",
+        "import-duplicate-row": "Same options as row {row}",
+        "duplicate-in-file": "Same value as row {row}",
+        "import-group-mismatch": "A cell of this product differs from the first row of the same Seller SKU",
+        "import-group-split": "Rows of this Seller SKU must be together",
+        "import-key-conflict": "This Seller SKU is already used by another product of yours",
+        "import-option-missing": "Fill the same option columns on every row of this product",
+        "import-option-not-allowed": "This product has no options: leave the option cells empty",
+        "import-option-unknown": "No option with this name",
+        "import-group-error": "Another row of this product has an error, so none of its rows is imported",
+        "variant-limit-reached": "This product would have more variants than the market allows",
+        "offer-exists-for-product": "You already sell this product",
+        "product-not-found": "No product with this code can be sold from the catalogue",
+        "attribute-type": "{column} has the wrong kind of value",
+        "attribute-option-unknown": "{column} is not one of the allowed values",
+        "attribute-required": "{column} is required for this product type",
+        "claim-text-found": "The text mentions a certification. Certification belongs to an offer you tag, not to the text",
+        "claim-text-refused": "The text mentions a certification. Certification belongs to an offer you tag, not to the text",
+        "other": "{column} is not valid",
+        "text-blocked-term": "The text holds a word the platform does not allow"
+      },
+      "preview": {
+        "caption": "The first rows of the file",
+        "first": "Showing the first {shown, number} of {total, number} rows",
+        "none": "–",
+        "options": "Options"
+      },
+      "settings": {
+        "title": "Before you import",
+        "skip": "{count, plural, one {Skip the # row with errors} other {Skip the # rows with errors}}",
+        "skip-help": "The Import button stays off until this is ticked or the file has no errors."
+      },
+      "confirm": {
+        "title": "{count, plural, one {Import # row?} other {Import # rows?}}",
+        "body": "{mode, select, catalogue {Offers are created on the catalogue products.} other {Products are created or updated as drafts. Nothing is submitted or published.}}{skipped, plural, =0 {} one { The # row with errors is skipped.} other { The # rows with errors are skipped.}} It can take a few minutes, and you can leave this page while it runs.",
+        "action": "Import"
+      },
+      "importing": {
+        "title": "Importing",
+        "to-do": "{count, plural, one {# row to do} other {# rows to do}}",
+        "meter": "Import progress",
+        "progress": "{done} of {total} rows done",
+        "leave-title": "You can leave this page",
+        "leave-body": "The import keeps running. Open this page again to see where it is.",
+        "back": "Back to products"
+      },
+      "finished": {
+        "title": "{count, plural, one {Import finished: # row done} other {Import finished: # rows done}}",
+        "body": "{mode, select, catalogue {The offers are created. Set their prices and stock in Prices and Stock.} other {Your products are drafts. Open them to check them, add photos, then submit them. Set prices and stock in Prices and Stock.}}",
+        "stopped-title": "{count, plural, =0 {The import stopped before any row was done} one {The import stopped after # row} other {The import stopped after # rows}}",
+        "stopped-body": "What was done is kept. {remaining, plural, one {# row is} other {# rows are}} not imported. {next, select, resume {Use Retry the rest to continue, or take the rows from the report.} other {Start a new import with the rows that are missing; the report lists them.}}",
+        "created": "Created",
+        "updated": "Updated",
+        "unchanged": "Unchanged",
+        "not-imported": "Not imported",
+        "not-imported-note": "See the list below and the report",
+        "time": "Time taken: {time}",
+        "duration-minutes": "{minutes} min {seconds} s",
+        "duration-seconds": "{seconds} s",
+        "report": "Download full report (CSV)",
+        "view": "View my products",
+        "retry": "Retry the rest",
+        "another": "Import another file"
+      },
+      "failures": {
+        "caption": "Rows that were not imported",
+        "sku": "Seller SKU",
+        "reason": "Reason"
+      },
+      "failure": {
+        "claim-text-found": "The text mentions a certification. Certification belongs to an offer you tag, not to the text",
+        "claim-text-refused": "The text mentions a certification. Certification belongs to an offer you tag, not to the text",
+        "claim-text-check-unavailable": "The certification-wording check was unavailable",
+        "text-blocked-term": "The text holds a word the platform does not allow",
+        "row-changed": "The row no longer passes the check",
+        "import-group-error": "Another row of this product has an error, so none of its rows is imported",
+        "import-key-conflict": "This Seller SKU is already used by another product of yours",
+        "import-type-locked": "The product type of an existing product cannot be changed",
+        "import-wrong-mode": "This row belongs to the other kind of import",
+        "offer-sku-taken": "This Seller SKU was taken meanwhile",
+        "offer-exists-for-product": "You already sell this product",
+        "product-not-found": "No product with this code can be sold from the catalogue",
+        "type-not-allowed": "Your account is not set up to sell this product type",
+        "variant-limit-reached": "This product would have more variants than the market allows",
+        "setting-product-creation-off": "This kind of import is switched off in this market",
+        "setting-sell-from-catalogue-off": "This kind of import is switched off in this market",
+        "seller-not-eligible": "Your account can no longer sell",
+        "row-failed": "The row could not be imported",
+        "other": "The row could not be imported"
+      },
+      "stop": {
+        "rate-limited": {
+          "label": "Paused by a rate limit",
+          "help": "The import was paused by a rate limit. Retry the rest in a while."
+        },
+        "access-lost": {
+          "label": "Your access changed",
+          "help": "You no longer have the right to import, so this import can’t go on. Ask your store owner for access, then start a new import."
+        },
+        "seller-not-eligible": {
+          "label": "Your store can’t sell right now",
+          "help": "Imports are paused while your store can’t sell. Start a new import once that is resolved."
+        },
+        "file-missing": {
+          "label": "File no longer stored",
+          "help": "The file was removed before the import finished. Upload it again to start a new import."
+        },
+        "unexpected": {
+          "label": "Something went wrong on our side",
+          "help": "Retry the rest. If it stops again, take the rows from the report."
+        }
+      },
+      "action-error": {
+        "import-errors-not-skipped": "The file has errors. Tick “Skip the rows with errors” to import the rest.",
+        "import-already-running": "Another import of yours is still running. Wait for it to finish.",
+        "import-not-confirmable": "This import can no longer be started. Upload the file again.",
+        "import-nothing-to-import": "There is nothing to import: no row passed the check.",
+        "import-not-resumable": "This import can’t be continued. Upload the file again.",
+        "import-access-lost": "You no longer have the right to import, so this import can’t be continued. Start a new import once your access is back.",
+        "import-not-discardable": "This file was already confirmed, so it can’t be cancelled.",
+        "import-not-found": "This import is no longer there. Upload the file again.",
+        "import-report-unavailable": "The report is not ready yet.",
+        "import-daily-rows-reached": "You reached the daily limit of rows. Try again tomorrow, or import fewer rows.",
+        "request-throttled": "Too many imports for now. Try again in a while.",
+        "seller-not-eligible": "Your store can’t import right now.",
+        "access-acting-as-refused": "Imports can’t be used while you are signed in as the seller.",
+        "access-denied": "You don’t have access to do this.",
+        "request-csrf": "Your session expired. Reload the page and try again.",
+        "session-invalid": "Your session expired. Reload the page and try again.",
+        "unavailable": "That didn’t work. Try again."
+      },
+      "upload-problem": {
+        "wrong-type": {
+          "title": "This file type can’t be imported",
+          "body": "Choose a CSV or XLSX file. Other formats, such as PDF or Numbers, a ZIP, and Excel files with macros or links to other files, are not read."
+        },
+        "too-large-bytes": {
+          "title": "The file is larger than {size, number} MB",
+          "body": "Split the file into smaller ones and import them one after the other."
+        },
+        "too-many-rows": {
+          "title": "The file has {rows, number} rows",
+          "body": "Import up to {max, number} rows at a time. Split the file into parts and import them one after the other."
+        },
+        "too-many-columns": {
+          "title": "The file has too many columns",
+          "body": "Use the template’s columns. Remove the columns you don’t need, then upload the file again."
+        },
+        "cell-too-long": {
+          "title": "A cell has too much text",
+          "body": "Shorten the longest cells (descriptions are the usual cause), then upload the file again."
+        },
+        "columns-missing": {
+          "title": "{count, plural, one {The column {columns} is missing} other {These columns are missing: {columns}}}",
+          "body": "Use the template, or rename the column in your file. Columns we don’t know are ignored and listed after the check."
+        },
+        "columns-duplicate": {
+          "title": "{count, plural, one {The column {columns} appears twice} other {These columns appear more than once: {columns}}}",
+          "body": "Keep one column of each kind, then upload the file again."
+        },
+        "formula": {
+          "title": "Row {row, number} has a formula",
+          "body": "Formulas are not read. Replace each formula with its value (copy, then Paste values), then upload the file again."
+        },
+        "unpacked-too-large": {
+          "title": "The file is too large once opened",
+          "body": "Save the sheet again with fewer rows or less formatting, or split it into smaller files."
+        },
+        "too-complex": {
+          "title": "The file is too complex to read",
+          "body": "Copy the sheet into a new file as plain values, or split it into smaller files, then upload it again."
+        },
+        "busy": {
+          "title": "Another file is being checked",
+          "body": "Wait a few seconds and upload the file again."
+        },
+        "empty": {
+          "title": "The file has no product rows",
+          "body": "Only the header row was found. Add one row per product or offer below it."
+        },
+        "unreadable": {
+          "title": "The file can’t be read",
+          "body": "Check that it is a CSV or XLSX file with a header row and one product or offer per row, then upload it again. In an XLSX file only the first sheet is read."
+        },
+        "creation-off": {
+          "title": "Importing your own products is switched off",
+          "body": "This market doesn’t allow creating products from a file right now. You can import offers on catalogue products instead."
+        },
+        "catalogue-off": {
+          "title": "Selling from the catalogue is switched off",
+          "body": "This market doesn’t allow creating offers on catalogue products right now. You can import your own products instead."
+        },
+        "throttled": {
+          "title": "Too many files checked",
+          "body": "Try again in {minutes, plural, one {# minute} other {# minutes}}."
+        },
+        "not-eligible": {
+          "title": "Your store can’t import right now",
+          "body": "Imports are available while your store can sell. Check your store status, then try again."
+        },
+        "acting-as": {
+          "title": "Imports are not available here",
+          "body": "Imports can’t be used while you are signed in as the seller. Sign in with your own account."
+        },
+        "session": {
+          "title": "Your session expired",
+          "body": "Reload the page and upload the file again."
+        },
+        "denied": {
+          "title": "You don’t have access to import products",
+          "body": "Ask your store owner for the right to import products."
+        },
+        "unavailable": {
+          "title": "The file could not be checked",
+          "body": "Try again. If it keeps happening, contact support."
+        }
+      },
+      "photos": {
+        "title": "Add your photos",
+        "sub": "Pick the photos your file names. Each one is sent on its own and added to the product that lists its file name.",
+        "rule-names": "The file name must be the same as in the Images column of your file, including the ending, for example dates-500g.jpg.",
+        "rule-limits": "JPEG, PNG or WebP, up to {max} photos per product. This step stays open for seven days after the import ends.",
+        "rule-zip": "Have your photos in one ZIP file? Choose the ZIP. It is opened on your computer and only the pictures are sent. Folders inside it don’t matter, only the file names.",
+        "choose-photos": "Choose photos",
+        "choose-folder": "Choose a folder",
+        "choose-zip": "Choose a ZIP file",
+        "zip": {
+          "opening": "Opening your ZIP file…",
+          "error-title": "The ZIP file can’t be used",
+          "errors": {
+            "too-big": "The ZIP file is too large. It can be up to {maxZip} MB. Split the photos into two ZIP files.",
+            "total-too-big": "The pictures in the ZIP file are too large together. Split them into two ZIP files.",
+            "too-many-entries": "The ZIP file holds too many files. It can hold up to {maxEntries} photos. Split them into two ZIP files.",
+            "unsupported-compression": "The ZIP file uses a kind of compression we can’t open. Make it again with the normal ZIP option of your computer.",
+            "encrypted": "The ZIP file is protected with a password. Make it again without a password.",
+            "zip64": "The ZIP file is in a format we can’t open because it is too large or has too many files. Split the photos into smaller ZIP files.",
+            "multi-disk": "The ZIP file is one part of a split archive. Make a single ZIP file instead.",
+            "broken": "The ZIP file is damaged or isn’t a ZIP file. Make it again and try once more.",
+            "duplicate-name": "Two files in the ZIP file are both called {name}. Every photo needs its own file name.",
+            "unsupported-browser": "This browser can’t open ZIP files. Update your browser, or choose the photos or a folder instead."
+          },
+          "cancel": "Cancel"
+        },
+        "picked": "{count, plural, =0 {No photos found in your choice} one {# photo ready to send} other {# photos ready to send}}",
+        "left-out": "Left out: {notPhotos, plural, =0 {} one {# file that is not a JPEG, PNG or WebP picture. } other {# files that are not JPEG, PNG or WebP pictures. }}{sameName, plural, =0 {} one {# file with a name already picked. } other {# files with names already picked. }}{overLimit, plural, =0 {} one {# file over the limit of {max, number} per step.} other {# files over the limit of {max, number} per step.}}{tooBig, plural, =0 {} one { # photo in the ZIP file over {maxPhoto} MB.} other { # photos in the ZIP file over {maxPhoto} MB.}}",
+        "meter": "Photo upload progress",
+        "progress": "{done} of {total} photos done",
+        "tile": {
+          "added": "Added",
+          "not-named": "Not in your file",
+          "already": "Already added",
+          "refused": "Not added"
+        },
+        "done-title": "{count, plural, one {# photo added} other {# photos added}}",
+        "done-body": "Open a product to see its photos and put them in the order you want.",
+        "problems": {
+          "title": "Photos that were not added",
+          "not-named": "Your file doesn’t list this name. Check the Images column.",
+          "already": "A photo with this name was already added.",
+          "limit": "The product already has eight photos.",
+          "refused": "The picture can’t be used. It may be too large, too small or not readable.",
+          "product-gone": "The product is no longer yours or no longer there.",
+          "more": "{count, plural, one {# more photo is not shown.} other {# more photos are not shown.}}"
+        },
+        "stop": "Stop",
+        "upload": "{count, plural, one {Upload # photo} other {Upload # photos}}",
+        "continue": "{count, plural, one {Continue with # photo} other {Continue with # photos}}",
+        "paused": {
+          "throttled-title": "Too many photos for now",
+          "throttled-wait": "The upload is paused. You can go on at {time}.",
+          "throttled-ready": "You can go on now.",
+          "closed-title": "The photo step is over",
+          "closed-body": "Photos can only be added for seven days after an import ends. Add the rest on each product.",
+          "access-title": "You can’t add photos right now",
+          "access-body": "Your access changed or your session ended. Reload the page, then try again.",
+          "unavailable-title": "The upload was interrupted",
+          "unavailable-body": "The server did not answer. Continue to try the photos that are left.",
+          "throttled-seconds": "{n, plural, one {# second} other {# seconds}} left",
+          "throttled-minutes": "{n, plural, one {# minute} other {# minutes}} left",
+          "throttled-hours": "{h, plural, one {# hour} other {# hours}}{m, plural, =0 {} one { # minute} other { # minutes}} left"
+        }
+      }
+    },
+    "addSizes": {
+      "start": "Add sizes",
+      "card-help": "This product is sold in one size. Add sizes to sell it in more than one size, colour or other type.",
+      "save-first": "Save your changes before you add sizes.",
+      "title": "Add sizes",
+      "intro": "This product becomes a product with sizes. It keeps its price and stock.",
+      "permanent": "This can't be undone.",
+      "waiting": "A change of this product is waiting for review. If you add sizes, the waiting change is set aside. Its content stays in your draft, and you can submit it again later.",
+      "waiting-agree": "Set aside the change that is waiting",
+      "step-types": "1. What does this product come in?",
+      "types-help": "Choose up to {max} types, such as size or colour.",
+      "step-values": "2. What is this product now?",
+      "values-help": "The product you have today becomes one of the sizes. Choose its value for each type. You add the other sizes next.",
+      "value-of": "This product's {type}",
+      "note-types": "Choose at least one type to continue.",
+      "note-values": "Choose a value for every type to continue.",
+      "note-agree": "Agree to set aside the waiting change to continue.",
+      "choose": "Choose",
+      "cancel": "Cancel",
+      "confirm": "Add sizes",
+      "done": "Sizes added. Now add the other sizes.",
+      "reload": "Reload the product",
+      "error": {
+        "not-simple": "This product already has sizes.",
+        "pending-exists": "A change of this product is waiting for review. Agree to set it aside above, then try again.",
+        "type-not-allowed": "Your seller account can't sell products with sizes.",
+        "stale": "The product changed somewhere else. Reload it and try again.",
+        "family-invalid": "The product's category is not set up for sizes yet. Try again later.",
+        "not-editable": "This product can't be changed now. Reload it to see its state.",
+        "not-found": "This product was not found.",
+        "not-eligible": "Your seller account can't change products right now.",
+        "denied": "You don't have permission to edit products.",
+        "unavailable": "Products are unavailable right now. Try again later.",
+        "throttled": "Too many requests. Try again in {seconds} seconds.",
+        "csrf": "Your session expired. Reload the page and try again.",
+        "invalid": "Check the types and values and try again.",
+        "unknown": "Something went wrong. Try again."
+      },
+      "issue": {
+        "variants": {
+          "axes-none": "Choose at least one type.",
+          "axes-too-many": "This marketplace allows fewer types than you chose.",
+          "axes-duplicate": "A type was chosen twice.",
+          "axes-unknown": "A type you chose is not available for this product.",
+          "axes-locked": "The types of this product can't be changed.",
+          "option-missing": "Choose a value for every type.",
+          "option-unknown": "A value you chose is not available.",
+          "option-not-in-family": "A value you chose is not available for this product.",
+          "option-attribute-missing": "Choose a value for every type."
+        }
       }
     }
   },
@@ -1476,6 +2511,16 @@
       "previous": "Previous",
       "next": "Next",
       "page": "Page {n}"
+    },
+    "board": {
+      "view": "Order view",
+      "table": "Table",
+      "board": "Board",
+      "stages": "Order stages",
+      "empty": "No orders at this stage.",
+      "loading": "Loading orders",
+      "retry": "Try again",
+      "more": "Show more"
     },
     "range": "{from} to {to} of {total}",
     "export": {
@@ -1965,7 +3010,7 @@
       "offer-published": "Your <strong>offer</strong> is published",
       "offer-changes-requested": "Your <strong>offer</strong> needs changes: {reason, select, content_unclear {the content is unclear} description_claim {the description makes a claim} sku_or_condition {check the SKU or condition} handling_unclear {the handling is unclear} other {see the offer}}",
       "product-published": "Your <strong>product</strong> changes are published",
-      "product-changes-requested": "Your <strong>product</strong> changes were sent back: {reason, select, content_unclear {the content is unclear} description_claim {the description makes a claim} sku_or_condition {check the SKU or condition} handling_unclear {the handling is unclear} other {see the product}}",
+      "product-changes-requested": "Your <strong>product</strong> changes were sent back: {reason, select, content_unclear {the content is unclear} description_claim {the description makes a claim} sku_or_condition {check the SKU or condition} handling_unclear {the handling is unclear} photos {check the photos} category {check the category} tax_category {check the tax category} duplicate {it looks like a product that is already listed} other {see the product}}",
       "offer-tag-changed": "{change, select, suspended {A <strong>certification tag</strong> was suspended and the offer is off sale} removed {A <strong>certification tag</strong> was removed from an offer} restored {A <strong>certification tag</strong> is active again} other {A <strong>certification tag</strong> changed}}",
       "image-taken-down": "A <strong>product image</strong> was taken down {reason, select, certification_mark {because it shows a certification mark} misleading {because it is misleading} rights {after a rights claim} unsafe_or_illegal {because it is unsafe or illegal} other {by the platform}}",
       "price-hold-decided": "{outcome, select, approved {Your <strong>{priceKind, select, special {special price} other {price}}</strong> change was approved} rejected {Your <strong>{priceKind, select, special {special price} other {price}}</strong> change was rejected} other {Your <strong>price</strong> change was reviewed}}",
@@ -2338,6 +3383,208 @@
       "who-unnamed": "Someone",
       "changed": "Changed: {fields}",
       "saved": "Saved"
+    }
+  },
+  "performance": {
+    "title": "Performance",
+    "intro": "How your store is doing for customers. This is information for you: nothing here changes your store by itself.",
+    "empty": {
+      "title": "No score yet",
+      "body": "Your first score appears after the nightly check has measured your store. It can take a day."
+    },
+    "unavailable": {
+      "title": "Performance is not available right now",
+      "body": "Try again in a minute."
+    },
+    "card": {
+      "title": "Your store health"
+    },
+    "measured": "Measured {when}",
+    "state": {
+      "new": "New",
+      "no-data": "No data yet"
+    },
+    "summary": {
+      "healthy": "Your store is healthy. {metric} is your lowest of the five measures.",
+      "at-risk": "Your score is in the at-risk range. {metric} is the measure that pulls your score down most, so that is the one to work on first.",
+      "unhealthy": "Your store needs attention. {metric} is the measure that pulls your score down most, so that is the one to work on first. If you would like help, the platform team is happy to talk.",
+      "new": "You are new on MondaPac: you have {orders} orders in the counting window, and a score appears once you have enough.",
+      "no-data": "There is not enough data to score your store yet."
+    },
+    "summary-plain": {
+      "healthy": "Your store is healthy.",
+      "at-risk": "Your store is at risk.",
+      "unhealthy": "Your store needs attention."
+    },
+    "metric": {
+      "band": {
+        "healthy": "Healthy",
+        "at-risk": "At risk",
+        "unhealthy": "Needs attention"
+      },
+      "no-data": "No data",
+      "seller-cancellations": {
+        "name": "Cancelled by you",
+        "what": "Items you cancelled or marked unavailable, over the last 30 days.",
+        "how": "items you cancelled or marked unavailable, divided by items ordered, over 30 days."
+      },
+      "late-ready": {
+        "name": "Ready late",
+        "what": "Orders marked ready after the time you promised, over the last 30 days.",
+        "how": "orders marked ready after the promised time, divided by all orders, over 30 days."
+      },
+      "customer-rating": {
+        "name": "Customer rating",
+        "what": "The average of approved reviews, over the last 90 days.",
+        "how": "the average rating of approved reviews over 90 days. Fewer than 5 reviews means no data."
+      },
+      "lost-disputes": {
+        "name": "Payment disputes lost",
+        "what": "Disputes a customer won against you, over the last 90 days.",
+        "how": "payment disputes you lost, divided by orders, over 90 days."
+      },
+      "reports": {
+        "name": "Reports",
+        "what": "Confirmed reports against your store, over the last 90 days.",
+        "how": "confirmed reports against your store over 90 days. Not measured yet."
+      }
+    },
+    "trend": {
+      "label": "Score line over time: from {first} to {last}",
+      "summary": "Your score went from {first} to {last} over the last {days} measured days.",
+      "too-short": "The score line appears after a few days of measuring."
+    },
+    "refresh": {
+      "title": "Refresh now",
+      "body": "The score is measured every night. If you have just fixed something, you can ask for a new count; it appears within a couple of minutes.",
+      "button": "Refresh now",
+      "pending": "A new count is on its way. This page updates by itself.",
+      "wait": "You can refresh again in about {minutes} min.",
+      "unavailable": "We could not ask for a new count. Try again in a minute."
+    },
+    "how": {
+      "title": "How is it calculated?",
+      "score": "Each of the five measures gets a score from 0 to 100. Your store health is the lowest of them, so one serious problem is not hidden by good numbers elsewhere. 67 to 100 is healthy, 34 to 66 is at risk, and 0 to 33 needs attention.",
+      "fair": "Things that are not your fault are not counted: orders the customer cancelled, failed payments, courier delays, and disputes you won. A measure with too little data is left out. Until you have enough orders, you are shown as New.",
+      "nothing-automatic": "Nothing happens to your store automatically because of this score. If it is low, a person on the platform team may look at it and get in touch before deciding anything."
+    }
+  },
+  "categories": {
+    "proposals": {
+      "title": "Suggest a category",
+      "back": "Back to Suggest a category",
+      "intro": "A suggested category becomes a shelf in your own shop once the platform approves it. It groups your products on your shop page. It is not a platform category and does not change search, filters or badges.",
+      "sent": "Your suggestion was sent. You will see the outcome below.",
+      "not-enabled": "The platform has not turned on category suggestions for your store. Your existing shelves still work.",
+      "waiting": "{count} of {max} waiting",
+      "full": "You have {max} suggestions waiting. Withdraw one or wait for a decision before you suggest another.",
+      "form": {
+        "title": "New suggestion",
+        "parent": "Platform category it belongs under",
+        "parent-help": "Your shelf is shown under this category.",
+        "parent-none": "No categories are available yet. Create a product first, then come back.",
+        "parent-placeholder": "Choose a category",
+        "language": "Language",
+        "language-help": "{language} is required. Other languages are optional.",
+        "language-required": "{language} (required)",
+        "name": "Shelf name",
+        "description": "Short description",
+        "optional": "optional",
+        "send": "Send suggestion",
+        "field": {
+          "name": "name",
+          "shortDescription": "short description"
+        }
+      },
+      "list": {
+        "title": "Your suggestions",
+        "empty": {
+          "title": "No suggestions yet",
+          "body": "Suggest a category above and its outcome will show here."
+        },
+        "unnamed": "Unnamed",
+        "under": "Under {parent}",
+        "parent-unknown": "a platform category",
+        "cancel": "Withdraw",
+        "status": {
+          "pending": "Waiting",
+          "approved": "Approved",
+          "rejected": "Rejected",
+          "cancelled": "Closed"
+        },
+        "reason": {
+          "already-exists": "Rejected: a category like this already exists.",
+          "too-narrow": "Rejected: too narrow for a shelf.",
+          "too-broad": "Rejected: too broad for a shelf.",
+          "misleading": "Rejected: the name could mislead buyers.",
+          "not-sold-here": "Rejected: not something sold here.",
+          "other": "Rejected.",
+          "seller-cancelled": "Closed: you withdrew it.",
+          "permission-revoked": "Closed: permission removed"
+        }
+      },
+      "shelves": {
+        "title": "Your shelves",
+        "note": "Shelves group your products on your shop page. Put an Offer on a shelf from the Offer page.",
+        "empty": {
+          "title": "No shelves yet",
+          "body": "An approved suggestion becomes a shelf."
+        },
+        "status": {
+          "active": "Active",
+          "promoted": "Moved to the platform",
+          "merged": "Merged",
+          "archived": "Archived"
+        }
+      },
+      "error": {
+        "not-allowed": "The platform has not turned on category suggestions for your store.",
+        "not-eligible": "Your store cannot make suggestions yet.",
+        "duplicate": "You already have a suggestion or a shelf with this name under this category.",
+        "limit": "You have {max} suggestions waiting. Withdraw one or wait for a decision.",
+        "parent-not-found": "That category is no longer available. Choose another.",
+        "claim-word": "Some text uses a word that is not allowed. Change the wording and try again.",
+        "locale-uncheckable": "Some text is in a language that cannot be checked yet. Remove it or try again later.",
+        "required-locale-missing": "A name in the required language is needed.",
+        "check-unavailable": "The wording check is not available right now. Nothing was sent. Try again later.",
+        "throttled": "You have sent too many suggestions today. Try again tomorrow.",
+        "stale": "This changed since you opened the page. Refresh and try again.",
+        "not-found": "This suggestion no longer exists. Refresh the page.",
+        "not-pending": "This suggestion was already decided. Refresh the page.",
+        "denied": "You are not allowed to do this.",
+        "validation": "Check the form and try again.",
+        "validation-fields": "Some fields need a change.",
+        "unreachable": "Could not reach the server. Try again.",
+        "unknown": "Something went wrong. Try again.",
+        "in-field": "{language}, {field}: {problem}",
+        "field": {
+          "claim-word": "uses a word that is not allowed. Change the wording.",
+          "blocked-term": "uses a word that is not allowed. Change the wording.",
+          "locale-uncheckable": "cannot be checked yet for this language. Remove it or try again later.",
+          "required": "is needed.",
+          "invalid": "needs a change."
+        }
+      }
+    },
+    "shelf": {
+      "title": "Shop shelf",
+      "label": "Shelf",
+      "help": "Groups this Offer on your shop page. It is not a platform category.",
+      "placeholder": "Choose a shelf",
+      "none": "No shelf",
+      "save": "Save shelf",
+      "saved": {
+        "set": "The Offer is on the shelf.",
+        "cleared": "The Offer is off its shelf."
+      },
+      "error": {
+        "stale": "This Offer changed since you opened the page. Refresh and try again.",
+        "shelf-not-found": "That shelf is no longer available. Refresh the page.",
+        "offer-not-found": "This Offer no longer exists.",
+        "denied": "You are not allowed to do this.",
+        "unreachable": "Could not reach the server. Try again.",
+        "unknown": "Something went wrong. Try again."
+      }
     }
   }
 }

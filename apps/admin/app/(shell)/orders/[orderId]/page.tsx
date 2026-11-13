@@ -2,7 +2,13 @@ import { BackLink, LoadError } from '@mondapac/ui';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { OrderDetail } from '../../../../src/orders/order-detail.tsx';
-import { VIEW_PERMISSION, type AdminOrder } from '../../../../src/orders/types.ts';
+import {
+  NOTE_PERMISSION,
+  REFUND_PERMISSION,
+  VIEW_PERMISSION,
+  type AdminNote,
+  type AdminOrderDetail,
+} from '../../../../src/orders/types.ts';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
@@ -43,9 +49,23 @@ export default async function OrderPage({
       </div>,
     );
   if (!gate.session.permissionKeys.includes(VIEW_PERMISSION)) return message('no-access');
-  const result = await serverGet<AdminOrder>(`ordering/admin/orders/${orderId}`);
+  const [result, notes] = await Promise.all([
+    serverGet<AdminOrderDetail>(`ordering/admin/orders/${orderId}`),
+    serverGet<{ readonly notes: readonly AdminNote[] }>(`ordering/admin/orders/${orderId}/notes`),
+  ]);
   if (result.kind === 'signed-out') redirect('/session-ended');
-  if (result.kind === 'ok') return shell(<OrderDetail order={result.body} />);
+  const keys = gate.session.permissionKeys;
+  if (result.kind === 'ok')
+    return shell(
+      <OrderDetail
+        order={result.body}
+        canViewCustomer={keys.includes('identity.customer-account.view')}
+        canRefund={keys.includes(REFUND_PERMISSION)}
+        canNote={keys.includes(NOTE_PERMISSION)}
+        notes={notes.kind === 'ok' ? notes.body.notes : null}
+        csrfToken={gate.session.csrfToken}
+      />,
+    );
   if (result.kind === 'forbidden') return message('no-access');
   if (result.kind === 'not-found') return message('not-found');
   return shell(<LoadError message={t('orders.error.unavailable')} retryLabel={t('load.retry')} />);

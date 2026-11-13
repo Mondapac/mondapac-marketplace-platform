@@ -17,6 +17,10 @@ import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
+import { ProductFamilyResolver } from '../src/modules/catalog/application/attributes/product-family-resolver';
+import { MISSING_DETAILS_EMAIL_STORE } from '../src/modules/catalog/application/ports/missing-details-email.store';
+import { SELLER_NAMES_READER } from '../src/modules/catalog/application/ports/seller-names.reader';
+import { ATTRIBUTE_ADMIN_READER } from '../src/modules/catalog/application/ports/attribute-admin.reader';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -35,6 +39,8 @@ const id = <T extends string>(n: number): Id<T> => {
   return parsed.value as Id<T>;
 };
 const MODERATOR = id<'Account'>(0xb701);
+const VIEWER = id<'Account'>(0xb703);
+const VIEWER_ROLE = id<'Role'>(0xb704);
 const EDITOR = id<'Account'>(0xb702);
 const EDITOR_ROLE = id<'Role'>(0xb801);
 
@@ -45,6 +51,7 @@ describe('products missing required details over HTTP (integration)', () => {
   let app: NestExpressApplication;
   const rows = new Map<string, PublishedProductValues[]>();
   const gap: ProductDetailsGapReader = {
+    publishedByIds: () => Promise.resolve([]),
     published: (market, filter) =>
       Promise.resolve(
         (rows.get(market.marketId) ?? [])
@@ -69,6 +76,11 @@ describe('products missing required details over HTTP (integration)', () => {
     ],
   };
   const attributes = { loadSchema: () => Promise.resolve(schema) };
+  // Every product's category holds the one feature set of this spec.
+  const resolver = {
+    open: () =>
+      Promise.resolve({ resolve: () => Promise.resolve({ ok: true, familyCode: 'pantry' }) }),
+  };
   const http = () => request(app.getHttpServer());
 
   async function boot(env: Record<string, string> = {}) {
@@ -83,7 +95,21 @@ describe('products missing required details over HTTP (integration)', () => {
           .overrideProvider(PRODUCT_DETAILS_GAP_READER)
           .useValue(gap)
           .overrideProvider(ATTRIBUTE_REPOSITORY)
-          .useValue(attributes),
+          .useValue(attributes)
+          .overrideProvider(ProductFamilyResolver)
+          .useValue(resolver)
+          // The preview reads nothing and claims nothing; these must not reach a database.
+          .overrideProvider(SELLER_NAMES_READER)
+          .useValue({ storeNames: () => Promise.resolve(new Map()) })
+          .overrideProvider(ATTRIBUTE_ADMIN_READER)
+          .useValue({ definitions: () => Promise.resolve([]) })
+          .overrideProvider(MISSING_DETAILS_EMAIL_STORE)
+          .useValue({
+            latest: () => Promise.resolve([]),
+            claim: () => Promise.reject(new Error('a preview must not claim')),
+            pending: () => Promise.resolve([]),
+            settle: () => Promise.resolve(false),
+          }),
     }));
   }
 
@@ -104,7 +130,7 @@ describe('products missing required details over HTTP (integration)', () => {
       seedVersion: null,
       sellerId: null,
       name: 'Attribute editor',
-      permissionKeys: ['catalog.attribute.view'],
+      permissionKeys: ['catalog.attribute.view', 'catalog.attribute.edit'],
       version: 1,
       createdAt: START,
     });
@@ -144,7 +170,8 @@ describe('products missing required details over HTTP (integration)', () => {
         productId: id<'Product'>(0x3000 + n),
         productCode: `P${n}`,
         ownerSellerId: null,
-        familyCode: 'pantry',
+        revisionFamilyCode: 'pantry',
+        primaryCategoryId: null,
         name: null,
         attributeValues: n === 2 ? { origin: 'AU' } : {},
       })),
@@ -252,6 +279,87 @@ describe('products missing required details over HTTP (integration)', () => {
         .get(REPORT)
         .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') })
         .expect(401);
+    }, 30_000);
+
+    it('refuses to email sellers without the key, a malformed body or a cross-site call', async () => {
+      await boot();
+      await seeded(code);
+      const url = `${REPORT}/email-sellers`;
+      const editor = adminSession(code, EDITOR, 3);
+      const body = { productIds: [id<'Product'>(0x3001)], dryRun: true };
+      await http()
+        .post(url)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') })
+        .send(body)
+        .expect(401);
+      const noCsrf: Record<string, string> = { ...editor };
+      delete noCsrf['x-csrf-token'];
+      const refusedCsrf = await http().post(url).set(noCsrf).send(body).expect(403);
+      expect(refusedCsrf.body).toMatchObject({ code: 'request.csrf' });
+      // A signed-in admin who may only view attributes is refused.
+      fakes.seedRole({
+        id: VIEWER_ROLE,
+        marketId: code as AccountState['marketId'],
+        scope: 'platform',
+        kind: 'custom',
+        seedCode: null,
+        seedVersion: null,
+        sellerId: null,
+        name: 'Attribute viewer',
+        permissionKeys: ['catalog.attribute.view'],
+        version: 1,
+        createdAt: START,
+      });
+      fakes.seedAccount({
+        id: VIEWER,
+        marketId: code as AccountState['marketId'],
+        population: 'admin',
+        email: { typed: 'viewer@Example.com', normalized: 'viewer@example.com' },
+        displayName: 'Name viewer',
+        status: 'active',
+        emailVerifiedAt: START,
+        existingAccountNoticeAt: null,
+        signedUpAt: START,
+        createdAt: START,
+        version: 1,
+        credential: { passwordHash: fakeHashOf('x'), changedAt: START },
+      });
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(0xe9f0),
+        marketId: code as AccountState['marketId'],
+        accountId: VIEWER,
+        roleId: VIEWER_ROLE,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+      const viewerRefused = await http()
+        .post(url)
+        .set(adminSession(code, VIEWER, 5))
+        .send(body)
+        .expect(403);
+      expect(viewerRefused.body).toMatchObject({ code: 'access.denied' });
+      for (const bad of [{}, { productIds: [] }, { productIds: ['nope'] }, { ...body, extra: 1 }]) {
+        const refused = await http().post(url).set(editor).send(bad).expect(400);
+        expect(refused.body).toMatchObject({ code: 'validation.failed' });
+      }
+    }, 30_000);
+
+    it('answers a preview of Email sellers and writes nothing', async () => {
+      await boot();
+      await seeded(code);
+      const editor = adminSession(code, EDITOR, 4);
+      const answer = await http()
+        .post(`${REPORT}/email-sellers`)
+        .set(editor)
+        .send({ productIds: [id<'Product'>(0x3001)], dryRun: true });
+      // A Market with no seller page link refuses (503); one with it previews (200).
+      expect([200, 503]).toContain(answer.status);
+      if (answer.status === 200) {
+        expect(answer.body).toMatchObject({ dryRun: true, throttleDays: 7, sellers: [] });
+      } else {
+        expect(answer.body).toMatchObject({ code: 'missing-details-email.unconfigured' });
+      }
     }, 30_000);
   });
 });

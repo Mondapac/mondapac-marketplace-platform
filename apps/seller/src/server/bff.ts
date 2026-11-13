@@ -21,6 +21,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/seller/roles',
     'sellers/my-file',
     'sellers/own-zone',
+    // The seller's own health (Performance page): the card, the trend and the Refresh state.
+    'sellers/own-health',
     // The store profile page: the About text, the logo and banner references (slice 12 part 2).
     'sellers/store-profile',
     // "View history" of the store profile (query: `after`, `limit`): when, who by display name and
@@ -47,6 +49,22 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // the unread count it polls.
     'notifications/seller/notices',
     'notifications/seller/notices/unread-count',
+    // The seller import (catalog design 14c): the templates, and the latest import of the seller.
+    'catalog/seller/imports/template',
+    'catalog/seller/imports/current',
+    // The tags a product may carry (catalog topics; query: `search`, `afterId`, `limit`).
+    'catalog/seller/topics',
+    // The Products list (list mode; query: view, q, status, categoryId, paused, typeCode, sort,
+    // direction, page, pageSize). The keyset parameters (`afterId`, `limit`) are read by the
+    // panel's server pages only and do not cross.
+    'catalog/seller/products',
+    // The Products list as a file (CSV or XLSX): the list's selector plus format, columns and the
+    // selected product ids; the answer is an attachment.
+    'catalog/seller/products/export',
+    // The saved filters of the Products list (query: `listKey`).
+    'catalog/seller/saved-filters',
+    // The seller's category proposals, shelves and whether proposing is on (categories C9b).
+    'catalog/seller/category-proposals',
   ]),
   PUT: new Set([
     // The signed-in member's own display name (profile).
@@ -94,10 +112,16 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/my-file/withdraw',
     'inventory/seller/sources',
     'catalog/seller/products',
+    // Saves the Products list's tab, search, filters and sort under a name.
+    'catalog/seller/saved-filters',
+    // The import's upload: a base64 CSV or XLSX file in a JSON body, checked and saved as nothing but a record.
+    'catalog/seller/imports',
     // Each asks for a second-factor code in the body and answers with a one-time Stripe address.
     'payments/seller/payout-account',
     'payments/seller/payout-account/link',
     'notifications/seller/notices/read-all',
+    // Propose a category (a shelf of the seller's shop; categories C9b).
+    'catalog/seller/category-proposals',
   ]),
 };
 
@@ -110,6 +134,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'inventory/seller/sources/:id',
     'catalog/seller/products/:id/draft',
     'catalog/seller/offers/:id',
+    // Rename a saved filter of the Products list and set who can use it.
+    'catalog/seller/saved-filters/:id',
+    // The SKU and the selling switch of the sell units of an offer (variants V5).
+    'catalog/seller/offers/:id/sell-units',
+    // Put an Offer on one of the seller's shelves, or take it off (categories C9b).
+    'catalog/seller/offers/:id/shelf',
     'inventory/seller/offers/:id/variants/:id/sources/:id/stock',
     'pricing/seller/offers/:id/variants/:id/regular-price',
     'pricing/seller/offers/:id/variants/:id/special-price',
@@ -120,10 +150,21 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/seller/team/accounts/:id/role',
     'identity/seller/team/accounts/:id/remove',
     'catalog/seller/products/:id/submit',
+    // Turn a Simple product into one with sizes, once (catalog, variants V9).
+    'catalog/seller/products/:id/add-sizes',
     // Ask for a value a select field does not offer (catalog, attributes A5).
     'catalog/seller/products/:id/attribute-suggestions',
+    // Ask for a tag the list does not have (catalog, product tags T5).
+    'catalog/seller/products/:id/topic-suggestions',
     'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
+    // Withdraw a waiting category proposal (categories C9b).
+    'catalog/seller/category-proposals/:id/cancel',
+    // The seller import: confirm, retry the rest, cancel a check, and one photo of the photo step.
+    'catalog/seller/imports/:id/start',
+    'catalog/seller/imports/:id/resume',
+    'catalog/seller/imports/:id/discard',
+    'catalog/seller/imports/:id/photos',
     'ordering/seller/orders/:id/ship',
     'ordering/seller/orders/:id/deliver',
     'pricing/seller/offers/:id/variants/:id/special-price/withdraw',
@@ -131,11 +172,23 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // One public reply per review, and a report of a review (buyer reviews, package 4c).
     'reviews/seller/:id/reply',
     'reviews/seller/:id/report',
+    // "Refresh now" of the seller's health (queues a recount; 15-minute cooldown).
+    'sellers/own-health/refresh',
   ],
   PATCH: ['reviews/seller/:id/reply'],
-  DELETE: ['catalog/seller/offers/:id', 'catalog/seller/products/:id/images/:id'],
+  DELETE: [
+    'catalog/seller/offers/:id',
+    'catalog/seller/products/:id/images/:id',
+    'catalog/seller/saved-filters/:id',
+  ],
   // A product photo for the panel's <img> tags: the API serves a JPEG it wrote itself.
-  GET: ['catalog/seller/products/:id/images/:id/:size', 'sellers/store-profile/images/:id/:size'],
+  GET: [
+    'catalog/seller/products/:id/images/:id/:size',
+    'sellers/store-profile/images/:id/:size',
+    // An import (polled) and its CSV report (query: `kind`).
+    'catalog/seller/imports/:id',
+    'catalog/seller/imports/:id/report',
+  ],
 };
 
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
@@ -167,21 +220,66 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
   'identity/seller/team': { after: UUID },
+  'catalog/seller/topics': { search: null, afterId: UUID, limit: /^[0-9]{1,3}$/ },
+  'catalog/seller/products': {
+    view: /^(all|drafts|live|inactive|in-review)$/,
+    // Free text up to the API's 100 characters (it refuses control characters itself).
+    q: null,
+    status: /^(draft|unpublished|published|matched|retired)$/,
+    categoryId: UUID,
+    paused: /^(true|false)$/,
+    typeCode: /^[A-Za-z0-9_.-]{1,64}$/,
+    sort: /^(name|updated|created)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[0-9]{1,5}$/,
+    pageSize: /^(25|50|100)$/,
+  },
+  // The export takes the list's selector (no page), the file format, the columns shown and the
+  // ids of the selected rows (at most 100, see QUERY_VALUE_MAX_FOR).
+  'catalog/seller/products/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(product|status|category|code|updated|created|offers|type)(,(product|status|category|code|updated|created|offers|type)){0,7}$/,
+    productIds:
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
+    view: /^(all|drafts|live|inactive|in-review)$/,
+    q: null,
+    status: /^(draft|unpublished|published|matched|retired)$/,
+    categoryId: UUID,
+    paused: /^(true|false)$/,
+    typeCode: /^[A-Za-z0-9_.-]{1,64}$/,
+    sort: /^(name|updated|created)$/,
+    direction: /^(asc|desc)$/,
+  },
+  'catalog/seller/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'notifications/seller/notices': { show: /^(unread|read|all)$/, before: UUID },
   // The API's own opaque cursor (epoch milliseconds of the publication, an underscore, the review id).
   'reviews/seller': { cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/ },
 };
+/** Per GET template with ids, the query keys passed on (same rules as {@link QUERY_KEYS}). */
+const QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
+  'catalog/seller/imports/:id/report': { kind: /^(errors|full)$/ },
+};
 const QUERY_VALUE_MAX = 512;
+/** A longer value for a key that carries a list: 100 ids of 36 characters and 99 commas. */
+const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
+  'catalog/seller/products/export:productIds': 3700,
+};
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
-function upstreamQuery(method: string, target: string, requestUrl: string): string {
-  const keys = method === 'GET' ? QUERY_KEYS[target] : undefined;
+function upstreamQuery(method: string, path: readonly string[], requestUrl: string): string {
+  const keys =
+    method !== 'GET'
+      ? undefined
+      : (QUERY_KEYS[path.join('/')] ??
+        Object.entries(QUERY_KEYS_WITH_ID).find(([template]) => matches(template, path))?.[1]);
   if (keys === undefined) return '';
   const source = new URL(requestUrl).searchParams;
   const kept = new URLSearchParams();
   for (const [key, shape] of Object.entries(keys)) {
     const value = source.get(key);
-    if (value === null || value.length > QUERY_VALUE_MAX) continue;
+    const max = QUERY_VALUE_MAX_FOR[`${path.join('/')}:${key}`] ?? QUERY_VALUE_MAX;
+    if (value === null || value.length > max) continue;
     if (shape === null || shape.test(value)) kept.set(key, value);
   }
   const text = kept.toString();
@@ -214,6 +312,11 @@ function isAllowed(method: string, path: readonly string[]): boolean {
 const MAX_BODY_BYTES = 16 * 1024;
 const MAX_PHOTO_BODY_BYTES = 5800 * 1024;
 const PHOTO_UPLOAD = 'catalog/seller/products/:id/images';
+/** The import upload carries a base64 file of at most 10 MiB (14 MiB of text), the API's own limit. */
+const MAX_IMPORT_UPLOAD_BODY_BYTES = 14500 * 1024;
+const IMPORT_UPLOAD = 'catalog/seller/imports';
+/** One photo of the import's photo step is a product photo: the same base64 body. */
+const IMPORT_PHOTO = 'catalog/seller/imports/:id/photos';
 /** The whole-profile save carries the text and up to two such pictures: twice the photo body. */
 const MAX_PROFILE_SAVE_BODY_BYTES = 2 * MAX_PHOTO_BODY_BYTES;
 const STORE_PROFILE_SAVE = 'sellers/store-profile';
@@ -225,7 +328,11 @@ const STORE_IMAGE_UPLOADS: ReadonlySet<string> = new Set([
 function bodyLimitFor(method: string, path: readonly string[]): number {
   if (method === 'PUT' && path.join('/') === STORE_PROFILE_SAVE) return MAX_PROFILE_SAVE_BODY_BYTES;
   if (method === 'PUT' && STORE_IMAGE_UPLOADS.has(path.join('/'))) return MAX_PHOTO_BODY_BYTES;
-  return method === 'POST' && matches(PHOTO_UPLOAD, path) ? MAX_PHOTO_BODY_BYTES : MAX_BODY_BYTES;
+  if (method === 'POST' && path.join('/') === IMPORT_UPLOAD) return MAX_IMPORT_UPLOAD_BODY_BYTES;
+  if (method === 'POST' && (matches(PHOTO_UPLOAD, path) || matches(IMPORT_PHOTO, path))) {
+    return MAX_PHOTO_BODY_BYTES;
+  }
+  return MAX_BODY_BYTES;
 }
 
 /** Request headers that cross to the API. Everything else is dropped. */
@@ -245,8 +352,6 @@ const FORWARDED_RESPONSE_HEADERS = [
   'content-type',
   'retry-after',
   'x-content-type-options',
-  // The order export arrives as an attachment with a file name the API made.
-  'content-disposition',
 ] as const;
 
 /** The API issues the correlation id and returns it in this header (ADR-0034 decision 3). */
@@ -373,7 +478,7 @@ export async function relay(
   let upstream: Response;
   try {
     upstream = await fetchImpl(
-      `${config.apiBaseUrl}/${target}${upstreamQuery(request.method, target, request.url)}`,
+      `${config.apiBaseUrl}/${target}${upstreamQuery(request.method, path, request.url)}`,
       {
         method: request.method,
         headers: outgoing,

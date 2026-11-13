@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
-import { ProductPage } from '../../../src/product/product-page.tsx';
+import { Suspense } from 'react';
+import { ProductLoading, ProductPage } from '../../../src/product/product-page.tsx';
 import { loadProductReviews } from '../../../src/reviews/reviews-source.ts';
 import { JsonLd } from '../../../src/seo/json-ld.tsx';
 import {
@@ -12,6 +13,7 @@ import { productPageStructuredData } from '../../../src/seo/structured-data.ts';
 import { variantFromParam } from '../../../src/storefront/product-detail.ts';
 import { productHref } from '../../../src/storefront/links.ts';
 import { productForMetadata, resolveProduct } from '../../../src/storefront/product-route.ts';
+import type { ProductDetail } from '../../../src/storefront/types.ts';
 import { loadStorefrontContent } from '../../../src/storefront/source.ts';
 
 interface Props {
@@ -46,13 +48,32 @@ export async function generateMetadata({ params }: Props) {
 }
 
 /**
- * A redirect or a 404 leaves from `resolveProduct`, before anything is sent. There is no loading
- * boundary above this page for that reason: one would flush the shell with a 200 first.
+ * A redirect or a 404 leaves from `resolveProduct`, before anything is sent: the route has no
+ * `loading.tsx`, which would flush the shell with a 200 first. What comes after that decision is
+ * read inside a Suspense boundary instead, so the skeleton shows while the content and reviews
+ * load and the status is already settled.
  */
 export default async function ProductRoute({ params, searchParams }: Props) {
   const [{ id }, query] = await Promise.all([params, queryOf(searchParams)]);
   const { product, path } = await resolveProduct(id, query);
   const initialVariantId = variantFromParam(product, query.v);
+  const t = await getTranslations('product');
+  return (
+    <Suspense fallback={<ProductLoading label={t('loading')} />}>
+      <ProductContent product={product} path={path} initialVariantId={initialVariantId} />
+    </Suspense>
+  );
+}
+
+async function ProductContent({
+  product,
+  path,
+  initialVariantId,
+}: {
+  readonly product: ProductDetail;
+  readonly path: string;
+  readonly initialVariantId: string | undefined;
+}) {
   const [content, origin, t, reviews] = await Promise.all([
     loadStorefrontContent(),
     requestOrigin(),

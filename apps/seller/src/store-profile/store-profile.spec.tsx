@@ -345,7 +345,14 @@ describe('StoreProfile pictures', () => {
   const pick = async (name: string, data = 'QUJD') => {
     prepare.mockResolvedValueOnce({ kind: 'ready', data });
     fireEvent.change(chooseIn(name), { target: { files: [file()] } });
-    await waitFor(() => expect(within(row(name)).getByRole('img')).toBeTruthy());
+    // Wait for this pick's preview, not just any <img>: on a second pick the earlier
+    // preview is already in the row, so waiting for an <img> would return before the
+    // new file is staged.
+    await waitFor(() =>
+      expect(within(row(name)).getByRole('img').getAttribute('src')).toBe(
+        `data:image/jpeg;base64,${data}`,
+      ),
+    );
   };
 
   it('has a Pictures section with a Logo and a Banner row, and the spec help text', () => {
@@ -521,9 +528,11 @@ describe('StoreProfile pictures', () => {
       // The other row is untouched.
       expect(within(row(name === 'Logo' ? 'Banner' : 'Logo')).queryByText(message)).toBeNull();
 
+      // The row already shows the first pick's image, so `pick` returns before the new file has
+      // been read; the notice and the Save lock clear only when the new file is staged.
       await pick(name, 'REVG');
-      expect(within(row(name)).queryByText(message)).toBeNull();
-      expect(save().disabled).toBe(false);
+      await waitFor(() => expect(within(row(name)).queryByText(message)).toBeNull());
+      await waitFor(() => expect(save().disabled).toBe(false));
     },
   );
 

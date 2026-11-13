@@ -103,8 +103,10 @@ export function ProductPage({
                   >
                     {specGroups(product.specifications).map((group, index) => (
                       <div key={group.code ?? index} className="spec-group">
-                        {group.label === undefined ? null : (
+                        {group.label === undefined ? null : product.description ? (
                           <h4 className="spec-title">{group.label}</h4>
+                        ) : (
+                          <h3 className="spec-title">{group.label}</h3>
                         )}
                         <dl className="spec">
                           {group.rows.map((s) => (
@@ -160,5 +162,23 @@ export function ProductPage({
         <SelectedBuyBar />
       </SelectedOffer>
     </SellerCards>
+  );
+}
+
+/** The loading state, shaped like the page so nothing jumps when it lands. */
+export function ProductLoading({ label }: { readonly label: string }) {
+  return (
+    <div role="status" aria-label={label} className="loading">
+      <div className="skel line" />
+      <div className="pdp" aria-hidden="true">
+        <div className="pl1">
+          <div className="skel title" />
+          <div className="skel gphoto" />
+        </div>
+        <div className="pr1">
+          <div className="skel bbox" />
+        </div>
+      </div>
+    </div>
   );
 }

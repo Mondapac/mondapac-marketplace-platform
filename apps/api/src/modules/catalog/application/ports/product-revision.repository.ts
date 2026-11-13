@@ -1,6 +1,15 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { StoredRevision } from '../../domain/stored-revision';
 
+/** The parts of a stored revision a claim query is built from. */
+export interface RevisionClaimShape {
+  readonly productId: Id<'Product'>;
+  readonly revisionId: Id<'ProductRevision'>;
+  readonly categoryIds: readonly string[];
+  /** In position order. */
+  readonly variantIds: readonly string[];
+}
+
 /**
  * The store of product revisions (catalog data design 3.7 to 3.10). Every method runs in the open
  * unit of the caller, through the Market-scoped client. Revisions are insert-only: there is no
@@ -21,6 +30,19 @@ export interface ProductRevisionRepository extends ProductRevisionDecisions {
    * or a retired one, a category of another Market, a repeated option key.
    */
   add(market: MarketContext, revision: StoredRevision): Promise<void>;
+
+  /**
+   * What a claim needs of several revisions, in one statement (multi-culture package 3a): per
+   * found revision of the named product, its category ids and its variant ids in position order.
+   * A pair that does not match (another product's revision, another Market's) is absent.
+   */
+  claimShapes(
+    market: MarketContext,
+    refs: readonly {
+      readonly productId: Id<'Product'>;
+      readonly revisionId: Id<'ProductRevision'>;
+    }[],
+  ): Promise<readonly RevisionClaimShape[]>;
 
   /** The revision of this product in this Market, or null (also for another product's id). */
   find(
@@ -54,6 +76,30 @@ export interface ChangeRequestView {
   readonly decidedAt: Temporal.Instant;
 }
 
+/**
+ * One revision of a product with its decision, as the reviewer's history shows it (product version
+ * review B1). Codes and instants only: the reviewer's words (`reason_text`, VER-13) and account ids
+ * are not carried.
+ */
+export interface RevisionHistoryEntry {
+  readonly revisionId: Id<'ProductRevision'>;
+  readonly revisionNo: number;
+  readonly kind: 'submission' | 'revert' | 'tax-override';
+  readonly authorKind: 'seller' | 'admin';
+  readonly submittedAt: Temporal.Instant;
+  /** null while the revision has no decision (it is pending, or nothing decided it). */
+  readonly decision: {
+    readonly outcome: 'published' | 'changes-requested' | 'superseded';
+    /** reviewed | auto | admin-authored; set for a published outcome. */
+    readonly publishKind: string | null;
+    /** resubmitted | withdrawn | promoted | matched; set for a superseded outcome. */
+    readonly supersededCause: string | null;
+    readonly reasonCode: string | null;
+    readonly decidedByKind: 'admin' | 'seller' | 'system';
+    readonly decidedAt: Temporal.Instant;
+  } | null;
+}
+
 export interface ProductRevisionDecisions {
   /**
    * Stores the decision of a reviewer (`published`/`reviewed` or `changes-requested`) in the open
@@ -69,6 +115,13 @@ export interface ProductRevisionDecisions {
     market: MarketContext,
     productId: Id<'Product'>,
   ): Promise<ChangeRequestView | null>;
+
+  /** The product's revisions with their decisions, newest first, at most `limit` (1 to 100). */
+  history(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    limit: number,
+  ): Promise<readonly RevisionHistoryEntry[]>;
 }
 
 export const PRODUCT_REVISION_REPOSITORY = Symbol('PRODUCT_REVISION_REPOSITORY');

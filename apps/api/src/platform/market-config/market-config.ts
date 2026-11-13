@@ -1,6 +1,12 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { parseMarketId, POPULATIONS } from '@mondapac/shared-kernel';
+import {
+  MEASURE_BASE_UNITS,
+  MEASURE_UNITS,
+  measureUnit,
+  parseMarketId,
+  POPULATIONS,
+} from '@mondapac/shared-kernel';
 import type { MarketId, Population } from '@mondapac/shared-kernel';
 import { z } from 'zod';
 
@@ -117,6 +123,8 @@ const requestLimitsSchema = z.strictObject({
   anonymousIdentityPerMinute: perMinute,
   /** Routes marked `@RateLimit('public-media')`: the anonymous buyer photo route. */
   publicMediaPerMinute: perMinute,
+  /** Routes marked `@RateLimit('public-search')`: the storefront product and store search. */
+  publicSearchPerMinute: perMinute,
   /** Every other market-scoped route. */
   defaultPerMinute: perMinute,
 });
@@ -1181,6 +1189,10 @@ const catalogSchema = z
       primaryImage: z.boolean(),
       anyImage: z.literal(true),
       variantRemoved: z.boolean(),
+      /** A GTIN set, changed or cleared on an already published variant (variants V4). */
+      gtinChanged: z.boolean(),
+      /** A second variant axis added to a published product (variants V9b). */
+      axisAdded: z.boolean(),
     }),
     /**
      * The most non-retired variants one product may hold (catalog design 2.1; AU 100). Bounded
@@ -1203,11 +1215,50 @@ const catalogSchema = z
      */
     maxCategoryChangeTags: z.number().int().min(1).max(200_000),
     /**
+     * The most data rows one category tree import file may hold (categories C7a; AU 2,000). Never
+     * above the platform import ceiling of 5,000 rows. Required, no default.
+     */
+    maxCategoryImportRows: z.number().int().min(1).max(5000),
+    /**
+     * The largest category tree import file in bytes (categories C7a; AU 5 MiB). Never above the
+     * platform import ceiling of 10 MiB. Required, no default.
+     */
+    maxCategoryImportBytes: z
+      .number()
+      .int()
+      .min(1024)
+      .max(10 * 1024 * 1024),
+    /**
+     * The most category proposals one seller may have waiting (categories C9a; CAT-54; AU 5).
+     * Exact: proposals of one seller run one after the other under the seller's shelf lock.
+     * Optional: a Market without it uses the catalog default of 5.
+     */
+    maxPendingCategoryProposals: z.number().int().min(1).max(50).optional(),
+    /**
      * The most variant (option) attributes one product may vary on (attributes plan A2; AU 2). A
      * configurable product whose feature set marks more option attributes is refused by the
      * product type's variant check. Required: a Market never defaults it.
      */
     maxVariantAttributes: z.number().int().min(1).max(5),
+    /**
+     * The units a number-with-unit attribute may offer in this Market (attributes A3, plan
+     * decision ت۱): a code the platform knows (shared-kernel MEASURE_UNITS) and its label per
+     * locale. Not editable by an administrator. Required: a Market never defaults it. The base
+     * units (g, ml, mm, count) are the stored form, so the Market must offer each of them.
+     */
+    units: z
+      .array(
+        z.strictObject({
+          code: z.string().refine((code) => measureUnit(code) !== undefined, {
+            message: 'not a unit the platform knows',
+          }),
+          labels: z
+            .record(locale, z.string().min(1).max(20))
+            .refine((labels) => Object.keys(labels).length > 0, { message: 'a label is required' }),
+        }),
+      )
+      .min(1)
+      .max(MEASURE_UNITS.length),
     /**
      * Whether a new product revision waits for review (true) or publishes at once when the
      * change is minor (false) (catalog design 4.2 row 1). The interim home of the ADR-0026
@@ -1258,6 +1309,19 @@ const catalogSchema = z
         path: ['conditions'],
         message: 'a condition code must not repeat',
       });
+    }
+    const unitCodes = catalog.units.map((unit) => unit.code);
+    if (new Set(unitCodes).size !== unitCodes.length) {
+      context.addIssue({ code: 'custom', path: ['units'], message: 'a unit must not repeat' });
+    }
+    for (const base of Object.values(MEASURE_BASE_UNITS)) {
+      if (!unitCodes.includes(base)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['units'],
+          message: `the base unit ${base} must be offered`,
+        });
+      }
     }
     const seen = new Set<string>();
     catalog.taxCategories.forEach((category, index) => {
@@ -1755,6 +1819,18 @@ const marketSchema = z
       })
       .optional(),
     /**
+     * The content filter (owner decision, 6 Nov 2026), owned by the platform. `blockedTerms`: words
+     * and phrases (any language of the Market, matched as whole words, case-insensitive, Persian
+     * and Arabic letter variants unified) that a description or the alt text of an image may not
+     * hold. A field that holds one is refused with a validation error naming the field. Without
+     * this section nothing is refused. Reviews keep `reviews.autoChecks`.
+     */
+    contentFilter: z
+      .strictObject({
+        blockedTerms: z.array(z.string().trim().min(2).max(64)).max(2000),
+      })
+      .optional(),
+    /**
      * Blog settings (blog package 1), owned by `blog`. `sellerPostsPerMonth`: the posts a seller may
      * submit for the first time in one calendar month, counted in the Market `timezone` (AU 4).
      * `pageSize`: posts per public page (AU 12). `defaultAuthorDisplay`: the byline of a platform
@@ -1926,6 +2002,12 @@ const marketSchema = z
          * the page asks the API and shows the result. Personalization package 1b.
          */
         unsubscribePage: pageUrl.optional(),
+        /**
+         * The seller panel's Products page filtered to "Missing details": the link of the "Email
+         * sellers" mail of the attributes report (package A4-4). Without it the Market sends no
+         * such mail.
+         */
+        sellerMissingDetailsPage: pageUrl.optional(),
         /**
          * The API's one-click unsubscribe route of this Market
          * (`.../notifications/unsubscribe/<MARKET>`), sent in the `List-Unsubscribe` header

@@ -9,8 +9,18 @@ import {
   DECIDE_PERMISSION,
   OWNER_RESET_PERMISSION,
   REVIEW_PERMISSION,
+  SETTINGS_EDIT_PERMISSION,
   type ReviewRead,
 } from '../../../../src/sellers/review-types.ts';
+import { SellerHealthCard } from '../../../../src/sellers/health-card.tsx';
+import {
+  HEALTH_RECALCULATE_PERMISSION,
+  SELLER_VIEW_PERMISSION,
+  healthPath,
+  type SellerHealthRead,
+} from '../../../../src/sellers/health-types.ts';
+import { CategoryProposalsCard } from '../../../../src/sellers/category-proposals-card.tsx';
+import { DECIDE_PERMISSION as PROPOSAL_DECIDE_PERMISSION } from '../../../../src/categories/proposals/types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
 import { BackToSellers, ReviewView } from '../../../../src/sellers/review-view.tsx';
 import { CommissionRateCard } from '../../../../src/commission/rate-card.tsx';
@@ -32,6 +42,15 @@ import {
   type PayoutHold,
   type PayoutTerms,
 } from '../../../../src/payouts/seller-types.ts';
+import { SellerActivitiesCard } from '../../../../src/sellers/seller-activities-card.tsx';
+import {
+  ACTIVITIES_MANAGE_PERMISSION,
+  ACTIVITIES_VIEW_PERMISSION,
+  CATALOG_ACTIVITY_READ_PERMISSION,
+  sellerActivitiesPath,
+  type ActivityOption,
+  type SellerActivities,
+} from '../../../../src/sellers/activities-types.ts';
 import { displayZone } from '../../../../src/shared/format.ts';
 import { SellerMethodsCard } from '../../../../src/delivery-settings/seller-methods-card.tsx';
 import {
@@ -44,6 +63,14 @@ import {
 async function loadMethods(sellerId: string, canView: boolean): Promise<SellerMethods | null> {
   if (!canView) return null;
   const read = await serverGet<SellerMethods>(sellerMethodsPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? read.body : null;
+}
+
+/** The seller's stored health, or null when the role cannot see it or it cannot be read. */
+async function loadHealth(sellerId: string, canView: boolean): Promise<SellerHealthRead | null> {
+  if (!canView) return null;
+  const read = await serverGet<SellerHealthRead>(healthPath(sellerId));
   if (read.kind === 'signed-out') redirect('/session-ended');
   return read.kind === 'ok' ? read.body : null;
 }
@@ -66,6 +93,33 @@ async function loadHolds(sellerId: string, canView: boolean): Promise<PayoutHold
   );
   if (read.kind === 'signed-out') redirect('/session-ended');
   return read.kind === 'ok' ? read.body.holds : null;
+}
+
+/** The activities the seller carries, or null when the role cannot see them or they cannot be read. */
+async function loadActivities(
+  sellerId: string,
+  permissionKeys: readonly string[],
+): Promise<{ readonly seller: SellerActivities; readonly options: ActivityOption[] } | null> {
+  if (!permissionKeys.includes(ACTIVITIES_VIEW_PERMISSION)) return null;
+  const read = await serverGet<SellerActivities>(sellerActivitiesPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  if (read.kind !== 'ok') return null;
+  // The names come from the catalog list; a role without its key still sees the set, unnamed.
+  let options: ActivityOption[] = [];
+  if (permissionKeys.includes(CATALOG_ACTIVITY_READ_PERMISSION)) {
+    const list = await serverGet<{
+      items: { id: string; status: string; names: Record<string, string>; code: string }[];
+      locales: { default: string };
+    }>('catalog/admin/business-activities?limit=100');
+    if (list.kind === 'ok') {
+      options = list.body.items.map((a) => ({
+        id: a.id,
+        name: a.names[list.body.locales.default] ?? a.code,
+        active: a.status === 'active',
+      }));
+    }
+  }
+  return { seller: read.body, options };
 }
 
 type CommissionRead =
@@ -149,15 +203,47 @@ export default async function SellerReviewPage({
       canCheck: permissionKeys.includes(CHECK_PERMISSION),
       csrfToken,
     };
-    const [commission, methods, terms, holds] = await Promise.all([
+    const [commission, methods, terms, holds, health, activities] = await Promise.all([
       loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
       loadMethods(sellerId, permissionKeys.includes(DELIVERY_VIEW_PERMISSION)),
       loadTerms(sellerId, permissionKeys.includes(TERMS_VIEW_PERMISSION)),
       loadHolds(sellerId, permissionKeys.includes(HOLD_VIEW_PERMISSION)),
+      loadHealth(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+      loadActivities(sellerId, permissionKeys),
     ]);
     return shell(
       <div className="flex flex-col gap-6">
         <ReviewView review={result.body} decide={decide} />
+        {health === null ? null : (
+          <SellerHealthCard
+            sellerId={sellerId}
+            initial={health}
+            canRecalculate={permissionKeys.includes(HEALTH_RECALCULATE_PERMISSION)}
+            csrfToken={csrfToken}
+          />
+        )}
+        {permissionKeys.includes(SETTINGS_EDIT_PERMISSION) ? (
+          <CategoryProposalsCard
+            sellerId={sellerId}
+            csrfToken={csrfToken}
+            canSeeQueue={permissionKeys.includes(PROPOSAL_DECIDE_PERMISSION)}
+          />
+        ) : null}
+        {activities === null ? null : (
+          <SellerActivitiesCard
+            sellerId={sellerId}
+            initial={activities.seller}
+            activities={activities.options}
+            canEdit={
+              permissionKeys.includes(ACTIVITIES_MANAGE_PERMISSION) && activities.options.length > 0
+            }
+            editNote={
+              permissionKeys.includes(ACTIVITIES_MANAGE_PERMISSION) &&
+              activities.options.length === 0
+            }
+            csrfToken={csrfToken}
+          />
+        )}
         {commission.kind === 'hidden' && methods === null ? null : (
           <div className="grid gap-6 lg:grid-cols-2">
             {methods === null ? null : (

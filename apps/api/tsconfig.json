@@ -7,6 +7,7 @@
     "experimentalDecorators": true,
     "types": ["node", "jest"],
     "paths": {
+      "@mondapac/platform-import": ["../../packages/platform-import/src/index.ts"],
       "@mondapac/shared-kernel": ["../../packages/shared-kernel/src/index.ts"],
       "@mondapac/shared-kernel/testing": ["../../packages/shared-kernel/src/testing.ts"],
       "@mondapac/shared-kernel/contexts": ["../../packages/shared-kernel/src/contexts.ts"],

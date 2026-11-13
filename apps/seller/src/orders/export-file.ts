@@ -46,9 +46,8 @@ export async function downloadOrders(path: string, query: string): Promise<Expor
   } catch {
     return { ok: false, reason: 'unavailable' };
   }
-  const name =
-    /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1] ??
-    `orders-${new Date().toISOString().slice(0, 10)}.csv`;
+  // The panel names the file itself: the relay does not pass the API's file name on.
+  const name = `seller-orders-${new Date().toISOString().slice(0, 10)}.csv`;
   const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
   const link = document.createElement('a');
   link.href = url;

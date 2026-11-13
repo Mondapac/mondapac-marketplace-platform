@@ -140,9 +140,22 @@ export class PrismaProductRepository implements ProductRepository {
     return productFromRow(row);
   }
 
+  async findManyByIds(
+    market: MarketContext,
+    ids: readonly Id<'Product'>[],
+  ): Promise<readonly Product[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.tx(market).catalogProduct.findMany({
+      where: { marketId: market.marketId, id: { in: [...new Set(ids)] } },
+      include: { variants: { orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] } },
+    });
+    return rows.map(productFromRow);
+  }
+
   async lockAtVersion(market: MarketContext, id: Id<'Product'>, version: number): Promise<boolean> {
     // Sets the version to itself: a row lock to the end of the unit and a version check in one
-    // statement. `products` has no trigger and no updated-at column, so nothing else changes
+    // statement. `products` has no updated-at column and its only trigger
+    // (products_type_change_guard) fires on type_code/variant_model alone, so nothing else changes
     // (the grant covers `version`, data design 7).
     const { count } = await this.prisma.tx(market).catalogProduct.updateMany({
       where: { marketId: market.marketId, id, version },
@@ -164,6 +177,11 @@ export class PrismaProductRepository implements ProductRepository {
     const { count } = await tx.catalogProduct.updateMany({
       where: { marketId: market.marketId, id: state.id, version: expected },
       data: {
+        // Changes only with a revision-pointer move in the same statement (the guard of #709).
+        familyCode: state.familyCode,
+        // Change once, together, simple to configurable (Add sizes; trigger products_type_change_guard).
+        typeCode: state.typeCode,
+        variantModel: state.variantModel,
         status: state.status,
         discardedAt: state.discardedAt === null ? null : toDate(state.discardedAt),
         withdrawnAt: state.withdrawnAt === null ? null : toDate(state.withdrawnAt),

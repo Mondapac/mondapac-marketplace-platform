@@ -12,7 +12,11 @@ import { sellerNav, sellerNavItems } from '../src/nav.ts';
 import { SETUP_ROOT } from '../src/setup/steps.ts';
 
 const APP = resolve(dirname(fileURLToPath(import.meta.url)), '../app/(shell)');
-const ALL_KEYS = sellerNav.items.flatMap((item) => item.anyOf ?? []);
+// The import entry needs both of its keys, so the edit key is held too.
+const ALL_KEYS = [
+  ...sellerNav.items.flatMap((item) => item.anyOf ?? []),
+  'catalog.own-product.edit',
+];
 
 afterEach(cleanup);
 

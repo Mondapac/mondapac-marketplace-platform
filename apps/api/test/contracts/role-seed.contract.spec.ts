@@ -219,6 +219,28 @@ const PINNED: readonly (readonly [string, string])[] = [
     'platform:onboarding-compliance@8',
     'dee1c4f6421f2a4bd33f57a37694cc4db919439383ba87f87e1bdb019c055c27',
   ],
+  // Variants V6: `catalog.variant.view` for the read-only Catalogue > Variants page.
+  [
+    'platform:catalogue-moderator@15',
+    '0f657895bae68d56ebe4829e989c0c9644a5894c5ee8b28c07e1aa8178f9af7f',
+  ],
+  [
+    'platform:operations-support@6',
+    '7c437c556779e4db9da0c3eff3e477c34b4cc2950213c69b6fbe266a4372ddad',
+  ],
+  ['platform:viewer@30', '5dcf8913a4716772448865f80df795a683e163f9fa11b83abda8596b39cd5439'],
+  ['platform:viewer@31', '62bb9f70d77494aed67bf97f628381ab03838d03c9fc65c3ab06387d922436f6'],
+  ['seller:store-manager@5', 'e0c92df586baef19607aa65dd0841e35d880e419e30940a2e3c35c0d51b95240'],
+  ['platform:viewer@32', '21141b67d79bdd40e040e042c2df267c7a2e0d1b365fc3fc267d417d76eb1d16'],
+  [
+    'platform:onboarding-compliance@9',
+    '53332077c6c0f2f2507e1de1a04ea3db649c3ab2fac1285a944e8e6ce013ea7c',
+  ],
+  [
+    'platform:catalogue-moderator@16',
+    '326a7cf63b0dceffbf3376d6733406afc6e8d7d537a4944b9a0721bce4efc32a',
+  ],
+  ['seller:store-manager@6', 'c5473749bfccf7c721851556d35e8f2db5e5c1e173d3a404021a755757d85201'],
 ];
 
 const ENTRY = /^(platform|seller):([a-z][a-z0-9-]*)@([1-9][0-9]*)$/;

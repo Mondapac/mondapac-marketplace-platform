@@ -71,6 +71,10 @@ class Store implements SellingFactsRepository {
     return Promise.resolve(this.blogs.get(`${market.marketId}|${sellerId}`) ?? null);
   }
 
+  categoryProposalsAllowed(): Promise<boolean | null> {
+    return Promise.reject(new Error('not used'));
+  }
+
   firstApprovedAt(): Promise<null> {
     return Promise.reject(new Error('not used'));
   }
@@ -183,6 +187,8 @@ describe.each([
       sellerBusinessActivitiesSystem: undefined as never,
       blogAccess: undefined as never,
       blogAccessSystem: undefined as never,
+      mayProposeCategories: undefined as never,
+      mayProposeCategoriesSystem: undefined as never,
       activeSince: undefined as never,
       activeSinceSystem: undefined as never,
       reviewerBusinessDetails: undefined as never,
@@ -190,6 +196,10 @@ describe.each([
       carrierPickup: undefined as never,
       pickupPostcodes: undefined as never,
       operatingZones: undefined as never,
+      applySignupCultures: undefined as never,
+      cultureApprovedMembers: undefined as never,
+      sellerApprovedCultures: undefined as never,
+      sellerApprovedCulturesSystem: undefined as never,
     });
   });
 

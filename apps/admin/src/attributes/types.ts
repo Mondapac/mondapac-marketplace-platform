@@ -9,6 +9,8 @@ export const ATTRIBUTES_PATH = '/catalog/attributes';
 export const BRANDS_PATH = '/catalog/brands';
 export const API_ATTRIBUTES = 'catalog/admin/attributes';
 export const API_FEATURE_SETS = 'catalog/admin/feature-sets';
+export const API_MISSING_DETAILS = 'catalog/admin/reports/products-missing-details';
+export const API_MISSING_DETAILS_EMAIL = `${API_MISSING_DETAILS}/email-sellers`;
 export const PAGE_SIZE = 50;
 
 /** What a write answers (attributes A2): enough to read the attribute again. */
@@ -34,6 +36,7 @@ export const DATA_TYPES = [
   'date',
   'select',
   'multi-select',
+  'measure',
 ] as const;
 export type DataType = (typeof DATA_TYPES)[number];
 
@@ -46,6 +49,21 @@ export interface MarketLocales {
   readonly default: string;
   /** The default first. */
   readonly supported: readonly string[];
+}
+
+/** A unit the Market offers (`catalog.units`), with its label per locale (attributes A3). */
+export interface MarketUnit {
+  readonly code: string;
+  readonly dimension: string;
+  readonly labels: Localized;
+}
+
+/** What an administrator chose for a number-with-unit attribute (attributes A3). */
+export interface MeasureConfig {
+  readonly dimension: string;
+  readonly units: readonly string[];
+  readonly defaultUnit: string;
+  readonly decimals: number;
 }
 
 export interface AttributeSummary {
@@ -72,6 +90,7 @@ export interface AttributePage {
   readonly total: number;
   readonly totalAll: number;
   readonly locales: MarketLocales;
+  readonly units: readonly MarketUnit[];
   readonly featureSets: readonly { readonly id: string; readonly code: string }[];
   readonly truncated: boolean;
 }
@@ -123,7 +142,13 @@ export interface AttributeDetail extends AttributeSummary {
   readonly createdByKind: 'seed' | 'admin';
   readonly createdAt: string;
   readonly version: number;
-  readonly bounds: { readonly maxLength?: number; readonly min?: number; readonly max?: number };
+  /** For a measure, `min` and `max` are in the dimension's base unit. */
+  readonly bounds: {
+    readonly maxLength?: number;
+    readonly min?: number;
+    readonly max?: number;
+    readonly measure?: MeasureConfig;
+  };
   readonly display: AttributeDisplay;
   readonly options: readonly AttributeOption[];
   readonly productCount: number;
@@ -131,6 +156,7 @@ export interface AttributeDetail extends AttributeSummary {
   readonly history: readonly HistoryEntry[];
   readonly historyTruncated: boolean;
   readonly locales: MarketLocales;
+  readonly units: readonly MarketUnit[];
 }
 
 export interface FeatureSetRow {
@@ -148,9 +174,12 @@ export interface FeatureSetList {
   readonly truncated: boolean;
 }
 
+export type RequirementLevel = 'required' | 'recommended' | 'optional';
+
 export interface FeatureSetAttribute {
   readonly code: string;
   readonly required: boolean;
+  readonly level?: RequirementLevel;
   readonly isVariantOption: boolean;
   readonly attributeId: string | null;
   readonly names: Localized | null;
@@ -164,9 +193,13 @@ export interface FeatureSetDetail {
   readonly code: string;
   readonly status: string;
   readonly revisionNo: number;
+  /** The version the editor names when it saves. */
+  readonly version?: number;
+  readonly names?: Localized;
   readonly createdAt: string;
   readonly groups: readonly {
     readonly groupCode: string;
+    readonly names?: Localized;
     readonly attributes: readonly FeatureSetAttribute[];
   }[];
   readonly productCount: number;
@@ -174,7 +207,7 @@ export interface FeatureSetDetail {
 }
 
 /** The page's tabs; Brands is a link to its own page. */
-export const TABS = ['attributes', 'feature-sets', 'brands', 'waiting'] as const;
+export const TABS = ['attributes', 'feature-sets', 'brands', 'waiting', 'missing-details'] as const;
 export type Tab = (typeof TABS)[number];
 
 /** The sub-tabs of one attribute (plan 16). */
@@ -321,4 +354,43 @@ export interface SuggestionDecided {
     readonly version: number;
     readonly optionCode: string | null;
   };
+}
+
+/** One row of the report "Products missing required details" (A4; apps/api attribute-admin.dto.ts). */
+export interface MissingDetailsItem {
+  readonly productId: string;
+  readonly productCode: string;
+  readonly name: string | null;
+  readonly sellerId: string | null;
+  readonly featureSetCode: string;
+  /** Codes of the required attributes with no value. */
+  readonly missing: readonly string[];
+}
+
+export interface MissingDetailsPage {
+  readonly items: readonly MissingDetailsItem[];
+  /** The `afterId` of the next call; null when the whole Market has been read. */
+  readonly nextAfterId: string | null;
+  readonly scanned: number;
+  readonly unreadableFeatureSets: readonly string[];
+}
+
+/** What "Email sellers" answers (apps/api attribute-admin.dto.ts MissingDetailsEmailBody). */
+export interface EmailSellersAnswer {
+  readonly dryRun: boolean;
+  readonly throttleDays: number;
+  readonly sellers: readonly {
+    readonly sellerId: string;
+    readonly sellerName: string | null;
+    readonly products: readonly {
+      readonly productId: string;
+      readonly productCode: string;
+      readonly name: string | null;
+      /** English names of the missing details. */
+      readonly missing: readonly string[];
+      readonly status: 'will-send' | 'queued' | 'recently-emailed';
+      readonly lastRequestedAt: string | null;
+    }[];
+  }[];
+  readonly ignored: readonly { readonly productId: string; readonly reason: string }[];
 }

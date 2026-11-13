@@ -34,11 +34,18 @@ export interface OrderLineView {
 }
 
 export interface SellerOrderView {
+  /** The seller order's own id (the reference in the order emails). */
+  readonly sellerOrderId: Id<'SellerOrder'>;
   readonly sellerId: Id<'Seller'>;
   readonly subtotal: Money;
   readonly shipping: Money;
   /** The tax on the delivery fee, frozen at placement; null on older orders. */
   readonly shippingTax: Money | null;
+  /**
+   * The delivery fee as the customer paid it, tax included: what a refund can give back of it at
+   * most. Null when the delivery tax was not recorded (an older order).
+   */
+  readonly shippingGross: Money | null;
   /**
    * The tax of the seller's lines plus the delivery tax where it was recorded; null when any
    * line was placed before tax was recorded.
@@ -161,11 +168,32 @@ export interface LabelledSellerOrderDetailView extends Omit<SellerOrderDetailVie
 }
 
 /**
+ * One refund of the seller's own seller order, as its page shows it: who asked (an admin, or the
+ * seller for unavailable units), the state, the money and the units. No account id, Stripe id or
+ * loss reason code.
+ */
+export interface SellerOrderRefundView {
+  readonly refundId: Id<'Refund'>;
+  readonly requestedBy: 'admin' | 'seller';
+  readonly state: 'pending' | 'succeeded' | 'failed';
+  readonly reason: string;
+  /** What goes back to the customer, tax included (lines plus shipping). */
+  readonly amount: Money;
+  /** The shipping part of `amount`; null when none. */
+  readonly shipping: Money | null;
+  readonly lines: readonly { readonly orderLineId: Id<'OrderLine'>; readonly quantity: number }[];
+  readonly requestedAt: Temporal.Instant;
+  readonly settledAt: Temporal.Instant | null;
+}
+
+/**
  * One seller order as its seller handles it: the detail plus where to send it (recipient name,
  * phone and address only; never the customer's email). Null as in {@link OwnOrderView}.
  */
 export interface LabelledSellerOrderShipView extends LabelledSellerOrderDetailView {
   readonly shipTo: ShipTo | null;
+  /** Every refund of the seller order, oldest first (failed ones too: nothing went back). */
+  readonly refunds: readonly SellerOrderRefundView[];
   /**
    * For a ready pickup order not yet collected: the tries left and the lock, never the code.
    * Null for every other order.
@@ -239,6 +267,14 @@ const taxOf = (lines: readonly OrderLine[], currency: string, extra = 0n): Money
 const shippingTaxView = (seller: SellerOrder, currency: string): Money | null =>
   seller.shippingTax === null ? null : makeMoney(seller.shippingTax, currency);
 
+const shippingGrossView = (seller: SellerOrder, currency: string): Money | null =>
+  seller.shippingTax === null || seller.shippingTaxInclusive === null
+    ? null
+    : makeMoney(
+        seller.shipping + (seller.shippingTaxInclusive ? 0n : seller.shippingTax),
+        currency,
+      );
+
 /** A seller order as a seller sees it in the panel: its own part of one paid order. */
 export interface SellerOrderDetailView extends SellerOrderView {
   readonly sellerOrderId: Id<'SellerOrder'>;
@@ -269,6 +305,7 @@ export function sellerOrderDetailView(record: {
     subtotal: makeMoney(seller.subtotal, currency),
     shipping: makeMoney(seller.shipping, currency),
     shippingTax: shippingTaxView(seller, currency),
+    shippingGross: shippingGrossView(seller, currency),
     tax: taxOf(lines, currency, shippingTaxOf(seller)),
     total: makeMoney(seller.total, currency),
     fulfilment: seller.fulfilment,
@@ -305,10 +342,12 @@ export function orderView(order: OrderState): OrderView {
     sellerOrders: order.sellerOrders.map((seller) => {
       const lines = order.lines.filter((line) => line.sellerOrderId === seller.id);
       return {
+        sellerOrderId: seller.id,
         sellerId: seller.sellerId,
         subtotal: money(seller.subtotal),
         shipping: money(seller.shipping),
         shippingTax: shippingTaxView(seller, currency),
+        shippingGross: shippingGrossView(seller, currency),
         tax: taxOf(lines, currency, shippingTaxOf(seller)),
         total: money(seller.total),
         fulfilment: seller.fulfilment,
