@@ -178,6 +178,18 @@ export interface SellersFacade {
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
 
   /**
+   * `aiAccessOf` (SEL-25; ADR-0019 decision 7): whether an admin switched AI on for the seller
+   * (default off). `platform/ai` asks it before every AI use. An unknown seller, another Market's
+   * seller or a read error is `sellers.unavailable`: the caller never reads an error as on, and
+   * `platform/ai` callers treat any error as off (ADR-0019 R8). Two use cases behind this method,
+   * as for `sellerSummaries`. Not exposed over HTTP.
+   */
+  aiAccessOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
+
+  /**
    * `activeSinceOf` (promotions T1): the instant the seller's business file was first approved in
    * the context's Market, the clock of promotions' "a seller active for fewer than N days needs
    * approval" rule. A revision approved and later superseded still counts; a rejected or
