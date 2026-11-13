@@ -272,6 +272,13 @@ export class AdminSessionSummary {
   })
   locale!: string | null;
 
+  @ApiProperty({
+    description:
+      "The Market's IANA time zone (ADR-0005): the fallback for a holder with no zone of their " +
+      'own. The panel reads its local-day filters in it.',
+  })
+  marketTimezone!: string;
+
   @ApiProperty({ type: AdminSessionTimes })
   session!: AdminSessionTimes;
 

@@ -10,7 +10,8 @@ import {
   Tabs,
   TextField,
 } from '@mondapac/ui';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTimeZone, useTranslations } from 'next-intl';
+import { resolveZone } from '../price/zone-time.ts';
 import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { OrdersTable } from './orders-table.tsx';
@@ -43,6 +44,9 @@ export function SellerOrders({
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
+  // The seller's own working zone (UTC when it could not be read): the table's times and the
+  // days of the date filters are both on this clock (ADR-0005).
+  const zone = resolveZone(useTimeZone());
   // What the rows on screen answer. Nothing here changes until an answer arrives, so a failed
   // request leaves the old rows under the old tab, days, sort and range line.
   const [orders, setOrders] = useState(initial.sellerOrders);
@@ -105,6 +109,7 @@ export function SellerOrders({
       queryOf(
         nextFilter,
         nextDays,
+        zone,
         paging === 'pages' ? { paging, page: nextPage, sort: nextSort } : { paging, cursor },
       ),
     );

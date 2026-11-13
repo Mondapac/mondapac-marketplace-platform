@@ -2494,8 +2494,8 @@
     },
     "filters": {
       "group": "Filters",
-      "from": "Paid from (UTC)",
-      "to": "Paid until (UTC)",
+      "from": "Paid from",
+      "to": "Paid until",
       "clear": "Clear dates",
       "backwards": "The end day is before the start day."
     },

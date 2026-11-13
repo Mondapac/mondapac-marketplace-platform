@@ -97,6 +97,23 @@ export function displayZone(zone: string | null): string {
   }
 }
 
+/**
+ * The zone for local days and times (ADR-0005): the holder's own when this runtime knows it,
+ * otherwise the Market's, and UTC only when neither can be used.
+ */
+export function localZone(own: string | null, market: string | null): string {
+  for (const zone of [own, market]) {
+    if (zone === null || zone === '') continue;
+    try {
+      dateFormat('en', { timeZone: zone });
+      return zone;
+    } catch {
+      // Not a zone this runtime knows: try the next one.
+    }
+  }
+  return 'UTC';
+}
+
 /** A day with its year in an IANA zone ("29 Oct 2026"); a zone this runtime does not know reads in UTC. */
 export function dayInZone(iso: string | null, locale: string, zone: string): string {
   if (iso === null) return '-';
