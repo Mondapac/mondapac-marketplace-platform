@@ -523,6 +523,20 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
       });
     });
 
+    it("lets a link that holds no feature set and no filters inherit the parent's", async () => {
+      links = [
+        { categoryId: cat(1), familyId: family(1), filters: [] },
+        { categoryId: cat(2), familyId: null, filters: [] },
+      ];
+      const answer = await tree.execute(admin, {});
+      expect(answer.ok && answer.value.categories[1]).toMatchObject({
+        slug: 'c2',
+        featureSetId: family(1),
+        featureSetFromCategoryId: cat(1),
+        inherited: true,
+      });
+    });
+
     it('keeps only the rows whose effective set is the one asked for', async () => {
       const a = await tree.execute(admin, { featureSetId: family(1) });
       expect(rowsOf(a)).toEqual([

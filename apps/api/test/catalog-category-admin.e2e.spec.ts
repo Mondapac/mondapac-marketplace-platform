@@ -10,6 +10,7 @@ import {
   CATEGORY_ATTRIBUTE_LINK_STORE,
   type StoredLinkFact,
 } from '../src/modules/catalog/application/ports/category-attribute-link.store';
+import { CATEGORY_LINKS_LOAD_MAX } from '../src/modules/catalog/application/attributes/category-links';
 import { CATEGORY_ADMIN_STATUS } from '../src/modules/catalog/presentation/category-admin.controller';
 import {
   CATEGORY_EDIT_STORE,
@@ -119,34 +120,38 @@ const halalOnlyMatcher = {
     }),
 };
 
+/** When set, the categories the reader gives instead of the fixed two. */
+let categoriesOverride: Awaited<ReturnType<AdminCategoryReader['categories']>> | null = null;
 const reader: AdminCategoryReader = {
   categories: () =>
-    Promise.resolve([
-      {
-        id: ROOT,
-        parentId: null,
-        slug: 'pantry',
-        status: 'active' as const,
-        mergedIntoId: null,
-        names: [{ locale: 'en', name: 'Pantry' }],
-        revisionNo: 1,
-        version: 1,
-        position: 0,
-        showInMenu: true,
-      },
-      {
-        id: LEAF,
-        parentId: ROOT,
-        slug: 'rice',
-        status: 'active' as const,
-        mergedIntoId: null,
-        names: [{ locale: 'en', name: 'Rice' }],
-        revisionNo: 1,
-        version: 1,
-        position: 0,
-        showInMenu: true,
-      },
-    ]),
+    Promise.resolve(
+      categoriesOverride ?? [
+        {
+          id: ROOT,
+          parentId: null,
+          slug: 'pantry',
+          status: 'active' as const,
+          mergedIntoId: null,
+          names: [{ locale: 'en', name: 'Pantry' }],
+          revisionNo: 1,
+          version: 1,
+          position: 0,
+          showInMenu: true,
+        },
+        {
+          id: LEAF,
+          parentId: ROOT,
+          slug: 'rice',
+          status: 'active' as const,
+          mergedIntoId: null,
+          names: [{ locale: 'en', name: 'Rice' }],
+          revisionNo: 1,
+          version: 1,
+          position: 0,
+          showInMenu: true,
+        },
+      ],
+    ),
   treeVersion: () => Promise.resolve(4),
   productFacts: () =>
     Promise.resolve({
@@ -199,6 +204,7 @@ describe.each(TEST_MARKETS)(
       retirementAnswer = { ok: true, value: undefined };
       treeVersion.version = 1;
       linkFacts = new Map([[code, [{ categoryId: ROOT, familyId: SET_PANTRY, filters: [] }]]]);
+      categoriesOverride = null;
       featureSets.reset();
       featureSets.seedFeatureSet(
         code,
@@ -425,6 +431,27 @@ describe.each(TEST_MARKETS)(
         details: { fields: [{ path: 'featureSetId', code: 'format' }] },
       });
       await http().get(`${BASE}?status=active`).set(adminSession(VIEWER, 44)).expect(400);
+    });
+
+    it('answers 503 catalog.categories-unavailable for too many links or an unreadable chain', async () => {
+      linkFacts = new Map([
+        [
+          code,
+          Array.from({ length: CATEGORY_LINKS_LOAD_MAX + 1 }, () => ({
+            categoryId: ROOT,
+            familyId: SET_PANTRY,
+            filters: [],
+          })),
+        ],
+      ]);
+      const many = await http().get(BASE).set(adminSession(VIEWER, 46)).expect(503);
+      expect(many.body).toMatchObject({ code: 'catalog.categories-unavailable' });
+      linkFacts = new Map();
+      // The leaf's parent is missing from the tree: no chain can be read for it.
+      const fixed = await reader.categories(market, 10);
+      categoriesOverride = fixed.map((c) => (c.id === LEAF ? { ...c, parentId: MISSING } : c));
+      const broken = await http().get(BASE).set(adminSession(VIEWER, 47)).expect(503);
+      expect(broken.body).toMatchObject({ code: 'catalog.categories-unavailable' });
     });
 
     it("reads another Market's links as none", async () => {
