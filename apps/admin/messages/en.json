@@ -5860,6 +5860,8 @@
     "search": "Search categories",
     "search-label": "Search the category tree",
     "status-label": "Status",
+    "feature-set-label": "Feature set",
+    "feature-set-all": "All",
     "filter": {
       "all": "All statuses",
       "active": "Active",
