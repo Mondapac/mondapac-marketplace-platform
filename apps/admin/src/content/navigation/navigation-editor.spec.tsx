@@ -237,6 +237,22 @@ describe('the navigation editor', () => {
     expect(router.refresh).toHaveBeenCalled();
   });
 
+  it('does not offer a restore while there are unsaved changes', () => {
+    mount();
+    fireEvent.change(screen.getAllByLabelText('Label')[0]!, { target: { value: 'Edited' } });
+    expect(screen.getByRole('button', { name: 'Restore version 1' }).matches(':disabled')).toBe(
+      true,
+    );
+    expect(screen.getByText(/Save or discard your changes before restoring/)).toBeTruthy();
+  });
+
+  it('shows Shown or Hidden next to each switch', () => {
+    mount();
+    expect(within(section('Left menu')).getAllByText('Shown').length).toBe(2);
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Offers to buyers' }));
+    expect(within(section('Left menu')).getByText('Hidden')).toBeTruthy();
+  });
+
   it('restores an earlier version after asking', async () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Restore version 1' }));

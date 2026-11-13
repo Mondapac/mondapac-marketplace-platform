@@ -2175,7 +2175,7 @@
       "label-optional": "Label (optional)",
       "label-name-help": "Replaces the category’s name. Up to {max} characters.",
       "icon": "Icon (optional)",
-      "icon-help": "A short name in lowercase letters, such as delivery.",
+      "icon-help": "Optional. A short lowercase name such as delivery; the buyer app decides which icons it shows.",
       "link-to": "Link to",
       "kind": {
         "category": "Category",
@@ -2192,6 +2192,9 @@
       "show-switch": "Show {name} to buyers",
       "remove": "Remove",
       "remove-row": "Remove {name}",
+      "visible": "Shown",
+      "hidden": "Hidden",
+      "restore-save-first": "Save or discard your changes before restoring a version.",
       "add-to": "Add to {slot}",
       "draft-note": "Saves to the draft. Buyers see it after a platform administrator approves it.",
       "discard": "Discard changes",
@@ -2223,6 +2226,8 @@
         "format": "This value is not accepted.",
         "invalid": "This value is not accepted.",
         "nothing": "The draft has no changes to approve.",
+        "other": "Some part of the navigation was not accepted. Check the lists and try again.",
+        "category": "Choose an active category.",
         "changed": "The draft changed after you opened this page. Reload it and review the change.",
         "gone": "This version no longer exists. Reload the page."
       }

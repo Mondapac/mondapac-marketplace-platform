@@ -145,7 +145,7 @@ export function NavigationEditor({
                   category.names[0];
                 return {
                   value: category.id,
-                  label: `${'– '.repeat(category.depth)}${name?.name ?? category.id}`,
+                  label: `${'\u2003'.repeat(category.depth)}${name?.name ?? category.id}`,
                 };
               })
           : [],
@@ -200,7 +200,7 @@ export function NavigationEditor({
       if (result.problem.code === 'validation.failed') {
         const mapped = mapProblems(result.problem.fields);
         setErrors(mapped.rows);
-        setSummary(t('error.fields'));
+        setSummary(mapped.other.length > 0 ? t('error.other') : t('error.fields'));
       }
       return;
     }
@@ -270,7 +270,7 @@ export function NavigationEditor({
           <div className="flex flex-col items-end gap-1">
             <Button
               disabled={!canApproveNow || command.pending}
-              aria-describedby="nav-approve-hint"
+              aria-describedby={canApproveNow ? undefined : 'nav-approve-hint'}
               onClick={() => {
                 command.reset();
                 setDialog('approve');
@@ -338,6 +338,9 @@ export function NavigationEditor({
         ) : null}
       </form>
       <Card title={t('versions')}>
+        {canEdit && dirty ? (
+          <p className="mb-2 text-sm text-fg-muted">{t('restore-save-first')}</p>
+        ) : null}
         {versions.length === 0 ? (
           <p className="text-sm text-fg-muted">{t('versions-empty')}</p>
         ) : (
@@ -372,7 +375,7 @@ export function NavigationEditor({
                   <Button
                     variant="secondary"
                     aria-label={t('restore-label', { n: version.versionNo })}
-                    disabled={command.pending}
+                    disabled={command.pending || dirty}
                     onClick={() => {
                       command.reset();
                       setDialog({ restore: version });
@@ -589,7 +592,7 @@ function NavRow({
                 value={item.label}
                 autoComplete="off"
                 error={err('label')}
-                help={t('label-help', { max: LABEL_MAX })}
+                help={err('label') === undefined ? t('label-help', { max: LABEL_MAX }) : undefined}
                 onChange={(event) => onPatch({ label: event.target.value })}
               />
               <TextField
@@ -634,7 +637,11 @@ function NavRow({
                 value={item.categoryId}
                 placeholder={t('choose')}
                 options={withCurrent(lookups.categories, item.categoryId)}
-                error={err('categoryId')}
+                error={
+                  errors[errorKey(slot, index, 'categoryId')] === 'invalid'
+                    ? t('error.category')
+                    : err('categoryId')
+                }
                 onChange={(event) => onPatch({ categoryId: event.target.value })}
               />
               <TextField
@@ -642,7 +649,9 @@ function NavRow({
                 value={item.label}
                 autoComplete="off"
                 error={err('label')}
-                help={t('label-name-help', { max: LABEL_MAX })}
+                help={
+                  err('label') === undefined ? t('label-name-help', { max: LABEL_MAX }) : undefined
+                }
                 onChange={(event) => onPatch({ label: event.target.value })}
               />
             </>
@@ -663,6 +672,7 @@ function NavRow({
             disabled={busy || index === count - 1}
             onClick={() => onMove(1)}
           />
+          <span className="text-sm text-fg-muted">{item.enabled ? t('visible') : t('hidden')}</span>
           <Switch
             checked={item.enabled}
             disabled={busy}
