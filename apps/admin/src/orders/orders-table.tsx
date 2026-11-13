@@ -68,13 +68,13 @@ export function OrdersTable({
                 className={`${CARD_TABLE.labelled} lg:whitespace-nowrap`}
                 data-label={t('col.placed')}
               >
-                {shortInstantInZone(order.createdAt, locale, zone)}
+                {shortInstantInZone(order.createdAt, locale, zone, true)}
               </td>
               <td
                 className={`${CARD_TABLE.labelled} lg:whitespace-nowrap`}
                 data-label={t('col.paid')}
               >
-                {shortInstantInZone(order.confirmedAt, locale, zone)}
+                {shortInstantInZone(order.confirmedAt, locale, zone, true)}
               </td>
               <td className={CARD_TABLE.labelled} data-label={t('col.customer')}>
                 <CustomerCell customer={order.customer} accountId={order.accountId} />
