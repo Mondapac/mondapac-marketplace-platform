@@ -35,6 +35,8 @@ export async function callApi<T>(
   path: string,
   body?: unknown,
   csrfToken?: string,
+  /** Aborts the request (a Stop button); the answer is then a `network` failure to ignore. */
+  signal?: AbortSignal,
 ): Promise<ApiResult<T>> {
   let response: Response;
   try {
@@ -48,6 +50,7 @@ export async function callApi<T>(
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       credentials: 'same-origin',
       cache: 'no-store',
+      ...(signal === undefined ? {} : { signal }),
     });
   } catch {
     return { ok: false, failure: { status: 0, code: 'network' } };

@@ -134,6 +134,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The report of published products missing a required detail (catalog, attributes A4;
     // query: `sellerId`, `familyCode`, `afterId`, `limit`).
     'catalog/admin/reports/products-missing-details',
+    // "Write with AI" (catalog, AIS-03): whether the writer is on for this admin, and the model
+    // setup read by the Settings AI card (on/off kill switch, key set or not, model ids; never
+    // the key). The AI settings (settings; keys settings.ai.view / settings.ai.manage).
+    'catalog/admin/description-writer',
+    'catalog/admin/description-writer/model-setup',
+    'settings/admin/ai',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -158,6 +164,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'customers/admin/account-deletion-settings',
     // One editable Market setting (settings): code, value and `expectedVersion`.
     'settings/admin/market-settings',
+    // One AI setting (settings): code, value and `expectedVersion`; protected key
+    // `settings.ai.manage`, so it may ask a fresh two-step code.
+    'settings/admin/ai',
     // The promotions Market switch and the first-order discount (promotions); a monthly budget
     // above the Market threshold asks a fresh two-step code. The zone thresholds are below.
     'promotions/admin/settings',
@@ -165,6 +174,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set([]),
   POST: new Set([
+    // A description draft from the "Write with AI" modal (catalog, AIS-03); nothing is stored.
+    'catalog/admin/description-writer/drafts',
     // "Email sellers" from the Missing details report: the picked product ids, 'dryRun' for the
     // preview (catalog, attributes A4-4).
     'catalog/admin/reports/products-missing-details/email-sellers',
@@ -393,6 +404,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'sellers/admin/:id/review/manual-register-check',
     // Whether the seller may propose categories (sellers, SEL-26; categories C9-0).
     'sellers/admin/:id/category-proposals',
+    // Whether the seller may use AI writing help (sellers, SEL-25), set; the page server reads it.
+    'sellers/admin/:id/ai-access',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
     // A tax strategy edited by its id (tax).

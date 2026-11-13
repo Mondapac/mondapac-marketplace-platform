@@ -5,6 +5,7 @@ import {
   Banner,
   Button,
   Card,
+  DescriptionWriter,
   TextField,
   UnsavedBar,
   toast,
@@ -38,6 +39,7 @@ import {
 import { editProblemOf, type EditProblem } from './edit-errors.ts';
 import { DEFAULT_MAX_TAGS, TagField, topicSentences, useKnownTags } from './tag-field.tsx';
 import { OrganisationCard, StatusBadge, StatusCard, type Blocker } from './product-side.tsx';
+import { writerCategory, writerDetails } from './writer-inputs.ts';
 import { VariantsSection } from './variants-section.tsx';
 import { hasProblems, problemsOfRows } from './variant-fields.ts';
 import { axesOf } from './variant-grid.ts';
@@ -473,6 +475,22 @@ export function EditForm({
                 label={t(`catalog.edit.field.${key}`)}
                 {...(key === 'name' ? { help: t('catalog.edit.field.name-help') } : {})}
                 optionalLabel={key === 'name' ? undefined : t('catalog.create.optional')}
+                {...(key === 'description'
+                  ? {
+                      headAction: (
+                        <DescriptionWriter
+                          call={callApi}
+                          base="catalog/own/description-writer"
+                          csrfToken={csrfToken}
+                          title={texts.name}
+                          category={writerCategory(form.categories, categoryIds, defaultLocale)}
+                          details={writerDetails(attributeFields, inputs, defaultLocale)}
+                          current={texts.description}
+                          onText={(next) => change('description', next)}
+                        />
+                      ),
+                    }
+                  : {})}
                 value={texts[key]}
                 error={refusedMessage(refusedAt(key))}
                 onChange={(event) => change(key, event.target.value)}

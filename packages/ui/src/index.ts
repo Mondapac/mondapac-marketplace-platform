@@ -306,3 +306,31 @@ export {
 } from './list/export-dialog.tsx';
 export { useRowSelection, type RowSelectionState } from './list/use-row-selection.ts';
 export { ListViewsBar, type ListViewsBarProps } from './list/list-views-bar.tsx';
+export {
+  DescriptionWriter,
+  mergeDraft,
+  type DescriptionWriterProps,
+} from './writer/description-writer.tsx';
+export {
+  AiWriterModal,
+  type AiWriterModalProps,
+  type InsertMode,
+} from './writer/ai-writer-modal.tsx';
+export {
+  loadWriterStatus,
+  requestDraft,
+  type WriterApiResult,
+  type WriterCall,
+  type WriterOutcome,
+  type WriterRequest,
+  type WriterStatus,
+} from './writer/writer-api.ts';
+export {
+  WRITER_COPY,
+  clampCategory,
+  clampDetails,
+  clampTitle,
+  leftOutLine,
+  type LeftOut,
+  type WriterDetail,
+} from './writer/writer-copy.ts';
