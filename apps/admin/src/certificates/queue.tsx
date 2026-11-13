@@ -8,19 +8,22 @@ const KIND_TONE = { initial: 'neutral', resubmission: 'attention', renewal: 'inf
 const kindTone = (kind: SubmissionKind) => KIND_TONE[kind];
 
 /**
- * The seller certificates waiting for a decision, oldest first (the API order). Read-only here:
- * the review page and its decisions are a separate screen. The type shows its name when the
+ * The seller certificates waiting for a decision, oldest first (the API order). Each row opens the
+ * review page for a reader who may review. The type shows its name when the
  * reader may view types, otherwise its code.
  */
 export function CertificateQueue({
   rows,
   typeNames,
   morePages,
+  canReview = false,
 }: {
   readonly rows: readonly QueueRow[];
   readonly typeNames: ReadonlyMap<string, string>;
   /** A next page exists, so an empty list here does not mean an empty queue. */
   readonly morePages: boolean;
+  /** The reader may open the review page (a decrypting read). */
+  readonly canReview?: boolean;
 }) {
   const t = useTranslations('certificates.queue');
   if (rows.length === 0) {
@@ -32,11 +35,13 @@ export function CertificateQueue({
         <caption className="sr-only">{t('title')}</caption>
         <thead className={CARD_TABLE.head}>
           <tr>
-            {['seller', 'type', 'kind', 'issuer', 'waiting'].map((col) => (
-              <th key={col} scope="col" className="whitespace-nowrap px-4 py-3 font-medium">
-                {t(`col.${col}`)}
-              </th>
-            ))}
+            {['seller', 'type', 'kind', 'issuer', 'waiting', ...(canReview ? ['actions'] : [])].map(
+              (col) => (
+                <th key={col} scope="col" className="whitespace-nowrap px-4 py-3 font-medium">
+                  {t(`col.${col}`)}
+                </th>
+              ),
+            )}
           </tr>
         </thead>
         <tbody className={CARD_TABLE.body}>
@@ -70,6 +75,17 @@ export function CertificateQueue({
               <td className={CARD_TABLE.labelled} data-label={t('col.waiting')}>
                 <When iso={row.submittedAt} missing="-" />
               </td>
+              {canReview ? (
+                <td className={CARD_TABLE.labelled} data-label={t('col.actions')}>
+                  <a
+                    className="font-medium text-link underline"
+                    href={`/certificates/${row.certificateId}`}
+                    aria-label={t('review-row', { store: row.storeName ?? t('seller-fallback') })}
+                  >
+                    {t('review')}
+                  </a>
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>

@@ -683,7 +683,11 @@
         "changed": "Last change"
       },
       "health": {
-        "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
+        "band": {
+          "healthy": "Healthy",
+          "at-risk": "At risk",
+          "unhealthy": "Unhealthy"
+        },
         "new": "New",
         "no-data": "No data",
         "none": "Not measured yet",
@@ -1119,13 +1123,16 @@
         "type": "Type",
         "kind": "Kind",
         "issuer": "Issuer",
-        "waiting": "Waiting since"
+        "waiting": "Waiting since",
+        "actions": "Actions"
       },
       "kind": {
         "initial": "New",
         "resubmission": "Resubmitted",
         "renewal": "Renewal"
-      }
+      },
+      "review": "Review",
+      "review-row": "Review the certificate of {store}"
     },
     "tabs": {
       "label": "Certificates sections",
@@ -1235,6 +1242,151 @@
         "csrf": "Your session needs a refresh. Reload the page.",
         "unavailable": "The service is not available right now. Try again in a few minutes.",
         "unknown": "Something went wrong. Try again."
+      }
+    },
+    "review": {
+      "title": "Review a certificate",
+      "back": "Back to the queue",
+      "no-access": "You don't have access to review certificates.",
+      "not-found": "This certificate was not found.",
+      "unavailable": "This certificate could not be loaded.",
+      "seller-fallback": "Not yet approved",
+      "seller-id": "Seller ID {id}",
+      "none": "Not given",
+      "yes": "Yes",
+      "no": "No",
+      "not-pending": "This submission can no longer be decided. It is shown as it was.",
+      "issuer-closed": "This issuer isn't taking new certificates. Request changes or decline.",
+      "issuer-derecognised": "This issuer is no longer recognised.",
+      "issuer-state": {
+        "proposed": "Proposed",
+        "active": "Active",
+        "closed-to-new": "Closed to new",
+        "derecognised": "Not recognised"
+      },
+      "values": {
+        "title": "Submitted values",
+        "issuer": "Issuer",
+        "number": "Certificate number",
+        "issued": "Issue date",
+        "expires": "Expiry date",
+        "zone": "({zone} time)",
+        "self-declared": "Self-declaration",
+        "submitted": "Submitted (UTC)"
+      },
+      "documents": {
+        "title": "Documents",
+        "none": "No file was sent.",
+        "file": "File {n} · {type} · {pages, plural, one {# page} other {# pages}} · {size} MB",
+        "note": "Opening a file is recorded. Downloads are not offered on this screen yet."
+      },
+      "business": {
+        "title": "From the seller's application",
+        "name": "Legal name",
+        "store": "Store name",
+        "not-found": "The seller's business details were not found.",
+        "denied": "You can't see the seller's business details.",
+        "unavailable": "The seller's business details could not be loaded."
+      },
+      "checks": {
+        "title": "Checks",
+        "none": "This Market has no checks.",
+        "required": "required",
+        "result": {
+          "done": "Done",
+          "problem": "Problem",
+          "not-applicable": "Not applicable"
+        },
+        "saving": "Saving",
+        "recorded": "Recorded",
+        "not-recorded": "Not recorded",
+        "view-only": "Your role can't record checks on this submission."
+      },
+      "scope": {
+        "title": "Location and scope as read",
+        "none": "Not recorded yet.",
+        "location": "Location",
+        "scope": "Scope",
+        "help": "Write them as they appear on the certificate. Plain text only.",
+        "replace-note": "Saving again replaces what is recorded.",
+        "required": "This is required.",
+        "save": "Save location and scope",
+        "saved": "Location and scope recorded."
+      },
+      "confirmation": {
+        "title": "Issuer confirmation",
+        "none": "No confirmation recorded.",
+        "done": "Confirmed with the issuer on {date}."
+      },
+      "duplicates": {
+        "title": "Possible duplicates",
+        "none": "None found.",
+        "number": "Same certificate number as {store}'s certificate.",
+        "file": "Same document file as {store}'s certificate.",
+        "hint": "This is a hint. It doesn't stop a decision. Opening a link is recorded."
+      },
+      "history": {
+        "title": "History",
+        "none": "No history yet.",
+        "entry": "{from} to {to} by {by}"
+      },
+      "decision": {
+        "title": {
+          "approve": "Approve this certificate",
+          "request-changes": "Request changes",
+          "decline": "Decline this certificate"
+        },
+        "done": "Decided: {outcome}.",
+        "closed": "No decision can be recorded on this submission.",
+        "no-role": "Your role can't decide certificates.",
+        "checks-missing": "Record {count, plural, one {# required check} other {# required checks}} first.",
+        "approve": "Approve",
+        "request-changes": "Request changes",
+        "decline": "Decline",
+        "cancel": "Cancel",
+        "reload": "Reload the page",
+        "confirm": {
+          "approve": "Approve certificate",
+          "request-changes": "Request changes",
+          "decline": "Decline certificate"
+        },
+        "body": {
+          "approve": "The seller is told by email. The certificate counts from now until it expires.",
+          "request-changes": "The seller is told what to fix and can submit again.",
+          "decline": "The seller is told by email. This submission is closed."
+        },
+        "reason": "Prepared reason",
+        "reason-placeholder": "Choose a reason",
+        "reason-required": "Choose a reason.",
+        "no-reasons": "This Market has no prepared reasons for this outcome. It can't be recorded.",
+        "note": "Note for the seller",
+        "optional": "optional",
+        "note-help": "Plain text. It goes to the seller with the reason.",
+        "text-long": "At most {max} characters.",
+        "heading": "Decision"
+      },
+      "decided": {
+        "approve": "Certificate approved.",
+        "request-changes": "Changes requested.",
+        "decline": "Certificate declined."
+      },
+      "error": {
+        "invalid": "Some details are not valid. Check the form.",
+        "gone": "This certificate no longer exists. Reload the page.",
+        "replaced": "This was replaced while you reviewed. Open the current submission.",
+        "checks": "Record the required checks first.",
+        "scope": "Record the location and scope as read first.",
+        "issuer": "This issuer isn't taking new certificates. Request changes or decline.",
+        "incomplete": "The certificate is incomplete.",
+        "expired": "This certificate has expired. Request changes or decline.",
+        "stale": "This certificate changed while you reviewed. Reload the page.",
+        "retry": "Another change was in progress. Try again.",
+        "denied": "You don't have permission to do this.",
+        "acting-as": "This can't be done while you are acting as a seller.",
+        "throttled": "Too many requests. Try again in a moment.",
+        "csrf": "Your session needs a refresh. Reload the page.",
+        "unavailable": "The service is not available. Try again.",
+        "unknown": "Something went wrong. Nothing was recorded."
       }
     }
   },
@@ -6982,8 +7134,12 @@
         "seo-description": "Search description",
         "invalid": "This value is not valid."
       },
-      "body": { "empty": "No content yet. Add a block below." },
-      "add": { "label": "Add block" },
+      "body": {
+        "empty": "No content yet. Add a block below."
+      },
+      "add": {
+        "label": "Add block"
+      },
       "block": {
         "name": "Block {n}: {type}",
         "text": "Text",
@@ -7026,7 +7182,11 @@
       "checks": {
         "title": "Checks",
         "none": "No findings.",
-        "severity": { "error": "Must fix", "warning": "Check", "notice": "Note" },
+        "severity": {
+          "error": "Must fix",
+          "warning": "Check",
+          "notice": "Note"
+        },
         "code": {
           "cover-missing": "Add a cover image.",
           "cover-alt-missing": "Describe the cover image (alt text).",
