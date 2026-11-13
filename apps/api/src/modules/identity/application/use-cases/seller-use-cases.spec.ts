@@ -288,7 +288,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
       ['platform', 'default', 'onboarding-compliance', 13],
-      ['platform', 'default', 'catalogue-moderator', 20],
+      ['platform', 'default', 'catalogue-moderator', 21],
       ['platform', 'default', 'operations-support', 9],
       ['platform', 'default', 'finance', 3],
       ['platform', 'default', 'viewer', 32],
@@ -365,6 +365,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'catalog.product.pause',
       'catalog.product.view',
       'catalog.saved-filter.share',
+      'catalog.variant-request.review',
       'catalog.variant.view',
       'certification.claim-policy.view',
       'certification.product-certificate.view',

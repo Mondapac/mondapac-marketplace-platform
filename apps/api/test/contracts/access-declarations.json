@@ -123,6 +123,11 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  {
+    "name": "catalog.own-variant-requests-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "catalog.pending-product-revisions", "rule": "system" },
   { "name": "catalog.platform-import-purge", "rule": "system" },
   { "name": "catalog.platform-import-run", "rule": "system" },
@@ -150,6 +155,7 @@
   { "name": "catalog.send-missing-details-emails", "rule": "system" },
   { "name": "catalog.send-offer-owner-notices", "rule": "system" },
   { "name": "catalog.send-topic-suggestion-notices", "rule": "system" },
+  { "name": "catalog.send-variant-request-notices", "rule": "system" },
   { "name": "catalog.sweep-orphan-image-files", "rule": "system" },
   { "name": "catalog.sweep-orphan-images", "rule": "system" },
   { "name": "catalog.warn-offer-owners-of-expiry", "rule": "system" },

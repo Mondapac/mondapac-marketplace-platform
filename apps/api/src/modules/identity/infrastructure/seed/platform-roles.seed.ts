@@ -97,7 +97,10 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // seller's shelf proposal; unprotected; the protected `catalog.seller-category.promote-merge`
     // is not listed) and `sellers.seller-settings.edit` (sellers design 6.1: the "May propose
     // categories" switch, SEL-26; Hassan I4 on #705).
-    seedVersion: 16,
+    // Version 17 adds `catalog.variant-request.review` (variants V7: decide a seller's request for
+    // a new variant; unprotected, approving also needs `catalog.platform-product.edit`, which this
+    // role holds).
+    seedVersion: 17,
     nameKey: 'identity.role.catalogue-moderator',
     permissionKeys: [
       'identity.seller-access.view',
@@ -113,6 +116,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.category-tree.edit',
       'catalog.attribute-suggestion.decide',
       'catalog.variant.view',
+      'catalog.variant-request.review',
       'catalog.category-proposal.decide',
       'sellers.seller.view',
       'sellers.seller-settings.edit',

@@ -3360,6 +3360,31 @@
     }
   },
   {
+    "action": "catalog.variant-request.decided",
+    "targetType": "catalog.variant-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(open)"
+    },
+    "after": {
+      "productId": "id",
+      "sellerId": "id",
+      "status": "enumOf(approved|mapped|declined)"
+    }
+  },
+  {
+    "action": "catalog.variant-request.requested",
+    "targetType": "catalog.variant-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "offerId": "id",
+      "productId": "id"
+    }
+  },
+  {
     "action": "catalog.variant-type.settings-changed",
     "targetType": "catalog.variant-type",
     "targetId": "id",

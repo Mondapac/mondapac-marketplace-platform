@@ -89,6 +89,11 @@ import {
   type AttributeValueSuggestionStore,
 } from '../application/ports/attribute-value-suggestion.store';
 import {
+  VARIANT_REQUEST_STORE,
+  type VariantRequestStore,
+} from '../application/ports/variant-request.store';
+import { PrismaVariantRequestStore } from './prisma-variant-request.store';
+import {
   ATTRIBUTE_RELAXATION_STORE,
   type AttributeRelaxationStore,
 } from '../application/ports/attribute-relaxation.store';
@@ -455,6 +460,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeValueSuggestionStore =>
       new PrismaAttributeValueSuggestionStore(prisma),
+  },
+  {
+    provide: VARIANT_REQUEST_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantRequestStore =>
+      new PrismaVariantRequestStore(prisma),
   },
   {
     provide: TOPIC_SUGGESTION_STORE,
