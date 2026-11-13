@@ -85,9 +85,6 @@ export function checkFilters(
   return null;
 }
 
-/** What the resolution reads of a category: its id and its stored parent. */
-export type CategoryParentNode = Pick<StoredCategoryNode, 'id' | 'parentId'>;
-
 /**
  * The category and its ancestors, the category first, following each stored parent. A category
  * missing from the tree, a loop or a chain deeper than the tree allows is `null`: nothing is
@@ -95,9 +92,9 @@ export type CategoryParentNode = Pick<StoredCategoryNode, 'id' | 'parentId'>;
  */
 export function chainOf(
   categoryId: string,
-  nodes: readonly CategoryParentNode[],
+  nodes: readonly StoredCategoryNode[],
   /** The nodes by id, when the caller resolves many categories against one tree. */
-  index?: ReadonlyMap<string, CategoryParentNode>,
+  index?: ReadonlyMap<string, StoredCategoryNode>,
 ): readonly string[] | null {
   const byId = index ?? new Map(nodes.map((node) => [node.id as string, node]));
   const chain: string[] = [];
@@ -127,34 +124,4 @@ export function effectiveOf(
     }
     return byCategory.get(id);
   });
-}
-
-/** The feature set a category ends up with and the category that holds it (itself or an ancestor). */
-export interface EffectiveFeatureSet {
-  readonly familyId: Id<'AttributeFamily'> | null;
-  readonly fromCategoryId: string | null;
-}
-
-/**
- * The effective feature set of every category of one tree, by the same rule as one category's
- * ({@link effectiveOf}, `resolveEffective`), against one index of the nodes and one of the links,
- * so a whole tree costs no read per category. Null when any chain cannot be read (fail closed).
- */
-export function effectiveFeatureSetsOf(
-  nodes: readonly CategoryParentNode[],
-  links: readonly StoredLinkFact[],
-): ReadonlyMap<string, EffectiveFeatureSet> | null {
-  const byId = new Map(nodes.map((node) => [node.id as string, node]));
-  const byCategory = new Map<string, StoredLinkFact>(links.map((l) => [l.categoryId, l]));
-  const answer = new Map<string, EffectiveFeatureSet>();
-  for (const node of nodes) {
-    const chain = chainOf(node.id, nodes, byId);
-    if (chain === null) return null;
-    const effective = effectiveOf(chain, links, null, byCategory);
-    answer.set(node.id, {
-      familyId: effective.familyId,
-      fromCategoryId: effective.familyFromCategoryId,
-    });
-  }
-  return answer;
 }
