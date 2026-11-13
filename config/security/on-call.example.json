@@ -1,0 +1,49 @@
+{
+  "businessHours": {
+    "zone": "Australia/Sydney",
+    "start": "09:00",
+    "end": "18:00",
+    "days": [1, 2, 3, 4, 5]
+  },
+  "members": [
+    {
+      "code": "kazem",
+      "name": "Kazem (DevOps)",
+      "accountId": null,
+      "email": "kazem@example.test",
+      "phone": "+61400000001"
+    },
+    {
+      "code": "hossein",
+      "name": "Hossein (Backend)",
+      "accountId": null,
+      "email": "hossein@example.test",
+      "phone": "+61400000002"
+    },
+    {
+      "code": "mojtaba",
+      "name": "Mojtaba (Database)",
+      "accountId": null,
+      "email": "mojtaba@example.test",
+      "phone": "+61400000003"
+    },
+    {
+      "code": "ali",
+      "name": "Ali (CTO, incident commander)",
+      "accountId": null,
+      "email": "ali@example.test",
+      "phone": "+61400000004"
+    },
+    {
+      "code": "hassan",
+      "name": "Hassan (security owner)",
+      "accountId": null,
+      "email": "hassan@example.test",
+      "phone": null
+    }
+  ],
+  "rotation": ["kazem", "hossein", "mojtaba"],
+  "rotationStart": "2026-11-16T09:00",
+  "incidentCommander": "ali",
+  "securityOwner": "hassan"
+}

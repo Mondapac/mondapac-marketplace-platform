@@ -1,0 +1,113 @@
+// The security module's tables (SOC package 2: rules and alert delivery; docs/design/data/security.md).
+// Every model is named Security<Name> and mapped to its table with @@map. The CHECKs, the partial
+// unique index, the insert-only triggers and the grants are hand-written in the migration. The
+// events the rules read live in `platform.security_events` (package 1) and are reached only
+// through the platform's security event feed; nothing here references them by key.
+
+/// One alert: a rule matched the security events of one key (an account, an address, the Market or
+/// one event) in its window. At most one alert per (Market, rule, key) is open or acknowledged at a
+/// time (partial unique index); a later match of the same key updates it. Never deleted.
+model SecurityAlert {
+  /// UUIDv7.
+  id               String    @id @db.Uuid
+  marketId         String    @map("market_id") @db.VarChar(8)
+  tenantId         String    @map("tenant_id")
+  /// The rule's code, declared in code (domain/rules.ts).
+  rule             String    @db.VarChar(64)
+  /// s1 (critical) to s4 (low), the rule's.
+  severity         String    @db.VarChar(2)
+  /// open | acknowledged | resolved.
+  state            String    @db.VarChar(16)
+  /// account | ip | market | event: what the rule groups its events by.
+  keyType          String    @map("key_type") @db.VarChar(16)
+  /// The key's value: an account id, an address (canonical text), the Market code or an event id.
+  keyValue         String    @map("key_value") @db.VarChar(64)
+  /// The most events of the key the rule counted in one window.
+  eventCount       Int       @map("event_count")
+  firstEventAt     DateTime  @map("first_event_at") @db.Timestamptz(6)
+  lastEventAt      DateTime  @map("last_event_at") @db.Timestamptz(6)
+  openedAt         DateTime  @map("opened_at") @db.Timestamptz(6)
+  /// The delivery steps already taken (0 before the first). S1 escalates one step every 10 minutes.
+  notifyStep       Int       @map("notify_step")
+  /// When the delivery job takes the next step; null when nothing more is sent.
+  nextNotifyAt     DateTime? @map("next_notify_at") @db.Timestamptz(6)
+  acknowledgedAt   DateTime? @map("acknowledged_at") @db.Timestamptz(6)
+  acknowledgedBy   String?   @map("acknowledged_by") @db.Uuid
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolvedBy       String?   @map("resolved_by") @db.Uuid
+  /// contained | false-positive | duplicate | accepted-risk.
+  resolution       String?   @db.VarChar(16)
+  /// The resolver's explanation, 10 to 1000 characters. Shown on the page only; never logged.
+  resolutionNote   String?   @map("resolution_note") @db.VarChar(1000)
+  /// +1 on every change; a stale acknowledge or resolve is refused.
+  version          Int
+
+  deliveries SecurityAlertDelivery[]
+
+  /// The page's list: by severity, newest first.
+  @@index([marketId, state, severity, openedAt(sort: Desc)])
+  /// The delivery job: open alerts whose next step is due.
+  @@index([marketId, nextNotifyAt])
+  /// The evaluator: the alerts of one rule and key (the last resolved one).
+  @@index([marketId, rule, keyType, keyValue, resolvedAt])
+  @@unique([marketId, id])
+  @@map("alerts")
+  @@schema("security")
+}
+
+/// One message the delivery job sent, or could not send, for an alert: the alert's timeline.
+/// Insert-only (triggers); names the roster member by code, never an address or a number.
+model SecurityAlertDelivery {
+  /// UUIDv7.
+  id         String        @id @db.Uuid
+  marketId   String        @map("market_id") @db.VarChar(8)
+  tenantId   String        @map("tenant_id")
+  alertId    String        @map("alert_id") @db.Uuid
+  alert      SecurityAlert @relation(fields: [marketId, alertId], references: [marketId, id])
+  /// The alert's delivery step this message belongs to (1 for the first).
+  step       Int
+  /// The roster member's code (e.g. "kazem").
+  recipient  String        @db.VarChar(32)
+  /// email | sms | call | team-chat.
+  channel    String        @db.VarChar(16)
+  /// sent | failed | not-configured | no-contact.
+  outcome    String        @db.VarChar(16)
+  at         DateTime      @db.Timestamptz(6)
+
+  @@index([marketId, alertId, at])
+  @@map("alert_deliveries")
+  @@schema("security")
+}
+
+/// One digest the digest job sent (daily S3, weekly S4): the primary key makes a period's digest
+/// go out once, however many workers run the job. Insert-only.
+model SecurityDigestRun {
+  marketId  String   @map("market_id") @db.VarChar(8)
+  tenantId  String   @map("tenant_id")
+  /// daily | weekly.
+  kind      String   @db.VarChar(8)
+  /// The period in the roster's zone: a date (2026-11-13) or an ISO week (2026-W46).
+  period    String   @db.VarChar(10)
+  /// How many alerts it counted.
+  alerts    Int
+  /// sent | failed | not-configured | no-contact.
+  outcome   String   @db.VarChar(16)
+  sentAt    DateTime @map("sent_at") @db.Timestamptz(6)
+
+  @@id([marketId, kind, period])
+  @@map("digest_runs")
+  @@schema("security")
+}
+
+/// When the rule evaluator last finished a run for the Market (the page's "rules last ran" line).
+model SecurityEvaluatorRun {
+  marketId   String   @map("market_id") @db.VarChar(8)
+  tenantId   String   @map("tenant_id")
+  finishedAt DateTime @map("finished_at") @db.Timestamptz(6)
+  /// Alerts opened by that run.
+  opened     Int
+
+  @@id([marketId])
+  @@map("evaluator_runs")
+  @@schema("security")
+}

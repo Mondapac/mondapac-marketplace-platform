@@ -55,6 +55,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     shipping: ['USAGE'],
     notifications: ['USAGE'],
     search: ['USAGE'],
+    security: ['USAGE'],
   },
   tables: {
     // docs/design/data/identity.md section 7: DELETE only for the unverified purge and erasure
@@ -1749,6 +1750,32 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'pricing.write_refusal_actor_throttles': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['recorded_count', 'suppressed_count', 'window_started_at'],
+    },
+    // SOC package 2 (docs/design/data/security.md 2): an alert changes only its state columns
+    // and never after it is resolved; deliveries and digest runs are insert-only; the evaluator
+    // run of a Market records its finish. No DELETE anywhere (triggers refuse it too).
+    'security.alerts': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'acknowledged_at',
+        'acknowledged_by',
+        'event_count',
+        'last_event_at',
+        'next_notify_at',
+        'notify_step',
+        'resolution',
+        'resolution_note',
+        'resolved_at',
+        'resolved_by',
+        'state',
+        'version',
+      ],
+    },
+    'security.alert_deliveries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'security.digest_runs': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'security.evaluator_runs': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['finished_at', 'opened'],
     },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },

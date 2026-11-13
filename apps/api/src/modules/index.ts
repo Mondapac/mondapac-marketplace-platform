@@ -29,6 +29,7 @@ import { WalletModule } from './wallet';
 import { ReviewsModule } from './reviews';
 import { SettingsModule } from './settings';
 import { PromotionsModule } from './promotions';
+import { SecurityModule } from './security';
 
 export const CORE_MODULES = [
   IdentityModule,
@@ -56,6 +57,7 @@ export const CORE_MODULES = [
   ReviewsModule,
   PromotionsModule,
   SettingsModule,
+  SecurityModule,
 ];
 
 /**
