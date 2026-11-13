@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, EmptyState, Tabs } from '@mondapac/ui';
+import { Badge, Banner, Button, EmptyState } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -29,10 +29,19 @@ interface Source {
   readonly loading: boolean;
   readonly failed: boolean;
   readonly loaded: boolean;
+  /** The cursor of the request that failed (null: the first page), so Try again asks for it. */
+  readonly retry: string | null;
 }
 type Sources = Readonly<Record<Fulfilment, Source>>;
 
-const EMPTY: Source = { orders: [], next: null, loading: true, failed: false, loaded: false };
+const EMPTY: Source = {
+  orders: [],
+  next: null,
+  loading: true,
+  failed: false,
+  loaded: false,
+  retry: null,
+};
 const FRESH: Sources = { 'to-ship': EMPTY, shipped: EMPTY, delivered: EMPTY };
 
 /**
@@ -65,7 +74,7 @@ export function OrdersBoard() {
       }
       setSources((all) => ({
         ...all,
-        [source]: { ...all[source], loading: false, failed: true, loaded: true },
+        [source]: { ...all[source], loading: false, failed: true, loaded: true, retry: cursor },
       }));
       return;
     }
@@ -80,6 +89,7 @@ export function OrdersBoard() {
         loading: false,
         failed: false,
         loaded: true,
+        retry: null,
       },
     }));
   }, []);
@@ -113,16 +123,19 @@ export function OrdersBoard() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="md:hidden">
-        <Tabs
-          label={t('board.stages')}
-          activeId={stage}
-          onSelect={(id) => setStage(id as BoardStage)}
-          items={BOARD_STAGES.map((id) => ({
-            id,
-            label: `${t(`status.${id}`)} (${countLabel(id)})`,
-          }))}
-        />
+      <div role="group" aria-label={t('board.stages')} className="grid grid-cols-2 gap-2 md:hidden">
+        {BOARD_STAGES.map((id) => (
+          <Button
+            key={id}
+            variant={stage === id ? 'primary' : 'secondary'}
+            aria-pressed={stage === id}
+            className="flex-col gap-0 py-1 leading-tight"
+            onClick={() => setStage(id)}
+          >
+            <span>{t(`status.${id}`)}</span>
+            <span className="text-xs font-normal tabular-nums">{countLabel(id)}</span>
+          </Button>
+        ))}
       </div>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {BOARD_STAGES.map((id) => {
@@ -137,13 +150,13 @@ export function OrdersBoard() {
             >
               <h2
                 id={`board-${id}`}
-                className="flex items-center justify-between gap-2 px-1 text-sm font-semibold"
+                className="flex items-center justify-between gap-2 px-1 text-sm font-semibold max-md:sr-only"
               >
                 <span>{t(`status.${id}`)}</span>
                 <span className="font-normal tabular-nums text-fg-muted">{countLabel(id)}</span>
               </h2>
               {source.failed ? <Banner tone="critical">{t('error.unavailable')}</Banner> : null}
-              {orders.length === 0 && !source.loading && !source.failed ? (
+              {orders.length === 0 && !source.loading && !source.failed && source.next === null ? (
                 <p className="px-1 py-4 text-sm text-fg-muted">{t('board.empty')}</p>
               ) : (
                 <ul className="flex flex-col gap-3">
@@ -154,16 +167,16 @@ export function OrdersBoard() {
                   ))}
                 </ul>
               )}
-              {source.loading && !source.loaded ? (
-                <p className="px-1 text-sm text-fg-muted" aria-live="polite">
-                  {t('board.loading')}
-                </p>
-              ) : null}
+              <p className="px-1 text-sm text-fg-muted empty:hidden" aria-live="polite">
+                {source.loading && !source.loaded ? t('board.loading') : ''}
+              </p>
               {source.next !== null || source.failed ? (
                 <Button
                   variant="secondary"
                   disabled={source.loading}
-                  onClick={() => void load(SOURCE_OF[id], source.failed ? null : source.next)}
+                  onClick={() =>
+                    void load(SOURCE_OF[id], source.failed ? source.retry : source.next)
+                  }
                 >
                   {source.failed ? t('board.retry') : t('board.more')}
                 </Button>
