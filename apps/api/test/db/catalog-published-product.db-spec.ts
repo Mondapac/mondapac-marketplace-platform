@@ -44,10 +44,11 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
     owner = new Client({ connectionString: ownerTestDatabaseUrl() });
     await owner.connect();
     products = new PrismaProductRepository(db.service);
-    reader = new PrismaPublishedProductReader(db.service, () => [
-      { code: 'kg', labels: { 'en-AU': 'kg', 'fa-IR': 'کیلوگرم' } as Record<string, string> },
-      { code: 'g', labels: { 'en-AU': 'g' } as Record<string, string> },
-    ]);
+    const units: Array<{ code: string; labels: Record<string, string> }> = [
+      { code: 'kg', labels: { 'en-AU': 'kg', 'fa-IR': 'کیلوگرم' } },
+      { code: 'g', labels: { 'en-AU': 'g' } },
+    ];
+    reader = new PrismaPublishedProductReader(db.service, () => units);
   });
   afterAll(async () => {
     await owner.end();
