@@ -205,28 +205,16 @@ export class ProductsMissingDetailsList extends UseCase<
         scanned += 1;
         if (schema === null) continue;
         if (filter.familyCode !== null && familyCode !== filter.familyCode) continue;
-        const raw = product.attributeValues;
-        const values = (typeof raw === 'object' && raw !== null ? raw : {}) as AttributeValues;
-        const checked = validateAttributeValues(schema, values, ordered);
-        if (!checked.ok) {
-          const missing = [
-            ...new Set(
-              checked.error
-                .filter((issue) => issue.code === 'attribute.required')
-                // A localizable text reports `code.locale`; attribute codes hold no dot.
-                .map((issue) => issue.path.split('.')[0] ?? issue.path),
-            ),
-          ];
-          if (missing.length > 0) {
-            items.push({
-              productId: product.productId,
-              productCode: product.productCode,
-              name: product.name,
-              sellerId: product.ownerSellerId,
-              featureSetCode: familyCode,
-              missing,
-            });
-          }
+        const missing = missingRequiredCodes(schema, product.attributeValues, ordered);
+        if (missing.length > 0) {
+          items.push({
+            productId: product.productId,
+            productCode: product.productCode,
+            name: product.name,
+            sellerId: product.ownerSellerId,
+            featureSetCode: familyCode,
+            missing,
+          });
         }
         if (items.length >= filter.limit) {
           // The page is full; the rest of this batch is read by the next call.
@@ -246,6 +234,31 @@ export class ProductsMissingDetailsList extends UseCase<
         .sort(),
     };
   }
+}
+
+/**
+ * The codes of the required attributes a product's published values leave empty, judged with the
+ * same rule as a submit (`validateAttributeValues`) in the feature set's order. Shared with the
+ * "Email sellers" request, which judges the products it names again on the server.
+ */
+export function missingRequiredCodes(
+  schema: AttributeSchema,
+  rawValues: unknown,
+  orderedLocales: readonly string[],
+): readonly string[] {
+  const values = (
+    typeof rawValues === 'object' && rawValues !== null ? rawValues : {}
+  ) as AttributeValues;
+  const checked = validateAttributeValues(schema, values, orderedLocales);
+  if (checked.ok) return [];
+  return [
+    ...new Set(
+      checked.error
+        .filter((issue) => issue.code === 'attribute.required')
+        // A localizable text reports `code.locale`; attribute codes hold no dot.
+        .map((issue) => issue.path.split('.')[0] ?? issue.path),
+    ),
+  ];
 }
 
 /** `null` when absent, the id when well formed, `undefined` when malformed. */

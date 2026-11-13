@@ -165,6 +165,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set([]),
   POST: new Set([
+    // "Email sellers" from the Missing details report: the picked product ids, 'dryRun' for the
+    // preview (catalog, attributes A4-4).
+    'catalog/admin/reports/products-missing-details/email-sellers',
     // The signed-in admin's other sessions are ended; this one stays (profile).
     'identity/admin/profile/sessions/sign-out-others',
     'identity/admin/sign-in',

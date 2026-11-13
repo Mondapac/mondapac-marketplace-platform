@@ -55,6 +55,12 @@ const schemaOf = (fields: AttributeField[]): AttributeSchema => ({
 class MemoryGapReader implements ProductDetailsGapReader {
   rows: PublishedProductValues[] = [];
   calls: PublishedProductsFilter[] = [];
+  publishedByIds(
+    _market: MarketContext,
+    productIds: readonly string[],
+  ): Promise<readonly PublishedProductValues[]> {
+    return Promise.resolve(this.rows.filter((row) => productIds.includes(row.productId)));
+  }
   published(
     _market: MarketContext,
     filter: PublishedProductsFilter,

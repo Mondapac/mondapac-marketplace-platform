@@ -530,6 +530,15 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText: 'mail to an Offer owner from a type code, a count and a date; never content',
   },
   Classification: { noCustomerText: 'sensitive-change verdict: codes and flags' },
+  MissingDetailsEmail: {
+    noCustomerText: 'mail to a seller from fixed English text, product names and detail names',
+  },
+  MissingDetailsEmailInput: {
+    noCustomerText: 'input of the seller mail: names already in the catalogue, never typed text',
+  },
+  MissingDetailsEmailProduct: {
+    noCustomerText: 'a product name and detail names already in the catalogue',
+  },
   CategoryName: { table: 'CATEGORY_NAME_FIELDS' },
   DraftText: { noCustomerText: 'a text found in a draft, already named by its checked field id' },
   FamilyAttribute: { table: 'FAMILY_ATTRIBUTE_FIELDS' },

@@ -256,6 +256,15 @@ import {
 } from './infrastructure/offer-owner-notices';
 import { IDENTITY_FACADE, IdentityModule, type IdentityFacade } from '../identity';
 import { MAIL_TRANSPORT } from '../../platform/mail/mail-transport';
+import { MissingDetailsEmailSellers } from './application/use-cases/missing-details-email-sellers.use-case';
+import { SendMissingDetailsEmails } from './application/use-cases/send-missing-details-emails.use-case';
+import { sendMissingDetailsEmailsJob } from './presentation/jobs/send-missing-details-emails.job';
+import { MISSING_DETAILS_EMAIL_STORE } from './application/ports/missing-details-email.store';
+import {
+  MISSING_DETAILS_MAIL_SETTINGS,
+  type MissingDetailsMailSettings,
+} from './application/ports/missing-details-mail-settings';
+import { ConfigMissingDetailsMailSettings } from './infrastructure/offer-owner-notices';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { OwnProductImageUpload } from './application/use-cases/own-product-image-upload.use-case';
 import { OwnProductImageList } from './application/use-cases/own-product-image-list.use-case';
@@ -602,6 +611,8 @@ const PORT = {
   attributeAdminReader: ATTRIBUTE_ADMIN_READER,
   impact: ATTRIBUTE_IMPACT_READER,
   detailsGapReader: PRODUCT_DETAILS_GAP_READER,
+  emailStore: MISSING_DETAILS_EMAIL_STORE,
+  missingDetailsMailSettings: MISSING_DETAILS_MAIL_SETTINGS,
   familyResolver: ProductFamilyResolver,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
   attributeCreate: AttributeDefinitionCreate,
@@ -2540,6 +2551,7 @@ const RESTRUCTURE_DEPS = {
         OwnImportPurge,
         ExpireRelaxationRequests,
         SendAttributeSuggestionNotices,
+        SendMissingDetailsEmails,
         SendTopicSuggestionNotices,
       ],
       (
@@ -2557,6 +2569,7 @@ const RESTRUCTURE_DEPS = {
         sellerPurge: OwnImportPurge,
         expireRelaxations: ExpireRelaxationRequests,
         suggestionNotices: SendAttributeSuggestionNotices,
+        missingDetailsEmails: SendMissingDetailsEmails,
         topicSuggestionNotices: SendTopicSuggestionNotices,
       ) => [
         seedCategoryTreeJob(categories),
@@ -2573,6 +2586,7 @@ const RESTRUCTURE_DEPS = {
         purgeSellerImportsJob(sellerPurge),
         expireRelaxationRequestsJob(expireRelaxations),
         sendAttributeSuggestionNoticesJob(suggestionNotices),
+        sendMissingDetailsEmailsJob(missingDetailsEmails),
         sendTopicSuggestionNoticesJob(topicSuggestionNotices),
       ],
     ),
@@ -2610,6 +2624,35 @@ const RESTRUCTURE_DEPS = {
       useFactory: (markets: MarketRegistry): OfferOwnerMailSettings =>
         new ConfigOfferOwnerMailSettings(markets),
     },
+    {
+      provide: MISSING_DETAILS_MAIL_SETTINGS,
+      inject: [MarketRegistry],
+      useFactory: (markets: MarketRegistry): MissingDetailsMailSettings =>
+        new ConfigMissingDetailsMailSettings(markets),
+    },
+    // "Email sellers" of the Missing details report (attributes package A4-4): the admin request
+    // writes one row per seller and product; the job sends one mail per seller.
+    useCaseProvider(MissingDetailsEmailSellers, {
+      unitOfWork: true,
+      detailsGapReader: true,
+      attributes: true,
+      attributeAdminReader: true,
+      familyResolver: true,
+      policy: true,
+      sellerNames: true,
+      emailStore: true,
+      missingDetailsMailSettings: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SendMissingDetailsEmails, {
+      unitOfWork: true,
+      emailStore: true,
+      ownerContacts: true,
+      mailTransport: true,
+      missingDetailsMailSettings: true,
+      clock: true,
+    }),
     // Hassan M1, Mojtaba N2: the handler writes one notice per Owner; the job sends each.
     useCaseProvider(WarnOfferOwnersOfExpiry, {
       unitOfWork: true,
