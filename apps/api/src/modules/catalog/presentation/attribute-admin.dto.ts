@@ -506,6 +506,14 @@ export class MissingDetailsItemBody {
   @ApiProperty() featureSetCode!: string;
   @ApiProperty({ type: [String], description: 'Codes of the required attributes with no value.' })
   missing!: string[];
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'date-time',
+    description:
+      'When an "Email sellers" mail about it last went to its seller; null when never, or while a newer request waits.',
+  })
+  lastEmailedAt!: string | null;
 }
 
 export class MissingDetailsListBody {
