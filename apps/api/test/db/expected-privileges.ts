@@ -1184,6 +1184,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Order detail decision 3: admin internal notes, sealed under the customer; written once, never
     // changed or removed.
     'ordering.admin_order_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Seller refund caps (owner decision 2026-11-11; ordering.md 3.12c): an admin sets, edits and
+    // removes a cap (the id, Market and seller never change); the guard row per seller is
+    // inserted once, then moves only its check time and alert bookkeeping. No guard is deleted.
+    'ordering.seller_refund_limits': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'currency',
+        'max_amount',
+        'max_count',
+        'updated_at',
+        'updated_by_account_id',
+        'version',
+      ],
+    },
+    'ordering.seller_refund_guards': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['alerts', 'checked_at', 'last_alerted_at'],
+    },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.
     // Payments (Phase 5 package 3): one connected account row per seller and Market; the state

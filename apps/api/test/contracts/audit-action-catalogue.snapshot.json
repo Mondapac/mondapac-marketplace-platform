@@ -2012,6 +2012,35 @@
     }
   },
   {
+    "action": "ordering.refund-limit.removed",
+    "targetType": "ordering.seller-refund-limit",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "maxAmount": "money",
+      "maxCount": "integer",
+      "sellerId": "id"
+    },
+    "after": null
+  },
+  {
+    "action": "ordering.refund-limit.set",
+    "targetType": "ordering.seller-refund-limit",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "maxAmount": "optional(money)",
+      "maxCount": "optional(integer)"
+    },
+    "after": {
+      "maxAmount": "money",
+      "maxCount": "integer",
+      "scope": "enumOf(market|seller)",
+      "sellerId": "optional(id)",
+      "version": "integer"
+    }
+  },
+  {
     "action": "ordering.refund.requested",
     "targetType": "ordering.refund",
     "targetId": "id",

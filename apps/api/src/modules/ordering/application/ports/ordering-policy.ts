@@ -18,6 +18,8 @@ export interface OrderingPolicy {
    * `tax.refundCredit.enabled`, off unless set to true (tax step 3).
    */
   refundsEnabled(market: MarketContext): boolean;
+  /** The Market's currency (ISO 4217): a refund cap is set in it. */
+  currency(market: MarketContext): string;
   /**
    * Whether the order document is a numbered tax invoice: `tax.invoice.enabled`, off unless set
    * to true (tax step 4). Off, it is an order confirmation without a number.

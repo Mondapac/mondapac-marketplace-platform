@@ -11,6 +11,11 @@ import {
   adminRefund,
   sellerUnavailableRefund,
 } from '../../src/modules/ordering/application/refund-flow';
+import {
+  removeRefundLimit,
+  setRefundLimit,
+  viewRefundLimits,
+} from '../../src/modules/ordering/application/refund-limits-flow';
 import { AdminRefundOrder } from '../../src/modules/ordering/application/use-cases/admin-refund-order.use-case';
 import { SellerMarkUnavailable } from '../../src/modules/ordering/application/use-cases/seller-mark-unavailable.use-case';
 import type { AdminNoteDependencies } from '../../src/modules/ordering/application/admin-note-flow';
@@ -218,10 +223,9 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
   const total = inclusive ? 3300n + 550n : 3300n + 451n + 500n + 75n;
 
   /** A paid order of one seller with one line of three units; answers its ids. */
-  const paidOrder = async () => {
+  const paidOrder = async (sellerId: Id<'Seller'> = ids.next<'Seller'>()) => {
     const orderId = ids.next<'Order'>();
     const sellerOrderId = ids.next<'SellerOrder'>();
-    const sellerId = ids.next<'Seller'>();
     const lineId = ids.next<'OrderLine'>();
     owned.add(sellerOrderId);
     const order: OrderState = {
@@ -772,6 +776,25 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         )
       ).rows[0];
 
+    /** Sets the Market default (`sellerId` null) or a seller's own cap over the version in force. */
+    const setCap = async (sellerId: Id<'Seller'> | null, maxCount: number, maxAmount: string) => {
+      const read = await viewRefundLimits(deps, admin, { sellerId });
+      if (!read.ok) throw new Error(`could not read the caps: ${read.error.code}`);
+      const current = sellerId === null ? read.value.marketDefault : read.value.own;
+      const set = await setRefundLimit(deps, admin, {
+        sellerId,
+        maxCount,
+        maxAmount,
+        expectedVersion: current?.version ?? 0,
+      });
+      if (!set.ok) throw new Error(`could not set the cap: ${set.error.code}`);
+      return set.value;
+    };
+    // A generous Market default: the tests below that are not about the caps never reach it.
+    beforeEach(async () => {
+      await setCap(null, 1000, '9999999999');
+    });
+
     it('refunds the units at once, borne by the seller, and keeps the shipping while some is left', async () => {
       const o = await paidOrder();
 
@@ -1020,6 +1043,269 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       await expect(insert('customer', 'item-unavailable', 'seller', null)).rejects.toThrow(
         /refunds_actor_population_check/,
       );
+    });
+
+    describe('the caps on seller refunds (Hassan F2; owner decision 2026-11-11)', () => {
+      let events: PendingEvent[];
+      beforeEach(() => {
+        events = [];
+        deps = {
+          ...deps,
+          outbox: {
+            append: (_context, pending) => {
+              events.push(...pending);
+              return Promise.resolve();
+            },
+          },
+        };
+      });
+      const alerts = () =>
+        events.filter((e) => e.type === 'ordering.seller-refund-limit-reached.v1');
+
+      it('refuses every seller refund while no cap is set, and moves no money', async () => {
+        const o = await paidOrder();
+        await sql.query(
+          'DELETE FROM ordering.seller_refund_limits WHERE market_id = $1 AND seller_id IS NULL',
+          [market.marketId],
+        );
+
+        expect(await unavailable(o, 1)).toEqual({
+          ok: false,
+          error: { code: 'ordering.refund-limit-unset' },
+        });
+        expect(gateway.refunds).toHaveLength(0);
+        expect((await rowsOf(o.sellerOrderId)).refunds).toHaveLength(0);
+        // The admins are told to set one (Hassan), once a day.
+        expect((await unavailable(o, 1)).ok).toBe(false);
+        expect(alerts()).toHaveLength(1);
+        expect(alerts()[0]).toMatchObject({ payload: { sellerId: o.sellerId, limit: 'unset' } });
+      });
+
+      it('refuses a refund past the count in 24 hours and alerts the admins once a day', async () => {
+        const sellerId = ids.next<'Seller'>();
+        await setCap(sellerId, 1, '9999999999');
+        const first = await paidOrder(sellerId);
+        const second = await paidOrder(sellerId);
+        expect((await unavailable(first, 1)).ok).toBe(true);
+
+        const refused = await unavailable(second, 1);
+        const again = await unavailable(second, 1);
+
+        const reached = {
+          ok: false,
+          error: { code: 'ordering.refund-limit-reached', limit: 'count' },
+        };
+        expect(refused).toEqual(reached);
+        expect(again).toEqual(reached);
+        expect((await rowsOf(second.sellerOrderId)).refunds).toHaveLength(0);
+        expect(gateway.refunds).toHaveLength(1);
+        expect(alerts()).toHaveLength(1);
+        expect(alerts()[0]).toMatchObject({
+          aggregateId: sellerId,
+          aggregateVersion: 1,
+          payload: { sellerId, limit: 'count' },
+        });
+        // Another shop is counted on its own.
+        expect((await unavailable(await paidOrder(), 1)).ok).toBe(true);
+      });
+
+      it('refuses a refund that would pass the amount, and counts only the last 24 hours', async () => {
+        const sellerId = ids.next<'Seller'>();
+        // One unit fits; a second would pass the amount.
+        await setCap(sellerId, 10, (unit + unit / 2n).toString());
+        const o = await paidOrder(sellerId);
+        expect((await unavailable(o, 1)).ok).toBe(true);
+
+        expect(await unavailable(o, 1, 1)).toEqual({
+          ok: false,
+          error: { code: 'ordering.refund-limit-reached', limit: 'amount' },
+        });
+        expect(alerts()).toHaveLength(1);
+
+        // A day later the first refund has left the window.
+        const later = new FixedClock(T0.add({ hours: 24, seconds: 1 }));
+        const nextDay = { ...deps, clock: later };
+        const refundedNextDay = await new SellerMarkUnavailable(gate, nextDay).execute(
+          sellerOf(sellerId),
+          {
+            sellerOrderId: o.sellerOrderId,
+            lines: [{ orderLineId: o.lineId, quantity: 1 }],
+            expectedRefunds: 1,
+          },
+        );
+        expect(refundedNextDay.ok).toBe(true);
+      });
+
+      it('counts two refunds sent at once one after the other: never both past the cap', async () => {
+        const sellerId = ids.next<'Seller'>();
+        await setCap(sellerId, 1, '9999999999');
+        const a = await paidOrder(sellerId);
+        const b = await paidOrder(sellerId);
+
+        const both = await Promise.all([unavailable(a, 1), unavailable(b, 1)]);
+
+        expect(both.filter((r) => r.ok)).toHaveLength(1);
+        expect(both.find((r) => !r.ok)).toEqual({
+          ok: false,
+          error: { code: 'ordering.refund-limit-reached', limit: 'count' },
+        });
+        expect(gateway.refunds).toHaveLength(1);
+      });
+
+      it('makes a second refund of a new seller wait for the first under the guard, then count it', async () => {
+        const sellerId = ids.next<'Seller'>();
+        await setCap(sellerId, 1, '9999999999');
+        const a = await paidOrder(sellerId);
+        const b = await paidOrder(sellerId);
+        // The first refund stops right after it made and locked the seller's guard row.
+        const real = deps.refunds;
+        let entered!: () => void;
+        const inGuard = new Promise<void>((resolve) => (entered = resolve));
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => (release = resolve));
+        const holding = Object.create(real) as typeof real;
+        holding.guardSellerRefunds = async (...args) => {
+          const guard = await real.guardSellerRefunds(...args);
+          entered();
+          await held;
+          return guard;
+        };
+        const first = new SellerMarkUnavailable(gate, { ...deps, refunds: holding }).execute(
+          sellerOf(sellerId),
+          {
+            sellerOrderId: a.sellerOrderId,
+            lines: [{ orderLineId: a.lineId, quantity: 1 }],
+            expectedRefunds: 0,
+          },
+        );
+        await inGuard;
+        const second = unavailable(b, 1);
+        // Wait until the second is blocked on the guard row the first holds.
+        for (let tries = 0; ; tries += 1) {
+          const blocked = await sql.query<{ n: string }>(
+            `SELECT count(*) AS n FROM pg_stat_activity
+              WHERE cardinality(pg_blocking_pids(pid)) > 0 AND query ILIKE '%seller_refund_guards%'`,
+          );
+          if (blocked.rows[0]!.n !== '0') break;
+          if (tries > 200) throw new Error('the second refund never waited on the guard row');
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        release();
+
+        expect((await first).ok).toBe(true);
+        expect(await second).toEqual({
+          ok: false,
+          error: { code: 'ordering.refund-limit-reached', limit: 'count' },
+        });
+        expect(gateway.refunds).toHaveLength(1);
+      });
+
+      it("uses the seller's own cap over the default, and the default again once it is removed", async () => {
+        const sellerId = ids.next<'Seller'>();
+        const own = await setCap(sellerId, 1, '9999999999');
+        expect(own).toMatchObject({ sellerId, inForce: 'own', own: { maxCount: 1, version: 1 } });
+        expect(own.marketDefault).toMatchObject({ maxCount: 1000 });
+        expect(own.own?.maxAmount).toEqual(money(9999999999n, currency));
+
+        // A stale edit (another admin changed it first) is refused.
+        expect(
+          await setRefundLimit(deps, admin, {
+            sellerId,
+            maxCount: 2,
+            maxAmount: '100',
+            expectedVersion: 0,
+          }),
+        ).toEqual({ ok: false, error: { code: 'conflict.retry' } });
+        expect(await removeRefundLimit(deps, admin, { sellerId, expectedVersion: 2 })).toEqual({
+          ok: false,
+          error: { code: 'conflict.retry' },
+        });
+
+        const removed = await removeRefundLimit(deps, admin, { sellerId, expectedVersion: 1 });
+        expect(removed.ok && removed.value).toMatchObject({ inForce: 'market', own: null });
+        expect(await removeRefundLimit(deps, admin, { sellerId, expectedVersion: 1 })).toEqual({
+          ok: false,
+          error: { code: 'ordering.refund-limit-not-found' },
+        });
+        const o = await paidOrder(sellerId);
+        expect((await unavailable(o, 1)).ok).toBe(true);
+        expect((await unavailable(o, 1, 1)).ok).toBe(true);
+
+        const audited = await sql.query<{ action: string }>(
+          `SELECT action FROM platform.audit_log
+            WHERE market_id = $1 AND target_type = 'ordering.seller-refund-limit'
+              AND $2 IN (after->>'sellerId', before->>'sellerId')
+            ORDER BY action`,
+          [market.marketId, sellerId],
+        );
+        expect(audited.rows.map((r) => r.action)).toEqual([
+          'ordering.refund-limit.removed',
+          'ordering.refund-limit.set',
+        ]);
+      });
+
+      it('refuses a cap out of range and a seller id that is not one, writing nothing', async () => {
+        expect(
+          await setRefundLimit(deps, admin, {
+            sellerId: 'nope',
+            maxCount: 0,
+            maxAmount: '0',
+            expectedVersion: -1,
+          }),
+        ).toEqual({
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [
+              { path: 'sellerId', code: 'format' },
+              { path: 'maxCount', code: 'range' },
+              { path: 'maxAmount', code: 'range' },
+              { path: 'expectedVersion', code: 'range' },
+            ],
+          },
+        });
+        const seller = sellerOf(ids.next<'Seller'>());
+        expect(
+          await setRefundLimit(deps, seller, {
+            sellerId: null,
+            maxCount: 5,
+            maxAmount: '100',
+            expectedVersion: 0,
+          }),
+        ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      });
+
+      it('is closed in the database: counts, amounts and one default per Market', async () => {
+        const insert = (sellerId: string | null, count: number, amount: string) =>
+          sql.query(
+            `INSERT INTO ordering.seller_refund_limits
+               (id, market_id, tenant_id, seller_id, max_count, max_amount, currency, version, updated_at, updated_by_account_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 1, now(), $8)`,
+            [
+              ids.next(),
+              market.marketId,
+              market.tenantId,
+              sellerId,
+              count,
+              amount,
+              currency,
+              ids.next(),
+            ],
+          );
+        await expect(insert(ids.next(), 0, '100')).rejects.toThrow(
+          /seller_refund_limits_max_count_check/,
+        );
+        await expect(insert(ids.next(), 1001, '100')).rejects.toThrow(
+          /seller_refund_limits_max_count_check/,
+        );
+        await expect(insert(ids.next(), 5, '0')).rejects.toThrow(
+          /seller_refund_limits_max_amount_check/,
+        );
+        await expect(insert(null, 5, '100')).rejects.toThrow(/seller_refund_limits_default_key/);
+        const sellerId = ids.next();
+        await insert(sellerId, 5, '100');
+        await expect(insert(sellerId, 6, '100')).rejects.toThrow(/seller_refund_limits_seller_key/);
+      });
     });
   });
 

@@ -271,7 +271,9 @@ export class SellerOrdersController {
     ...ERROR,
     description:
       'ordering.fulfilment-conflict, ordering.refund-disabled, ordering.refund-not-allowed, ' +
-      'ordering.refund-in-progress or conflict.retry',
+      'ordering.refund-in-progress, conflict.retry, ordering.refund-limit-reached (details.limit: ' +
+      'count or amount; the cap of refunds in 24 hours an admin set) or ordering.refund-limit-unset ' +
+      '(no cap set yet: seller refunds are refused)',
   })
   @ApiUnprocessableEntityResponse({
     ...ERROR,

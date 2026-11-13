@@ -383,6 +383,50 @@ model OrderingOfferPair {
   @@schema("ordering")
 }
 
+/// The caps on refunds a seller starts by marking units unavailable (order detail decision 6;
+/// Hassan F2; owner decision 2026-11-11): at most `maxCount` refunds and `maxAmount` minor units
+/// in any 24 hours. One row per Market with no seller (the default an admin sets) and one per
+/// seller an admin set apart; the seller's row wins. No row in force: the seller path is refused
+/// (fail closed). Partial unique indexes (one default, one row per seller) are in the migration.
+model OrderingSellerRefundLimit {
+  id                 String   @id @db.Uuid
+  marketId           String   @map("market_id") @db.VarChar(8)
+  tenantId           String   @map("tenant_id")
+  /// Null for the Market's default.
+  sellerId           String?  @map("seller_id") @db.Uuid
+  /// 1 to 1000 refunds in any 24 hours (CHECK).
+  maxCount           Int      @map("max_count")
+  /// Above zero, minor units of `currency` (the Market currency, checked in the use case).
+  maxAmount          BigInt   @map("max_amount")
+  currency           String   @db.VarChar(3)
+  /// 1 when set, +1 on each change; a stale edit is refused.
+  version            Int
+  updatedAt          DateTime @map("updated_at") @db.Timestamptz(6)
+  updatedByAccountId String   @map("updated_by_account_id") @db.Uuid
+
+  @@map("seller_refund_limits")
+  @@schema("ordering")
+}
+
+/// One row per seller that started a refund (decision 6): the seller's refunds are counted under
+/// this row's lock, so two at once cannot both pass a cap, and the admin is alerted at most once
+/// in 24 hours when one is refused. Ids and instants only.
+model OrderingSellerRefundGuard {
+  marketId      String    @map("market_id") @db.VarChar(8)
+  tenantId      String    @map("tenant_id")
+  sellerId      String    @map("seller_id") @db.Uuid
+  /// The last time a seller refund was checked against the caps (taken under the row lock).
+  checkedAt     DateTime  @map("checked_at") @db.Timestamptz(6)
+  /// The last admin alert for this seller; null before the first.
+  lastAlertedAt DateTime? @map("last_alerted_at") @db.Timestamptz(6)
+  /// Alerts sent so far: the aggregate version of `ordering.seller-refund-limit-reached.v1`.
+  alerts        Int
+
+  @@id([marketId, sellerId])
+  @@map("seller_refund_guards")
+  @@schema("ordering")
+}
+
 /// Admins' internal notes on an order (order detail decision 3): never shown to the customer or the
 /// seller, and a seller's own notes are not here. Written once: the application role may insert and
 /// read, never change or remove (grants). Free text is never in clear (data design O8).

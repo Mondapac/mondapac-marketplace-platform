@@ -55,6 +55,9 @@ import {
   ADMIN_NOTE_CIPHER,
   ADMIN_ORDER_NOTE_REPOSITORY,
 } from './application/ports/admin-order-notes';
+import { AdminRemoveRefundLimit } from './application/use-cases/admin-remove-refund-limit.use-case';
+import { AdminSetRefundLimit } from './application/use-cases/admin-set-refund-limit.use-case';
+import { AdminViewRefundLimits } from './application/use-cases/admin-view-refund-limits.use-case';
 import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
@@ -120,6 +123,7 @@ import { recordShipmentsJob } from './presentation/jobs/record-shipments.job';
 import { settleRefundsJob } from './presentation/jobs/settle-refunds.job';
 import { OrdersController } from './presentation/orders.controller';
 import { SellerOrdersController } from './presentation/seller-orders.controller';
+import { AdminRefundLimitsController } from './presentation/admin-refund-limits.controller';
 import { OrderingFacadeImplementation } from './presentation/ordering.facade';
 import { carrierSubscriptions } from './presentation/subscribers/carrier.subscriptions';
 import { deliverySubscriptions } from './presentation/subscribers/delivery.subscriptions';
@@ -240,6 +244,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   controllers: [
     OrdersController,
     AdminOrdersController,
+    AdminRefundLimitsController,
     SellerOrdersController,
     AdminSavedViewsController,
     SellerSavedViewsController,
@@ -312,6 +317,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RecordDeliveryAnchor,
       AdminRefundOrder,
       AdminCancelOrder,
+      AdminViewRefundLimits,
+      AdminSetRefundLimit,
+      AdminRemoveRefundLimit,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     ...[AdminListOrderNotes, AdminAddOrderNote].map((type) => ({

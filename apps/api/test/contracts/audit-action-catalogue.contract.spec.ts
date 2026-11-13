@@ -165,6 +165,11 @@ const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
   'commission-payouts.payout.approve.after.transfer',
   // Order detail decision 1: an admin's cancellation records the sum of the refunds it wrote.
   'ordering.order.cancel-requested.after.amount',
+  // Seller refund caps (owner decision 2026-11-11): an admin's cap on the amount a seller may
+  // refund in 24 hours, before and after a change (Market currency, never Cost).
+  'ordering.refund-limit.removed.before.maxAmount',
+  'ordering.refund-limit.set.after.maxAmount',
+  'ordering.refund-limit.set.before.maxAmount',
   'ordering.refund.requested.after.amount',
   'ordering.refund.requested.after.tax',
   'pricing.price-hold.approved.after.amount',
