@@ -47,6 +47,12 @@ export interface SellingFactsRepository {
   categoryProposalsAllowed(market: MarketContext, sellerId: Id<'Seller'>): Promise<boolean | null>;
 
   /**
+   * Whether an admin switched AI on for the seller (SEL-25); null when there is no setting row
+   * (an unknown seller, another Market's seller or a fault).
+   */
+  aiEnabled(market: MarketContext, sellerId: Id<'Seller'>): Promise<boolean | null>;
+
+  /**
    * The instant the seller's business file was first approved in the Market (the earliest
    * decision of a revision that is or was approved); null when no revision was ever approved, or
    * the seller is unknown or of another Market.

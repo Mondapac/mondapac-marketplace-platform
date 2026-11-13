@@ -703,6 +703,8 @@
   { "name": "sellers.active-since", "rule": "anonymous" },
   { "name": "sellers.active-since-system", "rule": "system" },
   { "name": "sellers.after-submission", "rule": "system" },
+  { "name": "sellers.ai-access", "rule": "anonymous" },
+  { "name": "sellers.ai-access-system", "rule": "system" },
   { "name": "sellers.allowed-product-types", "rule": "anonymous" },
   { "name": "sellers.allowed-product-types-system", "rule": "system" },
   { "name": "sellers.apply-signup-cultures", "rule": "system" },
