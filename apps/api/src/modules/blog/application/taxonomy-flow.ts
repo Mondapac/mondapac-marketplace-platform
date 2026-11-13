@@ -25,6 +25,11 @@ export interface TaxonomyView {
     readonly names: Readonly<Record<string, string>>;
   }[];
   readonly tags: readonly { readonly id: string; readonly slug: string; readonly name: string }[];
+  /** The Market's languages for category names; null when the Market has no blog settings. */
+  readonly locales: {
+    readonly default: string;
+    readonly supported: readonly string[];
+  } | null;
 }
 
 const categoryView = (category: CategoryRecord) => ({
@@ -40,6 +45,11 @@ export async function listTaxonomy(
 ): Promise<Result<TaxonomyView, BlogFailure>> {
   const { actor, market } = context;
   if (actor.kind !== 'authenticated') return err({ code: 'access.denied' });
+  const policy = policyOf(deps, market);
+  const locales =
+    policy === null
+      ? null
+      : { default: policy.defaultLocale, supported: [...policy.supportedLocales] };
   return deps.unitOfWork.run<TaxonomyView, BlogFailure>(
     market,
     async () =>
@@ -50,6 +60,7 @@ export async function listTaxonomy(
           slug: tag.slug,
           name: tag.name,
         })),
+        locales,
       }),
     { readOnly: true },
   );

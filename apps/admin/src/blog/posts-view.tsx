@@ -20,6 +20,7 @@ import {
   NEW_POST_PATH,
   OWNER_TYPES,
   postPath,
+  TAXONOMY_PATH,
   POST_KINDS,
   POST_STATUSES,
   type KindFilter,
@@ -142,11 +143,12 @@ export function PostsView({ zone, canEdit }: { readonly zone: string; readonly c
 
   return (
     <div className="flex flex-col gap-4">
-      {canEdit ? (
-        <p>
-          <LinkButton href={NEW_POST_PATH}>{t('new')}</LinkButton>
-        </p>
-      ) : null}
+      <p className="flex flex-wrap gap-2">
+        {canEdit ? <LinkButton href={NEW_POST_PATH}>{t('new')}</LinkButton> : null}
+        <LinkButton variant="secondary" href={TAXONOMY_PATH}>
+          {t('taxonomy-link')}
+        </LinkButton>
+      </p>
       <Tabs
         label={t('tabs-label')}
         activeId={status}
