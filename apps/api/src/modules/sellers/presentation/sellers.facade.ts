@@ -25,6 +25,7 @@ import type { SellerApprovedCultures } from '../application/use-cases/seller-app
 import type { SellerApprovedCulturesSystem } from '../application/use-cases/seller-approved-cultures-system.use-case';
 import type { SellingEligibility } from '../application/use-cases/selling-eligibility.use-case';
 import type { SellerSummariesSystem } from '../application/use-cases/seller-summaries-system.use-case';
+import type { SearchStoreNames } from '../application/use-cases/search-store-names.use-case';
 import type { SellerSummaries } from '../application/use-cases/seller-summaries.use-case';
 import type {
   AllowedProductTypesOf,
@@ -45,6 +46,7 @@ import type { SellerSummary } from '../domain/seller-summary';
 export interface SellersFacadeUseCases {
   readonly sellerSummaries: SellerSummaries;
   readonly sellerSummariesSystem: SellerSummariesSystem;
+  readonly searchStoreNames: SearchStoreNames;
   readonly sellingEligibility: SellingEligibility;
   readonly sellingEligibilitySystem: SellingEligibilitySystem;
   readonly allowedProductTypes: AllowedProductTypes;
@@ -91,6 +93,18 @@ export class SellersFacadeImplementation implements SellersFacade {
         ? this.useCases.sellerSummariesSystem
         : this.useCases.sellerSummaries;
     return useCase.execute(context, { sellerIds });
+  }
+
+  searchStoreNames(
+    context: CallContext,
+    term: string,
+  ): Promise<
+    Result<
+      { readonly sellerIds: readonly Id<'Seller'>[]; readonly capped: boolean },
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  > {
+    return this.useCases.searchStoreNames.execute(context, { term });
   }
 
   sellingEligibility(

@@ -316,7 +316,10 @@ export class MemoryOrders implements OrderRepository {
               (filter.fulfilment === null || s.fulfilment === filter.fulfilment),
           )) &&
         (filter.from === null || o.createdAt.epochMilliseconds >= filter.from.epochMilliseconds) &&
-        (filter.to === null || o.createdAt.epochMilliseconds < filter.to.epochMilliseconds),
+        (filter.to === null || o.createdAt.epochMilliseconds < filter.to.epochMilliseconds) &&
+        (filter.parties === null ||
+          filter.parties.accountIds.includes(o.accountId) ||
+          o.sellerOrders.some((s) => filter.parties!.sellerIds.includes(s.sellerId))),
     );
   }
   listAll(_m: MarketContext, filter: OrderFilter, page: OrderPage) {
@@ -1157,6 +1160,10 @@ export class FakeLabels implements OrderLabels {
   readonly staff = new Map<Id<'Account'>, string>();
   readonly fail = new Set<'units' | 'stores' | 'customers' | 'short-names' | 'staff'>();
   readonly calls: { readonly lookup: string; readonly count: number }[] = [];
+  /** What both searches answer for `capped`. */
+  searchCapped = false;
+  /** Makes the customer-name search answer as an admin without the customer key. */
+  customerSearchDenied = false;
 
   unitLabelsOf(
     _context: CallContext,
@@ -1183,6 +1190,39 @@ export class FakeLabels implements OrderLabels {
     this.calls.push({ lookup: 'customers', count: accountIds.length });
     if (this.fail.has('customers')) return Promise.reject(new Error('customers'));
     return Promise.resolve(this.customers);
+  }
+
+  customerAccountsMatching(
+    _context: CallContext,
+    term: string,
+  ): Promise<{
+    readonly accountIds: readonly Id<'Account'>[];
+    readonly capped: boolean;
+    readonly searched: boolean;
+  }> {
+    this.calls.push({ lookup: 'search-customers', count: 1 });
+    if (this.fail.has('customers')) return Promise.reject(new Error('customers'));
+    const needle = term.toLowerCase();
+    const accountIds = [...this.customers]
+      .filter(([, c]) => (c.displayName ?? '').toLowerCase().includes(needle))
+      .map(([id]) => id);
+    if (this.customerSearchDenied) {
+      return Promise.resolve({ accountIds: [], capped: false, searched: false });
+    }
+    return Promise.resolve({ accountIds, capped: this.searchCapped, searched: true });
+  }
+
+  sellersMatching(
+    _context: CallContext,
+    term: string,
+  ): Promise<{ readonly sellerIds: readonly Id<'Seller'>[]; readonly capped: boolean }> {
+    this.calls.push({ lookup: 'search-stores', count: 1 });
+    if (this.fail.has('stores')) return Promise.reject(new Error('stores'));
+    const needle = term.toLowerCase();
+    const sellerIds = [...this.stores]
+      .filter(([, name]) => name.toLowerCase().includes(needle))
+      .map(([id]) => id);
+    return Promise.resolve({ sellerIds, capped: this.searchCapped });
   }
 
   customerShortNamesOf(

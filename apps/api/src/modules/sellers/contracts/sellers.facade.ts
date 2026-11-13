@@ -103,6 +103,22 @@ export interface SellersFacade {
   >;
 
   /**
+   * The sellers whose approved public store name contains `term` (2 to 80 characters after
+   * trimming; case insensitive), at most 200, for a list that filters by store name. `capped` is
+   * true when more matched. Only the store name the public sees: never a draft or the legal name.
+   * A failed read is `sellers.unavailable`, never an empty answer. Not exposed over HTTP.
+   */
+  searchStoreNames(
+    context: CallContext,
+    term: string,
+  ): Promise<
+    Result<
+      { readonly sellerIds: readonly Id<'Seller'>[]; readonly capped: boolean },
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  >;
+
+  /**
    * The may-sell contract (sellers design 7.2): per distinct requested id, `eligible`. Yes only
    * when `identity` says `approved`, the seller has an approved revision in the context's Market,
    * that revision has an identifier when the Market's current rule requires one, its operating

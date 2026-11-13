@@ -231,6 +231,13 @@ export interface LabelledSellerOrderPageView {
 /** The admin list: a page of labelled orders and the Market's counts per status. */
 export interface AdminOrderPageView extends OrderPageView<LabelledAdminOrderView> {
   readonly counts: OrderStatusCounts;
+  /** True when a `search` matched more customers or stores than the list follows (200 each). */
+  readonly searchCapped: boolean;
+  /**
+   * What a `search` looked in: `customers-and-stores`, or `stores` when the admin may not see
+   * customer names. Null when no search was asked.
+   */
+  readonly searchScope: 'customers-and-stores' | 'stores' | null;
   /** Set when the caller asked for an offset page: the rows matching the filter, and the page. */
   readonly paging: {
     readonly total: number;

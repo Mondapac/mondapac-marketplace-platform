@@ -37,6 +37,16 @@ export interface StoreProfileRepository {
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<ReadonlyMap<Id<'Seller'>, string>>;
 
+  /**
+   * The ids of the sellers whose APPROVED public store name contains `term` (case insensitive,
+   * `%` and `_` taken literally), at most `limit`, in id order. Never the legal name, never a draft.
+   */
+  searchApprovedStoreIds(
+    market: MarketContext,
+    term: string,
+    limit: number,
+  ): Promise<readonly Id<'Seller'>[]>;
+
   /** The settings of the seller in the Market, or null (no profile, another Market's seller). */
   find(market: MarketContext, sellerId: Id<'Seller'>): Promise<StoreSettings | null>;
 

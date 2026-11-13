@@ -28,6 +28,15 @@ export interface OrderFilter {
   /** Placed at or after `from` and before `to`. */
   readonly from: Temporal.Instant | null;
   readonly to: Temporal.Instant | null;
+  /**
+   * The free-text search, already resolved by the owning modules: keeps orders placed by one of
+   * these accounts or holding a part of one of these sellers. Empty lists keep no order. Null
+   * keeps every order.
+   */
+  readonly parties: {
+    readonly accountIds: readonly Id<'Account'>[];
+    readonly sellerIds: readonly Id<'Seller'>[];
+  } | null;
 }
 
 /** The sort of an offset page; ties break on the order id in the same direction. */
