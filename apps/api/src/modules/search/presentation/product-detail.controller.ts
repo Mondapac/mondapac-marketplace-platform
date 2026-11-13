@@ -159,6 +159,8 @@ function specificationValue(value: SpecificationValue): ProductDetailSpecificati
       return { kind: 'text', text: value.text };
     case 'list':
       return { kind: 'list', items: [...value.items] };
+    case 'measure':
+      return { kind: 'measure', value: value.value, unitLabel: value.unitLabel };
     default:
       return { kind: value.kind, value: value.value };
   }

@@ -44,7 +44,10 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
     owner = new Client({ connectionString: ownerTestDatabaseUrl() });
     await owner.connect();
     products = new PrismaProductRepository(db.service);
-    reader = new PrismaPublishedProductReader(db.service);
+    reader = new PrismaPublishedProductReader(db.service, () => [
+      { code: 'kg', labels: { 'en-AU': 'kg', 'fa-IR': 'کیلوگرم' } as Record<string, string> },
+      { code: 'g', labels: { 'en-AU': 'g' } as Record<string, string> },
+    ]);
   });
   afterAll(async () => {
     await owner.end();
@@ -277,6 +280,8 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       status?: string;
       showOnProductPage?: boolean;
       names: Record<string, string>;
+      /** The revision's `bounds` object (a measure keeps its unit settings in `measure`). */
+      bounds?: Record<string, unknown>;
       options?: Record<string, { labels: Record<string, string>; mergedInto?: string }>;
       /** Archives the definition at the end, merged into another (attributes A8). */
       mergedInto?: { id: string; options: Record<string, string> };
@@ -303,7 +308,7 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       revision_no: 1,
       material: false,
       is_variant_option: false,
-      bounds: '{}',
+      bounds: JSON.stringify(kind.bounds ?? {}),
       names: JSON.stringify(kind.names),
       show_on_product_page: kind.showOnProductPage ?? true,
       author_kind: 'seed',
@@ -436,6 +441,50 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       name: 'کشور سازنده',
       value: { kind: 'text', text: 'Iran' },
     });
+  });
+
+  it('shows a measure in the seller unit with the Market unit label, from the published revision', async () => {
+    const tag = uuid7().slice(-8);
+    const weight = `weight-${tag}`;
+    const volume = `volume-${tag}`;
+    await definition(market, weight, {
+      dataType: 'measure',
+      names: { 'en-AU': 'Net weight' },
+      bounds: { measure: { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 3 } },
+    });
+    // A unit the Market does not list ('l' has no label) leaves the row out; a count shows none.
+    await definition(market, volume, {
+      dataType: 'measure',
+      names: { 'en-AU': 'Volume' },
+      bounds: { measure: { dimension: 'volume', units: ['l'], defaultUnit: 'l', decimals: 2 } },
+    });
+    const entry = (code: string) => ({ code, required: false, isVariantOption: false });
+    const a = await product(market, {
+      texts: { 'en-AU': { name: 'Rice' } },
+      variants: [],
+      attributes: {
+        groups: [{ groupCode: 'details', attributes: [entry(weight), entry(volume)] }],
+        values: {
+          [weight]: { value: '500', unit: 'kg' },
+          [volume]: { value: '1500', unit: 'l' },
+        },
+      },
+    });
+    expect((await read(a.productId))?.specifications).toEqual([
+      {
+        groupCode: 'details',
+        specifications: [
+          {
+            code: weight,
+            name: 'Net weight',
+            value: { kind: 'measure', value: '0.5', unitLabel: 'kg' },
+          },
+        ],
+      },
+    ]);
+    const persian = (await read(a.productId, { requested: 'fa-IR', fallback: 'en-AU' }))
+      ?.specifications[0]?.specifications[0]?.value;
+    expect(persian).toEqual({ kind: 'measure', value: '0.5', unitLabel: 'کیلوگرم' });
   });
 
   it('reads a merged attribute as its target: name, label, code, and the target value wins', async () => {
