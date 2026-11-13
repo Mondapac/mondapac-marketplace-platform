@@ -4022,6 +4022,7 @@
     "title": "Orders",
     "page-title": "Orders",
     "intro": "The Market's orders, newest first.",
+    "zone-note": "Times and days are in {zone}.",
     "no-access": "You don't have access to orders.",
     "no-access-title": "You don't have access to this page",
     "not-found": "We couldn't find this order.",
@@ -4061,8 +4062,8 @@
     "col": {
       "order": "Order",
       "status": "Status",
-      "placed": "Placed (UTC)",
-      "paid": "Paid (UTC)",
+      "placed": "Placed",
+      "paid": "Paid",
       "customer": "Customer",
       "sellers": "Sellers",
       "total": "Total"
@@ -4344,8 +4345,8 @@
       "group": "Filters",
       "payment": "Payment",
       "fulfilment": "Delivery",
-      "from": "Placed from (UTC)",
-      "to": "Placed until (UTC)",
+      "from": "Placed from",
+      "to": "Placed until",
       "any": "Any",
       "clear": "Clear filters",
       "backwards": "The end day is before the start day."
@@ -4362,6 +4363,63 @@
       "previous": "Previous",
       "next": "Next",
       "page": "Page {n}"
+    },
+    "columns": {
+      "button": "Columns",
+      "title": "Columns",
+      "help": "Choose which columns the list shows and in what order. Only you see this choice.",
+      "always": "Always shown",
+      "up": "Move {column} up",
+      "down": "Move {column} down",
+      "reset": "Reset",
+      "save": "Save"
+    },
+    "saved": {
+      "manage-link": "Manage filters",
+      "save-link": "Save filter…",
+      "cancel": "Cancel",
+      "save": {
+        "title": "Save this filter",
+        "name": "Name",
+        "who": "Who can use it",
+        "submit": "Save filter",
+        "everyone-help": "Everyone: every admin who can see orders gets it as a tab.",
+        "own-only": "Saved for you only. Your role can’t share filters."
+      },
+      "visibility": {
+        "me": "Only me",
+        "everyone": "Everyone"
+      },
+      "error": {
+        "name-taken": "A filter with this name already exists. Choose another name.",
+        "name-empty": "Enter a name for the filter.",
+        "limit": "You can keep up to {max} saved filters. Delete one to save another.",
+        "shared-limit": "Up to {max} filters can be shared with everyone. Delete or unshare one first.",
+        "denied": "Your role can’t do this.",
+        "unavailable": "The filter could not be saved. Try again."
+      },
+      "toast": {
+        "saved": "Saved “{name}”",
+        "updated": "Updated “{name}”",
+        "deleted": "Deleted “{name}”"
+      },
+      "manage": {
+        "title": "Manage filters",
+        "close": "Close",
+        "edit": "Edit",
+        "edit-named": "Edit {name}",
+        "delete": "Delete",
+        "delete-named": "Delete {name}",
+        "delete-confirm": "Delete filter",
+        "delete-own": "Delete “{name}”? It is removed from your tabs.",
+        "delete-shared": "Delete “{name}”? It is removed from the tabs of every admin.",
+        "save": "Save changes",
+        "shared-by-other": "Shared by another admin",
+        "empty": "No saved filters yet",
+        "empty-help": "Set up filters, then choose Save filter to keep them as a tab.",
+        "help-share": "Rename, change who can use a filter, or delete it.",
+        "help-own": "Rename or delete your filters. Your role can’t share filters."
+      }
     }
   },
   "load": {
@@ -4659,13 +4717,13 @@
     "name-saved": "Your name was updated.",
     "name-same": "That is already your name.",
     "prefs-title": "Time zone and language",
-    "prefs-intro-admin": "These are your own display choices. Lists and reports in the admin panel keep showing UTC.",
+    "prefs-intro-admin": "These are your own display choices. Without a time zone of your own, the Orders list shows times and days in the Market's time zone; other lists and reports keep showing UTC.",
     "prefs-intro-seller": "These are your own display choices. Lists and reports keep showing times in your store's time zone.",
     "timezone": "Time zone",
     "timezone-label": "Time zone",
-    "timezone-default-admin": "Default (UTC)",
+    "timezone-default-admin": "Default (none chosen)",
     "timezone-default-seller": "Default (store time zone)",
-    "timezone-help-admin": "Used for the times on this page, such as your last sign-in.",
+    "timezone-help-admin": "Used for the times on this page, such as your last sign-in, and for the times and days of the Orders list.",
     "timezone-help-seller": "Used for the times on this page, such as your last sign-in.",
     "language": "Language",
     "language-label": "Language",
@@ -7584,6 +7642,7 @@
       "publish": "Publish",
       "discard": "Discard draft",
       "draft-note": "Draft: sellers and buyers do not see this attribute until it is published.",
+      "merged-into-note": "Merged into {code}. Products keep their values, and product pages show the other attribute.",
       "saved": "Attribute saved.",
       "published": "Attribute published.",
       "discarded": "Draft discarded.",
@@ -7956,7 +8015,7 @@
       "convert-confirm": "Convert type",
       "merge-attributes": "Merge into another attribute",
       "merge-attributes-title": "Merge {name} into another attribute",
-      "merge-attributes-body": "{name} is archived and points at the attribute you choose. This cannot be undone. Products keep what they have, and product pages show the other attribute. Filters and search do not read the merge yet.",
+      "merge-attributes-body": "{name} is archived and points at the attribute you choose. This cannot be undone. Products keep what they have, and product pages show the other attribute.",
       "merge-attributes-target": "Merge into",
       "merge-attributes-confirm": "Merge attributes",
       "merge-attributes-loading": "Loading attributes",

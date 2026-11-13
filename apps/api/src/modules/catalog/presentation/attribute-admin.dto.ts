@@ -168,10 +168,21 @@ export class AttributeDisplayBody {
   position!: number;
 }
 
+export class AttributeMergedIntoBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+}
+
 export class AttributeDetailBody extends AttributeSummaryBody {
   @ApiProperty({ enum: ['seed', 'admin'] }) createdByKind!: string;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ description: 'The version a later change names.' }) version!: number;
+  @ApiProperty({
+    type: AttributeMergedIntoBody,
+    nullable: true,
+    description: 'The attribute this one was merged into; set only when it is archived.',
+  })
+  mergedInto!: AttributeMergedIntoBody | null;
   @ApiProperty({ type: AttributeBoundsBody }) bounds!: AttributeBoundsBody;
   @ApiProperty({ type: AttributeDisplayBody }) display!: AttributeDisplayBody;
   @ApiProperty({ type: [AttributeOptionBody], description: 'By position.' })
@@ -506,6 +517,14 @@ export class MissingDetailsItemBody {
   @ApiProperty() featureSetCode!: string;
   @ApiProperty({ type: [String], description: 'Codes of the required attributes with no value.' })
   missing!: string[];
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'date-time',
+    description:
+      'When an "Email sellers" mail about it last went to its seller; null when never, or while a newer request waits.',
+  })
+  lastEmailedAt!: string | null;
 }
 
 export class MissingDetailsListBody {

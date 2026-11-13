@@ -40,6 +40,8 @@ export async function loadOrdersPage(): Promise<OrdersPage> {
     queryOf(
       'all',
       { from: '', to: '' },
+      // No days on the first page, so the zone reads nothing yet.
+      'UTC',
       paging === 'pages' ? { paging, page: 1, sort: 'newest' } : { paging, cursor: null },
     ),
   );

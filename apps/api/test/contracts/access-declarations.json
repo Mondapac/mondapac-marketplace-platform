@@ -703,6 +703,8 @@
   { "name": "sellers.active-since", "rule": "anonymous" },
   { "name": "sellers.active-since-system", "rule": "system" },
   { "name": "sellers.after-submission", "rule": "system" },
+  { "name": "sellers.ai-access", "rule": "anonymous" },
+  { "name": "sellers.ai-access-system", "rule": "system" },
   { "name": "sellers.allowed-product-types", "rule": "anonymous" },
   { "name": "sellers.allowed-product-types-system", "rule": "system" },
   { "name": "sellers.apply-signup-cultures", "rule": "system" },
@@ -798,6 +800,11 @@
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },
   { "name": "sellers.selling-eligibility-system", "rule": "system" },
   { "name": "sellers.sweep-orphan-store-image-files", "rule": "system" },
+  {
+    "name": "settings.read-ai-description-writer",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   {
     "name": "settings.read-list-paging",
     "rule": "own-resources",

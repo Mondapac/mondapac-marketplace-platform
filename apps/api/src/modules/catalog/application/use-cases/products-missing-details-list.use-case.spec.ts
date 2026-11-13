@@ -1,3 +1,4 @@
+import { Temporal } from '@mondapac/shared-kernel';
 import type {
   AttributeField,
   AttributeSchema,
@@ -24,6 +25,11 @@ import type {
 } from '../ports/product-details-gap.reader';
 import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
+import type {
+  MissingDetailsEmailKey,
+  MissingDetailsEmailRecord,
+  MissingDetailsEmailStore,
+} from '../ports/missing-details-email.store';
 import { GAP_SCAN_MAX, ProductsMissingDetailsList } from './products-missing-details-list.use-case';
 
 // The report "Products missing required details" in memory (attributes plan, package A4, decision
@@ -34,6 +40,7 @@ import { GAP_SCAN_MAX, ProductsMissingDetailsList } from './products-missing-det
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const policy = new ConfigCatalogMarketPolicy(markets);
+const SENT = Temporal.Instant.from('2026-11-10T01:02:03Z');
 const ID = (n: number) => `01990000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`;
 
 const field = (code: string, over: Partial<AttributeField> = {}): AttributeField => ({
@@ -129,6 +136,29 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
           ),
       }),
   } as unknown as ProductFamilyResolver;
+  // "Email sellers" requests (A4-4): product 1 was emailed (sent), product 3's request still waits.
+  let emailPairs: MissingDetailsEmailKey[][];
+  const emailStore = {
+    latest: (_m: MarketContext, pairs: readonly MissingDetailsEmailKey[]) => {
+      emailPairs.push([...pairs]);
+      return Promise.resolve(
+        pairs.flatMap((pair): MissingDetailsEmailRecord[] =>
+          pair.productId === ID(0x1001)
+            ? [
+                {
+                  ...pair,
+                  state: 'sent',
+                  requestedAt: SENT.subtract({ minutes: 1 }),
+                  settledAt: SENT,
+                },
+              ]
+            : pair.productId === ID(0x1003)
+              ? [{ ...pair, state: 'pending', requestedAt: SENT, settledAt: null }]
+              : [],
+        ),
+      );
+    },
+  } as unknown as MissingDetailsEmailStore;
   const useCase = () =>
     new ProductsMissingDetailsList(createUseCaseGate(markets, check), {
       unitOfWork,
@@ -136,6 +166,7 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
       attributes,
       policy,
       familyResolver,
+      emailStore,
     });
 
   const product = (
@@ -153,6 +184,7 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
   });
 
   beforeEach(() => {
+    emailPairs = [];
     reader = new MemoryGapReader();
     schemas = {
       pantry: schemaOf([
@@ -183,6 +215,7 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
             sellerId: ID(0x2000),
             featureSetCode: 'pantry',
             missing: ['origin', 'storage'],
+            lastEmailedAt: SENT.toString(),
           },
         ],
         nextAfterId: null,
@@ -234,6 +267,33 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     expect(bySeller.ok && bySeller.value.items.map((i) => i.productCode)).toEqual(['P2']);
     const byFamily = await useCase().execute(context(), { familyCode: 'other' });
     expect(byFamily.ok && byFamily.value.items.map((i) => i.productCode)).toEqual(['P3']);
+  });
+
+  it('says when each row was last emailed: sent only, never for a PLATFORM product', async () => {
+    reader.rows = [product(1), product(2, { ownerSellerId: null }), product(3), product(4)];
+    const result = await useCase().execute(context(), {});
+    expect(result.ok && result.value.items.map((i) => [i.productCode, i.lastEmailedAt])).toEqual([
+      ['P1', SENT.toString()],
+      ['P2', null],
+      ['P3', null], // its request still waits
+      ['P4', null], // never asked
+    ]);
+    // One read for the page, with the seller of each seller product.
+    expect(emailPairs).toEqual([
+      [ID(0x1001), ID(0x1003), ID(0x1004)].map((productId) => ({
+        sellerId: ID(0x2000),
+        productId,
+      })),
+    ]);
+  });
+
+  it('reads no email state for an empty page', async () => {
+    reader.rows = [
+      product(1, { attributeValues: { origin: 'AU', storage: { [locales.default]: 'x' } } }),
+    ];
+    const result = await useCase().execute(context(), {});
+    expect(result.ok && result.value.items).toEqual([]);
+    expect(emailPairs).toEqual([]);
   });
 
   it('pages by product id and ends with a null cursor', async () => {

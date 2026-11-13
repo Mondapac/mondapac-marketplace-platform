@@ -44,6 +44,9 @@ const MODEL_ENTRY_ALLOW_LIST = [
   '^src/app\\.module\\.ts$',
   '^src/modules/assistant/infrastructure/gateway-assistant-runtime\\.ts$',
   '^src/modules/assistant/infrastructure/assistant-providers\\.ts$',
+  // The AI description writer (AIS-03; catalog design 13.3): its model adapter and the providers file.
+  '^src/modules/catalog/infrastructure/gateway-description-writer-model\\.ts$',
+  '^src/modules/catalog/infrastructure/catalog-providers\\.ts$',
 ];
 
 /** @type {import('dependency-cruiser').IConfiguration} */

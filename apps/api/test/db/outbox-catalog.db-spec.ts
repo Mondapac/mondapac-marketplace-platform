@@ -259,6 +259,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // least-failed first.
   'ordering.seller_orders_unrecorded_ledger_idx':
     "CREATE INDEX seller_orders_unrecorded_ledger_idx ON ordering.seller_orders USING btree (market_id, ledger_attempts, order_id) WHERE (ledger_state = 'pending'::text)",
+  // Order lists: the saved filters shared with everyone keep one name per list.
+  'ordering.saved_filters_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON ordering.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
   // Seller health: the nightly feed reads the seller's orders marked ready in a few days.
   'ordering.seller_orders_seller_ready_at_idx':
     'CREATE INDEX seller_orders_seller_ready_at_idx ON ordering.seller_orders USING btree (market_id, seller_id, ready_at) WHERE (ready_at IS NOT NULL)',

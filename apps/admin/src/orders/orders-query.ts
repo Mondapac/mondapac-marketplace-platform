@@ -23,7 +23,7 @@ export interface OrderFilters {
   readonly status: string;
   readonly paymentState: string;
   readonly fulfilment: string;
-  /** Calendar days (yyyy-mm-dd) in UTC, the zone the table shows; '' keeps every day. */
+  /** Calendar days (yyyy-mm-dd) in the list's zone, the one the table shows; '' keeps every day. */
   readonly from: string;
   readonly to: string;
 }
@@ -36,13 +36,65 @@ export const NO_FILTERS: OrderFilters = {
   to: '',
 };
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-/** The start of a UTC day as an ISO instant; null for a value that is not a real day. */
-function startOfDay(day: string, plus = 0): string | null {
-  if (!DAY.test(day)) return null;
-  const time = Date.parse(`${day}T00:00:00Z`);
-  return Number.isNaN(time) ? null : new Date(time + plus * 86_400_000).toISOString();
+const WALL_FORMATS = new Map<string, Intl.DateTimeFormat>();
+
+/** The wall clock of an instant in a zone, as the UTC milliseconds of the same numbers. */
+function wallMs(ms: number, zone: string): number {
+  let format = WALL_FORMATS.get(zone);
+  if (format === undefined) {
+    // Machine reading, not display: Latin digits and a 24-hour clock whatever the Market locale.
+    format = new Intl.DateTimeFormat('en-US', {
+      numberingSystem: 'latn',
+      timeZone: zone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    WALL_FORMATS.set(zone, format);
+  }
+  const parts: Record<string, number> = {};
+  for (const part of format.formatToParts(new Date(ms))) {
+    if (part.type !== 'literal') parts[part.type] = Number(part.value);
+  }
+  return Date.UTC(
+    parts.year ?? 1970,
+    (parts.month ?? 1) - 1,
+    parts.day ?? 1,
+    parts.hour ?? 0,
+    parts.minute ?? 0,
+    parts.second ?? 0,
+  );
+}
+
+/**
+ * The first instant of a calendar day (yyyy-mm-dd) on the clock of an IANA zone, as an ISO
+ * instant; `plus` days later for an exclusive end. Null for a value that is not a real day or a
+ * zone this runtime does not know. Where clocks skip midnight, the day starts when they resume.
+ */
+export function startOfDay(day: string, zone: string, plus = 0): string | null {
+  const match = DAY.exec(day);
+  if (match === null) return null;
+  const [year, month, date] = match.slice(1).map(Number) as [number, number, number];
+  const check = new Date(Date.UTC(year, month - 1, date));
+  if (check.getUTCMonth() !== month - 1 || check.getUTCDate() !== date) return null;
+  const midnight = Date.UTC(year, month - 1, date + plus);
+  try {
+    // The offsets in force a day either side; the earliest instant at or after local midnight.
+    const starts = [midnight - 86_400_000, midnight + 86_400_000]
+      .map((probe) => midnight - (wallMs(probe, zone) - probe))
+      .filter((ms) => wallMs(ms, zone) >= midnight)
+      .sort((a, b) => a - b);
+    const start = starts[0];
+    return start === undefined ? null : new Date(start).toISOString();
+  } catch {
+    return null;
+  }
 }
 
 /** True when both days are set and `to` is before `from`: the filter would match nothing. */
@@ -51,6 +103,8 @@ export const rangeIsBackwards = (filters: OrderFilters): boolean =>
 
 export function queryOf(
   filters: OrderFilters,
+  /** The IANA zone the days are read in (the holder's own, else the Market's; ADR-0005). */
+  zone: string,
   mode:
     | { readonly paging: 'pages'; readonly page: number; readonly sort: SortId }
     | {
@@ -62,9 +116,9 @@ export function queryOf(
   if (filters.status !== 'all') params.set('status', filters.status);
   if (filters.paymentState !== '') params.set('paymentState', filters.paymentState);
   if (filters.fulfilment !== '') params.set('fulfilment', filters.fulfilment);
-  const from = startOfDay(filters.from);
+  const from = startOfDay(filters.from, zone);
   // The last day is included: the API's `to` is the first instant after it.
-  const to = startOfDay(filters.to, 1);
+  const to = startOfDay(filters.to, zone, 1);
   if (from !== null) params.set('from', from);
   if (to !== null) params.set('to', to);
   if (mode.paging === 'pages') {

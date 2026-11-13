@@ -2039,6 +2039,45 @@
     }
   },
   {
+    "action": "ordering.saved-filter.shared",
+    "targetType": "ordering.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "listKey": "enumOf(admin.ordering.orders)",
+      "visibility": "enumOf(me|everyone)"
+    }
+  },
+  {
+    "action": "ordering.saved-filter.changed",
+    "targetType": "ordering.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "visibility": "enumOf(me|everyone)"
+    },
+    "after": {
+      "listKey": "enumOf(admin.ordering.orders)",
+      "ownedByActor": "boolean",
+      "renamed": "boolean",
+      "visibility": "enumOf(me|everyone)"
+    }
+  },
+  {
+    "action": "ordering.saved-filter.removed",
+    "targetType": "ordering.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "listKey": "enumOf(admin.ordering.orders)",
+      "visibility": "enumOf(me|everyone)"
+    },
+    "after": {
+      "ownedByActor": "boolean"
+    }
+  },
+  {
     "action": "payments.payout-change.recorded",
     "targetType": "payments.connected-account",
     "targetId": "id",
@@ -2512,6 +2551,18 @@
     }
   },
   {
+    "action": "sellers.ai-access.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "boolean"
+    },
+    "after": {
+      "enabled": "boolean"
+    }
+  },
+  {
     "action": "sellers.blog-access.change",
     "targetType": "sellers.seller",
     "targetId": "id",
@@ -2634,13 +2685,13 @@
   {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(list-paging|cart-mode)",
+    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier)",
     "actors": ["authenticated"],
     "before": {
-      "value": "enumOf(pages|prev-next|multi-store|single-store)"
+      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced)"
     },
     "after": {
-      "value": "enumOf(pages|prev-next|multi-store|single-store)",
+      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced)",
       "version": "integer"
     }
   },

@@ -58,6 +58,11 @@ export interface IdentityMarketPolicy {
   unverifiedAccountRetentionDays(market: MarketContext): number;
   /** The sender of the Market's mail (identity design 9). */
   mailSender(market: MarketContext): MailSender;
+  /**
+   * The Market's IANA zone (ADR-0005): only a fallback, for a panel holder who chose no zone of
+   * their own, so the panel's day filters read local days instead of UTC ones.
+   */
+  marketTimezone(market: MarketContext): string;
 
   // Slice 7b. These values come from Market configuration keys that the Market-config PR adds
   // (identity design 6.7, the 7a note "Needed for 7b"); this branch edits no config file. Until

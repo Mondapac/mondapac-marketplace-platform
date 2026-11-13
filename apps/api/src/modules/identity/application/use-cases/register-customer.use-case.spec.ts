@@ -322,6 +322,7 @@ const policy: IdentityMarketPolicy = {
   linkLifetimeMinutes: () => 1440,
   unverifiedAccountRetentionDays: () => 7,
   mailSender: () => ({ address: 'no-reply@example.test', name: 'Test' }),
+  marketTimezone: () => 'UTC',
   invitationLifetimeMinutes: () => null,
   challengePolicy: () => null,
   secondFactorThrottle: () => null,
