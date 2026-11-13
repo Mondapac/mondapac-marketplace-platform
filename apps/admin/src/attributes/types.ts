@@ -367,6 +367,8 @@ export interface MissingDetailsItem {
   readonly featureSetCode: string;
   /** Codes of the required attributes with no value. */
   readonly missing: readonly string[];
+  /** When an "Email sellers" mail about it last went to its seller; null when never, or while a newer request waits. */
+  readonly lastEmailedAt: string | null;
 }
 
 export interface MissingDetailsPage {
