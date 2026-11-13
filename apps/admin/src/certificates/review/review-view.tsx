@@ -75,7 +75,7 @@ export function ReviewView({
       : []),
     ...(issuerBlocks ? [t('decision.blocker.issuer')] : []),
   ];
-  const store = page.business.storeName ?? t('seller-fallback');
+  const store = page.business.storeName ?? t('decision.seller-fallback');
   const common = {
     certificateId: certificate.certificateId,
     submissionId: submission.submissionId,

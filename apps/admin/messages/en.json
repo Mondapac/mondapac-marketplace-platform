@@ -1372,7 +1372,8 @@
         "blocker": {
           "scope": "Record the location and scope as read first.",
           "issuer": "This issuer isn't taking new certificates. Request changes or decline."
-        }
+        },
+        "seller-fallback": "The seller"
       },
       "decided": {
         "approve": "Certificate approved.",

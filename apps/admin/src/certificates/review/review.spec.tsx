@@ -290,6 +290,13 @@ describe('review page: what blocks Approve, decline, and the dialog rules', () =
     });
   });
 
+  it('words the dialog with a sentence-safe seller when the store has no name yet', () => {
+    view(page({ ...ready, business: { status: 'not-found' } }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(screen.getByText(/^The seller can add the Halal badge to offers/)).toBeTruthy();
+    expect(screen.queryByText(/^Not yet approved can/)).toBeNull();
+  });
+
   it('request changes offers its own reasons, not the decline ones', () => {
     view(page());
     fireEvent.click(screen.getByRole('button', { name: 'Request changes' }));
