@@ -51,6 +51,13 @@ export function LimitDialog({
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
+  const alertRef = useRef<HTMLDivElement>(null);
+  const [failures, setFailures] = useState(0);
+
+  // A failed or stale save moves focus to the announced error, so a keyboard user lands on it.
+  useEffect(() => {
+    if (failures > 0) alertRef.current?.focus();
+  }, [failures]);
 
   // Each opening starts from the cap in force; a re-read after a stale save keeps what was typed.
   useEffect(() => {
@@ -93,6 +100,7 @@ export function LimitDialog({
     }
     const key = refundLimitProblemOf(result.failure);
     setProblem(key);
+    setFailures((n) => n + 1);
     if (key === 'stale') await onStale();
   }
 
@@ -103,10 +111,10 @@ export function LimitDialog({
       onClose={onClose}
       actions={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={pending}>
+          <Button variant="secondary" className="min-h-12" onClick={onClose} disabled={pending}>
             {t('cancel')}
           </Button>
-          <Button onClick={() => void save()} disabled={pending}>
+          <Button className="min-h-12" onClick={() => void save()} loading={pending}>
             {t('save')}
           </Button>
         </>
@@ -114,7 +122,11 @@ export function LimitDialog({
     >
       <div className="flex flex-col gap-4">
         <p className="text-sm">{intro}</p>
-        {problem === null ? null : <Banner tone="critical">{t(`error.${problem}`)}</Banner>}
+        {problem === null ? null : (
+          <div ref={alertRef} tabIndex={-1} className="outline-none">
+            <Banner tone="critical">{t(`error.${problem}`)}</Banner>
+          </div>
+        )}
         <TextField
           name="maxCount"
           label={t('field.count')}

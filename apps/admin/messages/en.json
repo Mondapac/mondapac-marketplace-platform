@@ -8184,7 +8184,7 @@
       "section": "Market default cap",
       "intro": "The most refunds a seller may start by marking items unavailable in any 24 hours, and the most money they may refund in that time. It applies to every seller without a cap of its own.",
       "empty-title": "No default set",
-      "empty-body": "No default set — sellers cannot refund by marking items unavailable until a cap is set.",
+      "empty-body": "No default is set. Sellers cannot refund by marking items unavailable until a cap is set.",
       "empty-view": "No default is set, so sellers cannot refund by marking items unavailable. An admin who can manage refund caps needs to set one.",
       "set": "Set default cap",
       "edit": "Edit default cap",

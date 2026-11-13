@@ -1,6 +1,6 @@
 'use client';
 
-import { ActionRow, Badge, Banner, Button, Card, DataList, Dialog } from '@mondapac/ui';
+import { ActionRow, Badge, Banner, Button, Card, DataList, Dialog, toast } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
@@ -35,7 +35,6 @@ export function RefundLimitCard({
   const guarded = useGuardedCall();
   const [limits, setLimits] = useState(initial);
   const [dialog, setDialog] = useState<Dialogs>(null);
-  const [notice, setNotice] = useState<'saved' | 'removed' | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
@@ -70,7 +69,7 @@ export function RefundLimitCard({
     if (result.ok) {
       setLimits(result.body);
       setDialog(null);
-      setNotice('removed');
+      toast.success(t('seller.done.removed'));
       return;
     }
     if (isStepUpCancelled(result)) return;
@@ -110,7 +109,6 @@ export function RefundLimitCard({
   return (
     <Card title={t('seller.title')}>
       <div className="flex flex-col gap-4">
-        {notice === null ? null : <Banner tone="success">{t(`seller.done.${notice}`)}</Banner>}
         {problem === null || dialog !== null ? null : (
           <Banner tone="critical">{t(`error.${problem}`)}</Banner>
         )}
@@ -128,9 +126,9 @@ export function RefundLimitCard({
           <ActionRow>
             <Button
               variant="secondary"
+              className="min-h-12"
               disabled={pending}
               onClick={() => {
-                setNotice(null);
                 setProblem(null);
                 setDialog('edit');
               }}
@@ -139,10 +137,10 @@ export function RefundLimitCard({
             </Button>
             {limits.own === null ? null : (
               <Button
-                variant="secondary"
+                variant="destructive"
+                className="min-h-12"
                 disabled={pending}
                 onClick={() => {
-                  setNotice(null);
                   setProblem(null);
                   setDialog('remove');
                 }}
@@ -169,7 +167,7 @@ export function RefundLimitCard({
             onSaved={(next) => {
               setLimits(next);
               setDialog(null);
-              setNotice('saved');
+              toast.success(t('seller.done.saved'));
             }}
             onStale={reread}
           />
@@ -179,10 +177,20 @@ export function RefundLimitCard({
             onClose={() => setDialog(null)}
             actions={
               <>
-                <Button variant="secondary" onClick={() => setDialog(null)} disabled={pending}>
+                <Button
+                  variant="secondary"
+                  className="min-h-12"
+                  onClick={() => setDialog(null)}
+                  disabled={pending}
+                >
                   {t('cancel')}
                 </Button>
-                <Button onClick={() => void remove()} disabled={pending}>
+                <Button
+                  variant="destructive-solid"
+                  className="min-h-12"
+                  onClick={() => void remove()}
+                  loading={pending}
+                >
                   {t('seller.remove-yes')}
                 </Button>
               </>

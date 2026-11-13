@@ -47,6 +47,9 @@ const LOOK: Readonly<
 };
 const UNKNOWN_LOOK = { icon: 'bell', tone: 'neutral', category: 'other' } as const;
 
+/** A page link is built only from an id of this shape. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * The page a notice opens. Certificate and product reviews have no admin page yet, so their rows
  * only mark the notice read.
@@ -57,7 +60,11 @@ function hrefOf(notice: AdminNotice): string | null {
   }
   if (notice.kind === PRICE_HOLD_OPENED) return '/price-holds';
   if (notice.kind === REVIEW_HELD || notice.kind === REVIEW_REPORTED) return '/reviews';
-  if (notice.kind === SELLER_REFUND_LIMIT_REACHED && notice.params.sellerId !== undefined) {
+  if (
+    notice.kind === SELLER_REFUND_LIMIT_REACHED &&
+    notice.params.sellerId !== undefined &&
+    UUID.test(notice.params.sellerId)
+  ) {
     return `/sellers/${notice.params.sellerId}`;
   }
   if (notice.kind === DELIVERY_FALLBACK_OVER_CAP) return '/settings/delivery';

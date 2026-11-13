@@ -275,3 +275,48 @@ describe('admin notice bell', () => {
     expect(showsNoticeBell([])).toBe(false);
   });
 });
+
+describe('AdminNotifications refund cap notice', () => {
+  const reached = (id: string, limit: 'count' | 'amount' | 'unset', sellerId: string = SELLER) =>
+    notice(id, { kind: 'admin.seller-refund-limit-reached', params: { sellerId, limit } });
+
+  async function openWith(items: readonly AdminNotice[]) {
+    counts = [{ unread: items.length, newest: items[0]! }];
+    call.mockImplementation((method, path) =>
+      Promise.resolve(
+        path.endsWith('/unread-count') || method === 'POST'
+          ? answer(path, method)
+          : { ok: true as const, status: 200, body: { items, next: null } },
+      ),
+    );
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: `Notifications, ${items.length} unread` }),
+    );
+  }
+
+  it('words each limit and links to the seller', async () => {
+    await openWith([
+      reached('0190a000-0000-7000-8000-000000000021', 'count'),
+      reached('0190a000-0000-7000-8000-000000000022', 'amount'),
+      reached('0190a000-0000-7000-8000-000000000023', 'unset'),
+    ]);
+    for (const name of [
+      /A seller reached the refund count cap/,
+      /A seller reached the refund amount cap/,
+      /A seller tried to refund with no refund cap set/,
+    ]) {
+      const link = await screen.findByRole('link', { name });
+      expect(link.getAttribute('href')).toBe(`/sellers/${SELLER}`);
+    }
+  });
+
+  it('builds no link when the seller id is not a UUID', async () => {
+    await openWith([reached('0190a000-0000-7000-8000-000000000024', 'count', '../admin?x=1')]);
+    const row = await screen.findByRole('button', {
+      name: /A seller reached the refund count cap/,
+    });
+    expect(row.closest('a')).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+});

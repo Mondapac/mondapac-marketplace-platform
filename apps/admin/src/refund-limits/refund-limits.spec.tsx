@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast, Toaster } from '@mondapac/ui';
 import messages from '../../messages/en.json';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
@@ -19,6 +20,7 @@ const SELLER = '0190a000-0000-7000-8000-000000000001';
 const wrap = (node: ReactNode) => (
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     {node}
+    <Toaster labels={{ region: messages.toast.region, close: messages.toast.close }} />
   </NextIntlClientProvider>
 );
 const limit = (patch: Partial<RefundLimit> = {}, currency = 'AUD'): RefundLimit => ({
@@ -65,7 +67,10 @@ beforeEach(() => {
     this.removeAttribute('open');
   };
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  toast.dismiss();
+});
 
 describe('form helpers', () => {
   it('sends the amount as a minor-unit string, by the currency decimals', () => {
@@ -124,7 +129,7 @@ describe('Market default panel', () => {
     panel(limits());
     expect(
       screen.getByText(
-        'No default set — sellers cannot refund by marking items unavailable until a cap is set.',
+        'No default is set. Sellers cannot refund by marking items unavailable until a cap is set.',
       ),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Set default cap' })).toBeTruthy();
@@ -201,6 +206,28 @@ describe('Market default panel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
     expect(call.mock.calls[2]?.[2]).toMatchObject({ expectedVersion: 3 });
+  });
+});
+
+describe('Market default first save', () => {
+  it('sends expectedVersion 0 when no default exists yet', async () => {
+    panel(limits());
+    fireEvent.click(screen.getByRole('button', { name: 'Set default cap' }));
+    fireEvent.change(screen.getByLabelText('Most refunds in 24 hours'), { target: { value: '4' } });
+    fireEvent.change(screen.getByLabelText(/Most refunded in 24 hours \(AUD\)/), {
+      target: { value: '100' },
+    });
+    call.mockResolvedValueOnce(
+      ok(limits({ marketDefault: limit({ maxCount: 4, version: 1 }), inForce: 'market' })),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText('Version 1')).toBeTruthy());
+    expect(call).toHaveBeenCalledWith(
+      'PUT',
+      'ordering/admin/refund-limits',
+      { maxCount: 4, maxAmount: '10000', expectedVersion: 0 },
+      'csrf',
+    );
   });
 });
 
@@ -286,4 +313,77 @@ describe('seller card', () => {
       `ordering/admin/refund-limits?sellerId=${SELLER}`,
     );
   });
+
+  it('on a remove that finds no own cap shows the message and reads the latest', async () => {
+    card(limits({ own: limit(), marketDefault: limit(), inForce: 'own' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove own cap' }));
+    call.mockResolvedValueOnce(fail(404, 'ordering.refund-limit-not-found'));
+    call.mockResolvedValueOnce(ok(limits({ marketDefault: limit(), inForce: 'market' })));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove own cap' }).at(-1)!);
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(/This seller has no cap of its own any more/).length,
+      ).toBeGreaterThan(0),
+    );
+    expect(call).toHaveBeenNthCalledWith(
+      2,
+      'GET',
+      `ordering/admin/refund-limits?sellerId=${SELLER}`,
+    );
+  });
+
+  it('edits the own cap with the version seen', async () => {
+    card(limits({ own: limit({ version: 4 }), marketDefault: limit(), inForce: 'own' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit own cap' }));
+    fireEvent.change(screen.getByLabelText('Most refunds in 24 hours'), { target: { value: '7' } });
+    call.mockResolvedValueOnce(
+      ok(
+        limits({ own: limit({ maxCount: 7, version: 5 }), marketDefault: limit(), inForce: 'own' }),
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText("The seller's own cap is saved.")).toBeTruthy());
+    expect(call).toHaveBeenCalledWith(
+      'PUT',
+      `ordering/admin/refund-limits/sellers/${SELLER}`,
+      { maxCount: 7, maxAmount: '50000', expectedVersion: 4 },
+      'csrf',
+    );
+  });
+
+  it.each([
+    ['set', limits({ marketDefault: limit(), inForce: 'market' }), 'Set own cap', 0],
+    [
+      'edit',
+      limits({ own: limit({ version: 4 }), marketDefault: limit(), inForce: 'own' }),
+      'Edit own cap',
+      4,
+    ],
+  ] as const)(
+    'on a stale 409 on %s shows the message and reads the latest',
+    async (_n, start, open, version) => {
+      card(start);
+      fireEvent.click(screen.getByRole('button', { name: open }));
+      fireEvent.change(screen.getByLabelText('Most refunds in 24 hours'), {
+        target: { value: '3' },
+      });
+      fireEvent.change(screen.getByLabelText(/Most refunded in 24 hours \(AUD\)/), {
+        target: { value: '10' },
+      });
+      call.mockResolvedValueOnce(fail(409, 'conflict.retry'));
+      call.mockResolvedValueOnce(
+        ok(limits({ own: limit({ version: 9 }), marketDefault: limit(), inForce: 'own' })),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(screen.getByText(/Another admin changed this cap first/)).toBeTruthy(),
+      );
+      expect(call.mock.calls[0]?.[2]).toMatchObject({ expectedVersion: version });
+      expect(call).toHaveBeenNthCalledWith(
+        2,
+        'GET',
+        `ordering/admin/refund-limits?sellerId=${SELLER}`,
+      );
+    },
+  );
 });
