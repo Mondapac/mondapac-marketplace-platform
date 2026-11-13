@@ -150,11 +150,28 @@ describe('Settings › AI', () => {
     );
     view();
     fireEvent.click(screen.getByRole('switch'));
-    expect(await screen.findByText(/Someone else changed this setting/)).toBeTruthy();
+    const notice = await screen.findByText('Someone else changed this. The values were reloaded.');
+    // A conflict is announced politely, not as an alert.
+    expect(notice.closest('[role]')?.getAttribute('role')).toBe('status');
     await waitFor(() =>
       expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true'),
     );
     expect(call).toHaveBeenLastCalledWith('GET', 'settings/admin/ai');
+  });
+
+  it('sends the user to sign-in when the reload after a conflict answers 401', async () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, 'location', { value: { assign }, writable: true });
+    call.mockImplementation((method) =>
+      Promise.resolve(
+        method === 'PUT'
+          ? { ok: false, failure: { status: 409, code: 'settings.conflict' } }
+          : { ok: false, failure: { status: 401, code: 'session.invalid' } },
+      ),
+    );
+    view();
+    fireEvent.click(screen.getByRole('switch'));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
   });
 
   it('shows a refusal and leaves the switch alone', async () => {

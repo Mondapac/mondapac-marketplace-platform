@@ -245,7 +245,12 @@ export default async function SellerReviewPage({
           />
         ) : null}
         {permissionKeys.includes(SETTINGS_EDIT_PERMISSION) ? (
-          <AiAccessCard sellerId={sellerId} csrfToken={csrfToken} initial={aiAccess} />
+          <AiAccessCard
+            sellerId={sellerId}
+            csrfToken={csrfToken}
+            initial={aiAccess}
+            canView={permissionKeys.includes(SELLER_VIEW_PERMISSION)}
+          />
         ) : null}
         {activities === null ? null : (
           <SellerActivitiesCard

@@ -6,14 +6,18 @@ import type { FormCategory, FormField } from './types.ts';
 // the form shows them right now (unsaved edits included). Display text only; the server resolves
 // nothing from these and sends no ids, images, prices or tags to the model.
 
-/** The first chosen category as its path (`Pantry › Rice and grains › Basmati rice`), or ''. */
+/**
+ * The primary category as its path (`Pantry › Rice and grains › Basmati rice`), or ''. The primary
+ * category is the first one listed (the API freezes the feature set under `categoryIds[0]`), so
+ * only that one is sent, never the next that happens to be known.
+ */
 export function writerCategory(
   categories: readonly FormCategory[],
   categoryIds: readonly string[],
   locale: string,
 ): string {
   const byId = new Map(categories.map((category) => [category.categoryId, category]));
-  const first = categoryIds.map((id) => byId.get(id)).find((c) => c !== undefined);
+  const first = categoryIds[0] === undefined ? undefined : byId.get(categoryIds[0]);
   const names: string[] = [];
   let current: FormCategory | undefined = first;
   for (let depth = 0; current !== undefined && depth < 8; depth += 1) {

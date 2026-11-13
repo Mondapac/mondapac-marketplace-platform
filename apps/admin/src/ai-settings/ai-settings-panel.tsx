@@ -93,6 +93,12 @@ export function AiSettingsPanel({
         if (key === 'conflict') {
           // Someone saved first: show what is saved now, keep nothing of the stale choice.
           const fresh = await callApi<unknown>('GET', AI_SETTINGS_PATH);
+          if (!fresh.ok && fresh.failure.status === 401) {
+            window.location.assign('/session-ended');
+            busy.current = false;
+            setPending(null);
+            return;
+          }
           const answer = fresh.ok ? settingsAnswerOf(fresh.body) : null;
           if (answer !== null) setSaved(answer);
         }
@@ -119,7 +125,8 @@ export function AiSettingsPanel({
       </Banner>
     ),
     problem === null ? null : (
-      <Banner key="problem" tone="critical">
+      // A conflict is not a failure: it is announced politely (status), not as an alert.
+      <Banner key="problem" tone={problem === 'conflict' ? 'attention' : 'critical'}>
         {t(`error.${problem}`)}
       </Banner>
     ),

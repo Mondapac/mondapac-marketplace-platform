@@ -30,16 +30,21 @@ type Outcome =
  * "AI writing help" (sellers SEL-25) on the admin seller page: whether this seller may draft
  * product descriptions with AI. Off by default. The switch takes effect at once and the answer
  * drives it. The Market switch (Settings › AI) must also be on; this card says nothing of it.
- * `initial` is null when the current setting could not be read: the card then shows no switch.
+ * Without the view key the card says so and shows no switch; `initial` is null when the read
+ * itself failed, which is worded differently.
  */
 export function AiAccessCard({
   sellerId,
   csrfToken,
   initial,
+  canView,
 }: {
   readonly sellerId: string;
   readonly csrfToken: string;
+  /** Null when the read failed, or when `canView` is false and nothing was read. */
   readonly initial: AiAccessRead | null;
+  /** The admin holds `sellers.seller.view`, the key of the read. Without it there is no switch. */
+  readonly canView: boolean;
 }) {
   const t = useTranslations('sellers.ai-access');
   const locale = useLocale();
@@ -86,7 +91,9 @@ export function AiAccessCard({
     <Card title={t('title')}>
       <div className="flex flex-col gap-3">
         <p className="max-w-prose text-fg-muted">{t('help')}</p>
-        {initial === null ? (
+        {!canView ? (
+          <Banner tone="info">{t('no-access')}</Banner>
+        ) : initial === null ? (
           <Banner tone="attention">{t('unreadable')}</Banner>
         ) : (
           <>

@@ -254,8 +254,25 @@ describe('writing, ready and the other states', () => {
       screen.getByText('Try again, or write it yourself. Your form wasn’t changed.'),
     ).toBeTruthy();
     expect(screen.getByRole('textbox', { name: 'Keywords' })).toBeTruthy();
+    expect(screen.getByRole('textbox', { name: 'Short note' })).toBeTruthy();
+    // Only Keywords and Note stay under the banner, as in the frames.
+    expect(screen.queryByLabelText('Tone')).toBeNull();
+    expect(screen.queryByLabelText('Length')).toBeNull();
+    expect(screen.queryByText('Also used, from the form')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('We couldn’t write a draft.');
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Ok.')).toBeTruthy();
+  });
+
+  it('shows the throttled answer as an attention banner, not an alert', async () => {
+    const user = userEvent.setup();
+    setup({ generate: () => Promise.resolve({ kind: 'throttled' }) });
+    await user.click(screen.getByRole('button', { name: 'Generate' }));
+    expect(await screen.findByText('Too many requests right now.')).toBeTruthy();
+    expect(
+      screen.getByText('Wait a moment, then try again. Your form wasn’t changed.'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('shows the limit with the zone from the refusal, and disables Generate', async () => {
@@ -265,6 +282,8 @@ describe('writing, ready and the other states', () => {
     });
     await user.click(screen.getByRole('button', { name: 'Generate' }));
     expect(await screen.findByText('Today’s AI drafts are used up.')).toBeTruthy();
+    expect(screen.queryByLabelText('Tone')).toBeNull();
+    expect(screen.queryByText('Also used, from the form')).toBeNull();
     expect(
       screen.getByText(
         'They reset at midnight Pacific/Auckland time. You can still write the description yourself.',
@@ -287,7 +306,7 @@ describe('writing, ready and the other states', () => {
         Promise.resolve({ kind: 'withheld', leftOut: { certification: 2, other: 0 } }),
     });
     await user.click(screen.getByRole('button', { name: 'Generate' }));
-    expect(await screen.findByText('The draft could not be used.')).toBeTruthy();
+    expect(await screen.findByText('We couldn’t use that draft.')).toBeTruthy();
     expect(screen.getByText(/2 sentences were left out: they named a certification/)).toBeTruthy();
   });
 

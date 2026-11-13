@@ -214,7 +214,10 @@ function WriterBody({
     setPhase({ kind: 'input' });
   }
 
+  // Keywords and Note show with every state that asks for input; Tone, Length and the form box
+  // only before the first draft (the frames show just Keywords and Note under a refusal banner).
   const showInputs = phase.kind !== 'writing' && phase.kind !== 'ready';
+  const showOptions = phase.kind === 'input';
   const showIntro = showInputs;
   const askDiscard = phase.kind === 'ready' && phase.ask;
 
@@ -282,36 +285,40 @@ function WriterBody({
             counter={`${String(note.length)} / ${String(MAX_NOTE_CHARS)}`}
             onChange={(event) => setNote(event.target.value)}
           />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Select
-              label={C.tone}
-              value={tone}
-              options={WRITER_TONES.map((value) => ({ value, label: C.tones[value] }))}
-              onChange={(event) => setTone(event.target.value as WriterTone)}
-            />
-            <Select
-              label={C.length}
-              value={String(length)}
-              options={WRITER_LENGTHS.map((value) => ({
-                value: String(value),
-                label: C.lengths[value],
-              }))}
-              onChange={(event) => setLength(Number(event.target.value) as WriterLength)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5 rounded-md bg-subtle p-3 text-sm">
-            <p className="font-semibold text-fg-muted">{C.usedHeading}</p>
-            <dl className="flex flex-col gap-1.5">
-              <UsedRow label={C.usedTitle} value={formTitle.trim()} missing />
-              <UsedRow label={C.usedCategory} value={formCategory.trim()} missing />
-              <UsedRow
-                label={C.usedDetails}
-                value={details.map((d) => d.value).join(' · ')}
-                missing={false}
-              />
-            </dl>
-            <p className="text-fg-muted">{C.usedNote}</p>
-          </div>
+          {showOptions ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Select
+                  label={C.tone}
+                  value={tone}
+                  options={WRITER_TONES.map((value) => ({ value, label: C.tones[value] }))}
+                  onChange={(event) => setTone(event.target.value as WriterTone)}
+                />
+                <Select
+                  label={C.length}
+                  value={String(length)}
+                  options={WRITER_LENGTHS.map((value) => ({
+                    value: String(value),
+                    label: C.lengths[value],
+                  }))}
+                  onChange={(event) => setLength(Number(event.target.value) as WriterLength)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5 rounded-md bg-subtle p-3 text-sm">
+                <p className="font-semibold text-fg-muted">{C.usedHeading}</p>
+                <dl className="flex flex-col gap-1.5">
+                  <UsedRow label={C.usedTitle} value={formTitle.trim()} missing />
+                  <UsedRow label={C.usedCategory} value={formCategory.trim()} missing />
+                  <UsedRow
+                    label={C.usedDetails}
+                    value={details.map((d) => d.value).join(' · ')}
+                    missing={false}
+                  />
+                </dl>
+                <p className="text-fg-muted">{C.usedNote}</p>
+              </div>
+            </>
+          ) : null}
         </>
       ) : null}
 
@@ -324,7 +331,10 @@ function WriterBody({
           </div>
         ) : null}
         {phase.kind === 'failed' ? (
-          <Banner tone="critical" title={phase.throttled ? C.throttledTitle : C.failedTitle}>
+          <Banner
+            tone={phase.throttled ? 'attention' : 'critical'}
+            title={phase.throttled ? C.throttledTitle : C.failedTitle}
+          >
             <p>{phase.throttled ? C.throttledBody : C.failedBody}</p>
           </Banner>
         ) : null}

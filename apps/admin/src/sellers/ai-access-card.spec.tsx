@@ -11,10 +11,10 @@ import { AiAccessCard, aiAccessOf } from './ai-access-card.tsx';
 
 const call = vi.mocked(callApi);
 const SELLER = '0190a000-0000-7000-8000-000000000009';
-const view = (initial: Parameters<typeof AiAccessCard>[0]['initial']) =>
+const view = (initial: Parameters<typeof AiAccessCard>[0]['initial'], canView = true) =>
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <AiAccessCard sellerId={SELLER} csrfToken="tok" initial={initial} />
+      <AiAccessCard sellerId={SELLER} csrfToken="tok" initial={initial} canView={canView} />
     </NextIntlClientProvider>,
   );
 
@@ -73,7 +73,16 @@ describe('AI writing help card', () => {
   it('shows a notice and no switch when the setting could not be read', () => {
     view(null);
     expect(screen.queryByRole('switch')).toBeNull();
-    expect(screen.getByText(/could not be read/)).toBeTruthy();
+    expect(screen.getByText('The current setting could not be read.')).toBeTruthy();
+    expect(screen.queryByText(/Reload the page/)).toBeNull();
+    expect(screen.queryByText(/have access/)).toBeNull();
+  });
+
+  it('says there is no access, with no switch, when the admin lacks the view key', () => {
+    view(null, false);
+    expect(screen.getByText("You don't have access to this setting.")).toBeTruthy();
+    expect(screen.queryByRole('switch')).toBeNull();
+    expect(screen.queryByText(/could not be read/)).toBeNull();
   });
 
   it('checks the read answer', () => {

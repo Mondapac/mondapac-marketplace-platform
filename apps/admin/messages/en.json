@@ -1104,7 +1104,8 @@
       "off": "Off",
       "never-changed": "Not changed yet.",
       "last-changed": "Last changed {when}.",
-      "unreadable": "The current setting could not be read. Reload the page.",
+      "unreadable": "The current setting could not be read.",
+      "no-access": "You don't have access to this setting.",
       "now-on": "AI writing help is now on for this seller.",
       "now-off": "AI writing help is now off for this seller.",
       "no-change": "It was already set this way.",
@@ -8214,7 +8215,7 @@
     },
     "error": {
       "invalid": "This value isn't allowed.",
-      "conflict": "Someone else changed this setting. The current value is shown now. Check it and try again.",
+      "conflict": "Someone else changed this. The values were reloaded.",
       "denied": "You don't have permission to change this setting.",
       "acting-as": "AI settings can't be changed while you are acting as a seller.",
       "csrf": "Your session expired. Reload the page.",

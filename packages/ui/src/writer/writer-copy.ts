@@ -72,12 +72,12 @@ export const WRITER_COPY = {
   discardConfirm: 'Discard',
   failedTitle: 'We couldn’t write a draft.',
   failedBody: 'Try again, or write it yourself. Your form wasn’t changed.',
-  throttledTitle: 'Too many requests.',
-  throttledBody: 'Wait a moment and try again. Your form wasn’t changed.',
+  throttledTitle: 'Too many requests right now.',
+  throttledBody: 'Wait a moment, then try again. Your form wasn’t changed.',
   limitTitle: 'Today’s AI drafts are used up.',
   limitBody: (zone: string) =>
     `They reset at midnight ${zone} time. You can still write the description yourself.`,
-  withheldTitle: 'The draft could not be used.',
+  withheldTitle: 'We couldn’t use that draft.',
   withheldBody: 'Change the keywords or the note and try again, or write it yourself.',
 } as const;
 

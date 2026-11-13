@@ -35,8 +35,17 @@ vi.mock('../../../../src/sellers/category-proposals-card.tsx', () => ({
 vi.mock('../../../../src/sellers/health-card.tsx', () => ({ SellerHealthCard: () => <div /> }));
 vi.mock('../../../../src/sellers/ai-access-card.tsx', async (importOriginal) => ({
   ...(await importOriginal<typeof AiAccessModule>()),
-  AiAccessCard: ({ initial }: { initial: { enabled: boolean } | null }) => (
-    <section data-initial={initial === null ? 'none' : String(initial.enabled)}>
+  AiAccessCard: ({
+    initial,
+    canView,
+  }: {
+    initial: { enabled: boolean } | null;
+    canView: boolean;
+  }) => (
+    <section
+      data-can-view={String(canView)}
+      data-initial={initial === null ? 'none' : String(initial.enabled)}
+    >
       ai access card
     </section>
   ),
@@ -169,6 +178,7 @@ describe('admin seller page: AI writing help card', () => {
     });
     await show();
     expect(screen.getByText('ai access card').getAttribute('data-initial')).toBe('true');
+    expect(screen.getByText('ai access card').getAttribute('data-can-view')).toBe('true');
     expect(mocks.get).toHaveBeenCalledWith(`sellers/admin/${SELLER}/ai-access`);
   });
 
@@ -179,6 +189,7 @@ describe('admin seller page: AI writing help card', () => {
     });
     await show();
     expect(screen.getByText('ai access card').getAttribute('data-initial')).toBe('none');
+    expect(screen.getByText('ai access card').getAttribute('data-can-view')).toBe('false');
     expect(mocks.get).not.toHaveBeenCalledWith(`sellers/admin/${SELLER}/ai-access`);
   });
 });
