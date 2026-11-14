@@ -1,4 +1,4 @@
-import { Body, Controller, Logger, Param, Put, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Param, Put, Req, Res } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -23,6 +23,7 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { BlogAccessSetUseCase } from '../application/use-cases/blog-access-set.use-case';
+import { ViewBlogAccessUseCase } from '../application/use-cases/view-blog-access.use-case';
 import { errorOf, fail } from './my-file.answer';
 import { SellersErrorBody } from './my-file.dto';
 
@@ -44,6 +45,18 @@ export class BlogAccessBody {
   changed!: boolean;
 }
 
+export class BlogAccessViewBody {
+  @ApiProperty()
+  enabled!: boolean;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'When an admin last changed the switch; null when it never changed.',
+  })
+  changedAt!: string | null;
+}
+
 /**
  * The blog switch of a seller (blog package 1), for a Platform Administrator. A thin adapter: the
  * `CallContext` comes from `@Call()` and the admin session cookie of the request's Market; an
@@ -58,7 +71,43 @@ export class BlogAccessBody {
 export class BlogAccessController {
   readonly #logger = new Logger('BlogAccessController');
 
-  constructor(private readonly setAccess: BlogAccessSetUseCase) {}
+  constructor(
+    private readonly setAccess: BlogAccessSetUseCase,
+    private readonly view: ViewBlogAccessUseCase,
+  ) {}
+
+  @Get(':sellerId/blog-access')
+  @ApiOperation({
+    summary: "Read a seller's blog switch (admin)",
+    description: 'Off by default. Needs sellers.seller.view.',
+  })
+  @ApiParam({ name: 'sellerId', description: 'The seller id (UUID).' })
+  @ApiOkResponse({ type: BlogAccessViewBody })
+  @ApiUnauthorizedResponse({
+    type: SellersErrorBody,
+    description: 'session.invalid or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: SellersErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: SellersErrorBody, description: 'file.not-found' })
+  async getBlogAccess(
+    @Call() context: CallContext,
+    @Param('sellerId') sellerId: string,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<BlogAccessViewBody> {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.view.execute(context, { sellerId });
+    this.#logger.log({
+      msg: 'sellers.blog-access-read',
+      outcome: result.ok ? 'ok' : result.error.code,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (!result.ok) throw errorOf(result.error, response);
+    return {
+      enabled: result.value.enabled,
+      changedAt: result.value.changedAt === null ? null : result.value.changedAt.toString(),
+    };
+  }
 
   @Put(':sellerId/blog-access')
   @ApiOperation({

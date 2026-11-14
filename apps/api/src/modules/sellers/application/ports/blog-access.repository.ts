@@ -8,6 +8,13 @@ export interface BlogAccessState {
   readonly version: number;
 }
 
+/** The blog switch with when it last changed, for the admin read. */
+export interface BlogAccessView {
+  readonly enabled: boolean;
+  /** When an admin last changed the switch; null when it never changed. */
+  readonly changedAt: Temporal.Instant | null;
+}
+
 /**
  * The write side of the blog switch in `sellers.seller_admin_settings` (blog package 1). Every
  * method runs inside the caller's read-write unit and is scoped by the Market.
@@ -18,6 +25,9 @@ export interface BlogAccessRepository {
    * the unit ends) and returns the switch and the new version; null when the seller has no row.
    */
   lock(market: MarketContext, sellerId: Id<'Seller'>): Promise<BlogAccessState | null>;
+
+  /** The switch and when it last changed, without a lock; null when the seller has no row. */
+  read(market: MarketContext, sellerId: Id<'Seller'>): Promise<BlogAccessView | null>;
 
   /** Sets the switch with who and when; the row was locked by this unit. */
   set(

@@ -1097,6 +1097,30 @@
         "unknown": "That did not work. Try again."
       }
     },
+    "blog-access": {
+      "title": "Blog",
+      "help": "Lets this seller write blog posts, which a reviewer checks before they go live. Off by default. Switching it off keeps the posts.",
+      "on": "On",
+      "off": "Off",
+      "unpublish": "When I switch it off, also take this seller's live posts off the site",
+      "unpublish-help": "Tick this before you switch it off. The posts stay as drafts of the seller and are not deleted.",
+      "never-changed": "Not changed yet.",
+      "last-changed": "Last changed {when}.",
+      "unreadable": "The current setting could not be read.",
+      "no-access": "You don't have access to this setting.",
+      "now-on": "Blog access is now on for this seller.",
+      "now-off": "Blog access is now off for this seller.",
+      "no-change": "It was already set this way.",
+      "error": {
+        "denied": "Your role can't change this setting.",
+        "acting-as": "This can't be changed while you are acting as a seller.",
+        "csrf": "Your session needs refreshing. Reload the page.",
+        "invalid": "The request was not valid. Reload and try again.",
+        "not-found": "This seller could not be found.",
+        "enrolment": "Set up two-step verification on your profile first.",
+        "unknown": "That did not work. Try again."
+      }
+    },
     "ai-access": {
       "title": "AI writing help",
       "help": "Lets this seller draft product descriptions with AI. Off by default.",
