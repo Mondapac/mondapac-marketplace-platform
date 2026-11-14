@@ -757,6 +757,31 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('DELETE', `sellers/admin/${ID}/category-proposals`)).status).toBe(404);
   });
 
+  it('relays the Write with AI routes and the AI settings on their exact methods only (AIS-03)', async () => {
+    const read = (path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin }),
+        path.split('/'),
+        vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
+      );
+    const writer = 'catalog/admin/description-writer';
+    expect((await read(writer)).status).toBe(200);
+    expect((await read(`${writer}/model-setup`)).status).toBe(200);
+    expect((await call('POST', `${writer}/drafts`)).status).toBe(200);
+    expect((await call('PUT', `${writer}/drafts`)).status).toBe(404);
+    expect((await call('PUT', `${writer}/model-setup`)).status).toBe(404);
+    expect((await call('POST', `${writer}/model-setup`)).status).toBe(404);
+    expect((await read('settings/admin/ai')).status).toBe(200);
+    expect((await call('PUT', 'settings/admin/ai')).status).toBe(200);
+    expect((await call('POST', 'settings/admin/ai')).status).toBe(404);
+    expect((await call('DELETE', 'settings/admin/ai')).status).toBe(404);
+    expect((await call('PUT', `sellers/admin/${ID}/ai-access`)).status).toBe(200);
+    expect((await call('PUT', 'sellers/admin/nope/ai-access')).status).toBe(404);
+    expect((await call('POST', `sellers/admin/${ID}/ai-access`)).status).toBe(404);
+    expect((await read(`sellers/admin/${ID}/ai-access`)).status).toBe(404);
+  });
+
   it('relays approve and reject of a held price for a UUID only, and no other method', async () => {
     expect((await call('POST', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(200);
     expect((await call('POST', `pricing/admin/price-holds/${ID}/reject`)).status).toBe(200);
@@ -1414,6 +1439,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', `blog/admin/posts/${id}`],
     ['GET', `blog/admin/posts/${id}/checks`],
     ['PUT', `blog/admin/posts/${id}/draft`],
+    ['PUT', `blog/admin/posts/${id}/event-status`],
     ['POST', `blog/admin/posts/${id}/submit`],
     ['POST', `blog/admin/posts/${id}/approve`],
     ['POST', `blog/admin/posts/${id}/request-changes`],
@@ -1447,6 +1473,10 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/attribute-suggestions/${id}/approve`],
     ['POST', `catalog/admin/attribute-suggestions/${id}/map`],
     ['POST', `catalog/admin/attribute-suggestions/${id}/reject`],
+    ['GET', 'catalog/admin/variant-requests'],
+    ['POST', `catalog/admin/variant-requests/${id}/approve`],
+    ['POST', `catalog/admin/variant-requests/${id}/map`],
+    ['POST', `catalog/admin/variant-requests/${id}/decline`],
     ['GET', 'catalog/admin/category-proposals'],
     ['POST', `catalog/admin/category-proposals/${id}/approve`],
     ['POST', `catalog/admin/category-proposals/${id}/reject`],
@@ -1700,6 +1730,25 @@ describe('relay of the wallet and step-up routes', () => {
     );
     const tree = await run('GET', 'catalog/admin/categories?q=x&limit=3', readHeaders);
     expect(tree.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/categories');
+  });
+
+  it('passes only featureSetId of the category tree, and only as an id', async () => {
+    const good = await run(
+      'GET',
+      `catalog/admin/categories?featureSetId=${id}&q=x&limit=3`,
+      readHeaders,
+    );
+    expect(good.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories?featureSetId=${id}`,
+    );
+    for (const bad of ['nope', '', `${id}x`, "'; drop"]) {
+      const { upstream } = await run(
+        'GET',
+        `catalog/admin/categories?featureSetId=${encodeURIComponent(bad)}`,
+        readHeaders,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/categories');
+    }
   });
 
   it('drops a target that is not exactly top or an id: TOP, Top and an empty one (categories C4b)', async () => {
@@ -2650,5 +2699,57 @@ describe('relay of the category image (categories C3c)', () => {
       expect((await relay(config, get(other.join('/')), other, upstream)).status).toBe(404);
     }
     expect(upstream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('relay of the order list views', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+    new Request(`http://admin.localhost:3002/api/${path}`, {
+      method,
+      headers,
+      ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
+    });
+
+  it('relays the saved views with the admin list key only', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'ordering/admin/saved-filters?listKey=admin.ordering.orders&extra=1'),
+      ['ordering', 'admin', 'saved-filters'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/ordering/admin/saved-filters?listKey=admin.ordering.orders',
+    );
+    for (const [method, path] of [
+      ['POST', 'ordering/admin/saved-filters'],
+      ['PUT', `ordering/admin/saved-filters/${id}`],
+      ['DELETE', `ordering/admin/saved-filters/${id}`],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+      expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+    }
+  });
+
+  it('refuses other methods and ids on the saved views', async () => {
+    for (const [method, path, headers] of [
+      ['PUT', 'ordering/admin/saved-filters', sameOrigin],
+      ['DELETE', 'ordering/admin/saved-filters', sameOrigin],
+      ['PUT', 'ordering/admin/saved-filters/not-a-uuid', sameOrigin],
+      ['POST', `ordering/admin/saved-filters/${id}`, sameOrigin],
+      ['GET', `ordering/admin/saved-filters/${id}`, sameOrigin],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        request(method, path, headers),
+        path.split('/'),
+        fetchImpl,
+      );
+      expect(response.status, `${method} ${path}`).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
   });
 });

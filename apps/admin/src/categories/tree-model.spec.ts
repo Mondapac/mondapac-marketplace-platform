@@ -20,6 +20,10 @@ const row = (
   position: 0,
   version: 1,
   counts: { liveProducts: 0, liveProductsDirect: 0, offers: 0 },
+  featureSetId: null,
+  featureSetCode: null,
+  featureSetFromCategoryId: null,
+  inherited: false,
   ...over,
 });
 // Pantry > Rice > Basmati ; Pantry > Oils ; Drinks
@@ -50,6 +54,29 @@ describe('visibleRows', () => {
     const list = visibleRows(rows, new Set(), { q: 'basm', status: 'all' });
     expect(ids(list)).toEqual([id(1), id(2), id(3)]);
     expect(list[0]?.expanded).toBe(true);
+  });
+
+  it('a feature set filter lists the categories of that set, own or inherited, with their ancestors', () => {
+    const set = 'fs-1';
+    const withSets = [
+      row(1, null, 0, 'Pantry'),
+      row(2, 1, 1, 'Rice', { featureSetId: set, featureSetCode: 'grocery' }),
+      row(3, 2, 2, 'Basmati', {
+        featureSetId: set,
+        featureSetCode: 'grocery',
+        featureSetFromCategoryId: id(2),
+        inherited: true,
+      }),
+      row(4, 1, 1, 'Oils', { featureSetId: 'fs-2' }),
+      row(5, null, 0, 'Drinks'),
+    ];
+    const list = visibleRows(withSets, new Set(), { ...none, featureSetId: set });
+    expect(ids(list)).toEqual([id(1), id(2), id(3)]);
+    expect(ids(visibleRows(withSets, new Set(), { ...none, featureSetId: 'nope' }))).toEqual([]);
+    expect(ids(visibleRows(withSets, new Set(), { ...none, featureSetId: null }))).toEqual([
+      id(1),
+      id(5),
+    ]);
   });
 
   it('a status filter keeps the ancestors of a match', () => {

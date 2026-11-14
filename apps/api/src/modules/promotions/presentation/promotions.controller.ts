@@ -48,6 +48,9 @@ import { EditOwnPromotion } from '../application/use-cases/edit-own-promotion.us
 import { EditPromotion } from '../application/use-cases/edit-promotion.use-case';
 import { ListFreeShippingThresholds } from '../application/use-cases/list-free-shipping-thresholds.use-case';
 import { ListOwnPromotions } from '../application/use-cases/list-own-promotions.use-case';
+import { CountPromotionReviews } from '../application/use-cases/count-promotion-reviews.use-case';
+import { ViewCampaignMembers } from '../application/use-cases/view-campaign-members.use-case';
+import { ViewPromotionActivity } from '../application/use-cases/view-promotion-activity.use-case';
 import { ListPromotionReviews } from '../application/use-cases/list-promotion-reviews.use-case';
 import { ListPromotionsFull } from '../application/use-cases/list-promotions-full.use-case';
 import { ListPromotions } from '../application/use-cases/list-promotions.use-case';
@@ -91,6 +94,13 @@ import {
   PromotionRequest,
   PromotionsBody,
   PromotionUsageListBody,
+  ActivityPageBody,
+  CampaignMembersBody,
+  ReviewCountBody,
+  activityBody,
+  campaignMembersBody,
+  promotionsPageBody,
+  usagePageBody,
   QuoteBody,
   quoteBody,
   QuoteRequestBody,
@@ -109,7 +119,6 @@ import {
   ThresholdResultBody,
   ThresholdsBody,
   thresholdsBody,
-  usageBody,
 } from './promotions.dto';
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -147,7 +156,19 @@ const PROMOTION_FIELDS = [
   'segment',
   'refereeRewardMinor',
 ] as const;
-const LIST_QUERY = ['status', 'limit'] as const;
+const LIST_QUERY = [
+  'q',
+  'type',
+  'owner',
+  'funding',
+  'status',
+  'view',
+  'sort',
+  'order',
+  'page',
+  'limit',
+] as const;
+const ACTIVITY_QUERY = ['after', 'limit'] as const;
 
 /**
  * Logs ids and codes only (a promotion's name and code are never logged), then returns the value
@@ -188,12 +209,47 @@ function bodyOf(
 function listQueryOf(query: Record<string, unknown>) {
   const unknown = closedQuery(query, LIST_QUERY);
   if (unknown !== null) throw unknown;
-  return { status: query.status, limit: limitOf(query.limit) };
+  return {
+    text: query.q,
+    type: query.type,
+    owner: query.owner,
+    funding: query.funding,
+    status: query.status,
+    view: query.view,
+    sort: query.sort,
+    order: query.order,
+    page: query.page,
+    limit: query.limit,
+  };
 }
 
 const LIST_QUERY_DOCS = [
-  { name: 'status', required: false, description: 'Only promotions in this status.' },
-  { name: 'limit', required: false, description: '1 to 100; default 50.' },
+  { name: 'q', required: false, description: 'Part of the name, or the start of the code.' },
+  { name: 'type', required: false, description: 'One or more promotion types, comma-separated.' },
+  { name: 'owner', required: false, enum: ['PLATFORM', 'SELLER'] },
+  { name: 'funding', required: false, enum: ['SELLER', 'PLATFORM', 'CO_FUNDED'] },
+  {
+    name: 'status',
+    required: false,
+    description:
+      'Only promotions that show this status: ACTIVE, SCHEDULED, PAUSED, PENDING_APPROVAL, ' +
+      'REJECTED, ENDED, BUDGET_USED_UP or NEEDS_REVIEW. Not together with view.',
+  },
+  {
+    name: 'view',
+    required: false,
+    description:
+      'A tab: ALL, ACTIVE, SCHEDULED, PAUSED, NEEDS_REVIEW or ENDED. Not together with status.',
+  },
+  { name: 'sort', required: false, enum: ['CREATED', 'STARTS', 'ENDS', 'NAME', 'USES'] },
+  {
+    name: 'order',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Default desc; asc for NAME.',
+  },
+  { name: 'page', required: false, description: '1 to 1000; default 1.' },
+  { name: 'limit', required: false, description: '1 to 100; default 25.' },
 ] as const;
 
 /**
@@ -230,6 +286,9 @@ export class AdminPromotionsController {
     private readonly setThreshold: SetFreeShippingThreshold,
     private readonly preview: PreviewQuote,
     private readonly listCredits: ListPromotionCredits,
+    private readonly countReviews: CountPromotionReviews,
+    private readonly campaignMembers: ViewCampaignMembers,
+    private readonly activity: ViewPromotionActivity,
   ) {}
 
   @Get('settings')
@@ -286,6 +345,14 @@ export class AdminPromotionsController {
   })
   @ApiQuery(LIST_QUERY_DOCS[0])
   @ApiQuery(LIST_QUERY_DOCS[1])
+  @ApiQuery(LIST_QUERY_DOCS[2])
+  @ApiQuery(LIST_QUERY_DOCS[3])
+  @ApiQuery(LIST_QUERY_DOCS[4])
+  @ApiQuery(LIST_QUERY_DOCS[5])
+  @ApiQuery(LIST_QUERY_DOCS[6])
+  @ApiQuery(LIST_QUERY_DOCS[7])
+  @ApiQuery(LIST_QUERY_DOCS[8])
+  @ApiQuery(LIST_QUERY_DOCS[9])
   @ApiOkResponse({ type: PromotionUsageListBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
@@ -300,7 +367,7 @@ export class AdminPromotionsController {
     noStore(response);
     const result = await this.listUsage.execute(context, listQueryOf(query));
     const items = settle(this.#logger, 'promotions.list-route', context, result, 'read');
-    return { items: items.map(usageBody) };
+    return usagePageBody(items);
   }
 
   @Get('promotions/costs')
@@ -310,6 +377,14 @@ export class AdminPromotionsController {
   })
   @ApiQuery(LIST_QUERY_DOCS[0])
   @ApiQuery(LIST_QUERY_DOCS[1])
+  @ApiQuery(LIST_QUERY_DOCS[2])
+  @ApiQuery(LIST_QUERY_DOCS[3])
+  @ApiQuery(LIST_QUERY_DOCS[4])
+  @ApiQuery(LIST_QUERY_DOCS[5])
+  @ApiQuery(LIST_QUERY_DOCS[6])
+  @ApiQuery(LIST_QUERY_DOCS[7])
+  @ApiQuery(LIST_QUERY_DOCS[8])
+  @ApiQuery(LIST_QUERY_DOCS[9])
   @ApiOkResponse({ type: PromotionsBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
@@ -324,7 +399,68 @@ export class AdminPromotionsController {
     noStore(response);
     const result = await this.listFull.execute(context, listQueryOf(query));
     const items = settle(this.#logger, 'promotions.list-full-route', context, result, 'read');
-    return { items: items.map(promotionBody) };
+    return promotionsPageBody(items);
+  }
+
+  @Get('promotions/:id/activity')
+  @ApiOperation({
+    summary: 'Who changed a promotion, when, and which terms (admin manager)',
+    description:
+      "Newest first, from the audit rows: create, edit (with each term's before and after), " +
+      'pause, resume and budget change. A step-up proof is never shown. Paged with `after` (the ' +
+      '`next` of the last page) and `limit` (1 to 50, default 20).',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiQuery({ name: 'after', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiOkResponse({ type: ActivityPageBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled or promotions.not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async getActivity(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('id') id: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    noStore(response);
+    const unknown = closedQuery(query, ACTIVITY_QUERY);
+    if (unknown !== null) throw unknown;
+    const result = await this.activity.execute(context, {
+      promotionId: id,
+      after: query.after,
+      limit: query.limit,
+    });
+    return activityBody(settle(this.#logger, 'promotions.activity-route', context, result, 'read'));
+  }
+
+  @Get('promotions/:id/sellers')
+  @ApiOperation({
+    summary: 'The sellers of a co-funded campaign (admin manager)',
+    description:
+      'Oldest opt-in first; a seller that withdrew stays, with its date. Only a co-funded ' +
+      'campaign has sellers (promotions.invalid-state otherwise). Seller names come from the ' +
+      'seller reads of the panel.',
+  })
+  @ApiParam({ name: 'id', format: 'uuid' })
+  @ApiOkResponse({ type: CampaignMembersBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled or promotions.not-found' })
+  @ApiConflictResponse({ ...ERROR, description: 'promotions.invalid-state (not co-funded)' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async getCampaignSellers(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('id') id: string,
+  ) {
+    noStore(response);
+    const result = await this.campaignMembers.execute(context, { promotionId: id });
+    return campaignMembersBody(
+      settle(this.#logger, 'promotions.campaign-sellers-route', context, result, 'read'),
+    );
   }
 
   @Get('promotions/:id')
@@ -628,6 +764,24 @@ export class AdminPromotionsController {
     return { items: items.map(reviewItemBody) };
   }
 
+  @Get('reviews/count')
+  @ApiOperation({
+    summary: 'How many entries of the review queue are open (admin manager)',
+    description: 'For the tab and the menu badge; it reads one number, not the queue.',
+  })
+  @ApiOkResponse({ type: ReviewCountBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'promotions.disabled' })
+  async getReviewCount(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    noStore(response);
+    const result = await this.countReviews.execute(context, {});
+    return settle(this.#logger, 'promotions.count-reviews-route', context, result, 'read');
+  }
+
   @Put('reviews/:id')
   @HttpCode(200)
   @ApiOperation({
@@ -841,6 +995,14 @@ export class SellerPromotionsController {
   @ApiOperation({ summary: "The seller's own promotions" })
   @ApiQuery(LIST_QUERY_DOCS[0])
   @ApiQuery(LIST_QUERY_DOCS[1])
+  @ApiQuery(LIST_QUERY_DOCS[2])
+  @ApiQuery(LIST_QUERY_DOCS[3])
+  @ApiQuery(LIST_QUERY_DOCS[4])
+  @ApiQuery(LIST_QUERY_DOCS[5])
+  @ApiQuery(LIST_QUERY_DOCS[6])
+  @ApiQuery(LIST_QUERY_DOCS[7])
+  @ApiQuery(LIST_QUERY_DOCS[8])
+  @ApiQuery(LIST_QUERY_DOCS[9])
   @ApiOkResponse({ type: OwnPromotionsBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })

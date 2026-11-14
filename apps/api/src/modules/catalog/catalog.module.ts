@@ -374,6 +374,20 @@ import { TOPIC_SUGGESTION_STORE } from './application/ports/topic-suggestion.sto
 import { SendAttributeSuggestionNotices } from './application/use-cases/send-attribute-suggestion-notices.use-case';
 import { sendAttributeSuggestionNoticesJob } from './presentation/jobs/send-attribute-suggestion-notices.job';
 import { AttributeSuggestionController } from './presentation/attribute-suggestion.controller';
+import { VARIANT_REQUEST_STORE } from './application/ports/variant-request.store';
+import { OwnVariantRequestCreate } from './application/use-cases/own-variant-request-create.use-case';
+import { OwnVariantRequestsList } from './application/use-cases/own-variant-requests-list.use-case';
+import { VariantRequestApprove } from './application/use-cases/variant-request-approve.use-case';
+import { VariantRequestDecline } from './application/use-cases/variant-request-decline.use-case';
+import { VariantRequestList } from './application/use-cases/variant-request-list.use-case';
+import { VariantRequestMap } from './application/use-cases/variant-request-map.use-case';
+import { SendVariantRequestNotices } from './application/use-cases/send-variant-request-notices.use-case';
+import { sendVariantRequestNoticesJob } from './presentation/jobs/send-variant-request-notices.job';
+import {
+  OwnVariantRequestController,
+  OwnVariantRequestsController,
+  VariantRequestController,
+} from './presentation/variant-request.controller';
 import {
   OwnAttributeSuggestionController,
   OwnAttributeSuggestionsController,
@@ -484,6 +498,21 @@ import { seedCategoryTreeJob } from './presentation/jobs/seed-category-tree.job'
  * The Nest token of each dependency name the use cases of catalog share: a use case's dependency
  * object is built from these by {@link useCaseProvider}, so a name always means the same port.
  */
+import {
+  DESCRIPTION_WRITER_MODEL,
+  DESCRIPTION_WRITER_SWITCHES,
+  MARKET_DAY_CALENDAR,
+} from './application/ports/description-writer';
+import { AdminAiModelSetup } from './application/use-cases/admin-ai-model-setup.use-case';
+import { AdminDescriptionDraft } from './application/use-cases/admin-description-draft.use-case';
+import { AdminDescriptionWriterStatus } from './application/use-cases/admin-description-writer-status.use-case';
+import { OwnDescriptionDraft } from './application/use-cases/own-description-draft.use-case';
+import { OwnDescriptionWriterStatus } from './application/use-cases/own-description-writer-status.use-case';
+import {
+  AdminDescriptionWriterController,
+  OwnDescriptionWriterController,
+} from './presentation/description-writer.controller';
+import { SettingsModule } from '../settings';
 import { VARIANT_ADMIN_READER } from './application/ports/variant-admin.reader';
 import { VARIANT_TYPE_SETTINGS_STORE } from './application/ports/variant-type-settings.store';
 import { AdminVariantTypeGet } from './application/use-cases/admin-variant-type-get.use-case';
@@ -514,6 +543,9 @@ const NO_SAVE_BUDGET = { reserveSaves: (): Promise<null> => Promise.resolve(null
 
 const PORT = {
   unitOfWork: UNIT_OF_WORK,
+  model: DESCRIPTION_WRITER_MODEL,
+  switches: DESCRIPTION_WRITER_SWITCHES,
+  calendar: MARKET_DAY_CALENDAR,
   categories: PLATFORM_CATEGORY_REPOSITORY,
   seed: CATEGORY_SEED,
   attributes: ATTRIBUTE_REPOSITORY,
@@ -621,6 +653,7 @@ const PORT = {
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
   suggestions: ATTRIBUTE_VALUE_SUGGESTION_STORE,
+  variantRequests: VARIANT_REQUEST_STORE,
   topicSuggestions: TOPIC_SUGGESTION_STORE,
   claimLocales: CLAIM_TERM_LOCALES,
   cultureMembers: CULTURE_MEMBERS,
@@ -770,6 +803,9 @@ const RESTRUCTURE_DEPS = {
     AttributeSuggestionController,
     OwnAttributeSuggestionController,
     OwnAttributeSuggestionsController,
+    OwnVariantRequestController,
+    OwnVariantRequestsController,
+    VariantRequestController,
     TopicSuggestionController,
     OwnTopicSuggestController,
     OwnTopicSuggestionsController,
@@ -782,8 +818,16 @@ const RESTRUCTURE_DEPS = {
     PublicBrandController,
     OwnCategoryProposalController,
     CategoryProposalAdminController,
+    OwnDescriptionWriterController,
+    AdminDescriptionWriterController,
   ],
-  imports: [CertificationModule, SellersModule, CatalogReferencesModule, IdentityModule],
+  imports: [
+    CertificationModule,
+    SellersModule,
+    CatalogReferencesModule,
+    IdentityModule,
+    SettingsModule,
+  ],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
     PersistenceModule.auditWriterFor('catalog'),
@@ -893,6 +937,56 @@ const RESTRUCTURE_DEPS = {
       requests: true,
       audit: true,
       brandAssigner: true,
+    }),
+    useCaseProvider(OwnDescriptionWriterStatus, {
+      unitOfWork: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      matcher: true,
+      model: true,
+      switches: true,
+      calendar: true,
+    }),
+    useCaseProvider(OwnDescriptionDraft, {
+      unitOfWork: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      matcher: true,
+      model: true,
+      switches: true,
+      calendar: true,
+    }),
+    useCaseProvider(AdminDescriptionWriterStatus, {
+      unitOfWork: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      matcher: true,
+      model: true,
+      switches: true,
+      calendar: true,
+    }),
+    useCaseProvider(AdminDescriptionDraft, {
+      unitOfWork: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      matcher: true,
+      model: true,
+      switches: true,
+      calendar: true,
+    }),
+    useCaseProvider(AdminAiModelSetup, {
+      unitOfWork: true,
+      counters: true,
+      counterKeys: true,
+      clock: true,
+      matcher: true,
+      model: true,
+      switches: true,
+      calendar: true,
     }),
     useCaseProvider(BusinessActivityList, {
       unitOfWork: true,
@@ -1250,6 +1344,19 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       clock: true,
     }),
+    useCaseProvider(OwnVariantRequestCreate, {
+      unitOfWork: true,
+      offers: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      attributes: true,
+      variantRequests: true,
+      eligibility: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
     useCaseProvider(OwnTopicSuggest, {
       unitOfWork: true,
       products: true,
@@ -1262,6 +1369,60 @@ const RESTRUCTURE_DEPS = {
       audit: true,
       clock: true,
       ids: true,
+    }),
+    useCaseProvider(OwnVariantRequestsList, {
+      unitOfWork: true,
+      variantRequests: true,
+      products: true,
+      attributes: true,
+      attributeStore: true,
+      policy: true,
+    }),
+    useCaseProvider(VariantRequestList, {
+      unitOfWork: true,
+      variantRequests: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      attributes: true,
+      attributeStore: true,
+      sellerNames: true,
+      policy: true,
+    }),
+    useCaseProvider(VariantRequestApprove, {
+      unitOfWork: true,
+      variantRequests: true,
+      products: true,
+      workingCopies: true,
+      revisions: true,
+      saveDraft: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(VariantRequestMap, {
+      unitOfWork: true,
+      variantRequests: true,
+      products: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(VariantRequestDecline, {
+      unitOfWork: true,
+      variantRequests: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(SendVariantRequestNotices, {
+      unitOfWork: true,
+      variantRequests: true,
+      products: true,
+      attributes: true,
+      attributeStore: true,
+      ownerContacts: true,
+      mailTransport: true,
+      mailSettings: true,
+      policy: true,
+      clock: true,
     }),
     useCaseProvider(OwnTopicSuggestionsList, {
       unitOfWork: true,
@@ -1374,6 +1535,7 @@ const RESTRUCTURE_DEPS = {
       attributes: true,
       policy: true,
       familyResolver: true,
+      emailStore: true,
     }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,
@@ -1401,6 +1563,8 @@ const RESTRUCTURE_DEPS = {
       adminCategoryReader: true,
       policy: true,
       categoryProbes: true,
+      linkStore: true,
+      attributeAdminReader: true,
     }),
     useCaseProvider(CategoryAdminGet, {
       unitOfWork: true,
@@ -2551,6 +2715,7 @@ const RESTRUCTURE_DEPS = {
         OwnImportPurge,
         ExpireRelaxationRequests,
         SendAttributeSuggestionNotices,
+        SendVariantRequestNotices,
         SendMissingDetailsEmails,
         SendTopicSuggestionNotices,
       ],
@@ -2569,6 +2734,7 @@ const RESTRUCTURE_DEPS = {
         sellerPurge: OwnImportPurge,
         expireRelaxations: ExpireRelaxationRequests,
         suggestionNotices: SendAttributeSuggestionNotices,
+        variantRequestNotices: SendVariantRequestNotices,
         missingDetailsEmails: SendMissingDetailsEmails,
         topicSuggestionNotices: SendTopicSuggestionNotices,
       ) => [
@@ -2586,6 +2752,7 @@ const RESTRUCTURE_DEPS = {
         purgeSellerImportsJob(sellerPurge),
         expireRelaxationRequestsJob(expireRelaxations),
         sendAttributeSuggestionNoticesJob(suggestionNotices),
+        sendVariantRequestNoticesJob(variantRequestNotices),
         sendMissingDetailsEmailsJob(missingDetailsEmails),
         sendTopicSuggestionNoticesJob(topicSuggestionNotices),
       ],

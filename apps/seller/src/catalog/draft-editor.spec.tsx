@@ -2,8 +2,14 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as Ui from '@mondapac/ui';
 import messages from '../../messages/en.json';
 
+vi.mock('@mondapac/ui', async (original) => ({
+  ...(await original<typeof Ui>()),
+  // These tests count the form's own calls; the writer's status read is tested in writer-in-form.
+  DescriptionWriter: () => null,
+}));
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 

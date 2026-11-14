@@ -2012,6 +2012,35 @@
     }
   },
   {
+    "action": "ordering.refund-limit.removed",
+    "targetType": "ordering.seller-refund-limit",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "maxAmount": "money",
+      "maxCount": "integer",
+      "sellerId": "id"
+    },
+    "after": null
+  },
+  {
+    "action": "ordering.refund-limit.set",
+    "targetType": "ordering.seller-refund-limit",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "maxAmount": "optional(money)",
+      "maxCount": "optional(integer)"
+    },
+    "after": {
+      "maxAmount": "money",
+      "maxCount": "integer",
+      "scope": "enumOf(market|seller)",
+      "sellerId": "optional(id)",
+      "version": "integer"
+    }
+  },
+  {
     "action": "ordering.refund.requested",
     "targetType": "ordering.refund",
     "targetId": "id",
@@ -2036,6 +2065,56 @@
     "after": {
       "creditNoteId": "optional(id)",
       "outcome": "enumOf(succeeded|failed)"
+    }
+  },
+  {
+    "action": "ordering.saved-filter.shared",
+    "targetType": "ordering.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "listKey": "enumOf(admin.ordering.orders)",
+      "visibility": "enumOf(me|everyone)"
+    }
+  },
+  {
+    "action": "ordering.saved-filter.changed",
+    "targetType": "ordering.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "visibility": "enumOf(me|everyone)"
+    },
+    "after": {
+      "listKey": "enumOf(admin.ordering.orders)",
+      "ownedByActor": "boolean",
+      "renamed": "boolean",
+      "visibility": "enumOf(me|everyone)"
+    }
+  },
+  {
+    "action": "ordering.saved-filter.removed",
+    "targetType": "ordering.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "listKey": "enumOf(admin.ordering.orders)",
+      "visibility": "enumOf(me|everyone)"
+    },
+    "after": {
+      "ownedByActor": "boolean"
+    }
+  },
+  {
+    "action": "ordering.seller-order.note-added",
+    "targetType": "ordering.seller-order",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "length": "integer",
+      "noteId": "id"
     }
   },
   {
@@ -2512,6 +2591,41 @@
     }
   },
   {
+    "action": "security.alert.acknowledged",
+    "targetType": "security.alert",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "severity": "enumOf(s1|s2|s3|s4)",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "security.alert.resolved",
+    "targetType": "security.alert",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "resolution": "enumOf(contained|false-positive|duplicate|accepted-risk)",
+      "severity": "enumOf(s1|s2|s3|s4)",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "sellers.ai-access.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "boolean"
+    },
+    "after": {
+      "enabled": "boolean"
+    }
+  },
+  {
     "action": "sellers.blog-access.change",
     "targetType": "sellers.seller",
     "targetId": "id",
@@ -2634,13 +2748,13 @@
   {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(list-paging|cart-mode)",
+    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier)",
     "actors": ["authenticated"],
     "before": {
-      "value": "enumOf(pages|prev-next|multi-store|single-store)"
+      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced)"
     },
     "after": {
-      "value": "enumOf(pages|prev-next|multi-store|single-store)",
+      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced)",
       "version": "integer"
     }
   },
@@ -3306,6 +3420,31 @@
     },
     "after": {
       "revisionNo": "integer"
+    }
+  },
+  {
+    "action": "catalog.variant-request.decided",
+    "targetType": "catalog.variant-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(open)"
+    },
+    "after": {
+      "productId": "id",
+      "sellerId": "id",
+      "status": "enumOf(approved|mapped|declined)"
+    }
+  },
+  {
+    "action": "catalog.variant-request.requested",
+    "targetType": "catalog.variant-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "offerId": "id",
+      "productId": "id"
     }
   },
   {

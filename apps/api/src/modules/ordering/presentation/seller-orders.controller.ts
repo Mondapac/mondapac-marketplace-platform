@@ -42,6 +42,17 @@ import { SellerMarkOrderReady } from '../application/use-cases/seller-mark-order
 import { SellerMarkUnavailable } from '../application/use-cases/seller-mark-unavailable.use-case';
 import { SellerViewOrderDocument } from '../application/use-cases/seller-view-order-document.use-case';
 import { SellerViewOrder } from '../application/use-cases/seller-view-order.use-case';
+import { SellerAddOrderNote } from '../application/use-cases/seller-add-order-note.use-case';
+import { SellerListOrderNotes } from '../application/use-cases/seller-list-order-notes.use-case';
+import { SellerViewOrderActivity } from '../application/use-cases/seller-view-order-activity.use-case';
+import { OrderActivityBody, orderActivityBody } from './order-activity.dto';
+import {
+  SELLER_NOTE_BODY_KEYS,
+  SellerNoteBody,
+  SellerNoteListBody,
+  SellerNoteRequestBody,
+  sellerNoteBody,
+} from './seller-order-notes.dto';
 import { OrderDocumentBody, orderDocumentBody } from './documents.dto';
 import { closedBody, refusal } from './http-answers';
 import {
@@ -89,6 +100,9 @@ export class SellerOrdersController {
     private readonly deliver: SellerDeliverOrder,
     private readonly documentOf: SellerViewOrderDocument,
     private readonly markUnavailable: SellerMarkUnavailable,
+    private readonly notesOf: SellerListOrderNotes,
+    private readonly addNote: SellerAddOrderNote,
+    private readonly activityOf: SellerViewOrderActivity,
   ) {}
 
   @Get()
@@ -271,7 +285,9 @@ export class SellerOrdersController {
     ...ERROR,
     description:
       'ordering.fulfilment-conflict, ordering.refund-disabled, ordering.refund-not-allowed, ' +
-      'ordering.refund-in-progress or conflict.retry',
+      'ordering.refund-in-progress, conflict.retry, ordering.refund-limit-reached (details.limit: ' +
+      'count or amount; the cap of refunds in 24 hours an admin set) or ordering.refund-limit-unset ' +
+      '(no cap set yet: seller refunds are refused)',
   })
   @ApiUnprocessableEntityResponse({
     ...ERROR,
@@ -396,6 +412,112 @@ export class SellerOrdersController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return sellerOrderShipBody(result.value);
+  }
+
+  @Get(':sellerOrderId/notes')
+  @ApiOperation({
+    summary: "The shop's notes on one of its paid orders, newest first",
+    description:
+      'Needs ordering.seller-order.view. The shop only: never shown to the customer or the ' +
+      'admins. The newest 100.',
+  })
+  @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
+  @ApiOkResponse({ type: SellerNoteListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.seller-order-not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async notes(
+    @Call() context: CallContext,
+    @Param('sellerOrderId') sellerOrderId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.notesOf.execute(context, { sellerOrderId });
+    this.log(
+      'ordering.seller-list-order-notes-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return { notes: result.value.map(sellerNoteBody) };
+  }
+
+  @Post(':sellerOrderId/notes')
+  @HttpCode(201)
+  @ApiOperation({
+    summary: "Write a note on one of the shop's paid orders",
+    description:
+      'Needs ordering.seller-order.view and ordering.seller-order.note; refused in an acting-as ' +
+      'session. Plain text, 1 to 2000 characters after trimming; written once, never changed ' +
+      "or removed. Stored sealed under the customer's account key (never in clear).",
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
+  @ApiBody({ type: SellerNoteRequestBody })
+  @ApiResponse({ status: 201, type: SellerNoteBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.seller-order-not-found' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description: "ordering.customer-erased (the customer's account was erased)",
+  })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async writeNote(
+    @Call() context: CallContext,
+    @Param('sellerOrderId') sellerOrderId: string,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, SELLER_NOTE_BODY_KEYS);
+    if (invalid !== null) throw invalid;
+    const result = await this.addNote.execute(context, {
+      sellerOrderId,
+      body: (body as Record<string, unknown>).body,
+    });
+    this.log(
+      'ordering.seller-add-order-note-route',
+      context,
+      result.ok ? 'written' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return sellerNoteBody(result.value);
+  }
+
+  @Get(':sellerOrderId/activity')
+  @ApiOperation({
+    summary: "One of the shop's paid orders' activity timeline, oldest first",
+    description:
+      'Needs ordering.seller-order.view. Read-only: this seller order only, from payment on ' +
+      '(paid, ready, shipped, delivered or collected, its refunds). Instants are UTC. No other ' +
+      "shop's data, no notes, no customer details.",
+  })
+  @ApiParam({ name: 'sellerOrderId', format: 'uuid' })
+  @ApiOkResponse({ type: OrderActivityBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.seller-order-not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async activity(
+    @Call() context: CallContext,
+    @Param('sellerOrderId') sellerOrderId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.activityOf.execute(context, { sellerOrderId });
+    this.log(
+      'ordering.seller-view-order-activity-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return orderActivityBody(result.value);
   }
 
   private log(msg: string, context: CallContext, outcome: string): void {

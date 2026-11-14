@@ -28,12 +28,17 @@ import {
   type SecurityEventStore,
 } from '../security-events/security-event-retention';
 import { SECURITY_EVENTS, type SecurityEvents } from '../security-events/security-events';
+import {
+  SECURITY_EVENT_FEED,
+  type SecurityEventFeed,
+} from '../security-events/security-event-feed';
 import { SUBJECT_KEY_STORE, type SubjectKeyStore } from '../subject-keys/subject-key-store';
 import { UNIT_OF_WORK, type UnitOfWork } from '../unit-of-work/unit-of-work';
 import { AdvisoryJobLock } from './advisory-job-lock';
 import { PrismaAuditChainStore } from './audit/prisma-audit-chain-store';
 import { createAuditTrailReader } from './audit/prisma-audit-trail-reader';
 import { createAuditWriter } from './audit/prisma-audit-writer';
+import { PrismaSecurityEventFeed } from './audit/prisma-security-event-feed';
 import { PrismaSecurityEventStore } from './audit/prisma-security-event-store';
 import { createSecurityEvents } from './audit/prisma-security-events';
 import { DatabaseProbe } from './database-probe';
@@ -248,6 +253,18 @@ export class PersistenceModule {
    */
   static securityEventStore(): FactoryProvider<SecurityEventStore> {
     return { provide: SECURITY_EVENT_STORE, useFactory: () => new PrismaSecurityEventStore() };
+  }
+
+  /**
+   * The read side of the security events for the SOC rules (docs/design/data/security.md 3):
+   * `providers: [PersistenceModule.securityEventFeedFor('security')]`. Only the `security`
+   * module may bind it; any other owner fails at boot, so no other module reads events.
+   */
+  static securityEventFeedFor(owner: string): FactoryProvider<SecurityEventFeed> {
+    if (owner !== 'security') {
+      throw new Error(`"${owner}" may not read security events`);
+    }
+    return { provide: SECURITY_EVENT_FEED, useFactory: () => new PrismaSecurityEventFeed() };
   }
 
   /**

@@ -6,6 +6,10 @@ import type {
   StoredAdminNote,
 } from '../../src/modules/ordering/application/ports/admin-order-notes';
 import type {
+  SellerOrderNoteRepository,
+  StoredSellerNote,
+} from '../../src/modules/ordering/application/ports/seller-order-notes';
+import type {
   AuditEntry,
   CallContext,
   Id,
@@ -30,6 +34,7 @@ import type {
 } from '../../src/modules/commission-payouts';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
+import type { RefundLimit } from '../../src/modules/ordering/domain/refund-limits';
 import type { PaymentAttemptLimits } from '../../src/modules/ordering/application/ports/payment-attempt-limits';
 import type {
   CardPaymentFailure,
@@ -167,8 +172,63 @@ class EmptyRefunds implements RefundRepository {
   findPending() {
     return this.unexpected('findPending');
   }
+  guardSellerRefunds() {
+    return this.unexpected('guardSellerRefunds');
+  }
+  noteRefundLimitAlert() {
+    return this.unexpected('noteRefundLimitAlert');
+  }
+  findRefundLimits() {
+    return Promise.resolve({ own: null, marketDefault: null });
+  }
+  saveRefundLimit() {
+    return this.unexpected('saveRefundLimit');
+  }
+  removeRefundLimit() {
+    return this.unexpected('removeRefundLimit');
+  }
 }
 export const NO_REFUNDS: RefundRepository = new EmptyRefunds();
+
+/**
+ * The caps on seller refunds in memory (decision 6; Hassan F2), with the other refund methods of
+ * {@link NO_REFUNDS}: the admin routes read and write the caps only.
+ */
+export class MemoryRefundLimits {
+  readonly rows = new Map<string, RefundLimit>();
+  // Nest probes a provider for `then` and its lifecycle hooks: those answer undefined, never the
+  // rejecting stand-ins of NO_REFUNDS (a `then` would make the provider look like a promise).
+  readonly repository: RefundRepository = new Proxy(this as unknown as RefundRepository, {
+    get: (target, name) =>
+      name in target
+        ? (target as unknown as Record<string | symbol, unknown>)[name]
+        : typeof name === 'symbol' || name === 'then' || /^on[A-Z]/.test(name)
+          ? undefined
+          : (NO_REFUNDS as unknown as Record<string | symbol, unknown>)[name],
+  });
+  private key(sellerId: Id<'Seller'> | null) {
+    return sellerId ?? 'default';
+  }
+  findRefundLimits(_m: MarketContext, sellerId: Id<'Seller'> | null) {
+    return Promise.resolve({
+      own: sellerId === null ? null : (this.rows.get(sellerId) ?? null),
+      marketDefault: this.rows.get('default') ?? null,
+    });
+  }
+  saveRefundLimit(_m: MarketContext, limit: RefundLimit, expectedVersion: number) {
+    const key = this.key(limit.sellerId);
+    if ((this.rows.get(key)?.version ?? 0) !== expectedVersion)
+      return Promise.resolve('stale' as const);
+    this.rows.set(key, { ...limit, version: expectedVersion + 1 });
+    return Promise.resolve('saved' as const);
+  }
+  removeRefundLimit(_m: MarketContext, sellerId: Id<'Seller'>, expectedVersion: number) {
+    if (this.rows.get(sellerId)?.version !== expectedVersion)
+      return Promise.resolve('stale' as const);
+    this.rows.delete(sellerId);
+    return Promise.resolve('removed' as const);
+  }
+}
 
 /**
  * Collects ordering's audit rows (refunds, cancellations, notes), each checked against its
@@ -1346,6 +1406,38 @@ export class MemoryAdminNotes implements AdminOrderNoteRepository {
     return Promise.resolve(
       this.rows
         .filter((row) => row.orderId === orderId)
+        .reverse()
+        .slice(0, limit),
+    );
+  }
+}
+
+/**
+ * The sellers' notes of the memory store: each seller order known here has its order, seller and
+ * customer; a note is listed only for the seller that owns the seller order.
+ */
+export class MemorySellerNotes implements SellerOrderNoteRepository {
+  readonly sellerOrders = new Map<
+    string,
+    { orderId: Id<'Order'>; sellerId: Id<'Seller'>; accountId: Id<'Account'> }
+  >();
+  readonly rows: StoredSellerNote[] = [];
+  sellerOrderOf(_m: MarketContext, sellerId: Id<'Seller'>, sellerOrderId: Id<'SellerOrder'>) {
+    const found = this.sellerOrders.get(sellerOrderId);
+    return Promise.resolve(
+      found === undefined || found.sellerId !== sellerId
+        ? null
+        : { orderId: found.orderId, accountId: found.accountId },
+    );
+  }
+  insert(_m: MarketContext, note: StoredSellerNote) {
+    this.rows.push(note);
+    return Promise.resolve();
+  }
+  list(_m: MarketContext, sellerId: Id<'Seller'>, sellerOrderId: Id<'SellerOrder'>, limit: number) {
+    return Promise.resolve(
+      this.rows
+        .filter((row) => row.sellerOrderId === sellerOrderId && row.sellerId === sellerId)
         .reverse()
         .slice(0, limit),
     );

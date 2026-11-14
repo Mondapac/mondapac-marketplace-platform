@@ -97,7 +97,10 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // seller's shelf proposal; unprotected; the protected `catalog.seller-category.promote-merge`
     // is not listed) and `sellers.seller-settings.edit` (sellers design 6.1: the "May propose
     // categories" switch, SEL-26; Hassan I4 on #705).
-    seedVersion: 16,
+    // Version 17 adds `catalog.variant-request.review` (variants V7: decide a seller's request for
+    // a new variant; unprotected, approving also needs `catalog.platform-product.edit`, which this
+    // role holds).
+    seedVersion: 17,
     nameKey: 'identity.role.catalogue-moderator',
     permissionKeys: [
       'identity.seller-access.view',
@@ -113,6 +116,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.category-tree.edit',
       'catalog.attribute-suggestion.decide',
       'catalog.variant.view',
+      'catalog.variant-request.review',
       'catalog.category-proposal.decide',
       'sellers.seller.view',
       'sellers.seller-settings.edit',
@@ -217,7 +221,11 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // protected `.manage` keys are not viewer keys.
     // Version 32 adds `settings.cart-mode.view`, likewise unprotected (settings module: Cart mode,
     // package B1); the manage key is not a viewer key.
-    seedVersion: 32,
+    // Version 33 adds `settings.ai.view`, likewise unprotected (the AI description writer's switch
+    // and model tier); the protected `settings.ai.manage` is not a viewer key.
+    // Version 34 adds `ordering.refund-limits.view`, likewise unprotected (seller refund caps,
+    // owner decision 2026-11-11); the protected `ordering.refund-limits.manage` is not a viewer key.
+    seedVersion: 34,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -251,6 +259,8 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'catalog.variant.view',
       'storefront.seo.view',
       'settings.cart-mode.view',
+      'settings.ai.view',
+      'ordering.refund-limits.view',
     ],
   },
   {

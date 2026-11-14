@@ -54,6 +54,17 @@ export const ORDERING_SELLER_ORDER_MARK_UNAVAILABLE = definePermission('ordering
   protected: true,
 });
 
+/**
+ * Write a note on the shop's own paid seller order (order detail decision 3). Reading the notes
+ * needs only `ordering.seller-order.view`. Not protected (no money moves); like the other seller
+ * order keys, no default role lists it yet, so the Seller Owner holds it until a role is given it.
+ */
+export const ORDERING_SELLER_ORDER_NOTE = definePermission('ordering', {
+  key: 'ordering.seller-order.note',
+  scope: 'seller',
+  protected: false,
+});
+
 /** Refund part or all of a paid seller order of any order of the Market (tax step 3). */
 export const ORDERING_ORDER_REFUND = definePermission('ordering', {
   key: 'ordering.order.refund',
@@ -72,13 +83,48 @@ export const ORDERING_ORDER_NOTE = definePermission('ordering', {
   protected: false,
 });
 
+/**
+ * Share a saved filter of the admin order list with every admin of the Market (the same idea as
+ * `catalog.saved-filter.share`). Unprotected. No default role lists it yet: the Platform
+ * Administrator grants it to the roles that should (which also need `ordering.order.view`).
+ */
+export const ORDERING_SAVED_FILTER_SHARE = definePermission('ordering', {
+  key: 'ordering.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * See the caps on seller refunds (decision 6; Hassan F2): the Market default and each seller's own,
+ * and the admin notice when a seller reaches one.
+ */
+export const ORDERING_REFUND_LIMITS_VIEW = definePermission('ordering', {
+  key: 'ordering.refund-limits.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Set or remove the caps on seller refunds (owner decision 2026-11-11). Protected: a cap decides how
+ * much seller money may go back unchecked, so no default role lists it (R11).
+ */
+export const ORDERING_REFUND_LIMITS_MANAGE = definePermission('ordering', {
+  key: 'ordering.refund-limits.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const ORDERING_PERMISSIONS = declarePermissions('ordering', [
   ORDERING_ORDER_NOTE,
   ORDERING_ORDER_REFUND,
+  ORDERING_SAVED_FILTER_SHARE,
   ORDERING_ORDER_VIEW,
+  ORDERING_REFUND_LIMITS_MANAGE,
+  ORDERING_REFUND_LIMITS_VIEW,
   ORDERING_SELLER_ORDER_CONFIRM_PICKUP,
   ORDERING_SELLER_ORDER_MARK_DELIVERED,
   ORDERING_SELLER_ORDER_MARK_READY,
   ORDERING_SELLER_ORDER_MARK_UNAVAILABLE,
+  ORDERING_SELLER_ORDER_NOTE,
   ORDERING_SELLER_ORDER_VIEW,
 ]);

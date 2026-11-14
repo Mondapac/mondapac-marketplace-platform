@@ -37,6 +37,7 @@ import type {
   ProductDetailsGapReader,
   PublishedProductValues,
 } from '../ports/product-details-gap.reader';
+import { englishLocaleOf } from '../attributes/english-locale';
 import { MissingDetailsEmailSellers } from './missing-details-email-sellers.use-case';
 import { SendMissingDetailsEmails } from './send-missing-details-emails.use-case';
 
@@ -75,6 +76,7 @@ class MemoryStore implements MissingDetailsEmailStore {
       outcome: string | null;
       attempts: number;
       requestedAt: Temporal.Instant;
+      settledAt: Temporal.Instant | null;
     }
   >();
   private key = (k: MissingDetailsEmailKey) => `${k.sellerId}:${k.productId}`;
@@ -90,6 +92,7 @@ class MemoryStore implements MissingDetailsEmailStore {
                 productId: row.productId,
                 state: row.state,
                 requestedAt: row.requestedAt,
+                settledAt: row.settledAt,
               },
             ];
       }),
@@ -115,6 +118,7 @@ class MemoryStore implements MissingDetailsEmailStore {
       outcome: null,
       attempts: 0,
       requestedAt: claim.now,
+      settledAt: null,
     });
     return Promise.resolve(true);
   }
@@ -127,9 +131,11 @@ class MemoryStore implements MissingDetailsEmailStore {
     _m: MarketContext,
     key: MissingDetailsEmailKey,
     end: MissingDetailsEmailEnd | { state: 'pending'; attempts: number },
+    now: Temporal.Instant,
   ) {
     const row = this.rows.get(this.key(key));
     if (row === undefined || row.state !== 'pending') return Promise.resolve(false);
+    row.settledAt = end.state === 'pending' ? null : now;
     row.state = end.state;
     row.attempts = end.attempts;
     row.outcome = 'outcome' in end ? end.outcome : null;
@@ -140,6 +146,9 @@ class MemoryStore implements MissingDetailsEmailStore {
 describe.each(['AU', 'ZZ'] as const)('Email sellers in market %s', (code) => {
   const market: MarketContext = testMarketContext(code, 'default');
   const locale = policy.locales(market).default;
+  // The mail's names are English (ZZ's default locale is ja-JP; its English one is en-US).
+  const english = englishLocaleOf(policy.locales(market));
+  const translated = locale !== english;
 
   const admin = (): CallContext =>
     testCallContext(
@@ -162,6 +171,7 @@ describe.each(['AU', 'ZZ'] as const)('Email sellers in market %s', (code) => {
   let address: string | null;
   let sendFails: boolean;
   let now: Temporal.Instant;
+  let askedLocales: string[];
 
   const check: AuthorisationCheck = {
     check: () =>
@@ -173,7 +183,15 @@ describe.each(['AU', 'ZZ'] as const)('Email sellers in market %s', (code) => {
     run: <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
   } as unknown as UnitOfWork;
   const gapReader: ProductDetailsGapReader = {
-    publishedByIds: (_m, ids) => Promise.resolve(rows.filter((row) => ids.includes(row.productId))),
+    publishedByIds: (_m, ids, asked) => {
+      askedLocales.push(asked);
+      return Promise.resolve(
+        rows
+          .filter((row) => ids.includes(row.productId))
+          // Product names exist in English; another locale reads the Japanese one.
+          .map((row) => (asked === english ? row : { ...row, name: `製品 ${row.productCode}` })),
+      );
+    },
     published: () => Promise.resolve([]),
   };
   const attributes = {
@@ -182,8 +200,23 @@ describe.each(['AU', 'ZZ'] as const)('Email sellers in market %s', (code) => {
   const attributeAdminReader = {
     definitions: () =>
       Promise.resolve([
-        { code: 'origin', revision: { names: { [locale]: 'Country of origin' } } },
-        { code: 'storage', revision: { names: { [locale]: 'Storage' } } },
+        {
+          code: 'origin',
+          revision: {
+            names: {
+              [english]: 'Country of origin',
+              ...(translated ? { [locale]: '原産国' } : {}),
+            },
+          },
+        },
+        {
+          code: 'storage',
+          revision: {
+            names: { [english]: 'Storage', ...(translated ? { [locale]: '保管' } : {}) },
+          },
+        },
+        // Named only in the default locale: an English mail shows its code (ZZ).
+        { code: 'nameless', revision: { names: translated ? { [locale]: '名前' } : {} } },
       ]),
   } as unknown as AttributeAdminReader;
   const familyResolver = {
@@ -262,6 +295,7 @@ describe.each(['AU', 'ZZ'] as const)('Email sellers in market %s', (code) => {
     address = 'owner@seller.test';
     sendFails = false;
     now = T0;
+    askedLocales = [];
   });
 
   it('is refused without the permission, and for a seller or a malformed request', async () => {
@@ -340,6 +374,21 @@ describe.each(['AU', 'ZZ'] as const)('Email sellers in market %s', (code) => {
     expect(result.value.ignored).toEqual([{ productId: ID(0x1003), reason: 'not-published' }]);
     expect(store.rows.size).toBe(2);
     expect(audits).toHaveLength(1);
+  });
+
+  it('reads product and detail names in the English locale, never the default one', async () => {
+    const result = await request().execute(admin(), { productIds: [ID(0x1001)], dryRun: true });
+    expect(askedLocales).toEqual([english]);
+    expect(result.ok && result.value.sellers[0]?.products[0]?.missing).toEqual([
+      'Country of origin',
+      'Storage',
+    ]);
+    await request().execute(admin(), { productIds: [ID(0x1001)] });
+    now = T0.add({ seconds: 1 });
+    await job().execute(system(), {});
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.text).toContain('Product 1: Country of origin, Storage');
+    expect(sent[0]?.text).not.toMatch(/製品|原産国|保管/);
   });
 
   it('leaves out platform products and products with nothing missing', async () => {

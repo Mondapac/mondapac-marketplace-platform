@@ -590,6 +590,24 @@ describe('relay allowlist for stock locations', () => {
     });
     expect((await relay(config, read, units, upstream)).status).toBe(404);
   });
+  it('relays a size request by UUID, and refuses other shapes', async () => {
+    const upstream = upstreamOk();
+    const send = (path: string[]) =>
+      new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method: 'POST',
+        headers: { ...sameOrigin, 'content-type': 'application/json' },
+        body: '{}',
+      });
+    const good = ['catalog', 'seller', 'offers', ID, 'variant-requests'];
+    expect((await relay(config, send(good), good, upstream)).status).toBe(200);
+    const bad = [
+      ['catalog', 'seller', 'offers', 'x', 'variant-requests'],
+      ['catalog', 'seller', 'offers', ID, 'variant-requests', 'x'],
+    ];
+    for (const path of bad) {
+      expect((await relay(config, send(path), path, upstream)).status).toBe(404);
+    }
+  });
   it('relays a regular price write by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     const price = ['pricing', 'seller', 'offers', ID, 'variants', ID, 'regular-price'];
@@ -1659,6 +1677,87 @@ describe('relay allowlist for category proposals and shelves (categories C9b)', 
       ['PUT', ['catalog', 'seller', 'offers', ID, 'shelf', 'x']],
     ] as const) {
       expect((await send(method, [...path])).status, `${method} ${path.join('/')}`).toBe(404);
+    }
+  });
+});
+
+describe('relay allowlist for Write with AI (AIS-03)', () => {
+  const send = (method: string, path: string[]) =>
+    relay(
+      config,
+      new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method,
+        headers: sameOrigin,
+        ...(method === 'GET' ? {} : { body: '{}' }),
+      }),
+      path,
+      upstreamOk(),
+    );
+  const base = ['catalog', 'own', 'description-writer'];
+
+  it('relays the status read and the draft POST', async () => {
+    expect((await send('GET', base)).status).toBe(200);
+    expect((await send('POST', [...base, 'drafts'])).status).toBe(200);
+  });
+
+  it('refuses other methods, other paths and any admin-only read', async () => {
+    for (const [method, path] of [
+      ['POST', base],
+      ['PUT', [...base, 'drafts']],
+      ['GET', [...base, 'drafts']],
+      ['GET', [...base, 'model-setup']],
+      ['POST', [...base, 'drafts', 'x']],
+      ['GET', ['catalog', 'admin', 'description-writer']],
+      ['GET', ['settings', 'admin', 'ai']],
+    ] as const) {
+      expect((await send(method, [...path])).status, `${method} ${path.join('/')}`).toBe(404);
+    }
+  });
+});
+
+describe('relay of the seller order list views', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method,
+      headers,
+      ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
+    });
+
+  it('relays the saved views with the seller list key only', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'ordering/seller/saved-filters?listKey=seller.ordering.orders&extra=1'),
+      ['ordering', 'seller', 'saved-filters'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/ordering/seller/saved-filters?listKey=seller.ordering.orders',
+    );
+    for (const [method, path] of [
+      ['POST', 'ordering/seller/saved-filters'],
+      ['PUT', `ordering/seller/saved-filters/${ID}`],
+      ['DELETE', `ordering/seller/saved-filters/${ID}`],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+      expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+    }
+  });
+
+  it('refuses other methods and ids on the saved views', async () => {
+    for (const [method, path] of [
+      ['PUT', 'ordering/seller/saved-filters'],
+      ['DELETE', 'ordering/seller/saved-filters'],
+      ['PUT', 'ordering/seller/saved-filters/not-a-uuid'],
+      ['POST', `ordering/seller/saved-filters/${ID}`],
+      ['GET', `ordering/seller/saved-filters/${ID}`],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      const response = await relay(config, request(method, path), path.split('/'), fetchImpl);
+      expect(response.status, `${method} ${path}`).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
     }
   });
 });

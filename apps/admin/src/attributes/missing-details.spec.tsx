@@ -21,6 +21,7 @@ const item = (n: number, over: Partial<MissingDetailsItem> = {}): MissingDetails
   sellerId: id(900 + n),
   featureSetCode: 'pantry',
   missing: ['origin'],
+  lastEmailedAt: null,
   ...over,
 });
 const page = (
@@ -54,6 +55,24 @@ describe('Missing details tab', () => {
     expect(screen.getAllByText('origin')).toHaveLength(2);
     expect(screen.getByText('storage')).toBeTruthy();
     expect(call.mock.calls[0]?.[1]).toContain('products-missing-details?limit=50');
+  });
+
+  it('shows when the seller was last emailed, or that they were not', async () => {
+    call.mockResolvedValueOnce(
+      ok(
+        page([
+          item(1, { lastEmailedAt: '2026-11-08T03:00:00.000Z' }),
+          item(3, { lastEmailedAt: '2026-11-08T23:30:00.000Z' }),
+          item(2),
+        ]),
+      ),
+    );
+    mount();
+    await screen.findByText('Product 1');
+    expect(screen.getByText('Last emailed Nov 8, 2026, 3:00 AM UTC')).toBeTruthy();
+    // Late evening UTC stays on the same UTC day whatever the runtime zone.
+    expect(screen.getByText('Last emailed Nov 8, 2026, 11:30 PM UTC')).toBeTruthy();
+    expect(screen.getAllByText('Not emailed yet')).toHaveLength(1);
   });
 
   it('shows the empty state when nothing is missing', async () => {

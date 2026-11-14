@@ -288,10 +288,10 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
       ['platform', 'default', 'onboarding-compliance', 13],
-      ['platform', 'default', 'catalogue-moderator', 20],
+      ['platform', 'default', 'catalogue-moderator', 21],
       ['platform', 'default', 'operations-support', 9],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 31],
+      ['platform', 'default', 'viewer', 33],
       ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 8],
@@ -318,7 +318,10 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // data and the Viewer sees none (commission-payouts design 5.3; the brief of package 6d).
     // `commission-payouts.payout-terms.view` is left out for the same reason (design 5.3; the
     // owner's decision of 2026-11-04, viewer seed version 28).
+    // `security.centre.view` is left out too: alerts name accounts and addresses under attack,
+    // for the responders only (SOC package 2, docs/design/data/security.md 6).
     const DECRYPTING_VIEW_KEYS = [
+      'security.centre.view',
       'sellers.business-details.view',
       'certification.issuer.view',
       'commission-payouts.payout.view',
@@ -365,6 +368,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'catalog.product.pause',
       'catalog.product.view',
       'catalog.saved-filter.share',
+      'catalog.variant-request.review',
       'catalog.variant.view',
       'certification.claim-policy.view',
       'certification.product-certificate.view',

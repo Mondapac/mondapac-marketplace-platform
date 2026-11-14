@@ -203,14 +203,16 @@ export interface VariantShipping {
 /**
  * One value of a specification row, typed so the page formats it (digits, Yes/No, dates): text and
  * list entries are in the asked locale (select labels, English fallback); a number is a decimal
- * string in the attribute's own digits; a date is `YYYY-MM-DD`.
+ * string in the attribute's own digits; a date is `YYYY-MM-DD`; a measure is a decimal string in
+ * the unit the seller chose, with that unit's label in the asked locale (English fallback).
  */
 export type PublishedSpecificationValue =
   | { readonly kind: 'text'; readonly text: string }
   | { readonly kind: 'list'; readonly items: readonly string[] }
   | { readonly kind: 'number'; readonly value: string }
   | { readonly kind: 'boolean'; readonly value: boolean }
-  | { readonly kind: 'date'; readonly value: string };
+  | { readonly kind: 'date'; readonly value: string }
+  | { readonly kind: 'measure'; readonly value: string; readonly unitLabel: string };
 
 /** One attribute of a published product that its page lists. */
 export interface PublishedSpecification {

@@ -37,6 +37,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'reviews/seller',
     'payments/seller/payout-account',
     'ordering/seller/orders',
+    // The saved views of the order list (ordering; query: `listKey`).
+    'ordering/seller/saved-filters',
     'commission-payouts/seller/ledger',
     // The estimated next payout, the payout history (query: `limit`, `cursor`) and the money on
     // hold (commission-payouts, package 6d). The seller id is the session's, never a parameter.
@@ -63,6 +65,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/seller/saved-filters',
     // The seller's category proposals, shelves and whether proposing is on (categories C9b).
     'catalog/seller/category-proposals',
+    // Whether "Write with AI" is on for this seller, and the Market zone its daily limit resets in
+    // (catalog, AIS-03). Never the key or the model: those are admin settings.
+    'catalog/own/description-writer',
   ]),
   PUT: new Set([
     // The signed-in member's own display name (profile).
@@ -83,6 +88,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set(['sellers/store-profile/logo', 'sellers/store-profile/banner']),
   POST: new Set([
+    // A description draft from the "Write with AI" modal (catalog, AIS-03): the form's title,
+    // category label, details, keywords and note in; plain text out. Nothing is stored.
+    'catalog/own/description-writer/drafts',
     // The signed-in member's other sessions are ended; this one stays (profile).
     'identity/seller/profile/sessions/sign-out-others',
     'identity/seller/sign-up',
@@ -118,6 +126,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'payments/seller/payout-account',
     'payments/seller/payout-account/link',
     'notifications/seller/notices/read-all',
+    // Save the order list's current view as a tab (ordering): a closed body, always for the member.
+    'ordering/seller/saved-filters',
     // Propose a category (a shelf of the seller's shop; categories C9b).
     'catalog/seller/category-proposals',
   ]),
@@ -129,6 +139,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
  */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   PUT: [
+    // A saved view of the order list: its name (ordering).
+    'ordering/seller/saved-filters/:id',
     'inventory/seller/sources/:id',
     'catalog/seller/products/:id/draft',
     'catalog/seller/offers/:id',
@@ -156,6 +168,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/products/:id/topic-suggestions',
     'catalog/seller/products/:id/images',
     'catalog/seller/offers/:id/submit',
+    // Ask for a size a platform product does not have (catalog, variants V7).
+    'catalog/seller/offers/:id/variant-requests',
     // Withdraw a waiting category proposal (categories C9b).
     'catalog/seller/category-proposals/:id/cancel',
     // The seller import: confirm, retry the rest, cancel a check, and one photo of the photo step.
@@ -178,6 +192,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/offers/:id',
     'catalog/seller/products/:id/images/:id',
     'catalog/seller/saved-filters/:id',
+    // A saved view of the order list (ordering).
+    'ordering/seller/saved-filters/:id',
   ],
   // A product photo for the panel's <img> tags: the API serves a JPEG it wrote itself.
   GET: [
@@ -205,6 +221,7 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     from: null,
     to: null,
   },
+  'ordering/seller/saved-filters': { listKey: /^seller\.ordering\.orders$/ },
   'commission-payouts/seller/ledger': { limit: null, cursor: null },
   // The API's own cursor: epoch milliseconds of the creation, a dot and the payout id.
   'commission-payouts/seller/payouts': {

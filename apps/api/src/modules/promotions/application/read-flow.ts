@@ -64,7 +64,7 @@ function filterOf(
  * counters: the money reserved or paid is the platform's spend, and a use is a rewarded referral
  * or a credit. Called inside the read unit.
  */
-async function usageWithCredits(
+export async function usageWithCredits(
   deps: PromotionsDependencies,
   context: CallContext,
   records: readonly PromotionRecord[],

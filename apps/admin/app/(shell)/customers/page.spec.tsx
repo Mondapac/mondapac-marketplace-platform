@@ -42,6 +42,7 @@ const as = (...permissionKeys: string[]) =>
       secondFactorActive: true,
       lastSignInAt: null,
       timezone: null,
+      marketTimezone: 'UTC',
       locale: null,
       email: 'ada@example.test',
       displayName: 'Ada',

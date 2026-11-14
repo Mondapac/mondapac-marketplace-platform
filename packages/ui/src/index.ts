@@ -180,6 +180,20 @@ export {
   type ActionMenuProps,
 } from './overlay/action-menu.tsx';
 export { Popover, type PopoverProps } from './overlay/popover.tsx';
+export {
+  ColumnPickerPanel,
+  type ColumnPickerLabels,
+  type ColumnPickerPanelProps,
+} from './list-views/column-picker-panel.tsx';
+export {
+  ManageViewsDialog,
+  SAVED_VIEW_NAME_MAX,
+  SaveViewDialog,
+  type SavedViewItem,
+  type SavedViewLabels,
+  type SavedViewProblem,
+  type SavedViewVisibility,
+} from './list-views/saved-view-dialogs.tsx';
 export { FilterChip, type FilterChipProps } from './form/filter-chip.tsx';
 export { THEME_COOKIE, THEME_SCRIPT, themeChoice, type ThemeChoice } from './theme/theme.ts';
 export { ThemeMenu, applyThemeChoice, type ThemeMenuProps } from './theme/theme-menu.tsx';
@@ -306,3 +320,31 @@ export {
 } from './list/export-dialog.tsx';
 export { useRowSelection, type RowSelectionState } from './list/use-row-selection.ts';
 export { ListViewsBar, type ListViewsBarProps } from './list/list-views-bar.tsx';
+export {
+  DescriptionWriter,
+  mergeDraft,
+  type DescriptionWriterProps,
+} from './writer/description-writer.tsx';
+export {
+  AiWriterModal,
+  type AiWriterModalProps,
+  type InsertMode,
+} from './writer/ai-writer-modal.tsx';
+export {
+  loadWriterStatus,
+  requestDraft,
+  type WriterApiResult,
+  type WriterCall,
+  type WriterOutcome,
+  type WriterRequest,
+  type WriterStatus,
+} from './writer/writer-api.ts';
+export {
+  WRITER_COPY,
+  clampCategory,
+  clampDetails,
+  clampTitle,
+  leftOutLine,
+  type LeftOut,
+  type WriterDetail,
+} from './writer/writer-copy.ts';

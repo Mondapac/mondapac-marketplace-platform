@@ -4,6 +4,7 @@ import { Badge, Banner, Button, EmptyState, Select, TextField } from '@mondapac/
 import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { SellerFormPreview } from './seller-form-preview.tsx';
 import { loadActiveAttributes } from './load-active-attributes.ts';
 import {
   addEntry,
@@ -83,6 +84,7 @@ export function FeatureSetEditor({
   const [listFailed, setListFailed] = useState(false);
   const [newGroup, setNewGroup] = useState('');
   const [adding, setAdding] = useState<Readonly<Record<number, string>>>({});
+  const [previewing, setPreviewing] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -290,6 +292,7 @@ export function FeatureSetEditor({
                   setState(
                     addEntry(state, g, {
                       code: item.code,
+                      attributeId: item.id,
                       level: 'optional',
                       names: item.names,
                       dataType: item.dataType,
@@ -337,6 +340,9 @@ export function FeatureSetEditor({
         </Banner>
       ) : null}
       <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" onClick={() => setPreviewing(true)}>
+          {t('preview.open')}
+        </Button>
         <Button variant="secondary" disabled={pending} onClick={onCancel}>
           {t('cancel')}
         </Button>
@@ -348,6 +354,14 @@ export function FeatureSetEditor({
           {t('save')}
         </Button>
       </div>
+      <SellerFormPreview
+        open={previewing}
+        onClose={() => setPreviewing(false)}
+        featureSetId={detail.id}
+        featureSetCode={detail.code}
+        state={state}
+        locales={locales}
+      />
     </section>
   );
 }
