@@ -10,7 +10,7 @@ export async function generateMetadata() {
   return { title: t('orders.slip.title') };
 }
 
-/** The printable packing slip: outside the panel shell, so the printed page is the slip alone. */
+/** The printable packing slip: its print stylesheet hides the panel shell, so the printed page is the slip alone. */
 export default async function PackingSlipPage({
   params,
 }: {

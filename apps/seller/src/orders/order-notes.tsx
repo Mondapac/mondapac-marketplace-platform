@@ -8,7 +8,7 @@ import { callApi } from '../api/client.ts';
 import { shortInstant } from '../catalog/format.ts';
 import { NOTE_MAX_LENGTH, type SellerNote } from './types.ts';
 
-type NoteProblem = 'erased' | 'denied' | 'invalid' | 'unavailable' | 'unknown';
+type NoteProblem = 'erased' | 'denied' | 'gone' | 'invalid' | 'unavailable' | 'unknown';
 
 /**
  * The shop's internal notes on one order: only the shop's team sees them, never the customer.
@@ -82,9 +82,11 @@ export function OrderNotes({
         ? 'erased'
         : failure.code === 'access.denied'
           ? 'denied'
-          : failure.status === 503 || failure.status === 0
-            ? 'unavailable'
-            : 'unknown',
+          : failure.code === 'ordering.seller-order-not-found'
+            ? 'gone'
+            : failure.status === 503 || failure.status === 0
+              ? 'unavailable'
+              : 'unknown',
     );
   }
 

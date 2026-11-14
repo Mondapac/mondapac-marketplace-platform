@@ -308,6 +308,17 @@ describe('Order notes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
     await waitFor(() => expect(screen.getByText(/account was deleted/)).toBeTruthy());
   });
+
+  it('explains an order that is no longer there', async () => {
+    apiMock.mockResolvedValue({
+      ok: false,
+      failure: { status: 404, code: 'ordering.seller-order-not-found' },
+    });
+    mount();
+    fireEvent.change(screen.getByLabelText('Add a note'), { target: { value: 'Hello' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    await waitFor(() => expect(screen.getByText(/no longer available/)).toBeTruthy());
+  });
 });
 
 describe('Order timeline', () => {

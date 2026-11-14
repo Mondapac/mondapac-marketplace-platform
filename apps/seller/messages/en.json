@@ -2687,6 +2687,7 @@
       "problem": {
         "erased": "The customer’s account was deleted, so notes can no longer be added.",
         "denied": "Your role cannot add notes.",
+        "gone": "This order is no longer available. Go back to the orders list.",
         "invalid": "The note could not be saved. Check the text and try again.",
         "unavailable": "Notes are not available right now. Try again shortly.",
         "unknown": "Something went wrong. Try again."
