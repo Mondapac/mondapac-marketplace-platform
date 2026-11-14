@@ -3,6 +3,9 @@ import {
   MAX_PRODUCT_CATEGORIES,
   addCategory,
   choiceLabel,
+  choiceParts,
+  focusAfterRemove,
+  splitLabel,
   makePrimary,
   removeCategory,
   type CategoryChoice,
@@ -49,5 +52,22 @@ describe('the list rules', () => {
     expect(addCategory(['a'], 'b')).toEqual(['a', 'b']);
     expect(addCategory(['a'], 'a')).toEqual(['a']);
     expect(addCategory(['a', 'b', 'c'], 'd')).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('parts and focus', () => {
+  it('splits a choice and a label into the same names', () => {
+    expect(choiceParts(choice({ general: true }), 'General')).toEqual([
+      'Pantry',
+      'Rice',
+      'Basmati',
+      'General',
+    ]);
+    expect(splitLabel('Pantry › Rice')).toEqual(['Pantry', 'Rice']);
+  });
+  it('picks the next row, else the previous, else the Add control', () => {
+    expect(focusAfterRemove(['a', 'b', 'c'], 'b')).toEqual({ kind: 'row', id: 'c' });
+    expect(focusAfterRemove(['a', 'b'], 'b')).toEqual({ kind: 'row', id: 'a' });
+    expect(focusAfterRemove(['a'], 'a')).toEqual({ kind: 'add' });
   });
 });

@@ -5,7 +5,16 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { CategoryProblemBanner } from './category-problem.tsx';
-import { POLL_MS, handled, isFinished, jobOf, moveTargetRows } from './move-products-model.ts';
+import {
+  MAX_MISSES,
+  POLL_MS,
+  handled,
+  isFinished,
+  jobOf,
+  moveTargetRows,
+  newestRunning,
+  pathLabel,
+} from './move-products-model.ts';
 import { TargetPicker } from './restructure-dialog.tsx';
 import { checkReason, reasonOf } from './restructure-model.ts';
 import { useCategoryCall } from './use-category-call.ts';
@@ -52,16 +61,32 @@ function useProductCount(categoryId: string): CountState {
 type Progress =
   | { readonly kind: 'waiting' }
   | { readonly kind: 'job'; readonly job: MoveJob; readonly unreadable: boolean }
-  | { readonly kind: 'unreadable' };
+  | { readonly kind: 'unreadable' }
+  /** The category is gone (404): reading stops and the admin is asked to reload. */
+  | { readonly kind: 'gone' };
 
-/** Reads the progress of the job until it is done or failed; a read that fails is tried again. */
+/**
+ * Reads the progress of the job until it is done or failed; a read that fails is tried again.
+ * A job that is not in the newest list after several reads, or a 404, ends the waiting; reads
+ * pause while the tab is hidden and go on when it is shown.
+ */
 function useJobProgress(categoryId: string, jobId: string | null): Progress {
   const [state, setState] = useState<Progress>({ kind: 'waiting' });
   useEffect(() => {
     if (jobId === null) return;
+    const wanted: string = jobId;
     let current = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const read = async (): Promise<void> => {
+    let misses = 0;
+    let sleeping = false;
+    function schedule(): void {
+      timer = setTimeout(() => {
+        if (document.hidden) sleeping = true;
+        else void read();
+      }, POLL_MS);
+    }
+    async function read(): Promise<void> {
+      sleeping = false;
       const result = await callApi<MoveProgressBody>(
         'GET',
         `${API_CATEGORIES}/${categoryId}/move-products`,
@@ -69,14 +94,20 @@ function useJobProgress(categoryId: string, jobId: string | null): Progress {
       if (!current) return;
       let finished = false;
       if (result.ok) {
-        const job = jobOf(result.body, jobId);
-        if (job === null) setState({ kind: 'waiting' });
-        else {
+        const job = jobOf(result.body, wanted);
+        if (job === null) {
+          misses += 1;
+          setState(misses >= MAX_MISSES ? { kind: 'unreadable' } : { kind: 'waiting' });
+        } else {
+          misses = 0;
           setState({ kind: 'job', job, unreadable: false });
           finished = isFinished(job);
         }
       } else if (result.failure.status === 401) {
         window.location.assign('/session-ended');
+        return;
+      } else if (result.failure.status === 404) {
+        setState({ kind: 'gone' });
         return;
       } else {
         setState((previous) =>
@@ -85,11 +116,16 @@ function useJobProgress(categoryId: string, jobId: string | null): Progress {
             : { kind: 'unreadable' },
         );
       }
-      if (!finished) timer = setTimeout(() => void read(), POLL_MS);
+      if (!finished) schedule();
+    }
+    const onVisible = (): void => {
+      if (!document.hidden && sleeping && current) void read();
     };
+    document.addEventListener('visibilitychange', onVisible);
     void read();
     return () => {
       current = false;
+      document.removeEventListener('visibilitychange', onVisible);
       if (timer !== undefined) clearTimeout(timer);
     };
   }, [categoryId, jobId]);
@@ -99,10 +135,17 @@ function useJobProgress(categoryId: string, jobId: string | null): Progress {
 function ProgressView({
   progress,
   expected,
+  name,
+  earlier,
+  onReload,
 }: {
   readonly progress: Progress;
   /** The count the start answered with, shown until the job itself is read. */
   readonly expected: number;
+  readonly name: string;
+  /** The admin attached to a move somebody started earlier. */
+  readonly earlier: boolean;
+  readonly onReload: () => void;
 }) {
   const t = useTranslations('categories.move-products');
   const job = progress.kind === 'job' ? progress.job : null;
@@ -110,9 +153,17 @@ function ProgressView({
   const state = job?.state ?? 'queued';
   return (
     <div className="flex flex-col gap-3" data-testid="move-products-progress">
-      <p role="status" className="m-0 font-medium">
-        {t(`state.${state}`)}
-      </p>
+      {earlier ? <Banner tone="attention">{t('attached-note')}</Banner> : null}
+      {/* A job that cannot be read is not "waiting to start": the banner below says what is known. */}
+      {progress.kind === 'unreadable' || progress.kind === 'gone' ? null : (
+        <p role="status" className="m-0 font-medium">
+          {t(`state.${state}`, {
+            moved: job?.moved ?? 0,
+            skipped: job?.skipped ?? 0,
+            failed: job?.failed ?? 0,
+          })}
+        </p>
+      )}
       <progress
         className="w-full"
         aria-label={t('progress-label')}
@@ -130,11 +181,20 @@ function ProgressView({
         <dd className="m-0">{job?.failed ?? 0}</dd>
       </dl>
       {state === 'failed' ? <Banner tone="critical">{t('failed-body')}</Banner> : null}
-      {state === 'done' && job !== null && (job.skipped > 0 || job.failed > 0) ? (
-        <Banner tone="attention">{t('done-with-gaps')}</Banner>
+      {state === 'done' && job !== null && job.skipped > 0 ? (
+        <Banner tone="info">{t('skipped-note', { name })}</Banner>
+      ) : null}
+      {state === 'done' && job !== null && job.failed > 0 ? (
+        <Banner tone="attention">{t('failed-note')}</Banner>
       ) : null}
       {progress.kind === 'unreadable' || (progress.kind === 'job' && progress.unreadable) ? (
         <Banner tone="attention">{t('progress-unreadable')}</Banner>
+      ) : null}
+      {progress.kind === 'gone' ? (
+        <div className="flex flex-col items-start gap-2">
+          <Banner tone="attention">{t('progress-gone')}</Banner>
+          <Button onClick={onReload}>{t('reload')}</Button>
+        </div>
       ) : null}
     </div>
   );
@@ -172,9 +232,13 @@ export function MoveProductsDialog({
   const [reason, setReason] = useState('');
   const [touched, setTouched] = useState(false);
   const [started, setStarted] = useState<MoveStarted | null>(null);
+  // The admin looked at a move that was already running (409): never attached without asking.
+  const [earlier, setEarlier] = useState(false);
+  const [lookup, setLookup] = useState<'idle' | 'reading' | 'none' | 'failed'>('idle');
   const candidates = useMemo(() => moveTargetRows(rows, categoryId), [rows, categoryId]);
   const count = useProductCount(categoryId);
   const progress = useJobProgress(categoryId, started?.jobId ?? null);
+  const targetPath = target === null ? '' : pathLabel(rows, target, locale);
   const noProducts = count.kind === 'ready' && count.products === 0;
   const reasonState = checkReason(reason);
   const ready = reasonState === 'ok' && target !== null && !noProducts;
@@ -193,6 +257,26 @@ export function MoveProductsDialog({
   useEffect(() => {
     if (started !== null) heading.current?.focus();
   }, [started]);
+
+  const inProgress =
+    call.problem?.key === 'categories.move-products.error.category_move-in-progress';
+
+  async function viewProgress() {
+    setLookup('reading');
+    const result = await callApi<MoveProgressBody>(
+      'GET',
+      `${API_CATEGORIES}/${categoryId}/move-products`,
+    );
+    if (result.ok) {
+      const running = newestRunning(result.body);
+      if (running === null) setLookup('none');
+      else {
+        setEarlier(true);
+        setStarted({ jobId: running.id, products: running.total });
+      }
+    } else if (result.failure.status === 401) window.location.assign('/session-ended');
+    else setLookup('failed');
+  }
 
   async function submit() {
     if (!ready || target === null) return;
@@ -219,7 +303,10 @@ export function MoveProductsDialog({
     <Dialog
       open
       title={t('title', { name })}
-      onClose={() => onClose(started !== null)}
+      // A start that is still being sent is not abandoned by Escape or a click on the backdrop.
+      onClose={() => {
+        if (!call.pending) onClose(started !== null);
+      }}
       {...(started === null && note !== undefined
         ? { actionsNote: <span id={noteId}>{note}</span> }
         : {})}
@@ -251,7 +338,32 @@ export function MoveProductsDialog({
     >
       {started === null ? (
         <div className="flex flex-col gap-4">
-          <CategoryProblemBanner problem={problem} />
+          {inProgress && lookup === 'none' ? (
+            <div className="flex flex-col items-start gap-2">
+              <Banner tone="attention">{t('attach-finished')}</Banner>
+              <Button onClick={onReload}>{t('reload')}</Button>
+            </div>
+          ) : (
+            <>
+              <CategoryProblemBanner problem={problem} />
+              {inProgress ? (
+                <div className="flex flex-col items-start gap-2">
+                  {lookup === 'failed' ? (
+                    <p role="alert" className="m-0 text-sm text-critical-fg">
+                      {t('view-failed')}
+                    </p>
+                  ) : null}
+                  <Button
+                    variant="secondary"
+                    loading={lookup === 'reading'}
+                    onClick={() => void viewProgress()}
+                  >
+                    {t('view-progress')}
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          )}
           <p className="m-0">{t('intro', { name })}</p>
           <TargetPicker
             legend={t('target')}
@@ -263,6 +375,7 @@ export function MoveProductsDialog({
             onChange={(value) => {
               // A refusal belongs to the earlier choice.
               call.clear();
+              setLookup('idle');
               setTarget(value);
             }}
           />
@@ -280,9 +393,13 @@ export function MoveProductsDialog({
               </p>
             ) : (
               <p className="m-0" data-testid="move-products-count">
-                {count.complete
-                  ? t('count', { n: count.products })
-                  : t('count-at-least', { n: count.products })}
+                {target === null
+                  ? count.complete
+                    ? t('count', { n: count.products })
+                    : t('count-at-least', { n: count.products })
+                  : count.complete
+                    ? t('count-to', { n: count.products, name, target: targetPath })
+                    : t('count-at-least-to', { n: count.products, name, target: targetPath })}
               </p>
             )}
           </section>
@@ -304,7 +421,13 @@ export function MoveProductsDialog({
           <h3 ref={heading} tabIndex={-1} className="m-0 text-base font-semibold">
             {t('progress-title')}
           </h3>
-          <ProgressView progress={progress} expected={started.products} />
+          <ProgressView
+            progress={progress}
+            expected={started.products}
+            name={name}
+            earlier={earlier}
+            onReload={onReload}
+          />
           {finished ? null : <p className="m-0 text-sm text-fg-muted">{t('keeps-running')}</p>}
         </div>
       )}

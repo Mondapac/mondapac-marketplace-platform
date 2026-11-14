@@ -21,8 +21,31 @@ const SEPARATOR = ' › ';
 
 /** `Pantry › Rice › Basmati`; a general choice ends in the word for it: `Pantry › Rice › General`. */
 export function choiceLabel(choice: CategoryChoice, generalLabel: string): string {
+  return choiceParts(choice, generalLabel).join(SEPARATOR);
+}
+
+/** The names of `choiceLabel`, one by one (the chosen list shows the separators apart). */
+export function choiceParts(choice: CategoryChoice, generalLabel: string): string[] {
   const path = choice.path.length === 0 ? [choice.name] : choice.path;
-  return [...path, ...(choice.general ? [generalLabel] : [])].join(SEPARATOR);
+  return [...path, ...(choice.general ? [generalLabel] : [])];
+}
+
+/** Splits a label made with the separator back into its names. */
+export function splitLabel(label: string): string[] {
+  return label.split(SEPARATOR);
+}
+
+/** Which control gets focus after the list changed (null: leave focus alone). */
+export type FocusTarget =
+  | { readonly kind: 'row'; readonly id: string }
+  | { readonly kind: 'add' }
+  | { readonly kind: 'limit' };
+
+/** After Remove: the next row's Remove button, else the previous one, else the Add control. */
+export function focusAfterRemove(ids: readonly string[], id: string): FocusTarget {
+  const index = ids.indexOf(id);
+  const next = ids[index + 1] ?? ids[index - 1];
+  return next === undefined || index < 0 ? { kind: 'add' } : { kind: 'row', id: next };
 }
 
 /** The first id is the primary category: another one is moved to the front, the rest keep order. */

@@ -2586,13 +2586,14 @@
         "name-claim": "Product text can't include certification words like \"halal\". Badges come from seller offers."
       },
       "categories-field": {
-        "legend": "Product category",
+        "legend": "Product categories",
         "hint": "Choose a category or subcategory. Products can't go on a department or group.",
         "general": "General",
+        "general-hint": "Not in a subcategory",
         "primary": "Primary",
         "hidden": "Hidden",
         "make-primary": "Make primary",
-        "make-primary-for": "Make {name} the primary category",
+        "make-primary-for": "Make primary: {name}",
         "remove": "Remove",
         "remove-for": "Remove {name}",
         "add": "Add a category",
@@ -2612,8 +2613,8 @@
           "too-many": "A product can be in at most 3 categories.",
           "duplicate": "You chose this category twice. Remove one.",
           "unknown": "This category isn't available any more. Remove it and choose another.",
-          "not-available": "This category is no longer available. Remove it and choose another.",
-          "level-not-allowed": "Choose a category or subcategory. Products can't go on a department or group."
+          "not-available": "This category isn't available any more. Remove it and choose another.",
+          "level-not-allowed": "Choose a more specific category. Products can't go on a department or group."
         }
       },
       "category": "Category and tags",
@@ -5228,6 +5229,8 @@
       "count-error": "We couldn't count the products. The move is still checked when you start it.",
       "count": "{n, plural, one {# published product will move.} other {# published products will move.}}",
       "count-at-least": "At least {n, plural, one {# published product} other {# published products}} will move.",
+      "count-to": "{n, plural, one {# published product will move from {name} to {target}.} other {# published products will move from {name} to {target}.}}",
+      "count-at-least-to": "At least {n, plural, one {# published product} other {# published products}} will move from {name} to {target}.",
       "count-none": "No published product is directly in {name}, so there is nothing to move.",
       "reason": "Reason",
       "reason-help": "10 to 500 characters. It is kept in the audit log. Sellers never see it.",
@@ -5246,7 +5249,7 @@
       "state": {
         "queued": "Waiting to start…",
         "running": "Moving products…",
-        "done": "Done.",
+        "done": "Done. {moved} moved, {skipped} skipped, {failed} failed.",
         "failed": "The move stopped."
       },
       "count-total": "Products to move",
@@ -5254,17 +5257,23 @@
       "count-skipped": "Skipped",
       "count-failed": "Failed",
       "failed-body": "The move stopped before it finished. Some products may not have moved. Start it again to move the rest.",
-      "done-with-gaps": "Some products were skipped or could not be moved. Start the move again to try the rest.",
+      "skipped-note": "Skipped products were no longer in {name} when their turn came, so there was nothing to move.",
+      "failed-note": "Some products could not be moved. Start the move again to try them.",
+      "view-progress": "View progress",
+      "view-failed": "We couldn't read the progress. Try again.",
+      "attached-note": "This move was started earlier. It may be moving products to a different category than the one you chose.",
+      "attach-finished": "That move just finished. Reload the page.",
+      "progress-gone": "This category is no longer available. Reload the page.",
       "progress-unreadable": "We can't read the progress right now. The move keeps running and we keep trying.",
       "keeps-running": "You can close this window. The move keeps running.",
       "error": {
         "category_not-found": "This category is no longer available. Reload.",
         "category_target-not-found": "The category you chose is no longer available. Reload to choose another.",
         "category_move-unchanged": "Those products are already in that category. Choose another.",
-        "category_level-not-allowed": "Choose a category or subcategory. Products can't go on a department or group.",
+        "category_level-not-allowed": "Choose a more specific category. Products can't go on a department or group.",
         "category_not-editable": "This category can't be changed any more. Reload.",
         "category_no-products": "This category has no published products to move.",
-        "category_move-in-progress": "The products of this category are already being moved. Wait for that to finish."
+        "category_move-in-progress": "A move from this category is already running."
       }
     },
     "restructure": {

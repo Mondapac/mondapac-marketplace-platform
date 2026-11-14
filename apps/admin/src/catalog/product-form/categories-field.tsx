@@ -33,6 +33,7 @@ export function CategoriesField({
     legend: t('legend'),
     hint: t('hint'),
     general: t('general'),
+    generalHint: t('general-hint'),
     primary: t('primary'),
     hidden: t('hidden'),
     makePrimary: (name) => t('make-primary-for', { name }),

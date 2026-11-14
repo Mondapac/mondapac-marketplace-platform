@@ -19,6 +19,7 @@ import type { ProductView } from './types.ts';
 const call = vi.mocked(callApi);
 const PICKER = 'catalog/seller/products/category-picker';
 const hint = "Choose a category or subcategory. Products can't go on a department or group.";
+const levelError = "Choose a more specific category. Products can't go on a department or group.";
 const choice = (id: string, path: string[], general = false) => ({
   id,
   level: path.length,
@@ -115,7 +116,7 @@ describe('the category field of the seller product form', () => {
   it('shows the hint and names a saved category by its path without reading the picker', () => {
     mount(product(['oils']));
     expect(screen.getByText(hint)).toBeTruthy();
-    expect(screen.getByText('Pantry › Oils')).toBeTruthy();
+    expect(screen.getByText('Oils')).toBeTruthy();
     expect(screen.getByText('Primary')).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
   });
@@ -150,7 +151,7 @@ describe('the category field of the seller product form', () => {
       screen.getByText('A product can be in up to 3 categories. Remove one to add another.'),
     ).toBeTruthy();
     expect(screen.queryByRole('combobox', { name: 'Add a category' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Make Drinks › Tea the primary category' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Make primary: Drinks › Tea' }));
     expect(screen.getByText('Drinks › Tea is now the primary category.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
@@ -184,16 +185,16 @@ describe('the category field of the seller product form', () => {
     });
     mount(product(['pantry', 'oils']));
     fireEvent.click(screen.getByRole('button', { name: 'Submit for review' }));
-    expect(await screen.findByText(hint, { selector: '[role="alert"]' })).toBeTruthy();
+    expect(await screen.findByText(levelError, { selector: '[role="alert"]' })).toBeTruthy();
     expect(
-      screen.getByText('This category is no longer available. Remove it and choose another.'),
+      screen.getByText("This category isn't available any more. Remove it and choose another."),
     ).toBeTruthy();
     // Other refusals stay as lines; the category ones are not repeated as raw codes.
     expect(screen.getByText('attributes.size: required')).toBeTruthy();
     expect(screen.queryByText(/categoryIds/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Remove Pantry' }));
     expect(
-      screen.queryByText('This category is no longer available. Remove it and choose another.'),
+      screen.queryByText("This category isn't available any more. Remove it and choose another."),
     ).toBeNull();
   });
 });

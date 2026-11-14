@@ -120,12 +120,12 @@ describe('the category field of the platform product form', () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { locale: 'en', choices: CHOICES } });
     const seen = vi.fn();
     render(<Harness initial={['rice']} onValue={seen} />);
-    expect(screen.getByText('Pantry › Rice')).toBeTruthy();
+    expect(screen.getByRole('listitem').textContent).toContain('Pantry › , Rice');
     expect(screen.getByText('Primary')).toBeTruthy();
     open();
     fireEvent.click(await screen.findByRole('option', { name: /^Drinks › Tea/ }));
     expect(seen).toHaveBeenLastCalledWith(['rice', 'tea']);
-    fireEvent.click(screen.getByRole('button', { name: /Make Drinks › Tea the primary category/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Make primary: Drinks › Tea/ }));
     expect(seen).toHaveBeenLastCalledWith(['tea', 'rice']);
     fireEvent.click(screen.getByRole('button', { name: /Remove Drinks › Tea/ }));
     expect(seen).toHaveBeenLastCalledWith(['rice']);
@@ -142,7 +142,7 @@ describe('the category field of the platform product form', () => {
     expect(alerts).toEqual(
       expect.arrayContaining([
         'A product can be in at most 3 categories.',
-        "Choose a category or subcategory. Products can't go on a department or group.",
+        "Choose a more specific category. Products can't go on a department or group.",
         'You chose this category twice. Remove one.',
       ]),
     );

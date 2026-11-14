@@ -9,9 +9,10 @@ const labels: CategoryChooserLabels = {
   legend: 'Categories',
   hint: "Choose a category or subcategory. Products can't go on a department or group.",
   general: 'General',
+  generalHint: 'Not in a subcategory',
   primary: 'Primary',
   hidden: 'Hidden',
-  makePrimary: (name) => `Make ${name} the primary category`,
+  makePrimary: (name) => `Make primary: ${name}`,
   makePrimaryText: 'Make primary',
   remove: (name) => `Remove ${name}`,
   removeText: 'Remove',
@@ -97,7 +98,9 @@ describe('CategoryChooser', () => {
     render(<Harness />);
     open();
     expect(await screen.findByRole('option', { name: /^Pantry › Rice › Basmati/ })).toBeTruthy();
-    expect(screen.getByRole('option', { name: /^Pantry › Rice › General/ })).toBeTruthy();
+    expect(
+      screen.getByRole('option', { name: /^Pantry › Rice › General\s*Not in a subcategory/ }),
+    ).toBeTruthy();
     expect(screen.getByRole('option', { name: /^Drinks › Coffee\s*Hidden/ })).toBeTruthy();
   });
 
@@ -108,17 +111,15 @@ describe('CategoryChooser', () => {
     fireEvent.click(await screen.findByRole('option', { name: /^Drinks › Tea/ }));
     expect(seen).toHaveBeenLastCalledWith(['tea']);
     const list = screen.getByRole('list');
-    expect(within(list).getByText('Drinks › Tea')).toBeTruthy();
+    expect(within(list).getByText('Tea')).toBeTruthy();
     expect(within(list).getByText('Primary')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Make .* the primary/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Make primary/ })).toBeNull();
   });
 
   it('makes another category primary and removes one, in the submitted order', () => {
     const seen = vi.fn();
     render(<Harness initial={['tea', 'oils', 'basmati']} onValue={seen} />);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Make Pantry › Oils the primary category' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Make primary: Pantry › Oils' }));
     expect(seen).toHaveBeenLastCalledWith(['oils', 'tea', 'basmati']);
     fireEvent.click(screen.getByRole('button', { name: 'Remove Pantry › Oils' }));
     expect(seen).toHaveBeenLastCalledWith(['tea', 'basmati']);
@@ -161,6 +162,61 @@ describe('CategoryChooser', () => {
     expect(screen.getByText("We couldn't load the categories.")).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(onRetry).toHaveBeenCalled();
+  });
+
+  it('keeps the arrow on screen only and reads a comma between the names', () => {
+    render(<Harness initial={['basmati']} />);
+    const item = within(screen.getByRole('list')).getByRole('listitem');
+    const arrows = item.querySelectorAll('[aria-hidden="true"]');
+    expect(arrows).toHaveLength(2);
+    expect(arrows[0]?.textContent).toBe(' › ');
+    expect(item.querySelectorAll('.sr-only')).toHaveLength(2);
+    expect(item.textContent).toContain('Pantry › , Rice › , Basmati');
+  });
+
+  it('ties a row error to its buttons with aria-describedby', () => {
+    render(<Harness initial={['tea', 'oils']} itemErrors={{ 1: 'Gone.' }} />);
+    const alert = screen.getByText('Gone.');
+    const remove = screen.getByRole('button', { name: 'Remove Pantry › Oils' });
+    const make = screen.getByRole('button', { name: 'Make primary: Pantry › Oils' });
+    expect(remove.getAttribute('aria-describedby')).toBe(alert.id);
+    expect(make.getAttribute('aria-describedby')).toBe(alert.id);
+    expect(
+      screen.getByRole('button', { name: 'Remove Drinks › Tea' }).hasAttribute('aria-describedby'),
+    ).toBe(false);
+  });
+
+  it('after Remove, focus goes to the next row, else the previous, else the Add control', () => {
+    render(<Harness initial={['tea', 'oils', 'basmati']} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Pantry › Oils' }));
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Remove Pantry › Rice › Basmati' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Pantry › Rice › Basmati' }));
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Remove Drinks › Tea' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Drinks › Tea' }));
+    expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Add a category' }));
+  });
+
+  it('after Make primary, focus goes to the Remove button of the moved row', () => {
+    render(<Harness initial={['tea', 'oils']} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Make primary: Pantry › Oils' }));
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Remove Pantry › Oils' }),
+    );
+    const first = within(screen.getByRole('list')).getAllByRole('listitem')[0]!;
+    expect(first.contains(document.activeElement)).toBe(true);
+  });
+
+  it('when the third category takes the Add control away, focus goes to the limit note', async () => {
+    render(<Harness initial={['tea', 'oils']} />);
+    open();
+    fireEvent.click(await screen.findByRole('option', { name: /^Pantry › Rice › Basmati/ }));
+    const note = screen.getByText('A product can be in up to 3 categories.');
+    expect(note.getAttribute('tabindex')).toBe('-1');
+    expect(document.activeElement).toBe(note);
   });
 
   it('says what changed in a polite live region', () => {

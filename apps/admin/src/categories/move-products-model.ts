@@ -1,3 +1,4 @@
+import { indexOf, nameOf } from './tree-model.ts';
 import type { CategoryRow, MoveJob, MoveProgressBody } from './types.ts';
 
 // The pure part of "Move products…" (categories C5b): the targets (levels 3 and 4, hidden allowed)
@@ -26,6 +27,31 @@ export function moveTargetRows(
 export function jobOf(body: MoveProgressBody, jobId: string): MoveJob | null {
   return body.jobs.find((job) => job.id === jobId) ?? null;
 }
+
+/** The newest job still waiting or running (the list is newest first), or null. */
+export function newestRunning(body: MoveProgressBody): MoveJob | null {
+  return (
+    [...body.jobs]
+      .filter((job) => !isFinished(job))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))[0] ??
+    null
+  );
+}
+
+/** `Pantry › Rice › Sella`: the names from the department down to the category. */
+export function pathLabel(rows: readonly CategoryRow[], id: string, locale: string): string {
+  const { byId } = indexOf(rows);
+  const names: string[] = [];
+  let cursor = byId.get(id);
+  for (let depth = 0; cursor !== undefined && depth < 8; depth += 1) {
+    names.unshift(nameOf(cursor, locale));
+    cursor = cursor.parentId === null ? undefined : byId.get(cursor.parentId);
+  }
+  return names.join(' › ');
+}
+
+/** Reads that find no job of ours in the newest list before the progress is called unreadable. */
+export const MAX_MISSES = 5;
 
 export const isFinished = (job: MoveJob): boolean => job.state === 'done' || job.state === 'failed';
 

@@ -1,15 +1,19 @@
 'use client';
 
-import { useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { Badge } from '../form/badge.tsx';
 import { Button } from '../form/button.tsx';
 import {
   MAX_PRODUCT_CATEGORIES,
   addCategory,
   choiceLabel,
+  choiceParts,
+  focusAfterRemove,
   makePrimary,
   removeCategory,
+  splitLabel,
   type CategoryChoice,
+  type FocusTarget,
 } from './category-chooser-logic.ts';
 import { SearchSelect, type SearchSelectLabels } from './search-select.tsx';
 
@@ -21,6 +25,8 @@ export interface CategoryChooserLabels {
   /** The hint under the legend. */
   readonly hint: string;
   readonly general: string;
+  /** The note under a general choice in the select ("Not in a subcategory"). */
+  readonly generalHint: string;
   readonly primary: string;
   readonly hidden: string;
   readonly makePrimary: (name: string) => string;
@@ -104,6 +110,26 @@ export function CategoryChooser({
     loading: labels.loading,
     retry: labels.retry,
   };
+  const removeButtons = useRef(new Map<string, HTMLButtonElement>());
+  const addBox = useRef<HTMLDivElement>(null);
+  const limitNote = useRef<HTMLParagraphElement>(null);
+  const pendingFocus = useRef<FocusTarget | null>(null);
+  // Focus follows the change once the list is drawn: a removed or moved row would drop it to the page.
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (target === null) return;
+    pendingFocus.current = null;
+    if (target.kind === 'row') removeButtons.current.get(target.id)?.focus();
+    else if (target.kind === 'limit') limitNote.current?.focus();
+    else addBox.current?.querySelector<HTMLElement>('[role="combobox"]')?.focus();
+  }, [value]);
+  const describe = (choice: CategoryChoice) => {
+    const notes = [
+      ...(choice.general ? [labels.generalHint] : []),
+      ...(choice.status === 'hidden' ? [labels.hidden] : []),
+    ];
+    return notes.length === 0 ? {} : { description: notes.join(' · ') };
+  };
   const hintId = `${base}-hint`;
   const errorId = `${base}-error`;
   return (
@@ -121,16 +147,29 @@ export function CategoryChooser({
         <ol className="m-0 flex list-none flex-col gap-2 p-0">
           {value.map((id, index) => {
             const label = nameFor(id);
+            const choice = byId.get(id);
+            const parts =
+              choice === undefined ? splitLabel(label) : choiceParts(choice, labels.general);
             const itemError = itemErrors[index];
             const itemErrorId = `${base}-item-${index}-error`;
-            const choice = byId.get(id);
+            const describedBy = itemError === undefined ? undefined : itemErrorId;
             return (
               <li
                 key={id}
                 className="flex flex-wrap items-center gap-2 rounded-md border border-line px-3 py-2"
               >
                 <span className="min-w-0 flex-1 break-words" dir="auto">
-                  {label}
+                  {parts.map((part, at) => (
+                    <span key={at}>
+                      {at > 0 ? (
+                        <>
+                          <span aria-hidden="true"> › </span>
+                          <span className="sr-only">, </span>
+                        </>
+                      ) : null}
+                      {part}
+                    </span>
+                  ))}
                 </span>
                 {index === 0 ? <Badge tone="info">{labels.primary}</Badge> : null}
                 {choice?.status === 'hidden' ? <Badge tone="neutral">{labels.hidden}</Badge> : null}
@@ -140,17 +179,29 @@ export function CategoryChooser({
                     type="button"
                     disabled={disabled}
                     aria-label={labels.makePrimary(label)}
-                    onClick={() => onChange(makePrimary(value, id))}
+                    aria-describedby={describedBy}
+                    onClick={() => {
+                      pendingFocus.current = { kind: 'row', id };
+                      onChange(makePrimary(value, id));
+                    }}
                   >
                     {labels.makePrimaryText}
                   </Button>
                 ) : null}
                 <Button
+                  ref={(node: HTMLButtonElement | null) => {
+                    if (node === null) removeButtons.current.delete(id);
+                    else removeButtons.current.set(id, node);
+                  }}
                   variant="secondary"
                   type="button"
                   disabled={disabled}
                   aria-label={labels.remove(label)}
-                  onClick={() => onChange(removeCategory(value, id))}
+                  aria-describedby={describedBy}
+                  onClick={() => {
+                    pendingFocus.current = focusAfterRemove(value, id);
+                    onChange(removeCategory(value, id));
+                  }}
                 >
                   {labels.removeText}
                 </Button>
@@ -170,9 +221,11 @@ export function CategoryChooser({
         </p>
       )}
       {full ? (
-        <p className="m-0 text-sm text-fg-muted">{labels.limitReached}</p>
+        <p ref={limitNote} tabIndex={-1} className="m-0 text-sm text-fg-muted">
+          {labels.limitReached}
+        </p>
       ) : (
-        <div onFocusCapture={onOpen} onClickCapture={onOpen}>
+        <div ref={addBox} onFocusCapture={onOpen} onClickCapture={onOpen}>
           <SearchSelect
             label={labels.add}
             placeholder={labels.addPlaceholder}
@@ -185,11 +238,17 @@ export function CategoryChooser({
             options={free.map((choice) => ({
               value: choice.id,
               label: choiceLabel(choice, labels.general),
-              ...(choice.status === 'hidden' ? { description: labels.hidden } : {}),
+              ...describe(choice),
             }))}
             value={null}
             onChange={(picked) => {
-              if (picked !== null) onChange(addCategory(value, picked.value, max));
+              if (picked === null) return;
+              const next = addCategory(value, picked.value, max);
+              // The last free slot takes the Add control away: focus goes to the note that says why.
+              if (next.length >= max && next.length > value.length) {
+                pendingFocus.current = { kind: 'limit' };
+              }
+              onChange(next);
             }}
           />
         </div>

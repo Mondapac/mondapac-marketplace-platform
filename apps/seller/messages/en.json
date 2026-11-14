@@ -1256,10 +1256,11 @@
       "categories": "Categories",
       "categories-hint": "Choose a category or subcategory. Products can't go on a department or group.",
       "categories-general": "General",
+      "categories-general-hint": "Not in a subcategory",
       "categories-primary": "Primary",
       "categories-hidden": "Hidden",
       "categories-make-primary": "Make primary",
-      "categories-make-primary-for": "Make {name} the primary category",
+      "categories-make-primary-for": "Make primary: {name}",
       "categories-remove": "Remove",
       "categories-remove-for": "Remove {name}",
       "categories-add": "Add a category",
@@ -1279,8 +1280,8 @@
         "too-many": "A product can be in at most 3 categories.",
         "duplicate": "You chose this category twice. Remove one.",
         "unknown": "This category isn't available any more. Remove it and choose another.",
-        "not-available": "This category is no longer available. Remove it and choose another.",
-        "level-not-allowed": "Choose a category or subcategory. Products can't go on a department or group."
+        "not-available": "This category isn't available any more. Remove it and choose another.",
+        "level-not-allowed": "Choose a more specific category. Products can't go on a department or group."
       },
       "tax-category": "Tax category",
       "variants": "Variants",

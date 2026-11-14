@@ -48,6 +48,7 @@ export function ClassificationSection({
     legend: t('categories'),
     hint: t('categories-hint'),
     general: t('categories-general'),
+    generalHint: t('categories-general-hint'),
     primary: t('categories-primary'),
     hidden: t('categories-hidden'),
     makePrimary: (name) => t('categories-make-primary-for', { name }),

@@ -345,15 +345,11 @@ describe('Move products dialog: the form', () => {
       'Those products are already in that category. Choose another.',
     ],
     [409, 'category.no-products', 'This category has no published products to move.'],
-    [
-      409,
-      'category.move-in-progress',
-      'The products of this category are already being moved. Wait for that to finish.',
-    ],
+    [409, 'category.move-in-progress', 'A move from this category is already running.'],
     [
       422,
       'category.level-not-allowed',
-      "Choose a category or subcategory. Products can't go on a department or group.",
+      "Choose a more specific category. Products can't go on a department or group.",
     ],
     [409, 'category.not-editable', "This category can't be changed any more. Reload."],
     [
@@ -453,12 +449,13 @@ describe('Move products dialog: the progress', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
-    expect(await within(d).findByText('Done.')).toBeTruthy();
+    expect(await within(d).findByText('Done. 3 moved, 1 skipped, 0 failed.')).toBeTruthy();
     const counts = within(d).getByTestId('move-products-progress');
     expect(counts.textContent).toContain('Moved3');
     expect(counts.textContent).toContain('Skipped1');
     expect(counts.textContent).toContain('Failed0');
-    expect(within(d).getByText(/Some products were skipped/)).toBeTruthy();
+    expect(within(d).getByText(/^Skipped products were no longer in Rice/)).toBeTruthy();
+    expect(within(d).queryByText(/Start the move again/)).toBeNull();
     const readsAtDone = call.mock.calls.filter(
       ([m, p]) => m === 'GET' && String(p).endsWith('/move-products'),
     ).length;
@@ -498,7 +495,7 @@ describe('Move products dialog: the progress', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
-    expect(await within(dialog()).findByText('Done.')).toBeTruthy();
+    expect(await within(dialog()).findByText('Done. 4 moved, 0 skipped, 0 failed.')).toBeTruthy();
     expect(within(dialog()).queryByText(/We can't read the progress/)).toBeNull();
   });
 
@@ -583,5 +580,232 @@ describe('the Move products… button of the category page', () => {
     await pick('Rice');
     await screen.findByRole('button', { name: 'Edit details' });
     expect(screen.queryByRole('button', { name: 'Move products…' })).toBeNull();
+  });
+});
+
+describe('Move products dialog: review fixes', () => {
+  const reads = () =>
+    call.mock.calls.filter(([m, p]) => m === 'GET' && String(p).endsWith('/move-products')).length;
+  async function begin() {
+    const mounted = mountDialog();
+    await screen.findByText('4 published products will move.');
+    await fill();
+    await act(() => {
+      fireEvent.click(startButton());
+      return Promise.resolve();
+    });
+    return mounted;
+  }
+  const escape = () => fireEvent(dialog(), new Event('cancel', { cancelable: true }));
+  const setHidden = (hidden: boolean) => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+
+  it('names the target in the count line once one is chosen, keeping the at-least form', async () => {
+    serve();
+    mountDialog();
+    await screen.findByText('4 published products will move.');
+    fireEvent.click(within(dialog()).getByRole('radio', { name: /^Sella/ }));
+    expect(
+      screen.getByText('4 published products will move from Rice to Pantry › Rice › Sella.'),
+    ).toBeTruthy();
+    cleanup();
+    serve({ impactBody: impact({ directProducts: 40, complete: false }) });
+    mountDialog();
+    await screen.findByText('At least 40 published products will move.');
+    fireEvent.click(await within(dialog()).findByRole('radio', { name: /^Sella/ }));
+    expect(
+      screen.getByText(
+        'At least 40 published products will move from Rice to Pantry › Rice › Sella.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('sends one POST when Start is clicked twice while the first is pending', async () => {
+    let release: (value: ApiResult<unknown>) => void = () => undefined;
+    call.mockImplementation((method: string, path: string) => {
+      if (method === 'POST') return new Promise((resolve) => (release = resolve));
+      if (path.includes('/impact?')) return Promise.resolve(ok(impact()));
+      return Promise.resolve(ok({ jobs: [job()] }));
+    });
+    mountDialog();
+    await screen.findByText('4 published products will move.');
+    await fill();
+    const start = startButton();
+    fireEvent.click(start);
+    fireEvent.click(start);
+    expect(writes()).toHaveLength(1);
+    await act(() => {
+      release({ ok: true, status: 202, body: { jobId: 'job-1', products: 4 } });
+      return Promise.resolve();
+    });
+  });
+
+  it('ignores Escape and the Close path while the start is pending, and closes after', async () => {
+    let release: (value: ApiResult<unknown>) => void = () => undefined;
+    call.mockImplementation((method: string, path: string) => {
+      if (method === 'POST') return new Promise((resolve) => (release = resolve));
+      if (path.includes('/impact?')) return Promise.resolve(ok(impact()));
+      return Promise.resolve(ok({ jobs: [job()] }));
+    });
+    const { onClose } = mountDialog();
+    await screen.findByText('4 published products will move.');
+    await fill();
+    fireEvent.click(startButton());
+    escape();
+    expect(onClose).not.toHaveBeenCalled();
+    await act(() => {
+      release({ ok: false, failure: { status: 409, code: 'category.no-products' } });
+      return Promise.resolve();
+    });
+    escape();
+    expect(onClose).toHaveBeenCalledWith(false);
+  });
+
+  it('stops reading when the dialog is closed or unmounted while the job runs', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    serve({ progress: () => ok({ jobs: [job({ state: 'running' })] }) });
+    const { onClose } = await begin();
+    await within(dialog()).findByText('Moving products…');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(reads()).toBeGreaterThan(1);
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalledWith(true);
+    cleanup();
+    const after = reads();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(reads()).toBe(after);
+  });
+
+  it('says the failed products can be tried again, in their own note', async () => {
+    serve({ progress: () => ok({ jobs: [job({ state: 'done', moved: 2, failed: 2 })] }) });
+    await begin();
+    expect(await within(dialog()).findByText('Done. 2 moved, 0 skipped, 2 failed.')).toBeTruthy();
+    expect(
+      within(dialog()).getByText(
+        'Some products could not be moved. Start the move again to try them.',
+      ),
+    ).toBeTruthy();
+    expect(within(dialog()).queryByText(/no longer in Rice/)).toBeNull();
+  });
+
+  it('shows the skipped note alone, never suggesting a restart for it', async () => {
+    serve({ progress: () => ok({ jobs: [job({ state: 'done', moved: 3, skipped: 1 })] }) });
+    await begin();
+    expect(
+      await within(dialog()).findByText(
+        'Skipped products were no longer in Rice when their turn came, so there was nothing to move.',
+      ),
+    ).toBeTruthy();
+    expect(within(dialog()).queryByText(/Some products could not be moved/)).toBeNull();
+  });
+
+  it('calls the progress unreadable after five reads that do not list the job', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    serve({ progress: () => ok({ jobs: [] }) });
+    await begin();
+    expect(await within(dialog()).findByText('Waiting to start…')).toBeTruthy();
+    for (let i = 0; i < 4; i += 1) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+    }
+    expect(reads()).toBe(5);
+    expect(await within(dialog()).findByText(/We can't read the progress right now/)).toBeTruthy();
+    expect(within(dialog()).queryByText('Waiting to start…')).toBeNull();
+  });
+
+  it('stops reading on a 404 and offers Reload', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    serve({ progress: () => refused(404, 'category.not-found') });
+    const { onReload } = await begin();
+    fireEvent.click(await within(dialog()).findByRole('button', { name: 'Reload' }));
+    expect(onReload).toHaveBeenCalled();
+    const after = reads();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(reads()).toBe(after);
+  });
+
+  it('pauses reading while the tab is hidden and reads again when it is shown', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    serve({ progress: () => ok({ jobs: [job({ state: 'running' })] }) });
+    await begin();
+    await within(dialog()).findByText('Moving products…');
+    const before = reads();
+    setHidden(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+    expect(reads()).toBe(before);
+    setHidden(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(reads()).toBe(before + 1);
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+  });
+
+  describe('a move is already running (409)', () => {
+    async function refusedStart(progress: () => ApiResult<unknown>) {
+      serve({ start: refused(409, 'category.move-in-progress'), progress });
+      const mounted = mountDialog();
+      await screen.findByText('4 published products will move.');
+      await fill();
+      fireEvent.click(startButton());
+      await within(dialog()).findByText('A move from this category is already running.');
+      return mounted;
+    }
+
+    it('attaches only after View progress, to the newest running job, with a warning line', async () => {
+      await refusedStart(() =>
+        ok({
+          jobs: [
+            job({ id: 'old', state: 'done', createdAt: '2026-11-14T03:00:00Z' }),
+            job({ id: 'a', state: 'running', createdAt: '2026-11-14T01:00:00Z', total: 9 }),
+            job({ id: 'b', state: 'queued', createdAt: '2026-11-14T02:00:00Z', total: 7 }),
+          ],
+        }),
+      );
+      // Nothing is attached by itself.
+      expect(within(dialog()).queryByTestId('move-products-progress')).toBeNull();
+      fireEvent.click(within(dialog()).getByRole('button', { name: 'View progress' }));
+      const progress = await within(dialog()).findByTestId('move-products-progress');
+      expect(
+        within(dialog()).getByText(
+          'This move was started earlier. It may be moving products to a different category than the one you chose.',
+        ),
+      ).toBeTruthy();
+      expect(progress.textContent).toContain('Products to move7');
+      expect(document.activeElement).toBe(
+        within(dialog()).getByRole('heading', { name: 'Moving products' }),
+      );
+    });
+
+    it('says the move just finished, with Reload, when no job is running', async () => {
+      const { onReload } = await refusedStart(() => ok({ jobs: [job({ state: 'done' })] }));
+      fireEvent.click(within(dialog()).getByRole('button', { name: 'View progress' }));
+      expect(
+        await within(dialog()).findByText('That move just finished. Reload the page.'),
+      ).toBeTruthy();
+      expect(within(dialog()).queryByTestId('move-products-progress')).toBeNull();
+      fireEvent.click(within(dialog()).getByRole('button', { name: 'Reload' }));
+      expect(onReload).toHaveBeenCalled();
+    });
+
+    it('keeps the choice and says so when the progress cannot be read', async () => {
+      await refusedStart(() => refused(503, 'access.unavailable'));
+      fireEvent.click(within(dialog()).getByRole('button', { name: 'View progress' }));
+      expect(
+        await within(dialog()).findByText("We couldn't read the progress. Try again."),
+      ).toBeTruthy();
+      expect(within(dialog()).getByRole('button', { name: 'View progress' })).toBeTruthy();
+    });
   });
 });
