@@ -2,7 +2,13 @@ import { LoadError } from '@mondapac/ui';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { ReviewView } from '../../../../../../src/blog/review/review-view.tsx';
-import { BLOG_READ_PERMISSION, BLOG_REVIEW_PERMISSION } from '../../../../../../src/blog/types.ts';
+import {
+  BLOG_PAUSE_PERMISSION,
+  BLOG_PUBLISH_PERMISSION,
+  BLOG_READ_PERMISSION,
+  BLOG_REVIEW_PERMISSION,
+} from '../../../../../../src/blog/types.ts';
+import { displayZone } from '../../../../../../src/shared/format.ts';
 import { ContentNoAccess } from '../../../../../../src/content/content-no-access.tsx';
 import { AdminShell } from '../../../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../../../src/server/session.ts';
@@ -26,7 +32,7 @@ export default async function BlogReviewPage({
   if (gate.kind === 'unavailable') {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
-  const { permissionKeys, csrfToken } = gate.session;
+  const { permissionKeys, csrfToken, timezone } = gate.session;
   if (!permissionKeys.includes(BLOG_READ_PERMISSION)) {
     return <ContentNoAccess session={gate.session} />;
   }
@@ -37,6 +43,9 @@ export default async function BlogReviewPage({
       <ReviewView
         postId={postId}
         canReview={permissionKeys.includes(BLOG_REVIEW_PERMISSION)}
+        canPublish={permissionKeys.includes(BLOG_PUBLISH_PERMISSION)}
+        canPause={permissionKeys.includes(BLOG_PAUSE_PERMISSION)}
+        zone={displayZone(timezone)}
         csrfToken={csrfToken}
       />
     </AdminShell>

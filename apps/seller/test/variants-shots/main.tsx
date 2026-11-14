@@ -7,7 +7,8 @@ import type { TableRow } from '../../src/catalog/variants-table-logic.ts';
 
 const params = new URLSearchParams(location.search);
 const scenario = params.get('s') ?? 'seller';
-const platform = scenario === 'platform';
+const requests = scenario === 'requests' || scenario === 'requests-form';
+const platform = scenario === 'platform' || requests;
 
 const stock = (id: string, onHand: number) => ({
   s1: { variantId: id, sourceId: 's1', onHand, held: 0, version: 2, retired: false },
@@ -63,6 +64,16 @@ window.fetch = () =>
     new Response(JSON.stringify({ code: 'offer.sku-taken', statusCode: 409 }), { status: 409 }),
   );
 
+if (scenario === 'requests-form') {
+  // The page opens the request form after it mounts.
+  setTimeout(() => {
+    const button = [...document.querySelectorAll('button')].find(
+      (item) => item.textContent === 'Request a size',
+    );
+    button?.click();
+  }, 200);
+}
+
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     <div className="mx-auto max-w-[1400px] bg-page p-4 text-fg sm:p-6">
@@ -85,6 +96,55 @@ createRoot(document.getElementById('root')!).render(
         canEditStock
         units={{ canEdit: true, productScope: platform || last ? 'PLATFORM' : 'SELLER', sellerSku }}
         csrfToken="csrf"
+        sizeRequests={
+          requests
+            ? {
+                axes: [
+                  {
+                    code: 'size',
+                    name: 'Size',
+                    options: ['1 kg', '5 kg', '10 kg', '20 kg', '25 kg'].map((label) => ({
+                      code: label.replace(' ', ''),
+                      label,
+                    })),
+                  },
+                ],
+                openCount: 1,
+                maxOpen: 10,
+                items: [
+                  ['r1', 'open', '25 kg', null, '2026-11-10T10:00:00Z', null],
+                  ['r2', 'approved', '20 kg', null, '2026-11-02T10:00:00Z', '2026-11-04T10:00:00Z'],
+                  ['r3', 'mapped', '5 kg', null, '2026-10-28T10:00:00Z', '2026-10-30T10:00:00Z'],
+                  [
+                    'r4',
+                    'declined',
+                    '50 kg',
+                    'We do not stock a 50 kg pack of this product.',
+                    '2026-10-20T10:00:00Z',
+                    '2026-10-22T10:00:00Z',
+                  ],
+                ].map(([id, status, label, reason, createdAt, decidedAt]) => ({
+                  id: id!,
+                  offerId: 'o1',
+                  productId: 'p1',
+                  productCode: 'MP-004127',
+                  status: status as 'open',
+                  options: [
+                    {
+                      attributeCode: 'size',
+                      attributeName: 'Size',
+                      optionCode: label!.replace(' ', ''),
+                      optionLabel: label!,
+                    },
+                  ],
+                  resolvedVariantId: null,
+                  declineReason: reason ?? null,
+                  createdAt: createdAt!,
+                  decidedAt: decidedAt ?? null,
+                })),
+              }
+            : null
+        }
       />
     </div>
   </NextIntlClientProvider>,

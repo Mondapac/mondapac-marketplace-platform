@@ -45,6 +45,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'wallet/admin/settings',
     // The Market's tax strategies and the active one (tax), read again after a change.
     'tax/admin/strategies',
+    // The caps on seller refunds (ordering): the Market default, and one seller's (query: `sellerId`).
+    'ordering/admin/refund-limits',
     'wallet/admin/credit-requests',
     // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
     // `limit`); one case is read by the page server and again after a decision.
@@ -118,6 +120,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/feature-sets',
     // The value suggestions waiting for a decision (catalog, attributes A5).
     'catalog/admin/attribute-suggestions',
+    // The sizes sellers asked for, waiting for a decision (catalog, variants V7).
+    'catalog/admin/variant-requests',
     // The seller category proposals waiting for a decision (catalog, categories C9a; query:
     // `afterId`, `limit`).
     'catalog/admin/category-proposals',
@@ -169,6 +173,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // One AI setting (settings): code, value and `expectedVersion`; protected key
     // `settings.ai.manage`, so it may ask a fresh two-step code.
     'settings/admin/ai',
+    // The Market default cap on seller refunds (ordering); `ordering.refund-limits.manage` is
+    // protected, so it may ask a fresh two-step code.
+    'ordering/admin/refund-limits',
     // The promotions Market switch and the first-order discount (promotions); a monthly budget
     // above the Market threshold asks a fresh two-step code. The zone thresholds are below.
     'promotions/admin/settings',
@@ -345,6 +352,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/attribute-suggestions/:id/approve',
     'catalog/admin/attribute-suggestions/:id/map',
     'catalog/admin/attribute-suggestions/:id/reject',
+    // Decide a seller's size request with the version seen (catalog, variants V7).
+    'catalog/admin/variant-requests/:id/approve',
+    'catalog/admin/variant-requests/:id/map',
+    'catalog/admin/variant-requests/:id/decline',
     // Decide a seller's tag suggestion with the version seen (catalog topics, product tags T5).
     'catalog/admin/topic-suggestions/:id/approve',
     'catalog/admin/topic-suggestions/:id/map',
@@ -372,6 +383,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // for a two-step code) or send it back with a note.
     'blog/admin/posts/:id/approve',
     'blog/admin/posts/:id/request-changes',
+    // Publishing (blog): make the approved version live, take a post off the site, put it back,
+    // archive it. Each is behind the server's own permission and two-step rules.
+    'blog/admin/posts/:id/publish',
+    'blog/admin/posts/:id/pause',
+    'blog/admin/posts/:id/resume',
+    'blog/admin/posts/:id/archive',
     'storefront/admin/slides/:id/approve',
     'storefront/admin/slides/:id/pause',
     'storefront/admin/slides/:id/resume',
@@ -417,6 +434,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'sellers/admin/:id/ai-access',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
+    // One seller's own cap on its refunds (ordering), set from the seller review page.
+    'ordering/admin/refund-limits/sellers/:id',
     // A tax strategy edited by its id (tax).
     'tax/admin/strategies/:id',
     // A fleet-selection model edited by its id (shipping).
@@ -431,6 +450,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'blog/admin/taxonomy/categories/:id',
     // A blog post's whole draft: the content and the address (blog).
     'blog/admin/posts/:id/draft',
+    // Schedule the approved version, change the address of a published post, feature it (blog).
+    'blog/admin/posts/:id/schedule',
+    'blog/admin/posts/:id/slug',
+    'blog/admin/posts/:id/featured',
+    // The live status of a published blog event and its note for readers (blog).
+    'blog/admin/posts/:id/event-status',
     // The whole content of a brand, with the version seen (catalog).
     'catalog/admin/brands/:id',
     // The whole content of a business activity, with the version seen (catalog).
@@ -451,7 +476,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   // The details of one platform category (catalog, categories C3), with the version seen.
   PATCH: ['catalog/admin/categories/:id'],
   DELETE: [
+    // One seller's own cap on its refunds (ordering); the version seen is in the query.
+    'ordering/admin/refund-limits/sellers/:id',
     'identity/admin/roles/:id',
+    // Remove a blog post's schedule; the version stays approved (blog).
+    'blog/admin/posts/:id/schedule',
     // A tax strategy that is not active (tax).
     'tax/admin/strategies/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
@@ -598,13 +627,16 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
+  'catalog/admin/variant-requests': ['limit'],
   'catalog/admin/variants': ['q', 'typeCode', 'issue', 'after', 'limit'],
   'catalog/admin/variants/issue-counts': ['typeCode'],
   'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
   'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
+  'ordering/admin/refund-limits': ['sellerId'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'ordering/admin/refund-limits': { sellerId: UUID },
   // The cursor is the API's own: epoch milliseconds, a dot and a request id.
   'wallet/admin/credit-requests': {
     status: /^(pending|decided|granted)$/,
@@ -648,6 +680,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
   },
+  'catalog/admin/variant-requests': { limit: /^([1-9][0-9]?|100)$/ },
   'catalog/admin/category-tree/export': {
     format: /^(csv|xlsx)$/,
     status: /^(active|hidden|merged|archived)(,(active|hidden|merged|archived)){0,3}$/,
@@ -742,6 +775,7 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 };
 /** DELETE templates whose query crosses: the version seen and the closed reason code. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'ordering/admin/refund-limits/sellers/:id': { expectedVersion: /^[0-9]{1,9}$/ },
   'commission-payouts/admin/sellers/:id/payout-terms': {
     expectedVersion: /^[0-9]{1,9}$/,
     reasonCode: /^(seller-request|risk-review|correction|policy)$/,

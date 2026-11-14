@@ -590,6 +590,24 @@ describe('relay allowlist for stock locations', () => {
     });
     expect((await relay(config, read, units, upstream)).status).toBe(404);
   });
+  it('relays a size request by UUID, and refuses other shapes', async () => {
+    const upstream = upstreamOk();
+    const send = (path: string[]) =>
+      new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method: 'POST',
+        headers: { ...sameOrigin, 'content-type': 'application/json' },
+        body: '{}',
+      });
+    const good = ['catalog', 'seller', 'offers', ID, 'variant-requests'];
+    expect((await relay(config, send(good), good, upstream)).status).toBe(200);
+    const bad = [
+      ['catalog', 'seller', 'offers', 'x', 'variant-requests'],
+      ['catalog', 'seller', 'offers', ID, 'variant-requests', 'x'],
+    ];
+    for (const path of bad) {
+      expect((await relay(config, send(path), path, upstream)).status).toBe(404);
+    }
+  });
   it('relays a regular price write by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     const price = ['pricing', 'seller', 'offers', ID, 'variants', ID, 'regular-price'];
@@ -794,6 +812,39 @@ describe('relay of the seller order routes', () => {
     }
     for (const path of [[...list, 'x', 'ship'], [...list, ID, 'cancel'], [...list, ID], list]) {
       expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+    }
+  });
+});
+
+describe('relay of the order unavailable and notes routes', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const list = ['ordering', 'seller', 'orders'];
+  const send = (method: string, path: string[]) =>
+    relay(
+      config,
+      new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method,
+        headers: sameOrigin,
+        ...(method === 'GET' ? {} : { body: '{}' }),
+      }),
+      path,
+      upstreamOk(),
+    );
+
+  it('posts unavailable and notes by UUID only', async () => {
+    for (const action of ['unavailable', 'notes']) {
+      expect((await send('POST', [...list, ID, action])).status).toBe(200);
+      expect((await send('POST', [...list, 'x', action])).status).toBe(404);
+    }
+  });
+
+  it('does not relay the notes or activity reads, nor other methods', async () => {
+    for (const action of ['notes', 'activity']) {
+      expect((await send('GET', [...list, ID, action])).status).toBe(404);
+    }
+    expect((await send('POST', [...list, ID, 'activity'])).status).toBe(404);
+    for (const method of ['PUT', 'PATCH', 'DELETE']) {
+      expect((await send(method, [...list, ID, 'unavailable'])).status).toBe(404);
     }
   });
 });

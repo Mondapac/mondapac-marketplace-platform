@@ -112,6 +112,7 @@ const LEAD_KEYS = [
   'blog.post.read',
   'promotions.promotion.view',
   'ordering.order.view',
+  'ordering.refund-limits.view',
   'payments.connected-account.view',
   'pricing.price-hold.view',
   'sellers.seller.view',

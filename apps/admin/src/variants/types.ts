@@ -10,9 +10,12 @@ export const VARIANTS_PATH = '/catalog/variants';
 export const ATTRIBUTES_PATH = '/catalog/attributes';
 export const API_VARIANT_TYPES = 'catalog/admin/variant-types';
 export const API_VARIANTS = 'catalog/admin/variants';
+/** Answers the size requests of sellers (variants V7). */
+export const REVIEW_PERMISSION = 'catalog.variant-request.review';
+export const API_REQUESTS = 'catalog/admin/variant-requests';
 
-/** The tabs (Waiting for you is V7). */
-export const TABS = ['types', 'variants'] as const;
+/** The tabs; Waiting for you (V7) is shown to an admin who may decide size requests. */
+export const TABS = ['types', 'variants', 'waiting'] as const;
 export type Tab = (typeof TABS)[number];
 
 export type Localized = Readonly<Record<string, string>>;
@@ -120,3 +123,50 @@ export function colourOf(raw: string): string | null {
   const text = raw.trim().replace(/^#/, '').toUpperCase();
   return /^[0-9A-F]{6}$/.test(text) ? `#${text}` : null;
 }
+
+// Size requests (variants V7): a seller asked for a size a platform product does not have.
+
+export interface RequestOption {
+  readonly attributeCode: string;
+  readonly attributeName: string;
+  readonly optionCode: string;
+  readonly optionLabel: string;
+}
+
+export interface RequestItem {
+  readonly id: string;
+  /** The version a decision must name. */
+  readonly version: number;
+  readonly createdAt: string;
+  readonly sellerId: string;
+  readonly sellerName: string | null;
+  readonly offerId: string;
+  readonly productId: string;
+  readonly productCode: string | null;
+  readonly options: readonly RequestOption[];
+  readonly existing: readonly {
+    readonly variantId: string;
+    readonly variantNo: number;
+    readonly options: readonly RequestOption[];
+  }[];
+  /** The product already has it: map, do not approve. */
+  readonly alreadyExists: boolean;
+}
+
+export interface RequestList {
+  readonly items: readonly RequestItem[];
+  readonly locales: { readonly default: string; readonly supported: readonly string[] };
+}
+
+export interface RequestDecided {
+  readonly request: {
+    readonly id: string;
+    readonly status: 'approved' | 'mapped' | 'declined';
+    readonly version: number;
+    readonly resolvedVariantId: string | null;
+  };
+}
+
+/** `Size: L, Colour: Red` */
+export const describeOptions = (options: readonly RequestOption[]): string =>
+  options.map((option) => `${option.attributeName}: ${option.optionLabel}`).join(', ');

@@ -2012,6 +2012,35 @@
     }
   },
   {
+    "action": "ordering.refund-limit.removed",
+    "targetType": "ordering.seller-refund-limit",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "maxAmount": "money",
+      "maxCount": "integer",
+      "sellerId": "id"
+    },
+    "after": null
+  },
+  {
+    "action": "ordering.refund-limit.set",
+    "targetType": "ordering.seller-refund-limit",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "maxAmount": "optional(money)",
+      "maxCount": "optional(integer)"
+    },
+    "after": {
+      "maxAmount": "money",
+      "maxCount": "integer",
+      "scope": "enumOf(market|seller)",
+      "sellerId": "optional(id)",
+      "version": "integer"
+    }
+  },
+  {
     "action": "ordering.refund.requested",
     "targetType": "ordering.refund",
     "targetId": "id",
@@ -2075,6 +2104,17 @@
     },
     "after": {
       "ownedByActor": "boolean"
+    }
+  },
+  {
+    "action": "ordering.seller-order.note-added",
+    "targetType": "ordering.seller-order",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "length": "integer",
+      "noteId": "id"
     }
   },
   {
@@ -2548,6 +2588,29 @@
       "status": "enumOf(published|held|hidden|removed|deleted-by-author)",
       "stepUpSessionId": "optional(id)",
       "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
+    "action": "security.alert.acknowledged",
+    "targetType": "security.alert",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "severity": "enumOf(s1|s2|s3|s4)",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "security.alert.resolved",
+    "targetType": "security.alert",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "resolution": "enumOf(contained|false-positive|duplicate|accepted-risk)",
+      "severity": "enumOf(s1|s2|s3|s4)",
+      "version": "integer"
     }
   },
   {
