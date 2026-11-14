@@ -68,6 +68,17 @@ export interface AccountRepository {
   ): Promise<readonly CustomerSummaryRow[]>;
 
   /**
+   * The ids of the Market's customer accounts whose display name contains `term` (case
+   * insensitive, `%` and `_` taken literally), at most `limit`, in id order. Reads no address.
+   * The term is PERSONAL DATA: never logged.
+   */
+  searchCustomerIdsByName(
+    market: MarketContext,
+    term: string,
+    limit: number,
+  ): Promise<readonly Id<'Account'>[]>;
+
+  /**
    * Whether the customer account with this id has the same normalised sign-in address as an
    * account with an active membership of this seller (a person with a customer account and a
    * seller-side account on one address). False for an unknown id or another population's account.

@@ -123,4 +123,73 @@ describe.each(['AU', 'ZZ'] as const)('order label adapter in market %s', (code) 
       [customer, { displayName: null, email: 'j@example.com' }],
     ]);
   });
+
+  it('turns identity access.denied into no customer matches, and throws any other refusal', async () => {
+    const identityAnswering = (answer: unknown) =>
+      ({ searchCustomerAccounts: () => Promise.resolve(answer) }) as unknown as IdentityFacade;
+    const accountId = uuid(30) as Id<'Account'>;
+
+    const denied = new FacadeOrderLabels(
+      never,
+      never,
+      identityAnswering(err({ code: 'access.denied' })),
+      markets,
+    );
+    const invalid = new FacadeOrderLabels(
+      never,
+      never,
+      identityAnswering(err({ code: 'validation.failed', fields: [] })),
+      markets,
+    );
+    const found = new FacadeOrderLabels(
+      never,
+      never,
+      identityAnswering(ok({ accountIds: [accountId], capped: true })),
+      markets,
+    );
+
+    expect(await denied.customerAccountsMatching(context, 'jane')).toEqual({
+      accountIds: [],
+      capped: false,
+      searched: false,
+    });
+    await expect(invalid.customerAccountsMatching(context, 'jane')).rejects.toThrow();
+    expect(await found.customerAccountsMatching(context, 'jane')).toEqual({
+      accountIds: [accountId],
+      capped: true,
+      searched: true,
+    });
+  });
+
+  it('passes the store matches of sellers through, with the context, and throws a refusal', async () => {
+    const sellerId = uuid(31) as Id<'Seller'>;
+    const seen: unknown[] = [];
+    const sellersAnswering = (answer: unknown) =>
+      ({
+        searchStoreNames: (c: unknown, term: string) => {
+          seen.push([c, term]);
+          return Promise.resolve(answer);
+        },
+      }) as unknown as SellersFacade;
+
+    const found = new FacadeOrderLabels(
+      never,
+      sellersAnswering(ok({ sellerIds: [sellerId], capped: false })),
+      never,
+      markets,
+    );
+    const down = new FacadeOrderLabels(
+      never,
+      sellersAnswering(err({ code: 'sellers.unavailable' })),
+      never,
+      markets,
+    );
+
+    expect(await found.sellersMatching(context, 'butcher')).toEqual({
+      sellerIds: [sellerId],
+      capped: false,
+    });
+    expect(seen).toEqual([[context, 'butcher']]);
+    await expect(down.sellersMatching(context, 'butcher')).rejects.toThrow();
+  });
 });

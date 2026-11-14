@@ -52,6 +52,8 @@ import {
   OrderingAuditWriter,
 } from './support/ordering-fakes';
 import { FakeUnitOfWork, RecordingOutbox } from './support/pricing-fakes';
+import { STORE_PROFILE_REPOSITORY } from '../src/modules/sellers/application/ports/store-profile.repository';
+import { InMemoryStoreProfiles } from '../src/modules/sellers/application/testing/in-memory-store-profiles';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 import { encodeCursor } from '../src/modules/ordering/application/read-flow';
@@ -133,6 +135,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'saved-filter.name-taken': 409,
     'saved-filter.limit-reached': 409,
     'saved-filter.shared-limit-reached': 409,
+    'ordering.search-unavailable': 503,
     'access.unavailable': 503,
   });
 });
@@ -212,6 +215,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(notes)
           .overrideProvider(ADMIN_NOTE_CIPHER)
           .useValue(new FakeAdminNoteCipher())
+          .overrideProvider(STORE_PROFILE_REPOSITORY)
+          .useValue(new InMemoryStoreProfiles())
           .overrideProvider(PICKUP_CODE_REPOSITORY)
           .useValue(pickupCodes)
           .overrideProvider(PICKUP_CODE_VAULT)
@@ -1025,6 +1030,36 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
         });
       });
     }
+
+    it('takes a search text on the admin list, refusing a bad length and showing the cap flag', async () => {
+      await seedAdmins();
+      await checkout(customer());
+
+      const matched = await http()
+        .get('/ordering/admin/orders?search=%20butcher%20&page=1')
+        .set(adminHeaders(VIEWER, 31));
+      const tooShort = await http()
+        .get('/ordering/admin/orders?search=a')
+        .set(adminHeaders(VIEWER, 32));
+      const tooLong = await http()
+        .get(`/ordering/admin/orders?search=${'x'.repeat(81)}`)
+        .set(adminHeaders(VIEWER, 33));
+      const noKey = await http()
+        .get('/ordering/admin/orders?search=butcher')
+        .set(adminHeaders(NO_KEY, 34));
+
+      expect(matched.status).toBe(200);
+      expect(body(matched)).toMatchObject({
+        searchCapped: false,
+        searchScope: 'customers-and-stores',
+      });
+      expect([tooShort, tooLong].map((r) => r.status)).toEqual([400, 400]);
+      expect(body(tooShort)).toMatchObject({
+        details: { fields: [{ path: 'search', code: 'length' }] },
+      });
+      expect(JSON.stringify(tooShort.body)).not.toContain('"a"');
+      expect(noKey.status).toBe(403);
+    });
 
     it('lets a role with ordering.order.view list and read orders, and no other', async () => {
       await seedAdmins();
