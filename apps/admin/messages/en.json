@@ -683,7 +683,11 @@
         "changed": "Last change"
       },
       "health": {
-        "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
+        "band": {
+          "healthy": "Healthy",
+          "at-risk": "At risk",
+          "unhealthy": "Unhealthy"
+        },
         "new": "New",
         "no-data": "No data",
         "none": "Not measured yet",
@@ -1151,7 +1155,8 @@
     "tabs": {
       "label": "Certificates sections",
       "queue": "Review queue",
-      "issuers": "Issuers"
+      "issuers": "Issuers",
+      "requests": "Issuer requests"
     },
     "issuers": {
       "title": "Certificate issuers",
@@ -1256,6 +1261,91 @@
         "csrf": "Your session needs a refresh. Reload the page.",
         "unavailable": "The service is not available right now. Try again in a few minutes.",
         "unknown": "Something went wrong. Try again."
+      }
+    },
+    "requests": {
+      "title": "Issuer requests",
+      "no-access": "You don't have access to issuer requests.",
+      "unavailable": "Issuer requests could not be loaded.",
+      "total": "{count, plural, =0 {No request is open.} one {# request is open, oldest first.} other {# requests are open, oldest first.}}",
+      "empty": "No issuer requests are open.",
+      "empty-page": "Nothing on this page. Go back to the first page.",
+      "answered": "Request answered. The seller gets an email.",
+      "col": {
+        "seller": "Seller",
+        "type": "Type",
+        "files": "Files",
+        "waiting": "Waiting since (UTC)"
+      },
+      "seller-fallback": "Not yet approved",
+      "seller-id": "Seller ID {id}",
+      "seller-id-sr": ", seller {id}",
+      "open-request": "Open request",
+      "back": "Back to issuer requests",
+      "state": {
+        "open": "Open",
+        "issuer-added": "Issuer added",
+        "not-accepted": "Not accepted"
+      },
+      "detail": {
+        "title": "Issuer request",
+        "no-access": "You don't have access to issuer requests.",
+        "not-found": "This request was not found.",
+        "unavailable": "This request could not be loaded."
+      },
+      "details": {
+        "title": "What the seller sent",
+        "typed": "Issuer named by the seller",
+        "typed-note": "The seller's own text. It is not a registry entry.",
+        "typed-gone": "The seller's text is no longer available.",
+        "sent": "Sent (UTC)",
+        "files": "Files",
+        "no-files": "No file was sent.",
+        "file": "File {n} · {type} · {pages, plural, one {# page} other {# pages}} · {size} MB",
+        "files-note": "Downloads are not offered on this screen yet."
+      },
+      "answer": {
+        "title": "Answer",
+        "outcome": "Answer",
+        "issuer": "Issuer",
+        "issuer-gone": "Issuer no longer active",
+        "reason": "Prepared reason",
+        "reason-gone": "Reason no longer listed",
+        "at": "Answered (UTC)",
+        "no-role": "Your role can't change issuers.",
+        "legend": "What is the answer?",
+        "issuer-added": "Issuer added",
+        "issuer-added-help": "The issuer is in the registry and active. The seller can pick it.",
+        "not-accepted": "Not accepted",
+        "not-accepted-help": "The seller is told why, with a prepared reason.",
+        "no-issuers": "No active issuer of this type. Add and activate one first.",
+        "no-reasons": "No prepared reason is available.",
+        "open-registry": "Open the registry",
+        "outcome-required": "Choose an answer.",
+        "issuer-placeholder": "Choose an issuer",
+        "issuer-required": "Choose an issuer.",
+        "reason-placeholder": "Choose a reason",
+        "reason-required": "Choose a reason.",
+        "submit": "Send answer",
+        "reload": "Reload the page",
+        "answered-issuer": "Issuer",
+        "answered-reason": "Reason"
+      },
+      "error": {
+        "invalid": "Some details are not valid. Check the form.",
+        "gone": "This request no longer exists. Reload the page.",
+        "answered": "This request was answered by someone else. Reload the page.",
+        "reason": "That reason is not listed. Reload the page.",
+        "issuer-not-active": "That issuer is not active. Choose an active issuer.",
+        "issuer-gone": "That issuer was not found. Reload the page.",
+        "stale": "This request changed while you were reading it. Reload the page.",
+        "retry": "Another change was in progress. Try again.",
+        "denied": "You don't have permission to do this.",
+        "acting-as": "This can't be done while you are acting as a seller.",
+        "throttled": "Too many requests. Try again in a moment.",
+        "csrf": "Your session needs a refresh. Reload the page.",
+        "unavailable": "The service is not available. Try again.",
+        "unknown": "Something went wrong. Nothing was recorded."
       }
     }
   },
@@ -7107,8 +7197,12 @@
         "seo-description": "Search description",
         "invalid": "This value is not valid."
       },
-      "body": { "empty": "No content yet. Add a block below." },
-      "add": { "label": "Add block" },
+      "body": {
+        "empty": "No content yet. Add a block below."
+      },
+      "add": {
+        "label": "Add block"
+      },
       "block": {
         "name": "Block {n}: {type}",
         "text": "Text",
@@ -7151,7 +7245,11 @@
       "checks": {
         "title": "Checks",
         "none": "No findings.",
-        "severity": { "error": "Must fix", "warning": "Check", "notice": "Note" },
+        "severity": {
+          "error": "Must fix",
+          "warning": "Check",
+          "notice": "Note"
+        },
         "code": {
           "cover-missing": "Add a cover image.",
           "cover-alt-missing": "Describe the cover image (alt text).",
