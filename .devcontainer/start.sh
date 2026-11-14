@@ -17,9 +17,19 @@ if [ ! -d node_modules ] || [ ! -f "$MARKET_CONFIG_DIR/AU.json" ]; then
   bash .devcontainer/setup.sh
 fi
 
+# While sharing is on (share.sh), every start opens new tunnels, whose addresses are new.
+if [ -f .local/share/enabled ] && [ -z "${SHARE_TUNNELS_OPEN:-}" ]; then
+  exec bash .devcontainer/share.sh on
+fi
+
 launch() {
   local name="$1"
   shift
+  # Sharing on: the app's settings for the public addresses (share.sh), ahead of its .env files.
+  local settings=".local/share/${name/worker/api}.env"
+  if [ -f "$settings" ]; then
+    set -- bash -c 'set -a; . "$0"; set +a; exec "$@"' "$settings" "$@"
+  fi
   local pidfile="$LOGS/$name.pid"
   if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
     echo "$name is already running (pid $(cat "$pidfile"))"
@@ -31,12 +41,26 @@ launch() {
 }
 
 launch api pnpm dev
-launch seller pnpm dev:seller
-launch admin pnpm dev:admin
-launch web pnpm dev:web
+if [ -f .local/share/enabled ]; then
+  # Shared: production builds. The Next.js dev server serves its scripts only to localhost
+  # (allowedDevOrigins), so a page opened through a tunnel would not run. No hot reload here.
+  for app in seller admin web; do
+    launch "$app" bash -c 'pnpm --filter "@mondapac/$0" build && exec pnpm --filter "@mondapac/$0" start' "$app"
+  done
+else
+  launch seller pnpm dev:seller
+  launch admin pnpm dev:admin
+  launch web pnpm dev:web
+fi
 # The worker builds the API once; start it after the API is up so it does not race the API
 # watcher that cleans dist (as dev-local.bat does).
 launch worker bash -c 'for i in $(seq 1 120); do curl -sf -m 3 -o /dev/null http://localhost:3000/health && break; sleep 5; done; exec pnpm dev:worker'
+
+if [ -f .local/share/enabled ]; then
+  echo
+  cat .local/share/urls.txt
+  exit 0
+fi
 
 cat <<'TEXT'
 

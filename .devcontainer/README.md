@@ -40,9 +40,32 @@ Then, in your browser:
 | API          | http://localhost:3000/health, Swagger at http://localhost:3000/docs |
 | Mailpit      | http://localhost:8025 (all mail the platform sends) |
 
-The `*.app.github.dev` links from the **Ports** tab work for the buyer site (sample data),
-Swagger and Mailpit. On them the panels show their pages but every sign-in answers 404, because
-that host is not in `PANEL_HOSTS`.
+## Share it with the team (public https addresses)
+
+```
+bash .devcontainer/share.sh on
+```
+
+This opens Cloudflare quick tunnels (no account needed) and prints four addresses, for example
+`https://<random-words>.trycloudflare.com`: seller panel, admin panel, buyer site and the API
+(the buyer site loads product photos from it). Anyone with an address can open it; send them
+only to the team. The command also switches the apps to those addresses (allowed origins, mail
+links, signed client address with keys made for this codespace) and runs the panels and the
+buyer site as production builds, so there is no hot reload while sharing.
+
+- `bash .devcontainer/share.sh urls` prints the current addresses.
+- `bash .devcontainer/share.sh off` closes the tunnels and goes back to `*.localhost`.
+- The addresses change every time the codespace starts again (and after `seed.sh`); run
+  `share.sh urls` and send the new ones.
+- Mailpit is not shared: it holds every sign-in and verification code. Read it yourself through a
+  port forward and pass a code on when someone needs it.
+- The codespace must be running for the addresses to work; it stops after 30 idle minutes by
+  default (raise the idle timeout in your GitHub Codespaces settings, up to 240 minutes).
+
+Why not the `*.app.github.dev` links from the **Ports** tab: the Codespaces proxy hands the app
+`Host: localhost` and rewrites the browser's `Origin` to `http://localhost:<port>`, so the panels
+cannot match their host (`PANEL_HOSTS`) and refuse the sign-in. Those links are fine for Swagger
+and, outside sharing, for the buyer site's sample data.
 
 ## Day to day
 
