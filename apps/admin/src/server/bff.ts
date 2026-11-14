@@ -380,6 +380,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // for a two-step code) or send it back with a note.
     'blog/admin/posts/:id/approve',
     'blog/admin/posts/:id/request-changes',
+    // Publishing (blog): make the approved version live, take a post off the site, put it back,
+    // archive it. Each is behind the server's own permission and two-step rules.
+    'blog/admin/posts/:id/publish',
+    'blog/admin/posts/:id/pause',
+    'blog/admin/posts/:id/resume',
+    'blog/admin/posts/:id/archive',
     'storefront/admin/slides/:id/approve',
     'storefront/admin/slides/:id/pause',
     'storefront/admin/slides/:id/resume',
@@ -439,6 +445,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'storefront/admin/slides/:id',
     // A blog post's whole draft: the content and the address (blog).
     'blog/admin/posts/:id/draft',
+    // Schedule the approved version, change the address of a published post, feature it (blog).
+    'blog/admin/posts/:id/schedule',
+    'blog/admin/posts/:id/slug',
+    'blog/admin/posts/:id/featured',
     // The live status of a published blog event and its note for readers (blog).
     'blog/admin/posts/:id/event-status',
     // The whole content of a brand, with the version seen (catalog).
@@ -464,6 +474,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // One seller's own cap on its refunds (ordering); the version seen is in the query.
     'ordering/admin/refund-limits/sellers/:id',
     'identity/admin/roles/:id',
+    // Remove a blog post's schedule; the version stays approved (blog).
+    'blog/admin/posts/:id/schedule',
     // A tax strategy that is not active (tax).
     'tax/admin/strategies/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',

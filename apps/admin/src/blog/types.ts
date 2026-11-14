@@ -55,3 +55,5 @@ export const BLOG_REVIEW_PERMISSION = 'blog.post.review';
 export const API_BLOG_TAXONOMY = 'blog/admin/taxonomy';
 export const NEW_POST_PATH = '/content/blog/new';
 export const postPath = (id: string): string => `/content/blog/${id}`;
+export const BLOG_PUBLISH_PERMISSION = 'blog.post.publish';
+export const BLOG_PAUSE_PERMISSION = 'blog.post.pause';

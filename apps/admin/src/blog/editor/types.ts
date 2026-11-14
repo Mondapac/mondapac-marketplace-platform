@@ -78,6 +78,10 @@ export interface PostDetail {
   readonly ownerType: 'platform' | 'seller';
   readonly sellerId: string | null;
   readonly status: PostStatus;
+  readonly featured?: boolean;
+  readonly scheduledAt?: string | null;
+  readonly publishedAt?: string | null;
+  readonly pausedReason?: string | null;
   readonly open: VersionView | null;
   readonly live: VersionView | null;
 }
