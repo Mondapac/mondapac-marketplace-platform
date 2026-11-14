@@ -58,6 +58,8 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
   const whileNothingChanges = async <T>(work: () => Promise<T>): Promise<T> => {
     await owner.query('BEGIN');
     try {
+      // A stuck lock fails here, loudly, instead of running into the test timeout.
+      await owner.query("SET LOCAL lock_timeout = '10s'");
       await owner.query(
         `LOCK TABLE catalog.attribute_definitions, catalog.brands, catalog.brand_aliases,
            catalog.cultures, catalog.culture_categories IN SHARE MODE`,
