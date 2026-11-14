@@ -151,6 +151,14 @@ export function remainingUnits(order: SellerOrderView, lineId: string): number {
   return Math.max(0, line.quantity - refunded);
 }
 
+/**
+ * A packing slip is for an order still to send: not shipped or delivered, with units left after
+ * refunds. Once sent or refunded in full, the customer's address is no longer printed.
+ */
+export const packingSlipAvailable = (order: SellerOrderView): boolean =>
+  order.fulfilment === 'to-ship' &&
+  order.lines.some((line) => remainingUnits(order, line.lineId) > 0);
+
 /** The count of refunds not failed: the API refuses the request if another went through meanwhile. */
 export const liveRefunds = (order: SellerOrderView): number =>
   (order.refunds ?? []).filter((refund) => refund.state !== 'failed').length;

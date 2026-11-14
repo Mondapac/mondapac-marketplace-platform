@@ -19,6 +19,7 @@ import {
   type ActivityEvent,
   type SellerNote,
   type SellerOrderView,
+  packingSlipAvailable,
 } from './types.ts';
 
 /**
@@ -145,14 +146,16 @@ export function OrderDetail({
           <Button variant="secondary" onClick={() => void copyReference()}>
             {t('copy-id')}
           </Button>
-          <a
-            href={`/orders/${order.sellerOrderId}/packing-slip`}
-            target="_blank"
-            rel="noopener"
-            className="inline-flex items-center rounded-md border border-line-control bg-surface px-3 py-2 text-sm font-medium text-fg hover:bg-muted"
-          >
-            {t('slip.open')}
-          </a>
+          {packingSlipAvailable(order) ? (
+            <a
+              href={`/orders/${order.sellerOrderId}/packing-slip`}
+              target="_blank"
+              rel="noopener"
+              className="inline-flex items-center rounded-md border border-line-control bg-surface px-3 py-2 text-sm font-medium text-fg hover:bg-muted"
+            >
+              {t('slip.open')}
+            </a>
+          ) : null}
         </div>
         <p className="text-sm text-fg-muted">
           {t('paid-line', { when: formatInstant(order.paidAt, locale, zone) })}
