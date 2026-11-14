@@ -3,6 +3,9 @@
 import { BackLink, Badge, Banner, Button, Card, CARD_TABLE, DataList, toast } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState } from 'react';
+import { OrderNotes } from './order-notes.tsx';
+import { OrderTimeline } from './order-timeline.tsx';
+import { UnavailableDialog } from './unavailable-dialog.tsx';
 import { callApi } from '../api/client.ts';
 import { DisputeNotice } from '../disputes/dispute-notice.tsx';
 import type { OwnDispute } from '../disputes/types.ts';
@@ -11,7 +14,12 @@ import { formatMinor } from '../price/money.ts';
 import { orderProblemOf } from './errors.ts';
 import { PickupHandover } from './pickup-handover.tsx';
 import { shortId, statusOf, TONE } from './status.ts';
-import type { SellerOrderView } from './types.ts';
+import {
+  remainingUnits,
+  type ActivityEvent,
+  type SellerNote,
+  type SellerOrderView,
+} from './types.ts';
 
 /**
  * One paid order on its own page: summary, its lines with product names, the totals and the
@@ -26,6 +34,11 @@ export function OrderDetail({
   canDeliver,
   canConfirmPickup = false,
   dispute = null,
+  canMarkUnavailable = false,
+  canNote = false,
+  notes = null,
+  activity = null,
+  showExtras = false,
 }: {
   readonly initial: SellerOrderView;
   readonly csrfToken: string;
@@ -34,6 +47,16 @@ export function OrderDetail({
   readonly canConfirmPickup?: boolean;
   /** The dispute that holds or held this order: a notice shows near the top. */
   readonly dispute?: OwnDispute | null;
+  /** "Mark unavailable" (a protected key: the step-up dialog may ask for a code). */
+  readonly canMarkUnavailable?: boolean;
+  /** The role holds `ordering.seller-order.note`: the note form shows. */
+  readonly canNote?: boolean;
+  /** The shop's notes on this order; null when they could not be read. */
+  readonly notes?: readonly SellerNote[] | null;
+  /** The order timeline; null when it could not be read. */
+  readonly activity?: readonly ActivityEvent[] | null;
+  /** The page loads notes and the timeline (the order page does; a bare test mount does not). */
+  readonly showExtras?: boolean;
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -42,6 +65,9 @@ export function OrderDetail({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [justMarked, setJustMarked] = useState(false);
+  const [unavailableOpen, setUnavailableOpen] = useState(false);
+  // The page is read again after a refund or a note: the new answer replaces the old order.
+  useEffect(() => setOrder(initial), [initial]);
   const busy = useRef(false);
   const hintId = useId();
   const doneRef = useRef<HTMLDivElement>(null);
@@ -101,6 +127,11 @@ export function OrderDetail({
   const nextStepVisible =
     order.fulfilment === 'to-ship' || (order.fulfilment === 'shipped' && canDeliver);
   const count = order.lines.reduce((sum, line) => sum + line.quantity, 0);
+  const canUnavailable =
+    canMarkUnavailable &&
+    order.fulfilment === 'to-ship' &&
+    order.readyAt === null &&
+    order.lines.some((entry) => remainingUnits(order, entry.lineId) > 0);
   const lineHead = (col: 'item' | 'quantity' | 'unit' | 'amount') => t(`line.col.${col}`);
   return (
     <div className="flex flex-col gap-6">
@@ -114,6 +145,14 @@ export function OrderDetail({
           <Button variant="secondary" onClick={() => void copyReference()}>
             {t('copy-id')}
           </Button>
+          <a
+            href={`/orders/${order.sellerOrderId}/packing-slip`}
+            target="_blank"
+            rel="noopener"
+            className="inline-flex items-center rounded-md border border-line-control bg-surface px-3 py-2 text-sm font-medium text-fg hover:bg-muted"
+          >
+            {t('slip.open')}
+          </a>
         </div>
         <p className="text-sm text-fg-muted">
           {t('paid-line', { when: formatInstant(order.paidAt, locale, zone) })}
@@ -202,6 +241,22 @@ export function OrderDetail({
                   </div>
                 </>
               ) : null}
+            </Card>
+          ) : null}
+          {canUnavailable ? (
+            <Card title={t('unavailable.card')}>
+              <p className="text-sm text-balance text-fg-muted">{t('unavailable.hint')}</p>
+              <div>
+                <Button variant="destructive" onClick={() => setUnavailableOpen(true)}>
+                  {t('unavailable.open')}
+                </Button>
+              </div>
+              <UnavailableDialog
+                open={unavailableOpen}
+                onClose={() => setUnavailableOpen(false)}
+                order={order}
+                csrfToken={csrfToken}
+              />
             </Card>
           ) : null}
           <Card title={t('lines')} flush>
@@ -336,6 +391,17 @@ export function OrderDetail({
               )}
             </div>
           </Card>
+          {showExtras ? (
+            <>
+              <OrderNotes
+                sellerOrderId={order.sellerOrderId}
+                notes={notes}
+                canWrite={canNote}
+                csrfToken={csrfToken}
+              />
+              <OrderTimeline events={activity} />
+            </>
+          ) : null}
         </div>
       </div>
     </div>

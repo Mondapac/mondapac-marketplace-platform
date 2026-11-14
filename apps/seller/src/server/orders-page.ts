@@ -2,6 +2,8 @@ import 'server-only';
 import { redirect } from 'next/navigation';
 import {
   ORDER_VIEW_PERMISSION,
+  type ActivityEvent,
+  type SellerNote,
   type SellerOrderPage,
   type SellerOrderView,
 } from '../orders/types.ts';
@@ -57,6 +59,10 @@ export type OrderDetailPage =
       readonly order: SellerOrderView;
       /** The dispute that holds or held this order, if any. */
       readonly dispute: OwnDispute | null;
+      /** The shop's notes on the order; null when the list did not load. */
+      readonly notes: readonly SellerNote[] | null;
+      /** The order timeline, oldest first; null when it did not load. */
+      readonly activity: readonly ActivityEvent[] | null;
     }
   | { readonly kind: 'no-access'; readonly session: SellerSession }
   | { readonly kind: 'not-found'; readonly session: SellerSession }
@@ -71,9 +77,15 @@ export async function loadOrderDetailPage(sellerOrderId: string): Promise<OrderD
   if (!session.permissionKeys.includes(ORDER_VIEW_PERMISSION)) {
     return { kind: 'no-access', session };
   }
-  const [result, disputes] = await Promise.all([
+  const [result, disputes, notes, activity] = await Promise.all([
     serverGet<SellerOrderView>(`ordering/seller/orders/${sellerOrderId}`),
     loadOwnDisputes(),
+    serverGet<{ readonly notes: readonly SellerNote[] }>(
+      `ordering/seller/orders/${sellerOrderId}/notes`,
+    ),
+    serverGet<{ readonly events: readonly ActivityEvent[] }>(
+      `ordering/seller/orders/${sellerOrderId}/activity`,
+    ),
   ]);
   if (result.kind === 'signed-out') redirect('/session-ended');
   if (result.kind === 'not-found') return { kind: 'not-found', session };
@@ -83,5 +95,8 @@ export async function loadOrderDetailPage(sellerOrderId: string): Promise<OrderD
     session,
     order: result.body,
     dispute: disputes.find((entry) => entry.sellerOrderId === sellerOrderId) ?? null,
+    // The notes and the timeline are extras: when they cannot be read the order still shows.
+    notes: notes.kind === 'ok' ? notes.body.notes : null,
+    activity: activity.kind === 'ok' ? activity.body.events : null,
   };
 }

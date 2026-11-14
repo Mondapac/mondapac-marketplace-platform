@@ -2620,7 +2620,101 @@
       "more": "Show more"
     },
     "range": "{from} to {to} of {total}",
-    "too-many": "Page numbers stop at the first {limit} orders. Narrow the dates to reach the rest, or ask your platform admin to switch List paging to Previous and next."
+    "too-many": "Page numbers stop at the first {limit} orders. Narrow the dates to reach the rest, or ask your platform admin to switch List paging to Previous and next.",
+    "slip": {
+      "open": "Print packing slip",
+      "title": "Packing slip",
+      "back": "Back to order",
+      "print": "Print",
+      "paid": "Paid {when}",
+      "ship-to": "Ship to",
+      "no-address": "No delivery address is on this order.",
+      "phone": "Phone: {phone}",
+      "items": "Items to pack",
+      "no-items": "Nothing is left to pack on this order.",
+      "buyer-note": "Note from the customer"
+    },
+    "unavailable": {
+      "card": "Cannot supply an item?",
+      "hint": "If you cannot send some units, mark them unavailable. The customer is refunded straight away and the refund comes out of your earnings.",
+      "open": "Mark unavailable",
+      "title": "Mark items unavailable",
+      "keep": "Keep order",
+      "confirm": "Mark unavailable and refund",
+      "body": "Choose how many units of each item you cannot send.",
+      "line-meta": "{left, plural, one {# unit left} other {# units left}} · {price} each",
+      "summary-none": "Choose at least one unit.",
+      "summary-title": "These units will be refunded to the customer:",
+      "summary-line": "{quantity} × {name}",
+      "summary-all": "Nothing is left to send, so the customer also gets back the rest of the shipping fee.",
+      "summary-some": "Each unit is refunded at the price the customer paid.",
+      "final": "The refund goes out immediately and cannot be undone. MondaPac works out the exact amount, including tax, and takes it from your earnings.",
+      "done": "Marked unavailable. {amount} is being refunded to the customer.",
+      "error": {
+        "refunded": "This order was refunded or changed since you opened it. Reload the page to see its current state.",
+        "conflict": "These items can no longer be marked unavailable, for example because the order is already ready. Reload the page.",
+        "limit-reached": "You have reached your refund limit for today. Contact MondaPac support to refund this order.",
+        "limit-unset": "Refunds by sellers are not set up for your store yet. Contact MondaPac support.",
+        "disabled": "Refunds are switched off right now. Contact MondaPac support.",
+        "not-allowed": "This order cannot be refunded here. Contact MondaPac support.",
+        "in-progress": "Another refund of this order is still being processed. Reload the page in a moment.",
+        "exceeds": "You chose more units than are left. Check the numbers and try again.",
+        "tax": "The refund tax could not be worked out right now. Try again shortly.",
+        "rejected": "The payment provider refused the refund. Nothing was refunded. Contact MondaPac support.",
+        "invalid": "Choose at least one unit, and no more than are left.",
+        "not-found": "We could not find this order.",
+        "throttled": "Too many attempts. Wait a moment and try again.",
+        "csrf": "Your session needs a refresh. Reload the page and try again.",
+        "denied": "Your role cannot do this.",
+        "unavailable": "Refunds are not available right now. Try again shortly.",
+        "unknown": "Something went wrong. Nothing was refunded. Try again."
+      }
+    },
+    "notes": {
+      "title": "Notes",
+      "intro": "Only your team sees these notes. They are never shown to the customer.",
+      "empty": "No notes yet.",
+      "unavailable": "Notes could not be loaded. Reload the page to try again.",
+      "erased-body": "This note is no longer available.",
+      "by": "{author} · {at}",
+      "you": "You",
+      "unknown-author": "A team member",
+      "add-label": "Add a note",
+      "add": "Add note",
+      "added": "Note added.",
+      "required": "Write a note first.",
+      "too-long": "A note can have up to {max} characters.",
+      "problem": {
+        "erased": "The customer’s account was deleted, so notes can no longer be added.",
+        "denied": "Your role cannot add notes.",
+        "invalid": "The note could not be saved. Check the text and try again.",
+        "unavailable": "Notes are not available right now. Try again shortly.",
+        "unknown": "Something went wrong. Try again."
+      }
+    },
+    "timeline": {
+      "title": "Activity",
+      "empty": "Nothing has happened yet.",
+      "unavailable": "The activity could not be loaded. Reload the page to try again.",
+      "event": {
+        "order-paid": "Payment received",
+        "seller-order-ready": "Marked ready",
+        "seller-order-shipped": "Picked up by the courier",
+        "seller-order-delivered": "Delivered to the customer",
+        "seller-order-collected": "Collected by the customer",
+        "refund-requested": "Refund of {amount} requested",
+        "refund-succeeded": "Refund of {amount} paid back to the customer",
+        "refund-failed": "Refund of {amount} failed. Nothing was paid back"
+      },
+      "by": {
+        "customer": "Customer",
+        "seller": "Your store",
+        "admin": "MondaPac"
+      },
+      "reason": {
+        "item-unavailable": "Item unavailable"
+      }
+    }
   },
   "earnings": {
     "title": "Earnings",

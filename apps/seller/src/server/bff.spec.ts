@@ -816,6 +816,39 @@ describe('relay of the seller order routes', () => {
   });
 });
 
+describe('relay of the order unavailable and notes routes', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const list = ['ordering', 'seller', 'orders'];
+  const send = (method: string, path: string[]) =>
+    relay(
+      config,
+      new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+        method,
+        headers: sameOrigin,
+        ...(method === 'GET' ? {} : { body: '{}' }),
+      }),
+      path,
+      upstreamOk(),
+    );
+
+  it('posts unavailable and notes by UUID only', async () => {
+    for (const action of ['unavailable', 'notes']) {
+      expect((await send('POST', [...list, ID, action])).status).toBe(200);
+      expect((await send('POST', [...list, 'x', action])).status).toBe(404);
+    }
+  });
+
+  it('does not relay the notes or activity reads, nor other methods', async () => {
+    for (const action of ['notes', 'activity']) {
+      expect((await send('GET', [...list, ID, action])).status).toBe(404);
+    }
+    expect((await send('POST', [...list, ID, 'activity'])).status).toBe(404);
+    for (const method of ['PUT', 'PATCH', 'DELETE']) {
+      expect((await send(method, [...list, ID, 'unavailable'])).status).toBe(404);
+    }
+  });
+});
+
 describe('relay of the seller ledger route', () => {
   const path = ['commission-payouts', 'seller', 'ledger'];
   const request = (method: string, query = '') =>
