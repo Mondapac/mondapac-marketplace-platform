@@ -326,6 +326,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX special_price_records_market_id_submitted_at_id_pending_idx ON pricing.special_price_records USING btree (market_id, submitted_at, id) WHERE (status = 'pending-review'::text)",
   'pricing.special_price_records_market_id_series_id_pending_key':
     "CREATE UNIQUE INDEX special_price_records_market_id_series_id_pending_key ON pricing.special_price_records USING btree (market_id, series_id) WHERE (status = 'pending-review'::text)",
+  // SOC package 2 (docs/design/data/security.md 2): one live alert per rule and key.
+  'security.alerts_market_id_rule_key_type_key_value_live_key':
+    "CREATE UNIQUE INDEX alerts_market_id_rule_key_type_key_value_live_key ON security.alerts USING btree (market_id, rule, key_type, key_value) WHERE ((state)::text <> 'resolved'::text)",
   // docs/design/data/sellers.md 3.2 and 9.5 (slice 5, section 22): one pending and one live
   // approved revision per file, and the reviewer queue by kind and age.
   // Seller health requests: one pending request per seller, and the pick-up order of the job.

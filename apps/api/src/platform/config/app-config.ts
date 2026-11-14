@@ -161,6 +161,8 @@ const envSchema = z.object({
   // secret, never stored in the database or echoed; without it no batch of codes is generated and
   // none is looked up.
   PROMOTIONS_CODE_PEPPER: z.string().regex(HMAC_KEY, HMAC_KEY_MESSAGE).optional(),
+  /** The on-call roster file of the SOC (docs/design/data/security.md 5); a path, never in the repo. */
+  SECURITY_ON_CALL_FILE: z.string().min(1).max(4096).optional(),
   PAYMENTS_EXTERNAL_ACCOUNT_HMAC_CURRENT_VERSION: z.coerce.number().int().min(1).max(3).optional(),
   // SHP-02/03: the marketplace's merchant API key at Mondapac Drive and the secret Drive signs its
   // status webhooks with, each as MARKET=value pairs separated by commas (each Market at most once
@@ -452,6 +454,12 @@ export interface AppConfig {
   readonly stripeWebhookSecrets: Readonly<Record<string, string>>;
   /** The same for the Connect endpoint (`STRIPE_CONNECT_WEBHOOK_SECRET`): connected-account events. */
   readonly stripeConnectWebhookSecrets: Readonly<Record<string, string>>;
+  /**
+   * `SECURITY_ON_CALL_FILE`: the path of the SOC on-call roster (people's addresses and phone
+   * numbers, so never in the repository), or null: alerts are still opened and shown, and every
+   * delivery is recorded as not configured. Read by the security module alone.
+   */
+  readonly securityOnCallFile: string | null;
   /** `PROMOTIONS_CODE_PEPPER` (a secret, never logged), or null when unset: single-use codes are then off. */
   readonly promotionsCodePepper: string | null;
   /**
@@ -957,6 +965,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     stripeConnectWebhookSecrets: connectSecrets.secrets,
     externalAccountHmac: externalAccountHmac.value,
     promotionsCodePepper: parsed.data.PROMOTIONS_CODE_PEPPER ?? null,
+    securityOnCallFile: parsed.data.SECURITY_ON_CALL_FILE ?? null,
     clientAddressTrust: clientAddress.trust,
     assistantModels: assistant.config,
     googleSignIn:

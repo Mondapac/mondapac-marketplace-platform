@@ -2580,6 +2580,29 @@
     }
   },
   {
+    "action": "security.alert.acknowledged",
+    "targetType": "security.alert",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "severity": "enumOf(s1|s2|s3|s4)",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "security.alert.resolved",
+    "targetType": "security.alert",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "resolution": "enumOf(contained|false-positive|duplicate|accepted-risk)",
+      "severity": "enumOf(s1|s2|s3|s4)",
+      "version": "integer"
+    }
+  },
+  {
     "action": "sellers.ai-access.changed",
     "targetType": "sellers.seller",
     "targetId": "id",
