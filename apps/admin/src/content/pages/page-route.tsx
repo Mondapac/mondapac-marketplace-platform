@@ -7,9 +7,12 @@ import { requireSession } from '../../server/session.ts';
 import { displayZone } from '../../shared/format.ts';
 import { ContentNoAccess } from '../content-no-access.tsx';
 import { PageContent } from './page-content.tsx';
+import { PageVersions } from './page-versions.tsx';
 import { PageSettings } from './page-settings.tsx';
 import {
+  PAGE_ARCHIVE_PERMISSION,
   PAGE_EDIT_PERMISSION,
+  PAGE_PUBLISH_PERMISSION,
   PAGE_READ_PERMISSION,
   PAGES_API_PATH,
   type PageDetail,
@@ -17,7 +20,7 @@ import {
 
 /**
  * One page of the page editor, on the tab it is opened on: the gate (the read permission), the
- * read of the page, and the Content or Settings tab. The edit permission only turns the controls
+ * read of the page, and the Content, Settings or Versions tab. The edit permission only turns the controls
  * on; an unknown page, the navigation page (it has its own tab) and a page of another Market look
  * the same: not found.
  */
@@ -26,7 +29,7 @@ export async function PageRoute({
   tab,
 }: {
   readonly page: string;
-  readonly tab: 'content' | 'settings';
+  readonly tab: 'content' | 'settings' | 'versions';
 }) {
   const gate = await requireSession();
   const t = await getTranslations();
@@ -52,15 +55,43 @@ export async function PageRoute({
   }
   const body = read.body;
   const canEdit = permissionKeys.includes(PAGE_EDIT_PERMISSION);
+  const canPublish = permissionKeys.includes(PAGE_PUBLISH_PERMISSION);
+  const canArchive = permissionKeys.includes(PAGE_ARCHIVE_PERMISSION);
   const zone = displayZone(timezone);
   // A new key after a refresh shows the page as it is now (a refused change that found it changed).
-  const key = `${body.updatedAt}:${body.draft.updatedAt}:${body.publishedVersionNo}`;
+  const key = `${body.updatedAt}:${body.draft.updatedAt}:${body.publishedVersionNo}:${body.status}`;
   return (
     <AdminShell session={gate.session} activeId="content" title={title}>
       {tab === 'content' ? (
-        <PageContent key={key} page={body} canEdit={canEdit} csrfToken={csrfToken} zone={zone} />
+        <PageContent
+          key={key}
+          page={body}
+          canEdit={canEdit}
+          canPublish={canPublish}
+          canArchive={canArchive}
+          csrfToken={csrfToken}
+          zone={zone}
+        />
+      ) : tab === 'settings' ? (
+        <PageSettings
+          key={key}
+          page={body}
+          canEdit={canEdit}
+          canPublish={canPublish}
+          canArchive={canArchive}
+          csrfToken={csrfToken}
+          zone={zone}
+        />
       ) : (
-        <PageSettings key={key} page={body} canEdit={canEdit} csrfToken={csrfToken} zone={zone} />
+        <PageVersions
+          key={key}
+          page={body}
+          canEdit={canEdit}
+          canPublish={canPublish}
+          canArchive={canArchive}
+          csrfToken={csrfToken}
+          zone={zone}
+        />
       )}
     </AdminShell>
   );

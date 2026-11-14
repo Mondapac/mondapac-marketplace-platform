@@ -7,6 +7,7 @@ import messages from '../../../../../messages/en.json';
 import type { AdminSession } from '../../../../../src/server/session.ts';
 import PageEditorPage from './page.tsx';
 import PageSettingsPage from './settings/page.tsx';
+import PageVersionsPage from './versions/page.tsx';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -69,7 +70,27 @@ vi.mock('../../../../../src/content/pages/page-settings.tsx', () => ({
   ),
 }));
 
+vi.mock('../../../../../src/content/pages/page-versions.tsx', () => ({
+  PageVersions: (props: {
+    readonly page: { readonly id: string };
+    readonly canEdit: boolean;
+    readonly canPublish: boolean;
+    readonly canArchive: boolean;
+  }) => (
+    <p
+      data-testid="versions"
+      data-edit={String(props.canEdit)}
+      data-publish={String(props.canPublish)}
+      data-archive={String(props.canArchive)}
+    >
+      versions {props.page.id}
+    </p>
+  ),
+}));
+
 const READ = 'storefront.page.read';
+const PUBLISH = 'storefront.page.publish';
+const ARCHIVE = 'storefront.page.archive';
 const EDIT = 'storefront.page.edit';
 const ID = '0190a000-0000-7000-8000-0000000000a1';
 const session = (permissionKeys: string[], timezone: string | null = null): AdminSession => ({
@@ -144,11 +165,24 @@ describe('page editor routes', () => {
     expect(screen.queryByTestId('content')).toBeNull();
   });
 
+  it('show the Versions tab on its own route and pass the protected keys only when held', async () => {
+    signIn([READ, EDIT]);
+    render(await PageVersionsPage(params(ID)));
+    expect(screen.getByTestId('versions').getAttribute('data-publish')).toBe('false');
+    expect(screen.getByTestId('versions').getAttribute('data-archive')).toBe('false');
+    cleanup();
+    signIn([READ, EDIT, PUBLISH, ARCHIVE]);
+    render(await PageVersionsPage(params(ID)));
+    expect(screen.getByTestId('versions').getAttribute('data-publish')).toBe('true');
+    expect(screen.getByTestId('versions').getAttribute('data-archive')).toBe('true');
+  });
+
   it('treat an unknown page, and the navigation page, as not found', async () => {
     signIn([READ]);
     mocks.get.mockResolvedValue({ kind: 'not-found' });
     await expect(PageEditorPage(params(ID))).rejects.toThrow('not-found');
     await expect(PageSettingsPage(params(ID))).rejects.toThrow('not-found');
+    await expect(PageVersionsPage(params(ID))).rejects.toThrow('not-found');
     mocks.get.mockClear();
     await expect(PageEditorPage(params('navigation'))).rejects.toThrow('not-found');
     expect(mocks.get).not.toHaveBeenCalled();

@@ -822,8 +822,15 @@ const PAGE_ROUTES: Readonly<Record<string, readonly string[]>> = {
     'storefront/admin/pages/:page/slots/:slot/modules/:placement',
     'storefront/admin/pages/:page/slots/:slot/order',
   ],
-  // A module added to a slot.
-  POST: ['storefront/admin/pages/:page/slots/:slot/modules'],
+  POST: [
+    // A module added to a slot.
+    'storefront/admin/pages/:page/slots/:slot/modules',
+    // An earlier version copied into the draft, the draft published (storefront.page.publish) and
+    // the page archived (storefront.page.archive): the API judges the keys.
+    'storefront/admin/pages/:page/restore',
+    'storefront/admin/pages/:page/publish',
+    'storefront/admin/pages/:page/archive',
+  ],
   // A module removed from a slot.
   DELETE: ['storefront/admin/pages/:page/slots/:slot/modules/:placement'],
 };

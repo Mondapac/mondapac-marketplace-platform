@@ -98,6 +98,79 @@ const shots = [
       await p.getByText(/changed since you opened it/).waitFor();
     },
   ],
+  [
+    'versions',
+    '#versions',
+    (p) => p.getByRole('list', { name: 'Versions of this page' }).waitFor(),
+  ],
+  ['versions-empty', '#versions-empty', (p) => p.getByText('No version was saved yet.').waitFor()],
+  [
+    'versions-readonly',
+    '#versions-readonly',
+    (p) => p.getByText(/view this page but not change/).waitFor(),
+  ],
+  [
+    'versions-restore',
+    '#versions',
+    async (p) => {
+      await p.getByRole('button', { name: 'Restore version 1' }).click();
+      await p.getByRole('heading', { name: 'Restore version 1?' }).waitFor();
+    },
+  ],
+  [
+    'versions-gone',
+    '#versions-gone',
+    async (p) => {
+      await p.getByRole('button', { name: 'Restore version 1' }).click();
+      await p.getByRole('button', { name: 'Restore to draft' }).click();
+      await p.getByText(/no longer exists/).waitFor();
+    },
+  ],
+  [
+    'publish-dialog',
+    '#admin',
+    async (p) => {
+      await p.getByRole('button', { name: 'Publish', exact: true }).click();
+      await p.getByRole('heading', { name: 'Publish this page?' }).waitFor();
+    },
+  ],
+  [
+    'publish-too-few',
+    '#publish-errors',
+    async (p) => {
+      await p.getByRole('button', { name: 'Publish', exact: true }).click();
+      await p.getByRole('button', { name: 'Publish', exact: true }).last().click();
+      await p.getByText(/fewer switched-on modules/).waitFor();
+    },
+  ],
+  [
+    'publish-changed',
+    '#publish-changed',
+    async (p) => {
+      await p.getByRole('button', { name: 'Publish', exact: true }).click();
+      await p.getByRole('button', { name: 'Publish', exact: true }).last().click();
+      await p.getByText(/draft changed after you opened/).waitFor();
+    },
+  ],
+  ['publish-nodraft', '#admin-nodraft', (p) => p.getByText(/Nothing to publish/).waitFor()],
+  [
+    'archive-dialog',
+    '#admin',
+    async (p) => {
+      await p.getByRole('button', { name: 'Archive', exact: true }).click();
+      await p.getByRole('heading', { name: 'Archive this page?' }).waitFor();
+    },
+  ],
+  [
+    'archive-bad-redirect',
+    '#admin',
+    async (p) => {
+      await p.getByRole('button', { name: 'Archive', exact: true }).click();
+      await p.getByLabel(/Send buyers to/).fill('//evil.test');
+      await p.getByRole('button', { name: 'Archive page' }).click();
+      await p.getByText(/Use a site path/).waitFor();
+    },
+  ],
   ['settings', '#settings', (p) => p.getByLabel('Page title').waitFor()],
   ['settings-pending', '#settings-pending', (p) => p.getByText(/wait for publishing/).waitFor()],
   [

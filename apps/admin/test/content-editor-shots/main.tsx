@@ -4,6 +4,7 @@ import messages from '../../messages/en.json';
 import '../../app/globals.css';
 import { PageContent } from '../../src/content/pages/page-content.tsx';
 import { PageSettings } from '../../src/content/pages/page-settings.tsx';
+import { PageVersions } from '../../src/content/pages/page-versions.tsx';
 import type { PageDetail, Placement } from '../../src/content/pages/page-types.ts';
 
 const at = (
@@ -83,7 +84,29 @@ const landing: PageDetail = {
     },
   },
   published: null,
-  versions: [],
+  versions: [
+    {
+      id: 'v1',
+      versionNo: 1,
+      state: 'retired',
+      createdAt: '2026-10-01T01:00:00Z',
+      publishedAt: '2026-10-02T01:00:00Z',
+    },
+    {
+      id: 'v2',
+      versionNo: 2,
+      state: 'published',
+      createdAt: '2026-11-01T00:00:00Z',
+      publishedAt: '2026-11-01T01:00:00Z',
+    },
+    {
+      id: 'v3',
+      versionNo: 3,
+      state: 'draft',
+      createdAt: '2026-11-02T01:00:00Z',
+      publishedAt: null,
+    },
+  ],
 };
 
 const system: PageDetail = {
@@ -159,6 +182,11 @@ window.fetch = ((input: string, init?: RequestInit) => {
       ]);
     }
     if (view === 'content-stale') return refuse('storefront.placement-not-found', 404);
+    if (view === 'versions-gone') return refuse('storefront.version-not-found', 404);
+    if (view === 'publish-errors') {
+      return refuse('validation.failed', 400, [{ path: 'slots.main', code: 'too-few-modules' }]);
+    }
+    if (view === 'publish-changed') return refuse('storefront.draft-changed', 409);
     if (view === 'settings-errors') {
       return refuse('validation.failed', 400, [
         { path: 'slug', code: 'reserved' },
@@ -177,8 +205,19 @@ window.fetch = ((input: string, init?: RequestInit) => {
 }) as typeof fetch;
 
 const zone = 'Australia/Brisbane';
-const screen = view.startsWith('settings') ? 'settings' : 'content';
-const detail = view.endsWith('system') ? system : landing;
+const screen = view.startsWith('settings')
+  ? 'settings'
+  : view.startsWith('versions')
+    ? 'versions'
+    : 'content';
+const admin = view.startsWith('publish') || view.startsWith('admin') || screen === 'versions';
+const detail = view.endsWith('system')
+  ? system
+  : view === 'admin-nodraft'
+    ? { ...landing, hasDraft: false }
+    : view === 'versions-empty'
+      ? { ...landing, versions: [] }
+      : landing;
 const canEdit = !view.includes('readonly');
 const withPending: PageDetail =
   view === 'settings-pending'
@@ -201,7 +240,23 @@ createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     <main className="mx-auto max-w-7xl p-4 md:p-6">
       {screen === 'content' ? (
-        <PageContent page={withPending} canEdit={canEdit} csrfToken="tok" zone={zone} />
+        <PageContent
+          page={withPending}
+          canEdit={canEdit}
+          canPublish={admin}
+          canArchive={admin}
+          csrfToken="tok"
+          zone={zone}
+        />
+      ) : screen === 'versions' ? (
+        <PageVersions
+          page={withPending}
+          canEdit={canEdit}
+          canPublish={admin}
+          canArchive={admin}
+          csrfToken="tok"
+          zone={zone}
+        />
       ) : (
         <PageSettings page={withPending} canEdit={canEdit} csrfToken="tok" zone={zone} />
       )}
