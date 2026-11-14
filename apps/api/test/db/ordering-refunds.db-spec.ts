@@ -229,7 +229,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
   const total = inclusive ? 3300n + 550n : 3300n + 451n + 500n + 75n;
 
   /** A paid order of one seller with one line of three units; answers its ids. */
-  const paidOrder = async (sellerId: Id<'Seller'> = ids.next<'Seller'>()) => {
+  const paidOrder = async (sellerId: Id<'Seller'> = ids.next<'Seller'>(), pay = true) => {
     const orderId = ids.next<'Order'>();
     const sellerOrderId = ids.next<'SellerOrder'>();
     const lineId = ids.next<'OrderLine'>();
@@ -301,6 +301,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       return ok(undefined);
     });
     if (!stored.ok) throw new Error('could not store the order');
+    if (!pay) return { orderId, sellerOrderId, sellerId, lineId };
     const confirmed = await new ConfirmPayment(gate, deps).execute(system, {
       orderId,
       paymentIntentId: `pi_${orderId.replaceAll('-', '')}`,
@@ -2309,6 +2310,24 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           sellerOrderId: o.sellerOrderId,
         }),
       ).toEqual({ ok: false, error: { code: 'ordering.seller-order-not-found' } });
+    });
+
+    it('answers a seller order whose order is not paid yet as not found, for notes and activity', async () => {
+      const o = await paidOrder(ids.next<'Seller'>(), false);
+      const shop = member(o.sellerId);
+      const notFound = { ok: false, error: { code: 'ordering.seller-order-not-found' } };
+      expect(await addAs(shop, o.sellerOrderId, 'Hello')).toEqual(notFound);
+      expect(await listAs(shop, o.sellerOrderId)).toEqual(notFound);
+      expect(
+        await new SellerViewOrderActivity(gate, deps).execute(shop, {
+          sellerOrderId: o.sellerOrderId,
+        }),
+      ).toEqual(notFound);
+      const stored = await sql.query(
+        'SELECT 1 FROM ordering.seller_order_notes WHERE market_id = $1 AND seller_order_id = $2',
+        [market.marketId, o.sellerOrderId],
+      );
+      expect(stored.rows).toHaveLength(0);
     });
   });
 });
