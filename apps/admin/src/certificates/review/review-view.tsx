@@ -126,7 +126,7 @@ export function ReviewView({
         ) : null}
       </header>
 
-      {revoked ? (
+      {revoked && certificate.status === 'revoked' ? (
         <div role="status">
           <Banner tone="success">{t('revoke.done')}</Banner>
         </div>

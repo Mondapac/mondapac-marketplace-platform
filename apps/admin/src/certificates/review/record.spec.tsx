@@ -74,7 +74,10 @@ const approved = (over: Partial<ReviewPage> = {}) =>
     },
     ...over,
   });
-const view = (p: ReviewPage, extra: { canRevoke?: boolean; canHistory?: boolean; revoked?: boolean } = {}) =>
+const view = (
+  p: ReviewPage,
+  extra: { canRevoke?: boolean; canHistory?: boolean; revoked?: boolean } = {},
+) =>
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <ReviewView page={p} typeName="Halal" canReview canDecide csrfToken="t" {...extra} />
@@ -132,7 +135,9 @@ describe('revoke', () => {
     view(approved(), { canRevoke: true });
     open('Revoke certificate');
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.getByText(/Offers with this badge can't be bought until Acme Store/)).toBeTruthy();
+    expect(
+      screen.getByText(/Offers with this badge can't be bought until Acme Store/),
+    ).toBeTruthy();
     expect(screen.getByText(/renewal is waiting for review, it is withdrawn too/)).toBeTruthy();
     last('Revoke certificate');
     expect(call).not.toHaveBeenCalled();
@@ -159,7 +164,10 @@ describe('revoke', () => {
   });
 
   it('asks to reload when the record changed or is already revoked', async () => {
-    call.mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'certificate.revoked' } });
+    call.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 409, code: 'certificate.revoked' },
+    });
     view(approved(), { canRevoke: true });
     open('Revoke certificate');
     fireEvent.change(screen.getByLabelText(/Prepared reason/), {
@@ -171,17 +179,71 @@ describe('revoke', () => {
     expect(reviewProblemOf({ status: 409, code: 'certificate.not-revocable' }).reload).toBe(true);
   });
 
-  it('keeps typed text when the backdrop is clicked, and Cancel sends nothing', () => {
+  it('keeps typed text on Escape, and Cancel starts the next time clean', () => {
     view(approved(), { canRevoke: true });
     open('Revoke certificate');
     fireEvent.change(screen.getByLabelText(/Note for the seller/), { target: { value: 'keep' } });
+    const dialog = document.querySelector('dialog')!;
+    fireEvent(dialog, new Event('cancel', { cancelable: true }));
+    expect(screen.getByLabelText<HTMLTextAreaElement>(/Note for the seller/).value).toBe('keep');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(call).not.toHaveBeenCalled();
+    open('Revoke certificate');
+    expect(screen.getByLabelText<HTMLTextAreaElement>(/Note for the seller/).value).toBe('');
+  });
+
+  it('cannot be confirmed when the Market lists no reasons', () => {
+    view(approved({ reasons: { 'changes-requested': [], declined: [] } }), { canRevoke: true });
+    open('Revoke certificate');
+    const confirm = screen.getAllByRole('button', { name: 'Revoke certificate' }).at(-1)!;
+    expect(confirm).toHaveProperty('disabled', true);
+  });
+
+  it('blocks a note over the limit and omits a blank one', async () => {
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: {} });
+    vi.stubGlobal('location', { assign: vi.fn() });
+    view(approved({ certificate: { ...page().certificate, status: 'expired' } }), {
+      canRevoke: true,
+    });
+    open('Revoke certificate');
+    fireEvent.change(screen.getByLabelText(/Prepared reason/), {
+      target: { value: 'signs-of-tampering' },
+    });
+    fireEvent.change(screen.getByLabelText(/Note for the seller/), {
+      target: { value: 'x'.repeat(1001) },
+    });
+    last('Revoke certificate');
+    expect(call).not.toHaveBeenCalled();
+    expect(screen.getByText('At most 1000 characters.')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/Note for the seller/), { target: { value: '   ' } });
+    last('Revoke certificate');
+    await waitFor(() => expect(call).toHaveBeenCalledOnce());
+    expect(call.mock.calls[0]![2]).toEqual({ version: 4, reasonCode: 'signs-of-tampering' });
+  });
+
+  it.each([
+    ['conflict.stale', 409, /changed while you reviewed/, true],
+    ['access.denied', 403, /don't have permission/, false],
+  ])('maps %s on revoke', async (code, status, text, reload) => {
+    call.mockResolvedValueOnce({ ok: false, failure: { status, code } });
+    view(approved(), { canRevoke: true });
+    open('Revoke certificate');
+    fireEvent.change(screen.getByLabelText(/Prepared reason/), {
+      target: { value: 'signs-of-tampering' },
+    });
+    last('Revoke certificate');
+    expect(await screen.findByText(text)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reload the page' }) !== null).toBe(reload);
   });
 
   it('shows the notice after a revoke', () => {
-    view(approved({ certificate: { ...page().certificate, status: 'revoked' } }), { revoked: true });
+    view(approved({ certificate: { ...page().certificate, status: 'revoked' } }), {
+      revoked: true,
+    });
     expect(screen.getByText(/Certificate revoked\. The seller has been emailed/)).toBeTruthy();
+    cleanup();
+    view(approved(), { revoked: true });
+    expect(screen.queryByText(/Certificate revoked\. The seller/)).toBeNull();
   });
 });
 
@@ -220,7 +282,15 @@ describe('full history', () => {
         ok: true,
         status: 200,
         body: {
-          entries: [entry(2, { fromStatus: null, toStatus: 'awaiting-review', reasonCode: null, note: null, actorKind: 'seller' })],
+          entries: [
+            entry(2, {
+              fromStatus: null,
+              toStatus: 'awaiting-review',
+              reasonCode: null,
+              note: null,
+              actorKind: 'seller',
+            }),
+          ],
           nextBeforeId: null,
         },
       });
@@ -244,7 +314,7 @@ describe('full history', () => {
       undefined,
       't',
     );
-    expect(await screen.findByText(/Started to Awaiting review, by the seller/)).toBeTruthy();
+    expect(await screen.findByText(/Created → Awaiting review · by the seller/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Show older' })).toBeNull();
   });
 
@@ -253,9 +323,15 @@ describe('full history', () => {
     view(approved(), { canHistory: true });
     open('Show history');
     expect(await screen.findByText(/Your role can't/)).toBeTruthy();
-    call.mockResolvedValueOnce({ ok: true, status: 200, body: { entries: [], nextBeforeId: null } });
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { entries: [], nextBeforeId: null },
+    });
     open('Show history');
-    expect(await screen.findByText('No history yet.', { selector: 'p.text-fg-muted' })).toBeTruthy();
+    expect(
+      await screen.findByText('No history yet.', { selector: 'p.text-fg-muted' }),
+    ).toBeTruthy();
   });
 });
 
@@ -273,7 +349,9 @@ describe('relay of the new routes', () => {
     clientAddressKey: null,
   };
   const send = async (method: string, target: string) => {
-    const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 })));
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response('{}', { status: 200 })),
+    );
     const request = new Request(`http://admin.localhost:3002/api/${target}`, {
       method,
       headers: {
@@ -288,12 +366,52 @@ describe('relay of the new routes', () => {
     return { status: response.status, called: upstream.mock.calls.length };
   };
 
+  it('passes only a UUID beforeId and a small limit of the history query', async () => {
+    const calls: string[] = [];
+    const upstream = vi.fn<typeof fetch>((input) => {
+      calls.push(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    });
+    const go = (query: string) =>
+      relay(
+        config,
+        new Request(
+          `http://admin.localhost:3002/api/certification/admin/seller-certificates/${CERT}/history${query}`,
+          {
+            method: 'GET',
+            headers: {
+              host: 'admin.localhost:3002',
+              origin: 'http://admin.localhost:3002',
+              'sec-fetch-site': 'same-origin',
+            },
+          },
+        ),
+        `certification/admin/seller-certificates/${CERT}/history`.split('/'),
+        upstream,
+      );
+    await go(`?beforeId=${SUB}&limit=20&x=1`);
+    await go('?beforeId=not-a-uuid&limit=abc');
+    expect(calls[0]).toContain(`beforeId=${SUB}`);
+    expect(calls[0]).toContain('limit=20');
+    expect(calls[0]).not.toContain('x=1');
+    expect(calls[1]).not.toContain('beforeId');
+    expect(calls[1]).not.toContain('limit');
+  });
+
   it('relays revoke and history for a certificate id, and nothing else', async () => {
-    expect((await send('POST', `certification/admin/seller-certificates/${CERT}/revoke`)).called).toBe(1);
-    expect((await send('GET', `certification/admin/seller-certificates/${CERT}/history`)).called).toBe(1);
+    expect(
+      (await send('POST', `certification/admin/seller-certificates/${CERT}/revoke`)).called,
+    ).toBe(1);
+    expect(
+      (await send('GET', `certification/admin/seller-certificates/${CERT}/history`)).called,
+    ).toBe(1);
     expect((await send('POST', 'certification/admin/seller-certificates/x/revoke')).called).toBe(0);
     expect((await send('GET', 'certification/admin/seller-certificates/x/history')).called).toBe(0);
-    expect((await send('POST', `certification/admin/seller-certificates/${CERT}/history`)).called).toBe(0);
-    expect((await send('GET', `certification/admin/seller-certificates/${CERT}/revoke`)).called).toBe(0);
+    expect(
+      (await send('POST', `certification/admin/seller-certificates/${CERT}/history`)).called,
+    ).toBe(0);
+    expect(
+      (await send('GET', `certification/admin/seller-certificates/${CERT}/revoke`)).called,
+    ).toBe(0);
   });
 });

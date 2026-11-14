@@ -32,8 +32,44 @@ export function RevokeAction({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('certificates.review.revoke');
-  const tr = useTranslations();
   const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button variant="destructive" className="max-sm:w-full" onClick={() => setOpen(true)}>
+        {t('button')}
+      </Button>
+      {open ? (
+        <RevokeDialog
+          certificateId={certificateId}
+          version={version}
+          reasons={reasons}
+          store={store}
+          csrfToken={csrfToken}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** The dialog owns the typed text and the last refusal, so closing it starts the next one clean. */
+function RevokeDialog({
+  certificateId,
+  version,
+  reasons,
+  store,
+  csrfToken,
+  onClose,
+}: {
+  readonly certificateId: string;
+  readonly version: number;
+  readonly reasons: readonly ReviewReason[];
+  readonly store: string;
+  readonly csrfToken: string;
+  readonly onClose: () => void;
+}) {
+  const t = useTranslations('certificates.review.revoke');
+  const tr = useTranslations();
   const formId = useId();
   const cancel = useRef<HTMLButtonElement>(null);
   const call = useReviewCall(csrfToken);
@@ -56,88 +92,76 @@ export function RevokeAction({
   }
 
   return (
-    <>
-      <Button variant="destructive" className="max-sm:w-full" onClick={() => setOpen(true)}>
-        {t('button')}
-      </Button>
-      {open ? (
-        <Dialog
-          open
-          title={t('title')}
-          onClose={() => {
-            if (!dirty && !call.pending) setOpen(false);
-          }}
-          initialFocus={cancel}
-          actions={
-            <>
-              <Button
-                ref={cancel}
-                variant="secondary"
-                disabled={call.pending}
-                onClick={() => setOpen(false)}
-              >
-                {t('cancel')}
-              </Button>
-              {call.problem?.reload === true ? (
-                <Button autoFocus onClick={() => window.location.reload()}>
-                  {t('reload')}
-                </Button>
-              ) : (
-                <Button
-                  type="submit"
-                  form={formId}
-                  variant="destructive-solid"
-                  loading={call.pending}
-                  disabled={call.pending}
-                >
-                  {t('confirm')}
-                </Button>
-              )}
-            </>
-          }
-        >
-          <form
-            id={formId}
-            onSubmit={(event) => void submit(event)}
-            noValidate
-            className="flex flex-col gap-4"
-          >
-            <div role="alert">
-              {call.problem === null ? null : (
-                <Banner tone="critical">{tr(call.problem.key as never)}</Banner>
-              )}
-            </div>
-            <p className="text-sm">{t('body', { store })}</p>
-            <p className="text-sm">{t('body-pending')}</p>
-            {reasons.length === 0 ? (
-              <Banner tone="attention">{t('no-reasons')}</Banner>
-            ) : (
-              <Select
-                label={t('reason')}
-                required
-                placeholder={t('reason-placeholder')}
-                value={reasonCode}
-                onChange={(event) => setReasonCode(event.target.value)}
-                options={reasons.map((reason) => ({
-                  value: reason.code,
-                  label: wordsFor(tr, 'reason', reason.code),
-                }))}
-                error={reasonError}
-              />
-            )}
-            <TextAreaField
-              label={t('note')}
-              optionalLabel={t('optional')}
-              rows={3}
-              value={reasonText}
-              onChange={(event) => setReasonText(event.target.value)}
-              help={t('note-help')}
-              error={textError}
-            />
-          </form>
-        </Dialog>
-      ) : null}
-    </>
+    <Dialog
+      open
+      title={t('title')}
+      onClose={() => {
+        if (!dirty && !call.pending) onClose();
+      }}
+      initialFocus={cancel}
+      actions={
+        <>
+          <Button ref={cancel} variant="secondary" disabled={call.pending} onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          {call.problem?.reload === true ? (
+            <Button autoFocus onClick={() => window.location.reload()}>
+              {t('reload')}
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              form={formId}
+              variant="destructive-solid"
+              loading={call.pending}
+              disabled={call.pending || reasons.length === 0}
+            >
+              {t('confirm')}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <form
+        id={formId}
+        onSubmit={(event) => void submit(event)}
+        noValidate
+        className="flex flex-col gap-4"
+      >
+        <div role="alert">
+          {call.problem === null ? null : (
+            <Banner tone="critical">{tr(call.problem.key as never)}</Banner>
+          )}
+        </div>
+        <p className="text-sm">{t('body', { store })}</p>
+        <p className="text-sm">{t('body-pending')}</p>
+        {reasons.length === 0 ? (
+          <Banner tone="attention">{t('no-reasons')}</Banner>
+        ) : (
+          <Select
+            label={t('reason')}
+            required
+            placeholder={t('reason-placeholder')}
+            value={reasonCode}
+            onChange={(event) => setReasonCode(event.target.value)}
+            options={reasons.map((reason) => ({
+              value: reason.code,
+              label: wordsFor(tr, 'reason', reason.code),
+            }))}
+            error={reasonError}
+          />
+        )}
+        <TextAreaField
+          label={t('note')}
+          optionalLabel={t('optional')}
+          rows={3}
+          value={reasonText}
+          onChange={(event) => setReasonText(event.target.value)}
+          help={t('note-help')}
+          error={textError}
+        />
+      </form>
+    </Dialog>
   );
 }
 
@@ -157,6 +181,8 @@ export function FullHistory({
   const call = useReviewCall(csrfToken);
   const [entries, setEntries] = useState<readonly HistoryEntry[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
+  const [announce, setAnnounce] = useState('');
+  const top = useRef<HTMLDivElement>(null);
 
   async function load(before: string | null) {
     const query = before === null ? '' : `?beforeId=${encodeURIComponent(before)}`;
@@ -178,10 +204,16 @@ export function FullHistory({
     }));
     setEntries((current) => [...(before === null ? [] : (current ?? [])), ...fresh]);
     setNext(answer.body.nextBeforeId);
+    setAnnounce(t('loaded', { count: fresh.length }));
+    // The button that was pressed leaves the page: focus moves to the list so it is not lost.
+    queueMicrotask(() => top.current?.focus());
   }
 
   return (
     <div className="flex flex-col gap-3">
+      <p className="sr-only" role="status">
+        {announce}
+      </p>
       <div aria-live="polite">
         {call.problem === null ? null : (
           <Banner tone="critical">{tr(call.problem.key as never)}</Banner>
@@ -203,31 +235,33 @@ export function FullHistory({
         <p className="text-fg-muted">{t('none')}</p>
       ) : (
         <>
-          <ol className="flex flex-col gap-3">
-            {entries.map((entry) => (
-              <li key={entry.id} className="text-sm">
-                <p>
-                  {t('entry', {
-                    from:
-                      entry.fromStatus === null
-                        ? t('started')
-                        : wordsFor(tr, 'status', entry.fromStatus),
-                    to: wordsFor(tr, 'status', entry.toStatus),
-                    by: wordsFor(tr, 'actor', entry.actorKind),
-                  })}{' '}
-                  <When iso={entry.occurredAt} missing="-" />
-                </p>
-                {entry.reasonCode === null ? null : (
-                  <p className="text-fg-muted">
-                    {entry.reasonLabel ?? wordsFor(tr, 'reason', entry.reasonCode)}
+          <div ref={top} tabIndex={-1} className="outline-none">
+            <ol className="flex flex-col gap-3">
+              {entries.map((entry) => (
+                <li key={entry.id} className="text-sm">
+                  <p>
+                    {t('entry', {
+                      from:
+                        entry.fromStatus === null
+                          ? t('started')
+                          : wordsFor(tr, 'status', entry.fromStatus),
+                      to: wordsFor(tr, 'status', entry.toStatus),
+                      by: wordsFor(tr, 'actor', entry.actorKind),
+                    })}{' '}
+                    <When iso={entry.occurredAt} missing="-" />
                   </p>
-                )}
-                {entry.note === null ? null : (
-                  <p className="whitespace-pre-wrap wrap-anywhere text-fg-muted">{entry.note}</p>
-                )}
-              </li>
-            ))}
-          </ol>
+                  {entry.reasonCode === null ? null : (
+                    <p className="text-fg-muted">
+                      {entry.reasonLabel ?? wordsFor(tr, 'reason', entry.reasonCode)}
+                    </p>
+                  )}
+                  {entry.note === null ? null : (
+                    <p className="whitespace-pre-wrap wrap-anywhere text-fg-muted">{entry.note}</p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </div>
           {next === null ? null : (
             <div>
               <Button

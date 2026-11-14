@@ -655,6 +655,10 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
   'ordering/admin/refund-limits': { sellerId: UUID },
+  'certification/admin/seller-certificates/:id/history': {
+    beforeId: UUID,
+    limit: /^[0-9]{1,3}$/,
+  },
   // The cursor is the API's own: epoch milliseconds, a dot and a request id.
   'wallet/admin/credit-requests': {
     status: /^(pending|decided|granted)$/,
@@ -790,6 +794,8 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
   'catalog/admin/platform-imports/:id/report': ['kind'],
   'catalog/admin/categories/:id/impact': ['action', 'targetId'],
+  // The older page of a certificate's history: the API's own entry id and a small page size.
+  'certification/admin/seller-certificates/:id/history': ['beforeId', 'limit'],
 };
 /** DELETE templates whose query crosses: the version seen and the closed reason code. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {

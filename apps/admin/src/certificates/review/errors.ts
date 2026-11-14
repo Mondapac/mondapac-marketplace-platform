@@ -37,7 +37,8 @@ export function reviewProblemOf(failure: ApiFailure): ReviewProblem {
   const key = named ?? (failure.status === 0 || failure.status >= 500 ? 'unavailable' : 'unknown');
   return {
     key: `certificates.review.error.${key}`,
-    reload: key === 'stale' ||
+    reload:
+      key === 'stale' ||
       key === 'gone' ||
       key === 'replaced' ||
       key === 'revoked' ||

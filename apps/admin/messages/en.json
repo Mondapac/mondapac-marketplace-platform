@@ -1537,9 +1537,10 @@
         "recorded": "Viewing this is recorded.",
         "show": "Show history",
         "none": "No history yet.",
-        "entry": "{from} to {to}, by {by}",
-        "started": "Started",
-        "older": "Show older"
+        "entry": "{from} → {to} · by {by}",
+        "started": "Created",
+        "older": "Show older",
+        "loaded": "{count, plural, one {# entry loaded.} other {# entries loaded.}}"
       }
     }
   },

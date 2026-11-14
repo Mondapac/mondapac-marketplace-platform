@@ -18,7 +18,11 @@ export function useReviewCall(csrfToken: string) {
   const busy = useRef(false);
 
   const run = useCallback(
-    async <T>(path: string, body?: unknown, method: 'GET' | 'POST' = 'POST'): Promise<ReviewOutcome<T>> => {
+    async <T>(
+      path: string,
+      body?: unknown,
+      method: 'GET' | 'POST' = 'POST',
+    ): Promise<ReviewOutcome<T>> => {
       if (busy.current) return { ok: false, problem: null };
       busy.current = true;
       setPending(true);
