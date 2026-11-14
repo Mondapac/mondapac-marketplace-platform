@@ -269,6 +269,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'ordering/admin/orders/:id/cancel',
     'ordering/admin/orders/:id/seller-orders/:id/refunds',
     'ordering/admin/orders/:id/notes',
+    // Review one seller certificate (certification): record a check or the scope, then decide.
+    'certification/admin/seller-certificates/:id/checks',
+    'certification/admin/seller-certificates/:id/scope',
+    'certification/admin/seller-certificates/:id/approve',
+    'certification/admin/seller-certificates/:id/request-changes',
+    'certification/admin/seller-certificates/:id/decline',
     // Start, resume or discard one checked import (catalog).
     'catalog/admin/platform-imports/:id/start',
     'catalog/admin/platform-imports/:id/resume',

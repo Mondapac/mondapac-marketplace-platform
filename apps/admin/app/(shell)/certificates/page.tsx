@@ -1,10 +1,11 @@
-import { LoadError } from '@mondapac/ui';
+import { Banner, LoadError } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
 import { CertificatesTabs } from '../../../src/certificates/tabs.tsx';
+import { REVIEW_PERMISSION } from '../../../src/certificates/review/types.ts';
 import { CertificateQueue } from '../../../src/certificates/queue.tsx';
 import { typeNames } from '../../../src/certificates/format.ts';
 import {
@@ -28,9 +29,12 @@ export async function generateMetadata() {
 export default async function CertificatesPage({
   searchParams,
 }: {
-  readonly searchParams: Promise<{ readonly after?: string | readonly string[] }>;
+  readonly searchParams: Promise<{
+    readonly after?: string | readonly string[];
+    readonly decided?: string | readonly string[];
+  }>;
 }) {
-  const { after } = await searchParams;
+  const { after, decided } = await searchParams;
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
@@ -89,7 +93,15 @@ export default async function CertificatesPage({
       <p className="text-sm text-fg-muted">
         {t('certificates.queue.total', { count: result.body.total })}
       </p>
-      <CertificateQueue rows={result.body.items} typeNames={names} morePages={next !== null} />
+      {decided === 'approve' || decided === 'request-changes' || decided === 'decline' ? (
+        <Banner tone="success">{t(`certificates.review.decided.${decided}`)}</Banner>
+      ) : null}
+      <CertificateQueue
+        rows={result.body.items}
+        typeNames={names}
+        morePages={next !== null}
+        canReview={keys.includes(REVIEW_PERMISSION)}
+      />
       {typeof after === 'string' && after !== '' ? (
         <p>
           <a className="font-medium text-link underline" href="/certificates">
