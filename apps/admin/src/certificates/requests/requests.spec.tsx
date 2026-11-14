@@ -266,7 +266,7 @@ describe('issuer request page: more states', () => {
     await waitFor(() => expect(screen.queryByText(/Some details are not valid/)).toBeNull());
   });
 
-  it('ignores a second submit while one is running', async () => {
+  it('ignores a second submit while one is running', () => {
     let finish: (value: never) => void = () => undefined;
     call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve as never)));
     view(detail());
