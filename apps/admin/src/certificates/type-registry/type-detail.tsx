@@ -124,11 +124,11 @@ export function TypeDetailView({
       {locales.map(([code, text]) => (
         <section
           key={code}
-          aria-label={t('locale', { locale: code })}
+          aria-labelledby={`type-locale-${code}`}
           lang={code}
           className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-4"
         >
-          <h3 className="text-base font-semibold" lang={locale}>
+          <h3 id={`type-locale-${code}`} className="text-base font-semibold" lang={locale}>
             {t('locale', { locale: code })}
           </h3>
           <dl className="flex flex-col gap-2">

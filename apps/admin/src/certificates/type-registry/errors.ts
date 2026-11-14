@@ -10,6 +10,8 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'review.proposal-pending': 'proposal-pending',
   'review.proposal-closed': 'proposal-closed',
   'review.second-admin-required': 'second-admin',
+  'review.proposer-cannot-reject': 'second-admin',
+  'review.not-proposer': 'not-proposer',
   'conflict.stale': 'stale',
   'conflict.retry': 'retry',
   'access.denied': 'denied',

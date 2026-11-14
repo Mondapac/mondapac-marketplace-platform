@@ -101,7 +101,10 @@ describe('types list', () => {
   it('shows each type with its status, mode and revision, and marks a waiting change', () => {
     wrap(
       <TypesTable
-        rows={[row({ pending: ['revision'] }), row({ typeId: 'x', code: 'kosher', names: {}, status: 'inactive' })]}
+        rows={[
+          row({ pending: ['revision'] }),
+          row({ typeId: 'x', code: 'kosher', names: {}, status: 'inactive' }),
+        ]}
       />,
     );
     expect(screen.getByRole('link', { name: 'Halal' }).getAttribute('href')).toBe(
@@ -110,6 +113,26 @@ describe('types list', () => {
     expect(screen.getByText('Change waiting')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'kosher' })).toBeTruthy();
     expect(screen.getByText('Inactive')).toBeTruthy();
+  });
+
+  it('falls back to the language name, then to the code, and works in another Market locale', () => {
+    wrap(
+      <TypesTable
+        rows={[
+          row({ names: { en: 'Halal (language)' } }),
+          row({ typeId: 'y', code: 'vegan', names: {} }),
+        ]}
+      />,
+    );
+    expect(screen.getByRole('link', { name: 'Halal (language)' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'vegan' })).toBeTruthy();
+    cleanup();
+    render(
+      <NextIntlClientProvider locale="en-NZ" messages={messages}>
+        <TypesTable rows={[row({ names: { 'en-NZ': 'Halal NZ', 'en-AU': 'Halal AU' } })]} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByRole('link', { name: 'Halal NZ' })).toBeTruthy();
   });
 
   it('says so when there are no types', () => {
@@ -187,7 +210,7 @@ describe('type page', () => {
     vi.stubGlobal('location', { assign: vi.fn() });
     view(detail({ pendingRevision: proposal() }));
     expect(screen.getByText('<i>why</i>')).toBeTruthy();
-    expect(screen.getByText('requiresDocument')).toBeTruthy();
+    expect(screen.getByText('Needs a document', { selector: 'p' })).toBeTruthy();
     expect(screen.getByText('This part needs a second admin.')).toBeTruthy();
     open('Approve change');
     expect(call).not.toHaveBeenCalled();
@@ -208,14 +231,18 @@ describe('type page', () => {
     open('Approve change');
     last('Approve change');
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
-    expect(call.mock.calls[0]![1]).toBe(`certification/admin/types/${TYPE}/reactivations/${PROP}/approve`);
+    expect(call.mock.calls[0]![1]).toBe(
+      `certification/admin/types/${TYPE}/reactivations/${PROP}/approve`,
+    );
     cleanup();
     call.mockClear();
     view(detail({ pendingRevision: proposal() }));
     open('Reject change');
     last('Reject change');
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
-    expect(call.mock.calls[0]![1]).toBe(`certification/admin/types/${TYPE}/proposals/${PROP}/reject`);
+    expect(call.mock.calls[0]![1]).toBe(
+      `certification/admin/types/${TYPE}/proposals/${PROP}/reject`,
+    );
   });
 
   it('tells the proposer a different admin must answer, and offers Withdraw', async () => {
@@ -237,25 +264,143 @@ describe('type page', () => {
     open('Withdraw proposal');
     last('Withdraw proposal');
     await waitFor(() => expect(call).toHaveBeenCalledOnce());
-    expect(call.mock.calls[0]![1]).toBe(`certification/admin/types/${TYPE}/proposals/${PROP}/withdraw`);
+    expect(call.mock.calls[0]![1]).toBe(
+      `certification/admin/types/${TYPE}/proposals/${PROP}/withdraw`,
+    );
   });
 
   it('says so when no answer is open, and a closed proposal offers a reload', async () => {
     view(
       detail({
         pendingRevision: proposal({
-          actions: { approve: { allowed: false }, reject: { allowed: false }, withdraw: { allowed: false } },
+          actions: {
+            approve: { allowed: false },
+            reject: { allowed: false },
+            withdraw: { allowed: false },
+          },
         }),
       }),
     );
     expect(screen.getByText(/Nothing can be done with this proposal/)).toBeTruthy();
     cleanup();
-    call.mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'review.proposal-closed' } });
+    call.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 409, code: 'review.proposal-closed' },
+    });
     view(detail({ pendingRevision: proposal() }));
     open('Reject change');
     last('Reject change');
     expect(await screen.findByText(/already answered/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reload the page' })).toBeTruthy();
+  });
+
+  it('shows readable labels and words in the diff, and a removed reason', () => {
+    view(
+      detail({
+        pendingRevision: proposal({
+          reason: { state: 'erased' },
+          diff: [
+            {
+              path: 'defaultBasis',
+              before: 'SELLER_CERT_REQUIRED',
+              after: 'NO_BADGE_ALLOWED',
+              relaxes: false,
+            },
+            { path: 'row:abc', before: null, after: 'x', relaxes: true },
+          ],
+        }),
+      }),
+    );
+    expect(screen.getByText('Default basis', { selector: 'p' })).toBeTruthy();
+    expect(screen.getByText('Seller certificate required', { selector: 'span' })).toBeTruthy();
+    expect(screen.getByText('No badge allowed')).toBeTruthy();
+    expect(screen.getByText('Policy row')).toBeTruthy();
+    expect(screen.getByText('Reason removed')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('SELLER_CERT_REQUIRED');
+  });
+
+  it.each([
+    ['conflict.stale', 409, /changed while you were looking/, true],
+    ['type.already-inactive', 409, /already inactive/, true],
+    ['access.denied', 403, /role can't/, false],
+    ['network', 0, /not available right now/, false],
+  ])('maps %s on Deactivate', async (code, status, text, reload) => {
+    call.mockResolvedValueOnce({ ok: false, failure: { status, code } });
+    view(detail());
+    open('Deactivate');
+    last('Deactivate');
+    expect(await screen.findByText(text)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reload the page' }) !== null).toBe(reload);
+    if (!reload) expect(screen.getAllByRole('button', { name: 'Deactivate' }).length).toBe(2);
+  });
+
+  it('reloads the page from the Reload button', async () => {
+    const reload = vi.fn();
+    vi.stubGlobal('location', { reload, assign: vi.fn() });
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
+    view(detail());
+    open('Deactivate');
+    last('Deactivate');
+    fireEvent.click(await screen.findByRole('button', { name: 'Reload the page' }));
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it('sends a signed-out session to sign-in', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign });
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 401, code: 'auth.required' } });
+    view(detail());
+    open('Deactivate');
+    last('Deactivate');
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+  });
+
+  it('ignores a second click while the first call runs', () => {
+    let finish: (value: never) => void = () => undefined;
+    call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve as never)));
+    view(detail());
+    open('Deactivate');
+    last('Deactivate');
+    last('Deactivate');
+    expect(call).toHaveBeenCalledOnce();
+    finish({ ok: false, failure: { status: 500, code: 'x' } } as never);
+  });
+
+  it('opens the reactivation and answer dialogs with Cancel focused', () => {
+    view(detail({ status: 'inactive' }));
+    open('Ask for reactivation');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }));
+    cleanup();
+    view(detail({ pendingRevision: proposal() }));
+    open('Approve change');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }));
+  });
+
+  it('shows an inactive type to a view-only reader with no buttons', () => {
+    view(detail({ status: 'inactive' }), false);
+    expect(screen.getByText(/No new certificates of this type can be added/)).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('shows both waiting cards, a self-declaration setting, and an unknown basis as its code', () => {
+    view(
+      detail({
+        status: 'inactive',
+        pendingRevision: proposal(),
+        pendingReactivation: proposal({ id: 'p2' }),
+        published: {
+          ...detail().published,
+          content: {
+            verificationMode: 'SELF_DECLARATION',
+            defaultBasis: 'FUTURE_BASIS',
+            autoApproveSelfDeclaration: true,
+          },
+        },
+      }),
+    );
+    expect(screen.getAllByRole('heading', { level: 3 }).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('Approve without a person')).toBeTruthy();
+    expect(screen.getByText('FUTURE_BASIS')).toBeTruthy();
   });
 
   it('shows a view-only reader a note and no buttons', () => {
@@ -279,15 +424,21 @@ describe('type page', () => {
       reload: true,
     });
     expect(typeProblemOf({ status: 403, code: 'review.second-admin-required' }).reload).toBe(false);
-    expect(typeProblemOf({ status: 500, code: 'x' }).key).toBe('certificates.types.error.unavailable');
-    expect(typeProblemOf({ status: 400, code: 'weird' }).key).toBe('certificates.types.error.unknown');
+    expect(typeProblemOf({ status: 500, code: 'x' }).key).toBe(
+      'certificates.types.error.unavailable',
+    );
+    expect(typeProblemOf({ status: 400, code: 'weird' }).key).toBe(
+      'certificates.types.error.unknown',
+    );
   });
 });
 
 describe('relay', () => {
   const config: PanelConfig = {
     apiBaseUrl: 'http://api.test',
-    hosts: [{ origin: 'http://admin.localhost:3002', host: 'admin.localhost:3002', marketId: 'AU' }],
+    hosts: [
+      { origin: 'http://admin.localhost:3002', host: 'admin.localhost:3002', marketId: 'AU' },
+    ],
     passwordMinLength: 15,
     passwordMaxLength: 128,
     marketName: 'Australia',
@@ -296,7 +447,9 @@ describe('relay', () => {
     clientAddressKey: null,
   };
   const send = async (method: string, target: string) => {
-    const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 })));
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response('{}', { status: 200 })),
+    );
     const request = new Request(`http://admin.localhost:3002/api/${target}`, {
       method,
       headers: {

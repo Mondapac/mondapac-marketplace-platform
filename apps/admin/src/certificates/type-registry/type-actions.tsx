@@ -62,13 +62,7 @@ function ConfirmDialog({
               {t('reload')}
             </Button>
           ) : (
-            <Button
-              type="submit"
-              form={formId}
-              variant={tone}
-              loading={pending}
-              disabled={pending}
-            >
+            <Button type="submit" form={formId} variant={tone} loading={pending} disabled={pending}>
               {confirmLabel}
             </Button>
           )}
@@ -109,7 +103,11 @@ export function TypeActions({
   return (
     <>
       {status === 'active' ? (
-        <Button variant="destructive" className="max-sm:w-full" onClick={() => setOpen('deactivate')}>
+        <Button
+          variant="destructive"
+          className="max-sm:w-full"
+          onClick={() => setOpen('deactivate')}
+        >
           {t('deactivate')}
         </Button>
       ) : reactivationWaiting ? null : (
@@ -217,28 +215,58 @@ function ReactivateDialog({ typeId, version, name, csrfToken, onClose }: DialogP
 
 type Answer = 'approve' | 'reject' | 'withdraw';
 
-function Value({ value }: { readonly value: string | boolean | null }) {
+const SETTING_LABELS: Readonly<Record<string, string>> = {
+  verificationMode: 'mode',
+  requiresIssuerRegistry: 'needs-issuer',
+  requiresDocument: 'needs-document',
+  requiresExpiry: 'needs-expiry',
+  defaultBasis: 'default-basis',
+  autoApproveSelfDeclaration: 'auto-approve',
+  badgeIconKey: 'icon',
+};
+
+/** A value of the diff: a switch in words, a known code in words, anything else as the text it is. */
+function Value({
+  path,
+  value,
+}: {
+  readonly path: string;
+  readonly value: string | boolean | null;
+}) {
   const t = useTranslations('certificates.types.proposal');
+  const basis = useTranslations('certificates.types.basis');
+  const mode = useTranslations('certificates.types.mode');
   if (value === null) return <span className="text-fg-muted">{t('empty')}</span>;
   if (typeof value === 'boolean') return <>{t(value ? 'on' : 'off')}</>;
-  return <span className="wrap-anywhere">{value}</span>;
+  const words = path === 'defaultBasis' ? basis : path === 'verificationMode' ? mode : null;
+  return (
+    <span className="wrap-anywhere">
+      {words?.has(value as never) === true ? words(value as never) : value}
+    </span>
+  );
 }
 
 function DiffList({ diff }: { readonly diff: readonly DiffEntry[] }) {
   const t = useTranslations('certificates.types.proposal');
+  const detail = useTranslations('certificates.types.detail');
+  const label = (path: string) => {
+    const known = Object.hasOwn(SETTING_LABELS, path) ? SETTING_LABELS[path] : undefined;
+    if (known !== undefined) return detail(known as never);
+    return path.startsWith('row:') ? t('policy-row') : path;
+  };
   if (diff.length === 0) return null;
   return (
     <ul className="flex flex-col gap-2 text-sm">
       {diff.map((entry) => (
         <li key={entry.path} className="rounded-md border border-line p-2">
-          <p className="font-medium wrap-anywhere">{entry.path}</p>
+          <p className="font-medium wrap-anywhere">{label(entry.path)}</p>
           <p>
             <span className="text-fg-muted">{t('before')}: </span>
-            <Value value={entry.before} />
+            <Value path={entry.path} value={entry.before} />
           </p>
           <p>
             <span className="text-fg-muted">{t('after')}: </span>
-            <Value value={entry.after} />
+            <Value path={entry.path} value={entry.after} />
           </p>
           {entry.relaxes ? <p className="text-fg-muted">{t('relaxes')}</p> : null}
         </li>
@@ -279,7 +307,10 @@ export function TypeProposalCard({
       version: proposal.version,
     });
     if (result.ok) {
-      done(typeId, which === 'approve' ? 'approved' : which === 'reject' ? 'rejected' : 'withdrawn');
+      done(
+        typeId,
+        which === 'approve' ? 'approved' : which === 'reject' ? 'rejected' : 'withdrawn',
+      );
     }
   }
 
@@ -314,6 +345,8 @@ export function TypeProposalCard({
           <span className="text-fg-muted">{t('reason')}: </span>
           {proposal.reason.text}
         </p>
+      ) : proposal.reason?.state === 'erased' ? (
+        <p className="text-fg-muted">{t('reason-erased')}</p>
       ) : null}
       <DiffList diff={proposal.diff} />
       {note === null ? null : <p className="text-fg-muted">{note}</p>}
