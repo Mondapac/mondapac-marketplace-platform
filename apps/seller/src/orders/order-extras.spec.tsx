@@ -382,6 +382,18 @@ describe('Order timeline', () => {
   });
 });
 
+const SHIP_TO = {
+  recipientFirstName: 'Sara',
+  recipientLastName: 'Khan',
+  phone: '+61400000000',
+  line1: '1 Queen St',
+  line2: null,
+  suburb: 'Brisbane City',
+  region: 'QLD',
+  postcode: '4000',
+  countryCode: 'AU',
+};
+
 describe('Packing slip', () => {
   it('opens from the order page in a new tab', () => {
     mount();
@@ -460,8 +472,10 @@ describe('Packing slip', () => {
       })),
     });
     cleanup();
-    render(wrap(<PackingSlip order={refundedInFull} />));
+    render(wrap(<PackingSlip order={{ ...refundedInFull, shipTo: SHIP_TO }} />));
     expect(screen.getByText(/no packing slip to print/)).toBeTruthy();
+    expect(screen.queryByText('Sara Khan')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Print' })).toBeNull();
   });
 
   it('says when there is no address', () => {
