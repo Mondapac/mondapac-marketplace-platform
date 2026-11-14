@@ -1454,7 +1454,9 @@
         "unavailable": "The service is not available. Try again.",
         "unknown": "Something went wrong. Nothing was recorded.",
         "zone": "The seller's time zone isn't set yet. Ask the seller to finish their address.",
-        "type-inactive": "This certificate type is no longer in use."
+        "type-inactive": "This certificate type is no longer in use.",
+        "revoked": "This certificate is already revoked. Reload the page.",
+        "not-revocable": "This certificate can't be revoked in its current status. Reload the page."
       },
       "check-code": {
         "holder-name": "The holder name matches the seller's business",
@@ -1476,7 +1478,9 @@
         "signs-of-tampering": "The document shows signs of tampering.",
         "issuer-not-recognised": "The issuer is not recognised.",
         "not-confirmed-by-issuer": "The issuer did not confirm the certificate.",
-        "declaration-not-accepted": "The self-declaration was not accepted."
+        "declaration-not-accepted": "The self-declaration was not accepted.",
+        "withdrawn-by-issuer": "The issuer has withdrawn or suspended this certificate.",
+        "approved-in-error": "The certificate was approved in error."
       },
       "next-step": {
         "upload-clearer-file": "The seller uploads a clearer file.",
@@ -1509,6 +1513,33 @@
         "seller": "the seller",
         "admin": "an admin",
         "system": "the system"
+      },
+      "revoke": {
+        "button": "Revoke certificate",
+        "title": "Revoke this certificate?",
+        "body": "Offers with this badge can't be bought until {store} has a valid certificate. The seller is emailed.",
+        "body-pending": "If a renewal is waiting for review, it is withdrawn too.",
+        "reason": "Prepared reason",
+        "reason-placeholder": "Choose a reason",
+        "reason-required": "Choose a reason.",
+        "no-reasons": "This Market has no prepared reasons for revoking. It can't be recorded.",
+        "note": "Note for the seller",
+        "optional": "optional",
+        "note-help": "Plain text. It goes to the seller with the reason.",
+        "text-long": "At most {max} characters.",
+        "cancel": "Cancel",
+        "confirm": "Revoke certificate",
+        "reload": "Reload the page",
+        "done": "Certificate revoked. The seller has been emailed."
+      },
+      "full-history": {
+        "title": "Full history",
+        "recorded": "Viewing this is recorded.",
+        "show": "Show history",
+        "none": "No history yet.",
+        "entry": "{from} to {to}, by {by}",
+        "started": "Started",
+        "older": "Show older"
       }
     }
   },

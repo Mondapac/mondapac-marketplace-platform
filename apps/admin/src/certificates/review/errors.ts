@@ -15,6 +15,8 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'issuer.not-active': 'issuer',
   'certificate.incomplete': 'incomplete',
   'certificate.already-expired': 'expired',
+  'certificate.revoked': 'revoked',
+  'certificate.not-revocable': 'not-revocable',
   'conflict.stale': 'stale',
   'conflict.retry': 'retry',
   'access.denied': 'denied',
@@ -35,6 +37,10 @@ export function reviewProblemOf(failure: ApiFailure): ReviewProblem {
   const key = named ?? (failure.status === 0 || failure.status >= 500 ? 'unavailable' : 'unknown');
   return {
     key: `certificates.review.error.${key}`,
-    reload: key === 'stale' || key === 'gone' || key === 'replaced',
+    reload: key === 'stale' ||
+      key === 'gone' ||
+      key === 'replaced' ||
+      key === 'revoked' ||
+      key === 'not-revocable',
   };
 }

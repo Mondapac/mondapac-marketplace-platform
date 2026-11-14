@@ -3,6 +3,7 @@ import { useTranslations } from 'next-intl';
 import { shortId } from '../../shared/short-id.ts';
 import { When } from '../../shared/when.tsx';
 import { wordsFor } from './label.ts';
+import { FullHistory, RevokeAction } from './record-forms.tsx';
 import { ChecksForm, DecisionForm, ScopeForm } from './review-forms.tsx';
 import { type ReviewPage } from './types.ts';
 
@@ -51,12 +52,21 @@ export function ReviewView({
   typeName,
   canReview,
   canDecide,
+  canRevoke = false,
+  canHistory = false,
+  revoked = false,
   csrfToken,
 }: {
   readonly page: ReviewPage;
   readonly typeName: string;
   readonly canReview: boolean;
   readonly canDecide: boolean;
+  /** The protected revoke permission: Revoke is offered for an approved or expired record. */
+  readonly canRevoke?: boolean;
+  /** The protected document view permission: the full, audited history is offered. */
+  readonly canHistory?: boolean;
+  /** The page was opened right after a revoke. */
+  readonly revoked?: boolean;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('certificates.review');
@@ -99,9 +109,28 @@ export function ReviewView({
           <span>{typeName}</span>
           <Badge tone="neutral">{queue(`kind.${submission.kind as 'initial'}`)}</Badge>
           <span>{queue('submission-no', { n: submission.submissionNo })}</span>
-          <Badge tone="info">{wordsFor(tr, 'status', certificate.status)}</Badge>
+          <Badge tone={certificate.status === 'revoked' ? 'critical' : 'info'}>
+            {wordsFor(tr, 'status', certificate.status)}
+          </Badge>
         </p>
+        {canRevoke && (certificate.status === 'approved' || certificate.status === 'expired') ? (
+          <div>
+            <RevokeAction
+              certificateId={certificate.certificateId}
+              version={certificate.version}
+              reasons={page.reasons.revoked ?? []}
+              store={store}
+              csrfToken={csrfToken}
+            />
+          </div>
+        ) : null}
       </header>
+
+      {revoked ? (
+        <div role="status">
+          <Banner tone="success">{t('revoke.done')}</Banner>
+        </div>
+      ) : null}
 
       {decided ? <Banner tone="attention">{t('not-pending')}</Banner> : null}
       {submission.issuer?.state === 'closed-to-new' ? (
@@ -254,6 +283,12 @@ export function ReviewView({
             ))}
           </ol>
         )}
+        {canHistory ? (
+          <div className="mt-4 border-t border-line pt-4">
+            <h4 className="mb-2 font-medium">{t('full-history.title')}</h4>
+            <FullHistory certificateId={certificate.certificateId} csrfToken={csrfToken} />
+          </div>
+        ) : null}
       </Section>
 
       <Section id="rv-decision" title={t('decision.heading')}>

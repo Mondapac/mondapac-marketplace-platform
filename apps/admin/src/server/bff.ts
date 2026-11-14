@@ -288,6 +288,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/seller-certificates/:id/approve',
     'certification/admin/seller-certificates/:id/request-changes',
     'certification/admin/seller-certificates/:id/decline',
+    // Revoke an approved or expired certificate (certification; protected permission).
+    'certification/admin/seller-certificates/:id/revoke',
     // Start, resume or discard one checked import (catalog).
     'catalog/admin/platform-imports/:id/start',
     'catalog/admin/platform-imports/:id/resume',
@@ -533,6 +535,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/issuers/:id/expert-reference',
     'certification/admin/product-certificates/:id',
     'certification/admin/product-certificates/:id/history',
+    // The full status history of one seller certificate (certification): an audited read that
+    // needs the protected document view permission (query: `beforeId`, `limit`).
+    'certification/admin/seller-certificates/:id/history',
     // The photo library of a platform product, for the form's images card (catalog, P1).
     'catalog/admin/platform-products/:id/images',
     // The primary photo of a listed product, thumbnail size only (catalog).
