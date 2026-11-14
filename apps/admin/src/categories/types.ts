@@ -156,3 +156,31 @@ export interface ImpactBody {
   /** Present when a target was named: the products whose feature set would change. */
   readonly featureSetChanges?: number;
 }
+
+/** `POST .../move-products` (202): the job that was queued and the published products it will move. */
+export interface MoveStarted {
+  readonly jobId: string;
+  readonly products: number;
+}
+
+export type MoveJobState = 'queued' | 'running' | 'done' | 'failed';
+
+/** One job of `GET .../move-products`: ids, state and counts only (no reason, no seller). */
+export interface MoveJob {
+  readonly id: string;
+  readonly sourceCategoryId: string;
+  readonly targetCategoryId: string;
+  readonly state: MoveJobState;
+  readonly createdAt: string;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+  readonly total: number;
+  readonly moved: number;
+  readonly skipped: number;
+  readonly failed: number;
+}
+
+export interface MoveProgressBody {
+  /** The newest jobs of the category, newest first. */
+  readonly jobs: readonly MoveJob[];
+}

@@ -54,6 +54,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // direction, page, pageSize). The keyset parameters (`afterId`, `limit`) are read by the
     // panel's server pages only and do not cross.
     'catalog/seller/products',
+    // The category choices of the product form (catalog, categories C5a): levels 3 and 4, no hidden node.
+    'catalog/seller/products/category-picker',
     // The Products list as a file (CSV or XLSX): the list's selector plus format, columns and the
     // selected product ids; the answer is an attachment.
     'catalog/seller/products/export',

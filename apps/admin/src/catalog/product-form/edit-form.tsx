@@ -7,7 +7,6 @@ import {
   Card,
   Dialog,
   LoadError,
-  SearchSelect,
   Select,
   SkeletonRows,
   TextAreaField,
@@ -22,7 +21,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { flushSync } from 'react-dom';
 import { callApi } from '../../api/client.ts';
 import { AttributesSection } from './attributes-section.tsx';
-import { categoryOptions } from './category-options.ts';
+import { CategoriesField } from './categories-field.tsx';
 import {
   attributeInputsOf,
   attributeValuesWith,
@@ -315,7 +314,6 @@ function EditForm({
     remove: (name) => t('select.remove', { name }),
     limitReached: (max) => t('select.limit', { max }),
   };
-  const categories = categoryOptions(form.categories, defaultLocale);
 
   // What the freeze refused about the tags, in words, until the admin changes the tags.
   const tagIssues = problem?.topicIssues ?? [];
@@ -725,20 +723,19 @@ function EditForm({
             />
           </Card>
           <Card title={t('category')}>
-            <SearchSelect
-              multiple
-              alwaysSearch
-              name="categoryIds"
-              label={t('field.categories')}
-              help={t(
-                categoryIds.length === 0 ? 'field.categories-help-empty' : 'field.categories-help',
-              )}
-              placeholder={t('field.categories-placeholder')}
-              options={categories}
-              value={categories.filter((option) => categoryIds.includes(option.value))}
-              labels={labels}
-              onChange={(picked) => {
-                setCategoryIds(picked.map((option) => option.value));
+            <CategoriesField
+              categories={form.categories}
+              categoryIds={categoryIds}
+              defaultLocale={defaultLocale}
+              issues={problem?.categoryIssues}
+              onChange={(ids) => {
+                setCategoryIds(ids);
+                // The refusals named the old list; they say nothing about this one.
+                setProblem((current) =>
+                  current?.categoryIssues === undefined
+                    ? current
+                    : { ...current, categoryIssues: { items: {} } },
+                );
                 edited();
               }}
             />

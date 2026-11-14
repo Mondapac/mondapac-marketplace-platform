@@ -10,13 +10,14 @@ import {
   EditDetailsDialog,
   type ConfirmKind,
 } from './category-dialogs.tsx';
+import { MoveProductsDialog } from './move-products-dialog.tsx';
 import { RestructureDialog } from './restructure-dialog.tsx';
 import type { RestructureKind } from './restructure-model.ts';
 import { useCategoryCall } from './use-category-call.ts';
 import { CategoryProblemBanner } from './category-problem.tsx';
 import { API_CATEGORIES, type CategoryRow, type DetailBody, type WriteWrap } from './types.ts';
 
-type Open = 'edit' | 'add-child' | 'slug' | ConfirmKind | RestructureKind | null;
+type Open = 'edit' | 'add-child' | 'slug' | 'move-products' | ConfirmKind | RestructureKind | null;
 
 /** What an admin may do to the picked category: edit, add a child, move, hide or show, rename its URL, discard. */
 export function CategoryToolbar({
@@ -109,7 +110,7 @@ export function CategoryToolbar({
     'category.not-active': t('restructure-reason-not-active'),
   };
   const reasons = new Set<string>();
-  for (const kind of ['move', 'merge', 'archive'] as const) {
+  for (const kind of ['move', 'merge', 'archive', 'move-products'] as const) {
     const answer = body.actions[`platform-category.${kind}`];
     if (answer === undefined || answer.allowed) continue;
     const text = answer.denial === undefined ? undefined : denialCopy[answer.denial];
@@ -179,6 +180,21 @@ export function CategoryToolbar({
               );
             })
           : null}
+        {canRestructure ? (
+          <Button
+            variant="secondary"
+            disabled={body.actions['platform-category.move-products']?.allowed !== true}
+            aria-describedby={
+              body.actions['platform-category.move-products']?.allowed !== true &&
+              restructureReason !== null
+                ? REASON_ID
+                : undefined
+            }
+            onClick={() => setOpen('move-products')}
+          >
+            {t('move-products')}
+          </Button>
+        ) : null}
         {canDiscard ? (
           <Button variant="destructive" onClick={() => setOpen('discard')}>
             {t('discard')}
@@ -244,6 +260,19 @@ export function CategoryToolbar({
               t(`note-${open}`),
               open === 'discard' ? (category.parentId ?? undefined) : undefined,
             )
+          }
+          onReload={() => closeAndRefresh()}
+        />
+      ) : null}
+      {open === 'move-products' ? (
+        <MoveProductsDialog
+          categoryId={category.id}
+          name={title}
+          rows={rows}
+          locale={defaultLocale}
+          csrfToken={csrfToken}
+          onClose={(started) =>
+            started ? closeAndRefresh(t('note-move-products'), category.id) : setOpen(null)
           }
           onReload={() => closeAndRefresh()}
         />

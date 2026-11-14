@@ -23,6 +23,14 @@ import type { FormField, ProductPhoto, ProductView } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
+const OILS_CHOICE = {
+  id: 'c2',
+  level: 3,
+  name: 'Oils',
+  path: ['Pantry', 'Oils'],
+  general: false,
+  status: 'active',
+};
 const field = (over: Partial<FormField> & Pick<FormField, 'code' | 'dataType'>): FormField => ({
   localizable: false,
   required: false,
@@ -95,6 +103,12 @@ const saved = (ids: string[]) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  })) as unknown as typeof window.matchMedia;
   HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
     this.setAttribute('open', '');
   };
@@ -296,15 +310,27 @@ describe('a measure field (attributes A3)', () => {
 
 describe('EditForm product details', () => {
   it('saves categories, tax category and attribute values', async () => {
-    call.mockResolvedValue(saved(['v1']));
+    call.mockImplementation((method) =>
+      Promise.resolve(
+        method === 'GET'
+          ? { ok: true, status: 200, body: { locale: 'en-AU', choices: [OILS_CHOICE] } }
+          : saved(['v1']),
+      ),
+    );
     mount();
-    fireEvent.click(screen.getByLabelText('Oils'));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Add a category' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Pantry › Oils' }));
     fireEvent.change(screen.getByLabelText('Tax category'), { target: { value: 'gst-free' } });
     fireEvent.change(screen.getByLabelText('weight'), { target: { value: '250' } });
     fireEvent.change(screen.getByLabelText('organic'), { target: { value: 'yes' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
-    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
-    expect(call.mock.calls[0]?.[2]).toMatchObject({
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    // The picker was read once, when the Add control opened; the save is the second call.
+    expect(call.mock.calls[0]?.slice(0, 2)).toEqual([
+      'GET',
+      'catalog/seller/products/category-picker',
+    ]);
+    expect(call.mock.calls[1]?.[2]).toMatchObject({
       content: {
         categoryIds: ['c2'],
         taxCategoryCode: 'gst-free',
