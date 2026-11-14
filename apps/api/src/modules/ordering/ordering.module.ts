@@ -51,6 +51,15 @@ import { AdminCancelOrder } from './application/use-cases/admin-cancel-order.use
 import { AdminAddOrderNote } from './application/use-cases/admin-add-order-note.use-case';
 import { AdminListOrderNotes } from './application/use-cases/admin-list-order-notes.use-case';
 import type { AdminNoteDependencies } from './application/admin-note-flow';
+import type { SellerNoteDependencies } from './application/seller-note-flow';
+import {
+  SELLER_NOTE_CIPHER,
+  SELLER_ORDER_NOTE_REPOSITORY,
+} from './application/ports/seller-order-notes';
+import { SellerAddOrderNote } from './application/use-cases/seller-add-order-note.use-case';
+import { SellerListOrderNotes } from './application/use-cases/seller-list-order-notes.use-case';
+import { AdminViewOrderActivity } from './application/use-cases/admin-view-order-activity.use-case';
+import { SellerViewOrderActivity } from './application/use-cases/seller-view-order-activity.use-case';
 import {
   ADMIN_NOTE_CIPHER,
   ADMIN_ORDER_NOTE_REPOSITORY,
@@ -285,12 +294,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewOrderDocument,
       ListOrders,
       AdminViewOrder,
+      AdminViewOrderActivity,
       AdminViewOrderDocument,
       AdminListOrders,
       ConfirmPayment,
       CancelPayment,
       SellerListOrders,
       SellerViewOrder,
+      SellerViewOrderActivity,
       SellerViewOrderDocument,
       SellerMarkOrderReady,
       SellerMarkUnavailable,
@@ -343,6 +354,29 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         ids: AdminNoteDependencies['ids'],
         clock: AdminNoteDependencies['clock'],
         labels: AdminNoteDependencies['labels'],
+      ) => new type(gate, { unitOfWork, notes, cipher, audit, ids, clock, labels }),
+    })),
+    ...[SellerListOrderNotes, SellerAddOrderNote].map((type) => ({
+      provide: type,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        SELLER_ORDER_NOTE_REPOSITORY,
+        SELLER_NOTE_CIPHER,
+        AUDIT_WRITER,
+        ID_GENERATOR,
+        CLOCK,
+        ORDER_LABELS,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: SellerNoteDependencies['unitOfWork'],
+        notes: SellerNoteDependencies['notes'],
+        cipher: SellerNoteDependencies['cipher'],
+        audit: SellerNoteDependencies['audit'],
+        ids: SellerNoteDependencies['ids'],
+        clock: SellerNoteDependencies['clock'],
+        labels: SellerNoteDependencies['labels'],
       ) => new type(gate, { unitOfWork, notes, cipher, audit, ids, clock, labels }),
     })),
     {

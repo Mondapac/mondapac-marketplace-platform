@@ -121,6 +121,7 @@ model OrderingSellerOrder {
   lines                  OrderingOrderLine[]
   refunds                OrderingRefund[]
   pickupCode             OrderingPickupCode?
+  notes                  OrderingSellerOrderNote[]
 
   @@unique([marketId, id])
   @@unique([marketId, orderId, sellerId])
@@ -446,6 +447,32 @@ model OrderingAdminOrderNote {
   /// The order page reads one order's notes, newest first.
   @@index([marketId, orderId, createdAt(sort: Desc)])
   @@map("admin_order_notes")
+  @@schema("ordering")
+}
+
+/// A seller's own notes on one of its seller orders (order detail decision 3, 31 Oct 2026): the
+/// shop's team sees them; the customer and the admins never do (the admins' notes are
+/// `ordering.admin_order_notes`). Written once: the application role may insert and read, never
+/// change or remove (grants). Free text is never in clear (data design O8). `order_id` and
+/// `seller_id` repeat the seller order's, held equal by the four-column foreign key.
+model OrderingSellerOrderNote {
+  id              String              @id @db.Uuid
+  marketId        String              @map("market_id") @db.VarChar(8)
+  tenantId        String              @map("tenant_id")
+  orderId         String              @map("order_id") @db.Uuid
+  sellerOrderId   String              @map("seller_order_id") @db.Uuid
+  sellerId        String              @map("seller_id") @db.Uuid
+  /// The seller member who wrote it (a plain id, no foreign key: identity owns accounts).
+  authorAccountId String              @map("author_account_id") @db.Uuid
+  /// Personal; the note's text (1 to 2000 characters, checked by the application) sealed under the
+  /// order's customer account subject key. Erasing the customer makes it unreadable. Bound 16384.
+  bodyCiphertext  String              @map("body_ciphertext")
+  createdAt       DateTime            @map("created_at") @db.Timestamptz(6)
+  sellerOrder     OrderingSellerOrder @relation(fields: [marketId, sellerOrderId, orderId, sellerId], references: [marketId, id, orderId, sellerId], onDelete: Restrict, onUpdate: Restrict)
+
+  /// The seller order page reads one seller order's notes, newest first.
+  @@index([marketId, sellerOrderId, createdAt(sort: Desc)])
+  @@map("seller_order_notes")
   @@schema("ordering")
 }
 

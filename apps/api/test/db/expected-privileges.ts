@@ -1185,6 +1185,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Order detail decision 3: admin internal notes, sealed under the customer; written once, never
     // changed or removed.
     'ordering.admin_order_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Order detail decision 3: a seller's own notes on its seller order, sealed under the customer;
+    // written once, never changed or removed.
+    'ordering.seller_order_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Seller refund caps (owner decision 2026-11-11; ordering.md 3.12c): an admin sets, edits and
     // removes a cap (the id, Market and seller never change); the guard row per seller is
     // inserted once, then moves only its check time and alert bookkeeping. No guard is deleted.

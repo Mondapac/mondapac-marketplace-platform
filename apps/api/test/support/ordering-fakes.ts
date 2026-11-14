@@ -6,6 +6,10 @@ import type {
   StoredAdminNote,
 } from '../../src/modules/ordering/application/ports/admin-order-notes';
 import type {
+  SellerOrderNoteRepository,
+  StoredSellerNote,
+} from '../../src/modules/ordering/application/ports/seller-order-notes';
+import type {
   AuditEntry,
   CallContext,
   Id,
@@ -1402,6 +1406,38 @@ export class MemoryAdminNotes implements AdminOrderNoteRepository {
     return Promise.resolve(
       this.rows
         .filter((row) => row.orderId === orderId)
+        .reverse()
+        .slice(0, limit),
+    );
+  }
+}
+
+/**
+ * The sellers' notes of the memory store: each seller order known here has its order, seller and
+ * customer; a note is listed only for the seller that owns the seller order.
+ */
+export class MemorySellerNotes implements SellerOrderNoteRepository {
+  readonly sellerOrders = new Map<
+    string,
+    { orderId: Id<'Order'>; sellerId: Id<'Seller'>; accountId: Id<'Account'> }
+  >();
+  readonly rows: StoredSellerNote[] = [];
+  sellerOrderOf(_m: MarketContext, sellerId: Id<'Seller'>, sellerOrderId: Id<'SellerOrder'>) {
+    const found = this.sellerOrders.get(sellerOrderId);
+    return Promise.resolve(
+      found === undefined || found.sellerId !== sellerId
+        ? null
+        : { orderId: found.orderId, accountId: found.accountId },
+    );
+  }
+  insert(_m: MarketContext, note: StoredSellerNote) {
+    this.rows.push(note);
+    return Promise.resolve();
+  }
+  list(_m: MarketContext, sellerId: Id<'Seller'>, sellerOrderId: Id<'SellerOrder'>, limit: number) {
+    return Promise.resolve(
+      this.rows
+        .filter((row) => row.sellerOrderId === sellerOrderId && row.sellerId === sellerId)
         .reverse()
         .slice(0, limit),
     );

@@ -107,6 +107,22 @@ export const OrderNoteAdded = defineAuditAction({
   },
 });
 
+/** The audit target type of a seller order; the target id is the seller order id. */
+export const SELLER_ORDER_TARGET = 'ordering.seller-order';
+
+/**
+ * A seller member wrote a note on its own seller order (order detail decision 3). Never the text.
+ */
+export const SellerOrderNoteAdded = defineAuditAction({
+  action: 'ordering.seller-order.note-added',
+  targetType: SELLER_ORDER_TARGET,
+  actors: ['authenticated'],
+  after: {
+    noteId: auditField.id(),
+    length: auditField.integer(),
+  },
+});
+
 /** The audit target type of a saved filter of an order list. */
 export const ORDERING_SAVED_FILTER_TARGET = 'ordering.saved-filter';
 
@@ -157,6 +173,7 @@ export const ORDERING_AUDIT_ACTIONS = [
   RefundSettled,
   OrderCancelRequested,
   OrderNoteAdded,
+  SellerOrderNoteAdded,
   RefundLimitSet,
   RefundLimitRemoved,
   SavedFilterSharedAudit,

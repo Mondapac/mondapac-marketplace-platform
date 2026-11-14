@@ -54,6 +54,17 @@ export const ORDERING_SELLER_ORDER_MARK_UNAVAILABLE = definePermission('ordering
   protected: true,
 });
 
+/**
+ * Write a note on the shop's own paid seller order (order detail decision 3). Reading the notes
+ * needs only `ordering.seller-order.view`. Not protected (no money moves); like the other seller
+ * order keys, no default role lists it yet, so the Seller Owner holds it until a role is given it.
+ */
+export const ORDERING_SELLER_ORDER_NOTE = definePermission('ordering', {
+  key: 'ordering.seller-order.note',
+  scope: 'seller',
+  protected: false,
+});
+
 /** Refund part or all of a paid seller order of any order of the Market (tax step 3). */
 export const ORDERING_ORDER_REFUND = definePermission('ordering', {
   key: 'ordering.order.refund',
@@ -114,5 +125,6 @@ export const ORDERING_PERMISSIONS = declarePermissions('ordering', [
   ORDERING_SELLER_ORDER_MARK_DELIVERED,
   ORDERING_SELLER_ORDER_MARK_READY,
   ORDERING_SELLER_ORDER_MARK_UNAVAILABLE,
+  ORDERING_SELLER_ORDER_NOTE,
   ORDERING_SELLER_ORDER_VIEW,
 ]);
