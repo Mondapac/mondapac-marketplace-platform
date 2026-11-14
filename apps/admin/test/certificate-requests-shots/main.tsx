@@ -1,3 +1,4 @@
+import { Tabs } from '@mondapac/ui';
 import { NextIntlClientProvider } from 'next-intl';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
@@ -44,14 +45,42 @@ const detail: RequestDetail = {
 const names = new Map([['halal', 'Halal']]);
 const view = new URLSearchParams(location.search).get('view') ?? 'queue';
 
+const tabs = (
+  <Tabs
+    label={messages.certificates.tabs.label}
+    activeId="requests"
+    items={[
+      { id: 'queue', label: messages.certificates.tabs.queue, href: '/certificates' },
+      { id: 'issuers', label: messages.certificates.tabs.issuers, href: '/certificates/issuers' },
+      {
+        id: 'requests',
+        label: messages.certificates.tabs.requests,
+        href: '/certificates/issuer-requests',
+      },
+    ]}
+  />
+);
+
 function Body() {
-  if (view === 'queue') return <RequestsTable rows={rows} typeNames={names} morePages={false} />;
+  if (view === 'queue') {
+    return (
+      <div className="flex flex-col gap-4">
+        {tabs}
+        <p className="text-sm text-fg-muted">2 requests are open, oldest first.</p>
+        <RequestsTable rows={rows} typeNames={names} morePages={false} />
+      </div>
+    );
+  }
   return <RequestView request={detail} typeName="Halal" canAnswer csrfToken="t" />;
 }
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     <main className="mx-auto max-w-7xl p-4 md:p-6">
-      <h1 className="mb-4 text-2xl font-semibold">{messages.certificates.title}</h1>
+      <h1 className="mb-4 text-2xl font-semibold">
+        {view === 'queue'
+          ? messages.certificates.title
+          : messages.certificates.requests.detail.title}
+      </h1>
       <Body />
     </main>
   </NextIntlClientProvider>,

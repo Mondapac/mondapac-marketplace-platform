@@ -74,7 +74,9 @@ describe('issuer requests queue', () => {
       `/certificates/issuer-requests/${ID}`,
     );
     expect(screen.getByText('Not yet approved').closest('a')).toBeNull();
-    expect(screen.getByRole('link', { name: /Open request/ })).toBeTruthy();
+    expect(
+      screen.getByRole('link', { name: 'Open request from Not yet approved, seller 0000ABCD' }),
+    ).toBeTruthy();
     expect(screen.getAllByText('Halal')).toHaveLength(2);
     expect(screen.getByText('Waiting since (UTC)')).toBeTruthy();
   });
@@ -157,8 +159,9 @@ describe('issuer request page', () => {
     );
   });
 
-  it('disables "Not accepted" when the Market lists no reason', () => {
+  it('disables "Not accepted" when the Market lists no reason, and says so', () => {
     view(detail({ reasons: [] }));
+    expect(screen.getByText('No reasons are set up for this Market.')).toBeTruthy();
     expect(screen.getByLabelText(/Not accepted/).matches(':disabled')).toBe(true);
   });
 
@@ -216,6 +219,80 @@ describe('issuer request page', () => {
   });
 });
 
+describe('issuer request page: more states', () => {
+  it('shows a closed request without an answer read-only, never the form', () => {
+    view(detail({ state: 'issuer-added', answer: null }));
+    expect(screen.getByText('No details were recorded for this answer.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send answer' })).toBeNull();
+    expect(screen.queryByRole('radio')).toBeNull();
+  });
+
+  it('shows the answer time, and a reason that is no longer listed, to a reader without edit', () => {
+    view(
+      detail({
+        state: 'not-accepted',
+        reasons: [],
+        answer: { issuerId: null, reasonCode: 'gone-code', answeredAt: '2026-11-10T01:00:00.000Z' },
+      }),
+      false,
+    );
+    expect(screen.getByText('Reason no longer listed')).toBeTruthy();
+    expect(screen.getByText(/10 Nov 2026/)).toBeTruthy();
+    expect(screen.queryByRole('radio')).toBeNull();
+  });
+
+  it('shows small files in KB and leaves out an unknown page count', () => {
+    view(detail({ documents: [{ position: 0, mediaType: 'image/png', byteSize: 20480 }] }));
+    expect(screen.getByText('File 1 · image/png · 20 KB')).toBeTruthy();
+  });
+
+  it('sends a 401 to sign-in and keeps the form usable after another refusal', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 401, code: 'session.invalid' } });
+    view(detail());
+    fireEvent.click(screen.getByLabelText(/Not accepted/));
+    fireEvent.change(screen.getByLabelText(/Prepared reason/), {
+      target: { value: 'not-an-issuer' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 422, code: 'validation.failed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
+    expect(await screen.findByText(/Some details are not valid/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Send answer' })).toBeTruthy();
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: {} });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
+    await waitFor(() => expect(screen.queryByText(/Some details are not valid/)).toBeNull());
+  });
+
+  it('ignores a second submit while one is running', async () => {
+    let finish: (value: never) => void = () => undefined;
+    call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve as never)));
+    view(detail());
+    fireEvent.click(screen.getByLabelText(/Not accepted/));
+    fireEvent.change(screen.getByLabelText(/Prepared reason/), {
+      target: { value: 'not-an-issuer' },
+    });
+    fireEvent.submit(screen.getByRole('button', { name: 'Send answer' }).closest('form')!);
+    fireEvent.submit(screen.getByRole('button', { name: 'Send answer' }).closest('form')!);
+    expect(call).toHaveBeenCalledTimes(1);
+    finish({ ok: false, failure: { status: 500, code: 'x' } } as never);
+  });
+
+  it('offers Reload when the request changed under the editor (stale)', async () => {
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
+    view(detail());
+    fireEvent.click(screen.getByLabelText(/Not accepted/));
+    fireEvent.change(screen.getByLabelText(/Prepared reason/), {
+      target: { value: 'not-an-issuer' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send answer' }));
+    expect(await screen.findByText(/changed while you were reading it/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reload the page' })).toBeTruthy();
+  });
+});
+
 describe('issuer request errors', () => {
   it('maps every code of the answer route to a message that exists', () => {
     const codes = [
@@ -239,6 +316,25 @@ describe('issuer request errors', () => {
         key.split('.').pop(),
       );
     }
+    const reloads = [
+      'issuer-request.already-answered',
+      'issuer-request.not-found',
+      'issuer.not-active',
+      'issuer.not-found',
+      'conflict.stale',
+    ];
+    for (const code of reloads)
+      expect(requestProblemOf({ status: 409, code }).reload, code).toBe(true);
+    for (const code of [
+      'validation.failed',
+      'access.denied',
+      'request.throttled',
+      'conflict.retry',
+    ])
+      expect(requestProblemOf({ status: 422, code }).reload, code).toBe(false);
+    expect(requestProblemOf({ status: 403, code: 'document.download-disabled' }).key).toMatch(
+      /downloads-off$/,
+    );
     expect(requestProblemOf({ status: 400, code: 'constructor' }).key).toMatch(/\.unknown$/);
     expect(requestProblemOf({ status: 0, code: 'x' }).key).toMatch(/\.unavailable$/);
   });

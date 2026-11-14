@@ -1279,7 +1279,6 @@
       },
       "seller-fallback": "Not yet approved",
       "seller-id": "Seller ID {id}",
-      "seller-id-sr": ", seller {id}",
       "open-request": "Open request",
       "back": "Back to issuer requests",
       "state": {
@@ -1301,7 +1300,7 @@
         "sent": "Sent (UTC)",
         "files": "Files",
         "no-files": "No file was sent.",
-        "file": "File {n} · {type} · {pages, plural, one {# page} other {# pages}} · {size} MB",
+        "file": "File {n} · {type}{pages, plural, =0 {} one { · # page} other { · # pages}} · {size}",
         "files-note": "Downloads are not offered on this screen yet."
       },
       "answer": {
@@ -1319,7 +1318,7 @@
         "not-accepted": "Not accepted",
         "not-accepted-help": "The seller is told why, with a prepared reason.",
         "no-issuers": "No active issuer of this type. Add and activate one first.",
-        "no-reasons": "No prepared reason is available.",
+        "no-reasons": "No reasons are set up for this Market.",
         "open-registry": "Open the registry",
         "outcome-required": "Choose an answer.",
         "issuer-placeholder": "Choose an issuer",
@@ -1329,14 +1328,15 @@
         "submit": "Send answer",
         "reload": "Reload the page",
         "answered-issuer": "Issuer",
-        "answered-reason": "Reason"
+        "answered-reason": "Reason",
+        "no-details": "No details were recorded for this answer."
       },
       "error": {
         "invalid": "Some details are not valid. Check the form.",
         "gone": "This request no longer exists. Reload the page.",
         "answered": "This request was answered by someone else. Reload the page.",
         "reason": "That reason is not listed. Reload the page.",
-        "issuer-not-active": "That issuer is not active. Choose an active issuer.",
+        "issuer-not-active": "That issuer is not active any more. Reload the page for the current list.",
         "issuer-gone": "That issuer was not found. Reload the page.",
         "stale": "This request changed while you were reading it. Reload the page.",
         "retry": "Another change was in progress. Try again.",
@@ -1345,8 +1345,10 @@
         "throttled": "Too many requests. Try again in a moment.",
         "csrf": "Your session needs a refresh. Reload the page.",
         "unavailable": "The service is not available. Try again.",
-        "unknown": "Something went wrong. Nothing was recorded."
-      }
+        "unknown": "Something went wrong. Nothing was recorded.",
+        "downloads-off": "Downloads are switched off."
+      },
+      "open-request-from": "Open request from {store}, seller {id}"
     }
   },
   "pricing": {

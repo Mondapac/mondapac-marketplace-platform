@@ -44,11 +44,12 @@ export function RequestsTable({
                     <a
                       className="font-medium text-link underline"
                       href={`/certificates/issuer-requests/${row.issuerRequestId}`}
+                      aria-label={t('open-request-from', {
+                        store: t('seller-fallback'),
+                        id: shortId(row.sellerId),
+                      })}
                     >
                       {t('open-request')}
-                      <span className="sr-only">
-                        {t('seller-id-sr', { id: shortId(row.sellerId) })}
-                      </span>
                     </a>
                   </>
                 ) : (

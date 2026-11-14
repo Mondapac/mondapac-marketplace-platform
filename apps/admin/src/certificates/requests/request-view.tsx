@@ -5,6 +5,15 @@ import { When } from '../../shared/when.tsx';
 import { AnswerForm } from './answer-form.tsx';
 import type { RequestDetail } from './types.ts';
 
+const MB = 1024 * 1024;
+
+/** Sizes under 1 MB in KB, so a small file never reads "0.0 MB". */
+function sizeText(bytes: number): string {
+  return bytes < MB
+    ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+    : `${(bytes / MB).toFixed(1)} MB`;
+}
+
 function Row({ label, children }: { readonly label: string; readonly children: React.ReactNode }) {
   return (
     <div className="grid gap-1 sm:grid-cols-[12rem_1fr]">
@@ -31,7 +40,8 @@ export function RequestView({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('certificates.requests');
-  const answered = request.state !== 'open' && request.answer !== null;
+  const closed = request.state !== 'open';
+  const answered = closed && request.answer !== null;
   const issuer =
     answered && request.answer?.issuerId != null
       ? request.activeIssuers.find((item) => item.issuerId === request.answer?.issuerId)
@@ -94,7 +104,7 @@ export function RequestView({
                       n: (doc.position ?? index) + 1,
                       type: doc.mediaType === 'application/pdf' ? 'PDF' : (doc.mediaType ?? '?'),
                       pages: doc.pageCount ?? 0,
-                      size: ((doc.byteSize ?? 0) / (1024 * 1024)).toFixed(1),
+                      size: sizeText(doc.byteSize ?? 0),
                     })}
                   </li>
                 ))}
@@ -111,7 +121,9 @@ export function RequestView({
         <h3 id="rq-answer" className="mb-3 text-lg font-semibold">
           {t('answer.title')}
         </h3>
-        {answered && request.answer !== null ? (
+        {closed && request.answer === null ? (
+          <p className="text-fg-muted">{t('answer.no-details')}</p>
+        ) : answered && request.answer !== null ? (
           <dl className="flex flex-col gap-2">
             <Row label={t('answer.outcome')}>{t(`state.${request.state}`)}</Row>
             {request.state === 'issuer-added' ? (

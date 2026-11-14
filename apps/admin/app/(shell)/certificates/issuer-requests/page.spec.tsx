@@ -72,7 +72,7 @@ describe('issuer requests page', () => {
     expect(screen.getByText(messages.certificates.requests['no-access'])).toBeTruthy();
   });
 
-  it('reads the queue, names types only for a type viewer, and uses only a UUID cursor', async () => {
+  it('reads the queue and uses only a UUID cursor', async () => {
     render(await IssuerRequestsPage(search({ after: 'not-a-uuid' })));
     expect(mocks.get).toHaveBeenCalledTimes(1);
     expect(mocks.get).toHaveBeenCalledWith('certification/admin/issuer-requests?limit=25');
@@ -87,6 +87,31 @@ describe('issuer requests page', () => {
       '?after=',
     );
     expect(screen.getByRole('link', { name: 'First page' })).toBeTruthy();
+  });
+
+  it('names the types only for a reader who may view them', async () => {
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session([VIEW, 'certification.type.view']),
+    });
+    mocks.get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.startsWith('certification/admin/types')
+          ? { kind: 'ok', body: { items: [{ code: 'halal', names: { en: 'Halal' } }] } }
+          : page(),
+      ),
+    );
+    render(await IssuerRequestsPage(search()));
+    expect(screen.getByText('1 rows, Halal')).toBeTruthy();
+    cleanup();
+    mocks.get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.startsWith('certification/admin/types') ? { kind: 'unavailable' } : page(),
+      ),
+    );
+    render(await IssuerRequestsPage(search()));
+    expect(screen.getByText('1 rows, no names')).toBeTruthy();
+    expect(screen.getByText('1 request is open, oldest first.')).toBeTruthy();
   });
 
   it('says a request was answered, for the flag only', async () => {

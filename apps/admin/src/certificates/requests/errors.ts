@@ -8,6 +8,7 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'issuer-request.reason-unknown': 'reason',
   'issuer.not-active': 'issuer-not-active',
   'issuer.not-found': 'issuer-gone',
+  'document.download-disabled': 'downloads-off',
   'conflict.stale': 'stale',
   'conflict.retry': 'retry',
   'access.denied': 'denied',
@@ -28,6 +29,11 @@ export function requestProblemOf(failure: ApiFailure): RequestProblem {
   const key = named ?? (failure.status === 0 || failure.status >= 500 ? 'unavailable' : 'unknown');
   return {
     key: `certificates.requests.error.${key}`,
-    reload: key === 'stale' || key === 'answered' || key === 'gone' || key === 'issuer-gone',
+    reload:
+      key === 'stale' ||
+      key === 'answered' ||
+      key === 'gone' ||
+      key === 'issuer-gone' ||
+      key === 'issuer-not-active',
   };
 }
