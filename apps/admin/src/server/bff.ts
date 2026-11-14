@@ -432,6 +432,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'sellers/admin/:id/category-proposals',
     // Whether the seller may use AI writing help (sellers, SEL-25), set; the page server reads it.
     'sellers/admin/:id/ai-access',
+    // Whether the seller may write blog posts (sellers, blog), set; the page server reads it.
+    'sellers/admin/:id/blog-access',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
     // One seller's own cap on its refunds (ordering), set from the seller review page.

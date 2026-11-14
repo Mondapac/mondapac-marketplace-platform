@@ -780,6 +780,10 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', 'sellers/admin/nope/ai-access')).status).toBe(404);
     expect((await call('POST', `sellers/admin/${ID}/ai-access`)).status).toBe(404);
     expect((await read(`sellers/admin/${ID}/ai-access`)).status).toBe(404);
+    expect((await call('PUT', `sellers/admin/${ID}/blog-access`)).status).toBe(200);
+    expect((await call('PUT', 'sellers/admin/nope/blog-access')).status).toBe(404);
+    expect((await call('POST', `sellers/admin/${ID}/blog-access`)).status).toBe(404);
+    expect((await read(`sellers/admin/${ID}/blog-access`)).status).toBe(404);
   });
 
   it('relays the refund caps on their exact methods, with only the seller id and version in a query', async () => {
