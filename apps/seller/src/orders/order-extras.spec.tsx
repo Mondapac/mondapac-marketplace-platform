@@ -382,6 +382,18 @@ describe('Order timeline', () => {
   });
 });
 
+const SHIP_TO = {
+  recipientFirstName: 'Sara',
+  recipientLastName: 'Khan',
+  phone: '+61400000000',
+  line1: '1 Queen St',
+  line2: null,
+  suburb: 'Brisbane City',
+  region: 'QLD',
+  postcode: '4000',
+  countryCode: 'AU',
+};
+
 describe('Packing slip', () => {
   it('opens from the order page in a new tab', () => {
     mount();
@@ -434,6 +446,36 @@ describe('Packing slip', () => {
     expect(screen.queryByText(/\$/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Print' }));
     expect(print).toHaveBeenCalled();
+  });
+
+  it('is offered and printed only while the order is still to send', () => {
+    for (const fulfilment of ['shipped', 'delivered'] as const) {
+      cleanup();
+      mount({}, order({ fulfilment }));
+      expect(screen.queryByRole('link', { name: 'Print packing slip' })).toBeNull();
+      cleanup();
+      render(wrap(<PackingSlip order={order({ fulfilment })} />));
+      expect(screen.getByText(/no packing slip to print/)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Print' })).toBeNull();
+    }
+    const refundedInFull = order({
+      refunds: order().lines.map((line, index) => ({
+        refundId: `r${index}`,
+        requestedBy: 'seller' as const,
+        state: 'succeeded' as const,
+        reason: 'item-unavailable',
+        amount: aud('100'),
+        shipping: null,
+        lines: [{ orderLineId: line.lineId, quantity: line.quantity }],
+        requestedAt: '2026-10-14T10:30:00.000Z',
+        settledAt: null,
+      })),
+    });
+    cleanup();
+    render(wrap(<PackingSlip order={{ ...refundedInFull, shipTo: SHIP_TO }} />));
+    expect(screen.getByText(/no packing slip to print/)).toBeTruthy();
+    expect(screen.queryByText('Sara Khan')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Print' })).toBeNull();
   });
 
   it('says when there is no address', () => {

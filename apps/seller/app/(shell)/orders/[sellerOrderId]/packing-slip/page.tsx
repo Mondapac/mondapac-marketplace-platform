@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { PackingSlip } from '../../../../../src/orders/packing-slip.tsx';
 import { isUuid } from '../../../../../src/server/catalog-page.ts';
+import { packingSlipAvailable } from '../../../../../src/orders/types.ts';
 import { loadOrderDetailPage } from '../../../../../src/server/orders-page.ts';
 
 export async function generateMetadata() {
@@ -44,6 +45,16 @@ export default async function PackingSlipPage({
           action={<BackLink href="/orders" label={t('orders.back')} />}
         />
       </div>
+    );
+  }
+  // Checked here on the server as well, so the address and phone of an order already sent (or
+  // refunded in full) never reach the browser, not only stay off the screen.
+  if (!packingSlipAvailable(page.order)) {
+    return (
+      <main className="mx-auto flex max-w-3xl flex-col gap-4 bg-surface p-6 text-fg">
+        <BackLink href={`/orders/${page.order.sellerOrderId}`} label={t('orders.slip.back')} />
+        <p className="text-fg-muted">{t('orders.slip.not-available')}</p>
+      </main>
     );
   }
   return <PackingSlip order={page.order} />;
