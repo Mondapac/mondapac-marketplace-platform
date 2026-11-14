@@ -1182,6 +1182,27 @@ describe('relay of the storefront slides', () => {
     }
   });
 
+  it('changes the navigation: the draft, a restore and the approval, nothing else', async () => {
+    const base = 'storefront/admin/navigation';
+    for (const [method, path, status] of [
+      ['PUT', `${base}/draft`, 200],
+      ['POST', `${base}/restore`, 200],
+      ['POST', `${base}/approve`, 200],
+      ['GET', `${base}/draft`, 404],
+      ['POST', `${base}/draft`, 404],
+      ['PUT', `${base}/approve`, 404],
+      ['DELETE', base, 404],
+      ['PUT', base, 404],
+      ['POST', `${base}/approve/extra`, 404],
+    ] as const) {
+      const upstream = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), upstream)).status).toBe(
+        status,
+      );
+      expect(upstream.mock.calls.length).toBe(status === 200 ? 1 : 0);
+    }
+  });
+
   it('keeps every other page shape closed', async () => {
     const base = 'storefront/admin/pages';
     for (const [method, path] of [

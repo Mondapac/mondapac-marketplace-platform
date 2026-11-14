@@ -147,6 +147,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
+    // The navigation draft of the buyer site, replaced as a whole (storefront; editor key).
+    'storefront/admin/navigation/draft',
     'notifications/admin/support-contact',
     // The signed-in admin's own display name (profile).
     'identity/admin/profile/display-name',
@@ -178,6 +180,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set([]),
   POST: new Set([
+    // An earlier navigation version copied into the draft (storefront; editor key), and the draft
+    // approved (storefront.navigation.approve, protected): the API judges the keys.
+    'storefront/admin/navigation/restore',
+    'storefront/admin/navigation/approve',
     // A description draft from the "Write with AI" modal (catalog, AIS-03); nothing is stored.
     'catalog/admin/description-writer/drafts',
     // "Email sellers" from the Missing details report: the picked product ids, 'dryRun' for the

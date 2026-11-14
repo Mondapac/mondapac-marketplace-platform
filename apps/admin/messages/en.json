@@ -683,7 +683,11 @@
         "changed": "Last change"
       },
       "health": {
-        "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
+        "band": {
+          "healthy": "Healthy",
+          "at-risk": "At risk",
+          "unhealthy": "Unhealthy"
+        },
         "new": "New",
         "no-data": "No data",
         "none": "Not measured yet",
@@ -1326,7 +1330,8 @@
     "tabs": {
       "label": "Content sections",
       "pages": "Pages",
-      "slides": "Slides"
+      "slides": "Slides",
+      "navigation": "Navigation"
     },
     "no-access": {
       "title": "You don't have access to this page",
@@ -2152,6 +2157,100 @@
           "imageRef-required": "Choose an image, or clear its description.",
           "imageAlt-required": "Describe the image."
         }
+      }
+    },
+    "navigation": {
+      "page-title": "Navigation",
+      "intro": "The left menu and Browse lists of the buyer site, for this Market.",
+      "read-only": "You can view the navigation but not change it. Ask a platform administrator for edit access.",
+      "never-approved": "Not approved yet",
+      "approved-version": "Approved: version {n}",
+      "unapproved-changes": "Unapproved changes",
+      "waiting": "Waiting for a platform administrator to approve.",
+      "approve": "Approve",
+      "approve-save-first": "Save the draft first.",
+      "nothing-to-approve": "Nothing to approve. Change the draft first.",
+      "approve-title": "Approve this navigation?",
+      "approve-body": "Buyers will see this left menu and these Browse lists from now on. The approved version they see now is kept in Versions.",
+      "approve-confirm": "Approve",
+      "cancel": "Cancel",
+      "reload": "Reload the page",
+      "slot": {
+        "rail": "Left menu",
+        "drawer-popular": "Browse: popular and suggested",
+        "drawer-categories": "Browse: shop by category"
+      },
+      "slot-help": {
+        "rail": "Links in the left menu.",
+        "drawer-popular": "Words and categories offered first.",
+        "drawer-categories": "The categories in the Browse drawer."
+      },
+      "count": "{count} of {max}",
+      "add": "Add",
+      "browse-locked": "“Browse products” always comes first. It is set by the app and cannot be changed here.",
+      "empty": "Nothing here yet.",
+      "empty-categories": "Nothing here yet. Buyers will see the live category tree.",
+      "row": "Item {n}",
+      "label": "Label",
+      "label-help": "Up to {max} characters.",
+      "label-optional": "Label (optional)",
+      "label-name-help": "Replaces the category’s name. Up to {max} characters.",
+      "icon": "Icon (optional)",
+      "icon-help": "Optional. A short lowercase name such as delivery; the buyer app decides which icons it shows.",
+      "link-to": "Link to",
+      "kind": {
+        "category": "Category",
+        "page": "Landing page",
+        "system-page": "Site page",
+        "path": "Site path"
+      },
+      "path": "Site path",
+      "path-help": "A path such as /offers.",
+      "choose": "Choose…",
+      "category": "Category",
+      "up": "Move {name} up",
+      "down": "Move {name} down",
+      "show-switch": "Show {name} to buyers",
+      "remove": "Remove",
+      "remove-row": "Remove {name}",
+      "visible": "Shown",
+      "hidden": "Hidden",
+      "restore-save-first": "Save or discard your changes before restoring a version.",
+      "add-to": "Add to {slot}",
+      "draft-note": "Saves to the draft. Buyers see it after a platform administrator approves it.",
+      "discard": "Discard changes",
+      "save-draft": "Save to draft",
+      "saved": "Saved to draft.",
+      "approved": "Navigation approved.",
+      "restored": "Version {n} copied into the draft.",
+      "versions": "Versions",
+      "versions-empty": "No version was saved yet.",
+      "version": "Version {n}",
+      "state-draft": "Draft",
+      "state-published": "Live",
+      "state-earlier": "Earlier",
+      "restore": "Restore",
+      "restore-label": "Restore version {n}",
+      "restore-title": "Restore version {n}?",
+      "restore-body": "This replaces the current draft, including any unsaved or unapproved changes. Buyers see no change until it is approved.",
+      "restore-confirm": "Restore to draft",
+      "leave": {
+        "title": "Leave without saving?",
+        "message": "Your changes to the navigation have not been saved.",
+        "stay": "Stay",
+        "leave": "Leave"
+      },
+      "error": {
+        "fields": "Check the marked fields and try again.",
+        "required": "Fill this in.",
+        "too-long": "Use at most {max} characters.",
+        "format": "This value is not accepted.",
+        "invalid": "This value is not accepted.",
+        "nothing": "The draft has no changes to approve.",
+        "other": "Some part of the navigation was not accepted. Check the lists and try again.",
+        "category": "Choose an active category.",
+        "changed": "The draft changed after you opened this page. Reload it and review the change.",
+        "gone": "This version no longer exists. Reload the page."
       }
     }
   },
@@ -7107,8 +7206,12 @@
         "seo-description": "Search description",
         "invalid": "This value is not valid."
       },
-      "body": { "empty": "No content yet. Add a block below." },
-      "add": { "label": "Add block" },
+      "body": {
+        "empty": "No content yet. Add a block below."
+      },
+      "add": {
+        "label": "Add block"
+      },
       "block": {
         "name": "Block {n}: {type}",
         "text": "Text",
@@ -7151,7 +7254,11 @@
       "checks": {
         "title": "Checks",
         "none": "No findings.",
-        "severity": { "error": "Must fix", "warning": "Check", "notice": "Note" },
+        "severity": {
+          "error": "Must fix",
+          "warning": "Check",
+          "notice": "Note"
+        },
         "code": {
           "cover-missing": "Add a cover image.",
           "cover-alt-missing": "Describe the cover image (alt text).",

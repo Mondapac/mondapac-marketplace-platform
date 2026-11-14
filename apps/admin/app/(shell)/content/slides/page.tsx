@@ -46,6 +46,7 @@ export default async function SlidesPage() {
         labels={{
           nav: t('content.tabs.label'),
           pages: t('content.tabs.pages'),
+          navigation: t('content.tabs.navigation'),
           slides: t('content.tabs.slides'),
         }}
       />
