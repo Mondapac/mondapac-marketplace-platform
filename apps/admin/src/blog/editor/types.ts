@@ -86,9 +86,12 @@ export interface Taxonomy {
   readonly categories: readonly {
     readonly id: string;
     readonly slug: string;
+    readonly position?: number;
     readonly names: Readonly<Record<string, string>>;
   }[];
   readonly tags: readonly { readonly id: string; readonly slug: string; readonly name: string }[];
+  /** The languages of category names; absent or null when the Market has no blog settings. */
+  readonly locales?: { readonly default: string; readonly supported: readonly string[] } | null;
 }
 
 export interface Finding {

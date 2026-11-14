@@ -208,6 +208,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The names of one service area, set or restored (sellers, ADR-0041).
     'sellers/admin/service-areas/names',
     'notifications/admin/notices/read-all',
+    // A new blog category or tag (blog).
+    'blog/admin/taxonomy/categories',
+    'blog/admin/taxonomy/tags',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
     // A new tax strategy, and the choice of the active one (tax; protected key).
@@ -430,6 +433,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/sellers/:id/payout-terms',
     // A storefront slide's whole draft (storefront).
     'storefront/admin/slides/:id',
+    // The names and position of a blog category (blog).
+    'blog/admin/taxonomy/categories/:id',
     // A blog post's whole draft: the content and the address (blog).
     'blog/admin/posts/:id/draft',
     // The live status of a published blog event and its note for readers (blog).
@@ -466,6 +471,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/saved-filters/:id',
     // Delete an unused photo of a platform product (catalog, P1).
     'catalog/admin/platform-products/:id/images/:id',
+    // A blog category or tag that no post uses (blog).
+    'blog/admin/taxonomy/categories/:id',
+    'blog/admin/taxonomy/tags/:id',
     // A saved view of the order list (ordering).
     'ordering/admin/saved-filters/:id',
   ],

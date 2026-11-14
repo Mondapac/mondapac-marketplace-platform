@@ -87,7 +87,7 @@ export class AdminBlogTaxonomyController {
   @Get()
   @ApiOperation({
     summary: 'The categories and tags (admin)',
-    description: 'Needs blog.post.read.',
+    description: 'Needs blog.post.read. Also the Market languages for category names (locales).',
   })
   @ApiOkResponse(BODY)
   @ApiUnauthorizedResponse(UNAUTHORIZED)
