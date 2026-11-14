@@ -196,6 +196,12 @@ describe.each([['AU'], ['ZZ']])('blog access switch in %s', (code) => {
       ok: false,
       error: { code: 'file.not-found' },
     });
+    // The same seller read in another Market is not found.
+    const otherCode = code === 'AU' ? 'ZZ' : 'AU';
+    expect(await t.view.execute(adminOf(t, otherCode), { sellerId })).toMatchObject({
+      ok: false,
+      error: { code: 'file.not-found' },
+    });
     // Not an admin: refused before any read.
     expect(await t.view.execute(testCallContext(market, 'anonymous'), { sellerId })).toMatchObject({
       ok: false,

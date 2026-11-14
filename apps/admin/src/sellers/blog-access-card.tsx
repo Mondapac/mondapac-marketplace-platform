@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Card, CheckboxRow, Switch } from '@mondapac/ui';
+import { Banner, Button, Card, Dialog, RadioGroup, Switch } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { formatInstant } from '../shared/format.ts';
@@ -24,7 +24,12 @@ export function blogAccessOf(value: unknown): BlogAccessRead | null {
 }
 
 type Outcome =
-  | { readonly kind: 'done'; readonly enabled: boolean; readonly changed: boolean }
+  | {
+      readonly kind: 'done';
+      readonly enabled: boolean;
+      readonly changed: boolean;
+      readonly unpublished: boolean;
+    }
   | { readonly kind: 'failed'; readonly key: string };
 
 /**
@@ -39,23 +44,28 @@ export function BlogAccessCard({
   csrfToken,
   initial,
   canView,
+  canEdit,
 }: {
   readonly sellerId: string;
   readonly csrfToken: string;
   readonly initial: BlogAccessRead | null;
   readonly canView: boolean;
+  /** The admin holds `sellers.blog-access.edit`; without it the switch is shown but locked. */
+  readonly canEdit: boolean;
 }) {
   const t = useTranslations('sellers.blog-access');
   const locale = useLocale();
   const guarded = useGuardedCall();
   const [enabled, setEnabled] = useState(initial?.enabled ?? false);
   const [changedAt, setChangedAt] = useState(initial?.changedAt ?? null);
-  const [unpublish, setUnpublish] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [unpublish, setUnpublish] = useState<'keep' | 'unpublish'>('keep');
   const [pending, setPending] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const busy = useRef(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
-  async function set(next: boolean) {
+  async function set(next: boolean, takeOff = false) {
     if (busy.current) return;
     busy.current = true;
     setPending(true);
@@ -63,16 +73,22 @@ export function BlogAccessCard({
     const result = await guarded<{ enabled: boolean; changed: boolean }>(
       'PUT',
       blogAccessPath(sellerId),
-      next ? { enabled: true } : { enabled: false, ...(unpublish ? { unpublishLive: true } : {}) },
+      next ? { enabled: true } : { enabled: false, ...(takeOff ? { unpublishLive: true } : {}) },
       csrfToken,
     );
     busy.current = false;
     setPending(false);
+    setConfirming(false);
     if (result.ok) {
       setEnabled(result.body.enabled);
       if (result.body.changed) setChangedAt(new Date().toISOString());
-      setUnpublish(false);
-      setOutcome({ kind: 'done', enabled: result.body.enabled, changed: result.body.changed });
+      setUnpublish('keep');
+      setOutcome({
+        kind: 'done',
+        enabled: result.body.enabled,
+        changed: result.body.changed,
+        unpublished: takeOff && !result.body.enabled,
+      });
       return;
     }
     if (isStepUpCancelled(result)) return;
@@ -103,22 +119,20 @@ export function BlogAccessCard({
           <>
             <div className="flex items-center gap-3">
               <Switch
-                aria-label={t('title')}
+                aria-label={t('switch-label')}
                 checked={enabled}
-                disabled={pending}
-                onCheckedChange={(next) => void set(next)}
+                disabled={!canEdit || pending}
+                onCheckedChange={(next) => {
+                  if (next) void set(true);
+                  else {
+                    setUnpublish('keep');
+                    setConfirming(true);
+                  }
+                }}
               />
               <span>{enabled ? t('on') : t('off')}</span>
             </div>
-            {enabled ? (
-              <CheckboxRow
-                label={t('unpublish')}
-                help={t('unpublish-help')}
-                checked={unpublish}
-                disabled={pending}
-                onChange={() => setUnpublish(!unpublish)}
-              />
-            ) : null}
+            {!canEdit ? <p className="m-0 text-sm text-fg-muted">{t('read-only')}</p> : null}
             <p className="m-0 text-sm text-fg-muted">
               {changedAt === null
                 ? t('never-changed')
@@ -127,9 +141,14 @@ export function BlogAccessCard({
           </>
         )}
         <div role="status">
-          {outcome?.kind === 'done' ? (
+          {pending ? <p className="m-0 text-fg-muted">{t('saving')}</p> : null}
+          {!pending && outcome?.kind === 'done' ? (
             <p className="m-0 font-medium">
-              {outcome.enabled ? t('now-on') : t('now-off')}
+              {outcome.enabled
+                ? t('now-on')
+                : outcome.unpublished
+                  ? t('now-off-unpublished')
+                  : t('now-off')}
               {outcome.changed ? '' : ` ${t('no-change')}`}
             </p>
           ) : null}
@@ -140,6 +159,52 @@ export function BlogAccessCard({
           </div>
         ) : null}
       </div>
+      <Dialog
+        open={confirming}
+        title={t('off-title')}
+        onClose={() => {
+          if (!pending) setConfirming(false);
+        }}
+        initialFocus={cancelRef}
+        actions={
+          <>
+            <Button
+              ref={cancelRef}
+              variant="secondary"
+              disabled={pending}
+              onClick={() => setConfirming(false)}
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              variant="destructive-solid"
+              loading={pending}
+              onClick={() => void set(false, unpublish === 'unpublish')}
+            >
+              {t('off-confirm')}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <p>{t('off-body')}</p>
+          <RadioGroup
+            legend={t('off-live-legend')}
+            name="blog-live-posts"
+            value={unpublish}
+            disabled={pending}
+            options={[
+              { value: 'keep', label: t('off-live-keep'), help: t('off-live-keep-help') },
+              {
+                value: 'unpublish',
+                label: t('off-live-unpublish'),
+                help: t('off-live-unpublish-help'),
+              },
+            ]}
+            onChange={(value) => setUnpublish(value === 'unpublish' ? 'unpublish' : 'keep')}
+          />
+        </div>
+      </Dialog>
     </Card>
   );
 }

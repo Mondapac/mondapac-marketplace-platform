@@ -11,15 +11,34 @@ import { BlogAccessCard, blogAccessOf } from './blog-access-card.tsx';
 
 const call = vi.mocked(callApi);
 const SELLER = '0190a000-0000-7000-8000-000000000009';
-const view = (initial: Parameters<typeof BlogAccessCard>[0]['initial'], canView = true) =>
+const view = (
+  initial: Parameters<typeof BlogAccessCard>[0]['initial'],
+  canView = true,
+  canEdit = true,
+) =>
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <BlogAccessCard sellerId={SELLER} csrfToken="tok" initial={initial} canView={canView} />
+      <BlogAccessCard
+        sellerId={SELLER}
+        csrfToken="tok"
+        initial={initial}
+        canView={canView}
+        canEdit={canEdit}
+      />
     </NextIntlClientProvider>,
   );
-const toggle = () => screen.getByRole('switch', { name: 'Blog' });
+const toggle = () => screen.getByRole('switch', { name: 'Allow this seller to write blog posts' });
 
-beforeEach(() => call.mockReset());
+beforeEach(() => {
+  call.mockReset();
+  // jsdom has no modal dialog: open and close the element by its attribute.
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
+});
 afterEach(cleanup);
 
 describe('seller blog switch card', () => {
@@ -45,24 +64,41 @@ describe('seller blog switch card', () => {
     expect(screen.getByText(/Last changed/u)).toBeTruthy();
   });
 
-  it('switches off without touching the live posts unless the box was ticked', async () => {
+  it('asks before switching off and sends nothing until the admin confirms', async () => {
     view({ enabled: true, changedAt: null });
-    call.mockResolvedValueOnce({ ok: true, status: 200, body: { enabled: false, changed: true } });
     fireEvent.click(toggle());
-    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
-    expect(call.mock.calls[0]![2]).toEqual({ enabled: false });
+    expect(await screen.findByText('Turn off blog posts for this seller?')).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(call).not.toHaveBeenCalled();
+    expect(toggle().getAttribute('aria-checked')).toBe('true');
   });
 
-  it('asks for the live posts to come off the site when the box is ticked first', async () => {
+  it('switches off and leaves the live posts on the site by default', async () => {
     view({ enabled: true, changedAt: null });
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /also take this seller's live posts off/u }),
-    );
-    call.mockResolvedValueOnce({ ok: true, status: 200, body: { enabled: false, changed: true } });
     fireEvent.click(toggle());
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: { enabled: false, changed: true } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Turn off' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call.mock.calls[0]![2]).toEqual({ enabled: false });
+    expect(await screen.findByText('Blog access is now off for this seller.')).toBeTruthy();
+  });
+
+  it('takes the live posts off the site when that choice is made in the dialog', async () => {
+    view({ enabled: true, changedAt: null });
+    fireEvent.click(toggle());
+    fireEvent.click(await screen.findByRole('radio', { name: /Take them off the site/u }));
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: { enabled: false, changed: true } });
+    fireEvent.click(screen.getByRole('button', { name: 'Turn off' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call.mock.calls[0]![2]).toEqual({ enabled: false, unpublishLive: true });
-    await waitFor(() => expect(screen.queryByRole('checkbox')).toBeNull());
+    expect(await screen.findByText(/live posts were taken off the site/u)).toBeTruthy();
+  });
+
+  it('shows the switch locked, with a note, to a role that can only read', () => {
+    view({ enabled: true, changedAt: null }, true, false);
+    expect((toggle() as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText('This setting is read-only for your role.')).toBeTruthy();
   });
 
   it('says what went wrong, and stays quiet when the code dialog is cancelled', async () => {

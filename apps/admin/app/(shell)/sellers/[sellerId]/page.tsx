@@ -269,12 +269,14 @@ export default async function SellerReviewPage({
             canView={permissionKeys.includes(SELLER_VIEW_PERMISSION)}
           />
         ) : null}
-        {permissionKeys.includes(BLOG_ACCESS_PERMISSION) ? (
+        {permissionKeys.includes(BLOG_ACCESS_PERMISSION) ||
+        permissionKeys.includes(SELLER_VIEW_PERMISSION) ? (
           <BlogAccessCard
             sellerId={sellerId}
             csrfToken={csrfToken}
             initial={blogAccess}
             canView={permissionKeys.includes(SELLER_VIEW_PERMISSION)}
+            canEdit={permissionKeys.includes(BLOG_ACCESS_PERMISSION)}
           />
         ) : null}
         {activities === null ? null : (
