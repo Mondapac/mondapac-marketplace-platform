@@ -683,11 +683,7 @@
         "changed": "Last change"
       },
       "health": {
-        "band": {
-          "healthy": "Healthy",
-          "at-risk": "At risk",
-          "unhealthy": "Unhealthy"
-        },
+        "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
         "new": "New",
         "no-data": "No data",
         "none": "Not measured yet",
@@ -7146,12 +7142,8 @@
         "seo-description": "Search description",
         "invalid": "This value is not valid."
       },
-      "body": {
-        "empty": "No content yet. Add a block below."
-      },
-      "add": {
-        "label": "Add block"
-      },
+      "body": { "empty": "No content yet. Add a block below." },
+      "add": { "label": "Add block" },
       "block": {
         "name": "Block {n}: {type}",
         "text": "Text",
@@ -7194,11 +7186,7 @@
       "checks": {
         "title": "Checks",
         "none": "No findings.",
-        "severity": {
-          "error": "Must fix",
-          "warning": "Check",
-          "notice": "Note"
-        },
+        "severity": { "error": "Must fix", "warning": "Check", "notice": "Note" },
         "code": {
           "cover-missing": "Add a cover image.",
           "cover-alt-missing": "Describe the cover image (alt text).",
