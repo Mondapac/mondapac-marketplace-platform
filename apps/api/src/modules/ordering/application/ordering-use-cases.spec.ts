@@ -1894,6 +1894,62 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(view.ok && 'accountId' in view.value).toBe(false);
     });
 
+    it('stops showing the seller the address 30 days after delivery, not the buyer (2026-11-14)', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      const view = () => new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+      const shipTo = async () => {
+        const answer = await view();
+        if (!answer.ok) throw new Error('seller view failed');
+        return answer.value.shipTo;
+      };
+      const admin = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xad),
+          sessionId: id<'Session'>(0x62),
+          sellerId: null,
+        }),
+        'order-retain-abcd',
+      );
+      try {
+        // Before delivery: paid long ago, then shipped but not delivered.
+        clock.advance(Temporal.Duration.from({ hours: 24 * 400 }));
+        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        const shipped = await ship(sellerA, sellerOrderId);
+        expect(shipped.ok && shipped.value.deliveredAt).toBeNull();
+        expect(shipped.ok && shipped.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+        clock.advance(Temporal.Duration.from({ hours: 24 * 60 }));
+        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+
+        const delivered = await deliver(sellerA, sellerOrderId);
+        expect(delivered.ok && delivered.value.deliveredAt).toEqual(clock.now());
+        expect(delivered.ok && delivered.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+
+        // 29 days 23 hours after delivery: still shown.
+        clock.advance(Temporal.Duration.from({ hours: 30 * 24 - 1 }));
+        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        // Exactly 30 days after delivery: withheld, and the address is not even opened.
+        clock.advance(Temporal.Duration.from({ hours: 1 }));
+        const openedBefore = shipToCipher.opened;
+        expect(await shipTo()).toBeNull();
+        expect(shipToCipher.opened).toBe(openedBefore);
+        const later = await view();
+        expect(later.ok && later.value.fulfilment).toBe('delivered');
+
+        // The buyer's own view still has it; the admin view (which never carried it) still answers.
+        const own = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
+        expect(own.ok && own.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+        const any = await new AdminViewOrder(gate, deps).execute(admin, { orderId: order.id });
+        expect(any.ok && any.value.sellerOrders.find((s) => s.sellerId === SELLER_A)).toMatchObject(
+          { fulfilment: 'delivered' },
+        );
+      } finally {
+        clock.set(T0);
+      }
+    });
+
     it('still marks ready, with null names, when the name lookup fails', async () => {
       const order = await paid();
       labels.fail.add('units');

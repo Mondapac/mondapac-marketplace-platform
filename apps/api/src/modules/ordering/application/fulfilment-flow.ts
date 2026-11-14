@@ -27,6 +27,7 @@ import type { SellerOrderPage, SellerOrderRecord, SellerOrderSort } from './port
 import type { IssuedPickupCode } from './ports/pickup-code-vault';
 import { pickupStatusFor } from './pickup-flow';
 import { refundedInFull } from '../domain/refund';
+import { sellerMaySeeShipTo } from '../domain/ship-to-retention';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, MAX_PAGED_ROWS, openShipTo } from './read-flow';
 
 // The seller's side of an order once it is paid: see it and tell the platform it is ready; the
@@ -605,7 +606,8 @@ export async function confirmSellerPickup(
 
 /**
  * The step's answer with the names of its lines and the opened delivery address, read after the
- * unit has closed.
+ * unit has closed. Every seller answer that carries the address goes through here, so the
+ * 30-day retention after delivery ({@link sellerMaySeeShipTo}) applies to all of them.
  */
 export async function labelled(
   deps: OrderingDependencies,
@@ -623,7 +625,11 @@ export async function labelled(
   );
   return ok({
     ...one!,
-    shipTo: await openShipTo(deps, context, record.accountId, record.shipToSealed),
+    // 30 days after delivery the seller no longer sees the address (owner decision 2026-11-14);
+    // it is then not even opened.
+    shipTo: sellerMaySeeShipTo(view.deliveredAt, deps.clock.now())
+      ? await openShipTo(deps, context, record.accountId, record.shipToSealed)
+      : null,
     refunds: refunds.ok ? refunds.value.map((r) => sellerOrderRefundView(r)) : [],
     pickup: result.value.pickup ?? null,
   });
