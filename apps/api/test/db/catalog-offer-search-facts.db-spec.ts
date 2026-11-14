@@ -54,6 +54,19 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
     if (!result.ok) throw new Error('unit failed');
     return result.value;
   };
+  /** Runs `work` while no other session can write to the tables the search index stamp reads. */
+  const whileNothingChanges = async <T>(work: () => Promise<T>): Promise<T> => {
+    await owner.query('BEGIN');
+    try {
+      await owner.query(
+        `LOCK TABLE catalog.attribute_definitions, catalog.brands, catalog.brand_aliases,
+           catalog.cultures, catalog.culture_categories IN SHARE MODE`,
+      );
+      return await work();
+    } finally {
+      await owner.query('COMMIT');
+    }
+  };
   const insert = async (table: string, row: Record<string, unknown>) => {
     const columns = Object.keys(row);
     await owner.query(
@@ -569,8 +582,14 @@ describe.each(TEST_MARKETS)('catalog search facts in market %s (database)', (cod
   it('gives a stamp that holds while nothing changes and changes with a definition or a brand', async () => {
     const stampOf = (target: typeof market) =>
       run(target, () => reader.searchIndexStamp(target), true);
-    const before = await stampOf(market);
-    expect(await stampOf(market)).toBe(before);
+    // "Nothing changes" must hold for the whole database: brands and their aliases have no
+    // Market, and other spec files run in parallel workers. A SHARE lock on every table the stamp
+    // reads holds their writers back (reads go on) while the stamp is read twice.
+    const [before, again] = await whileNothingChanges(async () => [
+      await stampOf(market),
+      await stampOf(market),
+    ]);
+    expect(again).toBe(before);
     expect(before).toMatch(/^[0-9a-f]{32}$/);
 
     await definition(market, `stamp-${uuid7().slice(-8)}`, {
