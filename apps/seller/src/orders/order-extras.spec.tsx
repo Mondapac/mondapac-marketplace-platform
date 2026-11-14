@@ -482,4 +482,11 @@ describe('Packing slip', () => {
     render(wrap(<PackingSlip order={order({ shipTo: null })} />));
     expect(screen.getByText('No delivery address is on this order.')).toBeTruthy();
   });
+
+  it('shows no address and no note once the API withholds both (30 days after delivery)', () => {
+    render(wrap(<PackingSlip order={order({ shipTo: null, buyerNote: null })} />));
+    expect(screen.getByText('No delivery address is on this order.')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Note from the customer' })).toBeNull();
+    expect(screen.queryByText('Sara Khan')).toBeNull();
+  });
 });
