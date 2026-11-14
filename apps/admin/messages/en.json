@@ -1097,6 +1097,41 @@
         "unknown": "That did not work. Try again."
       }
     },
+    "blog-access": {
+      "title": "Blog",
+      "help": "Lets this seller write blog posts, which a reviewer checks before they go live. Off by default. Switching it off keeps the posts.",
+      "on": "On",
+      "off": "Off",
+      "never-changed": "Not changed yet.",
+      "last-changed": "Last changed {when}.",
+      "unreadable": "The current setting could not be read.",
+      "no-access": "You don't have access to this setting.",
+      "now-on": "Blog access is now on for this seller.",
+      "now-off": "Blog access is now off for this seller.",
+      "no-change": "It was already set this way.",
+      "error": {
+        "denied": "Your role can't change this setting.",
+        "acting-as": "This can't be changed while you are acting as a seller.",
+        "csrf": "Your session needs refreshing. Reload the page.",
+        "invalid": "The request was not valid. Reload and try again.",
+        "not-found": "This seller could not be found.",
+        "enrolment": "Set up two-step verification on your profile first.",
+        "unknown": "That did not work. Try again."
+      },
+      "switch-label": "Allow this seller to write blog posts",
+      "read-only": "This setting is read-only for your role.",
+      "saving": "Saving…",
+      "off-title": "Turn off blog posts for this seller?",
+      "off-body": "The seller will no longer be able to write or send posts. Posts already written are kept and are never deleted. A post that is waiting in review stays there until a reviewer decides.",
+      "off-live-legend": "Posts that are live on the site now",
+      "off-live-keep": "Leave them on the site",
+      "off-live-keep-help": "Published posts stay visible. The seller cannot change them while access is off.",
+      "off-live-unpublish": "Take them off the site",
+      "off-live-unpublish-help": "Published posts of this seller are unpublished now. They stay as the seller's posts.",
+      "off-confirm": "Turn off",
+      "cancel": "Cancel",
+      "now-off-unpublished": "Blog access is now off for this seller, and their live posts were taken off the site."
+    },
     "ai-access": {
       "title": "AI writing help",
       "help": "Lets this seller draft product descriptions with AI. Off by default.",

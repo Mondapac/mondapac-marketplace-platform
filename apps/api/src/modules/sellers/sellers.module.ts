@@ -114,6 +114,7 @@ import { ActiveSince } from './application/use-cases/active-since.use-case';
 import { BlogAccessSystem } from './application/use-cases/blog-access-system.use-case';
 import { BlogAccess } from './application/use-cases/blog-access.use-case';
 import { BlogAccessSetUseCase } from './application/use-cases/blog-access-set.use-case';
+import { ViewBlogAccessUseCase } from './application/use-cases/view-blog-access.use-case';
 import { BlogAccessController } from './presentation/blog-access.controller';
 import { BLOG_ACCESS_REPOSITORY } from './application/ports/blog-access.repository';
 import { AI_ACCESS_SETTING_REPOSITORY } from './application/ports/ai-access-setting.repository';
@@ -867,6 +868,7 @@ const REVIEW_DECISION_PORTS = {
     // Since when a seller has been approved, for promotions' new-seller rule: the read pair.
     useCaseProvider(ActiveSince, { unitOfWork: true, sellingFacts: true }),
     useCaseProvider(ActiveSinceSystem, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(ViewBlogAccessUseCase, { unitOfWork: true, blogAccess: true }),
     useCaseProvider(BlogAccessSetUseCase, {
       unitOfWork: true,
       blogAccess: true,

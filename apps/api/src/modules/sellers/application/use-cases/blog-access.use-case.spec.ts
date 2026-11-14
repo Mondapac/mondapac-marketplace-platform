@@ -23,11 +23,16 @@ import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import type { BlogAccessRepository, BlogAccessState } from '../ports/blog-access.repository';
+import type {
+  BlogAccessRepository,
+  BlogAccessState,
+  BlogAccessView,
+} from '../ports/blog-access.repository';
 import type { SellingFactsRepository } from '../ports/selling-facts.repository';
 import { BlogAccessSystem } from './blog-access-system.use-case';
 import { BlogAccessSetUseCase } from './blog-access-set.use-case';
 import { BlogAccess } from './blog-access.use-case';
+import { ViewBlogAccessUseCase } from './view-blog-access.use-case';
 
 // The blog switch of a seller (blog package 1) in memory, on both Market fixtures. The PostgreSQL
 // column and its CHECK are covered by test/db/blog-schema.db-spec.ts.
@@ -47,6 +52,15 @@ class Rows implements BlogAccessRepository {
     if (row === undefined) return Promise.resolve(null);
     row.version += 1;
     return Promise.resolve({ enabled: row.enabled, version: row.version });
+  }
+
+  read(market: MarketContext, sellerId: Id<'Seller'>): Promise<BlogAccessView | null> {
+    const row = this.rows.get(`${market.marketId}|${sellerId}`);
+    return Promise.resolve(
+      row === undefined
+        ? null
+        : { enabled: row.enabled, changedAt: row.by === null ? null : START },
+    );
   }
 
   set(
@@ -101,6 +115,7 @@ function setUp() {
     withhold: () => void (held = false),
     read: new BlogAccess(gate, { unitOfWork, sellingFacts }),
     readSystem: new BlogAccessSystem(gate, { unitOfWork, sellingFacts }),
+    view: new ViewBlogAccessUseCase(gate, { unitOfWork, blogAccess: rows }),
     set: new BlogAccessSetUseCase(gate, { unitOfWork, blogAccess: rows, audit, outbox, clock }),
   };
 }
@@ -157,6 +172,44 @@ describe.each([['AU'], ['ZZ']])('blog access switch in %s', (code) => {
     expect(t.events[0]).toMatchObject({
       type: 'sellers.blog-access-changed.v1',
       payload: { sellerId, enabled: true, unpublishLive: false },
+    });
+  });
+
+  it('lets an admin read the switch and when it changed, and refuses anyone else', async () => {
+    const t = setUp();
+    const sellerId = t.ids.next<'Seller'>();
+    t.rows.seed(market, sellerId);
+    const context = adminOf(t, code);
+    expect(await t.view.execute(context, { sellerId })).toEqual(
+      ok({ enabled: false, changedAt: null }),
+    );
+    await t.set.execute(context, { sellerId, body: { enabled: true } });
+    expect(await t.view.execute(context, { sellerId })).toEqual(
+      ok({ enabled: true, changedAt: START }),
+    );
+    // An unknown seller, a malformed id and another Market's seller are all not found.
+    expect(await t.view.execute(context, { sellerId: t.ids.next<'Seller'>() })).toMatchObject({
+      ok: false,
+      error: { code: 'file.not-found' },
+    });
+    expect(await t.view.execute(context, { sellerId: 'x' })).toMatchObject({
+      ok: false,
+      error: { code: 'file.not-found' },
+    });
+    // The same seller read in another Market is not found.
+    const otherCode = code === 'AU' ? 'ZZ' : 'AU';
+    expect(await t.view.execute(adminOf(t, otherCode), { sellerId })).toMatchObject({
+      ok: false,
+      error: { code: 'file.not-found' },
+    });
+    // Not an admin: refused before any read.
+    expect(await t.view.execute(testCallContext(market, 'anonymous'), { sellerId })).toMatchObject({
+      ok: false,
+    });
+    t.withhold();
+    expect(await t.view.execute(context, { sellerId })).toMatchObject({
+      ok: false,
+      error: { code: 'access.denied' },
     });
   });
 

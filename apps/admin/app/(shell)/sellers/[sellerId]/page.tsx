@@ -25,6 +25,13 @@ import {
   aiAccessPath,
   type AiAccessRead,
 } from '../../../../src/sellers/ai-access-card.tsx';
+import {
+  BLOG_ACCESS_PERMISSION,
+  BlogAccessCard,
+  blogAccessOf,
+  blogAccessPath,
+  type BlogAccessRead,
+} from '../../../../src/sellers/blog-access-card.tsx';
 import { CategoryProposalsCard } from '../../../../src/sellers/category-proposals-card.tsx';
 import { DECIDE_PERMISSION as PROPOSAL_DECIDE_PERMISSION } from '../../../../src/categories/proposals/types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
@@ -87,6 +94,14 @@ async function loadAiAccess(sellerId: string, canView: boolean): Promise<AiAcces
   const read = await serverGet<unknown>(aiAccessPath(sellerId));
   if (read.kind === 'signed-out') redirect('/session-ended');
   return read.kind === 'ok' ? aiAccessOf(read.body) : null;
+}
+
+/** The seller's blog switch, or null when it cannot be read (the card then shows no switch). */
+async function loadBlogAccess(sellerId: string, canView: boolean): Promise<BlogAccessRead | null> {
+  if (!canView) return null;
+  const read = await serverGet<unknown>(blogAccessPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? blogAccessOf(read.body) : null;
 }
 
 /** The seller's payout terms, or null when the role cannot see them or they cannot be read. */
@@ -217,15 +232,17 @@ export default async function SellerReviewPage({
       canCheck: permissionKeys.includes(CHECK_PERMISSION),
       csrfToken,
     };
-    const [commission, methods, terms, holds, health, activities, aiAccess] = await Promise.all([
-      loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
-      loadMethods(sellerId, permissionKeys.includes(DELIVERY_VIEW_PERMISSION)),
-      loadTerms(sellerId, permissionKeys.includes(TERMS_VIEW_PERMISSION)),
-      loadHolds(sellerId, permissionKeys.includes(HOLD_VIEW_PERMISSION)),
-      loadHealth(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
-      loadActivities(sellerId, permissionKeys),
-      loadAiAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
-    ]);
+    const [commission, methods, terms, holds, health, activities, aiAccess, blogAccess] =
+      await Promise.all([
+        loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
+        loadMethods(sellerId, permissionKeys.includes(DELIVERY_VIEW_PERMISSION)),
+        loadTerms(sellerId, permissionKeys.includes(TERMS_VIEW_PERMISSION)),
+        loadHolds(sellerId, permissionKeys.includes(HOLD_VIEW_PERMISSION)),
+        loadHealth(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+        loadActivities(sellerId, permissionKeys),
+        loadAiAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+        loadBlogAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+      ]);
     return shell(
       <div className="flex flex-col gap-6">
         <ReviewView review={result.body} decide={decide} />
@@ -250,6 +267,16 @@ export default async function SellerReviewPage({
             csrfToken={csrfToken}
             initial={aiAccess}
             canView={permissionKeys.includes(SELLER_VIEW_PERMISSION)}
+          />
+        ) : null}
+        {permissionKeys.includes(BLOG_ACCESS_PERMISSION) ||
+        permissionKeys.includes(SELLER_VIEW_PERMISSION) ? (
+          <BlogAccessCard
+            sellerId={sellerId}
+            csrfToken={csrfToken}
+            initial={blogAccess}
+            canView={permissionKeys.includes(SELLER_VIEW_PERMISSION)}
+            canEdit={permissionKeys.includes(BLOG_ACCESS_PERMISSION)}
           />
         ) : null}
         {activities === null ? null : (

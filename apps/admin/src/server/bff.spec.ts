@@ -780,6 +780,10 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', 'sellers/admin/nope/ai-access')).status).toBe(404);
     expect((await call('POST', `sellers/admin/${ID}/ai-access`)).status).toBe(404);
     expect((await read(`sellers/admin/${ID}/ai-access`)).status).toBe(404);
+    expect((await call('PUT', `sellers/admin/${ID}/blog-access`)).status).toBe(200);
+    expect((await call('PUT', 'sellers/admin/nope/blog-access')).status).toBe(404);
+    expect((await call('POST', `sellers/admin/${ID}/blog-access`)).status).toBe(404);
+    expect((await read(`sellers/admin/${ID}/blog-access`)).status).toBe(404);
   });
 
   it('relays approve and reject of a held price for a UUID only, and no other method', async () => {
