@@ -1151,7 +1151,8 @@
     "tabs": {
       "label": "Certificates sections",
       "queue": "Review queue",
-      "issuers": "Issuers"
+      "issuers": "Issuers",
+      "types": "Types"
     },
     "issuers": {
       "title": "Certificate issuers",
@@ -1251,6 +1252,159 @@
         "stale": "This issuer changed while you were looking. Reload the page.",
         "retry": "Something changed at the same time. Try again.",
         "denied": "Your role can't change issuers.",
+        "acting-as": "This can't be done while you're signed in as the seller.",
+        "throttled": "Too many requests. Try again in a minute.",
+        "csrf": "Your session needs a refresh. Reload the page.",
+        "unavailable": "The service is not available right now. Try again in a few minutes.",
+        "unknown": "Something went wrong. Try again."
+      }
+    },
+    "types": {
+      "title": "Certificate types",
+      "no-access": "You don't have access to certificate types.",
+      "unavailable": "Certificate types could not be loaded.",
+      "empty": "This Market has no certificate types yet.",
+      "pending": "Change waiting",
+      "col": {
+        "name": "Name",
+        "status": "Status",
+        "code": "Code",
+        "mode": "Check",
+        "revision": "Revision"
+      },
+      "status": {
+        "active": "Active",
+        "inactive": "Inactive"
+      },
+      "mode": {
+        "THIRD_PARTY_DOCUMENT": "Certificate from an issuer",
+        "SELF_DECLARATION": "Seller's own declaration"
+      },
+      "basis": {
+        "SELLER_CERT_REQUIRED": "Seller certificate required",
+        "SELLER_OR_MANUFACTURER": "Seller or manufacturer certificate",
+        "NO_BADGE_ALLOWED": "No badge allowed"
+      },
+      "detail": {
+        "title": "Certificate type",
+        "back": "Back to types",
+        "no-access": "You don't have access to certificate types.",
+        "not-found": "This type was not found.",
+        "unavailable": "This type could not be loaded.",
+        "status": {
+          "active": "Active",
+          "inactive": "Inactive"
+        },
+        "revision": "Revision {n}",
+        "mode": "Check",
+        "none": "-",
+        "yes": "Yes",
+        "no": "No",
+        "mode-unknown": "-",
+        "needs-issuer": "Needs an issuer from the registry",
+        "needs-document": "Needs a document",
+        "needs-expiry": "Needs an expiry date",
+        "default-basis": "Default basis",
+        "auto-approve": "Approve without a person",
+        "icon": "Icon",
+        "published": "Published",
+        "locale": "Wording in {locale}",
+        "locale-name": "Name",
+        "locale-description": "Description for customers",
+        "locale-terms": "Claim terms",
+        "inactive-note": "No new certificates of this type can be added. Existing certificates and badges stay.",
+        "revision-waiting": "A change to this type is waiting for a second admin.",
+        "reactivation-waiting": "A reactivation is waiting for a second admin.",
+        "view-only": "Your role can't change certificate types.",
+        "done": {
+          "deactivated": "Type deactivated.",
+          "reactivation-asked": "Reactivation sent. A second admin has to approve it.",
+          "approved": "Change approved and published.",
+          "rejected": "Change rejected.",
+          "withdrawn": "Proposal withdrawn."
+        }
+      },
+      "actions": {
+        "deactivate": "Deactivate",
+        "reactivate": "Ask for reactivation"
+      },
+      "dialog": {
+        "cancel": "Cancel",
+        "reload": "Reload the page"
+      },
+      "deactivate": {
+        "title": "Deactivate this type?",
+        "body": "No new {name} certificates can be added. Existing certificates and badges stay.",
+        "confirm": "Deactivate"
+      },
+      "reactivate": {
+        "title": "Ask for reactivation",
+        "note": "A second admin has to approve this. {name} stays inactive until then.",
+        "reason": "Reason",
+        "optional": "optional",
+        "reason-help": "Up to {max} characters. The second admin sees it.",
+        "reason-long": "Use {max} characters or fewer.",
+        "confirm": "Send for approval"
+      },
+      "proposal": {
+        "title": {
+          "revision": "A change waiting for a second admin",
+          "reactivation": "Reactivation waiting for a second admin"
+        },
+        "sent": "Asked on",
+        "reason": "Reason",
+        "before": "Before",
+        "after": "After",
+        "empty": "Empty",
+        "on": "On",
+        "off": "Off",
+        "relaxes": "This part needs a second admin.",
+        "approve": "Approve change",
+        "reject": "Reject change",
+        "withdraw": "Withdraw proposal",
+        "cancel": "Cancel",
+        "reload": "Reload the page",
+        "second-admin": "You proposed this, so a different admin has to answer it.",
+        "no-actions": "Nothing can be done with this proposal from your account right now.",
+        "confirm": {
+          "approve": {
+            "title": "Approve this change",
+            "button": "Approve change",
+            "body": {
+              "revision": "The change is published at once. Certificates already approved keep the rules they were approved under.",
+              "reactivation": "The type becomes active again and sellers can add new certificates of it."
+            }
+          },
+          "reject": {
+            "title": "Reject this change",
+            "button": "Reject change",
+            "body": {
+              "revision": "The proposal is closed for good. The published revision stays.",
+              "reactivation": "The proposal is closed for good. The type stays inactive."
+            }
+          },
+          "withdraw": {
+            "title": "Withdraw your proposal",
+            "button": "Withdraw proposal",
+            "body": {
+              "revision": "The proposal is closed. You can propose it again later.",
+              "reactivation": "The proposal is closed. You can ask again later."
+            }
+          }
+        }
+      },
+      "error": {
+        "invalid": "Check the details and try again.",
+        "gone": "This type no longer exists. Reload the page.",
+        "already-inactive": "This type is already inactive. Reload the page.",
+        "already-active": "This type is already active. Reload the page.",
+        "proposal-gone": "This proposal no longer exists. Reload the page.",
+        "proposal-pending": "A proposal is already waiting. Reload the page.",
+        "proposal-closed": "This proposal was already answered. Reload the page.",
+        "second-admin": "A different admin has to answer this proposal.",
+        "stale": "This type changed while you were looking. Reload the page.",
+        "retry": "Something changed at the same time. Try again.",
+        "denied": "Your role can't change certificate types.",
         "acting-as": "This can't be done while you're signed in as the seller.",
         "throttled": "Too many requests. Try again in a minute.",
         "csrf": "Your session needs a refresh. Reload the page.",
