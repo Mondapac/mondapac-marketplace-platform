@@ -313,6 +313,14 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/product-certificates/:id/submit',
     // Activate an issuer with the expert's approval, under the version read (certification).
     'certification/admin/issuers/:id/activate',
+    // The rest of an issuer's life (certification): close to new, derecognise (names the number of
+    // certificates the form showed), ask for reactivation, and a second admin's answer to it.
+    'certification/admin/issuers/:id/close-to-new',
+    'certification/admin/issuers/:id/derecognise',
+    'certification/admin/issuers/:id/reactivation',
+    'certification/admin/issuers/:id/reactivations/:id/approve',
+    'certification/admin/issuers/:id/proposals/:id/reject',
+    'certification/admin/issuers/:id/proposals/:id/withdraw',
     // Add a photo to a platform product's library (catalog, P1): a base64 photo, so the body cap
     // of this path is the larger image one.
     'catalog/admin/platform-products/:id/images',

@@ -683,7 +683,11 @@
         "changed": "Last change"
       },
       "health": {
-        "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
+        "band": {
+          "healthy": "Healthy",
+          "at-risk": "At risk",
+          "unhealthy": "Unhealthy"
+        },
         "new": "New",
         "no-data": "No data",
         "none": "Not measured yet",
@@ -1238,7 +1242,17 @@
         "name-note": "Customers see this name on badges. Check it before activating: an active issuer can't be renamed.",
         "reactivation-waiting": "A reactivation is waiting for a second admin.",
         "view-only": "Your role can't change issuers.",
-        "activated": "Issuer activated. Sellers can now choose it."
+        "activated": "Issuer activated. Sellers can now choose it.",
+        "closed-note": "Closed to new certificates. Existing certificates stay valid until they expire.",
+        "derecognised-note": "Derecognised. This can't be undone.",
+        "done": {
+          "closed": "Issuer closed to new certificates.",
+          "derecognised": "Issuer derecognised.",
+          "reactivation-asked": "Reactivation sent. A second admin has to approve it.",
+          "approved": "Issuer reactivated. Sellers can choose it again.",
+          "rejected": "Reactivation rejected.",
+          "withdrawn": "Request withdrawn."
+        }
       },
       "error": {
         "invalid": "Check the highlighted fields and try again.",
@@ -1255,7 +1269,67 @@
         "throttled": "Too many requests. Try again in a minute.",
         "csrf": "Your session needs a refresh. Reload the page.",
         "unavailable": "The service is not available right now. Try again in a few minutes.",
-        "unknown": "Something went wrong. Try again."
+        "unknown": "Something went wrong. Try again.",
+        "count-changed": "The number of affected certificates changed. Reload the page and check it again.",
+        "expert-not-new": "Use a new expert approval, not the one already on record.",
+        "proposal-pending": "A reactivation is already waiting. Reload the page.",
+        "proposal-closed": "This reactivation was already answered. Reload the page.",
+        "proposal-gone": "This reactivation no longer exists. Reload the page.",
+        "second-admin": "A different admin has to answer this reactivation."
+      },
+      "close": {
+        "button": "Close to new certificates",
+        "title": "Close this issuer to new certificates",
+        "body": "Sellers can no longer choose {name} for new certificates. Certificates already approved stay valid until they expire. You can ask for the issuer to be reactivated later.",
+        "affected": "{count, plural, =0 {No approved certificates name this issuer.} one {# approved certificate names this issuer and stays valid.} other {# approved certificates name this issuer and stay valid.}}",
+        "cancel": "Cancel",
+        "confirm": "Close to new certificates",
+        "reload": "Reload"
+      },
+      "derecognise": {
+        "button": "Derecognise",
+        "title": "Derecognise this issuer",
+        "warning": "This can't be undone. Certificates from {name} stop counting as certified and each affected seller owner gets an email.",
+        "affected": "{count, plural, =0 {No approved certificates name this issuer.} one {# approved certificate is affected.} other {# approved certificates are affected.}}",
+        "confirm-label": "Type {count} to confirm",
+        "confirm-help": "Type the number of affected certificates shown above.",
+        "confirm-wrong": "That is not the number of affected certificates.",
+        "cancel": "Cancel",
+        "confirm": "Derecognise",
+        "reload": "Reload"
+      },
+      "reactivate": {
+        "button": "Ask for reactivation",
+        "title": "Ask for reactivation",
+        "note": "A second admin has to approve this. Until then the issuer stays closed to new certificates.",
+        "by": "Confirmed by",
+        "by-help": "1 to 120 characters.",
+        "by-required": "Enter who confirmed the issuer.",
+        "by-long": "Use 120 characters or fewer.",
+        "reference": "New reference",
+        "reference-help": "A new document or note reference, 1 to 300 characters.",
+        "reference-required": "Enter a reference.",
+        "reference-long": "Use 300 characters or fewer.",
+        "reason": "Reason (optional)",
+        "reason-help": "Up to 500 characters. The second admin sees it.",
+        "reason-long": "Use 500 characters or fewer.",
+        "cancel": "Cancel",
+        "confirm": "Send for approval",
+        "reload": "Reload"
+      },
+      "proposal": {
+        "title": "Reactivation waiting for a second admin",
+        "sent": "Asked on",
+        "reason": "Reason",
+        "approve": "Approve reactivation",
+        "reject": "Reject",
+        "withdraw": "Withdraw request",
+        "second-admin": "You asked for this reactivation, so a different admin has to answer it.",
+        "not-yours": "Only the admin who asked can withdraw it.",
+        "approved": "Issuer reactivated. Sellers can choose it again.",
+        "rejected": "Reactivation rejected.",
+        "withdrawn": "Request withdrawn.",
+        "reload": "Reload"
       }
     }
   },
@@ -7150,8 +7224,12 @@
         "seo-description": "Search description",
         "invalid": "This value is not valid."
       },
-      "body": { "empty": "No content yet. Add a block below." },
-      "add": { "label": "Add block" },
+      "body": {
+        "empty": "No content yet. Add a block below."
+      },
+      "add": {
+        "label": "Add block"
+      },
       "block": {
         "name": "Block {n}: {type}",
         "text": "Text",
@@ -7194,7 +7272,11 @@
       "checks": {
         "title": "Checks",
         "none": "No findings.",
-        "severity": { "error": "Must fix", "warning": "Check", "notice": "Note" },
+        "severity": {
+          "error": "Must fix",
+          "warning": "Check",
+          "notice": "Note"
+        },
         "code": {
           "cover-missing": "Add a cover image.",
           "cover-alt-missing": "Describe the cover image (alt text).",
