@@ -179,6 +179,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/imports/:id/photos',
     'ordering/seller/orders/:id/ship',
     'ordering/seller/orders/:id/deliver',
+    // Mark units unavailable and refund them (protected: step-up), and add a note to the order.
+    'ordering/seller/orders/:id/unavailable',
+    'ordering/seller/orders/:id/notes',
     'pricing/seller/offers/:id/variants/:id/special-price/withdraw',
     'notifications/seller/notices/:id/read',
     // One public reply per review, and a report of a review (buyer reviews, package 4c).

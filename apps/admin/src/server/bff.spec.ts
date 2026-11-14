@@ -786,6 +786,33 @@ describe('relay allowlist for seller decisions', () => {
     expect((await read(`sellers/admin/${ID}/blog-access`)).status).toBe(404);
   });
 
+  it('relays the refund caps on their exact methods, with only the seller id and version in a query', async () => {
+    const caps = 'ordering/admin/refund-limits';
+    const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 })));
+    const send = (method: string, path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, {
+          method,
+          headers: sameOrigin,
+        }),
+        path.split('?')[0]!.split('/'),
+        fetcher,
+      );
+    expect((await send('GET', caps)).status).toBe(200);
+    expect((await send('GET', `${caps}?sellerId=${ID}&other=1`)).status).toBe(200);
+    expect(fetcher.mock.calls[1]?.[0] as string).toMatch(/refund-limits\?sellerId=[0-9a-f-]{36}$/);
+    expect((await send('PUT', caps)).status).toBe(200);
+    expect((await send('PUT', `${caps}/sellers/${ID}`)).status).toBe(200);
+    expect((await send('DELETE', `${caps}/sellers/${ID}?expectedVersion=3&x=1`)).status).toBe(200);
+    expect(fetcher.mock.calls.at(-1)?.[0] as string).toMatch(
+      /sellers\/[0-9a-f-]{36}\?expectedVersion=3$/,
+    );
+    expect((await send('PUT', `${caps}/sellers/nope`)).status).toBe(404);
+    expect((await send('DELETE', caps)).status).toBe(404);
+    expect((await send('POST', caps)).status).toBe(404);
+  });
+
   it('relays approve and reject of a held price for a UUID only, and no other method', async () => {
     expect((await call('POST', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(200);
     expect((await call('POST', `pricing/admin/price-holds/${ID}/reject`)).status).toBe(200);
@@ -1426,6 +1453,14 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `blog/admin/posts/${id}/submit`],
     ['POST', `blog/admin/posts/${id}/approve`],
     ['POST', `blog/admin/posts/${id}/request-changes`],
+    ['POST', `blog/admin/posts/${id}/publish`],
+    ['POST', `blog/admin/posts/${id}/pause`],
+    ['POST', `blog/admin/posts/${id}/resume`],
+    ['POST', `blog/admin/posts/${id}/archive`],
+    ['PUT', `blog/admin/posts/${id}/schedule`],
+    ['DELETE', `blog/admin/posts/${id}/schedule`],
+    ['PUT', `blog/admin/posts/${id}/slug`],
+    ['PUT', `blog/admin/posts/${id}/featured`],
     ['GET', 'blog/admin/taxonomy'],
     ['GET', 'catalog/admin/brands'],
     ['GET', 'catalog/admin/brands/merge-queue'],
