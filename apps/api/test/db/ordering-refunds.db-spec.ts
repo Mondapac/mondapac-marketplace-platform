@@ -22,6 +22,12 @@ import type { AdminNoteDependencies } from '../../src/modules/ordering/applicati
 import { AdminAddOrderNote } from '../../src/modules/ordering/application/use-cases/admin-add-order-note.use-case';
 import { AdminListOrderNotes } from '../../src/modules/ordering/application/use-cases/admin-list-order-notes.use-case';
 import { PrismaAdminOrderNoteRepository } from '../../src/modules/ordering/infrastructure/prisma-admin-order-notes';
+import type { SellerNoteDependencies } from '../../src/modules/ordering/application/seller-note-flow';
+import { SellerAddOrderNote } from '../../src/modules/ordering/application/use-cases/seller-add-order-note.use-case';
+import { SellerListOrderNotes } from '../../src/modules/ordering/application/use-cases/seller-list-order-notes.use-case';
+import { AdminViewOrderActivity } from '../../src/modules/ordering/application/use-cases/admin-view-order-activity.use-case';
+import { SellerViewOrderActivity } from '../../src/modules/ordering/application/use-cases/seller-view-order-activity.use-case';
+import { PrismaSellerOrderNoteRepository } from '../../src/modules/ordering/infrastructure/prisma-seller-order-notes';
 import { AdminCancelOrder } from '../../src/modules/ordering/application/use-cases/admin-cancel-order.use-case';
 import { AdminViewOrder } from '../../src/modules/ordering/application/use-cases/admin-view-order.use-case';
 import { SellerMarkOrderReady } from '../../src/modules/ordering/application/use-cases/seller-mark-order-ready.use-case';
@@ -2123,6 +2129,186 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           written.value.noteId,
         ]),
       ).rejects.toThrow(/permission denied/);
+    });
+  });
+
+  describe('seller notes (order detail decision 3)', () => {
+    let cipher: FakeAdminNoteCipher;
+    let sellerNoteDeps: SellerNoteDependencies;
+    beforeEach(() => {
+      cipher = new FakeAdminNoteCipher();
+      sellerNoteDeps = {
+        unitOfWork: db.unitOfWork,
+        notes: new PrismaSellerOrderNoteRepository(db.service),
+        cipher,
+        audit,
+        ids,
+        clock,
+        labels: new FakeLabels(),
+      };
+    });
+    const member = (sellerId: Id<'Seller'>) =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: ids.next<'Account'>(),
+          sessionId: ids.next<'Session'>(),
+          sellerId,
+        }),
+      );
+    const addAs = (who: CallContext, sellerOrderId: string, body: unknown) =>
+      new SellerAddOrderNote(gate, sellerNoteDeps).execute(who, { sellerOrderId, body });
+    const listAs = (who: CallContext, sellerOrderId: string) =>
+      new SellerListOrderNotes(gate, sellerNoteDeps).execute(who, { sellerOrderId });
+
+    it("stores only the sealed text with the seller order's order and seller, newest first, audited by length", async () => {
+      const o = await paidOrder();
+      const shop = member(o.sellerId);
+      const first = await addAs(shop, o.sellerOrderId, '  Wrap the bread separately  ');
+      clock.advance(Temporal.Duration.from({ minutes: 1 }));
+      const second = await addAs(shop, o.sellerOrderId, 'Packed');
+      clock.set(T0);
+      if (!first.ok || !second.ok) throw new Error('note');
+
+      const stored = await sql.query<{
+        order_id: string;
+        seller_id: string;
+        body_ciphertext: string;
+      }>(
+        'SELECT order_id, seller_id, body_ciphertext FROM ordering.seller_order_notes WHERE market_id = $1 AND seller_order_id = $2',
+        [market.marketId, o.sellerOrderId],
+      );
+      expect(stored.rows).toHaveLength(2);
+      for (const row of stored.rows) {
+        expect(row).toMatchObject({ order_id: o.orderId, seller_id: o.sellerId });
+        expect(row.body_ciphertext).toMatch(/^v1\.[A-Za-z0-9_-]+$/);
+        expect(row.body_ciphertext).not.toContain('bread');
+      }
+      const listed = await listAs(member(o.sellerId), o.sellerOrderId);
+      expect(listed.ok && listed.value.map((n) => n.body)).toEqual([
+        'Packed',
+        'Wrap the bread separately',
+      ]);
+      const rows = await sql.query<{ after: unknown }>(
+        `SELECT after FROM platform.audit_log WHERE market_id = $1
+          AND action = 'ordering.seller-order.note-added' AND target_id = $2 ORDER BY occurred_at`,
+        [market.marketId, o.sellerOrderId],
+      );
+      expect(rows.rows.map((r) => r.after)).toEqual([
+        { noteId: first.value.noteId, length: 25 },
+        { noteId: second.value.noteId, length: 6 },
+      ]);
+      // The admins' notes are a separate list: none was written there.
+      const adminNotes = await sql.query(
+        'SELECT 1 FROM ordering.admin_order_notes WHERE market_id = $1 AND order_id = $2',
+        [market.marketId, o.orderId],
+      );
+      expect(adminNotes.rows).toHaveLength(0);
+    });
+
+    it("answers another shop's, an unknown and another Market's seller order as not found", async () => {
+      const o = await paidOrder();
+      const other = member(ids.next<'Seller'>());
+      expect(await addAs(other, o.sellerOrderId, 'Hello')).toEqual({
+        ok: false,
+        error: { code: 'ordering.seller-order-not-found' },
+      });
+      expect(await listAs(other, o.sellerOrderId)).toEqual({
+        ok: false,
+        error: { code: 'ordering.seller-order-not-found' },
+      });
+      expect(await addAs(member(o.sellerId), ids.next(), 'Hello')).toEqual({
+        ok: false,
+        error: { code: 'ordering.seller-order-not-found' },
+      });
+      const elsewhere = marketOf(TEST_MARKETS.find((m) => m !== code)!);
+      const foreign = testCallContext(
+        elsewhere,
+        testAuthenticatedActor(elsewhere, {
+          population: 'seller',
+          accountId: ids.next<'Account'>(),
+          sessionId: ids.next<'Session'>(),
+          sellerId: o.sellerId,
+        }),
+      );
+      expect(await addAs(foreign, o.sellerOrderId, 'Hello')).toEqual({
+        ok: false,
+        error: { code: 'ordering.seller-order-not-found' },
+      });
+    });
+
+    it('refuses a body in clear, a note naming another seller, and any change or removal', async () => {
+      const o = await paidOrder();
+      const insert = (sellerId: string, body: string) =>
+        sql.query(
+          `INSERT INTO ordering.seller_order_notes
+             (id, market_id, tenant_id, order_id, seller_order_id, seller_id, author_account_id, body_ciphertext, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())`,
+          [
+            ids.next(),
+            market.marketId,
+            market.tenantId,
+            o.orderId,
+            o.sellerOrderId,
+            sellerId,
+            ids.next(),
+            body,
+          ],
+        );
+      await expect(insert(o.sellerId, 'Wrap the bread separately, plain text.')).rejects.toThrow(
+        /seller_order_notes_body_ciphertext_check/,
+      );
+      await expect(insert(ids.next(), `v1.${'A'.repeat(60)}`)).rejects.toThrow(/foreign key/);
+      const written = await addAs(member(o.sellerId), o.sellerOrderId, 'Kept');
+      if (!written.ok) throw new Error('note');
+      await expect(
+        sql.query(
+          `UPDATE ordering.seller_order_notes SET body_ciphertext = 'x' WHERE market_id = $1 AND id = $2`,
+          [market.marketId, written.value.noteId],
+        ),
+      ).rejects.toThrow(/permission denied/);
+      await expect(
+        sql.query('DELETE FROM ordering.seller_order_notes WHERE market_id = $1 AND id = $2', [
+          market.marketId,
+          written.value.noteId,
+        ]),
+      ).rejects.toThrow(/permission denied/);
+    });
+
+    it('builds the activity of the paid order for the admin and of its own seller order for the seller', async () => {
+      const o = await paidOrder();
+      expect((await refund(o, 1)).ok).toBe(true);
+
+      const all = await new AdminViewOrderActivity(gate, deps).execute(admin, {
+        orderId: o.orderId,
+      });
+      if (!all.ok) throw new Error(all.error.code);
+      expect(all.value.events.map((e) => e.kind)).toEqual([
+        'order-placed',
+        'order-paid',
+        'refund-requested',
+        'refund-succeeded',
+      ]);
+      expect(all.value.events[2]).toMatchObject({
+        amount: { currency },
+        reason: 'damaged',
+        by: 'admin',
+      });
+      const own = await new SellerViewOrderActivity(gate, deps).execute(member(o.sellerId), {
+        sellerOrderId: o.sellerOrderId,
+      });
+      if (!own.ok) throw new Error(own.error.code);
+      expect(own.value.events.map((e) => e.kind)).toEqual([
+        'order-paid',
+        'refund-requested',
+        'refund-succeeded',
+      ]);
+      expect(
+        await new SellerViewOrderActivity(gate, deps).execute(member(ids.next<'Seller'>()), {
+          sellerOrderId: o.sellerOrderId,
+        }),
+      ).toEqual({ ok: false, error: { code: 'ordering.seller-order-not-found' } });
     });
   });
 });
