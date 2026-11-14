@@ -11,12 +11,15 @@ import type { callApi } from '../../api/client.ts';
 const mocks = vi.hoisted(() => ({
   call: vi.fn<typeof callApi>(),
   images: vi.fn<typeof callApi>(),
+  picker: vi.fn<typeof callApi>(),
 }));
 vi.mock('../../api/client.ts', () => ({
   callApi: ((...args: Parameters<typeof callApi>) =>
     args[0] === 'GET' && args[1].endsWith('/images')
       ? mocks.images(...args)
-      : mocks.call(...args)) as typeof callApi,
+      : args[0] === 'GET' && args[1].endsWith('/category-picker')
+        ? mocks.picker(...args)
+        : mocks.call(...args)) as typeof callApi,
 }));
 
 import { expectToast } from '../../../test/toast-spy.ts';
@@ -159,6 +162,32 @@ beforeEach(() => {
   vi.clearAllMocks();
   call.mockReset();
   mocks.images.mockReset();
+  mocks.picker.mockReset();
+  mocks.picker.mockResolvedValue({
+    ok: true,
+    status: 200,
+    body: {
+      locale: 'en',
+      choices: [
+        {
+          id: CHILD,
+          level: 4,
+          name: 'Rice',
+          path: ['Pantry', 'Rice'],
+          general: false,
+          status: 'active',
+        },
+        {
+          id: CATEGORY,
+          level: 3,
+          name: 'Pantry',
+          path: ['Pantry'],
+          general: true,
+          status: 'hidden',
+        },
+      ],
+    },
+  });
   // The library holds the photo the saved draft names, as it does after an upload.
   mocks.images.mockResolvedValue({ ok: true, status: 200, body: { images: [LIBRARY_PHOTO] } });
   Object.defineProperty(window, 'location', {
@@ -303,10 +332,10 @@ describe('the edit form', () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        'Only a category or subcategory (levels 3 and 4). It decides the product details and variant types.',
+        "Choose a category or subcategory. Products can't go on a department or group.",
       ),
     ).toBeTruthy();
-    expect(screen.getByText('Choose a category or subcategory')).toBeTruthy();
+    expect(screen.getByText(/No category chosen yet/)).toBeTruthy();
     expect(screen.getByText('Choose a tax category')).toBeTruthy();
     expect(screen.getByText(/Sellers can't find it until you publish/)).toBeTruthy();
   });
@@ -385,7 +414,7 @@ describe('the edit form', () => {
   it('files a product in categories picked by their full path from a searchable list', async () => {
     call.mockResolvedValueOnce(ok(view()));
     mountEdit();
-    const box = await screen.findByRole('combobox', { name: /Product category/ });
+    const box = await screen.findByRole('combobox', { name: 'Add a category' });
     fireEvent.click(box);
     fireEvent.click(await screen.findByRole('option', { name: 'Pantry › Rice' }));
     call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));

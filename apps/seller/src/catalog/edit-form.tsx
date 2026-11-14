@@ -459,8 +459,15 @@ export function EditForm({
             categoryIds={categoryIds}
             taxCategoryCode={taxCategoryCode}
             defaultLocale={defaultLocale}
+            categoryIssues={problem?.categoryIssues}
             onCategories={(ids) => {
               setCategoryIds(ids);
+              // The refusals named the old list; they say nothing about this one.
+              setProblem((current) =>
+                current?.categoryIssues === undefined
+                  ? current
+                  : { ...current, categoryIssues: { items: {} } },
+              );
               edited();
             }}
             onTax={(code) => {

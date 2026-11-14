@@ -1,4 +1,5 @@
 import type { ApiFailure } from '../api/client.ts';
+import { categoryIssuesOf, isCategoryIssue, type CategoryIssues } from './category-issues.ts';
 
 /** What the freeze refused about one tag of the product, or about the whole list (`index` null). */
 export interface TopicIssue {
@@ -15,6 +16,8 @@ export interface EditProblem {
   readonly details: readonly string[];
   /** The refusals about the product's tags, told by the field and the banner in words. */
   readonly topicIssues?: readonly TopicIssue[];
+  /** The refusals about the product's categories, told by the category field. */
+  readonly categoryIssues?: CategoryIssues;
   /** The screen is stale: the seller should read the product again. */
   readonly reload: boolean;
 }
@@ -67,9 +70,14 @@ export function editProblemOf(failure: ApiFailure): EditProblem {
   const lines = [
     ...(failure.details?.fields ?? []),
     ...(failure.details?.issues ?? []).filter(
-      (item) => !(item.path.startsWith('topicIds') && topicIssuesOf([item]).length > 0),
+      (item) =>
+        !(item.path.startsWith('topicIds') && topicIssuesOf([item]).length > 0) &&
+        !isCategoryIssue(item),
     ),
   ].map((item) => `${item.path}: ${item.code}`);
+  const categoryIssues = categoryIssuesOf(failure.details?.issues ?? []);
+  const hasCategoryIssues =
+    categoryIssues.list !== undefined || Object.keys(categoryIssues.items).length > 0;
   const pending = (failure.details?.issues ?? []).some(
     (item) => item.code === 'attribute.suggestion-pending',
   );
@@ -96,6 +104,7 @@ export function editProblemOf(failure: ApiFailure): EditProblem {
     ...(Object.keys(values).length > 0 ? { values } : {}),
     details: lines,
     ...(topicIssues.length > 0 ? { topicIssues } : {}),
+    ...(hasCategoryIssues ? { categoryIssues } : {}),
     reload: RELOAD.has(name),
   };
 }
