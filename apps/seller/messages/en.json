@@ -2632,6 +2632,7 @@
       "phone": "Phone: {phone}",
       "items": "Items to pack",
       "no-items": "Nothing is left to pack on this order.",
+      "not-available": "This order was sent or refunded in full, so there is no packing slip to print.",
       "buyer-note": "Note from the customer"
     },
     "unavailable": {

@@ -436,6 +436,34 @@ describe('Packing slip', () => {
     expect(print).toHaveBeenCalled();
   });
 
+  it('is offered and printed only while the order is still to send', () => {
+    for (const fulfilment of ['shipped', 'delivered'] as const) {
+      cleanup();
+      mount({}, order({ fulfilment }));
+      expect(screen.queryByRole('link', { name: 'Print packing slip' })).toBeNull();
+      cleanup();
+      render(wrap(<PackingSlip order={order({ fulfilment })} />));
+      expect(screen.getByText(/no packing slip to print/)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Print' })).toBeNull();
+    }
+    const refundedInFull = order({
+      refunds: order().lines.map((line, index) => ({
+        refundId: `r${index}`,
+        requestedBy: 'seller' as const,
+        state: 'succeeded' as const,
+        reason: 'item-unavailable',
+        amount: aud('100'),
+        shipping: null,
+        lines: [{ orderLineId: line.lineId, quantity: line.quantity }],
+        requestedAt: '2026-10-14T10:30:00.000Z',
+        settledAt: null,
+      })),
+    });
+    cleanup();
+    render(wrap(<PackingSlip order={refundedInFull} />));
+    expect(screen.getByText(/no packing slip to print/)).toBeTruthy();
+  });
+
   it('says when there is no address', () => {
     render(wrap(<PackingSlip order={order({ shipTo: null })} />));
     expect(screen.getByText('No delivery address is on this order.')).toBeTruthy();

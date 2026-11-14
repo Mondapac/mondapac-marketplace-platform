@@ -4,7 +4,7 @@ import { BackLink, Button } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { shortInstant } from '../catalog/format.ts';
 import { shortId } from './status.ts';
-import { remainingUnits, type SellerOrderView } from './types.ts';
+import { packingSlipAvailable, remainingUnits, type SellerOrderView } from './types.ts';
 
 /**
  * A printable packing slip of one paid order: the order reference, the units still to send and
@@ -16,6 +16,14 @@ export function PackingSlip({ order }: { readonly order: SellerOrderView }) {
   const to = useTranslations('orders');
   const locale = useLocale();
   const zone = useTimeZone();
+  if (!packingSlipAvailable(order)) {
+    return (
+      <main className="mx-auto flex max-w-3xl flex-col gap-4 bg-surface p-6 text-fg">
+        <BackLink href={`/orders/${order.sellerOrderId}`} label={t('back')} />
+        <p className="text-fg-muted">{t('not-available')}</p>
+      </main>
+    );
+  }
   const rows = order.lines
     .map((line) => ({ line, quantity: remainingUnits(order, line.lineId) }))
     .filter((row) => row.quantity > 0);
