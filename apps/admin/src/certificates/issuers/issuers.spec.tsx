@@ -399,6 +399,9 @@ describe('issuer lifecycle', () => {
     expect(screen.getByText('Re-audited in October')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Withdraw request' })).toBeNull();
     open('Approve reactivation');
+    expect(call).not.toHaveBeenCalled();
+    expect(screen.getByText(/sellers can choose it at once/)).toBeTruthy();
+    last('Approve reactivation');
     await waitFor(() => expect(call).toHaveBeenCalledOnce());
     expect(call).toHaveBeenCalledWith(
       'POST',
@@ -407,6 +410,133 @@ describe('issuer lifecycle', () => {
       'c',
     );
     vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ['reject', 'Reject', 'proposals', { approve: true, reject: true, withdraw: false }],
+    [
+      'withdraw',
+      'Withdraw request',
+      'proposals',
+      { approve: false, reject: false, withdraw: true },
+    ],
+  ] as const)(
+    'confirms, then sends %s with the proposal version',
+    async (kind, label, seg, allowed) => {
+      call.mockResolvedValueOnce({ ok: true, status: 200, body: {} });
+      vi.stubGlobal('location', { assign: vi.fn() });
+      wrap(
+        <IssuerDetailView
+          issuer={detail({
+            state: 'closed-to-new',
+            pendingReactivation: proposal({
+              actions: {
+                approve: { allowed: allowed.approve },
+                reject: { allowed: allowed.reject },
+                withdraw: { allowed: allowed.withdraw },
+              },
+            }),
+          })}
+          typeName="Halal"
+          canEdit
+          csrfToken="c"
+        />,
+      );
+      open(label);
+      expect(call).not.toHaveBeenCalled();
+      last(label);
+      await waitFor(() => expect(call).toHaveBeenCalledOnce());
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        `certification/admin/issuers/${ID}/${seg}/${proposal().id}/${kind}`,
+        { version: 2 },
+        'c',
+      );
+      vi.unstubAllGlobals();
+    },
+  );
+
+  it('cancelling an answer sends nothing, and a closed proposal offers a reload', async () => {
+    fail(409, 'review.proposal-closed');
+    wrap(
+      <IssuerDetailView
+        issuer={detail({ state: 'closed-to-new', pendingReactivation: proposal() })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+      />,
+    );
+    open('Reject');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(call).not.toHaveBeenCalled();
+    open('Reject');
+    last('Reject');
+    expect(await screen.findByText(/already answered/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy();
+  });
+
+  it('says so when no answer is open to this admin', () => {
+    wrap(
+      <IssuerDetailView
+        issuer={detail({
+          state: 'closed-to-new',
+          pendingReactivation: proposal({
+            actions: {
+              approve: { allowed: false },
+              reject: { allowed: false },
+              withdraw: { allowed: false },
+            },
+          }),
+        })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+      />,
+    );
+    expect(screen.getByText(/Nothing can be done with this request/)).toBeTruthy();
+    expect(screen.getByText('Asked on:')).toBeTruthy();
+  });
+
+  it('keeps a refused new expert approval in the form, without a reload', async () => {
+    fail(422, 'issuer.expert-approval-not-new');
+    wrap(<IssuerActions issuer={detail({ state: 'closed-to-new' })} csrfToken="c" />);
+    open('Ask for reactivation');
+    type('Confirmed by', 'Dr B');
+    type('New reference', 'Letter 9');
+    last('Send for approval');
+    expect(await screen.findByText(/Use a new expert approval/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reload' })).toBeNull();
+  });
+
+  it('opens a destructive confirm with Cancel focused', () => {
+    wrap(
+      <IssuerActions issuer={detail({ state: 'active', affectedCertificates: 1 })} csrfToken="c" />,
+    );
+    open('Derecognise');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }));
+  });
+
+  it('shows the closed and derecognised notes', () => {
+    wrap(
+      <IssuerDetailView
+        issuer={detail({ state: 'closed-to-new' })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+      />,
+    );
+    expect(screen.getByText(/Closed to new certificates\. Existing/)).toBeTruthy();
+    cleanup();
+    wrap(
+      <IssuerDetailView
+        issuer={detail({ state: 'derecognised' })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+      />,
+    );
+    expect(screen.getByText(/can't be undone/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Derecognise' })).toBeNull();
   });
 
   it('tells the requester that a different admin must answer', () => {

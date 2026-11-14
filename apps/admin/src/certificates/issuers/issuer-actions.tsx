@@ -41,11 +41,11 @@ export function IssuerActions({
   const [open, setOpen] = useState<'activate' | 'close' | 'derecognise' | 'reactivate' | null>(
     null,
   );
-  const life: LifecycleIssuer = {
-    ...issuer,
-    affectedCertificates: issuer.affectedCertificates ?? 0,
-  };
   if (issuer.state === 'active' || issuer.state === 'closed-to-new') {
+    const count = issuer.affectedCertificates;
+    // The count is what Derecognise confirms: without it the lifecycle actions are not offered.
+    if (typeof count !== 'number') return null;
+    const life: LifecycleIssuer = { ...issuer, affectedCertificates: count };
     const waiting = issuer.pendingReactivation != null;
     return (
       <>

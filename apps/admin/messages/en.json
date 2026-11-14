@@ -683,11 +683,7 @@
         "changed": "Last change"
       },
       "health": {
-        "band": {
-          "healthy": "Healthy",
-          "at-risk": "At risk",
-          "unhealthy": "Unhealthy"
-        },
+        "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
         "new": "New",
         "no-data": "No data",
         "none": "Not measured yet",
@@ -1289,14 +1285,12 @@
       "derecognise": {
         "button": "Derecognise",
         "title": "Derecognise this issuer",
-        "warning": "This can't be undone. Certificates from {name} stop counting as certified and each affected seller owner gets an email.",
+        "warning": "This can't be undone. Certificates from {name} stop counting as certified, offers carrying its badge can't be bought, and each affected seller owner gets an email.",
         "affected": "{count, plural, =0 {No approved certificates name this issuer.} one {# approved certificate is affected.} other {# approved certificates are affected.}}",
         "confirm-label": "Type {count} to confirm",
         "confirm-help": "Type the number of affected certificates shown above.",
         "confirm-wrong": "That is not the number of affected certificates.",
-        "cancel": "Cancel",
-        "confirm": "Derecognise",
-        "reload": "Reload"
+        "confirm": "Derecognise"
       },
       "reactivate": {
         "button": "Ask for reactivation",
@@ -1313,9 +1307,7 @@
         "reason": "Reason (optional)",
         "reason-help": "Up to 500 characters. The second admin sees it.",
         "reason-long": "Use 500 characters or fewer.",
-        "cancel": "Cancel",
-        "confirm": "Send for approval",
-        "reload": "Reload"
+        "confirm": "Send for approval"
       },
       "proposal": {
         "title": "Reactivation waiting for a second admin",
@@ -1325,11 +1317,26 @@
         "reject": "Reject",
         "withdraw": "Withdraw request",
         "second-admin": "You asked for this reactivation, so a different admin has to answer it.",
-        "not-yours": "Only the admin who asked can withdraw it.",
-        "approved": "Issuer reactivated. Sellers can choose it again.",
-        "rejected": "Reactivation rejected.",
-        "withdrawn": "Request withdrawn.",
-        "reload": "Reload"
+        "reload": "Reload",
+        "no-actions": "Nothing can be done with this request from your account right now.",
+        "cancel": "Cancel",
+        "confirm": {
+          "approve": {
+            "title": "Approve this reactivation",
+            "body": "The issuer becomes active again and sellers can choose it at once.",
+            "button": "Approve reactivation"
+          },
+          "reject": {
+            "title": "Reject this reactivation",
+            "body": "The request is closed for good. The issuer stays closed to new certificates.",
+            "button": "Reject"
+          },
+          "withdraw": {
+            "title": "Withdraw your request",
+            "body": "The request is closed. You can ask again later.",
+            "button": "Withdraw request"
+          }
+        }
       }
     }
   },
@@ -7224,12 +7231,8 @@
         "seo-description": "Search description",
         "invalid": "This value is not valid."
       },
-      "body": {
-        "empty": "No content yet. Add a block below."
-      },
-      "add": {
-        "label": "Add block"
-      },
+      "body": { "empty": "No content yet. Add a block below." },
+      "add": { "label": "Add block" },
       "block": {
         "name": "Block {n}: {type}",
         "text": "Text",
@@ -7272,11 +7275,7 @@
       "checks": {
         "title": "Checks",
         "none": "No findings.",
-        "severity": {
-          "error": "Must fix",
-          "warning": "Check",
-          "notice": "Note"
-        },
+        "severity": { "error": "Must fix", "warning": "Check", "notice": "Note" },
         "code": {
           "cover-missing": "Add a cover image.",
           "cover-alt-missing": "Describe the cover image (alt text).",

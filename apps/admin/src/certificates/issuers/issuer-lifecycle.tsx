@@ -1,8 +1,9 @@
 'use client';
 
 import { Banner, Button, Dialog, TextAreaField, TextField } from '@mondapac/ui';
+import { When } from '../../shared/when.tsx';
 import { useTranslations } from 'next-intl';
-import { useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   API_ISSUERS,
   CONFIRMED_BY_MAX,
@@ -46,6 +47,7 @@ function FormDialog({
 }) {
   const t = useTranslations('certificates.issuers.close');
   const formId = useId();
+  const cancel = useRef<HTMLButtonElement>(null);
   function submit(event: FormEvent) {
     event.preventDefault();
     void onSubmit();
@@ -55,13 +57,16 @@ function FormDialog({
       open
       title={title}
       onClose={onClose}
+      initialFocus={cancel}
       actions={
         <>
-          <Button variant="secondary" disabled={pending} onClick={onClose}>
+          <Button ref={cancel} variant="secondary" disabled={pending} onClick={onClose}>
             {t('cancel')}
           </Button>
           {reload ? (
-            <Button onClick={() => window.location.reload()}>{t('reload')}</Button>
+            <Button type="button" autoFocus onClick={() => window.location.reload()}>
+              {t('reload')}
+            </Button>
           ) : (
             <Button
               type="submit"
@@ -273,7 +278,8 @@ type Answer = 'approve' | 'reject' | 'withdraw';
 
 /**
  * The reactivation waiting for a second admin. Which answers are open comes from the API
- * (`actions`); a closed one is left out, and a missing second admin is said in words.
+ * (`actions`); a closed one is left out. Each answer is confirmed in a dialog, because approving
+ * makes the issuer selectable at once and the others close the proposal for good.
  */
 export function ProposalCard({
   issuerId,
@@ -287,6 +293,9 @@ export function ProposalCard({
   const t = useTranslations('certificates.issuers.proposal');
   const tr = useTranslations();
   const call = useIssuerCall(csrfToken);
+  const titleId = useId();
+  const cancel = useRef<HTMLButtonElement>(null);
+  const [asking, setAsking] = useState<Answer | null>(null);
 
   async function answer(kind: Answer) {
     const path =
@@ -305,49 +314,87 @@ export function ProposalCard({
   }
 
   const { approve, reject, withdraw } = proposal.actions;
-  const buttons: readonly [Answer, boolean, string, 'primary' | 'secondary'][] = [
-    ['approve', approve.allowed, t('approve'), 'primary'],
-    ['reject', reject.allowed, t('reject'), 'secondary'],
-    ['withdraw', withdraw.allowed, t('withdraw'), 'secondary'],
+  const buttons: readonly [Answer, boolean, 'primary' | 'secondary'][] = [
+    ['approve', approve.allowed, 'primary'],
+    ['reject', reject.allowed, 'secondary'],
+    ['withdraw', withdraw.allowed, 'secondary'],
   ];
   const open = buttons.filter(([, allowed]) => allowed);
-  const own = withdraw.allowed && !approve.allowed;
+  const note = approve.allowed
+    ? null
+    : withdraw.allowed
+      ? t('second-admin')
+      : open.length === 0
+        ? t('no-actions')
+        : null;
   return (
     <section
-      aria-labelledby="proposal-title"
+      aria-labelledby={titleId}
       className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4"
     >
-      <h3 id="proposal-title" className="text-base font-semibold">
+      <h3 id={titleId} className="text-base font-semibold">
         {t('title')}
       </h3>
+      <p>
+        <span className="text-fg-muted">{t('sent')}: </span>
+        <When iso={proposal.proposedAt} missing="-" />
+      </p>
       {proposal.reason?.state === 'given' && proposal.reason.text !== undefined ? (
         <p className="wrap-anywhere">
           <span className="text-fg-muted">{t('reason')}: </span>
           {proposal.reason.text}
         </p>
       ) : null}
-      {own ? <p className="text-fg-muted">{t('second-admin')}</p> : null}
-      <div aria-live="polite">
-        {call.problem === null ? null : <Banner tone="critical">{tr(call.problem.key)}</Banner>}
+      {note === null ? null : <p className="text-fg-muted">{note}</p>}
+      <div className="flex flex-wrap gap-2">
+        {open.map(([kind, , variant]) => (
+          <Button
+            key={kind}
+            variant={variant}
+            className="max-sm:w-full"
+            onClick={() => setAsking(kind)}
+          >
+            {t(kind)}
+          </Button>
+        ))}
       </div>
-      {call.problem?.reload === true ? (
-        <div>
-          <Button onClick={() => window.location.reload()}>{t('reload')}</Button>
-        </div>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {open.map(([kind, , label, variant]) => (
-            <Button
-              key={kind}
-              variant={variant}
-              className="max-sm:w-full"
-              disabled={call.pending}
-              onClick={() => void answer(kind)}
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
+      {asking === null ? null : (
+        <Dialog
+          open
+          title={t(`confirm.${asking}.title`)}
+          onClose={() => setAsking(null)}
+          initialFocus={cancel}
+          actions={
+            <>
+              <Button
+                ref={cancel}
+                variant="secondary"
+                disabled={call.pending}
+                onClick={() => setAsking(null)}
+              >
+                {t('cancel')}
+              </Button>
+              {call.problem?.reload === true ? (
+                <Button autoFocus onClick={() => window.location.reload()}>
+                  {t('reload')}
+                </Button>
+              ) : (
+                <Button
+                  loading={call.pending}
+                  disabled={call.pending}
+                  onClick={() => void answer(asking)}
+                >
+                  {t(`confirm.${asking}.button`)}
+                </Button>
+              )}
+            </>
+          }
+        >
+          <div aria-live="polite">
+            {call.problem === null ? null : <Banner tone="critical">{tr(call.problem.key)}</Banner>}
+          </div>
+          <p>{t(`confirm.${asking}.body`)}</p>
+        </Dialog>
       )}
     </section>
   );
