@@ -127,3 +127,87 @@ model CustomersOutbox {
   @@map("outbox")
   @@schema("customers")
 }
+
+/// A customer as the admin Customers pages list them (read model, customers phase 1, package B1).
+/// A copy of the `identity` account kept by identity's account events and a one-off backfill, so
+/// the list never reads identity's tables. Holds PERSONAL DATA (sign-in address, display name):
+/// never logged, never in an event, an audit row or an error; the row is deleted when the account
+/// is erased. `emailLower` is the prefix-search key.
+model CustomersCustomerDirectory {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  /// The customer account (identity), a plain id with no foreign key.
+  accountId     String   @map("account_id") @db.Uuid
+  email         String
+  /// The sign-in address, trimmed and lower-cased (the prefix-search key).
+  emailLower    String   @map("email_lower")
+  displayName   String?  @map("display_name")
+  /// active or disabled (CHECK).
+  status        String
+  emailVerified Boolean  @map("email_verified")
+  signedUpAt    DateTime @map("signed_up_at") @db.Timestamptz(6)
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz(6)
+  /// What the customer's orders add up to; every customer has a row (all zero until the first order); the sync and the reconcile write it with the directory row.
+  stats         CustomersCustomerStats?
+
+  @@id([marketId, accountId])
+  @@index([marketId, signedUpAt(sort: Desc), accountId(sort: Desc)])
+  /// The prefix index on (market_id, email_lower text_pattern_ops) is hand-written in the migration.
+  @@map("customer_directory")
+  @@schema("customers")
+}
+
+/// What a customer's orders add up to (read model, customers phase 1, package B1). Recomputed from
+/// `ordering` (through its facade) when an order is paid or a refund succeeds, and by the nightly
+/// reconcile; never incremented, so a repeated event changes nothing. One row per customer (all zero for
+/// one who never ordered). No personal data; deleted when the account is erased.
+model CustomersCustomerStats {
+  marketId       String    @map("market_id") @db.VarChar(8)
+  tenantId       String    @map("tenant_id")
+  accountId      String    @map("account_id") @db.Uuid
+  firstOrderAt   DateTime? @map("first_order_at") @db.Timestamptz(6)
+  lastOrderAt    DateTime? @map("last_order_at") @db.Timestamptz(6)
+  orderCount     Int       @map("order_count")
+  /// Sum of the confirmed orders' totals, minor units of `currency`.
+  spentMinor     BigInt    @map("spent_minor")
+  currency       String?   @db.VarChar(3)
+  refundCount    Int       @map("refund_count")
+  refundedMinor  BigInt    @map("refunded_minor")
+  /// When ordering was last read for this row.
+  computedAt     DateTime  @map("computed_at") @db.Timestamptz(6)
+  /// The customer these totals belong to (same module: the list reads both in one query). The row
+  /// goes with the directory row.
+  directory      CustomersCustomerDirectory @relation(fields: [marketId, accountId], references: [marketId, accountId], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, accountId])
+  @@index([marketId, lastOrderAt(sort: Desc)])
+  @@index([marketId, orderCount(sort: Desc)])
+  @@index([marketId, spentMinor(sort: Desc)])
+  @@map("customer_stats")
+  @@schema("customers")
+}
+
+/// A saved filter (saved view) of the admin Customers list: the tab, search, filters and sort under
+/// a name, for one admin ("me") or for every admin who can see the list ("everyone"). The same shape
+/// as the other saved-filter tables (`list_key` is a dotted key, `admin.customers.customers` today).
+/// The payload is a closed document the application validates; the CHECKs only bound its type and
+/// size. `owner_account_id` is an identity account id with no foreign key. The CHECKs, the two
+/// case-insensitive name uniques and the grants are hand-written in the migration.
+model CustomersSavedFilter {
+  id             String   @id @db.Uuid
+  marketId       String   @map("market_id") @db.VarChar(8)
+  tenantId       String   @map("tenant_id")
+  ownerAccountId String   @map("owner_account_id") @db.Uuid
+  /// me | everyone.
+  visibility     String
+  listKey        String   @map("list_key")
+  name           String
+  payload        Json
+  position       Int
+  createdAt      DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([marketId, id])
+  @@map("saved_filters")
+  @@schema("customers")
+}

@@ -151,6 +151,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
+    // The navigation draft of the buyer site, replaced as a whole (storefront; editor key).
+    'storefront/admin/navigation/draft',
     'notifications/admin/support-contact',
     // The signed-in admin's own display name (profile).
     'identity/admin/profile/display-name',
@@ -188,6 +190,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set([]),
   POST: new Set([
+    // An earlier navigation version copied into the draft (storefront; editor key), and the draft
+    // approved (storefront.navigation.approve, protected): the API judges the keys.
+    'storefront/admin/navigation/restore',
+    'storefront/admin/navigation/approve',
     // A description draft from the "Write with AI" modal (catalog, AIS-03); nothing is stored.
     'catalog/admin/description-writer/drafts',
     // "Email sellers" from the Missing details report: the picked product ids, 'dryRun' for the
@@ -335,6 +341,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/types/:id/reactivations/:id/approve',
     'certification/admin/types/:id/proposals/:id/reject',
     'certification/admin/types/:id/proposals/:id/withdraw',
+    // Answer one issuer request: issuer added or not accepted, under the version read (certification).
+    'certification/admin/issuer-requests/:id/answer',
     // Add a photo to a platform product's library (catalog, P1): a base64 photo, so the body cap
     // of this path is the larger image one.
     'catalog/admin/platform-products/:id/images',
@@ -875,8 +883,15 @@ const PAGE_ROUTES: Readonly<Record<string, readonly string[]>> = {
     'storefront/admin/pages/:page/slots/:slot/modules/:placement',
     'storefront/admin/pages/:page/slots/:slot/order',
   ],
-  // A module added to a slot.
-  POST: ['storefront/admin/pages/:page/slots/:slot/modules'],
+  POST: [
+    // A module added to a slot.
+    'storefront/admin/pages/:page/slots/:slot/modules',
+    // An earlier version copied into the draft, the draft published (storefront.page.publish) and
+    // the page archived (storefront.page.archive): the API judges the keys.
+    'storefront/admin/pages/:page/restore',
+    'storefront/admin/pages/:page/publish',
+    'storefront/admin/pages/:page/archive',
+  ],
   // A module removed from a slot.
   DELETE: ['storefront/admin/pages/:page/slots/:slot/modules/:placement'],
 };

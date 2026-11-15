@@ -276,6 +276,9 @@ importers:
       '@mondapac/panel-server':
         specifier: workspace:*
         version: link:../../packages/panel-server
+      '@mondapac/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       mapbox-gl:
         specifier: 3.33.0
         version: 3.33.0

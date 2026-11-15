@@ -27,6 +27,7 @@ import { sellerGoShortcuts, sellerPaletteEntries } from '../palette.ts';
 import { SellerNotifications } from '../notifications/seller-notifications.tsx';
 import { showsNoticeBell } from '../notifications/types.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
+import { PanelNavigationProgress } from '../shared/navigation-progress.tsx';
 import { panelHostFor } from './bff.ts';
 import { panelConfig } from './config.ts';
 import type { SellerSession } from './session.ts';
@@ -86,6 +87,7 @@ export async function SellerShell({
       goShortcuts={sellerGoShortcuts(entries, (key) => t(key))}
       labels={panelToolsLabels((key) => t.raw(key) as string)}
     >
+      <PanelNavigationProgress />
       <AppShell
         bottomTabs={bottomTabs}
         moreActive={bottomTabs?.every((tab) => !tab.active)}

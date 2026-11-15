@@ -1214,7 +1214,7 @@ describe('relay of the storefront slides', () => {
     }
   });
 
-  it('changes one page by its id or system key: settings, modules and their order', async () => {
+  it('changes one page by its id or system key: settings, modules, order, restore, publish, archive', async () => {
     const slot = 'storefront/admin/pages';
     for (const [method, path] of [
       ['PUT', `${slot}/${id}`],
@@ -1224,10 +1224,35 @@ describe('relay of the storefront slides', () => {
       ['PUT', `${slot}/${id}/slots/no-results/modules/${id}`],
       ['DELETE', `${slot}/${id}/slots/main/modules/${id}`],
       ['PUT', `${slot}/${id}/slots/main/order`],
+      ['POST', `${slot}/${id}/restore`],
+      ['POST', `${slot}/${id}/publish`],
+      ['POST', `${slot}/${id}/archive`],
+      ['POST', `${slot}/home/publish`],
     ] as const) {
       const ok = upstreamOk();
       expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
       expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+    }
+  });
+
+  it('changes the navigation: the draft, a restore and the approval, nothing else', async () => {
+    const base = 'storefront/admin/navigation';
+    for (const [method, path, status] of [
+      ['PUT', `${base}/draft`, 200],
+      ['POST', `${base}/restore`, 200],
+      ['POST', `${base}/approve`, 200],
+      ['GET', `${base}/draft`, 404],
+      ['POST', `${base}/draft`, 404],
+      ['PUT', `${base}/approve`, 404],
+      ['DELETE', base, 404],
+      ['PUT', base, 404],
+      ['POST', `${base}/approve/extra`, 404],
+    ] as const) {
+      const upstream = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), upstream)).status).toBe(
+        status,
+      );
+      expect(upstream.mock.calls.length).toBe(status === 200 ? 1 : 0);
     }
   });
 
@@ -1253,10 +1278,13 @@ describe('relay of the storefront slides', () => {
       ['PUT', `${base}/${id}/slots/main/modules`],
       ['POST', `${base}/${id}/slots/main/order`],
       ['DELETE', `${base}/${id}/slots/main/order`],
-      // Publish, archive and restore come with their own screens.
-      ['POST', `${base}/${id}/publish`],
-      ['POST', `${base}/${id}/archive`],
-      ['POST', `${base}/${id}/restore`],
+      // Restore, publish and archive are POST only, on one page, and take no further segment.
+      ['PUT', `${base}/${id}/publish`],
+      ['GET', `${base}/${id}/archive`],
+      ['DELETE', `${base}/${id}/restore`],
+      ['POST', `${base}/navigation/publish`],
+      ['POST', `${base}/${id}/publish/extra`],
+      ['POST', `${base}/${id}/slots/main/publish`],
     ] as const) {
       const ok = upstreamOk();
       expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(404);

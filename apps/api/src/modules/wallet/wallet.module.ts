@@ -33,6 +33,7 @@ import { PlaceHold } from './application/use-cases/place-hold.use-case';
 import { RejectAdminCredit } from './application/use-cases/reject-admin-credit.use-case';
 import { ReleaseHold } from './application/use-cases/release-hold.use-case';
 import { SetWalletStatus } from './application/use-cases/set-wallet-status.use-case';
+import { ViewCustomerHistory } from './application/use-cases/view-customer-history.use-case';
 import { ViewCustomerWallet } from './application/use-cases/view-customer-wallet.use-case';
 import { ViewMyHistory } from './application/use-cases/view-my-history.use-case';
 import { ViewMyWallet } from './application/use-cases/view-my-wallet.use-case';
@@ -123,6 +124,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RejectAdminCredit,
       ListAdminCreditRequests,
       ViewCustomerWallet,
+      ViewCustomerHistory,
       ExpireAdminCreditRequests,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {

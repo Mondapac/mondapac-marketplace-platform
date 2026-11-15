@@ -97,3 +97,61 @@ export async function listCredits(
     { readOnly: true },
   );
 }
+
+/**
+ * One customer's credits across promotions, newest first, for an admin with
+ * `promotions.promotion.view` (the admin customer page). Same row as the promotion's own list:
+ * amount, state and order, no name or address. A read: it works while the Market switch is off.
+ */
+export async function listCreditsOfCustomer(
+  deps: PromotionsDependencies,
+  context: CallContext,
+  input: {
+    readonly customerAccountId?: unknown;
+    readonly limit?: unknown;
+    readonly cursor?: unknown;
+  },
+): Promise<Result<CreditPage, PromotionsFailure>> {
+  if (adminAccountId(context) === null) return err({ code: 'access.denied' });
+  if (deps.policy.settings(context.market) === null) return err({ code: 'promotions.unavailable' });
+  const id =
+    typeof input?.customerAccountId === 'string'
+      ? parseId<'Account'>(input.customerAccountId)
+      : null;
+  const fields: { path: string; code: string }[] = [];
+  if (id === null || !id.ok) fields.push({ path: 'customerAccountId', code: 'value' });
+  let limit = DEFAULT_LIMIT;
+  if (input?.limit !== undefined) {
+    if (
+      typeof input.limit !== 'number' ||
+      !Number.isInteger(input.limit) ||
+      input.limit < 1 ||
+      input.limit > MAX_LIMIT
+    ) {
+      fields.push({ path: 'limit', code: 'value' });
+    } else {
+      limit = input.limit;
+    }
+  }
+  let after: CreditCursor | undefined;
+  if (input?.cursor !== undefined) {
+    const decoded = typeof input.cursor === 'string' ? decodeCreditCursor(input.cursor) : null;
+    if (decoded === null) fields.push({ path: 'cursor', code: 'value' });
+    else after = decoded;
+  }
+  if (fields.length > 0 || id === null || !id.ok) {
+    return err({ code: 'validation.failed', fields });
+  }
+  return deps.unitOfWork.run<CreditPage, PromotionsFailure>(
+    context.market,
+    async () => {
+      const rows = await deps.credits.listForRecipient(context.market, id.value, limit + 1, after);
+      const items = rows.slice(0, limit);
+      return ok({
+        items,
+        nextCursor: rows.length > limit ? encodeCreditCursor(items[items.length - 1]!) : null,
+      });
+    },
+    { readOnly: true },
+  );
+}

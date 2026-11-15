@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ModuleEditDialog } from './module-edit-dialog.tsx';
 import { ModuleRow } from './module-row.tsx';
+import { PageActions } from './page-actions.tsx';
 import { isEditableModule, moved } from './module-schema.ts';
 import { PageEditorHeader } from './page-editor-header.tsx';
 import {
@@ -35,11 +36,15 @@ type Editing = {
 export function PageContent({
   page: initial,
   canEdit,
+  canPublish = false,
+  canArchive = false,
   csrfToken,
   zone,
 }: {
   readonly page: PageDetail;
   readonly canEdit: boolean;
+  readonly canPublish?: boolean;
+  readonly canArchive?: boolean;
   readonly csrfToken: string;
   readonly zone: string;
 }) {
@@ -130,7 +135,20 @@ export function PageContent({
 
   return (
     <div className="flex flex-col gap-4">
-      <PageEditorHeader page={page} tab="content" zone={zone} canEdit={canEdit} />
+      <PageEditorHeader
+        page={page}
+        tab="content"
+        zone={zone}
+        canEdit={canEdit}
+        actions={
+          <PageActions
+            page={page}
+            canPublish={canPublish}
+            canArchive={canArchive}
+            csrfToken={csrfToken}
+          />
+        }
+      />
       {!dialogOpen && problem !== null ? (
         <Banner tone="critical">
           <span>{problemText(problem)}</span>
