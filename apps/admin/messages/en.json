@@ -141,6 +141,7 @@
     "intro": "Welcome, {name}. Here is what needs attention and the latest activity you can see."
   },
   "dashboard": {
+    "loading": "Loading the dashboard",
     "view-all": "View all",
     "unnamed-product": "Unnamed product",
     "error": {

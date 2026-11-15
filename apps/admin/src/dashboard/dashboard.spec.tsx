@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -17,7 +17,20 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../server/server-fetch.ts', () => ({ serverGet: mocks.get }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 
-import { loadAdminDashboard } from './load.ts';
+import { startAdminDashboard } from './load.ts';
+
+/** Every read of the dashboard, awaited. */
+async function loadAdminDashboard(session: AdminSession): Promise<AdminDashboardData> {
+  const sources = startAdminDashboard(session);
+  const [sellers, holds, offers, accounts, orders] = await Promise.all([
+    sources.sellers,
+    sources.holds,
+    sources.offers,
+    sources.accounts,
+    sources.orders,
+  ]);
+  return { sellers, holds, offers, accounts, orders };
+}
 
 const wrap = (node: React.ReactNode, locale = 'en-AU') => (
   <NextIntlClientProvider locale={locale} messages={messages}>
@@ -279,6 +292,58 @@ describe('admin dashboard', () => {
     expect(screen.getByText('Nothing to show here yet')).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Quick actions' })).toBeNull();
   });
+
+  it('streams each card on its own: a slow read shows its skeleton while the others render', async () => {
+    let answer!: (value: AdminDashboardData['sellers']) => void;
+    const sellersRead = new Promise<AdminDashboardData['sellers']>((resolve) => {
+      answer = resolve;
+    });
+    await act(async () => {
+      render(
+        wrap(
+          <AdminDashboard
+            data={{ ...full, sellers: sellersRead, orders: Promise.resolve(full.orders) }}
+            permissionKeys={ALL_KEYS}
+          />,
+        ),
+      );
+      await Promise.resolve();
+    });
+    // The other reads have answered.
+    expect(screen.getByRole('link', { name: /Held prices to decide/ })).toBeTruthy();
+    expect(await screen.findByRole('table', { name: 'Recent orders' })).toBeTruthy();
+    // The sellers read has not: its figure and cards are skeletons with their real labels.
+    expect(screen.getByText('Sellers awaiting review')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /Sellers awaiting review/ })).toBeNull();
+    const applications = screen.getByRole('region', { name: 'Seller applications' });
+    expect(applications.querySelector('[data-skeleton="activity"]')).not.toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Loading the dashboard');
+    await act(async () => {
+      answer(full.sellers);
+      await Promise.resolve();
+    });
+    expect(
+      (await screen.findByRole('link', { name: /Sellers awaiting review/ })).textContent,
+    ).toContain('9');
+    expect(document.querySelector('[data-skeleton]')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
+
+  it('drops a card whose read the API refuses after its skeleton showed', async () => {
+    await act(async () => {
+      render(
+        wrap(
+          <AdminDashboard
+            data={{ ...full, holds: Promise.resolve(null) }}
+            permissionKeys={ALL_KEYS}
+          />,
+        ),
+      );
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole('region', { name: 'Held prices' })).toBeNull();
+    expect(screen.queryByText('Held prices to decide')).toBeNull();
+  });
 });
 
 const session = (permissionKeys: string[]): AdminSession => ({
@@ -295,7 +360,7 @@ const session = (permissionKeys: string[]): AdminSession => ({
   csrfToken: 'csrf-1',
 });
 
-describe('loadAdminDashboard', () => {
+describe('startAdminDashboard', () => {
   beforeEach(() => {
     mocks.get.mockReset();
     mocks.redirect.mockClear();

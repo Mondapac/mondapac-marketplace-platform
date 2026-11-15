@@ -18,7 +18,21 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../server/server-fetch.ts', () => ({ serverGet: mocks.get }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 
-import { loadSellerDashboard } from './load.ts';
+import { startSellerDashboard } from './load.ts';
+
+/** Every read of the dashboard, awaited. */
+async function loadSellerDashboard(session: SellerSession): Promise<SellerDashboardData> {
+  const sources = startSellerDashboard(session);
+  const [orders, offers, ledger, payout, sourcesView, lowStock] = await Promise.all([
+    sources.orders,
+    sources.offers,
+    sources.ledger,
+    sources.payout,
+    sources.sources,
+    sources.lowStock,
+  ]);
+  return { orders, offers, ledger, payout, sources: sourcesView, lowStock };
+}
 
 const wrap = (node: React.ReactNode, locale = 'en-AU') => (
   <NextIntlClientProvider locale={locale} messages={messages}>
@@ -381,7 +395,7 @@ const session = (permissionKeys: string[]): SellerSession => ({
   csrfToken: 'c',
 });
 
-describe('loadSellerDashboard', () => {
+describe('startSellerDashboard', () => {
   beforeEach(() => {
     mocks.get.mockReset();
     mocks.redirect.mockClear();

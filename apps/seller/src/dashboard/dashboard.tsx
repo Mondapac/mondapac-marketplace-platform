@@ -1,30 +1,39 @@
 import {
+  ActivityCardSkeleton,
   ActivityTable,
   Badge,
   Banner,
   DashboardCard,
+  DashboardLoading,
+  DashboardSlot,
   DistributionBar,
+  DistributionCardSkeleton,
   EmptyState,
   LinkButton,
   StatCard,
+  StatCardSkeleton,
   StatGrid,
+  activitySkeletonColumns,
   formatCount,
   type ActivityColumn,
   type BadgeTone,
+  type DashboardSource,
+  type IconName,
 } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { known, OFFER_STATUSES, shortInstant } from '../catalog/format.ts';
-import type { OfferView } from '../catalog/types.ts';
-import type { LedgerEntry } from '../earnings/types.ts';
-import type { SellerOrderView } from '../orders/types.ts';
-import { PAYOUT_ACCOUNT_PATH } from '../payout/types.ts';
+import type { OfferView, Page } from '../catalog/types.ts';
+import type { Ledger, LedgerEntry } from '../earnings/types.ts';
+import type { SellerOrderPage, SellerOrderView } from '../orders/types.ts';
+import { PAYOUT_ACCOUNT_PATH, type PayoutAccount } from '../payout/types.ts';
+import type { SourcesView } from '../stock/types.ts';
 import { formatMinor } from '../price/money.ts';
 import {
   COUNT_LIMIT,
   RECENT,
   type LowStockItem,
-  type SellerDashboardData,
+  type SellerDashboardSources,
   type Widget,
 } from './types.ts';
 
@@ -81,19 +90,32 @@ function Time({ iso }: { readonly iso: string }) {
   return <span>{shortInstant(iso, locale, zone)}</span>;
 }
 
-/** Things to fix before selling or being paid; shown above the figures. */
-function Notices({ data }: { readonly data: SellerDashboardData }) {
+type Source<T> = DashboardSource<Widget<T> | null>;
+
+/** The text a card skeleton needs: "Still loading…" at 10 s, the card error at 30 s. */
+function useSkeletonText() {
+  const t = useTranslations();
+  return { slowLabel: t('route.slow'), stalledLabel: t('dashboard.error.card') };
+}
+
+function NoticeBanners({
+  payout,
+  sources,
+}: {
+  readonly payout: Widget<PayoutAccount> | null;
+  readonly sources: Widget<SourcesView> | null;
+}) {
   const t = useTranslations('dashboard');
   const notices: ReactNode[] = [];
-  if (data.payout?.kind === 'error') {
+  if (payout?.kind === 'error') {
     notices.push(
       <Banner key="payout-error" tone="info">
         {t('notice.payout-unreadable')}
       </Banner>,
     );
   }
-  const payout = ok(data.payout);
-  if (payout !== null && !payout.ready) {
+  const account = ok(payout);
+  if (account !== null && !account.ready) {
     notices.push(
       <Banner key="payout" tone="attention" title={t('notice.payout.title')}>
         <p>
@@ -105,8 +127,8 @@ function Notices({ data }: { readonly data: SellerDashboardData }) {
       </Banner>,
     );
   }
-  const sources = ok(data.sources);
-  if (sources !== null && sources.sources.length === 0) {
+  const view = ok(sources);
+  if (view !== null && view.sources.length === 0) {
     notices.push(
       <Banner key="sources" tone="attention" title={t('notice.sources.title')}>
         <p>
@@ -122,47 +144,89 @@ function Notices({ data }: { readonly data: SellerDashboardData }) {
   return <div className="flex flex-col gap-3">{notices}</div>;
 }
 
-/** The Needs attention figures; a figure whose read failed says so in its card. */
-function Attention({ data }: { readonly data: SellerDashboardData }) {
+/**
+ * Things to fix before selling or being paid; shown above the figures once both reads answer
+ * (no skeleton: most of the time there is nothing to say).
+ */
+function Notices({ data }: { readonly data: SellerDashboardSources }) {
+  return (
+    <DashboardSlot source={data.payout} fallback={null}>
+      {(payout) => (
+        <DashboardSlot source={data.sources} fallback={null}>
+          {(sources) => <NoticeBanners payout={payout} sources={sources} />}
+        </DashboardSlot>
+      )}
+    </DashboardSlot>
+  );
+}
+
+/** Needs attention figures that come from one read: their skeletons while it runs, then the figures. */
+function Figures<T>({
+  source,
+  cards,
+  children,
+}: {
+  readonly source: Source<T>;
+  readonly cards: readonly { readonly icon: IconName; readonly label: string }[];
+  readonly children: (widget: Widget<T>) => ReactNode;
+}) {
+  const { stalledLabel } = useSkeletonText();
+  return (
+    <DashboardSlot
+      source={source}
+      fallback={cards.map((card) => (
+        <StatCardSkeleton
+          key={card.label}
+          icon={card.icon}
+          label={card.label}
+          stalledLabel={stalledLabel}
+        />
+      ))}
+    >
+      {(widget) => (widget === null ? null : children(widget))}
+    </DashboardSlot>
+  );
+}
+
+function ToShipFigure({ widget }: { readonly widget: Widget<SellerOrderPage> }) {
+  const t = useTranslations('dashboard');
+  const locale = useLocale();
+  const page = ok(widget);
+  const more = page?.nextCursor != null;
+  const count = page?.sellerOrders.filter((order) => order.fulfilment === 'to-ship').length ?? 0;
+  return (
+    <StatCard
+      icon="clipboard"
+      label={t('attention.to-ship.label')}
+      value={formatCount(count, more, locale)}
+      scope={t(more ? 'scope.orders-latest' : 'scope.orders-all', { count: COUNT_LIMIT })}
+      href="/orders"
+      tone={count > 0 ? 'attention' : 'neutral'}
+      {...(page === null ? { error: t('error.card') } : {})}
+    />
+  );
+}
+
+function OfferFigures({ widget }: { readonly widget: Widget<Page<OfferView>> }) {
   const t = useTranslations('dashboard');
   const locale = useLocale();
   const failed = t('error.card');
-  const cards: ReactNode[] = [];
-  if (data.orders !== null) {
-    const page = ok(data.orders);
-    const more = page?.nextCursor != null;
-    const count = page?.sellerOrders.filter((order) => order.fulfilment === 'to-ship').length ?? 0;
-    cards.push(
+  const page = ok(widget);
+  const more = page?.nextAfterId != null;
+  const scope = t(more ? 'scope.offers-latest' : 'scope.offers-all', { count: COUNT_LIMIT });
+  const count = (status: string) =>
+    page?.items.filter((offer) => offer.status === status).length ?? 0;
+  return (
+    <>
       <StatCard
-        key="to-ship"
-        icon="clipboard"
-        label={t('attention.to-ship.label')}
-        value={formatCount(count, more, locale)}
-        scope={t(more ? 'scope.orders-latest' : 'scope.orders-all', { count: COUNT_LIMIT })}
-        href="/orders"
-        tone={count > 0 ? 'attention' : 'neutral'}
-        {...(page === null ? { error: failed } : {})}
-      />,
-    );
-  }
-  if (data.offers !== null) {
-    const page = ok(data.offers);
-    const more = page?.nextAfterId != null;
-    const scope = t(more ? 'scope.offers-latest' : 'scope.offers-all', { count: COUNT_LIMIT });
-    const count = (status: string) =>
-      page?.items.filter((offer) => offer.status === status).length ?? 0;
-    cards.push(
-      <StatCard
-        key="in-review"
         icon="inbox"
         label={t('attention.in-review.label')}
         value={formatCount(count('pending-first-publish'), more, locale)}
         scope={scope}
         href="/offers"
         {...(page === null ? { error: failed } : {})}
-      />,
+      />
       <StatCard
-        key="changes"
         icon="tag"
         label={t('attention.changes.label')}
         value={formatCount(count('changes-needed'), more, locale)}
@@ -170,34 +234,116 @@ function Attention({ data }: { readonly data: SellerDashboardData }) {
         href="/offers"
         tone={count('changes-needed') > 0 ? 'attention' : 'neutral'}
         {...(page === null ? { error: failed } : {})}
-      />,
+      />
+    </>
+  );
+}
+
+function BalanceFigure({ widget }: { readonly widget: Widget<Ledger> }) {
+  const t = useTranslations('dashboard');
+  const locale = useLocale();
+  const ledger = ok(widget);
+  return (
+    <StatCard
+      icon="wallet"
+      label={t('attention.balance.label')}
+      value={ledger === null ? '-' : formatMinor(ledger.totals.balance, ledger.currency, locale)}
+      scope={t('attention.balance.scope')}
+      href="/earnings"
+      {...(ledger === null ? { error: t('error.card') } : {})}
+    />
+  );
+}
+
+/** The Needs attention figures; each read loads on its own, and one that failed says so in its cards. */
+function Attention({ data }: { readonly data: SellerDashboardSources }) {
+  const t = useTranslations('dashboard');
+  const cards: ReactNode[] = [];
+  if (data.orders !== null) {
+    cards.push(
+      <Figures
+        key="to-ship"
+        source={data.orders}
+        cards={[{ icon: 'clipboard', label: t('attention.to-ship.label') }]}
+      >
+        {(widget) => <ToShipFigure widget={widget} />}
+      </Figures>,
+    );
+  }
+  if (data.offers !== null) {
+    cards.push(
+      <Figures
+        key="offers"
+        source={data.offers}
+        cards={[
+          { icon: 'inbox', label: t('attention.in-review.label') },
+          { icon: 'tag', label: t('attention.changes.label') },
+        ]}
+      >
+        {(widget) => <OfferFigures widget={widget} />}
+      </Figures>,
     );
   }
   if (data.ledger !== null) {
-    const ledger = ok(data.ledger);
     cards.push(
-      <StatCard
+      <Figures
         key="balance"
-        icon="wallet"
-        label={t('attention.balance.label')}
-        value={ledger === null ? '-' : formatMinor(ledger.totals.balance, ledger.currency, locale)}
-        scope={t('attention.balance.scope')}
-        href="/earnings"
-        {...(ledger === null ? { error: failed } : {})}
-      />,
+        source={data.ledger}
+        cards={[{ icon: 'wallet', label: t('attention.balance.label') }]}
+      >
+        {(widget) => <BalanceFigure widget={widget} />}
+      </Figures>,
     );
   }
   if (cards.length === 0) return null;
   return <StatGrid label={t('attention.title')}>{cards}</StatGrid>;
 }
 
-function Orders({ data }: { readonly data: SellerDashboardData }) {
+/** The title, scope line and link of a card, shared by the card and its skeleton. */
+interface Frame {
+  readonly id: string;
+  readonly title: string;
+  readonly scope: string;
+  readonly action?: { readonly href: string; readonly label: string };
+}
+
+/** An activity card: its skeleton (real title, link and headers) while its read runs, then the card. */
+function ActivitySection<T, Row>({
+  source,
+  frame,
+  columns,
+  titleLines,
+  children,
+}: {
+  readonly source: Source<T>;
+  readonly frame: Frame;
+  readonly columns: readonly ActivityColumn<Row>[];
+  readonly titleLines?: number;
+  readonly children: (widget: Widget<T>) => ReactNode;
+}) {
+  const text = useSkeletonText();
+  return (
+    <DashboardSlot
+      source={source}
+      fallback={
+        <ActivityCardSkeleton
+          {...frame}
+          {...text}
+          columns={activitySkeletonColumns(columns)}
+          rows={RECENT}
+          {...(titleLines === undefined ? {} : { titleLines })}
+        />
+      }
+    >
+      {(widget) => (widget === null ? null : children(widget))}
+    </DashboardSlot>
+  );
+}
+
+function useOrderColumns(): ActivityColumn<SellerOrderView>[] {
   const t = useTranslations('dashboard');
   const locale = useLocale();
-  if (data.orders === null) return null;
-  const page = ok(data.orders);
-  const rows = page?.sellerOrders.slice(0, RECENT) ?? [];
-  const columns: ActivityColumn<SellerOrderView>[] = [
+  return [
     {
       id: 'order',
       header: t('orders.col.order'),
@@ -244,39 +390,50 @@ function Orders({ data }: { readonly data: SellerDashboardData }) {
       cell: (row) => <Time iso={row.paidAt} />,
     },
   ];
+}
+
+function Orders({ data }: { readonly data: SellerDashboardSources }) {
+  const t = useTranslations('dashboard');
+  const columns = useOrderColumns();
+  if (data.orders === null) return null;
+  const frame: Frame = {
+    id: 'dash-orders',
+    title: t('orders.title'),
+    scope: t('scope.latest', { count: RECENT }),
+    action: { href: '/orders', label: t('view-all') },
+  };
   return (
-    <DashboardCard
-      id="dash-orders"
-      title={t('orders.title')}
-      scope={t('scope.latest', { count: RECENT })}
-      action={{ href: '/orders', label: t('view-all') }}
-      flush={rows.length > 0}
-      {...(page === null ? { error: t('error.card') } : {})}
-    >
-      {rows.length === 0 ? (
-        <EmptyState size="compact" icon="clipboard" title={t('orders.empty')} />
-      ) : (
-        <ActivityTable
-          caption={t('orders.title')}
-          columns={columns}
-          rows={rows}
-          rowKey={(row) => row.sellerOrderId}
-        />
-      )}
-    </DashboardCard>
+    <ActivitySection source={data.orders} frame={frame} columns={columns}>
+      {(widget) => {
+        const page = ok(widget);
+        const rows = page?.sellerOrders.slice(0, RECENT) ?? [];
+        return (
+          <DashboardCard
+            {...frame}
+            flush={rows.length > 0}
+            {...(page === null ? { error: t('error.card') } : {})}
+          >
+            {rows.length === 0 ? (
+              <EmptyState size="compact" icon="clipboard" title={t('orders.empty')} />
+            ) : (
+              <ActivityTable
+                caption={frame.title}
+                columns={columns}
+                rows={rows}
+                rowKey={(row) => row.sellerOrderId}
+              />
+            )}
+          </DashboardCard>
+        );
+      }}
+    </ActivitySection>
   );
 }
 
-function Offers({ data }: { readonly data: SellerDashboardData }) {
+function useOfferColumns(): ActivityColumn<OfferView>[] {
   const t = useTranslations('dashboard');
   const tc = useTranslations('catalog.offers');
-  if (data.offers === null) return null;
-  const page = ok(data.offers);
-  const rows =
-    page?.items
-      .filter((offer) => (OPEN_OFFERS as readonly string[]).includes(offer.status))
-      .slice(0, RECENT) ?? [];
-  const columns: ActivityColumn<OfferView>[] = [
+  return [
     {
       id: 'offer',
       header: tc('col.product'),
@@ -311,37 +468,53 @@ function Offers({ data }: { readonly data: SellerDashboardData }) {
       cell: (row) => (row.submittedAt === null ? '-' : <Time iso={row.submittedAt} />),
     },
   ];
+}
+
+function Offers({ data }: { readonly data: SellerDashboardSources }) {
+  const t = useTranslations('dashboard');
+  const columns = useOfferColumns();
+  if (data.offers === null) return null;
+  const frame: Frame = {
+    id: 'dash-offers',
+    title: t('offers.title'),
+    scope: t('scope.offers-open', { count: COUNT_LIMIT }),
+    action: { href: '/offers', label: t('view-all') },
+  };
   return (
-    <DashboardCard
-      id="dash-offers"
-      title={t('offers.title')}
-      scope={t('scope.offers-open', { count: COUNT_LIMIT })}
-      action={{ href: '/offers', label: t('view-all') }}
-      flush={rows.length > 0}
-      {...(page === null ? { error: t('error.card') } : {})}
-    >
-      {rows.length === 0 ? (
-        <EmptyState size="compact" icon="check" title={t('offers.empty')} />
-      ) : (
-        <ActivityTable
-          caption={t('offers.title')}
-          columns={columns}
-          rows={rows}
-          rowKey={(row) => row.offerId}
-        />
-      )}
-    </DashboardCard>
+    <ActivitySection source={data.offers} frame={frame} columns={columns} titleLines={2}>
+      {(widget) => {
+        const page = ok(widget);
+        const rows =
+          page?.items
+            .filter((offer) => (OPEN_OFFERS as readonly string[]).includes(offer.status))
+            .slice(0, RECENT) ?? [];
+        return (
+          <DashboardCard
+            {...frame}
+            flush={rows.length > 0}
+            {...(page === null ? { error: t('error.card') } : {})}
+          >
+            {rows.length === 0 ? (
+              <EmptyState size="compact" icon="check" title={t('offers.empty')} />
+            ) : (
+              <ActivityTable
+                caption={frame.title}
+                columns={columns}
+                rows={rows}
+                rowKey={(row) => row.offerId}
+              />
+            )}
+          </DashboardCard>
+        );
+      }}
+    </ActivitySection>
   );
 }
 
-/** Sell units that are low or out of stock, latest change first; each opens that offer's stock page. */
-function LowStock({ data }: { readonly data: SellerDashboardData }) {
+function useLowStockColumns(): ActivityColumn<LowStockItem>[] {
   const t = useTranslations('dashboard');
   const locale = useLocale();
-  if (data.lowStock === null) return null;
-  const page = ok(data.lowStock);
-  const rows = page?.items.slice(0, RECENT) ?? [];
-  const columns: ActivityColumn<LowStockItem>[] = [
+  return [
     {
       id: 'item',
       header: t('low-stock.col.item'),
@@ -396,35 +569,50 @@ function LowStock({ data }: { readonly data: SellerDashboardData }) {
       cell: (row) => <Time iso={row.changedAt} />,
     },
   ];
+}
+
+/** Sell units that are low or out of stock, latest change first; each opens that offer's stock page. */
+function LowStock({ data }: { readonly data: SellerDashboardSources }) {
+  const t = useTranslations('dashboard');
+  const columns = useLowStockColumns();
+  if (data.lowStock === null) return null;
+  const frame: Frame = {
+    id: 'dash-low-stock',
+    title: t('low-stock.title'),
+    scope: t('scope.changed-latest'),
+  };
   return (
-    <DashboardCard
-      id="dash-low-stock"
-      title={t('low-stock.title')}
-      scope={t('scope.changed-latest')}
-      flush={rows.length > 0}
-      {...(page === null ? { error: t('error.card') } : {})}
-    >
-      {rows.length === 0 ? (
-        <EmptyState size="compact" icon="check" title={t('low-stock.empty')} />
-      ) : (
-        <ActivityTable
-          caption={t('low-stock.title')}
-          columns={columns}
-          rows={rows}
-          rowKey={(row) => `${row.offerId}:${row.variantId}`}
-        />
-      )}
-    </DashboardCard>
+    <ActivitySection source={data.lowStock} frame={frame} columns={columns}>
+      {(widget) => {
+        const page = ok(widget);
+        const rows = page?.items.slice(0, RECENT) ?? [];
+        return (
+          <DashboardCard
+            {...frame}
+            flush={rows.length > 0}
+            {...(page === null ? { error: t('error.card') } : {})}
+          >
+            {rows.length === 0 ? (
+              <EmptyState size="compact" icon="check" title={t('low-stock.empty')} />
+            ) : (
+              <ActivityTable
+                caption={frame.title}
+                columns={columns}
+                rows={rows}
+                rowKey={(row) => `${row.offerId}:${row.variantId}`}
+              />
+            )}
+          </DashboardCard>
+        );
+      }}
+    </ActivitySection>
   );
 }
 
-function Earnings({ data }: { readonly data: SellerDashboardData }) {
+function useEarningColumns(currency: string): ActivityColumn<LedgerEntry>[] {
   const t = useTranslations('dashboard');
   const locale = useLocale();
-  if (data.ledger === null) return null;
-  const ledger = ok(data.ledger);
-  const rows = ledger?.entries.slice(0, RECENT) ?? [];
-  const columns: ActivityColumn<LedgerEntry>[] = [
+  return [
     {
       id: 'kind',
       header: t('earnings.col.entry'),
@@ -442,7 +630,7 @@ function Earnings({ data }: { readonly data: SellerDashboardData }) {
           className={`tabular-nums ${row.direction === 'debit' ? 'text-critical-fg' : 'text-success-fg'}`}
         >
           {row.direction === 'debit' ? '-' : '+'}
-          {formatMinor(row.amount, ledger?.currency ?? '', locale)}
+          {formatMinor(row.amount, currency, locale)}
         </span>
       ),
     },
@@ -454,12 +642,22 @@ function Earnings({ data }: { readonly data: SellerDashboardData }) {
       cell: (row) => <Time iso={row.occurredAt} />,
     },
   ];
+}
+
+function EarningsCard({
+  widget,
+  frame,
+}: {
+  readonly widget: Widget<Ledger>;
+  readonly frame: Frame;
+}) {
+  const t = useTranslations('dashboard');
+  const ledger = ok(widget);
+  const columns = useEarningColumns(ledger?.currency ?? '');
+  const rows = ledger?.entries.slice(0, RECENT) ?? [];
   return (
     <DashboardCard
-      id="dash-earnings"
-      title={t('earnings.title')}
-      scope={t('scope.latest', { count: RECENT })}
-      action={{ href: '/earnings', label: t('view-all') }}
+      {...frame}
       flush={rows.length > 0}
       {...(ledger === null ? { error: t('error.card') } : {})}
     >
@@ -467,7 +665,7 @@ function Earnings({ data }: { readonly data: SellerDashboardData }) {
         <EmptyState size="compact" icon="receipt" title={t('earnings.empty')} />
       ) : (
         <ActivityTable
-          caption={t('earnings.title')}
+          caption={frame.title}
           columns={columns}
           rows={rows}
           rowKey={(row) => row.entryId}
@@ -477,41 +675,76 @@ function Earnings({ data }: { readonly data: SellerDashboardData }) {
   );
 }
 
+function Earnings({ data }: { readonly data: SellerDashboardSources }) {
+  const t = useTranslations('dashboard');
+  const columns = useEarningColumns('');
+  if (data.ledger === null) return null;
+  const frame: Frame = {
+    id: 'dash-earnings',
+    title: t('earnings.title'),
+    scope: t('scope.latest', { count: RECENT }),
+    action: { href: '/earnings', label: t('view-all') },
+  };
+  return (
+    <ActivitySection source={data.ledger} frame={frame} columns={columns}>
+      {(widget) => <EarningsCard widget={widget} frame={frame} />}
+    </ActivitySection>
+  );
+}
+
 /** Offers by status: one stacked bar over the offers read for the figures. */
-function OfferStates({ data }: { readonly data: SellerDashboardData }) {
+function OfferStates({ data }: { readonly data: SellerDashboardSources }) {
   const t = useTranslations('dashboard');
   const tc = useTranslations('catalog.offers.status');
-  const page = ok(data.offers);
-  if (page === null || page.items.length === 0) return null;
-  const more = page.nextAfterId != null;
-  const count = (status: string) => page.items.filter((offer) => offer.status === status).length;
+  const text = useSkeletonText();
+  if (data.offers === null) return null;
+  const parts = [
+    { id: 'published', label: tc('published'), tone: 'success' },
+    { id: 'pending', label: tc('pending-first-publish'), tone: 'info' },
+    { id: 'changes', label: tc('changes-needed'), tone: 'attention' },
+    { id: 'draft', label: tc('draft'), tone: 'neutral' },
+  ] as const;
+  const status = {
+    published: 'published',
+    pending: 'pending-first-publish',
+    changes: 'changes-needed',
+    draft: 'draft',
+  } as const;
+  const action = { href: '/offers', label: t('view-all') };
   return (
-    <DashboardCard
-      id="dash-states"
-      title={t('states.title')}
-      scope={t(more ? 'scope.offers-latest' : 'scope.offers-all', { count: COUNT_LIMIT })}
-      action={{ href: '/offers', label: t('view-all') }}
+    <DashboardSlot
+      source={data.offers}
+      fallback={
+        <DistributionCardSkeleton
+          id="dash-states"
+          title={t('states.title')}
+          action={action}
+          parts={parts}
+          {...text}
+        />
+      }
     >
-      <DistributionBar
-        emptyLabel={t('states.empty')}
-        parts={[
-          { id: 'published', label: tc('published'), value: count('published'), tone: 'success' },
-          {
-            id: 'pending',
-            label: tc('pending-first-publish'),
-            value: count('pending-first-publish'),
-            tone: 'info',
-          },
-          {
-            id: 'changes',
-            label: tc('changes-needed'),
-            value: count('changes-needed'),
-            tone: 'attention',
-          },
-          { id: 'draft', label: tc('draft'), value: count('draft'), tone: 'neutral' },
-        ]}
-      />
-    </DashboardCard>
+      {(widget) => {
+        const page = ok(widget);
+        if (page === null || page.items.length === 0) return null;
+        const more = page.nextAfterId != null;
+        const count = (id: keyof typeof status) =>
+          page.items.filter((offer) => offer.status === status[id]).length;
+        return (
+          <DashboardCard
+            id="dash-states"
+            title={t('states.title')}
+            scope={t(more ? 'scope.offers-latest' : 'scope.offers-all', { count: COUNT_LIMIT })}
+            action={action}
+          >
+            <DistributionBar
+              emptyLabel={t('states.empty')}
+              parts={parts.map((part) => ({ ...part, value: count(part.id) }))}
+            />
+          </DashboardCard>
+        );
+      }}
+    </DashboardSlot>
   );
 }
 
@@ -541,13 +774,14 @@ function QuickActions({ keys }: { readonly keys: ReadonlySet<string> }) {
 /**
  * The seller dashboard (the home page of an approved seller): every widget is present only when
  * the session holds the key its read needs. Order: what needs attention, the latest activity,
- * then quick actions.
+ * then quick actions. Given promises (the page), each card shows its skeleton until its own read
+ * answers (panel loading L4).
  */
 export function SellerDashboard({
   data,
   permissionKeys,
 }: {
-  readonly data: SellerDashboardData;
+  readonly data: SellerDashboardSources;
   readonly permissionKeys: readonly string[];
 }) {
   const t = useTranslations('dashboard');
@@ -559,7 +793,7 @@ export function SellerDashboard({
     return <EmptyState size="card" icon="home" title={t('none.title')} body={t('none.body')} />;
   }
   return (
-    <div className="flex flex-col gap-4">
+    <DashboardLoading label={t('loading')} className="flex flex-col gap-4">
       <Notices data={data} />
       <Attention data={data} />
       <Orders data={data} />
@@ -570,6 +804,6 @@ export function SellerDashboard({
         <OfferStates data={data} />
         <QuickActions keys={keys} />
       </div>
-    </div>
+    </DashboardLoading>
   );
 }

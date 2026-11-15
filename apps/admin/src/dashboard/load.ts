@@ -10,7 +10,7 @@ import {
   COUNT_LIMIT,
   ORDER_VIEW_PERMISSION,
   RECENT,
-  type AdminDashboardData,
+  type AdminDashboardSources,
   type DashboardOrderPage,
   type Widget,
 } from './types.ts';
@@ -19,29 +19,32 @@ import type { ConnectedAccountPage } from '../payments/types.ts';
 import type { PriceHoldPage } from '../pricing/types.ts';
 
 /**
- * One widget: not asked for without its key, hidden when the API still says forbidden, an
- * in-place error for any other failure. A rejected session sends the whole page to sign-in.
+ * One widget: not asked for without its key (null), else a read that answers on its own. Hidden
+ * when the API still says forbidden, an in-place error for any other failure. A rejected session
+ * sends the whole page to sign-in.
  */
-async function widget<T>(
+function widget<T>(
   allowed: boolean,
   read: () => Promise<ServerGet<T>>,
-): Promise<{ readonly widget: Widget<T> | null; readonly signedOut: boolean }> {
-  if (!allowed) return { widget: null, signedOut: false };
-  const answer = await read();
-  if (answer.kind === 'ok') return { widget: { kind: 'ok', value: answer.body }, signedOut: false };
-  if (answer.kind === 'signed-out') return { widget: null, signedOut: true };
-  if (answer.kind === 'forbidden') return { widget: null, signedOut: false };
-  return { widget: { kind: 'error' }, signedOut: false };
+): Promise<Widget<T> | null> | null {
+  if (!allowed) return null;
+  return read().then((answer) => {
+    if (answer.kind === 'ok') return { kind: 'ok', value: answer.body };
+    if (answer.kind === 'signed-out') redirect('/session-ended');
+    if (answer.kind === 'forbidden') return null;
+    return { kind: 'error' };
+  });
 }
 
 /**
- * Every widget of the admin dashboard, read in parallel (one call each, no per-row calls). A
+ * Starts every read of the admin dashboard at once (one call each, no per-row calls) and does
+ * not wait for them: each card streams in when its own read answers (panel loading L4), and a
  * widget that fails does not fail the others.
  */
-export async function loadAdminDashboard(session: AdminSession): Promise<AdminDashboardData> {
+export function startAdminDashboard(session: AdminSession): AdminDashboardSources {
   const keys = new Set(session.permissionKeys);
-  const [sellers, holds, offers, accounts, orders] = await Promise.all([
-    widget<SellerListPage>(keys.has(SELLERS_VIEW), () =>
+  return {
+    sellers: widget<SellerListPage>(keys.has(SELLERS_VIEW), () =>
       serverGet<SellerListPage>('sellers/admin/list', {
         post: {
           body: { tab: 'awaiting-review', limit: RECENT },
@@ -49,26 +52,17 @@ export async function loadAdminDashboard(session: AdminSession): Promise<AdminDa
         },
       }),
     ),
-    widget<PriceHoldPage>(keys.has(HOLDS_VIEW), () =>
+    holds: widget<PriceHoldPage>(keys.has(HOLDS_VIEW), () =>
       serverGet<PriceHoldPage>(`pricing/admin/price-holds?limit=${COUNT_LIMIT}`),
     ),
-    widget<ReviewPage>(keys.has(OFFERS_VIEW), () =>
+    offers: widget<ReviewPage>(keys.has(OFFERS_VIEW), () =>
       serverGet<ReviewPage>(`catalog/admin/review-queue?limit=${COUNT_LIMIT}`),
     ),
-    widget<ConnectedAccountPage>(keys.has(ACCOUNTS_VIEW), () =>
+    accounts: widget<ConnectedAccountPage>(keys.has(ACCOUNTS_VIEW), () =>
       serverGet<ConnectedAccountPage>('payments/admin/connected-accounts?status=restricted'),
     ),
-    widget<DashboardOrderPage>(keys.has(ORDER_VIEW_PERMISSION), () =>
+    orders: widget<DashboardOrderPage>(keys.has(ORDER_VIEW_PERMISSION), () =>
       serverGet<DashboardOrderPage>(`ordering/admin/orders?limit=${RECENT}`),
     ),
-  ]);
-  const all = [sellers, holds, offers, accounts, orders];
-  if (all.some((item) => item.signedOut)) redirect('/session-ended');
-  return {
-    sellers: sellers.widget,
-    holds: holds.widget,
-    offers: offers.widget,
-    accounts: accounts.widget,
-    orders: orders.widget,
   };
 }
