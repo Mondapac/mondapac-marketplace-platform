@@ -29,6 +29,17 @@ import { ExecuteAccountDeletions } from './application/use-cases/execute-account
 import { RequestAccountDeletion } from './application/use-cases/request-account-deletion.use-case';
 import { ViewAccountDeletionRequest } from './application/use-cases/view-account-deletion-request.use-case';
 import { ACCOUNT_DELETION_SETTINGS_REPOSITORY } from './application/ports/account-deletion-settings.repository';
+import {
+  CUSTOMER_READ_MODEL_PEERS,
+  type CustomerReadModelPeers,
+} from './application/ports/customer-read-model-peers';
+import { CUSTOMER_READ_MODEL_REPOSITORY } from './application/ports/customer-read-models.repository';
+import type { ReadModelDependencies } from './application/read-model-dependencies';
+import { ReadCustomerLastOrder } from './application/use-cases/read-customer-last-order.use-case';
+import { ReadOwnLastOrder } from './application/use-cases/read-own-last-order.use-case';
+import { ReconcileCustomerReadModels } from './application/use-cases/reconcile-customer-read-models.use-case';
+import { SyncCustomerReadModel } from './application/use-cases/sync-customer-read-model.use-case';
+import { CustomersReadFacadeImplementation } from './presentation/customers-read.facade';
 import { ADDRESS_CIPHER } from './application/ports/address-cipher';
 import { ADDRESS_POLICY } from './application/ports/address-policy';
 import { ADDRESS_REPOSITORY } from './application/ports/address.repository';
@@ -45,6 +56,7 @@ import {
   CUSTOMERS_ACCOUNT_DELETION_FACADE,
   CUSTOMERS_CHECKOUT_FACADE,
   CUSTOMERS_PERMISSIONS,
+  CUSTOMERS_READ_FACADE,
   CUSTOMERS_STEP_UP_ACTIONS,
 } from './contracts';
 import { CUSTOMERS_AUDIT_ACTIONS } from './domain/audit';
@@ -81,6 +93,7 @@ const DELETION_PORTS: readonly [keyof AccountDeletionDependencies, InjectionToke
   ['unitOfWork', UNIT_OF_WORK],
   ['requests', ACCOUNT_DELETION_REQUEST_REPOSITORY],
   ['addresses', ADDRESS_REPOSITORY],
+  ['readModels', CUSTOMER_READ_MODEL_REPOSITORY],
   ['accountDeletionSettings', ACCOUNT_DELETION_SETTINGS_REPOSITORY],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
@@ -99,6 +112,36 @@ function deletionUseCaseProvider<U>(type: DeletionUseCaseClass<U>): FactoryProvi
         ...Object.fromEntries(DELETION_PORTS.map(([name], index) => [name, values[index]])),
         ...peers,
       } as unknown as AccountDeletionDependencies),
+  };
+}
+
+type ReadModelUseCaseClass<U> = new (gate: UseCaseGate, deps: ReadModelDependencies) => U;
+
+/** The read model use cases: their own ports, plus the peers bound at start. */
+function readModelUseCaseProvider<U>(type: ReadModelUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      CUSTOMER_READ_MODEL_PEERS,
+      UNIT_OF_WORK,
+      CUSTOMER_READ_MODEL_REPOSITORY,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      peers: CustomerReadModelPeers,
+      unitOfWork: ReadModelDependencies['unitOfWork'],
+      readModels: ReadModelDependencies['readModels'],
+      clock: ReadModelDependencies['clock'],
+    ) =>
+      new type(gate, {
+        identity: peers.identity,
+        ordering: peers.ordering,
+        unitOfWork,
+        readModels,
+        clock,
+      }),
   };
 }
 
@@ -164,6 +207,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminCancelAccountDeletion,
       AdminListAccountDeletions,
     ].map((type) => deletionUseCaseProvider(type as DeletionUseCaseClass<unknown>)),
+    ...[
+      SyncCustomerReadModel,
+      ReconcileCustomerReadModels,
+      ReadCustomerLastOrder,
+      ReadOwnLastOrder,
+    ].map((type) => readModelUseCaseProvider(type as ReadModelUseCaseClass<unknown>)),
+    {
+      provide: CUSTOMERS_READ_FACADE,
+      inject: [ReadCustomerLastOrder, ReadOwnLastOrder],
+      useFactory: (read: ReadCustomerLastOrder, own: ReadOwnLastOrder) =>
+        new CustomersReadFacadeImplementation(read, own),
+    },
     {
       provide: CUSTOMERS_ACCOUNT_DELETION_FACADE,
       inject: [CancelAccountDeletion],
@@ -179,6 +234,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (read: ReadDeliveryAddress) => new CustomersCheckoutFacadeImplementation(read),
     },
   ],
-  exports: [CUSTOMERS_CHECKOUT_FACADE, CUSTOMERS_ACCOUNT_DELETION_FACADE, ACCOUNT_DELETION_PEERS],
+  exports: [
+    CUSTOMERS_CHECKOUT_FACADE,
+    CUSTOMERS_ACCOUNT_DELETION_FACADE,
+    CUSTOMERS_READ_FACADE,
+    ACCOUNT_DELETION_PEERS,
+    CUSTOMER_READ_MODEL_PEERS,
+    SyncCustomerReadModel,
+    ReconcileCustomerReadModels,
+  ],
 })
 export class CustomersModule {}

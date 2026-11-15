@@ -36,7 +36,7 @@ import type { CategoryImportDependencies } from '../categories/category-import';
 import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
 import type { PlatformCategoryRepository } from '../ports/platform-category.repository';
-import type { SheetWriter } from '../ports/sheet-writer';
+import type { SheetWriter } from '../../../../platform/list-export/sheet-writer';
 import { CategoryImportApply } from './category-import-apply.use-case';
 import { CategoryImportDryRun } from './category-import-dry-run.use-case';
 import { CategoryTreeExport, exportHeader } from './category-tree-export.use-case';

@@ -13,6 +13,7 @@ import type {
 import type { AccountDeletionRequestRepository } from './ports/account-deletion-request.repository';
 import type { AccountDeletionSettingsRepository } from './ports/account-deletion-settings.repository';
 import type { AddressRepository } from './ports/address.repository';
+import type { CustomerReadModelRepository } from './ports/customer-read-models.repository';
 
 /**
  * What the buyer deletion flow needs (package 5b): its own ports and the facades of the modules it
@@ -24,6 +25,8 @@ export interface AccountDeletionDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly requests: AccountDeletionRequestRepository;
   readonly addresses: AddressRepository;
+  /** The customers read models: the erased account's rows are removed in the erasure unit. */
+  readonly readModels: CustomerReadModelRepository;
   readonly accountDeletionSettings: AccountDeletionSettingsRepository;
   readonly ids: IdGenerator;
   readonly clock: Clock;

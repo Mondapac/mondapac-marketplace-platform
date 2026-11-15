@@ -338,6 +338,33 @@ export class MemoryOrders implements OrderRepository {
       ),
     );
   }
+  totalsOf(_m: MarketContext, accountId: Id<'Account'>) {
+    const confirmed = [...this.rows.values()].filter(
+      (o) => o.accountId === accountId && o.status === 'confirmed',
+    );
+    const times = confirmed.flatMap((o) => (o.confirmedAt === null ? [] : [o.confirmedAt]));
+    times.sort((a, b) => a.epochMilliseconds - b.epochMilliseconds);
+    return Promise.resolve({
+      orderCount: confirmed.length,
+      firstConfirmedAt: times[0] ?? null,
+      lastConfirmedAt: times[times.length - 1] ?? null,
+      spentMinor:
+        confirmed.length === 0 ? null : confirmed.reduce((sum, o) => sum + o.total.amount, 0n),
+      currency: confirmed[0]?.total.currency ?? null,
+      refundCount: 0,
+      refundedMinor: 0n,
+    });
+  }
+  accountsWithConfirmedOrders(_m: MarketContext, after: Id<'Account'> | null, limit: number) {
+    const ids = [
+      ...new Set(
+        [...this.rows.values()].filter((o) => o.status === 'confirmed').map((o) => o.accountId),
+      ),
+    ]
+      .filter((id) => after === null || id > after)
+      .sort();
+    return Promise.resolve(ids.slice(0, limit));
+  }
   countOpenOf(_m: MarketContext, accountId: Id<'Account'>) {
     const openOrders = [...this.rows.values()].filter(
       (o) =>

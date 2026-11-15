@@ -101,23 +101,27 @@
     "expand": "Expand sidebar",
     "home": "Dashboard",
     "customers": "Customers",
-    "sellers": "All sellers",
+    "sellers": "Sellers",
     "orders": "Orders",
-    "price-holds": "Held prices",
-    "review-queue": "Review queue",
-    "certificates": "Certificates",
-    "payout-accounts": "Connected accounts",
-    "content": "Slides",
+    "price-holds": "Pricing",
+    "review-queue": "Catalogue requests",
+    "certificates": "Certification",
+    "payout-accounts": "Seller accounts",
+    "content": "Pages",
+    "slides": "Slides",
+    "menus": "Menus",
+    "seller-requests": "Seller requests",
     "blog": "Blog",
     "settings": "Settings",
     "group": {
+      "inbox": "Inbox",
+      "sales": "Sales",
       "catalogue": "Catalogue",
-      "reviews": "Reviews",
-      "content": "Content",
       "sellers": "Sellers",
+      "customers": "Customers",
       "marketing": "Marketing",
-      "orders": "Orders & customers",
-      "money": "Money",
+      "accounting": "Accounting",
+      "cms": "CMS",
       "audit-logs": "Audit Logs"
     },
     "wallet-credits": "Issue credit",
@@ -129,7 +133,7 @@
     "variants": "Variants",
     "brands": "Brands",
     "categories": "Categories",
-    "review-moderation": "Buyer reviews",
+    "review-moderation": "Reviews",
     "business-activities": "Business activities",
     "tags": "Tags",
     "security": "Security"
@@ -1161,7 +1165,7 @@
     }
   },
   "certificates": {
-    "title": "Certificates",
+    "title": "Certification",
     "queue": {
       "title": "Certificates waiting for a decision",
       "no-access": "You don't have access to certificates.",
@@ -1516,7 +1520,7 @@
   },
   "pricing": {
     "holds": {
-      "title": "Held prices",
+      "title": "Pricing",
       "no-access": "You don't have access to held prices.",
       "back-home": "Back to dashboard",
       "unavailable": "Held prices could not be loaded. Try again later.",
@@ -1577,12 +1581,6 @@
   },
   "content": {
     "title": "Storefront content",
-    "intro": "Pages and slides on the buyer site, for this Market.",
-    "tabs": {
-      "label": "Content sections",
-      "pages": "Pages",
-      "slides": "Slides"
-    },
     "no-access": {
       "title": "You don't have access to this page",
       "body": "Your role can't see storefront content. Ask a platform administrator if you need it.",
@@ -2050,7 +2048,8 @@
           "generic": "The order could not be saved. Try again.",
           "reload": "Load current list"
         }
-      }
+      },
+      "intro": "Slides on the buyer site, for this Market."
     },
     "pages": {
       "status": {
@@ -2347,7 +2346,8 @@
         "source-name-linked": "The page’s link",
         "source-name-recently-viewed": "Recently viewed",
         "source-name-for-you": "For you",
-        "source-name-bought-together": "Bought together"
+        "source-name-bought-together": "Bought together",
+        "tab-versions": "Versions"
       },
       "settings": {
         "page-title": "Page: settings",
@@ -2407,7 +2407,148 @@
           "imageRef-required": "Choose an image, or clear its description.",
           "imageAlt-required": "Describe the image."
         }
-      }
+      },
+      "actions": {
+        "publish": "Publish",
+        "archive": "Archive",
+        "cancel": "Cancel",
+        "reload": "Reload the page",
+        "nothing-to-publish": "Nothing to publish. Change the draft first.",
+        "publish-title": "Publish this page?",
+        "publish-body": "Buyers will see the draft at {path}.",
+        "publish-keeps": "The version buyers see now is kept in Versions, so you can restore it later.",
+        "publish-confirm": "Publish",
+        "archive-title": "Archive this page?",
+        "archive-body": "Buyers will no longer see {path}. An archived page cannot be changed or brought back.",
+        "redirect": "Send buyers to (optional)",
+        "redirect-help": "A site path such as /offers. Leave it empty and buyers who open the address see a “page not found” message.",
+        "redirect-bad": "Use a site path such as /offers, without spaces or two slashes at the start.",
+        "archive-confirm": "Archive page",
+        "published": "Page published.",
+        "archived": "Page archived.",
+        "error-nothing": "The draft has no changes to publish.",
+        "error-changed": "The draft changed after you opened this page. Reload it and review the change.",
+        "error-denied": "You don’t have permission to do this.",
+        "error-too-few": "A part of the page has fewer switched-on modules than it needs. Add or show modules in the Content tab."
+      },
+      "versions": {
+        "page-title": "Page versions",
+        "list": "Versions of this page",
+        "empty": "No version was saved yet.",
+        "version": "Version {n}",
+        "state-draft": "Draft",
+        "state-published": "Live",
+        "state-retired": "Earlier",
+        "state-unknown": "Unknown",
+        "saved-at": "Saved {when}",
+        "published-on": "Published {when}",
+        "restore": "Restore",
+        "restore-label": "Restore version {n}",
+        "restore-title": "Restore version {n}?",
+        "restore-body": "This replaces the current draft, including any unpublished changes. Buyers see no change until you publish.",
+        "restore-confirm": "Restore to draft",
+        "cancel": "Cancel",
+        "reload": "Reload the page",
+        "restored": "Version {n} copied into the draft.",
+        "error-gone": "This version no longer exists. Reload the page."
+      },
+      "title": "Pages",
+      "intro": "Pages on the buyer site, for this Market."
+    },
+    "navigation": {
+      "page-title": "Navigation",
+      "intro": "The left menu and Browse lists of the buyer site, for this Market.",
+      "read-only": "You can view the navigation but not change it. Ask a platform administrator for edit access.",
+      "never-approved": "Not approved yet",
+      "approved-version": "Approved: version {n}",
+      "unapproved-changes": "Unapproved changes",
+      "waiting": "Waiting for a platform administrator to approve.",
+      "approve": "Approve",
+      "approve-save-first": "Save the draft first.",
+      "nothing-to-approve": "Nothing to approve. Change the draft first.",
+      "approve-title": "Approve this navigation?",
+      "approve-body": "Buyers will see this left menu and these Browse lists from now on. The approved version they see now is kept in Versions.",
+      "approve-confirm": "Approve",
+      "cancel": "Cancel",
+      "reload": "Reload the page",
+      "slot": {
+        "rail": "Left menu",
+        "drawer-popular": "Browse: popular and suggested",
+        "drawer-categories": "Browse: shop by category"
+      },
+      "slot-help": {
+        "rail": "Links in the left menu.",
+        "drawer-popular": "Words and categories offered first.",
+        "drawer-categories": "The categories in the Browse drawer."
+      },
+      "count": "{count} of {max}",
+      "add": "Add",
+      "browse-locked": "“Browse products” always comes first. It is set by the app and cannot be changed here.",
+      "empty": "Nothing here yet.",
+      "empty-categories": "Nothing here yet. Buyers will see the live category tree.",
+      "row": "Item {n}",
+      "label": "Label",
+      "label-help": "Up to {max} characters.",
+      "label-optional": "Label (optional)",
+      "label-name-help": "Replaces the category’s name. Up to {max} characters.",
+      "icon": "Icon (optional)",
+      "icon-help": "Optional. A short lowercase name such as delivery; the buyer app decides which icons it shows.",
+      "link-to": "Link to",
+      "kind": {
+        "category": "Category",
+        "page": "Landing page",
+        "system-page": "Site page",
+        "path": "Site path"
+      },
+      "path": "Site path",
+      "path-help": "A path such as /offers.",
+      "choose": "Choose…",
+      "category": "Category",
+      "up": "Move {name} up",
+      "down": "Move {name} down",
+      "show-switch": "Show {name} to buyers",
+      "remove": "Remove",
+      "remove-row": "Remove {name}",
+      "visible": "Shown",
+      "hidden": "Hidden",
+      "restore-save-first": "Save or discard your changes before restoring a version.",
+      "add-to": "Add to {slot}",
+      "draft-note": "Saves to the draft. Buyers see it after a platform administrator approves it.",
+      "discard": "Discard changes",
+      "save-draft": "Save to draft",
+      "saved": "Saved to draft.",
+      "approved": "Navigation approved.",
+      "restored": "Version {n} copied into the draft.",
+      "versions": "Versions",
+      "versions-empty": "No version was saved yet.",
+      "version": "Version {n}",
+      "state-draft": "Draft",
+      "state-published": "Live",
+      "state-earlier": "Earlier",
+      "restore": "Restore",
+      "restore-label": "Restore version {n}",
+      "restore-title": "Restore version {n}?",
+      "restore-body": "This replaces the current draft, including any unsaved or unapproved changes. Buyers see no change until it is approved.",
+      "restore-confirm": "Restore to draft",
+      "leave": {
+        "title": "Leave without saving?",
+        "message": "Your changes to the navigation have not been saved.",
+        "stay": "Stay",
+        "leave": "Leave"
+      },
+      "error": {
+        "fields": "Check the marked fields and try again.",
+        "required": "Fill this in.",
+        "too-long": "Use at most {max} characters.",
+        "format": "This value is not accepted.",
+        "invalid": "This value is not accepted.",
+        "nothing": "The draft has no changes to approve.",
+        "other": "Some part of the navigation was not accepted. Check the lists and try again.",
+        "category": "Choose an active category.",
+        "changed": "The draft changed after you opened this page. Reload it and review the change.",
+        "gone": "This version no longer exists. Reload the page."
+      },
+      "title": "Menus"
     }
   },
   "settings": {
@@ -4060,7 +4201,7 @@
       }
     },
     "queue": {
-      "title": "Review queue",
+      "title": "Catalogue requests",
       "tabs": "Review queue",
       "tab": {
         "revision": "Product revisions",
@@ -4706,7 +4847,7 @@
   },
   "payments": {
     "accounts": {
-      "title": "Connected accounts",
+      "title": "Seller accounts",
       "intro": "The Stripe payout accounts of the sellers, newest first. Read-only.",
       "no-access": "You don't have access to connected accounts.",
       "no-access-title": "You don't have access to this page",
@@ -6989,8 +7130,8 @@
     "not-set": "Not set"
   },
   "reviews-moderation": {
-    "title": "Buyer reviews",
-    "page-title": "Buyer reviews",
+    "title": "Reviews",
+    "page-title": "Reviews",
     "no-access": "You do not have access to the buyer review queue.",
     "back-home": "Back to the dashboard",
     "intro": "Reviews waiting for a person, reviews buyers have reported, and reviews already hidden or removed. A review is moderated as a whole: its text is never edited. A true negative review that follows the review policy is never hidden for being negative.",

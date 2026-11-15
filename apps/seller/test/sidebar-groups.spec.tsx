@@ -2,7 +2,7 @@
 // The grouped sidebar of both panels: independent open and close, the cookie, the active group,
 // keyboard movement and the icon rail.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { Sidebar, visibleNavItems, type NavConfig } from '@mondapac/ui';
+import { navSections, Sidebar, visibleNavItems, type NavConfig } from '@mondapac/ui';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sellerNav, sellerNavItems } from '../src/nav.ts';
 
@@ -176,13 +176,13 @@ describe('seller menu structure', () => {
   const WORK = [
     's_home',
     's_performance',
+    's_categories',
+    's_suggestions',
+    's_tag_suggestions',
     's_orders',
     's_products',
     's_offers',
     's_import',
-    's_suggestions',
-    's_categories',
-    's_tag_suggestions',
     's_reviews',
     's_earnings',
   ];
@@ -209,7 +209,35 @@ describe('seller menu structure', () => {
       expect(all, gone).not.toContain(gone);
     }
     expect(sellerNav.items.some((item) => item.href === '/account/security')).toBe(false);
-    expect(sellerNav.groups?.map((group) => group.id)).toEqual(['orders', 'catalogue', 'money']);
+    expect(sellerNav.groups?.map((group) => group.id)).toEqual([
+      'requests',
+      'sales',
+      'catalogue',
+      'customers',
+      'accounting',
+    ]);
+  });
+
+  it('groups the items like the admin menu: Requests, Sales, Catalogue, Customers, Accounting', () => {
+    const everyKey = new Set(ALL);
+    const sections = navSections(sellerNav.groups, visibleNavItems(sellerNav, everyKey));
+    expect(
+      sections.map((section) =>
+        section.kind === 'group'
+          ? [section.group.id, section.items.map((item) => item.id)]
+          : section.item.id,
+      ),
+    ).toEqual([
+      's_home',
+      's_performance',
+      ['requests', ['s_categories', 's_suggestions', 's_tag_suggestions']],
+      's_orders',
+      ['catalogue', ['s_products', 's_offers', 's_import']],
+      's_reviews',
+      's_earnings',
+      's_settings',
+      's_setup',
+    ]);
   });
 
   it('pins one Settings item to the footer for any settings view key', () => {

@@ -160,7 +160,41 @@ export type OwnOpenObligationsFailure = AccessDenied;
  * What `payments` (the Stripe webhook receiver) calls. Both methods take the system actor's
  * `CallContext` unchanged and are idempotent: a repeated event changes nothing.
  */
+/**
+ * What one customer's confirmed orders and succeeded refunds add up to, for the `customers` read
+ * model. Amounts in minor units of `currency` (null with no confirmed order). No personal data.
+ */
+export interface CustomerOrderStats {
+  readonly accountId: Id<'Account'>;
+  readonly orderCount: number;
+  readonly firstOrderAt: Temporal.Instant | null;
+  readonly lastOrderAt: Temporal.Instant | null;
+  readonly spentMinor: bigint | null;
+  readonly currency: string | null;
+  readonly refundCount: number;
+  readonly refundedMinor: bigint;
+}
+
+/** A keyset page of the accounts with a confirmed order, ascending by id. */
+export interface CustomerOrderAccounts {
+  readonly accountIds: readonly Id<'Account'>[];
+}
+
+export type CustomerOrderStatsFailure = AccessDenied | { readonly code: 'validation.failed' };
+
 export interface OrderingFacade {
+  /** Rule `system`: the customers read model's order totals for one account. */
+  customerOrderStats(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<CustomerOrderStats, CustomerOrderStatsFailure>>;
+
+  /** Rule `system`: accounts with a confirmed order after `after` (null: from the start), at most `limit` (1 to 500). */
+  customerOrderAccounts(
+    context: CallContext,
+    request: { readonly after: Id<'Account'> | null; readonly limit: number },
+  ): Promise<Result<CustomerOrderAccounts, CustomerOrderStatsFailure>>;
+
   /**
    * The card holds the money. Commits the stock, then captures, then confirms the order; if the
    * stock is gone or the amount differs the authorisation is voided and the order cancelled.

@@ -292,3 +292,29 @@ admin deletes a buyer's account for them, from a support ticket.
   key, which closes this.
 - One damaged ciphertext row makes the list answer 500 (`addressFromJson` throws). Later: let
   `open` return a typed failure, skip the row and log only the address id and a code.
+
+## Customers management, phase 1, package B1: read models and the last-order facade (15 Nov 2026)
+
+- **Tables.** `customers.customer_directory` (a copy of the identity account: sign-in address,
+  display name, status, email verified, signed up; PERSONAL DATA, never logged or put in an event)
+  and `customers.customer_stats` (first and last confirmed order, order count, spent, refund count
+  and amount; no personal data). One row per customer and Market. Both are removed in the unit that
+  erases the account (account deletion), and removed or recreated by the sync when identity no
+  longer has the account.
+- **Kept by events, replaced never incremented.** `SyncCustomerReadModel` consumes
+  `identity.customer-account-registered`, `account-display-name-changed`, `account-email-verified`,
+  `account-disabled` and `account-enabled`, and `ordering.order-paid` and `refund-succeeded`. It reads
+  the account through `identity.customerDirectoryRecords` and the totals through
+  `ordering.customerOrderStats` (both rule `system`, before any unit opens) and replaces the rows, so a
+  repeated or late event changes nothing. `customers` cannot import `ordering`, so the peers are
+  bound at start by `CustomersReadModelsModule`, like the deletion flow.
+- **Backfill and reconcile.** Job `customers.reconcile-read-models` (daily and at worker start) walks
+  `identity.customerDirectoryPage` and `ordering.customerOrderAccounts` by keyset (at most 200 pages of
+  200 per phase per run) and replaces every row.
+- **Facade.** `CUSTOMERS_READ_FACADE.lastOrderAt(system context, accountId)` and
+  `ownLastOrderAt(customer context)`: the last confirmed order, `null` for none, and
+  `customers.customer-unknown` for a customer with no directory row (the caller fails closed).
+  Promotions' `CUSTOMER_ORDER_HISTORY` is bound to it; an admin's preview of the returning-customer
+  discount answers "unknown" until a permission-based read is needed.
+- **Left for B2 and B3.** Admin list API (views, search, filters, saved filters, export) and the
+  customer page reads.

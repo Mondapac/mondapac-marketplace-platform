@@ -23,6 +23,7 @@ import { registerSubscriptionsFrom } from '../../platform/events/event-subscript
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
 import { CREDIT_REPOSITORY, REFERRAL_REPOSITORY } from './application/ports/credit.repository';
+import { CustomersModule } from '../customers';
 import { CUSTOMER_ORDER_HISTORY, STORE_FOLLOWS } from './application/ports/customer-facts';
 import { DELIVERED_ORDER_FACTS } from './application/ports/order-facts';
 import { REFERRAL_SIGNALS } from './application/ports/referral-signals';
@@ -154,6 +155,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   imports: [
     CatalogModule,
     CommissionPayoutsModule,
+    CustomersModule,
     IdentityModule,
     PricingModule,
     SellersModule,

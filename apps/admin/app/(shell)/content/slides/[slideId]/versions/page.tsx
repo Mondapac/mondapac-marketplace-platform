@@ -44,14 +44,14 @@ export default async function SlideVersionsPage({
   const title = t('content.title');
   if (read.kind !== 'ok') {
     return (
-      <AdminShell session={gate.session} activeId="content" title={title}>
+      <AdminShell session={gate.session} activeId="slides" title={title}>
         <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
         <LoadError message={t('content.unavailable')} retryLabel={t('load.retry')} />
       </AdminShell>
     );
   }
   return (
-    <AdminShell session={gate.session} activeId="content" title={title}>
+    <AdminShell session={gate.session} activeId="slides" title={title}>
       <SlideVersions
         key={`${read.body.updatedAt}:${read.body.status}:${read.body.versions.length}`}
         slide={read.body}

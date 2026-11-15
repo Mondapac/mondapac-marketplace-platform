@@ -18,7 +18,7 @@ import {
 } from '../../src/modules/catalog/application/use-cases/own-products-export.use-case';
 import { OwnProductsList } from '../../src/modules/catalog/application/use-cases/own-products-list.use-case';
 import { Offer } from '../../src/modules/catalog/domain/offer';
-import { ExceljsSheetWriter } from '../../src/modules/catalog/infrastructure/xlsx/exceljs-sheet-writer';
+import { ExceljsSheetWriter } from '../../src/platform/list-export/exceljs-sheet-writer';
 import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
 import { PrismaOwnCatalogReader } from '../../src/modules/catalog/infrastructure/prisma-own-catalog.reader';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
