@@ -290,4 +290,22 @@ describe.each(['AU', 'ZZ'] as const)('column preferences in market %s', (code) =
 
     expect(read.ok && read.value.columns).toEqual(['code', 'offers']);
   });
+
+  it('refuses a list whose column vocabulary repeats an id or has too many', () => {
+    const base = definitions[0]!;
+    expect(() =>
+      new ListRegistry().register('catalog', [{ ...base, columns: ['code', 'code'] }]),
+    ).toThrow('column vocabulary');
+    expect(() =>
+      new ListRegistry().register('catalog', [
+        { ...base, columns: Array.from({ length: MAX_PREFERRED_COLUMNS + 1 }, (_, i) => `c${i}`) },
+      ]),
+    ).toThrow('column vocabulary');
+  });
+
+  it('asks the view key before it judges the column ids', async () => {
+    const { save, as } = setup();
+    const blind = admin([]);
+    expect(failure(await save.execute(as(blind), input(['nope'])))).toBe('access.denied');
+  });
 });

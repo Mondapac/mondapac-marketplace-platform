@@ -52,6 +52,14 @@ export class ColumnPreferenceSave extends UseCase<
     const { deps } = this;
     const list = columnListOf(deps.registry, body.value['listKey']);
     if (!list.ok) return list;
+    const viewed = await holds(
+      deps.authorisation,
+      context,
+      'lists.column-preference-save-view',
+      list.value.definition.viewKey,
+    );
+    if (!viewed.ok) return viewed;
+
     const raw = body.value['columns'];
     if (!Array.isArray(raw)) return invalid('columns', 'type');
     const given: unknown[] = raw;
@@ -64,14 +72,6 @@ export class ColumnPreferenceSave extends UseCase<
       if (columns.includes(id)) return invalid('columns', 'duplicate');
       columns.push(id);
     }
-    const viewed = await holds(
-      deps.authorisation,
-      context,
-      'lists.column-preference-save-view',
-      list.value.definition.viewKey,
-    );
-    if (!viewed.ok) return viewed;
-
     const { market } = context;
     const listKey = list.value.definition.listKey;
     const now = deps.clock.now();

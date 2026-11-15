@@ -51,8 +51,9 @@ export class PrismaColumnPreferenceStore implements ColumnPreferenceStore {
       data: { columns: [...preference.columns], updatedAt: toDate(preference.updatedAt) },
     });
     if (changed.count > 0) return;
-    // A concurrent first save of the same choice collides on the unique index; the unit is
-    // serializable, so the platform retries it and the second attempt updates.
+    // A concurrent first save of the same choice collides on the unique index. The unit is
+    // serializable and the update above read the key first, so PostgreSQL reports the collision as
+    // 40001 and the platform retries (proved by the concurrent test in the db-spec).
     await client.listsColumnPreference.create({
       data: {
         id: preference.id,

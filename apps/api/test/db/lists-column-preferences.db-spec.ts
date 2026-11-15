@@ -100,6 +100,20 @@ describe.each(TEST_MARKETS)('lists column preferences in market %s (database)', 
     expect((await rows(mine)).map((row) => row.list_key)).toEqual(['admin.ordering.orders']);
   });
 
+  it('lets two first saves of one choice run at once: one row, no error', async () => {
+    const mine = idOf<'Account'>();
+
+    const results = await Promise.all([
+      within(market, () => store.put(market, preference(mine, ['code']))),
+      within(market, () => store.put(market, preference(mine, ['offers']))),
+    ]);
+
+    expect(results.every((result) => result.ok)).toBe(true);
+    const stored = await rows(mine);
+    expect(stored).toHaveLength(1);
+    expect(['code', 'offers']).toContain(stored[0]!.columns[0]);
+  });
+
   it('never finds, changes or removes the choice of another account or Market', async () => {
     const mine = idOf<'Account'>();
     const theirs = idOf<'Account'>();
