@@ -8343,7 +8343,7 @@
     "switch": "Delete delivery addresses",
     "state-on": "On",
     "state-off": "Off",
-    "months": "Months after delivery",
+    "months": "Months after the order is completed",
     "months-help": "A whole number from {min} to {max}. Counted from delivery, or from the cancellation, full refund or shipment for orders never delivered.",
     "never-set": "Not set yet: deletion is off.",
     "updated": "Version {version}, updated {when}",

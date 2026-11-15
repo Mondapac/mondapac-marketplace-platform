@@ -87,7 +87,7 @@ describe('ship-to retention panel', () => {
     expect(screen.getByRole('switch', { name: 'Delete delivery addresses' })).toBeTruthy();
     expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false');
     expect(screen.getByText(/Deletion is permanent/)).toBeTruthy();
-    expect(screen.queryByLabelText('Months after delivery')).toBeNull();
+    expect(screen.queryByLabelText('Months after the order is completed')).toBeNull();
     expect(screen.getByText('Not set yet: deletion is off.')).toBeTruthy();
   });
 
@@ -98,7 +98,9 @@ describe('ship-to retention panel', () => {
     );
     expect(screen.getByText(/You can see this setting but not change it/)).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>('switch').disabled).toBe(true);
-    expect(screen.getByLabelText<HTMLInputElement>('Months after delivery').disabled).toBe(true);
+    expect(
+      screen.getByLabelText<HTMLInputElement>('Months after the order is completed').disabled,
+    ).toBe(true);
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     expect(screen.getByText(/Version 2/)).toBeTruthy();
   });
@@ -106,7 +108,7 @@ describe('ship-to retention panel', () => {
   it('turns on with a confirm step and a step-up code, prefilled with 24 months', async () => {
     panel(setting());
     fireEvent.click(screen.getByRole('switch'));
-    const months = screen.getByLabelText<HTMLInputElement>('Months after delivery');
+    const months = screen.getByLabelText<HTMLInputElement>('Months after the order is completed');
     expect(months.value).toBe('24');
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(call).not.toHaveBeenCalled();
@@ -154,7 +156,9 @@ describe('ship-to retention panel', () => {
 
   it('confirms before shortening but not before lengthening', async () => {
     panel(setting({ enabled: true, months: 24, version: 1, updatedAt: '2026-11-10T01:00:00Z' }));
-    fireEvent.change(screen.getByLabelText('Months after delivery'), { target: { value: '36' } });
+    fireEvent.change(screen.getByLabelText('Months after the order is completed'), {
+      target: { value: '36' },
+    });
     call.mockResolvedValueOnce(
       ok(setting({ enabled: true, months: 36, version: 2, updatedAt: '2026-11-15T01:00:00Z' })),
     );
@@ -162,7 +166,9 @@ describe('ship-to retention panel', () => {
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByText(/Version 2/)).toBeTruthy());
 
-    fireEvent.change(screen.getByLabelText('Months after delivery'), { target: { value: '6' } });
+    fireEvent.change(screen.getByLabelText('Months after the order is completed'), {
+      target: { value: '6' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(call).toHaveBeenCalledTimes(1);
     expect(
@@ -173,7 +179,9 @@ describe('ship-to retention panel', () => {
   it.each(['0', '121', '1.5', ''])('refuses %j months before sending', (value) => {
     panel(setting());
     fireEvent.click(screen.getByRole('switch'));
-    fireEvent.change(screen.getByLabelText('Months after delivery'), { target: { value } });
+    fireEvent.change(screen.getByLabelText('Months after the order is completed'), {
+      target: { value },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(call).not.toHaveBeenCalled();
     expect(screen.getByText('Enter a whole number of months from 1 to 120.')).toBeTruthy();
@@ -181,7 +189,9 @@ describe('ship-to retention panel', () => {
 
   it('on a stale 409 shows the message and reloads the latest on request', async () => {
     panel(setting({ enabled: true, months: 24, version: 1, updatedAt: '2026-11-10T01:00:00Z' }));
-    fireEvent.change(screen.getByLabelText('Months after delivery'), { target: { value: '30' } });
+    fireEvent.change(screen.getByLabelText('Months after the order is completed'), {
+      target: { value: '30' },
+    });
     call.mockResolvedValueOnce(refused(409, 'conflict.retry'));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>
@@ -193,7 +203,9 @@ describe('ship-to retention panel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reload latest' }));
     await waitFor(() => expect(screen.getByText(/Version 2/)).toBeTruthy());
     expect(call).toHaveBeenLastCalledWith('GET', PATH);
-    expect(screen.getByLabelText<HTMLInputElement>('Months after delivery').value).toBe('18');
+    expect(
+      screen.getByLabelText<HTMLInputElement>('Months after the order is completed').value,
+    ).toBe('18');
     expect(screen.queryByText(/Another admin changed/)).toBeNull();
   });
 });
