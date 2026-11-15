@@ -401,6 +401,8 @@
       },
       "dialog": {
         "keep": "Keep as it is",
+        "type-to-confirm": "Type the name to confirm",
+        "step-up-note": "We'll ask for your two-step code next.",
         "deactivate": {
           "title": "Deactivate {name}'s admin account?",
           "body": "They're signed out straight away and can't sign in.",

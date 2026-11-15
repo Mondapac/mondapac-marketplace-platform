@@ -149,7 +149,7 @@ export {
   type PageItem as PaginationPageItem,
   type PaginationLabels,
 } from './data/pagination.tsx';
-export { CARD_TABLE } from './data/card-table.ts';
+export { CARD_TABLE, ROW_ACTIONS_COLUMN_ID } from './data/card-table.ts';
 export { MemberColumns } from './data/member-columns.tsx';
 export { addressLines } from './data/address.ts';
 export { EmailText } from './data/email-text.tsx';
@@ -271,6 +271,11 @@ export {
   type PrefsStore,
 } from './palette/panel-prefs.ts';
 export { panelToolsLabels } from './palette/palette-labels.ts';
+export {
+  ConfirmAction,
+  type ConfirmActionProps,
+  type ConfirmLevel,
+} from './overlay/confirm-action.tsx';
 export { BottomSheet, type BottomSheetProps } from './overlay/bottom-sheet.tsx';
 export { useDesktop, useMediaQuery, DESKTOP_QUERY, WIDE_QUERY } from './list/use-desktop.ts';
 export { ListThumb } from './list/list-thumb.tsx';

@@ -213,3 +213,31 @@ describe('ListThumb and BottomSheet', () => {
     expect(html).toContain('aria-label="Close"');
   });
 });
+
+describe('ListColumnsPanel and the Actions column', () => {
+  it('never offers the row Actions column in the picker', () => {
+    const html = renderToStaticMarkup(
+      <ListColumnsPanel
+        columns={['sku', 'actions']}
+        optional={['sku', 'price', 'actions']}
+        defaults={['sku']}
+        fixed={[{ id: 'name', label: 'Name' }]}
+        optionalLabel={(column) => `col-${column}`}
+        labels={{
+          title: 'Columns',
+          help: 'h',
+          always: 'Always shown',
+          up: (c) => `up ${c}`,
+          down: (c) => `down ${c}`,
+          reset: 'Reset',
+          save: 'Save',
+        }}
+        onSave={() => {}}
+        close={() => {}}
+      />,
+    );
+    expect(html).toContain('col-sku');
+    expect(html).toContain('col-price');
+    expect(html).not.toContain('col-actions');
+  });
+});
