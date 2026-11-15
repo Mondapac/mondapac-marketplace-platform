@@ -8,9 +8,12 @@ import type { ChangeValues } from '../domain/request';
  * - `reverted`: the subject held `after` and now holds `before` again (written in the open unit);
  * - `changed-since`: the subject no longer holds `after` (someone changed it again), nothing
  *   was written;
- * - `gone`: the subject no longer exists, nothing was written.
+ * - `gone`: the subject no longer exists, nothing was written;
+ * - `not-permitted`: the deciding admin may not make this change in the owning module (for
+ *   example a revert that would switch AI back on without the AI setting's own key), nothing
+ *   was written.
  */
-export type RevertOutcome = 'reverted' | 'changed-since' | 'gone';
+export type RevertOutcome = 'reverted' | 'changed-since' | 'gone' | 'not-permitted';
 
 export interface RevertRequest {
   readonly requestId: Id<'SystemRequest'>;

@@ -317,6 +317,8 @@ export class FakeStepUp implements StepUpProofConsumer {
 export class FakeSubjects implements SystemChangeReverter {
   readonly values = new Map<string, Readonly<Record<string, unknown>>>();
   readonly reverts: RevertRequest[] = [];
+  /** Refs whose revert the owning module refuses the decider (`not-permitted`). */
+  readonly refused = new Set<string>();
 
   set(market: string, ref: string, value: Readonly<Record<string, unknown>>): void {
     this.values.set(`${market}:${ref}`, value);
@@ -331,6 +333,7 @@ export class FakeSubjects implements SystemChangeReverter {
     const key = `${context.market.marketId}:${request.subjectRef}`;
     const current = this.values.get(key);
     if (current === undefined) return Promise.resolve('gone');
+    if (this.refused.has(request.subjectRef)) return Promise.resolve('not-permitted');
     if (JSON.stringify(current) !== JSON.stringify(request.after)) {
       return Promise.resolve('changed-since');
     }

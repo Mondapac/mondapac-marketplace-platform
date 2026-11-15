@@ -65,6 +65,7 @@ const EXPECTED: Readonly<Record<SystemRequestsFailure['code'], number>> = {
   'system-requests.changed-since': 409,
   'system-requests.subject-gone': 409,
   'system-requests.revert-unavailable': 503,
+  'system-requests.revert-not-permitted': 403,
   'system-requests.not-low-risk': 409,
   'system-requests.policy-conflict': 409,
 };
@@ -365,6 +366,7 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     ],
     [{ code: 'system-requests.subject-gone' }, 409, undefined],
     [{ code: 'system-requests.revert-unavailable' }, 503, undefined],
+    [{ code: 'system-requests.revert-not-permitted' }, 403, undefined],
     [
       { code: 'second-factor.required', actionKey: 'system-requests.request.decide-high' },
       403,

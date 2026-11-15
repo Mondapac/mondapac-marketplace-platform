@@ -80,6 +80,8 @@ export type SystemRequestsFailure =
   | { readonly code: 'system-requests.subject-gone' }
   /** No module restores this kind of change in this build. */
   | { readonly code: 'system-requests.revert-unavailable' }
+  /** The owning module refuses this admin the change the revert would make. */
+  | { readonly code: 'system-requests.revert-not-permitted' }
   /** Bulk approve takes low-risk requests only. */
   | { readonly code: 'system-requests.not-low-risk' }
   /** Another admin changed the policy first; the page reloads. */
@@ -265,7 +267,8 @@ export async function openInUnit(
  * `SystemRequestRecorder.openReview`: checks what the owning module hands over and opens the review
  * in the caller's open unit. A malformed kind, key or value, an area outside the policy areas,
  * or a kind no module can revert is a programming error of the caller: it throws, and the
- * caller's unit rolls back. A missing note is the admin's: `validation.failed` on `note`.
+ * caller's unit rolls back. A missing note is the admin's: `validation.failed` on `note`, asked
+ * only when the area is reviewed in the Market (else nothing opens and no note is needed).
  */
 export async function recordAppliedChange(
   deps: SystemRequestsDependencies,
@@ -295,10 +298,12 @@ export async function recordAppliedChange(
   }
   const admin = signedInAdmin(context);
   if (admin === null) return err({ code: 'access.denied' });
+  if (sameValues(change.before, change.after)) return ok(null);
+  // The note is asked for only where the change is reviewed: an area that is off opens nothing.
+  if (!(await policyInUnit(deps, context, change.area)).enabled) return ok(null);
   const note = checkText(change.note, MAX_NOTE);
   if (!note.ok)
     return err({ code: 'validation.failed', fields: [{ path: 'note', code: note.code }] });
-  if (sameValues(change.before, change.after)) return ok(null);
   return ok(
     await openInUnit(deps, context, admin, {
       area: change.area,
@@ -630,6 +635,7 @@ async function revertRequest(
       return err({ code: 'system-requests.changed-since', newerRequestId: null });
     }
     if (outcome === 'gone') return err({ code: 'system-requests.subject-gone' });
+    if (outcome === 'not-permitted') return err({ code: 'system-requests.revert-not-permitted' });
     if (outcome !== 'reverted') throw new Error('system-requests: unknown revert outcome');
     const decision = kind === 'reject' ? 'rejected' : 'withdrawn';
     const now = deps.clock.now();
