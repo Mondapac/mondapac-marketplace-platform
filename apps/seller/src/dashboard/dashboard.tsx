@@ -18,6 +18,7 @@ import { known, OFFER_STATUSES, shortInstant } from '../catalog/format.ts';
 import type { OfferView } from '../catalog/types.ts';
 import type { LedgerEntry } from '../earnings/types.ts';
 import type { SellerOrderView } from '../orders/types.ts';
+import { PAYOUT_ACCOUNT_PATH } from '../payout/types.ts';
 import { formatMinor } from '../price/money.ts';
 import {
   COUNT_LIMIT,
@@ -60,7 +61,7 @@ const ACTIONS = [
   { id: 'stock-locations', href: '/settings/stock-locations', anyOf: ['inventory.stock.view'] },
   {
     id: 'payout-account',
-    href: '/settings/payout-account',
+    href: PAYOUT_ACCOUNT_PATH,
     anyOf: ['payments.payout-account.view'],
   },
   {
@@ -97,7 +98,7 @@ function Notices({ data }: { readonly data: SellerDashboardData }) {
       <Banner key="payout" tone="attention" title={t('notice.payout.title')}>
         <p>
           {t('notice.payout.body')}{' '}
-          <a className="font-medium underline" href="/settings/payout-account">
+          <a className="font-medium underline" href={PAYOUT_ACCOUNT_PATH}>
             {t('notice.payout.action')}
           </a>
         </p>
