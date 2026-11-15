@@ -2285,6 +2285,7 @@
         "service-areas": "Service areas",
         "assistant": "Smart assistant",
         "account-deletion": "Account deletion",
+        "ship-to-retention": "Delivery address retention",
         "delivery": "Delivery rules",
         "fleets": "Delivery fleets",
         "wallet": "Customer wallet",
@@ -5112,6 +5113,11 @@
         "credit": {
           "issue": "issue store credit",
           "approve": "decide a credit request"
+        }
+      },
+      "ordering": {
+        "ship-to-retention": {
+          "change": "change delivery address retention"
         }
       },
       "customers": {
@@ -8324,6 +8330,41 @@
       "value-code-needed": "Required: the name has no Latin letters or digits. Use letters a to z, digits and hyphens.",
       "value-code-bad": "Start with a letter; use only letters a to z, digits and hyphens.",
       "title": "Value suggestions from sellers"
+    }
+  },
+  "ship-to-retention": {
+    "title": "Delivery address retention",
+    "permission-view": "Delivery address retention: view",
+    "unavailable": "The delivery address retention setting could not be loaded. Try again later.",
+    "section": "Delete delivery addresses",
+    "intro": "Permanently deletes the delivery address, phone and buyer note of orders that were completed at least the chosen number of months ago: delivered, cancelled, refunded in full, or shipped but never delivered. Orders still waiting to ship are never touched.",
+    "read-only": "You can see this setting but not change it. Changing it needs the delivery address retention manage permission.",
+    "permanent": "Deletion is permanent. A deleted address cannot be restored and disappears from every view, including order pages and support tools. A daily job applies it to every order that qualifies.",
+    "switch": "Delete delivery addresses",
+    "state-on": "On",
+    "state-off": "Off",
+    "months": "Months after the order is completed",
+    "months-help": "A whole number from {min} to {max}. Counted from delivery, or from the cancellation, full refund or shipment for orders never delivered.",
+    "never-set": "Not set yet: deletion is off.",
+    "updated": "Version {version}, updated {when}",
+    "save": "Save",
+    "cancel": "Cancel",
+    "reload": "Reload latest",
+    "saved": "Delivery address retention saved.",
+    "confirm": {
+      "title": "Delete delivery addresses permanently?",
+      "body": "From the next daily run, the delivery address, phone and buyer note of every order completed at least {months} months ago (delivered, cancelled, refunded in full, or shipped but never delivered) will be deleted for good. Orders still waiting to ship are never touched. This cannot be undone.",
+      "yes": "Save and delete permanently"
+    },
+    "error": {
+      "months": "Enter a whole number of months from {min} to {max}.",
+      "stale": "Another admin changed this setting first. Reload to see the latest values, check them and save again.",
+      "invalid": "The setting was refused as invalid. Check the values and try again.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "csrf": "Your session changed. Reload the page and try again.",
+      "denied": "You do not have permission to change this setting.",
+      "unavailable": "The setting could not be saved right now. Try again later.",
+      "unknown": "The setting could not be saved. Try again."
     }
   },
   "refund-limits": {
