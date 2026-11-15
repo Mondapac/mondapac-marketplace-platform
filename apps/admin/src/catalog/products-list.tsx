@@ -55,6 +55,8 @@ import {
   type View,
 } from './products-types.ts';
 
+const noActions = () => [];
+
 type Failure = 'denied' | 'too-broad' | 'unavailable';
 
 function failureOf(
@@ -207,13 +209,15 @@ export function ProductsList({
   const clearSelection = selection.clear;
 
   // The Market's List paging decides what the answer holds: page numbers need the total, Previous
-  // and next only whether another page follows. Without a total the footer is told one more row
-  // than this page shows while another page follows, so its Next button knows where the end is.
+  // and next only whether another page follows. Without a total the footer is told one row
+  // past this page while another page follows, so its Next button knows where the end is.
   const total =
     answer === null
       ? 0
       : (answer.total ??
-        (answer.page - 1) * answer.pageSize + answer.items.length + (answer.hasNext ? 1 : 0));
+        (answer.hasNext
+          ? answer.page * answer.pageSize + 1
+          : (answer.page - 1) * answer.pageSize + answer.items.length));
   const mode: ListPagingMode =
     answer?.total === null || answer?.total === undefined ? 'prev-next' : paging;
 
@@ -273,7 +277,6 @@ export function ProductsList({
   const rowActions = useProductRowActions({
     csrfToken,
     onChanged: () => {
-      clearSelection();
       void load(query);
       void loadSaved();
     },
@@ -286,14 +289,14 @@ export function ProductsList({
       title={
         filtered
           ? t('empty.no-match')
-          : counts !== null && counts.all > 0
+          : (counts !== null && counts.all > 0) || (counts === null && query.view !== 'all')
             ? t(`empty.view.${query.view}`)
             : t('empty.none')
       }
       body={
         filtered
           ? t('empty.no-match-help')
-          : counts !== null && counts.all > 0
+          : (counts !== null && counts.all > 0) || (counts === null && query.view !== 'all')
             ? undefined
             : t('empty.none-help')
       }
@@ -452,7 +455,8 @@ export function ProductsList({
           timeZone={timeZone}
           empty={empty}
           skeletonRows={skeleton ? listSkeletonRowCount(query.pageSize) : undefined}
-          actions={rowActions.items}
+          // Rows kept after a failed refresh belong to another list than the query: no actions on them.
+          actions={failure === null ? rowActions.items : noActions}
           selection={selection}
         />
       }

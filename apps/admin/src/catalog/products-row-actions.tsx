@@ -59,6 +59,8 @@ export function useProductRowActions({
   const [problem, setProblem] = useState<string | null>(null);
   // A ref, not only state: a second click must not start a second request before a render.
   const inFlight = useRef(false);
+  // The latest dry run: an older answer must not fill a dialog opened since.
+  const dryRun = useRef(0);
 
   const post = (action: string, id: string, extra: Record<string, unknown> = {}) =>
     call<BulkAnswer>('POST', BULK, { action, productIds: [id], ...extra }, csrfToken);
@@ -84,11 +86,12 @@ export function useProductRowActions({
           : result.failure.status === 403
             ? t('bulk.error.denied')
             : t('bulk.error.unavailable');
-      if (asking === null) toast.error(text);
-      else setProblem(text);
       if (result.failure.code === 'retire.count-changed' && asking?.kind === 'delete') {
+        // The dialog reloads with the new count; the message stays so the change is not silent.
         void openDelete(row);
-      }
+        setProblem(text);
+      } else if (asking === null) toast.error(text);
+      else setProblem(text);
       return;
     }
     setAsking(null);
@@ -101,9 +104,11 @@ export function useProductRowActions({
   }
 
   async function openDelete(row: ProductRow) {
+    const ticket = ++dryRun.current;
     setProblem(null);
     setAsking({ kind: 'delete', row, preview: { state: 'loading' } });
     const result = await post('delete', row.productId, { dryRun: true });
+    if (ticket !== dryRun.current) return;
     setAsking((current) =>
       current === null || current.kind !== 'delete' || current.row.productId !== row.productId
         ? current
@@ -149,6 +154,7 @@ export function useProductRowActions({
         label: t('row.menu.pause'),
         icon: 'ban',
         onSelect: () => {
+          dryRun.current += 1;
           setProblem(null);
           setAsking({ kind: 'pause', row });
         },
@@ -206,7 +212,10 @@ export function useProductRowActions({
         else if (asking.preview.state === 'ready')
           void run('delete', asking.row, { confirmOfferCount: asking.preview.confirm });
       }}
-      onCancel={() => setAsking(null)}
+      onCancel={() => {
+        dryRun.current += 1;
+        setAsking(null);
+      }}
     />
   );
   return { items, dialogs };

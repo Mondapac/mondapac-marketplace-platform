@@ -1206,6 +1206,16 @@ describe('product list helpers', () => {
     expect(names).toEqual(['Open', 'Deactivate…', 'Delete…']);
   });
 
+  it('pages without a total: an open range, no tab counts, Next only while another page follows', async () => {
+    cleanup();
+    serve(() => page([row()], { total: null, counts: null, hasNext: true }));
+    mount();
+    await screen.findByText('Lamb cutlets 500 g');
+    expect(screen.getByText('1–1 products')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Active' })).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Next' }).disabled).toBe(false);
+  });
+
   it('cleans a saved column list', () => {
     expect(cleanColumns(undefined)).toEqual([]);
     expect(cleanColumns(['offers', 'x', 3, 'offers', 'created'])).toEqual(['offers', 'created']);
