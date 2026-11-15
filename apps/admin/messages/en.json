@@ -1579,13 +1579,6 @@
   },
   "content": {
     "title": "Storefront content",
-    "intro": "Pages and slides on the buyer site, for this Market.",
-    "tabs": {
-      "label": "Content sections",
-      "pages": "Pages",
-      "slides": "Slides",
-      "navigation": "Navigation"
-    },
     "no-access": {
       "title": "You don't have access to this page",
       "body": "Your role can't see storefront content. Ask a platform administrator if you need it.",
@@ -2053,7 +2046,8 @@
           "generic": "The order could not be saved. Try again.",
           "reload": "Load current list"
         }
-      }
+      },
+      "intro": "Slides on the buyer site, for this Market."
     },
     "pages": {
       "status": {
@@ -2455,7 +2449,9 @@
         "reload": "Reload the page",
         "restored": "Version {n} copied into the draft.",
         "error-gone": "This version no longer exists. Reload the page."
-      }
+      },
+      "title": "Pages",
+      "intro": "Pages on the buyer site, for this Market."
     },
     "navigation": {
       "page-title": "Navigation",
@@ -2549,7 +2545,8 @@
         "category": "Choose an active category.",
         "changed": "The draft changed after you opened this page. Reload it and review the change.",
         "gone": "This version no longer exists. Reload the page."
-      }
+      },
+      "title": "Menus"
     }
   },
   "settings": {

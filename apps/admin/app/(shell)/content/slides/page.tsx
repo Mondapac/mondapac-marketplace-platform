@@ -1,7 +1,6 @@
 import { LinkButton, LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { ContentNoAccess } from '../../../../src/content/content-no-access.tsx';
-import { ContentTabs } from '../../../../src/content/content-tabs.tsx';
 import {
   NEW_SLIDE_PATH,
   SLIDE_EDIT_PERMISSION,
@@ -15,7 +14,7 @@ import { displayZone } from '../../../../src/shared/format.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations('content');
-  return { title: t('title') };
+  return { title: t('slides.title') };
 }
 
 export default async function SlidesPage() {
@@ -28,28 +27,18 @@ export default async function SlidesPage() {
   if (!permissionKeys.includes(SLIDE_READ_PERMISSION)) {
     return <ContentNoAccess session={gate.session} />;
   }
-  const title = t('content.title');
+  const title = t('content.slides.title');
   return (
     <AdminShell session={gate.session} activeId="slides" title={title}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">{title}</h1>
-          <p className="text-fg-muted">{t('content.intro')}</p>
+          <p className="text-fg-muted">{t('content.slides.intro')}</p>
         </div>
         {permissionKeys.includes(SLIDE_EDIT_PERMISSION) ? (
           <LinkButton href={NEW_SLIDE_PATH}>{t('content.slides.new')}</LinkButton>
         ) : null}
       </div>
-      <ContentTabs
-        active="slides"
-        permissionKeys={permissionKeys}
-        labels={{
-          nav: t('content.tabs.label'),
-          pages: t('content.tabs.pages'),
-          navigation: t('content.tabs.navigation'),
-          slides: t('content.tabs.slides'),
-        }}
-      />
       <div className="mb-4">
         <SlidesViewSwitch
           active="all"
