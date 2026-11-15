@@ -854,6 +854,25 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/attributes:search': 120,
 };
 
+/**
+ * Query keys that narrow a read to one owner: a malformed value is refused (400), never dropped,
+ * so a read meant for one customer can never come back as the whole Market's.
+ */
+const SCOPE_KEYS: ReadonlySet<string> = new Set(['ordering/admin/orders:accountId']);
+
+/** Whether the request names a scope key whose value has the wrong shape. */
+function badScope(method: string, target: string, requestUrl: string): boolean {
+  if (method !== 'GET') return false;
+  const source = new URL(requestUrl).searchParams;
+  for (const entry of SCOPE_KEYS) {
+    const [path, key] = entry.split(':') as [string, string];
+    if (path !== target) continue;
+    const value = source.get(key);
+    if (value !== null && QUERY_SHAPES[target]?.[key]?.test(value) !== true) return true;
+  }
+  return false;
+}
+
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
 function upstreamQuery(method: string, target: string, requestUrl: string): string {
   // The relay allows an id segment only when it is a UUID, so the template is the path with
@@ -1175,6 +1194,7 @@ export async function relay(
     if (read === null) return jsonError(413, 'request.too-large');
     body = read;
   }
+  if (badScope(request.method, target, request.url)) return jsonError(400, 'validation.failed');
   let outgoing: Headers;
   try {
     outgoing = upstreamHeaders(request, host, config);

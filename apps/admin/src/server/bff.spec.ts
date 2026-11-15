@@ -969,9 +969,11 @@ describe('relay of the customers list and customer page', () => {
     expect(upstream.mock.calls[0]?.[0]).toBe(
       `http://api.test/ordering/admin/orders?page=1&accountId=${ID}`,
     );
+    // A malformed scope is refused, never dropped (that would list the whole Market's orders).
     const bad = 'ordering/admin/orders?accountId=someone&page=1';
-    await relay(config, get(bad), pathOf(bad), upstream);
-    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/ordering/admin/orders?page=1');
+    const refused = await relay(config, get(bad), pathOf(bad), upstream);
+    expect(refused.status).toBe(400);
+    expect(upstream).toHaveBeenCalledOnce();
   });
 
   it('relays the Money tab reads that the client builds from a variable path', async () => {

@@ -685,8 +685,11 @@ describe('a second Market (NZD, Pacific/Auckland)', () => {
   it('reads a day in the owning zone at the day boundary', () => {
     const instant = '2026-11-02T21:00:00.000Z';
     expect(dayOf(instant, 'en-AU', 'Australia/Brisbane')).toBe('3 Nov 2026');
-    expect(dayOf(instant, 'en-AU', 'Pacific/Auckland')).toBe('3 Nov 2026');
     expect(dayOf(instant, 'en-AU', 'Europe/London')).toBe('2 Nov 2026');
+    // 12:30Z is 10:30 pm in Brisbane and already the next day (1:30 am) in Auckland.
+    const late = '2026-11-02T12:30:00.000Z';
+    expect(dayOf(late, 'en-AU', 'Australia/Brisbane')).toBe('2 Nov 2026');
+    expect(dayOf(late, 'en-AU', 'Pacific/Auckland')).toBe('3 Nov 2026');
   });
 });
 
