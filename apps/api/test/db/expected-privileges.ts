@@ -1017,6 +1017,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    // The inbox of the read model subscribers: appended to only (DELETE with the prune job).
+    'customers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
     'legal.marketing_consents': {
