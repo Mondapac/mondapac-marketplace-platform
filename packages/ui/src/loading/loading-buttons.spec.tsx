@@ -35,6 +35,7 @@ describe('Button loading', () => {
     button.focus();
     act(() => button.click());
     expect(button.textContent).toBe('Saving…');
+    expect(button.querySelector('span')?.className).toContain('truncate');
     expect(screen.getByTestId('spinner').getAttribute('aria-hidden')).toBe('true');
     expect(button.getAttribute('aria-busy')).toBe('true');
     expect(button.getAttribute('aria-disabled')).toBe('true');
@@ -44,7 +45,7 @@ describe('Button loading', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
   });
 
-  it('holds the width it had at rest', () => {
+  it('holds exactly the width it had at rest', () => {
     const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(132);
     const { rerender } = render(<Button>Save changes</Button>);
     rerender(
@@ -52,9 +53,20 @@ describe('Button loading', () => {
         Save changes
       </Button>,
     );
-    expect(screen.getByRole('button').style.minWidth).toBe('132px');
+    expect(screen.getByRole('button').style.width).toBe('132px');
     rerender(<Button>Save changes</Button>);
-    expect(screen.getByRole('button').style.minWidth).toBe('');
+    expect(screen.getByRole('button').style.width).toBe('');
+    width.mockRestore();
+  });
+
+  it('takes its natural width when first rendered busy (no rest width yet)', () => {
+    const width = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(132);
+    render(
+      <Button loading loadingLabel="Saving…">
+        Save changes
+      </Button>,
+    );
+    expect(screen.getByRole('button').style.width).toBe('');
     width.mockRestore();
   });
 

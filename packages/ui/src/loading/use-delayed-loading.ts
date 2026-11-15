@@ -47,14 +47,19 @@ export function useDelayedLoading(
   const [stalled, setStalled] = useState(false);
   // When the loading state became visible, to hold it for the minimum.
   const shownAt = useRef<number | null>(null);
+  // Read when a timer starts, so a caller passing a new options object never restarts the clocks.
+  const timing = useRef({ delay, minVisible, slowAfter, stalledAfter });
+  timing.current = { delay, minVisible, slowAfter, stalledAfter };
 
   useEffect(() => {
+    const { delay, minVisible, slowAfter, stalledAfter } = timing.current;
     if (loading) {
       const timers = [
         setTimeout(() => setSlow(true), slowAfter),
         setTimeout(() => setStalled(true), stalledAfter),
       ];
-      // A loading that starts again while a held skeleton is still up keeps it up, no new delay.
+      // A loading that starts again while a held skeleton is still up keeps it up, no new delay;
+      // its minimum still counts from when it first showed, so it can go as soon as this ends.
       if (shownAt.current === null) {
         timers.push(
           setTimeout(() => {
@@ -79,7 +84,7 @@ export function useDelayedLoading(
       Math.max(0, minVisible - (Date.now() - shownAt.current)),
     );
     return () => clearTimeout(hide);
-  }, [loading, delay, minVisible, slowAfter, stalledAfter]);
+  }, [loading]);
 
   return { visible, slow: loading && slow, stalled: loading && stalled };
 }

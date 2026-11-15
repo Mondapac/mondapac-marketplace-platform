@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useLayoutEffect,
   useRef,
   type AnchorHTMLAttributes,
@@ -57,22 +58,28 @@ export function Button({
 }: ButtonProps) {
   const size = variant === 'link' ? '' : 'h-(--mp-size-control) px-4';
   const own = useRef<HTMLButtonElement | null>(null);
-  // The width at rest, measured after every idle render, so the busy button starts from it and
-  // does not jump when the label changes to the in-progress one ("Save changes" -> "Saving…").
+  // The width at rest, measured after every idle render, so the busy button keeps exactly that
+  // width (design: "measured and fixed") and nothing beside it moves when the label changes to the
+  // in-progress one ("Save changes" -> "Saving…"); a longer busy label is cut with an ellipsis, so
+  // keep it short. A button first rendered busy has no rest width and takes its natural width.
   const restWidth = useRef<number | null>(null);
   useLayoutEffect(() => {
     if (!loading && own.current !== null) restWidth.current = own.current.offsetWidth;
   });
   const held = loading && restWidth.current !== null && restWidth.current > 0;
+  const setRef = useCallback(
+    (node: HTMLButtonElement | null) => {
+      own.current = node;
+      if (typeof ref === 'function') ref(node);
+      else if (ref) ref.current = node;
+    },
+    [ref],
+  );
   return (
     <button
-      ref={(node) => {
-        own.current = node;
-        if (typeof ref === 'function') ref(node);
-        else if (ref) ref.current = node;
-      }}
+      ref={setRef}
       type={type}
-      style={held ? { ...style, minWidth: restWidth.current ?? undefined } : style}
+      style={held ? { ...style, width: restWidth.current ?? undefined } : style}
       // Loading keeps the button focusable (aria-disabled, not disabled) so focus is not lost.
       disabled={disabled}
       aria-disabled={loading || undefined}
@@ -96,8 +103,14 @@ export function Button({
       }}
       {...rest}
     >
-      {loading ? <Spinner /> : null}
-      {loading && loadingLabel !== undefined ? loadingLabel : children}
+      {loading ? (
+        <>
+          <Spinner />
+          <span className="min-w-0 truncate">{loadingLabel ?? children}</span>
+        </>
+      ) : (
+        children
+      )}
     </button>
   );
 }

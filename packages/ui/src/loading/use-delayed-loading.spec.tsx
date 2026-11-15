@@ -88,4 +88,35 @@ describe('useDelayedLoading', () => {
     expect(result.current.slow).toBe(false);
     expect(result.current.stalled).toBe(false);
   });
+
+  it('after a re-entry during the hold, hides when the second load ends (minimum already met)', () => {
+    const { result, rerender } = renderHook(({ loading }) => useDelayedLoading(loading), {
+      initialProps: { loading: true },
+    });
+    advance(LOADING_SHOW_DELAY_MS);
+    rerender({ loading: false });
+    advance(100);
+    rerender({ loading: true });
+    advance(LOADING_MIN_VISIBLE_MS);
+    rerender({ loading: false });
+    advance(0);
+    expect(result.current.visible).toBe(false);
+  });
+
+  it('does not restart its clocks when the caller passes a new options object', () => {
+    const { result, rerender } = renderHook(
+      ({ loading }) => useDelayedLoading(loading, { delay: LOADING_SHOW_DELAY_MS }),
+      { initialProps: { loading: true } },
+    );
+    advance(LOADING_SHOW_DELAY_MS - 50);
+    rerender({ loading: true });
+    advance(50);
+    expect(result.current.visible).toBe(true);
+  });
+
+  it('leaves no timer behind when unmounted while loading', () => {
+    const { unmount } = renderHook(() => useDelayedLoading(true));
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
