@@ -15,6 +15,8 @@ export const adminNav: NavConfig = {
     { id: 'marketing', labelKey: 'nav.group.marketing', icon: 'tag' },
     { id: 'orders', labelKey: 'nav.group.orders', icon: 'clipboard' },
     { id: 'money', labelKey: 'nav.group.money', icon: 'wallet' },
+    // The security centre (SOC package 5; john 2026-11-15: a group of its own, Security first).
+    { id: 'audit-logs', labelKey: 'nav.group.audit-logs', icon: 'lock', alwaysGroup: true },
   ],
   items: [
     { id: 'home', icon: 'home', labelKey: 'nav.home', href: '/' },
@@ -185,6 +187,14 @@ export const adminNav: NavConfig = {
       href: '/wallet/credit-requests',
       group: 'money',
       anyOf: ['wallet.credit.view'],
+    },
+    {
+      id: 'security',
+      icon: 'shield-check',
+      labelKey: 'nav.security',
+      href: '/security/alerts',
+      group: 'audit-logs',
+      anyOf: ['security.centre.view'],
     },
     {
       id: 'settings',

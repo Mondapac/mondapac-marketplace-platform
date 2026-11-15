@@ -117,7 +117,8 @@
       "sellers": "Sellers",
       "marketing": "Marketing",
       "orders": "Orders & customers",
-      "money": "Money"
+      "money": "Money",
+      "audit-logs": "Audit Logs"
     },
     "wallet-credits": "Issue credit",
     "wallet-requests": "Credit approvals",
@@ -130,7 +131,8 @@
     "categories": "Categories",
     "review-moderation": "Buyer reviews",
     "business-activities": "Business activities",
-    "tags": "Tags"
+    "tags": "Tags",
+    "security": "Security"
   },
   "home": {
     "title": "Dashboard",
@@ -683,7 +685,11 @@
         "changed": "Last change"
       },
       "health": {
-        "band": { "healthy": "Healthy", "at-risk": "At risk", "unhealthy": "Unhealthy" },
+        "band": {
+          "healthy": "Healthy",
+          "at-risk": "At risk",
+          "unhealthy": "Unhealthy"
+        },
         "new": "New",
         "no-data": "No data",
         "none": "Not measured yet",
@@ -7246,8 +7252,12 @@
         "seo-description": "Search description",
         "invalid": "This value is not valid."
       },
-      "body": { "empty": "No content yet. Add a block below." },
-      "add": { "label": "Add block" },
+      "body": {
+        "empty": "No content yet. Add a block below."
+      },
+      "add": {
+        "label": "Add block"
+      },
       "block": {
         "name": "Block {n}: {type}",
         "text": "Text",
@@ -7290,7 +7300,11 @@
       "checks": {
         "title": "Checks",
         "none": "No findings.",
-        "severity": { "error": "Must fix", "warning": "Check", "notice": "Note" },
+        "severity": {
+          "error": "Must fix",
+          "warning": "Check",
+          "notice": "Note"
+        },
         "code": {
           "cover-missing": "Add a cover image.",
           "cover-alt-missing": "Describe the cover image (alt text).",
@@ -8899,5 +8913,245 @@
       "denied": "You can't change this. You may be acting as a seller; this setting is not available then.",
       "unknown": "The change could not be saved. Try again."
     }
+  },
+  "security-centre": {
+    "title": "Security",
+    "intro": "Alerts from the security rules, and who responds to them.",
+    "tabs": {
+      "label": "Security pages",
+      "alerts": "Alerts",
+      "on-call": "On call"
+    },
+    "no-access-title": "You don't have access to the security centre",
+    "no-access": "It needs the View security centre permission (security.centre.view). Ask an admin who manages roles to add it to your role.",
+    "not-found-title": "Alert not found",
+    "not-found": "This alert does not exist in this Market.",
+    "back-home": "Go to the dashboard",
+    "zone-note": "Times are in {zone}.",
+    "rules-ran": "Rules ran {when}",
+    "rules-never": "The rules have not run yet",
+    "updates": "Updates every 30 seconds",
+    "refresh-failed": "Couldn't refresh. Showing alerts as of {time}.",
+    "banner": {
+      "no-roster-title": "No on-call roster is set up. Alerts are not being sent.",
+      "no-roster": "Nobody is emailed or texted, and critical alerts can't be resolved until the roster file is on the server. Ask DevOps to set it up.",
+      "stale-title": "The security rules have not run for {minutes} minutes.",
+      "stale": "New alerts may not be created. The rules normally run every minute. Check the job runner, or ask DevOps."
+    },
+    "tiles": {
+      "label": "Live alerts",
+      "s1": "Critical (S1)",
+      "s2": "High (S2)",
+      "s34": "Medium and low",
+      "none": "None live",
+      "s1-oldest": "Oldest open {minutes} min",
+      "s2-sub": "Sent by email in business hours",
+      "s34-sub": "In the daily and weekly digest",
+      "on-call": "On call now",
+      "nobody": "Nobody",
+      "no-roster": "No roster on the server"
+    },
+    "severity": {
+      "s1": "S1 · Critical",
+      "s2": "S2 · High",
+      "s3": "S3 · Medium",
+      "s4": "S4 · Low"
+    },
+    "state": {
+      "open": "Open",
+      "acknowledged": "Acknowledged",
+      "resolved": "Resolved"
+    },
+    "key": {
+      "account": "Account",
+      "ip": "IP address",
+      "market": "Market",
+      "event": "Event"
+    },
+    "resolution": {
+      "contained": "Contained",
+      "false-positive": "False positive",
+      "duplicate": "Duplicate",
+      "accepted-risk": "Accepted risk"
+    },
+    "resolution-help": {
+      "contained": "The threat was real and has been stopped.",
+      "false-positive": "Nothing was wrong; the rule fired on normal activity.",
+      "duplicate": "Another alert covers the same thing.",
+      "accepted-risk": "Real, but we have decided to live with it."
+    },
+    "channel": {
+      "email": "Email",
+      "sms": "SMS",
+      "call": "Call",
+      "team-chat": "Team chat"
+    },
+    "filters": {
+      "state": "State",
+      "severity": "Severity",
+      "live": "Live",
+      "open": "Open",
+      "acknowledged": "Acknowledged",
+      "resolved": "Resolved",
+      "all": "All"
+    },
+    "col": {
+      "alert": "Alert",
+      "severity": "Severity",
+      "state": "State",
+      "key": "Key",
+      "events": "Events",
+      "opened": "Opened",
+      "response": "Response"
+    },
+    "response": {
+      "acknowledged-by": "Acknowledged by {name}",
+      "acknowledged": "Acknowledged",
+      "resolved": "{resolution}",
+      "s1-left": "Open {minutes} min · {left} min left",
+      "s1-overdue": "Overdue by {minutes} min",
+      "s2": "Email at the next business start",
+      "s2-sent": "Emailed",
+      "s3": "In daily digest",
+      "s4": "In weekly report",
+      "not-sent": "Not sent (no roster)"
+    },
+    "events-count": "{count, plural, one {# event} other {# events}}",
+    "list-foot": "{count, plural, one {# alert} other {# alerts}} · by severity, then newest",
+    "masked-note": "IP addresses are masked in the list. Open an alert to see it in full.",
+    "load-more": "Load more",
+    "empty": {
+      "live-title": "No live alerts",
+      "live": "The rules ran {when} and found nothing.",
+      "filtered-title": "No alerts match these filters",
+      "filtered": "Change the state or severity filters to see more."
+    },
+    "error": {
+      "alerts-title": "Couldn't load alerts",
+      "alerts": "The server did not answer. Alert emails are sent by the server whether or not this page loads.",
+      "on-call-title": "Couldn't load the on-call view"
+    },
+    "ago": {
+      "now": "just now",
+      "minutes": "{count} min ago",
+      "hours": "{count} h ago",
+      "days": "{count} d ago"
+    },
+    "detail": {
+      "page-title": "Security alert",
+      "back": "Alerts",
+      "details": "Details",
+      "events": "Events",
+      "first-event": "First event",
+      "last-event": "Last event",
+      "opened": "Opened",
+      "rule": "Rule",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copy-key": "Copy the key",
+      "respond-title": "Respond within 15 minutes",
+      "respond-left": "Open {minutes} min · {left} min left",
+      "respond-overdue": "Open {minutes} min · overdue by {over} min",
+      "escalation": "Escalation step {step} of {max}. Next message {when} unless someone acknowledges.",
+      "escalation-done": "Escalation step {step} of {max}. No more messages will be sent; the alert stays open here.",
+      "no-roster": "Not sent: there is no on-call roster, so nobody has been told about this alert.",
+      "waiting-title": "Waiting for business hours",
+      "waiting": "Email at {when}.",
+      "stopped-title": "Escalation stopped",
+      "stopped": "Acknowledged by {name}, {when}. Resolve it when the work is done.",
+      "timeline": "Timeline",
+      "tl-opened": "Opened by the rule",
+      "tl-opened-sub": "{count, plural, one {# event} other {# events}} since {first}",
+      "tl-delivery": "{channel} to {recipient}",
+      "tl-outcome": {
+        "sent": "sent",
+        "failed": "failed",
+        "not-configured": "not set up yet",
+        "no-contact": "no contact details"
+      },
+      "tl-step": "Step {step}",
+      "tl-acknowledged": "Acknowledged by {name}",
+      "tl-resolved": "Resolved by {name} · {resolution}",
+      "tl-digest-s3": "Will be in the daily digest",
+      "tl-digest-s4": "Will be in the weekly report",
+      "channels-note": "SMS, calls and team chat are not connected yet. Only email is sent today.",
+      "resolution": "Resolution",
+      "resolved-by": "By {name}, {when}",
+      "someone": "an admin",
+      "acknowledge": "Acknowledge",
+      "resolve": "Resolve…",
+      "hint-open": "Acknowledge stops the escalation. A resolved alert can't be changed.",
+      "hint-no-permission": "You need the Respond to security alerts permission to act on alerts.",
+      "hint-s1": "Only {commander} (incident commander) or {owner} (security owner) can resolve a critical alert. Acknowledge it to stop the escalation.",
+      "hint-s1-unnamed": "Only the incident commander or the security owner can resolve a critical alert. Acknowledge it to stop the escalation.",
+      "hint-no-roster": "Critical alerts can't be resolved until the on-call roster is set up.",
+      "acknowledged-toast": "Acknowledged. Escalation stopped.",
+      "resolved-toast": "Alert resolved.",
+      "conflict-acknowledged": "{name} acknowledged this alert {when}. Nothing you did was saved.",
+      "conflict-resolved": "{name} resolved this alert {when}. Nothing you did was saved.",
+      "conflict": "This alert changed while you were looking. Nothing you did was saved; this is the latest version.",
+      "acting-as": "You are signed in as a seller. Leave that session to act on security alerts.",
+      "error": "Couldn't save. Try again.",
+      "refresh-failed": "Couldn't refresh. Showing this alert as of {time}."
+    },
+    "resolve": {
+      "title": "Resolve alert",
+      "intro": "{title}. A resolved alert is final and can't be reopened or edited.",
+      "outcome": "Outcome",
+      "note": "What happened and what you did",
+      "note-help": "Shown on the alert. Not sent in emails.",
+      "note-short": "Write at least 10 characters.",
+      "counter": "{count} / 1000",
+      "cancel": "Cancel",
+      "submit": "Resolve alert",
+      "submit-why": "Choose an outcome and write at least 10 characters to resolve.",
+      "conflict-acknowledged": "{name} acknowledged this alert meanwhile. Your outcome and note are kept; you can still resolve it.",
+      "conflict-resolved": "{name} resolved this alert {when}. Your note was not saved.",
+      "copy-note": "Copy your note"
+    },
+    "badge": {
+      "label": "{count, plural, one {# critical alert. Open the security alerts} other {# critical alerts. Open the security alerts}}",
+      "text": "{count, plural, one {# critical alert} other {# critical alerts}}",
+      "announce": "New critical security alert."
+    },
+    "on-call": {
+      "now": "On call now",
+      "since": "Week started {start} · hands over {end}",
+      "clock": "Local time in {zone} is {time}.",
+      "in-hours": "Inside business hours ({start} to {end}).",
+      "out-hours": "Outside business hours ({start} to {end}). Only critical alerts are sent now; high alerts wait for the next business start.",
+      "commander": "Incident commander",
+      "owner": "Security owner",
+      "resolves": "Resolves critical alerts",
+      "or": "{a} or {b}",
+      "escalation": "Critical escalation",
+      "escalation-help": "Until someone acknowledges, the next person is contacted every {minutes} minutes, for up to {steps} steps.",
+      "escalation-after": "After the last person the chain starts again from the top.",
+      "step-now": "Now",
+      "step-plus": "+{minutes} min",
+      "rotation": "Rotation",
+      "this-week": "This week",
+      "from": "From {date}",
+      "roster-note": "The roster is server configuration. To change it, ask DevOps. Only names are shown here; contact details stay on the server.",
+      "channels": "Who hears what",
+      "col-severity": "Severity",
+      "col-who": "Who hears",
+      "col-when": "When",
+      "col-channels": "Channels",
+      "who-s1": "On call, then the chain",
+      "who-s2": "On call and security owner",
+      "who-digest": "Security owner",
+      "when-s1": "24/7",
+      "when-s2": "Business hours",
+      "when-s3": "Daily digest",
+      "when-s4": "Weekly report",
+      "working": "{channel} · working",
+      "not-set-up": "{channel} · not set up",
+      "page": "This page",
+      "digest": "Email digest",
+      "empty-title": "No on-call roster",
+      "empty": "The roster is a file on the server. It names who is on call each week, the escalation order, the incident commander and the security owner. Until it is there, no alert is sent. Ask DevOps to add it."
+    },
+    "loading": "Loading alerts"
   }
 }

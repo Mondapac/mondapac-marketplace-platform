@@ -26,6 +26,8 @@ import { UserMenu } from '../auth/user-menu.tsx';
 import { adminNav } from '../nav.ts';
 import { adminGoShortcuts, adminPaletteEntries } from '../palette.ts';
 import { AdminNotifications } from '../notifications/admin-notifications.tsx';
+import { CriticalAlertsBadge } from '../security-centre/critical-badge.tsx';
+import { VIEW_PERMISSION as SECURITY_VIEW } from '../security-centre/types.ts';
 import { showsNoticeBell } from '../notifications/types.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
 import { panelHostFor } from './bff.ts';
@@ -106,6 +108,7 @@ export async function AdminShell({
                 <>
                   <ShortcutsButton />
                   <PaletteSearchButton />
+                  {session.permissionKeys.includes(SECURITY_VIEW) ? <CriticalAlertsBadge /> : null}
                   {bell ? <AdminNotifications csrfToken={session.csrfToken} /> : null}
                   <UserMenu
                     name={session.displayName}
