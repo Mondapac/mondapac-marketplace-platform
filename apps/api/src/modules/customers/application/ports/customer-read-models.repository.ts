@@ -25,6 +25,13 @@ export interface CustomerReadModelRepository {
   /** The stats row of one customer, or null when it has none. */
   findStats(market: MarketContext, accountId: Id<'Account'>): Promise<CustomerStatsEntry | null>;
 
+  /** A keyset page of the account ids that have a directory row, ascending, after `after`. */
+  directoryIds(
+    market: MarketContext,
+    after: Id<'Account'> | null,
+    limit: number,
+  ): Promise<readonly Id<'Account'>[]>;
+
   /** Removes both rows of one customer (account erasure, or an account identity no longer has). */
   removeAllOf(market: MarketContext, accountId: Id<'Account'>): Promise<void>;
 }

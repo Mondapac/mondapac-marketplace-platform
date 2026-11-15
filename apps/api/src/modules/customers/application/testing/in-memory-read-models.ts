@@ -29,6 +29,16 @@ export class InMemoryReadModels implements CustomerReadModelRepository {
     return Promise.resolve(this.stats.get(this.key(market, accountId)) ?? null);
   }
 
+  directoryIds(market: MarketContext, after: Id<'Account'> | null, limit: number) {
+    const prefix = `${market.marketId}:`;
+    const ids = [...this.directory.keys()]
+      .filter((key) => key.startsWith(prefix))
+      .map((key) => key.slice(prefix.length) as Id<'Account'>)
+      .filter((id) => after === null || id > after)
+      .sort();
+    return Promise.resolve(ids.slice(0, limit));
+  }
+
   removeAllOf(market: MarketContext, accountId: Id<'Account'>) {
     this.directory.delete(this.key(market, accountId));
     this.stats.delete(this.key(market, accountId));

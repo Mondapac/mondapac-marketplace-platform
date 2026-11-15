@@ -278,6 +278,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'ordering.seller_orders_unrecorded_shipments_idx':
     "CREATE INDEX seller_orders_unrecorded_shipments_idx ON ordering.seller_orders USING btree (market_id, shipped_at) WHERE ((inventory_recorded_at IS NULL) AND (fulfilment <> 'to-ship'::text))",
   // Personalization 1d-2: the bought-together rebuild pages confirmed orders by time.
+  'ordering.orders_market_id_account_id_confirmed_idx':
+    "CREATE INDEX orders_market_id_account_id_confirmed_idx ON ordering.orders USING btree (market_id, account_id) WHERE (status = 'confirmed'::text)",
   'ordering.orders_market_id_confirmed_at_id_idx':
     "CREATE INDEX orders_market_id_confirmed_at_id_idx ON ordering.orders USING btree (market_id, confirmed_at, id) WHERE (status = 'confirmed'::text)",
   // Ship-to retention (owner decision 2026-11-15): the daily purge pages cancelled orders that

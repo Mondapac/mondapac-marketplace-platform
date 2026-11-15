@@ -50,7 +50,7 @@ ALTER TABLE "customers"."customer_directory"
   ADD CONSTRAINT "customer_directory_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
   ADD CONSTRAINT "customer_directory_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
   ADD CONSTRAINT "customer_directory_status_check" CHECK ("status" IN ('active', 'disabled')),
-  ADD CONSTRAINT "customer_directory_email_lower_check" CHECK ("email_lower" = lower("email_lower") AND char_length("email_lower") BETWEEN 3 AND 320);
+  ADD CONSTRAINT "customer_directory_email_lower_check" CHECK ("email_lower" = lower(btrim("email")) AND char_length("email_lower") BETWEEN 3 AND 320);
 
 ALTER TABLE "customers"."customer_stats"
   ADD CONSTRAINT "customer_stats_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),

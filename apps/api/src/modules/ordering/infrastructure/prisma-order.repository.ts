@@ -359,6 +359,13 @@ export class PrismaOrderRepository implements OrderRepository {
   async totalsOf(market: MarketContext, accountId: Id<'Account'>) {
     const tx = this.prisma.tx(market);
     const confirmed = { marketId: market.marketId, accountId, status: 'confirmed' } as const;
+    // The account's own orders first (index market, account, created_at), then the refunds of
+    // their seller orders through the (market, order, seller) and (market, seller order) keys: the
+    // refunds are never scanned by state across the Market.
+    const own = await tx.orderingOrder.findMany({
+      where: { marketId: market.marketId, accountId },
+      select: { id: true },
+    });
     const [aggregate, latest, refunds] = await Promise.all([
       tx.orderingOrder.aggregate({
         where: confirmed,
@@ -372,18 +379,21 @@ export class PrismaOrderRepository implements OrderRepository {
         orderBy: [{ confirmedAt: 'desc' }, { id: 'desc' }],
         select: { currency: true },
       }),
-      tx.orderingRefund.aggregate({
-        where: {
-          marketId: market.marketId,
-          state: 'succeeded',
-          sellerOrder: { order: { accountId } },
-        },
-        _count: { _all: true },
-        _sum: { grossAmount: true },
-      }),
+      own.length === 0
+        ? Promise.resolve({ _count: { _all: 0 }, _sum: { grossAmount: null } })
+        : tx.orderingRefund.aggregate({
+            where: {
+              marketId: market.marketId,
+              state: 'succeeded',
+              sellerOrder: { orderId: { in: own.map((order) => order.id) } },
+            },
+            _count: { _all: true },
+            _sum: { grossAmount: true },
+          }),
     ]);
     const instant = (value: Date | null) =>
       value === null ? null : Temporal.Instant.fromEpochMilliseconds(value.getTime());
+    // One Market has one currency, so the sum is in the currency of the latest order.
     return {
       orderCount: aggregate._count._all,
       firstConfirmedAt: instant(aggregate._min.confirmedAt),

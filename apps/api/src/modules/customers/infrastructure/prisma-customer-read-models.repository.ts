@@ -110,6 +110,16 @@ export class PrismaCustomerReadModelRepository implements CustomerReadModelRepos
     };
   }
 
+  async directoryIds(market: MarketContext, after: Id<'Account'> | null, limit: number) {
+    const rows = await this.prisma.tx(market).customersCustomerDirectory.findMany({
+      where: { marketId: market.marketId, ...(after === null ? {} : { accountId: { gt: after } }) },
+      orderBy: { accountId: 'asc' },
+      take: limit,
+      select: { accountId: true },
+    });
+    return rows.map((row) => row.accountId as Id<'Account'>);
+  }
+
   async removeAllOf(market: MarketContext, accountId: Id<'Account'>): Promise<void> {
     const tx = this.prisma.tx(market);
     await tx.customersCustomerStats.deleteMany({ where: { marketId: market.marketId, accountId } });

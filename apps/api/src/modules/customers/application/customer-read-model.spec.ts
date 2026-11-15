@@ -262,9 +262,46 @@ describe.each(TEST_MARKET_IDS)('customer read models in market %s', (code) => {
   it('backfills every account and refreshes every customer with an order', async () => {
     peers.accounts.set(BOB, record(BOB, { email: 'bob@example.com' }));
     const result = await new ReconcileCustomerReadModels(gate, deps).execute(system, {});
-    expect(result).toEqual(ok({ directoryRows: 2, customersWithOrders: 1 }));
+    expect(result).toEqual(ok({ directoryRows: 2, customersWithOrders: 1, swept: 0 }));
     expect(models.directory.size).toBe(2);
     expect(models.stats.size).toBe(1);
+  });
+
+  it('skips an order that is gone, still recording the delivery', async () => {
+    const result = await sync().execute(system, {
+      orderId: id<'Order'>(0x99),
+      delivery: delivery(20),
+    });
+    expect(result).toEqual(ok({ kept: false }));
+    expect(units.onceUnits).toHaveLength(1);
+  });
+
+  it('removes a row an erasure raced with, right after the write and in the sweep', async () => {
+    // Identity answers once, then the account is erased before the second look.
+    let reads = 0;
+    const real = peers.identity.customerDirectoryRecords;
+    peers.identity.customerDirectoryRecords = (c, ids) => {
+      reads += 1;
+      return reads === 1 ? real(c, ids) : Promise.resolve(ok([]));
+    };
+    expect(await sync().execute(system, { accountId: ALICE, delivery: delivery(21) })).toEqual(
+      ok({ kept: false }),
+    );
+    expect(models.directory.size).toBe(0);
+
+    // A stale row that no event removed is swept by the reconcile.
+    peers.identity.customerDirectoryRecords = real;
+    models.directory.set(`${market.marketId}:${BOB}`, {
+      accountId: BOB,
+      email: 'bob@example.com',
+      displayName: null,
+      status: 'active',
+      emailVerified: false,
+      signedUpAt: T0,
+    });
+    const swept = await new ReconcileCustomerReadModels(gate, deps).execute(system, {});
+    expect(swept).toMatchObject({ ok: true, value: { swept: 1 } });
+    expect(models.directory.has(`${market.marketId}:${BOB}`)).toBe(false);
   });
 
   describe('the last-order read', () => {

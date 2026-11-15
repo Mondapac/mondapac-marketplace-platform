@@ -1,4 +1,4 @@
-import { err, parseId } from '@mondapac/shared-kernel';
+import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { EventDelivery } from '../../../../platform/events/event-delivery';
@@ -57,6 +57,14 @@ export class SyncCustomerReadModel extends UseCase<
           ? await accountOfRefund(this.deps, context, input.orderId, input.refundId)
           : await accountOfOrder(this.deps, context, input.orderId);
       if (!found.ok) return found;
+      if (found.value === null) {
+        // Nothing to refresh, but the delivery must still be recorded as handled.
+        const handled = await this.deps.unitOfWork.runOnce<
+          { readonly kept: boolean },
+          ReadModelFailure
+        >(context.market, input.delivery, () => Promise.resolve(ok({ kept: false })));
+        return handled.ok ? ok({ kept: false }) : handled;
+      }
       accountId = found.value;
     }
     return syncCustomer(this.deps, context, accountId, input.delivery);

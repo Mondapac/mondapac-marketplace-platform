@@ -11,6 +11,8 @@ export type ReadModelFailure =
 
 const DIRECTORY_PAGE = 200;
 const ORDER_ACCOUNT_PAGE = 200;
+/** Identity answers at most 100 ids per read. */
+const SWEEP_PAGE = 100;
 /** The most pages one reconcile run walks per phase (40,000 customers); the next night continues from the start, so a Market this size is reconciled by the events. */
 const MAX_PAGES = 200;
 
@@ -68,9 +70,25 @@ export async function syncCustomer(
     await deps.readModels.upsertStats(context.market, stats, now);
     return ok({ kept: true });
   };
-  if (delivery === null) return deps.unitOfWork.run(context.market, work);
-  const handled = await deps.unitOfWork.runOnce(context.market, delivery, work);
-  return handled.ok ? ok(handled.value.handled ? handled.value.value : { kept: true }) : handled;
+  const written =
+    delivery === null
+      ? await deps.unitOfWork.run(context.market, work)
+      : await deps.unitOfWork
+          .runOnce(context.market, delivery, work)
+          .then((handled) =>
+            handled.ok ? ok(handled.value.handled ? handled.value.value : { kept: true }) : handled,
+          );
+  if (!written.ok || !written.value.kept) return written;
+  // An erasure can commit between the reads above and the write: look again, and remove what an
+  // erased account left behind. The daily sweep closes what this narrower window still leaves.
+  const again = await deps.identity.customerDirectoryRecords(context, [accountId]);
+  if (again.ok && !again.value.some((candidate) => candidate.accountId === accountId)) {
+    return deps.unitOfWork.run(context.market, async () => {
+      await deps.readModels.removeAllOf(context.market, accountId);
+      return ok({ kept: false });
+    });
+  }
+  return written;
 }
 
 /** The account that paid a confirmed order, through `ordering`. */
@@ -78,9 +96,13 @@ export async function accountOfOrder(
   deps: ReadModelDependencies,
   context: CallContext,
   orderId: string,
-): Promise<Result<Id<'Account'>, ReadModelFailure>> {
+): Promise<Result<Id<'Account'> | null, ReadModelFailure>> {
   const notice = await deps.ordering.orderNotice(context, orderId);
-  return notice.ok ? ok(notice.value.accountId) : err({ code: 'customers.unavailable' });
+  if (notice.ok) return ok(notice.value.accountId);
+  // An order that is gone has no customer to refresh; anything else is worth a retry.
+  return notice.error.code.endsWith('not-found')
+    ? ok(null)
+    : err({ code: 'customers.unavailable' });
 }
 
 /** The account a refund went back to, through `ordering`. */
@@ -89,14 +111,19 @@ export async function accountOfRefund(
   context: CallContext,
   orderId: string,
   refundId: string,
-): Promise<Result<Id<'Account'>, ReadModelFailure>> {
+): Promise<Result<Id<'Account'> | null, ReadModelFailure>> {
   const notice = await deps.ordering.refundNotice(context, { orderId, refundId });
-  return notice.ok ? ok(notice.value.accountId) : err({ code: 'customers.unavailable' });
+  if (notice.ok) return ok(notice.value.accountId);
+  return notice.error.code.endsWith('not-found')
+    ? ok(null)
+    : err({ code: 'customers.unavailable' });
 }
 
 export interface ReconcileCounts {
   readonly directoryRows: number;
   readonly customersWithOrders: number;
+  /** Rows removed because identity no longer has the account. */
+  readonly swept: number;
 }
 
 /**
@@ -133,6 +160,38 @@ export async function reconcileReadModels(
     if (rows.value.length < DIRECTORY_PAGE) break;
   }
 
+  // Rows of accounts identity no longer has (an erasure that raced a sync): ask identity about
+  // each page of our own ids and remove the absent ones.
+  let swept = 0;
+  after = null;
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const ids = await deps.unitOfWork.run<readonly Id<'Account'>[], ReadModelFailure>(
+      context.market,
+      async () => ok(await deps.readModels.directoryIds(context.market, after, SWEEP_PAGE)),
+      { readOnly: true },
+    );
+    if (!ids.ok) return ids;
+    if (ids.value.length === 0) break;
+    const present = await deps.identity.customerDirectoryRecords(context, ids.value);
+    if (!present.ok) return err({ code: 'customers.unavailable' });
+    const known = new Set(present.value.map((record) => record.accountId));
+    const gone = ids.value.filter((accountId) => !known.has(accountId));
+    if (gone.length > 0) {
+      const removed = await deps.unitOfWork.run<number, ReadModelFailure>(
+        context.market,
+        async () => {
+          for (const accountId of gone)
+            await deps.readModels.removeAllOf(context.market, accountId);
+          return ok(gone.length);
+        },
+      );
+      if (!removed.ok) return removed;
+      swept += removed.value;
+    }
+    after = ids.value[ids.value.length - 1]!;
+    if (ids.value.length < SWEEP_PAGE) break;
+  }
+
   let customersWithOrders = 0;
   after = null;
   for (let page = 0; page < MAX_PAGES; page += 1) {
@@ -150,5 +209,5 @@ export async function reconcileReadModels(
     after = accounts.value.accountIds[accounts.value.accountIds.length - 1]!;
     if (accounts.value.accountIds.length < ORDER_ACCOUNT_PAGE) break;
   }
-  return ok({ directoryRows, customersWithOrders });
+  return ok({ directoryRows, customersWithOrders, swept });
 }
