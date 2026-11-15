@@ -239,7 +239,9 @@ describe.each(['AU', 'ZZ'] as const)('admin products list in market %s', (code) 
     const rows = [
       row({ scope: 'PLATFORM', ownerSellerId: null, status: 'published' }),
       row({ scope: 'PLATFORM', ownerSellerId: null, status: 'paused' }),
+      row({ scope: 'SELLER', status: 'paused' }),
       row({ scope: 'SELLER', status: 'unpublished' }),
+      row({ scope: 'PLATFORM', ownerSellerId: null, status: 'unpublished' }),
       row({ scope: 'SELLER', status: 'retired' }),
     ];
     const { useCase } = setup({ rows });
@@ -248,8 +250,10 @@ describe.each(['AU', 'ZZ'] as const)('admin products list in market %s', (code) 
 
     expect(result.ok && result.value.items.map((item) => item.actions)).toEqual([
       ['open', 'edit', 'pause', 'delete'],
-      ['open', 'edit', 'resume'],
+      ['open', 'edit', 'resume', 'delete'],
+      ['open', 'resume', 'delete'],
       ['open', 'delete'],
+      ['open', 'edit'],
       ['open'],
     ]);
   });

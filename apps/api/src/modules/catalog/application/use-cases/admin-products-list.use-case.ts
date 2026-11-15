@@ -174,16 +174,17 @@ export const ADMIN_PRODUCT_ACTION_RULES: readonly RowActionRule<
     permission: CATALOG_PRODUCT_PAUSE.key,
     when: (row) => row.status === 'paused',
   },
-  // Delete is `retire` for a PLATFORM product (published only) and `withdraw` for a SELLER one
-  // (published or unpublished), the same guards as the bulk Delete.
+  // Delete is `retire` for a PLATFORM product (published, paused or not) and `withdraw` for a
+  // SELLER one (published or unpublished), the same guards as the bulk Delete. The list shows a
+  // paused published product as `paused`, so that status counts as published here.
   {
     id: 'delete',
     permission: (row) =>
       row.scope === 'PLATFORM' ? CATALOG_PLATFORM_PRODUCT_RETIRE.key : CATALOG_PRODUCT_DELETE.key,
     when: (row) =>
-      row.scope === 'PLATFORM'
-        ? row.status === 'published'
-        : row.status === 'published' || row.status === 'unpublished',
+      row.status === 'published' ||
+      row.status === 'paused' ||
+      (row.scope === 'SELLER' && row.status === 'unpublished'),
   },
 ];
 
