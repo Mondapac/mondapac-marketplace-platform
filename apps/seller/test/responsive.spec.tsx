@@ -456,20 +456,14 @@ describe('settings navigation', () => {
     expect(read('src/server/seller-shell.tsx')).toContain('pinInPage ? undefined : <PinButton />');
   });
 
-  it('shows the sub-navigation column from 1180px and the back link only below it', () => {
-    expect(shell).toContain('min-[1180px]:grid-cols-[13.75rem_minmax(0,1fr)]');
-    expect(shell).toMatch(/hidden[^"]*min-\[1180px\]:block/);
-    expect(shell).toMatch(/min-\[1180px\]:hidden[^]*<BackLink href="\/settings"/);
+  it('has no second column: the back link shows only below the sidebar breakpoint', () => {
+    expect(shell).not.toContain('min-[1180px]');
+    expect(shell).not.toContain('SettingsSubNav');
+    expect(shell).toMatch(/md:hidden[^]*<BackLink href="\/settings"/);
   });
 
-  it('keeps the sub-navigation inside the viewport and lets the content column shrink', () => {
-    expect(shell).toContain('min-[1180px]:overflow-y-auto');
-    expect(shell).toContain('min-w-0');
-  });
-
-  it('keeps every hub and sub-navigation link tall enough to touch', () => {
+  it('keeps every hub link tall enough to touch', () => {
     expect(read('../../packages/ui/src/settings/settings-hub.tsx')).toContain('min-h-12');
-    expect(read('../../packages/ui/src/settings/settings-sub-nav.tsx')).toContain('min-h-10');
   });
 
   it('puts the hub cards on one column on phones and two from 640px, never three', () => {

@@ -9,6 +9,8 @@ import {
   NAV_OPEN_COOKIE,
   SIDEBAR_COOKIE,
   Sidebar,
+  buildSettingsMenuGroups,
+  type SettingsMenu,
   type Crumb,
   THEME_COOKIE,
   navOpenGroups,
@@ -29,6 +31,7 @@ import { AdminNotifications } from '../notifications/admin-notifications.tsx';
 import { showsNoticeBell } from '../notifications/types.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
 import { panelHostFor } from './bff.ts';
+import { settingEntries, visibleSettings } from '../settings/settings-nav.ts';
 import { panelConfig } from './config.ts';
 import type { AdminSession } from './session.ts';
 
@@ -43,6 +46,7 @@ export async function AdminShell({
   title,
   trail,
   pinInPage = false,
+  settingsLinkId,
   children,
 }: {
   readonly session: AdminSession;
@@ -54,9 +58,27 @@ export async function AdminShell({
    * The page draws the pin star beside its own title (settings pages), so the top bar has none.
    */
   readonly pinInPage?: boolean;
+  /** Id of the settings page being shown (the sidebar is the Settings menu under /settings). */
+  readonly settingsLinkId?: string;
   readonly children: ReactNode;
 }) {
   const t = await getTranslations();
+  const settings: SettingsMenu | undefined =
+    activeId === 'settings'
+      ? {
+          groups: buildSettingsMenuGroups(
+            visibleSettings(session.permissionKeys),
+            settingEntries,
+            (key) => t(key),
+          ),
+          ...(settingsLinkId === undefined ? {} : { activeId: settingsLinkId }),
+          backHref: '/',
+          backLabel: t('settings.menu.back'),
+          searchLabel: t('settings.menu.search'),
+          emptyLabel: t('settings.menu.empty'),
+          navLabel: t('settings.menu.label'),
+        }
+      : undefined;
   const jar = await cookies();
   const collapsed = sidebarCollapsed(jar.get(SIDEBAR_COOKIE)?.value);
   const openGroups = navOpenGroups(jar.get(NAV_OPEN_COOKIE)?.value);
@@ -93,6 +115,7 @@ export async function AdminShell({
               activeId={activeId}
               label={(key) => t(key)}
               openGroups={openGroups}
+              settings={settings}
             />
           }
           topbar={

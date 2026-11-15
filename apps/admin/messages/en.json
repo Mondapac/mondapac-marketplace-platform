@@ -2661,8 +2661,13 @@
       }
     },
     "sub": {
-      "label": "Settings pages",
       "back": "Back to Settings"
+    },
+    "menu": {
+      "label": "Settings menu",
+      "back": "Back to Dashboard",
+      "search": "Search settings",
+      "empty": "No settings match"
     },
     "assistant": {
       "title": "Smart assistant",
