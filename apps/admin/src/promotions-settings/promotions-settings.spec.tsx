@@ -96,6 +96,21 @@ describe('Settings → Promotions', () => {
     expect(bar()).toBeNull();
   });
 
+  it('keeps the save bar away until the cards have their values', async () => {
+    // The cards' reads never answer: the page stays on their skeleton.
+    call.mockImplementation(() => new Promise(() => undefined));
+    mount();
+    fireEvent.click(screen.getByLabelText('Promotions'));
+    expect(bar()).toBeNull();
+    // Once the values are there, the same change shows the bar.
+    cleanup();
+    serve();
+    mount();
+    await screen.findByRole('heading', { name: 'First-order discount' });
+    fireEvent.click(screen.getByLabelText('Promotions'));
+    expect(bar()).not.toBeNull();
+  });
+
   it('does not read the cards while the market is off, and says why', () => {
     mount(off);
     expect(call).not.toHaveBeenCalled();

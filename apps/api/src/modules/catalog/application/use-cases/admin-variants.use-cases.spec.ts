@@ -27,7 +27,7 @@ import {
 } from '../../domain/variant-type-settings';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import type { AdminVariantsReader } from '../ports/admin-variants.reader';
-import type { SheetWriter } from '../ports/sheet-writer';
+import type { SheetWriter } from '../../../../platform/list-export/sheet-writer';
 import type {
   VariantAdminReader,
   VariantRow,

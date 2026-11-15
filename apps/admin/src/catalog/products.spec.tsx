@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -451,6 +451,99 @@ describe('admin product list', () => {
     expect(screen.getByText('Loading products').closest('[role="status"]')).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Product views' })).toBeTruthy();
     expect(screen.getByRole('searchbox', { name: 'Search products' })).toBeTruthy();
+  });
+
+  it('draws skeleton rows in the shape of the columns after 200 ms, the toolbar disabled', () => {
+    vi.useFakeTimers();
+    try {
+      call.mockImplementation((_m, path) =>
+        path === 'catalog/categories'
+          ? Promise.resolve({ ok: true, status: 200, body: tree } as never)
+          : new Promise(() => undefined),
+      );
+      mount();
+      // Nothing for a fast answer: no skeleton before 200 ms.
+      expect(screen.queryAllByTestId('skeleton-row')).toHaveLength(0);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      const rows = screen.getAllByTestId('skeleton-row');
+      // 25 rows a page, at most 10 placeholders.
+      expect(rows).toHaveLength(10);
+      // Box, product (photo and title), category, status: the default columns.
+      expect(
+        [...rows[0]!.querySelectorAll('[data-skeleton]')].map((node) =>
+          node.getAttribute('data-skeleton'),
+        ),
+      ).toEqual(['select', 'thumb', 'text', 'status']);
+      // The real header stays, its select-all box disabled; the toolbar cannot act yet.
+      expect(screen.getByRole('columnheader', { name: 'Category' })).toBeTruthy();
+      expect(
+        screen.getByRole<HTMLInputElement>('checkbox', {
+          name: 'Select all products on this page',
+        }).disabled,
+      ).toBe(true);
+      expect(screen.getByRole('button', { name: 'Filter' }).closest('fieldset')?.disabled).toBe(
+        true,
+      );
+      expect(screen.getByRole('searchbox', { name: 'Search products' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says "Still loading…" at 10 s, gives up at 30 s, and loads again on Try again', async () => {
+    vi.useFakeTimers();
+    try {
+      call.mockImplementation((_m, path) =>
+        path === 'catalog/categories'
+          ? Promise.resolve({ ok: true, status: 200, body: tree } as never)
+          : new Promise(() => undefined),
+      );
+      mount();
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+      expect(screen.getByText('Still loading…').getAttribute('role')).toBe('status');
+      act(() => {
+        vi.advanceTimersByTime(20_000);
+      });
+      expect(screen.getByText('Products could not be loaded. Try again.')).toBeTruthy();
+      expect(screen.queryAllByTestId('skeleton-row')).toHaveLength(0);
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+    // Try again starts anew; the answer that never came is not waited for.
+    serve(() => page([row()]));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Lamb cutlets 500 g')).toBeTruthy();
+    expect(screen.queryByText('Products could not be loaded. Try again.')).toBeNull();
+  });
+
+  it('keeps the rows on screen with the banner above them when a refresh fails', async () => {
+    let fail = false;
+    serve(() => (fail ? 'fail' : page([row()])));
+    mount();
+    expect(await screen.findByText('Lamb cutlets 500 g')).toBeTruthy();
+    fail = true;
+    fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+    expect(await screen.findByText('Products could not be loaded. Try again.')).toBeTruthy();
+    expect(screen.getByText('Lamb cutlets 500 g')).toBeTruthy();
+  });
+
+  it('offers no "select all matching" over rows kept after a failed refresh', async () => {
+    let fail = false;
+    serve(() => (fail ? 'fail' : page([row()], { total: 500 })));
+    mount();
+    expect(await screen.findByText('Lamb cutlets 500 g')).toBeTruthy();
+    fail = true;
+    fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+    expect(await screen.findByText('Products could not be loaded. Try again.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all products on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).queryByText(/500/)).toBeNull();
   });
 
   it('shows the error banner with Try again, and the list after a retry', async () => {

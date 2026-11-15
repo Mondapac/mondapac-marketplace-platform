@@ -1,4 +1,4 @@
-import type { CallContext, Id, Population, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Population, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { StepUpFailure } from './step-up';
 
@@ -62,6 +62,19 @@ export interface CustomerAccountSummary {
   readonly displayName: string | null;
   /** The sign-in address, as typed. */
   readonly email: string;
+}
+
+/**
+ * One customer account as the `customers` read model copies it ({@link IdentityFacade.customerDirectoryRecords}).
+ * PERSONAL DATA: no module logs it or puts it in an event, an audit row or an error body.
+ */
+export interface CustomerDirectoryRecord {
+  readonly accountId: Id<'Account'>;
+  readonly email: string;
+  readonly displayName: string | null;
+  readonly status: 'active' | 'disabled';
+  readonly emailVerifiedAt: Temporal.Instant | null;
+  readonly signedUpAt: Temporal.Instant;
 }
 
 /**
@@ -313,6 +326,36 @@ export interface IdentityFacade {
     accountId: Id<'Account'>,
     requestId: Id<'AccountDeletionRequest'>,
   ): Promise<Result<{ readonly revokedSessions: number }, AccessDenied>>;
+
+  /**
+   * The directory fields of customer accounts by id, for the `customers` read model. Rule `system`;
+   * at most 100 ids; an unknown id, another Market's and a non-customer account are absent. PERSONAL
+   * DATA. Not exposed over HTTP.
+   */
+  customerDirectoryRecords(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<
+    Result<
+      readonly CustomerDirectoryRecord[],
+      AccessDenied | { readonly code: 'validation.failed' }
+    >
+  >;
+
+  /**
+   * A keyset page (ascending by id, 1 to 200) of the Market's customer accounts after `after`
+   * (null: from the start), for the one-off backfill of the `customers` read model. Rule `system`.
+   * PERSONAL DATA. Not exposed over HTTP.
+   */
+  customerDirectoryPage(
+    context: CallContext,
+    request: { readonly after: Id<'Account'> | null; readonly limit: number },
+  ): Promise<
+    Result<
+      readonly CustomerDirectoryRecord[],
+      AccessDenied | { readonly code: 'validation.failed' }
+    >
+  >;
 
   /**
    * Whether a customer account is still there (false once erased). Rule `system`; a boolean and

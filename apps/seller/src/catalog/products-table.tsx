@@ -1,6 +1,16 @@
 'use client';
 
-import { Badge, CARD_TABLE, ListThumb, SelectBox, type BadgeTone } from '@mondapac/ui';
+import {
+  Badge,
+  CARD_TABLE,
+  ListRefreshBar,
+  ListRefreshHeadRow,
+  ListSkeletonRows,
+  ListThumb,
+  SelectBox,
+  type BadgeTone,
+  type ListSkeletonCell,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { dateFormat, numberFormat } from '../shared/intl.ts';
@@ -16,6 +26,10 @@ const TONE: Record<string, BadgeTone> = {
   retired: 'neutral',
   unknown: 'neutral',
 };
+
+// The row's check box: its own column from 1024 px, the card's top corner below it.
+const SELECT_CELL =
+  'w-14 px-4 py-3 align-middle max-lg:absolute max-lg:start-4 max-lg:top-4 max-lg:w-auto max-lg:p-0';
 
 /** What the table needs to select rows (the Bulk action menu acts on the selection). */
 export interface RowSelection {
@@ -42,6 +56,7 @@ export function ProductsTable({
   timeZone,
   selection,
   empty,
+  skeletonRows,
 }: {
   readonly rows: readonly ProductRow[];
   readonly columns: readonly OptionalColumn[];
@@ -50,6 +65,11 @@ export function ProductsTable({
   readonly selection: RowSelection;
   /** Shown in place of the rows when there are none, under the column headers. */
   readonly empty?: ReactNode;
+  /**
+   * The first load (panel loading L2): this many skeleton rows in the shape of the visible
+   * columns, under the real header, in place of `rows` and `empty`.
+   */
+  readonly skeletonRows?: number;
 }) {
   const t = useTranslations('catalog.products');
   const locale = useLocale();
@@ -67,6 +87,27 @@ export function ProductsTable({
         }).format(date);
   };
   const numeric = (column: OptionalColumn) => column === 'offers';
+  const loading = skeletonRows !== undefined;
+  // One placeholder per visible column, with the real cell's classes (CARD_TABLE).
+  const skeletonCells: readonly ListSkeletonCell[] = [
+    { kind: 'select', className: SELECT_CELL },
+    { kind: 'thumb', className: `${cell} lg:min-w-72 max-lg:ps-8` },
+    { kind: 'status', className: corner },
+    {
+      kind: 'text',
+      className: `${labelled} lg:min-w-(--mp-size-data-label)`,
+      label: t('col.category'),
+    },
+    ...columns.map((column): ListSkeletonCell => ({
+      kind: numeric(column)
+        ? 'number'
+        : column === 'updated' || column === 'created'
+          ? 'date'
+          : 'text',
+      className: `${labelled} ${numeric(column) ? 'lg:text-end' : ''}`,
+      label: t(`col.${column}`),
+    })),
+  ];
   const isOn = (row: ProductRow) => selection.allMatching || selection.selected.has(row.productId);
   const onPage = rows.filter(isOn).length;
   const allOnPage = rows.length > 0 && onPage === rows.length;
@@ -90,15 +131,20 @@ export function ProductsTable({
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
       {/* The header is hidden below 1024 px, so a phone gets its select-all box in a bar of its own. */}
-      {rows.length > 0 ? (
-        <label className="flex cursor-pointer items-center gap-3 border-b border-line-row bg-muted px-4 py-3 text-sm text-fg-muted lg:hidden">
+      {loading || rows.length > 0 ? (
+        <label className="relative flex cursor-pointer items-center gap-3 border-b border-line-row bg-muted px-4 py-3 text-sm text-fg-muted lg:hidden">
           <SelectBox
             label={t('select.page-short')}
             checked={allOnPage}
             indeterminate={someOnPage}
+            disabled={loading}
             onChange={(event) => selection.onTogglePage(event.target.checked)}
           />
           <span className="ps-1">{t('select.page-short')}</span>
+          {/* Cards: the refresh bar runs under this bar, which stands in for the header. */}
+          <span className="absolute inset-x-0 top-full">
+            <ListRefreshBar />
+          </span>
         </label>
       ) : null}
       <table
@@ -112,7 +158,7 @@ export function ProductsTable({
                 label={t('select.page')}
                 checked={allOnPage}
                 indeterminate={someOnPage}
-                disabled={rows.length === 0}
+                disabled={loading || rows.length === 0}
                 onChange={(event) => selection.onTogglePage(event.target.checked)}
               />
             </th>
@@ -135,16 +181,18 @@ export function ProductsTable({
               </th>
             ))}
           </tr>
+          <ListRefreshHeadRow columns={4 + columns.length} />
         </thead>
         <tbody className={CARD_TABLE.body}>
-          {rows.length === 0 && empty !== undefined ? (
+          {loading ? <ListSkeletonRows cells={skeletonCells} rows={skeletonRows} /> : null}
+          {!loading && rows.length === 0 && empty !== undefined ? (
             <tr className="max-lg:block">
               <td colSpan={4 + columns.length} className="max-lg:block">
                 {empty}
               </td>
             </tr>
           ) : null}
-          {rows.map((row) => {
+          {(loading ? [] : rows).map((row) => {
             const status = known(row.status, PRODUCT_STATUSES);
             const name = row.name ?? row.draftName;
             return (
@@ -152,7 +200,7 @@ export function ProductsTable({
                 key={row.productId}
                 className={`${CARD_TABLE.row} max-lg:relative ${isOn(row) ? 'bg-selected' : ''}`}
               >
-                <td className="w-14 px-4 py-3 align-middle max-lg:absolute max-lg:start-4 max-lg:top-4 max-lg:w-auto max-lg:p-0">
+                <td className={SELECT_CELL}>
                   <SelectBox
                     label={t('select.row', { name: name ?? row.productCode })}
                     checked={isOn(row)}
