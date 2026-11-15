@@ -13,6 +13,15 @@ import { testDatabaseUrl } from './test-database';
  * PostgreSQL prints it. A migration that adds, drops or changes one changes this list.
  */
 const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
+  // Lists (ADR-0049): one saved-filter name per owner and list, and one shared name per list.
+  'lists.saved_filters_owner_name_key':
+    'CREATE UNIQUE INDEX saved_filters_owner_name_key ON lists.saved_filters USING btree (market_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NULL)',
+  'lists.saved_filters_seller_owner_name_key':
+    'CREATE UNIQUE INDEX saved_filters_seller_owner_name_key ON lists.saved_filters USING btree (market_id, seller_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NOT NULL)',
+  'lists.saved_filters_seller_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_seller_shared_name_key ON lists.saved_filters USING btree (market_id, seller_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NOT NULL))",
+  'lists.saved_filters_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON lists.saved_filters USING btree (market_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NULL))",
   // Blog (blog package 1): one open and one live version per post, one featured post per Market,
   // the public list and the worker's due-posts index, and the outbox's unpublished index.
   'reviews.outbox_market_id_event_id_unpublished_idx':
