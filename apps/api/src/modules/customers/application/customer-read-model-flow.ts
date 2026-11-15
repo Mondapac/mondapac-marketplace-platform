@@ -150,6 +150,8 @@ export async function reconcileReadModels(
         const now = deps.clock.now();
         for (const record of rows.value) {
           await deps.readModels.upsertDirectory(context.market, toDirectoryEntry(record), now);
+          // A customer who never ordered is not synced below: give them the all-zero stats row.
+          await deps.readModels.ensureStats(context.market, record.accountId, now);
         }
         return ok(rows.value.length);
       },

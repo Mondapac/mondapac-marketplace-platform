@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -671,6 +671,66 @@ describe('seller product list', () => {
     expect(screen.getByText('Loading products').closest('[role="status"]')).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Product views' })).toBeTruthy();
     expect(screen.getByRole('searchbox', { name: 'Search products' })).toBeTruthy();
+  });
+
+  it('draws skeleton rows in the shape of the visible columns after 200 ms', () => {
+    vi.useFakeTimers();
+    try {
+      open('pageSize=50');
+      call.mockImplementation(() => new Promise(() => undefined));
+      mount();
+      expect(screen.queryAllByTestId('skeleton-row')).toHaveLength(0);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      const rows = screen.getAllByTestId('skeleton-row');
+      expect(rows).toHaveLength(10);
+      // Box, product, status, category, then the default columns Code and Last changed.
+      expect(
+        [...rows[0]!.querySelectorAll('[data-skeleton]')].map((node) =>
+          node.getAttribute('data-skeleton'),
+        ),
+      ).toEqual(['select', 'thumb', 'status', 'text', 'text', 'date']);
+      expect(screen.getByRole('button', { name: 'Filter' }).closest('fieldset')?.disabled).toBe(
+        true,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says "Still loading…" at 10 s, gives up at 30 s, and loads again on Try again', async () => {
+    vi.useFakeTimers();
+    try {
+      call.mockImplementation(() => new Promise(() => undefined));
+      mount();
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+      expect(screen.getByText('Still loading…').getAttribute('role')).toBe('status');
+      act(() => {
+        vi.advanceTimersByTime(20_000);
+      });
+      expect(screen.getByText('Products could not be loaded')).toBeTruthy();
+      expect(screen.queryAllByTestId('skeleton-row')).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+    serve(() => page([row()]));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Olive oil 1L')).toBeTruthy();
+    expect(screen.queryByText('Products could not be loaded')).toBeNull();
+  });
+
+  it('keeps the rows on screen with the banner above them when a refresh fails', async () => {
+    let fail = false;
+    serve(() => (fail ? 'fail' : page([row()])));
+    mount();
+    expect(await screen.findByText('Olive oil 1L')).toBeTruthy();
+    fail = true;
+    fireEvent.click(screen.getByRole('button', { name: /^Drafts/ }));
+    expect(await screen.findByText('Products could not be loaded')).toBeTruthy();
+    expect(screen.getByText('Olive oil 1L')).toBeTruthy();
   });
 
   it('shows the error banner with Try again, and the list after a retry', async () => {

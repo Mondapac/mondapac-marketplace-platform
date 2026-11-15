@@ -25,6 +25,23 @@ export class InMemoryReadModels implements CustomerReadModelRepository {
     return Promise.resolve();
   }
 
+  ensureStats(market: MarketContext, accountId: Id<'Account'>) {
+    const key = this.key(market, accountId);
+    if (!this.stats.has(key)) {
+      this.stats.set(key, {
+        accountId,
+        firstOrderAt: null,
+        lastOrderAt: null,
+        orderCount: 0,
+        spentMinor: 0n,
+        currency: null,
+        refundCount: 0,
+        refundedMinor: 0n,
+      });
+    }
+    return Promise.resolve();
+  }
+
   findStats(market: MarketContext, accountId: Id<'Account'>) {
     return Promise.resolve(this.stats.get(this.key(market, accountId)) ?? null);
   }

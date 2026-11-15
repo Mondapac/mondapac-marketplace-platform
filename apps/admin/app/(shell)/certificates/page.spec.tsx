@@ -73,7 +73,7 @@ describe('certificates page', () => {
     render(await CertificatesPage(search()));
     expect(mocks.get).toHaveBeenCalledTimes(1);
     expect(mocks.get).toHaveBeenCalledWith('certification/admin/seller-certificates?limit=25');
-    expect(screen.getByRole('heading', { level: 1, name: 'Certificates' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Certification' })).toBeTruthy();
     expect(screen.getByText('1 rows, no names')).toBeTruthy();
   });
 

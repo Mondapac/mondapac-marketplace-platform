@@ -316,5 +316,51 @@ admin deletes a buyer's account for them, from a support ticket.
   `customers.customer-unknown` for a customer with no directory row (the caller fails closed).
   Promotions' `CUSTOMER_ORDER_HISTORY` is bound to it; an admin's preview of the returning-customer
   discount answers "unknown" until a permission-based read is needed.
-- **Left for B2 and B3.** Admin list API (views, search, filters, saved filters, export) and the
-  customer page reads.
+- **Left for B2 and B3.** Done in the section below.
+
+## Customers management, phase 1, packages B2 and B3: the admin list API and the customer page reads (15 Nov 2026)
+
+- **The list (B2).** `POST customers/admin/list` (key `customers.customers.view`; `POST list/ids` answers select-all) reads the two
+  read models in one query (a composite foreign key from stats to directory). Views: all, new (30
+  days), active (an order in the last 90 days), inactive, never-ordered, disabled, pending-deletion.
+  Search is an email prefix or a name `contains` (2 to 80 characters). Filters: status, verified,
+  joined and last-order dates, order count, spent in minor units. Sorts: joined, name, email,
+  last-order, orders, spent, each with the id as tie-break. Page mode (`page`, `pageSize`, total, cap
+  10,000 rows) and cursor mode (`o<offset>`). `ids` answers select-all (cap 10,000). Counts of every
+  tab come with the list. The answer is personal data: never logged, `Cache-Control: no-store`.
+- **Export.** `customers.customers.export` plus a fresh two-step proof (`customers.customers.export`,
+  spent inside the unit). CSV (formula-safe through `platform-import`, with BOM) or XLSX, streamed in
+  chunks; more than 10,000 customers is refused whole. The audit row holds the format, the row count, whether
+  ids or a filter selected them and the proof's session and instant, never an address or a name.
+- **Saved filters.** `customers.saved_filters` (personal, or shared with `customers.saved-filter.share`;
+  50 per owner, 20 shared; a closed document that holds filter keys only). Sharing, changing and
+  removing a shared one is audited.
+- **The customer page (B3).** `GET customers/admin/customers/:accountId` is the header and Overview
+  (profile, totals, first and last order, refunds). `POST .../tab-opened` audits the opening of the
+  Orders and Money tabs. Every open writes `customers.customer-page.opened` (tab and admin; no
+  customer data), in the unit that reads the customer, so a page that cannot be audited is not shown.
+  A customer of another Market, or none, is `customers.customer-not-found`.
+- **Tabs read from the owning module by account id, each under its own key.** Orders:
+  `GET ordering/admin/orders?accountId=` (`ordering.order.view`). Refunds:
+  `GET ordering/admin/customers/:accountId/refunds` (`ordering.order.view`, newest 100 with their
+  credit notes). Wallet: `GET wallet/admin/customers/:id` (balance) and
+  `.../history` (journal, `wallet.credit.view`). Credits: `GET promotions/admin/customers/:id/credits`
+  (`promotions.promotion.view`; index `credit_issuances_recipient_newest_idx`).
+- **Known gaps.** (1) The list cannot search by order number: the only peer that resolves an order
+  number (`orderNotice`) is a `system` read and refuses an admin context; it needs an admin-keyed read in
+  `ordering`. (2) Promotion usage per customer (code redemptions) is not readable: `promotion_usage` is
+  per promotion, not per account. The Money tab shows credits issued, not code usage.
+- **Known limits of the audit.** Only the Overview read and `tab-opened` write the page audit row. The
+  tab data endpoints of the owning modules (orders by `accountId`, refunds, wallet history, credits)
+  check their own key and write no row, and the default Viewer holds `ordering.order.view` and
+  `promotions.promotion.view`, so it can read ids, amounts and codes of a customer by account id
+  (no name or address). Accepted for phase 1; a per-account audit in the owning modules is the
+  follow-up if the owner wants it.
+- **Export keys.** The export needs `customers.customers.view` and `customers.customers.export`, and
+  a fresh proof of `customers.customers.export` (registered in `STEP_UP_ACTION_KEYS`).
+- **Performance follow-ups (database review).** The seven tab counts run on every list request
+  (about 0.8 s at 500,000 customers; cache or one `FILTER` query when a Market passes about 200,000).
+  `customer_directory_email_prefix_idx` is partial and the planner never uses it for a prefix search
+  (make it a full `text_pattern_ops` index in a new migration). A name search of three characters or
+  more is a scan of the Market until `pg_trgm` is approved. The two sort indexes on the stats
+  table are not used by the left join and can be dropped later.

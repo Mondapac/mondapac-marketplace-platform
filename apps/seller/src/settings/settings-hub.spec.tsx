@@ -37,14 +37,12 @@ describe('SettingsHub', () => {
     hub(OWNER);
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Store',
-      'Money',
       'Team',
     ]);
     expect(screen.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')])).toEqual(
       [
         ['Store profile', '/settings/store-profile'],
         ['Stock locations', '/settings/stock-locations'],
-        ['Payout account', '/settings/payout-account'],
         ['Members', '/settings/team'],
       ],
     );
@@ -60,27 +58,23 @@ describe('SettingsHub', () => {
   });
 
   it('puts a View only chip on a page the caller can see but not change', () => {
-    hub([
-      'payments.payout-account.view',
-      'identity.team-member.view',
-      'identity.team-member.invite',
-    ]);
-    const payout = screen.getByRole('link', { name: /Payout account/ });
-    expect(within(payout).getByText('View only')).toBeTruthy();
+    hub(['inventory.stock.view', 'identity.team-member.view', 'identity.team-member.invite']);
+    const stock = screen.getByRole('link', { name: /Stock locations/ });
+    expect(within(stock).getByText('View only')).toBeTruthy();
     const team = screen.getByRole('link', { name: /Members/ });
     expect(within(team).queryByText('View only')).toBeNull();
   });
 
   it('keeps the chip from shrinking and lets the row wrap', () => {
-    hub(['payments.payout-account.view']);
-    const link = screen.getByRole('link', { name: /Payout account/ });
+    hub(['inventory.stock.view']);
+    const link = screen.getByRole('link', { name: /Stock locations/ });
     expect(link.className).toContain('flex-wrap');
     expect(screen.getByText('View only').parentElement?.className).toContain('shrink-0');
   });
 
   it('names each group card by its heading', () => {
-    hub(['payments.payout-account.view']);
-    expect(screen.getByRole('region', { name: 'Money' })).toBeTruthy();
+    hub(['identity.team-member.view']);
+    expect(screen.getByRole('region', { name: 'Team' })).toBeTruthy();
   });
 
   it('has no personal account card (profile, two-step, sessions live in the account menu)', () => {

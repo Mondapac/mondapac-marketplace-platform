@@ -38,7 +38,42 @@ export const ACCOUNT_DELETION_REQUESTS_VIEW = definePermission('customers', {
   protected: false,
 });
 
+/**
+ * See the Customers list and a customer's page: names, sign-in addresses, order totals. Personal
+ * data, so no default role lists it (not even Viewer); the Platform Administrator grants it to the
+ * roles that need it. Every open of a customer page is audited.
+ */
+export const CUSTOMERS_CUSTOMER_VIEW = definePermission('customers', {
+  key: 'customers.customers.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Export the Customers list as CSV or XLSX: a bulk copy of personal data, so protected (only the
+ * Platform Administrator, or a custom role it grants it to) and every export needs a fresh admin
+ * step-up proof of `customers.customers.export` and is audited.
+ */
+export const CUSTOMERS_CUSTOMER_EXPORT = definePermission('customers', {
+  key: 'customers.customers.export',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Share a saved filter of the Customers list with every admin of the Market (and manage one that
+ * somebody else shared). Unprotected; also needs `customers.customers.view`.
+ */
+export const CUSTOMERS_SAVED_FILTER_SHARE = definePermission('customers', {
+  key: 'customers.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
 export const CUSTOMERS_PERMISSIONS = declarePermissions('customers', [
+  CUSTOMERS_CUSTOMER_EXPORT,
+  CUSTOMERS_CUSTOMER_VIEW,
+  CUSTOMERS_SAVED_FILTER_SHARE,
   ACCOUNT_DELETION_REQUESTS_VIEW,
   ACCOUNT_DELETION_SETTINGS_MANAGE,
   ACCOUNT_DELETION_SETTINGS_VIEW,

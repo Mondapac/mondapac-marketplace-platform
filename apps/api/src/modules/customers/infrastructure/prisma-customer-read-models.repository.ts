@@ -57,6 +57,31 @@ export class PrismaCustomerReadModelRepository implements CustomerReadModelRepos
     return count > 0;
   }
 
+  async ensureStats(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    now: Temporal.Instant,
+  ): Promise<void> {
+    await this.prisma.tx(market).customersCustomerStats.createMany({
+      data: [
+        {
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          accountId,
+          firstOrderAt: null,
+          lastOrderAt: null,
+          orderCount: 0,
+          spentMinor: 0n,
+          currency: null,
+          refundCount: 0,
+          refundedMinor: 0n,
+          computedAt: toDate(now),
+        },
+      ],
+      skipDuplicates: true,
+    });
+  }
+
   async upsertStats(
     market: MarketContext,
     entry: CustomerStatsEntry,
@@ -122,7 +147,9 @@ export class PrismaCustomerReadModelRepository implements CustomerReadModelRepos
 
   async removeAllOf(market: MarketContext, accountId: Id<'Account'>): Promise<void> {
     const tx = this.prisma.tx(market);
-    await tx.customersCustomerStats.deleteMany({ where: { marketId: market.marketId, accountId } });
+    // One statement and one lock order (the sync writes the directory row first): the stats row
+    // goes with its directory row through the foreign key's cascade. A stats row without a
+    // directory row cannot exist.
     await tx.customersCustomerDirectory.deleteMany({
       where: { marketId: market.marketId, accountId },
     });

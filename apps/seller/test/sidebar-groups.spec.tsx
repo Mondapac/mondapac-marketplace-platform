@@ -185,6 +185,7 @@ describe('seller menu structure', () => {
     's_import',
     's_reviews',
     's_earnings',
+    's_payout',
   ];
 
   it('shows daily work in the menu and Settings in the footer, and only setup before approval', () => {
@@ -205,7 +206,7 @@ describe('seller menu structure', () => {
 
   it('moves the set-once pages out of the menu, and personal Security out of the sidebar', () => {
     const all = sellerNav.items.map((item) => item.id);
-    for (const gone of ['s_stock', 's_store_profile', 's_payout', 's_team', 's_delivery']) {
+    for (const gone of ['s_stock', 's_store_profile', 's_team', 's_delivery']) {
       expect(all, gone).not.toContain(gone);
     }
     expect(sellerNav.items.some((item) => item.href === '/account/security')).toBe(false);
@@ -234,7 +235,7 @@ describe('seller menu structure', () => {
       's_orders',
       ['catalogue', ['s_products', 's_offers', 's_import']],
       's_reviews',
-      's_earnings',
+      ['accounting', ['s_earnings', 's_payout']],
       's_settings',
       's_setup',
     ]);
@@ -249,11 +250,13 @@ describe('seller menu structure', () => {
     for (const key of [
       'sellers.store-profile.view',
       'inventory.stock.view',
-      'payments.payout-account.view',
       'identity.team-member.view',
     ]) {
       expect(ids([key]), key).toContain('s_settings');
     }
+    // Payout account is its own menu item under Accounting (menu design v2), not a settings page.
+    expect(ids(['payments.payout-account.view'])).toContain('s_payout');
+    expect(ids(['payments.payout-account.view'])).not.toContain('s_settings');
   });
 
   it('hides Settings without a view key; manage keys and work keys alone do not show it', () => {

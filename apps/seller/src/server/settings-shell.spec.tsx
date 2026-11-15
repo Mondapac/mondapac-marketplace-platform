@@ -52,7 +52,7 @@ const session = (permissionKeys: string[]): SellerSession => ({
   csrfToken: 'c',
 });
 
-const STAFF = ['inventory.stock.view', 'payments.payout-account.view'];
+const STAFF = ['inventory.stock.view', 'identity.team-member.view'];
 
 async function show(linkId: string, title: string, keys = STAFF) {
   render(

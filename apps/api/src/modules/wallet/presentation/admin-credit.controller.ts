@@ -40,6 +40,7 @@ import { ApproveAdminCredit } from '../application/use-cases/approve-admin-credi
 import { IssueAdminCredit } from '../application/use-cases/issue-admin-credit.use-case';
 import { ListAdminCreditRequests } from '../application/use-cases/list-admin-credit-requests.use-case';
 import { RejectAdminCredit } from '../application/use-cases/reject-admin-credit.use-case';
+import { ViewCustomerHistory } from '../application/use-cases/view-customer-history.use-case';
 import { ViewCustomerWallet } from '../application/use-cases/view-customer-wallet.use-case';
 import {
   AdminCreditBody,
@@ -51,6 +52,7 @@ import {
   IssueCreditRequest,
   RejectCreditRequest,
 } from './admin-credit.dto';
+import { HistoryBody, historyBody } from './wallet.dto';
 import { closedBody, parseLimit, refusal } from './http-answers';
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -87,6 +89,7 @@ export class AdminWalletCreditController {
     private readonly reject: RejectAdminCredit,
     private readonly list: ListAdminCreditRequests,
     private readonly customer: ViewCustomerWallet,
+    private readonly customerHistory: ViewCustomerHistory,
   ) {}
 
   @Post('credits')
@@ -314,5 +317,44 @@ export class AdminWalletCreditController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return customerWalletBody(result.value);
+  }
+
+  @Get('customers/:customerAccountId/history')
+  @ApiOperation({
+    summary: "A customer's wallet journal, newest first (admin)",
+    description:
+      'Needs wallet.credit.view. Amounts are signed minor units (credit positive, spend negative). ' +
+      'An unknown customer is wallet.customer-not-found; a customer with no wallet has no entries.',
+  })
+  @ApiParam({ name: 'customerAccountId', format: 'uuid' })
+  @ApiQuery({ name: 'cursor', required: false, description: 'The `nextCursor` of the last page.' })
+  @ApiQuery({ name: 'limit', required: false, description: '1 to 100; default 20.' })
+  @ApiOkResponse({ type: HistoryBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'wallet.disabled or wallet.customer-not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'wallet.unavailable' })
+  async customerHistoryOf(
+    @Call() context: CallContext,
+    @Param('customerAccountId') customerAccountId: string,
+    @Query('cursor') cursor: unknown,
+    @Query('limit') limit: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.customerHistory.execute(context, {
+      customerAccountId,
+      cursor,
+      limit: parseLimit(limit),
+    });
+    logRoute(
+      this.#logger,
+      'wallet.view-customer-history-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return historyBody(result.value);
   }
 }

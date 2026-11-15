@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// Payout account and Stock locations: when only the data fails to load, the page keeps its settings
+// Stock locations: when only the data fails to load, the page keeps its settings
 // shell (sub-navigation, breadcrumb, title) around a titled critical banner, as Store profile does.
 
 const mocks = vi.hoisted(() => ({
@@ -36,17 +36,14 @@ vi.mock('./settings-shell.tsx', () => ({
     </main>
   ),
 }));
-vi.mock('../payout/payout-account.tsx', () => ({ PayoutAccountView: () => <section /> }));
 vi.mock('../stock/stock-locations.tsx', () => ({ StockLocations: () => <section /> }));
 
-import PayoutAccountPage from '../../app/(shell)/settings/payout-account/page.tsx';
 import StockLocationsPage from '../../app/(shell)/settings/stock-locations/page.tsx';
-import { loadPayoutPage } from './payout-page.ts';
 import { loadStockPage } from './stock-page.ts';
 
 const session = {
   sellerAccessState: 'approved',
-  permissionKeys: ['payments.payout-account.view', 'inventory.stock.view'],
+  permissionKeys: ['inventory.stock.view'],
   csrfToken: 'csrf',
 };
 
@@ -57,13 +54,6 @@ beforeEach(() => {
 });
 
 describe.each([
-  [
-    'Payout account',
-    'payout-account',
-    'payout.title',
-    loadPayoutPage,
-    () => PayoutAccountPage({ searchParams: Promise.resolve({}) }),
-  ],
   ['Stock locations', 'stock-locations', 'stock.title', loadStockPage, () => StockLocationsPage()],
 ] as const)('%s load error', (_name, link, title, load, render) => {
   it('keeps the session in the unavailable answer when only the data failed', async () => {

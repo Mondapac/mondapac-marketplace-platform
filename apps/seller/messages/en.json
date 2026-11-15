@@ -59,8 +59,6 @@
       "store-banner": "Store banner",
       "stock-locations": "Stock locations",
       "stock-locations-words": "warehouse, pickup address, where stock is kept",
-      "payout-bank": "Payout bank account",
-      "payout-bank-words": "bank, BSB, payments, get paid",
       "team-members": "Team members"
     },
     "empty-hint": "Check the spelling or try a shorter word."
@@ -108,7 +106,8 @@
     "settings": "Settings",
     "import": "Import",
     "performance": "Performance",
-    "categories": "Category proposals"
+    "categories": "Category proposals",
+    "payoutAccount": "Payout account"
   },
   "home": {
     "title": "Dashboard",
@@ -2819,7 +2818,8 @@
     }
   },
   "load": {
-    "retry": "Try again"
+    "retry": "Try again",
+    "slow": "Still loading…"
   },
   "security": {
     "title": "Security",
@@ -3528,13 +3528,11 @@
       "no-access-body": "Your role doesn't include any settings page. Ask the account owner to add one.",
       "group": {
         "store": "Store",
-        "money": "Money",
         "team": "Team"
       },
       "link": {
         "store-profile": "Store profile",
         "stock-locations": "Stock locations",
-        "payout-account": "Payout account",
         "team": "Members"
       }
     },

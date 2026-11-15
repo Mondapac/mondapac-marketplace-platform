@@ -6,7 +6,6 @@ import { serverGet } from '../../server/server-fetch.ts';
 import { requireSession } from '../../server/session.ts';
 import { displayZone } from '../../shared/format.ts';
 import { ContentNoAccess } from '../content-no-access.tsx';
-import { ContentTabs } from '../content-tabs.tsx';
 import type { PageDetail } from '../pages/page-types.ts';
 import {
   NAVIGATION_API_PATH,
@@ -30,7 +29,7 @@ export async function NavigationRoute() {
   if (!permissionKeys.includes(NAV_READ_PERMISSION)) {
     return <ContentNoAccess session={gate.session} activeId="menus" />;
   }
-  const title = t('content.title');
+  const title = t('content.navigation.title');
   const read = await serverGet<PageDetail>(NAVIGATION_API_PATH);
   if (read.kind === 'signed-out') redirect('/session-ended');
   const body = read.kind === 'ok' ? read.body : null;
@@ -40,16 +39,6 @@ export async function NavigationRoute() {
         <h1 className="text-2xl font-semibold">{title}</h1>
         <p className="text-fg-muted">{t('content.navigation.intro')}</p>
       </div>
-      <ContentTabs
-        active="navigation"
-        permissionKeys={permissionKeys}
-        labels={{
-          nav: t('content.tabs.label'),
-          pages: t('content.tabs.pages'),
-          navigation: t('content.tabs.navigation'),
-          slides: t('content.tabs.slides'),
-        }}
-      />
       {body === null ? (
         <LoadError message={t('content.unavailable')} retryLabel={t('load.retry')} />
       ) : (

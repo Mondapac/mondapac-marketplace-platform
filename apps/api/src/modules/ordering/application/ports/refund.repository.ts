@@ -65,6 +65,18 @@ export interface RefundRepository {
   >;
 
   /**
+   * The refunds of the orders one customer placed (any state), newest first, at most `limit`, each
+   * with its credit note id when it succeeded (the customer page's Money tab).
+   */
+  listForAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    limit: number,
+  ): Promise<
+    readonly { readonly refund: Refund; readonly creditNoteId: Id<'CreditNote'> | null }[]
+  >;
+
+  /**
    * The seller's own seller order with what earlier refunds gave back, or null: another shop's
    * seller order answers exactly as an unknown one (the seller route names only its id).
    */

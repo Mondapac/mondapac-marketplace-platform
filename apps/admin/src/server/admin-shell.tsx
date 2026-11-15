@@ -30,6 +30,7 @@ import { adminGoShortcuts, adminPaletteEntries } from '../palette.ts';
 import { AdminNotifications } from '../notifications/admin-notifications.tsx';
 import { showsNoticeBell } from '../notifications/types.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
+import { PanelNavigationProgress } from '../shared/navigation-progress.tsx';
 import { panelHostFor } from './bff.ts';
 import { settingEntries, visibleSettings } from '../settings/settings-nav.ts';
 import { panelConfig } from './config.ts';
@@ -96,6 +97,7 @@ export async function AdminShell({
       labels={panelToolsLabels((key) => t.raw(key) as string)}
     >
       <StepUpProvider>
+        <PanelNavigationProgress />
         <AppShell
           labels={{
             menu: t('nav.menu'),

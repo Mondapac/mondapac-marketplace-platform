@@ -1163,7 +1163,7 @@
     }
   },
   "certificates": {
-    "title": "Certificates",
+    "title": "Certification",
     "queue": {
       "title": "Certificates waiting for a decision",
       "no-access": "You don't have access to certificates.",
@@ -1518,7 +1518,7 @@
   },
   "pricing": {
     "holds": {
-      "title": "Held prices",
+      "title": "Pricing",
       "no-access": "You don't have access to held prices.",
       "back-home": "Back to dashboard",
       "unavailable": "Held prices could not be loaded. Try again later.",
@@ -1579,13 +1579,6 @@
   },
   "content": {
     "title": "Storefront content",
-    "intro": "Pages and slides on the buyer site, for this Market.",
-    "tabs": {
-      "label": "Content sections",
-      "pages": "Pages",
-      "slides": "Slides",
-      "navigation": "Navigation"
-    },
     "no-access": {
       "title": "You don't have access to this page",
       "body": "Your role can't see storefront content. Ask a platform administrator if you need it.",
@@ -2053,7 +2046,8 @@
           "generic": "The order could not be saved. Try again.",
           "reload": "Load current list"
         }
-      }
+      },
+      "intro": "Slides on the buyer site, for this Market."
     },
     "pages": {
       "status": {
@@ -2455,7 +2449,9 @@
         "reload": "Reload the page",
         "restored": "Version {n} copied into the draft.",
         "error-gone": "This version no longer exists. Reload the page."
-      }
+      },
+      "title": "Pages",
+      "intro": "Pages on the buyer site, for this Market."
     },
     "navigation": {
       "page-title": "Navigation",
@@ -2549,7 +2545,8 @@
         "category": "Choose an active category.",
         "changed": "The draft changed after you opened this page. Reload it and review the change.",
         "gone": "This version no longer exists. Reload the page."
-      }
+      },
+      "title": "Menus"
     }
   },
   "settings": {
@@ -4207,7 +4204,7 @@
       }
     },
     "queue": {
-      "title": "Review queue",
+      "title": "Catalogue requests",
       "tabs": "Review queue",
       "tab": {
         "revision": "Product revisions",
@@ -4849,11 +4846,12 @@
     }
   },
   "load": {
-    "retry": "Try again"
+    "retry": "Try again",
+    "slow": "Still loading…"
   },
   "payments": {
     "accounts": {
-      "title": "Connected accounts",
+      "title": "Seller accounts",
       "intro": "The Stripe payout accounts of the sellers, newest first. Read-only.",
       "no-access": "You don't have access to connected accounts.",
       "no-access-title": "You don't have access to this page",
@@ -7136,8 +7134,8 @@
     "not-set": "Not set"
   },
   "reviews-moderation": {
-    "title": "Buyer reviews",
-    "page-title": "Buyer reviews",
+    "title": "Reviews",
+    "page-title": "Reviews",
     "no-access": "You do not have access to the buyer review queue.",
     "back-home": "Back to the dashboard",
     "intro": "Reviews waiting for a person, reviews buyers have reported, and reviews already hidden or removed. A review is moderated as a whole: its text is never edited. A true negative review that follows the review policy is never hidden for being negative.",
