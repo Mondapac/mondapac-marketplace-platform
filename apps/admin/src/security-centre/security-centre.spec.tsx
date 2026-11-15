@@ -16,6 +16,7 @@ import {
   noteLength,
   rulesStale,
   stateQuery,
+  zoneLabel,
   type AlertDetail,
   type AlertSummary,
   type Summary,
@@ -112,6 +113,11 @@ describe('security centre helpers', () => {
     expect(merged.some((alert) => alert.id === 'id-49')).toBe(false);
   });
 
+  it('names a zone as people say it, keeping its id', () => {
+    expect(zoneLabel('Australia/Brisbane', 'en-AU')).toContain('Australia/Brisbane');
+    expect(zoneLabel('Not/AZone', 'en-AU')).toBe('Not/AZone');
+  });
+
   it('counts the note as the API does: trimmed, by code point', () => {
     expect(noteLength('  abc  ')).toBe(3);
     expect(noteLength('😀😀')).toBe(2);
@@ -189,6 +195,33 @@ describe('AlertsList refresh', () => {
     await waitFor(() => expect(pages.length).toBe(0));
     expect(screen.getByText(/^Couldn't load alerts\./)).toBeTruthy();
     expect(screen.queryByText('No live alerts')).toBeNull();
+  });
+
+  it('offers to clear filters when they hide everything, and marks a chosen filter', async () => {
+    pages.push(
+      () => ok({ alerts: [], next: null }),
+      () => ok({ alerts: [row()], next: null }),
+    );
+    render(wrap(<AlertsList zone="UTC" initialState="resolved" />));
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear filters' }));
+    await screen.findByRole('link', { name: 'Many failed sign-ins for one account' });
+    expect(call).toHaveBeenCalledWith(
+      'GET',
+      'security/admin/alerts?limit=50&state=open%2Cacknowledged',
+    );
+    expect(window.location.search).toBe('');
+  });
+
+  it('calls the on-call tile an alarm when nobody is on call', async () => {
+    call.mockImplementation((_method, path) => {
+      if (path === 'security/admin/summary')
+        return Promise.resolve(ok({ ...summary(), onCall: null }));
+      if (path === 'security/admin/on-call') return Promise.resolve(ok({ configured: false }));
+      return Promise.resolve(ok({ alerts: [], next: null }));
+    });
+    render(wrap(<AlertsList zone="UTC" />));
+    const nobody = await screen.findByText('Nobody');
+    expect(nobody.parentElement?.className).toContain('bg-critical-bg');
   });
 
   it('starts from the filters in the address', async () => {
@@ -326,6 +359,16 @@ describe('AlertDetailView', () => {
     poll();
     expect(await screen.findByText(/^Kazem M\. acknowledged this alert/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Acknowledge' })).toBeNull();
+  });
+
+  it('says when copying failed', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: () => Promise.reject(new Error('denied')) },
+      configurable: true,
+    });
+    mount(detail());
+    fireEvent.click(screen.getByRole('button', { name: 'Copy the key' }));
+    expect(await screen.findByText(/^Couldn't copy\./)).toBeTruthy();
   });
 
   it('lets an S1 resolver resolve a critical alert', () => {

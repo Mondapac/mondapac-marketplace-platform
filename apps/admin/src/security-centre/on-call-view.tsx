@@ -1,8 +1,8 @@
 import { Badge, CARD_TABLE, EmptyState } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
-import { displayZone, formatInstantInZone, shortDateInZone } from '../shared/format.ts';
+import { formatInstantInZone, shortDateInZone } from '../shared/format.ts';
 import { SeverityBadge } from './parts.tsx';
-import { SEVERITIES, type Channel, type OnCall, type Person } from './types.ts';
+import { SEVERITIES, zoneLabel, type Channel, type OnCall, type Person } from './types.ts';
 
 /** Only email is delivered today; the other channels answer "not set up" (SOC package 2). */
 const WORKING_CHANNELS: ReadonlySet<Channel> = new Set(['email']);
@@ -31,7 +31,7 @@ export async function OnCallView({
   const zone = onCall.zone;
   const clock = new Intl.DateTimeFormat(locale, {
     timeZone: zone,
-    hour: '2-digit',
+    hour: 'numeric',
     minute: '2-digit',
   }).format(Date.parse(now));
   const hours = onCall.businessHours;
@@ -55,7 +55,7 @@ export async function OnCallView({
             })}
           </p>
         ) : null}
-        <p className="mt-3 text-sm">{t('clock', { zone: displayZone(zone), time: clock })}</p>
+        <p className="mt-3 text-sm">{t('clock', { zone: zoneLabel(zone, locale), time: clock })}</p>
         {hours !== null ? (
           <p className="mt-1 text-sm text-fg-muted">
             {t(onCall.inBusinessHours === true ? 'in-hours' : 'out-hours', {

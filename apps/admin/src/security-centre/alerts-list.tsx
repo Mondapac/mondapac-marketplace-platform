@@ -1,6 +1,14 @@
 'use client';
 
-import { Banner, Button, CARD_TABLE, EmptyState, LoadError, SkeletonRows } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  CARD_TABLE,
+  EmptyState,
+  Icon,
+  LoadError,
+  SkeletonRows,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -20,6 +28,7 @@ import {
   type Severity,
   type StateFilter,
   type Summary,
+  zoneLabel,
 } from './types.ts';
 
 const ALL_SEVERITIES: ReadonlySet<Severity> = new Set(SEVERITIES);
@@ -163,12 +172,24 @@ export function AlertsList({
       return;
     }
     setFailed(null);
+    const known = new Set(rows.map((alert) => alert.id));
+    const added = page.body.alerts.filter((alert) => !known.has(alert.id));
     setRows((current) => {
-      const known = new Set(current.map((alert) => alert.id));
-      return [...current, ...page.body.alerts.filter((alert) => !known.has(alert.id))];
+      const have = new Set(current.map((alert) => alert.id));
+      return [...current, ...added.filter((alert) => !have.has(alert.id))];
     });
     setNext(page.body.next);
+    // Focus the first new row, so a keyboard user carries on where the list grew (Reza S9).
+    if (added[0] !== undefined) focusRow.current = added[0].id;
   };
+
+  const focusRow = useRef<string | null>(null);
+  useEffect(() => {
+    if (focusRow.current === null) return;
+    const id = focusRow.current;
+    focusRow.current = null;
+    document.querySelector<HTMLElement>(`a[href="/security/alerts/${id}"]`)?.focus();
+  });
 
   useEffect(() => {
     void loadFirst(false);
@@ -210,7 +231,7 @@ export function AlertsList({
           {summary === null ? null : ' · '}
           {t('updates')}
         </span>
-        <span>{t('zone-note', { zone })}</span>
+        <span>{t('zone-note', { zone: zoneLabel(zone, locale) })}</span>
       </div>
       {noRoster ? (
         <Banner tone="critical" title={t('banner.no-roster-title')}>
@@ -223,7 +244,9 @@ export function AlertsList({
         </Banner>
       ) : null}
       {failed === 'refresh' && loadedAt !== null ? (
-        <Banner tone="attention">{t('refresh-failed', { time: timeOf(loadedAt) })}</Banner>
+        <Banner tone="attention">
+          {t('refresh-failed', { time: timeOf(loadedAt) })} {t('retrying')}
+        </Banner>
       ) : null}
       {summary === null ? null : (
         <Tiles summary={summary} rows={rows} noRoster={noRoster} now={now} />
@@ -261,6 +284,17 @@ export function AlertsList({
             icon="shield-check"
             title={t('empty.filtered-title')}
             body={t('empty.filtered')}
+            action={
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setStateFilter('live');
+                  setSeverities(ALL_SEVERITIES);
+                }}
+              >
+                {t('filters.clear')}
+              </Button>
+            }
           />
         )
       ) : null}
@@ -309,9 +343,9 @@ function Tiles({
       >
         <span className="text-sm">{t('s1')}</span>
         <span className="text-2xl font-semibold tabular-nums">{s1}</span>
-        <span className="truncate text-sm">
+        <span className="text-sm">
           {s1 > 0 && oldestS1 !== null
-            ? t('s1-oldest', { minutes: minutesBetween(oldestS1, now) })
+            ? s1Clock(minutesBetween(oldestS1, now), (key, values) => t(key, values))
             : t('none')}
         </span>
       </div>
@@ -325,15 +359,19 @@ function Tiles({
         <span className="text-2xl font-semibold tabular-nums">{s3 + s4}</span>
         <span className="text-sm text-fg-muted">{t('s34-sub')}</span>
       </div>
-      <div className={`${tile} border-line bg-surface`}>
-        <span className="text-sm text-fg-muted">{t('on-call')}</span>
-        <span className="truncate text-lg font-semibold">
-          {summary.onCall?.name ?? t('nobody')}
-        </span>
-        <span className="text-sm text-fg-muted">
-          {noRoster || summary.onCall === null ? t('no-roster') : ' '}
-        </span>
-      </div>
+      {noRoster || summary.onCall === null ? (
+        // Nobody is told about anything: this tile is an alarm, not a fact (Reza S12).
+        <div className={`${tile} border-critical-border bg-critical-bg text-critical-fg`}>
+          <span className="text-sm">{t('on-call')}</span>
+          <span className="text-lg font-semibold">{t('nobody')}</span>
+          <span className="text-sm">{t('no-roster')}</span>
+        </div>
+      ) : (
+        <div className={`${tile} border-line bg-surface`}>
+          <span className="text-sm text-fg-muted">{t('on-call')}</span>
+          <span className="truncate text-lg font-semibold">{summary.onCall.name}</span>
+        </div>
+      )}
     </section>
   );
 }
@@ -351,7 +389,7 @@ function Filters({
 }) {
   const t = useTranslations('security-centre');
   const chip = (on: boolean) =>
-    `inline-flex min-h-(--mp-size-control) items-center rounded-full border px-4 text-sm font-medium ${
+    `inline-flex min-h-(--mp-size-control) items-center gap-1.5 rounded-full border px-4 text-sm font-medium ${
       on
         ? 'border-accent bg-accent text-on-accent'
         : 'border-line-control bg-surface text-fg hover:bg-muted'
@@ -374,6 +412,7 @@ function Filters({
               checked={stateFilter === value}
               onChange={() => onState(value)}
             />
+            {stateFilter === value ? <Icon name="check" /> : null}
             {t(`filters.${value}`)}
           </label>
         ))}
@@ -394,6 +433,9 @@ function Filters({
             onClick={() => onSeverity(severity)}
             className={chip(severities.size < SEVERITIES.length && severities.has(severity))}
           >
+            {severities.size < SEVERITIES.length && severities.has(severity) ? (
+              <Icon name="check" />
+            ) : null}
             {t(`severity.${severity}`)}
           </button>
         ))}
@@ -450,7 +492,7 @@ function AlertsTable({
                 <td className={CARD_TABLE.corner}>
                   <SeverityBadge severity={alert.severity} />
                 </td>
-                <td className={CARD_TABLE.labelled} data-label={t('col.key')}>
+                <td className={CARD_TABLE.cell}>
                   <span className="break-all">
                     <span className="text-fg-muted">{t(`key.${alert.keyType}`)}: </span>
                     <span className="font-mono">{alert.keyLabel}</span>
@@ -463,7 +505,10 @@ function AlertsTable({
                   className={`${CARD_TABLE.labelled} whitespace-nowrap`}
                   data-label={t('col.opened')}
                 >
-                  <span title={timeOf(alert.openedAt)}>{ago(alert.openedAt, now)}</span>
+                  <time dateTime={alert.openedAt} title={timeOf(alert.openedAt)}>
+                    {ago(alert.openedAt, now)}
+                    <span className="sr-only"> ({timeOf(alert.openedAt)})</span>
+                  </time>
                 </td>
                 <td className={CARD_TABLE.labelled} data-label={t('col.state')}>
                   <span>
@@ -542,4 +587,13 @@ export function mergeRefresh(
   const ids = new Set(fresh.map((alert) => alert.id));
   const later = current.slice(PAGE_SIZE).filter((alert) => !ids.has(alert.id));
   return [...fresh, ...later];
+}
+
+/** "Open 8 min · 7 min left" or "Overdue by 3 min" for the oldest open critical alert. */
+function s1Clock(
+  minutes: number,
+  t: (key: 's1-oldest' | 's1-overdue', values: Record<string, number>) => string,
+): string {
+  const left = Math.floor(S1_RESPONSE_MS / 60_000) - minutes;
+  return left >= 0 ? t('s1-oldest', { minutes, left }) : t('s1-overdue', { minutes: -left });
 }

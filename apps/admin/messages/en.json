@@ -9299,12 +9299,13 @@
       "s2": "High (S2)",
       "s34": "Medium and low",
       "none": "None live",
-      "s1-oldest": "Oldest open {minutes} min",
+      "s1-oldest": "Oldest open {minutes} min · {left} min left",
       "s2-sub": "Sent by email in business hours",
       "s34-sub": "In the daily and weekly digest",
       "on-call": "On call now",
       "nobody": "Nobody",
-      "no-roster": "No roster on the server"
+      "no-roster": "No roster on the server",
+      "s1-overdue": "Oldest overdue by {minutes} min"
     },
     "severity": {
       "s1": "S1 · Critical",
@@ -9348,7 +9349,8 @@
       "open": "Open",
       "acknowledged": "Acknowledged",
       "resolved": "Resolved",
-      "all": "All"
+      "all": "All",
+      "clear": "Clear filters"
     },
     "col": {
       "alert": "Alert",
@@ -9451,7 +9453,8 @@
       "changed-resolved": "{name} resolved this alert {when}.",
       "acknowledged-plain": "Acknowledged.",
       "denied": "You can't act on this alert. Your role may have changed, or you are signed in as a seller; leave that session or ask an admin who manages roles.",
-      "s1-only": "Only the incident commander or the security owner can resolve a critical alert."
+      "s1-only": "Only the incident commander or the security owner can resolve a critical alert.",
+      "copy-failed": "Couldn't copy. Select the text and copy it yourself."
     },
     "resolve": {
       "title": "Resolve alert",
@@ -9512,6 +9515,7 @@
       "empty": "The roster is a file on the server. It names who is on call each week, the escalation order, the incident commander and the security owner. Until it is there, no alert is sent. Ask DevOps to add it."
     },
     "loading": "Loading alerts",
-    "announce": "New critical alert: {title}"
+    "announce": "New critical alert: {title}",
+    "retrying": "Trying again in 30 seconds."
   }
 }

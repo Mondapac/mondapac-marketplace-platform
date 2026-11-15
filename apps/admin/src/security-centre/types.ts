@@ -124,3 +124,15 @@ export function minutesBetween(fromIso: string, now: number): number {
 export function noteLength(note: string): number {
   return Array.from(note.trim()).length;
 }
+
+/** The zone as people say it ("Australian Eastern Time"), with its id when the runtime has none. */
+export function zoneLabel(zone: string, locale: string): string {
+  try {
+    const part = new Intl.DateTimeFormat(locale, { timeZone: zone, timeZoneName: 'longGeneric' })
+      .formatToParts(new Date())
+      .find((piece) => piece.type === 'timeZoneName')?.value;
+    return part === undefined || part === zone ? zone : `${part} (${zone})`;
+  } catch {
+    return zone;
+  }
+}

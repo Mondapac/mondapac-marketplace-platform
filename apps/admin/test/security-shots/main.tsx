@@ -116,7 +116,8 @@ window.fetch = ((input: string) => {
       ? {
           live: { s1: 2, s2: 1, s3: 1, s4: 0 },
           rulesLastRanAt: ago(1),
-          onCall: { code: 'hassan', name: 'Hassan R.' },
+          // Without a roster the API names nobody on call.
+          onCall: view === 'noroster' ? null : { code: 'hassan', name: 'Hassan R.' },
         }
       : path === 'security/admin/on-call'
         ? view === 'noroster'

@@ -295,7 +295,15 @@ export function AlertDetailView({
         open={dialogOpen}
         alert={alert}
         csrfToken={csrfToken}
-        onClose={() => setDialogOpen(false)}
+        onClose={() => {
+          setDialogOpen(false);
+          // Closed after someone else resolved it: the Resolve button is gone, so focus goes
+          // to the notice that says what happened (Reza S3).
+          if (alert.state === 'resolved') {
+            setNotice({ tone: 'info', text: changeText(alert, 'changed') });
+            focusNext.current = 'notice';
+          }
+        }}
         onResolved={(resolved) => {
           setAlert(resolved);
           setDialogOpen(false);
@@ -480,20 +488,28 @@ function Timeline({
 
 function CopyButton({ text, label }: { readonly text: string; readonly label: string }) {
   const t = useTranslations('security-centre.detail');
-  const [done, setDone] = useState(false);
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
   return (
-    <Button
-      variant="secondary"
-      aria-label={label}
-      onClick={() => {
-        void navigator.clipboard
-          ?.writeText(text)
-          .then(() => setDone(true))
-          .catch(() => setDone(false));
-      }}
-    >
-      {done ? t('copied') : t('copy')}
-    </Button>
+    <span className="inline-flex items-center gap-2">
+      <Button
+        variant="secondary"
+        aria-label={label}
+        onClick={() => {
+          const write = navigator.clipboard?.writeText(text);
+          if (write === undefined) {
+            setState('failed');
+            return;
+          }
+          void write.then(() => setState('copied')).catch(() => setState('failed'));
+        }}
+      >
+        {state === 'copied' ? t('copied') : t('copy')}
+      </Button>
+      {/* Said, not only shown (Reza S11). */}
+      <span role="status" className={state === 'failed' ? 'text-sm text-critical-fg' : 'sr-only'}>
+        {state === 'copied' ? t('copied') : state === 'failed' ? t('copy-failed') : ''}
+      </span>
+    </span>
   );
 }
 
