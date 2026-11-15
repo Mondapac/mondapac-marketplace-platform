@@ -369,7 +369,8 @@ describe('team pages', () => {
     expect(page).toContain('flex-col gap-2 sm:flex-row');
     expect(page).toContain('min-h-12');
     expect(read('../src/team/role-dialog.tsx')).toContain('<Dialog');
-    expect(read('../src/team/row-actions.tsx')).toContain('<Dialog');
+    // The shared confirmation dialog (ConfirmAction) is built on the shared Dialog.
+    expect(read('../src/team/row-actions.tsx')).toContain('<ConfirmAction');
     expect(read('../src/team/invite-member-button.tsx')).toContain('w-full sm:w-auto');
     expect(read('../src/auth/accept-invitation-form.tsx')).toContain('min-h-12');
   });
