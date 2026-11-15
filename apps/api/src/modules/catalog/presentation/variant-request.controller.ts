@@ -285,11 +285,11 @@ export class VariantRequestController {
     description:
       `${NEEDS} Open requests, oldest first by default, each with the variants the product has ` +
       'and the row `actions` (approve, map, decline) the caller may run. `q` searches the product ' +
-      'code; `sort` is oldest or newest; paged by `page` and `pageSize` (1 to 100, default 25) in ' +
+      'code; `sort` is created with `direction` (asc, the default, is oldest first); paged by `page` and `pageSize` (1 to 100, default 25) in ' +
       'the mode `paging` names (pages with a total, or prev-next).',
   })
   @ApiQuery({ name: 'q', required: false })
-  @ApiQuery({ name: 'sort', required: false, enum: ['oldest', 'newest'] })
+  @ApiQuery({ name: 'sort', required: false, enum: ['created'] })
   @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
   @ApiQuery({ name: 'page', required: false })
   @ApiQuery({ name: 'pageSize', required: false })

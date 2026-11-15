@@ -7,6 +7,7 @@ import {
   parseListQuery,
   type ListPagingMode,
 } from '../../../../platform/list-query';
+import { invalid } from '../own-reads/own-reads.shared';
 import { CATALOG_VARIANT_VIEW } from '../../contracts/permissions';
 import { VARIANT_ISSUES, VARIANT_SORTS } from '../ports/variant-admin.reader';
 import {
@@ -86,7 +87,11 @@ export class AdminVariantsList extends UseCase<
     if (!query.ok) return query;
     const filter = parseFilter(query.value);
     if (!filter.ok) return filter;
-    if (query.value['after'] !== undefined || query.value['limit'] !== undefined) {
+    const legacy = ['after', 'limit'].filter((key) => query.value[key] !== undefined);
+    if (legacy.length > 0) {
+      // The older cursor read and the page read do not mix: one request, one way of paging.
+      const mixed = PAGE_KEYS.find((key) => query.value[key] !== undefined);
+      if (mixed !== undefined) return invalid(mixed, 'conflict');
       return this.#cursorRead(context, query.value, filter.value);
     }
     const paged = parseListQuery(query.value, {
@@ -134,7 +139,11 @@ export class AdminVariantsList extends UseCase<
       pageSize: result.pageSize,
       paging: result.paging,
       hasNext: result.hasNext,
-      nextAfter: result.hasNext ? (result.items.at(-1)?.variantId ?? null) : null,
+      // The cursor only continues a newest-first read; in any other order it is null.
+      nextAfter:
+        result.hasNext && paged.value.sort === 'newest' && paged.value.direction === 'desc'
+          ? (result.items.at(-1)?.variantId ?? null)
+          : null,
     });
   }
 

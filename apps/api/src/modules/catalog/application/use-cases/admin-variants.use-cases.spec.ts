@@ -592,6 +592,25 @@ describe.each(['AU', 'ZZ'] as const)('admin Variants page in market %s (V6)', (c
       expect(result.value.items).toHaveLength(2);
     });
 
+    it('gives no cursor unless the order is newest first, and pages past the end of prev-next', async () => {
+      const s = setup({ rows: [row(1), row(2), row(3)] });
+      const byCode = await s.list.execute(context(), { sort: 'code', pageSize: 2 });
+      if (!byCode.ok) throw new Error(byCode.error.code);
+      expect(byCode.value).toMatchObject({ hasNext: true, nextAfter: null });
+      const newest = await s.list.execute(context(), { pageSize: 2 });
+      if (!newest.ok) throw new Error(newest.error.code);
+      expect(newest.value.nextAfter).toBe(newest.value.items[1]?.variantId);
+      const past = await s.list.execute(context(), {
+        paging: 'prev-next',
+        page: 1000,
+        pageSize: 100,
+      });
+      expect(past).toMatchObject({ ok: true, value: { items: [], hasNext: false, total: null } });
+      const blank = await s.list.execute(context(), { q: '   ' });
+      expect(blank).toMatchObject({ ok: true, value: { total: 3 } });
+      expect(s.queries.at(-1)?.text).toBeNull();
+    });
+
     it('answers an empty page, without a row read, past the last page', async () => {
       const s = setup();
       const result = await s.list.execute(context(), { page: 5 });
@@ -608,6 +627,8 @@ describe.each(['AU', 'ZZ'] as const)('admin Variants page in market %s (V6)', (c
       [{ typeCode: 'Size!' }, 'typeCode'],
       [{ issue: 'out-of-stock' }, 'issue'],
       [{ after: 'nope' }, 'after'],
+      [{ limit: 10, sort: 'code' }, 'sort'],
+      [{ after: 'x', page: 2 }, 'page'],
       [{ sort: 'price' }, 'sort'],
       [{ direction: 'up' }, 'direction'],
       [{ paging: 'infinite' }, 'paging'],

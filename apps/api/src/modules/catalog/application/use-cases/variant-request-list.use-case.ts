@@ -36,8 +36,8 @@ import {
 export const VARIANT_REQUEST_PAGE_DEFAULT = 25;
 export const VARIANT_REQUEST_PAGE_MAX = 100;
 export const VARIANT_REQUEST_MAX_PAGE = 1000;
-/** `oldest` (default, the one waiting longest first) or `newest`. */
-export const VARIANT_REQUEST_SORTS = ['oldest', 'newest'] as const;
+/** One sort, by the time of the request: `asc` (default) puts the one waiting longest first. */
+export const VARIANT_REQUEST_SORTS = ['created'] as const;
 const MAX_TEXT = 100;
 
 export interface VariantRequestListInput {
@@ -127,8 +127,7 @@ export interface VariantRequestListDependencies {
 /**
  * `variant-request.list` (variants V7; super list phase 2, list 4): the open variant requests of
  * the Market, each with what was asked for, the variants the product has and its row `actions`,
- * for the "Waiting for you" tab. `q` searches the product code; `sort` is `oldest` (default) or
- * `newest`; paged by `page` and `pageSize` (1 to 100, default 25) in the mode `paging` names.
+ * for the "Waiting for you" tab. `q` searches the product code; `sort` is `created` with `direction` (`asc`, the default, puts the oldest first); paged by `page` and `pageSize` (1 to 100, default 25) in the mode `paging` names.
  * Rule: the key `catalog.variant-request.review` and the admin population. One read-only unit.
  */
 export class VariantRequestList extends UseCase<
@@ -191,21 +190,27 @@ export class VariantRequestList extends UseCase<
       text = trimmed === '' ? null : trimmed;
     }
     const { limit: legacyLimit, ...rest } = body.value;
-    if (legacyLimit !== undefined && rest['pageSize'] !== undefined)
-      return invalid('limit', 'unknown');
-    const paged = parseListQuery(
-      legacyLimit === undefined ? rest : { ...rest, pageSize: legacyLimit },
-      {
-        sorts: VARIANT_REQUEST_SORTS,
-        defaultSort: 'oldest',
-        defaultDirection: (sort) => (sort === 'oldest' ? 'asc' : 'desc'),
-        defaultPageSize: VARIANT_REQUEST_PAGE_DEFAULT,
-        maxPageSize: VARIANT_REQUEST_PAGE_MAX,
-        maxPage: VARIANT_REQUEST_MAX_PAGE,
-      },
-    );
+    const absent = (value: unknown) => value === undefined || value === null || value === '';
+    if (!absent(legacyLimit)) {
+      if (!absent(rest['pageSize'])) return invalid('limit', 'conflict');
+      if (
+        typeof legacyLimit !== 'number' ||
+        !Number.isInteger(legacyLimit) ||
+        legacyLimit < 1 ||
+        legacyLimit > VARIANT_REQUEST_PAGE_MAX
+      ) {
+        return invalid('limit', 'range');
+      }
+    }
+    const paged = parseListQuery(absent(legacyLimit) ? rest : { ...rest, pageSize: legacyLimit }, {
+      sorts: VARIANT_REQUEST_SORTS,
+      defaultSort: 'created',
+      defaultDirection: () => 'asc',
+      defaultPageSize: VARIANT_REQUEST_PAGE_DEFAULT,
+      maxPageSize: VARIANT_REQUEST_PAGE_MAX,
+      maxPage: VARIANT_REQUEST_MAX_PAGE,
+    });
     if (!paged.ok) return paged;
-    // `sort` names the time order; `direction`, when given, decides it (oldest + desc is newest).
     const direction = paged.value.direction;
     const window = pageWindow(paged.value);
     const { market } = context;

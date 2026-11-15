@@ -598,15 +598,38 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
       expect(beyond).toMatchObject({ ok: true, value: { items: [], total: 1, hasNext: false } });
       const cheap = await build().list.execute(context('admin'), { paging: 'prev-next' });
       expect(cheap).toMatchObject({ ok: true, value: { total: null, hasNext: false } });
-      const found = await build().list.execute(context('admin'), { q: ' p-9 ', sort: 'newest' });
+      const found = await build().list.execute(context('admin'), {
+        q: ' p-9 ',
+        sort: 'created',
+        direction: 'desc',
+      });
       if (!found.ok) throw new Error(found.error.code);
       expect(found.value.items.map((item) => item.id)).toEqual([first.id]);
       const missed = await build().list.execute(context('admin'), { q: 'zzz' });
       expect(missed).toMatchObject({ ok: true, value: { items: [], total: 0 } });
     });
 
+    it('reads one row more in prev-next mode to find the next page, and answers none past the end', async () => {
+      await opened();
+      await opened({ 'size-option': 'small' }).catch(() => undefined);
+      const first = await build().list.execute(context('admin'), {
+        paging: 'prev-next',
+        pageSize: 1,
+      });
+      if (!first.ok) throw new Error(first.error.code);
+      expect(first.value.items).toHaveLength(1);
+      expect(first.value).toMatchObject({ total: null, hasNext: requests.rows.size > 1 });
+      const past = await build().list.execute(context('admin'), { paging: 'prev-next', page: 9 });
+      expect(past).toMatchObject({ ok: true, value: { items: [], hasNext: false } });
+      expect(
+        await build().list.execute(context('admin'), { limit: null, pageSize: 5 }),
+      ).toMatchObject({
+        ok: true,
+      });
+    });
+
     it.each<[Record<string, unknown>, string]>([
-      [{ limit: 0 }, 'pageSize'],
+      [{ limit: 0 }, 'limit'],
       [{ limit: 5, pageSize: 5 }, 'limit'],
       [{ q: 5 }, 'q'],
       [{ q: 'x'.repeat(101) }, 'q'],
