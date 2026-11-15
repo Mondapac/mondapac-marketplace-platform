@@ -260,7 +260,6 @@ export interface DistributionCardSkeletonProps extends CardFrameProps {
   readonly parts: readonly Omit<DistributionPart, 'value'>[];
 }
 
-
 /** The placeholder of a DashboardCard holding a DistributionBar: a grey bar and the real legend. */
 export function DistributionCardSkeleton({
   id,

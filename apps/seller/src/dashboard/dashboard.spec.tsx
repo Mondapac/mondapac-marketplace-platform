@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -393,6 +393,31 @@ const session = (permissionKeys: string[]): SellerSession => ({
   locale: null,
   displayName: 'Sam',
   csrfToken: 'c',
+});
+
+describe('seller dashboard while it streams', () => {
+  it('says there is nothing to show when every read is refused after the skeletons', async () => {
+    await act(async () => {
+      render(
+        wrap(
+          <SellerDashboard
+            data={{
+              orders: Promise.resolve(null),
+              offers: Promise.resolve(null),
+              ledger: null,
+              payout: null,
+              sources: null,
+              lowStock: null,
+            }}
+            permissionKeys={['ordering.seller-order.view', 'catalog.own-product.view']}
+          />,
+        ),
+      );
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('Nothing to show here yet')).toBeTruthy();
+    expect(document.querySelector('[data-skeleton]')).toBeNull();
+  });
 });
 
 describe('startSellerDashboard', () => {
