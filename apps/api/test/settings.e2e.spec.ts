@@ -40,12 +40,17 @@ const tokens = new RandomSessionTokens();
 const SETTINGS = '/settings/admin/market-settings';
 const ADMIN_PAGING = '/settings/admin/list-paging';
 const SELLER_PAGING = '/settings/seller/list-paging';
-const LIST = [{ code: 'list-paging', value: 'pages', version: 0, updatedAt: null }];
+const NOT_REVIEWED = { reviewed: false, risk: 'low' } as const;
+const LIST = [
+  { code: 'list-paging', value: 'pages', version: 0, updatedAt: null, review: NOT_REVIEWED },
+];
 const CHANGED = {
   code: 'list-paging',
   value: 'prev-next',
   version: 1,
   updatedAt: START.toString(),
+  review: { reviewed: true, risk: 'medium' },
+  request: { id: id<'SystemRequest'>(0x5e01), number: 12 },
 };
 
 it('maps every refusal code of the settings routes to its exact status', () => {
@@ -200,7 +205,9 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     expect(read.status).toBe(200);
     expect(read.headers['cache-control']).toBe('no-store');
     expect(read.body).toEqual({
-      settings: [{ code: 'list-paging', value: 'pages', version: 0, updatedAt: null }],
+      settings: [
+        { code: 'list-paging', value: 'pages', version: 0, updatedAt: null, review: NOT_REVIEWED },
+      ],
     });
 
     next = ok(CHANGED);
@@ -208,12 +215,23 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
       code: 'list-paging',
       value: 'prev-next',
       expectedVersion: 0,
+      note: 'Shorter pages for phones',
     });
     expect(set.status).toBe(200);
     expect(set.headers['cache-control']).toBe('no-store');
+    // The request the change opened in System requests comes back with the setting.
+    expect(set.body).toEqual(CHANGED);
     expect(calls).toEqual([
       { name: 'view', input: {} },
-      { name: 'change', input: { code: 'list-paging', value: 'prev-next', expectedVersion: 0 } },
+      {
+        name: 'change',
+        input: {
+          code: 'list-paging',
+          value: 'prev-next',
+          expectedVersion: 0,
+          note: 'Shorter pages for phones',
+        },
+      },
     ]);
   });
 
@@ -221,7 +239,15 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     await boot();
     const session = sessionOf('admin', 3);
     const cart = '/settings/admin/cart-mode';
-    next = ok([{ code: 'cart-mode', value: 'multi-store', version: 0, updatedAt: null }]);
+    next = ok([
+      {
+        code: 'cart-mode',
+        value: 'multi-store',
+        version: 0,
+        updatedAt: null,
+        review: NOT_REVIEWED,
+      },
+    ]);
     const read = await call('get', cart, 'admin', session);
     expect(read.status).toBe(200);
     expect(read.headers['cache-control']).toBe('no-store');
@@ -230,6 +256,7 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
       value: 'multi-store',
       version: 0,
       updatedAt: null,
+      review: NOT_REVIEWED,
     });
 
     next = ok({
@@ -237,12 +264,15 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
       value: 'single-store',
       version: 1,
       updatedAt: START.toString(),
+      review: NOT_REVIEWED,
+      request: null,
     });
     const set = await call('put', cart, 'admin', session, {
       value: 'single-store',
       expectedVersion: 0,
     });
     expect(set.status).toBe(200);
+    expect(set.body).toMatchObject({ value: 'single-store', request: null });
     // A stray `code` field is refused: the route fixes the setting.
     const stray = await call('put', cart, 'admin', session, {
       code: 'list-paging',

@@ -41,6 +41,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     commission_payouts: ['USAGE'],
     wallet: ['USAGE'],
     reviews: ['USAGE'],
+    lists: ['USAGE'],
     settings: ['USAGE'],
     promotions: ['USAGE'],
     customers: ['USAGE'],
@@ -56,6 +57,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     notifications: ['USAGE'],
     search: ['USAGE'],
     security: ['USAGE'],
+    system_requests: ['USAGE'],
   },
   tables: {
     // docs/design/data/identity.md section 7: DELETE only for the unverified purge and erasure
@@ -479,6 +481,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'cart.rate_counters': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['count', 'window_started_at'],
+    },
+    // The shared store of saved filters of every super list (super list phase 0): the same rules,
+    // one table. The two old tables stay until they are dropped one release later.
+    'lists.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
     },
     // docs/design/data/ordering.md 3.15: a saved view of an order list; a filter is a preference, so
     // the application deletes it; only the name and who can use it change.
@@ -995,6 +1003,20 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'redacted_at',
         'status',
       ],
+    },
+    // Customers phase 1 (package B1): the read models are written, replaced and removed (account
+    // erasure) by the application; no column is restricted.
+    'customers.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
+    'customers.customer_directory': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'customers.customer_stats': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
     },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
@@ -1789,6 +1811,34 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'security.evaluator_runs': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['finished_at', 'opened'],
+    },
+    // System requests (Admin Inbox): a request changes only its decision, supersession and comment
+    // count (triggers keep a decision and a supersession final); activity is append-only; no
+    // DELETE anywhere (triggers refuse it too).
+    'system_requests.requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'comment_count',
+        'decided_at',
+        'decided_by_account_id',
+        'decision',
+        'decision_reason',
+        'status',
+        'superseded_by_request_id',
+      ],
+    },
+    'system_requests.request_activity': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'system_requests.request_counters': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['last_number'],
+    },
+    'system_requests.policy_areas': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['default_risk', 'enabled', 'updated_at', 'updated_by_account_id', 'version'],
+    },
+    'system_requests.policy_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['review_due_days', 'updated_at', 'updated_by_account_id', 'version'],
     },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },

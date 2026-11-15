@@ -26,6 +26,7 @@ import { ViewAccountDeletionSettings } from '../../src/modules/customers/applica
 import { CUSTOMERS_AUDIT_ACTIONS } from '../../src/modules/customers/domain/audit';
 import { CUSTOMERS_EVENTS } from '../../src/modules/customers/domain/events';
 import { ConfigAddressPolicy } from '../../src/modules/customers/infrastructure/config-address-policy';
+import { PrismaCustomerReadModelRepository } from '../../src/modules/customers/infrastructure/prisma-customer-read-models.repository';
 import { PrismaAccountDeletionRequestRepository } from '../../src/modules/customers/infrastructure/prisma-account-deletion-request.repository';
 import { PrismaAccountDeletionSettingsRepository } from '../../src/modules/customers/infrastructure/prisma-account-deletion-settings.repository';
 import { PrismaAddressRepository } from '../../src/modules/customers/infrastructure/prisma-address.repository';
@@ -358,6 +359,7 @@ describe.each(TEST_MARKETS)(
         unitOfWork: db.unitOfWork,
         requests: new PrismaAccountDeletionRequestRepository(db.service),
         addresses,
+        readModels: new PrismaCustomerReadModelRepository(db.service),
         accountDeletionSettings: settingsRepo(),
         ids,
         clock,

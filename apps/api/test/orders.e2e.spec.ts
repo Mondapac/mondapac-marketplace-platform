@@ -21,6 +21,11 @@ import {
   type AdminShipmentListReader,
 } from '../src/modules/ordering/application/ports/admin-shipment-list.reader';
 import type { ShipmentListRecord } from '../src/modules/ordering/domain/admin-shipment-list';
+import {
+  ADMIN_REFUND_LIST_READER,
+  type AdminRefundListReader,
+} from '../src/modules/ordering/application/ports/admin-refund-list.reader';
+import type { RefundListRecord } from '../src/modules/ordering/domain/admin-refund-list';
 import { PICKUP_CODE_REPOSITORY } from '../src/modules/ordering/application/ports/pickup-code.repository';
 import { REFUND_REPOSITORY } from '../src/modules/ordering/application/ports/refund.repository';
 import { SHIP_TO_RETENTION_REPOSITORY } from '../src/modules/ordering/application/ports/ship-to-retention.repository';
@@ -165,6 +170,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let shipToRetention: MemoryShipToRetention;
   /** The admin Shipments list's rows, served in memory (the SQL is in the db spec). */
   let shipmentRows: ShipmentListRecord[];
+  /** The admin Refunds list's rows, served in memory (the SQL is in the db spec). */
+  let refundRows: RefundListRecord[];
   /** Ordering's audit rows, each checked against its definition. */
   let audit: OrderingAuditWriter;
   const clock = new FixedClock(START);
@@ -197,6 +204,13 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           refunded: 0,
           attention: 0,
         }),
+    };
+    refundRows = [];
+    const refundReader: AdminRefundListReader = {
+      page: (_market, _filter, _sort, offset, limit) =>
+        Promise.resolve(refundRows.slice(offset, offset + limit)),
+      count: () => Promise.resolve(refundRows.length),
+      countByState: () => Promise.resolve({ pending: 0, succeeded: refundRows.length, failed: 0 }),
     };
     audit = new OrderingAuditWriter();
     const customers = new FakeCustomers();
@@ -231,6 +245,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(orders)
           .overrideProvider(ADMIN_SHIPMENT_LIST_READER)
           .useValue(shipmentReader)
+          .overrideProvider(ADMIN_REFUND_LIST_READER)
+          .useValue(refundReader)
           .overrideProvider(CHECKOUT_GATEWAY)
           .useValue(gateway)
           .overrideProvider(INVENTORY_ORDERING_PORT)
@@ -1177,6 +1193,83 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       const logged = logLines.filter((l) => l['msg'] === 'ordering.admin-list-shipments-route');
       expect(logged.length).toBeGreaterThanOrEqual(5);
       expect(JSON.stringify(logged)).not.toContain('0123');
+    });
+
+    it('lists refunds behind ordering.order.view, in pages or Previous/Next', async () => {
+      await seedAdmins();
+      const row = (n: number): RefundListRecord => ({
+        refundId: id<'Refund'>(0x9000 + n),
+        orderId: id<'Order'>(0x9100 + n),
+        sellerOrderId: id<'SellerOrder'>(0x9200 + n),
+        sellerId: SELLER,
+        accountId: CUSTOMER,
+        gross: money(1100n, currency),
+        tax: money(100n, currency),
+        shippingGross: money(0n, currency),
+        reason: 'damaged',
+        actor: 'admin',
+        state: 'succeeded',
+        lossBearer: 'seller',
+        lossReasonCode: null,
+        stripeRefundId: `re_test${n}`,
+        requestedAt: START,
+        settledAt: START,
+        ledgerRecordedAt: null,
+        creditNoteId: id<'CreditNote'>(0x9300 + n),
+      });
+      refundRows = [row(1), row(2), row(3)];
+
+      const paged = await http()
+        .get('/ordering/admin/refunds?page=1&pageSize=2')
+        .set(adminHeaders(VIEWER, 61));
+      const walked = await http()
+        .get('/ordering/admin/refunds?limit=2')
+        .set(adminHeaders(VIEWER, 62));
+      const byStripe = await http()
+        .get('/ordering/admin/refunds?q=re_test1')
+        .set(adminHeaders(VIEWER, 63));
+      const bad = await http()
+        .get('/ordering/admin/refunds?state=lost&limit=0')
+        .set(adminHeaders(VIEWER, 64));
+      const noKey = await http().get('/ordering/admin/refunds').set(adminHeaders(NO_KEY, 65));
+
+      expect(paged.status).toBe(200);
+      expect(paged.headers['cache-control']).toBe('no-store');
+      expect(body(paged)).toMatchObject({
+        total: 3,
+        page: 1,
+        pageSize: 2,
+        nextCursor: null,
+        counts: { succeeded: 3 },
+        refunds: [
+          {
+            refundId: id<'Refund'>(0x9001),
+            gross: { amount: '1100', currency },
+            actions: ['view-order', 'copy-stripe-reference'],
+          },
+          { refundId: id<'Refund'>(0x9002) },
+        ],
+      });
+      expect(body(walked)).toMatchObject({
+        total: null,
+        page: null,
+        nextCursor: `${START.epochMilliseconds}.${id<'Refund'>(0x9002)}`,
+      });
+      expect(byStripe.status).toBe(200);
+      expect(bad.status).toBe(400);
+      expect(body(bad)).toMatchObject({
+        details: {
+          fields: [
+            { path: 'limit', code: 'range' },
+            { path: 'state', code: 'value' },
+          ],
+        },
+      });
+      expect(noKey.status).toBe(403);
+      // The route logs its outcome, never the reference typed.
+      const logged = logLines.filter((l) => l['msg'] === 'ordering.admin-list-refunds-route');
+      expect(logged.length).toBeGreaterThanOrEqual(4);
+      expect(JSON.stringify(logged)).not.toContain('re_test1');
     });
 
     it('lets a role with ordering.order.view list and read orders, and no other', async () => {

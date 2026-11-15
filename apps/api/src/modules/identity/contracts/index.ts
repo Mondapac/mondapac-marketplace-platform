@@ -4,6 +4,11 @@
 // definitions are declared in domain/events/ and re-exported here (ADR-0006 decision 6), as are
 // the audited actions of domain/audit/ (docs/design/domain/platform-audit.md 3.2).
 export {
+  AccountDisabled,
+  AccountDisplayNameChanged,
+  AccountEmailVerified,
+  AccountEnabled,
+  CustomerAccountRegistered,
   IDENTITY_EVENTS,
   SellerAccessApproved,
   // Consumed by notifications' seller notices (package 4) and by search's index (P-D).
@@ -24,6 +29,7 @@ export {
   type CustomerAccountOfFailure,
   type CustomerAccountRef,
   type CustomerAccountSummary,
+  type CustomerDirectoryRecord,
   type CustomerShortName,
   type IdentityFacade,
   type IdentityValidationFailed,

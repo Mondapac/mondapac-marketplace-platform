@@ -31,6 +31,10 @@ import {
   type AdminShipmentListReader,
 } from '../application/ports/admin-shipment-list.reader';
 import {
+  ADMIN_REFUND_LIST_READER,
+  type AdminRefundListReader,
+} from '../application/ports/admin-refund-list.reader';
+import {
   ADMIN_NOTE_CIPHER,
   ADMIN_ORDER_NOTE_REPOSITORY,
   type AdminNoteCipher,
@@ -62,6 +66,7 @@ import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
 import { ShippingDeliveryMethodPolicy } from './shipping-delivery-method-policy';
 import { PrismaOrderRepository } from './prisma-order.repository';
 import { PrismaPickupCodeRepository } from './prisma-pickup-code.repository';
+import { SAVED_FILTER_STORE, type SavedFilterStore } from '../../lists';
 import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
 import {
   SAVED_FILTER_REPOSITORY,
@@ -69,6 +74,7 @@ import {
 } from '../application/ports/saved-filter.repository';
 import { PrismaRefundRepository } from './prisma-refund.repository';
 import { PrismaAdminShipmentListReader } from './prisma-admin-shipment-list.reader';
+import { PrismaAdminRefundListReader } from './prisma-admin-refund-list.reader';
 import {
   MARKET_ZONES,
   SHIP_TO_RETENTION_REPOSITORY,
@@ -124,6 +130,12 @@ export const orderingProviders: readonly FactoryProvider[] = [
       new PrismaAdminShipmentListReader(prisma),
   },
   {
+    provide: ADMIN_REFUND_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminRefundListReader =>
+      new PrismaAdminRefundListReader(prisma),
+  },
+  {
     provide: SHIP_TO_RETENTION_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): ShipToRetentionRepository =>
@@ -136,9 +148,9 @@ export const orderingProviders: readonly FactoryProvider[] = [
   },
   {
     provide: SAVED_FILTER_REPOSITORY,
-    inject: [PrismaService],
-    useFactory: (prisma: PrismaService): SavedFilterRepository =>
-      new PrismaSavedFilterRepository(prisma),
+    inject: [SAVED_FILTER_STORE],
+    useFactory: (store: SavedFilterStore): SavedFilterRepository =>
+      new PrismaSavedFilterRepository(store),
   },
   {
     provide: PICKUP_CODE_REPOSITORY,

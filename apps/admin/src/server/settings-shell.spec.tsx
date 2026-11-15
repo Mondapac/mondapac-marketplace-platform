@@ -15,15 +15,17 @@ vi.mock('./admin-shell.tsx', () => ({
   AdminShell: ({
     children,
     activeId,
+    settingsLinkId,
     title,
     trail,
   }: {
     readonly children: ReactNode;
     readonly activeId: string;
+    readonly settingsLinkId?: string;
     readonly title: string;
     readonly trail: readonly Crumb[];
   }) => (
-    <main data-active={activeId} data-title={title}>
+    <main data-active={activeId} data-link={settingsLinkId} data-title={title}>
       <ol aria-label="trail">
         {trail.map((crumb) => (
           <li key={crumb.label} data-href={crumb.href ?? ''}>
@@ -67,6 +69,8 @@ async function show(linkId: string, title: string, nested = false, keys = OPS) {
     }),
   );
 }
+const LINK = 'delivery';
+const TITLE = 'Delivery rules';
 afterEach(cleanup);
 
 describe('SettingsShell', () => {
@@ -96,34 +100,19 @@ describe('SettingsShell', () => {
     ]);
   });
 
-  it('lists only the pages the caller may open and marks the current one', async () => {
-    await show('delivery', 'Delivery rules');
-    const nav = screen.getByRole('navigation', { name: 'Settings pages' });
-    const links = within(nav).getAllByRole('link');
-    expect(links.map((a) => [a.textContent, a.getAttribute('aria-current')])).toEqual([
-      ['Delivery rules', 'page'],
-      ['Delivery fleets', null],
-      ['Roles & permissions', null],
-    ]);
-    expect(within(nav).queryByText('Money')).toBeNull();
+  it('passes the current page to the shell so the sidebar can mark it', async () => {
+    await show(LINK, TITLE);
+    expect(document.querySelector('main')?.getAttribute('data-link')).toBe(LINK);
   });
 
-  it('offers Back to Settings above the heading, and the sub-navigation only from 1180px', async () => {
-    await show('delivery', 'Delivery rules');
+  it('has no second navigation column; the back link shows only below the sidebar breakpoint', async () => {
+    await show(LINK, TITLE);
+    expect(screen.queryByRole('navigation', { name: 'Settings pages' })).toBeNull();
     const back = screen.getByRole('link', { name: 'Back to Settings' });
     expect(back.getAttribute('href')).toBe('/settings');
-    expect(back.closest('div')?.className).toContain('min-[1180px]:hidden');
+    expect(back.closest('div')?.className).toContain('md:hidden');
     expect(back.compareDocumentPosition(screen.getByRole('heading', { level: 1 }))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
-    const column = screen.getByRole('navigation', { name: 'Settings pages' }).parentElement;
-    expect(column?.className).toContain('hidden');
-    expect(column?.className).toContain('min-[1180px]:block');
-  });
-
-  it('draws no sub-navigation when the caller may open no page, but keeps the back link', async () => {
-    await show('delivery', 'No access', false, []);
-    expect(screen.queryByRole('navigation', { name: 'Settings pages' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Back to Settings' })).toBeTruthy();
   });
 });

@@ -1,5 +1,12 @@
 export { AppShell, type AppShellProps, type BottomTab } from './shell/app-shell.tsx';
 export { Sidebar, type SidebarProps } from './shell/sidebar.tsx';
+export {
+  buildSettingsMenuGroups,
+  filterSettingsMenu,
+  type SettingsMenu,
+  type SettingsMenuGroup,
+  type SettingsMenuLink,
+} from './shell/settings-menu.ts';
 export { Topbar, type Crumb, type TopbarProps } from './shell/topbar.tsx';
 export {
   AccountMenu,
@@ -12,6 +19,32 @@ export { Tabs, type TabItem, type TabsProps } from './shell/tabs.tsx';
 export { BackLink } from './shell/back-link.tsx';
 export { ShortcutGrid, type Shortcut } from './shell/shortcut-grid.tsx';
 export { RouteError, RouteLoading, type RouteErrorProps } from './shell/route-states.tsx';
+export {
+  NavigationProgress,
+  PROGRESS_DELAY_MS,
+  PROGRESS_GIVE_UP_MS,
+  navigationTarget,
+  type NavigationProgressProps,
+} from './loading/navigation-progress.tsx';
+export { Spinner } from './loading/spinner.tsx';
+export {
+  SettingsSkeleton,
+  type SettingsSkeletonProps,
+  type SkeletonSection,
+} from './loading/settings-skeleton.tsx';
+export {
+  SettingsRouteLoading,
+  type SettingsRouteLoadingProps,
+} from './loading/settings-route-loading.tsx';
+export {
+  useDelayedLoading,
+  LOADING_SHOW_DELAY_MS,
+  LOADING_MIN_VISIBLE_MS,
+  LOADING_SLOW_MS,
+  LOADING_STALLED_MS,
+  type DelayedLoading,
+  type DelayedLoadingOptions,
+} from './loading/use-delayed-loading.ts';
 export {
   SIDEBAR_COOKIE,
   sidebarCollapsed,
@@ -95,7 +128,6 @@ export {
   type SettingsErrorSummaryProps,
 } from './settings/error-summary.tsx';
 export { NoAccess, type NoAccessProps } from './settings/no-access.tsx';
-export { SettingsSubNav, type SubNavGroup } from './settings/settings-sub-nav.tsx';
 export { SettingsTitle } from './settings/settings-title.tsx';
 export {
   relativeTime,
@@ -274,6 +306,20 @@ export { panelToolsLabels } from './palette/palette-labels.ts';
 export { BottomSheet, type BottomSheetProps } from './overlay/bottom-sheet.tsx';
 export { useDesktop, useMediaQuery, DESKTOP_QUERY, WIDE_QUERY } from './list/use-desktop.ts';
 export { ListThumb } from './list/list-thumb.tsx';
+export {
+  LIST_SKELETON_MAX_ROWS,
+  ListLoadingStatus,
+  ListRefreshBar,
+  ListRefreshHeadRow,
+  ListRefreshing,
+  ListSkeletonContent,
+  ListSkeletonRows,
+  listSkeletonRowCount,
+  useListLoading,
+  type ListLoading,
+  type ListSkeletonCell,
+  type ListSkeletonKind,
+} from './list/list-skeleton.tsx';
 export {
   ListColumnsPanel,
   type ListColumnsLabels,

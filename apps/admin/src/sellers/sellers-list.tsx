@@ -70,13 +70,16 @@ function failureOf(status: number, code: string): Failure {
 export function SellersList({
   csrfToken,
   canReview,
+  initialTab = 'awaiting-review',
 }: {
   readonly csrfToken: string;
   readonly canReview: boolean;
+  /** The tab the list opens on: Sellers opens on All, Inbox › Seller requests on the review tab. */
+  readonly initialTab?: Tab;
 }) {
   const t = useTranslations('sellers.list');
   const tl = useTranslations('load');
-  const [tab, setTab] = useState<Tab>('awaiting-review');
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [kind, setKind] = useState('');
   const [outsideArea, setOutsideArea] = useState(false);
   const [areaCode, setAreaCode] = useState('');

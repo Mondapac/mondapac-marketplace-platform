@@ -142,6 +142,7 @@ import {
   CUSTOM_VARIANT_LABELS_READER,
   type CustomVariantLabelsReader,
 } from '../application/ports/custom-variant-labels.reader';
+import { SAVED_FILTER_STORE, type SavedFilterStore } from '../../lists';
 import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
 import { PrismaSellerSavedFilterRepository } from './prisma-seller-saved-filter.repository';
 import {
@@ -172,8 +173,8 @@ import {
   IMPORT_FILE_PARSERS,
   type ImportFileParsers,
 } from '../application/ports/import-file-parsers';
-import { SHEET_WRITER, type SheetWriter } from '../application/ports/sheet-writer';
-import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
+import { SHEET_WRITER, type SheetWriter } from '../../../platform/list-export/sheet-writer';
+import { ExceljsSheetWriter } from '../../../platform/list-export/exceljs-sheet-writer';
 import { xlsxParser } from './xlsx/isolated-xlsx-parser';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSearchFactsReader } from './prisma-offer-search-facts.reader';
@@ -675,15 +676,15 @@ export const catalogProviders: readonly Provider[] = [
   },
   {
     provide: SAVED_FILTER_REPOSITORY,
-    inject: [PrismaService],
-    useFactory: (prisma: PrismaService): SavedFilterRepository =>
-      new PrismaSavedFilterRepository(prisma),
+    inject: [SAVED_FILTER_STORE],
+    useFactory: (store: SavedFilterStore): SavedFilterRepository =>
+      new PrismaSavedFilterRepository(store),
   },
   {
     provide: SELLER_SAVED_FILTER_REPOSITORY,
-    inject: [PrismaService],
-    useFactory: (prisma: PrismaService): SellerSavedFilterRepository =>
-      new PrismaSellerSavedFilterRepository(prisma),
+    inject: [SAVED_FILTER_STORE],
+    useFactory: (store: SavedFilterStore): SellerSavedFilterRepository =>
+      new PrismaSellerSavedFilterRepository(store),
   },
   cultureMembersProvider,
   // The sources of the culture visibility rule (multi-culture package 3a).

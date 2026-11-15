@@ -1,6 +1,7 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { SystemRequestRecorder } from '../../system-requests';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { PayoutTermsResolver } from './payout-terms-resolver';
@@ -32,6 +33,8 @@ export interface CommissionPayoutsDependencies {
   /** Spends the admin step-up of a protected action once, in the action's own unit. */
   readonly stepUp: StepUpProofConsumer;
   readonly audit: AuditWriter;
+  /** Opens the review of a rate or terms change in Admin Inbox › System requests (area money). */
+  readonly review: SystemRequestRecorder;
   readonly ids: IdGenerator;
   readonly clock: Clock;
 }

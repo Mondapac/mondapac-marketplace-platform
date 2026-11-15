@@ -7,6 +7,7 @@ import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type {
   AccountAddRefused,
   AccountRepository,
+  CustomerDirectoryRow,
   CustomerSummaryRow,
 } from '../application/ports/account.repository';
 import { Account, type AccountState } from '../domain/account';
@@ -98,6 +99,36 @@ interface SelectedRow {
  * table, never nested (C10). A known constraint violation becomes a domain error; nothing of
  * the driver error is logged or returned (I15).
  */
+const DIRECTORY_SELECT = {
+  id: true,
+  email: true,
+  displayName: true,
+  status: true,
+  emailVerifiedAt: true,
+  signedUpAt: true,
+} as const;
+
+function toDirectoryRow(row: {
+  id: string;
+  email: string;
+  displayName: string | null;
+  status: string;
+  emailVerifiedAt: Date | null;
+  signedUpAt: Date;
+}): CustomerDirectoryRow {
+  return {
+    id: row.id as Id<'Account'>,
+    email: row.email,
+    displayName: row.displayName,
+    status: row.status === 'disabled' ? 'disabled' : 'active',
+    emailVerifiedAt:
+      row.emailVerifiedAt === null
+        ? null
+        : Temporal.Instant.fromEpochMilliseconds(row.emailVerifiedAt.getTime()),
+    signedUpAt: Temporal.Instant.fromEpochMilliseconds(row.signedUpAt.getTime()),
+  };
+}
+
 export class PrismaAccountRepository implements AccountRepository {
   constructor(
     private readonly prisma: PrismaService,
@@ -159,6 +190,29 @@ export class PrismaAccountRepository implements AccountRepository {
       displayName: row.displayName,
       email: row.email,
     }));
+  }
+
+  async customerDirectoryRows(market: MarketContext, ids: readonly Id<'Account'>[]) {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.tx(market).identityAccount.findMany({
+      where: { marketId: market.marketId, population: 'customer', id: { in: [...ids] } },
+      select: DIRECTORY_SELECT,
+    });
+    return rows.map(toDirectoryRow);
+  }
+
+  async customerDirectoryPage(market: MarketContext, after: Id<'Account'> | null, limit: number) {
+    const rows = await this.prisma.tx(market).identityAccount.findMany({
+      where: {
+        marketId: market.marketId,
+        population: 'customer',
+        ...(after === null ? {} : { id: { gt: after } }),
+      },
+      orderBy: { id: 'asc' },
+      take: limit,
+      select: DIRECTORY_SELECT,
+    });
+    return rows.map(toDirectoryRow);
   }
 
   async searchCustomerIdsByName(

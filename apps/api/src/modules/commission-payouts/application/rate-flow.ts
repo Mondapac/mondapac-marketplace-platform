@@ -10,6 +10,8 @@ import { commissionBase, commissionOn, parseRateBps } from '../domain/commission
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
 import { isActingAs, spendStepUp, type StepUpFailure } from './step-up';
 import { COMMISSION_PAYOUTS_RATE_EDIT } from '../contracts/permissions';
+import type { RecordedRequest, RecordFailure } from '../../system-requests';
+import { COMMISSION_RATE_SUBJECT_KIND, MONEY_REVIEW_AREA } from './money-review';
 
 // Commission rates (COM-01, COM-02): the Market rate comes from Market config; an admin may set a
 // separate rate for one seller, or remove it to put the seller back on the Market rate. Each
@@ -27,7 +29,8 @@ export type RateFailure =
   | { readonly code: 'commission-payouts.rate-not-set' }
   | { readonly code: 'commission-payouts.rate-unavailable' }
   | { readonly code: 'commission-payouts.unavailable' }
-  | StepUpFailure;
+  | StepUpFailure
+  | RecordFailure;
 
 /** What the system read of several rates can refuse. */
 export type RatesFailure = Extract<
@@ -41,7 +44,17 @@ export interface RateView extends CommissionRate {
   readonly marketRateBps: number;
 }
 
+/** A change's answer: the rate and the System requests review it opened (null when none). */
+export interface RateChangeView extends RateView {
+  readonly request: Pick<RecordedRequest, 'id' | 'number'> | null;
+}
+
 const MAX_IDS = 100;
+
+export const requestRef = (
+  request: RecordedRequest | null,
+): Pick<RecordedRequest, 'id' | 'number'> | null =>
+  request === null ? null : { id: request.id, number: request.number };
 
 export const sellerIdOf = (value: unknown): Id<'Seller'> | null => {
   const parsed = typeof value === 'string' ? parseId<'Seller'>(value) : null;
@@ -86,8 +99,8 @@ export async function viewCommissionRate(
 export async function setCommissionRate(
   deps: CommissionPayoutsDependencies,
   context: CallContext,
-  input: { readonly sellerId: unknown; readonly rateBps: unknown },
-): Promise<Result<RateView, RateFailure>> {
+  input: { readonly sellerId: unknown; readonly rateBps: unknown; readonly note?: unknown },
+): Promise<Result<RateChangeView, RateFailure>> {
   const actor = context.actor;
   if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
     return err({ code: 'access.denied' });
@@ -106,7 +119,7 @@ export async function setCommissionRate(
   if (!known) return err({ code: 'commission-payouts.seller-not-found' });
 
   const now = deps.clock.now();
-  return deps.unitOfWork.run<RateView, RateFailure>(context.market, async () => {
+  return deps.unitOfWork.run<RateChangeView, RateFailure>(context.market, async () => {
     const before = await deps.rates.findForUpdate(context.market, sellerId);
     const spent = await spendStepUp(deps, context, COMMISSION_PAYOUTS_RATE_EDIT.key);
     if (!spent.ok) return err(spent.error);
@@ -127,11 +140,23 @@ export async function setCommissionRate(
         },
       }),
     );
+    const review = await deps.review.openReview(context, {
+      area: MONEY_REVIEW_AREA,
+      subjectKind: COMMISSION_RATE_SUBJECT_KIND,
+      subjectRef: sellerId,
+      before: { rateBps: before?.rateBps ?? null },
+      after: { rateBps: rate.value },
+      note: input.note,
+      // Money is always high risk, whatever the area's policy says (Hassan, PR #913).
+      risk: 'high',
+    });
+    if (!review.ok) return err(review.error);
     return ok({
       sellerId,
       rateBps: rate.value,
       source: 'seller',
       marketRateBps: settings.defaultRateBps,
+      request: requestRef(review.value),
     });
   });
 }
@@ -140,14 +165,14 @@ export async function setCommissionRate(
 export async function clearCommissionRate(
   deps: CommissionPayoutsDependencies,
   context: CallContext,
-  input: { readonly sellerId: unknown },
-): Promise<Result<RateView, RateFailure>> {
+  input: { readonly sellerId: unknown; readonly note?: unknown },
+): Promise<Result<RateChangeView, RateFailure>> {
   if (!isAdmin(context)) return err({ code: 'access.denied' });
   const sellerId = sellerIdOf(input?.sellerId);
   if (sellerId === null) return err(invalidSeller());
   const settings = deps.policy.settings(context.market);
   if (settings === null) return err({ code: 'commission-payouts.rate-unavailable' });
-  return deps.unitOfWork.run<RateView, RateFailure>(context.market, async () => {
+  return deps.unitOfWork.run<RateChangeView, RateFailure>(context.market, async () => {
     const before = await deps.rates.findForUpdate(context.market, sellerId);
     if (before === null || !(await deps.rates.remove(context.market, sellerId))) {
       return err({ code: 'commission-payouts.rate-not-set' } as const);
@@ -161,11 +186,23 @@ export async function clearCommissionRate(
         after: { marketRateBps: settings.defaultRateBps },
       }),
     );
+    const review = await deps.review.openReview(context, {
+      area: MONEY_REVIEW_AREA,
+      subjectKind: COMMISSION_RATE_SUBJECT_KIND,
+      subjectRef: sellerId,
+      before: { rateBps: before.rateBps },
+      after: { rateBps: null },
+      note: input.note,
+      // Money is always high risk, whatever the area's policy says (Hassan, PR #913).
+      risk: 'high',
+    });
+    if (!review.ok) return err(review.error);
     return ok({
       sellerId,
       rateBps: settings.defaultRateBps,
       source: 'market',
       marketRateBps: settings.defaultRateBps,
+      request: requestRef(review.value),
     });
   });
 }

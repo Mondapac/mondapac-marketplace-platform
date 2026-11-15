@@ -19,6 +19,7 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CART_CHECKOUT_FACADE, CartModule } from '../cart';
 import { CatalogModule } from '../catalog';
+import { ListsModule } from '../lists';
 import { COMMISSION_PAYOUTS_FACADE, CommissionPayoutsModule } from '../commission-payouts';
 import { CUSTOMERS_CHECKOUT_FACADE, CustomersModule } from '../customers';
 import { IdentityModule } from '../identity';
@@ -44,6 +45,12 @@ import {
   ADMIN_SHIPMENT_LIST_READER,
   type AdminShipmentListReader,
 } from './application/ports/admin-shipment-list.reader';
+import { AdminRefundsController } from './presentation/admin-refunds.controller';
+import { AdminListRefunds } from './application/use-cases/admin-list-refunds.use-case';
+import {
+  ADMIN_REFUND_LIST_READER,
+  type AdminRefundListReader,
+} from './application/ports/admin-refund-list.reader';
 import type { OrderLabels } from './application/ports/order-labels';
 import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { purgeSettledShipToJob } from './presentation/jobs/purge-settled-ship-to.job';
@@ -110,6 +117,8 @@ import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier
 import { AdminOpenObligationsOfQuery } from './application/use-cases/admin-open-obligations-of.use-case';
 import { OpenObligationsOfQuery } from './application/use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
+import { CustomerOrderAccountsQuery } from './application/use-cases/customer-order-accounts.use-case';
+import { CustomerOrderStatsQuery } from './application/use-cases/customer-order-stats.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { OrderPaymentRefQuery } from './application/use-cases/order-payment-ref.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
@@ -157,6 +166,8 @@ import { recordShipmentsJob } from './presentation/jobs/record-shipments.job';
 import { settleRefundsJob } from './presentation/jobs/settle-refunds.job';
 import { OrdersController } from './presentation/orders.controller';
 import { SellerOrdersController } from './presentation/seller-orders.controller';
+import { AdminCustomerRefundsController } from './presentation/admin-customer-refunds.controller';
+import { AdminCustomerRefunds } from './application/use-cases/admin-customer-refunds.use-case';
 import { AdminRefundLimitsController } from './presentation/admin-refund-limits.controller';
 import { OrderingFacadeImplementation } from './presentation/ordering.facade';
 import { carrierSubscriptions } from './presentation/subscribers/carrier.subscriptions';
@@ -297,6 +308,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  */
 @Module({
   imports: [
+    ListsModule,
     CartModule,
     CatalogModule,
     CustomersModule,
@@ -311,8 +323,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     OrdersController,
     AdminOrdersController,
     AdminRefundLimitsController,
+    AdminCustomerRefundsController,
     AdminShipToRetentionController,
     AdminShipmentsController,
+    AdminRefundsController,
     SellerOrdersController,
     AdminSavedViewsController,
     SellerSavedViewsController,
@@ -375,6 +389,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RecordLedger,
       RecordRefundLedger,
       OrderNoticeQuery,
+      CustomerOrderStatsQuery,
+      CustomerOrderAccountsQuery,
       OrderPaymentRefQuery,
       ShipmentNoticeQuery,
       RefundNoticeQuery,
@@ -392,6 +408,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminRefundOrder,
       AdminCancelOrder,
       AdminViewRefundLimits,
+      AdminCustomerRefunds,
       AdminSetRefundLimit,
       AdminRemoveRefundLimit,
       SettleRefunds,
@@ -405,6 +422,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         shipments: AdminShipmentListReader,
         labels: OrderLabels,
       ) => new AdminListShipments(gate, { unitOfWork, shipments, labels }),
+    },
+    {
+      provide: AdminListRefunds,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_REFUND_LIST_READER, ORDER_LABELS],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        refunds: AdminRefundListReader,
+        labels: OrderLabels,
+      ) => new AdminListRefunds(gate, { unitOfWork, refunds, labels }),
     },
     ...[AdminListOrderNotes, AdminAddOrderNote].map((type) => ({
       provide: type,
@@ -484,6 +511,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         AdminOpenObligationsOfQuery,
         SellerHealthCountsQuery,
         RefundNoticeQuery,
+        CustomerOrderStatsQuery,
+        CustomerOrderAccountsQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -498,6 +527,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         adminOpenObligations: AdminOpenObligationsOfQuery,
         healthCounts: SellerHealthCountsQuery,
         refundNotice: RefundNoticeQuery,
+        customerStats: CustomerOrderStatsQuery,
+        customerAccounts: CustomerOrderAccountsQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -512,6 +543,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           adminOpenObligations,
           healthCounts,
           refundNotice,
+          customerStats,
+          customerAccounts,
         ),
     },
     {

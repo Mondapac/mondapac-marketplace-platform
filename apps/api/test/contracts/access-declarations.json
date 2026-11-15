@@ -296,11 +296,18 @@
   { "name": "customers.delete-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.execute-account-deletions", "rule": "system" },
   { "name": "customers.list-addresses", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "customers.read-customer-last-order", "rule": "system" },
   {
     "name": "customers.read-delivery-address",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  {
+    "name": "customers.read-own-last-order",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "customers.reconcile-customer-read-models", "rule": "system" },
   {
     "name": "customers.request-account-deletion",
     "rule": "own-resources",
@@ -311,6 +318,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "customers.sync-customer-read-model", "rule": "system" },
   { "name": "customers.update-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
     "name": "customers.view-account-deletion-availability",
@@ -392,6 +400,8 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "identity.customer-directory-page", "rule": "system" },
+  { "name": "identity.customer-directory-records", "rule": "system" },
   { "name": "identity.describe-actor", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   {
     "name": "identity.describe-seller-status",
@@ -575,6 +585,8 @@
   { "name": "ordering.cancel-carrier-after-refund", "rule": "system" },
   { "name": "ordering.cancel-payment", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },
+  { "name": "ordering.customer-order-accounts", "rule": "system" },
+  { "name": "ordering.customer-order-stats", "rule": "system" },
   { "name": "ordering.delivery-quotes", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {

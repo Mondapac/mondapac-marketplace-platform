@@ -106,6 +106,21 @@ describe('buildPaletteEntries', () => {
     expect(fee?.context).toBe('Marketplace / Delivery rules');
   });
 
+  it("carries a menu item's search words, unshown, so the page is found by them", () => {
+    const entries = buildPaletteEntries({
+      ...sources(['o.view']),
+      navItems: navItems.map((item) =>
+        item.id === 'orders' ? { ...item, keywordsKey: 'nav.orders-words' } : item,
+      ),
+      label: (key) => (key === 'nav.orders-words' ? 'sales, purchases' : (text[key] ?? key)),
+    });
+    const orders = entries.find((entry) => entry.id === 'page:orders');
+    expect(orders?.keywords).toBe('sales, purchases');
+    expect(orders?.label).toBe('Orders');
+    expect(ids(searchPalette(entries, 'purchases'))).toEqual(['page:orders']);
+    expect(entries.find((entry) => entry.id === 'page:home')?.keywords).toBeUndefined();
+  });
+
   it('builds the path of a page and of a setting from the root, the group and the page', () => {
     const entries = buildPaletteEntries({
       ...sources(['del.view']),
