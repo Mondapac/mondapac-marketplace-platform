@@ -492,7 +492,7 @@ describe('admin product list', () => {
     }
   });
 
-  it('says "Still loading…" at 10 s and gives up at 30 s with Try again', () => {
+  it('says "Still loading…" at 10 s, gives up at 30 s, and loads again on Try again', async () => {
     vi.useFakeTimers();
     try {
       call.mockImplementation((_m, path) =>
@@ -514,6 +514,11 @@ describe('admin product list', () => {
     } finally {
       vi.useRealTimers();
     }
+    // Try again starts anew; the answer that never came is not waited for.
+    serve(() => page([row()]));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Lamb cutlets 500 g')).toBeTruthy();
+    expect(screen.queryByText('Products could not be loaded. Try again.')).toBeNull();
   });
 
   it('keeps the rows on screen with the banner above them when a refresh fails', async () => {
@@ -525,6 +530,20 @@ describe('admin product list', () => {
     fireEvent.click(screen.getByRole('button', { name: /^All/ }));
     expect(await screen.findByText('Products could not be loaded. Try again.')).toBeTruthy();
     expect(screen.getByText('Lamb cutlets 500 g')).toBeTruthy();
+  });
+
+  it('offers no "select all matching" over rows kept after a failed refresh', async () => {
+    let fail = false;
+    serve(() => (fail ? 'fail' : page([row()], { total: 500 })));
+    mount();
+    expect(await screen.findByText('Lamb cutlets 500 g')).toBeTruthy();
+    fail = true;
+    fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+    expect(await screen.findByText('Products could not be loaded. Try again.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all products on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).queryByText(/500/)).toBeNull();
   });
 
   it('shows the error banner with Try again, and the list after a retry', async () => {

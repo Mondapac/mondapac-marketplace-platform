@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { CARD_TABLE } from '../data/card-table.ts';
 import { useDelayedLoading } from '../loading/use-delayed-loading.ts';
 
@@ -156,9 +156,13 @@ export function ListLoadingStatus({
   );
 }
 
+const RefreshContext = createContext(false);
+
 /**
- * The rows of a list while another page, sort or filter loads: they stay at 60 % with a 2 px bar
- * at the top of the list, and the list is marked busy. With reduced motion the bar stands still.
+ * The rows of a list while another page, sort or filter loads: the table bodies inside stay at
+ * 60 % (the header, the card select-all bar and the bar keep full strength) and the list is marked
+ * busy. The 2 px bar goes under the list's header: the table places a
+ * {@link ListRefreshBar} there.
  */
 export function ListRefreshing({
   refreshing,
@@ -171,23 +175,47 @@ export function ListRefreshing({
   readonly children: ReactNode;
 }) {
   return (
-    <div className="relative">
+    <RefreshContext.Provider value={refreshing}>
       <div
         aria-busy={busy}
-        className={refreshing ? 'opacity-60 transition-opacity' : 'transition-opacity'}
+        className={`[&_tbody]:motion-safe:transition-opacity ${refreshing ? '[&_tbody]:opacity-60' : ''}`}
       >
         {children}
       </div>
-      {refreshing ? (
-        <div
-          aria-hidden="true"
-          data-testid="list-refresh-bar"
-          className="mp-list-refresh pointer-events-none absolute inset-x-px top-px h-0.5 overflow-hidden rounded-t-lg"
-        >
-          <div className="mp-list-refresh-bar" />
-        </div>
-      ) : null}
-    </div>
+    </RefreshContext.Provider>
+  );
+}
+
+/**
+ * The 2 px accent bar of a refreshing list, drawn along the top edge of the element it is placed
+ * in (that element must be positioned). Shown only inside a refreshing {@link ListRefreshing};
+ * indeterminate, and a still line with reduced motion. Undimmed, so it reads as the active part.
+ */
+export function ListRefreshBar() {
+  const refreshing = useContext(RefreshContext);
+  if (!refreshing) return null;
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="list-refresh-bar"
+      className="pointer-events-none absolute inset-x-0 top-0 z-10 block h-0.5 overflow-hidden"
+    >
+      <span className="mp-list-refresh-bar block" />
+    </span>
+  );
+}
+
+/**
+ * The header row that carries the refresh bar on a table from 1024 px: put it last in `<thead>`,
+ * so the bar runs along the header's bottom edge. Below 1024 px the header is hidden.
+ */
+export function ListRefreshHeadRow({ columns }: { readonly columns: number }) {
+  return (
+    <tr aria-hidden="true" className="max-lg:hidden">
+      <td colSpan={columns} className="relative h-0 p-0">
+        <ListRefreshBar />
+      </td>
+    </tr>
   );
 }
 

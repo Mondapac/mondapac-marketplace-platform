@@ -699,6 +699,29 @@ describe('seller product list', () => {
     }
   });
 
+  it('says "Still loading…" at 10 s, gives up at 30 s, and loads again on Try again', async () => {
+    vi.useFakeTimers();
+    try {
+      call.mockImplementation(() => new Promise(() => undefined));
+      mount();
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+      expect(screen.getByText('Still loading…').getAttribute('role')).toBe('status');
+      act(() => {
+        vi.advanceTimersByTime(20_000);
+      });
+      expect(screen.getByText('Products could not be loaded')).toBeTruthy();
+      expect(screen.queryAllByTestId('skeleton-row')).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+    serve(() => page([row()]));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Olive oil 1L')).toBeTruthy();
+    expect(screen.queryByText('Products could not be loaded')).toBeNull();
+  });
+
   it('keeps the rows on screen with the banner above them when a refresh fails', async () => {
     let fail = false;
     serve(() => (fail ? 'fail' : page([row()])));

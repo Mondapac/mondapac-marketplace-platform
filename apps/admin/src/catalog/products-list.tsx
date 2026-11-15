@@ -289,7 +289,13 @@ export function ProductsList({
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <ProductsBulk
-            selection={{ ids: [...selected], allMatching, total: answer?.total ?? 0 }}
+            // Rows kept after a failed refresh belong to another list than the query: no
+            // "select all matching" over them.
+            selection={{
+              ids: [...selected],
+              allMatching,
+              total: failure === null ? (answer?.total ?? 0) : 0,
+            }}
             query={query}
             columns={columns}
             permissionKeys={permissionKeys}
@@ -436,6 +442,7 @@ export function ProductsList({
       )}
       {firstLoadError ? (
         <LoadError
+          // In the list's own column: no page padding of its own.
           className=""
           message={t('error.unavailable')}
           retryLabel={tl('retry')}

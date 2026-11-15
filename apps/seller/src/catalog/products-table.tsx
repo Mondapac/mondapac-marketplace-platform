@@ -3,6 +3,8 @@
 import {
   Badge,
   CARD_TABLE,
+  ListRefreshBar,
+  ListRefreshHeadRow,
   ListSkeletonRows,
   ListThumb,
   SelectBox,
@@ -129,15 +131,20 @@ export function ProductsTable({
   return (
     <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
       {/* The header is hidden below 1024 px, so a phone gets its select-all box in a bar of its own. */}
-      {!loading && rows.length > 0 ? (
-        <label className="flex cursor-pointer items-center gap-3 border-b border-line-row bg-muted px-4 py-3 text-sm text-fg-muted lg:hidden">
+      {loading || rows.length > 0 ? (
+        <label className="relative flex cursor-pointer items-center gap-3 border-b border-line-row bg-muted px-4 py-3 text-sm text-fg-muted lg:hidden">
           <SelectBox
             label={t('select.page-short')}
             checked={allOnPage}
             indeterminate={someOnPage}
+            disabled={loading}
             onChange={(event) => selection.onTogglePage(event.target.checked)}
           />
           <span className="ps-1">{t('select.page-short')}</span>
+          {/* Cards: the refresh bar runs under this bar, which stands in for the header. */}
+          <span className="absolute inset-x-0 top-full">
+            <ListRefreshBar />
+          </span>
         </label>
       ) : null}
       <table
@@ -174,6 +181,7 @@ export function ProductsTable({
               </th>
             ))}
           </tr>
+          <ListRefreshHeadRow columns={4 + columns.length} />
         </thead>
         <tbody className={CARD_TABLE.body}>
           {loading ? <ListSkeletonRows cells={skeletonCells} rows={skeletonRows} /> : null}

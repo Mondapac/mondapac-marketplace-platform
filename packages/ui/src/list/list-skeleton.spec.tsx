@@ -5,6 +5,8 @@ import { CARD_TABLE } from '../data/card-table.ts';
 import {
   LIST_SKELETON_MAX_ROWS,
   ListLoadingStatus,
+  ListRefreshBar,
+  ListRefreshHeadRow,
   ListRefreshing,
   ListSkeletonRows,
   listSkeletonRowCount,
@@ -77,35 +79,49 @@ describe('ListLoadingStatus', () => {
 });
 
 describe('ListRefreshing', () => {
-  it('dims the rows and shows the bar only while refreshing', () => {
-    const { rerender } = render(
-      <ListRefreshing refreshing={false}>
-        <p>rows</p>
-      </ListRefreshing>,
-    );
-    const content = screen.getByText('rows').parentElement!;
+  const list = (refreshing: boolean, busy?: boolean) => (
+    <ListRefreshing refreshing={refreshing} busy={busy}>
+      <table>
+        <thead>
+          <tr>
+            <th>Product</th>
+          </tr>
+          <ListRefreshHeadRow columns={1} />
+        </thead>
+        <tbody>
+          <tr>
+            <td>rows</td>
+          </tr>
+        </tbody>
+      </table>
+    </ListRefreshing>
+  );
+
+  it('dims the rows and shows the bar under the header only while refreshing', () => {
+    const { rerender, container } = render(list(false));
+    const content = container.firstElementChild!;
     expect(content.className).not.toContain('opacity-60');
     expect(content.getAttribute('aria-busy')).toBe('false');
     expect(screen.queryByTestId('list-refresh-bar')).toBeNull();
-    rerender(
-      <ListRefreshing refreshing>
-        <p>rows</p>
-      </ListRefreshing>,
-    );
+    rerender(list(true));
     expect(content.className).toContain('opacity-60');
     expect(content.getAttribute('aria-busy')).toBe('true');
-    expect(screen.getByTestId('list-refresh-bar').getAttribute('aria-hidden')).toBe('true');
+    const bar = screen.getByTestId('list-refresh-bar');
+    expect(bar.getAttribute('aria-hidden')).toBe('true');
+    // The last row of the header carries it, so it runs along the header's bottom edge.
+    expect(bar.closest('thead')).not.toBeNull();
   });
 
   it('can be busy without dimming (skeleton rows)', () => {
-    render(
-      <ListRefreshing refreshing={false} busy>
-        <p>rows</p>
-      </ListRefreshing>,
-    );
-    const content = screen.getByText('rows').parentElement!;
+    const { container } = render(list(false, true));
+    const content = container.firstElementChild!;
     expect(content.getAttribute('aria-busy')).toBe('true');
     expect(content.className).not.toContain('opacity-60');
+  });
+
+  it('draws no bar outside a refreshing list', () => {
+    render(<ListRefreshBar />);
+    expect(screen.queryByTestId('list-refresh-bar')).toBeNull();
   });
 });
 

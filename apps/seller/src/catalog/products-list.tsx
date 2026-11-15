@@ -392,7 +392,9 @@ export function ProductsList({
             selection={{
               ids: [...selection.selected],
               allMatching: selection.allMatching,
-              total: answer?.total ?? 0,
+              // Rows kept after a failed refresh belong to another list than the address: no
+              // "select all matching" over them.
+              total: failure === null ? (answer?.total ?? 0) : 0,
             }}
             query={query}
             columns={columns}
@@ -536,6 +538,7 @@ export function ProductsList({
       )}
       {firstLoadError ? (
         <LoadError
+          // In the list's own column: no page padding of its own.
           className=""
           title={t('error.title')}
           message={t('error.unavailable')}
