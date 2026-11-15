@@ -113,6 +113,7 @@ const LEAD_KEYS = [
   'promotions.promotion.view',
   'ordering.order.view',
   'ordering.refund-limits.view',
+  'ordering.ship-to-retention.view',
   'payments.connected-account.view',
   'pricing.price-hold.view',
   'sellers.seller.view',

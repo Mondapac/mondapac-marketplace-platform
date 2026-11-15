@@ -2118,6 +2118,36 @@
     }
   },
   {
+    "action": "ordering.ship-to-retention.changed",
+    "targetType": "ordering.ship-to-retention",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "optional(boolean)",
+      "months": "optional(integer)"
+    },
+    "after": {
+      "enabled": "boolean",
+      "months": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "ordering.ship-to.purged",
+    "targetType": "ordering.ship-to-retention",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "cleared": "integer",
+      "complete": "boolean",
+      "cutoff": "instant",
+      "months": "integer"
+    }
+  },
+  {
     "action": "payments.payout-change.recorded",
     "targetType": "payments.connected-account",
     "targetId": "id",

@@ -387,9 +387,47 @@ export function priceRefund(
  * (`succeeded`, before a carrier delivery is cancelled), or by every refund not failed
  * (`not-failed`, before one is booked: money on its way back is never delivered).
  */
-export function refundedInFull(target: RefundTarget, by: 'succeeded' | 'not-failed'): boolean {
+export function refundedInFull(
+  target: Pick<RefundTarget, 'refundedUnits' | 'succeededUnits'> & {
+    readonly lines: readonly Pick<RefundableLine, 'id' | 'quantity'>[];
+  },
+  by: 'succeeded' | 'not-failed',
+): boolean {
   const units = by === 'succeeded' ? target.succeededUnits : target.refundedUnits;
   return target.lines.every((line) => (units.get(line.id) ?? 0) >= line.quantity);
+}
+
+/**
+ * Whether the refunds of a seller order that have not failed give back every unit of its lines,
+ * by the same count as {@link refundedInFull} `not-failed` (the mark-ready guard). False for a
+ * seller order without lines. Takes the refunds as the seller's page lists them.
+ */
+export function linesRefundedInFull(
+  lines: readonly { readonly lineId: Id<'OrderLine'>; readonly quantity: number }[],
+  refunds: readonly {
+    readonly state: RefundState;
+    readonly lines: readonly { readonly orderLineId: Id<'OrderLine'>; readonly quantity: number }[];
+  }[],
+): boolean {
+  if (lines.length === 0) return false;
+  const refundedUnits = new Map<Id<'OrderLine'>, number>();
+  for (const refund of refunds) {
+    if (refund.state === 'failed') continue;
+    for (const line of refund.lines) {
+      refundedUnits.set(
+        line.orderLineId,
+        (refundedUnits.get(line.orderLineId) ?? 0) + line.quantity,
+      );
+    }
+  }
+  return refundedInFull(
+    {
+      lines: lines.map((line) => ({ id: line.lineId, quantity: line.quantity })),
+      refundedUnits,
+      succeededUnits: new Map(),
+    },
+    'not-failed',
+  );
 }
 
 /** Why the seller may not mark units unavailable now (the order moved on, or nothing is left). */

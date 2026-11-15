@@ -591,6 +591,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "ordering.pay-by-card", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "ordering.purge-settled-ship-to", "rule": "system" },
   { "name": "ordering.rebuild-offer-pairs", "rule": "system" },
   { "name": "ordering.record-carrier-progress", "rule": "system" },
   { "name": "ordering.record-delivery-anchor", "rule": "system" },
@@ -785,6 +786,7 @@
   },
   { "name": "sellers.run-seller-health", "rule": "system" },
   { "name": "sellers.run-seller-health-requests", "rule": "system" },
+  { "name": "sellers.search-store-names", "rule": "anonymous" },
   { "name": "sellers.seed-seller-cultures", "rule": "system" },
   { "name": "sellers.seller-approved-cultures", "rule": "anonymous" },
   { "name": "sellers.seller-approved-cultures-system", "rule": "system" },
