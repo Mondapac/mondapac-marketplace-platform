@@ -232,12 +232,20 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
     return { orderId, sellerOrderId, lineId, accountId };
   };
 
-  /** A refund of `units` units, ending as Stripe answers; the clock moves a minute after it. */
+  /**
+   * A refund of `units` units, ending as Stripe answers; the clock moves a minute after it unless
+   * `sameInstant` keeps it (to request several refunds at one time).
+   */
   const refunded = async (
     sellerId: Id<'Seller'>,
     units: number,
     answer: 'succeeded' | 'pending' | 'failed',
-    options: { accountId?: Id<'Account'>; reason?: string; platform?: boolean } = {},
+    options: {
+      accountId?: Id<'Account'>;
+      reason?: string;
+      platform?: boolean;
+      sameInstant?: boolean;
+    } = {},
   ) => {
     const o = await paidOrder(sellerId, options.accountId);
     gateway.refundAnswers = answer;
@@ -249,7 +257,7 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
       reason: options.reason ?? 'damaged',
       ...(options.platform === true ? { lossBearer: 'platform', lossReasonCode: 'goodwill' } : {}),
     });
-    clock.advance(Temporal.Duration.from({ minutes: 1 }));
+    if (options.sameInstant !== true) clock.advance(Temporal.Duration.from({ minutes: 1 }));
     if (result.ok) return { ...o, refundId: result.value.refundId };
     // Stripe refused it: the refund is kept as failed, and the admin is told.
     if (answer !== 'failed' || result.error.code !== 'ordering.refund-rejected') {
@@ -466,6 +474,36 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
     if (!two.ok) throw new Error(two.error.code);
     expect(two.value.rows.map((r) => r.refundId)).toEqual([made[0]!.refundId]);
     expect(two.value.nextCursor).toBeNull();
+  });
+
+  it('walks refunds requested at the same instant by id, skipping and repeating none', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const older = await refunded(sellerId, 1, 'succeeded');
+    const tied = [];
+    for (let i = 0; i < 3; i += 1) {
+      tied.push(await refunded(sellerId, 1, 'succeeded', { sameInstant: i < 2 }));
+    }
+    const newer = await refunded(sellerId, 1, 'succeeded');
+    const list = new AdminListRefunds(gate, {
+      unitOfWork: db.unitOfWork,
+      refunds: reader,
+      labels: new FakeLabels(),
+    });
+    const seen: string[] = [];
+    let cursor: string | null | undefined;
+    for (let step = 0; step < 6; step += 1) {
+      const page = await list.execute(admin, { sellerId, limit: 1, ...(cursor ? { cursor } : {}) });
+      if (!page.ok) throw new Error(page.error.code);
+      seen.push(...page.value.rows.map((r) => r.refundId));
+      cursor = page.value.nextCursor;
+      if (cursor === null) break;
+    }
+    // Ties on requested_at fall back to the id, newest first (uuid order is byte order).
+    const tiedDesc = tied
+      .map((r) => r.refundId as string)
+      .sort()
+      .reverse();
+    expect(seen).toEqual([newer.refundId, ...tiedDesc, older.refundId]);
   });
 
   it("never shows another Market's refunds", async () => {

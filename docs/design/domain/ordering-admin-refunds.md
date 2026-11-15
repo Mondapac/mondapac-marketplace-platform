@@ -20,4 +20,5 @@ name lookup) and its credit note. Read only: refunding stays on the order page. 
   `direction`; up to 10,000 rows, else `too-deep`), or Previous/Next with `limit` and `cursor`
   (`<requested-at ms>.<refund id>`, newest request first, no total), which also reaches rows
   past 10,000.
-- **Row actions:** `view-order`, and `copy-stripe-reference` once Stripe made the refund.
+- **Row actions:** `view-order`, and `copy-stripe-reference` once Stripe made the refund. The
+  Stripe refund id (`re_...`) is shown to admins on purpose: an object id, not a credential.
