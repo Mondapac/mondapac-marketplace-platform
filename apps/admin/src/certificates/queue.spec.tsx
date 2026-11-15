@@ -27,16 +27,29 @@ function mount(
   rows: QueueRow[],
   names: ReadonlyMap<string, string> = new Map([['halal', 'Halal']]),
   morePages = false,
+  canReview = false,
 ) {
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <CertificateQueue rows={rows} typeNames={names} morePages={morePages} />
+      <CertificateQueue rows={rows} typeNames={names} morePages={morePages} canReview={canReview} />
     </NextIntlClientProvider>,
   );
 }
 
 describe('admin certificate review queue', () => {
   afterEach(cleanup);
+
+  it('offers the review link only to a reader who may review', () => {
+    mount([row()]);
+    expect(screen.queryByRole('link', { name: /^Review the certificate/ })).toBeNull();
+    cleanup();
+    mount([row()], undefined, false, true);
+    expect(
+      screen
+        .getByRole('link', { name: 'Review the certificate of Logan Road Grocer' })
+        .getAttribute('href'),
+    ).toBe(`/certificates/${row().certificateId}`);
+  });
 
   it('shows a submission with seller, type name, kind, issuer and submission number', () => {
     mount([row()]);

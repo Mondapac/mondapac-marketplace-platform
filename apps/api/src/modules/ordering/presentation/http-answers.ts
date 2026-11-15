@@ -52,6 +52,8 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'saved-filter.name-taken': 409,
   'saved-filter.limit-reached': 409,
   'saved-filter.shared-limit-reached': 409,
+  'second-factor.required': 403,
+  'second-factor.enrolment-required': 403,
   'access.unavailable': 503,
 });
 
@@ -98,6 +100,7 @@ const DETAILS = [
   'total',
   'limit',
   'max',
+  'actionKey',
 ] as const;
 
 /** The sellers of `ordering.cart-not-ready`: the public minimum leaves as a money body. */

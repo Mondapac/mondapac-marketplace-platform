@@ -47,6 +47,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'tax/admin/strategies',
     // The caps on seller refunds (ordering): the Market default, and one seller's (query: `sellerId`).
     'ordering/admin/refund-limits',
+    // The Market's ship-to retention (ordering): whether and when delivery addresses are deleted.
+    'ordering/admin/ship-to-retention',
     'wallet/admin/credit-requests',
     // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
     // `limit`); one case is read by the page server and again after a decision.
@@ -176,6 +178,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Market default cap on seller refunds (ordering); `ordering.refund-limits.manage` is
     // protected, so it may ask a fresh two-step code.
     'ordering/admin/refund-limits',
+    // The Market's ship-to retention (ordering); `ordering.ship-to-retention.manage` is
+    // protected, so it may ask a fresh two-step code.
+    'ordering/admin/ship-to-retention',
     // The promotions Market switch and the first-order discount (promotions); a monthly budget
     // above the Market threshold asks a fresh two-step code. The zone thresholds are below.
     'promotions/admin/settings',
@@ -277,6 +282,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'ordering/admin/orders/:id/cancel',
     'ordering/admin/orders/:id/seller-orders/:id/refunds',
     'ordering/admin/orders/:id/notes',
+    // Review one seller certificate (certification): record a check or the scope, then decide.
+    'certification/admin/seller-certificates/:id/checks',
+    'certification/admin/seller-certificates/:id/scope',
+    'certification/admin/seller-certificates/:id/approve',
+    'certification/admin/seller-certificates/:id/request-changes',
+    'certification/admin/seller-certificates/:id/decline',
     // Start, resume or discard one checked import (catalog).
     'catalog/admin/platform-imports/:id/start',
     'catalog/admin/platform-imports/:id/resume',
@@ -440,6 +451,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'sellers/admin/:id/category-proposals',
     // Whether the seller may use AI writing help (sellers, SEL-25), set; the page server reads it.
     'sellers/admin/:id/ai-access',
+    // Whether the seller may write blog posts (sellers, blog), set; the page server reads it.
+    'sellers/admin/:id/blog-access',
     // The delivery methods the seller supports (shipping), set from the seller review page.
     'shipping/admin/sellers/:id/delivery-methods',
     // One seller's own cap on its refunds (ordering), set from the seller review page.

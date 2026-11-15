@@ -18,6 +18,7 @@ describe('settings map', () => {
             '/settings/assistant',
             '/settings/service-areas',
             '/settings/account-deletion',
+            '/settings/ship-to-retention',
             '/settings/lists',
             '/settings/ai',
           ],
@@ -51,6 +52,7 @@ describe('settings map', () => {
     expect(keys('delivery')).toEqual(['shipping.delivery-settings.view']);
     expect(keys('fleets')).toEqual(['shipping.fleet-selection.view']);
     expect(keys('account-deletion')).toEqual(['customers.account-deletion-settings.view']);
+    expect(keys('ship-to-retention')).toEqual(['ordering.ship-to-retention.view']);
     expect(keys('lists')).toEqual(['settings.list-paging.view']);
     expect(keys('ai')).toEqual(['settings.ai.view']);
     expect(keys('wallet')).toEqual(['wallet.settings.view']);
@@ -59,7 +61,7 @@ describe('settings map', () => {
     expect(keys('promotions')).toEqual(['promotions.settings.view']);
     expect(keys('admins')).toEqual(['identity.admin-account.view']);
     expect(keys('roles')).toEqual(['identity.platform-role.view']);
-    expect(settingsViewKeys).toHaveLength(14);
+    expect(settingsViewKeys).toHaveLength(15);
   });
 
   it('finds a link with its group, and nothing for an unknown id', () => {
@@ -74,7 +76,18 @@ describe('visibleSettings', () => {
       group.links.flatMap((link) => [...link.view, ...link.manage]),
     );
     expect(shape(all)).toEqual([
-      ['marketplace', ['support', 'assistant', 'service-areas', 'account-deletion', 'lists', 'ai']],
+      [
+        'marketplace',
+        [
+          'support',
+          'assistant',
+          'service-areas',
+          'account-deletion',
+          'ship-to-retention',
+          'lists',
+          'ai',
+        ],
+      ],
       ['delivery', ['delivery', 'fleets']],
       ['money', ['wallet', 'tax', 'refund-limits', 'promotions']],
       ['people', ['admins', 'roles']],

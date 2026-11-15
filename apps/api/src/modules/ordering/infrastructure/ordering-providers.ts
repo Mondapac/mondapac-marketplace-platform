@@ -65,6 +65,16 @@ import {
 } from '../application/ports/saved-filter.repository';
 import { PrismaRefundRepository } from './prisma-refund.repository';
 import {
+  MARKET_ZONES,
+  SHIP_TO_RETENTION_REPOSITORY,
+  type MarketZones,
+  type ShipToRetentionRepository,
+} from '../application/ports/ship-to-retention.repository';
+import {
+  PrismaShipToRetentionRepository,
+  RegistryMarketZones,
+} from './prisma-ship-to-retention.repository';
+import {
   SALES_RANKING_READER,
   type SalesRankingReader,
 } from '../application/ports/sales-ranking.reader';
@@ -101,6 +111,17 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: REFUND_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): RefundRepository => new PrismaRefundRepository(prisma),
+  },
+  {
+    provide: SHIP_TO_RETENTION_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ShipToRetentionRepository =>
+      new PrismaShipToRetentionRepository(prisma),
+  },
+  {
+    provide: MARKET_ZONES,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): MarketZones => new RegistryMarketZones(markets),
   },
   {
     provide: SAVED_FILTER_REPOSITORY,

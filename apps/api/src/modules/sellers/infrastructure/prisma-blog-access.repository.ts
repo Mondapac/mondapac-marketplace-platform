@@ -1,9 +1,10 @@
-import type { Temporal } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   BlogAccessRepository,
   BlogAccessState,
+  BlogAccessView,
 } from '../application/ports/blog-access.repository';
 
 /** {@link BlogAccessRepository} on `sellers.seller_admin_settings`, scoped by the Market. */
@@ -43,5 +44,20 @@ export class PrismaBlogAccessRepository implements BlogAccessRepository {
         blogEnabledBy: change.by,
       },
     });
+  }
+
+  async read(market: MarketContext, sellerId: Id<'Seller'>): Promise<BlogAccessView | null> {
+    const row = await this.prisma.tx(market).sellersSellerAdminSettings.findFirst({
+      where: { marketId: market.marketId, sellerId },
+      select: { blogEnabled: true, blogEnabledAt: true },
+    });
+    if (row === null) return null;
+    return {
+      enabled: row.blogEnabled,
+      changedAt:
+        row.blogEnabledAt === null
+          ? null
+          : Temporal.Instant.fromEpochMilliseconds(row.blogEnabledAt.getTime()),
+    };
   }
 }
