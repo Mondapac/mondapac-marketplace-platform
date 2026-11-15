@@ -47,14 +47,14 @@ export default async function SlidePage({
   const title = t('content.title');
   if (read.kind !== 'ok') {
     return (
-      <AdminShell session={gate.session} activeId="content" title={title}>
+      <AdminShell session={gate.session} activeId="slides" title={title}>
         <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
         <LoadError message={t('content.unavailable')} retryLabel={t('load.retry')} />
       </AdminShell>
     );
   }
   return (
-    <AdminShell session={gate.session} activeId="content" title={title}>
+    <AdminShell session={gate.session} activeId="slides" title={title}>
       <SlideEditor
         // A new key after a refused command (the slide changed meanwhile) shows it as it is now.
         key={`${read.body.updatedAt}:${read.body.status}:${read.body.versions.length}`}

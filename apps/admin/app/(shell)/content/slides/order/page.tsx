@@ -44,7 +44,7 @@ export default async function SlideOrderPage({
   });
   const title = t('content.title');
   return (
-    <AdminShell session={gate.session} activeId="content" title={title}>
+    <AdminShell session={gate.session} activeId="slides" title={title}>
       <div className="mb-4">
         <h1 className="text-2xl font-semibold">{title}</h1>
         <p className="text-fg-muted">{t('content.intro')}</p>

@@ -30,7 +30,7 @@ export default async function SlidesPage() {
   }
   const title = t('content.title');
   return (
-    <AdminShell session={gate.session} activeId="content" title={title}>
+    <AdminShell session={gate.session} activeId="slides" title={title}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">{title}</h1>
