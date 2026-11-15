@@ -433,6 +433,21 @@ export class AdminOrderPageBody {
   page!: number | null;
   @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: rows per page.' })
   pageSize!: number | null;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'True when `search` matched more than 200 customers or stores, so some matches are left ' +
+      'out; ask the person to type a longer text.',
+  })
+  searchCapped!: boolean;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: ['customers-and-stores', 'stores'],
+    description:
+      'What `search` looked in; `stores` when the admin lacks identity.customer-account.view, so customer names were not searched. Null without `search`.',
+  })
+  searchScope!: 'customers-and-stores' | 'stores' | null;
 }
 
 type SellerOrderLike = OrderView['sellerOrders'][number];
@@ -522,7 +537,11 @@ export class SellerOrderShipBody extends SellerOrderDetailBody {
   @ApiProperty({
     type: ShipToBody,
     nullable: true,
-    description: `${SHIP_TO_DESCRIPTION} Recipient name, phone and address only.`,
+    description:
+      `${SHIP_TO_DESCRIPTION} Recipient name, phone and address only. Also null once every ` +
+      'unit is refunded (refunds not failed), 30 days after the order was delivered (or ' +
+      'collected, for a pickup order), and 60 days after it was shipped when it was never ' +
+      'delivered.',
   })
   shipTo!: ShipToBody | null;
 
@@ -531,7 +550,9 @@ export class SellerOrderShipBody extends SellerOrderDetailBody {
     nullable: true,
     description:
       "The customer's note to this seller (plain text, 200 characters at most; escape it). " +
-      'Null when none was written, on older orders and once the account was erased.',
+      'Null when none was written, on older orders, once the account was erased, and ' +
+      'whenever `shipTo` is withheld (refunded in full, 30 days after delivery, 60 days after ' +
+      'an undelivered shipment).',
   })
   buyerNote!: string | null;
 
@@ -698,6 +719,8 @@ export const adminOrderPageBody = (page: AdminOrderPageView): AdminOrderPageBody
   total: page.paging?.total ?? null,
   page: page.paging?.page ?? null,
   pageSize: page.paging?.pageSize ?? null,
+  searchCapped: page.searchCapped,
+  searchScope: page.searchScope,
 });
 
 export const pageBody = <V, B>(

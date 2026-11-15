@@ -108,12 +108,14 @@ import { SellerList } from './application/use-cases/list.use-case';
 import { ServiceAreaNamesEdit } from './application/use-cases/service-area-names-edit.use-case';
 import { ServiceAreaNamesList } from './application/use-cases/service-area-names-list.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
+import { SearchStoreNames } from './application/use-cases/search-store-names.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
 import { ActiveSinceSystem } from './application/use-cases/active-since-system.use-case';
 import { ActiveSince } from './application/use-cases/active-since.use-case';
 import { BlogAccessSystem } from './application/use-cases/blog-access-system.use-case';
 import { BlogAccess } from './application/use-cases/blog-access.use-case';
 import { BlogAccessSetUseCase } from './application/use-cases/blog-access-set.use-case';
+import { ViewBlogAccessUseCase } from './application/use-cases/view-blog-access.use-case';
 import { BlogAccessController } from './presentation/blog-access.controller';
 import { BLOG_ACCESS_REPOSITORY } from './application/ports/blog-access.repository';
 import { AI_ACCESS_SETTING_REPOSITORY } from './application/ports/ai-access-setting.repository';
@@ -418,6 +420,10 @@ const REVIEW_DECISION_PORTS = {
       outbox: true,
       registered: true,
       clock: true,
+    }),
+    useCaseProvider(SearchStoreNames, {
+      unitOfWork: true,
+      storeProfiles: true,
     }),
     useCaseProvider(SellerSummaries, {
       unitOfWork: true,
@@ -867,6 +873,7 @@ const REVIEW_DECISION_PORTS = {
     // Since when a seller has been approved, for promotions' new-seller rule: the read pair.
     useCaseProvider(ActiveSince, { unitOfWork: true, sellingFacts: true }),
     useCaseProvider(ActiveSinceSystem, { unitOfWork: true, sellingFacts: true }),
+    useCaseProvider(ViewBlogAccessUseCase, { unitOfWork: true, blogAccess: true }),
     useCaseProvider(BlogAccessSetUseCase, {
       unitOfWork: true,
       blogAccess: true,
@@ -898,6 +905,7 @@ const REVIEW_DECISION_PORTS = {
       inject: [
         SellerSummaries,
         SellerSummariesSystem,
+        SearchStoreNames,
         SellingEligibility,
         SellingEligibilitySystem,
         AllowedProductTypes,
@@ -926,6 +934,7 @@ const REVIEW_DECISION_PORTS = {
       useFactory: (
         sellerSummaries: SellerSummaries,
         sellerSummariesSystem: SellerSummariesSystem,
+        searchStoreNames: SearchStoreNames,
         sellingEligibility: SellingEligibility,
         sellingEligibilitySystem: SellingEligibilitySystem,
         allowedProductTypes: AllowedProductTypes,
@@ -954,6 +963,7 @@ const REVIEW_DECISION_PORTS = {
         new SellersFacadeImplementation({
           sellerSummaries,
           sellerSummariesSystem,
+          searchStoreNames,
           sellingEligibility,
           sellingEligibilitySystem,
           allowedProductTypes,

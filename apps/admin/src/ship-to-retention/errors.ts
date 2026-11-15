@@ -1,0 +1,17 @@
+import type { ApiFailure } from '../api/client.ts';
+
+const BY_CODE: Readonly<Record<string, string>> = {
+  'conflict.retry': 'stale',
+  'validation.failed': 'invalid',
+  'request.throttled': 'throttled',
+  'request.csrf': 'csrf',
+  'access.denied': 'denied',
+};
+
+/** The message key (under `ship-to-retention.error`) for a failed write. */
+export function shipToRetentionProblemOf(failure: ApiFailure): string {
+  const named = BY_CODE[failure.code];
+  if (named !== undefined) return named;
+  if (failure.status === 403) return 'denied';
+  return failure.status === 503 || failure.status === 0 ? 'unavailable' : 'unknown';
+}

@@ -780,6 +780,55 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', 'sellers/admin/nope/ai-access')).status).toBe(404);
     expect((await call('POST', `sellers/admin/${ID}/ai-access`)).status).toBe(404);
     expect((await read(`sellers/admin/${ID}/ai-access`)).status).toBe(404);
+    expect((await call('PUT', `sellers/admin/${ID}/blog-access`)).status).toBe(200);
+    expect((await call('PUT', 'sellers/admin/nope/blog-access')).status).toBe(404);
+    expect((await call('POST', `sellers/admin/${ID}/blog-access`)).status).toBe(404);
+    expect((await read(`sellers/admin/${ID}/blog-access`)).status).toBe(404);
+  });
+
+  it('relays the ship-to retention on GET and PUT only, with no query', async () => {
+    const path = 'ordering/admin/ship-to-retention';
+    const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 })));
+    const send = (method: string, target: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${target}`, { method, headers: sameOrigin }),
+        target.split('?')[0]!.split('/'),
+        fetcher,
+      );
+    expect((await send('GET', path)).status).toBe(200);
+    expect((await send('PUT', path)).status).toBe(200);
+    expect((await send('GET', `${path}?x=1`)).status).toBe(200);
+    expect(fetcher.mock.calls[2]?.[0] as string).toMatch(/ship-to-retention$/);
+    expect((await send('DELETE', path)).status).toBe(404);
+    expect((await send('POST', path)).status).toBe(404);
+  });
+
+  it('relays the refund caps on their exact methods, with only the seller id and version in a query', async () => {
+    const caps = 'ordering/admin/refund-limits';
+    const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 })));
+    const send = (method: string, path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, {
+          method,
+          headers: sameOrigin,
+        }),
+        path.split('?')[0]!.split('/'),
+        fetcher,
+      );
+    expect((await send('GET', caps)).status).toBe(200);
+    expect((await send('GET', `${caps}?sellerId=${ID}&other=1`)).status).toBe(200);
+    expect(fetcher.mock.calls[1]?.[0] as string).toMatch(/refund-limits\?sellerId=[0-9a-f-]{36}$/);
+    expect((await send('PUT', caps)).status).toBe(200);
+    expect((await send('PUT', `${caps}/sellers/${ID}`)).status).toBe(200);
+    expect((await send('DELETE', `${caps}/sellers/${ID}?expectedVersion=3&x=1`)).status).toBe(200);
+    expect(fetcher.mock.calls.at(-1)?.[0] as string).toMatch(
+      /sellers\/[0-9a-f-]{36}\?expectedVersion=3$/,
+    );
+    expect((await send('PUT', `${caps}/sellers/nope`)).status).toBe(404);
+    expect((await send('DELETE', caps)).status).toBe(404);
+    expect((await send('POST', caps)).status).toBe(404);
   });
 
   it('relays approve and reject of a held price for a UUID only, and no other method', async () => {
@@ -1165,7 +1214,7 @@ describe('relay of the storefront slides', () => {
     }
   });
 
-  it('changes one page by its id or system key: settings, modules and their order', async () => {
+  it('changes one page by its id or system key: settings, modules, order, restore, publish, archive', async () => {
     const slot = 'storefront/admin/pages';
     for (const [method, path] of [
       ['PUT', `${slot}/${id}`],
@@ -1175,6 +1224,10 @@ describe('relay of the storefront slides', () => {
       ['PUT', `${slot}/${id}/slots/no-results/modules/${id}`],
       ['DELETE', `${slot}/${id}/slots/main/modules/${id}`],
       ['PUT', `${slot}/${id}/slots/main/order`],
+      ['POST', `${slot}/${id}/restore`],
+      ['POST', `${slot}/${id}/publish`],
+      ['POST', `${slot}/${id}/archive`],
+      ['POST', `${slot}/home/publish`],
     ] as const) {
       const ok = upstreamOk();
       expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
@@ -1225,10 +1278,13 @@ describe('relay of the storefront slides', () => {
       ['PUT', `${base}/${id}/slots/main/modules`],
       ['POST', `${base}/${id}/slots/main/order`],
       ['DELETE', `${base}/${id}/slots/main/order`],
-      // Publish, archive and restore come with their own screens.
-      ['POST', `${base}/${id}/publish`],
-      ['POST', `${base}/${id}/archive`],
-      ['POST', `${base}/${id}/restore`],
+      // Restore, publish and archive are POST only, on one page, and take no further segment.
+      ['PUT', `${base}/${id}/publish`],
+      ['GET', `${base}/${id}/archive`],
+      ['DELETE', `${base}/${id}/restore`],
+      ['POST', `${base}/navigation/publish`],
+      ['POST', `${base}/${id}/publish/extra`],
+      ['POST', `${base}/${id}/slots/main/publish`],
     ] as const) {
       const ok = upstreamOk();
       expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(404);
@@ -1443,7 +1499,20 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `blog/admin/posts/${id}/submit`],
     ['POST', `blog/admin/posts/${id}/approve`],
     ['POST', `blog/admin/posts/${id}/request-changes`],
+    ['POST', `blog/admin/posts/${id}/publish`],
+    ['POST', `blog/admin/posts/${id}/pause`],
+    ['POST', `blog/admin/posts/${id}/resume`],
+    ['POST', `blog/admin/posts/${id}/archive`],
+    ['PUT', `blog/admin/posts/${id}/schedule`],
+    ['DELETE', `blog/admin/posts/${id}/schedule`],
+    ['PUT', `blog/admin/posts/${id}/slug`],
+    ['PUT', `blog/admin/posts/${id}/featured`],
     ['GET', 'blog/admin/taxonomy'],
+    ['POST', 'blog/admin/taxonomy/categories'],
+    ['PUT', `blog/admin/taxonomy/categories/${id}`],
+    ['DELETE', `blog/admin/taxonomy/categories/${id}`],
+    ['POST', 'blog/admin/taxonomy/tags'],
+    ['DELETE', `blog/admin/taxonomy/tags/${id}`],
     ['GET', 'catalog/admin/brands'],
     ['GET', 'catalog/admin/brands/merge-queue'],
     ['POST', 'catalog/admin/brands'],

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../messages/en.json';
 import type { AdminSession } from '../../../../src/server/session.ts';
 import type * as AiAccessModule from '../../../../src/sellers/ai-access-card.tsx';
+import type * as BlogAccessModule from '../../../../src/sellers/blog-access-card.tsx';
 import SellerReviewPage from './page.tsx';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), session: vi.fn() }));
@@ -47,6 +48,26 @@ vi.mock('../../../../src/sellers/ai-access-card.tsx', async (importOriginal) => 
       data-initial={initial === null ? 'none' : String(initial.enabled)}
     >
       ai access card
+    </section>
+  ),
+}));
+vi.mock('../../../../src/sellers/blog-access-card.tsx', async (importOriginal) => ({
+  ...(await importOriginal<typeof BlogAccessModule>()),
+  BlogAccessCard: ({
+    initial,
+    canView,
+    canEdit,
+  }: {
+    initial: { enabled: boolean } | null;
+    canView: boolean;
+    canEdit: boolean;
+  }) => (
+    <section
+      data-can-view={String(canView)}
+      data-can-edit={String(canEdit)}
+      data-initial={initial === null ? 'none' : String(initial.enabled)}
+    >
+      blog access card
     </section>
   ),
 }));
@@ -160,7 +181,10 @@ describe('admin seller page: AI writing help card', () => {
     mocks.get.mockImplementation((path: string) =>
       Promise.resolve({
         kind: 'ok',
-        body: path.endsWith('/ai-access') ? { enabled: true, changedAt: null } : {},
+        body:
+          path.endsWith('/ai-access') || path.endsWith('/blog-access')
+            ? { enabled: true, changedAt: null }
+            : {},
       }),
     );
   });
@@ -192,6 +216,48 @@ describe('admin seller page: AI writing help card', () => {
     expect(screen.getByText('ai access card').getAttribute('data-initial')).toBe('none');
     expect(screen.getByText('ai access card').getAttribute('data-can-view')).toBe('false');
     expect(mocks.get).not.toHaveBeenCalledWith(`sellers/admin/${SELLER}/ai-access`);
+  });
+});
+
+describe('admin seller page: blog switch card', () => {
+  const REVIEW = 'sellers.business-details.view';
+  beforeEach(() => {
+    mocks.get.mockReset();
+    mocks.get.mockImplementation((path: string) =>
+      Promise.resolve({
+        kind: 'ok',
+        body: path.endsWith('/blog-access') ? { enabled: true, changedAt: null } : {},
+      }),
+    );
+  });
+  afterEach(cleanup);
+
+  it('shows the card read-only to a role that can view sellers but not switch the blog', async () => {
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session([REVIEW, 'sellers.seller.view']),
+    });
+    await show();
+    const card = screen.getByText('blog access card');
+    expect(card.getAttribute('data-can-edit')).toBe('false');
+    expect(card.getAttribute('data-initial')).toBe('true');
+    expect(mocks.get).toHaveBeenCalledWith(`sellers/admin/${SELLER}/blog-access`);
+  });
+
+  it('lets the holder of the blog key switch it', async () => {
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session([REVIEW, 'sellers.seller.view', 'sellers.blog-access.edit']),
+    });
+    await show();
+    expect(screen.getByText('blog access card').getAttribute('data-can-edit')).toBe('true');
+  });
+
+  it('shows no card to a role with neither key, and reads nothing', async () => {
+    mocks.session.mockResolvedValue({ kind: 'ok', session: session([REVIEW]) });
+    await show();
+    expect(screen.queryByText('blog access card')).toBeNull();
+    expect(mocks.get).not.toHaveBeenCalledWith(`sellers/admin/${SELLER}/blog-access`);
   });
 });
 
