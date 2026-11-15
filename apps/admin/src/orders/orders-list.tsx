@@ -61,6 +61,7 @@ export function OrdersList({
   marketId,
   csrfToken = '',
   zone,
+  customerAccountId,
 }: {
   readonly paging?: ListPaging;
   readonly accountId: string;
@@ -68,6 +69,11 @@ export function OrdersList({
   readonly csrfToken?: string;
   /** The IANA zone of the table's times and of the day filters (ADR-0005). */
   readonly zone: string;
+  /**
+   * The Orders tab of a customer's page: only this customer's orders (`accountId`, fixed, not a
+   * chip), no Customer column and no saved filters (they belong to the Orders page).
+   */
+  readonly customerAccountId?: string;
 }) {
   const t = useTranslations('orders');
   const tl = useTranslations('load');
@@ -116,9 +122,13 @@ export function OrdersList({
       zone,
       paging === 'pages' ? { paging, page, sort } : { paging, cursor },
     );
+    const scoped =
+      customerAccountId === undefined
+        ? text
+        : [text, `accountId=${encodeURIComponent(customerAccountId)}`].filter(Boolean).join('&');
     const result = await callApi<AdminOrderPage>(
       'GET',
-      `ordering/admin/orders${text === '' ? '' : `?${text}`}`,
+      `ordering/admin/orders${scoped === '' ? '' : `?${scoped}`}`,
     );
     if (ticket !== latest.current) return;
     setLoading(false);
@@ -136,7 +146,7 @@ export function OrdersList({
     setRows(result.body.orders);
     setNext(result.body.nextCursor);
     setTotal(result.body.total ?? null);
-  }, [filters, zone, paging, page, sort, cursor, backwards]);
+  }, [filters, zone, paging, page, sort, cursor, backwards, customerAccountId]);
 
   useEffect(() => {
     void load();
@@ -147,6 +157,7 @@ export function OrdersList({
   }, [storageKey]);
 
   const loadSaved = useCallback(async (): Promise<readonly SavedFilter[] | null> => {
+    if (customerAccountId !== undefined) return null;
     const result = await callApi<SavedFiltersAnswer>(
       'GET',
       `ordering/admin/saved-filters?listKey=${LIST_KEY}`,
@@ -159,7 +170,7 @@ export function OrdersList({
     );
     const items: readonly SavedFilter[] = result.body.items;
     return items;
-  }, []);
+  }, [customerAccountId]);
 
   useEffect(() => {
     void loadSaved();
@@ -223,9 +234,17 @@ export function OrdersList({
       : []),
   ].join(' · ');
 
+  // On a customer's page every row is that customer's: the Customer column says nothing.
+  const pickable =
+    customerAccountId === undefined
+      ? OPTIONAL_COLUMNS
+      : OPTIONAL_COLUMNS.filter((column) => column !== 'customer');
+  const shownColumns =
+    customerAccountId === undefined ? columns : columns.filter((column) => column !== 'customer');
+
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-fg-muted">{t('intro')}</p>
+      {customerAccountId === undefined ? <p className="text-fg-muted">{t('intro')}</p> : null}
       <p className="text-sm text-fg-muted">{t('zone-note', { zone })}</p>
       <div className="flex items-stretch">
         <div className="min-w-0 flex-1">
@@ -307,10 +326,10 @@ export function OrdersList({
         <Popover label={t('columns.button')} icon="columns" width="md">
           {(close) => (
             <ColumnPickerPanel
-              all={OPTIONAL_COLUMNS}
+              all={pickable}
               fixed={[{ id: 'order', label: t('col.order') }]}
-              shown={columns}
-              defaults={DEFAULT_COLUMNS}
+              shown={shownColumns}
+              defaults={pickable}
               labelOf={(column) => t(`col.${column}`)}
               labels={{
                 title: t('columns.title'),
@@ -364,7 +383,7 @@ export function OrdersList({
       ) : null}
       {rows.length > 0 ? (
         <div ref={listTop} tabIndex={-1} className="outline-none">
-          <OrdersTable rows={rows} columns={columns} zone={zone} />
+          <OrdersTable rows={rows} columns={shownColumns} zone={zone} />
         </div>
       ) : null}
       {!loading && !failed && rows.length === 0 ? (

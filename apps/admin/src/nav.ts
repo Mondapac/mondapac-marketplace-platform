@@ -130,7 +130,7 @@ export const adminNav: NavConfig = {
       labelKey: 'nav.customers',
       href: '/customers',
       group: 'customers',
-      anyOf: ['identity.customer-account.view'],
+      anyOf: ['customers.customers.view'],
     },
     {
       id: 'review-moderation',

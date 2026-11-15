@@ -2,7 +2,7 @@
 
 import { ActionRow, Badge, Banner, Button, CheckboxRow, TextField } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { formatInstant } from '../shared/format.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { CancelDeletionDialog, type CancelOutcome } from './cancel-dialog.tsx';
@@ -32,11 +32,20 @@ export function BuyerDeletion({
   accountId,
   waitingPeriodDays,
   csrfToken,
+  openSignal,
+  onPendingChange,
 }: {
   readonly accountId: string;
   /** The Market's waiting period, when the admin may read the setting; else null (no number). */
   readonly waitingPeriodDays: number | null;
   readonly csrfToken: string;
+  /**
+   * The customer page opens the dialog from its own More menu: each new value opens it, and the
+   * card shows no Delete button of its own. Without it the card has its button (the lookup).
+   */
+  readonly openSignal?: number;
+  /** Told when a request made here is pending, or no longer (cancelled). */
+  readonly onPendingChange?: (pending: { readonly requestId: string } | null) => void;
 }) {
   const t = useTranslations('account-deletion');
   const locale = useLocale();
@@ -57,6 +66,14 @@ export function BuyerDeletion({
   useLayoutEffect(() => {
     if (notice !== null) noticeRef.current?.focus();
   }, [notice]);
+
+  useEffect(() => {
+    if (openSignal !== undefined && openSignal > 0) openDialog();
+  }, [openSignal]);
+
+  useEffect(() => {
+    onPendingChange?.(requestId === null ? null : { requestId });
+  }, [requestId, onPendingChange]);
 
   function openDialog() {
     setNotice(null);
@@ -167,11 +184,13 @@ export function BuyerDeletion({
         </div>
       )}
       {requestId === null ? (
-        <ActionRow>
-          <Button variant="destructive" disabled={pending} onClick={openDialog}>
-            {t('buyer.action')}
-          </Button>
-        </ActionRow>
+        openSignal !== undefined ? null : (
+          <ActionRow>
+            <Button variant="destructive" disabled={pending} onClick={openDialog}>
+              {t('buyer.action')}
+            </Button>
+          </ActionRow>
+        )
       ) : (
         <div className="flex flex-wrap items-center gap-3">
           <Badge tone="attention">{t('buyer.pending-badge')}</Badge>

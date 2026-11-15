@@ -364,3 +364,23 @@ admin deletes a buyer's account for them, from a support ticket.
   (make it a full `text_pattern_ops` index in a new migration). A name search of three characters or
   more is a scan of the Market until `pg_trgm` is approved. The two sort indexes on the stats
   table are not used by the left join and can be dropped later.
+
+## Customers management, phase 1 frontend: F1 list and F2 customer page (15 Nov 2026)
+
+- **Customers list** (`apps/admin/src/customers/customers-list.tsx`, `/customers`) replaces the exact-email lookup. It is a
+  super list on `SuperList`/`SuperTable`: the seven tabs with counts, saved filters (`customers/admin/saved-filters`),
+  search (email start or name, 2 to 80 characters; shorter is not sent), filters, sort, columns (this browser),
+  selection with "select all matching", the Bulk action menu (Export, with the `customers.customers.export` two-step code)
+  and the row Actions menu (open, copy email, copy account id, disable or enable). The nav item and the dashboard's
+  "Find a customer" now need `customers.customers.view` (was `identity.customer-account.view`).
+- **Customer page** (`/customers/:accountId`, `?tab=overview|orders|money`): header (status, verified, joined; Issue
+  wallet credit; More: disable or enable, delete through the 5c dialog), Overview figures and profile, Orders (the admin
+  Orders list scoped with `accountId`, no Customer column, no saved filters), Money (Spent, Refunded, wallet balance;
+  refunds, wallet journal and promotion credits, each under its own key). `tab-opened` is called once per tab per visit
+  before the tab's data is read.
+- **Known gaps (phase 2 backend):** order-number search; refunds read capped at 100 with no paging or sort (the page
+  pages the 100 in the browser); payments per order, chargebacks and code usage per customer; a pending deletion request
+  is not part of the Overview read, so the header shows "Deletion pending" only for a request made on the page; the
+  "deleted customer" view (erasure removes the directory row, so the page says not found). The spent filter is typed in
+  the currency the rows carry (the panel has no Market currency setting); with no ordering customer on the page it is
+  hidden.
