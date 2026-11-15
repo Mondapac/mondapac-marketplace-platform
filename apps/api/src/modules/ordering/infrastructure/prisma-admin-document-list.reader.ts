@@ -157,8 +157,12 @@ function shippingGross(row: {
     : row.shippingAmount;
 }
 
-/** Keyset: after `after`, newest first (issued time, then id). */
+/**
+ * Keyset: after `after`, newest first (issued time, then id). The plain bound lets the index
+ * start at the cursor; the OR keeps the tie order.
+ */
 const afterWhere = (field: 'paidAt' | 'issuedAt', after: DocumentCursor) => ({
+  [field]: { lte: toDate(after.issuedAt) },
   OR: [
     { [field]: { lt: toDate(after.issuedAt) } },
     { [field]: toDate(after.issuedAt), id: { lt: after.documentId } },
