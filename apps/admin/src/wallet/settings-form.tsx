@@ -13,9 +13,10 @@ import {
   SettingsConflictBanner,
   SettingsPage,
   SettingsSection,
-  SkeletonRows,
+  SettingsSkeleton,
   toast,
   type BadgeTone,
+  useDelayedLoading,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -68,6 +69,8 @@ export function SettingsForm({
   // Before the loading and error returns below: a hook is called on every render.
   const changeHistory = useChangeHistory(settings?.lastChanged, 'wallet/admin/settings/history');
   const winnerTitle = useWinnerTitle();
+  // Shown after 200 ms, held at least 400 ms; at 30 s the load counts as failed.
+  const loading = useDelayedLoading(settings === null && !loadFailed);
 
   const load = useCallback(async () => {
     setLoadFailed(false);
@@ -76,6 +79,7 @@ export function SettingsForm({
       // A state the panel does not know is not shown as a guess.
       if (WALLET_STATES.includes(result.body.status) && Number.isInteger(result.body.version)) {
         setSettings(result.body);
+        setLoadFailed(false);
       } else setLoadFailed(true);
     } else if (result.failure.status === 401) window.location.assign('/session-ended');
     else setLoadFailed(true);
@@ -84,6 +88,10 @@ export function SettingsForm({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (loading.stalled) setLoadFailed(true);
+  }, [loading.stalled]);
 
   const title = t('settings.title');
   const intro = t('settings.intro');
@@ -99,10 +107,17 @@ export function SettingsForm({
       </SettingsPage>
     );
   }
-  if (settings === null) {
+  if (settings === null || loading.visible) {
     return (
       <SettingsPage title={title} description={intro}>
-        <SkeletonRows label={t('loading')} rows={3} />
+        <SettingsSkeleton
+          label={t('loading')}
+          header={false}
+          sections={[{ fields: 2 }, { fields: 2 }, { fields: 2, description: true }]}
+          visible={loading.visible}
+          slow={loading.slow}
+          slowLabel={root('route.slow')}
+        />
       </SettingsPage>
     );
   }

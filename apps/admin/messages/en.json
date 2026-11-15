@@ -5108,6 +5108,12 @@
   },
   "route": {
     "loading": "Loading the page",
+    "loading-page": "Loading {page}",
+    "slow": "Still loading…",
+    "stalled": {
+      "title": "This page is taking too long to load",
+      "message": "Check your connection and try again. Nothing you saved was lost."
+    },
     "error": {
       "title": "This page could not be shown",
       "message": "Something went wrong on our side. Try again, or go back to the dashboard. Nothing you saved was lost.",

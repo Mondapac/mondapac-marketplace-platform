@@ -21,6 +21,15 @@ export {
 } from './loading/navigation-progress.tsx';
 export { Spinner } from './loading/spinner.tsx';
 export {
+  SettingsSkeleton,
+  type SettingsSkeletonProps,
+  type SkeletonSection,
+} from './loading/settings-skeleton.tsx';
+export {
+  SettingsRouteLoading,
+  type SettingsRouteLoadingProps,
+} from './loading/settings-route-loading.tsx';
+export {
   useDelayedLoading,
   LOADING_SHOW_DELAY_MS,
   LOADING_MIN_VISIBLE_MS,
