@@ -155,6 +155,7 @@ describe.each(['AU', 'ZZ'] as const)('admin Variants page in market %s (V6)', (c
     const types = options.types ?? [typeRecord()];
     const rows = options.rows ?? [row(1), row(2)];
     const queries: VariantsQuery[] = [];
+    const counted: Pick<VariantsQuery, 'text' | 'typeCode' | 'issue'>[] = [];
     const reader: VariantAdminReader = {
       variantTypes: (m, limit) => {
         expect(m.marketId).toBe(code);
@@ -183,10 +184,18 @@ describe.each(['AU', 'ZZ'] as const)('admin Variants page in market %s (V6)', (c
       variantsPage: (_m, query) => {
         queries.push(query);
         const start =
-          query.after === null ? 0 : rows.findIndex((r) => r.variantId === query.after) + 1;
+          query.window !== undefined
+            ? query.window.offset
+            : query.after === null
+              ? 0
+              : rows.findIndex((r) => r.variantId === query.after) + 1;
         const page = rows.slice(start, start + query.limit);
         const more = start + query.limit < rows.length;
         return Promise.resolve({ rows: page, nextAfter: more ? page.at(-1)!.variantId : null });
+      },
+      variantsCount: (_m, query) => {
+        counted.push(query);
+        return Promise.resolve(rows.length);
       },
       issueCounts: () =>
         Promise.resolve({
@@ -273,6 +282,7 @@ describe.each(['AU', 'ZZ'] as const)('admin Variants page in market %s (V6)', (c
       checked,
       units,
       queries,
+      counted,
       saved,
       matched,
       audits,
@@ -505,11 +515,19 @@ describe.each(['AU', 'ZZ'] as const)('admin Variants page in market %s (V6)', (c
           issue: null,
           after: null,
           limit: 25,
+          window: { offset: 0, sort: 'newest', direction: 'desc' },
           locale,
           locales: supported,
         },
       ]);
-      expect(result.value.nextAfter).toBeNull();
+      expect(result.value).toMatchObject({
+        total: 2,
+        page: 1,
+        pageSize: 25,
+        paging: 'pages',
+        hasNext: false,
+        nextAfter: null,
+      });
       expect(result.value.items.map((i) => [i.status, i.label, i.issues])).toEqual([
         ['paused', '1 kg', ['no-seller-selling', 'missing-gtin', 'no-image', 'missing-language']],
         ['live', '1 kg', ['duplicate-gtin']],
@@ -517,23 +535,69 @@ describe.each(['AU', 'ZZ'] as const)('admin Variants page in market %s (V6)', (c
       expect(s.units).toEqual([{ market: code, options: { readOnly: true } }]);
     });
 
-    it('passes the search, the type, the issue and the cursor through', async () => {
+    it('still reads by cursor for the older panel (after, limit) and answers nextAfter', async () => {
+      const s = setup({ rows: [row(1), row(2), row(3)] });
+      const first = await s.list.execute(context(), { limit: 2 });
+      if (!first.ok) throw new Error(first.error.code);
+      expect(first.value.items).toHaveLength(2);
+      expect(first.value.nextAfter).toBe(first.value.items[1]?.variantId);
+      expect(s.queries[0]).toMatchObject({ after: null, limit: 2 });
+      expect(s.queries[0]?.window).toBeUndefined();
+      const after = first.value.nextAfter!.toUpperCase();
+      const next = await s.list.execute(context(), { after, limit: 2 });
+      if (!next.ok) throw new Error(next.error.code);
+      expect(next.value.items).toHaveLength(1);
+      expect(next.value.nextAfter).toBeNull();
+      expect((await s.list.execute(context(), { limit: 101 })).ok).toBe(false);
+      expect((await s.list.execute(context(), { after: 'nope' })).ok).toBe(false);
+    });
+
+    it('offers the Actions menu entries on every row', async () => {
       const s = setup();
-      const after = row(9).variantId.toUpperCase();
+      const result = await s.list.execute(context(), {});
+      if (!result.ok) throw new Error(result.error.code);
+      expect(result.value.items.map((i) => i.actions)).toEqual([
+        ['open-product', 'copy-code'],
+        ['open-product', 'copy-code'],
+      ]);
+    });
+
+    it('passes the search, the type, the issue, the sort and the page through', async () => {
+      const s = setup();
       await s.list.execute(context(), {
         q: '  0930  ',
         typeCode: 'size',
         issue: 'missing-gtin',
-        after,
-        limit: 100,
+        sort: 'code',
+        page: 2,
+        pageSize: 1,
       });
       expect(s.queries[0]).toMatchObject({
         text: '0930',
         typeCode: 'size',
         issue: 'missing-gtin',
-        after: after.toLowerCase(),
-        limit: 100,
+        after: null,
+        limit: 1,
+        window: { offset: 1, sort: 'code', direction: 'asc' },
       });
+    });
+
+    it('in prev-next mode counts nothing and reads one row more to find the next page', async () => {
+      const s = setup({ rows: [row(1), row(2), row(3)] });
+      const result = await s.list.execute(context(), { paging: 'prev-next', pageSize: 2 });
+      if (!result.ok) throw new Error(result.error.code);
+      expect(s.counted).toEqual([]);
+      expect(s.queries[0]?.limit).toBe(3);
+      expect(result.value).toMatchObject({ total: null, hasNext: true, paging: 'prev-next' });
+      expect(result.value.items).toHaveLength(2);
+    });
+
+    it('answers an empty page, without a row read, past the last page', async () => {
+      const s = setup();
+      const result = await s.list.execute(context(), { page: 5 });
+      if (!result.ok) throw new Error(result.error.code);
+      expect(result.value).toMatchObject({ items: [], total: 2, hasNext: false });
+      expect(s.queries).toEqual([]);
     });
 
     it.each<[Record<string, unknown>, string]>([
@@ -544,9 +608,13 @@ describe.each(['AU', 'ZZ'] as const)('admin Variants page in market %s (V6)', (c
       [{ typeCode: 'Size!' }, 'typeCode'],
       [{ issue: 'out-of-stock' }, 'issue'],
       [{ after: 'nope' }, 'after'],
-      [{ limit: 0 }, 'limit'],
-      [{ limit: 101 }, 'limit'],
-      [{ limit: '5' }, 'limit'],
+      [{ sort: 'price' }, 'sort'],
+      [{ direction: 'up' }, 'direction'],
+      [{ paging: 'infinite' }, 'paging'],
+      [{ page: 0 }, 'page'],
+      [{ pageSize: 0 }, 'pageSize'],
+      [{ pageSize: 101 }, 'pageSize'],
+      [{ pageSize: '5' }, 'pageSize'],
     ])('refuses the query %j before any read', async (input, field) => {
       const s = setup();
       const result = await s.list.execute(context(), input);

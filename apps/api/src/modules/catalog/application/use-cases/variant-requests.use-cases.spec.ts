@@ -85,6 +85,7 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
   let requests: MemoryVariantRequestStore;
   let audits: AuditEntry[];
   let allow: boolean;
+  let platformEdit: boolean;
   let eligible: boolean;
   let mails: MailMessage[];
   let mailFails: boolean;
@@ -289,6 +290,9 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
         attributeStore: definitions,
         sellerNames: { storeNames: () => Promise.resolve(new Map([[SELLER, 'Corner Store']])) },
         policy,
+        platformEditProbe: {
+          execute: () => Promise.resolve({ ok: platformEdit }),
+        },
       }),
       approve: new VariantRequestApprove(gate, {
         ...common,
@@ -347,6 +351,7 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
     ids = new SequenceIdGenerator(clock);
     audits = [];
     allow = true;
+    platformEdit = true;
     eligible = true;
     mails = [];
     mailFails = false;
@@ -564,6 +569,56 @@ describe.each(['AU', 'ZZ'] as const)('variant request use cases in market %s', (
       expect(await build().list.execute(context('admin'), {})).toEqual(
         err({ code: 'access.denied' }),
       );
+    });
+
+    it('offers approve with the platform edit key, map and decline with the review key', async () => {
+      await opened();
+      const withKey = await build().list.execute(context('admin'), {});
+      if (!withKey.ok) throw new Error(withKey.error.code);
+      expect(withKey.value.items[0]?.actions).toEqual(['approve', 'map', 'decline']);
+      platformEdit = false;
+      const without = await build().list.execute(context('admin'), {});
+      if (!without.ok) throw new Error(without.error.code);
+      expect(without.value.items[0]?.actions).toEqual(['map', 'decline']);
+    });
+
+    it('pages with a total, or Previous and Next without one, and searches the product code', async () => {
+      const first = await opened();
+      requests.productCodes.set(PRODUCT, 'P-9');
+      const pages = await build().list.execute(context('admin'), { pageSize: 1 });
+      if (!pages.ok) throw new Error(pages.error.code);
+      expect(pages.value).toMatchObject({
+        total: 1,
+        page: 1,
+        pageSize: 1,
+        paging: 'pages',
+        hasNext: false,
+      });
+      const beyond = await build().list.execute(context('admin'), { page: 2 });
+      expect(beyond).toMatchObject({ ok: true, value: { items: [], total: 1, hasNext: false } });
+      const cheap = await build().list.execute(context('admin'), { paging: 'prev-next' });
+      expect(cheap).toMatchObject({ ok: true, value: { total: null, hasNext: false } });
+      const found = await build().list.execute(context('admin'), { q: ' p-9 ', sort: 'newest' });
+      if (!found.ok) throw new Error(found.error.code);
+      expect(found.value.items.map((item) => item.id)).toEqual([first.id]);
+      const missed = await build().list.execute(context('admin'), { q: 'zzz' });
+      expect(missed).toMatchObject({ ok: true, value: { items: [], total: 0 } });
+    });
+
+    it.each<[Record<string, unknown>, string]>([
+      [{ limit: 0 }, 'pageSize'],
+      [{ limit: 5, pageSize: 5 }, 'limit'],
+      [{ q: 5 }, 'q'],
+      [{ q: 'x'.repeat(101) }, 'q'],
+      [{ sort: 'price' }, 'sort'],
+      [{ direction: 'up' }, 'direction'],
+      [{ paging: 'infinite' }, 'paging'],
+      [{ page: 0 }, 'page'],
+      [{ pageSize: 101 }, 'pageSize'],
+    ])('refuses the query %j', async (input, field) => {
+      const answer = await build().list.execute(context('admin'), input);
+      expect(answer.ok).toBe(false);
+      expect(JSON.stringify(answer)).toContain(field);
     });
 
     it('does not list another Market’s requests', async () => {
