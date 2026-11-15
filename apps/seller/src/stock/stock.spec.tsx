@@ -71,7 +71,16 @@ const compared = (label: string | RegExp) => {
   return { saved, yours, item };
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // jsdom has no modal dialog: the drawer and its discard ask open as attributes.
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
+});
 afterEach(cleanup);
 
 describe('StockLocations', () => {
@@ -111,7 +120,7 @@ describe('StockLocations', () => {
     fireEvent.change(screen.getByLabelText(/^Street address/), {
       target: { value: '2 Test St' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add location' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call).toHaveBeenCalledWith(
       'POST',
@@ -127,11 +136,44 @@ describe('StockLocations', () => {
     mount();
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1] as HTMLElement);
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Garage 2' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call.mock.calls[0]?.[0]).toBe('PUT');
     expect(call.mock.calls[0]?.[1]).toBe(`inventory/seller/sources/${B}`);
     expect(call.mock.calls[0]?.[2]).toMatchObject({ expectedVersion: 4, name: 'Garage 2' });
+  });
+
+  it('opens the form in a side drawer with Cancel first and the verb last', () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a location' }));
+    const drawer = screen.getByRole('dialog', { name: 'Add a location' });
+    const buttons = within(drawer)
+      .getAllByRole('button')
+      .map((button) => button.textContent || button.getAttribute('aria-label'));
+    expect(buttons.slice(-2)).toEqual(['Cancel', 'Add location']);
+    expect(within(drawer).getByRole('button', { name: 'Close' })).toBeTruthy();
+  });
+
+  it('closes at once on Cancel when nothing was typed', () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a location' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog', { name: 'Add a location' })).toBeNull();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('asks before Cancel throws input away, and keeps the draft on Keep editing', () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a location' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Shed' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    const ask = screen.getByRole('dialog', { name: 'Discard your input?' });
+    fireEvent.click(within(ask).getByRole('button', { name: 'Keep editing' }));
+    expect(screen.getByLabelText<HTMLInputElement>('Name').value).toBe('Shed');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('dialog', { name: 'Add a location' })).toBeNull();
+    expect(call).not.toHaveBeenCalled();
   });
 
   it('moves a location up by sending the whole new order', async () => {
@@ -174,7 +216,7 @@ describe('StockLocations', () => {
     });
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Add a location' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add location' }));
     expect(await screen.findByText('Check the fields marked below.')).toBeTruthy();
     expect(screen.getByText('This value is too short or too long.')).toBeTruthy();
     expect(screen.getByLabelText('Name')).toBeTruthy();
@@ -229,7 +271,7 @@ describe('StockLocations', () => {
     mount();
     fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]!);
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Warehouse' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
 
     expect(await screen.findByText('Someone else saved these settings first')).toBeTruthy();
     expect(call).toHaveBeenNthCalledWith(
@@ -251,7 +293,7 @@ describe('StockLocations', () => {
     expect(compared('Street address')).toMatchObject({ saved: '9 Other Rd', yours: '1 Test St' });
 
     // The next save names the version read after the conflict.
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
     expect(call).toHaveBeenNthCalledWith(
       3,

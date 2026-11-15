@@ -2,17 +2,17 @@
 
 import {
   Banner,
-  Button,
   SettingInput,
   SettingRow,
   SettingSelect,
+  SettingsDrawer,
   SettingsErrorSummary,
-  SettingsSection,
   type FieldChange,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { SettingsConflictView } from '../settings/conflict-view.tsx';
+import { useDrawerLabels } from '../settings/drawer-labels.ts';
 import type { StockProblem } from './errors.ts';
 import type { SourceView, StockFormOptions } from './types.ts';
 
@@ -35,8 +35,9 @@ const ZONE_ROW = 'setting-stock-zone';
 const addressRow = (key: string) => `setting-stock-address-${key}`;
 
 /**
- * The editor of one stock location. It is an entry of a list, not a page setting, so it keeps its
- * own Save and Cancel; its fields are template rows, and a refused save lists them in a summary.
+ * The editor of one stock location, in the settings drawer (Cancel, then the verb). It is an entry
+ * of a list, not a page setting; its fields are template rows, and a refused save lists them in a
+ * summary at the top of the drawer.
  */
 export function StockForm({
   source,
@@ -68,15 +69,17 @@ export function StockForm({
     ),
   );
   const [zone, setZone] = useState(source?.timeZone ?? '');
+  const labels = useDrawerLabels(source === null ? t('stock.form.add') : t('stock.form.save'));
+  // What the form held when it opened: closing with anything else asks first.
+  const [start] = useState(() => JSON.stringify([name, address, zone]));
+  const dirty = JSON.stringify([name, address, zone]) !== start;
 
   function fieldError(path: string): string | undefined {
     const key = problem?.fields[path];
     return key === undefined ? undefined : t(key);
   }
 
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (pending) return;
+  function submit() {
     onSubmit({ name, address: addressOf(address), timeZone: zone === '' ? null : zone });
   }
 
@@ -123,30 +126,39 @@ export function StockForm({
   }
   const hasNotice = problem !== null || invalid.length > 0 || conflictId !== null;
 
+  const notice = hasNotice ? (
+    <div className="flex flex-col gap-3">
+      {invalid.length === 0 ? null : (
+        <SettingsErrorSummary
+          title={t('settings.errors.title', { count: invalid.length })}
+          items={invalid}
+          focusSignal={failedWrites}
+        />
+      )}
+      {conflictId === null ? null : source === null ? (
+        <Banner tone="attention">{t('stock.error.list-changed')}</Banner>
+      ) : (
+        <SettingsConflictView conflictId={conflictId} changes={changes} />
+      )}
+      {problem === null ? null : (
+        <Banner tone="critical">{t(problem.form.key, problem.form.values)}</Banner>
+      )}
+    </div>
+  ) : undefined;
+
   return (
-    <form onSubmit={submit} noValidate>
-      <SettingsSection
-        title={source === null ? t('stock.form.add-title') : t('stock.form.edit-title')}
-      >
-        {hasNotice ? (
-          <div className="flex flex-col gap-3 border-b border-line-row px-5 py-4">
-            {invalid.length === 0 ? null : (
-              <SettingsErrorSummary
-                title={t('settings.errors.title', { count: invalid.length })}
-                items={invalid}
-                focusSignal={failedWrites}
-              />
-            )}
-            {conflictId === null ? null : source === null ? (
-              <Banner tone="attention">{t('stock.error.list-changed')}</Banner>
-            ) : (
-              <SettingsConflictView conflictId={conflictId} changes={changes} />
-            )}
-            {problem === null ? null : (
-              <Banner tone="critical">{t(problem.form.key, problem.form.values)}</Banner>
-            )}
-          </div>
-        ) : null}
+    <SettingsDrawer
+      open
+      onClose={onCancel}
+      title={source === null ? t('stock.form.add-title') : t('stock.form.edit-title')}
+      notice={notice}
+      onSubmit={submit}
+      pending={pending}
+      dirty={dirty}
+      labels={labels}
+    >
+      {/* The rows carry their own side padding: the negative margin cancels the drawer's. */}
+      <div className="-mx-5 flex flex-col">
         <SettingRow id={NAME_ROW} label={t('stock.form.name')} error={fieldError('name')}>
           <SettingInput
             name="name"
@@ -202,15 +214,7 @@ export function StockForm({
             onChange={(event) => setZone(event.target.value)}
           />
         </SettingRow>
-        <div className="flex gap-3 px-5 py-4">
-          <Button type="submit" loading={pending}>
-            {t('stock.form.save')}
-          </Button>
-          <Button variant="secondary" onClick={onCancel} disabled={pending}>
-            {t('stock.form.cancel')}
-          </Button>
-        </div>
-      </SettingsSection>
-    </form>
+      </div>
+    </SettingsDrawer>
   );
 }
