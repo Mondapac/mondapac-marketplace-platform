@@ -107,7 +107,8 @@
     "import": "Import",
     "performance": "Performance",
     "categories": "Category proposals",
-    "payoutAccount": "Payout account"
+    "payoutAccount": "Payout account",
+    "payoutAccountWords": "bank, BSB, payments, get paid"
   },
   "home": {
     "title": "Dashboard",
