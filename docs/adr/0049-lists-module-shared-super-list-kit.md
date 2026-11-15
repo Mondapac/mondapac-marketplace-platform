@@ -48,6 +48,22 @@ need them. Left alone, each list's module would add a third, fourth and fifth co
 - Rolling the migration back loses every filter saved after the copy and leaves the old tables
   stale: the release runbook says so.
 
+## B0-1b: registry and generic routes
+
+- A module registers its lists with `registerLists(owner, definitions)` (a provider, like
+  `registerAuditActions`). A definition has the list key, the population, the `viewKey`, the
+  `shareKey` and a payload parser. `lists` imports no module; the registry refuses a duplicate key,
+  a key that does not start with `<population>.<owner>.`, and a key outside the audit vocabulary.
+- The use cases (list, create, update, delete, reorder) declare `own-resources` (and
+  `whenSellerNotApproved: 'deny'`). Their first step is a fail-closed `AuthorisationCheck` of the
+  definition's `viewKey` (and `shareKey` when visibility `everyone` is touched); a denial or an
+  unavailable check refuses the call before anything is read. The access-declaration contract
+  accepts this, so the fallback of one thin use case per population was not needed. Hassan reviews
+  this pattern on the PR.
+- Reorder takes the full list of the caller's own ids of one list and rewrites the positions in one
+  serializable unit; the app role gets `UPDATE (position)` and no other identity column.
+- The routes are `/lists/admin/saved-filters`; the seller routes follow in a later PR.
+
 ## Consequences
 
 - A new list needs a definition and no migration; the table's `list_key` CHECK already allows any

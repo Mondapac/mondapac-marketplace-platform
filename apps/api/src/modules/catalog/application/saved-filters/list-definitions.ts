@@ -16,6 +16,6 @@ export const CATALOG_LISTS: readonly ListDefinition[] =
           population: 'admin',
           viewKey: CATALOG_PRODUCT_VIEW.key,
           shareKey: CATALOG_SAVED_FILTER_SHARE.key,
-          parsePayload: PRODUCTS.parsePayload,
+          parsePayload: (raw) => PRODUCTS.parsePayload(raw),
         },
       ];

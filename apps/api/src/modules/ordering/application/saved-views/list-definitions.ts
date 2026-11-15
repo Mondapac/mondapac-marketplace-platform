@@ -17,6 +17,6 @@ export const ORDERING_LISTS: readonly ListDefinition[] =
           population: 'admin',
           viewKey: ORDERING_ORDER_VIEW.key,
           shareKey: ORDERING_SAVED_FILTER_SHARE.key,
-          parsePayload: ORDERS.parsePayload,
+          parsePayload: (raw) => ORDERS.parsePayload(raw),
         },
       ];
