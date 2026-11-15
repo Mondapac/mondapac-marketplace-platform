@@ -230,7 +230,7 @@ import {
 } from './application/ports/product-image.repository';
 import { IMAGE_PROCESSOR } from './application/ports/image-processor';
 import { IMPORT_FILE_PARSERS } from './application/ports/import-file-parsers';
-import { SHEET_WRITER } from './application/ports/sheet-writer';
+import { SHEET_WRITER } from '../../platform/list-export/sheet-writer';
 import { OBJECT_STORE } from '../../platform/storage/object-store';
 import { TAG_REEVALUATION_REQUESTS } from './application/ports/tag-reevaluation-requests';
 import { TAG_SELECTION_READER } from './application/ports/tag-selection.reader';
