@@ -396,7 +396,7 @@ describe.each(TEST_MARKETS)('admin customers list in market %s (database)', (cod
       expect((await inUnit(market, () => filters.find(market, mine.id)))?.name).toBe(
         `${tag} renamed`,
       );
-      const app = new Client({ connectionString: process.env['DATABASE_URL'] });
+      const app = new Client({ connectionString: testDatabaseUrl() });
       await app.connect();
       try {
         await expect(
