@@ -78,6 +78,9 @@ import { SHEET_WRITER } from './application/ports/sheet-writer';
 import type { CustomerListDependencies } from './application/customer-list-flow';
 import type { SavedViewDependencies } from './application/saved-views/saved-view-shared';
 import type { AdminCustomersExportDependencies } from './application/use-cases/admin-customers-export.use-case';
+import { AdminCustomerOverview } from './application/use-cases/admin-customer-overview.use-case';
+import { AdminCustomerTabOpened } from './application/use-cases/admin-customer-tab-opened.use-case';
+import type { CustomerPageDependencies } from './application/customer-page-flow';
 import { AdminCustomersExport } from './application/use-cases/admin-customers-export.use-case';
 import { AdminCustomersIds } from './application/use-cases/admin-customers-ids.use-case';
 import { AdminCustomersList } from './application/use-cases/admin-customers-list.use-case';
@@ -173,6 +176,23 @@ function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
       listReader: CustomerListDependencies['listReader'],
       clock: CustomerListDependencies['clock'],
     ) => new type(gate, { unitOfWork, listReader, clock }),
+  };
+}
+
+type PageUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerPageDependencies) => U;
+
+/** The customer page use cases: the list reads plus the audit writer. */
+function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_LIST_READER, CLOCK, AUDIT_WRITER],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: CustomerPageDependencies['unitOfWork'],
+      listReader: CustomerPageDependencies['listReader'],
+      clock: CustomerPageDependencies['clock'],
+      audit: CustomerPageDependencies['audit'],
+    ) => new type(gate, { unitOfWork, listReader, clock, audit }),
   };
 }
 
@@ -272,6 +292,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ReadCustomerLastOrder,
       ReadOwnLastOrder,
     ].map((type) => readModelUseCaseProvider(type as ReadModelUseCaseClass<unknown>)),
+    ...[AdminCustomerOverview, AdminCustomerTabOpened].map((type) =>
+      pageUseCaseProvider(type as PageUseCaseClass<unknown>),
+    ),
     ...[AdminCustomersList, AdminCustomersIds].map((type) =>
       listUseCaseProvider(type as ListUseCaseClass<unknown>),
     ),

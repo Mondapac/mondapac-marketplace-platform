@@ -20,6 +20,8 @@ import type { CustomerListDependencies } from './customer-list-flow';
 import type { SheetWriter } from './ports/sheet-writer';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
 import { MemorySavedFilters } from './testing/memory-saved-filters';
+import { AdminCustomerOverview } from './use-cases/admin-customer-overview.use-case';
+import { AdminCustomerTabOpened } from './use-cases/admin-customer-tab-opened.use-case';
 import { AdminCustomersExport } from './use-cases/admin-customers-export.use-case';
 import { AdminCustomersIds } from './use-cases/admin-customers-ids.use-case';
 import { AdminCustomersList } from './use-cases/admin-customers-list.use-case';
@@ -68,11 +70,13 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
     status: 'active',
     emailVerified: true,
     signedUpAt: day(200),
+    firstOrderAt: null,
     lastOrderAt: null,
     orderCount: 0,
     spentMinor: 0n,
     currency: null,
     refundCount: 0,
+    refundedMinor: 0n,
     ...overrides,
   });
 
@@ -125,6 +129,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
     };
     const savedFilters = new MemorySavedFilters();
     const listDeps: CustomerListDependencies = { unitOfWork, listReader, clock };
+    const pageDeps = { ...listDeps, audit };
     const filterDeps = {
       unitOfWork,
       savedFilters,
@@ -140,6 +145,8 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       stepUp,
       savedFilters,
       list: new AdminCustomersList(gate, listDeps),
+      overview: new AdminCustomerOverview(gate, pageDeps),
+      tabOpened: new AdminCustomerTabOpened(gate, pageDeps),
       idsOf: new AdminCustomersIds(gate, listDeps),
       export: new AdminCustomersExport(gate, {
         unitOfWork,
@@ -214,6 +221,90 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
     }
     expect(AdminCustomersExport.access.rule).toEqual({ kind: 'permissions', allOf: [EXPORT] });
     expect(SavedFilterShareCheck.access.rule).toEqual({ kind: 'permissions', allOf: [SHARE] });
+  });
+
+  describe('the customer page', () => {
+    const pick = (t: ReturnType<typeof seeded>, email: string): Id<'Account'> => {
+      const found = (t.listReader.rowsOf.get(market.marketId) ?? []).find(
+        (candidate) => candidate.email === email,
+      );
+      if (found === undefined) throw new Error('seed missing');
+      return found.accountId;
+    };
+
+    it('declares the view key', () => {
+      for (const useCase of [AdminCustomerOverview, AdminCustomerTabOpened]) {
+        expect(useCase.access.rule).toEqual({ kind: 'permissions', allOf: [VIEW] });
+      }
+    });
+
+    it('is denied without the view key', async () => {
+      const t = seeded();
+      const accountId = pick(t, 'bilal@example.test');
+      expect(failure(await t.overview.execute(t.as(person([])), { accountId }))).toBe(
+        'access.denied',
+      );
+      expect(t.audits).toHaveLength(0);
+    });
+
+    it('shows the overview with the order totals and audits the open without personal data', async () => {
+      const t = seeded();
+      const accountId = pick(t, 'bilal@example.test');
+      const result = await t.overview.execute(t.as(person([VIEW])), { accountId });
+      expect(result.ok && result.value).toMatchObject({
+        email: 'bilal@example.test',
+        orderCount: 3,
+        spentMinor: '30000',
+        refundedMinor: '0',
+        firstOrderAt: null,
+      });
+      expect(t.audits).toHaveLength(1);
+      expect(t.audits[0]).toMatchObject({
+        action: 'customers.customer-page.opened',
+        targetId: accountId,
+        after: { tab: 'overview' },
+      });
+      expect(JSON.stringify(t.audits)).not.toContain('bilal');
+    });
+
+    it('answers customer-not-found, writing no audit row, for an unknown id and another Market', async () => {
+      const t = seeded();
+      const admin = t.as(person([VIEW]));
+      expect(failure(await t.overview.execute(admin, { accountId: ids.next<'Account'>() }))).toBe(
+        'customers.customer-not-found',
+      );
+      expect(failure(await t.overview.execute(admin, { accountId: 'nope' }))).toBe(
+        'customers.customer-not-found',
+      );
+      const foreign = t.listReader.rowsOf.get(otherMarket.marketId)![0]!.accountId;
+      expect(failure(await t.overview.execute(admin, { accountId: foreign }))).toBe(
+        'customers.customer-not-found',
+      );
+      expect(t.audits).toHaveLength(0);
+    });
+
+    it('refuses an unknown body key', async () => {
+      const t = seeded();
+      const accountId = pick(t, 'bilal@example.test');
+      expect(failure(await t.overview.execute(t.as(person([VIEW])), { accountId, extra: 1 }))).toBe(
+        'validation.failed',
+      );
+    });
+
+    it('records the opening of the Orders and Money tabs and refuses any other tab', async () => {
+      const t = seeded();
+      const admin = t.as(person([VIEW]));
+      const accountId = pick(t, 'bilal@example.test');
+      expect((await t.tabOpened.execute(admin, { accountId, tab: 'orders' })).ok).toBe(true);
+      expect((await t.tabOpened.execute(admin, { accountId, tab: 'money' })).ok).toBe(true);
+      expect(t.audits.map((entry) => entry.after)).toEqual([{ tab: 'orders' }, { tab: 'money' }]);
+      for (const tab of ['overview', 'wallet', 7, undefined]) {
+        expect(failure(await t.tabOpened.execute(admin, { accountId, tab }))).toBe(
+          'validation.failed',
+        );
+      }
+      expect(t.audits).toHaveLength(2);
+    });
   });
 
   describe('the list', () => {

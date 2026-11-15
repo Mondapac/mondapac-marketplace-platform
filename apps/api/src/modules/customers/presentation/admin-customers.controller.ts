@@ -36,6 +36,8 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { AdminCustomerOverview } from '../application/use-cases/admin-customer-overview.use-case';
+import { AdminCustomerTabOpened } from '../application/use-cases/admin-customer-tab-opened.use-case';
 import { AdminCustomersExport } from '../application/use-cases/admin-customers-export.use-case';
 import { AdminCustomersIds } from '../application/use-cases/admin-customers-ids.use-case';
 import { AdminCustomersList } from '../application/use-cases/admin-customers-list.use-case';
@@ -73,6 +75,8 @@ export class AdminCustomersController {
     private readonly filterCreate: AdminSavedFilterCreate,
     private readonly filterUpdate: AdminSavedFilterUpdate,
     private readonly filterDelete: AdminSavedFilterDelete,
+    private readonly overview: AdminCustomerOverview,
+    private readonly tabOpened: AdminCustomerTabOpened,
   ) {}
 
   @Post('list')
@@ -319,6 +323,66 @@ export class AdminCustomersController {
   ): Promise<unknown> {
     response.setHeader('Cache-Control', 'no-store');
     const result = await this.filterDelete.execute(context, { id });
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return result.value;
+  }
+
+  @Get('customers/:accountId')
+  @ApiOperation({
+    summary: 'One customer: the header and the Overview tab',
+    description:
+      'Needs customers.customers.view. The profile (sign-in address, name, status, email verified, ' +
+      'joined) and what the orders add up to (count, spent, refunds, first and last order). The ' +
+      'wallet balance, the orders (`GET ordering/admin/orders?accountId=`) and the money tab are ' +
+      'read from their owning modules, each under its own permission. Every open is audited. ' +
+      '404 customers.customer-not-found for a customer of another Market, or none. Personal data.',
+  })
+  @ApiOkResponse({ type: Object })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'customers.customer-not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async customer(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('accountId') accountId: string,
+  ): Promise<unknown> {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.overview.execute(context, { accountId });
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return result.value;
+  }
+
+  @Post('customers/:accountId/tab-opened')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Record that the Orders or Money tab of a customer’s page was opened',
+    description:
+      'Needs customers.customers.view. Body: `tab` (orders or money). Writes the audit row of the ' +
+      'open (the tab only, never the customer’s data) and confirms the customer is in the Market ' +
+      '(404 customers.customer-not-found). Call it when the tab opens, before reading its data from ' +
+      'the owning module.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: Object })
+  @ApiOkResponse({ type: Object })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'customers.customer-not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async tabWasOpened(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('accountId') accountId: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    response.setHeader('Cache-Control', 'no-store');
+    const checked = closedBody(request, body, ['tab']);
+    if (checked instanceof HttpException) throw checked;
+    const result = await this.tabOpened.execute(context, { ...(body as object), accountId });
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return result.value;
   }

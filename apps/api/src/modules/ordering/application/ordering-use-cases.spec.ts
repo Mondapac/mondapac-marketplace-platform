@@ -46,6 +46,7 @@ import { AdminViewOrder } from './use-cases/admin-view-order.use-case';
 import { CancelPayment } from './use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { ListOrders } from './use-cases/list-orders.use-case';
+import { AdminCustomerRefunds } from './use-cases/admin-customer-refunds.use-case';
 import { AdminOpenObligationsOfQuery } from './use-cases/admin-open-obligations-of.use-case';
 import { OpenObligationsOfQuery } from './use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './use-cases/own-open-obligations.use-case';
@@ -1313,6 +1314,10 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         );
         expect(await list({ from: '2026-11-02T00:00:00Z', to: '2026-11-01T00:00:00Z' })).toEqual(
           refused([{ path: 'to', code: 'range' }]),
+        );
+        // The customer page's Orders tab: one customer account, by id.
+        expect(await list({ accountId: 'x' })).toEqual(
+          refused([{ path: 'accountId', code: 'format' }]),
         );
       });
 
@@ -3670,6 +3675,40 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       ]) {
         expect(await read.execute(context, { accountId: ACCOUNT })).toMatchObject({ ok: false });
       }
+    });
+  });
+
+  describe('the refunds of one customer (customers package B3)', () => {
+    const adminActor = () =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xad),
+          sessionId: id<'Session'>(0x62),
+          sellerId: null,
+        }),
+        'customer-refunds-admin',
+      );
+
+    it('declares the order view key', () => {
+      expect(AdminCustomerRefunds.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: ['ordering.order.view'],
+      });
+    });
+
+    it('answers an admin, refuses a customer and a bad id', async () => {
+      const read = new AdminCustomerRefunds(gate, deps);
+      expect(await read.execute(adminActor(), { accountId: ACCOUNT })).toEqual({
+        ok: true,
+        value: { refunds: [] },
+      });
+      expect(await read.execute(customer, { accountId: ACCOUNT })).toMatchObject({ ok: false });
+      expect(await read.execute(adminActor(), { accountId: 'nope' })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'accountId', code: 'format' }] },
+      });
     });
   });
 

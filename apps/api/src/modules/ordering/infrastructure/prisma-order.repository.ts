@@ -197,6 +197,9 @@ const filterWhere = (market: MarketContext, filter: OrderFilter) => ({
   marketId: market.marketId,
   ...(filter.status === null ? {} : { status: filter.status }),
   ...(filter.paymentState === null ? {} : { paymentState: filter.paymentState }),
+  ...(filter.accountId === undefined || filter.accountId === null
+    ? {}
+    : { accountId: filter.accountId }),
   ...(filter.reference === null
     ? {}
     : { OR: [{ id: filter.reference }, { sellerOrders: { some: { id: filter.reference } } }] }),

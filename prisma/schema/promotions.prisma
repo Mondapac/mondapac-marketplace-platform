@@ -383,6 +383,8 @@ model PromotionsCreditIssuance {
   @@index([marketId, orderId])
   /// What a customer has received from a promotion (the per-customer limit).
   @@index([marketId, promotionId, recipientAccountId])
+  /// What one customer has received, newest first (the admin customer page).
+  @@index([marketId, recipientAccountId, createdAt(sort: Desc), id(sort: Desc)], map: "credit_issuances_recipient_newest_idx")
   /// The lookup of a credit by its source, whatever its status (the event handler's findBySource;
   /// the partial unique indexes cannot serve a query that does not name the status).
   @@index([marketId, kind, sourceId])

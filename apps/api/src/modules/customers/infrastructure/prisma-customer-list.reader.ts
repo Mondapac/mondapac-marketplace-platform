@@ -38,11 +38,13 @@ const rowOf = (row: DirectoryRow): CustomerListRow => ({
   status: row.status === 'disabled' ? 'disabled' : 'active',
   emailVerified: row.emailVerified,
   signedUpAt: toInstant(row.signedUpAt),
+  firstOrderAt: row.stats?.firstOrderAt ? toInstant(row.stats.firstOrderAt) : null,
   lastOrderAt: row.stats?.lastOrderAt ? toInstant(row.stats.lastOrderAt) : null,
   orderCount: row.stats?.orderCount ?? 0,
   spentMinor: row.stats?.spentMinor ?? 0n,
   currency: row.stats?.currency ?? null,
   refundCount: row.stats?.refundCount ?? 0,
+  refundedMinor: row.stats?.refundedMinor ?? 0n,
 });
 
 /**

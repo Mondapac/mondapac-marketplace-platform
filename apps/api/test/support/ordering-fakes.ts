@@ -145,6 +145,9 @@ class EmptyRefunds implements RefundRepository {
   listForOrder() {
     return Promise.resolve([]);
   }
+  listForAccount() {
+    return Promise.resolve([]);
+  }
   findSellerTarget() {
     return Promise.resolve(null);
   }

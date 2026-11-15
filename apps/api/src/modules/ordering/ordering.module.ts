@@ -151,6 +151,8 @@ import { recordShipmentsJob } from './presentation/jobs/record-shipments.job';
 import { settleRefundsJob } from './presentation/jobs/settle-refunds.job';
 import { OrdersController } from './presentation/orders.controller';
 import { SellerOrdersController } from './presentation/seller-orders.controller';
+import { AdminCustomerRefundsController } from './presentation/admin-customer-refunds.controller';
+import { AdminCustomerRefunds } from './application/use-cases/admin-customer-refunds.use-case';
 import { AdminRefundLimitsController } from './presentation/admin-refund-limits.controller';
 import { OrderingFacadeImplementation } from './presentation/ordering.facade';
 import { carrierSubscriptions } from './presentation/subscribers/carrier.subscriptions';
@@ -305,6 +307,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     OrdersController,
     AdminOrdersController,
     AdminRefundLimitsController,
+    AdminCustomerRefundsController,
     AdminShipToRetentionController,
     SellerOrdersController,
     AdminSavedViewsController,
@@ -387,6 +390,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminRefundOrder,
       AdminCancelOrder,
       AdminViewRefundLimits,
+      AdminCustomerRefunds,
       AdminSetRefundLimit,
       AdminRemoveRefundLimit,
       SettleRefunds,

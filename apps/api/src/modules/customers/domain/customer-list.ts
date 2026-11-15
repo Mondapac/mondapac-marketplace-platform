@@ -270,9 +270,11 @@ export interface CustomerListRow {
   readonly status: 'active' | 'disabled';
   readonly emailVerified: boolean;
   readonly signedUpAt: Temporal.Instant;
+  readonly firstOrderAt: Temporal.Instant | null;
   readonly lastOrderAt: Temporal.Instant | null;
   readonly orderCount: number;
   readonly spentMinor: bigint;
   readonly currency: string | null;
   readonly refundCount: number;
+  readonly refundedMinor: bigint;
 }
