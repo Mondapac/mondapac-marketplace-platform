@@ -183,7 +183,7 @@ export function PayoutsList({
           { header: t('col.amount'), kind: 'number' },
           { header: t('col.why'), kind: 'text' },
           { header: t('col.slot'), kind: 'date' },
-          { header: t('col.actions'), kind: 'status', place: 'labelled' },
+          { header: t('col.actions'), kind: 'date', place: 'labelled' },
         ]}
       />
     );

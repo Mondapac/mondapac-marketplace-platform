@@ -124,7 +124,7 @@ export function SlidesList({
             { header: t('col.positions'), kind: 'text' },
             { header: t('col.window'), kind: 'date' },
             { header: t('col.status'), kind: 'status' },
-            { header: t('col.actions'), kind: 'status', place: 'labelled' },
+            { header: t('col.actions'), kind: 'date', place: 'labelled' },
           ]}
         />
       ) : null}

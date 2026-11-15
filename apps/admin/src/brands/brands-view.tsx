@@ -262,6 +262,9 @@ export function BrandsView({
                 { header: t('col.origin'), kind: 'text' },
                 { header: t('col.status'), kind: 'status' },
                 { header: t('col.updated'), kind: 'date' },
+                ...(canEdit
+                  ? [{ header: t('col.actions'), kind: 'date' as const, headerHidden: true }]
+                  : []),
               ]}
             />
           ) : null}

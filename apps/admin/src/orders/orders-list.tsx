@@ -95,7 +95,7 @@ export function OrdersList({
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
-  const status0 = useListLoading(loading, rows.length > 0);
+  const listLoading = useListLoading(loading, rows.length > 0);
   const latest = useRef(0);
   const [columns, setColumns] = useState<readonly OrderColumn[]>(DEFAULT_COLUMNS);
   // The saved filters: null until they load, and when they cannot (the page then has the status
@@ -377,7 +377,7 @@ export function OrdersList({
         </p>
       ) : null}
       {rows.length > 0 ? (
-        <ListRefreshing refreshing={status0.refreshing} busy={loading}>
+        <ListRefreshing refreshing={listLoading.refreshing} busy={loading}>
           <div ref={listTop} tabIndex={-1} className="outline-none">
             <OrdersTable rows={rows} columns={columns} zone={zone} />
           </div>

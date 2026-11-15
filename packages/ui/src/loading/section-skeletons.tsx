@@ -42,6 +42,8 @@ export interface TableSkeletonColumn {
   readonly place?: 'cell' | 'corner' | 'labelled';
   /** Extra class names of the real cell (a width or an end alignment). */
   readonly className?: string;
+  /** The real header is for screen readers only (an Actions column): keep the column, hide its text. */
+  readonly headerHidden?: boolean;
 }
 
 export interface TableSkeletonProps {
@@ -91,7 +93,11 @@ export function TableSkeleton({
                     scope="col"
                     className={`px-4 py-3 font-medium ${column.kind === 'number' ? 'text-end' : ''}`}
                   >
-                    {column.header}
+                    {column.headerHidden ? (
+                      <span className="sr-only">{column.header}</span>
+                    ) : (
+                      column.header
+                    )}
                   </th>
                 ))}
               </tr>
