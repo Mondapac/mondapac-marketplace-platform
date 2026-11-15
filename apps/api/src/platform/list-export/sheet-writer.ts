@@ -12,7 +12,7 @@ export interface SheetWriter {
   xlsx(sheetName: string, rows: AsyncIterable<readonly string[]>): AsyncIterable<Uint8Array>;
 }
 
-export const SHEET_WRITER = Symbol('CATALOG_SHEET_WRITER');
+export const SHEET_WRITER = Symbol('LIST_EXPORT_SHEET_WRITER');
 
 /** The content type of an `.xlsx` file. */
 export const XLSX_CONTENT_TYPE =

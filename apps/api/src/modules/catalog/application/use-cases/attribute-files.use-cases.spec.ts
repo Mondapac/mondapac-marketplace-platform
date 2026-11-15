@@ -34,7 +34,7 @@ import type { AttributeDefinitionRecord } from '../ports/attribute-admin.reader'
 import type { RateReservation } from '../../domain/rate-limits';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 import type { ClaimTermLocales } from '../ports/claim-term-locales';
-import type { SheetWriter } from '../ports/sheet-writer';
+import type { SheetWriter } from '../../../../platform/list-export/sheet-writer';
 import { AttributeDefinitionCreate } from './attribute-definition-create.use-case';
 import { AttributeDefinitionEdit } from './attribute-definition-edit.use-case';
 import { AttributeFilesExport } from './attribute-files-export.use-case';

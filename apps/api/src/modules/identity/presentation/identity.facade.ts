@@ -9,6 +9,8 @@ import type { SearchCustomerAccounts } from '../application/use-cases/search-cus
 import type { CustomerAccountSummaries } from '../application/use-cases/customer-account-summaries.use-case';
 import type { CustomerShortNames } from '../application/use-cases/customer-short-names.use-case';
 import type { OwnAccountTiedToSeller } from '../application/use-cases/own-account-tied-to-seller.use-case';
+import type { CustomerDirectoryPage } from '../application/use-cases/customer-directory-page.use-case';
+import type { CustomerDirectoryRecords } from '../application/use-cases/customer-directory-records.use-case';
 import type { CustomerAccountExists } from '../application/use-cases/customer-account-exists.use-case';
 import type { AdminEndCustomerSessions } from '../application/use-cases/admin-end-customer-sessions.use-case';
 import type { EndAllCustomerSessions } from '../application/use-cases/end-all-customer-sessions.use-case';
@@ -56,6 +58,8 @@ export interface IdentityFacadeUseCases {
   readonly endAllCustomerSessions: EndAllCustomerSessions;
   readonly adminEndCustomerSessions: AdminEndCustomerSessions;
   readonly customerAccountExists: CustomerAccountExists;
+  readonly customerDirectoryRecords: CustomerDirectoryRecords;
+  readonly customerDirectoryPage: CustomerDirectoryPage;
   readonly ownAccountTiedToSeller: OwnAccountTiedToSeller;
   readonly eraseCustomerAccount: EraseCustomerAccount;
 }
@@ -222,6 +226,17 @@ export class IdentityFacadeImplementation implements IdentityFacade {
   ): Promise<Result<boolean, AccessDenied | { readonly code: 'access.unavailable' }>> {
     const result = await this.useCases.ownAccountTiedToSeller.execute(context, { sellerId });
     return result.ok ? ok(result.value) : err(result.error);
+  }
+
+  customerDirectoryRecords(context: CallContext, accountIds: readonly Id<'Account'>[]) {
+    return this.useCases.customerDirectoryRecords.execute(context, { accountIds });
+  }
+
+  customerDirectoryPage(
+    context: CallContext,
+    request: { readonly after: Id<'Account'> | null; readonly limit: number },
+  ) {
+    return this.useCases.customerDirectoryPage.execute(context, request);
   }
 
   async customerAccountExists(

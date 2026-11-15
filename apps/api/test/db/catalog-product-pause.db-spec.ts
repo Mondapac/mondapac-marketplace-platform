@@ -8,7 +8,7 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import ExcelJS from 'exceljs';
-import { ExceljsSheetWriter } from '../../src/modules/catalog/infrastructure/xlsx/exceljs-sheet-writer';
+import { ExceljsSheetWriter } from '../../src/platform/list-export/exceljs-sheet-writer';
 import { ClaimQueryBuilder } from '../../src/modules/catalog/application/tags/claim-query-builder';
 import { AdminProductPause } from '../../src/modules/catalog/application/use-cases/admin-product-pause.use-case';
 import { AdminProductResume } from '../../src/modules/catalog/application/use-cases/admin-product-resume.use-case';

@@ -61,12 +61,12 @@ describe('buyer review queue page', () => {
     render(await ReviewModerationRoute());
     expect(screen.queryByText('the queue')).toBeNull();
     expect(screen.getByText('You do not have access to the buyer review queue.')).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Buyer reviews' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Reviews' })).toBeTruthy();
   });
 
   it('keeps its heading when there is no session', async () => {
     mocks.session.mockResolvedValue({ kind: 'unavailable' });
     render(await ReviewModerationRoute());
-    expect(screen.getByRole('heading', { name: 'Buyer reviews' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Reviews' })).toBeTruthy();
   });
 });
