@@ -13,11 +13,13 @@ import type {
 import type { ShipToRetentionDependencies } from '../../src/modules/ordering/application/ship-to-retention-flow';
 import { AdminSetShipToRetention } from '../../src/modules/ordering/application/use-cases/admin-set-ship-to-retention.use-case';
 import { AdminViewShipToRetention } from '../../src/modules/ordering/application/use-cases/admin-view-ship-to-retention.use-case';
-import { PurgeDeliveredShipTo } from '../../src/modules/ordering/application/use-cases/purge-delivered-ship-to.use-case';
+import { PurgeSettledShipTo } from '../../src/modules/ordering/application/use-cases/purge-settled-ship-to.use-case';
 import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
 import { isShipToPurgeable } from '../../src/modules/ordering/domain/ship-to-retention';
 import {
   LINE_QUANTITY,
+  refundRequestedAt,
+  refundSettledAt,
   settlementCases,
   settlementFacts,
   type OrderSpec,
@@ -136,7 +138,7 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
     return result.value;
   };
   const purge = async (target: MarketContext = market) => {
-    const result = await new PurgeDeliveredShipTo(gate, deps).execute(system(target), {});
+    const result = await new PurgeSettledShipTo(gate, deps).execute(system(target), {});
     if (!result.ok) throw new Error('purge refused');
     return result.value;
   };
@@ -264,8 +266,8 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
               refundState,
               `refund-${refundId}`,
               refundState === 'succeeded' ? `re_test_${refundId.replaceAll('-', '')}` : null,
-              refund.at.toString(),
-              refundState === 'pending' ? null : refund.at.add({ minutes: 1 }).toString(),
+              refundRequestedAt(refund).toString(),
+              refundSettledAt(refund)?.toString() ?? null,
             ],
           );
           await owner.query(
@@ -406,7 +408,7 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
     for (let n = 0; n < 100; n += 1) {
       const from: ShipToPurgeCursor | null = after;
       const batch: Result<ShipToPurgeBatch, never> = await db.unitOfWork.run(market, async () =>
-        ok(await deps.retention.clearDeliveredShipTo(market, cutoff, from, 500)),
+        ok(await deps.retention.clearSettledShipTo(market, cutoff, from, 500)),
       );
       if (!batch.ok) throw new Error('batch failed');
       cleared += batch.value.cleared;
@@ -493,7 +495,7 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
     for (let n = 0; n < 1000; n += 1) {
       const from: ShipToPurgeCursor | null = after;
       const batch: Result<ShipToPurgeBatch, never> = await db.unitOfWork.run(market, async () =>
-        ok(await deps.retention.clearDeliveredShipTo(market, cutoff, from, 2)),
+        ok(await deps.retention.clearSettledShipTo(market, cutoff, from, 2)),
       );
       if (!batch.ok) throw new Error('batch failed');
       sizes.push(batch.value.cleared);

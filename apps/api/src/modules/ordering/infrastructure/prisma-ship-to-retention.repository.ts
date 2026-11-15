@@ -76,7 +76,7 @@ export class PrismaShipToRetentionRepository implements ShipToRetentionRepositor
     return changed.count === 1 ? 'saved' : 'stale';
   }
 
-  async clearDeliveredShipTo(
+  async clearSettledShipTo(
     market: MarketContext,
     cutoff: Temporal.Instant,
     after: ShipToPurgeCursor | null,
@@ -115,7 +115,9 @@ export class PrismaShipToRetentionRepository implements ShipToRetentionRepositor
                     { fulfilment: 'shipped', shippedAt: { not: null, lte: until } },
                     {
                       fulfilment: 'to-ship',
-                      refunds: { some: { state: { not: 'failed' }, requestedAt: { lte: until } } },
+                      refunds: {
+                        some: { state: 'succeeded', settledAt: { not: null, lte: until } },
+                      },
                     },
                   ],
                 },
@@ -142,7 +144,7 @@ export class PrismaShipToRetentionRepository implements ShipToRetentionRepositor
             refunds: {
               select: {
                 state: true,
-                requestedAt: true,
+                settledAt: true,
                 lines: { select: { orderLineId: true, quantity: true } },
               },
             },
@@ -166,7 +168,7 @@ export class PrismaShipToRetentionRepository implements ShipToRetentionRepositor
               })),
               refunds: so.refunds.map((refund) => ({
                 state: refund.state as RefundState,
-                requestedAt: toInstant(refund.requestedAt),
+                settledAt: refund.settledAt === null ? null : toInstant(refund.settledAt),
                 lines: refund.lines.map((line) => ({
                   orderLineId: line.orderLineId as Id<'OrderLine'>,
                   quantity: line.quantity,

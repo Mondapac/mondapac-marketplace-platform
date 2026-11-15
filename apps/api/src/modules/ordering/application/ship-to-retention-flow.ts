@@ -176,7 +176,7 @@ export async function setShipToRetention(
  * and concurrently: an order already cleared is not looked at again, and clearing is the same
  * write whoever does it.
  */
-export async function purgeDeliveredShipTo(
+export async function purgeSettledShipTo(
   deps: ShipToRetentionDependencies,
   context: CallContext,
 ): Promise<Result<ShipToPurgeRun, never>> {
@@ -209,7 +209,7 @@ export async function purgeDeliveredShipTo(
         return ok(null);
       }
       return ok(
-        await deps.retention.clearDeliveredShipTo(
+        await deps.retention.clearSettledShipTo(
           context.market,
           cutoff,
           cursor,
