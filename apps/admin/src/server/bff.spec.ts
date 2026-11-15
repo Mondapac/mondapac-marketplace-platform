@@ -1998,6 +1998,34 @@ describe('relay of the wallet and step-up routes', () => {
     }
   });
 
+  it('passes the Payouts super list query and its export only in the shapes the API takes', async () => {
+    const listed = await run(
+      'GET',
+      `commission-payouts/admin/payouts?view=sending&search=spice&sellerId=${id}&approvalMode=MANUAL&from=2026-11-01T00:00:00Z&minAmount=100&sort=amount&direction=asc&page=2&pageSize=25&x=1`,
+      readHeaders,
+    );
+    expect(listed.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts?view=sending&search=spice&sellerId=${id}&approvalMode=MANUAL&from=2026-11-01T00%3A00%3A00Z&minAmount=100&sort=amount&direction=asc&page=2&pageSize=25`,
+    );
+    const dropped = await run(
+      'GET',
+      'commission-payouts/admin/payouts?view=archived&q=nope&approvalMode=auto&minAmount=-1&sort=store&pageSize=500',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/admin/payouts',
+    );
+    const file = await run(
+      'GET',
+      `commission-payouts/admin/payouts/export?format=xlsx&columns=gross,outcome&ids=${id}&view=paid&page=2`,
+      readHeaders,
+    );
+    expect(file.response.status).toBe(200);
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts/export?format=xlsx&columns=gross%2Coutcome&ids=${id}&view=paid`,
+    );
+  });
+
   it('passes the version and reason of removing payout terms, and nothing else', async () => {
     const ok = await run(
       'DELETE',
