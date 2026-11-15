@@ -26,6 +26,8 @@ export interface SuperListQuery<Q> {
   readonly change: (patch: Partial<Q>) => void;
   /** Paging keeps the tab, the saved tab included. */
   readonly goToPage: (page: number) => void;
+  /** A change that is not a filter (rows per page): back to page 1, the saved tab kept. */
+  readonly paginate: (patch: Partial<Q>) => void;
   /** A built-in tab. Opened from a saved tab it starts clean: see `useSuperListQuery`. */
   readonly openView: (view: string) => void;
   /** A saved tab; `next` is the query its payload holds. */
@@ -62,6 +64,10 @@ export function useSuperListQuery<Q extends { readonly page: number }>({
 
   const goToPage = useCallback((page: number) => {
     setQuery((current) => ({ ...current, page }));
+  }, []);
+
+  const paginate = useCallback((patch: Partial<Q>) => {
+    setQuery((current) => ({ ...current, page: 1, ...patch }));
   }, []);
 
   const openView = useCallback(
@@ -111,6 +117,7 @@ export function useSuperListQuery<Q extends { readonly page: number }>({
     savedId,
     change,
     goToPage,
+    paginate,
     openView,
     openSaved,
     forgetSaved,

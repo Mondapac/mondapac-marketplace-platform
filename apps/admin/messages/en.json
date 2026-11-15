@@ -3376,8 +3376,46 @@
       "clear-all": "Clear all",
       "match": "{count, plural, one {# product matches} other {# products match}}",
       "range": "{from}–{to} of {total} products",
+      "range-open": "{from}–{to} products",
       "previous": "Previous",
       "next": "Next",
+      "paging": {
+        "rows-per-page": "Rows per page",
+        "previous": "Previous",
+        "next": "Next",
+        "pages": "Pages",
+        "page": "Page {page}",
+        "narrow": "Narrow the list to see more.",
+        "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other products."
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}"
+      },
+      "row": {
+        "menu": {
+          "open": "Open",
+          "edit": "Edit",
+          "pause": "Deactivate…",
+          "resume": "Activate",
+          "delete": "Delete…"
+        },
+        "type-code": "Type the product code to confirm",
+        "step-up-note": "You may be asked for a security code.",
+        "count-changed": "The product's Offers changed while you were deciding. Check the new count and confirm again.",
+        "nothing-changed": "{name} was not changed.",
+        "pause": {
+          "title": "Deactivate {name}?"
+        },
+        "delete": {
+          "title": "Delete {name}?"
+        },
+        "done": {
+          "pause": "{name} deactivated.",
+          "resume": "{name} activated.",
+          "delete": "{name} deleted."
+        }
+      },
       "loading": "Loading products",
       "error": {
         "denied": "You don't have access to products.",

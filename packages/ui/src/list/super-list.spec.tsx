@@ -118,7 +118,9 @@ const list = (over: Partial<SuperListProps> = {}) =>
       chips={null}
       failure={null}
       loading={false}
+      status={{ skeleton: false, slow: false, stalled: false, refreshing: false }}
       loadingLabel="Loading"
+      slowLabel="Still loading…"
       ready
       table={<p>TABLE</p>}
       pagination={null}
@@ -141,18 +143,45 @@ describe('SuperList', () => {
       expect(html).toContain(text);
   });
 
-  it('shows the loading rows before the first answer and the banner with Retry on a failure', () => {
-    expect(list({ ready: false, loading: true })).toContain('Loading');
-    expect(list({ ready: false, loading: true })).not.toContain('TABLE');
+  it('shows the loading status before the first answer and the banner with Retry on a failure', () => {
+    const loadingHtml = list({ ready: false, loading: true });
+    expect(loadingHtml).toContain('Loading');
+    expect(loadingHtml).not.toContain('TABLE');
     const failed = list({
       failure: { message: 'Could not load', retry: { label: 'Retry', onClick: () => {} } },
     });
     expect(failed).toContain('Could not load');
     expect(failed).toContain('Retry');
-    expect(failed).not.toContain('TABLE');
+    // A failure after a first page keeps the rows' place; the banner is above them.
+    expect(failed).toContain('TABLE');
   });
 
-  it('dims the table while the next answer loads', () => {
-    expect(list({ loading: true })).toContain('opacity-60');
+  it('shows the load error in place of the list when the first load failed', () => {
+    const html = list({
+      ready: false,
+      firstLoadError: true,
+      failure: { message: 'Try again', retry: { label: 'Retry', onClick: () => {} } },
+    });
+    expect(html).toContain('Try again');
+    expect(html).not.toContain('TABLE');
+  });
+
+  it('keeps the toolbar but disables it while the skeleton rows show', () => {
+    const html = list({
+      ready: false,
+      loading: true,
+      status: { skeleton: true, slow: false, stalled: false, refreshing: false },
+    });
+    expect(html).toContain('<fieldset disabled');
+    expect(html).toContain('TABLE');
+  });
+
+  it('marks the list busy and dims the rows while a later page loads', () => {
+    const html = list({
+      loading: true,
+      status: { skeleton: false, slow: false, stalled: false, refreshing: true },
+    });
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain('opacity-60');
   });
 });

@@ -1,14 +1,15 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { SkeletonRows } from '../data/skeleton.tsx';
 import { Banner } from '../form/banner.tsx';
 import { Button } from '../form/button.tsx';
+import { LoadError } from '../form/load-error.tsx';
 import { SearchField } from '../form/search-field.tsx';
 import type { IconName } from '../icon/icon.tsx';
 import { Popover, type PopoverProps } from '../overlay/popover.tsx';
 import { FilterChipRow, type FilterChipRowProps } from './filter-chip-row.tsx';
 import { ListPagination, type ListPaginationProps } from './list-pagination.tsx';
+import { ListLoadingStatus, ListRefreshing, type ListLoading } from './list-skeleton.tsx';
 import { ListViewsBar, type ListViewsBarProps } from './list-views-bar.tsx';
 
 export interface SuperListTool {
@@ -41,17 +42,25 @@ export interface SuperListProps {
   readonly sortedLine?: string;
   /** The chips and their buttons; null while nothing is filtered and nothing can be saved. */
   readonly chips: FilterChipRowProps | null;
-  /** The list could not load: the banner, with Retry when trying again can help. */
+  /**
+   * The list could not load. After a first page, a banner above the rows (with Retry when trying
+   * again can help); with `firstLoadError` the load error stands in place of the list.
+   */
   readonly failure: {
     readonly title?: string;
     readonly message: string;
     readonly retry?: { readonly label: string; readonly onClick: () => void };
   } | null;
+  /** No page has arrived and the load failed or stalled: the load error replaces the list. */
+  readonly firstLoadError?: boolean;
   readonly loading: boolean;
+  /** From `useListLoading(loading, ready)` (panel loading L2): skeleton rows first, dimmed rows after. */
+  readonly status: ListLoading;
   readonly loadingLabel: string;
-  /** A first answer is in; the table shows (dimmed while the next one loads). */
+  readonly slowLabel: string;
+  /** A first answer is in. */
   readonly ready: boolean;
-  /** A `SuperTable`, with its empty state inside. */
+  /** A `SuperTable`; give it `skeletonRows` while `status.skeleton` shows. */
   readonly table: ReactNode;
   /** The footer; null before the first answer or when there are no rows. */
   readonly pagination: ListPaginationProps | null;
@@ -97,13 +106,17 @@ export function SuperList({
   sortedLine,
   chips,
   failure,
+  firstLoadError = false,
   loading,
+  status,
   loadingLabel,
+  slowLabel,
   ready,
   table,
   pagination,
   dialogs,
 }: SuperListProps) {
+  const skeleton = status.skeleton && failure === null;
   const hasTools = filter !== undefined || sort !== undefined || columns !== undefined;
   return (
     <div className="flex flex-col gap-4">
@@ -126,19 +139,20 @@ export function SuperList({
             if (event.key === 'Enter') search.onSubmit(search.value.trim());
           }}
         />
+        {/* The real toolbar shows while the first page loads, but cannot act on rows yet. */}
         {hasTools ? (
-          <div className="flex items-center gap-2">
+          <fieldset disabled={skeleton} className="flex min-w-0 items-center gap-2">
             {filter === undefined ? null : <Tool tool={filter} kind="filter" />}
             {sort === undefined ? null : <Tool tool={sort} kind="sort" />}
             {columns === undefined ? null : <Tool tool={columns} kind="columns" />}
-          </div>
+          </fieldset>
         ) : null}
         {sortedLine === undefined ? null : (
           <p className="text-sm text-fg-muted sm:ms-auto">{sortedLine}</p>
         )}
       </div>
       {chips === null ? null : <FilterChipRow {...chips} />}
-      {failure === null ? null : (
+      {failure === null || firstLoadError ? null : (
         <Banner tone="critical" {...(failure.title === undefined ? {} : { title: failure.title })}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span>{failure.message}</span>
@@ -150,15 +164,27 @@ export function SuperList({
           </div>
         </Banner>
       )}
-      {loading && (!ready || failure !== null) ? (
-        <SkeletonRows label={loadingLabel} rows={4} />
+      {firstLoadError && failure !== null ? (
+        <LoadError
+          // In the list's own column: no page padding of its own.
+          className=""
+          {...(failure.title === undefined ? {} : { title: failure.title })}
+          message={failure.message}
+          retryLabel={failure.retry?.label ?? ''}
+          onRetry={failure.retry?.onClick ?? (() => {})}
+        />
       ) : null}
-      {ready && failure === null ? (
-        <div className={loading ? 'opacity-60' : undefined} aria-busy={loading}>
+      {skeleton || (ready && !firstLoadError) ? (
+        <ListRefreshing refreshing={status.refreshing} busy={loading}>
           {table}
-        </div>
+        </ListRefreshing>
       ) : null}
-      {ready && failure === null && pagination !== null ? <ListPagination {...pagination} /> : null}
+      {loading && !ready && !firstLoadError ? (
+        <ListLoadingStatus label={loadingLabel} slow={status.slow} slowLabel={slowLabel} />
+      ) : null}
+      {ready && !skeleton && !firstLoadError && pagination !== null ? (
+        <ListPagination {...pagination} />
+      ) : null}
       {dialogs}
     </div>
   );
