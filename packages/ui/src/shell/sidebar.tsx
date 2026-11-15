@@ -1,4 +1,6 @@
 import { navSections, splitNavPlacement, type NavGroup, type NavItem } from './nav.ts';
+import type { SettingsMenu } from './settings-menu.ts';
+import { SettingsSidebarNav } from './settings-sidebar-nav.tsx';
 import { SidebarNav, type SidebarEntry } from './sidebar-nav.tsx';
 
 export interface SidebarProps {
@@ -11,13 +13,23 @@ export interface SidebarProps {
   readonly label: (key: string) => string;
   /** Ids of the open groups from the `NAV_OPEN_COOKIE` cookie; the group of the active page opens too. */
   readonly openGroups?: readonly string[];
+  /** Inside /settings: the sidebar becomes the Settings menu (back link, search, settings groups). */
+  readonly settings?: SettingsMenu;
 }
 
 // Inside the shell's column the sidebar can be an icon rail (`data-rail` on the `rail` group):
 // labels stay for screen readers and every icon sits on the rail's centre line.
 const RAIL_HIDDEN = 'group-data-[rail=true]/rail:sr-only';
 
-export function Sidebar({ panelName, items, groups, activeId, label, openGroups }: SidebarProps) {
+export function Sidebar({
+  panelName,
+  items,
+  groups,
+  activeId,
+  label,
+  openGroups,
+  settings,
+}: SidebarProps) {
   const link = (item: NavItem) => ({
     id: item.id,
     href: item.href,
@@ -48,13 +60,17 @@ export function Sidebar({ panelName, items, groups, activeId, label, openGroups 
         </span>
         <span className={`min-w-0 truncate ${RAIL_HIDDEN}`}>{panelName}</span>
       </div>
-      <SidebarNav
-        panelName={panelName}
-        entries={entries}
-        footer={footer.map(link)}
-        activeId={activeId}
-        openGroups={openGroups}
-      />
+      {settings === undefined ? (
+        <SidebarNav
+          panelName={panelName}
+          entries={entries}
+          footer={footer.map(link)}
+          activeId={activeId}
+          openGroups={openGroups}
+        />
+      ) : (
+        <SettingsSidebarNav menu={settings} />
+      )}
     </div>
   );
 }
