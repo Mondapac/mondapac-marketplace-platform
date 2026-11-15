@@ -50,19 +50,25 @@ export function useDelayedLoading(
   // Read when a timer starts, so a caller passing a new options object never restarts the clocks.
   const timing = useRef({ delay, minVisible, slowAfter, stalledAfter });
   timing.current = { delay, minVisible, slowAfter, stalledAfter };
+  // The latest value, read by the timers: a timer that fires after the render that ended the
+  // loading but before its effect cleared the timers (passive effects run after paint) must not
+  // show the skeleton again over the loaded page.
+  const current = useRef(loading);
+  current.current = loading;
 
   useEffect(() => {
     const { delay, minVisible, slowAfter, stalledAfter } = timing.current;
     if (loading) {
       const timers = [
-        setTimeout(() => setSlow(true), slowAfter),
-        setTimeout(() => setStalled(true), stalledAfter),
+        setTimeout(() => current.current && setSlow(true), slowAfter),
+        setTimeout(() => current.current && setStalled(true), stalledAfter),
       ];
       // A loading that starts again while a held skeleton is still up keeps it up, no new delay;
       // its minimum still counts from when it first showed, so it can go as soon as this ends.
       if (shownAt.current === null) {
         timers.push(
           setTimeout(() => {
+            if (!current.current) return;
             shownAt.current = Date.now();
             setVisible(true);
           }, delay),

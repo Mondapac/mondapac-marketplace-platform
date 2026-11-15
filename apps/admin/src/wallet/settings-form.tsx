@@ -72,14 +72,18 @@ export function SettingsForm({
   // Shown after 200 ms, held at least 400 ms; at 30 s the load counts as failed.
   const loading = useDelayedLoading(settings === null && !loadFailed);
 
+  // Each read gets a number; an answer to an older read (one abandoned at the 30 s stall, or
+  // replaced by Try again) is dropped, so it never overwrites what the newer read showed.
+  const attempt = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++attempt.current;
     setLoadFailed(false);
     const result = await callApi<WalletSettings>('GET', 'wallet/admin/settings');
+    if (mine !== attempt.current) return;
     if (result.ok) {
       // A state the panel does not know is not shown as a guess.
       if (WALLET_STATES.includes(result.body.status) && Number.isInteger(result.body.version)) {
         setSettings(result.body);
-        setLoadFailed(false);
       } else setLoadFailed(true);
     } else if (result.failure.status === 401) window.location.assign('/session-ended');
     else setLoadFailed(true);
@@ -90,7 +94,9 @@ export function SettingsForm({
   }, [load]);
 
   useEffect(() => {
-    if (loading.stalled) setLoadFailed(true);
+    if (!loading.stalled) return;
+    attempt.current += 1;
+    setLoadFailed(true);
   }, [loading.stalled]);
 
   const title = t('settings.title');
@@ -111,9 +117,13 @@ export function SettingsForm({
     return (
       <SettingsPage title={title} description={intro}>
         <SettingsSkeleton
-          label={t('loading')}
+          label={root('route.loading-page', { page: title })}
           header={false}
-          sections={[{ fields: 2 }, { fields: 2 }, { fields: 2, description: true }]}
+          sections={[
+            { fields: 2 },
+            { fields: WALLET_STATES.length },
+            { fields: 2, description: true },
+          ]}
           visible={loading.visible}
           slow={loading.slow}
           slowLabel={root('route.slow')}

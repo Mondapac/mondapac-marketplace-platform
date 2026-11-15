@@ -104,12 +104,17 @@ export function PromotionsSettingsPanel({
   const active = saved.status === 'active';
   const showCards = canManagePromotions && active;
 
+  // Each read gets a number; an answer to an older read (one abandoned at the 30 s stall, or
+  // replaced by Try again) is dropped, so it never overwrites what the newer read showed.
+  const attempt = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++attempt.current;
     setLoaded({ state: 'loading' });
     const [order, shipping] = await Promise.all([
       callApi<FirstOrderView>('GET', FIRST_ORDER_PATH),
       callApi<Thresholds>('GET', THRESHOLDS_PATH),
     ]);
+    if (mine !== attempt.current) return;
     if (order.ok && shipping.ok) {
       setLoaded({ state: 'ready', firstOrder: order.body, thresholds: shipping.body });
       setFirst(firstOrderDraftOf(order.body.settings, order.body.currency));
@@ -132,7 +137,9 @@ export function PromotionsSettingsPanel({
   // Shown after 200 ms, held at least 400 ms; at 30 s the load counts as failed.
   const cardsLoading = useDelayedLoading(showCards && loaded.state === 'loading');
   useEffect(() => {
-    if (cardsLoading.stalled) setLoaded({ state: 'failed' });
+    if (!cardsLoading.stalled) return;
+    attempt.current += 1;
+    setLoaded({ state: 'failed' });
   }, [cardsLoading.stalled]);
 
   const ready = loaded.state === 'ready' ? loaded : null;
@@ -326,6 +333,8 @@ export function PromotionsSettingsPanel({
 
   const switchChanged = wantOn !== active;
   const canSave = canManageSwitch || canManagePromotions;
+  // The save bar waits for the cards' values: none while their skeleton shows.
+  const cardsPending = showCards && (loaded.state === 'loading' || cardsLoading.visible);
   const lastChanged =
     saved.updatedAt === null
       ? undefined
@@ -347,7 +356,7 @@ export function PromotionsSettingsPanel({
       dirtyCount={changeCount}
       leave={chrome.leave}
       saveBar={
-        canSave ? (
+        canSave && !cardsPending ? (
           <SaveBar
             {...chrome.saveBar({
               count: changeCount,

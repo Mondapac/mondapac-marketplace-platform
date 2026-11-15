@@ -56,10 +56,15 @@ export function SettingsSkeleton({
               data-skeleton="section"
               className="@container min-w-0 rounded-lg border border-line bg-surface"
             >
-              <div className="flex flex-col gap-2 border-b border-line-row px-5 py-4">
-                <span className="h-5 w-40 max-w-full rounded-sm bg-muted" />
+              {/* Line boxes as tall as the real heading (text-base) and description (text-sm). */}
+              <div className="flex flex-col gap-0.5 border-b border-line-row px-5 py-4">
+                <span className="flex h-6 items-center">
+                  <span className="h-4 w-40 max-w-full rounded-sm bg-muted" />
+                </span>
                 {section.description ? (
-                  <span className="h-3.5 w-72 max-w-full rounded-sm bg-muted" />
+                  <span className="flex h-5 items-center">
+                    <span className="h-3.5 w-72 max-w-full rounded-sm bg-muted" />
+                  </span>
                 ) : null}
               </div>
               {Array.from({ length: section.fields }, (_, row) => (
@@ -68,13 +73,18 @@ export function SettingsSkeleton({
                   data-skeleton="row"
                   className="grid gap-1.5 border-b border-line-row px-5 py-4 last:border-b-0 @[39rem]:grid-cols-[minmax(0,1fr)_22.5rem] @[39rem]:gap-6"
                 >
-                  <div className="flex min-w-0 flex-col gap-2">
-                    <span
-                      className={`h-3.5 max-w-full rounded-sm bg-muted ${LABEL_WIDTHS[row % LABEL_WIDTHS.length]}`}
-                    />
-                    <span
-                      className={`h-3 max-w-full rounded-sm bg-muted ${HELP_WIDTHS[(row + index) % HELP_WIDTHS.length]}`}
-                    />
+                  {/* Label and help as text-sm line boxes, like SettingRow, so a stacked row keeps its height. */}
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="flex h-5 items-center">
+                      <span
+                        className={`h-3.5 max-w-full rounded-sm bg-muted ${LABEL_WIDTHS[row % LABEL_WIDTHS.length]}`}
+                      />
+                    </span>
+                    <span className="flex h-5 items-center">
+                      <span
+                        className={`h-3 max-w-full rounded-sm bg-muted ${HELP_WIDTHS[(row + index) % HELP_WIDTHS.length]}`}
+                      />
+                    </span>
                   </div>
                   <span className="h-(--mp-size-control) w-full rounded-md bg-muted" />
                 </div>
