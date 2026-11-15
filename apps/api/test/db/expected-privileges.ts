@@ -996,6 +996,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     // Customers phase 1 (package B1): the read models are written, replaced and removed (account
     // erasure) by the application; no column is restricted.
+    'customers.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
     'customers.customer_directory': {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
