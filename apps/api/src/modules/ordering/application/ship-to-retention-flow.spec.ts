@@ -272,6 +272,24 @@ describe.each([['AU'], ['ZZ']] as const)('ship-to retention in market %s', (code
       expect(SHIP_TO_PURGE_MAX_BATCHES).toBe(100);
     });
 
+    it('stops at the next batch when an admin switches it off during the run', async () => {
+      expect((await set({ months: 1 })).ok).toBe(true);
+      for (let n = 0; n < 501; n += 1) order(['2025-01-01T00:00:00']);
+      const clear = store.clearDeliveredShipTo.bind(store);
+      store.clearDeliveredShipTo = async (...args) => {
+        const batch = await clear(...args);
+        const current = store.settings.get(market.marketId)!;
+        store.settings.set(market.marketId, { ...current, enabled: false });
+        return batch;
+      };
+      expect(await purge()).toEqual({ ok: true, value: { outcome: 'partial', cleared: 500 } });
+      expect(store.orders.filter((o) => o.shipTo !== null)).toHaveLength(1);
+      expect(audit.rows.at(-1)).toMatchObject({
+        action: 'ordering.ship-to.purged',
+        after: { cleared: 500, complete: false },
+      });
+    });
+
     it("never reaches another Market's orders", async () => {
       expect((await set({ months: 1 })).ok).toBe(true);
       const other = { ...order(['2020-01-01T00:00:00']) };

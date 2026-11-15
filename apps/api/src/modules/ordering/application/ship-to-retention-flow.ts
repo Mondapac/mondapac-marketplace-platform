@@ -61,7 +61,10 @@ export type ShipToRetentionFailure =
 
 /** What one run of the purge did in a Market. */
 export interface ShipToPurgeRun {
-  /** `disabled`: off or never set, nothing looked at. */
+  /**
+   * `disabled`: off or never set, nothing looked at. `partial`: stopped at the batch bound, or
+   * because the setting changed during the run; the next run goes on.
+   */
   readonly outcome: 'disabled' | 'complete' | 'partial';
   readonly cleared: number;
 }
@@ -193,20 +196,26 @@ export async function purgeDeliveredShipTo(
   let complete = false;
   for (let batch = 0; batch < SHIP_TO_PURGE_MAX_BATCHES; batch += 1) {
     const cursor: ShipToPurgeCursor | null = after;
-    const done: Result<ShipToPurgeBatch, never> = await deps.unitOfWork.run<
-      ShipToPurgeBatch,
+    // The setting is read again in each batch's unit: an admin who switches it off or changes the
+    // months mid-run stops the deletion at the next batch.
+    const done: Result<ShipToPurgeBatch | null, never> = await deps.unitOfWork.run<
+      ShipToPurgeBatch | null,
       never
-    >(context.market, async () =>
-      ok(
+    >(context.market, async () => {
+      const current = await deps.retention.find(context.market);
+      if (current === null || !current.enabled || current.months !== setting.months) {
+        return ok(null);
+      }
+      return ok(
         await deps.retention.clearDeliveredShipTo(
           context.market,
           cutoff,
           cursor,
           SHIP_TO_PURGE_BATCH,
         ),
-      ),
-    );
-    if (!done.ok) break;
+      );
+    });
+    if (!done.ok || done.value === null) break;
     cleared += done.value.cleared;
     after = done.value.next;
     if (after === null) {
