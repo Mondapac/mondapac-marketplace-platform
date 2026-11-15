@@ -1163,7 +1163,7 @@
     }
   },
   "certificates": {
-    "title": "Certificates",
+    "title": "Certification",
     "queue": {
       "title": "Certificates waiting for a decision",
       "no-access": "You don't have access to certificates.",
@@ -1518,7 +1518,7 @@
   },
   "pricing": {
     "holds": {
-      "title": "Held prices",
+      "title": "Pricing",
       "no-access": "You don't have access to held prices.",
       "back-home": "Back to dashboard",
       "unavailable": "Held prices could not be loaded. Try again later.",
@@ -4202,7 +4202,7 @@
       }
     },
     "queue": {
-      "title": "Review queue",
+      "title": "Catalogue requests",
       "tabs": "Review queue",
       "tab": {
         "revision": "Product revisions",
@@ -4848,7 +4848,7 @@
   },
   "payments": {
     "accounts": {
-      "title": "Connected accounts",
+      "title": "Seller accounts",
       "intro": "The Stripe payout accounts of the sellers, newest first. Read-only.",
       "no-access": "You don't have access to connected accounts.",
       "no-access-title": "You don't have access to this page",
@@ -7131,8 +7131,8 @@
     "not-set": "Not set"
   },
   "reviews-moderation": {
-    "title": "Buyer reviews",
-    "page-title": "Buyer reviews",
+    "title": "Reviews",
+    "page-title": "Reviews",
     "no-access": "You do not have access to the buyer review queue.",
     "back-home": "Back to the dashboard",
     "intro": "Reviews waiting for a person, reviews buyers have reported, and reviews already hidden or removed. A review is moderated as a whole: its text is never edited. A true negative review that follows the review policy is never hidden for being negative.",
