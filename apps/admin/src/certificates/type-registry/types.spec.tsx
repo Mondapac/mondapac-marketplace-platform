@@ -422,6 +422,7 @@ describe('type page', () => {
     expect(typeProblemOf({ status: 409, code: 'conflict.stale' })).toEqual({
       key: 'certificates.types.error.stale',
       reload: true,
+      issues: [],
     });
     expect(typeProblemOf({ status: 403, code: 'review.second-admin-required' }).reload).toBe(false);
     expect(typeProblemOf({ status: 500, code: 'x' }).key).toBe(
@@ -464,10 +465,11 @@ describe('relay', () => {
     return upstream.mock.calls.length;
   };
 
-  it('relays the six type actions for UUID ids, and no revision write or other route', async () => {
+  it('relays the type actions and the revision write for UUID ids, and no other route', async () => {
     const base = `certification/admin/types/${TYPE}`;
     for (const path of [
       'deactivate',
+      'revisions',
       'reactivation',
       `relaxations/${PROP}/approve`,
       `reactivations/${PROP}/approve`,
@@ -476,7 +478,8 @@ describe('relay', () => {
     ]) {
       expect(await send('POST', `${base}/${path}`)).toBe(1);
     }
-    expect(await send('POST', `${base}/revisions`)).toBe(0);
+    expect(await send('GET', `${base}/revisions`)).toBe(0);
+    expect(await send('POST', 'certification/admin/types/x/revisions')).toBe(0);
     expect(await send('POST', `${base}/proposals/x/reject`)).toBe(0);
     expect(await send('POST', 'certification/admin/types/x/deactivate')).toBe(0);
     expect(await send('GET', `${base}/deactivate`)).toBe(0);
