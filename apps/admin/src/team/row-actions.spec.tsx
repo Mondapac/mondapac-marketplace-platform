@@ -311,9 +311,7 @@ describe('team row actions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect((screen.getByRole('button', { name: 'Reset' }) as HTMLButtonElement).disabled).toBe(
-        false,
-      ),
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Reset' }).disabled).toBe(false),
     );
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
