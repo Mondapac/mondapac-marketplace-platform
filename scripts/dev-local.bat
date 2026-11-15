@@ -76,6 +76,10 @@ if "%SEED%"=="1" ( node scripts\demo-seed\claim-vocabulary.mjs || goto :fail )
 echo [4/5] Starting the API and the worker in their own windows
 set "MARKET_CONFIG_DIR=%CD%\.local\markets"
 set "SERVICE_AREA_CONFIG_DIR=%CD%\.local\service-areas"
+rem Type-checking the API takes about 2.7 GB of heap, more than Node's default limit on an 8 GB
+rem machine ("JavaScript heap out of memory", exit code 134). Raise the limit for the windows below;
+rem it is a ceiling, not a reservation. Flags already in NODE_OPTIONS are kept.
+set "NODE_OPTIONS=%NODE_OPTIONS% --max-old-space-size=6144"
 start "MondaPac API" /d "%CD%" cmd /k "pnpm dev"
 rem The worker builds the API once; wait so it does not race the API watcher that cleans dist.
 start "MondaPac worker" /d "%CD%" cmd /k "timeout /t 60 /nobreak && pnpm dev:worker"
@@ -117,7 +121,7 @@ echo   Buyer site   : %STOREFRONT_ORIGIN%  (or http://localhost:3003 if that nam
 echo   Mail (Mailpit): http://localhost:8025
 if "%SEED%"=="1" echo   Sample logins : .local\demo-credentials.txt  (written when the demo data window says Done)
 echo To stop: close the windows, then run "docker compose down" (add -v to wipe the demo data).
-echo (The windows inherit MARKET_CONFIG_DIR and SERVICE_AREA_CONFIG_DIR from this one.)
+echo (The windows inherit MARKET_CONFIG_DIR, SERVICE_AREA_CONFIG_DIR and NODE_OPTIONS from this one.)
 pause
 endlocal
 exit /b 0
