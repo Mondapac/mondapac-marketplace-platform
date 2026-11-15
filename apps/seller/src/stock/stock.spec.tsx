@@ -154,6 +154,17 @@ describe('StockLocations', () => {
     expect(within(drawer).getByRole('button', { name: 'Close' })).toBeTruthy();
   });
 
+  it('closes on Escape and the close button, and gives focus back to the Add button', async () => {
+    mount();
+    const add = screen.getByRole('button', { name: 'Add a location' });
+    add.focus();
+    fireEvent.click(add);
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Add a location' }), { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog', { name: 'Add a location' })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(add));
+  });
+
   it('closes at once on Cancel when nothing was typed', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Add a location' }));
@@ -217,7 +228,9 @@ describe('StockLocations', () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Add a location' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add location' }));
-    expect(await screen.findByText('Check the fields marked below.')).toBeTruthy();
+    expect(await screen.findByText('1 setting needs fixing')).toBeTruthy();
+    // One notice only: the summary, not a second banner saying the same.
+    expect(screen.queryByText('Check the fields marked below.')).toBeNull();
     expect(screen.getByText('This value is too short or too long.')).toBeTruthy();
     expect(screen.getByLabelText('Name')).toBeTruthy();
     // The summary at the top of the form links to the field.

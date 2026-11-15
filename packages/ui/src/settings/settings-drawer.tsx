@@ -100,7 +100,7 @@ export function SettingsDrawer({
             noValidate
             className="flex h-full flex-col border-line bg-surface shadow-(--mp-shadow-elevation-floating) sm:border-s"
           >
-            <div className="flex items-start gap-2 px-4 pt-3 sm:px-6">
+            <div className="flex items-center gap-2 px-4 pt-3 sm:px-6">
               <div className="min-w-0 flex-1">
                 <h2 id={titleId} className="truncate text-lg font-semibold">
                   {title}

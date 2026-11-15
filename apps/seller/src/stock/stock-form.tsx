@@ -140,7 +140,8 @@ export function StockForm({
       ) : (
         <SettingsConflictView conflictId={conflictId} changes={changes} />
       )}
-      {problem === null ? null : (
+      {/* A refused field is named by the summary above; the banner is for failures with no field. */}
+      {problem === null || invalid.length > 0 ? null : (
         <Banner tone="critical">{t(problem.form.key, problem.form.values)}</Banner>
       )}
     </div>
@@ -158,7 +159,7 @@ export function StockForm({
       labels={labels}
     >
       {/* The rows carry their own side padding: the negative margin cancels the drawer's. */}
-      <div className="-mx-5 flex flex-col">
+      <div className="-mx-4 flex flex-col sm:-mx-6">
         <SettingRow id={NAME_ROW} label={t('stock.form.name')} error={fieldError('name')}>
           <SettingInput
             name="name"
