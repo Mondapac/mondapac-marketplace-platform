@@ -206,7 +206,7 @@ export const adminNav: NavConfig = {
     },
     {
       id: 'menus',
-      icon: 'menu',
+      icon: 'link',
       labelKey: 'nav.menus',
       href: '/content/navigation',
       group: 'cms',

@@ -28,7 +28,7 @@ export async function NavigationRoute() {
   }
   const { permissionKeys, timezone, csrfToken } = gate.session;
   if (!permissionKeys.includes(NAV_READ_PERMISSION)) {
-    return <ContentNoAccess session={gate.session} />;
+    return <ContentNoAccess session={gate.session} activeId="menus" />;
   }
   const title = t('content.title');
   const read = await serverGet<PageDetail>(NAVIGATION_API_PATH);
