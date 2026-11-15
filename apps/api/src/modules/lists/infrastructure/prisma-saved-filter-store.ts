@@ -70,10 +70,11 @@ export class PrismaSavedFilterStore implements SavedFilterStore {
   async find(
     market: MarketContext,
     sellerId: Id<'Seller'> | null,
+    listKeys: readonly string[],
     id: Id<'SavedFilter'>,
   ): Promise<StoredFilter | null> {
     const row = await this.prisma.tx(market).listsSavedFilter.findFirst({
-      where: { marketId: market.marketId, sellerId, id },
+      where: { marketId: market.marketId, sellerId, listKey: { in: [...listKeys] }, id },
     });
     return row === null ? null : filterOf(row);
   }
@@ -141,7 +142,12 @@ export class PrismaSavedFilterStore implements SavedFilterStore {
   async change(market: MarketContext, filter: StoredFilter): Promise<StoredFilterWrite | 'gone'> {
     try {
       const changed = await this.prisma.tx(market).listsSavedFilter.updateMany({
-        where: { marketId: market.marketId, sellerId: filter.sellerId, id: filter.id },
+        where: {
+          marketId: market.marketId,
+          sellerId: filter.sellerId,
+          listKey: filter.listKey,
+          id: filter.id,
+        },
         data: {
           name: filter.name,
           visibility: filter.visibility,
@@ -158,10 +164,11 @@ export class PrismaSavedFilterStore implements SavedFilterStore {
   async remove(
     market: MarketContext,
     sellerId: Id<'Seller'> | null,
+    listKeys: readonly string[],
     id: Id<'SavedFilter'>,
   ): Promise<boolean> {
     const removed = await this.prisma.tx(market).listsSavedFilter.deleteMany({
-      where: { marketId: market.marketId, sellerId, id },
+      where: { marketId: market.marketId, sellerId, listKey: { in: [...listKeys] }, id },
     });
     return removed.count > 0;
   }

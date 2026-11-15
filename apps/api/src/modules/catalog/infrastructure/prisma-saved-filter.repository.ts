@@ -4,6 +4,7 @@ import type {
   SavedFilterRepository,
   SavedFilterWrite,
 } from '../application/ports/saved-filter.repository';
+import { SAVED_FILTER_LIST_KEYS } from '../application/saved-filters/saved-filter-lists';
 import type { SavedFilter } from '../domain/saved-filter';
 
 /**
@@ -13,7 +14,11 @@ import type { SavedFilter } from '../domain/saved-filter';
  * old file's: the store behind it moved, the port did not.
  */
 export class PrismaSavedFilterRepository implements SavedFilterRepository {
-  constructor(private readonly store: SavedFilterStore) {}
+  constructor(
+    private readonly store: SavedFilterStore,
+    /** The lists this module owns for admins: the only filters reachable by id. */
+    private readonly listKeys: readonly string[] = SAVED_FILTER_LIST_KEYS,
+  ) {}
 
   visibleTo(
     market: MarketContext,
@@ -24,7 +29,7 @@ export class PrismaSavedFilterRepository implements SavedFilterRepository {
   }
 
   find(market: MarketContext, id: Id<'SavedFilter'>): Promise<SavedFilter | null> {
-    return this.store.find(market, null, id);
+    return this.store.find(market, null, this.listKeys, id);
   }
 
   countOwnedBy(market: MarketContext, listKey: string, accountId: Id<'Account'>): Promise<number> {
@@ -48,6 +53,6 @@ export class PrismaSavedFilterRepository implements SavedFilterRepository {
   }
 
   remove(market: MarketContext, id: Id<'SavedFilter'>): Promise<boolean> {
-    return this.store.remove(market, null, id);
+    return this.store.remove(market, null, this.listKeys, id);
   }
 }

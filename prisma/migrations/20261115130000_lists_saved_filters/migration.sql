@@ -59,6 +59,10 @@ ALTER TABLE "lists"."saved_filters"
   -- be shared: there is no store to share it within.
   ADD CONSTRAINT "saved_filters_scope_check" CHECK (
     "seller_id" IS NULL OR "list_key" LIKE 'seller.%'),
+  -- The seller Products list is store-scoped, as the old catalog table required for every seller
+  -- list: it never exists without a store.
+  ADD CONSTRAINT "saved_filters_seller_products_store_check" CHECK (
+    "list_key" <> 'seller.catalog.products' OR "seller_id" IS NOT NULL),
   ADD CONSTRAINT "saved_filters_seller_share_check" CHECK (
     "visibility" = 'me' OR "list_key" NOT LIKE 'seller.%' OR "seller_id" IS NOT NULL);
 

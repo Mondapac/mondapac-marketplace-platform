@@ -314,6 +314,42 @@ describe.each(TEST_MARKETS)('catalog saved filters in market %s (database)', (co
     });
   });
 
+  it('never finds or deletes another module’s filter by id: a filter of a list the module does not own is not found', async () => {
+    const store = new PrismaSavedFilterStore(db.service);
+    const foreign = uuid7() as Id<'SavedFilter'>;
+    const now = Temporal.Now.instant();
+    await db.unitOfWork.run(market, async () => {
+      await store.add(market, {
+        id: foreign,
+        listKey: 'admin.ordering.orders',
+        ownerAccountId: account(),
+        sellerId: null,
+        visibility: 'everyone',
+        name: unique('Foreign'),
+        payload: PAYLOAD,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return { ok: true as const, value: undefined };
+    });
+    const catalogOnly = new PrismaSavedFilterRepository(store);
+
+    const result = await db.unitOfWork.run(market, async () => ({
+      ok: true as const,
+      value: {
+        found: await catalogOnly.find(market, foreign),
+        removed: await catalogOnly.remove(market, foreign),
+        stillThere: await store.find(market, null, ['admin.ordering.orders'], foreign),
+      },
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { found: null, removed: false, stillThere: { id: foreign } },
+    });
+  });
+
   it('never reads, lists, renames or deletes another Market’s filters', async () => {
     const here = admin([VIEW, SHARE]);
     const there = admin([VIEW, SHARE], other);

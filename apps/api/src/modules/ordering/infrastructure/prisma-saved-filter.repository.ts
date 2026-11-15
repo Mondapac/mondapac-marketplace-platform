@@ -4,7 +4,7 @@ import type {
   SavedFilterRepository,
   SavedFilterWrite,
 } from '../application/ports/saved-filter.repository';
-import type { SavedFilter } from '../domain/saved-view';
+import { SAVED_FILTER_LIST_KEYS, type SavedFilter } from '../domain/saved-view';
 
 /** The order lists keep no store: an order filter is the account's own (or the admins' shared). */
 const orderFilterOf = (stored: StoredFilter): SavedFilter => ({
@@ -27,7 +27,11 @@ const storedOf = (filter: SavedFilter): StoredFilter => ({ ...filter, sellerId: 
  * name keeps the old file's: the store behind it moved, the port did not.
  */
 export class PrismaSavedFilterRepository implements SavedFilterRepository {
-  constructor(private readonly store: SavedFilterStore) {}
+  constructor(
+    private readonly store: SavedFilterStore,
+    /** The order lists: the only filters reachable by id. */
+    private readonly listKeys: readonly string[] = SAVED_FILTER_LIST_KEYS,
+  ) {}
 
   async visibleTo(
     market: MarketContext,
@@ -38,7 +42,7 @@ export class PrismaSavedFilterRepository implements SavedFilterRepository {
   }
 
   async find(market: MarketContext, id: Id<'SavedFilter'>): Promise<SavedFilter | null> {
-    const found = await this.store.find(market, null, id);
+    const found = await this.store.find(market, null, this.listKeys, id);
     return found === null ? null : orderFilterOf(found);
   }
 
@@ -63,6 +67,6 @@ export class PrismaSavedFilterRepository implements SavedFilterRepository {
   }
 
   remove(market: MarketContext, id: Id<'SavedFilter'>): Promise<boolean> {
-    return this.store.remove(market, null, id);
+    return this.store.remove(market, null, this.listKeys, id);
   }
 }

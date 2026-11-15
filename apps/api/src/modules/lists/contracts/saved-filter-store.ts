@@ -46,10 +46,14 @@ export interface SavedFilterStore {
     accountId: Id<'Account'>,
   ): Promise<readonly StoredFilter[]>;
 
-  /** One filter by id, whoever owns it; the caller applies visibility. */
+  /**
+   * One filter by id, whoever owns it; the caller applies visibility. Only a filter of one of
+   * `listKeys` is found: a module reaches the lists it owns, never another module's filter by id.
+   */
   find(
     market: MarketContext,
     sellerId: Id<'Seller'> | null,
+    listKeys: readonly string[],
     id: Id<'SavedFilter'>,
   ): Promise<StoredFilter | null>;
 
@@ -80,15 +84,17 @@ export interface SavedFilterStore {
   add(market: MarketContext, filter: StoredFilter): Promise<StoredFilterWrite>;
 
   /**
-   * Writes the name, visibility and update time of a filter of `filter.sellerId`. `gone` when the
-   * row no longer exists in that scope (deleted since it was read).
+   * Writes the name, visibility and update time of a filter of `filter.sellerId` and
+   * `filter.listKey`. `gone` when the row no longer exists in that scope (deleted since it was
+   * read).
    */
   change(market: MarketContext, filter: StoredFilter): Promise<StoredFilterWrite | 'gone'>;
 
-  /** False when the scope has no such row any more. */
+  /** False when the scope has no such row of one of `listKeys` any more. */
   remove(
     market: MarketContext,
     sellerId: Id<'Seller'> | null,
+    listKeys: readonly string[],
     id: Id<'SavedFilter'>,
   ): Promise<boolean>;
 }

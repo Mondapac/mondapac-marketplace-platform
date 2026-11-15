@@ -503,10 +503,13 @@ describe.each(TEST_MARKETS)('seller saved filters in market %s (database)', (cod
         { rowCount: 1 },
       );
       // A seller list with no store is personal to the account (the seller order lists).
-      await expect(insertAs(app, { seller_id: null })).resolves.toMatchObject({ rowCount: 1 });
+      await expect(
+        insertAs(app, { seller_id: null, list_key: 'seller.ordering.orders' }),
+      ).resolves.toMatchObject({ rowCount: 1 });
     });
 
     it.each([
+      ['the seller Products list without a store', { seller_id: null }],
       ['a shared seller list key without a store', { seller_id: null, visibility: 'everyone' }],
       ['an admin list key with a store', { list_key: ADMIN_LIST }],
       ['a list key in upper case', { list_key: 'Seller.Catalog.Products' }],

@@ -39,6 +39,15 @@ need them. Left alone, each list's module would add a third, fourth and fifth co
    list query contract with the row actions helper (`platform/list-query`) are platform code: they
    hold no table and no permission.
 
+## Release notes
+- The copy runs once, inside the migration. Pods still on the old code keep writing to the old
+  tables during the rollout and the new code never reads them, so a filter saved in that window
+  stays only in the old table. The PR that drops the old tables first adds a catch-up
+  (`INSERT ... SELECT ... ON CONFLICT (id) DO NOTHING`, and a replay of renames and deletes) or the
+  rollout freezes saved-filter writes.
+- Rolling the migration back loses every filter saved after the copy and leaves the old tables
+  stale: the release runbook says so.
+
 ## Consequences
 
 - A new list needs a definition and no migration; the table's `list_key` CHECK already allows any
