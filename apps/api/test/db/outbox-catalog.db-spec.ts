@@ -278,6 +278,10 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // Personalization 1d-2: the bought-together rebuild pages confirmed orders by time.
   'ordering.orders_market_id_confirmed_at_id_idx':
     "CREATE INDEX orders_market_id_confirmed_at_id_idx ON ordering.orders USING btree (market_id, confirmed_at, id) WHERE (status = 'confirmed'::text)",
+  // Ship-to retention (owner decision 2026-11-15): the daily purge pages confirmed orders that
+  // still hold a sealed ship-to by time; cleared orders leave the index.
+  'ordering.orders_market_id_confirmed_at_id_ship_to_idx':
+    "CREATE INDEX orders_market_id_confirmed_at_id_ship_to_idx ON ordering.orders USING btree (market_id, confirmed_at, id) WHERE ((status = 'confirmed'::text) AND (ship_to_ciphertext IS NOT NULL))",
   // Phase 5 package 1: a Stripe session or payment intent belongs to one order.
   'ordering.orders_stripe_payment_intent_id_key':
     'CREATE UNIQUE INDEX orders_stripe_payment_intent_id_key ON ordering.orders USING btree (stripe_payment_intent_id) WHERE (stripe_payment_intent_id IS NOT NULL)',
