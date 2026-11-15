@@ -53,6 +53,14 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
    characters, never a secret). An `err` answer is the use case's own refusal.
 3. The page asks for a note only when `areaPolicy(context, area).enabled`.
 
+## Hooked areas
+
+- **settings** (area marketplace, kind `settings.market-setting`, subject = the setting code):
+  every change of a Market setting (List paging, Cart mode, the AI description writer) passes the
+  page's `note` and answers the request it opened (`request: {id, number}` or null); each setting
+  view carries `review: {reviewed, risk}` so the page knows to ask for a note. The reverter writes
+  the value before as a new version with its history and audit row.
+
 ## Supersession and locks
 
 A new request on a subject supersedes the subject's open-ended earlier requests: they can be
@@ -78,7 +86,8 @@ reject, withdraw, `review-policy`, and the two policy writes.
 
 - Saved filters, column picker and CSV/XLSX export come with the shared super-list kit (phase 0,
   handoffs in `super-list/`).
-- The area hooks in the owning modules (settings, roles, payouts, ...) are follow-ups, one per
-  module; until then only the review policy itself opens requests.
+- The area hooks in the other owning modules (roles, payouts, delivery, catalogue, ...) are
+  follow-ups, one per module, for changes that can be reverted only (owner decision of 15 Nov
+  2026: creating, deleting, merging, moving and importing get their own design later).
 - Notifications and reminders for overdue requests, and an impact count per request.
 - The admin panel pages (frontend package).

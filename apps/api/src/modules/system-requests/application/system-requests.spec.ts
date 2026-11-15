@@ -252,6 +252,16 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
         note: 'n',
       });
       expect(off).toEqual({ ok: true, value: null });
+      // No note is needed where nothing is reviewed.
+      const noNote = await recorder.openReview(admin(MAKER), {
+        area: 'marketplace',
+        subjectKind: KIND_OF.marketplace,
+        subjectRef: 'x',
+        before: { v: 1 },
+        after: { v: 2 },
+        note: undefined,
+      });
+      expect(noNote).toEqual({ ok: true, value: null });
       const same = await recorder.openReview(admin(MAKER), {
         area: 'catalogue',
         subjectKind: SETTING,

@@ -19,7 +19,10 @@ export interface AppliedChange {
   /** The values before and after the change (see `isChangeValues`; never a secret). */
   readonly before: ChangeValues;
   readonly after: ChangeValues;
-  /** The admin's note from the save dialog, as received: it is checked here (1 to 500 characters). */
+  /**
+   * The admin's note from the save dialog, as received: checked here (1 to 500 characters), and
+   * only when the area is reviewed in the Market (pass whatever the request carried, even none).
+   */
   readonly note: unknown;
   /** Raises the change's risk above the area's default risk; never lowers it. */
   readonly risk?: Risk;

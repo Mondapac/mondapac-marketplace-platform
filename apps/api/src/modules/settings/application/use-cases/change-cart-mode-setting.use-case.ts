@@ -3,19 +3,21 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { SETTINGS_CART_MODE_MANAGE } from '../../contracts/permissions';
 import { CART_MODE_CODE } from '../../domain/definitions';
 import type { SettingsDependencies } from '../settings-dependencies';
-import { changeSetting, type SettingsFailure, type SettingView } from '../settings-flow';
+import { changeSetting, type SettingsFailure, type SettingChangeView } from '../settings-flow';
 
 interface Input {
   readonly code?: unknown;
   readonly value?: unknown;
   readonly expectedVersion?: unknown;
+  /** The note for the reviewer (System requests); needed only where the area is reviewed. */
+  readonly note?: unknown;
 }
 
 /**
  * `settings.change-cart-mode-setting`: an admin changes Cart mode, under its own manage key, from the version they
  * saw. Refused in acting-as, audited, idempotent, and a stale version is a conflict.
  */
-export class ChangeCartModeSetting extends UseCase<Input, SettingView, SettingsFailure> {
+export class ChangeCartModeSetting extends UseCase<Input, SettingChangeView, SettingsFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'settings.change-cart-mode-setting',
     rule: { kind: 'permissions', allOf: [SETTINGS_CART_MODE_MANAGE.key] },
