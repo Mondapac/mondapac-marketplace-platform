@@ -795,6 +795,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_at'],
     },
     'blog.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Blog media upload: the picture library is insert-only.
+    'blog.media': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'blog.media_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Promotions (package T1): a promotion changes only the columns named and is never deleted;
     // usage is insert-only; the target list and the zone thresholds may be deleted; the rest
     // change only the columns named (triggers refuse DELETE and TRUNCATE where it is not granted).

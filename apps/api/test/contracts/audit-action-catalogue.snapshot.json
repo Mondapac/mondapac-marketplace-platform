@@ -672,6 +672,17 @@
     }
   },
   {
+    "action": "blog.media.upload",
+    "targetType": "blog.media",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "height": "integer",
+      "width": "integer"
+    }
+  },
+  {
     "action": "blog.post.approve",
     "targetType": "blog.post",
     "targetId": "id",
