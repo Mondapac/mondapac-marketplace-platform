@@ -1,3 +1,4 @@
+import type { Provider } from '@nestjs/common';
 import type { Result } from '@mondapac/shared-kernel';
 import type { PermissionKey } from '../../../platform/authz';
 
@@ -5,7 +6,7 @@ import type { PermissionKey } from '../../../platform/authz';
 // module keeps the meaning of the payload and the keys that guard its list; `lists` keeps the
 // table, the caps, the names and the sharing rules, and asks `AuthorisationCheck` for the two
 // keys at run time. `lists` imports no module: a module provides its definitions to
-// {@link LIST_DEFINITIONS} from its own Nest module.
+// the registry from its own Nest module.
 
 /** The panel a list belongs to; its routes read that panel's session. */
 export type ListPopulation = 'admin' | 'seller';
@@ -28,5 +29,26 @@ export interface ListDefinition {
   parsePayload(raw: unknown): Result<unknown, ListPayloadFailure>;
 }
 
-/** Nest token of the `readonly ListDefinition[]` a module provides (multi-provider by array). */
-export const LIST_DEFINITIONS = Symbol('LIST_DEFINITIONS');
+/** What a module sees of the registry of lists: it registers its own and nothing else. */
+export interface ListRegistration {
+  register(owner: string, definitions: readonly ListDefinition[]): void;
+}
+
+/** Nest token of the {@link ListRegistration}, exported by `ListsModule`. */
+export const LIST_REGISTRATION = Symbol('LIST_REGISTRATION');
+
+/**
+ * The one line of a module's Nest module that registers its lists at bootstrap:
+ * `providers: [registerLists('catalog', CATALOG_LISTS)]`, with `ListsModule` imported. A list key is
+ * `<population>.<owner>.<list>`; it is also added to the lists audit vocabulary.
+ */
+export function registerLists(owner: string, definitions: readonly ListDefinition[]): Provider {
+  return {
+    provide: Symbol(`lists:${owner}`),
+    inject: [LIST_REGISTRATION],
+    useFactory: (registration: ListRegistration) => {
+      registration.register(owner, definitions);
+      return owner;
+    },
+  };
+}

@@ -1,11 +1,20 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { Id, Result } from '@mondapac/shared-kernel';
-import type { StoredFilter, StoredFilterVisibility } from '../contracts';
+import type { Id, Result, Temporal } from '@mondapac/shared-kernel';
 
 // Pure rules of a saved filter that hold for every list: the name, who can see one and who may
 // change one. The payload is the owning module's.
 
 export const SAVED_FILTER_VISIBILITIES = ['me', 'everyone'] as const;
+export type StoredFilterVisibility = (typeof SAVED_FILTER_VISIBILITIES)[number];
+
+/** The fields of a stored filter the rules below read (the domain imports no contract). */
+interface FilterFields {
+  readonly id: Id<'SavedFilter'>;
+  readonly ownerAccountId: Id<'Account'>;
+  readonly visibility: StoredFilterVisibility;
+  readonly position: number;
+  readonly createdAt: Temporal.Instant;
+}
 export const SAVED_FILTER_NAME_MAX = 60;
 
 export type SavedFilterNameFailure = 'required' | 'type' | 'length' | 'format';
@@ -23,7 +32,7 @@ export function parseSavedFilterName(value: unknown): Result<string, SavedFilter
 
 /** The owner always; anybody who holds the share key, for a filter shared with everyone. */
 export function mayManage(
-  filter: Pick<StoredFilter, 'ownerAccountId' | 'visibility'>,
+  filter: Pick<FilterFields, 'ownerAccountId' | 'visibility'>,
   actorAccountId: Id<'Account'>,
   canShare: boolean,
 ): boolean {
@@ -33,13 +42,13 @@ export function mayManage(
 
 /** The caller's own filters, or the ones shared with everyone. */
 export const isVisibleTo = (
-  filter: Pick<StoredFilter, 'ownerAccountId' | 'visibility'>,
+  filter: Pick<FilterFields, 'ownerAccountId' | 'visibility'>,
   actorAccountId: Id<'Account'>,
 ): boolean => filter.ownerAccountId === actorAccountId || filter.visibility === 'everyone';
 
 /** The order of the tabs: the caller's own by position, then the shared ones, oldest first. */
 export function inTabOrder<
-  T extends Pick<StoredFilter, 'id' | 'ownerAccountId' | 'position' | 'createdAt'>,
+  T extends Pick<FilterFields, 'id' | 'ownerAccountId' | 'position' | 'createdAt'>,
 >(filters: readonly T[], actorAccountId: Id<'Account'>): T[] {
   const byId = (a: T, b: T) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   const own = filters
@@ -50,5 +59,3 @@ export function inTabOrder<
     .sort((a, b) => a.createdAt.epochMilliseconds - b.createdAt.epochMilliseconds || byId(a, b));
   return [...own, ...others];
 }
-
-export type { StoredFilterVisibility };

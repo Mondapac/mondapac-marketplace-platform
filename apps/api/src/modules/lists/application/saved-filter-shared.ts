@@ -26,25 +26,29 @@ export function adminOf(context: CallContext): { readonly accountId: Id<'Account
   return { accountId: actor.accountId };
 }
 
-/** The registered definitions of one population, by list key. */
+/**
+ * The lists that have saved filters, filled at boot by each module's `registerLists`. Reads are
+ * by list key; a key that is no list of the population is a validation failure, never a hint
+ * about another population's lists.
+ */
 export class ListRegistry {
-  readonly #byKey: ReadonlyMap<string, ListDefinition>;
+  readonly #byKey = new Map<string, ListDefinition>();
 
-  constructor(definitions: readonly ListDefinition[]) {
-    const byKey = new Map<string, ListDefinition>();
+  register(owner: string, definitions: readonly ListDefinition[]): void {
     for (const definition of definitions) {
-      if (byKey.has(definition.listKey)) {
-        throw new Error(`list ${definition.listKey} is registered twice`);
+      if (this.#byKey.has(definition.listKey)) {
+        throw new Error(`list ${definition.listKey} is registered twice (${owner})`);
       }
-      if (!definition.listKey.startsWith(`${definition.population}.`)) {
-        throw new Error(`list ${definition.listKey} does not start with its population`);
+      if (!definition.listKey.startsWith(`${definition.population}.${owner}.`)) {
+        throw new Error(
+          `list ${definition.listKey} must start with ${definition.population}.${owner}.`,
+        );
       }
       if (!(LISTS_AUDIT_LIST_KEYS as readonly string[]).includes(definition.listKey)) {
         throw new Error(`list ${definition.listKey} is missing from the lists audit vocabulary`);
       }
-      byKey.set(definition.listKey, definition);
+      this.#byKey.set(definition.listKey, definition);
     }
-    this.#byKey = byKey;
   }
 
   /** The list a request names, or a `validation.failed` for a key that is no list of the population. */
