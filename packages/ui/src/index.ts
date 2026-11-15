@@ -28,6 +28,15 @@ export {
 } from './loading/navigation-progress.tsx';
 export { Spinner } from './loading/spinner.tsx';
 export {
+  DetailSkeleton,
+  FormSkeleton,
+  TableSkeleton,
+  type DetailSkeletonProps,
+  type FormSkeletonProps,
+  type TableSkeletonColumn,
+  type TableSkeletonProps,
+} from './loading/section-skeletons.tsx';
+export {
   SettingsSkeleton,
   type SettingsSkeletonProps,
   type SkeletonSection,
