@@ -96,6 +96,14 @@ export interface RequestRepository {
     market: MarketContext,
     ids: readonly Id<'SystemRequest'>[],
   ): Promise<readonly SystemRequest[]>;
+  /**
+   * After `newer` was reverted: the requests it superseded are the subject's latest again (their
+   * value is back). Returns their ids. The database allows this only for a reverted `newer`.
+   */
+  release(
+    market: MarketContext,
+    newer: Id<'SystemRequest'>,
+  ): Promise<readonly Id<'SystemRequest'>[]>;
   /** Writes the decision of an open request; false when it was not open any more. */
   decide(market: MarketContext, id: Id<'SystemRequest'>, decision: DecisionWrite): Promise<boolean>;
   addActivity(

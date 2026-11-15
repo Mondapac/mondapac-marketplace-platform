@@ -144,6 +144,21 @@ export class InMemoryRequests implements RequestRepository {
     );
   }
 
+  release(market: MarketContext, newer: Id<'SystemRequest'>) {
+    const at = this.index(market, newer);
+    if (at < 0 || this.rows[at]!.status !== 'reverted') {
+      throw new Error('InMemoryRequests: only a reverted request releases (database guard)');
+    }
+    const released: Id<'SystemRequest'>[] = [];
+    this.rows.forEach((row, index) => {
+      if (row.market === market.marketId && row.supersededBy === newer) {
+        released.push(row.id);
+        this.rows[index] = { ...row, supersededBy: null };
+      }
+    });
+    return Promise.resolve(released);
+  }
+
   decide(market: MarketContext, id: Id<'SystemRequest'>, decision: DecisionWrite) {
     const at = this.index(market, id);
     if (at < 0 || this.rows[at]!.status !== 'open') return Promise.resolve(false);

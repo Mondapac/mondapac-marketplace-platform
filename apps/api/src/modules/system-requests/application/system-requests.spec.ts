@@ -70,6 +70,12 @@ const OUTSIDER = id<'Account'>(0xa3);
 const STRANGER = id<'Account'>(0xa4);
 const START = Temporal.Instant.from('2026-11-15T01:00:00Z');
 const SETTING = 'settings.market-setting';
+/** The kind the settings module would register in each area these tests use. */
+const KIND_OF = {
+  catalogue: SETTING,
+  people: 'settings.people-setting',
+  marketplace: 'settings.listing-rule',
+} as const;
 
 type AuditEntry = Parameters<AuditWriter['record']>[1];
 
@@ -162,13 +168,21 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       ids: new SequenceIdGenerator(clock),
       clock,
     };
-    registry.register('settings', SETTING, subjects);
+    for (const [area, kind] of Object.entries(KIND_OF)) {
+      registry.facade.register('settings', kind, area as keyof typeof KIND_OF, subjects);
+    }
     registry.register(
       'system-requests',
       POLICY_AREA_KIND,
+      'review-policy',
       new PolicyReverter(deps, POLICY_AREA_KIND),
     );
-    registry.register('system-requests', DUE_DAYS_KIND, new PolicyReverter(deps, DUE_DAYS_KIND));
+    registry.register(
+      'system-requests',
+      DUE_DAYS_KIND,
+      'review-policy',
+      new PolicyReverter(deps, DUE_DAYS_KIND),
+    );
     registry.seal();
     recorder = new SystemRequestRecorderImplementation(deps);
   });
@@ -182,9 +196,10 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
     extra: Partial<AppliedChange> = {},
   ) => {
     subjects.set(market.marketId, ref, after);
+    const area = (extra.area ?? 'catalogue') as keyof typeof KIND_OF;
     const opened = await recorder.openReview(admin(who), {
-      area: 'catalogue',
-      subjectKind: SETTING,
+      area,
+      subjectKind: KIND_OF[area],
       subjectRef: ref,
       before: before as AppliedChange['before'],
       after: after as AppliedChange['after'],
@@ -230,7 +245,7 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
     it('opens nothing for an area that is not reviewed in the Market, or for no change', async () => {
       const off = await recorder.openReview(admin(MAKER), {
         area: 'marketplace',
-        subjectKind: SETTING,
+        subjectKind: KIND_OF.marketplace,
         subjectRef: 'x',
         before: { v: 1 },
         after: { v: 2 },
@@ -296,6 +311,17 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       ).rejects.toThrow(TypeError);
       await expect(
         recorder.openReview(admin(MAKER), { ...base, subjectKind: POLICY_AREA_KIND }),
+      ).rejects.toThrow(TypeError);
+      // A kind is reviewed in the area it was registered in, never filed under another one.
+      await expect(recorder.openReview(admin(MAKER), { ...base, area: 'content' })).rejects.toThrow(
+        TypeError,
+      );
+      await expect(
+        recorder.openReview(admin(MAKER), { ...base, subjectKind: KIND_OF.people }),
+      ).rejects.toThrow(TypeError);
+      // Text in the values holds no control character (the database would grow it).
+      await expect(
+        recorder.openReview(admin(MAKER), { ...base, after: { v: 'a\u0000b' } }),
       ).rejects.toThrow(TypeError);
     });
 
@@ -478,6 +504,47 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
         requestId: first.id,
       });
       expect(view.ok && view.value.actions).toEqual(['open', 'copy-link', 'approve']);
+    });
+
+    it('releases the earlier requests when the newer one is reverted (Hassan H1)', async () => {
+      // The author changes twice, then withdraws the second change: the first is the latest
+      // again and a reviewer can still reject it, which restores the original value.
+      const first = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      const second = await change(MAKER, 'list-paging', { size: 50 }, { size: 10 });
+      expect(
+        await useCase(WithdrawSystemRequest).execute(admin(MAKER), {
+          requestId: second.id,
+          reason: 'Undo the second step',
+        }),
+      ).toMatchObject({ ok: true, value: { status: 'reverted', decision: 'withdrawn' } });
+      expect(subjects.get(market.marketId, 'list-paging')).toEqual({ size: 50 });
+      expect((await requests.find(market, first.id))?.supersededBy).toBeNull();
+      const view = await useCase(ViewSystemRequest).execute(admin(CHECKER), {
+        requestId: first.id,
+      });
+      expect(view.ok && view.value.actions).toEqual(['open', 'copy-link', 'approve', 'reject']);
+      expect(
+        await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+          requestId: first.id,
+          reason: 'No',
+        }),
+      ).toMatchObject({ ok: true, value: { status: 'reverted', decision: 'rejected' } });
+      expect(subjects.get(market.marketId, 'list-paging')).toEqual({ size: 25 });
+    });
+
+    it('shows the values only to the author and the area reviewers (Hassan L2)', async () => {
+      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      const valuesFor = async (who: Id<'Account'>) => {
+        const view = await useCase(ViewSystemRequest).execute(admin(who), {
+          requestId: opened.id,
+        });
+        return view.ok ? [view.value.before, view.value.after] : null;
+      };
+      expect(await valuesFor(MAKER)).toEqual([{ size: 25 }, { size: 50 }]);
+      expect(await valuesFor(CHECKER)).toEqual([{ size: 25 }, { size: 50 }]);
+      expect(await valuesFor(OUTSIDER)).toEqual([null, null]);
+      const listed = await useCase(ListSystemRequests).execute(admin(OUTSIDER), {});
+      expect(listed.ok && listed.value.rows.map((row) => row.after)).toEqual([null]);
     });
 
     it('answers subject-gone when the subject no longer exists', async () => {
@@ -798,23 +865,34 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
 describe('the reverter registry', () => {
   const reverter = { revert: () => Promise.resolve('reverted' as const) };
 
-  it('takes a kind of the registering module once, and nothing after it is sealed', () => {
+  it('takes a kind of the registering module once, in one area, and nothing after it is sealed', () => {
     const registry = new ReverterRegistry();
-    registry.register('settings', 'settings.market-setting', reverter);
-    expect(() => registry.register('settings', 'settings.market-setting', reverter)).toThrow(
+    const register = (...args: Parameters<typeof registry.facade.register>) =>
+      registry.facade.register(...args);
+    register('settings', 'settings.market-setting', 'catalogue', reverter);
+    expect(() => register('settings', 'settings.market-setting', 'catalogue', reverter)).toThrow(
       ReverterRegistryError,
     );
-    expect(() => registry.register('settings', 'catalog.product', reverter)).toThrow(
+    expect(() => register('settings', 'catalog.product', 'catalogue', reverter)).toThrow(
       ReverterRegistryError,
     );
-    expect(() => registry.register('settings', 'settings', reverter)).toThrow(
+    expect(() => register('settings', 'settings', 'catalogue', reverter)).toThrow(
       ReverterRegistryError,
     );
+    // Only system-requests registers in the review-policy area, and not through the facade.
+    expect(() =>
+      register('settings', 'settings.policy', 'review-policy' as never, reverter),
+    ).toThrow(ReverterRegistryError);
+    expect(() =>
+      registry.register('settings', 'settings.policy', 'review-policy', reverter),
+    ).toThrow(ReverterRegistryError);
+    // The facade hands out no lookup.
+    expect(Object.keys(registry.facade)).toEqual(['register']);
     registry.seal();
-    expect(() => registry.register('catalog', 'catalog.product', reverter)).toThrow(
+    expect(() => register('catalog', 'catalog.product', 'catalogue', reverter)).toThrow(
       ReverterRegistryError,
     );
-    expect(registry.find('settings.market-setting')).toBe(reverter);
+    expect(registry.find('settings.market-setting')).toEqual({ reverter, area: 'catalogue' });
     expect(registry.find('catalog.product')).toBeNull();
   });
 });

@@ -185,6 +185,45 @@ describe('system requests (database integration)', () => {
       ).toBe(RESTRICT_VIOLATION);
     });
 
+    it('releases a supersession only once the newer request is reverted', async () => {
+      const first = newRequest();
+      await open(market, first);
+      const second = newRequest({ subjectRef: first.subjectRef });
+      await open(market, second);
+      // While the newer request is open, the database refuses the release.
+      await expect(inUnit(market, () => requests.release(market, second.id))).rejects.toThrow();
+      expect(value(await inUnit(market, () => requests.find(market, first.id)))?.supersededBy).toBe(
+        second.id,
+      );
+      const released = value(
+        await inUnit(market, async () => {
+          const written = await requests.decide(market, second.id, {
+            status: 'reverted',
+            decision: 'withdrawn',
+            decidedBy: second.requestedBy,
+            decidedAt: nowMs(),
+            reason: 'Undo',
+          });
+          expect(written).toBe(true);
+          return requests.release(market, second.id);
+        }),
+      );
+      expect(released).toEqual([first.id]);
+      expect(
+        value(await inUnit(market, () => requests.find(market, first.id)))?.supersededBy,
+      ).toBeNull();
+      // Pointing a supersession anywhere else stays refused.
+      const third = newRequest({ subjectRef: first.subjectRef });
+      await open(market, third);
+      expect(
+        await sqlState(
+          sql,
+          'UPDATE system_requests.requests SET superseded_by_request_id = $2 WHERE id = $1',
+          [first.id, second.id],
+        ),
+      ).toBe(RESTRICT_VIOLATION);
+    });
+
     it('refuses an author deciding their own request (maker-checker CHECK)', async () => {
       const request = newRequest();
       await open(market, request);
@@ -312,7 +351,7 @@ describe('system requests (database integration)', () => {
   });
 
   describe('migration rules', () => {
-    const market = marketOf(TEST_MARKETS[0]!);
+    const market = marketOf(TEST_MARKETS[0]);
 
     it('refuses deletes for the application and the owner alike', async () => {
       const request = newRequest();

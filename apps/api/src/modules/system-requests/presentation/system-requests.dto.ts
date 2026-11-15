@@ -38,10 +38,20 @@ export class RequestBody {
   @ApiProperty() subjectRef!: string;
   @ApiProperty({ enum: RISKS }) risk!: string;
   @ApiProperty({ enum: REQUEST_STATUSES }) status!: string;
-  @ApiProperty({ type: Object, description: 'The values before the change (a JSON object).' })
-  before!: Record<string, unknown>;
-  @ApiProperty({ type: Object, description: 'The values after the change (a JSON object).' })
-  after!: Record<string, unknown>;
+  @ApiProperty({
+    type: Object,
+    nullable: true,
+    description:
+      'The values before the change (a JSON object); null unless the caller is the author or ' +
+      "holds the area's review key.",
+  })
+  before!: Record<string, unknown> | null;
+  @ApiProperty({
+    type: Object,
+    nullable: true,
+    description: 'The values after the change; null as for before.',
+  })
+  after!: Record<string, unknown> | null;
   @ApiProperty({ description: "The author's note." }) note!: string;
   @ApiProperty({ format: 'uuid' }) requestedBy!: string;
   @ApiProperty({ format: 'date-time', description: 'When the change went live.' })

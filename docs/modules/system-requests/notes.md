@@ -28,15 +28,15 @@ mode from the design; no separate brief.
 
 ## Areas and keys
 
-| Area | Default | Review key |
-|---|---|---|
-| people | on, high | `system-requests.people.review` |
-| money | on, high | `system-requests.money.review` |
-| delivery | on, medium | `system-requests.delivery.review` |
-| catalogue | on, medium | `system-requests.catalogue.review` |
+| Area          | Default    | Review key                             |
+| ------------- | ---------- | -------------------------------------- |
+| people        | on, high   | `system-requests.people.review`        |
+| money         | on, high   | `system-requests.money.review`         |
+| delivery      | on, medium | `system-requests.delivery.review`      |
+| catalogue     | on, medium | `system-requests.catalogue.review`     |
 | certification | on, medium | `system-requests.certification.review` |
-| marketplace | off, low | `system-requests.marketplace.review` |
-| content | off, low | `system-requests.content.review` |
+| marketplace   | off, low   | `system-requests.marketplace.review`   |
+| content       | off, low   | `system-requests.content.review`       |
 
 The queue needs `system-requests.request.view`; the policy page needs `policy.view` and
 `policy.manage`. All keys are protected.
@@ -44,12 +44,27 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
 ## For a module that adds a reviewed area
 
 1. Export a `SystemChangeReverter` for each subject kind (`<module>.<subject>`), and add
-   `registerSystemChangeReverter('<module>', '<module>.<subject>', TOKEN)` to the module's
-   providers. Registration is sealed once the application has started.
-2. In the use case that saves the change: write it, then call `openReview` in the same unit with
-   the values before and after (plain JSON, depth 3, about 12 KB at most, never a secret). An
-   `err` answer is the use case's own refusal.
+   `registerSystemChangeReverter('<module>', '<module>.<subject>', '<area>', TOKEN)` to the
+   module's providers. A kind is reviewed in that one area: `openReview` throws for a change of
+   the kind filed under another area. Registration is sealed once the application has started;
+   other modules can register but never look a reverter up.
+2. In the use case that saves the change: lock and write the subject, then call `openReview` in
+   the same unit with the values before and after (plain JSON, depth 3, 10 KB at most, no control
+   characters, never a secret). An `err` answer is the use case's own refusal.
 3. The page asks for a note only when `areaPolicy(context, area).enabled`.
+
+## Supersession and locks
+
+A new request on a subject supersedes the subject's open-ended earlier requests: they can be
+approved but not reverted (the value they would restore is gone). When the newer request is
+rejected or withdrawn, the subject holds the earlier value again, so the requests it superseded
+become the latest again (the database allows clearing a supersession only for a reverted newer
+request). The values before and after are shown only to the author and the area's reviewers.
+
+Lock order: opening locks the subject (the owning module), then the Market's counter row, then
+the earlier requests; a decision locks the request, then the subject (the reverter). An opening
+and a revert of one subject at the same time can therefore deadlock; the unit of work retries
+40P01, so nobody sees an error.
 
 ## API (admin)
 

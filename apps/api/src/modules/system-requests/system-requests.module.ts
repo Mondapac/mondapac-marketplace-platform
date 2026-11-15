@@ -39,7 +39,6 @@ import { ViewReviewPolicy } from './application/use-cases/view-review-policy.use
 import { ViewSystemRequest } from './application/use-cases/view-system-request.use-case';
 import { WithdrawSystemRequest } from './application/use-cases/withdraw-system-request.use-case';
 import {
-  registerSystemChangeReverter,
   SYSTEM_CHANGE_REVERTERS,
   SYSTEM_REQUEST_RECORDER,
   SYSTEM_REQUESTS_AUDIT_ACTIONS,
@@ -55,12 +54,14 @@ type UseCaseClass<U> = new (gate: UseCaseGate, deps: SystemRequestsDependencies)
 const DEPENDENCIES = Symbol('SYSTEM_REQUESTS_DEPENDENCIES');
 const POLICY_AREA_REVERTER = Symbol('SYSTEM_REQUESTS_POLICY_AREA_REVERTER');
 const DUE_DAYS_REVERTER = Symbol('SYSTEM_REQUESTS_DUE_DAYS_REVERTER');
+/** The registry itself (lookup and seal), kept inside the module; others get its facade. */
+const REVERTER_REGISTRY = Symbol('SYSTEM_REQUESTS_REVERTER_REGISTRY');
 
 const PORTS: readonly [keyof SystemRequestsDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
   ['requests', REQUEST_REPOSITORY],
   ['policy', POLICY_REPOSITORY],
-  ['reverters', SYSTEM_CHANGE_REVERTERS],
+  ['reverters', REVERTER_REGISTRY],
   ['authorisation', AUTHORISATION_CHECK],
   ['stepUp', STEP_UP_CONSUMER],
   ['audit', AUDIT_WRITER],
@@ -98,7 +99,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerPermissions('system-requests', SYSTEM_REQUESTS_PERMISSIONS),
     registerStepUpActions('system-requests', SYSTEM_REQUESTS_STEP_UP_ACTIONS),
     ...systemRequestsProviders,
-    { provide: SYSTEM_CHANGE_REVERTERS, useFactory: () => new ReverterRegistry() },
+    { provide: REVERTER_REGISTRY, useFactory: () => new ReverterRegistry() },
+    {
+      provide: SYSTEM_CHANGE_REVERTERS,
+      inject: [REVERTER_REGISTRY],
+      useFactory: (registry: ReverterRegistry) => registry.facade,
+    },
     {
       provide: DEPENDENCIES,
       inject: PORTS.map(([, token]) => token),
@@ -136,13 +142,21 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       inject: [DEPENDENCIES],
       useFactory: (deps: SystemRequestsDependencies) => new PolicyReverter(deps, DUE_DAYS_KIND),
     },
-    registerSystemChangeReverter('system-requests', POLICY_AREA_KIND, POLICY_AREA_REVERTER),
-    registerSystemChangeReverter('system-requests', DUE_DAYS_KIND, DUE_DAYS_REVERTER),
+    // The review policy's own kinds, in the area that only this module may use.
+    {
+      provide: Symbol('system-requests:reverter:own'),
+      inject: [REVERTER_REGISTRY, POLICY_AREA_REVERTER, DUE_DAYS_REVERTER],
+      useFactory: (registry: ReverterRegistry, area: PolicyReverter, dueDays: PolicyReverter) => {
+        registry.register('system-requests', POLICY_AREA_KIND, 'review-policy', area);
+        registry.register('system-requests', DUE_DAYS_KIND, 'review-policy', dueDays);
+        return true;
+      },
+    },
   ],
   exports: [SYSTEM_REQUEST_RECORDER, SYSTEM_CHANGE_REVERTERS],
 })
 export class SystemRequestsModule implements OnApplicationBootstrap {
-  constructor(@Inject(SYSTEM_CHANGE_REVERTERS) private readonly reverters: ReverterRegistry) {}
+  constructor(@Inject(REVERTER_REGISTRY) private readonly reverters: ReverterRegistry) {}
 
   /** Every module has registered its reverters by now: nothing registers later. */
   onApplicationBootstrap(): void {

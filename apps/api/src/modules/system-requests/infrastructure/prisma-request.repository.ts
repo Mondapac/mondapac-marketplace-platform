@@ -196,6 +196,21 @@ export class PrismaRequestRepository implements RequestRepository {
     return { number: counter.lastNumber, superseded };
   }
 
+  async release(market: MarketContext, newer: Id<'SystemRequest'>) {
+    const tx = this.prisma.tx(market);
+    const rows = await tx.systemRequestsRequest.findMany({
+      where: { marketId: market.marketId, supersededByRequestId: newer },
+      select: { id: true },
+    });
+    if (rows.length > 0) {
+      await tx.systemRequestsRequest.updateMany({
+        where: { marketId: market.marketId, supersededByRequestId: newer },
+        data: { supersededByRequestId: null },
+      });
+    }
+    return rows.map((row) => row.id as Id<'SystemRequest'>);
+  }
+
   async find(market: MarketContext, id: Id<'SystemRequest'>) {
     const row = await this.prisma
       .tx(market)

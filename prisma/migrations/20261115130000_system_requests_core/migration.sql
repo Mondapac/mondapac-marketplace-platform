@@ -90,6 +90,12 @@ CREATE INDEX "requests_market_id_subject_kind_subject_ref_applied_at_idx" ON "sy
 CREATE INDEX "requests_market_id_requested_by_account_id_applied_at_idx" ON "system_requests"."requests"("market_id", "requested_by_account_id", "applied_at");
 
 -- CreateIndex
+CREATE INDEX "requests_market_id_applied_at_number_idx" ON "system_requests"."requests"("market_id", "applied_at", "number");
+
+-- CreateIndex
+CREATE INDEX "requests_market_id_review_due_at_number_idx" ON "system_requests"."requests"("market_id", "review_due_at", "number");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "requests_market_id_id_key" ON "system_requests"."requests"("market_id", "id");
 
 -- CreateIndex
@@ -158,7 +164,8 @@ ALTER TABLE "system_requests"."policy_settings"
   ADD CONSTRAINT "policy_settings_version_check" CHECK ("version" >= 1);
 
 -- Hand-written: the activity is insert-only, nothing is ever deleted, and a decided request keeps
--- its decision (only its superseded marker and comment count still change).
+-- its decision (only its superseded marker and comment count still change). Unqualified names
+-- resolve through the pinned search_path; the guard names its own table in full.
 CREATE FUNCTION "system_requests"."reject_mutation"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
@@ -178,8 +185,17 @@ BEGIN
     RAISE EXCEPTION 'system_requests.requests: a decided request keeps its decision'
       USING ERRCODE = 'restrict_violation';
   END IF;
+  -- A supersession is final, except that it is released when the request that superseded this
+  -- one was reverted (rejected or withdrawn): the subject holds this request's value again.
   IF OLD."superseded_by_request_id" IS NOT NULL
-     AND NEW."superseded_by_request_id" IS DISTINCT FROM OLD."superseded_by_request_id" THEN
+     AND NEW."superseded_by_request_id" IS DISTINCT FROM OLD."superseded_by_request_id"
+     AND NOT (
+       NEW."superseded_by_request_id" IS NULL
+       AND EXISTS (
+         SELECT 1 FROM "system_requests"."requests" AS "newer"
+         WHERE "newer"."market_id" = OLD."market_id"
+           AND "newer"."id" = OLD."superseded_by_request_id"
+           AND "newer"."status" = 'reverted')) THEN
     RAISE EXCEPTION 'system_requests.requests: a superseded request stays superseded'
       USING ERRCODE = 'restrict_violation';
   END IF;

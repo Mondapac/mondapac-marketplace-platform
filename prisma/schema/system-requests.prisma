@@ -54,6 +54,8 @@ model SystemRequestsRequest {
   /// The latest request of one subject (the setting page's banner, superseding).
   @@index([marketId, subjectKind, subjectRef, appliedAt])
   @@index([marketId, requestedByAccountId, appliedAt])
+  @@index([marketId, appliedAt, number])
+  @@index([marketId, reviewDueAt, number])
   @@map("requests")
   @@schema("system_requests")
 }

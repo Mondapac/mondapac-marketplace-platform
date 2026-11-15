@@ -1,5 +1,6 @@
 import type { InjectionToken, Provider } from '@nestjs/common';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
+import type { PolicyArea } from '../domain/areas';
 import type { ChangeValues } from '../domain/request';
 
 /**
@@ -30,29 +31,39 @@ export interface SystemChangeReverter {
   revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome>;
 }
 
-/** The kinds and their reverters. Registration happens at boot and is sealed after it. */
+/**
+ * Where a module registers its kinds, at boot (sealed after it). A kind belongs to one reviewed
+ * area: `openReview` refuses a change of that kind filed under another area. Register only:
+ * nothing outside system-requests can look a reverter up.
+ */
 export interface SystemChangeReverters {
-  register(module: string, subjectKind: string, reverter: SystemChangeReverter): void;
-  find(subjectKind: string): SystemChangeReverter | null;
+  register(
+    module: string,
+    subjectKind: string,
+    area: PolicyArea,
+    reverter: SystemChangeReverter,
+  ): void;
 }
 
 export const SYSTEM_CHANGE_REVERTERS = Symbol('SYSTEM_CHANGE_REVERTERS');
 
 /**
  * The one provider a module adds to register its reverter for `subjectKind` (whose first segment
- * must be the module's name): `registerSystemChangeReverter('settings', 'settings.market-setting',
- * SETTINGS_REVERTER)`, where the token resolves to a {@link SystemChangeReverter}.
+ * must be the module's name) in its reviewed area: `registerSystemChangeReverter('settings',
+ * 'settings.market-setting', 'marketplace', SETTINGS_REVERTER)`, where the token resolves to a
+ * {@link SystemChangeReverter}.
  */
 export function registerSystemChangeReverter(
   module: string,
   subjectKind: string,
+  area: PolicyArea,
   reverter: InjectionToken,
 ): Provider {
   return {
     provide: Symbol(`system-requests:reverter:${subjectKind}`),
     inject: [SYSTEM_CHANGE_REVERTERS, reverter],
     useFactory: (registry: SystemChangeReverters, implementation: SystemChangeReverter) => {
-      registry.register(module, subjectKind, implementation);
+      registry.register(module, subjectKind, area, implementation);
       return subjectKind;
     },
   };

@@ -38,14 +38,15 @@ export type ChangeValue =
   | readonly ChangeValue[]
   | { readonly [field: string]: ChangeValue };
 
-/** The values of a change: a flat or nested object, at most 12 KB as JSON. */
+/** The values of a change: a flat or nested object, at most 10 KB as JSON. */
 export type ChangeValues = { readonly [field: string]: ChangeValue };
 
 /**
- * 12 KB as compact JSON: the table allows 16 KB of jsonb text, which adds a space after every
- * colon and comma, so the application's cap stays well inside it.
+ * 10 KB as compact JSON: the table allows 16 KB of jsonb text, which adds a space after every
+ * colon and comma (at most one per two bytes of compact JSON with the limits below: 10 KB grows
+ * to under 16 KB), and text holds no control character (jsonb would escape it to six bytes).
  */
-export const MAX_VALUES_BYTES = 12_288;
+export const MAX_VALUES_BYTES = 10_240;
 const MAX_FIELDS = 50;
 const MAX_LIST = 100;
 const MAX_DEPTH = 3;
@@ -54,7 +55,7 @@ const FIELD_NAME = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 
 function valueOk(value: unknown, depth: number): boolean {
   if (value === null || typeof value === 'boolean') return true;
-  if (typeof value === 'string') return Array.from(value).length <= MAX_TEXT;
+  if (typeof value === 'string') return Array.from(value).length <= MAX_TEXT && !hasControl(value);
   if (typeof value === 'number') return Number.isFinite(value);
   if (Array.isArray(value)) {
     return (
@@ -77,7 +78,8 @@ function valueOk(value: unknown, depth: number): boolean {
 /**
  * Whether `value` can be kept as the values of a change: a plain object whose fields are named
  * `[A-Za-z][A-Za-z0-9_-]*`, holding text (500 characters at most), finite numbers, booleans,
- * null, lists (100 at most) and objects, three levels deep at most, 12 KB as JSON at most. A
+ * null, lists (100 at most) and objects, three levels deep at most, 10 KB as JSON at most; text
+ * holds no control character. A
  * module passes its own value shape; money goes as minor units in text, never as a float.
  */
 export function isChangeValues(value: unknown): value is ChangeValues {

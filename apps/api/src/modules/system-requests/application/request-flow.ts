@@ -284,8 +284,14 @@ export async function recordAppliedChange(
   if (change.risk !== undefined && !isRisk(change.risk)) {
     throw new TypeError('system-requests: unknown risk');
   }
-  if (deps.reverters.find(change.subjectKind) === null) {
+  const registered = deps.reverters.find(change.subjectKind);
+  if (registered === null) {
     throw new TypeError(`system-requests: no reverter registered for ${change.subjectKind}`);
+  }
+  if (registered.area !== change.area) {
+    throw new TypeError(
+      `system-requests: ${change.subjectKind} is reviewed in ${registered.area}, not ${change.area}`,
+    );
   }
   const admin = signedInAdmin(context);
   if (admin === null) return err({ code: 'access.denied' });
@@ -341,7 +347,13 @@ export interface ActivityView {
   readonly body: string | null;
 }
 
-export interface RequestView extends SystemRequest {
+export interface RequestView extends Omit<SystemRequest, 'before' | 'after'> {
+  /**
+   * The values before and after, for the author and the area's reviewers only; null for any
+   * other admin who sees the queue (Hassan L2: a module's values stay with its reviewers).
+   */
+  readonly before: ChangeValues | null;
+  readonly after: ChangeValues | null;
   readonly overdue: boolean;
   /** The key a reviewer of this request holds. */
   readonly reviewPermission: string;
@@ -356,12 +368,17 @@ export const requestView = (
   request: SystemRequest,
   viewer: Viewer,
   now: Temporal.Instant,
-): RequestView => ({
-  ...request,
-  overdue: isOverdue(request, now),
-  reviewPermission: REVIEW_KEYS[request.area],
-  actions: actionsFor(request, viewer),
-});
+): RequestView => {
+  const shown = request.requestedBy === viewer.accountId || viewer.reviews.has(request.area);
+  return {
+    ...request,
+    before: shown ? request.before : null,
+    after: shown ? request.after : null,
+    overdue: isOverdue(request, now),
+    reviewPermission: REVIEW_KEYS[request.area],
+    actions: actionsFor(request, viewer),
+  };
+};
 
 /** `ViewSystemRequest`: one request with its history and the caller's actions. */
 export async function viewRequest(
@@ -598,8 +615,9 @@ async function revertRequest(
     if (request.supersededBy !== null) {
       return err({ code: 'system-requests.changed-since', newerRequestId: request.supersededBy });
     }
-    const reverter = deps.reverters.find(request.subjectKind);
-    if (reverter === null) return err({ code: 'system-requests.revert-unavailable' });
+    const registered = deps.reverters.find(request.subjectKind);
+    if (registered === null) return err({ code: 'system-requests.revert-unavailable' });
+    const reverter = registered.reverter;
     const proof = await spendIfHigh(deps, context, request);
     if (!proof.ok) return proof;
     const outcome = await reverter.revert(context, {
@@ -623,6 +641,10 @@ async function revertRequest(
       reason,
     });
     if (!written) throw new Error('system-requests: a locked open request changed');
+    // The subject holds the value before this change again, which is the value after the
+    // requests this one superseded: they are the latest again, and can be decided in full
+    // (Hassan H1: else an author could bury a change by superseding and withdrawing it).
+    await deps.requests.release(context.market, request.id);
     await deps.requests.addActivity(context.market, request.id, {
       id: deps.ids.next<'SystemRequestActivity'>(),
       kind: decision,

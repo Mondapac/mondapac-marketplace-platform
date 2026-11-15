@@ -51,6 +51,10 @@ export type RecordFailure =
  * together. The caller writes its change first, then calls `openReview`; an `err` answer is the
  * caller's own refusal (it returns it, and its unit commits nothing).
  *
+ * The caller holds its subject's row lock (or an equal lock) when it calls: two changes of one
+ * subject must open their requests one after the other, so the later one supersedes the earlier.
+ * `subjectKind` must be registered in `area` (see `registerSystemChangeReverter`), or this throws.
+ *
  * The answer is `ok(null)` when the area is not reviewed in the context's Market (the change
  * stays live and nothing is opened), else the new request. A later change of the same subject
  * supersedes the earlier requests: they can no longer be reverted.
