@@ -38,6 +38,14 @@ import { AdminViewShipToRetention } from './application/use-cases/admin-view-shi
 import { PurgeSettledShipTo } from './application/use-cases/purge-settled-ship-to.use-case';
 import { ORDERING_STEP_UP_ACTIONS } from './contracts/step-up';
 import { AdminShipToRetentionController } from './presentation/admin-ship-to-retention.controller';
+import { AdminDocumentsController } from './presentation/admin-documents.controller';
+import { AdminListDocuments } from './application/use-cases/admin-list-documents.use-case';
+import {
+  ADMIN_DOCUMENT_LIST_READER,
+  type AdminDocumentListReader,
+} from './application/ports/admin-document-list.reader';
+import type { OrderLabels } from './application/ports/order-labels';
+import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { purgeSettledShipToJob } from './presentation/jobs/purge-settled-ship-to.job';
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
 import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-policy';
@@ -304,6 +312,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminOrdersController,
     AdminRefundLimitsController,
     AdminShipToRetentionController,
+    AdminDocumentsController,
     SellerOrdersController,
     AdminSavedViewsController,
     SellerSavedViewsController,
@@ -387,6 +396,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminRemoveRefundLimit,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    {
+      provide: AdminListDocuments,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_DOCUMENT_LIST_READER, ORDER_LABELS],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        documents: AdminDocumentListReader,
+        labels: OrderLabels,
+      ) => new AdminListDocuments(gate, { unitOfWork, documents, labels }),
+    },
     ...[AdminListOrderNotes, AdminAddOrderNote].map((type) => ({
       provide: type,
       inject: [
