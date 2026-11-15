@@ -131,14 +131,24 @@ describe.each(['AU', 'ZZ'] as const)('generic saved filters in market %s', (code
         return Promise.resolve();
       },
     };
+    const isolations: (string | undefined)[] = [];
     const unitOfWork = {
-      run: <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
+      run: <T, E>(
+        _m: MarketContext,
+        work: () => Promise<Result<T, E>>,
+        options?: { isolation?: string },
+      ) => {
+        isolations.push(options?.isolation);
+        return work();
+      },
     } as unknown as UnitOfWork;
     const base = { unitOfWork, store, registry, authorisation: check };
     return {
       store,
       audits,
       asked,
+      isolations,
+      registry,
       create: new SavedFilterCreate(gate, { ...base, audit, clock, ids }),
       update: new SavedFilterUpdate(gate, { ...base, audit, clock }),
       remove: new SavedFilterDelete(gate, { ...base, audit }),
@@ -478,6 +488,41 @@ describe.each(['AU', 'ZZ'] as const)('generic saved filters in market %s', (code
       expect(result.ok && result.value.ids).toEqual([c, a, b]);
       const read = await list.execute(as(who), { listKey: PRODUCTS });
       expect(read.ok && read.value.items.map((item) => item.name)).toEqual(['C', 'A', 'B']);
+    });
+
+    it('refuses when the authorisation port throws', async () => {
+      const kit = setup();
+      const who = productsOnly();
+      const context = kit.as(who);
+      const thrower = {
+        check: () => Promise.reject(new Error('down')),
+      } as unknown as AuthorisationCheck;
+      const gate = createUseCaseGate(markets, thrower);
+      const reorderDown = new SavedFiltersReorder(gate, {
+        unitOfWork: {
+          run: () => Promise.reject(new Error('must not open')),
+        } as unknown as UnitOfWork,
+        store: kit.store,
+        registry: kit.registry,
+        authorisation: thrower,
+      });
+      const result = await reorderDown.execute(context, { listKey: PRODUCTS, ids: [] });
+      expect(failure(result)).toBe('access.unavailable');
+    });
+
+    it('writes in a serializable unit, and refuses an unknown list or a non-list ids', async () => {
+      const { reorder, as, who, isolations, created } = await three();
+      isolations.length = 0;
+      await reorder.execute(as(who), { listKey: PRODUCTS, ids: created });
+      expect(isolations).toEqual(['serializable']);
+      for (const input of [
+        { listKey: 'admin.catalog.nothing', ids: created },
+        { listKey: SELLER_PRODUCTS, ids: created },
+        { listKey: PRODUCTS, ids: 'x' },
+        { listKey: PRODUCTS, ids: Array.from({ length: 60 }, () => created[0]) },
+      ]) {
+        expect(failure(await reorder.execute(as(who), input as never))).toBe('validation.failed');
+      }
     });
 
     it('refuses a set that is not exactly the caller’s own filters', async () => {

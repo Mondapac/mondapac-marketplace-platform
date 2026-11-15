@@ -7,9 +7,13 @@ import { SAVED_FILTER_LISTS } from './saved-filter-lists';
 
 const PRODUCTS = SAVED_FILTER_LISTS['admin.catalog.products'];
 
+const fail = (): never => {
+  throw new Error('CATALOG_LISTS: the list is missing from its saved-filter lists');
+};
+
 export const CATALOG_LISTS: readonly ListDefinition[] =
   PRODUCTS === undefined
-    ? []
+    ? fail()
     : [
         {
           listKey: PRODUCTS.key,

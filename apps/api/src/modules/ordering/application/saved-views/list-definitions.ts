@@ -8,9 +8,13 @@ import { savedFilterListOf } from './saved-view-lists';
 
 const ORDERS = savedFilterListOf('admin.ordering.orders');
 
+const fail = (): never => {
+  throw new Error('ORDERING_LISTS: the list is missing from its saved-filter lists');
+};
+
 export const ORDERING_LISTS: readonly ListDefinition[] =
   ORDERS === null
-    ? []
+    ? fail()
     : [
         {
           listKey: ORDERS.key,

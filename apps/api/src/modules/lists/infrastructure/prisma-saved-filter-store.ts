@@ -183,8 +183,9 @@ export class PrismaSavedFilterStore implements SavedFilterStore {
     ids: readonly Id<'SavedFilter'>[],
   ): Promise<boolean> {
     const client = this.prisma.tx(market);
-    // Two passes keep every statement valid on its own: positions are not unique, so a plain
-    // rewrite in order is enough, and a row that is gone stops the whole unit.
+    // One pass: positions are not unique, so a plain rewrite in order is valid at every step. A row
+    // that is gone returns false after earlier rows were written; the caller must roll the unit
+    // back (the use case does, by returning an error from it).
     for (const [index, id] of ids.entries()) {
       const moved = await client.listsSavedFilter.updateMany({
         where: { marketId: market.marketId, sellerId, listKey, ownerAccountId, id },

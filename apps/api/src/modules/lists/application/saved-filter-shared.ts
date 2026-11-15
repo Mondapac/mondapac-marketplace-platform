@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AuthorisationCheck } from '../../../platform/authz';
@@ -66,6 +67,8 @@ export class ListRegistry {
   }
 }
 
+const ACCESS_LOG = new Logger('ListsAccess');
+
 export type AccessRefusal =
   { readonly code: 'access.denied' } | { readonly code: 'access.unavailable' };
 
@@ -80,11 +83,26 @@ export async function holds(
   useCase: string,
   key: ListDefinition['viewKey'],
 ): Promise<Result<true, AccessRefusal>> {
-  const decision = await authorisation.check(context, {
-    name: useCase,
-    rule: { kind: 'permissions', allOf: [key] },
-  });
+  let decision: Awaited<ReturnType<AuthorisationCheck['check']>>;
+  try {
+    decision = await authorisation.check(context, {
+      name: useCase,
+      rule: { kind: 'permissions', allOf: [key] },
+    });
+  } catch {
+    // The port could not answer: refuse, as a gate does.
+    decision = { allowed: false, denial: { code: 'access.unavailable' } };
+  }
   if (decision.allowed) return ok(true);
+  // The gate admits every active admin of an own-resources rule, so the real refusals are here.
+  ACCESS_LOG.warn({
+    msg: 'lists.access-refused',
+    useCase,
+    key,
+    code: decision.denial.code,
+    marketId: context.market.marketId,
+    correlationId: context.correlationId,
+  });
   return decision.denial.code === 'access.denied'
     ? err({ code: 'access.denied' })
     : err({ code: 'access.unavailable' });
@@ -155,5 +173,8 @@ export function viewOf(
 }
 
 /** The audit code of a list key; the registry refuses a key that is not in the vocabulary. */
-export const auditListOf = (listKey: string): ListsAuditListKey =>
-  LISTS_AUDIT_LIST_KEYS.find((known) => known === listKey) ?? LISTS_AUDIT_LIST_KEYS[0];
+export const auditListOf = (listKey: string): ListsAuditListKey => {
+  const known = LISTS_AUDIT_LIST_KEYS.find((key) => key === listKey);
+  if (known === undefined) throw new Error(`lists: ${listKey} is not in the audit vocabulary`);
+  return known;
+};

@@ -58,11 +58,15 @@ need them. Left alone, each list's module would add a third, fourth and fifth co
   `whenSellerNotApproved: 'deny'`). Their first step is a fail-closed `AuthorisationCheck` of the
   definition's `viewKey` (and `shareKey` when visibility `everyone` is touched); a denial or an
   unavailable check refuses the call before anything is read. The access-declaration contract
-  accepts this, so the fallback of one thin use case per population was not needed. Hassan reviews
-  this pattern on the PR.
+  accepts this, so the fallback of one thin use case per population was not needed. Hassan's review (15 Nov 2026,
+  approve) accepts this pattern; refusals of the list keys are logged by `lists`, and a throwing
+  authorisation port refuses with `access.unavailable`.
 - Reorder takes the full list of the caller's own ids of one list and rewrites the positions in one
   serializable unit; the app role gets `UPDATE (position)` and no other identity column.
-- The routes are `/lists/admin/saved-filters`; the seller routes follow in a later PR.
+- The routes are `/lists/admin/saved-filters`; the seller routes and the seller lists' definitions
+  follow in a later PR (the design note lists both).
+- `20261115160000_lists_saved_filters` says position never changes after the insert; since
+  B0-1b it does (reorder). A merged migration is not edited, so this line is the record.
 
 ## Consequences
 

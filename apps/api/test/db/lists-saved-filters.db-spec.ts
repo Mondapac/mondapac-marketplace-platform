@@ -1,6 +1,6 @@
 import { parseId, Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
-import { ok } from '@mondapac/shared-kernel';
+import { err, ok } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import type { StoredFilter } from '../../src/modules/lists/contracts/saved-filter-store';
 import { PrismaSavedFilterStore } from '../../src/modules/lists/infrastructure/prisma-saved-filter-store';
@@ -105,16 +105,24 @@ describe.each(TEST_MARKETS)('lists saved-filter reorder in market %s (database)'
     });
     const missing = idOf<'SavedFilter'>();
 
-    const gone = await within(market, () =>
-      store.reposition(market, null, LIST_A, mine, [rows[1]!.id, missing]),
+    // As the use case does: a refused reorder is an error from the unit, so the unit rolls back.
+    const gone = await db.unitOfWork.run(
+      market,
+      async () => {
+        const moved = await store.reposition(market, null, LIST_A, mine, [rows[1]!.id, missing]);
+        return moved ? ok(true) : err('gone');
+      },
+      { isolation: 'serializable' },
     );
     const crossMarket = await within(other, () =>
       store.reposition(other, null, LIST_A, mine, [rows[1]!.id, rows[0]!.id]),
     );
 
-    expect(gone.ok && gone.value).toBe(false);
+    expect(gone.ok).toBe(false);
     expect(crossMarket.ok && crossMarket.value).toBe(false);
-    expect((await positions(mine, LIST_A)).map((row) => row.id)).toEqual(rows.map((r) => r.id));
+    expect(await positions(mine, LIST_A)).toEqual(
+      rows.map((row, index) => ({ id: row.id, position: index + 1 })),
+    );
   });
 
   it('lets the application role update the position column and nothing that identifies a row', async () => {

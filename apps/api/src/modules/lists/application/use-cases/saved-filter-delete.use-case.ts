@@ -122,6 +122,7 @@ export class SavedFilterDelete extends UseCase<
         }
         return ok({ id });
       },
+      { isolation: 'serializable' },
     );
   }
 }
