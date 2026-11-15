@@ -15,7 +15,7 @@ import {
   type ParsedTable,
 } from '../../domain/platform-import/import-file';
 import { IMPORT_LIMITS } from '../../domain/platform-import/limits';
-import { ExceljsSheetWriter } from './exceljs-sheet-writer';
+import { ExceljsSheetWriter } from '../../../../platform/list-export/exceljs-sheet-writer';
 import { createXlsxParser, dateText, numberText } from './xlsx-import-parser';
 import { inspectXlsxContainer } from './zip-inspection';
 

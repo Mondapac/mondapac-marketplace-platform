@@ -13,9 +13,10 @@ import {
   SettingsPage,
   SettingsSection,
   SettingsViewOnlyBanner,
-  SkeletonRows,
+  SettingsSkeleton,
   toast,
   useLiveErrors,
+  useDelayedLoading,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -103,12 +104,17 @@ export function PromotionsSettingsPanel({
   const active = saved.status === 'active';
   const showCards = canManagePromotions && active;
 
+  // Each read gets a number; an answer to an older read (one abandoned at the 30 s stall, or
+  // replaced by Try again) is dropped, so it never overwrites what the newer read showed.
+  const attempt = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++attempt.current;
     setLoaded({ state: 'loading' });
     const [order, shipping] = await Promise.all([
       callApi<FirstOrderView>('GET', FIRST_ORDER_PATH),
       callApi<Thresholds>('GET', THRESHOLDS_PATH),
     ]);
+    if (mine !== attempt.current) return;
     if (order.ok && shipping.ok) {
       setLoaded({ state: 'ready', firstOrder: order.body, thresholds: shipping.body });
       setFirst(firstOrderDraftOf(order.body.settings, order.body.currency));
@@ -127,6 +133,14 @@ export function PromotionsSettingsPanel({
   useEffect(() => {
     if (showCards) void load();
   }, [showCards, load]);
+
+  // Shown after 200 ms, held at least 400 ms; at 30 s the load counts as failed.
+  const cardsLoading = useDelayedLoading(showCards && loaded.state === 'loading');
+  useEffect(() => {
+    if (!cardsLoading.stalled) return;
+    attempt.current += 1;
+    setLoaded({ state: 'failed' });
+  }, [cardsLoading.stalled]);
 
   const ready = loaded.state === 'ready' ? loaded : null;
   // No money is shown or parsed before the Market's own currency is read (never assume AUD).
@@ -319,6 +333,8 @@ export function PromotionsSettingsPanel({
 
   const switchChanged = wantOn !== active;
   const canSave = canManageSwitch || canManagePromotions;
+  // The save bar waits for the cards' values: none while their skeleton shows.
+  const cardsPending = showCards && (loaded.state === 'loading' || cardsLoading.visible);
   const lastChanged =
     saved.updatedAt === null
       ? undefined
@@ -340,7 +356,7 @@ export function PromotionsSettingsPanel({
       dirtyCount={changeCount}
       leave={chrome.leave}
       saveBar={
-        canSave ? (
+        canSave && !cardsPending ? (
           <SaveBar
             {...chrome.saveBar({
               count: changeCount,
@@ -376,8 +392,18 @@ export function PromotionsSettingsPanel({
             <Banner tone="info">{t(`${P}.off.body`)}</Banner>
           </div>
         </SettingsSection>
-      ) : loaded.state === 'loading' ? (
-        <SkeletonRows label={t(`${P}.loading`)} rows={3} />
+      ) : loaded.state === 'loading' || cardsLoading.visible ? (
+        <SettingsSkeleton
+          label={t(`${P}.loading`)}
+          header={false}
+          sections={[
+            { fields: 4, description: true },
+            { fields: 3, description: true },
+          ]}
+          visible={cardsLoading.visible}
+          slow={cardsLoading.slow}
+          slowLabel={t('route.slow')}
+        />
       ) : loaded.state === 'failed' || first === null ? (
         <LoadError
           className="flex flex-col items-start gap-3"

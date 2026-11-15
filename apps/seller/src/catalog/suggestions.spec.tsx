@@ -232,11 +232,11 @@ describe('suggestable fields', () => {
 });
 
 describe('seller nav', () => {
-  it('lists Value suggestions under Catalogue for a seller who may view products', () => {
+  it('lists Value suggestions under Requests for a seller who may view products', () => {
     const item = visibleNavItems(sellerNav, new Set(['catalog.own-product.view'])).find(
       (entry) => entry.id === 's_suggestions',
     );
-    expect(item).toMatchObject({ href: '/value-suggestions', group: 'catalogue' });
+    expect(item).toMatchObject({ href: '/value-suggestions', group: 'requests' });
     expect(
       visibleNavItems(sellerNav, new Set<string>()).some((entry) => entry.id === 's_suggestions'),
     ).toBe(false);

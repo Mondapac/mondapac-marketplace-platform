@@ -7,7 +7,7 @@ already show on the admin order page). One row per seller order of a paid order.
 - **Source:** `ordering.seller_orders` only. `paid_at` (the order's confirmation time) is copied
   onto each seller order by the unit that confirms the order (`PrismaOrderRepository.save`, and
   `insert` for an order stored already confirmed), and backfilled by migration
-  `20261115140000_ordering_seller_orders_paid_at`. The list filters and sorts on it over the
+  `20261115230000_ordering_seller_orders_paid_at`. The list filters and sorts on it over the
   partial index `seller_orders_market_id_paid_at_id_idx` (paid rows only). Only a customer
   search joins `orders` (for the account id).
 - **Stages (tabs):** `to-prepare` (paid, not ready), `ready`, `shipped`, `delivered`, and

@@ -16,6 +16,7 @@ import {
   setRefundLimit,
   viewRefundLimits,
 } from '../../src/modules/ordering/application/refund-limits-flow';
+import { AdminCustomerRefunds } from '../../src/modules/ordering/application/use-cases/admin-customer-refunds.use-case';
 import { AdminRefundOrder } from '../../src/modules/ordering/application/use-cases/admin-refund-order.use-case';
 import { SellerMarkUnavailable } from '../../src/modules/ordering/application/use-cases/seller-mark-unavailable.use-case';
 import type { AdminNoteDependencies } from '../../src/modules/ordering/application/admin-note-flow';
@@ -472,6 +473,30 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     expect(taxBack).toBe(lineTax + shippingTax);
     expect(grossBack).toBe(total);
     expect(await refund(o, 0, '1')).toMatchObject({ error: { code: 'ordering.refund-exceeds' } });
+  });
+
+  it("lists a customer's refunds across their orders, newest first, and none of anyone else's", async () => {
+    const mine = await paidOrder();
+    const theirs = await paidOrder();
+    expect((await refund(mine, 1)).ok).toBe(true);
+    expect((await refund(mine, 1)).ok).toBe(true);
+    expect((await refund(theirs, 1)).ok).toBe(true);
+    const owner = await sql.query<{ account_id: string }>(
+      'SELECT account_id FROM ordering.orders WHERE market_id = $1 AND id = $2',
+      [market.marketId, mine.orderId],
+    );
+    const accountId = owner.rows[0]!.account_id;
+    const read = await new AdminCustomerRefunds(gate, deps).execute(admin, { accountId });
+    if (!read.ok) throw new Error('read refused');
+    expect(read.value.refunds).toHaveLength(2);
+    const stamps = read.value.refunds.map((r) => r.requestedAt);
+    expect([...stamps].sort().reverse()).toEqual(stamps);
+    expect(read.value.refunds.every((r) => r.creditNoteId !== null)).toBe(true);
+    // A customer id of the other Market, or one with no orders, has none.
+    const none = await new AdminCustomerRefunds(gate, deps).execute(otherMarketAdmin(), {
+      accountId,
+    });
+    expect(none).toEqual({ ok: true, value: { refunds: [] } });
   });
 
   it('records a refused Stripe refund as failed and lowers the refunded sum again', async () => {
@@ -1651,6 +1676,10 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         outbox: { append: () => Promise.reject(new Error('not used')) },
         stepUp: { consume: () => Promise.reject(new Error('not used')) },
         audit,
+        review: {
+          openReview: () => Promise.reject(new Error('not used')),
+          areaPolicy: () => Promise.reject(new Error('not used')),
+        },
         ids,
         clock,
       };

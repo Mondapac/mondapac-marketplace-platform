@@ -1,8 +1,4 @@
-import type {
-  CustomerOrderHistory,
-  Known,
-  StoreFollows,
-} from '../application/ports/customer-facts';
+import type { Known, StoreFollows } from '../application/ports/customer-facts';
 import type {
   DeliveredOrderFacts,
   DeliveredSellerOrderFacts,
@@ -14,13 +10,6 @@ import type { ReferralSignals, ReferralVerdict } from '../application/ports/refe
 // are not offered, a referral is refused or left pending, and a credit is never issued on a guess.
 // Replace each one with a facade-backed adapter in `promotions-providers.ts` when the owning
 // module publishes the read.
-
-/** `ordering` and `customers` publish no last-order read. */
-export class UnknownCustomerOrderHistory implements CustomerOrderHistory {
-  lastOrderAt(): Promise<Known<never>> {
-    return Promise.resolve({ known: false });
-  }
-}
 
 /** No module owns store follows. */
 export class UnknownStoreFollows implements StoreFollows {

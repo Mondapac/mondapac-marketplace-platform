@@ -22,6 +22,7 @@ import type {
   OwnProductViewTotals,
 } from '../ports/own-catalog.reader';
 import { MAX_OWN_LIST_ROWS, OwnProductsList, parseListQuery } from './own-products-list.use-case';
+import { OwnProductEditProbe } from './own-product-edit-probe.use-case';
 
 // `own-products.list` in memory (catalog design 8.2, 9.2a) on both Market fixtures: the access
 // rule, the keyset mode left as it was, the closed list query, the status sets of the tabs, the
@@ -241,10 +242,12 @@ describe.each(['AU', 'ZZ'] as const)('seller products list in market %s', (code)
       },
       findWorkingCopies: () => Promise.resolve([]),
     } as Partial<OwnCatalogReader> as OwnCatalogReader;
-    const useCase = new OwnProductsList(createUseCaseGate(markets, check), {
+    const gate = createUseCaseGate(markets, check);
+    const useCase = new OwnProductsList(gate, {
       unitOfWork,
       ownReader,
       policy: realPolicy,
+      ownEditProbe: new OwnProductEditProbe(gate),
     });
     return { useCase, checked, units, countCalls, listCalls, keysetCalls };
   }
@@ -331,6 +334,7 @@ describe.each(['AU', 'ZZ'] as const)('seller products list in market %s', (code)
             pendingSubmittedAt: T0.toString(),
             lastChangedAt: T0.toString(),
             createdAt: T0.toString(),
+            actions: ['open', 'edit'],
           },
         ],
         total: 9,

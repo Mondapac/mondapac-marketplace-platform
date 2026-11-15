@@ -21,6 +21,8 @@ export interface AiSetting {
   /** 0 while the default is in force, then 1, 2, ... per change. */
   readonly version: number;
   readonly updatedAt: string | null;
+  /** Whether a change is reviewed in this Market (Admin Inbox > System requests). */
+  readonly review?: { readonly reviewed: boolean; readonly risk: string };
 }
 
 export interface AiSettingsAnswer {
@@ -68,6 +70,17 @@ export function modelSetupOf(value: unknown): ModelSetup | null {
   };
 }
 
+/** The row's `review` flag when it is well formed; nothing otherwise (no note is then asked). */
+function reviewOf(value: unknown): Pick<AiSetting, 'review'> | Record<string, never> {
+  if (!isRecord(value) || typeof value['reviewed'] !== 'boolean') return {};
+  return {
+    review: {
+      reviewed: value['reviewed'],
+      risk: typeof value['risk'] === 'string' ? value['risk'] : '',
+    },
+  };
+}
+
 /** The settings answer checked: a list of rows with a code, a text value and a whole version. */
 export function settingsAnswerOf(value: unknown): AiSettingsAnswer | null {
   if (!isRecord(value) || !Array.isArray(value['settings'])) return null;
@@ -86,6 +99,7 @@ export function settingsAnswerOf(value: unknown): AiSettingsAnswer | null {
       value: row['value'],
       version: row['version'] as number,
       updatedAt: typeof row['updatedAt'] === 'string' ? row['updatedAt'] : null,
+      ...reviewOf(row['review']),
     });
   }
   return { settings: rows };

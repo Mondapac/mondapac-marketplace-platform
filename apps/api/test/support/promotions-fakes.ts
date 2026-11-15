@@ -821,6 +821,29 @@ export class MemoryCredits implements CreditRepository {
         .slice(0, limit),
     );
   }
+  listForRecipient(
+    _market: MarketContext,
+    recipient: Id<'Account'>,
+    limit: number,
+    after?: CreditCursor,
+  ) {
+    const newestFirst = (a: CreditRecord, b: CreditRecord) =>
+      b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds ||
+      (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter((r) => r.recipientAccountId === recipient)
+        .sort(newestFirst)
+        .filter(
+          (r) =>
+            after === undefined ||
+            r.createdAt.epochMilliseconds < after.createdAt.epochMilliseconds ||
+            (r.createdAt.epochMilliseconds === after.createdAt.epochMilliseconds &&
+              r.id < after.id),
+        )
+        .slice(0, limit),
+    );
+  }
 }
 
 /** Referral codes and referrals in memory: one code per customer, one referral per new customer. */

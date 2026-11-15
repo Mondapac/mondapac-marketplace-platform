@@ -101,6 +101,13 @@ import {
 } from './presentation/payout-terms.controller';
 import { sellerAccessSubscriptions } from './presentation/subscribers/seller-access.subscriptions';
 import { CommissionPayoutsFacadeImplementation } from './presentation/commission-payouts.facade';
+import { registerSystemChangeReverter, SYSTEM_REQUEST_RECORDER } from '../system-requests';
+import {
+  COMMISSION_RATE_SUBJECT_KIND,
+  MONEY_REVIEW_AREA,
+  PAYOUT_TERMS_SUBJECT_KIND,
+} from './application/money-review';
+import { CommissionRateReverter, PayoutTermsReverter } from './application/money-reverters';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: CommissionPayoutsDependencies) => U;
 
@@ -118,9 +125,19 @@ const PORTS: readonly [keyof CommissionPayoutsDependencies, InjectionToken][] = 
   ['outbox', OUTBOX_WRITER],
   ['stepUp', STEP_UP_CONSUMER],
   ['audit', AUDIT_WRITER],
+  ['review', SYSTEM_REQUEST_RECORDER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
+
+/** The reverters of area money (Admin Inbox › System requests), registered below. */
+const COMMISSION_RATE_REVERTER = Symbol('COMMISSION_RATE_REVERTER');
+const PAYOUT_TERMS_REVERTER = Symbol('PAYOUT_TERMS_REVERTER');
+
+const dependenciesOf = (values: readonly unknown[]): CommissionPayoutsDependencies =>
+  Object.fromEntries(
+    PORTS.map(([name], index) => [name, values[index]]),
+  ) as unknown as CommissionPayoutsDependencies;
 
 type DisputeUseCaseClass<U> = new (gate: UseCaseGate, deps: DisputeDependencies) => U;
 
@@ -200,13 +217,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
     inject: [USE_CASE_GATE, ...PORTS.map(([, token]) => token)],
-    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
-      new type(
-        gate,
-        Object.fromEntries(
-          PORTS.map(([name], index) => [name, values[index]]),
-        ) as unknown as CommissionPayoutsDependencies,
-      ),
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) => new type(gate, dependenciesOf(values)),
   };
 }
 
@@ -243,6 +254,28 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.outboxWriterFor('commission-payouts'),
     PersistenceModule.securityEventsFor('commission-payouts'),
     registerEvents('commission-payouts', COMMISSION_PAYOUTS_EVENTS),
+    {
+      provide: COMMISSION_RATE_REVERTER,
+      inject: PORTS.map(([, token]) => token),
+      useFactory: (...values: unknown[]) => new CommissionRateReverter(dependenciesOf(values)),
+    },
+    {
+      provide: PAYOUT_TERMS_REVERTER,
+      inject: PORTS.map(([, token]) => token),
+      useFactory: (...values: unknown[]) => new PayoutTermsReverter(dependenciesOf(values)),
+    },
+    registerSystemChangeReverter(
+      'commission-payouts',
+      COMMISSION_RATE_SUBJECT_KIND,
+      MONEY_REVIEW_AREA,
+      COMMISSION_RATE_REVERTER,
+    ),
+    registerSystemChangeReverter(
+      'commission-payouts',
+      PAYOUT_TERMS_SUBJECT_KIND,
+      MONEY_REVIEW_AREA,
+      PAYOUT_TERMS_REVERTER,
+    ),
     { provide: DISPUTE_SOURCE, useClass: LateBoundDisputeSource },
     { provide: ORDER_PAYMENT_LOOKUP, useClass: LateBoundOrderPaymentLookup },
     { provide: PAYMENTS_PAYOUTS, useClass: LateBoundPaymentsPayouts },

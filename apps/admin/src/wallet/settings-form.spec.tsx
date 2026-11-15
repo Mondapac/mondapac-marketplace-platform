@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -35,6 +35,8 @@ function mount(canManage = true) {
 }
 const choose = (state: string) =>
   fireEvent.change(screen.getByLabelText('New state'), { target: { value: state } });
+const note = (text = 'Switching for launch') =>
+  fireEvent.change(screen.getByLabelText('Note for reviewers'), { target: { value: text } });
 const review = () => fireEvent.click(screen.getByRole('button', { name: 'Review change' }));
 const confirmDialog = (name: string) => screen.findByRole('dialog', { name });
 
@@ -53,7 +55,7 @@ describe('SettingsForm', () => {
   it('shows a loading state, then a never-changed Off wallet and the meaning of every state', async () => {
     call.mockResolvedValue(ok(settings()));
     mount();
-    expect(screen.getByText('Loading')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('Loading Customer wallet');
     expect(await screen.findByText('Never changed')).toBeTruthy();
     expect(call).toHaveBeenCalledWith('GET', 'wallet/admin/settings');
     expect(screen.getAllByText('Off').length).toBeGreaterThan(0);
@@ -83,6 +85,47 @@ describe('SettingsForm', () => {
     expect(await screen.findByRole('alert')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Never changed')).toBeTruthy();
+  });
+
+  it('gives up at 30 s with a retry, and drops the answer of the abandoned read', async () => {
+    vi.useFakeTimers();
+    try {
+      let answerFirst: (value: ReturnType<typeof ok>) => void = () => undefined;
+      call.mockImplementationOnce(() => new Promise((resolve) => (answerFirst = resolve)));
+      call.mockResolvedValueOnce(ok(settings({ status: 'active' })));
+      mount();
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(document.querySelectorAll('[data-skeleton="section"]')).toHaveLength(3);
+      expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+      expect(screen.getByText('Still loading…')).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(20_000);
+      });
+      expect(screen.getByText('This could not be loaded. Try again.')).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+        await Promise.resolve();
+      });
+      expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
+      // The first read answers late: its "off" never replaces the newer answer.
+      await act(async () => {
+        answerFirst(ok(settings({ status: 'off' })));
+        await Promise.resolve();
+      });
+      expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
+      expect(screen.queryByText('This could not be loaded. Try again.')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows a view-only admin the danger zone disabled, with the reason and no button', async () => {
@@ -159,6 +202,71 @@ describe('SettingsForm', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('asks for a note on a money change, counts it, and sends it', async () => {
+    call.mockResolvedValueOnce(ok(settings({ status: 'paused', reason: 'maintenance' })));
+    mount();
+    await screen.findByText('Never changed');
+    choose('active');
+    review();
+    expect(screen.getByText(/Write a note for the reviewers/)).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
+    note('Open it');
+    expect(screen.getByText('7 / 500')).toBeTruthy();
+    call.mockResolvedValueOnce(
+      ok({ ...settings({ status: 'active' }), request: { id: 'r1', number: 12 } }),
+    );
+    review();
+    await expectToast('Sent for review as SR-12', 'info');
+    expect(call).toHaveBeenLastCalledWith(
+      'PUT',
+      'wallet/admin/settings',
+      { status: 'active', expectedVersion: 0, note: 'Open it' },
+      'csrf',
+    );
+  });
+
+  it('shows no note field for a switch to paused or frozen, and sends none', async () => {
+    call.mockResolvedValueOnce(
+      ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00.000Z' })),
+    );
+    mount();
+    await screen.findByText(/Changed/);
+    expect(screen.getByLabelText('Note for reviewers')).toBeTruthy();
+    choose('frozen');
+    expect(screen.queryByLabelText('Note for reviewers')).toBeNull();
+    choose('paused');
+    expect(screen.queryByLabelText('Note for reviewers')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'maintenance' } });
+    review();
+    await confirmDialog('Pause the wallet?');
+    call.mockResolvedValueOnce(ok(settings({ status: 'paused', reason: 'maintenance' })));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause wallet' }));
+    await expectToast('Wallet is now paused.');
+    const body = call.mock.calls.at(-1)?.[2] as Record<string, unknown>;
+    expect('note' in body).toBe(false);
+  });
+
+  it('shows a 400 on note as an error on the note field', async () => {
+    call.mockResolvedValueOnce(
+      ok(settings({ status: 'paused', reason: 'maintenance', updatedAt: '2026-10-01T00:00:00Z' })),
+    );
+    mount();
+    await screen.findByText(/Changed/);
+    choose('active');
+    note();
+    call.mockResolvedValueOnce({
+      ok: false as const,
+      failure: {
+        status: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'note', code: 'required' }] },
+      },
+    });
+    review();
+    expect(await screen.findByText(/The note was refused/)).toBeTruthy();
+    expect(screen.queryByText('Choose a reason for this state.')).toBeNull();
+  });
+
   it('has a confirm for frozen and off with their own words', async () => {
     call.mockResolvedValueOnce(
       ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00.000Z' })),
@@ -171,6 +279,7 @@ describe('SettingsForm', () => {
     expect(await confirmDialog('Freeze the wallet?')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     choose('off');
+    note();
     review();
     const off = await confirmDialog('Turn the wallet off?');
     expect(off.textContent).toContain('use Paused instead');
@@ -189,6 +298,7 @@ describe('SettingsForm', () => {
     mount();
     await screen.findByText(/Changed/);
     choose('active');
+    note();
     call.mockResolvedValueOnce(
       ok(settings({ status: 'active', updatedAt: '2026-10-27T01:00:00.000Z' })),
     );
@@ -197,7 +307,7 @@ describe('SettingsForm', () => {
     expect(call).toHaveBeenLastCalledWith(
       'PUT',
       'wallet/admin/settings',
-      { status: 'active', expectedVersion: 0 },
+      { status: 'active', expectedVersion: 0, note: 'Switching for launch' },
       'csrf',
     );
   });
@@ -215,6 +325,7 @@ describe('SettingsForm', () => {
     mount();
     await screen.findByText(/Changed/);
     choose('off');
+    note();
     review();
     await confirmDialog('Turn the wallet off?');
     call.mockResolvedValueOnce(refused(status, code));
@@ -306,6 +417,7 @@ describe('SettingsForm', () => {
     mount();
     await screen.findByText(/Changed/);
     choose('off');
+    note();
     review();
     await confirmDialog('Turn the wallet off?');
     call.mockResolvedValueOnce({ ok: false, failure: { status: 0, code: STEP_UP_CANCELLED } });

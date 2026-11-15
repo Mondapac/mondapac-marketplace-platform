@@ -246,6 +246,8 @@ model OrderingRefund {
   @@unique([marketId, id, sellerOrderId])
   @@unique([marketId, stripeIdempotencyKey])
   @@index([marketId, sellerOrderId])
+  /// The admin Refunds list, newest first (its default order and the date filter).
+  @@index([marketId, requestedAt(sort: Desc), id(sort: Desc)], map: "refunds_market_id_requested_at_id_idx")
   @@map("refunds")
   @@schema("ordering")
 }
