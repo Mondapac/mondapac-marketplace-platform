@@ -421,6 +421,9 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(await count({ paymentState: 'captured' })).toBe(2);
     expect(await count({ from: day.add({ minutes: 2 }), to: day.add({ minutes: 4 }) })).toBe(2);
     expect(await count({ status: 'confirmed' })).toBe(0);
+    // One customer's orders (the customer page's Orders tab): this account only.
+    expect(await count({ accountId: rows[2]!.accountId })).toBe(1);
+    expect(await count({ accountId: ids.next<'Account'>() })).toBe(0);
   });
 
   it('sorts the admin list by total and breaks a tie by id in the same direction', async () => {

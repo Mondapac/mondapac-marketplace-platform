@@ -25,6 +25,18 @@ import {
   type CustomerReadModelRepository,
 } from '../application/ports/customer-read-models.repository';
 import { CUSTOMER_READ_MODEL_PEERS } from '../application/ports/customer-read-model-peers';
+import {
+  CUSTOMER_LIST_READER,
+  type CustomerListReader,
+} from '../application/ports/customer-list.reader';
+import {
+  SAVED_FILTER_REPOSITORY,
+  type SavedFilterRepository,
+} from '../application/ports/saved-filter.repository';
+import { SHEET_WRITER, type SheetWriter } from '../application/ports/sheet-writer';
+import { PrismaCustomerListReader } from './prisma-customer-list.reader';
+import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
+import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
 import { LateBoundReadModelPeers } from './late-bound-read-model-peers';
 import { PrismaCustomerReadModelRepository } from './prisma-customer-read-models.repository';
 import { LateBoundAccountDeletionPeers } from './late-bound-account-deletion-peers';
@@ -76,5 +88,20 @@ export const customersProviders: readonly FactoryProvider[] = [
   {
     provide: CUSTOMER_READ_MODEL_PEERS,
     useFactory: (): LateBoundReadModelPeers => new LateBoundReadModelPeers(),
+  },
+  {
+    provide: CUSTOMER_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerListReader => new PrismaCustomerListReader(prisma),
+  },
+  {
+    provide: SAVED_FILTER_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SavedFilterRepository =>
+      new PrismaSavedFilterRepository(prisma),
+  },
+  {
+    provide: SHEET_WRITER,
+    useFactory: (): SheetWriter => new ExceljsSheetWriter(),
   },
 ];

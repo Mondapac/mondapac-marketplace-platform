@@ -20,6 +20,12 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'second-factor.required': 403,
   'second-factor.enrolment-required': 403,
   'customers.unavailable': 503,
+  'saved-filter.not-found': 404,
+  'saved-filter.name-taken': 409,
+  'saved-filter.limit-reached': 409,
+  'saved-filter.shared-limit-reached': 409,
+  'batch.too-large': 413,
+  'customers.customer-not-found': 404,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
@@ -93,5 +99,11 @@ export function refusal(
     return fail(status, error.code, { actionKey: error.actionKey });
   }
   if (error.limit !== undefined) return fail(status, error.code, { limit: error.limit });
+  if (typeof error.max === 'number') {
+    return fail(status, error.code, {
+      max: error.max,
+      ...(typeof error.total === 'number' ? { total: error.total } : {}),
+    });
+  }
   return fail(status, error.code);
 }

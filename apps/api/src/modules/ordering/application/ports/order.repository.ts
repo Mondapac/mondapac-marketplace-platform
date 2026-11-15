@@ -25,6 +25,8 @@ export interface OrderFilter {
   /** Keeps orders that have a seller order of this seller (and this fulfilment, when set). */
   readonly sellerId: Id<'Seller'> | null;
   readonly fulfilment: Fulfilment | null;
+  /** Keeps the orders one customer placed (the customer page's Orders tab); absent keeps all. */
+  readonly accountId?: Id<'Account'> | null;
   /** Placed at or after `from` and before `to`. */
   readonly from: Temporal.Instant | null;
   readonly to: Temporal.Instant | null;
