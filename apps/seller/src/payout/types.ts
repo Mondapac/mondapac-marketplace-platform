@@ -1,5 +1,8 @@
 // Answers of the seller payout-account routes (apps/api payments/seller/payout-account).
 
+/** The Payout account page, under Accounting in the menu. */
+export const PAYOUT_ACCOUNT_PATH = '/accounting/payout-account';
+
 export const PAYOUT_VIEW_PERMISSION = 'payments.payout-account.view';
 export const PAYOUT_MANAGE_PERMISSION = 'payments.payout-account.manage';
 

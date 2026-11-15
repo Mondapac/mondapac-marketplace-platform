@@ -50,7 +50,7 @@ const session = (permissionKeys: string[]): SellerSession => ({
   csrfToken: 'c',
 });
 
-const STAFF = ['inventory.stock.view', 'payments.payout-account.view'];
+const STAFF = ['inventory.stock.view', 'identity.team-member.view'];
 
 async function show(linkId: string, title: string, keys = STAFF) {
   render(
@@ -89,9 +89,10 @@ describe('seller SettingsShell', () => {
         .map((a) => [a.textContent, a.getAttribute('aria-current')]),
     ).toEqual([
       ['Stock locations', 'page'],
-      ['Payout account', null],
+      ['Members', null],
     ]);
-    expect(within(nav).queryByText('Team')).toBeNull();
+    expect(within(nav).queryByText('Store profile')).toBeNull();
+    expect(within(nav).queryByText('Payout account')).toBeNull();
   });
 
   it('offers Back to Settings above the heading, and the sub-navigation only from 1180px', async () => {
