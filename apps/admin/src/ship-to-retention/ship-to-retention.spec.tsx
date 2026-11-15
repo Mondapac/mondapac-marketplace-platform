@@ -111,7 +111,10 @@ describe('ship-to retention panel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(call).not.toHaveBeenCalled();
     const confirm = screen.getByRole('dialog', { name: 'Delete delivery addresses permanently?' });
-    expect(within(confirm).getByText(/at least 24 months ago/)).toBeTruthy();
+    expect(within(confirm).getByText(/completed at least 24 months ago/)).toBeTruthy();
+    expect(
+      within(confirm).getByText(/cancelled, refunded in full, or shipped but never delivered/),
+    ).toBeTruthy();
 
     call
       .mockResolvedValueOnce(

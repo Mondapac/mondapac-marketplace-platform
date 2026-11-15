@@ -22,7 +22,7 @@ import { MAX_MONTHS, MIN_MONTHS, SHIP_TO_RETENTION_PATH, type ShipToRetention } 
 
 /**
  * Settings › Delivery address retention: whether the sealed delivery address of an order is
- * deleted for good a number of months after its last seller order was delivered. Off by default.
+ * deleted for good a number of months after the order was completed (delivered, cancelled, refunded in full, or shipped but never delivered). Off by default.
  * Turning it on or shortening the wait asks for a confirmation first, because the deletion is
  * permanent. The write is a guarded call (protected manage key, may ask a code); the version sent
  * is the one shown, so a stale save answers 409 and the admin reloads the latest. Without the

@@ -8337,14 +8337,14 @@
     "permission-view": "Delivery address retention: view",
     "unavailable": "The delivery address retention setting could not be loaded. Try again later.",
     "section": "Delete delivery addresses",
-    "intro": "When this is on, the delivery address, phone number and buyer note of an order are deleted once every seller order in it was delivered at least the chosen number of months ago. Orders not fully delivered are never touched.",
+    "intro": "Permanently deletes the delivery address, phone and buyer note of orders that were completed at least the chosen number of months ago: delivered, cancelled, refunded in full, or shipped but never delivered. Orders still waiting to ship are never touched.",
     "read-only": "You can see this setting but not change it. Changing it needs the delivery address retention manage permission.",
     "permanent": "Deletion is permanent. A deleted address cannot be restored and disappears from every view, including order pages and support tools. A daily job applies it to every order that qualifies.",
     "switch": "Delete delivery addresses",
     "state-on": "On",
     "state-off": "Off",
     "months": "Months after delivery",
-    "months-help": "A whole number from {min} to {max}. Applies to orders whose every seller order was delivered at least this many months ago.",
+    "months-help": "A whole number from {min} to {max}. Counted from delivery, or from the cancellation, full refund or shipment for orders never delivered.",
     "never-set": "Not set yet: deletion is off.",
     "updated": "Version {version}, updated {when}",
     "save": "Save",
@@ -8353,7 +8353,7 @@
     "saved": "Delivery address retention saved.",
     "confirm": {
       "title": "Delete delivery addresses permanently?",
-      "body": "From the next daily run, the delivery address, phone number and buyer note of every order whose seller orders were all delivered at least {months} months ago will be deleted for good. This cannot be undone.",
+      "body": "From the next daily run, the delivery address, phone and buyer note of every order completed at least {months} months ago (delivered, cancelled, refunded in full, or shipped but never delivered) will be deleted for good. Orders still waiting to ship are never touched. This cannot be undone.",
       "yes": "Save and delete permanently"
     },
     "error": {
