@@ -235,11 +235,14 @@ describe('admin product list over HTTP (integration)', () => {
             offerCount: 6,
             updatedAt: START.toString(),
             createdAt: START.toString(),
+            actions: ['open'],
           },
         ],
         total: 1,
         page: 1,
         pageSize: 25,
+        paging: 'pages',
+        hasNext: false,
         counts: { active: 1, all: 2, inactive: 1 },
       });
     });

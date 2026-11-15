@@ -104,6 +104,8 @@ export const sellerNav: NavConfig = {
       id: 's_payout',
       icon: 'wallet',
       labelKey: 'nav.payoutAccount',
+      // The palette found this page by these words while it was a Settings page.
+      keywordsKey: 'nav.payoutAccountWords',
       href: PAYOUT_ACCOUNT_PATH,
       group: 'accounting',
       anyOf: [PAYOUT_VIEW_PERMISSION],
