@@ -95,7 +95,14 @@ export function OrdersList({
   const [saved, setSaved] = useState<SavedFiltersAnswer | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
-  const storageKey = prefsKey('admin', marketId, accountId, 'orders-columns');
+  // A customer's Orders tab keeps its own column choice: it never shows the Customer column, so
+  // sharing the Orders page's choice would drop that column there.
+  const storageKey = prefsKey(
+    'admin',
+    marketId,
+    accountId,
+    customerAccountId === undefined ? 'orders-columns' : 'customer-orders-columns',
+  );
   // After a page change the focus moves to the top of the list, so a keyboard or screen reader
   // user starts on the new rows and not on the pager they used.
   const listTop = useRef<HTMLDivElement>(null);
@@ -241,6 +248,10 @@ export function OrdersList({
       : OPTIONAL_COLUMNS.filter((column) => column !== 'customer');
   const shownColumns =
     customerAccountId === undefined ? columns : columns.filter((column) => column !== 'customer');
+  const defaultColumns =
+    customerAccountId === undefined
+      ? DEFAULT_COLUMNS
+      : DEFAULT_COLUMNS.filter((column) => column !== 'customer');
 
   return (
     <div className="flex flex-col gap-4">
@@ -329,7 +340,7 @@ export function OrdersList({
               all={pickable}
               fixed={[{ id: 'order', label: t('col.order') }]}
               shown={shownColumns}
-              defaults={pickable}
+              defaults={defaultColumns}
               labelOf={(column) => t(`col.${column}`)}
               labels={{
                 title: t('columns.title'),
@@ -383,7 +394,14 @@ export function OrdersList({
       ) : null}
       {rows.length > 0 ? (
         <div ref={listTop} tabIndex={-1} className="outline-none">
-          <OrdersTable rows={rows} columns={shownColumns} zone={zone} />
+          <OrdersTable
+            rows={rows}
+            columns={shownColumns}
+            zone={zone}
+            {...(customerAccountId === undefined
+              ? {}
+              : { fromCustomer: { accountId: customerAccountId, tab: 'orders' as const } })}
+          />
         </div>
       ) : null}
       {!loading && !failed && rows.length === 0 ? (

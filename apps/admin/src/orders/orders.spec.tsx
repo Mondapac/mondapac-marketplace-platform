@@ -824,6 +824,42 @@ describe('order list columns', () => {
     expect(within(screen.getByRole('table')).getAllByRole('columnheader')).toHaveLength(7);
   });
 
+  it("keeps a customer's Orders tab choice apart from the Orders page, without the Customer column", async () => {
+    window.localStorage.setItem(COLUMNS_KEY, '["customer","total"]');
+    call.mockResolvedValueOnce(page([order()]));
+    render(
+      wrap(
+        <OrdersList
+          {...LIST}
+          zone="UTC"
+          customerAccountId="0190a000-0000-7000-8000-0000000000c1"
+        />,
+      ),
+    );
+    const table = await screen.findByRole('table');
+    // The Orders page's stored choice is not read here, and Customer is never shown.
+    const shown = within(table)
+      .getAllByRole('columnheader')
+      .map((h) => h.textContent);
+    expect(shown).not.toContain('Customer');
+    expect(shown.length).toBeGreaterThan(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    expect(within(panel).queryByRole('checkbox', { name: 'Customer' })).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Reset' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    expect(window.localStorage.getItem(COLUMNS_KEY)).toBe('["customer","total"]');
+    expect(
+      window.localStorage.getItem(
+        'mp:admin:AU:0190a000-0000-7000-8000-0000000000f1:customer-orders-columns',
+      ),
+    ).not.toContain('customer"');
+    // Each order links back to this customer's Orders tab.
+    expect(within(table).getAllByRole('link')[0]?.getAttribute('href')).toContain(
+      'customer=0190a000-0000-7000-8000-0000000000c1&from=orders',
+    );
+  });
+
   it('works when the browser storage refuses', async () => {
     const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');

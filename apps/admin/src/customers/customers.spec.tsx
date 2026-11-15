@@ -10,8 +10,12 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 import { Toaster } from '@mondapac/ui';
 import { callApi, type ApiResult } from '../api/client.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
+import { backHrefOf, customerOriginOf, orderHref } from '../orders/order-href.ts';
 import { CustomerPage } from './customer-page.tsx';
+import { CustomersBulk } from './customers-bulk.tsx';
+import { CustomersFilterPanel, majorOf } from './customers-filter-panel.tsx';
 import { CustomersList } from './customers-list.tsx';
+import { dayOf } from './format.ts';
 import {
   DEFAULT_QUERY,
   payloadOf,
@@ -180,10 +184,14 @@ describe('CustomersList', () => {
     render(wrap(<CustomersList {...listProps} permissionKeys={[VIEW]} />));
     await screen.findByText('Sara Ahmadi');
     fireEvent.change(screen.getByLabelText('Search customers'), { target: { value: 's' } });
-    expect(await screen.findByText('Enter at least 2 characters to search.')).toBeTruthy();
+    expect(await screen.findByText('Enter at least 2 characters')).toBeTruthy();
     fireEvent.keyDown(screen.getByLabelText('Search customers'), { key: 'Enter' });
     await waitFor(() => expect(listBodies().length).toBeGreaterThan(1));
     expect(listBodies().every((body) => !('q' in (body as object)))).toBe(true);
+    // A search that is not applied is not a filter: nothing to save, no clear-all.
+    expect(screen.queryByRole('button', { name: 'Save filter…' })).toBeNull();
+    expect(screen.getByLabelText('Search customers').getAttribute('aria-describedby')).toBeTruthy();
+    expect(screen.getByText('Start of the email, or part of the name')).toBeTruthy();
   });
 
   it('has no Bulk action menu without the export key, and one with it', async () => {
@@ -249,7 +257,7 @@ describe('CustomersList', () => {
           { status: 403 },
         ),
       )
-      .mockResolvedValueOnce(new Response('﻿email\r\nsara@example.com\r\n', { status: 200 }));
+      .mockResolvedValueOnce(new Response('\uFEFFemail\r\nsara@example.com\r\n', { status: 200 }));
     // The step-up dialog's verify call.
     render(wrap(<CustomersList {...listProps} permissionKeys={[VIEW, EXPORT]} />));
     await screen.findByText('Sara Ahmadi');
@@ -344,7 +352,7 @@ describe('the customer page', () => {
     routePage();
     render(wrap(<CustomerPage {...pageProps} permissionKeys={[VIEW, 'ordering.order.view']} />));
     await screen.findByRole('heading', { name: 'Sara Ahmadi' });
-    fireEvent.click(screen.getByRole('button', { name: 'Orders' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Orders' }));
     await waitFor(() =>
       expect(
         call.mock.calls.some((args) => String(args[1]).startsWith('ordering/admin/orders')),
@@ -358,8 +366,8 @@ describe('the customer page', () => {
     expect(
       call.mock.calls.some((args) => String(args[1]).startsWith('ordering/admin/saved-filters')),
     ).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Overview' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Orders' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Orders' }));
     await act(async () => Promise.resolve());
     const opened = call.mock.calls.filter((args) => String(args[1]).endsWith('/tab-opened'));
     expect(opened).toHaveLength(1);
@@ -407,5 +415,357 @@ describe('the customer page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
     expect(await screen.findByRole('menuitem', { name: 'Disable account…' })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'Delete account…' })).toBeNull();
+  });
+});
+
+const VERIFY = 'identity/admin/step-up/verify';
+const csv = (lines: readonly string[]) => new Response(`\uFEFF${lines.join('\r\n')}\r\n`);
+const required = () =>
+  new Response(
+    JSON.stringify({
+      code: 'second-factor.required',
+      details: { actionKey: 'customers.customers.export' },
+    }),
+    { status: 403 },
+  );
+const bulkProps = {
+  query: DEFAULT_QUERY,
+  columns: ['status'] as const,
+  permissionKeys: [EXPORT],
+  csrfToken: 'csrf',
+  onSelectAll: () => undefined,
+  onClear: () => undefined,
+};
+async function exportAs(format: 'CSV' | 'XLSX' = 'CSV') {
+  fireEvent.click(screen.getByRole('button', { name: /Bulk action/ }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: /Export…/ }));
+  const dialog = await screen.findByRole('dialog', { name: /^Export / });
+  if (format === 'XLSX') fireEvent.click(within(dialog).getByRole('radio', { name: /XLSX/ }));
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+}
+const sentBody = (fetchMock: ReturnType<typeof vi.fn>, index = 0) =>
+  JSON.parse((fetchMock.mock.calls[index]![1] as RequestInit).body as string) as Record<
+    string,
+    unknown
+  >;
+
+describe('the customer export', () => {
+  const createObjectURL = vi.fn(() => 'blob:x');
+  beforeEach(() => {
+    createObjectURL.mockClear();
+    Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('verifies the code, sends the export again, downloads it and counts the rows', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock
+      .mockResolvedValueOnce(required())
+      .mockResolvedValueOnce(csv(['email', 'sara@example.com', 'omar@example.com']));
+    call.mockResolvedValueOnce(ok({ code: 'step-up-verified' }));
+    render(
+      wrap(
+        <CustomersBulk
+          {...bulkProps}
+          selection={{ ids: [ID, ID], allMatching: false, total: 2 }}
+        />,
+      ),
+    );
+    await exportAs();
+    await screen.findByRole('dialog', { name: 'Confirm it is you' });
+    fireEvent.paste(screen.getAllByRole('textbox', { name: /Digit \d of 6/ })[0]!, {
+      clipboardData: { getData: () => '123456' },
+    });
+    expect(await screen.findByText('2 customers exported.')).toBeTruthy();
+    expect(call).toHaveBeenCalledWith(
+      'POST',
+      VERIFY,
+      { actionKey: 'customers.customers.export', code: '123456' },
+      'csrf',
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sentBody(fetchMock, 1)).toEqual(sentBody(fetchMock, 0));
+    expect(createObjectURL).toHaveBeenCalledOnce();
+  });
+
+  it('says the export was cancelled when the code is not given, and downloads nothing', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(required());
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      wrap(
+        <CustomersBulk {...bulkProps} selection={{ ids: [ID], allMatching: false, total: 1 }} />,
+      ),
+    );
+    await exportAs();
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(await screen.findByText('Export cancelled.')).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it('asks an admin without two-step codes to set them up, and says so when they close it', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          code: 'second-factor.enrolment-required',
+          details: { actionKey: 'customers.customers.export' },
+        }),
+        { status: 403 },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      wrap(
+        <CustomersBulk {...bulkProps} selection={{ ids: [ID], allMatching: false, total: 1 }} />,
+      ),
+    );
+    await exportAs();
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Set up two-step verification first',
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(
+      await screen.findByText('Set up two-step verification on your profile to export customers.'),
+    ).toBeTruthy();
+  });
+
+  it('says how many can be exported when the list is too large', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ code: 'batch.too-large', details: { max: 10000, total: 12000 } }),
+          { status: 422 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      wrap(
+        <CustomersBulk {...bulkProps} selection={{ ids: [], allMatching: true, total: 9000 }} />,
+      ),
+    );
+    await exportAs();
+    expect(
+      await screen.findByText(
+        'Up to 10,000 customers can be exported at once; this list has 12,000. Narrow it first.',
+      ),
+    ).toBeTruthy();
+    // "Select all" sends the list's filter, never ids.
+    const body = sentBody(fetchMock);
+    expect(body['ids']).toBeUndefined();
+    expect(body['view']).toBe('all');
+  });
+
+  it('refuses more than 1000 ticked rows instead of exporting the whole filter', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const ids = Array.from({ length: 1001 }, (_, index) => `id-${index}`);
+    render(
+      wrap(<CustomersBulk {...bulkProps} selection={{ ids, allMatching: false, total: 8000 }} />),
+    );
+    await exportAs();
+    expect(
+      await screen.findByText(
+        'You can export up to 1,000 ticked customers. Use Select all, or narrow the list.',
+      ),
+    ).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('offers Select all up to 10,000 customers, and not above', async () => {
+    render(
+      wrap(
+        <CustomersBulk {...bulkProps} selection={{ ids: [ID], allMatching: false, total: 9000 }} />,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Bulk action/ }));
+    expect(await screen.findByText('Select all 9,000 customers in this filter')).toBeTruthy();
+    cleanup();
+    render(
+      wrap(
+        <CustomersBulk
+          {...bulkProps}
+          selection={{ ids: [ID], allMatching: false, total: 10_001 }}
+        />,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Bulk action/ }));
+    await screen.findByRole('menuitem', { name: /Export…/ });
+    // (An earlier test's error toast may still mention Select all.)
+    expect(screen.queryByText(/^Select all \d/)).toBeNull();
+  });
+});
+
+describe.each([
+  { market: 'AU', currency: 'AUD', typed: '12.50', minor: '1250', shown: '$12.50' },
+  { market: 'JP', currency: 'JPY', typed: '1250', minor: '1250', shown: 'JPY 1,250' },
+  { market: 'KW', currency: 'KWD', typed: '1.250', minor: '1250', shown: 'KWD 1.250' },
+])('the spent filter in a $currency market', ({ currency, typed, minor }) => {
+  it('turns the typed amount into minor units and back', () => {
+    expect(majorOf(minor, currency)).toBe(typed);
+    const onApply = vi.fn();
+    render(
+      wrap(
+        <CustomersFilterPanel
+          filters={{}}
+          currency={currency}
+          onApply={onApply}
+          close={() => undefined}
+        />,
+      ),
+    );
+    const spent = screen.getByRole('group', { name: 'Spent' });
+    fireEvent.change(within(spent).getByLabelText('From'), { target: { value: typed } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(onApply).toHaveBeenCalledWith({ spentMin: minor });
+  });
+});
+
+describe('the filter panel', () => {
+  const show = (props: Partial<Parameters<typeof CustomersFilterPanel>[0]> = {}) => {
+    const onApply = vi.fn();
+    render(
+      wrap(
+        <CustomersFilterPanel
+          filters={{}}
+          currency="AUD"
+          onApply={onApply}
+          close={() => undefined}
+          {...props}
+        />,
+      ),
+    );
+    return onApply;
+  };
+
+  it('refuses a range that ends before it starts, and an amount over the API limit', () => {
+    const onApply = show();
+    const orders = screen.getByRole('group', { name: 'Orders' });
+    fireEvent.change(within(orders).getByLabelText('From'), { target: { value: '5' } });
+    fireEvent.change(within(orders).getByLabelText('To'), { target: { value: '2' } });
+    const spent = screen.getByRole('group', { name: 'Spent' });
+    fireEvent.change(within(spent).getByLabelText('From'), {
+      target: { value: '999999999999999.99' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(screen.getByText('The end comes before the start.')).toBeTruthy();
+    expect(screen.getByText('Enter a smaller amount.')).toBeTruthy();
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('keeps a spent bound it cannot show when no currency is known', () => {
+    const onApply = show({ filters: { spentMin: '5000', ordersMin: '1' }, currency: null });
+    expect(screen.queryByRole('group', { name: 'Spent' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(onApply).toHaveBeenCalledWith({ ordersMin: '1', spentMin: '5000' });
+  });
+});
+
+describe('a second Market (NZD, Pacific/Auckland)', () => {
+  it('shows spent in the rows’ currency and days in the given zone', async () => {
+    route(ok(page([row({ currency: 'NZD', spentMinor: '9900' })])));
+    render(
+      wrap(
+        <CustomersList
+          {...listProps}
+          marketId="NZ"
+          marketName="New Zealand"
+          zone="Pacific/Auckland"
+          permissionKeys={[VIEW]}
+        />,
+      ),
+    );
+    expect(await screen.findByText('120 customers in the New Zealand market')).toBeTruthy();
+    await screen.findByText('Sara Ahmadi');
+    expect(screen.getByText('NZD 99.00')).toBeTruthy();
+  });
+
+  it('reads a day in the owning zone at the day boundary', () => {
+    const instant = '2026-11-02T21:00:00.000Z';
+    expect(dayOf(instant, 'en-AU', 'Australia/Brisbane')).toBe('3 Nov 2026');
+    expect(dayOf(instant, 'en-AU', 'Pacific/Auckland')).toBe('3 Nov 2026');
+    expect(dayOf(instant, 'en-AU', 'Europe/London')).toBe('2 Nov 2026');
+  });
+});
+
+describe('an order opened from a customer page', () => {
+  it('carries the customer and tab, and Back returns there', () => {
+    const href = orderHref('o-1', { accountId: ID, tab: 'orders' });
+    expect(href).toBe(`/orders/o-1?customer=${ID}&from=orders`);
+    expect(backHrefOf(customerOriginOf(ID, 'money'))).toBe(`/customers/${ID}?tab=money`);
+    expect(customerOriginOf('nope', 'orders')).toBeUndefined();
+    expect(customerOriginOf(ID, 'secret')).toBeUndefined();
+    expect(backHrefOf(undefined)).toBe('/orders');
+  });
+});
+
+describe('a customer with an open deletion request', () => {
+  const pending = {
+    requestId: '0190a000-0000-7000-8000-0000000000d1',
+    status: 'pending' as const,
+    requestedAt: '2026-11-10T00:00:00.000Z',
+    scheduledFor: '2026-11-24T00:00:00.000Z',
+  };
+  const keys = [VIEW, 'customers.buyer-account.delete'];
+
+  it('shows the badge and the date with Cancel, and offers no second request', async () => {
+    routePage(ok(overview({ deletionRequest: pending })));
+    render(wrap(<CustomerPage {...pageProps} permissionKeys={[...keys, DISABLE]} />));
+    await screen.findByRole('heading', { name: 'Sara Ahmadi' });
+    expect(screen.getByText(/The account will be deleted on 24 Nov 2026, 10:00\s?am/)).toBeTruthy();
+    expect(screen.getAllByText('Deletion pending').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Cancel deletion request…' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
+    await screen.findByRole('menuitem', { name: 'Disable account…' });
+    expect(screen.queryByRole('menuitem', { name: 'Delete account…' })).toBeNull();
+  });
+
+  it('offers no Cancel while the request is being carried out', async () => {
+    routePage(ok(overview({ deletionRequest: { ...pending, status: 'executing' } })));
+    render(wrap(<CustomerPage {...pageProps} permissionKeys={keys} />));
+    expect(
+      await screen.findByText("The account is being deleted now. The request can't be cancelled."),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Cancel deletion request…' })).toBeNull();
+  });
+
+  it('shows the badge to an admin who may not delete', async () => {
+    routePage(ok(overview({ deletionRequest: pending })));
+    render(wrap(<CustomerPage {...pageProps} permissionKeys={[VIEW]} />));
+    expect(await screen.findByText('Deletion pending')).toBeTruthy();
+  });
+});
+
+describe('the wallet tile', () => {
+  it('is left out when the Market wallet is switched off', async () => {
+    routePage();
+    const base = call.getMockImplementation()!;
+    call.mockImplementation((method, path, ...rest) =>
+      path === `wallet/admin/customers/${ID}`
+        ? Promise.resolve(refused(404, 'wallet.disabled'))
+        : base(method, path, ...rest),
+    );
+    render(wrap(<CustomerPage {...pageProps} permissionKeys={[VIEW, 'wallet.credit.view']} />));
+    await screen.findByRole('heading', { name: 'Sara Ahmadi' });
+    await act(async () => Promise.resolve());
+    expect(screen.queryByText('Wallet balance')).toBeNull();
+    expect(screen.queryByText('Could not be read')).toBeNull();
+  });
+});
+
+describe('the customer page tabs', () => {
+  it('are ARIA tabs that move with the arrow keys and name the panel', async () => {
+    routePage();
+    render(wrap(<CustomerPage {...pageProps} permissionKeys={[VIEW, 'ordering.order.view']} />));
+    await screen.findByRole('heading', { name: 'Sara Ahmadi' });
+    const overviewTab = screen.getByRole('tab', { name: 'Overview' });
+    expect(overviewTab.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tabpanel', { name: 'Overview' })).toBeTruthy();
+    fireEvent.keyDown(overviewTab, { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: 'Orders' }).getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Orders' }), { key: 'End' });
+    expect(screen.getByRole('tab', { name: 'Money' }).getAttribute('aria-selected')).toBe('true');
   });
 });

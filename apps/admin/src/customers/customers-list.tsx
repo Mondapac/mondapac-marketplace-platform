@@ -46,6 +46,7 @@ import {
   defaultDirection,
   filterCount,
   queryOfPayload,
+  searchOf,
   selectorOf,
   titleOf,
   type CustomerRow,
@@ -203,13 +204,16 @@ export function CustomersList({
       : formatMinor(row.spentMinor, row.currency, locale);
   const counts = answer?.counts ?? null;
   const total = answer?.paging?.total ?? 0;
-  const filtered = query.q.trim() !== '' || filterCount(query.filters) > 0;
+  // A search shorter than the minimum is not applied, so it neither filters nor can be saved.
+  const filtered = searchOf(query.q) !== undefined || filterCount(query.filters) > 0;
 
   const chipValue = (key: FilterKey, value: string): string => {
     if (key === 'status') return tc(`status.${value}`);
     if (key === 'verified') return t(`filter.verified.${value}`);
     if (key === 'spentMin' || key === 'spentMax') {
-      return currency === null ? value : formatMinor(value, currency, locale);
+      return currency === null
+        ? t('filter.minor-units', { value: Number(value) })
+        : formatMinor(value, currency, locale);
     }
     if (key === 'ordersMin' || key === 'ordersMax') return number(Number(value));
     return value;
@@ -226,7 +230,9 @@ export function CustomersList({
 
   const summary = [
     t(`tab.${query.view}`),
-    ...(query.q.trim() === '' ? [] : [t('saved.summary-search', { q: query.q.trim() })]),
+    ...(searchOf(query.q) === undefined
+      ? []
+      : [t('saved.summary-search', { q: searchOf(query.q) ?? '' })]),
     ...chips.map((chip) => chip.label),
   ].join(' · ');
 
@@ -432,6 +438,7 @@ export function CustomersList({
         placeholder: t('search.placeholder'),
         value: list.draft,
         maxLength: SEARCH_MAX,
+        help: t('search.help'),
         onChange: list.setDraft,
         onSubmit: (value) => list.change({ q: value }),
       }}

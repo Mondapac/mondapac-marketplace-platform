@@ -3410,7 +3410,7 @@
         "menu": {
           "resume": "Activate",
           "pause": "Deactivate",
-          "export": "Export",
+          "export": "Export…",
           "export-help": "CSV or XLSX, with the columns shown",
           "delete": "Delete…"
         },
@@ -4766,7 +4766,8 @@
         "no-carrier": "No courier could take this delivery."
       },
       "cancelled-banner": "This order was cancelled: {reason}.",
-      "customer-unavailable": "Customer details couldn't be loaded. Reload the page to try again."
+      "customer-unavailable": "Customer details couldn't be loaded. Reload the page to try again.",
+      "back-customer": "Back to customer"
     },
     "delivery-method": {
       "pickup": "Pickup",
@@ -5151,7 +5152,8 @@
       "search": {
         "label": "Search customers",
         "placeholder": "Email start or name",
-        "too-short": "Enter at least {min} characters to search."
+        "too-short": "Enter at least {min} characters",
+        "help": "Start of the email, or part of the name"
       },
       "filter": {
         "button": "Filter",
@@ -5193,8 +5195,10 @@
           "day": "Enter a date.",
           "count": "Enter a whole number.",
           "amount": "Enter an amount, for example 25.00.",
-          "range": "The end comes before the start."
-        }
+          "range": "The end comes before the start.",
+          "amount-large": "Enter a smaller amount."
+        },
+        "minor-units": "{value, number} in minor units"
       },
       "sort": {
         "button": "Sort",
@@ -5311,7 +5315,8 @@
           "enrol": "Set up two-step verification on your profile to export customers.",
           "denied": "You don't have access to export customers.",
           "unavailable": "The file could not be made. Try again.",
-          "cancelled": "Export cancelled."
+          "cancelled": "Export cancelled.",
+          "too-many-ticked": "You can export up to {max, number} ticked customers. Use Select all, or narrow the list."
         }
       },
       "saved": {
@@ -5413,7 +5418,6 @@
         "refund-count": "{count, plural, =0 {No refunds} one {# refund} other {# refunds}}",
         "wallet": "Wallet balance",
         "wallet-failed": "Could not be read",
-        "first-order": "First order",
         "last-order": "Last order",
         "profile": "Profile",
         "email": "Email",
@@ -5422,7 +5426,8 @@
         "verified": "Email verified",
         "joined": "Joined",
         "account-id": "Account ID",
-        "not-given": "Not given"
+        "not-given": "Not given",
+        "first-order-on": "First order {date}"
       },
       "range": "{from}–{to} of {total}",
       "paging": {
@@ -5505,7 +5510,8 @@
             "granted": "Granted",
             "settled": "Settled",
             "failed": "Failed"
-          }
+          },
+          "capped": "The newest {max} promotion credits are shown."
         },
         "not-yet": "Payments per order, chargebacks and discount code usage are not listed here yet."
       }
@@ -5632,7 +5638,11 @@
         "pending-refunds": "{count, plural, one {# refund waiting} other {# refunds waiting}}",
         "wallet-balance": "The wallet balance isn't zero"
       },
-      "open-pending": "Open Settings > Account deletion > Pending requests"
+      "open-pending": "Open Settings > Account deletion > Pending requests",
+      "pending-on": "The account will be deleted on {date}. You can cancel the request until then.",
+      "pending-undated": "The account will be deleted after the waiting period. You can cancel the request until then.",
+      "executing": "The account is being deleted now. The request can't be cancelled.",
+      "cancel-request": "Cancel deletion request…"
     },
     "error": {
       "invalid": "Enter a reason of 1 to 500 characters, without < or >.",

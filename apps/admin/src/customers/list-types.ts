@@ -224,11 +224,11 @@ export interface SavedFiltersAnswer {
 }
 
 export function payloadOf(query: Query): SavedPayload {
-  const q = query.q.trim();
+  const q = searchOf(query.q);
   return {
     v: 1,
     view: query.view,
-    ...(q === '' ? {} : { q }),
+    ...(q === undefined ? {} : { q }),
     ...(filterCount(query.filters) === 0 ? {} : { filters: apiFilters(query.filters) }),
     sort: query.sort,
     direction: query.direction,

@@ -41,13 +41,20 @@ export function CustomerStatusDialog({
     busy.current = true;
     setPending(true);
     setError(null);
-    const action = disabling ? 'disable' : 'enable';
-    const result = await callApi<{ code: string }>(
-      'POST',
-      `identity/admin/customers/${encodeURIComponent(target.accountId)}/${action}`,
-      {},
-      csrfToken,
-    );
+    const id = encodeURIComponent(target.accountId);
+    const result = disabling
+      ? await callApi<{ code: string }>(
+          'POST',
+          `identity/admin/customers/${id}/disable`,
+          {},
+          csrfToken,
+        )
+      : await callApi<{ code: string }>(
+          'POST',
+          `identity/admin/customers/${id}/enable`,
+          {},
+          csrfToken,
+        );
     busy.current = false;
     setPending(false);
     if (result.ok) {

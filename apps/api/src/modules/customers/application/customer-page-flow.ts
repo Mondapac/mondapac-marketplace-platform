@@ -3,7 +3,9 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { parseId } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import { CustomerPageOpened } from '../domain/audit';
+import type { AccountDeletionRequest } from '../domain/account-deletion-request';
 import type { CustomerListRow } from '../domain/customer-list';
+import type { AccountDeletionRequestRepository } from './ports/account-deletion-request.repository';
 import { rowView, type CustomerRowView, type CustomerListDependencies } from './customer-list-flow';
 
 export const CUSTOMER_PAGE_TABS = ['overview', 'orders', 'money'] as const;
@@ -11,6 +13,8 @@ export type CustomerPageTab = (typeof CUSTOMER_PAGE_TABS)[number];
 
 export interface CustomerPageDependencies extends CustomerListDependencies {
   readonly audit: AuditWriter;
+  /** The account's open deletion request, shown on the Overview (same module's own table). */
+  readonly deletionRequests: Pick<AccountDeletionRequestRepository, 'findActiveOf'>;
 }
 
 export type CustomerPageFailure =
@@ -39,13 +43,23 @@ export async function openCustomerPage(
   context: CallContext,
   accountId: Id<'Account'>,
   tab: CustomerPageTab,
-): Promise<Result<CustomerListRow, CustomerPageFailure>> {
-  return deps.unitOfWork.run<CustomerListRow, CustomerPageFailure>(context.market, async () => {
+): Promise<Result<CustomerPageRead, CustomerPageFailure>> {
+  return deps.unitOfWork.run<CustomerPageRead, CustomerPageFailure>(context.market, async () => {
     const [row] = await deps.listReader.rowsByIds(context.market, [accountId]);
     if (row === undefined) return err({ code: 'customers.customer-not-found' });
+    const deletion =
+      tab === 'overview'
+        ? await deps.deletionRequests.findActiveOf(context.market, accountId)
+        : null;
     await deps.audit.record(context, CustomerPageOpened.entry(accountId, { after: { tab } }));
-    return ok(row);
+    return ok({ row, deletion });
   });
+}
+
+/** What one open of the page reads: the row and, on the Overview, the open deletion request. */
+export interface CustomerPageRead {
+  readonly row: CustomerListRow;
+  readonly deletion: AccountDeletionRequest | null;
 }
 
 /** The overview of one customer: the list row and what the orders add up to. */
@@ -53,10 +67,29 @@ export interface CustomerOverviewView extends CustomerRowView {
   readonly firstOrderAt: string | null;
   /** Minor units of `currency`, as digits. */
   readonly refundedMinor: string;
+  /**
+   * The account's open deletion request (pending: it can still be cancelled; executing: it is
+   * being carried out), or null. The page shows it and offers no second request.
+   */
+  readonly deletionRequest: {
+    readonly requestId: string;
+    readonly status: 'pending' | 'executing';
+    readonly requestedAt: string;
+    readonly scheduledFor: string;
+  } | null;
 }
 
-export const overviewView = (row: CustomerListRow): CustomerOverviewView => ({
+export const overviewView = ({ row, deletion }: CustomerPageRead): CustomerOverviewView => ({
   ...rowView(row),
   firstOrderAt: row.firstOrderAt === null ? null : row.firstOrderAt.toString(),
   refundedMinor: row.refundedMinor.toString(),
+  deletionRequest:
+    deletion === null || (deletion.status !== 'pending' && deletion.status !== 'executing')
+      ? null
+      : {
+          requestId: deletion.id,
+          status: deletion.status,
+          requestedAt: deletion.requestedAt.toString(),
+          scheduledFor: deletion.scheduledFor.toString(),
+        },
 });

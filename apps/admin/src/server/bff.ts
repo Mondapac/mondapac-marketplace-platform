@@ -81,6 +81,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/saved-filters',
     // The saved views of the order list (ordering; query: `listKey`).
     'ordering/admin/saved-filters',
+    // The saved views of the customer list (customers; query: `listKey`).
+    'customers/admin/saved-filters',
     // The buyer account deletion setting, read again after a conflict, and the pending deletion
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
@@ -273,6 +275,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'certification/admin/issuers',
     // Save the order list's current view as a tab (ordering): a closed body, for me or everyone.
     'ordering/admin/saved-filters',
+    // The customer list (customers): a read with the search term in the body, so a POST; its
+    // saved views; and the export (CSV or XLSX of the list's columns, behind a fresh two-step code).
+    'customers/admin/list',
+    'customers/admin/saved-filters',
+    'customers/admin/export',
   ]),
 };
 
@@ -304,6 +311,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/admin/accounts/:id/second-factor/reset',
     'identity/admin/customers/:id/disable',
     'identity/admin/customers/:id/enable',
+    // The audit row of a customer page tab, written before the tab's data is read (customers).
+    'customers/admin/customers/:id/tab-opened',
     'identity/admin/invitations/:id/resend',
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
@@ -453,6 +462,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/image',
     'identity/admin/roles/:id',
     // A saved view of the order list: its name and who can use it (ordering).
+    // A saved view of the customer list (customers).
+    'customers/admin/saved-filters/:id',
     'ordering/admin/saved-filters/:id',
     'sellers/admin/:id/review/manual-register-check',
     // Whether the seller may propose categories (sellers, SEL-26; categories C9-0).
@@ -524,6 +535,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A blog category or tag that no post uses (blog).
     'blog/admin/taxonomy/categories/:id',
     'blog/admin/taxonomy/tags/:id',
+    // A saved view of the customer list (customers).
+    'customers/admin/saved-filters/:id',
     // A saved view of the order list (ordering).
     'ordering/admin/saved-filters/:id',
   ],
@@ -577,8 +590,16 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/sellers/:id/ledger',
     // A storefront slide as a package to create in another Market (storefront).
     'storefront/admin/slides/:id/copy',
-    // One customer's wallet and the caller's credit caps (wallet), for the issue screen.
+    // One customer's wallet and the caller's credit caps (wallet), for the issue screen, and the
+    // wallet journal of the customer page's Money tab (query: `cursor`, `limit`).
     'wallet/admin/customers/:id',
+    'wallet/admin/customers/:id/history',
+    // The customer page (customers): the overview, audited by the API.
+    'customers/admin/customers/:id',
+    // The customer page's Money tab: the newest refunds (ordering) and the wallet credits from
+    // promotions (promotions; query: `limit`, `cursor`).
+    'ordering/admin/customers/:id/refunds',
+    'promotions/admin/customers/:id/credits',
     // One dispute case, read again after a decision (commission-payouts).
     'commission-payouts/admin/disputes/:id',
     // One buyer review for the moderator dialog (reviews).
@@ -594,6 +615,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** An opaque API cursor (base64url or dotted ids): URL-safe characters only. */
+const CURSOR = /^[A-Za-z0-9._~:=-]{1,256}$/;
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'identity/admin/sellers': ['state', 'limit', 'after'],
@@ -611,8 +634,11 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sellerId',
     'from',
     'to',
+    // One customer's orders, for the Orders tab of the customer page.
+    'accountId',
   ],
   'ordering/admin/saved-filters': ['listKey'],
+  'customers/admin/saved-filters': ['listKey'],
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
@@ -728,6 +754,10 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'ordering/admin/saved-filters': { listKey: /^admin\.ordering\.orders$/ },
+  'customers/admin/saved-filters': { listKey: /^admin\.customers\.customers$/ },
+  'ordering/admin/orders': { accountId: UUID },
+  'wallet/admin/customers/:id/history': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
+  'promotions/admin/customers/:id/credits': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'commission-payouts/admin/payouts': {
     status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,
     limit: /^[0-9]{1,3}$/,
@@ -801,6 +831,8 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
   'catalog/admin/platform-imports/:id/report': ['kind'],
   'catalog/admin/categories/:id/impact': ['action', 'targetId'],
+  'wallet/admin/customers/:id/history': ['cursor', 'limit'],
+  'promotions/admin/customers/:id/credits': ['limit', 'cursor'],
 };
 /** A note for reviewers in a query: 1 to 500 characters (any, newlines included). */
 const NOTE_SHAPE = /^[\s\S]{1,500}$/;
@@ -992,9 +1024,17 @@ const CERT_DOCUMENT_PATH =
 /** A platform product photo upload (catalog, P1): the same base64 photo cap. */
 const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/images$/i;
 
+/**
+ * The customer export (customers) names up to 1000 ticked ids of 36 characters (about 40 kB as
+ * JSON); more go as the list's filter. The API caps the ids itself.
+ */
+const CUSTOMERS_EXPORT_PATH = 'customers/admin/export';
+const MAX_EXPORT_BODY_BYTES = 48 * 1024;
+
 /** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
 function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
+  if (method === 'POST' && target === CUSTOMERS_EXPORT_PATH) return MAX_EXPORT_BODY_BYTES;
   if (method === 'PUT' && BLOG_DRAFT_PATH.test(target)) return MAX_BLOG_DRAFT_BYTES;
   if (method === 'POST' && CATEGORY_IMPORT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;

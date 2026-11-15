@@ -12,6 +12,7 @@ import {
   Menu,
   SkeletonRows,
   Tabs,
+  tabIdOf,
   type MenuItem,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -44,20 +45,28 @@ type PageLoad =
 
 type TabAudit = 'pending' | 'ok' | 'failed';
 
+/** The one panel the tab row switches (ARIA tabs). */
+const PANEL_ID = 'customer-tab-panel';
+
 /** A figure of the Overview: what is counted, the value, and a muted line under it. */
 function Tile({
   label,
   value,
   muted = false,
   note,
+  wide = false,
 }: {
   readonly label: string;
   readonly value: string;
   readonly muted?: boolean;
   readonly note?: string;
+  /** Spans two columns, so an odd last tile leaves no empty cell. */
+  readonly wide?: boolean;
 }) {
   return (
-    <li className="flex min-w-0 flex-col gap-1 rounded-lg border border-line bg-surface p-4">
+    <li
+      className={`flex min-w-0 flex-col gap-1 rounded-lg border border-line bg-surface p-4 ${wide ? 'col-span-2' : ''}`}
+    >
       <span className="text-sm font-medium text-fg-secondary">{label}</span>
       <span
         className={`text-xl font-semibold tabular-nums wrap-anywhere ${muted ? 'text-fg-muted' : 'text-fg'}`}
@@ -108,18 +117,23 @@ export function CustomerPage({
   const [page, setPage] = useState<PageLoad>({ state: 'loading' });
   const [audits, setAudits] = useState<Partial<Record<Tab, TabAudit>>>({});
   const [wallet, setWallet] = useState<
-    { readonly available: string; readonly currency: string } | null | 'failed'
+    { readonly available: string; readonly currency: string } | null | 'failed' | 'off'
   >(null);
   const [statusTarget, setStatusTarget] = useState<StatusTarget | null>(null);
   const [deleteSignal, setDeleteSignal] = useState(0);
   const [pendingDeletion, setPendingDeletion] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
   const id = encodeURIComponent(accountId);
+  const pendingChanged = useCallback(
+    (pending: { readonly requestId: string } | null) => setPendingDeletion(pending !== null),
+    [],
+  );
 
   const load = useCallback(async () => {
     setPage({ state: 'loading' });
     const result = await callApi<CustomerOverview>('GET', `customers/admin/customers/${id}`);
     if (result.ok) {
+      setPendingDeletion((result.body.deletionRequest ?? null) !== null);
       setPage({ state: 'ready', customer: result.body });
       return;
     }
@@ -150,7 +164,12 @@ export function CustomerPage({
     ).then((result) => {
       if (!live) return;
       setWallet(
-        result.ok ? { available: result.body.available, currency: result.body.currency } : 'failed',
+        result.ok
+          ? { available: result.body.available, currency: result.body.currency }
+          : // The Market's wallet is switched off: there is no balance to show, and no error.
+            result.failure.code === 'wallet.disabled'
+            ? 'off'
+            : 'failed',
       );
     });
     return () => {
@@ -224,7 +243,10 @@ export function CustomerPage({
       : formatMinor(minor, customer.currency, locale);
   const active = customer.status === 'active';
   const walletShown =
-    keys.has(WALLET_VIEW) && wallet !== null && wallet !== 'failed' ? wallet : null;
+    keys.has(WALLET_VIEW) && wallet !== null && wallet !== 'failed' && wallet !== 'off'
+      ? wallet
+      : null;
+  const walletTile = keys.has(WALLET_VIEW) && wallet !== 'off';
 
   const more: MenuItem[] = [
     ...(keys.has(STATUS_PERMISSION)
@@ -306,7 +328,9 @@ export function CustomerPage({
             waitingPeriodDays={waitingPeriodDays}
             csrfToken={csrfToken}
             openSignal={deleteSignal}
-            onPendingChange={(pending) => setPendingDeletion(pending !== null)}
+            onPendingChange={pendingChanged}
+            existing={customer.deletionRequest ?? null}
+            zone={zone}
           />
         ) : null}
       </Card>
@@ -315,15 +339,24 @@ export function CustomerPage({
           label={t('tabs')}
           activeId={tab}
           onSelect={select}
+          panelId={PANEL_ID}
           items={tabs.map((item) => ({ id: item, label: t(`tab.${item}`) }))}
         />
       ) : null}
-      <div ref={panel} tabIndex={-1} aria-label={t(`tab.${tab}`)} className="focus:outline-none">
+      <div
+        ref={panel}
+        id={PANEL_ID}
+        tabIndex={-1}
+        {...(tabs.length > 1
+          ? { role: 'tabpanel', 'aria-labelledby': tabIdOf(PANEL_ID, tab) }
+          : { role: 'region', 'aria-label': t(`tab.${tab}`) })}
+        className="focus:outline-none"
+      >
         {tab === 'overview' ? (
           <div className="flex flex-col gap-4">
             <ul
               aria-label={t('overview.figures')}
-              className="grid grid-cols-2 gap-3 lg:grid-cols-4"
+              className="grid grid-cols-2 gap-3 lg:grid-cols-3"
             >
               <Tile label={t('overview.orders')} value={number(customer.orderCount)} />
               <Tile
@@ -336,7 +369,7 @@ export function CustomerPage({
                 value={money(customer.refundCount === 0 ? null : customer.refundedMinor)}
                 note={refundNote}
               />
-              {keys.has(WALLET_VIEW) ? (
+              {walletTile ? (
                 <Tile
                   label={t('overview.wallet')}
                   value={
@@ -350,15 +383,6 @@ export function CustomerPage({
                 />
               ) : null}
               <Tile
-                label={t('overview.first-order')}
-                value={
-                  customer.firstOrderAt === null
-                    ? tl('never')
-                    : dayOf(customer.firstOrderAt, locale, zone)
-                }
-                muted={customer.firstOrderAt === null}
-              />
-              <Tile
                 label={t('overview.last-order')}
                 value={
                   customer.lastOrderAt === null
@@ -366,6 +390,14 @@ export function CustomerPage({
                     : dayOf(customer.lastOrderAt, locale, zone)
                 }
                 muted={customer.lastOrderAt === null}
+                {...(customer.firstOrderAt === null
+                  ? {}
+                  : {
+                      note: t('overview.first-order-on', {
+                        date: dayOf(customer.firstOrderAt, locale, zone),
+                      }),
+                    })}
+                wide={!walletTile}
               />
             </ul>
             <Card title={t('overview.profile')}>

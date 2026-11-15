@@ -15,6 +15,8 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { numberFormat } from '../shared/intl.ts';
+import { orderHref } from '../orders/order-href.ts';
+import { shortId } from '../shared/short-id.ts';
 import { formatMinor } from '../wallet/money.ts';
 import { dayOf } from './format.ts';
 import {
@@ -37,6 +39,9 @@ const REFUND_PAGE = 25;
 const WALLET_PAGE = 20;
 
 /** One read of an owning module, with Retry; a failed section leaves the others working. */
+/** The newest promotion credits shown; a customer with more sees a note (they are rare). */
+const CREDITS_PAGE = 100;
+
 function useRead<T>(path: string | null) {
   const [load, setLoad] = useState<Load<T>>({ state: 'loading' });
   const latest = useRef(0);
@@ -128,7 +133,9 @@ export function CustomerMoney({
       : null,
   );
   const credits = useRead<PromotionCredits>(
-    keys.has(PROMOTIONS_VIEW) ? `promotions/admin/customers/${id}/credits?limit=50` : null,
+    keys.has(PROMOTIONS_VIEW)
+      ? `promotions/admin/customers/${id}/credits?limit=${CREDITS_PAGE}`
+      : null,
   );
 
   const figures = [
@@ -159,9 +166,10 @@ export function CustomerMoney({
       cell: (row) => (
         <a
           className="font-medium text-link underline wrap-anywhere"
-          href={`/orders/${encodeURIComponent(row.orderId)}`}
+          href={orderHref(row.orderId, { accountId: customer.accountId, tab: 'money' })}
+          title={row.orderId}
         >
-          {t('refunds.order', { id: row.orderId.slice(0, 8) })}
+          {t('refunds.order', { id: shortId(row.orderId) })}
         </a>
       ),
     },
@@ -391,14 +399,21 @@ export function CustomerMoney({
         <Section title={t('credits.title')} load={credits.load} retry={() => void credits.retry()}>
           {() =>
             credits.load.state !== 'ready' ? null : (
-              <SuperTable
-                caption={t('credits.title')}
-                rows={credits.load.body.items}
-                rowId={(row) => row.id}
-                rowName={(row) => row.id}
-                columns={creditColumns}
-                empty={<EmptyState size="compact" icon="tag" title={t('credits.empty')} />}
-              />
+              <div className="flex flex-col gap-3">
+                <SuperTable
+                  caption={t('credits.title')}
+                  rows={credits.load.body.items}
+                  rowId={(row) => row.id}
+                  rowName={(row) => row.id}
+                  columns={creditColumns}
+                  empty={<EmptyState size="compact" icon="tag" title={t('credits.empty')} />}
+                />
+                {credits.load.body.nextCursor === null ? null : (
+                  <p className="text-sm text-fg-muted">
+                    {t('credits.capped', { max: CREDITS_PAGE })}
+                  </p>
+                )}
+              </div>
             )
           }
         </Section>

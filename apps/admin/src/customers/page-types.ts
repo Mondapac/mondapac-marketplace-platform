@@ -27,6 +27,13 @@ export interface CustomerOverview extends CustomerRow {
   readonly firstOrderAt: string | null;
   /** Minor units of `currency`, as digits. */
   readonly refundedMinor: string;
+  /** The open deletion request, or null (absent from an older API: none known). */
+  readonly deletionRequest?: {
+    readonly requestId: string;
+    readonly status: 'pending' | 'executing';
+    readonly requestedAt: string;
+    readonly scheduledFor: string;
+  } | null;
 }
 
 /** The average of the confirmed orders, in minor units (rounded down), or null with none. */

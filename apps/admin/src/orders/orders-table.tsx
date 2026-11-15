@@ -6,6 +6,7 @@ import { shortId } from '../shared/short-id.ts';
 import { FallbackId } from './fallback-id.tsx';
 import { DEFAULT_COLUMNS, type OrderColumn } from './orders-columns.ts';
 import { OrderStatusBadge } from './status-badge.tsx';
+import { orderHref, type CustomerOrigin } from './order-href.ts';
 import type { AdminOrder, OrderCustomer } from './types.ts';
 
 /** The width of each column from 1024 px; the order reference is always the first. */
@@ -29,10 +30,13 @@ export function OrdersTable({
   rows,
   columns = DEFAULT_COLUMNS,
   zone,
+  fromCustomer,
 }: {
   readonly rows: readonly AdminOrder[];
   readonly columns?: readonly OrderColumn[];
   readonly zone: string;
+  /** Opened from a customer's page: each order's Back returns to that tab. */
+  readonly fromCustomer?: CustomerOrigin;
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -119,7 +123,7 @@ export function OrdersTable({
               <td className={CARD_TABLE.cell}>
                 <a
                   className="font-medium text-link underline lg:whitespace-nowrap"
-                  href={`/orders/${encodeURIComponent(order.orderId)}`}
+                  href={orderHref(order.orderId, fromCustomer)}
                   title={order.orderId}
                 >
                   {t('reference', { id: shortId(order.orderId) })}

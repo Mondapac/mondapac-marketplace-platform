@@ -8,6 +8,8 @@ import type { FilterKey, Filters } from './list-types.ts';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const COUNT = /^\d{1,7}$/;
+/** The API takes a spent bound of at most 15 minor-unit digits. */
+const MINOR_DIGITS_MAX = 15;
 
 /** Minor units as the amount an admin types ("1250" AUD is "12.50"). */
 export function majorOf(minor: string, currency: string): string {
@@ -37,8 +39,8 @@ const draftOf = (filters: Filters, currency: string | null): Draft => ({
 /**
  * The filter panel of the Customers list: status and email verified as choices, then joined and
  * last order as day ranges, order count and spent as ranges. Spent is typed in the Market's
- * currency (as the list shows it) and sent in minor units; without a known currency (no customer
- * has ordered yet) the spent fields are left out. A range whose end is before its start is refused
+ * currency (as the list shows it) and sent in minor units; without a known currency (no row on
+ * the page has one) the spent fields are left out, and a bound already set is kept as it is. A range whose end is before its start is refused
  * here, as the API would refuse it.
  */
 export function CustomersFilterPanel({
@@ -85,8 +87,15 @@ export function CustomersFilterPanel({
           continue;
         }
         const parsed = parseAmount(value, currency);
-        if (parsed.ok) next[key] = parsed.minor;
-        else problems[key] = t('error.amount');
+        if (!parsed.ok) problems[key] = t('error.amount');
+        else if (parsed.minor.length > MINOR_DIGITS_MAX) problems[key] = t('error.amount-large');
+        else next[key] = parsed.minor;
+      }
+    } else {
+      // The fields are not shown without a currency: a bound already set (a saved filter) stays.
+      for (const key of ['spentMin', 'spentMax'] as const) {
+        const value = filters[key];
+        if (value !== undefined) next[key] = value;
       }
     }
     const before = (from: FilterKey, to: FilterKey, numeric: boolean) => {

@@ -12,10 +12,19 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import type { ApiFailure } from '../api/client.ts';
 import { useStepUpProof } from '../step-up/step-up.tsx';
-import { EXPORT_PERMISSION, selectorOf, type OptionalColumn, type Query } from './list-types.ts';
+import {
+  EXPORT_PERMISSION,
+  SELECT_MAX,
+  selectorOf,
+  type OptionalColumn,
+  type Query,
+} from './list-types.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-/** The API takes at most this many ids in one export; more go as the list's filter. */
+/**
+ * The API takes at most this many ticked ids in one export. More ticked rows are refused here: the
+ * list's filter would export every customer it matches, not the ones ticked.
+ */
 const EXPORT_IDS_MAX = 1000;
 
 /** The export's columns, in the order the API writes them (email is always first). */
@@ -90,13 +99,15 @@ export function CustomersBulk({
   if (!permissionKeys.includes(EXPORT_PERMISSION)) return null;
 
   async function exportFile(format: ExportFormat) {
+    if (!selection.allMatching && selection.ids.length > EXPORT_IDS_MAX) {
+      toast.error(t('error.too-many-ticked', { max: EXPORT_IDS_MAX }), { id: 'customers-export' });
+      return;
+    }
     setBusy(true);
     const body = {
       format,
       columns: ['name', ...columns.flatMap((column) => EXPORT_COLUMN[column])],
-      ...(selection.allMatching || selection.ids.length > EXPORT_IDS_MAX
-        ? selectorOf(query)
-        : { ids: selection.ids }),
+      ...(selection.allMatching ? selectorOf(query) : { ids: selection.ids }),
     };
     const send = () =>
       fetch('/api/customers/admin/export', {
@@ -127,7 +138,12 @@ export function CustomersBulk({
         if (!response.ok) {
           const failure = await failureFrom(response);
           const proof = await prove(failure, csrfToken);
-          if (proof === 'cancelled') throw new ExportFailure('cancelled');
+          if (proof === 'cancelled') {
+            // Closing the "set up two-step codes" dialog is not a cancelled code.
+            throw new ExportFailure(
+              failure.code === 'second-factor.enrolment-required' ? 'enrol' : 'cancelled',
+            );
+          }
           if (proof === 'not-asked') throw failureOf(failure);
           response = await send();
           if (!response.ok) throw failureOf(await failureFrom(response));
@@ -186,11 +202,12 @@ export function CustomersBulk({
     },
   ];
   const links = [
-    ...(!selection.allMatching && selection.total > count
+    // Select all is offered up to the export's own cap; above it the filter has to be narrowed.
+    ...(!selection.allMatching && selection.total > count && selection.total <= SELECT_MAX
       ? [
           {
             id: 'select-all',
-            label: t('select-all', { count: Math.min(selection.total, 10_000) }),
+            label: t('select-all', { count: selection.total }),
             onSelect: onSelectAll,
           },
         ]

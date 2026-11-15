@@ -379,8 +379,18 @@ admin deletes a buyer's account for them, from a support ticket.
   refunds, wallet journal and promotion credits, each under its own key). `tab-opened` is called once per tab per visit
   before the tab's data is read.
 - **Known gaps (phase 2 backend):** order-number search; refunds read capped at 100 with no paging or sort (the page
-  pages the 100 in the browser); payments per order, chargebacks and code usage per customer; a pending deletion request
-  is not part of the Overview read, so the header shows "Deletion pending" only for a request made on the page; the
+  pages the 100 in the browser); payments per order, chargebacks and code usage per customer; the
   "deleted customer" view (erasure removes the directory row, so the page says not found). The spent filter is typed in
   the currency the rows carry (the panel has no Market currency setting); with no ordering customer on the page it is
   hidden.
+- **Review round 1 (PR #925):** the Overview read now carries `deletionRequest` (the open request: id, pending or
+  executing, requested and scheduled instants), so the page shows the banner with the date and Cancel and offers no
+  second request. The panel relay allows the new routes (list, export with a 48 KB body cap for 1000 ids, saved
+  filters, the overview, `tab-opened`, refunds, wallet journal, promotion credits) and lets `accountId` (a UUID) cross
+  on `ordering/admin/orders`. More than 1000 ticked rows are refused instead of exporting the whole filter. The
+  customer's Orders tab keeps its own column choice; an order opened from it (or from Money) has Back to the customer.
+  The page tabs use the ARIA tabs pattern (`Tabs` with `panelId`).
+- **Still open:** the day filters (joined, last order) are evaluated as UTC days on the API while the list shows days in
+  the admin's zone (ADR-0005; phase 2 backend). A shared saved filter may hold an email prefix as its search; every
+  admin who sees it already holds `customers.customers.view`. The `tab-opened` audit is written because the page calls
+  it first; a direct read of the owning module's route is audited by that module only.

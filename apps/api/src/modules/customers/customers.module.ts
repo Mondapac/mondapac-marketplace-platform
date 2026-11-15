@@ -181,18 +181,26 @@ function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
 
 type PageUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerPageDependencies) => U;
 
-/** The customer page use cases: the list reads plus the audit writer. */
+/** The customer page use cases: the list reads, the audit writer and the open deletion request. */
 function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
-    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_LIST_READER, CLOCK, AUDIT_WRITER],
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      CUSTOMER_LIST_READER,
+      CLOCK,
+      AUDIT_WRITER,
+      ACCOUNT_DELETION_REQUEST_REPOSITORY,
+    ],
     useFactory: (
       gate: UseCaseGate,
       unitOfWork: CustomerPageDependencies['unitOfWork'],
       listReader: CustomerPageDependencies['listReader'],
       clock: CustomerPageDependencies['clock'],
       audit: CustomerPageDependencies['audit'],
-    ) => new type(gate, { unitOfWork, listReader, clock, audit }),
+      deletionRequests: CustomerPageDependencies['deletionRequests'],
+    ) => new type(gate, { unitOfWork, listReader, clock, audit, deletionRequests }),
   };
 }
 

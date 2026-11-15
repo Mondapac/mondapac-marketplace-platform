@@ -11,8 +11,6 @@ import { callApi } from '../api/client.ts';
 import { problemOf } from '../catalog/products-saved-save.tsx';
 import { LIST_KEY, payloadOf, type Query, type SavedFilter } from './list-types.ts';
 
-const BASE = 'customers/admin/saved-filters';
-
 function useFieldLabels(limits: { readonly perOwner: number; readonly shared: number }) {
   const t = useTranslations('customers.list.saved');
   return {
@@ -95,7 +93,7 @@ export function CustomersSavedDialogs({
         onSubmit={async ({ name, visibility }) => {
           const result = await callApi<SavedFilter>(
             'POST',
-            BASE,
+            'customers/admin/saved-filters',
             { listKey: LIST_KEY, name, visibility, payload: payloadOf(query) },
             csrfToken,
           );
@@ -116,7 +114,7 @@ export function CustomersSavedDialogs({
         onUpdate={async (id, input) => {
           const result = await callApi<SavedFilter>(
             'PUT',
-            `${BASE}/${encodeURIComponent(id)}`,
+            `customers/admin/saved-filters/${encodeURIComponent(id)}`,
             input,
             csrfToken,
           );
@@ -130,7 +128,7 @@ export function CustomersSavedDialogs({
         onDelete={async (id) => {
           const result = await callApi<{ id: string }>(
             'DELETE',
-            `${BASE}/${encodeURIComponent(id)}`,
+            `customers/admin/saved-filters/${encodeURIComponent(id)}`,
             undefined,
             csrfToken,
           );
