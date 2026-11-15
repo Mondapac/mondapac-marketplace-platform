@@ -1,18 +1,21 @@
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   testAuthenticatedActor,
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
-import type { ShipToPurgeCursor } from '../../src/modules/ordering/application/ports/ship-to-retention.repository';
+import type {
+  ShipToPurgeBatch,
+  ShipToPurgeCursor,
+} from '../../src/modules/ordering/application/ports/ship-to-retention.repository';
 import type { ShipToRetentionDependencies } from '../../src/modules/ordering/application/ship-to-retention-flow';
 import { AdminSetShipToRetention } from '../../src/modules/ordering/application/use-cases/admin-set-ship-to-retention.use-case';
 import { AdminViewShipToRetention } from '../../src/modules/ordering/application/use-cases/admin-view-ship-to-retention.use-case';
 import { PurgeDeliveredShipTo } from '../../src/modules/ordering/application/use-cases/purge-delivered-ship-to.use-case';
 import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
-import type { OrderState, SellerOrderState } from '../../src/modules/ordering/domain/order';
+import type { OrderState, SellerOrder } from '../../src/modules/ordering/domain/order';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
 import {
   PrismaShipToRetentionRepository,
@@ -120,7 +123,7 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
       months: 24,
       expectedVersion: view.value.version,
       ...input,
-    } as never);
+    });
     if (!result.ok) throw new Error(`set refused: ${result.error.code}`);
     return result.value;
   };
@@ -131,7 +134,7 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
   };
 
   /** A seller order as placed (to ship); `placed` then records its delivery as the seller would. */
-  const sellerOrder = (): SellerOrderState => ({
+  const sellerOrder = (): SellerOrder => ({
     id: ids.next<'SellerOrder'>(),
     sellerId: ids.next<'Seller'>(),
     subtotal: 1000n,
@@ -281,7 +284,7 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
     let after: ShipToPurgeCursor | null = null;
     for (let n = 0; n < 1000; n += 1) {
       const from: ShipToPurgeCursor | null = after;
-      const batch = await db.unitOfWork.run(market, async () =>
+      const batch: Result<ShipToPurgeBatch, never> = await db.unitOfWork.run(market, async () =>
         ok(await deps.retention.clearDeliveredShipTo(market, cutoff, from, 2)),
       );
       if (!batch.ok) throw new Error('batch failed');

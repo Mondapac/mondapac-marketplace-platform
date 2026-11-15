@@ -23,7 +23,10 @@ import {
   ORDERING_SHIP_TO_RETENTION_VIEW,
 } from '../contracts/permissions';
 import { RegistryMarketZones } from '../infrastructure/prisma-ship-to-retention.repository';
-import { SHIP_TO_PURGE_MAX_BATCHES, type ShipToRetentionDependencies } from './ship-to-retention-flow';
+import {
+  SHIP_TO_PURGE_MAX_BATCHES,
+  type ShipToRetentionDependencies,
+} from './ship-to-retention-flow';
 import { AdminSetShipToRetention } from './use-cases/admin-set-ship-to-retention.use-case';
 import { AdminViewShipToRetention } from './use-cases/admin-view-ship-to-retention.use-case';
 import { PurgeDeliveredShipTo } from './use-cases/purge-delivered-ship-to.use-case';
@@ -73,7 +76,7 @@ describe.each([['AU'], ['ZZ']] as const)('ship-to retention in market %s', (code
       months: 24,
       expectedVersion: 0,
       ...input,
-    } as never);
+    });
   const purge = () => new PurgeDeliveredShipTo(gate, deps).execute(system, {});
   let next = 1;
   const order = (deliveries: (string | null)[], confirmed = '2022-01-01T00:00:00') => {
