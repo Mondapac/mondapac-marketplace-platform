@@ -10,7 +10,7 @@ export interface SavedFilterShareCheckOutput {
 export type SavedFilterShareCheckFailure = { readonly code: 'access.denied' };
 
 /**
- * `saved-filter.share-check`: asks the gate whether the caller holds the key
+ * `customers.saved-filter-share-check`: asks the gate whether the caller holds the key
  * `customers.saved-filter.share`. It reads and writes nothing; the admin saved-filter use cases call
  * it to learn what the caller may do beyond their own filters (share a filter with everyone,
  * manage a filter somebody else shared), so the key is checked by the gate, in one place. The

@@ -249,8 +249,8 @@ function orderBy(
       return [{ emailLower: direction }, tie];
     case 'last-order':
       return [{ stats: { lastOrderAt: nullsLast } }, tie];
-    // Every directory row has a stats row: the sync writes both in one unit and the reconcile
-    // replaces both, so these two sorts never meet a null from the join.
+    // The sync writes the directory row and its stats row in one unit, so a null from the join
+    // is only a transient state; Prisma cannot order nulls on these required columns.
     case 'orders':
       return [{ stats: { orderCount: direction } }, tie];
     case 'spent':

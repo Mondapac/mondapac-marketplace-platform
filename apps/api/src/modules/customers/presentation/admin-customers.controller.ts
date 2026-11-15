@@ -158,7 +158,7 @@ export class AdminCustomersController {
   @ApiOperation({
     summary: 'Export customers as a CSV or XLSX file',
     description:
-      'Needs customers.customers.export (protected) and a fresh two-step proof of this admin session ' +
+      'Needs customers.customers.view and customers.customers.export (protected) and a fresh two-step proof of this admin session ' +
       `for \`${CUSTOMERS_EXPORT_STEP_UP}\` (POST /identity/admin/step-up/verify, valid 5 minutes, spent ` +
       'by the export). Body: `format` (csv, the default, or xlsx), `columns` (an array of name, status, ' +
       'verified, joined, last-order, orders, spent, currency, refunds in the order shown; default all; ' +

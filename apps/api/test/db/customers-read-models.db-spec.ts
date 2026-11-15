@@ -91,6 +91,27 @@ describe.each(TEST_MARKETS)('customers read models in market %s (database)', (co
     expect(rows.rows).toEqual([{ status: 'disabled', email_lower: 'sam@example.com' }]);
   });
 
+  it('gives a never-ordered customer a zero stats row and leaves an existing row alone', async () => {
+    const fresh = ids.next<'Account'>();
+    const known = ids.next<'Account'>();
+    await inUnit(market, async () => {
+      await repository.upsertDirectory(market, entry(fresh), T0);
+      await repository.upsertDirectory(market, entry(known), T0);
+      await repository.upsertStats(market, stats(known), T0);
+      await repository.ensureStats(market, fresh, T0);
+      await repository.ensureStats(market, known, T0);
+    });
+    expect(await inUnit(market, () => repository.findStats(market, fresh))).toMatchObject({
+      orderCount: 0,
+      spentMinor: 0n,
+      lastOrderAt: null,
+    });
+    expect(await inUnit(market, () => repository.findStats(market, known))).toMatchObject({
+      orderCount: 3,
+      spentMinor: 45_000n,
+    });
+  });
+
   it('removes both rows of one account and no other', async () => {
     const gone = ids.next<'Account'>();
     const kept = ids.next<'Account'>();

@@ -49,7 +49,7 @@ This note records what is built and the rules it keeps.
 ## Next packages
 
 3. Customer profile API. 4. Marketing consent record in `legal`.
-4. Customer account deletion (v1.5, CUS-03), built in three PRs: 5a and 5b (below, built), 5c.
+5. Customer account deletion (v1.5, CUS-03), built in three PRs: 5a and 5b (below, built), 5c.
 
 ## Package 5a: account deletion setting and server lock (API only)
 
@@ -62,7 +62,7 @@ manual admin deletion.
   (built-in default false) and `waitingPeriodDays` (default 30, allowed 7 to 90). Version 0 is the
   built-in defaults. Each row also keeps the admin account, the time and the `reason`.
 - **Admin routes** (population `admin`, `no-store`): `GET` and `PUT
-customers/admin/account-deletion-settings`. View needs `customers.account-deletion-settings.view`
+  customers/admin/account-deletion-settings`. View needs `customers.account-deletion-settings.view`
   (plain, in the Viewer default role, seed version 15). Change needs
   `customers.account-deletion-settings.manage`, a protected key held by the Platform Administrator
   only. The body is `{ expectedVersion, settings: { enabled, waitingPeriodDays }, reason }`; CSRF
@@ -101,8 +101,8 @@ Owner approved design v2 on 2026-10-26. No screens (Reza later). The flow lives 
 the customers barrel.
 
 - **Routes** (customer sessions, `no-store`, CSRF on the unsafe ones): `POST
-customers/me/deletion-requests` (body `{ confirm: true }`; 201 `{ status, requestedAt,
-scheduledFor, waitingPeriodDays }`), `GET .../current` (404
+  customers/me/deletion-requests` (body `{ confirm: true }`; 201 `{ status, requestedAt,
+  scheduledFor, waitingPeriodDays }`), `GET .../current` (404
   `customers.account-deletion-request-not-found` when none), `DELETE .../current` (204).
 - **Request order.** (1) `assertAccountDeletionAllowed` (403 `customers.account-deletion-disabled`
   before any module is asked); (2) blockers, each through the owning module's facade: open orders
@@ -186,7 +186,7 @@ scheduledFor, waitingPeriodDays }`), `GET .../current` (404
 - **Erase callers are not restricted by a boundaries allow-list.** `identity.eraseCustomerAccount`,
   `endAllCustomerSessions` and `customerAccountExists` are `system` use cases reachable from any
   module that holds the identity facade; only `customers` should call them, and no `pnpm
-boundaries` rule enforces it yet.
+  boundaries` rule enforces it yet.
 - **Claim hand-back.** A request that was already `executing` when a run took it (a resumed stale
   claim) is handed back to `pending` only after `identity.customerAccountExists` says the account
   is still there; if it is already erased the run finishes the remaining steps with a warn log
@@ -209,11 +209,11 @@ Owner said «ساخت» on 2026-10-28 (design v2 section 4-ب, decision ح5). No
 admin deletes a buyer's account for them, from a support ticket.
 
 - **Routes** (population `admin`, `no-store`, CSRF on the unsafe ones, `@RequiresStepUp
-('customers.buyer-account.delete')`, acting-as refused): `POST customers/admin/buyers/:accountId/
-deletion-requests` (body `{ ticketRef, reason, confirm: true }`, closed; 201 `{ requestId, status,
-requestedAt, scheduledFor, waitingPeriodDays }`), `DELETE customers/admin/deletion-requests/
-:requestId` (body `{ reason }`; 204) and `GET customers/admin/deletion-requests?status=pending
-&cursor&limit` (page of `{ requestId, accountId, requestedAt, scheduledFor, status, requestedBy }`
+  ('customers.buyer-account.delete')`, acting-as refused): `POST customers/admin/buyers/:accountId/
+  deletion-requests` (body `{ ticketRef, reason, confirm: true }`, closed; 201 `{ requestId, status,
+  requestedAt, scheduledFor, waitingPeriodDays }`), `DELETE customers/admin/deletion-requests/
+  :requestId` (body `{ reason }`; 204) and `GET customers/admin/deletion-requests?status=pending
+  &cursor&limit` (page of `{ requestId, accountId, requestedAt, scheduledFor, status, requestedBy }`
   and `nextCursor`; earliest date first; no names, emails or ticket text).
 - **Permissions.** `customers.buyer-account.delete` (protected: Platform Administrator or a custom
   role; the spec's `buyers.account.delete` cannot be declared by `customers` because a key starts
@@ -266,7 +266,7 @@ requestedAt, scheduledFor, waitingPeriodDays }`), `DELETE customers/admin/deleti
 ### 5c review follow-ups (not built)
 
 - **Keyset `OR` form (Mojtaba 2).** The pending list pages with `scheduled_for > x OR (scheduled_for = x
-AND id > y)`. A row-value comparison (`(scheduled_for, id) > (x, y)`) would use the partial index
+  AND id > y)`. A row-value comparison (`(scheduled_for, id) > (x, y)`) would use the partial index
   more exactly; do it when the list grows past a screen of rows (Prisma needs a raw query).
 - **Probe before the proof (Hassan L2).** The admin request reads the buyer's account and the
   blockers before the step-up proof is spent, so an admin with a valid proof can probe whether an

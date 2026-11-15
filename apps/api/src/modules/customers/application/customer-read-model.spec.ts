@@ -264,7 +264,13 @@ describe.each(TEST_MARKET_IDS)('customer read models in market %s', (code) => {
     const result = await new ReconcileCustomerReadModels(gate, deps).execute(system, {});
     expect(result).toEqual(ok({ directoryRows: 2, customersWithOrders: 1, swept: 0 }));
     expect(models.directory.size).toBe(2);
-    expect(models.stats.size).toBe(1);
+    // Bob never ordered: he still gets the all-zero stats row, so every customer sorts as a number.
+    expect(models.stats.size).toBe(2);
+    expect(models.stats.get(`${market.marketId}:${BOB}`)).toMatchObject({
+      orderCount: 0,
+      spentMinor: 0n,
+      lastOrderAt: null,
+    });
   });
 
   it('skips an order that is gone, still recording the delivery', async () => {
