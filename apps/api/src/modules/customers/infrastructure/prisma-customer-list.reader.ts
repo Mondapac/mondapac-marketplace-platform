@@ -1,6 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
+import { escapeLikeTerm } from '../../../platform/text/like-escape';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   CustomerListQuery,
@@ -205,9 +206,11 @@ export class PrismaCustomerListReader implements CustomerListReader {
 
     if (selector.text !== null) {
       const text = selector.text;
-      const clauses: Where[] = [{ emailLower: { startsWith: emailSearchKey(text) } }];
+      const clauses: Where[] = [
+        { emailLower: { startsWith: escapeLikeTerm(emailSearchKey(text)) } },
+      ];
       if (Array.from(text).length >= 3) {
-        clauses.push({ displayName: { contains: text, mode: 'insensitive' } });
+        clauses.push({ displayName: { contains: escapeLikeTerm(text), mode: 'insensitive' } });
       }
       and.push({ OR: clauses });
     }
@@ -246,6 +249,8 @@ function orderBy(
       return [{ emailLower: direction }, tie];
     case 'last-order':
       return [{ stats: { lastOrderAt: nullsLast } }, tie];
+    // Every directory row has a stats row: the sync writes both in one unit and the reconcile
+    // replaces both, so these two sorts never meet a null from the join.
     case 'orders':
       return [{ stats: { orderCount: direction } }, tie];
     case 'spent':

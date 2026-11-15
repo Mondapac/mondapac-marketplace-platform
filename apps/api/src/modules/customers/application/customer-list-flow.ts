@@ -44,7 +44,12 @@ export const isRecord = (value: unknown): value is Record<string, unknown> =>
 /** The admin the call acts for. The population is checked here, the key by the gate. */
 export function adminAccountOf(context: CallContext): Id<'Account'> | null {
   const { actor } = context;
-  return actor.kind === 'authenticated' && actor.population === 'admin' ? actor.accountId : null;
+  if (actor.kind !== 'authenticated' || actor.population !== 'admin') return null;
+  // Login as Seller sessions never read the customers (the marker is reserved on the actor).
+  if (Object.hasOwn(actor, 'actingAs') && (actor as { actingAs?: unknown }).actingAs != null) {
+    return null;
+  }
+  return actor.accountId;
 }
 
 const LIST_KEYS = new Set([
@@ -144,6 +149,8 @@ export function parseListRequest(input: unknown): Result<ListPageRequest, ListVa
     const match = typeof input['cursor'] === 'string' ? CURSOR.exec(input['cursor']) : null;
     if (match === null) return invalidField('cursor', 'format');
     offset = Number(match[1]);
+    // A hand-made cursor must not walk past the depth the page numbers stop at.
+    if (offset >= CUSTOMER_MAX_PAGED_ROWS) return invalidField('cursor', 'range');
   }
   return ok({ selector: selector.value, ...order.value, page: null, offset, limit });
 }

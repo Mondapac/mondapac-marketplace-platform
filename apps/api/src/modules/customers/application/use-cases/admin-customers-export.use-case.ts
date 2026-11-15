@@ -9,7 +9,7 @@ import {
 } from '../../../../platform/authz';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { CUSTOMERS_CUSTOMER_EXPORT } from '../../contracts/permissions';
+import { CUSTOMERS_CUSTOMER_EXPORT, CUSTOMERS_CUSTOMER_VIEW } from '../../contracts/permissions';
 import { CUSTOMERS_EXPORT_STEP_UP } from '../../contracts/step-up';
 import { CustomersExported } from '../../domain/audit';
 import { CUSTOMER_EXPORT_MAX_ROWS } from '../../domain/customer-list';
@@ -78,7 +78,10 @@ export class AdminCustomersExport extends UseCase<
 > {
   static override readonly access: AccessDeclaration = {
     name: 'customers.admin-customers-export',
-    rule: { kind: 'permissions', allOf: [CUSTOMERS_CUSTOMER_EXPORT.key] },
+    rule: {
+      kind: 'permissions',
+      allOf: [CUSTOMERS_CUSTOMER_VIEW.key, CUSTOMERS_CUSTOMER_EXPORT.key],
+    },
   };
 
   constructor(

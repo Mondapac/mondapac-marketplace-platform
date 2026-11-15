@@ -247,6 +247,24 @@ describe.each(TEST_MARKETS)('admin customers list in market %s (database)', (cod
     ).toBe(1);
   });
 
+  it('matches a search wildcard as itself, never as a pattern', async () => {
+    for (const text of ['%%', '%%%', '__', '___', '\\']) {
+      expect(
+        await inUnit(market, () => reader.count(market, { selector: { ...BLANK, text }, now: T0 })),
+      ).toBe(0);
+    }
+  });
+
+  it('sorts by orders and spent in both directions, a never-ordered customer last or first', async () => {
+    // The sync writes a stats row for every customer, so the fixture row with none (amina) is left out.
+    const known = async (sort: 'orders' | 'spent', direction: 'asc' | 'desc') =>
+      (await emails({}, sort, direction)).filter((name) => name !== 'amina');
+    for (const sort of ['orders', 'spent'] as const) {
+      expect(await known(sort, 'desc')).toEqual(['bilal', 'carim', 'dana']);
+      expect(await known(sort, 'asc')).toEqual(['dana', 'carim', 'bilal']);
+    }
+  });
+
   it('sorts by every column and pages without repeating a row', async () => {
     expect(await emails({}, 'joined', 'asc')).toEqual(['dana', 'carim', 'bilal', 'amina']);
     expect(await emails({}, 'email', 'asc')).toEqual(['amina', 'bilal', 'carim', 'dana']);

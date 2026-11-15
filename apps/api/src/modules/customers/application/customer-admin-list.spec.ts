@@ -219,7 +219,10 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
     ]) {
       expect(useCase.access.rule).toEqual({ kind: 'permissions', allOf: [VIEW] });
     }
-    expect(AdminCustomersExport.access.rule).toEqual({ kind: 'permissions', allOf: [EXPORT] });
+    expect(AdminCustomersExport.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [VIEW, EXPORT],
+    });
     expect(SavedFilterShareCheck.access.rule).toEqual({ kind: 'permissions', allOf: [SHARE] });
   });
 
@@ -383,6 +386,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       [{ page: 1, cursor: 'o1' }, 'cursor'],
       [{ page: 401, pageSize: 25 }, 'page'],
       [{ cursor: 'x' }, 'cursor'],
+      [{ cursor: 'o10000' }, 'cursor'],
       [{ extra: true }, 'extra'],
     ])('refuses the request %j', async (body, path) => {
       const t = seeded();
@@ -418,15 +422,41 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       return text;
     };
 
-    it('needs the export key, not the view key', async () => {
+    it('needs both the export key and the view key', async () => {
       const t = seeded();
       expect(failure(await t.export.execute(t.as(person([VIEW])), {}))).toBe('access.denied');
+      expect(failure(await t.export.execute(t.as(person([EXPORT])), {}))).toBe('access.denied');
       expect(t.spent).toEqual([]);
+    });
+
+    it('drops the ids of another Market from the file and the count', async () => {
+      const t = seeded();
+      const foreign = t.listReader.rowsOf.get(otherMarket.marketId)![0]!.accountId;
+      const own = t.listReader.rowsOf.get(market.marketId)![0]!.accountId;
+      const result = await t.export.execute(t.as(person([VIEW, EXPORT])), {
+        ids: [own, foreign],
+      });
+      if (!result.ok) throw new Error('export failed');
+      const text = await drain(result.value.chunks);
+      expect(text).not.toContain('other.test');
+      expect(JSON.stringify(t.audits[0])).toContain('"rowCount":1');
+    });
+
+    it('refuses more than 10,000 customers whole: no proof spent, no audit row', async () => {
+      const t = seeded();
+      t.listReader.add(
+        market,
+        ...Array.from({ length: 10_001 }, (_unused, n) => row({ email: `bulk${n}@example.test` })),
+      );
+      const result = await t.export.execute(t.as(person([VIEW, EXPORT])), {});
+      // The in-memory unit does not roll the spent proof back; the audit row is what must be absent.
+      expect(failure(result)).toBe('batch.too-large');
+      expect(t.audits).toEqual([]);
     });
 
     it('spends the step-up proof, writes one audit row without personal data and a formula-safe CSV', async () => {
       const t = seeded();
-      const result = await t.export.execute(t.as(person([EXPORT])), {
+      const result = await t.export.execute(t.as(person([VIEW, EXPORT])), {
         columns: ['name', 'orders'],
         q: '=cmd',
       });
@@ -452,7 +482,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       const t = seeded();
       const all = await t.idsOf.execute(t.as(person([VIEW])), { view: 'disabled' });
       if (!all.ok) throw new Error('ids failed');
-      const result = await t.export.execute(t.as(person([EXPORT])), {
+      const result = await t.export.execute(t.as(person([VIEW, EXPORT])), {
         format: 'xlsx',
         ids: [...all.value.ids, '01990000-0000-7000-8000-00000000dead'],
       });
@@ -467,7 +497,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
     it('commits nothing when the admin has no fresh proof', async () => {
       const t = seeded();
       t.stepUp.refuse = 'second-factor.required';
-      const result = await t.export.execute(t.as(person([EXPORT])), {});
+      const result = await t.export.execute(t.as(person([VIEW, EXPORT])), {});
       expect(failure(result)).toBe('second-factor.required');
       expect(t.audits).toEqual([]);
     });
@@ -481,7 +511,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       [{ unknown: 1 }, 'unknown'],
     ])('refuses the request %j before spending the proof', async (body, path) => {
       const t = seeded();
-      const result = await t.export.execute(t.as(person([EXPORT])), body);
+      const result = await t.export.execute(t.as(person([VIEW, EXPORT])), body);
       expect(failure(result)).toBe('validation.failed');
       if (!result.ok && result.error.code === 'validation.failed') {
         expect(result.error.fields[0]?.path).toBe(path);

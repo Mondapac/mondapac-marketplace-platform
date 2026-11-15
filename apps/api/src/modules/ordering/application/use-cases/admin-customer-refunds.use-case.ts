@@ -2,6 +2,7 @@ import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { ORDERING_ORDER_VIEW } from '../../contracts/permissions';
+import { isActingAsSession } from '../acting-as';
 import type { OrderingDependencies } from '../checkout-flow';
 import { refundView, type RefundView } from '../refund-flow';
 
@@ -44,7 +45,11 @@ export class AdminCustomerRefunds extends UseCase<
     input: { readonly accountId: unknown },
   ): Promise<Result<{ readonly refunds: readonly RefundView[] }, AdminCustomerRefundsFailure>> {
     const { actor } = context;
-    if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
+    if (
+      actor.kind !== 'authenticated' ||
+      actor.population !== 'admin' ||
+      isActingAsSession(actor)
+    ) {
       return err({ code: 'access.denied' });
     }
     const parsed = typeof input.accountId === 'string' ? parseId<'Account'>(input.accountId) : null;
