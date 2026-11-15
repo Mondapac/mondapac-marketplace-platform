@@ -537,7 +537,11 @@ export class SellerOrderShipBody extends SellerOrderDetailBody {
   @ApiProperty({
     type: ShipToBody,
     nullable: true,
-    description: `${SHIP_TO_DESCRIPTION} Recipient name, phone and address only.`,
+    description:
+      `${SHIP_TO_DESCRIPTION} Recipient name, phone and address only. Also null once every ` +
+      'unit is refunded (refunds not failed), 30 days after the order was delivered (or ' +
+      'collected, for a pickup order), and 60 days after it was shipped when it was never ' +
+      'delivered.',
   })
   shipTo!: ShipToBody | null;
 
@@ -546,7 +550,9 @@ export class SellerOrderShipBody extends SellerOrderDetailBody {
     nullable: true,
     description:
       "The customer's note to this seller (plain text, 200 characters at most; escape it). " +
-      'Null when none was written, on older orders and once the account was erased.',
+      'Null when none was written, on older orders, once the account was erased, and ' +
+      'whenever `shipTo` is withheld (refunded in full, 30 days after delivery, 60 days after ' +
+      'an undelivered shipment).',
   })
   buyerNote!: string | null;
 

@@ -1453,6 +1453,8 @@ export class FakeCustomers implements CustomersCheckoutFacade {
 /** Seals as readable JSON bound to the account; an erased account's key is destroyed. */
 export class FakeShipToCipher implements ShipToCipher {
   readonly destroyed = new Set<string>();
+  /** How many times an address was opened. */
+  opened = 0;
 
   seal(_m: MarketContext, accountId: Id<'Account'>, shipTo: ShipTo) {
     return Promise.resolve(
@@ -1463,6 +1465,7 @@ export class FakeShipToCipher implements ShipToCipher {
   }
 
   open(_m: MarketContext, accountId: Id<'Account'>, sealed: string) {
+    this.opened += 1;
     const prefix = `sealed:${accountId}:`;
     if (this.destroyed.has(accountId)) {
       return Promise.resolve(err<ShipToKeyDestroyed>({ code: 'subject-key.destroyed' }));
