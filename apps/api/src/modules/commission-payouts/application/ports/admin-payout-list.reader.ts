@@ -28,6 +28,14 @@ export interface AdminPayoutListReader {
     after?: PayoutListCursor | null,
   ): Promise<readonly Payout[]>;
 
+  /** Only the ids of {@link page} (the export's selector: no row is read twice). */
+  idsPage(
+    market: MarketContext,
+    filter: PayoutListFilter,
+    sort: PayoutSort,
+    limit: number,
+  ): Promise<readonly Id<'Payout'>[]>;
+
   /** How many payouts match the filter. */
   count(market: MarketContext, filter: PayoutListFilter): Promise<number>;
 

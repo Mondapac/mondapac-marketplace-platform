@@ -768,7 +768,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'ordering/admin/saved-filters': { listKey: /^admin\.ordering\.orders$/ },
   'commission-payouts/admin/payouts': {
     view: /^(all|awaiting-approval|sending|paid|failed|not-sent)$/,
-    status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,
+    status:
+      /^(pending|awaiting-approval|approved|instructing|instructed|paid|failed|not-sent|voided|settled-by-netting)$/,
     q: UUID,
     sellerId: UUID,
     approvalMode: /^(AUTO|MANUAL)$/,
@@ -793,7 +794,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     // At most 200 payout ids, the cap of a selection.
     ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
     view: /^(all|awaiting-approval|sending|paid|failed|not-sent)$/,
-    status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,
+    status:
+      /^(pending|awaiting-approval|approved|instructing|instructed|paid|failed|not-sent|voided|settled-by-netting)$/,
     q: UUID,
     sellerId: UUID,
     approvalMode: /^(AUTO|MANUAL)$/,

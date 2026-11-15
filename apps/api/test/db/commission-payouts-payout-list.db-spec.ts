@@ -64,8 +64,16 @@ describe.each(TEST_MARKETS)('the admin Payouts list in market %s (database)', (c
     await db.close();
   });
 
-  const value = async <T>(target: MarketContext, work: () => Promise<T>): Promise<T> => {
+  // Writes go through their own read-write unit; reads run read-only, as the list's flow does.
+  const write = async <T>(target: MarketContext, work: () => Promise<T>): Promise<T> => {
     const result = await db.unitOfWork.run(target, async () => ok(await work()));
+    if (!result.ok) throw new Error('unit failed');
+    return result.value;
+  };
+  const value = async <T>(target: MarketContext, work: () => Promise<T>): Promise<T> => {
+    const result = await db.unitOfWork.run(target, async () => ok(await work()), {
+      readOnly: true,
+    });
     if (!result.ok) throw new Error('unit failed');
     return result.value;
   };
@@ -100,7 +108,7 @@ describe.each(TEST_MARKETS)('the admin Payouts list in market %s (database)', (c
       slotAt: at,
       now: at,
     });
-    await value(target, () =>
+    await write(target, () =>
       payouts.insert(target, payout, [
         { sellerOrderId: randomUUID() as Id<'SellerOrder'>, amount },
       ]),
@@ -113,7 +121,7 @@ describe.each(TEST_MARKETS)('the admin Payouts list in market %s (database)', (c
         ...(state === 'not-sent' || state === 'failed' ? { outcomeCode: 'test.refused' } : {}),
       });
       const before = payout;
-      expect(await value(target, () => payouts.change(target, before, next))).toBe(true);
+      expect(await write(target, () => payouts.change(target, before, next))).toBe(true);
       payout = next;
     }
     return payout;
@@ -188,9 +196,36 @@ describe.each(TEST_MARKETS)('the admin Payouts list in market %s (database)', (c
       reader.page(market, mine, NEWEST, 0, 5, { createdAt: last.createdAt, payoutId: last.id }),
     );
     expect([...first, ...second].map((p) => p.id)).toEqual(newest.map((p) => p.id));
+    // Descending amounts keep the id tie descending too.
+    const amountDesc = await value(market, () =>
+      reader.page(market, mine, { key: 'amount', direction: 'desc' }, 0, 10),
+    );
+    expect(amountDesc.map((p) => p.id)).toEqual([...amountAsc].reverse().map((p) => p.id));
+    expect(await value(market, () => reader.idsPage(market, mine, NEWEST, 3))).toEqual(
+      newest.slice(0, 3).map((p) => p.id),
+    );
     // Page numbers: the offset.
     const paged = await value(market, () => reader.page(market, mine, NEWEST, 2, 2));
     expect(paged.map((p) => p.id)).toEqual(newest.slice(2).map((p) => p.id));
+  });
+
+  it('walks the cursor across two creation instants, the older instant after the tie rows', async () => {
+    const sellers = [seller(), seller(), seller()];
+    const older = await payoutOf(sellers[0]!, { at: T0.add({ hours: 47 }) });
+    const tied = [
+      await payoutOf(sellers[1]!, { at: T0.add({ hours: 48 }) }),
+      await payoutOf(sellers[2]!, { at: T0.add({ hours: 48 }) }),
+    ].sort((x, y) => (x.id < y.id ? 1 : -1));
+    const mine = { ...NO_FILTER, sellerIds: sellers };
+    const first = await value(market, () => reader.page(market, mine, NEWEST, 0, 1));
+    expect(first.map((p) => p.id)).toEqual([tied[0]!.id]);
+    const rest = await value(market, () =>
+      reader.page(market, mine, NEWEST, 0, 5, {
+        createdAt: first[0]!.createdAt,
+        payoutId: first[0]!.id,
+      }),
+    );
+    expect(rest.map((p) => p.id)).toEqual([tied[1]!.id, older.id]);
   });
 
   it('counts the Market per state, at least the payouts of this file', async () => {
@@ -235,7 +270,7 @@ describe.each(TEST_MARKETS)('the admin Payouts list in market %s (database)', (c
         releaseReason: null,
         ...fields,
       };
-      return value(market, () => holds.insertIfAbsent(market, record)).then(() => record);
+      return write(market, () => holds.insertIfAbsent(market, record)).then(() => record);
     };
     await holdOf({ sellerId: a, placedAt: T0 });
     const newest = await holdOf({ sellerId: a, placedAt: T0.add({ hours: 1 }) });
@@ -244,7 +279,7 @@ describe.each(TEST_MARKETS)('the admin Payouts list in market %s (database)', (c
     await holdOf({ sellerId: b, sellerOrderId: randomUUID() as Id<'SellerOrder'> });
     // c: released.
     const released = await holdOf({ sellerId: c });
-    await value(market, () =>
+    await write(market, () =>
       holds.release(market, released.id, {
         releasedAt: T0.add({ hours: 2 }),
         releasedBy: randomUUID() as Id<'Account'>,

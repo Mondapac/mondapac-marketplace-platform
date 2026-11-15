@@ -99,6 +99,16 @@ export class PrismaAdminPayoutListReader implements AdminPayoutListReader {
     return rows.map(toPayout);
   }
 
+  async idsPage(market: MarketContext, filter: PayoutListFilter, sort: PayoutSort, limit: number) {
+    const rows = await this.prisma.tx(market).commissionPayoutsPayout.findMany({
+      where: where(market, filter),
+      orderBy: orderBy(sort),
+      take: limit,
+      select: { id: true },
+    });
+    return rows.map((row) => row.id as Id<'Payout'>);
+  }
+
   count(market: MarketContext, filter: PayoutListFilter) {
     return this.prisma.tx(market).commissionPayoutsPayout.count({ where: where(market, filter) });
   }

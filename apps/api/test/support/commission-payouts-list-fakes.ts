@@ -93,6 +93,10 @@ export class MemoryAdminPayoutList implements AdminPayoutListReader {
     return Promise.resolve(rows.slice(offset, offset + limit));
   }
 
+  async idsPage(market: MarketContext, filter: PayoutListFilter, sort: PayoutSort, limit: number) {
+    return (await this.page(market, filter, sort, 0, limit)).map((payout) => payout.id);
+  }
+
   count(market: MarketContext, filter: PayoutListFilter) {
     return Promise.resolve(this.#rows(market).filter((payout) => matches(payout, filter)).length);
   }
@@ -122,7 +126,11 @@ export class MemoryAdminPayoutList implements AdminPayoutListReader {
           hold.releasedAt === null &&
           sellerIds.includes(hold.sellerId),
       )
-      .sort((a, b) => Temporal.Instant.compare(b.placedAt, a.placedAt));
+      .sort(
+        (a, b) =>
+          Temporal.Instant.compare(b.placedAt, a.placedAt) ||
+          (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+      );
     for (const hold of rows) if (!found.has(hold.sellerId)) found.set(hold.sellerId, hold.id);
     return Promise.resolve(found);
   }

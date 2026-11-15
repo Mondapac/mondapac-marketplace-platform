@@ -93,7 +93,8 @@ export const PAYOUT_ROW_RULES: readonly RowActionRule<PayoutActionSubject>[] = [
   {
     id: 'release-hold',
     permission: COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE.key,
-    when: (row) => row.activeHoldId !== null,
+    // The hold is over the whole seller; it is offered where it still stops this payout.
+    when: (row) => HOLDABLE_STATES.includes(row.state) && row.activeHoldId !== null,
   },
 ];
 
@@ -480,7 +481,8 @@ export async function listAdminPayouts(
       const activeHoldId = holds.get(payout.sellerId) ?? null;
       return {
         ...rowOf(payout, names.get(payout.sellerId) ?? null),
-        activeHoldId,
+        // The hold's id is for the Release action only: no release key, no id.
+        activeHoldId: granted.has(COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE.key) ? activeHoldId : null,
         actions: rowActions(
           { state: payout.state, activeHoldId },
           PAYOUT_ROW_RULES,
@@ -542,7 +544,7 @@ const HEADERS: Readonly<Record<PayoutExportColumn | 'base', readonly string[]>> 
 };
 
 const STATE_LABELS: Readonly<Record<PayoutState, string>> = Object.freeze({
-  pending: 'Pending',
+  pending: 'Planned',
   'awaiting-approval': 'Awaiting approval',
   approved: 'Approved',
   instructing: 'Sending',
@@ -550,8 +552,8 @@ const STATE_LABELS: Readonly<Record<PayoutState, string>> = Object.freeze({
   paid: 'Paid',
   failed: 'Failed',
   'not-sent': 'Not sent',
-  voided: 'Voided',
-  'settled-by-netting': 'Settled by netting',
+  voided: 'Cancelled',
+  'settled-by-netting': 'Settled against debt',
 });
 
 /** Minor units as a decimal amount of the currency (`12345` AUD is `123.45`), exact. */
@@ -588,7 +590,8 @@ function cellOf(column: PayoutExportColumn, payout: Payout): ExportCell {
 /**
  * The payouts of the list as a CSV or XLSX file: the chosen `ids` (at most 200; an id that is not
  * a payout of the Market refuses the whole request as not found) or what the selector keys match,
- * at most 10,000 (more is `batch.too-large` with the total), in the list's sort. The ids are fixed
+ * at most 10,000 (more is `batch.too-large` with the total), in the list's sort. With `ids` the
+ * selector keys are ignored: the panel sends its current filter along with a chosen set. The ids are fixed
  * first in one read; the rows then stream in chunks, each with its own read and its store names.
  */
 export async function exportAdminPayouts(
@@ -650,6 +653,10 @@ export async function exportAdminPayouts(
     if (fields.length > 0) return err({ code: 'validation.failed', fields });
     const searched = await resolveSearch(deps, context, selector);
     if (!searched.ok) return searched;
+    // A search that matched more stores than it can carry would export only part of the list.
+    if (searched.value.capped) {
+      return err({ code: 'validation.failed', fields: [{ path: 'search', code: 'too-broad' }] });
+    }
     const filter = searched.value.filter;
     const picked = await deps.unitOfWork.run<
       { readonly found: readonly Id<'Payout'>[]; readonly total: number },
@@ -657,8 +664,7 @@ export async function exportAdminPayouts(
     >(
       market,
       async () => {
-        const rows = await deps.payouts.page(market, filter, sort, 0, LIST_EXPORT_MAX_ROWS + 1);
-        const found = rows.map((payout) => payout.id);
+        const found = await deps.payouts.idsPage(market, filter, sort, LIST_EXPORT_MAX_ROWS + 1);
         if (found.length <= LIST_EXPORT_MAX_ROWS) return ok({ found, total: found.length });
         return ok({ found, total: await deps.payouts.count(market, filter) });
       },
@@ -706,7 +712,7 @@ async function* exportRows(
     const names = await storeNamesOf(deps, context, payouts);
     yield payouts.map((payout) => [
       payout.id,
-      names.get(payout.sellerId) ?? '',
+      names.get(payout.sellerId) ?? `Seller ${payout.sellerId}`,
       STATE_LABELS[payout.state],
       decimalOf(payout.transfer, payout.currency),
       payout.currency,

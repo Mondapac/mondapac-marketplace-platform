@@ -1985,7 +1985,7 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe(
       'http://api.test/commission-payouts/admin/payouts',
     );
-    // Only the states a tab shows cross; the API's other states are not relayed.
+    // Every state of the list's Status filter crosses, the ones the All view shows too.
     for (const state of ['pending', 'voided', 'settled-by-netting']) {
       const other = await run(
         'GET',
@@ -1993,9 +1993,17 @@ describe('relay of the wallet and step-up routes', () => {
         readHeaders,
       );
       expect(other.upstream.mock.calls[0]?.[0]).toBe(
-        'http://api.test/commission-payouts/admin/payouts',
+        `http://api.test/commission-payouts/admin/payouts?status=${state}`,
       );
     }
+    const exported = await run(
+      'GET',
+      'commission-payouts/admin/payouts/export?status=voided',
+      readHeaders,
+    );
+    expect(exported.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/admin/payouts/export?status=voided',
+    );
   });
 
   it('passes the Payouts super list query and its export only in the shapes the API takes', async () => {
