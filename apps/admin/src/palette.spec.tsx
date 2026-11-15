@@ -235,11 +235,11 @@ describe('PanelTools', () => {
         .getAllByRole('option')
         .map((option) => option.textContent);
     expect(rows(groups[0]!)).toEqual([
-      'OrdersOrders & customers',
+      'OrdersSales',
       'Support contactSettings / Marketplace',
     ]);
     // A pinned page is not listed again under Recent.
-    expect(rows(groups[1]!)).toEqual(['All sellersSellers']);
+    expect(rows(groups[1]!)).toEqual(['SellersSellers']);
     expect(rows(groups[2]!)).toEqual([
       'Invite admin',
       'Create role',
@@ -324,10 +324,10 @@ describe('PanelTools', () => {
       within(hub)
         .getAllByRole('link')
         .map((a) => a.textContent),
-    ).toEqual(['All sellers', 'Support contact', 'Dashboard', 'Customers', 'Disputes']);
+    ).toEqual(['Sellers', 'Support contact', 'Dashboard', 'Customers', 'Disputes']);
     key(document, { key: 'k', ctrlKey: true });
     const box = within(dialog()!).getByRole('combobox');
-    expect(within(dialog()!).getAllByRole('option')[0]!.textContent).toContain('All sellers');
+    expect(within(dialog()!).getAllByRole('option')[0]!.textContent).toContain('Sellers');
     key(box, { key: 'Enter' });
     expect(navigate).toHaveBeenCalledWith('/sellers');
     cleanup();
@@ -384,7 +384,7 @@ describe('PanelTools', () => {
         'page:sellers',
         'page:customers',
         'page:review-queue',
-        'page:content',
+        'page:slides',
         'page:settings/support',
       ]),
     );

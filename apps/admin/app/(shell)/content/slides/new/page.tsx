@@ -30,7 +30,7 @@ export default async function NewSlidePage() {
     return <ContentNoAccess session={gate.session} />;
   }
   return (
-    <AdminShell session={gate.session} activeId="content" title={t('content.title')}>
+    <AdminShell session={gate.session} activeId="slides" title={t('content.title')}>
       <SlideEditor slide={null} canEdit csrfToken={csrfToken} zone={displayZone(timezone)} />
     </AdminShell>
   );

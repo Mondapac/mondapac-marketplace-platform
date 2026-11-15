@@ -35,7 +35,7 @@ export async function NavigationRoute() {
   if (read.kind === 'signed-out') redirect('/session-ended');
   const body = read.kind === 'ok' ? read.body : null;
   return (
-    <AdminShell session={gate.session} activeId="content" title={title}>
+    <AdminShell session={gate.session} activeId="menus" title={title}>
       <div className="mb-4">
         <h1 className="text-2xl font-semibold">{title}</h1>
         <p className="text-fg-muted">{t('content.navigation.intro')}</p>
