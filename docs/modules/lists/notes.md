@@ -7,7 +7,7 @@ Speed mode (CLAUDE.md): no G1/G2 or design document. The owner approved the supe
 
 - `lists.saved_filters` holds the saved filters of every list. `SAVED_FILTER_STORE`
   (`modules/lists/contracts`) is the only way in: `visibleTo`, `find`, `countOwnedBy`, `countShared`,
-  `nextPosition`, `add`, `change`, `remove`, each with an explicit store (`sellerId`, or `null` for
+  `nextPosition`, `add`, `change`, `remove`, `ownedBy`, `reposition`, each with an explicit store (`sellerId`, or `null` for
   the rows that have none).
 - `catalog` (admin and seller Products) and `ordering` (admin and seller Orders) use the store
   through their old repository ports; their routes, use cases and rules are unchanged.
