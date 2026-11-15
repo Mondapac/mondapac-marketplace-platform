@@ -602,16 +602,25 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         effective: { minimumMinor: '5000', holdDaysCarrier: 9 },
         override: { holdDaysCarrier: 9, minimumMinor: null },
       });
+      next = ok({ ...terms, request: { id: REQUEST, number: 8 } });
       const set = await call('put', 'admin', TERMS, session, {
         holdDaysCarrier: 9,
         expectedVersion: 1,
         reasonCode: 'correction',
+        note: 'Seller asked',
       });
       expect(set.status).toBe(200);
-      expect(
-        (await call('delete', 'admin', `${TERMS}?expectedVersion=2&reasonCode=policy`, session))
-          .status,
-      ).toBe(200);
+      expect(set.body).toMatchObject({ version: 2, request: { id: REQUEST, number: 8 } });
+      next = ok({ ...terms, request: { id: REQUEST, number: 9 } });
+      const removed = await call(
+        'delete',
+        'admin',
+        `${TERMS}?expectedVersion=2&reasonCode=policy&note=Back%20to%20market`,
+        session,
+      );
+      expect(removed.status).toBe(200);
+      expect(removed.body).toMatchObject({ request: { id: REQUEST, number: 9 } });
+      next = ok(terms);
       expect((await call('delete', 'admin', TERMS, session)).status).toBe(200);
       expect(calls).toEqual([
         { name: 'view-terms', input: { sellerId: SELLER } },
@@ -622,11 +631,17 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
             terms: { holdDaysCarrier: 9 },
             expectedVersion: 1,
             reasonCode: 'correction',
+            note: 'Seller asked',
           },
         },
         {
           name: 'clear-terms',
-          input: { sellerId: SELLER, expectedVersion: 2, reasonCode: 'policy' },
+          input: {
+            sellerId: SELLER,
+            expectedVersion: 2,
+            reasonCode: 'policy',
+            note: 'Back to market',
+          },
         },
         // A missing version reaches the use case as an invalid one, which it refuses.
         {

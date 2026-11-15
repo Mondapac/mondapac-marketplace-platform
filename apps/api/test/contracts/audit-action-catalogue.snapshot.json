@@ -1423,6 +1423,45 @@
     }
   },
   {
+    "action": "commission-payouts.commission-rate.reverted",
+    "targetType": "commission-payouts.seller-commission-rate",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "rateBps": "optional(integer)"
+    },
+    "after": {
+      "marketRateBps": "integer",
+      "rateBps": "optional(integer)",
+      "requestId": "id"
+    }
+  },
+  {
+    "action": "commission-payouts.payout-terms.reverted",
+    "targetType": "commission-payouts.seller-payout-terms",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "approvalMode": "optional(enumOf(auto|manual))",
+      "holdDaysCarrier": "optional(integer)",
+      "holdDaysSellerClick": "optional(integer)",
+      "localMinute": "optional(integer)",
+      "minimumMinor": "optional(integer)",
+      "version": "optional(integer)",
+      "weekdaysMask": "optional(integer)"
+    },
+    "after": {
+      "approvalMode": "optional(enumOf(auto|manual))",
+      "holdDaysCarrier": "optional(integer)",
+      "holdDaysSellerClick": "optional(integer)",
+      "localMinute": "optional(integer)",
+      "minimumMinor": "optional(integer)",
+      "requestId": "id",
+      "version": "optional(integer)",
+      "weekdaysMask": "optional(integer)"
+    }
+  },
+  {
     "action": "commission-payouts.payout-terms.clear",
     "targetType": "commission-payouts.seller-payout-terms",
     "targetId": "id",

@@ -418,9 +418,9 @@ describe.each([['AU'], ['ZZ']] as const)('payout terms and holds in market %s', 
       });
       expect(removed).toMatchObject({ ok: true, value: { request: { number: 2 } } });
       const nine = values({ holdDaysCarrier: 9, minimumMinor: 7000, weekdays: ['MON', 'FRI'] });
-      expect(review.opened.map((o) => [o.subjectKind, o.before, o.after, o.note])).toEqual([
-        [PAYOUT_TERMS_SUBJECT_KIND, { terms: null }, { terms: nine }, 'Seller asked'],
-        [PAYOUT_TERMS_SUBJECT_KIND, { terms: nine }, { terms: null }, 'Back to the Market'],
+      expect(review.opened.map((o) => [o.subjectKind, o.before, o.after, o.note, o.risk])).toEqual([
+        [PAYOUT_TERMS_SUBJECT_KIND, { terms: null }, { terms: nine }, 'Seller asked', 'high'],
+        [PAYOUT_TERMS_SUBJECT_KIND, { terms: nine }, { terms: null }, 'Back to the Market', 'high'],
       ]);
     });
 
@@ -455,12 +455,18 @@ describe.each([['AU'], ['ZZ']] as const)('payout terms and holds in market %s', 
         ok: true,
         value: { source: 'market', version: null },
       });
-      expect(audit.entries.map((e) => [e.action, e.after])).toMatchObject([
+      const REQUEST = id<'SystemRequest'>(0x5e1);
+      expect(audit.entries.map((e) => [e.action, e.before, e.after])).toMatchObject([
         [
-          'commission-payouts.payout-terms.set',
-          { holdDaysCarrier: 9, version: 3, reasonCode: 'correction' },
+          'commission-payouts.payout-terms.reverted',
+          { holdDaysCarrier: 12, version: 2 },
+          { holdDaysCarrier: 9, version: 3, requestId: REQUEST },
         ],
-        ['commission-payouts.payout-terms.clear', { version: null, reasonCode: 'correction' }],
+        [
+          'commission-payouts.payout-terms.reverted',
+          { holdDaysCarrier: 9, version: 3 },
+          { holdDaysCarrier: null, version: null, requestId: REQUEST },
+        ],
       ]);
       // Each restore works the seller's schedule out again, as an admin's change does.
       expect(outbox.events.length).toBe(announced + 2);

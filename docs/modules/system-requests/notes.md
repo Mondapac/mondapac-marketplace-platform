@@ -71,7 +71,23 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
 - **wallet** (area money): kind `wallet.market-status` (subject `wallet-settings`, values
   `{status, reason}`). The switch takes `note` and answers `request`. A revert is audited as
   `wallet.market-status.reverted` (with the request id, no step-up of its own); going back to `off`
-  once the Market has journals is `changed-since`.
+  once the Market has journals is `changed-since`. A switch to `paused` or `frozen` is a stop and
+  opens no request; a revert never lifts a stop (restoring `active` over `paused` or `frozen` is
+  `not-permitted`, and the request stays open).
+- Every money opening passes risk `high`, whatever the area's policy says, so the reviewer's
+  step-up is spent before a revert writes.
+
+### Known limits (follow-ups)
+
+- A request that turned the AI description writer off cannot be withdrawn into a revert that turns
+  it back on: the reverter answers `not-permitted`, because a permission check cannot run inside
+  the decision unit. The author changes the setting again instead.
+- A rate set for a seller with no rate row yet can race with a second first-time set (no row to
+  lock); this predates the review hook.
+- Withdraw checks that the caller is the author, not that the author still holds the edit
+  permission of the subject.
+- On DELETE routes the note travels in the `note` query, so it reaches access logs that keep the
+  query string; the API's own logs drop it. A body on DELETE comes with the panel package.
 
 ## Supersession and locks
 

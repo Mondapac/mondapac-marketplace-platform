@@ -210,7 +210,12 @@ export async function setStatus(
             },
           }),
         );
-        // The switch is live; its review opens in the same unit (a refusal rolls it back).
+        // The switch is live; its review opens in the same unit (a refusal rolls it back). A pause
+        // or a freeze is an emergency stop: it opens no review, so no decision can lift it (only
+        // an admin with the switch's own key and step-up can; Hassan, PR #913).
+        if (status === 'paused' || status === 'frozen') {
+          return ok({ status, reason, updatedAt: now, version: currentVersion + 1, request: null });
+        }
         const review = await deps.review.openReview(context, {
           area: WALLET_REVIEW_AREA,
           subjectKind: WALLET_STATUS_SUBJECT_KIND,
@@ -218,6 +223,7 @@ export async function setStatus(
           before: { status: was, reason: before?.reason ?? null },
           after: { status, reason },
           note: input.note,
+          risk: 'high',
         });
         if (!review.ok) return err(review.error);
         return ok({
@@ -253,7 +259,7 @@ export async function revertStatus(
     readonly before: Readonly<Record<string, unknown>>;
     readonly after: Readonly<Record<string, unknown>>;
   },
-): Promise<'reverted' | 'changed-since' | 'gone'> {
+): Promise<'reverted' | 'changed-since' | 'gone' | 'not-permitted'> {
   const actor = context.actor;
   if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAs(context)) {
     throw new Error('wallet: a revert needs a signed-in admin acting as themselves');
@@ -273,6 +279,10 @@ export async function revertStatus(
     return 'changed-since';
   }
   if (restore === 'off' && (await deps.wallet.hasJournals(context.market))) return 'changed-since';
+  // Never lift a pause or a freeze through a decision (requests to them are not opened; this keeps
+  // it so for any older one).
+  if ((current === 'paused' || current === 'frozen') && restore === 'active')
+    return 'not-permitted';
   const version = (row?.version ?? 0) + 1;
   await deps.settings.save(context.market, {
     status: restore,

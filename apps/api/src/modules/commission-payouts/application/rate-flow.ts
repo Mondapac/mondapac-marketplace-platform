@@ -147,6 +147,8 @@ export async function setCommissionRate(
       before: { rateBps: before?.rateBps ?? null },
       after: { rateBps: rate.value },
       note: input.note,
+      // Money is always high risk, whatever the area's policy says (Hassan, PR #913).
+      risk: 'high',
     });
     if (!review.ok) return err(review.error);
     return ok({
@@ -191,6 +193,8 @@ export async function clearCommissionRate(
       before: { rateBps: before.rateBps },
       after: { rateBps: null },
       note: input.note,
+      // Money is always high risk, whatever the area's policy says (Hassan, PR #913).
+      risk: 'high',
     });
     if (!review.ok) return err(review.error);
     return ok({

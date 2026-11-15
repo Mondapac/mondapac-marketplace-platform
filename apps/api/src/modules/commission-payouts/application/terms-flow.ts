@@ -224,6 +224,8 @@ export async function setPayoutTerms(
       before: { terms: before === null ? null : termsValues(before.override) },
       after: { terms: termsValues(parsed.value) },
       note: input.note,
+      // Money is always high risk, whatever the area's policy says (Hassan, PR #913).
+      risk: 'high',
     });
     if (!review.ok) return err(review.error);
     return ok({ ...toView(sellerId, effective.value), request: requestRef(review.value) });
@@ -287,6 +289,8 @@ export async function clearPayoutTerms(
       before: { terms: termsValues(before.override) },
       after: { terms: null },
       note: input.note,
+      // Money is always high risk, whatever the area's policy says (Hassan, PR #913).
+      risk: 'high',
     });
     if (!review.ok) return err(review.error);
     return ok({ ...toView(sellerId, effective.value), request: requestRef(review.value) });

@@ -1,11 +1,7 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type { RevertOutcome, RevertRequest, SystemChangeReverter } from '../../system-requests';
-import {
-  CommissionRateCleared,
-  CommissionRateSet,
-  PayoutTermsCleared,
-  PayoutTermsSet,
-} from '../domain/audit';
+import { CommissionRateReverted, PayoutTermsReverted } from '../domain/audit';
+import { isRateBps } from '../domain/commission';
 import { parsePayoutTermsOverride, type PayoutTermsOverride } from '../domain/payout-terms';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
 import { termsValues } from './money-review';
@@ -25,14 +21,14 @@ const adminOf = (context: CallContext): Id<'Account'> => {
   return actor.accountId;
 };
 
+/** A stored rate value: null (the Market rate) or a rate an admin could set today. */
 const rateOf = (value: unknown): number | null | undefined =>
-  value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
-    ? value
-    : undefined;
+  value === null || isRateBps(value) ? value : undefined;
 
 /**
  * Restores a seller's own rate (or removes it when there was none before), in the open unit of
- * the decision, with the same audit row as an admin's change. Applies to orders placed after it.
+ * the decision, audited as a revert of the request. Applies to orders placed after it. (When the
+ * seller had no row, nothing is locked: the same race two admins' first sets already have.)
  */
 export class CommissionRateReverter implements SystemChangeReverter {
   constructor(private readonly deps: CommissionPayoutsDependencies) {}
@@ -51,29 +47,22 @@ export class CommissionRateReverter implements SystemChangeReverter {
       if (current === null || !(await this.deps.rates.remove(context.market, sellerId))) {
         return 'changed-since';
       }
-      await this.deps.audit.record(
-        context,
-        CommissionRateCleared.entry(sellerId, {
-          before: { rateBps: current.rateBps },
-          after: { marketRateBps: settings.defaultRateBps },
-        }),
-      );
-      return 'reverted';
+    } else {
+      await this.deps.rates.save(context.market, {
+        sellerId,
+        rateBps: restore,
+        updatedAt: this.deps.clock.now(),
+        updatedBy: admin,
+      });
     }
-    await this.deps.rates.save(context.market, {
-      sellerId,
-      rateBps: restore,
-      updatedAt: this.deps.clock.now(),
-      updatedBy: admin,
-    });
     await this.deps.audit.record(
       context,
-      CommissionRateSet.entry(sellerId, {
+      CommissionRateReverted.entry(sellerId, {
         before: { rateBps: current?.rateBps ?? null },
         after: {
           rateBps: restore,
           marketRateBps: settings.defaultRateBps,
-          belowMarketRate: restore < settings.defaultRateBps,
+          requestId: request.requestId,
         },
       }),
     );
@@ -83,7 +72,7 @@ export class CommissionRateReverter implements SystemChangeReverter {
 
 /**
  * Restores a seller's payout terms override (or removes it when there was none before), in the
- * open unit of the decision: a new version, audited with reason `correction`, and the seller's
+ * open unit of the decision: a new version, audited as a revert of the request, and the seller's
  * schedule worked out again, as an admin's change does. A value before that the Market's bounds no
  * longer allow is gone.
  */
@@ -130,36 +119,30 @@ export class PayoutTermsReverter implements SystemChangeReverter {
           : await this.deps.termsOverrides.replace(context.market, record, current.version);
       if (!written) return 'changed-since';
     }
-    // The terms that will be in force must be usable; a Market without terms cannot be paid.
+    // The terms that will be in force must be usable. The value before was parsed against the
+    // Market's bounds above, so this fails only when the Market lost its own terms (a config
+    // fault): the decision fails as a whole and the request stays open, rather than leaving the
+    // seller on terms nothing can pay.
     const effective = await this.deps.terms.resolve(context.market, sellerId);
     if (!effective.ok)
       throw new Error('commission-payouts: the restored payout terms are unusable');
-    if (restore.value === null) {
-      await this.deps.audit.record(
-        context,
-        PayoutTermsCleared.entry(sellerId, {
-          before: termsAuditValues(current),
-          after: { version: null, reasonCode: 'correction' },
-        }),
-      );
-    } else {
-      await this.deps.audit.record(
-        context,
-        PayoutTermsSet.entry(sellerId, {
-          before: termsAuditValues(current),
-          after: {
-            ...termsAuditValues({
-              sellerId,
-              override: restore.value,
-              version: (current?.version ?? 0) + 1,
-              updatedAt: now,
-              updatedBy: admin,
-            }),
-            reasonCode: 'correction',
-          },
-        }),
-      );
-    }
+    const restored: PayoutTermsOverrideRecord | null =
+      restore.value === null
+        ? null
+        : {
+            sellerId,
+            override: restore.value,
+            version: (current?.version ?? 0) + 1,
+            updatedAt: now,
+            updatedBy: admin,
+          };
+    await this.deps.audit.record(
+      context,
+      PayoutTermsReverted.entry(sellerId, {
+        before: termsAuditValues(current),
+        after: { ...termsAuditValues(restored), requestId: request.requestId },
+      }),
+    );
     await announceTermsChange(this.deps, context, sellerId, now);
     return 'reverted';
   }

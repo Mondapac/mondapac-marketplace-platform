@@ -533,29 +533,61 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
           before: { status: 'off', reason: null },
           after: { status: 'active', reason: null },
           note: 'Launch',
+          risk: 'high',
         },
       ]);
     });
 
     it('restores the state before while the switch still holds the state after, audited as a revert', async () => {
       await open('active');
-      await turn('frozen', 'security-incident');
+      await turn('off');
       audit.entries.length = 0;
       expect(
-        await revert(
-          { status: 'active', reason: null },
-          { status: 'frozen', reason: 'security-incident' },
-        ),
+        await revert({ status: 'active', reason: null }, { status: 'off', reason: null }),
       ).toBe('reverted');
       expect(setting.record).toMatchObject({ status: 'active', reason: null, version: 3 });
       expect(audit.entries.map((e) => [e.action, e.before, e.after])).toEqual([
         [
           'wallet.market-status.reverted',
-          { status: 'frozen', reason: 'security-incident' },
+          { status: 'off', reason: null },
           { status: 'active', reason: null, requestId: REQUEST },
         ],
       ]);
       expect(review.opened).toHaveLength(0);
+    });
+
+    it('opens no review for a pause or a freeze, and never lifts one through a decision', async () => {
+      review.review('money', 'low');
+      const stop = (status: string, expectedVersion: number) =>
+        new SetWalletStatus(gate, deps).execute(adminCtx(), {
+          status,
+          reasonCode: 'security-incident',
+          expectedVersion,
+          note: 'Incident',
+        });
+      expect(await stop('paused', 0)).toMatchObject({ ok: true, value: { request: null } });
+      expect(await stop('frozen', 1)).toMatchObject({ ok: true, value: { request: null } });
+      expect(review.opened).toHaveLength(0);
+      expect(
+        await revert(
+          { status: 'active', reason: null },
+          { status: 'frozen', reason: 'security-incident' },
+        ),
+      ).toBe('not-permitted');
+      expect(setting.record).toMatchObject({ status: 'frozen', version: 2 });
+      // A switch back to active is reviewed, at high risk whatever the policy says.
+      await new SetWalletStatus(gate, deps).execute(adminCtx(), {
+        status: 'active',
+        expectedVersion: 2,
+        note: 'Incident over',
+      });
+      expect(review.opened.map((o) => [o.before, o.after, o.risk])).toEqual([
+        [
+          { status: 'frozen', reason: 'security-incident' },
+          { status: 'active', reason: null },
+          'high',
+        ],
+      ]);
     });
 
     it('answers changed-since when the switch moved on or off is no longer possible, and gone for a bad state', async () => {
@@ -575,6 +607,22 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
         await revert({ status: 'off', reason: null }, { status: 'active', reason: null }),
       ).toBe('changed-since');
       expect(setting.record).toMatchObject({ status: 'active', version: 1 });
+    });
+
+    it('turns the wallet back off while it has no journals, and a repeat switch opens nothing', async () => {
+      await open('active');
+      expect(
+        await revert({ status: 'off', reason: null }, { status: 'active', reason: null }),
+      ).toBe('reverted');
+      expect(setting.record).toMatchObject({ status: 'off', reason: null, version: 2 });
+      review.review('money', 'high');
+      const repeat = await new SetWalletStatus(gate, deps).execute(adminCtx(), {
+        status: 'off',
+        expectedVersion: 2,
+        note: 'Same state',
+      });
+      expect(repeat).toMatchObject({ ok: true, value: { status: 'off', request: null } });
+      expect(review.opened).toHaveLength(0);
     });
 
     it('throws for anyone but a signed-in admin acting as themselves', async () => {

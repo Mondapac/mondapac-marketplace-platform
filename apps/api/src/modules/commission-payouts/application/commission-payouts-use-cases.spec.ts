@@ -415,7 +415,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
     });
 
     it('opens a review of a set and of a removal with the rates before and after and the note', async () => {
-      review.review('money', 'high');
+      review.review('money', 'low');
       const set = await new SetCommissionRate(gate, deps).execute(admin, {
         sellerId: SELLER_A,
         rateBps: 1000,
@@ -427,6 +427,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         note: 'Deal over',
       });
       expect(cleared).toMatchObject({ ok: true, value: { request: { number: 2 } } });
+      // Money is reviewed at high risk whatever the area's policy says.
       expect(review.opened).toEqual([
         {
           area: 'money',
@@ -435,6 +436,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
           before: { rateBps: null },
           after: { rateBps: 1000 },
           note: 'Launch deal',
+          risk: 'high',
         },
         {
           area: 'money',
@@ -443,6 +445,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
           before: { rateBps: 1000 },
           after: { rateBps: null },
           note: 'Deal over',
+          risk: 'high',
         },
       ]);
     });
@@ -464,16 +467,18 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       expect(rates.rows.get(SELLER_A)).toMatchObject({ rateBps: 1000, updatedBy: ADMIN });
       expect(await revert(null, 1000)).toBe('reverted');
       expect(rates.rows.has(SELLER_A)).toBe(false);
+      // Each revert is audited as such, naming the System request.
+      const REQUEST = id<'SystemRequest'>(0x5e1);
       expect(audit.entries.map((entry) => [entry.action, entry.before, entry.after])).toEqual([
         [
-          'commission-payouts.commission-rate.set',
+          'commission-payouts.commission-rate.reverted',
           { rateBps: 1200 },
-          { rateBps: 1000, marketRateBps: marketRate, belowMarketRate: true },
+          { rateBps: 1000, marketRateBps: marketRate, requestId: REQUEST },
         ],
         [
-          'commission-payouts.commission-rate.clear',
+          'commission-payouts.commission-rate.reverted',
           { rateBps: 1000 },
-          { marketRateBps: marketRate },
+          { rateBps: null, marketRateBps: marketRate, requestId: REQUEST },
         ],
       ]);
       // A removal is undone by setting the rate again.
@@ -488,6 +493,8 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       expect(await revert(800, null)).toBe('changed-since');
       expect(await revert('x', 1000)).toBe('gone');
       expect(await revert(-1, 1000)).toBe('gone');
+      // Above the highest rate an admin may set today: not written back.
+      expect(await revert(5000, 1000)).toBe('gone');
       expect(rates.rows.get(SELLER_A)).toMatchObject({ rateBps: 1000 });
       const notASeller = await reverter().revert(admin, {
         requestId: id<'SystemRequest'>(0x5e2),
