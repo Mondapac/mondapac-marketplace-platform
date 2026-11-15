@@ -9,9 +9,13 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { ORDER_LABELS } from '../src/modules/ordering/application/ports/order-labels';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
-import { REFUND_REPOSITORY } from '../src/modules/ordering/application/ports/refund.repository';
+import {
+  REFUND_REPOSITORY,
+  type RefundRepository,
+} from '../src/modules/ordering/application/ports/refund.repository';
 import { SHIP_TO_CIPHER } from '../src/modules/ordering/application/ports/ship-to-cipher';
-import type { OrderState, SellerOrder } from '../src/modules/ordering/domain/order';
+import type { OrderLine, OrderState, SellerOrder } from '../src/modules/ordering/domain/order';
+import type { Refund } from '../src/modules/ordering/domain/refund';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
@@ -30,7 +34,8 @@ import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
 // The seller's order page over HTTP with the real guards, controller, gate and use case (orders
 // in memory): the customer's address, phone and note to the seller are on the page until 30 days
-// after delivery and null from then on (owner decision 2026-11-14).
+// after delivery (60 days after a shipment never delivered) and null from then on, and null at
+// once when every unit is refunded (owner decisions 2026-11-14 and 2026-11-15).
 
 const DELIVERED = Temporal.Instant.from('2026-10-01T05:00:00Z');
 const START = DELIVERED.subtract({ hours: 48 });
@@ -45,6 +50,7 @@ const CUSTOMER = id<'Account'>(0xc101);
 const SELLER = id<'Seller'>(0xb020);
 const ORDER = id<'Order'>(0xd001);
 const SELLER_ORDER = id<'SellerOrder'>(0xd00a);
+const LINE = id<'OrderLine'>(0xd0a1);
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
@@ -54,6 +60,7 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
   const marketOf = () => testMarketContext(code, PLATFORM_TENANT_ID);
   let app: NestExpressApplication;
   let orders: MemoryOrders;
+  let listed: Refund[] = [];
   const clock = new FixedClock(START);
   const http = () => request(app.getHttpServer());
 
@@ -104,7 +111,54 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
       sellerNotes: { [SELLER]: 'Ring twice' },
     })}`,
     sellerOrders: [sellerOrder(patch)],
-    lines: [],
+    lines: [line],
+  });
+  const line: OrderLine = {
+    id: LINE,
+    sellerOrderId: SELLER_ORDER,
+    offerId: id<'Offer'>(0xc001),
+    variantId: id<'Variant'>(0xc002),
+    quantity: 2,
+    unitPrice: money(1500n, currency),
+    lineAmount: 3000n,
+    taxInclusive: true,
+    reservationLineId: 'rl-1',
+    commissionRateBps: null,
+    taxRateBps: null,
+    taxAmount: null,
+    taxCategoryCode: null,
+  };
+  const refundOf = (n: number, state: Refund['state'], quantity: number): Refund => ({
+    id: id<'Refund'>(0xe700 + n),
+    orderId: ORDER,
+    sellerOrderId: SELLER_ORDER,
+    sellerId: SELLER,
+    currency,
+    gross: 1500n * BigInt(quantity),
+    tax: 0n,
+    shipping: null,
+    reason: 'damaged',
+    lossBearer: 'seller',
+    lossReasonCode: null,
+    actor: { population: 'admin', accountId: id<'Account'>(0xa001) },
+    state,
+    stripeIdempotencyKey: `r-${n}`,
+    stripeRefundId: null,
+    attempts: 0,
+    requestedAt: START,
+    settledAt: null,
+    lines: [
+      {
+        orderLineId: LINE,
+        quantity,
+        lineQuantity: 2,
+        unitsBefore: 0,
+        gross: 1500n * BigInt(quantity),
+        tax: 0n,
+        taxRateBps: 0,
+        taxInclusive: true,
+      },
+    ],
   });
 
   beforeEach(async () => {
@@ -112,6 +166,10 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
     clock.set(START);
     orders = new MemoryOrders();
     orders.rows.set(ORDER, orderWith({}));
+    listed = [];
+    const refunds = Object.assign(Object.create(NO_REFUNDS) as RefundRepository, {
+      listOfSellerOrder: () => Promise.resolve(listed),
+    });
     ({ app } = await createTestApp({
       panelOrigins: true,
       override: (builder) =>
@@ -124,7 +182,7 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
           .overrideProvider(ORDER_REPOSITORY)
           .useValue(orders)
           .overrideProvider(REFUND_REPOSITORY)
-          .useValue(NO_REFUNDS)
+          .useValue(refunds)
           .overrideProvider(ORDER_LABELS)
           .useValue(new FakeLabels())
           .overrideProvider(SHIP_TO_CIPHER)
@@ -221,8 +279,39 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
     expect(toShip.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS, buyerNote: 'Ring twice' });
 
     orders.rows.set(ORDER, orderWith({ fulfilment: 'shipped', deliveredAt: null }));
+    clock.set(DELIVERED.add({ hours: 24 * 50 }));
     const shipped = await page();
     expect(shipped.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS, buyerNote: 'Ring twice' });
+  });
+
+  it('withholds a shipped, never delivered order 60 days after shipping', async () => {
+    const shippedAt = DELIVERED.subtract({ hours: 2 });
+    orders.rows.set(ORDER, orderWith({ fulfilment: 'shipped', shippedAt, deliveredAt: null }));
+    clock.set(shippedAt.add({ hours: 60 * 24 - 1 }));
+    const before = await page();
+    expect(before.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS, buyerNote: 'Ring twice' });
+
+    clock.set(shippedAt.add({ hours: 60 * 24 }));
+    const after = await page();
+    expect(after.status).toBe(200);
+    expect(after.body).toMatchObject({ fulfilment: 'shipped', shipTo: null, buyerNote: null });
+  });
+
+  it('withholds the address at once when every unit is refunded, not for a partial refund', async () => {
+    orders.rows.set(
+      ORDER,
+      orderWith({ fulfilment: 'to-ship', shippedAt: null, deliveredAt: null }),
+    );
+    listed = [refundOf(1, 'succeeded', 1)];
+    const partial = await page();
+    expect(partial.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS, buyerNote: 'Ring twice' });
+
+    listed = [refundOf(1, 'succeeded', 1), refundOf(2, 'pending', 1)];
+    const full = await page();
+    expect(full.status).toBe(200);
+    expect(full.body).toMatchObject({ fulfilment: 'to-ship', shipTo: null, buyerNote: null });
+    expect((full.body as { refunds: unknown[] }).refunds).toHaveLength(2);
+    expect(JSON.stringify(full.body)).not.toContain(TEST_DELIVERY_ADDRESS.phone);
   });
 
   it('shows them 29 days 23 hours after delivery and answers null from 30 days on', async () => {

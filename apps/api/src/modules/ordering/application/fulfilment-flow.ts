@@ -26,7 +26,7 @@ import { labelSellerOrders } from './order-labels';
 import type { SellerOrderPage, SellerOrderRecord, SellerOrderSort } from './ports/order.repository';
 import type { IssuedPickupCode } from './ports/pickup-code-vault';
 import { pickupStatusFor } from './pickup-flow';
-import { refundedInFull } from '../domain/refund';
+import { linesRefundedInFull, refundedInFull } from '../domain/refund';
 import { sellerMaySeeShipTo } from '../domain/ship-to-retention';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, MAX_PAGED_ROWS, openShipTo } from './read-flow';
 
@@ -607,7 +607,7 @@ export async function confirmSellerPickup(
 /**
  * The step's answer with the names of its lines and the opened delivery address, read after the
  * unit has closed. Every seller answer that carries the address goes through here, so the
- * 30-day retention after delivery ({@link sellerMaySeeShipTo}) applies to all of them.
+ * retention rule ({@link sellerMaySeeShipTo}) applies to all of them.
  */
 export async function labelled(
   deps: OrderingDependencies,
@@ -623,13 +623,23 @@ export async function labelled(
       ok(await deps.refunds.listOfSellerOrder(context.market, view.sellerOrderId, view.sellerId)),
     { readOnly: true },
   );
+  // The seller loses the address once nothing is left to send, 30 days after delivery or 60 days
+  // after an undelivered shipment (owner decisions 2026-11-14 and 2026-11-15); it is then not
+  // even opened. A cancelled order is never found for its seller (only paid ones are), and an
+  // admin cancelling a paid order refunds every unit, so the refunds decide here. Refunds that
+  // could not be read count as refunded in full: fail closed.
+  const shown = sellerMaySeeShipTo(
+    {
+      fulfilment: view.fulfilment,
+      shippedAt: view.shippedAt,
+      deliveredAt: view.deliveredAt,
+      cancelledOrRefundedInFull: !refunds.ok || linesRefundedInFull(view.lines, refunds.value),
+    },
+    deps.clock.now(),
+  );
   return ok({
     ...one!,
-    // 30 days after delivery the seller no longer sees the address (owner decision 2026-11-14);
-    // it is then not even opened.
-    shipTo: sellerMaySeeShipTo(view.deliveredAt, deps.clock.now())
-      ? await openShipTo(deps, context, record.accountId, record.shipToSealed)
-      : null,
+    shipTo: shown ? await openShipTo(deps, context, record.accountId, record.shipToSealed) : null,
     refunds: refunds.ok ? refunds.value.map((r) => sellerOrderRefundView(r)) : [],
     pickup: result.value.pickup ?? null,
   });

@@ -1,5 +1,7 @@
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, PendingEvent } from '@mondapac/shared-kernel';
+import type { RefundRepository } from './ports/refund.repository';
+import type { Refund } from '../domain/refund';
 import {
   FixedClock,
   SequenceIdGenerator,
@@ -1920,7 +1922,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         const shipped = await ship(sellerA, sellerOrderId);
         expect(shipped.ok && shipped.value.deliveredAt).toBeNull();
         expect(shipped.ok && shipped.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
-        clock.advance(Temporal.Duration.from({ hours: 24 * 60 }));
+        // Shipped 59 days ago, not delivered: still inside the 60-day limit.
+        clock.advance(Temporal.Duration.from({ hours: 24 * 59 }));
         expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
 
         const delivered = await deliver(sellerA, sellerOrderId);
@@ -1948,6 +1951,104 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       } finally {
         clock.set(T0);
       }
+    });
+
+    it('withholds the address 60 days after a shipment that was never delivered (2026-11-15)', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      const shipTo = async () => {
+        const answer = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+        if (!answer.ok) throw new Error('seller view failed');
+        return answer.value.shipTo;
+      };
+      try {
+        clock.advance(Temporal.Duration.from({ hours: 5 }));
+        const shipped = await ship(sellerA, sellerOrderId);
+        const shippedAt = clock.now();
+        expect(shipped.ok && shipped.value.shippedAt).toEqual(shippedAt);
+        expect(shipped.ok && shipped.value.deliveredAt).toBeNull();
+
+        clock.set(shippedAt.add({ hours: 60 * 24 - 1 }));
+        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        clock.set(shippedAt.add({ hours: 60 * 24 }));
+        expect(await shipTo()).toBeNull();
+        // The buyer still sees it.
+        const own = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
+        expect(own.ok && own.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+      } finally {
+        clock.set(T0);
+      }
+    });
+
+    it('withholds the address at once when every unit is refunded, not for a partial refund', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      const lines = orders.rows
+        .get(order.id)!
+        .lines.filter((l) => l.sellerOrderId === sellerOrderId);
+      expect(lines.length).toBeGreaterThan(0);
+      let listed: Refund[] = [];
+      deps = {
+        ...deps,
+        refunds: Object.assign(Object.create(NO_REFUNDS) as RefundRepository, {
+          listOfSellerOrder: () => Promise.resolve(listed),
+        }),
+      };
+      const refundOf = (
+        n: number,
+        state: Refund['state'],
+        units: readonly { line: (typeof lines)[number]; quantity: number }[],
+      ): Refund => ({
+        id: id<'Refund'>(0x7700 + n),
+        orderId: order.id,
+        sellerOrderId,
+        sellerId: SELLER_A,
+        currency,
+        gross: 100n,
+        tax: 0n,
+        shipping: null,
+        reason: 'damaged',
+        lossBearer: 'seller',
+        lossReasonCode: null,
+        actor: { population: 'admin', accountId: id<'Account'>(0xad) },
+        state,
+        stripeIdempotencyKey: `r-${n}`,
+        stripeRefundId: null,
+        attempts: 0,
+        requestedAt: T0,
+        settledAt: null,
+        lines: units.map(({ line, quantity }) => ({
+          orderLineId: line.id,
+          quantity,
+          lineQuantity: line.quantity,
+          unitsBefore: 0,
+          gross: 100n,
+          tax: 0n,
+          taxRateBps: 0,
+          taxInclusive: true,
+        })),
+      });
+      const shipTo = async () => {
+        const answer = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+        if (!answer.ok) throw new Error('seller view failed');
+        return answer.value.shipTo;
+      };
+
+      // One unit of the first line only: still something to send.
+      listed = [refundOf(1, 'succeeded', [{ line: lines[0]!, quantity: 1 }])];
+      expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+      // Every unit, but by a refund that failed: nothing went back.
+      const all = lines.map((line) => ({ line, quantity: line.quantity }));
+      listed = [refundOf(2, 'failed', all)];
+      expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+      // Every unit by refunds not failed (one still pending): withheld at once, not opened.
+      listed = [refundOf(3, 'pending', all)];
+      const openedBefore = shipToCipher.opened;
+      expect(await shipTo()).toBeNull();
+      expect(shipToCipher.opened).toBe(openedBefore);
+      // The buyer still sees it.
+      const own = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
+      expect(own.ok && own.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
     });
 
     it('still marks ready, with null names, when the name lookup fails', async () => {
