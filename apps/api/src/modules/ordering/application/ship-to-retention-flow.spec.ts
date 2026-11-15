@@ -290,6 +290,24 @@ describe.each([['AU'], ['ZZ']] as const)('ship-to retention in market %s', (code
       });
     });
 
+    it("hands the repository a month-end cutoff in the Market's zone: 31 March less 1 month", async () => {
+      expect((await set({ months: 1 })).ok).toBe(true);
+      deps = { ...deps, clock: new FixedClock(local('2027-03-31T12:00:00')) };
+      const cutoffs: Temporal.Instant[] = [];
+      const clear = store.clearDeliveredShipTo.bind(store);
+      store.clearDeliveredShipTo = (m, cutoff, after, limit) => {
+        cutoffs.push(cutoff);
+        return clear(m, cutoff, after, limit);
+      };
+      const lastDay = order(['2027-02-28T12:00:00'], '2027-02-01T00:00:00');
+      const dayAfter = order(['2027-03-01T00:00:00'], '2027-02-01T00:00:00');
+
+      expect(await purge()).toEqual({ ok: true, value: { outcome: 'complete', cleared: 1 } });
+      expect(cutoffs.map((c) => c.toString())).toEqual([local('2027-02-28T12:00:00').toString()]);
+      expect(lastDay.shipTo).toBeNull();
+      expect(dayAfter.shipTo).toBe(SHIP_TO);
+    });
+
     it("never reaches another Market's orders", async () => {
       expect((await set({ months: 1 })).ok).toBe(true);
       const other = { ...order(['2020-01-01T00:00:00']) };
