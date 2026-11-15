@@ -8,6 +8,11 @@ export {
   type DeliveryAddressFailure,
 } from './customers-checkout.facade';
 export {
+  CUSTOMERS_READ_FACADE,
+  type CustomerLastOrderFailure,
+  type CustomersReadFacade,
+} from './customers-read.facade';
+export {
   CUSTOMERS_ACCOUNT_DELETION_FACADE,
   type CustomersAccountDeletionFacade,
 } from './account-deletion.facade';

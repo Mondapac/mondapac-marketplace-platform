@@ -18,6 +18,25 @@ export const CART_MODE_CODE = 'cart-mode';
 export const CART_MODE_VALUES = ['multi-store', 'single-store'] as const;
 export type CartMode = (typeof CART_MODE_VALUES)[number];
 
+export const AI_DESCRIPTION_WRITER_CODE = 'ai-description-writer';
+
+/**
+ * Whether the AI description writer (AIS-03, admin and seller) may be used in the Market. Off by
+ * default and when the store cannot be read (ADR-0019 R8, ADR-0026 decision 5). Turned on only
+ * after the real-model evaluation of its prompt version is recorded as passed (decision 9).
+ */
+export const AI_DESCRIPTION_WRITER_VALUES = ['off', 'on'] as const;
+export type AiDescriptionWriter = (typeof AI_DESCRIPTION_WRITER_VALUES)[number];
+
+export const AI_DESCRIPTION_WRITER_TIER_CODE = 'ai-description-writer-tier';
+
+/**
+ * Which of the Market's model tiers the writer uses. The model id of each tier, the provider and
+ * the key stay server configuration (ADR-0026 decision 9, R7); only the tier is a setting.
+ */
+export const AI_MODEL_TIER_VALUES = ['fast', 'balanced'] as const;
+export type AiModelTierSetting = (typeof AI_MODEL_TIER_VALUES)[number];
+
 export interface SettingDefinition {
   readonly code: string;
   readonly values: readonly string[];
@@ -40,6 +59,19 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     defaultValue: 'multi-store',
     // An unreadable store keeps today's behaviour; the cart's own read decides what to enforce.
     safeValue: 'multi-store',
+  },
+  {
+    code: AI_DESCRIPTION_WRITER_CODE,
+    values: AI_DESCRIPTION_WRITER_VALUES,
+    defaultValue: 'off',
+    safeValue: 'off',
+  },
+  {
+    code: AI_DESCRIPTION_WRITER_TIER_CODE,
+    values: AI_MODEL_TIER_VALUES,
+    defaultValue: 'fast',
+    // The cheaper tier.
+    safeValue: 'fast',
   },
 ]);
 

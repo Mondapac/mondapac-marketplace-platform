@@ -44,6 +44,8 @@ import { AdminListOrderNotes } from '../application/use-cases/admin-list-order-n
 import { AdminRefundOrder } from '../application/use-cases/admin-refund-order.use-case';
 import { AdminViewOrderDocument } from '../application/use-cases/admin-view-order-document.use-case';
 import { AdminViewOrder } from '../application/use-cases/admin-view-order.use-case';
+import { AdminViewOrderActivity } from '../application/use-cases/admin-view-order-activity.use-case';
+import { OrderActivityBody, orderActivityBody } from './order-activity.dto';
 import { AdminOrderDetailBody, adminOrderDetailBody } from './admin-order-detail.dto';
 import {
   AdminNoteBody,
@@ -100,6 +102,7 @@ export class AdminOrdersController {
     private readonly cancel: AdminCancelOrder,
     private readonly notesOf: AdminListOrderNotes,
     private readonly addNote: AdminAddOrderNote,
+    private readonly activityOf: AdminViewOrderActivity,
   ) {}
 
   @Get()
@@ -116,6 +119,15 @@ export class AdminOrdersController {
     name: 'q',
     required: false,
     description: 'An order id or a seller order id (the reference in the order emails), exact.',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description:
+      'Customer name or store name, 2 to 80 characters, case insensitive, contained text. An ' +
+      'order matches when its customer or one of its stores does. Customer names need ' +
+      'identity.customer-account.view; without it only store names match. Works with every ' +
+      'other filter, in page and cursor mode.',
   })
   @ApiQuery({
     name: 'cursor',
@@ -146,6 +158,11 @@ export class AdminOrdersController {
     description: 'Orders with a part of this seller.',
   })
   @ApiQuery({
+    name: 'accountId',
+    required: false,
+    description: 'Orders one customer account placed (the customer page’s Orders tab).',
+  })
+  @ApiQuery({
     name: 'from',
     required: false,
     description: 'ISO instant: placed at or after it. Page and cursor mode.',
@@ -155,7 +172,10 @@ export class AdminOrdersController {
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
-  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'access.unavailable, or ordering.search-unavailable when `search` could not run',
+  })
   async orders(
     @Call() context: CallContext,
     @Query('status') status: unknown,
@@ -169,6 +189,7 @@ export class AdminOrdersController {
     const result = await this.list.execute(context, {
       status,
       q,
+      search: query['search'],
       cursor,
       limit: parseLimit(limit),
       page: parseLimit(query['page']),
@@ -178,6 +199,7 @@ export class AdminOrdersController {
       paymentState: query['paymentState'],
       fulfilment: query['fulfilment'],
       sellerId: query['sellerId'],
+      accountId: query['accountId'],
       from: query['from'],
       to: query['to'],
     });
@@ -493,6 +515,37 @@ export class AdminOrdersController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return adminNoteBody(result.value);
+  }
+
+  @Get(':orderId/activity')
+  @ApiOperation({
+    summary: "An order's activity timeline, oldest first (admin)",
+    description:
+      'Needs ordering.order.view. Read-only, derived from the order, its seller orders and its ' +
+      'refunds: placed, paid or cancelled, ready, shipped, delivered or collected, refunds ' +
+      'requested and settled. Instants are UTC. No notes, names or addresses.',
+  })
+  @ApiParam({ name: 'orderId', format: 'uuid' })
+  @ApiOkResponse({ type: OrderActivityBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.order-not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async activity(
+    @Call() context: CallContext,
+    @Param('orderId') orderId: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.activityOf.execute(context, { orderId });
+    this.log(
+      'ordering.admin-view-order-activity-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return orderActivityBody(result.value);
   }
 
   private log(msg: string, context: CallContext, outcome: string): void {

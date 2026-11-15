@@ -59,8 +59,6 @@
       "store-banner": "Store banner",
       "stock-locations": "Stock locations",
       "stock-locations-words": "warehouse, pickup address, where stock is kept",
-      "payout-bank": "Payout bank account",
-      "payout-bank-words": "bank, BSB, payments, get paid",
       "team-members": "Team members"
     },
     "empty-hint": "Check the spelling or try a shorter word."
@@ -99,14 +97,18 @@
     "reviews": "Reviews",
     "earnings": "Earnings",
     "group": {
-      "orders": "Orders",
+      "requests": "Requests",
+      "sales": "Sales",
       "catalogue": "Catalogue",
-      "money": "Money"
+      "customers": "Customers",
+      "accounting": "Accounting"
     },
     "settings": "Settings",
     "import": "Import",
     "performance": "Performance",
-    "categories": "Shelves"
+    "categories": "Category proposals",
+    "payoutAccount": "Payout account",
+    "payoutAccountWords": "bank, BSB, payments, get paid"
   },
   "home": {
     "title": "Dashboard",
@@ -1538,6 +1540,42 @@
       }
     },
     "not-given": "Not given",
+    "size-requests": {
+      "title": "Sizes you asked for",
+      "help": "Is a size missing? Ask for it. We check the request and tell you by email. You can sell the size once it is added and reviewed.",
+      "request": "Request a size",
+      "choose": "Choose",
+      "send": "Send request",
+      "cancel": "Cancel",
+      "sent": "Request sent.",
+      "none": "You have not asked for a size on this product.",
+      "list-label": "Sizes you asked for",
+      "at-limit": "You have {max} requests waiting. Ask again when one is answered.",
+      "status": {
+        "open": "Waiting",
+        "approved": "Added",
+        "mapped": "Already offered",
+        "declined": "Declined"
+      },
+      "approved-note": "The size was added to the product. It can be sold after review.",
+      "reason": "Reason: {reason}",
+      "error": {
+        "invalid": "Choose a value for every field.",
+        "not-found": "This offer could not be found.",
+        "option-unknown": "One of those values is not available. Reload the page and try again.",
+        "variant-exists": "The product already has this size. Reload the page.",
+        "already-open": "You have already asked for this size.",
+        "limit-reached": "You have {max} requests waiting. Ask again when one is answered.",
+        "daily-limit": "You have sent many requests today. Try again tomorrow.",
+        "not-configurable": "This product cannot take a new size right now.",
+        "not-eligible": "Your store cannot send requests right now.",
+        "denied": "You cannot send requests.",
+        "throttled": "Too many requests. Try again in a moment.",
+        "csrf": "Your session could not be checked. Reload the page and try again.",
+        "unavailable": "The request could not be sent. Try again later.",
+        "unknown": "Something went wrong. Try again."
+      }
+    },
     "variants-table": {
       "title": "Prices and stock by variant",
       "tab": "Variants",
@@ -2391,8 +2429,69 @@
     "optional": "optional",
     "ref": "#{id}",
     "detail-title": "Order #{id}",
+    "next-step": "Next step",
+    "copy-id": "Copy order ID",
+    "copy-id-done": "Order ID copied.",
+    "copy-id-failed": "Could not copy. Select the ID in the title instead.",
     "back": "Back to orders",
     "not-given": "Not given",
+    "columns": {
+      "button": "Columns",
+      "title": "Columns",
+      "help": "Choose which columns the list shows and in what order. Only you see this choice.",
+      "always": "Always shown",
+      "up": "Move {column} up",
+      "down": "Move {column} down",
+      "reset": "Reset",
+      "save": "Save"
+    },
+    "saved": {
+      "manage-link": "Manage filters",
+      "save-link": "Save filter…",
+      "cancel": "Cancel",
+      "save": {
+        "title": "Save this filter",
+        "name": "Name",
+        "who": "Who can use it",
+        "submit": "Save filter",
+        "everyone-help": "Everyone: not available for seller filters.",
+        "own-only": "Saved for you only. Other people in your store don’t see it."
+      },
+      "visibility": {
+        "me": "Only me",
+        "everyone": "Everyone"
+      },
+      "error": {
+        "name-taken": "A filter with this name already exists. Choose another name.",
+        "name-empty": "Enter a name for the filter.",
+        "limit": "You can keep up to {max} saved filters. Delete one to save another.",
+        "shared-limit": "Up to {max} filters can be shared. Delete one first.",
+        "denied": "Your role can’t do this.",
+        "unavailable": "The filter could not be saved. Try again."
+      },
+      "toast": {
+        "saved": "Saved “{name}”",
+        "updated": "Updated “{name}”",
+        "deleted": "Deleted “{name}”"
+      },
+      "manage": {
+        "title": "Manage filters",
+        "close": "Close",
+        "edit": "Edit",
+        "edit-named": "Edit {name}",
+        "delete": "Delete",
+        "delete-named": "Delete {name}",
+        "delete-confirm": "Delete filter",
+        "delete-own": "Delete “{name}”? It is removed from your tabs.",
+        "delete-shared": "Delete “{name}”? It is removed from the tabs of everyone.",
+        "save": "Save changes",
+        "shared-by-other": "Shared by another person",
+        "empty": "No saved filters yet",
+        "empty-help": "Set up filters, then choose Save filter to keep them as a tab.",
+        "help-share": "Rename, change who can use a filter, or delete it.",
+        "help-own": "Rename or delete your filters. They are only visible to you."
+      }
+    },
     "col": {
       "order": "Order",
       "status": "Status",
@@ -2494,8 +2593,8 @@
     },
     "filters": {
       "group": "Filters",
-      "from": "Paid from (UTC)",
-      "to": "Paid until (UTC)",
+      "from": "Paid from",
+      "to": "Paid until",
       "clear": "Clear dates",
       "backwards": "The end day is before the start day."
     },
@@ -2532,7 +2631,103 @@
       "invalid": "These filters cannot be exported. Change them and try again.",
       "unavailable": "The file could not be created. Try again."
     },
-    "too-many": "Page numbers stop at the first {limit} orders. Narrow the dates to reach the rest, or ask your platform admin to switch List paging to Previous and next."
+    "too-many": "Page numbers stop at the first {limit} orders. Narrow the dates to reach the rest, or ask your platform admin to switch List paging to Previous and next.",
+    "slip": {
+      "open": "Print packing slip",
+      "title": "Packing slip",
+      "back": "Back to order",
+      "print": "Print",
+      "paid": "Paid {when}",
+      "ship-to": "Ship to",
+      "no-address": "No delivery address is on this order.",
+      "phone": "Phone: {phone}",
+      "items": "Items to pack",
+      "no-items": "Nothing is left to pack on this order.",
+      "not-available": "This order was sent or refunded in full, so there is no packing slip to print.",
+      "buyer-note": "Note from the customer"
+    },
+    "unavailable": {
+      "card": "Cannot supply an item?",
+      "hint": "If you cannot send some units, mark them unavailable. The customer is refunded straight away and the refund comes out of your earnings.",
+      "open": "Mark unavailable",
+      "title": "Mark items unavailable",
+      "keep": "Keep order",
+      "confirm": "Mark unavailable and refund",
+      "body": "Choose how many units of each item you cannot send.",
+      "line-meta": "{left, plural, one {# unit left} other {# units left}} · {price} each",
+      "summary-none": "Choose at least one unit.",
+      "summary-title": "These units will be refunded to the customer:",
+      "summary-line": "{quantity} × {name}",
+      "summary-all": "Nothing is left to send, so the customer also gets back the rest of the shipping fee.",
+      "summary-some": "Each unit is refunded at the price the customer paid.",
+      "final": "The refund goes out immediately and cannot be undone. MondaPac works out the exact amount, including tax, and takes it from your earnings.",
+      "done": "Marked unavailable. {amount} is being refunded to the customer.",
+      "error": {
+        "refunded": "This order was refunded or changed since you opened it. Reload the page to see its current state.",
+        "conflict": "These items can no longer be marked unavailable, for example because the order is already ready. Reload the page.",
+        "limit-reached": "You have reached your refund limit for today. Contact MondaPac support to refund this order.",
+        "limit-unset": "Refunds by sellers are not set up for your store yet. Contact MondaPac support.",
+        "disabled": "Refunds are switched off right now. Contact MondaPac support.",
+        "not-allowed": "This order cannot be refunded here. Contact MondaPac support.",
+        "in-progress": "Another refund of this order is still being processed. Reload the page in a moment.",
+        "exceeds": "You chose more units than are left. Check the numbers and try again.",
+        "tax": "The refund tax could not be worked out right now. Try again shortly.",
+        "rejected": "The payment provider refused the refund. Nothing was refunded. Contact MondaPac support.",
+        "invalid": "Choose at least one unit, and no more than are left.",
+        "not-found": "We could not find this order.",
+        "throttled": "Too many attempts. Wait a moment and try again.",
+        "csrf": "Your session needs a refresh. Reload the page and try again.",
+        "denied": "Your role cannot do this.",
+        "unavailable": "Refunds are not available right now. Try again shortly.",
+        "unknown": "Something went wrong. Nothing was refunded. Try again."
+      }
+    },
+    "notes": {
+      "title": "Notes",
+      "intro": "Only your team sees these notes. They are never shown to the customer.",
+      "empty": "No notes yet.",
+      "unavailable": "Notes could not be loaded. Reload the page to try again.",
+      "erased-body": "This note is no longer available.",
+      "by": "{author} · {at}",
+      "you": "You",
+      "unknown-author": "A team member",
+      "add-label": "Add a note",
+      "add": "Add note",
+      "added": "Note added.",
+      "required": "Write a note first.",
+      "too-long": "A note can have up to {max} characters.",
+      "problem": {
+        "erased": "The customer’s account was deleted, so notes can no longer be added.",
+        "denied": "Your role cannot add notes.",
+        "gone": "This order is no longer available. Go back to the orders list.",
+        "invalid": "The note could not be saved. Check the text and try again.",
+        "unavailable": "Notes are not available right now. Try again shortly.",
+        "unknown": "Something went wrong. Try again."
+      }
+    },
+    "timeline": {
+      "title": "Activity",
+      "empty": "Nothing has happened yet.",
+      "unavailable": "The activity could not be loaded. Reload the page to try again.",
+      "event": {
+        "order-paid": "Payment received",
+        "seller-order-ready": "Marked ready",
+        "seller-order-shipped": "Picked up by the courier",
+        "seller-order-delivered": "Delivered to the customer",
+        "seller-order-collected": "Collected by the customer",
+        "refund-requested": "Refund of {amount} requested",
+        "refund-succeeded": "Refund of {amount} paid back to the customer",
+        "refund-failed": "Refund of {amount} failed. Nothing was paid back"
+      },
+      "by": {
+        "customer": "Customer",
+        "seller": "Your store",
+        "admin": "MondaPac"
+      },
+      "reason": {
+        "item-unavailable": "Item unavailable"
+      }
+    }
   },
   "earnings": {
     "title": "Earnings",
@@ -2633,7 +2828,8 @@
     }
   },
   "load": {
-    "retry": "Try again"
+    "retry": "Try again",
+    "slow": "Still loading…"
   },
   "security": {
     "title": "Security",
@@ -2803,6 +2999,12 @@
   },
   "route": {
     "loading": "Loading the page",
+    "loading-page": "Loading {page}",
+    "slow": "Still loading…",
+    "stalled": {
+      "title": "This page is taking too long to load",
+      "message": "Check your connection and try again. Nothing you saved was lost."
+    },
     "error": {
       "title": "This page could not be shown",
       "message": "Something went wrong on our side. Try again, or go back to the dashboard. Nothing you saved was lost.",
@@ -3342,13 +3544,11 @@
       "no-access-body": "Your role doesn't include any settings page. Ask the account owner to add one.",
       "group": {
         "store": "Store",
-        "money": "Money",
         "team": "Team"
       },
       "link": {
         "store-profile": "Store profile",
         "stock-locations": "Stock locations",
-        "payout-account": "Payout account",
         "team": "Members"
       }
     },
@@ -3357,8 +3557,13 @@
       "body": "Try again. If it keeps happening, check the status page."
     },
     "sub": {
-      "label": "Settings pages",
       "back": "Back to Settings"
+    },
+    "menu": {
+      "label": "Settings menu",
+      "back": "Back to Dashboard",
+      "search": "Search settings",
+      "empty": "No settings match"
     },
     "view-only": {
       "title": "View only"

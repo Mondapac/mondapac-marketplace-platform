@@ -28,12 +28,13 @@ import {
 } from '../../../certification';
 import { SellerAccessApproved, SellerAccessReinstated } from '../../../identity';
 import { LowStockReached } from '../../../inventory';
-import { OrderPaid } from '../../../ordering';
+import { OrderPaid, SellerRefundLimitReached } from '../../../ordering';
 import { PriceHoldDecided, PriceHoldOpened } from '../../../pricing';
 import { DeliveryFallbackOverCap } from '../../../shipping';
 import { BusinessFileSubmitted } from '../../../sellers';
 import {
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
+  ADMIN_SELLER_REFUND_LIMIT_REACHED,
   ADMIN_PLATFORM_IMPORT_FINISHED,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -78,6 +79,8 @@ export const ADMIN_PRICE_HOLD_NOTICE_SUBSCRIBER = 'notifications.admin-price-hol
 export const ADMIN_DELIVERY_FALLBACK_NOTICE_SUBSCRIBER =
   'notifications.admin-delivery-fallback-notice';
 export const ADMIN_PLATFORM_IMPORT_NOTICE_SUBSCRIBER = 'notifications.admin-platform-import-notice';
+export const ADMIN_SELLER_REFUND_LIMIT_NOTICE_SUBSCRIBER =
+  'notifications.admin-seller-refund-limit-notice';
 
 /** The seller notice subscribers (package 4), one per event; each is an inbox handler. */
 export const SELLER_NOTICE_SUBSCRIBERS = {
@@ -128,6 +131,7 @@ export function inAppNoticeSubscriptions(
   const priceHold = review(ADMIN_PRICE_HOLD_NOTICE_SUBSCRIBER);
   const deliveryFallback = review(ADMIN_DELIVERY_FALLBACK_NOTICE_SUBSCRIBER);
   const platformImport = review(ADMIN_PLATFORM_IMPORT_NOTICE_SUBSCRIBER);
+  const refundLimit = review(ADMIN_SELLER_REFUND_LIMIT_NOTICE_SUBSCRIBER);
   const seller =
     (name: string) =>
     async (item: SellerNoticeItem, delivery: EventDelivery, context: CallContext) => {
@@ -513,6 +517,20 @@ export function inAppNoticeSubscriptions(
             kind: ADMIN_DELIVERY_FALLBACK_OVER_CAP,
             sellerOrderId: event.payload.sellerOrderId,
             sellerId: event.payload.sellerId,
+          },
+          delivery,
+          context,
+        ),
+    }),
+    subscription({
+      name: ADMIN_SELLER_REFUND_LIMIT_NOTICE_SUBSCRIBER,
+      event: SellerRefundLimitReached,
+      handle: (event, delivery, context) =>
+        refundLimit(
+          {
+            kind: ADMIN_SELLER_REFUND_LIMIT_REACHED,
+            sellerId: event.payload.sellerId,
+            limit: event.payload.limit,
           },
           delivery,
           context,

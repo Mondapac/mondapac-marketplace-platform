@@ -36,7 +36,7 @@ export class PrismaMissingDetailsEmailStore implements MissingDetailsEmailStore 
         marketId: market.marketId,
         OR: pairs.map((pair) => ({ sellerId: pair.sellerId, productId: pair.productId })),
       },
-      select: { sellerId: true, productId: true, state: true, requestedAt: true },
+      select: { sellerId: true, productId: true, state: true, requestedAt: true, settledAt: true },
     });
     return rows.flatMap((row) => {
       const state = STATES.find((candidate) => candidate === row.state);
@@ -48,6 +48,7 @@ export class PrismaMissingDetailsEmailStore implements MissingDetailsEmailStore 
               productId: row.productId,
               state,
               requestedAt: toInstant(row.requestedAt),
+              settledAt: row.settledAt === null ? null : toInstant(row.settledAt),
             },
           ];
     });

@@ -1,13 +1,19 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
   LockContendedError,
+  type CriterionCounts,
   type LiveScope,
+  type PromotionSearch,
+  type PromotionSearchPage,
+  type StatusCriterion,
   type PromotionFilter,
   type PromotionRepository,
   type UsageRecord,
 } from '../application/ports/promotion.repository';
+import { CREDIT_TYPES } from '../domain/promotion';
 import type {
   CreatableType,
   Funding,
@@ -202,6 +208,104 @@ const targetRows = (market: MarketContext, record: PromotionRecord) =>
     ...target,
   }));
 
+type Where = Prisma.PromotionsPromotionWhereInput;
+
+const CRITERIA: readonly StatusCriterion[] = [
+  'ACTIVE',
+  'SCHEDULED',
+  'PAUSED',
+  'NEEDS_REVIEW',
+  'ENDED',
+  'PENDING_APPROVAL',
+  'REJECTED',
+  'BUDGET_USED_UP',
+];
+
+/**
+ * The rows of one display status (domain/display-status.ts says the same in code): the tab and the
+ * count use this one clause, so a row is on a tab if and only if it shows that status.
+ */
+function criterionWhere(
+  criterion: StatusCriterion,
+  now: Date,
+  budgetUsedUpIds: readonly string[],
+  reviewIds: readonly string[],
+  hideBudget: boolean,
+): Where {
+  const notEnded: Where = { OR: [{ endsAt: null }, { endsAt: { gt: now } }] };
+  switch (criterion) {
+    case 'NEEDS_REVIEW':
+      return { id: { in: [...reviewIds] } };
+    case 'REJECTED':
+    case 'PENDING_APPROVAL':
+      return { status: criterion };
+    case 'ENDED':
+      return { status: { in: ['ACTIVE', 'PAUSED'] }, endsAt: { not: null, lte: now } };
+    case 'PAUSED':
+      return { AND: [{ status: 'PAUSED' }, notEnded] };
+    case 'SCHEDULED':
+      return { AND: [{ status: 'ACTIVE', startsAt: { gt: now } }, notEnded] };
+    case 'BUDGET_USED_UP':
+      return {
+        AND: [
+          { status: 'ACTIVE', startsAt: { lte: now }, id: { in: [...budgetUsedUpIds] } },
+          notEnded,
+        ],
+      };
+    case 'ACTIVE':
+      return {
+        AND: [
+          {
+            status: 'ACTIVE',
+            startsAt: { lte: now },
+            ...(hideBudget ? {} : { id: { notIn: [...budgetUsedUpIds] } }),
+          },
+          notEnded,
+        ],
+      };
+  }
+}
+
+/** The restrictions of a search other than its status criterion. */
+function restrictionsOf(search: PromotionSearch): Where[] {
+  const and: Where[] = [];
+  if (search.text !== null) {
+    and.push({
+      OR: [
+        { name: { contains: search.text, mode: 'insensitive' } },
+        { code: { startsWith: search.text.toUpperCase() } },
+      ],
+    });
+  }
+  if (search.types.length > 0) and.push({ type: { in: [...search.types] } });
+  if (search.owner === 'PLATFORM') and.push({ ownerSellerId: null });
+  if (search.owner === 'SELLER') and.push({ ownerSellerId: { not: null } });
+  if (search.funding !== null) and.push({ funding: search.funding });
+  return and;
+}
+
+/** The Market stays at the top of the filter, where the persistence guard looks for it. */
+const inMarket = (market: MarketContext, ...restrictions: Where[]): Where => ({
+  marketId: market.marketId,
+  AND: restrictions,
+});
+
+function orderOf(search: PromotionSearch): Prisma.PromotionsPromotionOrderByWithRelationInput[] {
+  const direction = search.descending ? 'desc' : 'asc';
+  const primary: Prisma.PromotionsPromotionOrderByWithRelationInput =
+    search.sort === 'STARTS'
+      ? { startsAt: direction }
+      : search.sort === 'ENDS'
+        ? { endsAt: { sort: direction, nulls: 'last' } }
+        : search.sort === 'NAME'
+          ? { name: direction }
+          : search.sort === 'USES'
+            ? { usage: { usesCount: direction } }
+            : { createdAt: direction };
+  // The id breaks ties, so a page boundary never repeats or skips a row.
+  return [primary, { id: direction }];
+}
+
 /** {@link PromotionRepository} on `promotions.promotions` and its children, scoped by `marketId`. */
 export class PrismaPromotionRepository implements PromotionRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -346,6 +450,89 @@ export class PrismaPromotionRepository implements PromotionRepository {
       take: filter.limit,
     });
     return rows.map(toRecord);
+  }
+
+  async search(
+    market: MarketContext,
+    search: PromotionSearch,
+    now: Temporal.Instant,
+  ): Promise<PromotionSearchPage> {
+    const tx = this.prisma.tx(market);
+    const at = toDate(now);
+    const budgetIds =
+      search.criterion === 'ACTIVE' || search.criterion === 'BUDGET_USED_UP'
+        ? await this.budgetUsedUpIds(market)
+        : [];
+    const where = inMarket(
+      market,
+      ...restrictionsOf(search),
+      ...(search.criterion === null
+        ? []
+        : [
+            criterionWhere(
+              search.criterion,
+              at,
+              budgetIds,
+              search.reviewPromotionIds,
+              search.hideBudget,
+            ),
+          ]),
+    );
+    const total = await tx.promotionsPromotion.count({ where });
+    const rows = await tx.promotionsPromotion.findMany({
+      where,
+      include: WITH_CHILDREN,
+      orderBy: orderOf(search),
+      skip: search.offset,
+      take: search.limit,
+    });
+    return { records: rows.map(toRecord), total };
+  }
+
+  async countByCriterion(
+    market: MarketContext,
+    search: PromotionSearch,
+    now: Temporal.Instant,
+  ): Promise<CriterionCounts> {
+    const tx = this.prisma.tx(market);
+    const at = toDate(now);
+    const base = restrictionsOf(search);
+    const budgetIds = await this.budgetUsedUpIds(market);
+    const counts = new Map<StatusCriterion | 'ALL', number>();
+    counts.set('ALL', await tx.promotionsPromotion.count({ where: inMarket(market, ...base) }));
+    for (const criterion of CRITERIA) {
+      counts.set(
+        criterion,
+        await tx.promotionsPromotion.count({
+          where: inMarket(
+            market,
+            ...base,
+            criterionWhere(criterion, at, budgetIds, search.reviewPromotionIds, search.hideBudget),
+          ),
+        }),
+      );
+    }
+    return counts;
+  }
+
+  /**
+   * The live promotions whose budget is spent. The counters sit in another table, and a column
+   * cannot be compared with another table's column in a filter, so the few promotions that have a
+   * budget are read with their spend and compared here. Credit types keep no spend in the counters.
+   */
+  private async budgetUsedUpIds(market: MarketContext): Promise<string[]> {
+    const rows = await this.prisma.tx(market).promotionsPromotion.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'ACTIVE',
+        budgetMinor: { not: null },
+        type: { notIn: [...CREDIT_TYPES] },
+      },
+      select: { id: true, budgetMinor: true, usage: { select: { spentMinor: true } } },
+    });
+    return rows
+      .filter((row) => row.budgetMinor !== null && (row.usage?.spentMinor ?? 0n) >= row.budgetMinor)
+      .map((row) => row.id);
   }
 
   async listLive(

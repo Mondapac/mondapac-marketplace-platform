@@ -2,7 +2,13 @@ import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { CATALOG_OWN_PRODUCT_VIEW } from '../../contracts/permissions';
+import { CATALOG_OWN_PRODUCT_EDIT, CATALOG_OWN_PRODUCT_VIEW } from '../../contracts/permissions';
+import {
+  heldKeys,
+  rowActions,
+  type PermissionProbe,
+  type RowActionRule,
+} from '../../../../platform/list-query';
 import type { ProductStatus } from '../../domain/product';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import {
@@ -122,6 +128,11 @@ export interface OwnProductPageItem extends OwnProductListItem {
   readonly offerCount: number;
   /** Set while the product is paused (it stays in the Live view). */
   readonly pausedAt: string | null;
+  /**
+   * The row actions the caller may run on this product, from their permissions and its state:
+   * `open`, `edit`. The Actions menu shows exactly these.
+   */
+  readonly actions: readonly string[];
 }
 
 export interface OwnProductViewCounts {
@@ -151,7 +162,21 @@ export interface OwnProductsListDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly ownReader: OwnCatalogReader;
   readonly policy: CatalogMarketPolicy;
+  /** The gate's answer to "does the caller hold `catalog.own-product.edit`", for the row actions. */
+  readonly ownEditProbe: PermissionProbe;
 }
+
+/** What each row action needs: the key its use case checks and the state it can run on. */
+export const OWN_PRODUCT_ACTION_RULES: readonly RowActionRule<
+  Pick<OwnProductListItem, 'status'>
+>[] = [
+  { id: 'open', permission: null },
+  {
+    id: 'edit',
+    permission: CATALOG_OWN_PRODUCT_EDIT.key,
+    when: (row) => row.status !== 'retired',
+  },
+];
 
 /**
  * `own-products.list` (catalog design 8.2, 9.2a): the seller's own SELLER products. Two modes. With
@@ -300,6 +325,9 @@ export class OwnProductsList extends UseCase<
     if (!read.ok) return err({ code: 'access.unavailable' });
     const { counts, total, result } = read.value;
     if (result.kind === 'too-broad') return invalid('sort', 'too-broad');
+    const granted = await heldKeys(context, {
+      [CATALOG_OWN_PRODUCT_EDIT.key]: this.deps.ownEditProbe,
+    });
     const items = result.rows.map((row): OwnProductPageItem => ({
       productId: row.productId,
       productCode: row.productCode,
@@ -317,6 +345,7 @@ export class OwnProductsList extends UseCase<
       pendingSubmittedAt: isoOf(row.pendingSubmittedAt),
       lastChangedAt: row.lastChangedAt.toString(),
       createdAt: row.createdAt.toString(),
+      actions: rowActions(row, OWN_PRODUCT_ACTION_RULES, granted),
     }));
     return ok({ items, total, page: q.page, pageSize: q.pageSize, counts });
   }

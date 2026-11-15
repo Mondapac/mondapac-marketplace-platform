@@ -6,6 +6,10 @@ import type {
   StoredAdminNote,
 } from '../../src/modules/ordering/application/ports/admin-order-notes';
 import type {
+  SellerOrderNoteRepository,
+  StoredSellerNote,
+} from '../../src/modules/ordering/application/ports/seller-order-notes';
+import type {
   AuditEntry,
   CallContext,
   Id,
@@ -30,6 +34,16 @@ import type {
 } from '../../src/modules/commission-payouts';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
+import type { RefundLimit } from '../../src/modules/ordering/domain/refund-limits';
+import {
+  isShipToPurgeable,
+  type ShipToRetention,
+  type ShipToSettlementFacts,
+} from '../../src/modules/ordering/domain/ship-to-retention';
+import type {
+  ShipToPurgeCursor,
+  ShipToRetentionRepository,
+} from '../../src/modules/ordering/application/ports/ship-to-retention.repository';
 import type { PaymentAttemptLimits } from '../../src/modules/ordering/application/ports/payment-attempt-limits';
 import type {
   CardPaymentFailure,
@@ -131,6 +145,9 @@ class EmptyRefunds implements RefundRepository {
   listForOrder() {
     return Promise.resolve([]);
   }
+  listForAccount() {
+    return Promise.resolve([]);
+  }
   findSellerTarget() {
     return Promise.resolve(null);
   }
@@ -167,8 +184,119 @@ class EmptyRefunds implements RefundRepository {
   findPending() {
     return this.unexpected('findPending');
   }
+  guardSellerRefunds() {
+    return this.unexpected('guardSellerRefunds');
+  }
+  noteRefundLimitAlert() {
+    return this.unexpected('noteRefundLimitAlert');
+  }
+  findRefundLimits() {
+    return Promise.resolve({ own: null, marketDefault: null });
+  }
+  saveRefundLimit() {
+    return this.unexpected('saveRefundLimit');
+  }
+  removeRefundLimit() {
+    return this.unexpected('removeRefundLimit');
+  }
 }
 export const NO_REFUNDS: RefundRepository = new EmptyRefunds();
+
+/**
+ * The caps on seller refunds in memory (decision 6; Hassan F2), with the other refund methods of
+ * {@link NO_REFUNDS}: the admin routes read and write the caps only.
+ */
+export class MemoryRefundLimits {
+  readonly rows = new Map<string, RefundLimit>();
+  // Nest probes a provider for `then` and its lifecycle hooks: those answer undefined, never the
+  // rejecting stand-ins of NO_REFUNDS (a `then` would make the provider look like a promise).
+  readonly repository: RefundRepository = new Proxy(this as unknown as RefundRepository, {
+    get: (target, name) =>
+      name in target
+        ? (target as unknown as Record<string | symbol, unknown>)[name]
+        : typeof name === 'symbol' || name === 'then' || /^on[A-Z]/.test(name)
+          ? undefined
+          : (NO_REFUNDS as unknown as Record<string | symbol, unknown>)[name],
+  });
+  private key(sellerId: Id<'Seller'> | null) {
+    return sellerId ?? 'default';
+  }
+  findRefundLimits(_m: MarketContext, sellerId: Id<'Seller'> | null) {
+    return Promise.resolve({
+      own: sellerId === null ? null : (this.rows.get(sellerId) ?? null),
+      marketDefault: this.rows.get('default') ?? null,
+    });
+  }
+  saveRefundLimit(_m: MarketContext, limit: RefundLimit, expectedVersion: number) {
+    const key = this.key(limit.sellerId);
+    if ((this.rows.get(key)?.version ?? 0) !== expectedVersion)
+      return Promise.resolve('stale' as const);
+    this.rows.set(key, { ...limit, version: expectedVersion + 1 });
+    return Promise.resolve('saved' as const);
+  }
+  removeRefundLimit(_m: MarketContext, sellerId: Id<'Seller'>, expectedVersion: number) {
+    if (this.rows.get(sellerId)?.version !== expectedVersion)
+      return Promise.resolve('stale' as const);
+    this.rows.delete(sellerId);
+    return Promise.resolve('removed' as const);
+  }
+}
+
+/** One order as the ship-to purge sees it: its sealed ship-to and the facts the rule reads. */
+export interface ShipToOrder {
+  readonly id: string;
+  readonly marketId: string;
+  shipTo: string | null;
+  readonly facts: ShipToSettlementFacts;
+}
+
+/** The ship-to retention setting per Market and the orders the purge clears, in memory. */
+export class MemoryShipToRetention implements ShipToRetentionRepository {
+  readonly settings = new Map<string, ShipToRetention>();
+  readonly orders: ShipToOrder[] = [];
+  /** Every batch asked: the limit and whether it had a cursor. */
+  readonly batches: { limit: number; after: ShipToPurgeCursor | null }[] = [];
+
+  find(market: MarketContext) {
+    return Promise.resolve(this.settings.get(market.marketId) ?? null);
+  }
+  save(market: MarketContext, setting: ShipToRetention, expectedVersion: number) {
+    if ((this.settings.get(market.marketId)?.version ?? 0) !== expectedVersion) {
+      return Promise.resolve('stale' as const);
+    }
+    this.settings.set(market.marketId, { ...setting, version: expectedVersion + 1 });
+    return Promise.resolve('saved' as const);
+  }
+  /** One walk by order id (the Prisma repository's two phases are its own business). */
+  clearSettledShipTo(
+    market: MarketContext,
+    cutoff: Temporal.Instant,
+    after: ShipToPurgeCursor | null,
+    limit: number,
+  ) {
+    this.batches.push({ limit, after });
+    const from = after?.orderId ?? null;
+    const rows = this.orders
+      .filter(
+        (o) =>
+          o.marketId === market.marketId &&
+          o.shipTo !== null &&
+          (from === null || o.id > from) &&
+          isShipToPurgeable(o.facts, cutoff),
+      )
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
+      .slice(0, limit);
+    for (const row of rows) row.shipTo = null;
+    const last = rows.at(-1);
+    return Promise.resolve({
+      cleared: rows.length,
+      next:
+        rows.length < limit || last === undefined
+          ? null
+          : { phase: 'confirmed' as const, at: null, orderId: last.id },
+    });
+  }
+}
 
 /**
  * Collects ordering's audit rows (refunds, cancellations, notes), each checked against its
@@ -212,6 +340,33 @@ export class MemoryOrders implements OrderRepository {
         (o) => o.accountId === accountId && o.status === 'pending-payment',
       ),
     );
+  }
+  totalsOf(_m: MarketContext, accountId: Id<'Account'>) {
+    const confirmed = [...this.rows.values()].filter(
+      (o) => o.accountId === accountId && o.status === 'confirmed',
+    );
+    const times = confirmed.flatMap((o) => (o.confirmedAt === null ? [] : [o.confirmedAt]));
+    times.sort((a, b) => a.epochMilliseconds - b.epochMilliseconds);
+    return Promise.resolve({
+      orderCount: confirmed.length,
+      firstConfirmedAt: times[0] ?? null,
+      lastConfirmedAt: times[times.length - 1] ?? null,
+      spentMinor:
+        confirmed.length === 0 ? null : confirmed.reduce((sum, o) => sum + o.total.amount, 0n),
+      currency: confirmed[0]?.total.currency ?? null,
+      refundCount: 0,
+      refundedMinor: 0n,
+    });
+  }
+  accountsWithConfirmedOrders(_m: MarketContext, after: Id<'Account'> | null, limit: number) {
+    const ids = [
+      ...new Set(
+        [...this.rows.values()].filter((o) => o.status === 'confirmed').map((o) => o.accountId),
+      ),
+    ]
+      .filter((id) => after === null || id > after)
+      .sort();
+    return Promise.resolve(ids.slice(0, limit));
   }
   countOpenOf(_m: MarketContext, accountId: Id<'Account'>) {
     const openOrders = [...this.rows.values()].filter(
@@ -260,7 +415,10 @@ export class MemoryOrders implements OrderRepository {
               (filter.fulfilment === null || s.fulfilment === filter.fulfilment),
           )) &&
         (filter.from === null || o.createdAt.epochMilliseconds >= filter.from.epochMilliseconds) &&
-        (filter.to === null || o.createdAt.epochMilliseconds < filter.to.epochMilliseconds),
+        (filter.to === null || o.createdAt.epochMilliseconds < filter.to.epochMilliseconds) &&
+        (filter.parties === null ||
+          filter.parties.accountIds.includes(o.accountId) ||
+          o.sellerOrders.some((s) => filter.parties!.sellerIds.includes(s.sellerId))),
     );
   }
   listAll(_m: MarketContext, filter: OrderFilter, page: OrderPage) {
@@ -1101,6 +1259,10 @@ export class FakeLabels implements OrderLabels {
   readonly staff = new Map<Id<'Account'>, string>();
   readonly fail = new Set<'units' | 'stores' | 'customers' | 'short-names' | 'staff'>();
   readonly calls: { readonly lookup: string; readonly count: number }[] = [];
+  /** What both searches answer for `capped`. */
+  searchCapped = false;
+  /** Makes the customer-name search answer as an admin without the customer key. */
+  customerSearchDenied = false;
 
   unitLabelsOf(
     _context: CallContext,
@@ -1127,6 +1289,39 @@ export class FakeLabels implements OrderLabels {
     this.calls.push({ lookup: 'customers', count: accountIds.length });
     if (this.fail.has('customers')) return Promise.reject(new Error('customers'));
     return Promise.resolve(this.customers);
+  }
+
+  customerAccountsMatching(
+    _context: CallContext,
+    term: string,
+  ): Promise<{
+    readonly accountIds: readonly Id<'Account'>[];
+    readonly capped: boolean;
+    readonly searched: boolean;
+  }> {
+    this.calls.push({ lookup: 'search-customers', count: 1 });
+    if (this.fail.has('customers')) return Promise.reject(new Error('customers'));
+    const needle = term.toLowerCase();
+    const accountIds = [...this.customers]
+      .filter(([, c]) => (c.displayName ?? '').toLowerCase().includes(needle))
+      .map(([id]) => id);
+    if (this.customerSearchDenied) {
+      return Promise.resolve({ accountIds: [], capped: false, searched: false });
+    }
+    return Promise.resolve({ accountIds, capped: this.searchCapped, searched: true });
+  }
+
+  sellersMatching(
+    _context: CallContext,
+    term: string,
+  ): Promise<{ readonly sellerIds: readonly Id<'Seller'>[]; readonly capped: boolean }> {
+    this.calls.push({ lookup: 'search-stores', count: 1 });
+    if (this.fail.has('stores')) return Promise.reject(new Error('stores'));
+    const needle = term.toLowerCase();
+    const sellerIds = [...this.stores]
+      .filter(([, name]) => name.toLowerCase().includes(needle))
+      .map(([id]) => id);
+    return Promise.resolve({ sellerIds, capped: this.searchCapped });
   }
 
   customerShortNamesOf(
@@ -1283,6 +1478,8 @@ export class FakeCustomers implements CustomersCheckoutFacade {
 /** Seals as readable JSON bound to the account; an erased account's key is destroyed. */
 export class FakeShipToCipher implements ShipToCipher {
   readonly destroyed = new Set<string>();
+  /** How many times an address was opened. */
+  opened = 0;
 
   seal(_m: MarketContext, accountId: Id<'Account'>, shipTo: ShipTo) {
     return Promise.resolve(
@@ -1293,6 +1490,7 @@ export class FakeShipToCipher implements ShipToCipher {
   }
 
   open(_m: MarketContext, accountId: Id<'Account'>, sealed: string) {
+    this.opened += 1;
     const prefix = `sealed:${accountId}:`;
     if (this.destroyed.has(accountId)) {
       return Promise.resolve(err<ShipToKeyDestroyed>({ code: 'subject-key.destroyed' }));
@@ -1346,6 +1544,38 @@ export class MemoryAdminNotes implements AdminOrderNoteRepository {
     return Promise.resolve(
       this.rows
         .filter((row) => row.orderId === orderId)
+        .reverse()
+        .slice(0, limit),
+    );
+  }
+}
+
+/**
+ * The sellers' notes of the memory store: each seller order known here has its order, seller and
+ * customer; a note is listed only for the seller that owns the seller order.
+ */
+export class MemorySellerNotes implements SellerOrderNoteRepository {
+  readonly sellerOrders = new Map<
+    string,
+    { orderId: Id<'Order'>; sellerId: Id<'Seller'>; accountId: Id<'Account'> }
+  >();
+  readonly rows: StoredSellerNote[] = [];
+  sellerOrderOf(_m: MarketContext, sellerId: Id<'Seller'>, sellerOrderId: Id<'SellerOrder'>) {
+    const found = this.sellerOrders.get(sellerOrderId);
+    return Promise.resolve(
+      found === undefined || found.sellerId !== sellerId
+        ? null
+        : { orderId: found.orderId, accountId: found.accountId },
+    );
+  }
+  insert(_m: MarketContext, note: StoredSellerNote) {
+    this.rows.push(note);
+    return Promise.resolve();
+  }
+  list(_m: MarketContext, sellerId: Id<'Seller'>, sellerOrderId: Id<'SellerOrder'>, limit: number) {
+    return Promise.resolve(
+      this.rows
+        .filter((row) => row.sellerOrderId === sellerOrderId && row.sellerId === sellerId)
         .reverse()
         .slice(0, limit),
     );

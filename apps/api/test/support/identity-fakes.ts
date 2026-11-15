@@ -339,6 +339,20 @@ export class IdentityFakes {
           (a) => a.marketId === market.marketId && a.population === population,
         ),
       ),
+    searchCustomerIdsByName: (market: MarketContext, term: string, limit: number) =>
+      Promise.resolve(
+        [...this.accounts.values()]
+          .filter(
+            (state) =>
+              state.marketId === market.marketId &&
+              state.population === 'customer' &&
+              state.displayName !== null &&
+              state.displayName.toLowerCase().includes(term.toLowerCase()),
+          )
+          .map((state) => state.id)
+          .sort()
+          .slice(0, limit),
+      ),
     customerSummaries: (market: MarketContext, ids: readonly Id<'Account'>[]) =>
       Promise.resolve(
         ids.flatMap((id) => {
@@ -350,6 +364,27 @@ export class IdentityFakes {
             : [{ id, displayName: state.displayName, email: state.email.typed }];
         }),
       ),
+    customerDirectoryRows: (market: MarketContext, ids: readonly Id<'Account'>[]) =>
+      Promise.resolve(
+        ids.flatMap((id) => {
+          const state = this.accounts.get(id);
+          return state === undefined ||
+            state.marketId !== market.marketId ||
+            state.population !== 'customer'
+            ? []
+            : [
+                {
+                  id,
+                  email: state.email.normalized,
+                  displayName: state.displayName,
+                  status: 'active' as const,
+                  emailVerifiedAt: null,
+                  signedUpAt: state.signedUpAt,
+                },
+              ];
+        }),
+      ),
+    customerDirectoryPage: () => Promise.resolve([]),
     customerSharesAddressWithSellerMember: () => Promise.resolve(false),
     customerStatus: (market: MarketContext, id: Id<'Account'>) => {
       const state = this.accounts.get(id);

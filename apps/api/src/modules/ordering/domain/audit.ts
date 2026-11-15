@@ -39,6 +39,42 @@ export const RefundSettled = defineAuditAction({
   },
 });
 
+/** The audit target type of a refund cap; the target id is the cap's row. */
+export const REFUND_LIMIT_TARGET = 'ordering.seller-refund-limit';
+
+const limitFields = {
+  maxCount: auditField.integer(),
+  maxAmount: auditField.money(),
+};
+
+/**
+ * An admin set the Market's default cap or a seller's own (decision 6; Hassan F2). The target is
+ * the cap's row; `before` is null on a first set.
+ */
+export const RefundLimitSet = defineAuditAction({
+  action: 'ordering.refund-limit.set',
+  targetType: REFUND_LIMIT_TARGET,
+  actors: ['authenticated'],
+  before: {
+    maxCount: auditField.optional(auditField.integer()),
+    maxAmount: auditField.optional(auditField.money()),
+  },
+  after: {
+    ...limitFields,
+    scope: auditField.enumOf(['market', 'seller'] as const),
+    sellerId: auditField.optional(auditField.id()),
+    version: auditField.integer(),
+  },
+});
+
+/** An admin removed a seller's own cap: the Market default is in force again. */
+export const RefundLimitRemoved = defineAuditAction({
+  action: 'ordering.refund-limit.removed',
+  targetType: REFUND_LIMIT_TARGET,
+  actors: ['authenticated'],
+  before: { ...limitFields, sellerId: auditField.id() },
+});
+
 /** The audit target type of an order; the target id is the order id. */
 export const ORDER_TARGET = 'ordering.order';
 
@@ -71,9 +107,119 @@ export const OrderNoteAdded = defineAuditAction({
   },
 });
 
+/** The audit target type of a seller order; the target id is the seller order id. */
+export const SELLER_ORDER_TARGET = 'ordering.seller-order';
+
+/**
+ * A seller member wrote a note on its own seller order (order detail decision 3). Never the text.
+ */
+export const SellerOrderNoteAdded = defineAuditAction({
+  action: 'ordering.seller-order.note-added',
+  targetType: SELLER_ORDER_TARGET,
+  actors: ['authenticated'],
+  after: {
+    noteId: auditField.id(),
+    length: auditField.integer(),
+  },
+});
+
+/** The audit target type of a saved filter of an order list. */
+export const ORDERING_SAVED_FILTER_TARGET = 'ordering.saved-filter';
+
+const savedFilterVisibility = auditField.enumOf(['me', 'everyone'] as const);
+
+/** The lists whose filters can be shared with everyone (the admin ones, see `saved-view-lists.ts`). */
+export const SAVED_FILTER_AUDIT_LISTS = ['admin.ordering.orders'] as const;
+export type SavedFilterAuditList = (typeof SAVED_FILTER_AUDIT_LISTS)[number];
+const savedFilterList = auditField.enumOf(SAVED_FILTER_AUDIT_LISTS);
+
+/** An admin saved an order filter for everyone. The name is not audited: ids and codes only. */
+export const SavedFilterSharedAudit = defineAuditAction({
+  action: 'ordering.saved-filter.shared',
+  targetType: ORDERING_SAVED_FILTER_TARGET,
+  actors: ['authenticated'],
+  after: { listKey: savedFilterList, visibility: savedFilterVisibility },
+});
+
+/**
+ * An admin changed an order filter that is, or was, shared with everyone: renamed it or moved it
+ * between "me" and "everyone". `ownedByActor` is false when an admin with the share key changed
+ * somebody else's filter.
+ */
+export const SavedFilterChangedAudit = defineAuditAction({
+  action: 'ordering.saved-filter.changed',
+  targetType: ORDERING_SAVED_FILTER_TARGET,
+  actors: ['authenticated'],
+  before: { visibility: savedFilterVisibility },
+  after: {
+    listKey: savedFilterList,
+    visibility: savedFilterVisibility,
+    renamed: auditField.boolean(),
+    ownedByActor: auditField.boolean(),
+  },
+});
+
+/** An admin deleted an order filter that was shared with everyone. */
+export const SavedFilterRemovedAudit = defineAuditAction({
+  action: 'ordering.saved-filter.removed',
+  targetType: ORDERING_SAVED_FILTER_TARGET,
+  actors: ['authenticated'],
+  before: { listKey: savedFilterList, visibility: savedFilterVisibility },
+  after: { ownedByActor: auditField.boolean() },
+});
+
+/** The audit target type of the ship-to retention setting; the target id is the setting's row. */
+export const SHIP_TO_RETENTION_TARGET = 'ordering.ship-to-retention';
+
+/**
+ * An admin set the Market's ship-to retention (owner decision 2026-11-15), after a fresh two-step
+ * code; the row names the proof. `before` is null on a first set (the Market was off, 24 months).
+ */
+export const ShipToRetentionChanged = defineAuditAction({
+  action: 'ordering.ship-to-retention.changed',
+  targetType: SHIP_TO_RETENTION_TARGET,
+  actors: ['authenticated'],
+  before: {
+    enabled: auditField.optional(auditField.boolean()),
+    months: auditField.optional(auditField.integer()),
+  },
+  after: {
+    enabled: auditField.boolean(),
+    months: auditField.integer(),
+    version: auditField.integer(),
+    stepUpSessionId: auditField.id(),
+    stepUpVerifiedAt: auditField.instant(),
+  },
+});
+
+/**
+ * One run of the daily purge of a Market with the retention on: how many sealed ship-to it
+ * cleared, under which setting and cutoff. A count only: no order id, no address.
+ */
+export const ShipToPurged = defineAuditAction({
+  action: 'ordering.ship-to.purged',
+  targetType: SHIP_TO_RETENTION_TARGET,
+  actors: ['system'],
+  after: {
+    months: auditField.integer(),
+    cutoff: auditField.instant(),
+    cleared: auditField.integer(),
+    /** False when the run stopped at its batch bound: the next run goes on. */
+    complete: auditField.boolean(),
+  },
+});
+
 export const ORDERING_AUDIT_ACTIONS = [
   RefundRequested,
   RefundSettled,
   OrderCancelRequested,
   OrderNoteAdded,
+  SellerOrderNoteAdded,
+  RefundLimitSet,
+  RefundLimitRemoved,
+  SavedFilterSharedAudit,
+  SavedFilterChangedAudit,
+  SavedFilterRemovedAudit,
+  ShipToRetentionChanged,
+  ShipToPurged,
 ] as const;

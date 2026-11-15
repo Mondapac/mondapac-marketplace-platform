@@ -26,6 +26,10 @@ export class MarketConfigIdentityPolicy implements IdentityMarketPolicy, LinkTar
     return this.markets.get(market.marketId).identity.password;
   }
 
+  marketTimezone(market: MarketContext): string {
+    return this.markets.get(market.marketId).timezone;
+  }
+
   existingAccountNoticeHours(market: MarketContext): number {
     return this.markets.get(market.marketId).identity.existingAccountNoticeHours;
   }

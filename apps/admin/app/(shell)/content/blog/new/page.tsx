@@ -18,7 +18,7 @@ export default async function NewBlogPostPage() {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
   if (!gate.session.permissionKeys.includes(BLOG_EDIT_PERMISSION)) {
-    return <ContentNoAccess session={gate.session} />;
+    return <ContentNoAccess session={gate.session} activeId="blog" />;
   }
   const title = t('blog.editor.new.title');
   return (

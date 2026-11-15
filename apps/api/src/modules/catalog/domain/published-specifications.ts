@@ -1,3 +1,4 @@
+import { isMeasureValue, measureFromBase } from '@mondapac/shared-kernel';
 import type { AttributeDataType } from '@mondapac/shared-kernel';
 import type { FamilyGroup } from './attribute-family';
 
@@ -11,7 +12,8 @@ export type PublishedSpecificationValue =
   | { readonly kind: 'list'; readonly items: readonly string[] }
   | { readonly kind: 'number'; readonly value: string }
   | { readonly kind: 'boolean'; readonly value: boolean }
-  | { readonly kind: 'date'; readonly value: string };
+  | { readonly kind: 'date'; readonly value: string }
+  | { readonly kind: 'measure'; readonly value: string; readonly unitLabel: string };
 
 export interface PublishedSpecification {
   readonly code: string;
@@ -47,7 +49,12 @@ export interface SpecificationDefinition {
     readonly code: string;
     readonly options: ReadonlyMap<string, string>;
   } | null;
+  /** A `measure` only: the decimal places the published revision allows (attributes A3). */
+  readonly measureDecimals?: number;
 }
+
+/** The Market's labels of its measure units ("kg", "kilogram"), by unit code. */
+export type SpecificationUnitLabels = ReadonlyMap<string, Readonly<Record<string, string>>>;
 
 export interface SpecificationLocales {
   readonly requested: string;
@@ -93,6 +100,7 @@ function valueOf(
   definition: SpecificationDefinition,
   stored: unknown,
   locales: SpecificationLocales,
+  unitLabels: SpecificationUnitLabels,
 ): PublishedSpecificationValue | null {
   let raw = stored;
   if (definition.localizable) {
@@ -136,6 +144,14 @@ function valueOf(
       }
       return items.size === 0 ? null : { kind: 'list', items: [...items] };
     }
+    case 'measure': {
+      // Stored in the base unit with the seller's unit; shown in that unit, never another.
+      if (!isMeasureValue(raw) || definition.measureDecimals === undefined) return null;
+      const value = measureFromBase(raw.value, raw.unit, definition.measureDecimals);
+      const labels = unitLabels.get(raw.unit);
+      const unitLabel = labels === undefined ? null : pickText(labels, locales);
+      return value === null || unitLabel === null ? null : { kind: 'measure', value, unitLabel };
+    }
     // Long text is the description; any type the page does not know is not shown.
     default:
       return null;
@@ -173,6 +189,8 @@ export function buildPublishedSpecifications(input: {
   readonly values: Readonly<Record<string, unknown>>;
   readonly definitions: ReadonlyMap<string, SpecificationDefinition>;
   readonly locales: SpecificationLocales;
+  /** The Market's unit labels; a measure whose unit has no label in the locale is left out. */
+  readonly unitLabels: SpecificationUnitLabels;
 }): PublishedSpecificationGroup[] {
   const out: PublishedSpecificationGroup[] = [];
   let rows = 0;
@@ -202,7 +220,7 @@ export function buildPublishedSpecifications(input: {
       }
       if (!definition.showOnProductPage || definition.dataType === 'long-text') continue;
       const name = pickText(definition.names, input.locales);
-      const value = valueOf(definition, stored, input.locales);
+      const value = valueOf(definition, stored, input.locales, input.unitLabels);
       if (name === null || value === null) continue;
       specifications.push({ code, name, value });
       rows += 1;

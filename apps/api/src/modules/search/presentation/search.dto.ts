@@ -360,16 +360,22 @@ export class ProductDetailBrandBody {
 }
 
 export class ProductDetailSpecificationValueBody {
-  @ApiProperty({ enum: ['text', 'list', 'number', 'boolean', 'date'] })
-  kind!: 'text' | 'list' | 'number' | 'boolean' | 'date';
+  @ApiProperty({ enum: ['text', 'list', 'number', 'boolean', 'date', 'measure'] })
+  kind!: 'text' | 'list' | 'number' | 'boolean' | 'date' | 'measure';
   @ApiPropertyOptional({ description: 'kind text: the text (a select label is in the locale).' })
   text?: string;
   @ApiPropertyOptional({ type: [String], description: 'kind list: option labels.' })
   items?: string[];
   @ApiPropertyOptional({
-    description: 'kind number: a decimal string; boolean: true or false; date: YYYY-MM-DD.',
+    description:
+      'kind number: a decimal string; boolean: true or false; date: YYYY-MM-DD; measure: a ' +
+      'decimal string in the unit the seller chose (see `unitLabel`).',
   })
   value?: string | boolean;
+  @ApiPropertyOptional({
+    description: "kind measure: the unit's label in the asked locale, else English (e.g. kg).",
+  })
+  unitLabel?: string;
 }
 
 export class ProductDetailSpecificationBody {

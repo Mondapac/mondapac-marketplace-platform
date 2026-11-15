@@ -126,6 +126,7 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
         status: 'archived',
         material: true,
         names: { [locale]: 'Storage' },
+        mergedInto: { id: ID(1), code: 'brand' },
       }),
     );
     reader.seedFeatureSet(
@@ -291,6 +292,18 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
       ok: false,
       error: { code: 'access.unavailable' },
     });
+  });
+
+  it('names the attribute an archived one was merged into, and nothing for the others', async () => {
+    const merged = await get().execute(context(), { attributeId: ID(3) });
+    if (!merged.ok) throw new Error(merged.error.code);
+    expect(merged.value).toMatchObject({
+      status: 'archived',
+      mergedInto: { id: ID(1), code: 'brand' },
+    });
+    const plain = await get().execute(context(), { attributeId: ID(1) });
+    if (!plain.ok) throw new Error(plain.error.code);
+    expect(plain.value.mergedInto).toBeNull();
   });
 
   it('reads one attribute with its values by position, uses and history', async () => {

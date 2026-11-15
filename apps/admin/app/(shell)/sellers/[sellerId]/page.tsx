@@ -19,6 +19,19 @@ import {
   healthPath,
   type SellerHealthRead,
 } from '../../../../src/sellers/health-types.ts';
+import {
+  AiAccessCard,
+  aiAccessOf,
+  aiAccessPath,
+  type AiAccessRead,
+} from '../../../../src/sellers/ai-access-card.tsx';
+import {
+  BLOG_ACCESS_PERMISSION,
+  BlogAccessCard,
+  blogAccessOf,
+  blogAccessPath,
+  type BlogAccessRead,
+} from '../../../../src/sellers/blog-access-card.tsx';
 import { CategoryProposalsCard } from '../../../../src/sellers/category-proposals-card.tsx';
 import { DECIDE_PERMISSION as PROPOSAL_DECIDE_PERMISSION } from '../../../../src/categories/proposals/types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
@@ -51,6 +64,13 @@ import {
   type ActivityOption,
   type SellerActivities,
 } from '../../../../src/sellers/activities-types.ts';
+import { RefundLimitCard } from '../../../../src/refund-limits/seller-card.tsx';
+import {
+  REFUND_LIMITS_MANAGE_PERMISSION,
+  REFUND_LIMITS_VIEW_PERMISSION,
+  sellerReadPath,
+  type RefundLimits,
+} from '../../../../src/refund-limits/types.ts';
 import { displayZone } from '../../../../src/shared/format.ts';
 import { SellerMethodsCard } from '../../../../src/delivery-settings/seller-methods-card.tsx';
 import {
@@ -67,12 +87,36 @@ async function loadMethods(sellerId: string, canView: boolean): Promise<SellerMe
   return read.kind === 'ok' ? read.body : null;
 }
 
+/** The caps on the seller's refunds, or null when the role cannot see them or they cannot be read. */
+async function loadRefundLimits(sellerId: string, canView: boolean): Promise<RefundLimits | null> {
+  if (!canView) return null;
+  const read = await serverGet<RefundLimits>(sellerReadPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? read.body : null;
+}
+
 /** The seller's stored health, or null when the role cannot see it or it cannot be read. */
 async function loadHealth(sellerId: string, canView: boolean): Promise<SellerHealthRead | null> {
   if (!canView) return null;
   const read = await serverGet<SellerHealthRead>(healthPath(sellerId));
   if (read.kind === 'signed-out') redirect('/session-ended');
   return read.kind === 'ok' ? read.body : null;
+}
+
+/** The seller's AI switch, or null when it cannot be read (the card then shows no switch). */
+async function loadAiAccess(sellerId: string, canView: boolean): Promise<AiAccessRead | null> {
+  if (!canView) return null;
+  const read = await serverGet<unknown>(aiAccessPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? aiAccessOf(read.body) : null;
+}
+
+/** The seller's blog switch, or null when it cannot be read (the card then shows no switch). */
+async function loadBlogAccess(sellerId: string, canView: boolean): Promise<BlogAccessRead | null> {
+  if (!canView) return null;
+  const read = await serverGet<unknown>(blogAccessPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? blogAccessOf(read.body) : null;
 }
 
 /** The seller's payout terms, or null when the role cannot see them or they cannot be read. */
@@ -203,13 +247,26 @@ export default async function SellerReviewPage({
       canCheck: permissionKeys.includes(CHECK_PERMISSION),
       csrfToken,
     };
-    const [commission, methods, terms, holds, health, activities] = await Promise.all([
+    const [
+      commission,
+      methods,
+      terms,
+      holds,
+      health,
+      activities,
+      aiAccess,
+      blogAccess,
+      refundLimits,
+    ] = await Promise.all([
       loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
       loadMethods(sellerId, permissionKeys.includes(DELIVERY_VIEW_PERMISSION)),
       loadTerms(sellerId, permissionKeys.includes(TERMS_VIEW_PERMISSION)),
       loadHolds(sellerId, permissionKeys.includes(HOLD_VIEW_PERMISSION)),
       loadHealth(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
       loadActivities(sellerId, permissionKeys),
+      loadAiAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+      loadBlogAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+      loadRefundLimits(sellerId, permissionKeys.includes(REFUND_LIMITS_VIEW_PERMISSION)),
     ]);
     return shell(
       <div className="flex flex-col gap-6">
@@ -229,6 +286,33 @@ export default async function SellerReviewPage({
             canSeeQueue={permissionKeys.includes(PROPOSAL_DECIDE_PERMISSION)}
           />
         ) : null}
+        {permissionKeys.includes(SETTINGS_EDIT_PERMISSION) ? (
+          <AiAccessCard
+            sellerId={sellerId}
+            csrfToken={csrfToken}
+            initial={aiAccess}
+            canView={permissionKeys.includes(SELLER_VIEW_PERMISSION)}
+          />
+        ) : null}
+        {permissionKeys.includes(BLOG_ACCESS_PERMISSION) ||
+        permissionKeys.includes(SELLER_VIEW_PERMISSION) ? (
+          <BlogAccessCard
+            sellerId={sellerId}
+            csrfToken={csrfToken}
+            initial={blogAccess}
+            canView={permissionKeys.includes(SELLER_VIEW_PERMISSION)}
+            canEdit={permissionKeys.includes(BLOG_ACCESS_PERMISSION)}
+          />
+        ) : null}
+        {refundLimits === null ? null : (
+          <RefundLimitCard
+            sellerId={sellerId}
+            initial={refundLimits}
+            canManage={permissionKeys.includes(REFUND_LIMITS_MANAGE_PERMISSION)}
+            csrfToken={csrfToken}
+            zone={displayZone(gate.session.timezone)}
+          />
+        )}
         {activities === null ? null : (
           <SellerActivitiesCard
             sellerId={sellerId}

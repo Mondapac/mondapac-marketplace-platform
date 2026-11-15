@@ -20,6 +20,8 @@ export interface MissingDetailsEmailDraft extends MissingDetailsEmailKey {
 export interface MissingDetailsEmailRecord extends MissingDetailsEmailKey {
   readonly state: 'pending' | 'sent' | 'skipped' | 'failed';
   readonly requestedAt: Temporal.Instant;
+  /** When it settled (sent: when the mail went); null while pending. */
+  readonly settledAt: Temporal.Instant | null;
 }
 
 /** A pending request, as the job reads it. */

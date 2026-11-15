@@ -41,6 +41,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     commission_payouts: ['USAGE'],
     wallet: ['USAGE'],
     reviews: ['USAGE'],
+    lists: ['USAGE'],
     settings: ['USAGE'],
     promotions: ['USAGE'],
     customers: ['USAGE'],
@@ -55,6 +56,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     shipping: ['USAGE'],
     notifications: ['USAGE'],
     search: ['USAGE'],
+    security: ['USAGE'],
+    system_requests: ['USAGE'],
   },
   tables: {
     // docs/design/data/identity.md section 7: DELETE only for the unverified purge and erasure
@@ -479,11 +482,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['count', 'window_started_at'],
     },
+    // The shared store of saved filters of every super list (super list phase 0): the same rules,
+    // one table. The two old tables stay until they are dropped one release later.
+    'lists.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
+    // docs/design/data/ordering.md 3.15: a saved view of an order list; a filter is a preference, so
+    // the application deletes it; only the name and who can use it change.
+    'ordering.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
     // Saved for later: saved again moves the item to the top; removed, moved to the cart or
     // purged a year after it was last saved.
     'cart.saved_items': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: ['saved_at'] },
     // Ordering (Phase 5 package 1): no row is ever deleted. Seller orders and lines are written
-    // once; an order's state, payment state, Stripe ids, times and version change.
+    // once; an order's state, payment state, Stripe ids, times and version change. Ship-to
+    // retention (owner decision 2026-11-15): the daily purge clears the sealed ship-to (to null).
     'ordering.orders': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
@@ -491,6 +507,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'cancelled_at',
         'confirmed_at',
         'payment_state',
+        'ship_to_ciphertext',
         'status',
         'stripe_payment_intent_id',
         'stripe_session_id',
@@ -985,6 +1002,20 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'status',
       ],
     },
+    // Customers phase 1 (package B1): the read models are written, replaced and removed (account
+    // erasure) by the application; no column is restricted.
+    'customers.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
+    'customers.customer_directory': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'customers.customer_stats': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
@@ -1178,6 +1209,33 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Order detail decision 3: admin internal notes, sealed under the customer; written once, never
     // changed or removed.
     'ordering.admin_order_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Order detail decision 3: a seller's own notes on its seller order, sealed under the customer;
+    // written once, never changed or removed.
+    'ordering.seller_order_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Seller refund caps (owner decision 2026-11-11; ordering.md 3.12c): an admin sets, edits and
+    // removes a cap (the id, Market and seller never change); the guard row per seller is
+    // inserted once, then moves only its check time and alert bookkeeping. No guard is deleted.
+    'ordering.seller_refund_limits': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'currency',
+        'max_amount',
+        'max_count',
+        'updated_at',
+        'updated_by_account_id',
+        'version',
+      ],
+    },
+    'ordering.seller_refund_guards': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['alerts', 'checked_at', 'last_alerted_at'],
+    },
+    // Ship-to retention (owner decision 2026-11-15): one row per Market, inserted once and then
+    // edited (never its id or Market); never deleted.
+    'ordering.ship_to_retention_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['enabled', 'months', 'updated_at', 'updated_by_account_id', 'version'],
+    },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.
     // Payments (Phase 5 package 3): one connected account row per seller and Market; the state
@@ -1444,6 +1502,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.category_attribute_link_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Variants V6: the variant type settings root moves its current revision and version; the
     // revisions are insert-only.
+    // Variants V7: a decision and a notice move are the only updates, in these columns; a request
+    // is never deleted.
+    'catalog.variant_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decline_reason',
+        'notice_attempts',
+        'notice_next_attempt_at',
+        'notice_state',
+        'resolved_variant_id',
+        'status',
+        'version',
+      ],
+    },
     'catalog.variant_type_settings': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['current_revision_id', 'version'],
@@ -1709,6 +1783,60 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'pricing.write_refusal_actor_throttles': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['recorded_count', 'suppressed_count', 'window_started_at'],
+    },
+    // SOC package 2 (docs/design/data/security.md 2): an alert changes only its state columns
+    // and never after it is resolved; deliveries and digest runs are insert-only; the evaluator
+    // run of a Market records its finish. No DELETE anywhere (triggers refuse it too).
+    'security.alerts': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'acknowledged_at',
+        'acknowledged_by',
+        'event_count',
+        'last_event_at',
+        'next_notify_at',
+        'notify_step',
+        'resolution',
+        'resolution_note',
+        'resolved_at',
+        'resolved_by',
+        'state',
+        'version',
+      ],
+    },
+    'security.alert_deliveries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'security.digest_runs': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'security.evaluator_runs': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['finished_at', 'opened'],
+    },
+    // System requests (Admin Inbox): a request changes only its decision, supersession and comment
+    // count (triggers keep a decision and a supersession final); activity is append-only; no
+    // DELETE anywhere (triggers refuse it too).
+    'system_requests.requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'comment_count',
+        'decided_at',
+        'decided_by_account_id',
+        'decision',
+        'decision_reason',
+        'status',
+        'superseded_by_request_id',
+      ],
+    },
+    'system_requests.request_activity': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'system_requests.request_counters': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['last_number'],
+    },
+    'system_requests.policy_areas': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['default_risk', 'enabled', 'updated_at', 'updated_by_account_id', 'version'],
+    },
+    'system_requests.policy_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['review_due_days', 'updated_at', 'updated_by_account_id', 'version'],
     },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },

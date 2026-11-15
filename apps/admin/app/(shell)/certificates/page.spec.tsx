@@ -48,6 +48,7 @@ const session = (permissionKeys: string[]): AdminSession => ({
   secondFactorActive: true,
   lastSignInAt: null,
   timezone: null,
+  marketTimezone: 'UTC',
   locale: null,
   email: 'ada@example.test',
   displayName: 'Ada',
@@ -72,7 +73,7 @@ describe('certificates page', () => {
     render(await CertificatesPage(search()));
     expect(mocks.get).toHaveBeenCalledTimes(1);
     expect(mocks.get).toHaveBeenCalledWith('certification/admin/seller-certificates?limit=25');
-    expect(screen.getByRole('heading', { level: 1, name: 'Certificates' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Certification' })).toBeTruthy();
     expect(screen.getByText('1 rows, no names')).toBeTruthy();
   });
 
@@ -105,6 +106,17 @@ describe('certificates page', () => {
     expect(screen.getByRole('link', { name: 'First page' }).getAttribute('href')).toBe(
       '/certificates',
     );
+  });
+
+  it('says a decision was recorded, for the three outcomes only', async () => {
+    render(await CertificatesPage(search({ decided: 'approve' })));
+    expect(screen.getByText('Certificate approved.')).toBeTruthy();
+    cleanup();
+    render(await CertificatesPage(search({ decided: 'decline' })));
+    expect(screen.getByText('Certificate declined.')).toBeTruthy();
+    cleanup();
+    render(await CertificatesPage(search({ decided: '<b>x</b>' })));
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('sends a reader who may only see issuers to the issuers tab', async () => {

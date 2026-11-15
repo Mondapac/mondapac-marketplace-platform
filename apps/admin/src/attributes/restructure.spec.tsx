@@ -188,11 +188,11 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     mount(true);
     fireEvent.click(await screen.findByRole('button', { name: 'Merge values' }));
     const dialog = await screen.findByRole('dialog');
-    const list = await within(dialog)
-      .findByRole('list', { hidden: true })
-      .catch(() => null);
-    expect(list).toBeNull();
     await within(dialog).findByText('Published products');
+    // Once the impact is shown it is a description list: no list (not even the hidden loading
+    // rows) is left in the dialog. Checked after the impact loads, because the loading rows are
+    // a list until then and a check before it races the impact read.
+    expect(within(dialog).queryByRole('list', { hidden: true })).toBeNull();
     expect(within(dialog).getByText('12')).toBeTruthy();
     const confirm = within(dialog).getByRole('button', { name: 'Merge values' });
     expect((confirm as HTMLButtonElement).disabled).toBe(true);
@@ -413,6 +413,23 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       </NextIntlClientProvider>,
     );
     expect(await screen.findByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+
+  it('says on an archived attribute which attribute it was merged into', async () => {
+    base({
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(
+        detail(locales, { status: 'archived', mergedInto: { id: id(2), code: 'container' } }),
+      ),
+    });
+    mount(true);
+    expect(await screen.findByText(/Merged into container\./)).toBeTruthy();
+  });
+
+  it('shows no merged-into note on an attribute that was not merged', async () => {
+    base();
+    mount(true);
+    await screen.findByRole('heading', { name: 'Pack type' });
+    expect(screen.queryByText(/Merged into/)).toBeNull();
   });
 
   describe('merge into another attribute', () => {

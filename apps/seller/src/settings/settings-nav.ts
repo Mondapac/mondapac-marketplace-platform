@@ -1,5 +1,4 @@
 import type { IconName, PaletteSettingSpec } from '@mondapac/ui';
-import { PAYOUT_MANAGE_PERMISSION, PAYOUT_VIEW_PERMISSION } from '../payout/types.ts';
 import { SOURCE_EDIT_PERMISSION, STOCK_VIEW_PERMISSION } from '../stock/types.ts';
 import {
   STORE_PROFILE_EDIT_PERMISSION,
@@ -15,7 +14,8 @@ import {
 // settings sub-navigation and the sidebar's single Settings item all read it, so they can never
 // disagree. Pages of a phase that has not shipped are absent, not disabled (Delivery & hours,
 // Roles, Order alerts). Personal account pages (profile, two-step sign-in, sessions) are not
-// settings cards: they live only in the account menu. Filtering is presentation only: the server
+// settings cards: they live only in the account menu. Payout account is under Accounting in the
+// main menu (menu design v2). Filtering is presentation only: the server
 // authorises every route.
 
 export interface SettingsLink {
@@ -55,20 +55,6 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/stock-locations',
         view: [STOCK_VIEW_PERMISSION],
         manage: [SOURCE_EDIT_PERMISSION],
-      },
-    ],
-  },
-  {
-    id: 'money',
-    labelKey: 'settings.hub.group.money',
-    icon: 'wallet',
-    links: [
-      {
-        id: 'payout-account',
-        labelKey: 'settings.hub.link.payout-account',
-        href: '/settings/payout-account',
-        view: [PAYOUT_VIEW_PERMISSION],
-        manage: [PAYOUT_MANAGE_PERMISSION],
       },
     ],
   },
@@ -142,12 +128,6 @@ export const settingEntries: readonly PaletteSettingSpec[] = [
     pageId: 'stock-locations',
     labelKey: 'palette.setting.stock-locations',
     keywordsKey: 'palette.setting.stock-locations-words',
-  },
-  {
-    id: 'payout-bank',
-    pageId: 'payout-account',
-    labelKey: 'palette.setting.payout-bank',
-    keywordsKey: 'palette.setting.payout-bank-words',
   },
   { id: 'team-members', pageId: 'team', labelKey: 'palette.setting.team-members' },
 ];

@@ -29,6 +29,17 @@ import { ExecuteAccountDeletions } from './application/use-cases/execute-account
 import { RequestAccountDeletion } from './application/use-cases/request-account-deletion.use-case';
 import { ViewAccountDeletionRequest } from './application/use-cases/view-account-deletion-request.use-case';
 import { ACCOUNT_DELETION_SETTINGS_REPOSITORY } from './application/ports/account-deletion-settings.repository';
+import {
+  CUSTOMER_READ_MODEL_PEERS,
+  type CustomerReadModelPeers,
+} from './application/ports/customer-read-model-peers';
+import { CUSTOMER_READ_MODEL_REPOSITORY } from './application/ports/customer-read-models.repository';
+import type { ReadModelDependencies } from './application/read-model-dependencies';
+import { ReadCustomerLastOrder } from './application/use-cases/read-customer-last-order.use-case';
+import { ReadOwnLastOrder } from './application/use-cases/read-own-last-order.use-case';
+import { ReconcileCustomerReadModels } from './application/use-cases/reconcile-customer-read-models.use-case';
+import { SyncCustomerReadModel } from './application/use-cases/sync-customer-read-model.use-case';
+import { CustomersReadFacadeImplementation } from './presentation/customers-read.facade';
 import { ADDRESS_CIPHER } from './application/ports/address-cipher';
 import { ADDRESS_POLICY } from './application/ports/address-policy';
 import { ADDRESS_REPOSITORY } from './application/ports/address.repository';
@@ -45,6 +56,7 @@ import {
   CUSTOMERS_ACCOUNT_DELETION_FACADE,
   CUSTOMERS_CHECKOUT_FACADE,
   CUSTOMERS_PERMISSIONS,
+  CUSTOMERS_READ_FACADE,
   CUSTOMERS_STEP_UP_ACTIONS,
 } from './contracts';
 import { CUSTOMERS_AUDIT_ACTIONS } from './domain/audit';
@@ -59,6 +71,24 @@ import { AdminAccountDeletionRequestsController } from './presentation/admin-acc
 import { AdminAccountDeletionSettingsController } from './presentation/admin-account-deletion-settings.controller';
 import { AddressBookController } from './presentation/address-book.controller';
 import { CustomersCheckoutFacadeImplementation } from './presentation/customers-checkout.facade';
+import { AdminCustomersController } from './presentation/admin-customers.controller';
+import { CUSTOMER_LIST_READER } from './application/ports/customer-list.reader';
+import { SAVED_FILTER_REPOSITORY } from './application/ports/saved-filter.repository';
+import { SHEET_WRITER } from './application/ports/sheet-writer';
+import type { CustomerListDependencies } from './application/customer-list-flow';
+import type { SavedViewDependencies } from './application/saved-views/saved-view-shared';
+import type { AdminCustomersExportDependencies } from './application/use-cases/admin-customers-export.use-case';
+import { AdminCustomerOverview } from './application/use-cases/admin-customer-overview.use-case';
+import { AdminCustomerTabOpened } from './application/use-cases/admin-customer-tab-opened.use-case';
+import type { CustomerPageDependencies } from './application/customer-page-flow';
+import { AdminCustomersExport } from './application/use-cases/admin-customers-export.use-case';
+import { AdminCustomersIds } from './application/use-cases/admin-customers-ids.use-case';
+import { AdminCustomersList } from './application/use-cases/admin-customers-list.use-case';
+import { AdminSavedFilterCreate } from './application/use-cases/admin-saved-filter-create.use-case';
+import { AdminSavedFilterDelete } from './application/use-cases/admin-saved-filter-delete.use-case';
+import { AdminSavedFilterUpdate } from './application/use-cases/admin-saved-filter-update.use-case';
+import { AdminSavedFiltersList } from './application/use-cases/admin-saved-filters-list.use-case';
+import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: CustomersDependencies) => U;
 
@@ -81,6 +111,7 @@ const DELETION_PORTS: readonly [keyof AccountDeletionDependencies, InjectionToke
   ['unitOfWork', UNIT_OF_WORK],
   ['requests', ACCOUNT_DELETION_REQUEST_REPOSITORY],
   ['addresses', ADDRESS_REPOSITORY],
+  ['readModels', CUSTOMER_READ_MODEL_REPOSITORY],
   ['accountDeletionSettings', ACCOUNT_DELETION_SETTINGS_REPOSITORY],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
@@ -99,6 +130,96 @@ function deletionUseCaseProvider<U>(type: DeletionUseCaseClass<U>): FactoryProvi
         ...Object.fromEntries(DELETION_PORTS.map(([name], index) => [name, values[index]])),
         ...peers,
       } as unknown as AccountDeletionDependencies),
+  };
+}
+
+type ReadModelUseCaseClass<U> = new (gate: UseCaseGate, deps: ReadModelDependencies) => U;
+
+/** The read model use cases: their own ports, plus the peers bound at start. */
+function readModelUseCaseProvider<U>(type: ReadModelUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      CUSTOMER_READ_MODEL_PEERS,
+      UNIT_OF_WORK,
+      CUSTOMER_READ_MODEL_REPOSITORY,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      peers: CustomerReadModelPeers,
+      unitOfWork: ReadModelDependencies['unitOfWork'],
+      readModels: ReadModelDependencies['readModels'],
+      clock: ReadModelDependencies['clock'],
+    ) =>
+      new type(gate, {
+        identity: peers.identity,
+        ordering: peers.ordering,
+        unitOfWork,
+        readModels,
+        clock,
+      }),
+  };
+}
+
+type ListUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerListDependencies) => U;
+
+/** The Customers list reads: the unit of work, the list reader and the clock. */
+function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_LIST_READER, CLOCK],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: CustomerListDependencies['unitOfWork'],
+      listReader: CustomerListDependencies['listReader'],
+      clock: CustomerListDependencies['clock'],
+    ) => new type(gate, { unitOfWork, listReader, clock }),
+  };
+}
+
+type PageUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerPageDependencies) => U;
+
+/** The customer page use cases: the list reads plus the audit writer. */
+function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_LIST_READER, CLOCK, AUDIT_WRITER],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: CustomerPageDependencies['unitOfWork'],
+      listReader: CustomerPageDependencies['listReader'],
+      clock: CustomerPageDependencies['clock'],
+      audit: CustomerPageDependencies['audit'],
+    ) => new type(gate, { unitOfWork, listReader, clock, audit }),
+  };
+}
+
+type SavedViewUseCaseClass<U> = new (gate: UseCaseGate, deps: SavedViewDependencies) => U;
+
+/** The saved-filter use cases: their own, smaller dependency set. */
+function savedViewProvider<U>(type: SavedViewUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      SAVED_FILTER_REPOSITORY,
+      AUDIT_WRITER,
+      CLOCK,
+      ID_GENERATOR,
+      SavedFilterShareCheck,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: SavedViewDependencies['unitOfWork'],
+      savedFilters: SavedViewDependencies['savedFilters'],
+      audit: SavedViewDependencies['audit'],
+      clock: SavedViewDependencies['clock'],
+      ids: SavedViewDependencies['ids'],
+      shareCheck: SavedFilterShareCheck,
+    ) => new type(gate, { unitOfWork, savedFilters, audit, clock, ids, shareCheck }),
   };
 }
 
@@ -135,6 +256,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AccountDeletionRequestController,
     AdminAccountDeletionSettingsController,
     AdminAccountDeletionRequestsController,
+    AdminCustomersController,
   ],
   providers: [
     PersistenceModule.auditWriterFor('customers'),
@@ -164,6 +286,64 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminCancelAccountDeletion,
       AdminListAccountDeletions,
     ].map((type) => deletionUseCaseProvider(type as DeletionUseCaseClass<unknown>)),
+    ...[
+      SyncCustomerReadModel,
+      ReconcileCustomerReadModels,
+      ReadCustomerLastOrder,
+      ReadOwnLastOrder,
+    ].map((type) => readModelUseCaseProvider(type as ReadModelUseCaseClass<unknown>)),
+    ...[AdminCustomerOverview, AdminCustomerTabOpened].map((type) =>
+      pageUseCaseProvider(type as PageUseCaseClass<unknown>),
+    ),
+    ...[AdminCustomersList, AdminCustomersIds].map((type) =>
+      listUseCaseProvider(type as ListUseCaseClass<unknown>),
+    ),
+    {
+      provide: AdminCustomersExport,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        CUSTOMER_LIST_READER,
+        SHEET_WRITER,
+        AUDIT_WRITER,
+        STEP_UP_CONSUMER,
+        CLOCK,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: AdminCustomersExportDependencies['unitOfWork'],
+        listReader: AdminCustomersExportDependencies['listReader'],
+        sheetWriter: AdminCustomersExportDependencies['sheetWriter'],
+        audit: AdminCustomersExportDependencies['audit'],
+        stepUp: AdminCustomersExportDependencies['stepUp'],
+        clock: AdminCustomersExportDependencies['clock'],
+      ) =>
+        new AdminCustomersExport(gate, {
+          unitOfWork,
+          listReader,
+          sheetWriter,
+          audit,
+          stepUp,
+          clock,
+        }),
+    },
+    {
+      provide: SavedFilterShareCheck,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate): SavedFilterShareCheck => new SavedFilterShareCheck(gate),
+    },
+    ...[
+      AdminSavedFiltersList,
+      AdminSavedFilterCreate,
+      AdminSavedFilterUpdate,
+      AdminSavedFilterDelete,
+    ].map((type) => savedViewProvider(type as SavedViewUseCaseClass<unknown>)),
+    {
+      provide: CUSTOMERS_READ_FACADE,
+      inject: [ReadCustomerLastOrder, ReadOwnLastOrder],
+      useFactory: (read: ReadCustomerLastOrder, own: ReadOwnLastOrder) =>
+        new CustomersReadFacadeImplementation(read, own),
+    },
     {
       provide: CUSTOMERS_ACCOUNT_DELETION_FACADE,
       inject: [CancelAccountDeletion],
@@ -179,6 +359,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (read: ReadDeliveryAddress) => new CustomersCheckoutFacadeImplementation(read),
     },
   ],
-  exports: [CUSTOMERS_CHECKOUT_FACADE, CUSTOMERS_ACCOUNT_DELETION_FACADE, ACCOUNT_DELETION_PEERS],
+  exports: [
+    CUSTOMERS_CHECKOUT_FACADE,
+    CUSTOMERS_ACCOUNT_DELETION_FACADE,
+    CUSTOMERS_READ_FACADE,
+    ACCOUNT_DELETION_PEERS,
+    CUSTOMER_READ_MODEL_PEERS,
+    SyncCustomerReadModel,
+    ReconcileCustomerReadModels,
+  ],
 })
 export class CustomersModule {}

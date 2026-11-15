@@ -119,6 +119,14 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'commission-payouts.place-suspended-hold',
       // Phase 5 package 8b: dispute effects from payments' dispute events.
       'commission-payouts.sync-dispute',
+      // Customers phase 1 (B1): the customer directory and stats follow identity's account events and ordering's paid orders and refunds.
+      'customers.read-model-disabled',
+      'customers.read-model-email-verified',
+      'customers.read-model-enabled',
+      'customers.read-model-name-changed',
+      'customers.read-model-order-paid',
+      'customers.read-model-refund-succeeded',
+      'customers.read-model-registered',
       'identity.existing-account-mail',
       'identity.invitation-mail',
       'identity.link-mail',
@@ -144,6 +152,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.admin-review-held-notice',
       'notifications.admin-review-reported-notice',
       'notifications.admin-seller-file-notice',
+      'notifications.admin-seller-refund-limit-notice',
       'notifications.item-unavailable-refund-mail',
       'notifications.order-confirmation-mail',
       'notifications.order-shipped-mail',
@@ -229,6 +238,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'sellers.recheck-cultures-on-issuer-deactivated',
     ]);
     expect(subscriptions.subscribersOf('ordering.order-paid.v1')).toEqual([
+      'customers.read-model-order-paid',
       'notifications.order-confirmation-mail',
       'notifications.seller-new-order-mail',
       'notifications.seller-order-notice',
@@ -243,6 +253,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'promotions.qualify-referral-on-delivery',
     ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
+      'customers.read-model-refund-succeeded',
       'notifications.item-unavailable-refund-mail',
       'ordering.cancel-carrier-after-refund',
     ]);

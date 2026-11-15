@@ -1,6 +1,7 @@
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Clock, Result } from '@mondapac/shared-kernel';
-import { csvChunks, ORDERS_EXPORT_MAX_ROWS, type Cell } from './orders-csv';
+import { csvChunks, LIST_EXPORT_MAX_ROWS } from '../../../platform/list-export';
+import type { Cell } from './orders-csv';
 
 /** Orders read per page while the file streams. */
 export const EXPORT_PAGE = 100;
@@ -35,7 +36,7 @@ export type PageReader = (
 
 /**
  * The export of a list: the filter keys are checked (`allowed`; any other key is refused), the
- * count is read first with a one-row page (more than {@link ORDERS_EXPORT_MAX_ROWS} is refused whole
+ * count is read first with a one-row page (more than {@link LIST_EXPORT_MAX_ROWS} is refused whole
  * as `batch.too-large`), and the file then streams a page of {@link EXPORT_PAGE} rows at a time
  * through the same list the page uses, so the rules, the filter and the population are the list's.
  */
@@ -66,10 +67,11 @@ export async function ordersExport(
   const first = await spec.read({ ...filter, page: 1, pageSize: 1 });
   if (!first.ok) return err(first.error as OrdersExportFailure);
   const total = first.value.total ?? 0;
-  if (total > ORDERS_EXPORT_MAX_ROWS) {
-    return err({ code: 'batch.too-large', max: ORDERS_EXPORT_MAX_ROWS, matching: total });
+  if (total > LIST_EXPORT_MAX_ROWS) {
+    return err({ code: 'batch.too-large', max: LIST_EXPORT_MAX_ROWS, matching: total });
   }
-  const pages = (async function* () {
+  const groups = (async function* () {
+    yield [spec.header];
     let cursor: string | null = null;
     do {
       const page = await spec.read({
@@ -86,6 +88,6 @@ export async function ordersExport(
   return ok({
     filename: `${spec.name}-${day}.csv`,
     contentType: 'text/csv; charset=utf-8',
-    chunks: csvChunks(spec.header, pages),
+    chunks: csvChunks(groups),
   });
 }

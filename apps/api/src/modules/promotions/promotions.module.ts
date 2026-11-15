@@ -1,6 +1,8 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
+import { AUDIT_TRAIL_READER } from '../../platform/audit/audit-trail-reader';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { CHANGE_ACTOR_SOURCE } from '../../platform/audit/change-trail';
 import {
   registerPermissions,
   registerStepUpActions,
@@ -13,6 +15,7 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { CatalogModule } from '../catalog';
 import { CommissionPayoutsModule } from '../commission-payouts';
+import { changeActorSourceOf, IDENTITY_FACADE, IdentityModule } from '../identity';
 import { PricingModule } from '../pricing';
 import { SellersModule } from '../sellers';
 import { WalletModule } from '../wallet';
@@ -20,6 +23,7 @@ import { registerSubscriptionsFrom } from '../../platform/events/event-subscript
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
 import { CREDIT_REPOSITORY, REFERRAL_REPOSITORY } from './application/ports/credit.repository';
+import { CustomersModule } from '../customers';
 import { CUSTOMER_ORDER_HISTORY, STORE_FOLLOWS } from './application/ports/customer-facts';
 import { DELIVERED_ORDER_FACTS } from './application/ports/order-facts';
 import { REFERRAL_SIGNALS } from './application/ports/referral-signals';
@@ -42,6 +46,7 @@ import {
 import type { PromotionsDependencies } from './application/promotions-dependencies';
 import { ApplyReferralCode } from './application/use-cases/apply-referral-code.use-case';
 import { CashbackOnDelivery } from './application/use-cases/cashback-on-delivery.use-case';
+import { ListCustomerPromotionCredits } from './application/use-cases/list-customer-promotion-credits.use-case';
 import { ListPromotionCredits } from './application/use-cases/list-promotion-credits.use-case';
 import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
 import { ViewMyReferral } from './application/use-cases/view-my-referral.use-case';
@@ -55,6 +60,9 @@ import { EditOwnPromotion } from './application/use-cases/edit-own-promotion.use
 import { EditPromotion } from './application/use-cases/edit-promotion.use-case';
 import { ListFreeShippingThresholds } from './application/use-cases/list-free-shipping-thresholds.use-case';
 import { ListOwnPromotions } from './application/use-cases/list-own-promotions.use-case';
+import { CountPromotionReviews } from './application/use-cases/count-promotion-reviews.use-case';
+import { ViewCampaignMembers } from './application/use-cases/view-campaign-members.use-case';
+import { ViewPromotionActivity } from './application/use-cases/view-promotion-activity.use-case';
 import { ListPromotionReviews } from './application/use-cases/list-promotion-reviews.use-case';
 import { ListPromotionsFull } from './application/use-cases/list-promotions-full.use-case';
 import { ListPromotions } from './application/use-cases/list-promotions.use-case';
@@ -116,6 +124,8 @@ const PORTS: readonly [keyof PromotionsDependencies, InjectionToken][] = [
   ['referrals', REFERRAL_REPOSITORY],
   ['stepUp', STEP_UP_CONSUMER],
   ['audit', AUDIT_WRITER],
+  ['auditTrail', AUDIT_TRAIL_READER],
+  ['actors', CHANGE_ACTOR_SOURCE],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
@@ -143,10 +153,24 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * reservation, the ledger and refunds come in later packages.
  */
 @Module({
-  imports: [CatalogModule, CommissionPayoutsModule, PricingModule, SellersModule, WalletModule],
+  imports: [
+    CatalogModule,
+    CommissionPayoutsModule,
+    CustomersModule,
+    IdentityModule,
+    PricingModule,
+    SellersModule,
+    WalletModule,
+  ],
   controllers: [AdminPromotionsController, SellerPromotionsController, CustomerReferralController],
   providers: [
     PersistenceModule.auditWriterFor('promotions'),
+    PersistenceModule.auditTrailReaderFor('promotions'),
+    {
+      provide: CHANGE_ACTOR_SOURCE,
+      inject: [IDENTITY_FACADE],
+      useFactory: changeActorSourceOf,
+    },
     registerAuditActions('promotions', PROMOTIONS_AUDIT_ACTIONS),
     registerPermissions('promotions', PROMOTIONS_PERMISSIONS),
     registerStepUpActions('promotions', PROMOTIONS_STEP_UP_ACTIONS),
@@ -165,6 +189,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       GenerateBatchCodes,
       ViewBatchCodeSummary,
       ListPromotionReviews,
+      CountPromotionReviews,
+      ViewCampaignMembers,
+      ViewPromotionActivity,
       DecidePromotionReview,
       ViewFirstOrderSettings,
       SetFirstOrderSettings,
@@ -182,6 +209,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       QuoteDiscounts,
       CheckWasPrice,
       ListPromotionCredits,
+      ListCustomerPromotionCredits,
       ApplyReferralCode,
       ViewMyReferral,
       CashbackOnDelivery,

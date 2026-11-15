@@ -2,7 +2,7 @@
 
 import { Banner, Button, LinkButton, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 
 export const TAG_LABEL_MIN = 2;
@@ -95,7 +95,9 @@ export function SuggestTagForm({
   const full = openCount >= maxOpen;
 
   // A refusal in the banner takes focus, so a screen reader reads it and the keyboard starts there.
-  useEffect(() => {
+  // A layout effect moves focus in the same commit that adds the banner: a passive effect runs
+  // later, so for a moment the banner is on screen while focus is still on the body.
+  useLayoutEffect(() => {
     if (error?.place === 'banner') alertBox.current?.focus();
   }, [error]);
 

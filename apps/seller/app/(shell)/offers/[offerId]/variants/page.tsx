@@ -60,6 +60,7 @@ export default async function OfferVariantsPage({
               : { ...page.units, canEdit: permissionKeys.includes(EDIT_PERMISSION) }
           }
           csrfToken={page.session.csrfToken}
+          sizeRequests={page.sizeRequests}
           fileModel={page.fileModel}
         />
       </div>

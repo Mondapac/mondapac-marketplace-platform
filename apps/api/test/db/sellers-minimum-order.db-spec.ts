@@ -297,6 +297,38 @@ describe.each(TEST_MARKETS)('the seller minimum order in market %s', (code) => {
     expect([...found]).toEqual([[approved, 'Shop']]);
   });
 
+  it('searches approved store names by contained text, taking % and _ literally', async () => {
+    const butcher = await newSeller(market, true);
+    const percent = await newSeller(market, true);
+    const draft = await newSeller();
+    const foreign = await newSeller(other, true);
+    const name = (id: Id<'Seller'>, publicName: string, m: MarketContext = market) =>
+      owner.query(
+        'UPDATE sellers.seller_files SET public_store_name = $3 WHERE market_id = $1 AND seller_id = $2',
+        [m.marketId, id, publicName],
+      );
+    await name(butcher, `Corner Butcher ${code}-mine`);
+    await name(percent, '100% Halal_Meat');
+    await name(foreign, `Corner Butcher ${other.marketId}-foreign`, other);
+    await owner.query(
+      "UPDATE sellers.seller_files SET store_name = 'Corner Butcher', store_name_key = 'corner butcher' WHERE market_id = $1 AND seller_id = $2",
+      [market.marketId, draft],
+    );
+    const find = (term: string, limit = 10) =>
+      inUnit(() => profiles.searchApprovedStoreIds(market, term, limit));
+
+    expect(await find(`butcher ${code}-mine`)).toEqual([butcher]);
+    expect(await find(`CORNER BUTCHER ${code}-MINE`)).toEqual([butcher]);
+    // Another Market's store with a similar name is never found.
+    expect(await find(`butcher ${other.marketId}-foreign`)).toEqual([]);
+    // Wildcards match themselves: `%%` and `__` match nothing here, `0% h` and `l_m` match one.
+    expect(await find('%%')).toEqual([]);
+    expect(await find('__')).toEqual([]);
+    expect(await find('0% h')).toEqual([percent]);
+    expect(await find('l_m')).toEqual([percent]);
+    expect(await find('a', 1)).toHaveLength(1);
+  });
+
   it('sellerSummaries carries minimumOrder: null, Money, or no key; a stored currency of another Market has no key', async () => {
     const none = await newSeller(market, true);
     const set = await newSeller(market, true);

@@ -118,6 +118,23 @@ describe.each(MARKETS)('feature set editor in market $name', ({ locales }) => {
     });
   });
 
+  it('previews the seller form with the unsaved level, and saves nothing', async () => {
+    HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
+    show();
+    fireEvent.change(screen.getByLabelText('Requirement for brand'), {
+      target: { value: 'required' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview seller form' }));
+    expect(await screen.findByRole('dialog', { name: 'Seller form preview' })).toBeTruthy();
+    expect(screen.getByLabelText('BRAND *')).toBeTruthy();
+    expect(call.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
+  });
+
   it('reads the attribute list in pages the API accepts', async () => {
     show();
     await waitFor(() =>

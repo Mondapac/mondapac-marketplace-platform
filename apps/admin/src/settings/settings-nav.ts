@@ -20,6 +20,15 @@ import {
   PROMOTIONS_SETTINGS_VIEW,
 } from '../promotions-settings/types.ts';
 import { TAX_MANAGE_PERMISSION, TAX_VIEW_PERMISSION } from '../tax/types.ts';
+import {
+  REFUND_LIMITS_MANAGE_PERMISSION,
+  REFUND_LIMITS_VIEW_PERMISSION,
+} from '../refund-limits/types.ts';
+import {
+  SHIP_TO_RETENTION_MANAGE_PERMISSION,
+  SHIP_TO_RETENTION_VIEW_PERMISSION,
+} from '../ship-to-retention/types.ts';
+import { AI_MANAGE_PERMISSION, AI_VIEW_PERMISSION } from '../ai-settings/types.ts';
 import { SUPPORT_MANAGE_PERMISSION, SUPPORT_VIEW_PERMISSION } from './types.ts';
 
 // The one map of the admin Settings pages (settings UX design, hub and roles sections). The hub,
@@ -80,11 +89,25 @@ export const settingsGroups: readonly SettingsGroup[] = [
         manage: [DELETION_MANAGE_PERMISSION],
       },
       {
+        id: 'ship-to-retention',
+        labelKey: 'settings.hub.link.ship-to-retention',
+        href: '/settings/ship-to-retention',
+        view: [SHIP_TO_RETENTION_VIEW_PERMISSION],
+        manage: [SHIP_TO_RETENTION_MANAGE_PERMISSION],
+      },
+      {
         id: 'lists',
         labelKey: 'settings.hub.link.lists',
         href: '/settings/lists',
         view: [LISTS_VIEW_PERMISSION],
         manage: [LISTS_MANAGE_PERMISSION],
+      },
+      {
+        id: 'ai',
+        labelKey: 'settings.hub.link.ai',
+        href: '/settings/ai',
+        view: [AI_VIEW_PERMISSION],
+        manage: [AI_MANAGE_PERMISSION],
       },
     ],
   },
@@ -127,6 +150,13 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/tax',
         view: [TAX_VIEW_PERMISSION],
         manage: [TAX_MANAGE_PERMISSION],
+      },
+      {
+        id: 'refund-limits',
+        labelKey: 'settings.hub.link.refund-limits',
+        href: '/settings/refund-limits',
+        view: [REFUND_LIMITS_VIEW_PERMISSION],
+        manage: [REFUND_LIMITS_MANAGE_PERMISSION],
       },
       {
         id: 'promotions',

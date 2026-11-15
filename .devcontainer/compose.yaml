@@ -1,0 +1,51 @@
+# Dev container services (Codespaces). Same images and roles as the root docker-compose.yml, but
+# every service shares the network of `postgres`, so the app reaches PostgreSQL, Redis and
+# Mailpit on localhost exactly as .env.example expects, and no port is published on the host.
+name: mondapac-devcontainer
+
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/typescript-node:24-bookworm
+    command: sleep infinity
+    network_mode: service:postgres
+    volumes:
+      - ../..:/workspaces:cached
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: mirror.gcr.io/library/postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mondapac
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Creates mondapac_migrator and mondapac_api once, on an empty data directory.
+      - type: bind
+        source: ../scripts/db/bootstrap-dev.sql
+        target: /docker-entrypoint-initdb.d/10-bootstrap-dev.sql
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U postgres -d mondapac']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: mirror.gcr.io/library/redis:7-alpine
+    restart: unless-stopped
+    network_mode: service:postgres
+
+  # Catches all outgoing mail; web UI on port 8025.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    network_mode: service:postgres
+
+volumes:
+  postgres-data:

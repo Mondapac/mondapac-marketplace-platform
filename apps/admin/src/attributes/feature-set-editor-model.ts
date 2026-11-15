@@ -8,6 +8,8 @@ export const CORE_GROUP = 'core';
 
 export interface EditorEntry {
   readonly code: string;
+  /** For display only: never sent. Needed to read the attribute's choices in the preview. */
+  readonly attributeId?: string | null;
   readonly level: RequirementLevel;
   /** For display only: never sent. */
   readonly names: Localized | null;
@@ -45,6 +47,7 @@ export function fromDetail(detail: FeatureSetDetail): EditorState {
       names: { ...(group.names ?? {}) },
       entries: group.attributes.map((entry) => ({
         code: entry.code,
+        attributeId: entry.attributeId,
         level: entry.level ?? (entry.required ? 'required' : 'optional'),
         names: entry.names,
         dataType: entry.dataType,

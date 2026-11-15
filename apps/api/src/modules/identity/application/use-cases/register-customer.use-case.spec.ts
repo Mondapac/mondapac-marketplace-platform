@@ -135,6 +135,17 @@ class FakeAccounts implements AccountRepository {
     throw new Error('sign-up asks no population question');
   }
 
+  searchCustomerIdsByName(): never {
+    throw new Error('unused');
+  }
+  customerDirectoryRows(): never {
+    throw new Error('sign-up reads no directory');
+  }
+
+  customerDirectoryPage(): never {
+    throw new Error('sign-up reads no directory');
+  }
+
   customerSummaries(): never {
     throw new Error('sign-up reads no customer summary');
   }
@@ -322,6 +333,7 @@ const policy: IdentityMarketPolicy = {
   linkLifetimeMinutes: () => 1440,
   unverifiedAccountRetentionDays: () => 7,
   mailSender: () => ({ address: 'no-reply@example.test', name: 'Test' }),
+  marketTimezone: () => 'UTC',
   invitationLifetimeMinutes: () => null,
   challengePolicy: () => null,
   secondFactorThrottle: () => null,

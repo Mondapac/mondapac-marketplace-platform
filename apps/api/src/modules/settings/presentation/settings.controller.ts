@@ -18,6 +18,8 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { ChangeAiSetting } from '../application/use-cases/change-ai-setting.use-case';
+import { ViewAiSettings } from '../application/use-cases/view-ai-settings.use-case';
 import { ChangeCartModeSetting } from '../application/use-cases/change-cart-mode-setting.use-case';
 import { ChangeListPagingSetting } from '../application/use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from '../application/use-cases/read-list-paging.use-case';
@@ -26,12 +28,14 @@ import { ViewListPagingSetting } from '../application/use-cases/view-list-paging
 import { closedBody, refusal } from './http-answers';
 import { CART_MODE_CODE } from '../domain/definitions';
 import {
+  ChangeAiSettingRequest,
   ChangeCartModeRequest,
   ChangeSettingRequest,
   ListPagingBody,
   listPagingBody,
   SettingBody,
-  settingBody,
+  SettingChangeBody,
+  settingChangeBody,
   SettingsListBody,
   settingsListBody,
 } from './settings.dto';
@@ -50,6 +54,12 @@ function logRoute(logger: Logger, msg: string, context: CallContext, outcome: st
 }
 
 /** The editable Market settings, for admins. Every answer is `Cache-Control: no-store`. */
+
+/** How a change is reviewed (Admin Inbox › System requests), for every setting write. */
+const REVIEWED =
+  'Where the Market reviews the marketplace area (see `review` in the view), `note` (1 to 500 ' +
+  'characters) is required and the change opens a review request (`request`); a rejected or ' +
+  'withdrawn request restores the value before. Elsewhere `note` is ignored.';
 @ApiTags('settings')
 @RoutePopulation('admin')
 @ReadsSession()
@@ -63,7 +73,76 @@ export class AdminSettingsController {
     private readonly listPaging: ReadListPaging,
     private readonly viewCartMode: ViewCartModeSetting,
     private readonly changeCartMode: ChangeCartModeSetting,
+    private readonly viewAi: ViewAiSettings,
+    private readonly changeAi: ChangeAiSetting,
   ) {}
+
+  @Get('ai')
+  @ApiOperation({
+    summary: 'The AI settings of the Market (admin)',
+    description:
+      'Needs settings.ai.view. ai-description-writer (off by default) and ' +
+      'ai-description-writer-tier (fast by default), each with its version (0 while the default ' +
+      'is in force). The provider, model ids and key are server configuration, not settings.',
+  })
+  @ApiOkResponse({ type: SettingsListBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async aiSettings(@Call() context: CallContext, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewAi.execute(context, {});
+    logRoute(
+      this.#logger,
+      'settings.view-ai-settings-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingsListBody(result.value);
+  }
+
+  @Put('ai')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Change one AI setting of the Market (admin)',
+    description:
+      'Needs the protected settings.ai.manage; refused in an acting-as session. The body names ' +
+      'the setting and carries the version the admin saw: a stale edit is 409 settings.conflict. ' +
+      'Audited with the previous and new value; asking for the value in force changes nothing. ' +
+      REVIEWED,
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ChangeAiSettingRequest })
+  @ApiOkResponse({ type: SettingChangeBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async putAiSetting(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['code', 'value', 'expectedVersion', 'note']);
+    if (invalid !== null) throw invalid;
+    const { code, value, expectedVersion, note } = requestBody as {
+      code?: unknown;
+      value?: unknown;
+      expectedVersion?: unknown;
+      note?: unknown;
+    };
+    const result = await this.changeAi.execute(context, { code, value, expectedVersion, note });
+    logRoute(
+      this.#logger,
+      'settings.change-ai-setting-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingChangeBody(result.value);
+  }
 
   @Get('market-settings')
   @ApiOperation({
@@ -93,11 +172,12 @@ export class AdminSettingsController {
     description:
       'Needs settings.list-paging.manage; refused in an acting-as session. The body carries the ' +
       'version the admin saw: a stale edit is 409 settings.conflict. Audited; asking for the value ' +
-      'already in force changes nothing.',
+      'already in force changes nothing. ' +
+      REVIEWED,
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: ChangeSettingRequest })
-  @ApiOkResponse({ type: SettingBody })
+  @ApiOkResponse({ type: SettingChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -109,14 +189,15 @@ export class AdminSettingsController {
     @Body() requestBody: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, requestBody, ['code', 'value', 'expectedVersion']);
+    const invalid = closedBody(request, requestBody, ['code', 'value', 'expectedVersion', 'note']);
     if (invalid !== null) throw invalid;
-    const { code, value, expectedVersion } = requestBody as {
+    const { code, value, expectedVersion, note } = requestBody as {
       code?: unknown;
       value?: unknown;
       expectedVersion?: unknown;
+      note?: unknown;
     };
-    const result = await this.change.execute(context, { code, value, expectedVersion });
+    const result = await this.change.execute(context, { code, value, expectedVersion, note });
     logRoute(
       this.#logger,
       'settings.change-list-paging-setting-route',
@@ -124,7 +205,7 @@ export class AdminSettingsController {
       result.ok ? 'set' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return settingBody(result.value);
+    return settingChangeBody(result.value);
   }
 
   @Get('cart-mode')
@@ -157,11 +238,12 @@ export class AdminSettingsController {
     description:
       'Needs settings.cart-mode.manage; refused in an acting-as session. The body carries the ' +
       'version the admin saw: a stale edit is 409 settings.conflict. Audited with the previous ' +
-      'and new value; asking for the value already in force changes nothing.',
+      'and new value; asking for the value already in force changes nothing. ' +
+      REVIEWED,
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: ChangeCartModeRequest })
-  @ApiOkResponse({ type: SettingBody })
+  @ApiOkResponse({ type: SettingChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -173,16 +255,18 @@ export class AdminSettingsController {
     @Body() requestBody: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, requestBody, ['value', 'expectedVersion']);
+    const invalid = closedBody(request, requestBody, ['value', 'expectedVersion', 'note']);
     if (invalid !== null) throw invalid;
-    const { value, expectedVersion } = requestBody as {
+    const { value, expectedVersion, note } = requestBody as {
       value?: unknown;
       expectedVersion?: unknown;
+      note?: unknown;
     };
     const result = await this.changeCartMode.execute(context, {
       code: CART_MODE_CODE,
       value,
       expectedVersion,
+      note,
     });
     logRoute(
       this.#logger,
@@ -191,7 +275,7 @@ export class AdminSettingsController {
       result.ok ? 'set' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return settingBody(result.value);
+    return settingChangeBody(result.value);
   }
 
   @Get('list-paging')

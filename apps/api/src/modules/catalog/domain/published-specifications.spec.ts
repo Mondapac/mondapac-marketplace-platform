@@ -34,6 +34,10 @@ function build(
     values,
     definitions: new Map(Object.entries(definitions)),
     locales: LOCALES,
+    unitLabels: new Map<string, Record<string, string>>([
+      ['kg', { 'en-AU': 'kg', 'fa-IR': 'کیلوگرم' }],
+      ['g', { 'en-AU': 'g' }],
+    ]),
   });
 }
 
@@ -280,5 +284,38 @@ describe('buildPublishedSpecifications', () => {
     ).toEqual({ kind: 'text', text: expect.any(String) as string });
     // An attribute with no name in the asked or fallback locale is left out.
     expect(build({ a: 'x' }, { a: def({ names: { 'ar-AE': 'س' } }) })).toEqual([]);
+  });
+
+  describe('a measure (attributes A3)', () => {
+    const measure = (decimals = 3) => def({ dataType: 'measure', measureDecimals: decimals });
+    const shown = (stored: unknown, definition = measure()) =>
+      build({ w: stored }, { w: definition })[0]?.specifications[0]?.value;
+
+    it('shows the base-unit value in the unit the seller chose, with that unit in the locale', () => {
+      expect(shown({ value: '500', unit: 'kg' })).toEqual({
+        kind: 'measure',
+        value: '0.5',
+        unitLabel: 'کیلوگرم',
+      });
+      // A unit with no label in the asked locale falls back to English, never to another locale.
+      expect(shown({ value: '250', unit: 'g' })).toEqual({
+        kind: 'measure',
+        value: '250',
+        unitLabel: 'g',
+      });
+    });
+
+    it('rounds to the places the revision allows and keeps exact digits', () => {
+      expect(shown({ value: '1234', unit: 'kg' }, measure(2))).toMatchObject({ value: '1.23' });
+      expect(shown({ value: '1500', unit: 'kg' }, measure(0))).toMatchObject({ value: '2' });
+    });
+
+    it('leaves out a value it cannot show: bad shape, unknown unit, no settings, no label', () => {
+      expect(shown('500')).toBeUndefined();
+      expect(shown({ value: '500', unit: 'stone' })).toBeUndefined();
+      expect(shown({ value: 'abc', unit: 'kg' })).toBeUndefined();
+      expect(shown({ value: '500', unit: 'kg' }, def({ dataType: 'measure' }))).toBeUndefined();
+      expect(shown({ value: '5', unit: 'l' })).toBeUndefined();
+    });
   });
 });

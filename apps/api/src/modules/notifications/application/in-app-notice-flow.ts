@@ -15,7 +15,11 @@ import {
 } from '../../certification';
 import { TEAM_MEMBER_INVITE } from '../../identity';
 import { INVENTORY_STOCK_VIEW } from '../../inventory';
-import { ORDERING_SELLER_ORDER_VIEW, type OrderingFacade } from '../../ordering';
+import {
+  ORDERING_REFUND_LIMITS_VIEW,
+  ORDERING_SELLER_ORDER_VIEW,
+  type OrderingFacade,
+} from '../../ordering';
 import {
   COMMISSION_PAYOUTS_EARNINGS_VIEW,
   COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE,
@@ -30,6 +34,7 @@ import {
   ADMIN_REVIEW_HELD,
   ADMIN_REVIEW_REPORTED,
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
+  ADMIN_SELLER_REFUND_LIMIT_REACHED,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -193,6 +198,11 @@ const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = 
   [ADMIN_PLATFORM_IMPORT_FINISHED]: {
     name: 'notifications.see-admin-platform-import-notices',
     rule: { kind: 'permissions', allOf: [CATALOG_PLATFORM_IMPORT_RUN.key] },
+  },
+  // The admins who see the caps on seller refunds follow up a seller that reached one.
+  [ADMIN_SELLER_REFUND_LIMIT_REACHED]: {
+    name: 'notifications.see-admin-seller-refund-limit-notices',
+    rule: { kind: 'permissions', allOf: [ORDERING_REFUND_LIMITS_VIEW.key] },
   },
   // The admins who work the moderation queue see what waits in its held and reported tabs.
   [ADMIN_REVIEW_HELD]: ADMIN_REVIEW_QUEUE_ACCESS,

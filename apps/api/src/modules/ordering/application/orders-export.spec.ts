@@ -1,6 +1,8 @@
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
-import { csvLine, decimalOf, ORDERS_EXPORT_MAX_ROWS } from './orders-csv';
+import { csvLine } from '@mondapac/platform-import';
+import { LIST_EXPORT_MAX_ROWS } from '../../../platform/list-export';
+import { decimalOf } from './orders-csv';
 import { EXPORT_PAGE, ordersExport, type ExportPage, type PageReader } from './orders-export';
 
 const clock = new FixedClock(Temporal.Instant.from('2026-11-06T10:00:00Z'));
@@ -73,22 +75,20 @@ describe('ordersExport', () => {
     const read: PageReader = () => {
       calls += 1;
       return Promise.resolve(
-        ok<ExportPage>({ rows: [], nextCursor: null, total: ORDERS_EXPORT_MAX_ROWS + 1 }),
+        ok<ExportPage>({ rows: [], nextCursor: null, total: LIST_EXPORT_MAX_ROWS + 1 }),
       );
     };
     const result = await ordersExport(clock, {}, spec(read));
     expect(result).toEqual({
       ok: false,
-      error: { code: 'batch.too-large', max: ORDERS_EXPORT_MAX_ROWS, matching: 10_001 },
+      error: { code: 'batch.too-large', max: LIST_EXPORT_MAX_ROWS, matching: 10_001 },
     });
     expect(calls).toBe(1);
   });
 
   it('allows the cap exactly', async () => {
     const read: PageReader = () =>
-      Promise.resolve(
-        ok<ExportPage>({ rows: [], nextCursor: null, total: ORDERS_EXPORT_MAX_ROWS }),
-      );
+      Promise.resolve(ok<ExportPage>({ rows: [], nextCursor: null, total: LIST_EXPORT_MAX_ROWS }));
     expect((await ordersExport(clock, {}, spec(read))).ok).toBe(true);
   });
 

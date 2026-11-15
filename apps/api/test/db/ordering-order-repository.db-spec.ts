@@ -67,6 +67,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     fulfilment: null,
     from: null,
     to: null,
+    parties: null,
     ...over,
   });
 
@@ -420,6 +421,9 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(await count({ paymentState: 'captured' })).toBe(2);
     expect(await count({ from: day.add({ minutes: 2 }), to: day.add({ minutes: 4 }) })).toBe(2);
     expect(await count({ status: 'confirmed' })).toBe(0);
+    // One customer's orders (the customer page's Orders tab): this account only.
+    expect(await count({ accountId: rows[2]!.accountId })).toBe(1);
+    expect(await count({ accountId: ids.next<'Account'>() })).toBe(0);
   });
 
   it('sorts the admin list by total and breaks a tie by id in the same direction', async () => {
@@ -498,6 +502,58 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     await value(market, () =>
       repository.markInventoryRecorded(market, shipped.sellerOrders[0]!.id, day.add({ hours: 2 })),
     );
+  });
+
+  it('filters the admin list on the customers and sellers a free-text search resolved to', async () => {
+    const day = T0.add({ hours: 24 * 520 });
+    const mine = newOrder(ids.next<'Account'>(), day);
+    const theirs = newOrder(ids.next<'Account'>(), day.add({ minutes: 1 }));
+    const bySeller = newOrder(ids.next<'Account'>(), day.add({ minutes: 2 }));
+    for (const row of [mine, theirs, bySeller]) {
+      await value(market, () => repository.insert(market, row));
+    }
+    const window = { from: day, to: day.add({ hours: 1 }) };
+    const found = (parties: OrderFilter['parties']) =>
+      value(market, () =>
+        repository.pageAll(
+          market,
+          filterOf({ ...window, parties }),
+          { key: 'created', direction: 'asc' },
+          0,
+          10,
+        ),
+      ).then((rows) => rows.map((o) => o.id));
+    const count = (parties: OrderFilter['parties']) =>
+      value(market, () => repository.countMatching(market, filterOf({ ...window, parties })));
+
+    expect(await found({ accountIds: [mine.accountId], sellerIds: [] })).toEqual([mine.id]);
+    expect(
+      await found({
+        accountIds: [theirs.accountId],
+        sellerIds: [bySeller.sellerOrders[0]!.sellerId],
+      }),
+    ).toEqual([theirs.id, bySeller.id]);
+    // Nothing resolved keeps nothing; no search keeps everything.
+    expect(await found({ accountIds: [], sellerIds: [] })).toEqual([]);
+    expect(await count({ accountIds: [], sellerIds: [] })).toBe(0);
+    expect(await found(null)).toEqual([mine.id, theirs.id, bySeller.id]);
+    expect(await count({ accountIds: [mine.accountId], sellerIds: [] })).toBe(1);
+    // Together with another filter, both must hold.
+    expect(
+      await value(market, () =>
+        repository.pageAll(
+          market,
+          filterOf({
+            ...window,
+            sellerId: bySeller.sellerOrders[0]!.sellerId,
+            parties: { accountIds: [mine.accountId], sellerIds: [] },
+          }),
+          { key: 'created', direction: 'asc' },
+          0,
+          10,
+        ),
+      ),
+    ).toEqual([]);
   });
 
   it('refuses what the application never writes', async () => {
@@ -1151,6 +1207,79 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           repository.sellerHealthRows(market, busy, T0.add({ hours: -24 }), T0, 1),
         ),
       ).rejects.toThrow(RangeError);
+    });
+  });
+
+  describe('customer totals (customers read model)', () => {
+    const confirmedOrder = async (accountId: Id<'Account'>, at: Temporal.Instant) => {
+      const order = newOrder(accountId, at);
+      await value(market, () => repository.insert(market, order));
+      await value(market, () =>
+        repository.save(market, {
+          ...order,
+          status: 'confirmed',
+          paymentState: 'captured',
+          stripePaymentIntentId: `pi_test_${order.id}`,
+          confirmedAt: at.add({ minutes: 5 }),
+        }),
+      );
+      return order;
+    };
+
+    it('adds up confirmed orders only, with their first and last instants', async () => {
+      const account = ids.next<'Account'>();
+      await confirmedOrder(account, T0.add({ hours: 1 }));
+      await confirmedOrder(account, T0.add({ hours: 3 }));
+      await value(market, () => repository.insert(market, newOrder(account, T0.add({ hours: 5 }))));
+
+      const totals = await value(market, () => repository.totalsOf(market, account));
+      expect(totals).toMatchObject({
+        orderCount: 2,
+        spentMinor: 5000n,
+        currency,
+        refundCount: 0,
+        refundedMinor: 0n,
+      });
+      expect(totals.firstConfirmedAt?.epochMilliseconds).toBe(
+        T0.add({ hours: 1, minutes: 5 }).epochMilliseconds,
+      );
+      expect(totals.lastConfirmedAt?.epochMilliseconds).toBe(
+        T0.add({ hours: 3, minutes: 5 }).epochMilliseconds,
+      );
+    });
+
+    it('answers zero for an account with no confirmed order, and never across Markets', async () => {
+      const account = ids.next<'Account'>();
+      expect(await value(market, () => repository.totalsOf(market, account))).toEqual({
+        orderCount: 0,
+        firstConfirmedAt: null,
+        lastConfirmedAt: null,
+        spentMinor: null,
+        currency: null,
+        refundCount: 0,
+        refundedMinor: 0n,
+      });
+      await confirmedOrder(account, T0.add({ hours: 7 }));
+      expect((await value(other, () => repository.totalsOf(other, account))).orderCount).toBe(0);
+    });
+
+    it('walks the accounts with a confirmed order by id, once each', async () => {
+      const first = ids.next<'Account'>();
+      const second = ids.next<'Account'>();
+      await confirmedOrder(first, T0.add({ hours: 9 }));
+      await confirmedOrder(first, T0.add({ hours: 10 }));
+      await confirmedOrder(second, T0.add({ hours: 11 }));
+      const all = await value(market, () =>
+        repository.accountsWithConfirmedOrders(market, null, 1000),
+      );
+      expect(all.filter((a) => a === first || a === second)).toEqual([first, second].sort());
+      expect(new Set(all).size).toBe(all.length);
+      const [lower, higher] = [first, second].sort();
+      const after = await value(market, () =>
+        repository.accountsWithConfirmedOrders(market, lower!, 1000),
+      );
+      expect(after).toContain(higher);
+      expect(after).not.toContain(lower);
     });
   });
 });

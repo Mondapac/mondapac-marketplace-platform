@@ -25,9 +25,20 @@ export interface OrderFilter {
   /** Keeps orders that have a seller order of this seller (and this fulfilment, when set). */
   readonly sellerId: Id<'Seller'> | null;
   readonly fulfilment: Fulfilment | null;
+  /** Keeps the orders one customer placed (the customer page's Orders tab); absent keeps all. */
+  readonly accountId?: Id<'Account'> | null;
   /** Placed at or after `from` and before `to`. */
   readonly from: Temporal.Instant | null;
   readonly to: Temporal.Instant | null;
+  /**
+   * The free-text search, already resolved by the owning modules: keeps orders placed by one of
+   * these accounts or holding a part of one of these sellers. Empty lists keep no order. Null
+   * keeps every order.
+   */
+  readonly parties: {
+    readonly accountIds: readonly Id<'Account'>[];
+    readonly sellerIds: readonly Id<'Seller'>[];
+  } | null;
 }
 
 /** The sort of an offset page; ties break on the order id in the same direction. */
@@ -92,7 +103,33 @@ export interface SellerHealthRows {
  * The store of orders, seller orders and order lines (ordering.orders and its children). Every
  * method runs in the open unit of the use case, through the Market-scoped client.
  */
+/** What an account's confirmed orders and succeeded refunds add up to (customers read model). */
+export interface AccountOrderTotals {
+  readonly orderCount: number;
+  readonly firstConfirmedAt: Temporal.Instant | null;
+  readonly lastConfirmedAt: Temporal.Instant | null;
+  /** Sum of the confirmed orders' totals, minor units; null when there is none. */
+  readonly spentMinor: bigint | null;
+  /** The currency of the account's latest confirmed order; null when there is none. */
+  readonly currency: string | null;
+  readonly refundCount: number;
+  readonly refundedMinor: bigint;
+}
+
 export interface OrderRepository {
+  /** The totals of one account's confirmed orders and succeeded refunds, read in one unit. */
+  totalsOf(market: MarketContext, accountId: Id<'Account'>): Promise<AccountOrderTotals>;
+
+  /**
+   * The ids of accounts with at least one confirmed order, ascending, after `after`, at most
+   * `limit` (a keyset walk for the customers reconcile).
+   */
+  accountsWithConfirmedOrders(
+    market: MarketContext,
+    after: Id<'Account'> | null,
+    limit: number,
+  ): Promise<readonly Id<'Account'>[]>;
+
   /** Inserts the order with its seller orders and lines. */
   insert(market: MarketContext, order: OrderState): Promise<void>;
 

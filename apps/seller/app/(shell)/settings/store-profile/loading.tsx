@@ -1,13 +1,14 @@
-import { RouteLoading, SIDEBAR_COOKIE, sidebarCollapsed } from '@mondapac/ui';
-import { getTranslations } from 'next-intl/server';
-import { cookies } from 'next/headers';
+import { SettingsLoading } from '../../../../src/settings/settings-loading.tsx';
 
-/**
- * Shown while the Store profile tab loads: the shell frame and the placeholder cards, with the
- * page's own label for screen readers ("Loading the store profile").
- */
-export default async function Loading() {
-  const t = await getTranslations();
-  const collapsed = sidebarCollapsed((await cookies()).get(SIDEBAR_COOKIE)?.value);
-  return <RouteLoading label={t('store-profile.loading')} collapsed={collapsed} />;
+/** Shown while the page loads: its form skeleton, card by card. */
+export default function Loading() {
+  return (
+    <SettingsLoading
+      titleKey="store-profile.title"
+      sections={[
+        { fields: 3, description: true },
+        { fields: 2, description: true },
+      ]}
+    />
+  );
 }

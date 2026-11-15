@@ -189,6 +189,11 @@ function specificationValueOf(
       return typeof raw.value === 'string' && DECIMAL.test(raw.value)
         ? decimalText(raw.value, locale)
         : null;
+    case 'measure':
+      // The number as the language writes it, then the unit's own label (never its code).
+      return typeof raw.value === 'string' && DECIMAL.test(raw.value) && isText(raw.unitLabel)
+        ? `${decimalText(raw.value, locale)} ${raw.unitLabel}`
+        : null;
     case 'boolean':
       return typeof raw.value === 'boolean'
         ? raw.value

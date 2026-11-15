@@ -144,7 +144,7 @@ describe('admin dashboard', () => {
     render(wrap(<AdminDashboard data={full} permissionKeys={ALL_KEYS} />));
     const stats = within(screen.getByRole('list', { name: 'Needs attention' }));
     const sellersCard = stats.getByRole('link', { name: /Sellers awaiting review/ });
-    expect(sellersCard.getAttribute('href')).toBe('/sellers');
+    expect(sellersCard.getAttribute('href')).toBe('/sellers?tab=awaiting-review');
     expect(sellersCard.textContent).toContain('9');
     const holdsCard = stats.getByRole('link', { name: /Held prices to decide/ });
     expect(holdsCard.textContent).toContain('50+');
@@ -288,6 +288,7 @@ const session = (permissionKeys: string[]): AdminSession => ({
   secondFactorActive: true,
   lastSignInAt: null,
   timezone: null,
+  marketTimezone: 'UTC',
   locale: null,
   email: 'ada@example.test',
   displayName: 'Ada',

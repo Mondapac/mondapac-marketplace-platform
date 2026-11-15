@@ -89,6 +89,11 @@ import {
   type AttributeValueSuggestionStore,
 } from '../application/ports/attribute-value-suggestion.store';
 import {
+  VARIANT_REQUEST_STORE,
+  type VariantRequestStore,
+} from '../application/ports/variant-request.store';
+import { PrismaVariantRequestStore } from './prisma-variant-request.store';
+import {
   ATTRIBUTE_RELAXATION_STORE,
   type AttributeRelaxationStore,
 } from '../application/ports/attribute-relaxation.store';
@@ -137,6 +142,7 @@ import {
   CUSTOM_VARIANT_LABELS_READER,
   type CustomVariantLabelsReader,
 } from '../application/ports/custom-variant-labels.reader';
+import { SAVED_FILTER_STORE, type SavedFilterStore } from '../../lists';
 import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
 import { PrismaSellerSavedFilterRepository } from './prisma-seller-saved-filter.repository';
 import {
@@ -167,8 +173,8 @@ import {
   IMPORT_FILE_PARSERS,
   type ImportFileParsers,
 } from '../application/ports/import-file-parsers';
-import { SHEET_WRITER, type SheetWriter } from '../application/ports/sheet-writer';
-import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
+import { SHEET_WRITER, type SheetWriter } from '../../../platform/list-export/sheet-writer';
+import { ExceljsSheetWriter } from '../../../platform/list-export/exceljs-sheet-writer';
 import { xlsxParser } from './xlsx/isolated-xlsx-parser';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSearchFactsReader } from './prisma-offer-search-facts.reader';
@@ -375,7 +381,39 @@ import {
 import { PrismaVariantAdminReader } from './prisma-variant-admin.reader';
 import { PrismaVariantTypeSettingsStore } from './prisma-variant-type-settings.store';
 
+import { ModelGateway } from '../../../platform/ai/model-gateway';
+import { SETTINGS_FACADE, type SettingsFacade } from '../../settings';
+import {
+  DESCRIPTION_WRITER_MODEL,
+  DESCRIPTION_WRITER_SWITCHES,
+  MARKET_DAY_CALENDAR,
+  type DescriptionWriterModel,
+  type DescriptionWriterSwitches,
+  type MarketDayCalendar,
+} from '../application/ports/description-writer';
+import { FacadeDescriptionWriterSwitches } from './description-writer-switches';
+import { GatewayDescriptionWriterModel } from './gateway-description-writer-model';
+import { RegistryMarketDayCalendar } from './registry-market-day-calendar';
+
 export const catalogProviders: readonly Provider[] = [
+  {
+    provide: DESCRIPTION_WRITER_MODEL,
+    inject: [ModelGateway],
+    useFactory: (gateway: ModelGateway): DescriptionWriterModel =>
+      new GatewayDescriptionWriterModel(gateway),
+  },
+  {
+    provide: DESCRIPTION_WRITER_SWITCHES,
+    inject: [SETTINGS_FACADE, SELLERS_FACADE],
+    useFactory: (settings: SettingsFacade, sellers: SellersFacade): DescriptionWriterSwitches =>
+      new FacadeDescriptionWriterSwitches(settings, sellers),
+  },
+  {
+    provide: MARKET_DAY_CALENDAR,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): MarketDayCalendar =>
+      new RegistryMarketDayCalendar(markets),
+  },
   // ADR-0031 decision 3: the binding of `certification.matchClaimTerms` (the placeholder is gone).
   {
     provide: CLAIM_TEXT_MATCHER,
@@ -423,6 +461,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeValueSuggestionStore =>
       new PrismaAttributeValueSuggestionStore(prisma),
+  },
+  {
+    provide: VARIANT_REQUEST_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantRequestStore =>
+      new PrismaVariantRequestStore(prisma),
   },
   {
     provide: TOPIC_SUGGESTION_STORE,
@@ -549,9 +593,9 @@ export const catalogProviders: readonly Provider[] = [
   },
   {
     provide: PUBLISHED_PRODUCT_READER,
-    inject: [PrismaService],
-    useFactory: (prisma: PrismaService): PublishedProductReader =>
-      new PrismaPublishedProductReader(prisma),
+    inject: [PrismaService, CATALOG_MARKET_POLICY],
+    useFactory: (prisma: PrismaService, policy: CatalogMarketPolicy): PublishedProductReader =>
+      new PrismaPublishedProductReader(prisma, (market) => policy.units(market)),
   },
   {
     provide: VARIANT_GTIN_REGISTRY,
@@ -632,15 +676,15 @@ export const catalogProviders: readonly Provider[] = [
   },
   {
     provide: SAVED_FILTER_REPOSITORY,
-    inject: [PrismaService],
-    useFactory: (prisma: PrismaService): SavedFilterRepository =>
-      new PrismaSavedFilterRepository(prisma),
+    inject: [SAVED_FILTER_STORE],
+    useFactory: (store: SavedFilterStore): SavedFilterRepository =>
+      new PrismaSavedFilterRepository(store),
   },
   {
     provide: SELLER_SAVED_FILTER_REPOSITORY,
-    inject: [PrismaService],
-    useFactory: (prisma: PrismaService): SellerSavedFilterRepository =>
-      new PrismaSellerSavedFilterRepository(prisma),
+    inject: [SAVED_FILTER_STORE],
+    useFactory: (store: SavedFilterStore): SellerSavedFilterRepository =>
+      new PrismaSellerSavedFilterRepository(store),
   },
   cultureMembersProvider,
   // The sources of the culture visibility rule (multi-culture package 3a).

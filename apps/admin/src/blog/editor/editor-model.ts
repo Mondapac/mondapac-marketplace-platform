@@ -2,6 +2,7 @@
 // has no control for (image, product cards, seller card) travel as `kept` blocks: shown, movable
 // and removable, never altered, so saving the text never loses them.
 
+import { eventContentOf, eventFormOf, type EventForm } from './event-model.ts';
 import type { ApiBlock, ApiContent, ApiLink } from './types.ts';
 
 export type EditBlock =
@@ -40,7 +41,7 @@ export interface Draft {
   readonly slug: string;
   /** What the editor never edits and sends back as it came. */
   readonly links: readonly ApiLink[];
-  readonly event: Readonly<Record<string, unknown>> | null;
+  readonly event: EventForm | null;
 }
 
 let counter = 0;
@@ -87,7 +88,7 @@ export function emptyBlock(type: TextBlockType): EditBlock {
   }
 }
 
-export function draftOf(content: ApiContent, slug: string): Draft {
+export function draftOf(content: ApiContent, slug: string, zone = 'UTC'): Draft {
   return {
     title: content.title,
     excerpt: content.excerpt,
@@ -101,7 +102,7 @@ export function draftOf(content: ApiContent, slug: string): Draft {
     tagIds: content.tagIds,
     slug,
     links: content.links,
-    event: content.event,
+    event: eventFormOf(content.event, zone),
   };
 }
 
@@ -158,7 +159,7 @@ export function contentOf(draft: Draft): ApiContent {
     categoryId: orNull(draft.categoryId),
     tagIds: draft.tagIds,
     links: draft.links,
-    event: draft.event,
+    event: eventContentOf(draft.event),
   };
 }
 

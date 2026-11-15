@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { API_FEATURE_SETS, type FeatureSetList } from '../attributes/types.ts';
 import { CategoryDetails } from './category-details.tsx';
 import { CreateCategoryDialog } from './category-dialogs.tsx';
 import { CategoryTree } from './category-tree.tsx';
@@ -69,6 +70,8 @@ export function CategoriesView({
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [missing, setMissing] = useState('');
+  const [featureSet, setFeatureSet] = useState('');
+  const [sets, setSets] = useState<FeatureSetList['items']>([]);
   const [adding, setAdding] = useState(false);
   const [version, setVersion] = useState(0);
   const latest = useRef(0);
@@ -81,6 +84,17 @@ export function CategoriesView({
     const timer = setTimeout(() => setQ(typed.trim()), 250);
     return () => clearTimeout(timer);
   }, [typed]);
+
+  // The feature sets the filter offers; if they cannot be read, the filter is left out.
+  useEffect(() => {
+    let live = true;
+    void callApi<FeatureSetList>('GET', API_FEATURE_SETS).then((r) => {
+      if (live && r.ok) setSets(r.body?.items ?? []);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const fetchTree = useCallback(async () => {
     const ticket = ++latest.current;
@@ -111,8 +125,13 @@ export function CategoriesView({
 
   const rows = tree?.categories ?? [];
   const filter = useMemo(
-    () => ({ q, status, missing: missing === '' ? null : missing }),
-    [q, status, missing],
+    () => ({
+      q,
+      status,
+      missing: missing === '' ? null : missing,
+      featureSetId: featureSet === '' ? null : featureSet,
+    }),
+    [q, status, missing, featureSet],
   );
   const missingByLocale = useMemo(
     () => missingCounts(rows, tree?.supportedLocales ?? []),
@@ -237,6 +256,19 @@ export function CategoriesView({
                 onChange={(event) => setStatus(event.target.value as StatusFilter)}
               />
             </div>
+            {sets.length === 0 ? null : (
+              <div className="w-full sm:w-48">
+                <Select
+                  label={t('feature-set-label')}
+                  value={featureSet}
+                  options={[
+                    { value: '', label: t('feature-set-all') },
+                    ...sets.map((row) => ({ value: row.id, label: row.code })),
+                  ]}
+                  onChange={(event) => setFeatureSet(event.target.value)}
+                />
+              </div>
+            )}
           </div>
           {canEdit ? (
             <div>

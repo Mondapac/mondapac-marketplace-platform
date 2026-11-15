@@ -75,7 +75,29 @@ describe.each(TEST_MARKETS)('missing details email requests in market %s (databa
     expect(await claim(market, d, T0.add({ milliseconds: 6 * DAY }))).toBe(false);
     const rows = await unit(market, () => store.latest(market, [d]));
     expect(rows).toEqual([
-      { sellerId: d.sellerId, productId: d.productId, state: 'pending', requestedAt: T0 },
+      {
+        sellerId: d.sellerId,
+        productId: d.productId,
+        state: 'pending',
+        requestedAt: T0,
+        settledAt: null,
+      },
+    ]);
+  });
+
+  it("reports when a sent request went out (the report's lastEmailedAt)", async () => {
+    const d = draft(uuid7(), uuid7());
+    await claim(market, d, T0);
+    const sentAt = T0.add({ milliseconds: 1000 });
+    await unit(market, () => store.settle(market, d, { state: 'sent', attempts: 1 }, sentAt));
+    expect(await unit(market, () => store.latest(market, [d]))).toEqual([
+      {
+        sellerId: d.sellerId,
+        productId: d.productId,
+        state: 'sent',
+        requestedAt: T0,
+        settledAt: sentAt,
+      },
     ]);
   });
 

@@ -1423,6 +1423,45 @@
     }
   },
   {
+    "action": "commission-payouts.commission-rate.reverted",
+    "targetType": "commission-payouts.seller-commission-rate",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "rateBps": "optional(integer)"
+    },
+    "after": {
+      "marketRateBps": "integer",
+      "rateBps": "optional(integer)",
+      "requestId": "id"
+    }
+  },
+  {
+    "action": "commission-payouts.payout-terms.reverted",
+    "targetType": "commission-payouts.seller-payout-terms",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "approvalMode": "optional(enumOf(auto|manual))",
+      "holdDaysCarrier": "optional(integer)",
+      "holdDaysSellerClick": "optional(integer)",
+      "localMinute": "optional(integer)",
+      "minimumMinor": "optional(integer)",
+      "version": "optional(integer)",
+      "weekdaysMask": "optional(integer)"
+    },
+    "after": {
+      "approvalMode": "optional(enumOf(auto|manual))",
+      "holdDaysCarrier": "optional(integer)",
+      "holdDaysSellerClick": "optional(integer)",
+      "localMinute": "optional(integer)",
+      "minimumMinor": "optional(integer)",
+      "requestId": "id",
+      "version": "optional(integer)",
+      "weekdaysMask": "optional(integer)"
+    }
+  },
+  {
     "action": "commission-payouts.payout-terms.clear",
     "targetType": "commission-payouts.seller-payout-terms",
     "targetId": "id",
@@ -1557,6 +1596,69 @@
     }
   },
   {
+    "action": "customers.customer-page.opened",
+    "targetType": "customers.customer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "tab": "enumOf(overview|orders|money)"
+    }
+  },
+  {
+    "action": "customers.customers.exported",
+    "targetType": "customers.customers-export",
+    "targetId": "enumOf(customers-export)",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "selection": "enumOf(ids|filter)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "customers.saved-filter.changed",
+    "targetType": "customers.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "visibility": "enumOf(me|everyone)"
+    },
+    "after": {
+      "listKey": "enumOf(admin.customers.customers)",
+      "ownedByActor": "boolean",
+      "renamed": "boolean",
+      "visibility": "enumOf(me|everyone)"
+    }
+  },
+  {
+    "action": "customers.saved-filter.removed",
+    "targetType": "customers.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "listKey": "enumOf(admin.customers.customers)",
+      "visibility": "enumOf(me|everyone)"
+    },
+    "after": {
+      "ownedByActor": "boolean"
+    }
+  },
+  {
+    "action": "customers.saved-filter.shared",
+    "targetType": "customers.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "listKey": "enumOf(admin.customers.customers)",
+      "visibility": "enumOf(me|everyone)"
+    }
+  },
+  {
     "action": "identity.account-role.assigned",
     "targetType": "identity.account",
     "targetId": "id",
@@ -1661,7 +1763,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "cause": "enumOf(invalid|locked)",
       "sessionId": "id"
     }
@@ -1673,7 +1775,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "sessionId": "id"
     }
   },
@@ -1966,11 +2068,11 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     },
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     }
   },
@@ -2012,6 +2114,35 @@
     }
   },
   {
+    "action": "ordering.refund-limit.removed",
+    "targetType": "ordering.seller-refund-limit",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "maxAmount": "money",
+      "maxCount": "integer",
+      "sellerId": "id"
+    },
+    "after": null
+  },
+  {
+    "action": "ordering.refund-limit.set",
+    "targetType": "ordering.seller-refund-limit",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "maxAmount": "optional(money)",
+      "maxCount": "optional(integer)"
+    },
+    "after": {
+      "maxAmount": "money",
+      "maxCount": "integer",
+      "scope": "enumOf(market|seller)",
+      "sellerId": "optional(id)",
+      "version": "integer"
+    }
+  },
+  {
     "action": "ordering.refund.requested",
     "targetType": "ordering.refund",
     "targetId": "id",
@@ -2036,6 +2167,86 @@
     "after": {
       "creditNoteId": "optional(id)",
       "outcome": "enumOf(succeeded|failed)"
+    }
+  },
+  {
+    "action": "ordering.saved-filter.shared",
+    "targetType": "ordering.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "listKey": "enumOf(admin.ordering.orders)",
+      "visibility": "enumOf(me|everyone)"
+    }
+  },
+  {
+    "action": "ordering.saved-filter.changed",
+    "targetType": "ordering.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "visibility": "enumOf(me|everyone)"
+    },
+    "after": {
+      "listKey": "enumOf(admin.ordering.orders)",
+      "ownedByActor": "boolean",
+      "renamed": "boolean",
+      "visibility": "enumOf(me|everyone)"
+    }
+  },
+  {
+    "action": "ordering.saved-filter.removed",
+    "targetType": "ordering.saved-filter",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "listKey": "enumOf(admin.ordering.orders)",
+      "visibility": "enumOf(me|everyone)"
+    },
+    "after": {
+      "ownedByActor": "boolean"
+    }
+  },
+  {
+    "action": "ordering.seller-order.note-added",
+    "targetType": "ordering.seller-order",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "length": "integer",
+      "noteId": "id"
+    }
+  },
+  {
+    "action": "ordering.ship-to-retention.changed",
+    "targetType": "ordering.ship-to-retention",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "optional(boolean)",
+      "months": "optional(integer)"
+    },
+    "after": {
+      "enabled": "boolean",
+      "months": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "ordering.ship-to.purged",
+    "targetType": "ordering.ship-to-retention",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": null,
+    "after": {
+      "cleared": "integer",
+      "complete": "boolean",
+      "cutoff": "instant",
+      "months": "integer"
     }
   },
   {
@@ -2512,6 +2723,41 @@
     }
   },
   {
+    "action": "security.alert.acknowledged",
+    "targetType": "security.alert",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "severity": "enumOf(s1|s2|s3|s4)",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "security.alert.resolved",
+    "targetType": "security.alert",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "resolution": "enumOf(contained|false-positive|duplicate|accepted-risk)",
+      "severity": "enumOf(s1|s2|s3|s4)",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "sellers.ai-access.changed",
+    "targetType": "sellers.seller",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "boolean"
+    },
+    "after": {
+      "enabled": "boolean"
+    }
+  },
+  {
     "action": "sellers.blog-access.change",
     "targetType": "sellers.seller",
     "targetId": "id",
@@ -2634,13 +2880,13 @@
   {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(list-paging|cart-mode)",
+    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier)",
     "actors": ["authenticated"],
     "before": {
-      "value": "enumOf(pages|prev-next|multi-store|single-store)"
+      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced)"
     },
     "after": {
-      "value": "enumOf(pages|prev-next|multi-store|single-store)",
+      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced)",
       "version": "integer"
     }
   },
@@ -2923,6 +3169,81 @@
     }
   },
   {
+    "action": "system-requests.policy.changed",
+    "targetType": "system-requests.policy",
+    "targetId": "enumOf(people|money|delivery|catalogue|certification|marketplace|content|review-due-days)",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "optional(boolean)",
+      "reviewDueDays": "optional(integer)",
+      "risk": "optional(enumOf(low|medium|high))"
+    },
+    "after": {
+      "enabled": "optional(boolean)",
+      "requestId": "optional(id)",
+      "reviewDueDays": "optional(integer)",
+      "risk": "optional(enumOf(low|medium|high))",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "system-requests.request.approved",
+    "targetType": "system-requests.request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(open)"
+    },
+    "after": {
+      "requestedBy": "id",
+      "risk": "enumOf(low|medium|high)",
+      "status": "enumOf(approved)",
+      "stepUpSessionId": "optional(id)",
+      "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
+    "action": "system-requests.request.commented",
+    "targetType": "system-requests.request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "commentCount": "integer"
+    }
+  },
+  {
+    "action": "system-requests.request.opened",
+    "targetType": "system-requests.request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "area": "enumOf(people|money|delivery|catalogue|certification|marketplace|content|review-policy)",
+      "number": "integer",
+      "reviewDueAt": "instant",
+      "risk": "enumOf(low|medium|high)",
+      "supersedes": "listOf(id, max 10)"
+    }
+  },
+  {
+    "action": "system-requests.request.reverted",
+    "targetType": "system-requests.request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(open)"
+    },
+    "after": {
+      "decision": "enumOf(rejected|withdrawn)",
+      "requestedBy": "id",
+      "risk": "enumOf(low|medium|high)",
+      "status": "enumOf(reverted)",
+      "stepUpSessionId": "optional(id)",
+      "stepUpVerifiedAt": "optional(instant)"
+    }
+  },
+  {
     "action": "tax.strategy.activate",
     "targetType": "tax.strategy",
     "targetId": "id",
@@ -3078,6 +3399,21 @@
       "status": "enumOf(off|active|paused|frozen)",
       "stepUpSessionId": "id",
       "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "wallet.market-status.reverted",
+    "targetType": "wallet.market-settings",
+    "targetId": "enumOf(wallet-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "reason": "optional(enumOf(wind-down|security-incident|fraud-suspected|legal-hold|maintenance|owner-decision))",
+      "status": "enumOf(off|active|paused|frozen)"
+    },
+    "after": {
+      "reason": "optional(enumOf(wind-down|security-incident|fraud-suspected|legal-hold|maintenance|owner-decision))",
+      "requestId": "id",
+      "status": "enumOf(off|active|paused|frozen)"
     }
   },
   {
@@ -3306,6 +3642,31 @@
     },
     "after": {
       "revisionNo": "integer"
+    }
+  },
+  {
+    "action": "catalog.variant-request.decided",
+    "targetType": "catalog.variant-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(open)"
+    },
+    "after": {
+      "productId": "id",
+      "sellerId": "id",
+      "status": "enumOf(approved|mapped|declined)"
+    }
+  },
+  {
+    "action": "catalog.variant-request.requested",
+    "targetType": "catalog.variant-request",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "offerId": "id",
+      "productId": "id"
     }
   },
   {

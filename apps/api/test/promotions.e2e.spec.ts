@@ -12,6 +12,9 @@ import { ListSellerCampaigns } from '../src/modules/promotions/application/use-c
 import { PreviewSellerPayout } from '../src/modules/promotions/application/use-cases/preview-seller-payout.use-case';
 import { ListFreeShippingThresholds } from '../src/modules/promotions/application/use-cases/list-free-shipping-thresholds.use-case';
 import { ListOwnPromotions } from '../src/modules/promotions/application/use-cases/list-own-promotions.use-case';
+import { CountPromotionReviews } from '../src/modules/promotions/application/use-cases/count-promotion-reviews.use-case';
+import { ViewCampaignMembers } from '../src/modules/promotions/application/use-cases/view-campaign-members.use-case';
+import { ViewPromotionActivity } from '../src/modules/promotions/application/use-cases/view-promotion-activity.use-case';
 import { ListPromotionReviews } from '../src/modules/promotions/application/use-cases/list-promotion-reviews.use-case';
 import { ListPromotionsFull } from '../src/modules/promotions/application/use-cases/list-promotions-full.use-case';
 import { ListPromotions } from '../src/modules/promotions/application/use-cases/list-promotions.use-case';
@@ -113,6 +116,9 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     ['generate-codes', GenerateBatchCodes],
     ['code-summary', ViewBatchCodeSummary],
     ['list-reviews', ListPromotionReviews],
+    ['count-reviews', CountPromotionReviews],
+    ['campaign-members', ViewCampaignMembers],
+    ['activity', ViewPromotionActivity],
     ['decide-review', DecidePromotionReview],
     ['view-first-order', ViewFirstOrderSettings],
     ['set-first-order', SetFirstOrderSettings],
@@ -351,14 +357,32 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     expect(actors.slice(3)).toEqual(['admin', 'seller']);
   });
 
+  const COUNTS = {
+    ALL: 1,
+    ACTIVE: 1,
+    SCHEDULED: 0,
+    PAUSED: 0,
+    NEEDS_REVIEW: 0,
+    ENDED: 0,
+    PENDING_APPROVAL: 0,
+    REJECTED: 0,
+    BUDGET_USED_UP: 0,
+  };
+
   it('lists promotions for a Viewer with usage only and for a manager with the cost, checking the query', async () => {
     await boot();
     const session = admin();
-    next = ok([{ ...PROMOTION_VIEW, usesCount: 3 }]);
+    next = ok({
+      items: [{ ...PROMOTION_VIEW, usesCount: 3, displayStatus: 'ACTIVE' }],
+      total: 41,
+      page: 2,
+      limit: 5,
+      counts: COUNTS,
+    });
     const usage = await call(
       'admin',
       'get',
-      '/promotions/admin/promotions?status=ACTIVE&limit=5',
+      '/promotions/admin/promotions?q=cart&type=CART_CODE,FREE_SHIPPING&owner=SELLER&funding=PLATFORM&view=ACTIVE&sort=NAME&order=asc&page=2&limit=5',
       session,
     );
     expect(usage.status).toBe(200);
@@ -367,23 +391,126 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
       id: PROMOTION,
       usesCount: 3,
       name: 'Platform cart',
+      displayStatus: 'ACTIVE',
     });
+    expect(usage.body).toMatchObject({ total: 41, page: 2, limit: 5, counts: { ALL: 1 } });
     expect(itemsOf(usage)[0]).not.toHaveProperty('budgetMinor');
-    expect(calls.at(-1)).toEqual({ name: 'list-usage', input: { status: 'ACTIVE', limit: 5 } });
+    expect(calls.at(-1)).toEqual({
+      name: 'list-usage',
+      input: {
+        text: 'cart',
+        type: 'CART_CODE,FREE_SHIPPING',
+        owner: 'SELLER',
+        funding: 'PLATFORM',
+        status: undefined,
+        view: 'ACTIVE',
+        sort: 'NAME',
+        order: 'asc',
+        page: '2',
+        limit: '5',
+      },
+    });
 
-    next = ok([PROMOTION_VIEW]);
+    next = ok({
+      items: [{ ...PROMOTION_VIEW, displayStatus: 'BUDGET_USED_UP' }],
+      total: 1,
+      page: 1,
+      limit: 25,
+      counts: COUNTS,
+    });
     const full = await call('admin', 'get', '/promotions/admin/promotions/costs', session);
     expect(full.status).toBe(200);
     expect(itemsOf(full)[0]).toMatchObject({
       budgetMinor: '100000',
       usage: { spentMinor: '900', platformShareMinor: '900' },
       reward: { kind: 'PERCENT', bps: 500, amountMinor: null },
+      displayStatus: 'BUDGET_USED_UP',
     });
-    const stray = await call('admin', 'get', '/promotions/admin/promotions?sort=asc', session);
+    const stray = await call('admin', 'get', '/promotions/admin/promotions?color=red', session);
     expect(stray.status).toBe(400);
     expect(stray.body).toMatchObject({
-      details: { fields: [{ path: 'sort', code: 'unknown-field' }] },
+      details: { fields: [{ path: 'color', code: 'unknown-field' }] },
     });
+  });
+
+  it('reads the activity, the sellers of a campaign and the open review count of the queue', async () => {
+    await boot();
+    const session = admin();
+    next = ok({
+      items: [
+        {
+          id: id<'Promotion'>(0xe201),
+          at: START,
+          kind: 'budget-changed',
+          byDisplayName: 'Dana',
+          byKind: 'member',
+          changes: [
+            {
+              field: 'budget',
+              before: { amount: '100000', currency: 'AUD' },
+              after: { amount: '150000', currency: 'AUD' },
+            },
+          ],
+        },
+      ],
+      next: null,
+    });
+    const activity = await call(
+      'admin',
+      'get',
+      `/promotions/admin/promotions/${PROMOTION}/activity?limit=10`,
+      session,
+    );
+    expect(activity.status).toBe(200);
+    expect(activity.headers['cache-control']).toBe('no-store');
+    expect(itemsOf(activity)[0]).toMatchObject({
+      kind: 'budget-changed',
+      byDisplayName: 'Dana',
+      changes: [{ field: 'budget', after: { amount: '150000' } }],
+    });
+    expect(calls.at(-1)).toEqual({
+      name: 'activity',
+      input: { promotionId: PROMOTION, after: undefined, limit: '10' },
+    });
+    expect(
+      (
+        await call(
+          'admin',
+          'get',
+          `/promotions/admin/promotions/${PROMOTION}/activity?sort=x`,
+          session,
+        )
+      ).status,
+    ).toBe(400);
+
+    next = ok({
+      promotionId: PROMOTION,
+      platformSplitBps: 4000,
+      liveCount: 1,
+      members: [{ promotionId: PROMOTION, sellerId: SELLER, optedInAt: START, withdrawnAt: null }],
+    });
+    const members = await call(
+      'admin',
+      'get',
+      `/promotions/admin/promotions/${PROMOTION}/sellers`,
+      session,
+    );
+    expect(members.status).toBe(200);
+    expect(members.body).toMatchObject({
+      platformSplitBps: 4000,
+      liveCount: 1,
+      members: [{ sellerId: SELLER, withdrawnAt: null }],
+    });
+    next = err({ code: 'promotions.invalid-state' });
+    expect(
+      (await call('admin', 'get', `/promotions/admin/promotions/${PROMOTION}/sellers`, session))
+        .status,
+    ).toBe(409);
+
+    next = ok({ open: 4 });
+    const count = await call('admin', 'get', '/promotions/admin/reviews/count', session);
+    expect(count.status).toBe(200);
+    expect(count.body).toEqual({ open: 4 });
   });
 
   it('creates, edits, pauses, resumes and sets the budget of a promotion, passing the id and the body', async () => {

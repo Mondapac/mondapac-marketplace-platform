@@ -176,4 +176,29 @@ export class PrismaCreditRepository implements CreditRepository {
     });
     return rows.map(toRecord);
   }
+
+  async listForRecipient(
+    market: MarketContext,
+    recipient: Id<'Account'>,
+    limit: number,
+    after?: CreditCursor,
+  ): Promise<readonly CreditRecord[]> {
+    const rows = await this.prisma.tx(market).promotionsCreditIssuance.findMany({
+      where: {
+        marketId: market.marketId,
+        recipientAccountId: recipient,
+        ...(after === undefined
+          ? {}
+          : {
+              OR: [
+                { createdAt: { lt: toDate(after.createdAt) } },
+                { createdAt: toDate(after.createdAt), id: { lt: after.id } },
+              ],
+            }),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+    return rows.map(toRecord);
+  }
 }

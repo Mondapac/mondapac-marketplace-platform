@@ -3,7 +3,6 @@ import {
   ADMIN_NOTE_CIPHER,
   ADMIN_ORDER_NOTE_REPOSITORY,
 } from '../src/modules/ordering/application/ports/admin-order-notes';
-import { REFUND_REPOSITORY } from '../src/modules/ordering/application/ports/refund.repository';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -18,6 +17,8 @@ import { INVENTORY_ORDERING_PORT } from '../src/modules/inventory/contracts/orde
 import { CHECKOUT_GATEWAY } from '../src/modules/ordering/application/ports/checkout-gateway';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
 import { PICKUP_CODE_REPOSITORY } from '../src/modules/ordering/application/ports/pickup-code.repository';
+import { REFUND_REPOSITORY } from '../src/modules/ordering/application/ports/refund.repository';
+import { SHIP_TO_RETENTION_REPOSITORY } from '../src/modules/ordering/application/ports/ship-to-retention.repository';
 import { PICKUP_CODE_VAULT } from '../src/modules/ordering/application/ports/pickup-code-vault';
 import { SHIP_TO_CIPHER } from '../src/modules/ordering/application/ports/ship-to-cipher';
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
@@ -45,13 +46,16 @@ import {
   FakeShipToCipher,
   MemoryOrders,
   MemoryPickupCodes,
+  MemoryRefundLimits,
+  MemoryShipToRetention,
   TEST_DELIVERY_ADDRESS,
-  NO_REFUNDS,
   FakeAdminNoteCipher,
   MemoryAdminNotes,
   OrderingAuditWriter,
 } from './support/ordering-fakes';
 import { FakeUnitOfWork, RecordingOutbox } from './support/pricing-fakes';
+import { STORE_PROFILE_REPOSITORY } from '../src/modules/sellers/application/ports/store-profile.repository';
+import { InMemoryStoreProfiles } from '../src/modules/sellers/application/testing/in-memory-store-profiles';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 import { encodeCursor } from '../src/modules/ordering/application/read-flow';
@@ -124,9 +128,19 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.refund-exceeds': 422,
     'ordering.refund-rejected': 422,
     'ordering.refund-tax-unavailable': 503,
+    'ordering.refund-limit-reached': 409,
+    'ordering.refund-limit-unset': 409,
+    'ordering.refund-limit-not-found': 404,
     'ordering.document-not-available': 409,
     'ordering.invoice-numbering-unavailable': 503,
     'batch.too-large': 413,
+    'saved-filter.not-found': 404,
+    'saved-filter.name-taken': 409,
+    'saved-filter.limit-reached': 409,
+    'saved-filter.shared-limit-reached': 409,
+    'second-factor.required': 403,
+    'second-factor.enrolment-required': 403,
+    'ordering.search-unavailable': 503,
     'access.unavailable': 503,
   });
 });
@@ -143,6 +157,10 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let pickupCodes: MemoryPickupCodes;
   let notes: MemoryAdminNotes;
   let pickupVault: FakePickupVault;
+  let refundLimits: MemoryRefundLimits;
+  let shipToRetention: MemoryShipToRetention;
+  /** Ordering's audit rows, each checked against its definition. */
+  let audit: OrderingAuditWriter;
   const clock = new FixedClock(START);
   const http = () => request(app.getHttpServer());
   const marketOf = () => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -157,6 +175,9 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     pickupCodes = new MemoryPickupCodes();
     notes = new MemoryAdminNotes();
     pickupVault = new FakePickupVault();
+    refundLimits = new MemoryRefundLimits();
+    shipToRetention = new MemoryShipToRetention();
+    audit = new OrderingAuditWriter();
     const customers = new FakeCustomers();
     customers.addresses.set(ADDRESS, { accountId: CUSTOMER, address: TEST_DELIVERY_ADDRESS });
     // The seller delivers for a flat 5.00.
@@ -182,7 +203,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .overrideProvider(UNIT_OF_WORK)
           .useValue(new FakeUnitOfWork())
           .overrideProvider(AUDIT_WRITER)
-          .useValue(new OrderingAuditWriter())
+          .useValue(audit)
           .overrideProvider(OUTBOX_WRITER)
           .useValue(new RecordingOutbox())
           .overrideProvider(ORDER_REPOSITORY)
@@ -197,16 +218,20 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(customers)
           .overrideProvider(SHIP_TO_CIPHER)
           .useValue(new FakeShipToCipher())
-          .overrideProvider(REFUND_REPOSITORY)
-          .useValue(NO_REFUNDS)
           .overrideProvider(ADMIN_ORDER_NOTE_REPOSITORY)
           .useValue(notes)
           .overrideProvider(ADMIN_NOTE_CIPHER)
           .useValue(new FakeAdminNoteCipher())
+          .overrideProvider(STORE_PROFILE_REPOSITORY)
+          .useValue(new InMemoryStoreProfiles())
           .overrideProvider(PICKUP_CODE_REPOSITORY)
           .useValue(pickupCodes)
           .overrideProvider(PICKUP_CODE_VAULT)
           .useValue(pickupVault)
+          .overrideProvider(REFUND_REPOSITORY)
+          .useValue(refundLimits.repository)
+          .overrideProvider(SHIP_TO_RETENTION_REPOSITORY)
+          .useValue(shipToRetention)
           .overrideProvider(SHIPPING_FACADE)
           .useValue(shipping)
           .overrideProvider(TAX_FACADE)
@@ -1015,6 +1040,36 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       });
     }
 
+    it('takes a search text on the admin list, refusing a bad length and showing the cap flag', async () => {
+      await seedAdmins();
+      await checkout(customer());
+
+      const matched = await http()
+        .get('/ordering/admin/orders?search=%20butcher%20&page=1')
+        .set(adminHeaders(VIEWER, 31));
+      const tooShort = await http()
+        .get('/ordering/admin/orders?search=a')
+        .set(adminHeaders(VIEWER, 32));
+      const tooLong = await http()
+        .get(`/ordering/admin/orders?search=${'x'.repeat(81)}`)
+        .set(adminHeaders(VIEWER, 33));
+      const noKey = await http()
+        .get('/ordering/admin/orders?search=butcher')
+        .set(adminHeaders(NO_KEY, 34));
+
+      expect(matched.status).toBe(200);
+      expect(body(matched)).toMatchObject({
+        searchCapped: false,
+        searchScope: 'customers-and-stores',
+      });
+      expect([tooShort, tooLong].map((r) => r.status)).toEqual([400, 400]);
+      expect(body(tooShort)).toMatchObject({
+        details: { fields: [{ path: 'search', code: 'length' }] },
+      });
+      expect(JSON.stringify(tooShort.body)).not.toContain('"a"');
+      expect(noKey.status).toBe(403);
+    });
+
     it('lets a role with ordering.order.view list and read orders, and no other', async () => {
       await seedAdmins();
       const started = await checkout(customer());
@@ -1293,6 +1348,225 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       });
       expect(noKeyReads.status).toBe(403);
       expect(unknown.status).toBe(404);
+    });
+
+    it('lets an admin with the refund-limit keys set the default and a seller’s own cap, audited', async () => {
+      await seedAdmins();
+      seedRoot(REFUNDER, 9);
+      const seller = id<'Seller'>(0xbe10);
+      const base = '/ordering/admin/refund-limits';
+
+      const none = await http().get(`${base}?sellerId=${seller}`).set(adminHeaders(REFUNDER, 40));
+      const setDefault = await http()
+        .put(base)
+        .set(writer(REFUNDER, 41))
+        .send({ maxCount: 20, maxAmount: '50000', expectedVersion: 0 });
+      const setOwn = await http()
+        .put(`${base}/sellers/${seller}`)
+        .set(writer(REFUNDER, 42))
+        .send({ maxCount: 5, maxAmount: '10000', expectedVersion: 0 });
+      const stale = await http()
+        .put(`${base}/sellers/${seller}`)
+        .set(writer(REFUNDER, 43))
+        .send({ maxCount: 6, maxAmount: '10000', expectedVersion: 0 });
+      const viewerSet = await http()
+        .put(base)
+        .set(writer(VIEWER, 44))
+        .send({ maxCount: 1, maxAmount: '1', expectedVersion: 1 });
+      const badBody = await http()
+        .put(base)
+        .set(writer(REFUNDER, 45))
+        .send({ maxCount: 0, maxAmount: 5, expectedVersion: 1, extra: true });
+      const removed = await http()
+        .delete(`${base}/sellers/${seller}?expectedVersion=1`)
+        .set(writer(REFUNDER, 46));
+      const removedAgain = await http()
+        .delete(`${base}/sellers/${seller}?expectedVersion=1`)
+        .set(writer(REFUNDER, 47));
+      const noKey = await http().get(base).set(adminHeaders(NO_KEY, 48));
+
+      expect(none.status).toBe(200);
+      expect(none.headers['cache-control']).toBe('no-store');
+      expect(none.body).toEqual({
+        currency,
+        marketDefault: null,
+        sellerId: seller,
+        own: null,
+        inForce: 'none',
+      });
+      expect(setDefault.status).toBe(200);
+      expect(setDefault.body).toMatchObject({
+        marketDefault: { maxCount: 20, maxAmount: { amount: '50000', currency }, version: 1 },
+        inForce: 'market',
+      });
+      expect(setOwn.body).toMatchObject({
+        sellerId: seller,
+        own: { maxCount: 5, maxAmount: { amount: '10000', currency }, version: 1 },
+        marketDefault: { maxCount: 20 },
+        inForce: 'own',
+      });
+      expect(stale.status).toBe(409);
+      expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.retry' });
+      expect(viewerSet.status).toBe(403);
+      expect(badBody.status).toBe(400);
+      expect(removed.status).toBe(200);
+      expect(removed.body).toMatchObject({ own: null, inForce: 'market' });
+      expect(removedAgain.status).toBe(404);
+      expect(removedAgain.body).toEqual({
+        statusCode: 404,
+        code: 'ordering.refund-limit-not-found',
+      });
+      expect(noKey.status).toBe(403);
+      expect(audit.rows.map((r) => r.action)).toEqual([
+        'ordering.refund-limit.set',
+        'ordering.refund-limit.set',
+        'ordering.refund-limit.removed',
+      ]);
+    });
+
+    const SHIP_TO_ACTION = 'ordering.ship-to-retention.change';
+    /** The root admin with an active second factor (an admin step-up action always asks for a code). */
+    async function seedStepUpAdmin() {
+      await seedAdmins();
+      seedRoot(REFUNDER, 9);
+      fakes.factors.set(REFUNDER, {
+        id: id<'SecondFactor'>(0xf309),
+        marketId: code as AccountState['marketId'],
+        accountId: REFUNDER,
+        state: 'active',
+        secretCiphertext: 'sealed',
+        pendingSecretCiphertext: null,
+        lastAcceptedStep: null,
+        activatedAt: START,
+        lockedAt: null,
+        createdAt: START,
+        recoveryCodes: Array.from({ length: 10 }, (_, index) => ({
+          position: index + 1,
+          codeHash: new Uint8Array(32).fill(index + 1),
+          usedAt: null,
+        })),
+        version: 1,
+      });
+    }
+    /** A fresh step-up proof of the admin session n for the ship-to retention change. */
+    const proveShipTo = (n: number) =>
+      fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf100 + n)}|${SHIP_TO_ACTION}`, clock.now());
+
+    it('lets only an admin with ordering.ship-to-retention.manage and a fresh code set the ship-to retention', async () => {
+      await seedStepUpAdmin();
+      const ACTION = SHIP_TO_ACTION;
+      const prove = proveShipTo;
+      const base = '/ordering/admin/ship-to-retention';
+      const body = { enabled: true, months: 24, expectedVersion: 0 };
+
+      const initial = await http().get(base).set(adminHeaders(VIEWER, 60));
+      const noCode = await http().put(base).set(writer(REFUNDER, 61)).send(body);
+      prove(62);
+      const saved = await http().put(base).set(writer(REFUNDER, 62)).send(body);
+      prove(63);
+      const stale = await http().put(base).set(writer(REFUNDER, 63)).send(body);
+      const invalid: number[] = [];
+      for (const [n, months] of [
+        [64, 0],
+        [65, 121],
+        [66, 2.5],
+      ] as const) {
+        prove(n);
+        invalid.push(
+          (
+            await http()
+              .put(base)
+              .set(writer(REFUNDER, n))
+              .send({ ...body, months, expectedVersion: 1 })
+          ).status,
+        );
+      }
+      prove(67);
+      const unknownField = await http()
+        .put(base)
+        .set(writer(REFUNDER, 67))
+        .send({ ...body, expectedVersion: 1, purgeNow: true });
+      const viewerSet = await http()
+        .put(base)
+        .set(writer(VIEWER, 68))
+        .send({ ...body, expectedVersion: 1 });
+      const noKey = await http().get(base).set(adminHeaders(NO_KEY, 69));
+      const anonymous = await http().get(base).set({ 'x-market-id': code });
+      const after = await http().get(base).set(adminHeaders(VIEWER, 70));
+
+      expect(initial.status).toBe(200);
+      expect(initial.headers['cache-control']).toBe('no-store');
+      expect(initial.body).toEqual({
+        enabled: false,
+        months: 24,
+        version: 0,
+        updatedAt: null,
+        updatedBy: null,
+      });
+      expect(noCode.status).toBe(403);
+      expect(noCode.body).toEqual({
+        statusCode: 403,
+        code: 'second-factor.required',
+        details: { actionKey: ACTION },
+      });
+      expect(saved.status).toBe(200);
+      expect(saved.body).toEqual({
+        enabled: true,
+        months: 24,
+        version: 1,
+        updatedAt: clock.now().toString(),
+        updatedBy: REFUNDER,
+      });
+      expect(stale.status).toBe(409);
+      expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.retry' });
+      expect(invalid).toEqual([400, 400, 400]);
+      expect(unknownField.status).toBe(400);
+      expect(viewerSet.status).toBe(403);
+      expect(noKey.status).toBe(403);
+      expect(anonymous.status).toBe(401);
+      expect(after.body).toMatchObject({ enabled: true, months: 24, version: 1 });
+      expect(audit.rows.map((r) => r.action)).toEqual(['ordering.ship-to-retention.changed']);
+      expect(
+        logLines.some(
+          (l) =>
+            l.msg === 'ordering.admin-set-ship-to-retention-route' &&
+            l.outcome === 'saved' &&
+            typeof l.correlationId === 'string',
+        ),
+      ).toBe(true);
+    });
+
+    it('answers a stale expectedVersion with 409 conflict.retry and months 0 with 400, saving nothing', async () => {
+      await seedStepUpAdmin();
+      const base = '/ordering/admin/ship-to-retention';
+      proveShipTo(71);
+      const first = await http()
+        .put(base)
+        .set(writer(REFUNDER, 71))
+        .send({ enabled: false, months: 36, expectedVersion: 0 });
+      proveShipTo(72);
+      const stale = await http()
+        .put(base)
+        .set(writer(REFUNDER, 72))
+        .send({ enabled: true, months: 12, expectedVersion: 0 });
+      proveShipTo(73);
+      const zero = await http()
+        .put(base)
+        .set(writer(REFUNDER, 73))
+        .send({ enabled: true, months: 0, expectedVersion: 1 });
+      const after = await http().get(base).set(adminHeaders(VIEWER, 74));
+
+      expect(first.status).toBe(200);
+      expect(stale.status).toBe(409);
+      expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.retry' });
+      expect(zero.status).toBe(400);
+      expect(zero.body).toEqual({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'months', code: 'range' }] },
+      });
+      expect(after.body).toMatchObject({ enabled: false, months: 36, version: 1 });
+      expect(audit.rows.map((r) => r.action)).toEqual(['ordering.ship-to-retention.changed']);
     });
   });
 });

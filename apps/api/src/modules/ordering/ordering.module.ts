@@ -6,13 +6,20 @@ import { registerAuditActions } from '../../platform/audit/audit-action-catalogu
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  STEP_UP_CONSUMER,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CART_CHECKOUT_FACADE, CartModule } from '../cart';
 import { CatalogModule } from '../catalog';
+import { ListsModule } from '../lists';
 import { COMMISSION_PAYOUTS_FACADE, CommissionPayoutsModule } from '../commission-payouts';
 import { CUSTOMERS_CHECKOUT_FACADE, CustomersModule } from '../customers';
 import { IdentityModule } from '../identity';
@@ -22,6 +29,17 @@ import { SellersModule } from '../sellers';
 import { SHIPPING_FACADE, ShippingModule } from '../shipping';
 import { TAX_FACADE, TaxModule } from '../tax';
 import type { OrderingDependencies } from './application/checkout-flow';
+import {
+  MARKET_ZONES,
+  SHIP_TO_RETENTION_REPOSITORY,
+} from './application/ports/ship-to-retention.repository';
+import type { ShipToRetentionDependencies } from './application/ship-to-retention-flow';
+import { AdminSetShipToRetention } from './application/use-cases/admin-set-ship-to-retention.use-case';
+import { AdminViewShipToRetention } from './application/use-cases/admin-view-ship-to-retention.use-case';
+import { PurgeSettledShipTo } from './application/use-cases/purge-settled-ship-to.use-case';
+import { ORDERING_STEP_UP_ACTIONS } from './contracts/step-up';
+import { AdminShipToRetentionController } from './presentation/admin-ship-to-retention.controller';
+import { purgeSettledShipToJob } from './presentation/jobs/purge-settled-ship-to.job';
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
 import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-policy';
 import { ORDER_LABELS } from './application/ports/order-labels';
@@ -33,15 +51,40 @@ import { PICKUP_CODE_VAULT } from './application/ports/pickup-code-vault';
 import { REFUND_REPOSITORY } from './application/ports/refund.repository';
 import { ORDERING_POLICY } from './application/ports/ordering-policy';
 import { SHIP_TO_CIPHER } from './application/ports/ship-to-cipher';
+import { SAVED_FILTER_REPOSITORY } from './application/ports/saved-filter.repository';
+import type { SavedViewDependencies } from './application/saved-views/saved-view-shared';
+import { AdminSavedFilterCreate } from './application/use-cases/admin-saved-filter-create.use-case';
+import { AdminSavedFilterDelete } from './application/use-cases/admin-saved-filter-delete.use-case';
+import { AdminSavedFilterUpdate } from './application/use-cases/admin-saved-filter-update.use-case';
+import { AdminSavedFiltersList } from './application/use-cases/admin-saved-filters-list.use-case';
+import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
+import { SellerSavedFilterCreate } from './application/use-cases/seller-saved-filter-create.use-case';
+import { SellerSavedFilterDelete } from './application/use-cases/seller-saved-filter-delete.use-case';
+import { SellerSavedFilterUpdate } from './application/use-cases/seller-saved-filter-update.use-case';
+import { SellerSavedFiltersList } from './application/use-cases/seller-saved-filters-list.use-case';
+import { AdminSavedViewsController } from './presentation/admin-saved-views.controller';
+import { SellerSavedViewsController } from './presentation/seller-saved-views.controller';
 import { AdminRefundOrder } from './application/use-cases/admin-refund-order.use-case';
 import { AdminCancelOrder } from './application/use-cases/admin-cancel-order.use-case';
 import { AdminAddOrderNote } from './application/use-cases/admin-add-order-note.use-case';
 import { AdminListOrderNotes } from './application/use-cases/admin-list-order-notes.use-case';
 import type { AdminNoteDependencies } from './application/admin-note-flow';
+import type { SellerNoteDependencies } from './application/seller-note-flow';
+import {
+  SELLER_NOTE_CIPHER,
+  SELLER_ORDER_NOTE_REPOSITORY,
+} from './application/ports/seller-order-notes';
+import { SellerAddOrderNote } from './application/use-cases/seller-add-order-note.use-case';
+import { SellerListOrderNotes } from './application/use-cases/seller-list-order-notes.use-case';
+import { AdminViewOrderActivity } from './application/use-cases/admin-view-order-activity.use-case';
+import { SellerViewOrderActivity } from './application/use-cases/seller-view-order-activity.use-case';
 import {
   ADMIN_NOTE_CIPHER,
   ADMIN_ORDER_NOTE_REPOSITORY,
 } from './application/ports/admin-order-notes';
+import { AdminRemoveRefundLimit } from './application/use-cases/admin-remove-refund-limit.use-case';
+import { AdminSetRefundLimit } from './application/use-cases/admin-set-refund-limit.use-case';
+import { AdminViewRefundLimits } from './application/use-cases/admin-view-refund-limits.use-case';
 import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
 import { AdminExportOrders } from './application/use-cases/admin-export-orders.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
@@ -62,6 +105,8 @@ import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier
 import { AdminOpenObligationsOfQuery } from './application/use-cases/admin-open-obligations-of.use-case';
 import { OpenObligationsOfQuery } from './application/use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
+import { CustomerOrderAccountsQuery } from './application/use-cases/customer-order-accounts.use-case';
+import { CustomerOrderStatsQuery } from './application/use-cases/customer-order-stats.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { OrderPaymentRefQuery } from './application/use-cases/order-payment-ref.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
@@ -109,6 +154,9 @@ import { recordShipmentsJob } from './presentation/jobs/record-shipments.job';
 import { settleRefundsJob } from './presentation/jobs/settle-refunds.job';
 import { OrdersController } from './presentation/orders.controller';
 import { SellerOrdersController } from './presentation/seller-orders.controller';
+import { AdminCustomerRefundsController } from './presentation/admin-customer-refunds.controller';
+import { AdminCustomerRefunds } from './application/use-cases/admin-customer-refunds.use-case';
+import { AdminRefundLimitsController } from './presentation/admin-refund-limits.controller';
 import { OrderingFacadeImplementation } from './presentation/ordering.facade';
 import { carrierSubscriptions } from './presentation/subscribers/carrier.subscriptions';
 import { deliverySubscriptions } from './presentation/subscribers/delivery.subscriptions';
@@ -139,6 +187,76 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['pickupVault', PICKUP_CODE_VAULT],
   ['attempts', PAYMENT_ATTEMPT_LIMITS],
 ];
+
+type ShipToRetentionUseCaseClass<U> = new (
+  gate: UseCaseGate,
+  deps: ShipToRetentionDependencies,
+) => U;
+
+/** The ship-to retention use cases (owner decision 2026-11-15): their own, smaller dependency set. */
+function shipToRetentionProvider<U>(type: ShipToRetentionUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      SHIP_TO_RETENTION_REPOSITORY,
+      MARKET_ZONES,
+      AUDIT_WRITER,
+      STEP_UP_CONSUMER,
+      CLOCK,
+      ID_GENERATOR,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: ShipToRetentionDependencies['unitOfWork'],
+      retention: ShipToRetentionDependencies['retention'],
+      zones: ShipToRetentionDependencies['zones'],
+      audit: ShipToRetentionDependencies['audit'],
+      stepUp: ShipToRetentionDependencies['stepUp'],
+      clock: ShipToRetentionDependencies['clock'],
+      ids: ShipToRetentionDependencies['ids'],
+    ) => new type(gate, { unitOfWork, retention, zones, audit, stepUp, clock, ids }),
+  };
+}
+
+type SavedViewUseCaseClass<U> = new (gate: UseCaseGate, deps: SavedViewDependencies) => U;
+
+/** The saved-filter and list-column use cases: their own, smaller dependency set. */
+function savedViewProvider<U>(
+  type: SavedViewUseCaseClass<U>,
+  withShareCheck: boolean,
+): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      SAVED_FILTER_REPOSITORY,
+      AUDIT_WRITER,
+      CLOCK,
+      ID_GENERATOR,
+      SavedFilterShareCheck,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: SavedViewDependencies['unitOfWork'],
+      savedFilters: SavedViewDependencies['savedFilters'],
+      audit: SavedViewDependencies['audit'],
+      clock: SavedViewDependencies['clock'],
+      ids: SavedViewDependencies['ids'],
+      shareCheck: SavedFilterShareCheck,
+    ) =>
+      new type(gate, {
+        unitOfWork,
+        savedFilters,
+        audit,
+        clock,
+        ids,
+        shareCheck: withShareCheck ? shareCheck : null,
+      }),
+  };
+}
 
 /** Every ordering use case shares one dependency object, built from the same ports. */
 function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
@@ -178,6 +296,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  */
 @Module({
   imports: [
+    ListsModule,
     CartModule,
     CatalogModule,
     CustomersModule,
@@ -188,7 +307,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     CommissionPayoutsModule,
     TaxModule,
   ],
-  controllers: [OrdersController, AdminOrdersController, SellerOrdersController],
+  controllers: [
+    OrdersController,
+    AdminOrdersController,
+    AdminRefundLimitsController,
+    AdminCustomerRefundsController,
+    AdminShipToRetentionController,
+    SellerOrdersController,
+    AdminSavedViewsController,
+    SellerSavedViewsController,
+  ],
   providers: [
     PersistenceModule.outboxWriterFor('ordering'),
     PersistenceModule.auditWriterFor('ordering'),
@@ -215,6 +343,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       deliverySubscriptions(record),
     ),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
+    registerStepUpActions('ordering', ORDERING_STEP_UP_ACTIONS),
+    ...[AdminViewShipToRetention, AdminSetShipToRetention, PurgeSettledShipTo].map((type) =>
+      shipToRetentionProvider(type as ShipToRetentionUseCaseClass<unknown>),
+    ),
     SubjectRateLimits,
     ...orderingProviders,
     ...[
@@ -225,6 +357,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewOrderDocument,
       ListOrders,
       AdminViewOrder,
+      AdminViewOrderActivity,
       AdminViewOrderDocument,
       AdminListOrders,
       AdminExportOrders,
@@ -233,6 +366,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CancelPayment,
       SellerListOrders,
       SellerViewOrder,
+      SellerViewOrderActivity,
       SellerViewOrderDocument,
       SellerMarkOrderReady,
       SellerMarkUnavailable,
@@ -243,6 +377,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RecordLedger,
       RecordRefundLedger,
       OrderNoticeQuery,
+      CustomerOrderStatsQuery,
+      CustomerOrderAccountsQuery,
       OrderPaymentRefQuery,
       ShipmentNoticeQuery,
       RefundNoticeQuery,
@@ -259,6 +395,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RecordDeliveryAnchor,
       AdminRefundOrder,
       AdminCancelOrder,
+      AdminViewRefundLimits,
+      AdminCustomerRefunds,
+      AdminSetRefundLimit,
+      AdminRemoveRefundLimit,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     ...[AdminListOrderNotes, AdminAddOrderNote].map((type) => ({
@@ -284,6 +424,46 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         labels: AdminNoteDependencies['labels'],
       ) => new type(gate, { unitOfWork, notes, cipher, audit, ids, clock, labels }),
     })),
+    ...[SellerListOrderNotes, SellerAddOrderNote].map((type) => ({
+      provide: type,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        SELLER_ORDER_NOTE_REPOSITORY,
+        SELLER_NOTE_CIPHER,
+        AUDIT_WRITER,
+        ID_GENERATOR,
+        CLOCK,
+        ORDER_LABELS,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: SellerNoteDependencies['unitOfWork'],
+        notes: SellerNoteDependencies['notes'],
+        cipher: SellerNoteDependencies['cipher'],
+        audit: SellerNoteDependencies['audit'],
+        ids: SellerNoteDependencies['ids'],
+        clock: SellerNoteDependencies['clock'],
+        labels: SellerNoteDependencies['labels'],
+      ) => new type(gate, { unitOfWork, notes, cipher, audit, ids, clock, labels }),
+    })),
+    {
+      provide: SavedFilterShareCheck,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate): SavedFilterShareCheck => new SavedFilterShareCheck(gate),
+    },
+    ...[
+      AdminSavedFiltersList,
+      AdminSavedFilterCreate,
+      AdminSavedFilterUpdate,
+      AdminSavedFilterDelete,
+    ].map((type) => savedViewProvider(type as SavedViewUseCaseClass<unknown>, true)),
+    ...[
+      SellerSavedFiltersList,
+      SellerSavedFilterCreate,
+      SellerSavedFilterUpdate,
+      SellerSavedFilterDelete,
+    ].map((type) => savedViewProvider(type as SavedViewUseCaseClass<unknown>, false)),
     {
       provide: ORDERING_FACADE,
       inject: [
@@ -299,6 +479,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         AdminOpenObligationsOfQuery,
         SellerHealthCountsQuery,
         RefundNoticeQuery,
+        CustomerOrderStatsQuery,
+        CustomerOrderAccountsQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -313,6 +495,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         adminOpenObligations: AdminOpenObligationsOfQuery,
         healthCounts: SellerHealthCountsQuery,
         refundNotice: RefundNoticeQuery,
+        customerStats: CustomerOrderStatsQuery,
+        customerAccounts: CustomerOrderAccountsQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -327,6 +511,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           adminOpenObligations,
           healthCounts,
           refundNotice,
+          customerStats,
+          customerAccounts,
         ),
     },
     {
@@ -366,19 +552,28 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     },
     registerJobsFrom(
       'ordering',
-      [RecordShipments, RecordLedger, RecordRefundLedger, SettleRefunds, RebuildOfferPairs],
+      [
+        RecordShipments,
+        RecordLedger,
+        RecordRefundLedger,
+        SettleRefunds,
+        RebuildOfferPairs,
+        PurgeSettledShipTo,
+      ],
       (
         shipments: RecordShipments,
         ledger: RecordLedger,
         refundLedger: RecordRefundLedger,
         refunds: SettleRefunds,
         pairs: RebuildOfferPairs,
+        purgeShipTo: PurgeSettledShipTo,
       ) => [
         recordShipmentsJob(shipments),
         recordLedgerJob(ledger),
         recordRefundLedgerJob(refundLedger),
         settleRefundsJob(refunds),
         rebuildOfferPairsJob(pairs),
+        purgeSettledShipToJob(purgeShipTo),
       ],
     ),
   ],

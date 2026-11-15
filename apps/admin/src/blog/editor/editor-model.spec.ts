@@ -30,7 +30,7 @@ const content: ApiContent = {
   categoryId: null,
   tagIds: ['0190a000-0000-7000-8000-000000000002'],
   links: [{ type: 'brand', id: '0190a000-0000-7000-8000-000000000003' }],
-  event: { startsAt: '2026-11-15T09:00:00.000Z', timeZone: 'Australia/Sydney' },
+  event: null,
 };
 
 describe('editor model', () => {
@@ -38,6 +38,43 @@ describe('editor model', () => {
     const draft = draftOf(content, 'spring-pantry');
     expect(contentOf(draft)).toEqual(content);
     expect(draft.blocks.filter((block) => block.type === 'kept')).toHaveLength(2);
+  });
+
+  it('shows an event on the clock of its zone and sends local times back without its live status', () => {
+    const withEvent: ApiContent = {
+      ...content,
+      event: {
+        startsAt: '2026-11-15T07:00:00.000Z',
+        endsAt: '2026-11-15T09:30:00.000Z',
+        timeZone: 'Australia/Brisbane',
+        attendance: 'mixed',
+        venueName: 'Hall',
+        address: null,
+        registrationUrl: 'https://example.com/r',
+        eventStatus: 'postponed',
+        statusMessage: 'Later',
+      },
+    };
+    const draft = draftOf(withEvent, 'x', 'UTC');
+    expect(draft.event).toEqual({
+      startsAt: '2026-11-15T17:00',
+      endsAt: '2026-11-15T19:30',
+      timeZone: 'Australia/Brisbane',
+      attendance: 'mixed',
+      venueName: 'Hall',
+      address: '',
+      registrationUrl: 'https://example.com/r',
+    });
+    expect(contentOf(draft).event).toEqual({
+      startsAt: '2026-11-15T17:00',
+      endsAt: '2026-11-15T19:30',
+      timeZone: 'Australia/Brisbane',
+      attendance: 'mixed',
+      venueName: 'Hall',
+      address: null,
+      registrationUrl: 'https://example.com/r',
+    });
+    expect(isDirty(draft, draft)).toBe(false);
   });
 
   it('sends empty optional text as null and trims', () => {

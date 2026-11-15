@@ -375,6 +375,20 @@ export const CATALOG_VARIANT_TYPE_EDIT = definePermission('catalog', {
 });
 
 /**
+ * Decide a seller's request for a new variant (size) on a PLATFORM product (variants V7; plan
+ * section 9, decision tn14): approve it, map it to a variant the product already has, or decline
+ * it with a reason, and read the queue of waiting requests. Platform scope; unprotected, so
+ * Catalogue Moderator receives it by identity's seed. Approving also adds a variant to the
+ * product's draft, so that use case needs `catalog.platform-product.edit` as well; the draft then
+ * goes through the normal submit and review.
+ */
+export const CATALOG_VARIANT_REQUEST_REVIEW = definePermission('catalog', {
+  key: 'catalog.variant-request.review',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
  * Read cultures and their category marks (multi-culture package 1; ADR-0047 decision 12). Platform
  * scope; unprotected, so a custom role may grant it; no default role lists it yet: the Platform
  * Administrator holds every key.
@@ -441,6 +455,7 @@ export const CATALOG_PERMISSIONS = declarePermissions('catalog', [
   CATALOG_CATEGORY_TREE_IMPORT,
   CATALOG_VARIANT_VIEW,
   CATALOG_VARIANT_TYPE_EDIT,
+  CATALOG_VARIANT_REQUEST_REVIEW,
   CATALOG_CULTURE_READ,
   CATALOG_CULTURE_EDIT,
 ]);

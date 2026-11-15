@@ -123,6 +123,11 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  {
+    "name": "catalog.own-variant-requests-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "catalog.pending-product-revisions", "rule": "system" },
   { "name": "catalog.platform-import-purge", "rule": "system" },
   { "name": "catalog.platform-import-run", "rule": "system" },
@@ -150,6 +155,7 @@
   { "name": "catalog.send-missing-details-emails", "rule": "system" },
   { "name": "catalog.send-offer-owner-notices", "rule": "system" },
   { "name": "catalog.send-topic-suggestion-notices", "rule": "system" },
+  { "name": "catalog.send-variant-request-notices", "rule": "system" },
   { "name": "catalog.sweep-orphan-image-files", "rule": "system" },
   { "name": "catalog.sweep-orphan-images", "rule": "system" },
   { "name": "catalog.warn-offer-owners-of-expiry", "rule": "system" },
@@ -290,11 +296,18 @@
   { "name": "customers.delete-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.execute-account-deletions", "rule": "system" },
   { "name": "customers.list-addresses", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "customers.read-customer-last-order", "rule": "system" },
   {
     "name": "customers.read-delivery-address",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  {
+    "name": "customers.read-own-last-order",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "customers.reconcile-customer-read-models", "rule": "system" },
   {
     "name": "customers.request-account-deletion",
     "rule": "own-resources",
@@ -305,6 +318,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "customers.sync-customer-read-model", "rule": "system" },
   { "name": "customers.update-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
     "name": "customers.view-account-deletion-availability",
@@ -386,6 +400,8 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "identity.customer-directory-page", "rule": "system" },
+  { "name": "identity.customer-directory-records", "rule": "system" },
   { "name": "identity.describe-actor", "rule": "own-resources", "whenSellerNotApproved": "allow" },
   {
     "name": "identity.describe-seller-status",
@@ -569,6 +585,8 @@
   { "name": "ordering.cancel-carrier-after-refund", "rule": "system" },
   { "name": "ordering.cancel-payment", "rule": "system" },
   { "name": "ordering.confirm-payment", "rule": "system" },
+  { "name": "ordering.customer-order-accounts", "rule": "system" },
+  { "name": "ordering.customer-order-stats", "rule": "system" },
   { "name": "ordering.delivery-quotes", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
@@ -585,6 +603,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "ordering.pay-by-card", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "ordering.purge-settled-ship-to", "rule": "system" },
   { "name": "ordering.rebuild-offer-pairs", "rule": "system" },
   { "name": "ordering.record-carrier-progress", "rule": "system" },
   { "name": "ordering.record-delivery-anchor", "rule": "system" },
@@ -700,9 +719,14 @@
   { "name": "search.sync-offer-documents", "rule": "system" },
   { "name": "search.sync-product-ratings", "rule": "system" },
   { "name": "search.view-product-detail", "rule": "anonymous" },
+  { "name": "security.deliver-security-alerts", "rule": "system" },
+  { "name": "security.evaluate-security-rules", "rule": "system" },
+  { "name": "security.send-security-digests", "rule": "system" },
   { "name": "sellers.active-since", "rule": "anonymous" },
   { "name": "sellers.active-since-system", "rule": "system" },
   { "name": "sellers.after-submission", "rule": "system" },
+  { "name": "sellers.ai-access", "rule": "anonymous" },
+  { "name": "sellers.ai-access-system", "rule": "system" },
   { "name": "sellers.allowed-product-types", "rule": "anonymous" },
   { "name": "sellers.allowed-product-types-system", "rule": "system" },
   { "name": "sellers.apply-signup-cultures", "rule": "system" },
@@ -774,6 +798,7 @@
   },
   { "name": "sellers.run-seller-health", "rule": "system" },
   { "name": "sellers.run-seller-health-requests", "rule": "system" },
+  { "name": "sellers.search-store-names", "rule": "anonymous" },
   { "name": "sellers.seed-seller-cultures", "rule": "system" },
   { "name": "sellers.seller-approved-cultures", "rule": "anonymous" },
   { "name": "sellers.seller-approved-cultures-system", "rule": "system" },
@@ -798,6 +823,11 @@
   { "name": "sellers.selling-eligibility", "rule": "anonymous" },
   { "name": "sellers.selling-eligibility-system", "rule": "system" },
   { "name": "sellers.sweep-orphan-store-image-files", "rule": "system" },
+  {
+    "name": "settings.read-ai-description-writer",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
   {
     "name": "settings.read-list-paging",
     "rule": "own-resources",

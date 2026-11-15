@@ -1,4 +1,5 @@
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
+import { RecordingReview } from '../support/system-request-fakes';
 import { WALLET_AUDIT_ACTIONS } from '../../src/modules/wallet/domain/audit';
 import { dbChangeTrail } from './change-trail-support';
 import { err, money, ok, Temporal } from '@mondapac/shared-kernel';
@@ -22,6 +23,7 @@ import { GrantCredit } from '../../src/modules/wallet/application/use-cases/gran
 import { PlaceHold } from '../../src/modules/wallet/application/use-cases/place-hold.use-case';
 import { ReleaseHold } from '../../src/modules/wallet/application/use-cases/release-hold.use-case';
 import { SetWalletStatus } from '../../src/modules/wallet/application/use-cases/set-wallet-status.use-case';
+import { WalletStatusReverter } from '../../src/modules/wallet/application/wallet-reverter';
 import { ViewMyHistory } from '../../src/modules/wallet/application/use-cases/view-my-history.use-case';
 import { ViewMyWallet } from '../../src/modules/wallet/application/use-cases/view-my-wallet.use-case';
 import { ConfigWalletPolicy } from '../../src/modules/wallet/infrastructure/config-wallet-policy';
@@ -92,6 +94,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
   let owner: Client;
   let audit: RecordingAudit;
   let deps: WalletDependencies;
+  let review = new RecordingReview();
   let n = 0;
 
   beforeAll(async () => {
@@ -105,11 +108,13 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
     const catalogue = new AuditActionCatalogue();
     catalogue.register('wallet', WALLET_AUDIT_ACTIONS);
     catalogue.seal();
+    review = new RecordingReview();
     deps = {
       unitOfWork: db.unitOfWork,
       wallet: new PrismaWalletRepository(db.service, ids),
       settings: new PrismaMarketSettingRepository(db.service),
       policy: new ConfigWalletPolicy(markets),
+      review,
       audit,
       ids,
       clock,
@@ -2069,6 +2074,48 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
   });
 
   // ---- the books agree after every step ------------------------------------------------------
+
+  describe('revert from System requests', () => {
+    it('restores the switch on the real store under its lock, once, and never lifts a pause', async () => {
+      expect((await turn('active')).ok).toBe(true);
+      const inUnit = <T>(work: () => Promise<T>) =>
+        db.unitOfWork
+          .run(market, async () => ok(await work()))
+          .then((r) => {
+            if (!r.ok) throw new Error('unit failed');
+            return r.value;
+          });
+      const request = {
+        requestId: ids.next<'SystemRequest'>(),
+        subjectRef: 'wallet-settings',
+        before: { status: 'paused', reason: 'maintenance' },
+        after: { status: 'active', reason: null },
+      };
+      const version = await switchVersion();
+      const reverter = new WalletStatusReverter(deps);
+      expect(await inUnit(() => reverter.revert(adminCtx, request))).toBe('reverted');
+      expect(await switchVersion()).toBe(version + 1);
+      expect(
+        (
+          await sql.query(
+            'SELECT status, reason_code FROM wallet.market_settings WHERE market_id = $1',
+            [market.marketId],
+          )
+        ).rows[0],
+      ).toEqual({ status: 'paused', reason_code: 'maintenance' });
+      // The same request again: the switch no longer holds the state after.
+      expect(await inUnit(() => reverter.revert(adminCtx, request))).toBe('changed-since');
+      // Lifting the pause through a decision is refused; nothing is written.
+      const lift = {
+        ...request,
+        before: { status: 'active', reason: null },
+        after: { status: 'paused', reason: 'maintenance' },
+      };
+      expect(await inUnit(() => reverter.revert(adminCtx, lift))).toBe('not-permitted');
+      expect(await switchVersion()).toBe(version + 1);
+      expect((await turn('active')).ok).toBe(true);
+    });
+  });
 
   describe('ledger invariants', () => {
     const sweep = () => new ExpireWalletCredit(gate, deps).execute(system, {});

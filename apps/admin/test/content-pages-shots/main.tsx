@@ -2,7 +2,6 @@ import { NextIntlClientProvider } from 'next-intl';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
-import { Tabs } from '@mondapac/ui';
 import { NewPageFormView } from '../../src/content/pages/new-page-form.tsx';
 import { PagesList } from '../../src/content/pages/pages-list.tsx';
 
@@ -137,18 +136,8 @@ createRoot(document.getElementById('root')!).render(
         <NewPageFormView csrfToken="tok" zone="Australia/Brisbane" />
       ) : (
         <>
-          <h1 className="text-2xl font-semibold">{messages.content.title}</h1>
-          <p className="mb-4 text-fg-muted">{messages.content.intro}</p>
-          <div className="mb-4">
-            <Tabs
-              label="Content sections"
-              activeId="pages"
-              items={[
-                { id: 'pages', href: '/content', label: 'Pages' },
-                { id: 'slides', href: '/content/slides', label: 'Slides' },
-              ]}
-            />
-          </div>
+          <h1 className="text-2xl font-semibold">{messages.content.pages.title}</h1>
+          <p className="mb-4 text-fg-muted">{messages.content.pages.intro}</p>
           <PagesList canEdit={view !== 'readonly'} zone="Australia/Brisbane" />
         </>
       )}
