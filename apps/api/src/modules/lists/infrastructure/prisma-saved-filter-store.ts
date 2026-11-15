@@ -79,6 +79,20 @@ export class PrismaSavedFilterStore implements SavedFilterStore {
     return row === null ? null : filterOf(row);
   }
 
+  async ownedBy(
+    market: MarketContext,
+    sellerId: Id<'Seller'> | null,
+    listKey: string,
+    accountId: Id<'Account'>,
+  ): Promise<readonly StoredFilter[]> {
+    const rows = await this.prisma.tx(market).listsSavedFilter.findMany({
+      where: { marketId: market.marketId, sellerId, listKey, ownerAccountId: accountId },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      take: MAX_SAVED_FILTERS_PER_OWNER + 1,
+    });
+    return rows.map(filterOf);
+  }
+
   countOwnedBy(
     market: MarketContext,
     sellerId: Id<'Seller'> | null,
@@ -159,6 +173,26 @@ export class PrismaSavedFilterStore implements SavedFilterStore {
       if (this.#nameTaken(error)) return 'name-taken';
       throw error;
     }
+  }
+
+  async reposition(
+    market: MarketContext,
+    sellerId: Id<'Seller'> | null,
+    listKey: string,
+    ownerAccountId: Id<'Account'>,
+    ids: readonly Id<'SavedFilter'>[],
+  ): Promise<boolean> {
+    const client = this.prisma.tx(market);
+    // Two passes keep every statement valid on its own: positions are not unique, so a plain
+    // rewrite in order is enough, and a row that is gone stops the whole unit.
+    for (const [index, id] of ids.entries()) {
+      const moved = await client.listsSavedFilter.updateMany({
+        where: { marketId: market.marketId, sellerId, listKey, ownerAccountId, id },
+        data: { position: index + 1 },
+      });
+      if (moved.count === 0) return false;
+    }
+    return true;
   }
 
   async remove(
