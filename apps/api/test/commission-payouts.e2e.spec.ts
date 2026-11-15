@@ -376,9 +376,16 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
   const LEDGER = `/commission-payouts/admin/sellers/${SELLER}/ledger`;
   const OWN = '/commission-payouts/seller/ledger';
   const PAYOUT = id<'Payout'>(0xc900);
+  const REQUEST = id<'SystemRequest'>(0x5e07);
   const PAYOUTS = '/commission-payouts/admin/payouts';
   const APPROVE = `${PAYOUTS}/${PAYOUT}/approve`;
-  const rate = { sellerId: SELLER, rateBps: 1200, source: 'seller', marketRateBps: 1500 };
+  const rate = {
+    sellerId: SELLER,
+    rateBps: 1200,
+    source: 'seller',
+    marketRateBps: 1500,
+    request: null,
+  };
 
   const money = (amountMinor: bigint) => ({ amountMinor, currency });
   const row = {
@@ -423,16 +430,26 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     const read = await call('get', 'admin', RATE, session);
     expect(read.status).toBe(200);
     expect(read.headers['cache-control']).toBe('no-store');
-    expect(read.body).toEqual(rate);
-    const set = await call('put', 'admin', RATE, session, { rateBps: 1200 });
+    // The read shows the rate only; a change also names the System requests review it opened.
+    const shown = {
+      sellerId: rate.sellerId,
+      rateBps: rate.rateBps,
+      source: rate.source,
+      marketRateBps: rate.marketRateBps,
+    };
+    expect(read.body).toEqual(shown);
+    next = ok({ ...rate, request: { id: REQUEST, number: 7 } });
+    const set = await call('put', 'admin', RATE, session, { rateBps: 1200, note: 'Promo month' });
     expect(set.status).toBe(200);
-    expect(set.body).toEqual(rate);
-    const cleared = await call('delete', 'admin', RATE, session);
+    expect(set.body).toEqual({ ...shown, request: { id: REQUEST, number: 7 } });
+    next = ok(rate);
+    const cleared = await call('delete', 'admin', `${RATE}?note=Back%20to%20market`, session);
     expect(cleared.status).toBe(200);
+    expect(cleared.body).toEqual(rate);
     expect(calls).toEqual([
       { name: 'view-rate', input: { sellerId: SELLER } },
-      { name: 'set-rate', input: { sellerId: SELLER, rateBps: 1200 } },
-      { name: 'clear-rate', input: { sellerId: SELLER } },
+      { name: 'set-rate', input: { sellerId: SELLER, rateBps: 1200, note: 'Promo month' } },
+      { name: 'clear-rate', input: { sellerId: SELLER, note: 'Back to market' } },
     ]);
   });
 
@@ -556,6 +573,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         approvalMode: null,
       },
       version: 2,
+      request: null,
     };
     const hold = {
       holdId: HOLD,
@@ -584,16 +602,25 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         effective: { minimumMinor: '5000', holdDaysCarrier: 9 },
         override: { holdDaysCarrier: 9, minimumMinor: null },
       });
+      next = ok({ ...terms, request: { id: REQUEST, number: 8 } });
       const set = await call('put', 'admin', TERMS, session, {
         holdDaysCarrier: 9,
         expectedVersion: 1,
         reasonCode: 'correction',
+        note: 'Seller asked',
       });
       expect(set.status).toBe(200);
-      expect(
-        (await call('delete', 'admin', `${TERMS}?expectedVersion=2&reasonCode=policy`, session))
-          .status,
-      ).toBe(200);
+      expect(set.body).toMatchObject({ version: 2, request: { id: REQUEST, number: 8 } });
+      next = ok({ ...terms, request: { id: REQUEST, number: 9 } });
+      const removed = await call(
+        'delete',
+        'admin',
+        `${TERMS}?expectedVersion=2&reasonCode=policy&note=Back%20to%20market`,
+        session,
+      );
+      expect(removed.status).toBe(200);
+      expect(removed.body).toMatchObject({ request: { id: REQUEST, number: 9 } });
+      next = ok(terms);
       expect((await call('delete', 'admin', TERMS, session)).status).toBe(200);
       expect(calls).toEqual([
         { name: 'view-terms', input: { sellerId: SELLER } },
@@ -604,11 +631,17 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
             terms: { holdDaysCarrier: 9 },
             expectedVersion: 1,
             reasonCode: 'correction',
+            note: 'Seller asked',
           },
         },
         {
           name: 'clear-terms',
-          input: { sellerId: SELLER, expectedVersion: 2, reasonCode: 'policy' },
+          input: {
+            sellerId: SELLER,
+            expectedVersion: 2,
+            reasonCode: 'policy',
+            note: 'Back to market',
+          },
         },
         // A missing version reaches the use case as an invalid one, which it refuses.
         {

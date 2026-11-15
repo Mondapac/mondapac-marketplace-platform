@@ -1627,6 +1627,10 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         outbox: { append: () => Promise.reject(new Error('not used')) },
         stepUp: { consume: () => Promise.reject(new Error('not used')) },
         audit,
+        review: {
+          openReview: () => Promise.reject(new Error('not used')),
+          areaPolicy: () => Promise.reject(new Error('not used')),
+        },
         ids,
         clock,
       };

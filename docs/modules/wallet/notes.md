@@ -349,3 +349,11 @@ another Market's account and a closed account are absent alike, and the wallet a
 
 Admin UI (package 2b), gift codes, checkout wiring, refunds to the wallet, cashback, notifications, the `reverse`
 journal use case (the kind exists in the CHECK for package 2).
+
+## Review in System requests (Admin Inbox, area money)
+
+The Market switch still changes at once; where the Market reviews area money (on by default, high
+risk) it also opens a System request in the same unit and needs the admin's `note` (400 on `note`
+without one). The answer adds `request: {id, number}`. A rejected or withdrawn request is restored
+by `WalletStatusReverter`, audited as `wallet.market-status.reverted` (part of the switch's
+history); going back to `off` once the Market has journals is refused as `changed-since`.
