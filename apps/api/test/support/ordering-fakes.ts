@@ -35,6 +35,14 @@ import type {
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
 import type { RefundLimit } from '../../src/modules/ordering/domain/refund-limits';
+import {
+  isShipToPurgeable,
+  type ShipToRetention,
+} from '../../src/modules/ordering/domain/ship-to-retention';
+import type {
+  ShipToPurgeCursor,
+  ShipToRetentionRepository,
+} from '../../src/modules/ordering/application/ports/ship-to-retention.repository';
 import type { PaymentAttemptLimits } from '../../src/modules/ordering/application/ports/payment-attempt-limits';
 import type {
   CardPaymentFailure,
@@ -227,6 +235,68 @@ export class MemoryRefundLimits {
       return Promise.resolve('stale' as const);
     this.rows.delete(sellerId);
     return Promise.resolve('removed' as const);
+  }
+}
+
+/** One order as the ship-to purge sees it: its sealed ship-to and its seller orders' deliveries. */
+export interface ShipToOrder {
+  readonly id: string;
+  readonly marketId: string;
+  readonly status: 'confirmed' | 'pending-payment' | 'cancelled';
+  readonly confirmedAt: Temporal.Instant | null;
+  shipTo: string | null;
+  readonly sellerOrders: { deliveredAt: Temporal.Instant | null }[];
+}
+
+/** The ship-to retention setting per Market and the orders the purge clears, in memory. */
+export class MemoryShipToRetention implements ShipToRetentionRepository {
+  readonly settings = new Map<string, ShipToRetention>();
+  readonly orders: ShipToOrder[] = [];
+  /** Every batch asked: the limit and whether it had a cursor. */
+  readonly batches: { limit: number; after: ShipToPurgeCursor | null }[] = [];
+
+  find(market: MarketContext) {
+    return Promise.resolve(this.settings.get(market.marketId) ?? null);
+  }
+  save(market: MarketContext, setting: ShipToRetention, expectedVersion: number) {
+    if ((this.settings.get(market.marketId)?.version ?? 0) !== expectedVersion) {
+      return Promise.resolve('stale' as const);
+    }
+    this.settings.set(market.marketId, { ...setting, version: expectedVersion + 1 });
+    return Promise.resolve('saved' as const);
+  }
+  clearDeliveredShipTo(
+    market: MarketContext,
+    cutoff: Temporal.Instant,
+    after: ShipToPurgeCursor | null,
+    limit: number,
+  ) {
+    this.batches.push({ limit, after });
+    const key = (o: { confirmedAt: Temporal.Instant; id: string }) =>
+      `${o.confirmedAt.epochMilliseconds.toString().padStart(16, '0')}|${o.id}`;
+    const from = after === null ? null : key({ confirmedAt: after.confirmedAt, id: after.orderId });
+    const rows = this.orders
+      .filter(
+        (o): o is ShipToOrder & { confirmedAt: Temporal.Instant } =>
+          o.marketId === market.marketId &&
+          o.status === 'confirmed' &&
+          o.shipTo !== null &&
+          o.confirmedAt !== null &&
+          Temporal.Instant.compare(o.confirmedAt, cutoff) <= 0 &&
+          isShipToPurgeable(o.sellerOrders, cutoff),
+      )
+      .filter((o) => from === null || key(o) > from)
+      .sort((a, b) => (key(a) < key(b) ? -1 : 1))
+      .slice(0, limit);
+    for (const row of rows) row.shipTo = null;
+    const last = rows[rows.length - 1];
+    return Promise.resolve({
+      cleared: rows.length,
+      next:
+        rows.length < limit || last === undefined
+          ? null
+          : { confirmedAt: last.confirmedAt, orderId: last.id },
+    });
   }
 }
 

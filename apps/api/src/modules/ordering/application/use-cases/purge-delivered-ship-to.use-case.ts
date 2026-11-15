@@ -1,0 +1,30 @@
+import type { CallContext } from '@mondapac/shared-kernel';
+import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import {
+  purgeDeliveredShipTo,
+  type ShipToPurgeRun,
+  type ShipToRetentionDependencies,
+} from '../ship-to-retention-flow';
+
+/**
+ * Clears the sealed ship-to of orders delivered longer ago than the Market's retention, when an
+ * admin switched it on (owner decision 2026-11-15). Rule `system`: only the worker's job
+ * `ordering.purge-delivered-ship-to` calls it.
+ */
+export class PurgeDeliveredShipTo extends UseCase<Record<string, never>, ShipToPurgeRun, never> {
+  static override readonly access: AccessDeclaration = {
+    name: 'ordering.purge-delivered-ship-to',
+    rule: { kind: 'system' },
+  };
+
+  constructor(
+    gate: UseCaseGate,
+    private readonly deps: ShipToRetentionDependencies,
+  ) {
+    super(gate);
+  }
+
+  protected handle(context: CallContext) {
+    return purgeDeliveredShipTo(this.deps, context);
+  }
+}

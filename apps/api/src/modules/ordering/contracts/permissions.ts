@@ -114,6 +114,27 @@ export const ORDERING_REFUND_LIMITS_MANAGE = definePermission('ordering', {
   protected: true,
 });
 
+/**
+ * See the Market's ship-to retention setting (owner decision 2026-11-15): whether, and after how
+ * many months, the sealed delivery address of a delivered order is deleted.
+ */
+export const ORDERING_SHIP_TO_RETENTION_VIEW = definePermission('ordering', {
+  key: 'ordering.ship-to-retention.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Change the ship-to retention setting (owner decision 2026-11-15). Protected, with a fresh two-step
+ * code on every change: switched on, a daily job deletes delivery addresses for good, so no default
+ * role lists it (R11).
+ */
+export const ORDERING_SHIP_TO_RETENTION_MANAGE = definePermission('ordering', {
+  key: 'ordering.ship-to-retention.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const ORDERING_PERMISSIONS = declarePermissions('ordering', [
   ORDERING_ORDER_NOTE,
   ORDERING_ORDER_REFUND,
@@ -127,4 +148,6 @@ export const ORDERING_PERMISSIONS = declarePermissions('ordering', [
   ORDERING_SELLER_ORDER_MARK_UNAVAILABLE,
   ORDERING_SELLER_ORDER_NOTE,
   ORDERING_SELLER_ORDER_VIEW,
+  ORDERING_SHIP_TO_RETENTION_MANAGE,
+  ORDERING_SHIP_TO_RETENTION_VIEW,
 ]);
