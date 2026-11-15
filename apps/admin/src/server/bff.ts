@@ -601,11 +601,15 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   // The page mode and the filters of the orders list (the API validates every value).
   'ordering/admin/orders': [
     'status',
+    'q',
+    'search',
+    'accountId',
     'cursor',
     'page',
     'pageSize',
     'sort',
     'direction',
+    'paging',
     'paymentState',
     'fulfilment',
     'sellerId',

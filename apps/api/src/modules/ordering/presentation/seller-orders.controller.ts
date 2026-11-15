@@ -121,6 +121,19 @@ export class SellerOrdersController {
   @ApiQuery({ name: 'pageSize', required: false, description: '1 to 100; default 25. Needs page.' })
   @ApiQuery({ name: 'sort', required: false, enum: ['paid', 'total'], description: 'Needs page.' })
   @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'paging',
+    required: false,
+    enum: ['pages', 'prev-next'],
+    description:
+      'The Market’s List paging setting, with `page`: `pages` answers the total, `prev-next` ' +
+      'answers `hasNext` and no total. Default `pages`.',
+  })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description: 'A seller order id or an order id (the reference in the order emails), exact.',
+  })
   @ApiQuery({ name: 'from', required: false, description: 'ISO instant: paid at or after it.' })
   @ApiQuery({ name: 'to', required: false, description: 'ISO instant: paid before it.' })
   @ApiOkResponse({ type: SellerOrderPageBody })
@@ -144,6 +157,8 @@ export class SellerOrdersController {
       pageSize: parseLimit(query['pageSize']),
       sort: query['sort'],
       direction: query['direction'],
+      paging: query['paging'],
+      q: query['q'],
       from: query['from'],
       to: query['to'],
     });

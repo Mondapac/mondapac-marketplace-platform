@@ -980,6 +980,18 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect(await count({ ...window, fulfilment: 'to-ship' })).toBe(4);
     expect(await count(window, market, rival)).toBe(1);
     expect(await count(window, other)).toBe(1);
+    // An exact reference: the seller order's own id or its order id; another shop's id finds none.
+    expect(
+      await idsOf({ ...window, reference: parts[2]!.id }, { key: 'paid', direction: 'asc' }),
+    ).toEqual([parts[2]!.id]);
+    const orderIdOf = await value(market, () =>
+      repository.listForSeller(market, mine, window, { limit: 10, after: null }),
+    ).then((rows) => rows.find((r) => r.sellerOrder.id === parts[1]!.id)!.orderId);
+    expect(
+      await idsOf({ ...window, reference: orderIdOf }, { key: 'paid', direction: 'asc' }),
+    ).toContain(parts[1]!.id);
+    expect(await count({ ...window, reference: parts[2]!.id })).toBe(1);
+    expect(await count({ ...window, reference: parts[2]!.id }, market, rival)).toBe(0);
     // The cursor list takes the same range.
     const cursorList = await value(market, () =>
       repository.listForSeller(

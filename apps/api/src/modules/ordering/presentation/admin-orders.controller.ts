@@ -143,6 +143,14 @@ export class AdminOrdersController {
   @ApiQuery({ name: 'sort', required: false, enum: ['created', 'total'] })
   @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
   @ApiQuery({
+    name: 'paging',
+    required: false,
+    enum: ['pages', 'prev-next'],
+    description:
+      'The Market’s List paging setting, with `page`: `pages` answers the total, `prev-next` ' +
+      'answers `hasNext` and no total. Default `pages`.',
+  })
+  @ApiQuery({
     name: 'paymentState',
     required: false,
     enum: ['none', 'authorised', 'captured', 'voided'],
@@ -192,6 +200,7 @@ export class AdminOrdersController {
       pageSize: parseLimit(query['pageSize']),
       sort: query['sort'],
       direction: query['direction'],
+      paging: query['paging'],
       paymentState: query['paymentState'],
       fulfilment: query['fulfilment'],
       sellerId: query['sellerId'],

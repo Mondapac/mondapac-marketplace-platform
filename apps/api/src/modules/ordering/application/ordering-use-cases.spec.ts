@@ -38,7 +38,7 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import type { CheckoutLine } from '../../cart';
 import { ConfigOrderingPolicy } from '../infrastructure/config-ordering-policy';
 import type { OrderingDependencies } from './checkout-flow';
-import { AdminListOrders } from './use-cases/admin-list-orders.use-case';
+import { adminListOrders, sellerListOrders } from '../../../../test/support/order-list-fakes';
 import { BookCarrierDeliveries } from './use-cases/book-carrier-deliveries.use-case';
 import { CancelCarrierAfterRefund } from './use-cases/cancel-carrier-after-refund.use-case';
 import { AdminViewOrderDocument } from './use-cases/admin-view-order-document.use-case';
@@ -58,7 +58,6 @@ import { RecordDeliveryAnchor } from './use-cases/record-delivery-anchor.use-cas
 import { RecordLedger } from './use-cases/record-ledger.use-case';
 import { RecordShipments } from './use-cases/record-shipments.use-case';
 import { SellerDeliverOrder } from './use-cases/seller-deliver-order.use-case';
-import { SellerListOrders } from './use-cases/seller-list-orders.use-case';
 import type { OrderState } from '../domain/order';
 import { SellerMarkOrderReady } from './use-cases/seller-mark-order-ready.use-case';
 import { SellerHealthCountsQuery } from './use-cases/seller-health-counts.use-case';
@@ -984,13 +983,13 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const view = await new AdminViewOrder(gate, deps).execute(admin, {
         orderId: result.value.orderId,
       });
-      const pending = await new AdminListOrders(gate, deps).execute(admin, {
+      const pending = await adminListOrders(gate, deps).execute(admin, {
         status: 'pending-payment',
       });
-      const confirmed = await new AdminListOrders(gate, deps).execute(admin, {
+      const confirmed = await adminListOrders(gate, deps).execute(admin, {
         status: 'confirmed',
       });
-      const bad = await new AdminListOrders(gate, deps).execute(admin, { status: 'shipped' });
+      const bad = await adminListOrders(gate, deps).execute(admin, { status: 'shipped' });
 
       expect(view.ok && view.value.accountId).toBe(ACCOUNT);
       expect(pending.ok && pending.value.orders).toHaveLength(1);
@@ -1017,7 +1016,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       labels.stores.set(SELLER_A, 'Corner Butcher');
       labels.customers.set(ACCOUNT, { displayName: null, email: 'jane@example.com' });
 
-      const list = await new AdminListOrders(gate, deps).execute(adminContext(), {});
+      const list = await adminListOrders(gate, deps).execute(adminContext(), {});
       const view = await new AdminViewOrder(gate, deps).execute(adminContext(), {
         orderId: result.value.orderId,
       });
@@ -1026,7 +1025,10 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       // The page adds the order's refunds and the refund switch to what the list shows.
       const { refunds, refundsEnabled, ...listed } = view.value;
       expect({ refunds, refundsEnabled }).toEqual({ refunds: [], refundsEnabled: false });
-      expect(list.value.orders[0]).toEqual(listed);
+      // The list row is the order plus the row actions the caller may run on it.
+      const { actions, ...row } = list.value.orders[0]!;
+      expect(row).toEqual(listed);
+      expect(actions).toEqual(['open', 'copy-number', 'add-note']);
       expect(view.value.customer).toEqual({ displayName: null, email: 'jane@example.com' });
       const a = view.value.sellerOrders.find((s) => s.sellerId === SELLER_A)!;
       const b = view.value.sellerOrders.find((s) => s.sellerId === SELLER_B)!;
@@ -1111,7 +1113,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const result = await start();
       if (!result.ok) throw new Error('checkout failed');
       const sellerOrderId = orders.rows.get(result.value.orderId)!.sellerOrders[0]!.id;
-      const find = (q: unknown) => new AdminListOrders(gate, deps).execute(adminContext(), { q });
+      const find = (q: unknown) => adminListOrders(gate, deps).execute(adminContext(), { q });
 
       const byOrder = await find(result.value.orderId.toUpperCase());
       const bySellerOrder = await find(` ${sellerOrderId} `);
@@ -1139,7 +1141,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     });
 
     it('looks nothing up for an empty page', async () => {
-      const list = await new AdminListOrders(gate, deps).execute(adminContext(), {});
+      const list = await adminListOrders(gate, deps).execute(adminContext(), {});
 
       expect(list).toEqual({
         ok: true,
@@ -1157,7 +1159,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
 
     describe('search by customer name or store name', () => {
       const search = (input: Record<string, unknown>) =>
-        new AdminListOrders(gate, deps).execute(adminContext(), input);
+        adminListOrders(gate, deps).execute(adminContext(), input);
 
       it('finds an order by its customer or one of its stores, and by both filters together', async () => {
         const result = await start();
@@ -1237,7 +1239,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
 
     describe('page mode', () => {
       const list = (input: Record<string, unknown>) =>
-        new AdminListOrders(gate, deps).execute(adminContext(), input);
+        adminListOrders(gate, deps).execute(adminContext(), input);
       const refused = (fields: { path: string; code: string }[]) => ({
         ok: false,
         error: { code: 'validation.failed', fields },
@@ -1254,13 +1256,58 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         expect(first.ok && first.value.orders.map((o) => o.orderId)).toEqual([
           result.value.orderId,
         ]);
-        expect(first.ok && first.value.paging).toEqual({ total: 1, page: 1, pageSize: 10 });
+        expect(first.ok && first.value.paging).toEqual({
+          mode: 'pages',
+          total: 1,
+          page: 1,
+          pageSize: 10,
+          hasNext: false,
+        });
         expect(first.ok && first.value.nextCursor).toBeNull();
         expect(beyond.ok && beyond.value.orders).toEqual([]);
-        expect(beyond.ok && beyond.value.paging).toEqual({ total: 1, page: 2, pageSize: 10 });
+        expect(beyond.ok && beyond.value.paging).toEqual({
+          mode: 'pages',
+          total: 1,
+          page: 2,
+          pageSize: 10,
+          hasNext: false,
+        });
         expect(filtered.ok && filtered.value.paging?.total).toBe(0);
         // The counts per status stay the Market's, whatever the filter.
         expect(filtered.ok && filtered.value.counts.pendingPayment).toBe(1);
+      });
+
+      it('answers Previous and Next without a total and says whether a next page exists', async () => {
+        const first = await start();
+        const second = await start();
+        if (!first.ok || !second.ok) throw new Error('checkout failed');
+
+        const page1 = await list({ page: 1, pageSize: 1, paging: 'prev-next' });
+        const page2 = await list({ page: 2, pageSize: 1, paging: 'prev-next' });
+        const page3 = await list({ page: 3, pageSize: 1, paging: 'prev-next' });
+
+        expect(page1.ok && page1.value.orders).toHaveLength(1);
+        expect(page1.ok && page1.value.paging).toEqual({
+          mode: 'prev-next',
+          total: null,
+          page: 1,
+          pageSize: 1,
+          hasNext: true,
+        });
+        expect(page2.ok && page2.value.orders).toHaveLength(1);
+        expect(page2.ok && page2.value.paging?.hasNext).toBe(false);
+        expect(page3.ok && page3.value.orders).toEqual([]);
+        const ids = [page1, page2].map((p) => (p.ok ? p.value.orders[0]!.orderId : null));
+        expect(new Set(ids).size).toBe(2);
+      });
+
+      it('refuses a paging mode it does not know, or one given without page', async () => {
+        expect(await list({ page: 1, paging: 'infinite' })).toEqual(
+          refused([{ path: 'paging', code: 'value' }]),
+        );
+        expect(
+          await adminListOrders(gate, deps).execute(adminContext(), { paging: 'pages' }),
+        ).toEqual(refused([{ path: 'paging', code: 'needs-page' }]));
       });
 
       it('stops page numbers at row 10,000 and names the refusal', async () => {
@@ -1675,7 +1722,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     const sellerA = sellerOf(SELLER_A);
     const sellerB = sellerOf(SELLER_B, 0x72);
     const list = (context: CallContext, input = {}) =>
-      new SellerListOrders(gate, deps).execute(context, input);
+      sellerListOrders(gate, deps).execute(context, input);
     const ready = (context: CallContext, sellerOrderId: string) =>
       new SellerMarkOrderReady(gate, deps).execute(context, { sellerOrderId });
     /** The tracking reference the carrier gives a seller order in these tests. */
@@ -1723,6 +1770,68 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       return order;
     };
 
+    it('finds a seller order by its own id or its order id, exactly, and refuses other text', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+
+      const byOwnId = await list(sellerA, { q: sellerOrderId.toUpperCase() });
+      const byOrderId = await list(sellerA, { q: order.id });
+      const unknown = await list(sellerA, { q: '01990000-0000-7000-8000-0000000000ff' });
+      const text = await list(sellerA, { q: 'rice' });
+
+      expect(byOwnId.ok && byOwnId.value.sellerOrders.map((o) => o.sellerOrderId)).toEqual([
+        sellerOrderId,
+      ]);
+      expect(byOrderId.ok && byOrderId.value.sellerOrders).toHaveLength(1);
+      expect(unknown.ok && unknown.value.sellerOrders).toEqual([]);
+      expect(text).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'q', code: 'format' }] },
+      });
+    });
+
+    it('names the row actions from the order state and the caller’s keys', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+
+      const waiting = await list(sellerA, {});
+      await ship(sellerA, sellerOrderId);
+      const shipped = await list(sellerA, {});
+
+      expect(waiting.ok && waiting.value.sellerOrders[0]!.actions).toEqual([
+        'open',
+        'packing-slip',
+        'copy-number',
+        'ready',
+        'report-unavailable',
+      ]);
+      expect(shipped.ok && shipped.value.sellerOrders[0]!.actions).toEqual([
+        'open',
+        'packing-slip',
+        'copy-number',
+        'mark-delivered',
+      ]);
+    });
+
+    it('answers Previous and Next without a total', async () => {
+      const order = await paid();
+      await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
+
+      const first = await list(sellerA, { page: 1, pageSize: 1, paging: 'prev-next' });
+      const bad = await list(sellerA, { page: 1, paging: 'infinite' });
+      const stray = await list(sellerA, { paging: 'pages' });
+
+      expect(first.ok && first.value.paging).toEqual({
+        mode: 'prev-next',
+        total: null,
+        page: 1,
+        pageSize: 1,
+        hasNext: false,
+      });
+      expect(bad.ok).toBe(false);
+      expect(stray.ok).toBe(false);
+    });
+
     it('filters by fulfilment step and refuses an unknown one', async () => {
       const order = await paid();
       await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
@@ -1763,12 +1872,24 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         const toShip = await list(sellerA, { page: 1, status: 'to-ship' });
         const beyond = await list(sellerA, { page: 2, pageSize: 10 });
 
-        expect(first.ok && first.value.paging).toEqual({ total: 1, page: 1, pageSize: 10 });
+        expect(first.ok && first.value.paging).toEqual({
+          mode: 'pages',
+          total: 1,
+          page: 1,
+          pageSize: 10,
+          hasNext: false,
+        });
         expect(first.ok && first.value.nextCursor).toBeNull();
         expect(shipped.ok && shipped.value.sellerOrders).toHaveLength(1);
         expect(toShip.ok && toShip.value.paging?.total).toBe(0);
         expect(beyond.ok && beyond.value.sellerOrders).toEqual([]);
-        expect(beyond.ok && beyond.value.paging).toEqual({ total: 1, page: 2, pageSize: 10 });
+        expect(beyond.ok && beyond.value.paging).toEqual({
+          mode: 'pages',
+          total: 1,
+          page: 2,
+          pageSize: 10,
+          hasNext: false,
+        });
       });
 
       it('keeps the cursor page free of paging and refuses stray or deep params', async () => {

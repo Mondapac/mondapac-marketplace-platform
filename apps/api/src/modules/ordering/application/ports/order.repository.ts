@@ -50,6 +50,8 @@ export interface OrderSort {
 /** The seller list's filter; null keeps every paid seller order. */
 export interface SellerOrderFilter {
   readonly fulfilment: Fulfilment | null;
+  /** A seller order id or its order id, matched exactly (the reference in the order emails). */
+  readonly reference?: string | null;
   /** Paid at or after `from` and before `to`; null keeps every payment time. */
   readonly from: Temporal.Instant | null;
   readonly to: Temporal.Instant | null;

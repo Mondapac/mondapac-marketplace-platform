@@ -833,6 +833,9 @@ const sellerWhere = (market: MarketContext, sellerId: Id<'Seller'>, filter: Sell
   marketId: market.marketId,
   sellerId,
   ...(filter.fulfilment === null ? {} : { fulfilment: filter.fulfilment }),
+  ...(filter.reference === undefined || filter.reference === null
+    ? {}
+    : { OR: [{ id: filter.reference }, { orderId: filter.reference }] }),
   order: {
     status: 'confirmed',
     ...(filter.from === null && filter.to === null
