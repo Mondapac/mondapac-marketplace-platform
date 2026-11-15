@@ -31,6 +31,7 @@ import { ReviewsModule } from './reviews';
 import { SettingsModule } from './settings';
 import { PromotionsModule } from './promotions';
 import { SecurityModule } from './security';
+import { SystemRequestsModule } from './system-requests';
 
 export const CORE_MODULES = [
   IdentityModule,
@@ -59,6 +60,7 @@ export const CORE_MODULES = [
   PromotionsModule,
   SettingsModule,
   SecurityModule,
+  SystemRequestsModule,
 ];
 
 /**
