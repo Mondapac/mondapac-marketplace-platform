@@ -60,6 +60,14 @@ describe('sellerMaySeeShipTo (owner decisions 2026-11-14 and 2026-11-15)', () =>
     expect(sellerMaySeeShipTo(late, SHIPPED.add(HOUR(80 * 24)))).toBe(true);
   });
 
+  it('withholds it for a shipped or delivered order missing its instant (fail closed)', () => {
+    expect(sellerMaySeeShipTo({ ...shipped, shippedAt: null }, SHIPPED)).toBe(false);
+    expect(sellerMaySeeShipTo({ ...delivered, deliveredAt: null }, DELIVERED)).toBe(false);
+    expect(
+      sellerMaySeeShipTo({ ...delivered, shippedAt: null, deliveredAt: null }, DELIVERED),
+    ).toBe(false);
+  });
+
   it('withholds it at once when the seller order was cancelled or refunded in full', () => {
     for (const facts of [toShip, shipped, delivered]) {
       expect(sellerMaySeeShipTo({ ...facts, cancelledOrRefundedInFull: true }, SHIPPED)).toBe(

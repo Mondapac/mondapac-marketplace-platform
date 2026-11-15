@@ -1980,6 +1980,37 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       }
     });
 
+    it('withholds the address, unopened, when the refunds cannot be read (fail closed)', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      let refundsRead = false;
+      const inner = deps.unitOfWork;
+      deps = {
+        ...deps,
+        refunds: Object.assign(Object.create(NO_REFUNDS) as RefundRepository, {
+          listOfSellerOrder: () => {
+            refundsRead = true;
+            return Promise.resolve([]);
+          },
+        }),
+        // The unit that reads the refunds answers a failure; every other unit runs as usual.
+        unitOfWork: Object.assign(Object.create(inner) as typeof inner, {
+          run: async (...args: Parameters<typeof inner.run>) => {
+            refundsRead = false;
+            const result = await inner.run(...args);
+            return refundsRead ? err({ code: 'unit.failed' }) : result;
+          },
+        }),
+      };
+      const openedBefore = shipToCipher.opened;
+
+      const view = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+
+      expect(view.ok && view.value.shipTo).toBeNull();
+      expect(view.ok && view.value.refunds).toEqual([]);
+      expect(shipToCipher.opened).toBe(openedBefore);
+    });
+
     it('withholds the address at once when every unit is refunded, not for a partial refund', async () => {
       const order = await paid();
       const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);

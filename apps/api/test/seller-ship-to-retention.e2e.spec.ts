@@ -268,7 +268,7 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
   }
   const page = () => http().get(`/ordering/seller/orders/${SELLER_ORDER}`).set(headers());
 
-  it('shows the address and note before delivery and while shipped, however long ago', async () => {
+  it('shows the address and note to ship after 90 days, and 50 days into an undelivered shipment', async () => {
     clock.set(DELIVERED.add({ hours: 24 * 90 }));
     orders.rows.set(
       ORDER,

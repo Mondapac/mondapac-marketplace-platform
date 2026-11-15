@@ -40,9 +40,19 @@ export interface ShipToRetentionFacts {
 export function sellerMaySeeShipTo(facts: ShipToRetentionFacts, now: Temporal.Instant): boolean {
   if (facts.cancelledOrRefundedInFull) return false;
   const before = (limit: Temporal.Instant) => Temporal.Instant.compare(now, limit) < 0;
-  if (facts.deliveredAt !== null) return before(facts.deliveredAt.add(SELLER_SHIP_TO_RETENTION));
-  if (facts.shippedAt !== null) {
-    return before(facts.shippedAt.add(SELLER_SHIP_TO_RETENTION_UNDELIVERED));
+  // The database CHECK `ordering.seller_orders_fulfilment_fields_check` (migration
+  // 20261027011000_ordering_pickup_codes) makes `shipped` carry `shipped_at`, and `delivered`
+  // carry both instants, so a missing instant cannot be stored. Should one reach here anyway,
+  // the address is withheld (fail closed) rather than shown for ever.
+  switch (facts.fulfilment) {
+    case 'to-ship':
+      return true;
+    case 'shipped':
+      return (
+        facts.shippedAt !== null &&
+        before(facts.shippedAt.add(SELLER_SHIP_TO_RETENTION_UNDELIVERED))
+      );
+    case 'delivered':
+      return facts.deliveredAt !== null && before(facts.deliveredAt.add(SELLER_SHIP_TO_RETENTION));
   }
-  return true;
 }
