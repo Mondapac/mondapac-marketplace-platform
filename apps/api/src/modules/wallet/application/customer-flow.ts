@@ -121,6 +121,16 @@ export async function viewMyHistory(
 ): Promise<Result<HistoryView, CustomerWalletFailure>> {
   const actor = context.actor;
   if (!isCustomer(context) || actor.kind !== 'authenticated') return err({ code: 'access.denied' });
+  return historyOf(deps, context, actor.accountId, input);
+}
+
+/** The history of one customer's wallet; the caller has already decided the reader may see it. */
+export async function historyOf(
+  deps: WalletDependencies,
+  context: CallContext,
+  accountId: Id<'Account'>,
+  input: HistoryInput,
+): Promise<Result<HistoryView, CustomerWalletFailure>> {
   const fields: { path: string; code: string }[] = [];
   let limit = DEFAULT_PAGE_SIZE;
   if (input?.limit !== undefined) {
@@ -149,7 +159,7 @@ export async function viewMyHistory(
       if (refusalFor(setting?.status ?? 'off', 'read') !== null) {
         return err({ code: 'wallet.disabled' } as const);
       }
-      const wallet = await deps.wallet.findWallet(context.market, actor.accountId);
+      const wallet = await deps.wallet.findWallet(context.market, accountId);
       if (wallet === null) return ok({ currency: policy.currency, entries: [], nextCursor: null });
       const rows = await deps.wallet.history(context.market, wallet.id, {
         limit: limit + 1,

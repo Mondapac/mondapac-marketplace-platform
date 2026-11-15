@@ -19,7 +19,7 @@ import {
 import { closedInput, invalid, type ValidationFailure } from '../brands/brand-views';
 import type { AttributeAdminReader, CountedField } from '../ports/attribute-admin.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
-import { XLSX_CONTENT_TYPE, type SheetWriter } from '../ports/sheet-writer';
+import { XLSX_CONTENT_TYPE, type SheetWriter } from '../../../../platform/list-export/sheet-writer';
 import { csvChunks, textRows } from '../products/products-csv';
 
 /** Rows one export may hold; more is refused whole (413) and the admin narrows with `missing`. */

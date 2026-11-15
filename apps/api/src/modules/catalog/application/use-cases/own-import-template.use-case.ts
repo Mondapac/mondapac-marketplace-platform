@@ -13,7 +13,7 @@ import {
 import { isActingAsSession } from '../acting-as';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 
-import type { SheetWriter } from '../ports/sheet-writer';
+import type { SheetWriter } from '../../../../platform/list-export/sheet-writer';
 import { sellerTemplateCsv, sellerTemplateRows } from '../seller-import/seller-import-report';
 import { type SellerImportCommonFailure } from '../seller-import/seller-import-support';
 

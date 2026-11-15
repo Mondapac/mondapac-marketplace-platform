@@ -243,6 +243,14 @@ export class FakeOrderingFacade implements OrderingFacade {
     return Promise.resolve(ok([]));
   }
 
+  customerOrderStats(): ReturnType<OrderingFacade['customerOrderStats']> {
+    return Promise.resolve(err({ code: 'validation.failed' }));
+  }
+
+  customerOrderAccounts(): ReturnType<OrderingFacade['customerOrderAccounts']> {
+    return Promise.resolve(ok({ accountIds: [] }));
+  }
+
   sellerHealthCounts(): ReturnType<OrderingFacade['sellerHealthCounts']> {
     return Promise.resolve(ok([]));
   }

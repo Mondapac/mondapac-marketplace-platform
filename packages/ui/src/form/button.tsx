@@ -1,4 +1,14 @@
-import type { AnchorHTMLAttributes, ButtonHTMLAttributes, Ref } from 'react';
+'use client';
+
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  type AnchorHTMLAttributes,
+  type ButtonHTMLAttributes,
+  type Ref,
+} from 'react';
+import { Spinner } from '../loading/spinner.tsx';
 
 /**
  * `destructive` is the outlined red button (a row action, Delete in a list); `destructive-solid` is
@@ -8,7 +18,14 @@ export type ButtonVariant = 'primary' | 'secondary' | 'link' | 'destructive' | '
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly variant?: ButtonVariant;
+  /**
+   * Work this button started is running (panel loading L1): a 14 px spinner shows before the label
+   * at once (no delay), the button keeps its width and focus, and a second click does nothing.
+   * The caller disables sibling buttons (Discard) meanwhile.
+   */
   readonly loading?: boolean;
+  /** The label while loading ("Saving…", "Exporting…"); without it the label stays. */
+  readonly loadingLabel?: string;
   /** Fills the width of its container (auth forms). */
   readonly block?: boolean;
   /** The button element, for a caller that moves focus to it. */
@@ -30,24 +47,48 @@ const VARIANT: Record<ButtonVariant, string> = {
 export function Button({
   variant = 'primary',
   loading = false,
+  loadingLabel,
   block = false,
   className,
   disabled,
   children,
   type = 'button',
   onClick,
+  ref,
+  style,
   ...rest
 }: ButtonProps) {
   const size = variant === 'link' ? '' : 'h-(--mp-size-control) px-4';
+  const own = useRef<HTMLButtonElement | null>(null);
+  // The width at rest, measured after every idle render, so the busy button keeps exactly that
+  // width (design: "measured and fixed") and nothing beside it moves when the label changes to the
+  // in-progress one ("Save changes" -> "Saving…"); a longer busy label is cut with an ellipsis, so
+  // keep it short. A button first rendered busy has no rest width and takes its natural width.
+  const restWidth = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (!loading && own.current !== null) restWidth.current = own.current.offsetWidth;
+  });
+  const held = loading && restWidth.current !== null && restWidth.current > 0;
+  const setRef = useCallback(
+    (node: HTMLButtonElement | null) => {
+      own.current = node;
+      if (typeof ref === 'function') ref(node);
+      else if (ref) ref.current = node;
+    },
+    [ref],
+  );
   return (
     <button
+      ref={setRef}
       type={type}
+      style={held ? { ...style, width: restWidth.current ?? undefined } : style}
       // Loading keeps the button focusable (aria-disabled, not disabled) so focus is not lost.
       disabled={disabled}
       aria-disabled={loading || undefined}
       aria-busy={loading || undefined}
       className={[
         'inline-flex items-center justify-center rounded-md font-medium',
+        loading ? 'gap-2' : '',
         size,
         block ? 'w-full' : '',
         VARIANT[variant],
@@ -64,7 +105,14 @@ export function Button({
       }}
       {...rest}
     >
-      {children}
+      {loading ? (
+        <>
+          <Spinner />
+          <span className="min-w-0 truncate">{loadingLabel ?? children}</span>
+        </>
+      ) : (
+        children
+      )}
     </button>
   );
 }

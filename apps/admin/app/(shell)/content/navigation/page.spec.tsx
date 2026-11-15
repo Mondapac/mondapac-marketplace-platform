@@ -99,12 +99,12 @@ describe('the navigation route', () => {
     expect(screen.getByTestId('editor').getAttribute('data-approve')).toBe('true');
   });
 
-  it('shows the three tabs, Navigation current', async () => {
-    signIn([READ]);
+  it('is headed Menus, like its menu item, with no section tabs', async () => {
+    signIn([READ, 'storefront.page.read', 'storefront.slide.read']);
     render(await NavigationPage());
-    const current = screen.getByRole('link', { name: 'Navigation' });
-    expect(current.getAttribute('aria-current')).toBe('page');
-    expect(screen.getByRole('link', { name: 'Pages' }).getAttribute('href')).toBe('/content');
+    expect(screen.getByRole('heading', { level: 1, name: 'Menus' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Pages' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Slides' })).toBeNull();
   });
 
   it('sends a signed-out visitor to the session-ended page', async () => {

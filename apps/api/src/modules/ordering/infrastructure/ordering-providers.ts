@@ -58,6 +58,7 @@ import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
 import { ShippingDeliveryMethodPolicy } from './shipping-delivery-method-policy';
 import { PrismaOrderRepository } from './prisma-order.repository';
 import { PrismaPickupCodeRepository } from './prisma-pickup-code.repository';
+import { SAVED_FILTER_STORE, type SavedFilterStore } from '../../lists';
 import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
 import {
   SAVED_FILTER_REPOSITORY,
@@ -125,9 +126,9 @@ export const orderingProviders: readonly FactoryProvider[] = [
   },
   {
     provide: SAVED_FILTER_REPOSITORY,
-    inject: [PrismaService],
-    useFactory: (prisma: PrismaService): SavedFilterRepository =>
-      new PrismaSavedFilterRepository(prisma),
+    inject: [SAVED_FILTER_STORE],
+    useFactory: (store: SavedFilterStore): SavedFilterRepository =>
+      new PrismaSavedFilterRepository(store),
   },
   {
     provide: PICKUP_CODE_REPOSITORY,

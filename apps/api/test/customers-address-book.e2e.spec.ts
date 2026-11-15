@@ -105,6 +105,12 @@ describe('customer address book routes over HTTP', () => {
     expect(CUSTOMERS_STATUS).toEqual({
       'validation.failed': 400,
       'customers.address-not-found': 404,
+      'batch.too-large': 413,
+      'customers.customer-not-found': 404,
+      'saved-filter.limit-reached': 409,
+      'saved-filter.name-taken': 409,
+      'saved-filter.not-found': 404,
+      'saved-filter.shared-limit-reached': 409,
       'customers.address-limit-reached': 422,
       'customers.conflict': 409,
       'customers.account-deletion-disabled': 403,

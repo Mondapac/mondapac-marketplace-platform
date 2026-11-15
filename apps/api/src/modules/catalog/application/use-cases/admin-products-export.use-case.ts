@@ -5,26 +5,31 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_PRODUCT_VIEW } from '../../contracts/permissions';
 import { productIdOf } from '../products/product-lifecycle';
 import {
-  csvChunks,
   EXPORT_COLUMNS,
   EXPORT_HEADERS,
-  textRows,
   type ExportCell as Cell,
   type ExportColumn,
 } from '../products/products-csv';
+import {
+  buildExportFile,
+  checkExportSize,
+  LIST_EXPORT_MAX_ROWS,
+  parseExportColumns,
+  parseExportFormat,
+  parseExportIds,
+  type SheetWriter,
+} from '../../../../platform/list-export';
 import { invalid, type ValidationFailure } from '../own-reads/own-reads.shared';
 import type { AdminProductRow, AdminProductsReader } from '../ports/admin-products.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { SellerNamesReader } from '../ports/seller-names.reader';
-import { XLSX_CONTENT_TYPE, type SheetWriter } from '../ports/sheet-writer';
 import { BULK_MAX_IDS } from './admin-products-bulk.use-case';
 import { filterOfSelector, parseSelector } from './admin-products-list.use-case';
 
-export const EXPORT_FORMATS = ['csv', 'xlsx'] as const;
-export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+export { EXPORT_FORMATS, type ExportFormat } from '../../../../platform/list-export';
 
 /** Products one export may hold; more is refused whole and the admin narrows the filter. */
-export const EXPORT_MAX_ROWS = 10_000;
+export const EXPORT_MAX_ROWS = LIST_EXPORT_MAX_ROWS;
 export { EXPORT_COLUMNS };
 /** Products read per chunk while the file streams. */
 const CHUNK = 500;
@@ -131,9 +136,9 @@ export class AdminProductsExport extends UseCase<
     for (const key of Object.keys(input)) {
       if (!OWN_KEYS.has(key) && !SELECTOR_KEYS.has(key)) return invalid(key, 'unknown');
     }
-    const format = input.format ?? 'csv';
-    if (format !== 'csv' && format !== 'xlsx') return invalid('format', 'value');
-    const columns = this.#columns(input.columns);
+    const format = parseExportFormat(input.format);
+    if (!format.ok) return format;
+    const columns = parseExportColumns(input.columns, EXPORT_COLUMNS);
     if (!columns.ok) return columns;
 
     let locale: string;
@@ -147,15 +152,9 @@ export class AdminProductsExport extends UseCase<
     let ids: readonly Id<'Product'>[];
     if (input.ids !== undefined && input.ids !== '') {
       if (typeof input.ids !== 'string') return invalid('ids', 'type');
-      const parts = input.ids.split(',');
-      if (parts.length > BULK_MAX_IDS) return err({ code: 'batch.too-large', max: BULK_MAX_IDS });
-      const parsed: Id<'Product'>[] = [];
-      for (const part of parts) {
-        const id = productIdOf(part);
-        if (id === null) return invalid('ids', 'format');
-        parsed.push(id);
-      }
-      if (new Set(parsed).size !== parsed.length) return invalid('ids', 'duplicate');
+      const listed = parseExportIds(input.ids, BULK_MAX_IDS, productIdOf);
+      if (!listed.ok) return listed;
+      const parsed = listed.value;
       const found = await deps.unitOfWork.run(
         market,
         async () => ok(await deps.adminProductsReader.existing(market, parsed)),
@@ -179,37 +178,21 @@ export class AdminProductsExport extends UseCase<
         { readOnly: true },
       );
       if (!picked.ok) return err({ code: 'access.unavailable' });
-      if (picked.value.found.length > EXPORT_MAX_ROWS) {
-        return err({ code: 'batch.too-large', max: EXPORT_MAX_ROWS, total: picked.value.total });
-      }
+      const size = checkExportSize(picked.value.found.length, picked.value.total);
+      if (!size.ok) return size;
       ids = picked.value.found;
     }
 
     const day = deps.clock.now().toString().slice(0, 10);
-    const rows = this.#rows(context, ids, columns.value, locale);
-    if (format === 'xlsx') {
-      return ok({
-        filename: `products-${day}.xlsx`,
-        contentType: XLSX_CONTENT_TYPE,
-        chunks: deps.sheetWriter.xlsx('Products', textRows(rows)),
-      });
-    }
-    return ok({
-      filename: `products-${day}.csv`,
-      contentType: 'text/csv; charset=utf-8',
-      chunks: csvChunks(rows),
+    const file = buildExportFile({
+      format: format.value,
+      baseName: 'products',
+      sheetName: 'Products',
+      day,
+      groups: this.#rows(context, ids, columns.value, locale),
+      sheetWriter: deps.sheetWriter,
     });
-  }
-
-  #columns(value: unknown): Result<readonly ExportColumn[], ValidationFailure> {
-    if (value === undefined || value === '') return ok([]);
-    if (typeof value !== 'string') return invalid('columns', 'type');
-    const seen = new Set<ExportColumn>();
-    for (const part of value.split(',')) {
-      if (!(EXPORT_COLUMNS as readonly string[]).includes(part)) return invalid('columns', 'value');
-      seen.add(part as ExportColumn);
-    }
-    return ok([...seen]);
+    return ok(file);
   }
 
   /** The rows of the file, a group per page of products: the header group first. */

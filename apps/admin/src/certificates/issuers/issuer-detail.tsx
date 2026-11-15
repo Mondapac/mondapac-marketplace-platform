@@ -2,8 +2,18 @@ import { Banner } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { When } from '../../shared/when.tsx';
 import { ExpertApproval, IssuerActions } from './issuer-actions.tsx';
+import { ProposalCard } from './issuer-lifecycle.tsx';
 import { IssuerStateBadge } from './state-badge.tsx';
 import type { IssuerDetail } from './types.ts';
+
+const DONE_NOTICES: ReadonlySet<string> = new Set([
+  'closed',
+  'derecognised',
+  'reactivation-asked',
+  'approved',
+  'rejected',
+  'withdrawn',
+]);
 
 /** The page of one issuer: details, the expert approval and, for an editor, what can be done. */
 export function IssuerDetailView({
@@ -12,8 +22,11 @@ export function IssuerDetailView({
   canEdit,
   csrfToken,
   activated = false,
+  done = null,
 }: {
   readonly activated?: boolean;
+  /** The notice after a lifecycle change (`?done=`). */
+  readonly done?: string | null;
   readonly issuer: IssuerDetail;
   readonly typeName: string;
   readonly canEdit: boolean;
@@ -56,6 +69,8 @@ export function IssuerDetailView({
               version: issuer.version,
               displayName: issuer.displayName,
               state: issuer.state,
+              affectedCertificates: issuer.affectedCertificates,
+              pendingReactivation: issuer.pendingReactivation,
             }}
             csrfToken={csrfToken}
           />
@@ -66,8 +81,23 @@ export function IssuerDetailView({
           <Banner tone="success">{t('activated')}</Banner>
         </div>
       ) : null}
+      {done !== null && DONE_NOTICES.has(done) ? (
+        <div role="status">
+          <Banner tone="success">{t(`done.${done}`)}</Banner>
+        </div>
+      ) : null}
+      {issuer.state === 'closed-to-new' ? <Banner tone="info">{t('closed-note')}</Banner> : null}
+      {issuer.state === 'derecognised' ? (
+        <Banner tone="attention">{t('derecognised-note')}</Banner>
+      ) : null}
       {issuer.state === 'proposed' ? <Banner tone="info">{t('name-note')}</Banner> : null}
-      {issuer.pendingReactivation === null ? null : (
+      {issuer.pendingReactivation === null ? null : canEdit ? (
+        <ProposalCard
+          issuerId={issuer.issuerId}
+          proposal={issuer.pendingReactivation}
+          csrfToken={csrfToken}
+        />
+      ) : (
         <Banner tone="info">{t('reactivation-waiting')}</Banner>
       )}
       {!canEdit ? <p className="text-fg-muted">{t('view-only')}</p> : null}

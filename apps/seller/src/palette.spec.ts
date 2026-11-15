@@ -1,4 +1,4 @@
-import { visibleNavItems } from '@mondapac/ui';
+import { searchPalette, visibleNavItems } from '@mondapac/ui';
 import { describe, expect, it } from 'vitest';
 import messages from '../messages/en.json';
 import { sellerNav, sellerNavItems } from './nav.ts';
@@ -48,9 +48,9 @@ describe('seller palette index', () => {
   it('shows a setting and an action only with the permission behind them', () => {
     const labels = (keys: string[]) =>
       sellerPaletteEntries('approved', keys, text).map((entry) => entry.label);
-    expect(labels([])).not.toContain('Payout bank account');
+    expect(labels([])).not.toContain('Store logo');
     expect(labels([])).not.toContain('Add product');
-    expect(labels(ALL_KEYS)).toContain('Payout bank account');
+    expect(labels(ALL_KEYS)).toContain('Store logo');
     expect(labels(['catalog.own-product.edit'])).toContain('Add product');
   });
 
@@ -71,6 +71,14 @@ describe('seller palette index', () => {
     const context = (id: string) => entries(ALL_KEYS).find((entry) => entry.id === id)?.context;
     expect(context('page:settings/store-profile')).toBe('Settings / Store');
     expect(context('setting:store-logo')).toBe('Settings / Store / Store profile');
+  });
+
+  it('finds Payout account by bank words, as it did when it was a settings page', () => {
+    const entries = sellerPaletteEntries('approved', ['payments.payout-account.view'], text);
+    for (const query of ['bank', 'BSB', 'get paid']) {
+      expect(searchPalette(entries, query)[0]?.href, query).toBe('/accounting/payout-account');
+    }
+    expect(searchPalette(sellerPaletteEntries('approved', [], text), 'bank')).toEqual([]);
   });
 
   it('has unique setting ids, each on a page of the settings map', () => {

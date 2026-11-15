@@ -47,6 +47,9 @@ import {
   PayoutHoldBody,
   PayoutHoldsBody,
   payoutTermsBody,
+  payoutTermsChangeBody,
+  PayoutTermsChangeBody,
+  NOTE_DESCRIPTION,
   PayoutTermsBody,
   PlacePayoutHoldRequest,
   ReleasePayoutHoldRequest,
@@ -67,6 +70,7 @@ const TERMS_KEYS = [
   'approvalMode',
   'expectedVersion',
   'reasonCode',
+  'note',
 ];
 
 function logRoute(logger: Logger, msg: string, context: CallContext, outcome: string): void {
@@ -140,7 +144,7 @@ export class AdminPayoutTermsController {
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerId', format: 'uuid' })
   @ApiBody({ type: SetPayoutTermsRequest })
-  @ApiOkResponse({ type: PayoutTermsBody })
+  @ApiOkResponse({ type: PayoutTermsChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -160,12 +164,13 @@ export class AdminPayoutTermsController {
     response.setHeader('Cache-Control', 'no-store');
     const invalid = closedBody(request, requestBody, TERMS_KEYS);
     if (invalid !== null) throw invalid;
-    const { expectedVersion, reasonCode, ...terms } = requestBody as Record<string, unknown>;
+    const { expectedVersion, reasonCode, note, ...terms } = requestBody as Record<string, unknown>;
     const result = await this.set.execute(context, {
       sellerId,
       terms,
       expectedVersion,
       reasonCode,
+      note,
     });
     logRoute(
       this.#logger,
@@ -174,7 +179,7 @@ export class AdminPayoutTermsController {
       result.ok ? 'set' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return payoutTermsBody(result.value);
+    return payoutTermsChangeBody(result.value);
   }
 
   @Delete()
@@ -198,7 +203,8 @@ export class AdminPayoutTermsController {
     enum: TERMS_CHANGE_REASONS,
     description: 'Why the terms are removed.',
   })
-  @ApiOkResponse({ type: PayoutTermsBody })
+  @ApiQuery({ name: 'note', required: false, description: NOTE_DESCRIPTION })
+  @ApiOkResponse({ type: PayoutTermsChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -216,6 +222,7 @@ export class AdminPayoutTermsController {
     @Param('sellerId') sellerId: string,
     @Query('expectedVersion') expectedVersion: unknown,
     @Query('reasonCode') reasonCode: unknown,
+    @Query('note') note: unknown,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
@@ -226,6 +233,7 @@ export class AdminPayoutTermsController {
           ? Number(expectedVersion)
           : -1,
       reasonCode,
+      note,
     });
     logRoute(
       this.#logger,
@@ -234,7 +242,7 @@ export class AdminPayoutTermsController {
       result.ok ? 'cleared' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return payoutTermsBody(result.value);
+    return payoutTermsChangeBody(result.value);
   }
 }
 

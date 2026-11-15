@@ -8,6 +8,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
+import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
@@ -24,6 +25,8 @@ import { COMMISSION_PAYOUTS_RATE_EDIT } from '../contracts/permissions';
 import { ConfigPayoutTermsPolicy } from '../infrastructure/config-payout-terms-policy';
 import { ConfigCommissionPolicy } from '../infrastructure/config-commission-policy';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
+import { COMMISSION_RATE_SUBJECT_KIND } from './money-review';
+import { CommissionRateReverter } from './money-reverters';
 import type { LedgerPage, LedgerRepository } from './ports/ledger.repository';
 import type { SellerRateRecord, SellerRateRepository } from './ports/seller-rate.repository';
 import { ClearCommissionRate } from './use-cases/clear-commission-rate.use-case';
@@ -210,8 +213,10 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
   let audit: RecordingAudit;
   let known: Set<string>;
   let deps: CommissionPayoutsDependencies;
+  let review: RecordingReview;
 
   beforeEach(() => {
+    review = new RecordingReview();
     rates = new MemoryRates();
     ledger = new MemoryLedger();
     audit = new RecordingAudit();
@@ -226,6 +231,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         exists: (_c: CallContext, sellerId: Id<'Seller'>) => Promise.resolve(known.has(sellerId)),
       },
       audit,
+      review,
       ids: new SequenceIdGenerator(clock),
       clock,
     };
@@ -270,7 +276,13 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
 
     it("sets a seller's own rate, audits old and new, and flags a rate under the Market's", async () => {
       expect(await setRate(SELLER_A, 1000)).toEqual(
-        ok({ sellerId: SELLER_A, rateBps: 1000, source: 'seller', marketRateBps: marketRate }),
+        ok({
+          sellerId: SELLER_A,
+          rateBps: 1000,
+          source: 'seller',
+          marketRateBps: marketRate,
+          request: null,
+        }),
       );
       expect(rates.rows.get(SELLER_A)).toMatchObject({
         rateBps: 1000,
@@ -315,6 +327,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
           rateBps: marketRate,
           source: 'market',
           marketRateBps: marketRate,
+          request: null,
         }),
       );
       expect(rates.rows.size).toBe(0);
@@ -383,6 +396,125 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         ok: false,
         error: { code: 'access.unauthenticated' },
       });
+    });
+  });
+
+  describe('review in System requests (area money)', () => {
+    const reverter = () => new CommissionRateReverter(deps);
+    const revert = (before: unknown, after: unknown, context: CallContext = admin) =>
+      reverter().revert(context, {
+        requestId: id<'SystemRequest'>(0x5e1),
+        subjectRef: SELLER_A,
+        before: { rateBps: before } as Record<string, null>,
+        after: { rateBps: after } as Record<string, null>,
+      });
+
+    it('opens nothing and needs no note where the Market does not review money', async () => {
+      expect(await setRate(SELLER_A, 1000)).toMatchObject({ ok: true, value: { request: null } });
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('opens a review of a set and of a removal with the rates before and after and the note', async () => {
+      review.review('money', 'low');
+      const set = await new SetCommissionRate(gate, deps).execute(admin, {
+        sellerId: SELLER_A,
+        rateBps: 1000,
+        note: 'Launch deal',
+      });
+      expect(set).toMatchObject({ ok: true, value: { request: { number: 1 } } });
+      const cleared = await new ClearCommissionRate(gate, deps).execute(admin, {
+        sellerId: SELLER_A,
+        note: 'Deal over',
+      });
+      expect(cleared).toMatchObject({ ok: true, value: { request: { number: 2 } } });
+      // Money is reviewed at high risk whatever the area's policy says.
+      expect(review.opened).toEqual([
+        {
+          area: 'money',
+          subjectKind: COMMISSION_RATE_SUBJECT_KIND,
+          subjectRef: SELLER_A,
+          before: { rateBps: null },
+          after: { rateBps: 1000 },
+          note: 'Launch deal',
+          risk: 'high',
+        },
+        {
+          area: 'money',
+          subjectKind: COMMISSION_RATE_SUBJECT_KIND,
+          subjectRef: SELLER_A,
+          before: { rateBps: 1000 },
+          after: { rateBps: null },
+          note: 'Deal over',
+          risk: 'high',
+        },
+      ]);
+    });
+
+    it('refuses a change without a note where money is reviewed', async () => {
+      review.review('money', 'high');
+      expect(await setRate(SELLER_A, 1000)).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'note' }] },
+      });
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('restores the rate before, or the Market rate, while the seller still has the rate after', async () => {
+      await setRate(SELLER_A, 1000);
+      await setRate(SELLER_A, 1200);
+      audit.entries.length = 0;
+      expect(await revert(1000, 1200)).toBe('reverted');
+      expect(rates.rows.get(SELLER_A)).toMatchObject({ rateBps: 1000, updatedBy: ADMIN });
+      expect(await revert(null, 1000)).toBe('reverted');
+      expect(rates.rows.has(SELLER_A)).toBe(false);
+      // Each revert is audited as such, naming the System request.
+      const REQUEST = id<'SystemRequest'>(0x5e1);
+      expect(audit.entries.map((entry) => [entry.action, entry.before, entry.after])).toEqual([
+        [
+          'commission-payouts.commission-rate.reverted',
+          { rateBps: 1200 },
+          { rateBps: 1000, marketRateBps: marketRate, requestId: REQUEST },
+        ],
+        [
+          'commission-payouts.commission-rate.reverted',
+          { rateBps: 1000 },
+          { rateBps: null, marketRateBps: marketRate, requestId: REQUEST },
+        ],
+      ]);
+      // A removal is undone by setting the rate again.
+      expect(await revert(900, null)).toBe('reverted');
+      expect(rates.rows.get(SELLER_A)).toMatchObject({ rateBps: 900 });
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('answers changed-since when the rate moved on and gone for a bad value, writing nothing', async () => {
+      await setRate(SELLER_A, 1000);
+      expect(await revert(null, 1200)).toBe('changed-since');
+      expect(await revert(800, null)).toBe('changed-since');
+      expect(await revert('x', 1000)).toBe('gone');
+      expect(await revert(-1, 1000)).toBe('gone');
+      // Above the highest rate an admin may set today: not written back.
+      expect(await revert(5000, 1000)).toBe('gone');
+      expect(rates.rows.get(SELLER_A)).toMatchObject({ rateBps: 1000 });
+      const notASeller = await reverter().revert(admin, {
+        requestId: id<'SystemRequest'>(0x5e2),
+        subjectRef: 'not-a-seller',
+        before: { rateBps: null },
+        after: { rateBps: 1000 },
+      });
+      expect(notASeller).toBe('gone');
+    });
+
+    it('throws for anyone but a signed-in admin acting as themselves', async () => {
+      await setRate(SELLER_A, 1000);
+      const actingAs = {
+        ...admin,
+        actor: { ...admin.actor, actingAs: { adminAccountId: ADMIN } },
+      } as unknown as CallContext;
+      for (const context of [sellerA, system, actingAs]) {
+        await expect(revert(null, 1000, context)).rejects.toThrow();
+      }
+      expect(rates.rows.get(SELLER_A)).toMatchObject({ rateBps: 1000 });
     });
   });
 
