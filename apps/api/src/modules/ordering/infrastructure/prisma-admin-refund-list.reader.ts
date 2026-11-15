@@ -132,6 +132,8 @@ export class PrismaAdminRefundListReader implements AdminRefundListReader {
               ...base,
               AND: [
                 ...base.AND,
+                // The plain bound lets the index start at the cursor; the OR keeps the tie order.
+                { requestedAt: { lte: toDate(after.requestedAt) } },
                 {
                   OR: [
                     { requestedAt: { lt: toDate(after.requestedAt) } },
