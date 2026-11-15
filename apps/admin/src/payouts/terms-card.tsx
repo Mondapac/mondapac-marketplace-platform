@@ -19,6 +19,12 @@ import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { formatMinor, parseAmount } from '../wallet/money.ts';
 import { minorToField } from '../disputes/amount.ts';
 import { MoneyField } from '../wallet/money-field.tsx';
+import {
+  isNoteFailure,
+  ReviewNoteField,
+  trimmedNote,
+  useSentForReview,
+} from '../shared/review-note.tsx';
 import { sellerProblemOf } from './seller-errors.ts';
 import {
   APPROVAL_MODES,
@@ -81,6 +87,9 @@ export function PayoutTermsCard({
   const [minimum, setMinimum] = useState('');
   const [mode, setMode] = useState('AUTO');
   const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
 
   const eff = terms.effective;
@@ -123,6 +132,8 @@ export function PayoutTermsCard({
     setMinimum(currency === null ? '' : minorToField(eff.minimumMinor, currency));
     setMode(eff.approvalMode);
     setReason('');
+    setNote('');
+    setNoteError(null);
     setErrors({});
     setProblem(null);
     setNotice(null);
@@ -181,11 +192,14 @@ export function PayoutTermsCard({
     if (own.mode) body.approvalMode = mode;
     if (Object.keys(body).length === 0) found.none = t('error.none');
     if (reason === '') found.reason = t('error.reason');
-    if (Object.keys(found).length > 0) {
+    const sent = trimmedNote(note);
+    if (sent === null) setNoteError('required');
+    if (Object.keys(found).length > 0 || sent === null) {
       setErrors(found);
       return;
     }
     setErrors({});
+    setNoteError(null);
     busy.current = true;
     setPending(true);
     setProblem(null);
@@ -193,7 +207,7 @@ export function PayoutTermsCard({
     const result = await guarded<PayoutTerms>(
       'PUT',
       `commission-payouts/admin/sellers/${terms.sellerId}/payout-terms`,
-      { ...body, reasonCode: reason, expectedVersion: terms.version },
+      { ...body, reasonCode: reason, expectedVersion: terms.version, note: sent },
       csrfToken,
     );
     busy.current = false;
@@ -201,9 +215,15 @@ export function PayoutTermsCard({
     if (result.ok) {
       adopt(result.body);
       setNotice('saved');
+      sentForReview(result.body);
       return;
     }
     if (isStepUpCancelled(result)) {
+      setDialog('edit');
+      return;
+    }
+    if (isNoteFailure(result.failure)) {
+      setNoteError('rejected');
       setDialog('edit');
       return;
     }
@@ -212,17 +232,20 @@ export function PayoutTermsCard({
 
   async function remove() {
     if (busy.current) return;
-    if (reason === '') {
-      setErrors({ reason: t('error.reason') });
+    const sent = trimmedNote(note);
+    if (reason === '' || sent === null) {
+      setErrors(reason === '' ? { reason: t('error.reason') } : {});
+      setNoteError(sent === null ? 'required' : null);
       return;
     }
+    setNoteError(null);
     busy.current = true;
     setPending(true);
     setProblem(null);
     setDialog(null);
     const result = await guarded<PayoutTerms>(
       'DELETE',
-      `commission-payouts/admin/sellers/${terms.sellerId}/payout-terms?expectedVersion=${terms.version ?? -1}&reasonCode=${encodeURIComponent(reason)}`,
+      `commission-payouts/admin/sellers/${terms.sellerId}/payout-terms?expectedVersion=${terms.version ?? -1}&reasonCode=${encodeURIComponent(reason)}&note=${encodeURIComponent(sent)}`,
       undefined,
       csrfToken,
     );
@@ -231,9 +254,15 @@ export function PayoutTermsCard({
     if (result.ok) {
       adopt(result.body);
       setNotice('removed');
+      sentForReview(result.body);
       return;
     }
     if (isStepUpCancelled(result)) {
+      setDialog('remove');
+      return;
+    }
+    if (isNoteFailure(result.failure)) {
+      setNoteError('rejected');
       setDialog('remove');
       return;
     }
@@ -251,6 +280,17 @@ export function PayoutTermsCard({
         ...TERMS_REASONS.map((code) => ({ value: code, label: t(`reason.${code}`) })),
       ]}
       onChange={(event) => setReason(event.target.value)}
+    />
+  );
+
+  const noteField = (
+    <ReviewNoteField
+      value={note}
+      onChange={(next) => {
+        setNote(next);
+        setNoteError(null);
+      }}
+      error={noteError ?? undefined}
     />
   );
 
@@ -299,6 +339,8 @@ export function PayoutTermsCard({
                 disabled={pending}
                 onClick={() => {
                   setReason('');
+                  setNote('');
+                  setNoteError(null);
                   setErrors({});
                   setProblem(null);
                   setNotice(null);
@@ -427,6 +469,7 @@ export function PayoutTermsCard({
             />
           </div>
           {reasonSelect}
+          {dialog === 'edit' ? noteField : null}
         </div>
       </Dialog>
       {/* No autoFocus: the Reason select is the first control, so the browser focuses it. */}
@@ -446,6 +489,7 @@ export function PayoutTermsCard({
         <div className="flex flex-col gap-4">
           <p>{t('remove-body')}</p>
           {reasonSelect}
+          {dialog === 'remove' ? noteField : null}
         </div>
       </Dialog>
     </Card>

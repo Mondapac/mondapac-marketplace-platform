@@ -7,6 +7,9 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import type { SettingsDependencies } from './application/settings-dependencies';
+import { SETTING_SUBJECT_KIND, SETTINGS_REVIEW_AREA } from './application/settings-flow';
+import { SettingsReverter } from './application/settings-reverter';
+import { registerSystemChangeReverter, SYSTEM_REQUEST_RECORDER } from '../system-requests';
 import { ChangeAiSetting } from './application/use-cases/change-ai-setting.use-case';
 import { ReadAiDescriptionWriter } from './application/use-cases/read-ai-description-writer.use-case';
 import { ViewAiSettings } from './application/use-cases/view-ai-settings.use-case';
@@ -30,20 +33,23 @@ const PORTS: readonly [keyof SettingsDependencies, InjectionToken][] = [
   ['settings', MARKET_SETTING_REPOSITORY],
   ['audit', AUDIT_WRITER],
   ['clock', CLOCK],
+  ['review', SYSTEM_REQUEST_RECORDER],
 ];
+
+/** The reverter of a Market setting change, registered with System requests below. */
+const SETTINGS_REVERTER = Symbol('SETTINGS_REVERTER');
+
+const dependenciesOf = (values: readonly unknown[]): SettingsDependencies =>
+  Object.fromEntries(
+    PORTS.map(([name], index) => [name, values[index]]),
+  ) as unknown as SettingsDependencies;
 
 /** Every settings use case shares one dependency object, built from the same ports. */
 function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
     inject: [USE_CASE_GATE, ...PORTS.map(([, token]) => token)],
-    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
-      new type(
-        gate,
-        Object.fromEntries(
-          PORTS.map(([name], index) => [name, values[index]]),
-        ) as unknown as SettingsDependencies,
-      ),
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) => new type(gate, dependenciesOf(values)),
   };
 }
 
@@ -51,7 +57,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Settings (admin-editable Market settings, ADR-0026 and ADR-0042): one shared store with a
  * version, an insert-only history and an audit row per change, in the `settings` schema. List
  * paging is its first setting, Cart mode its second, the AI description writer's switch and tier
- * the next two. The settings other modules already keep are not moved here.
+ * the next two. The settings other modules already keep are not moved here. A change opens a
+ * review in Admin Inbox › System requests (area marketplace) when the Market reviews that area,
+ * and a rejected or withdrawn one is restored by the registered reverter.
  */
 @Module({
   controllers: [AdminSettingsController, SellerSettingsController],
@@ -70,6 +78,17 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ChangeAiSetting,
       ReadAiDescriptionWriter,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    {
+      provide: SETTINGS_REVERTER,
+      inject: PORTS.map(([, token]) => token),
+      useFactory: (...values: unknown[]) => new SettingsReverter(dependenciesOf(values)),
+    },
+    registerSystemChangeReverter(
+      'settings',
+      SETTING_SUBJECT_KIND,
+      SETTINGS_REVIEW_AREA,
+      SETTINGS_REVERTER,
+    ),
     {
       provide: SETTINGS_FACADE,
       inject: [ReadAiDescriptionWriter],

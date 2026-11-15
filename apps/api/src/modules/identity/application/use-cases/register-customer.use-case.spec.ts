@@ -138,6 +138,14 @@ class FakeAccounts implements AccountRepository {
   searchCustomerIdsByName(): never {
     throw new Error('unused');
   }
+  customerDirectoryRows(): never {
+    throw new Error('sign-up reads no directory');
+  }
+
+  customerDirectoryPage(): never {
+    throw new Error('sign-up reads no directory');
+  }
+
   customerSummaries(): never {
     throw new Error('sign-up reads no customer summary');
   }

@@ -415,6 +415,22 @@ export class PrismaRefundRepository implements RefundRepository {
     }));
   }
 
+  async listForAccount(market: MarketContext, accountId: Id<'Account'>, limit: number) {
+    const rows = await this.prisma.tx(market).orderingRefund.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerOrder: { is: { order: { is: { accountId } } } },
+      },
+      include: { lines: true, creditNote: { select: { id: true } } },
+      orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+    return rows.map((row) => ({
+      refund: toRefund(row),
+      creditNoteId: (row.creditNote?.id ?? null) as Id<'CreditNote'> | null,
+    }));
+  }
+
   async reserve(
     market: MarketContext,
     refund: Refund,

@@ -15,7 +15,14 @@ import {
 export type ActivatableIssuer = Pick<
   IssuerDetail,
   'issuerId' | 'version' | 'displayName' | 'state'
->;
+> &
+  Partial<Pick<IssuerDetail, 'affectedCertificates' | 'pendingReactivation'>>;
+import {
+  CloseToNewDialog,
+  DerecogniseDialog,
+  ReactivateDialog,
+  type LifecycleIssuer,
+} from './issuer-lifecycle.tsx';
 import { useIssuerCall } from './use-issuer-call.ts';
 
 /**
@@ -30,15 +37,52 @@ export function IssuerActions({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('certificates.issuers.activate');
-  const [open, setOpen] = useState(false);
+  const tc = useTranslations('certificates.issuers');
+  const [open, setOpen] = useState<'activate' | 'close' | 'derecognise' | 'reactivate' | null>(
+    null,
+  );
+  if (issuer.state === 'active' || issuer.state === 'closed-to-new') {
+    const count = issuer.affectedCertificates;
+    // The count is what Derecognise confirms: without it the lifecycle actions are not offered.
+    if (typeof count !== 'number') return null;
+    const life: LifecycleIssuer = { ...issuer, affectedCertificates: count };
+    const waiting = issuer.pendingReactivation != null;
+    return (
+      <>
+        <div className="flex flex-wrap gap-2 max-sm:w-full max-sm:flex-col">
+          {issuer.state === 'active' ? (
+            <Button variant="secondary" onClick={() => setOpen('close')}>
+              {tc('close.button')}
+            </Button>
+          ) : waiting ? null : (
+            <Button variant="secondary" onClick={() => setOpen('reactivate')}>
+              {tc('reactivate.button')}
+            </Button>
+          )}
+          <Button variant="destructive" onClick={() => setOpen('derecognise')}>
+            {tc('derecognise.button')}
+          </Button>
+        </div>
+        {open === 'close' ? (
+          <CloseToNewDialog issuer={life} csrfToken={csrfToken} onClose={() => setOpen(null)} />
+        ) : null}
+        {open === 'derecognise' ? (
+          <DerecogniseDialog issuer={life} csrfToken={csrfToken} onClose={() => setOpen(null)} />
+        ) : null}
+        {open === 'reactivate' ? (
+          <ReactivateDialog issuer={life} csrfToken={csrfToken} onClose={() => setOpen(null)} />
+        ) : null}
+      </>
+    );
+  }
   if (issuer.state !== 'proposed') return null;
   return (
     <>
-      <Button className="max-sm:w-full" onClick={() => setOpen(true)}>
+      <Button className="max-sm:w-full" onClick={() => setOpen('activate')}>
         {t('button')}
       </Button>
-      {open ? (
-        <ActivateDialog issuer={issuer} csrfToken={csrfToken} onClose={() => setOpen(false)} />
+      {open === 'activate' ? (
+        <ActivateDialog issuer={issuer} csrfToken={csrfToken} onClose={() => setOpen(null)} />
       ) : null}
     </>
   );

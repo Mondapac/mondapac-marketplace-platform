@@ -10,10 +10,14 @@ import {
   IconButton,
   LinkButton,
   ListPagination,
+  ListLoadingStatus,
+  ListRefreshing,
   ListViewsBar,
+  LoadError,
+  listSkeletonRowCount,
+  useListLoading,
   Popover,
   SearchField,
-  SkeletonRows,
   browserStorage,
   prefsKey,
   readIds,
@@ -277,6 +281,18 @@ export function ProductsList({
   const listKey = JSON.stringify([query.view, query.q, query.filters, query.sort, query.direction]);
   const pageIds = useMemo(() => answer?.items.map((item) => item.productId) ?? [], [answer]);
   const selection = useRowSelection(pageIds, SELECTION_MAX, listKey);
+  // Panel loading L2: skeleton rows on the first load, dimmed rows on a later one.
+  const status = useListLoading(loading, answer !== null);
+  // A first load that runs past 30 s gives up: its answer is dropped and Try again starts anew.
+  useEffect(() => {
+    if (!status.stalled) return;
+    latest.current += 1;
+    setLoading(false);
+    setFailure('unavailable');
+  }, [status.stalled]);
+  // The first load failed: the load error in place of the list.
+  const firstLoadError = answer === null && failure === 'unavailable';
+  const skeleton = status.skeleton && failure === null;
 
   const canShare = saved?.canShare ?? permissionKeys.includes(SHARE_PERMISSION);
   const limits = saved?.limits ?? DEFAULT_LIMITS;
@@ -376,7 +392,9 @@ export function ProductsList({
             selection={{
               ids: [...selection.selected],
               allMatching: selection.allMatching,
-              total: answer?.total ?? 0,
+              // Rows kept after a failed refresh belong to another list than the address: no
+              // "select all matching" over them.
+              total: failure === null ? (answer?.total ?? 0) : 0,
             }}
             query={query}
             columns={columns}
@@ -436,8 +454,9 @@ export function ProductsList({
             if (event.key === 'Enter') go({ q: draft.trim() });
           }}
         />
+        {/* The real toolbar shows while the first page loads, but cannot act on rows yet. */}
         {desktop ? (
-          <div className="flex items-center gap-2">
+          <fieldset disabled={skeleton} className="flex min-w-0 items-center gap-2">
             <Popover label={t('filter.button')} icon="sliders" count={filterTotal} width="lg">
               {filterPanel}
             </Popover>
@@ -449,9 +468,9 @@ export function ProductsList({
                 <ProductsColumnsPanel columns={columns} onSave={saveColumns} close={close} />
               )}
             </Popover>
-          </div>
+          </fieldset>
         ) : (
-          <div className="flex items-center gap-2">
+          <fieldset disabled={skeleton} className="flex min-w-0 items-center gap-2">
             <IconButton
               icon="sliders"
               label={
@@ -466,7 +485,7 @@ export function ProductsList({
               aria-haspopup="dialog"
               onClick={() => setSheet('sort')}
             />
-          </div>
+          </fieldset>
         )}
         <p className="text-sm text-fg-muted sm:ms-auto">
           {t('sorted', { field: sortName, order: sortOrder })}
@@ -491,7 +510,8 @@ export function ProductsList({
           }
         />
       ) : null}
-      {failure === null ? null : (
+      {/* A refresh that fails keeps the rows on screen, with the banner above them. */}
+      {failure === null || firstLoadError ? null : (
         <Banner tone="critical" title={failure === 'unavailable' ? t('error.title') : undefined}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span>{t(`error.${failure}`)}</span>
@@ -503,16 +523,24 @@ export function ProductsList({
           </div>
         </Banner>
       )}
-      {loading && (answer === null || failure !== null) ? (
-        <SkeletonRows label={t('loading')} rows={4} />
+      {firstLoadError ? (
+        <LoadError
+          // In the list's own column: no page padding of its own.
+          className=""
+          title={t('error.title')}
+          message={t('error.unavailable')}
+          retryLabel={tl('retry')}
+          onRetry={() => void load(apiQuery)}
+        />
       ) : null}
-      {answer !== null && failure === null ? (
-        <div className={loading ? 'opacity-60' : undefined} aria-busy={loading}>
+      {skeleton || (answer !== null && !firstLoadError) ? (
+        <ListRefreshing refreshing={status.refreshing} busy={loading}>
           <ProductsTable
-            rows={answer.items}
+            rows={answer?.items ?? []}
             columns={columns}
             timeZone={timeZone}
             empty={empty}
+            skeletonRows={skeleton ? listSkeletonRowCount(query.pageSize) : undefined}
             selection={{
               selected: selection.selected,
               allMatching: selection.allMatching,
@@ -521,9 +549,12 @@ export function ProductsList({
               onTogglePage: selection.togglePage,
             }}
           />
-        </div>
+        </ListRefreshing>
       ) : null}
-      {answer !== null && failure === null && answer.total > 0 ? (
+      {loading && answer === null && !firstLoadError ? (
+        <ListLoadingStatus label={t('loading')} slow={status.slow} slowLabel={tl('slow')} />
+      ) : null}
+      {answer !== null && !skeleton && answer.total > 0 ? (
         <ListPagination
           mode={paging}
           page={answer.page}

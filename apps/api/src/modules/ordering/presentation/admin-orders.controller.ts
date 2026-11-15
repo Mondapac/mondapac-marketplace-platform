@@ -154,6 +154,11 @@ export class AdminOrdersController {
     description: 'Orders with a part of this seller.',
   })
   @ApiQuery({
+    name: 'accountId',
+    required: false,
+    description: 'Orders one customer account placed (the customer page’s Orders tab).',
+  })
+  @ApiQuery({
     name: 'from',
     required: false,
     description: 'ISO instant: placed at or after it. Page and cursor mode.',
@@ -190,6 +195,7 @@ export class AdminOrdersController {
       paymentState: query['paymentState'],
       fulfilment: query['fulfilment'],
       sellerId: query['sellerId'],
+      accountId: query['accountId'],
       from: query['from'],
       to: query['to'],
     });

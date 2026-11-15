@@ -2,6 +2,8 @@ import type { CallContext, Id, Temporal } from '@mondapac/shared-kernel';
 import type { CancelPayment } from '../application/use-cases/cancel-payment.use-case';
 import type { MyDeliveredSellerOrders } from '../application/use-cases/my-delivered-seller-orders.use-case';
 import type { OrderPaymentRefQuery } from '../application/use-cases/order-payment-ref.use-case';
+import type { CustomerOrderAccountsQuery } from '../application/use-cases/customer-order-accounts.use-case';
+import type { CustomerOrderStatsQuery } from '../application/use-cases/customer-order-stats.use-case';
 import type { OrderNoticeQuery } from '../application/use-cases/order-notice.use-case';
 import type { AdminOpenObligationsOfQuery } from '../application/use-cases/admin-open-obligations-of.use-case';
 import type { OpenObligationsOfQuery } from '../application/use-cases/open-obligations-of.use-case';
@@ -28,7 +30,20 @@ export class OrderingFacadeImplementation implements OrderingFacade {
     private readonly adminOpenObligations: AdminOpenObligationsOfQuery,
     private readonly healthCounts: SellerHealthCountsQuery,
     private readonly refundNoticeQuery: RefundNoticeQuery,
+    private readonly customerStats: CustomerOrderStatsQuery,
+    private readonly customerAccounts: CustomerOrderAccountsQuery,
   ) {}
+
+  customerOrderStats(context: CallContext, accountId: Id<'Account'>) {
+    return this.customerStats.execute(context, { accountId });
+  }
+
+  customerOrderAccounts(
+    context: CallContext,
+    request: { readonly after: Id<'Account'> | null; readonly limit: number },
+  ) {
+    return this.customerAccounts.execute(context, request);
+  }
 
   refundNotice(
     context: CallContext,

@@ -43,3 +43,23 @@ store of ADR-0026).
   requires for every unprotected `.view` key); the manage key is not a viewer key.
 - Safe value when the store cannot be read: `multi-store` (today's behaviour). This package only
   stores and reads the choice; the cart (B2) and ordering (B3) read it through their own ports.
+
+## Review in System requests (Admin Inbox)
+
+- Every change of a setting here opens a review in Admin Inbox › System requests when the Market
+  reviews area `marketplace` (off by default): the change still goes live at once, the body takes
+  an optional `note` (1 to 500 characters, required only while the area is reviewed, else a 400 on
+  `note` and nothing is saved), and the answer adds `request: {id, number}` (null when nothing was
+  opened). Every setting view carries `review: {reviewed, risk}`.
+- A rejected or withdrawn request restores the value before through `SettingsReverter` (kind
+  `settings.market-setting`), only while the setting still holds the value after; it is a new
+  version with its history and audit row and opens no new review.
+- The AI writer's switch and tier are reviewed at high risk (one at a time, with the reviewer's
+  step-up, never bulk-approved), and a revert never switches the writer back on: it answers
+  `not-permitted` (403 `system-requests.revert-not-permitted`) and the "off" stands until an admin
+  with `settings.ai.manage` switches it on (ADR-0019 R8).
+- By design a revert needs the area's review key, not the setting's own manage key (maker-checker:
+  the reviewer undoes, they do not set a new value). It compares values, not versions: a change
+  and its undo made while the area was off leave no request, and a later revert restores over them.
+- The admin panel sends no `note` yet; keep area `marketplace` off in a Market until the panel's
+  save dialog asks for one (frontend package), or every save there answers 400 on `note`.
