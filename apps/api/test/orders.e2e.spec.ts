@@ -137,6 +137,8 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'saved-filter.name-taken': 409,
     'saved-filter.limit-reached': 409,
     'saved-filter.shared-limit-reached': 409,
+    'second-factor.required': 403,
+    'second-factor.enrolment-required': 403,
     'ordering.search-unavailable': 503,
     'access.unavailable': 503,
   });
