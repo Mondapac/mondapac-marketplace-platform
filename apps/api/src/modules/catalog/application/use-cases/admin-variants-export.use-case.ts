@@ -4,7 +4,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { CATALOG_VARIANT_VIEW } from '../../contracts/permissions';
 import type { AdminVariantRow, AdminVariantsReader } from '../ports/admin-variants.reader';
 import { invalid } from '../own-reads/own-reads.shared';
-import { XLSX_CONTENT_TYPE, type SheetWriter } from '../ports/sheet-writer';
+import { XLSX_CONTENT_TYPE, type SheetWriter } from '../../../../platform/list-export/sheet-writer';
 import type { VariantIssue, VariantRow, VariantsQuery } from '../ports/variant-admin.reader';
 import { CSV_BOM, csvLine } from '../products/products-csv';
 import {

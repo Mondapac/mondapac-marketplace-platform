@@ -11,7 +11,7 @@ import { csvChunks, textRows, type ExportCell } from '../products/products-csv';
 import { closedInput, invalid, type ValidationFailure } from '../categories/category-admin-views';
 import type { CategoryEditStore } from '../ports/category-edit.store';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
-import { XLSX_CONTENT_TYPE, type SheetWriter } from '../ports/sheet-writer';
+import { XLSX_CONTENT_TYPE, type SheetWriter } from '../../../../platform/list-export/sheet-writer';
 import { editorAccountOf } from '../categories/category-editor';
 
 export interface CategoryTreeExportInput {

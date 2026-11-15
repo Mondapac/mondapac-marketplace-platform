@@ -1,6 +1,6 @@
 import { PassThrough } from 'node:stream';
 import { stream as excel } from 'exceljs';
-import type { SheetWriter } from '../../application/ports/sheet-writer';
+import type { SheetWriter } from './sheet-writer';
 
 /** Resolves when the stream has drained, or when it closes or fails (nobody reads it any more). */
 function drained(out: PassThrough): Promise<void> {
