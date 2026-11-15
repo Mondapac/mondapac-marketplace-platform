@@ -254,6 +254,10 @@ const afterCursor = (page: OrderPage) =>
  * {@link OrderRepository} on `ordering.orders`, `seller_orders` and `order_lines`, through the
  * Market-scoped client with `marketId` at the top level of every `where`.
  */
+/** The seller orders' `paid_at`: the confirmation time of a confirmed order, else null. */
+const paidAtOf = (order: Pick<OrderState, 'status' | 'confirmedAt'>): Date | null =>
+  order.status === 'confirmed' && order.confirmedAt !== null ? toDate(order.confirmedAt) : null;
+
 export class PrismaOrderRepository implements OrderRepository {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -296,6 +300,7 @@ export class PrismaOrderRepository implements OrderRepository {
         shippingTaxInclusive: s.shippingTaxInclusive,
         totalAmount: s.total,
         fulfilment: s.fulfilment,
+        paidAt: paidAtOf(order),
         ledgerState: s.ledgerState,
         deliveryMethod: s.deliveryMethod,
         deliveryWindowStart: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.start),
@@ -456,7 +461,17 @@ export class PrismaOrderRepository implements OrderRepository {
         version: order.version + 1,
       },
     });
-    return updated.count === 0 ? 'stale' : 'saved';
+    if (updated.count === 0) return 'stale';
+    const paidAt = paidAtOf(order);
+    if (paidAt !== null) {
+      // The payment time on the seller orders (admin Shipments and Invoices lists), in the unit
+      // that confirms the order; written once, so later saves match no row.
+      await this.prisma.tx(market).orderingSellerOrder.updateMany({
+        where: { marketId: market.marketId, orderId: order.id, paidAt: null },
+        data: { paidAt },
+      });
+    }
+    return 'saved';
   }
 
   async listForSeller(

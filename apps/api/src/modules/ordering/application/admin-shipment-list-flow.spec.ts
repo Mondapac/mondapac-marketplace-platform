@@ -17,6 +17,7 @@ import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
   shipmentRowActions,
   shipmentStage,
+  type ShipmentCursor,
   type ShipmentListFilter,
   type ShipmentListRecord,
   type ShipmentSort,
@@ -35,22 +36,38 @@ const VIEW = 'ordering.order.view';
 
 class RecordingReader implements AdminShipmentListReader {
   records: ShipmentListRecord[] = [];
-  asked: { filter: ShipmentListFilter; sort: ShipmentSort; offset: number; limit: number }[] = [];
+  asked: {
+    filter: ShipmentListFilter;
+    sort: ShipmentSort;
+    offset: number;
+    limit: number;
+    after?: ShipmentCursor;
+  }[] = [];
   page(
     _m: MarketContext,
     filter: ShipmentListFilter,
     sort: ShipmentSort,
     offset: number,
     limit: number,
+    after: ShipmentCursor | null = null,
   ) {
-    this.asked.push({ filter, sort, offset, limit });
+    this.asked.push({ filter, sort, offset, limit, ...(after === null ? {} : { after }) });
     return Promise.resolve(this.records.slice(offset, offset + limit));
   }
+  counted = 0;
   count() {
+    this.counted += 1;
     return Promise.resolve(this.records.length);
   }
   countByStage() {
-    return Promise.resolve({ toPrepare: 1, ready: 2, shipped: 3, delivered: 4, attention: 5 });
+    return Promise.resolve({
+      toPrepare: 1,
+      ready: 2,
+      shipped: 3,
+      delivered: 4,
+      refunded: 6,
+      attention: 5,
+    });
   }
 }
 
@@ -127,17 +144,18 @@ describe.each(['AU', 'ZZ'] as const)('admin shipment list in market %s', (code) 
     expect(reader.asked).toEqual([]);
   });
 
-  it('answers the first page, newest payment first, with the total and the stage counts', async () => {
+  it('answers the first page, newest payment first, with the stage counts as the total', async () => {
     const { list, reader, context } = setup();
     reader.records = [record(), record()];
     const result = await list.execute(context, {});
     if (!result.ok) throw new Error(result.error.code);
     expect(result.value).toMatchObject({
-      total: 2,
+      total: 16,
       page: 1,
       pageSize: 25,
-      counts: { toPrepare: 1, ready: 2, shipped: 3, delivered: 4, attention: 5 },
+      counts: { toPrepare: 1, ready: 2, shipped: 3, delivered: 4, refunded: 6, attention: 5 },
     });
+    expect(reader.counted).toBe(0);
     expect(reader.asked[0]).toMatchObject({
       sort: { key: 'paid', direction: 'desc' },
       offset: 0,
@@ -187,10 +205,30 @@ describe.each(['AU', 'ZZ'] as const)('admin shipment list in market %s', (code) 
     });
   });
 
-  it('reads a text that is not an id as an exact tracking reference', async () => {
+  it('reads a text that is not an id as an exact tracking reference, spaces included', async () => {
     const { list, reader, context } = setup();
     await list.execute(context, { q: ' AP-12345678 ' });
     expect(reader.asked[0]!.filter).toMatchObject({ trackingRef: 'AP-12345678', reference: null });
+    // The seller's ship input allows inner spaces (order.ts TRACKING), so the search does too.
+    const spaced = await list.execute(context, { q: 'JD 0123 4567' });
+    expect(spaced.ok).toBe(true);
+    expect(reader.asked[1]!.filter.trackingRef).toBe('JD 0123 4567');
+  });
+
+  it('takes a tab total from the counts and counts only a narrower filter', async () => {
+    const { list, reader, context } = setup();
+    const tab = async (input: Record<string, unknown>) => {
+      const result = await list.execute(context, input);
+      return result.ok ? result.value.total : null;
+    };
+    expect(await tab({ stage: 'to-prepare' })).toBe(1);
+    expect(await tab({ stage: 'refunded' })).toBe(6);
+    expect(await tab({ attention: 'any' })).toBe(5);
+    expect(reader.counted).toBe(0);
+    reader.records = [record()];
+    expect(await tab({ stage: 'ready', deliveryMethod: 'pickup' })).toBe(1);
+    expect(await tab({ stage: 'ready', attention: 'any' })).toBe(1);
+    expect(reader.counted).toBe(2);
   });
 
   it('refuses every malformed field at once, before reading', async () => {
@@ -203,7 +241,7 @@ describe.each(['AU', 'ZZ'] as const)('admin shipment list in market %s', (code) 
       stage: 'lost',
       deliveryMethod: 'drone',
       attention: 'late',
-      q: 'has space',
+      q: 'not <a> ref',
       search: 'x',
       fleet: 'Uber Direct',
       sellerId: 'abc',
@@ -228,6 +266,48 @@ describe.each(['AU', 'ZZ'] as const)('admin shipment list in market %s', (code) 
       'paidTo:format',
       'shippedFrom:format',
       'shippedTo:format',
+    ]);
+    expect(reader.asked).toEqual([]);
+  });
+
+  it('walks Previous/Next pages newest payment first, past row 10,000, with no total', async () => {
+    const { list, reader, context } = setup();
+    const rows = [record(), record(), record()];
+    reader.records = rows;
+    const first = await list.execute(context, { limit: 2 });
+    if (!first.ok) throw new Error(first.error.code);
+    expect(first.value).toMatchObject({ total: null, page: null, pageSize: 2 });
+    expect(first.value.rows.map((r) => r.sellerOrderId)).toEqual([
+      rows[0]!.sellerOrderId,
+      rows[1]!.sellerOrderId,
+    ]);
+    expect(first.value.nextCursor).toBe(`${T0.epochMilliseconds}.${rows[1]!.sellerOrderId}`);
+    expect(reader.asked[0]).toMatchObject({
+      sort: { key: 'paid', direction: 'desc' },
+      offset: 0,
+      limit: 3,
+    });
+    expect(reader.counted).toBe(0);
+
+    reader.records = [rows[2]!];
+    const last = await list.execute(context, { cursor: first.value.nextCursor, limit: 2 });
+    expect(reader.asked[1]!.after).toEqual({ paidAt: T0, sellerOrderId: rows[1]!.sellerOrderId });
+    expect(last.ok && last.value.nextCursor).toBeNull();
+  });
+
+  it('refuses a malformed cursor and page-mode fields beside it', async () => {
+    const { list, reader, context } = setup();
+    const result = await list.execute(context, {
+      cursor: 'not-a-cursor',
+      limit: 101,
+      page: 2,
+      sort: 'total',
+    });
+    expect(fieldsOf(result).map((f) => `${f.path}:${f.code}`)).toEqual([
+      'page:with-cursor',
+      'sort:with-cursor',
+      'cursor:format',
+      'limit:range',
     ]);
     expect(reader.asked).toEqual([]);
   });
@@ -284,6 +364,12 @@ describe.each(['AU', 'ZZ'] as const)('admin shipment list in market %s', (code) 
     expect(shipmentStage(record({ readyAt: T0 }))).toBe('ready');
     expect(shipmentStage(record({ readyAt: T0, fulfilment: 'shipped' }))).toBe('shipped');
     expect(shipmentStage(record({ fulfilment: 'delivered' }))).toBe('delivered');
+    // Refunded in full before it was shipped (an admin cancellation), ready or not.
+    const all = { amount: 1500n, currency };
+    expect(shipmentStage(record({ refunded: all }))).toBe('refunded');
+    expect(shipmentStage(record({ readyAt: T0, refunded: all }))).toBe('refunded');
+    expect(shipmentStage(record({ refunded: { amount: 500n, currency } }))).toBe('to-prepare');
+    expect(shipmentStage(record({ fulfilment: 'delivered', refunded: all }))).toBe('delivered');
     expect(shipmentRowActions(record())).toEqual(['view-order']);
   });
 });

@@ -70,7 +70,11 @@ export class ShipmentListRowBody {
     description: 'Set when the seller order needs an admin.',
   })
   deliveryAttention!: string | null;
-  @ApiProperty({ type: MoneyView, description: 'What the buyer paid for delivery.' })
+  @ApiProperty({
+    type: MoneyView,
+    description:
+      'What the buyer paid for delivery, tax included (fee plus its tax where excluded).',
+  })
   shipping!: MoneyView;
   @ApiProperty({ type: MoneyView }) total!: MoneyView;
   @ApiProperty({ type: MoneyView, description: 'The gross of the refunds not failed.' })
@@ -88,6 +92,8 @@ export class ShipmentStageCountsBody {
   @ApiProperty() ready!: number;
   @ApiProperty() shipped!: number;
   @ApiProperty() delivered!: number;
+  @ApiProperty({ description: 'Refunded in full before shipping (an admin cancellation).' })
+  refunded!: number;
   @ApiProperty({ description: 'Seller orders that need an admin, any stage.' }) attention!: number;
 }
 
@@ -98,9 +104,26 @@ export class ShipmentListPageBody {
     description: "The Market's shipments per stage, whatever the page or filter (the tab counts).",
   })
   counts!: ShipmentStageCountsBody;
-  @ApiProperty({ description: 'The shipments that match the filter.' }) total!: number;
-  @ApiProperty({ description: 'This page, from 1.' }) page!: number;
-  @ApiProperty({ description: 'Rows per page.' }) pageSize!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'The shipments that match the filter; null on a Previous/Next page.',
+  })
+  total!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'This page, from 1; null on a Previous/Next page.',
+  })
+  page!: number | null;
+  @ApiProperty({ description: 'Rows per page (the `limit` on a Previous/Next page).' })
+  pageSize!: number;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Previous/Next paging: the `cursor` of the next page; null on the last one.',
+  })
+  nextCursor!: string | null;
   @ApiProperty({
     description:
       'True when `search` matched more than 200 customers or stores, so some are left out.',
@@ -154,6 +177,7 @@ export function shipmentListPageBody(page: ShipmentListPage): ShipmentListPageBo
     total: page.total,
     page: page.page,
     pageSize: page.pageSize,
+    nextCursor: page.nextCursor,
     searchCapped: page.searchCapped,
     searchScope: page.searchScope,
   };

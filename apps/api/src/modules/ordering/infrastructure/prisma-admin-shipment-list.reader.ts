@@ -3,6 +3,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { AdminShipmentListReader } from '../application/ports/admin-shipment-list.reader';
 import type {
+  ShipmentCursor,
   ShipmentListFilter,
   ShipmentListRecord,
   ShipmentSort,
@@ -21,6 +22,7 @@ const SELECT = {
   id: true,
   orderId: true,
   sellerId: true,
+  paidAt: true,
   deliveryMethod: true,
   deliveryWindowStart: true,
   deliveryWindowEnd: true,
@@ -33,27 +35,48 @@ const SELECT = {
   deliveryQuoteFleet: true,
   deliveryAttention: true,
   shippingAmount: true,
+  shippingTaxAmount: true,
+  shippingTaxInclusive: true,
   totalAmount: true,
   refundedAmount: true,
-  order: { select: { accountId: true, currency: true, confirmedAt: true } },
+  order: { select: { accountId: true, currency: true } },
 } as const;
 
-const STAGE_WHERE: Record<ShipmentStage, object> = {
-  'to-prepare': { fulfilment: 'to-ship', readyAt: null },
-  ready: { fulfilment: 'to-ship', readyAt: { not: null } },
-  shipped: { fulfilment: 'shipped' },
-  delivered: { fulfilment: 'delivered' },
-};
+/**
+ * The WHERE of one stage, the same rule as `shipmentStage`: refunded in full (kept beside the
+ * refunded gross, CHECK) wins over to-prepare and ready. The to-ship stages carry
+ * `fulfilment = 'to-ship'` so that they read the to-ship partial index.
+ */
+function stageWhere(stage: ShipmentStage): object {
+  switch (stage) {
+    case 'to-prepare':
+      return { fulfilment: 'to-ship', readyAt: null, refundedInFull: false };
+    case 'ready':
+      return { fulfilment: 'to-ship', readyAt: { not: null }, refundedInFull: false };
+    case 'refunded':
+      return { fulfilment: 'to-ship', refundedInFull: true };
+    case 'shipped':
+      return { fulfilment: 'shipped' };
+    default:
+      return { fulfilment: 'delivered' };
+  }
+}
 
 const range = (from: Temporal.Instant | null, to: Temporal.Instant | null) => ({
   ...(from === null ? {} : { gte: toDate(from) }),
   ...(to === null ? {} : { lt: toDate(to) }),
 });
 
-/** The WHERE of a filter: the Market's own seller orders of paid (confirmed) orders only. */
+/**
+ * The paid seller orders of the Market: `paid_at` is set exactly when the order is confirmed,
+ * so the list reads `ordering.seller_orders` alone, over its paid-at partial index.
+ */
+const paid = (market: MarketContext) => ({ marketId: market.marketId, paidAt: { not: null } });
+
+/** The WHERE of a filter. Only a customer search joins the order (for its account). */
 function where(market: MarketContext, filter: ShipmentListFilter) {
   const and: object[] = [];
-  if (filter.stage !== null) and.push(STAGE_WHERE[filter.stage]);
+  if (filter.stage !== null) and.push(stageWhere(filter.stage));
   if (filter.reference !== null) {
     and.push({ OR: [{ id: filter.reference }, { orderId: filter.reference }] });
   }
@@ -66,7 +89,12 @@ function where(market: MarketContext, filter: ShipmentListFilter) {
     and.push({
       OR: [
         { sellerId: { in: [...filter.parties.sellerIds] } },
-        { order: { accountId: { in: [...filter.parties.accountIds] } } },
+        {
+          order: {
+            marketId: market.marketId,
+            accountId: { in: [...filter.parties.accountIds] },
+          },
+        },
       ],
     });
   }
@@ -75,18 +103,15 @@ function where(market: MarketContext, filter: ShipmentListFilter) {
   }
   return {
     marketId: market.marketId,
-    order: {
-      marketId: market.marketId,
-      status: 'confirmed',
-      ...(filter.paidFrom === null && filter.paidTo === null
-        ? {}
-        : { confirmedAt: range(filter.paidFrom, filter.paidTo) }),
+    paidAt: {
+      not: null,
+      ...range(filter.paidFrom, filter.paidTo),
     },
     ...(filter.trackingRef === null ? {} : { trackingRef: filter.trackingRef }),
     ...(filter.deliveryMethod === null ? {} : { deliveryMethod: filter.deliveryMethod }),
     ...(filter.fleet === null ? {} : { deliveryQuoteFleet: filter.fleet }),
     ...(filter.sellerId === null ? {} : { sellerId: filter.sellerId }),
-    ...(and.length === 0 ? {} : { AND: and }),
+    AND: and,
   };
 }
 
@@ -104,8 +129,22 @@ function orderBy(sort: ShipmentSort) {
     case 'delivered':
       return [last('deliveredAt'), tie];
     default:
-      return [{ order: { confirmedAt: sort.direction } }, tie];
+      return [{ paidAt: sort.direction }, tie];
   }
+}
+
+/**
+ * What the buyer paid for delivery, tax included: the fee, plus its recorded tax when the price
+ * excluded it (ADR-0039). A fee placed before its tax was recorded is shown as stored.
+ */
+function shippingGross(row: {
+  shippingAmount: bigint;
+  shippingTaxAmount: bigint | null;
+  shippingTaxInclusive: boolean | null;
+}): bigint {
+  return row.shippingTaxInclusive === false && row.shippingTaxAmount !== null
+    ? row.shippingAmount + row.shippingTaxAmount
+    : row.shippingAmount;
 }
 
 /** The admin Shipments list over `ordering.seller_orders` and their orders. */
@@ -118,9 +157,25 @@ export class PrismaAdminShipmentListReader implements AdminShipmentListReader {
     sort: ShipmentSort,
     offset: number,
     limit: number,
+    after: ShipmentCursor | null = null,
   ): Promise<readonly ShipmentListRecord[]> {
+    const base = where(market, filter);
     const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
-      where: where(market, filter),
+      where:
+        after === null
+          ? base
+          : {
+              ...base,
+              AND: [
+                ...base.AND,
+                {
+                  OR: [
+                    { paidAt: { lt: toDate(after.paidAt) } },
+                    { paidAt: toDate(after.paidAt), id: { lt: after.sellerOrderId } },
+                  ],
+                },
+              ],
+            },
       select: SELECT,
       orderBy: orderBy(sort),
       skip: offset,
@@ -128,16 +183,16 @@ export class PrismaAdminShipmentListReader implements AdminShipmentListReader {
     });
     return rows.map((row) => {
       const currency = row.order.currency;
-      if (row.order.confirmedAt === null) {
-        // The WHERE keeps confirmed orders only, and a confirmed order always has the time.
-        throw new Error('ordering: a confirmed order without its confirmation time');
+      if (row.paidAt === null) {
+        // The WHERE keeps paid seller orders only.
+        throw new Error('ordering: a paid seller order without its payment time');
       }
       return {
         sellerOrderId: row.id as Id<'SellerOrder'>,
         orderId: row.orderId as Id<'Order'>,
         sellerId: row.sellerId as Id<'Seller'>,
         accountId: row.order.accountId as Id<'Account'>,
-        paidAt: toInstant(row.order.confirmedAt),
+        paidAt: toInstant(row.paidAt),
         deliveryMethod: row.deliveryMethod as DeliveryMethod,
         deliveryWindow:
           row.deliveryWindowStart === null || row.deliveryWindowEnd === null
@@ -151,7 +206,7 @@ export class PrismaAdminShipmentListReader implements AdminShipmentListReader {
         trackingRef: row.trackingRef,
         fleet: row.deliveryQuoteFleet,
         deliveryAttention: row.deliveryAttention as DeliveryAttention | null,
-        shipping: { amount: row.shippingAmount, currency },
+        shipping: { amount: shippingGross(row), currency },
         total: { amount: row.totalAmount, currency },
         refunded: { amount: row.refundedAmount, currency },
       };
@@ -162,19 +217,32 @@ export class PrismaAdminShipmentListReader implements AdminShipmentListReader {
     return this.prisma.tx(market).orderingSellerOrder.count({ where: where(market, filter) });
   }
 
+  /**
+   * The tab counts in two reads: one pass over the paid seller orders grouped by fulfilment,
+   * refunded-in-full and attention, and one count of ready within the small to-ship set (to
+   * prepare is the rest of to-ship).
+   */
   async countByStage(market: MarketContext): Promise<ShipmentStageCounts> {
     const tx = this.prisma.tx(market);
-    const paid = {
-      marketId: market.marketId,
-      order: { marketId: market.marketId, status: 'confirmed' },
-    };
-    const [toPrepare, ready, shipped, delivered, attention] = await Promise.all([
-      tx.orderingSellerOrder.count({ where: { ...paid, ...STAGE_WHERE['to-prepare'] } }),
-      tx.orderingSellerOrder.count({ where: { ...paid, ...STAGE_WHERE.ready } }),
-      tx.orderingSellerOrder.count({ where: { ...paid, ...STAGE_WHERE.shipped } }),
-      tx.orderingSellerOrder.count({ where: { ...paid, ...STAGE_WHERE.delivered } }),
-      tx.orderingSellerOrder.count({ where: { ...paid, deliveryAttention: { not: null } } }),
+    const base = paid(market);
+    const [groups, ready] = await Promise.all([
+      tx.orderingSellerOrder.groupBy({
+        by: ['fulfilment', 'refundedInFull', 'deliveryAttention'],
+        where: base,
+        _count: { _all: true },
+      }),
+      tx.orderingSellerOrder.count({ where: { ...base, ...stageWhere('ready') } }),
     ]);
-    return { toPrepare, ready, shipped, delivered, attention };
+    const sum = (keep: (group: (typeof groups)[number]) => boolean) =>
+      groups.filter(keep).reduce((n, group) => n + group._count._all, 0);
+    const refunded = sum((group) => group.fulfilment === 'to-ship' && group.refundedInFull);
+    return {
+      toPrepare: sum((group) => group.fulfilment === 'to-ship') - refunded - ready,
+      ready,
+      shipped: sum((group) => group.fulfilment === 'shipped'),
+      delivered: sum((group) => group.fulfilment === 'delivered'),
+      refunded,
+      attention: sum((group) => group.deliveryAttention !== null),
+    };
   }
 }

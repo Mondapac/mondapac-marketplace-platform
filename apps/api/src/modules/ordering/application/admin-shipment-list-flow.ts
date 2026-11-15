@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import {
+  type ShipmentCursor,
   SHIPMENT_SORT_KEYS,
   SHIPMENT_STAGES,
   shipmentRowActions,
@@ -12,6 +13,7 @@ import {
   type ShipmentSort,
 } from '../domain/admin-shipment-list';
 import { DELIVERY_METHODS, type DeliveryAttention } from '../domain/delivery-method';
+import { TRACKING } from '../domain/order';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import { settled } from './order-labels';
 import type { AdminShipmentListReader } from './ports/admin-shipment-list.reader';
@@ -38,6 +40,13 @@ export interface ShipmentListInput {
   /** The page from 1 (default 1); page x pageSize may not pass 10,000. */
   readonly page?: unknown;
   readonly pageSize?: unknown;
+  /**
+   * Previous/Next paging (List paging `prev-next`, and past row 10,000): `limit` rows from 1 to
+   * 100, after `cursor` (the `nextCursor` of the page before). Newest payment first only; no
+   * `page`, `pageSize`, `sort` or `direction` with it.
+   */
+  readonly cursor?: unknown;
+  readonly limit?: unknown;
   readonly sort?: unknown;
   readonly direction?: unknown;
   readonly stage?: unknown;
@@ -64,14 +73,30 @@ const ATTENTION: readonly (DeliveryAttention | 'any')[] = [
 ];
 const FLEET = /^[a-z0-9_]{1,40}$/;
 /** What a seller may type as a tracking reference (1 to 80 printable characters). */
-const TRACKING = /^[\x21-\x7e]{1,80}$/;
+
+/** A cursor is `<paid-at ms>.<seller order id>`: opaque to callers, checked on the way in. */
+export const encodeShipmentCursor = (row: ShipmentCursor): string =>
+  `${row.paidAt.epochMilliseconds}.${row.sellerOrderId}`;
+
+function decodeCursor(value: unknown): ShipmentCursor | null {
+  const match = typeof value === 'string' ? /^([0-9]{1,15})\.([0-9a-f-]{36})$/.exec(value) : null;
+  const id = match === null ? null : parseId<'SellerOrder'>(match[2]!);
+  if (match === null || id === null || !id.ok) return null;
+  return {
+    paidAt: Temporal.Instant.fromEpochMilliseconds(Number(match[1])),
+    sellerOrderId: id.value,
+  };
+}
+
+type Paging =
+  | { readonly kind: 'pages'; readonly page: number; readonly pageSize: number }
+  | { readonly kind: 'prev-next'; readonly after: ShipmentCursor | null; readonly limit: number };
 
 interface Parsed {
   readonly filter: ShipmentListFilter;
   readonly search: string | null;
   readonly sort: ShipmentSort;
-  readonly page: number;
-  readonly pageSize: number;
+  readonly paging: Paging;
 }
 
 function parse(input: ShipmentListInput): Result<Parsed, ReadFailure> {
@@ -98,6 +123,24 @@ function parse(input: ShipmentListInput): Result<Parsed, ReadFailure> {
     const given = whole(input.pageSize, 1, MAX_PAGE_SIZE);
     if (given === null) fields.push({ path: 'pageSize', code: 'range' });
     else pageSize = given;
+  }
+  // Previous/Next: asked for by a cursor or a limit; it walks newest payment first only.
+  const prevNext = input.cursor !== undefined || input.limit !== undefined;
+  let after: ShipmentCursor | null = null;
+  let limit = DEFAULT_PAGE_SIZE;
+  if (prevNext) {
+    for (const path of ['page', 'pageSize', 'sort', 'direction'] as const) {
+      if (input[path] !== undefined) fields.push({ path, code: 'with-cursor' });
+    }
+    if (input.cursor !== undefined) {
+      after = decodeCursor(input.cursor);
+      if (after === null) fields.push({ path: 'cursor', code: 'format' });
+    }
+    if (input.limit !== undefined) {
+      const given = whole(input.limit, 1, MAX_PAGE_SIZE);
+      if (given === null) fields.push({ path: 'limit', code: 'range' });
+      else limit = given;
+    }
   }
   const key = oneOf('sort', input.sort, SHIPMENT_SORT_KEYS) ?? 'paid';
   const direction = oneOf('direction', input.direction, ['asc', 'desc'] as const) ?? 'desc';
@@ -164,7 +207,7 @@ function parse(input: ShipmentListInput): Result<Parsed, ReadFailure> {
     input.shippedFrom,
     input.shippedTo,
   );
-  if (fields.length === 0 && page * pageSize > MAX_PAGED_ROWS) {
+  if (fields.length === 0 && !prevNext && page * pageSize > MAX_PAGED_ROWS) {
     fields.push({ path: 'page', code: 'too-deep' });
   }
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
@@ -184,9 +227,8 @@ function parse(input: ShipmentListInput): Result<Parsed, ReadFailure> {
       parties: null,
     },
     search,
-    sort: { key, direction },
-    page,
-    pageSize,
+    sort: prevNext ? { key: 'paid', direction: 'desc' } : { key, direction },
+    paging: prevNext ? { kind: 'prev-next', after, limit } : { kind: 'pages', page, pageSize },
   });
 }
 
@@ -202,7 +244,7 @@ export async function listShipments(
 ): Promise<Result<ShipmentListPage, ReadFailure>> {
   const parsed = parse(input ?? {});
   if (!parsed.ok) return parsed;
-  const { sort, page, pageSize } = parsed.value;
+  const { sort, paging } = parsed.value;
   let filter = parsed.value.filter;
   let searchCapped = false;
   let searchScope: ShipmentListPage['searchScope'] = null;
@@ -231,19 +273,37 @@ export async function listShipments(
   const read = await deps.unitOfWork.run<
     {
       readonly records: readonly ShipmentListRecord[];
-      readonly total: number;
+      readonly total: number | null;
+      readonly nextCursor: string | null;
       readonly counts: ShipmentListPage['counts'];
     },
     ReadFailure
   >(
     context.market,
     async () => {
-      const [records, total, counts] = await Promise.all([
+      if (paging.kind === 'prev-next') {
+        // One row more than asked tells whether a next page exists.
+        const [rows, counts] = await Promise.all([
+          deps.shipments.page(context.market, filter, sort, 0, paging.limit + 1, paging.after),
+          deps.shipments.countByStage(context.market),
+        ]);
+        const records = rows.slice(0, paging.limit);
+        const last = records[records.length - 1];
+        const nextCursor =
+          rows.length > paging.limit && last !== undefined
+            ? encodeShipmentCursor({ paidAt: last.paidAt, sellerOrderId: last.sellerOrderId })
+            : null;
+        return ok({ records, total: null, nextCursor, counts });
+      }
+      const { page, pageSize } = paging;
+      const [records, counts] = await Promise.all([
         deps.shipments.page(context.market, filter, sort, (page - 1) * pageSize, pageSize),
-        deps.shipments.count(context.market, filter),
         deps.shipments.countByStage(context.market),
       ]);
-      return ok({ records, total, counts });
+      // A tab with no other filter has its count already; only a narrower filter counts again.
+      const total =
+        tabTotal(filter, counts) ?? (await deps.shipments.count(context.market, filter));
+      return ok({ records, total, nextCursor: null, counts });
     },
     { readOnly: true },
   );
@@ -270,9 +330,41 @@ export async function listShipments(
     })),
     counts: read.value.counts,
     total: read.value.total,
-    page,
-    pageSize,
+    page: paging.kind === 'pages' ? paging.page : null,
+    pageSize: paging.kind === 'pages' ? paging.pageSize : paging.limit,
+    nextCursor: read.value.nextCursor,
     searchCapped,
     searchScope,
   });
+}
+
+/**
+ * The total of a filter that is only a tab (a stage, `attention=any`, or nothing), read from the
+ * tab counts; null when the filter narrows further and must be counted.
+ */
+export function tabTotal(
+  filter: ShipmentListFilter,
+  counts: ShipmentListPage['counts'],
+): number | null {
+  const { stage, attention, ...rest } = filter;
+  if (Object.values(rest).some((value) => value !== null)) return null;
+  if (stage === null && attention === null) {
+    return counts.toPrepare + counts.ready + counts.shipped + counts.delivered + counts.refunded;
+  }
+  if (stage === null && attention === 'any') return counts.attention;
+  if (attention !== null) return null;
+  switch (stage) {
+    case 'to-prepare':
+      return counts.toPrepare;
+    case 'ready':
+      return counts.ready;
+    case 'shipped':
+      return counts.shipped;
+    case 'delivered':
+      return counts.delivered;
+    case 'refunded':
+      return counts.refunded;
+    default:
+      return null;
+  }
 }

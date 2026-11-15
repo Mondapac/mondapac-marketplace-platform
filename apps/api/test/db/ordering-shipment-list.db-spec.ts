@@ -92,6 +92,8 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       total?: bigint;
       tracking?: string;
       attention?: 'no-carrier';
+      /** A delivery fee and its tax; the tax is outside the fee unless `inclusive`. */
+      fee?: { amount: bigint; tax: bigint; inclusive: boolean };
     } = {},
   ) => {
     const paid = options.paid ?? true;
@@ -99,6 +101,11 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
     const orderId = ids.next<'Order'>();
     const sellerOrderId = ids.next<'SellerOrder'>();
     const total = options.total ?? 1000n;
+    // The goods: the total less the fee and any tax outside it.
+    const subtotal =
+      total -
+      (options.fee?.amount ?? 0n) -
+      (options.fee !== undefined && !options.fee.inclusive ? options.fee.tax : 0n);
     const order: OrderState = {
       id: orderId,
       marketId: market.marketId,
@@ -122,11 +129,11 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
         {
           id: sellerOrderId,
           sellerId,
-          subtotal: total,
-          shipping: 0n,
-          shippingTaxRateBps: null,
-          shippingTax: null,
-          shippingTaxInclusive: null,
+          subtotal,
+          shipping: options.fee?.amount ?? 0n,
+          shippingTaxRateBps: options.fee === undefined ? null : 1000,
+          shippingTax: options.fee?.tax ?? null,
+          shippingTaxInclusive: options.fee?.inclusive ?? null,
           total,
           fulfilment: 'to-ship',
           carrier: null,
@@ -160,8 +167,8 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
           offerId: ids.next<'Offer'>(),
           variantId: ids.next<'Variant'>(),
           quantity: 1,
-          unitPrice: money(total, currency),
-          lineAmount: total,
+          unitPrice: money(subtotal, currency),
+          lineAmount: subtotal,
           taxInclusive: true,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
@@ -242,6 +249,53 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
     expect(counts.value.delivered).toBeGreaterThanOrEqual(1);
   });
 
+  it('lists an order once it is paid: the confirming save writes the payment time', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const unpaid = await shipment(sellerId, 'to-prepare', { paid: false });
+    expect(await idsOf({ sellerId })).toEqual([]);
+    const paidAt = clock.now();
+    const saved = await db.unitOfWork.run(market, async () => {
+      const order = await orders.findById(market, unpaid.orderId);
+      if (order === null) throw new Error('order missing');
+      return ok(
+        await orders.save(market, {
+          ...order,
+          status: 'confirmed',
+          paymentState: 'captured',
+          confirmedAt: paidAt,
+        }),
+      );
+    });
+    expect(saved.ok && saved.value).toBe('saved');
+    const rows = await db.unitOfWork.run(
+      market,
+      async () => ok(await reader.page(market, { ...NO_FILTER, sellerId }, NEWEST, 0, 10)),
+      { readOnly: true },
+    );
+    expect(rows.ok && rows.value.map((r) => [r.sellerOrderId, r.paidAt.toString()])).toEqual([
+      [unpaid.sellerOrderId, paidAt.toString()],
+    ]);
+  });
+
+  it('shows the delivery fee as the buyer paid it, tax included', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const outside = await shipment(sellerId, 'ready', {
+      fee: { amount: 500n, tax: 50n, inclusive: false },
+    });
+    const inside = await shipment(sellerId, 'ready', {
+      fee: { amount: 550n, tax: 50n, inclusive: true },
+    });
+    const rows = await db.unitOfWork.run(
+      market,
+      async () => ok(await reader.page(market, { ...NO_FILTER, sellerId }, NEWEST, 0, 10)),
+      { readOnly: true },
+    );
+    if (!rows.ok) throw new Error('read failed');
+    const fee = new Map(rows.value.map((r) => [r.sellerOrderId, r.shipping]));
+    expect(fee.get(outside.sellerOrderId)).toEqual({ amount: 550n, currency });
+    expect(fee.get(inside.sellerOrderId)).toEqual({ amount: 550n, currency });
+  });
+
   it('filters by method, fleet, attention, payment time and ship time', async () => {
     const sellerId = ids.next<'Seller'>();
     const start = clock.now();
@@ -254,6 +308,7 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
     expect(await idsOf({ sellerId, fleet: 'fake_test' })).toEqual([carried.sellerOrderId]);
     expect(await idsOf({ sellerId, attention: 'any' })).toEqual([stuck.sellerOrderId]);
     expect(await idsOf({ sellerId, attention: 'carrier-unknown' })).toEqual([]);
+    expect(await idsOf({ sellerId, attention: 'no-carrier' })).toEqual([stuck.sellerOrderId]);
     expect(await idsOf({ sellerId, paidFrom: start, paidTo: middle })).toEqual([
       pickup.sellerOrderId,
     ]);
@@ -265,10 +320,14 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
   it('finds a shipment by seller order id, order id or tracking reference', async () => {
     const sellerId = ids.next<'Seller'>();
     const target = await shipment(sellerId, 'shipped', { tracking: `TRK-${sellerId}` });
+    const spaced = await shipment(sellerId, 'shipped', { tracking: `JD ${sellerId.slice(0, 8)}` });
     await shipment(sellerId, 'shipped', { tracking: 'OTHER' });
     expect(await idsOf({ reference: target.sellerOrderId })).toEqual([target.sellerOrderId]);
     expect(await idsOf({ reference: target.orderId })).toEqual([target.sellerOrderId]);
     expect(await idsOf({ trackingRef: `TRK-${sellerId}` })).toEqual([target.sellerOrderId]);
+    expect(await idsOf({ sellerId, trackingRef: `JD ${sellerId.slice(0, 8)}` })).toEqual([
+      spaced.sellerOrderId,
+    ]);
   });
 
   it('matches the search by customer account or by store', async () => {
@@ -305,6 +364,18 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       dear.sellerOrderId,
       waiting.sellerOrderId,
     ]);
+    expect(await idsOf({ sellerId }, { key: 'paid', direction: 'asc' })).toEqual([
+      cheap.sellerOrderId,
+      dear.sellerOrderId,
+      waiting.sellerOrderId,
+    ]);
+    const handed = await shipment(sellerId, 'delivered', { total: 300n });
+    // Not delivered yet: no time, so last either way.
+    for (const direction of ['asc', 'desc'] as const) {
+      const order = await idsOf({ sellerId }, { key: 'delivered', direction });
+      expect(order[0]).toBe(handed.sellerOrderId);
+      expect(order).toHaveLength(4);
+    }
   });
 
   it('answers a page with its total, stages and row actions through the use case', async () => {
@@ -329,6 +400,29 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       trackingRef: 'TRK-9',
       total: { amount: 1000n, currency },
     });
+  });
+
+  it('walks Previous/Next pages newest payment first with a keyset cursor', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const first = await shipment(sellerId, 'to-prepare');
+    const second = await shipment(sellerId, 'ready');
+    const third = await shipment(sellerId, 'shipped');
+    const list = new AdminListShipments(gate, {
+      unitOfWork: db.unitOfWork,
+      shipments: reader,
+      labels: new FakeLabels(),
+    });
+    const one = await list.execute(admin, { sellerId, limit: 2 });
+    if (!one.ok) throw new Error(one.error.code);
+    expect(one.value.rows.map((r) => r.sellerOrderId)).toEqual([
+      third.sellerOrderId,
+      second.sellerOrderId,
+    ]);
+    expect(one.value.total).toBeNull();
+    const two = await list.execute(admin, { sellerId, limit: 2, cursor: one.value.nextCursor });
+    if (!two.ok) throw new Error(two.error.code);
+    expect(two.value.rows.map((r) => r.sellerOrderId)).toEqual([first.sellerOrderId]);
+    expect(two.value.nextCursor).toBeNull();
   });
 
   it("never shows another Market's shipments", async () => {

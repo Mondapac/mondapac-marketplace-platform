@@ -10,9 +10,11 @@ import type { OrderCustomerView } from './order-views';
 
 /**
  * Where a shipment stands, as the list's tabs show it: `to-prepare` (paid, not ready), `ready`
- * (ready, not handed over), `shipped`, `delivered`. Delivery attention is its own filter.
+ * (ready, not handed over), `shipped`, `delivered`, and `refunded` (refunded in full before it
+ * was shipped, as an admin cancellation leaves it: nothing is left to send). Delivery attention
+ * is its own filter.
  */
-export const SHIPMENT_STAGES = ['to-prepare', 'ready', 'shipped', 'delivered'] as const;
+export const SHIPMENT_STAGES = ['to-prepare', 'ready', 'shipped', 'delivered', 'refunded'] as const;
 export type ShipmentStage = (typeof SHIPMENT_STAGES)[number];
 
 export const SHIPMENT_ROW_ACTIONS = ['view-order', 'copy-tracking-reference'] as const;
@@ -20,6 +22,12 @@ export type ShipmentRowAction = (typeof SHIPMENT_ROW_ACTIONS)[number];
 
 export const SHIPMENT_SORT_KEYS = ['paid', 'shipped', 'delivered', 'total'] as const;
 export type ShipmentSortKey = (typeof SHIPMENT_SORT_KEYS)[number];
+
+/** Where a Previous/Next page starts: after this row, newest payment first. */
+export interface ShipmentCursor {
+  readonly paidAt: Temporal.Instant;
+  readonly sellerOrderId: Id<'SellerOrder'>;
+}
 
 export interface ShipmentSort {
   readonly key: ShipmentSortKey;
@@ -72,7 +80,10 @@ export interface ShipmentListRecord {
   /** The fleet quoted at placement; null for a pickup and older orders. */
   readonly fleet: string | null;
   readonly deliveryAttention: DeliveryAttention | null;
-  /** What the buyer paid for delivery, and the seller order's total. */
+  /**
+   * What the buyer paid for delivery, tax included (the fee plus its tax where the price excluded
+   * it), and the seller order's total.
+   */
   readonly shipping: Money;
   readonly total: Money;
   /** The gross of the refunds not failed. */
@@ -84,6 +95,7 @@ export interface ShipmentStageCounts {
   readonly ready: number;
   readonly shipped: number;
   readonly delivered: number;
+  readonly refunded: number;
   /** Seller orders of paid orders that need an admin (any stage). */
   readonly attention: number;
 }
@@ -99,16 +111,24 @@ export interface ShipmentListRow extends ShipmentListRecord {
 export interface ShipmentListPage {
   readonly rows: readonly ShipmentListRow[];
   readonly counts: ShipmentStageCounts;
-  readonly total: number;
-  readonly page: number;
+  /**
+   * Page numbers (List paging `pages`): the total, the page and its size. Previous/Next
+   * (`prev-next`, or past row 10,000): total and page are null and `nextCursor` leads on.
+   */
+  readonly total: number | null;
+  readonly page: number | null;
   readonly pageSize: number;
+  readonly nextCursor: string | null;
   readonly searchCapped: boolean;
   readonly searchScope: 'customers-and-stores' | 'stores' | null;
 }
 
-export function shipmentStage(record: ShipmentListRecord): ShipmentStage {
+export function shipmentStage(
+  record: Pick<ShipmentListRecord, 'fulfilment' | 'readyAt' | 'total' | 'refunded'>,
+): ShipmentStage {
   if (record.fulfilment === 'delivered') return 'delivered';
   if (record.fulfilment === 'shipped') return 'shipped';
+  if (record.total.amount > 0n && record.refunded.amount === record.total.amount) return 'refunded';
   return record.readyAt === null ? 'to-prepare' : 'ready';
 }
 
