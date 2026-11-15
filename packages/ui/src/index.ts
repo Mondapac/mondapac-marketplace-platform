@@ -325,6 +325,18 @@ export {
   type ExportFormat,
 } from './list/export-dialog.tsx';
 export { useRowSelection, type RowSelectionState } from './list/use-row-selection.ts';
+export { SuperList, type SuperListProps, type SuperListTool } from './list/super-list.tsx';
+export {
+  SuperTable,
+  type SuperColumn,
+  type SuperTableProps,
+  type SuperTableSelectionLabels,
+} from './list/super-table.tsx';
+export {
+  useSuperListQuery,
+  type SuperListQuery,
+  type SuperListQueryOptions,
+} from './list/use-super-list-query.ts';
 export {
   FilterChipRow,
   type FilterChipRowChip,
