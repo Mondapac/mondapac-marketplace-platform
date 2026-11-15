@@ -2993,6 +2993,14 @@
       "who-unnamed": "Someone",
       "changed": "Changed: {fields}",
       "saved": "Saved"
+    },
+    "drawer": {
+      "close": "Close",
+      "cancel": "Cancel",
+      "discard-title": "Discard your input?",
+      "discard-message": "You have input that is not saved. If you close now, it is lost.",
+      "keep": "Keep editing",
+      "discard": "Discard"
     }
   },
   "fleets": {
