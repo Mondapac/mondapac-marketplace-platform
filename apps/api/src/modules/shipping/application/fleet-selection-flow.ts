@@ -4,11 +4,15 @@ import type { ChangeScope, LastChanged } from '../../../platform/audit/change-tr
 import { CARRIER_METHODS, type CarrierMethod } from '../domain/booking-service';
 import {
   auditCode,
+  FleetActivationReverted,
   FleetModelActivated,
   FleetModelCreated,
   FleetModelEdited,
+  FleetModelReverted,
+  FleetReliabilityReverted,
   FleetReliabilitySet,
 } from '../domain/audit';
+import type { ChangeValues, RevertOutcome, RevertRequest } from '../../system-requests';
 import { DEFAULT_FLEET_ORDER, FLEET_CODES, isFleetCode, type FleetCode } from '../domain/fleet';
 import {
   DEFAULT_RELIABILITY,
@@ -26,6 +30,17 @@ import {
 export type { FleetSelectionView, FleetStatusView } from '../domain/fleet-selection';
 import type { ActorId } from './ports/fleet-selection.repository';
 import type { ShippingDependencies } from './shipping-dependencies';
+import {
+  DELIVERY_REVIEW_AREA,
+  FLEET_MODEL_SUBJECT_KIND,
+  FLEET_SELECTION_SUBJECT_KIND,
+  FLEET_SELECTION_SUBJECT_REF,
+  deliveryReview,
+  requestRef,
+  reverterOf,
+  type ShippingRequestRef,
+  type ShippingReview,
+} from './shipping-review';
 
 // The admin side of fleet selection (delivery models, package 3): define named models, pick the
 // active model per delivery method in the Market and set each fleet's reliability score (both in
@@ -52,8 +67,19 @@ export type FleetSelectionFailure =
       readonly lastChanged?: LastChanged | null;
     };
 
+/** The fleets page with whether a change is reviewed and the review a save opened. */
+export interface FleetSelectionReviewedView extends FleetSelectionView {
+  /** Whether a change is reviewed in Admin Inbox › System requests: the page then asks for a note. */
+  readonly review: ShippingReview;
+  /** The review the save opened; null on a read, when delivery is not reviewed or nothing changed. */
+  readonly request: ShippingRequestRef;
+}
+
+/** An edited model and the review the edit opened (null when none). */
+export type FleetModelChange = FleetSelectionModel & { readonly request: ShippingRequestRef };
+
 /** The fleets page's read model: the view and the latest change. */
-export interface FleetSelectionPage extends FleetSelectionView {
+export interface FleetSelectionPage extends FleetSelectionReviewedView {
   /** Null while no model was made, no model made active and no score set. */
   readonly lastChanged: LastChanged | null;
 }
@@ -69,13 +95,19 @@ export const FLEET_SELECTION_CHANGES: ChangeScope = {
     FleetModelEdited.action,
     FleetModelActivated.action,
     FleetReliabilitySet.action,
+    FleetModelReverted.action,
+    FleetActivationReverted.action,
+    FleetReliabilityReverted.action,
   ],
   targetId: null,
   fixedFields: {
     [FleetModelCreated.action]: ['model'],
     [FleetModelActivated.action]: ['activeModel'],
     [FleetReliabilitySet.action]: ['reliability'],
+    [FleetActivationReverted.action]: ['activeModel'],
+    [FleetReliabilityReverted.action]: ['reliability'],
   },
+  ignoreKeys: ['requestId'],
 };
 
 /** The conflict codes of the fleets page and its models. */
@@ -144,11 +176,20 @@ async function readView(
 export function viewFleetSelection(
   deps: ShippingDependencies,
   context: CallContext,
-): Promise<Result<FleetSelectionView, FleetSelectionFailure>> {
+): Promise<Result<FleetSelectionReviewedView, FleetSelectionFailure>> {
   if (adminOf(context) === null) return Promise.resolve(err({ code: 'access.denied' }));
-  return deps.unitOfWork.run<FleetSelectionView, FleetSelectionFailure>(
+  return viewReviewed(deps, context);
+}
+
+async function viewReviewed(
+  deps: ShippingDependencies,
+  context: CallContext,
+): Promise<Result<FleetSelectionReviewedView, FleetSelectionFailure>> {
+  // Its own read-only unit, before this one (units do not nest).
+  const review = await deliveryReview(deps, context);
+  return deps.unitOfWork.run<FleetSelectionReviewedView, FleetSelectionFailure>(
     context.market,
-    async () => ok(await readView(deps, context)),
+    async () => ok({ ...(await readView(deps, context)), review, request: null }),
     { readOnly: true },
   );
 }
@@ -210,8 +251,9 @@ export async function updateFleetSelectionModel(
     readonly name: unknown;
     readonly rule: unknown;
     readonly expectedVersion: unknown;
+    readonly note?: unknown;
   },
-): Promise<Result<FleetSelectionModel, FleetSelectionFailure>> {
+): Promise<Result<FleetModelChange, FleetSelectionFailure>> {
   const admin = adminOf(context);
   if (admin === null) return err({ code: 'access.denied' });
   const modelId = modelIdOf(input?.modelId);
@@ -228,29 +270,50 @@ export async function updateFleetSelectionModel(
     return err({ code: 'validation.failed', fields });
   }
   const now = deps.clock.now();
-  return deps.unitOfWork.run<FleetSelectionModel, FleetSelectionFailure>(
-    context.market,
-    async () => {
-      const before = await deps.selection.findModel(context.market, modelId);
-      if (before === null) return err({ code: 'shipping.fleet-model-not-found' });
-      if (before.version !== version) return err({ code: 'shipping.fleet-model-conflict' });
-      const after: FleetSelectionModel = {
-        ...before,
-        name: parsed.name,
-        rule: parsed.rule,
-        version: before.version + 1,
-        updatedAt: now,
-      };
-      const saved = await deps.selection.saveModel(context.market, after, version, admin);
-      if (saved === 'name-taken') return err({ code: 'shipping.fleet-model-name-taken' });
-      if (saved === 'conflict') return err({ code: 'shipping.fleet-model-conflict' });
-      await deps.audit.record(
-        context,
-        FleetModelEdited.entry(modelId, { before: shapeOf(before), after: shapeOf(after) }),
-      );
-      return ok(after);
-    },
-  );
+  return deps.unitOfWork.run<FleetModelChange, FleetSelectionFailure>(context.market, async () => {
+    const before = await deps.selection.findModel(context.market, modelId);
+    if (before === null) return err({ code: 'shipping.fleet-model-not-found' });
+    if (before.version !== version) return err({ code: 'shipping.fleet-model-conflict' });
+    const after: FleetSelectionModel = {
+      ...before,
+      name: parsed.name,
+      rule: parsed.rule,
+      version: before.version + 1,
+      updatedAt: now,
+    };
+    const saved = await deps.selection.saveModel(context.market, after, version, admin);
+    if (saved === 'name-taken') return err({ code: 'shipping.fleet-model-name-taken' });
+    if (saved === 'conflict') return err({ code: 'shipping.fleet-model-conflict' });
+    await deps.audit.record(
+      context,
+      FleetModelEdited.entry(modelId, { before: shapeOf(before), after: shapeOf(after) }),
+    );
+    // The edit is live; its review opens in the same unit (a refusal rolls it back).
+    const review = await deps.review.openReview(context, {
+      area: DELIVERY_REVIEW_AREA,
+      subjectKind: FLEET_MODEL_SUBJECT_KIND,
+      subjectRef: modelId,
+      before: modelValues(before),
+      after: modelValues(after),
+      note: input.note,
+    });
+    if (!review.ok) return err(review.error);
+    return ok({ ...after, request: requestRef(review.value) });
+  });
+}
+
+/** A model's name and rule as the values of a request. */
+function modelValues(model: { readonly name: string; readonly rule: SelectionRule }): ChangeValues {
+  const { rule } = model;
+  return {
+    name: model.name,
+    rule:
+      rule.kind === 'cheapest'
+        ? { kind: rule.kind }
+        : rule.kind === 'weighted'
+          ? { kind: rule.kind, weights: { ...rule.weights } }
+          : { kind: rule.kind, order: [...rule.order] },
+  };
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -271,8 +334,9 @@ export async function setFleetSelection(
     readonly expectedVersion: unknown;
     readonly active: unknown;
     readonly reliability: unknown;
+    readonly note?: unknown;
   },
-): Promise<Result<FleetSelectionView, FleetSelectionFailure>> {
+): Promise<Result<FleetSelectionReviewedView, FleetSelectionFailure>> {
   const admin = adminOf(context);
   if (admin === null) return err({ code: 'access.denied' });
   const fields: Field[] = [];
@@ -319,7 +383,8 @@ export async function setFleetSelection(
   }
 
   const now = deps.clock.now();
-  return deps.unitOfWork.run<FleetSelectionView, FleetSelectionFailure>(
+  const reviewPolicy = await deliveryReview(deps, context);
+  return deps.unitOfWork.run<FleetSelectionReviewedView, FleetSelectionFailure>(
     context.market,
     async () => {
       for (const modelId of new Set(active.values())) {
@@ -338,9 +403,16 @@ export async function setFleetSelection(
         return err({ code: 'shipping.fleet-selection-conflict' });
       }
       const assigned = await deps.selection.assignments(context.market);
+      // What changed, for the review: only the items that did.
+      const activeBefore: Record<string, string | null> = {};
+      const activeAfter: Record<string, string | null> = {};
+      const scoresBefore: Record<string, number | null> = {};
+      const scoresAfter: Record<string, number | null> = {};
       for (const [method, modelId] of active) {
         const before = assigned.get(method) ?? null;
         if (before === modelId) continue;
+        activeBefore[method] = before;
+        activeAfter[method] = modelId;
         await deps.selection.assign(context.market, method, modelId, admin, now);
         await deps.audit.record(
           context,
@@ -354,6 +426,8 @@ export async function setFleetSelection(
       for (const [fleet, score] of scores) {
         const before = stored.get(fleet) ?? null;
         if (before === score) continue;
+        scoresBefore[fleet] = before;
+        scoresAfter[fleet] = score;
         await deps.selection.setReliability(context.market, fleet, score, admin, now);
         await deps.audit.record(
           context,
@@ -363,7 +437,176 @@ export async function setFleetSelection(
           }),
         );
       }
-      return ok(await readView(deps, context));
+      // The change is live; its review opens in the same unit (a refusal rolls it back). The page
+      // version bump above is the row lock; nothing changed opens nothing.
+      const review = await deps.review.openReview(context, {
+        area: DELIVERY_REVIEW_AREA,
+        subjectKind: FLEET_SELECTION_SUBJECT_KIND,
+        subjectRef: FLEET_SELECTION_SUBJECT_REF,
+        before: { active: activeBefore, reliability: scoresBefore },
+        after: { active: activeAfter, reliability: scoresAfter },
+        note: input.note,
+      });
+      if (!review.ok) return err(review.error);
+      return ok({
+        ...(await readView(deps, context)),
+        review: reviewPolicy,
+        request: requestRef(review.value),
+      });
     },
   );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Reverts (Admin Inbox › System requests): run in the open unit of a reviewer's decision
+
+const sameJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+/** `{method: modelId | null}` of a request's values, or null when it is not that. */
+function activeOfValues(
+  value: unknown,
+): Map<CarrierMethod, Id<'FleetSelectionModel'> | null> | null {
+  if (!isRecord(value)) return null;
+  const out = new Map<CarrierMethod, Id<'FleetSelectionModel'> | null>();
+  for (const [key, item] of Object.entries(value)) {
+    const method = parseMethod(key);
+    if (method === null) return null;
+    if (item === null) out.set(method, null);
+    else {
+      const id = modelIdOf(item);
+      if (id === null) return null;
+      out.set(method, id);
+    }
+  }
+  return out;
+}
+
+/** `{fleet: score | null}` of a request's values, or null when it is not that. */
+function scoresOfValues(value: unknown): Map<FleetCode, number | null> | null {
+  if (!isRecord(value)) return null;
+  const out = new Map<FleetCode, number | null>();
+  for (const [key, item] of Object.entries(value)) {
+    if (!isFleetCode(key)) return null;
+    if (item === null) out.set(key, null);
+    else {
+      const score = parseReliability(item);
+      if (score === null) return null;
+      out.set(key, score);
+    }
+  }
+  return out;
+}
+
+const sameKeys = (a: ReadonlyMap<string, unknown>, b: ReadonlyMap<string, unknown>): boolean =>
+  a.size === b.size && [...a.keys()].every((key) => b.has(key));
+
+/**
+ * Restores the active model per method and the reliability scores a rejected or withdrawn save of
+ * the fleets page changed, only while each of them still holds the value after the save. The page
+ * version is compared and raised first, as an admin's save does. A model that no longer exists is
+ * gone. A fleet that had no score gets the neutral default back, which routes the same (the
+ * table has no delete).
+ */
+export async function revertFleetSelection(
+  deps: ShippingDependencies,
+  context: CallContext,
+  request: RevertRequest,
+): Promise<RevertOutcome> {
+  const admin = reverterOf(context);
+  const restoreActive = activeOfValues(request.before.active);
+  const expectedActive = activeOfValues(request.after.active);
+  const restoreScores = scoresOfValues(request.before.reliability);
+  const expectedScores = scoresOfValues(request.after.reliability);
+  if (
+    restoreActive === null ||
+    expectedActive === null ||
+    restoreScores === null ||
+    expectedScores === null ||
+    !sameKeys(restoreActive, expectedActive) ||
+    !sameKeys(restoreScores, expectedScores)
+  ) {
+    return 'gone';
+  }
+  const assigned = await deps.selection.assignments(context.market);
+  for (const [method, modelId] of expectedActive) {
+    if ((assigned.get(method) ?? null) !== modelId) return 'changed-since';
+  }
+  const stored = await deps.selection.reliabilities(context.market);
+  for (const [fleet, score] of expectedScores) {
+    if ((stored.get(fleet) ?? null) !== score) return 'changed-since';
+  }
+  for (const modelId of new Set(restoreActive.values())) {
+    if (modelId !== null && (await deps.selection.findModel(context.market, modelId)) === null) {
+      return 'gone';
+    }
+  }
+  const now = deps.clock.now();
+  const version = await deps.selection.selectionVersion(context.market);
+  if (
+    (await deps.selection.bumpSelectionVersion(context.market, version, admin, now)) === 'conflict'
+  ) {
+    return 'changed-since';
+  }
+  for (const [method, modelId] of restoreActive) {
+    const current = assigned.get(method) ?? null;
+    await deps.selection.assign(context.market, method, modelId, admin, now);
+    await deps.audit.record(
+      context,
+      FleetActivationReverted.entry(auditCode<'instant' | 'same-day' | 'scheduled'>(method), {
+        before: { modelId: current },
+        after: { modelId, requestId: request.requestId },
+      }),
+    );
+  }
+  for (const [fleet, score] of restoreScores) {
+    const current = stored.get(fleet) ?? null;
+    const restored = score ?? DEFAULT_RELIABILITY;
+    await deps.selection.setReliability(context.market, fleet, restored, admin, now);
+    await deps.audit.record(
+      context,
+      FleetReliabilityReverted.entry(auditCode<AuditFleet>(fleet), {
+        before: { score: current },
+        after: { score: restored, requestId: request.requestId },
+      }),
+    );
+  }
+  return 'reverted';
+}
+
+/**
+ * Restores the name and rule of a model before a rejected or withdrawn edit, as a new version,
+ * only while the model still holds the name and rule after it. A name another model took since is
+ * `changed-since`; a model that does not exist is gone.
+ */
+export async function revertFleetSelectionModel(
+  deps: ShippingDependencies,
+  context: CallContext,
+  request: RevertRequest,
+): Promise<RevertOutcome> {
+  const admin = reverterOf(context);
+  const modelId = modelIdOf(request.subjectRef);
+  if (modelId === null) return 'gone';
+  const restore = parseModelInput(request.before as { name: unknown; rule: unknown });
+  const expected = parseModelInput(request.after as { name: unknown; rule: unknown });
+  if (!restore.ok || !expected.ok) return 'gone';
+  const current = await deps.selection.findModel(context.market, modelId);
+  if (current === null) return 'gone';
+  if (!sameJson(modelValues(current), modelValues(expected))) return 'changed-since';
+  const restored: FleetSelectionModel = {
+    ...current,
+    name: restore.name,
+    rule: restore.rule,
+    version: current.version + 1,
+    updatedAt: deps.clock.now(),
+  };
+  const saved = await deps.selection.saveModel(context.market, restored, current.version, admin);
+  if (saved !== 'saved') return 'changed-since';
+  await deps.audit.record(
+    context,
+    FleetModelReverted.entry(modelId, {
+      before: shapeOf(current),
+      after: { ...shapeOf(restored), requestId: request.requestId },
+    }),
+  );
+  return 'reverted';
 }
