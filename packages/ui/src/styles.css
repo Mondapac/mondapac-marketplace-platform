@@ -166,3 +166,37 @@ body {
 @utility aspect-banner-desktop {
   aspect-ratio: 1100 / 184;
 }
+
+/* Panel loading L1: the 2 px navigation bar (NavigationProgress), fixed at the very top edge above
+ * the top bar, in the accent colour, with no track. Indeterminate: it grows towards 90 % and waits
+ * there for the route; with reduced motion it is a still line. Made in code first (speed mode). */
+.mp-nav-progress {
+  position: fixed;
+  inset: env(safe-area-inset-top, 0px) 0 auto 0;
+  z-index: 60;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.mp-nav-progress-bar {
+  height: 100%;
+  background: var(--mp-color-action-primary);
+  transform-origin: left center;
+  transform: scaleX(0.9);
+}
+[dir='rtl'] .mp-nav-progress-bar {
+  transform-origin: right center;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mp-nav-progress[data-motion='full'] .mp-nav-progress-bar {
+    animation: mp-nav-progress-grow 8s cubic-bezier(0.1, 0.7, 0.2, 1) both;
+  }
+}
+@keyframes mp-nav-progress-grow {
+  from {
+    transform: scaleX(0.08);
+  }
+  to {
+    transform: scaleX(0.9);
+  }
+}
