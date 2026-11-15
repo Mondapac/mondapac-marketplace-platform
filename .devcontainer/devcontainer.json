@@ -1,0 +1,36 @@
+// GitHub Codespaces / Dev Containers setup for the whole platform: API, worker, seller and admin
+// panels, buyer site, PostgreSQL, Redis and Mailpit. See .devcontainer/README.md.
+{
+  "name": "Mondapac platform",
+  "dockerComposeFile": ["compose.yaml"],
+  "service": "app",
+  "runServices": ["app", "postgres", "redis", "mailpit"],
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "shutdownAction": "stopCompose",
+
+  // A 4-core / 16 GB machine: the largest a free personal account can choose. Two cores are
+  // too few to run the API watcher, the worker and three Next.js dev servers together.
+  "hostRequirements": { "cpus": 4, "memory": "16gb", "storage": "32gb" },
+
+  "forwardPorts": [3000, 3001, 3002, 3003, 8025],
+  "portsAttributes": {
+    "3000": { "label": "API", "onAutoForward": "silent" },
+    "3001": { "label": "Seller panel", "onAutoForward": "silent" },
+    "3002": { "label": "Admin panel", "onAutoForward": "silent" },
+    "3003": { "label": "Buyer site", "onAutoForward": "notify" },
+    "8025": { "label": "Mailpit (mail catcher)", "onAutoForward": "silent" }
+  },
+  "otherPortsAttributes": { "onAutoForward": "ignore" },
+
+  // Once, when the codespace is created: .env files, pnpm install, migrations, local Market config.
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  // Every time the codespace starts (also after it was stopped): API, worker, panels, buyer site.
+  "postStartCommand": "bash .devcontainer/start.sh",
+
+  "customizations": {
+    "codespaces": { "openFiles": [".devcontainer/README.md"] },
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode", "Prisma.prisma"]
+    }
+  }
+}
