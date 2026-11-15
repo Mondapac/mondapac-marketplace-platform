@@ -1,3 +1,4 @@
+import { escapeLikeTerm } from '../../../platform/text/like-escape';
 import { money } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, Money } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
@@ -62,6 +63,24 @@ export class PrismaStoreProfileRepository implements StoreProfileRepository {
         names.set(row.sellerId as Id<'Seller'>, row.publicStoreName);
     }
     return names;
+  }
+
+  async searchApprovedStoreIds(
+    market: MarketContext,
+    term: string,
+    limit: number,
+  ): Promise<readonly Id<'Seller'>[]> {
+    const rows = await this.prisma.tx(market).sellersSellerFile.findMany({
+      where: {
+        marketId: market.marketId,
+        approvedRevisionId: { not: null },
+        publicStoreName: { contains: escapeLikeTerm(term), mode: 'insensitive' },
+      },
+      select: { sellerId: true },
+      orderBy: { sellerId: 'asc' },
+      take: limit,
+    });
+    return rows.map((row) => row.sellerId as Id<'Seller'>);
   }
 
   async find(market: MarketContext, sellerId: Id<'Seller'>): Promise<StoreSettings | null> {

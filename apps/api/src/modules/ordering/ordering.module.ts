@@ -6,7 +6,13 @@ import { registerAuditActions } from '../../platform/audit/audit-action-catalogu
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  registerPermissions,
+  registerStepUpActions,
+  STEP_UP_CONSUMER,
+  USE_CASE_GATE,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
@@ -22,6 +28,17 @@ import { SellersModule } from '../sellers';
 import { SHIPPING_FACADE, ShippingModule } from '../shipping';
 import { TAX_FACADE, TaxModule } from '../tax';
 import type { OrderingDependencies } from './application/checkout-flow';
+import {
+  MARKET_ZONES,
+  SHIP_TO_RETENTION_REPOSITORY,
+} from './application/ports/ship-to-retention.repository';
+import type { ShipToRetentionDependencies } from './application/ship-to-retention-flow';
+import { AdminSetShipToRetention } from './application/use-cases/admin-set-ship-to-retention.use-case';
+import { AdminViewShipToRetention } from './application/use-cases/admin-view-ship-to-retention.use-case';
+import { PurgeSettledShipTo } from './application/use-cases/purge-settled-ship-to.use-case';
+import { ORDERING_STEP_UP_ACTIONS } from './contracts/step-up';
+import { AdminShipToRetentionController } from './presentation/admin-ship-to-retention.controller';
+import { purgeSettledShipToJob } from './presentation/jobs/purge-settled-ship-to.job';
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
 import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-policy';
 import { ORDER_LABELS } from './application/ports/order-labels';
@@ -164,6 +181,38 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['attempts', PAYMENT_ATTEMPT_LIMITS],
 ];
 
+type ShipToRetentionUseCaseClass<U> = new (
+  gate: UseCaseGate,
+  deps: ShipToRetentionDependencies,
+) => U;
+
+/** The ship-to retention use cases (owner decision 2026-11-15): their own, smaller dependency set. */
+function shipToRetentionProvider<U>(type: ShipToRetentionUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      SHIP_TO_RETENTION_REPOSITORY,
+      MARKET_ZONES,
+      AUDIT_WRITER,
+      STEP_UP_CONSUMER,
+      CLOCK,
+      ID_GENERATOR,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: ShipToRetentionDependencies['unitOfWork'],
+      retention: ShipToRetentionDependencies['retention'],
+      zones: ShipToRetentionDependencies['zones'],
+      audit: ShipToRetentionDependencies['audit'],
+      stepUp: ShipToRetentionDependencies['stepUp'],
+      clock: ShipToRetentionDependencies['clock'],
+      ids: ShipToRetentionDependencies['ids'],
+    ) => new type(gate, { unitOfWork, retention, zones, audit, stepUp, clock, ids }),
+  };
+}
+
 type SavedViewUseCaseClass<U> = new (gate: UseCaseGate, deps: SavedViewDependencies) => U;
 
 /** The saved-filter and list-column use cases: their own, smaller dependency set. */
@@ -254,6 +303,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     OrdersController,
     AdminOrdersController,
     AdminRefundLimitsController,
+    AdminShipToRetentionController,
     SellerOrdersController,
     AdminSavedViewsController,
     SellerSavedViewsController,
@@ -284,6 +334,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       deliverySubscriptions(record),
     ),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
+    registerStepUpActions('ordering', ORDERING_STEP_UP_ACTIONS),
+    ...[AdminViewShipToRetention, AdminSetShipToRetention, PurgeSettledShipTo].map((type) =>
+      shipToRetentionProvider(type as ShipToRetentionUseCaseClass<unknown>),
+    ),
     SubjectRateLimits,
     ...orderingProviders,
     ...[
@@ -478,19 +532,28 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     },
     registerJobsFrom(
       'ordering',
-      [RecordShipments, RecordLedger, RecordRefundLedger, SettleRefunds, RebuildOfferPairs],
+      [
+        RecordShipments,
+        RecordLedger,
+        RecordRefundLedger,
+        SettleRefunds,
+        RebuildOfferPairs,
+        PurgeSettledShipTo,
+      ],
       (
         shipments: RecordShipments,
         ledger: RecordLedger,
         refundLedger: RecordRefundLedger,
         refunds: SettleRefunds,
         pairs: RebuildOfferPairs,
+        purgeShipTo: PurgeSettledShipTo,
       ) => [
         recordShipmentsJob(shipments),
         recordLedgerJob(ledger),
         recordRefundLedgerJob(refundLedger),
         settleRefundsJob(refunds),
         rebuildOfferPairsJob(pairs),
+        purgeSettledShipToJob(purgeShipTo),
       ],
     ),
   ],

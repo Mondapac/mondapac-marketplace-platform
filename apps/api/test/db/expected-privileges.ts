@@ -490,7 +490,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // purged a year after it was last saved.
     'cart.saved_items': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: ['saved_at'] },
     // Ordering (Phase 5 package 1): no row is ever deleted. Seller orders and lines are written
-    // once; an order's state, payment state, Stripe ids, times and version change.
+    // once; an order's state, payment state, Stripe ids, times and version change. Ship-to
+    // retention (owner decision 2026-11-15): the daily purge clears the sealed ship-to (to null).
     'ordering.orders': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
@@ -498,6 +499,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'cancelled_at',
         'confirmed_at',
         'payment_state',
+        'ship_to_ciphertext',
         'status',
         'stripe_payment_intent_id',
         'stripe_session_id',
@@ -1205,6 +1207,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'ordering.seller_refund_guards': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['alerts', 'checked_at', 'last_alerted_at'],
+    },
+    // Ship-to retention (owner decision 2026-11-15): one row per Market, inserted once and then
+    // edited (never its id or Market); never deleted.
+    'ordering.ship_to_retention_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['enabled', 'months', 'updated_at', 'updated_by_account_id', 'version'],
     },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.

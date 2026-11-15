@@ -401,6 +401,33 @@ describe.each([['AU'], ['ZZ']] as const)('pickup code in market %s', (code) => {
       expect(inventory.shipped).toHaveLength(1);
     });
 
+    it('withholds the address from the seller 30 days after collection (2026-11-14)', async () => {
+      const { pickup } = await readyOrder();
+      const shipToOf = async () => {
+        const view = await new SellerViewOrder(gate, deps).execute(sellerA, {
+          sellerOrderId: pickup.id,
+        });
+        if (!view.ok) throw new Error('seller view failed');
+        return view.value.shipTo;
+      };
+      const collectedAt = T0.add({ hours: 3 });
+      try {
+        // A pickup order carries the checkout address too: shown while ready, not collected.
+        expect(await shipToOf()).toEqual(TEST_DELIVERY_ADDRESS);
+        clock.set(collectedAt);
+        const done = await confirmPickup(sellerA, pickup.id, '0427');
+        expect(done.ok && done.value.deliveredAt).toEqual(collectedAt);
+        expect(done.ok && done.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+
+        clock.set(collectedAt.add({ hours: 30 * 24 - 1 }));
+        expect(await shipToOf()).toEqual(TEST_DELIVERY_ADDRESS);
+        clock.set(collectedAt.add({ hours: 30 * 24 }));
+        expect(await shipToOf()).toBeNull();
+      } finally {
+        clock.set(T0);
+      }
+    });
+
     it('is idempotent: a repeat on a collected order answers its state, even with another code', async () => {
       const { pickup } = await readyOrder();
       expect((await confirmPickup(sellerA, pickup.id, '0427')).ok).toBe(true);

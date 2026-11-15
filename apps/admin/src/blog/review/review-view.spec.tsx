@@ -184,7 +184,7 @@ describe('admin blog review', () => {
   });
 
   it('shows the live title and no "in review" line when no version is open', async () => {
-    serve(post({ status: 'published', open: null }));
+    serve(post({ status: 'archived', open: null }));
     show();
     expect(await screen.findByRole('heading', { name: 'Spring pantry' })).toBeTruthy();
     expect(screen.queryByText(/in review/u, { selector: 'p' })).toBeNull();
