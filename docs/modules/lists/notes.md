@@ -11,7 +11,7 @@ Speed mode (CLAUDE.md): no G1/G2 or design document. The owner approved the supe
   the rows that have none).
 - `catalog` (admin and seller Products) and `ordering` (admin and seller Orders) use the store
   through their old repository ports; their routes, use cases and rules are unchanged.
-- The migration `20261115130000_lists_saved_filters` copies the rows of `catalog.saved_filters` and
+- The migration `20261115160000_lists_saved_filters` copies the rows of `catalog.saved_filters` and
   `ordering.saved_filters`; the old tables are dropped one release later.
 
 ## Not here yet
