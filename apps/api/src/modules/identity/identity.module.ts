@@ -172,6 +172,7 @@ import { CustomerDirectoryPage } from './application/use-cases/customer-director
 import { CustomerDirectoryRecords } from './application/use-cases/customer-directory-records.use-case';
 import { CustomerAccountExists } from './application/use-cases/customer-account-exists.use-case';
 import { AdminEndCustomerSessions } from './application/use-cases/admin-end-customer-sessions.use-case';
+import { AdminRenameCustomer } from './application/use-cases/admin-rename-customer.use-case';
 import { EndAllCustomerSessions } from './application/use-cases/end-all-customer-sessions.use-case';
 import { EndOtherCustomerSessions } from './application/use-cases/end-other-customer-sessions.use-case';
 import { EraseCustomerAccount } from './application/use-cases/erase-customer-account.use-case';
@@ -1063,6 +1064,13 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
+    useCaseProvider(AdminRenameCustomer, {
+      unitOfWork: true,
+      accounts: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+    }),
     useCaseProvider(CustomerDirectoryRecords, {
       unitOfWork: true,
       accounts: true,
@@ -1811,6 +1819,7 @@ function useCaseProvider<D, U>(
         CustomerDirectoryPage,
         OwnAccountTiedToSeller,
         EraseCustomerAccount,
+        AdminRenameCustomer,
       ],
       useFactory: (
         describeActor: DescribeActor,
@@ -1834,6 +1843,7 @@ function useCaseProvider<D, U>(
         customerDirectoryPage: CustomerDirectoryPage,
         ownAccountTiedToSeller: OwnAccountTiedToSeller,
         eraseCustomerAccount: EraseCustomerAccount,
+        adminRenameCustomer: AdminRenameCustomer,
       ) =>
         new IdentityFacadeImplementation({
           describeActor,
@@ -1857,6 +1867,7 @@ function useCaseProvider<D, U>(
           customerDirectoryPage,
           ownAccountTiedToSeller,
           eraseCustomerAccount,
+          adminRenameCustomer,
         }),
     },
     {

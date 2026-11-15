@@ -147,6 +147,16 @@ export class PrismaCustomerReadModelRepository implements CustomerReadModelRepos
 
   async removeAllOf(market: MarketContext, accountId: Id<'Account'>): Promise<void> {
     const tx = this.prisma.tx(market);
+    // Phase 2: what the admins kept about the customer goes too (the account's erasure and the
+    // sweep of an erased account both come here): the timeline, the notes (already unreadable once
+    // the key is destroyed) and the group memberships (also cascaded from the directory row).
+    await tx.customersCustomerTimelineEntry.deleteMany({
+      where: { marketId: market.marketId, accountId },
+    });
+    await tx.customersCustomerNote.deleteMany({ where: { marketId: market.marketId, accountId } });
+    await tx.customersCustomerGroupMember.deleteMany({
+      where: { marketId: market.marketId, accountId },
+    });
     // One statement and one lock order (the sync writes the directory row first): the stats row
     // goes with its directory row through the foreign key's cascade. A stats row without a
     // directory row cannot exist.

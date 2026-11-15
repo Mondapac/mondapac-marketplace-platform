@@ -137,7 +137,7 @@ export const CustomerPageOpened = defineAuditAction({
   targetType: CUSTOMER_PAGE_TARGET,
   actors: ['authenticated'],
   after: {
-    tab: auditField.enumOf(['overview', 'orders', 'money'] as const),
+    tab: auditField.enumOf(['overview', 'orders', 'money', 'activity'] as const),
   },
 });
 
@@ -185,6 +185,68 @@ export const SavedFilterRemovedAudit = defineAuditAction({
   after: { ownedByActor: auditField.boolean() },
 });
 
+/** The audit target type of a manual customer group (phase 2). */
+export const CUSTOMER_GROUP_TARGET = 'customers.customer-group';
+
+/** An admin made a manual customer group. The name is a label, not audited: ids and codes only. */
+export const CustomerGroupCreated = defineAuditAction({
+  action: 'customers.customer-group.created',
+  targetType: CUSTOMER_GROUP_TARGET,
+  actors: ['authenticated'],
+  after: { kind: auditField.enumOf(['manual'] as const), version: auditField.integer() },
+});
+
+/** An admin renamed, described, archived or restored a group. What changed, never the text. */
+export const CustomerGroupChanged = defineAuditAction({
+  action: 'customers.customer-group.changed',
+  targetType: CUSTOMER_GROUP_TARGET,
+  actors: ['authenticated'],
+  before: { version: auditField.integer(), archived: auditField.boolean() },
+  after: {
+    version: auditField.integer(),
+    archived: auditField.boolean(),
+    renamed: auditField.boolean(),
+    describedChanged: auditField.boolean(),
+  },
+});
+
+/**
+ * An admin added customers to a group or removed them, one by one or in bulk: how many, and
+ * whether they were picked by id or by the Customers list's filter. The account ids are in the
+ * customers' timelines, not here.
+ */
+export const CustomerGroupMembersChanged = defineAuditAction({
+  action: 'customers.customer-group.members-changed',
+  targetType: CUSTOMER_GROUP_TARGET,
+  actors: ['authenticated'],
+  after: {
+    change: auditField.enumOf(['added', 'removed'] as const),
+    count: auditField.integer(),
+    selection: auditField.enumOf(['ids', 'filter'] as const),
+  },
+});
+
+/** An admin wrote an internal note about a customer. Target: the customer; the text is sealed. */
+export const CustomerNoteAdded = defineAuditAction({
+  action: 'customers.customer-note.added',
+  targetType: CUSTOMER_PAGE_TARGET,
+  actors: ['authenticated'],
+  after: { noteId: auditField.id(), length: auditField.integer() },
+});
+
+/** An admin exported a customer's activity timeline, after a fresh two-step code. */
+export const CustomerTimelineExported = defineAuditAction({
+  action: 'customers.customer-timeline.exported',
+  targetType: CUSTOMER_PAGE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rowCount: auditField.integer(),
+    stepUpSessionId: auditField.id(),
+    stepUpVerifiedAt: auditField.instant(),
+  },
+});
+
 export const CUSTOMERS_AUDIT_ACTIONS = [
   AccountDeletionSettingsChanged,
   AccountDeletionRequested,
@@ -197,4 +259,9 @@ export const CUSTOMERS_AUDIT_ACTIONS = [
   SavedFilterSharedAudit,
   SavedFilterChangedAudit,
   SavedFilterRemovedAudit,
+  CustomerGroupCreated,
+  CustomerGroupChanged,
+  CustomerGroupMembersChanged,
+  CustomerNoteAdded,
+  CustomerTimelineExported,
 ] as const;

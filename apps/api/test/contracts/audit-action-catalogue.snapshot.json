@@ -1596,13 +1596,76 @@
     }
   },
   {
+    "action": "customers.customer-group.changed",
+    "targetType": "customers.customer-group",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "archived": "boolean",
+      "version": "integer"
+    },
+    "after": {
+      "archived": "boolean",
+      "describedChanged": "boolean",
+      "renamed": "boolean",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "customers.customer-group.created",
+    "targetType": "customers.customer-group",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(manual)",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "customers.customer-group.members-changed",
+    "targetType": "customers.customer-group",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "change": "enumOf(added|removed)",
+      "count": "integer",
+      "selection": "enumOf(ids|filter)"
+    }
+  },
+  {
+    "action": "customers.customer-note.added",
+    "targetType": "customers.customer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "length": "integer",
+      "noteId": "id"
+    }
+  },
+  {
     "action": "customers.customer-page.opened",
     "targetType": "customers.customer",
     "targetId": "id",
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "tab": "enumOf(overview|orders|money)"
+      "tab": "enumOf(overview|orders|money|activity)"
+    }
+  },
+  {
+    "action": "customers.customer-timeline.exported",
+    "targetType": "customers.customer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
     }
   },
   {
@@ -1732,6 +1795,16 @@
     "after": {
       "keptSessionId": "id",
       "revokedSessions": "integer"
+    }
+  },
+  {
+    "action": "identity.account.renamed-by-admin",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "population": "enumOf(customer)"
     }
   },
   {
