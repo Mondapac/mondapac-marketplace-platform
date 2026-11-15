@@ -250,14 +250,14 @@ const afterCursor = (page: OrderPage) =>
         ],
       };
 
-/**
- * {@link OrderRepository} on `ordering.orders`, `seller_orders` and `order_lines`, through the
- * Market-scoped client with `marketId` at the top level of every `where`.
- */
 /** The seller orders' `paid_at`: the confirmation time of a confirmed order, else null. */
 const paidAtOf = (order: Pick<OrderState, 'status' | 'confirmedAt'>): Date | null =>
   order.status === 'confirmed' && order.confirmedAt !== null ? toDate(order.confirmedAt) : null;
 
+/**
+ * {@link OrderRepository} on `ordering.orders`, `seller_orders` and `order_lines`, through the
+ * Market-scoped client with `marketId` at the top level of every `where`.
+ */
 export class PrismaOrderRepository implements OrderRepository {
   constructor(private readonly prisma: PrismaService) {}
 

@@ -72,7 +72,6 @@ const ATTENTION: readonly (DeliveryAttention | 'any')[] = [
   'cancel-unknown',
 ];
 const FLEET = /^[a-z0-9_]{1,40}$/;
-/** What a seller may type as a tracking reference (1 to 80 printable characters). */
 
 /** A cursor is `<paid-at ms>.<seller order id>`: opaque to callers, checked on the way in. */
 export const encodeShipmentCursor = (row: ShipmentCursor): string =>

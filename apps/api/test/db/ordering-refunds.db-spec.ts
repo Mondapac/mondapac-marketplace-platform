@@ -88,6 +88,8 @@ import {
 } from '../../src/modules/ordering/domain/admin-shipment-list';
 import { PrismaAdminShipmentListReader } from '../../src/modules/ordering/infrastructure/prisma-admin-shipment-list.reader';
 
+import { orderingRefundsTestDatabaseUrl } from './test-database';
+
 const NO_SHIPMENT_FILTER: ShipmentListFilter = {
   stage: null,
   reference: null,
@@ -102,7 +104,6 @@ const NO_SHIPMENT_FILTER: ShipmentListFilter = {
   shippedTo: null,
   parties: null,
 };
-import { orderingRefundsTestDatabaseUrl } from './test-database';
 
 // Refunds of a paid seller order by an admin on PostgreSQL, as the application role, for both
 // Market fixtures (tax step 3): off by the Market switch until it is turned on; the refund is
@@ -1813,6 +1814,13 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
 
     it('refunds every unit and the whole delivery fee in one step, audited, and lists them on the page', async () => {
       const o = await paidOrder();
+      const shipments = new PrismaAdminShipmentListReader(db.service);
+      const stageCounts = () =>
+        db.unitOfWork.run(market, async () => ok(await shipments.countByStage(market)), {
+          readOnly: true,
+        });
+      const before = await stageCounts();
+      if (!before.ok) throw new Error('shipment counts failed');
 
       const done = await cancel(o.orderId);
 
@@ -1830,7 +1838,6 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       expect((await rowsOf(o.sellerOrderId)).refunded).toBe(total.toString());
       // The Shipments list moves it from To prepare to Refunded (it is still a paid order).
       expect(await inFull(o.sellerOrderId)).toBe(true);
-      const shipments = new PrismaAdminShipmentListReader(db.service);
       const listed = await db.unitOfWork.run(
         market,
         async () =>
@@ -1862,6 +1869,27 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         { readOnly: true },
       );
       expect(tab.ok && tab.value).toEqual([]);
+      // The Refunded tab finds it, and the counts move it from To prepare to Refunded.
+      const refundedTab = await db.unitOfWork.run(
+        market,
+        async () =>
+          ok(
+            await shipments.page(
+              market,
+              { ...NO_SHIPMENT_FILTER, reference: o.sellerOrderId, stage: 'refunded' },
+              { key: 'paid', direction: 'desc' },
+              0,
+              10,
+            ),
+          ),
+        { readOnly: true },
+      );
+      if (!refundedTab.ok) throw new Error('shipments read failed');
+      expect(refundedTab.value.map((r) => r.sellerOrderId)).toEqual([o.sellerOrderId]);
+      const after = await stageCounts();
+      if (!after.ok) throw new Error('shipment counts failed');
+      expect(after.value.refunded).toBe(before.value.refunded + 1);
+      expect(after.value.toPrepare).toBe(before.value.toPrepare - 1);
       const audit = await sql.query<{ action: string; after: unknown }>(
         `SELECT action, after FROM platform.audit_log
           WHERE market_id = $1 AND target_type = 'ordering.order' AND target_id = $2`,

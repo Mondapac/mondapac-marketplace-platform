@@ -92,8 +92,13 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       total?: bigint;
       tracking?: string;
       attention?: 'no-carrier';
-      /** A delivery fee and its tax; the tax is outside the fee unless `inclusive`. */
-      fee?: { amount: bigint; tax: bigint; inclusive: boolean };
+      /**
+       * A delivery fee and its tax; the tax is outside the fee unless `inclusive`. A null tax is a
+       * fee placed before its tax was recorded.
+       */
+      fee?: { amount: bigint; tax: bigint; inclusive: boolean } | { amount: bigint; tax: null };
+      /** Keep the clock where it is, to pay several orders at one instant. */
+      sameInstant?: boolean;
     } = {},
   ) => {
     const paid = options.paid ?? true;
@@ -105,7 +110,10 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
     const subtotal =
       total -
       (options.fee?.amount ?? 0n) -
-      (options.fee !== undefined && !options.fee.inclusive ? options.fee.tax : 0n);
+      (options.fee !== undefined && options.fee.tax !== null && !options.fee.inclusive
+        ? options.fee.tax
+        : 0n);
+    const feeTax = options.fee !== undefined && options.fee.tax !== null ? options.fee : null;
     const order: OrderState = {
       id: orderId,
       marketId: market.marketId,
@@ -131,9 +139,9 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
           sellerId,
           subtotal,
           shipping: options.fee?.amount ?? 0n,
-          shippingTaxRateBps: options.fee === undefined ? null : 1000,
-          shippingTax: options.fee?.tax ?? null,
-          shippingTaxInclusive: options.fee?.inclusive ?? null,
+          shippingTaxRateBps: feeTax === null ? null : 1000,
+          shippingTax: feeTax?.tax ?? null,
+          shippingTaxInclusive: feeTax?.inclusive ?? null,
           total,
           fulfilment: 'to-ship',
           carrier: null,
@@ -202,7 +210,7 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       return ok(undefined);
     });
     if (!stored.ok) throw new Error('could not store the order');
-    clock.advance(Temporal.Duration.from({ minutes: 1 }));
+    if (options.sameInstant !== true) clock.advance(Temporal.Duration.from({ minutes: 1 }));
     return { orderId, sellerOrderId };
   };
 
@@ -285,6 +293,8 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
     const inside = await shipment(sellerId, 'ready', {
       fee: { amount: 550n, tax: 50n, inclusive: true },
     });
+    // A fee placed before its tax was recorded counts as having none.
+    const untaxed = await shipment(sellerId, 'ready', { fee: { amount: 400n, tax: null } });
     const rows = await db.unitOfWork.run(
       market,
       async () => ok(await reader.page(market, { ...NO_FILTER, sellerId }, NEWEST, 0, 10)),
@@ -294,6 +304,7 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
     const fee = new Map(rows.value.map((r) => [r.sellerOrderId, r.shipping]));
     expect(fee.get(outside.sellerOrderId)).toEqual({ amount: 550n, currency });
     expect(fee.get(inside.sellerOrderId)).toEqual({ amount: 550n, currency });
+    expect(fee.get(untaxed.sellerOrderId)).toEqual({ amount: 400n, currency });
   });
 
   it('filters by method, fleet, attention, payment time and ship time', async () => {
@@ -423,6 +434,36 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
     if (!two.ok) throw new Error(two.error.code);
     expect(two.value.rows.map((r) => r.sellerOrderId)).toEqual([first.sellerOrderId]);
     expect(two.value.nextCursor).toBeNull();
+  });
+
+  it('walks orders paid at the same instant by id, skipping and repeating none', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const older = await shipment(sellerId, 'to-prepare');
+    const tied = [];
+    for (let i = 0; i < 3; i += 1) {
+      tied.push(await shipment(sellerId, 'ready', { sameInstant: i < 2 }));
+    }
+    const newer = await shipment(sellerId, 'shipped');
+    const list = new AdminListShipments(gate, {
+      unitOfWork: db.unitOfWork,
+      shipments: reader,
+      labels: new FakeLabels(),
+    });
+    const seen: string[] = [];
+    let cursor: string | null | undefined;
+    for (let step = 0; step < 6; step += 1) {
+      const page = await list.execute(admin, { sellerId, limit: 1, ...(cursor ? { cursor } : {}) });
+      if (!page.ok) throw new Error(page.error.code);
+      seen.push(...page.value.rows.map((r) => r.sellerOrderId));
+      cursor = page.value.nextCursor;
+      if (cursor === null) break;
+    }
+    // Ties on paid_at fall back to the id, newest first (uuid order is byte order).
+    const tiedDesc = tied
+      .map((r) => r.sellerOrderId as string)
+      .sort()
+      .reverse();
+    expect(seen).toEqual([newer.sellerOrderId, ...tiedDesc, older.sellerOrderId]);
   });
 
   it("never shows another Market's shipments", async () => {
