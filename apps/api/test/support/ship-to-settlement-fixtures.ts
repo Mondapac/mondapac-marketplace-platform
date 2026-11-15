@@ -1,5 +1,4 @@
-import { Temporal } from '@mondapac/shared-kernel';
-import type { Id } from '@mondapac/shared-kernel';
+import type { Id, Temporal } from '@mondapac/shared-kernel';
 import type { OrderStatus } from '../../src/modules/ordering/domain/order';
 import type { RefundState } from '../../src/modules/ordering/domain/refund';
 import type { ShipToSettlementFacts } from '../../src/modules/ordering/domain/ship-to-retention';

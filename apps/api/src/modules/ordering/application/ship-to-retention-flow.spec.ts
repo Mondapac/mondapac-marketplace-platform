@@ -95,7 +95,7 @@ describe.each([['AU'], ['ZZ']] as const)('ship-to retention in market %s', (code
     return row;
   };
   /** A confirmed order with one seller order per delivery instant (null: still to ship). */
-  const order = (deliveries: (string | null)[], _confirmed = '2022-01-01T00:00:00') =>
+  const order = (deliveries: (string | null)[]) =>
     orderOf({
       sellerOrders: deliveries.map((at) =>
         at === null ? { kind: 'to-ship' as const } : { kind: 'delivered' as const, at: local(at) },
@@ -309,8 +309,8 @@ describe.each([['AU'], ['ZZ']] as const)('ship-to retention in market %s', (code
         cutoffs.push(cutoff);
         return clear(m, cutoff, after, limit);
       };
-      const lastDay = order(['2027-02-28T12:00:00'], '2027-02-01T00:00:00');
-      const dayAfter = order(['2027-03-01T00:00:00'], '2027-02-01T00:00:00');
+      const lastDay = order(['2027-02-28T12:00:00']);
+      const dayAfter = order(['2027-03-01T00:00:00']);
 
       expect(await purge()).toEqual({ ok: true, value: { outcome: 'complete', cleared: 1 } });
       expect(cutoffs.map((c) => c.toString())).toEqual([local('2027-02-28T12:00:00').toString()]);
