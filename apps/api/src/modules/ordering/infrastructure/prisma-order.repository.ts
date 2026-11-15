@@ -356,6 +356,64 @@ export class PrismaOrderRepository implements OrderRepository {
     return rows.map(toOrder);
   }
 
+  async totalsOf(market: MarketContext, accountId: Id<'Account'>) {
+    const tx = this.prisma.tx(market);
+    const confirmed = { marketId: market.marketId, accountId, status: 'confirmed' } as const;
+    const [aggregate, latest, refunds] = await Promise.all([
+      tx.orderingOrder.aggregate({
+        where: confirmed,
+        _count: { _all: true },
+        _min: { confirmedAt: true },
+        _max: { confirmedAt: true },
+        _sum: { totalAmount: true },
+      }),
+      tx.orderingOrder.findFirst({
+        where: confirmed,
+        orderBy: [{ confirmedAt: 'desc' }, { id: 'desc' }],
+        select: { currency: true },
+      }),
+      tx.orderingRefund.aggregate({
+        where: {
+          marketId: market.marketId,
+          state: 'succeeded',
+          sellerOrder: { order: { accountId } },
+        },
+        _count: { _all: true },
+        _sum: { grossAmount: true },
+      }),
+    ]);
+    const instant = (value: Date | null) =>
+      value === null ? null : Temporal.Instant.fromEpochMilliseconds(value.getTime());
+    return {
+      orderCount: aggregate._count._all,
+      firstConfirmedAt: instant(aggregate._min.confirmedAt),
+      lastConfirmedAt: instant(aggregate._max.confirmedAt),
+      spentMinor: aggregate._count._all === 0 ? null : (aggregate._sum.totalAmount ?? 0n),
+      currency: latest?.currency ?? null,
+      refundCount: refunds._count._all,
+      refundedMinor: refunds._sum.grossAmount ?? 0n,
+    };
+  }
+
+  async accountsWithConfirmedOrders(
+    market: MarketContext,
+    after: Id<'Account'> | null,
+    limit: number,
+  ) {
+    const rows = await this.prisma.tx(market).orderingOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'confirmed',
+        ...(after === null ? {} : { accountId: { gt: after } }),
+      },
+      distinct: ['accountId'],
+      orderBy: { accountId: 'asc' },
+      select: { accountId: true },
+      take: limit,
+    });
+    return rows.map((row) => row.accountId as Id<'Account'>);
+  }
+
   async countOpenOf(market: MarketContext, accountId: Id<'Account'>) {
     const tx = this.prisma.tx(market);
     const [openOrders, pendingRefunds] = await Promise.all([

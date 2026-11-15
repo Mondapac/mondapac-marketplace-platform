@@ -127,3 +127,55 @@ model CustomersOutbox {
   @@map("outbox")
   @@schema("customers")
 }
+
+/// A customer as the admin Customers pages list them (read model, customers phase 1, package B1).
+/// A copy of the `identity` account kept by identity's account events and a one-off backfill, so
+/// the list never reads identity's tables. Holds PERSONAL DATA (sign-in address, display name):
+/// never logged, never in an event, an audit row or an error; the row is deleted when the account
+/// is erased. `emailLower` is the prefix-search key.
+model CustomersCustomerDirectory {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  /// The customer account (identity), a plain id with no foreign key.
+  accountId     String   @map("account_id") @db.Uuid
+  email         String
+  /// The sign-in address, trimmed and lower-cased (the prefix-search key).
+  emailLower    String   @map("email_lower")
+  displayName   String?  @map("display_name")
+  /// active or disabled (CHECK).
+  status        String
+  emailVerified Boolean  @map("email_verified")
+  signedUpAt    DateTime @map("signed_up_at") @db.Timestamptz(6)
+  updatedAt     DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@id([marketId, accountId])
+  @@index([marketId, signedUpAt(sort: Desc), accountId(sort: Desc)])
+  /// The prefix index on (market_id, email_lower text_pattern_ops) is hand-written in the migration.
+  @@map("customer_directory")
+  @@schema("customers")
+}
+
+/// What a customer's orders add up to (read model, customers phase 1, package B1). Recomputed from
+/// `ordering` (through its facade) when an order is paid or a refund succeeds, and by the nightly
+/// reconcile; never incremented, so a repeated event changes nothing. One row per account that has
+/// ever had a confirmed order or refund. No personal data; deleted when the account is erased.
+model CustomersCustomerStats {
+  marketId       String    @map("market_id") @db.VarChar(8)
+  tenantId       String    @map("tenant_id")
+  accountId      String    @map("account_id") @db.Uuid
+  firstOrderAt   DateTime? @map("first_order_at") @db.Timestamptz(6)
+  lastOrderAt    DateTime? @map("last_order_at") @db.Timestamptz(6)
+  orderCount     Int       @map("order_count")
+  /// Sum of the confirmed orders' totals, minor units of `currency`.
+  spentMinor     BigInt    @map("spent_minor")
+  currency       String?   @db.VarChar(3)
+  refundCount    Int       @map("refund_count")
+  refundedMinor  BigInt    @map("refunded_minor")
+  /// When ordering was last read for this row.
+  computedAt     DateTime  @map("computed_at") @db.Timestamptz(6)
+
+  @@id([marketId, accountId])
+  @@index([marketId, lastOrderAt(sort: Desc)])
+  @@map("customer_stats")
+  @@schema("customers")
+}

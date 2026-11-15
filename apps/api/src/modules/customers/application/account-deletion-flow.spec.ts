@@ -30,6 +30,7 @@ import {
   RecordingOutbox,
   RecordingStepUp,
 } from './testing/in-memory-account-deletion';
+import { InMemoryReadModels } from './testing/in-memory-read-models';
 import { InMemoryAddresses } from './testing/in-memory-address-book';
 import { AdminCancelAccountDeletion } from './use-cases/admin-cancel-account-deletion.use-case';
 import { AdminListAccountDeletions } from './use-cases/admin-list-account-deletions.use-case';
@@ -277,6 +278,7 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       unitOfWork: units,
       requests,
       addresses,
+      readModels: new InMemoryReadModels(),
       accountDeletionSettings: settings,
       ids: new SequenceIdGenerator(clock),
       clock,

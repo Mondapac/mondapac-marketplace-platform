@@ -994,6 +994,16 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'status',
       ],
     },
+    // Customers phase 1 (package B1): the read models are written, replaced and removed (account
+    // erasure) by the application; no column is restricted.
+    'customers.customer_directory': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'customers.customer_stats': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
