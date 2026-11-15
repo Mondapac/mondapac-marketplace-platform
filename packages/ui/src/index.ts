@@ -13,6 +13,23 @@ export { BackLink } from './shell/back-link.tsx';
 export { ShortcutGrid, type Shortcut } from './shell/shortcut-grid.tsx';
 export { RouteError, RouteLoading, type RouteErrorProps } from './shell/route-states.tsx';
 export {
+  NavigationProgress,
+  PROGRESS_DELAY_MS,
+  PROGRESS_GIVE_UP_MS,
+  navigationTarget,
+  type NavigationProgressProps,
+} from './loading/navigation-progress.tsx';
+export { Spinner } from './loading/spinner.tsx';
+export {
+  useDelayedLoading,
+  LOADING_SHOW_DELAY_MS,
+  LOADING_MIN_VISIBLE_MS,
+  LOADING_SLOW_MS,
+  LOADING_STALLED_MS,
+  type DelayedLoading,
+  type DelayedLoadingOptions,
+} from './loading/use-delayed-loading.ts';
+export {
   SIDEBAR_COOKIE,
   sidebarCollapsed,
   navTrail,
