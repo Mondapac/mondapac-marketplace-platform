@@ -13,6 +13,11 @@ import {
 } from '../../../../test/support/ordering-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { FakeStepUp } from '../../../../test/support/reviews-fakes';
+import {
+  settlementCases,
+  settlementFacts,
+  type OrderSpec,
+} from '../../../../test/support/ship-to-settlement-fixtures';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AccessDecision } from '../../../platform/authz';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
@@ -79,18 +84,23 @@ describe.each([['AU'], ['ZZ']] as const)('ship-to retention in market %s', (code
     });
   const purge = () => new PurgeDeliveredShipTo(gate, deps).execute(system, {});
   let next = 1;
-  const order = (deliveries: (string | null)[], confirmed = '2022-01-01T00:00:00') => {
+  const orderOf = (spec: OrderSpec) => {
     const row = {
       id: id<'Order'>(0x1000 + next++),
       marketId: market.marketId,
-      status: 'confirmed' as const,
-      confirmedAt: local(confirmed),
       shipTo: SHIP_TO as string | null,
-      sellerOrders: deliveries.map((at) => ({ deliveredAt: at === null ? null : local(at) })),
+      facts: settlementFacts(spec, next),
     };
     store.orders.push(row);
     return row;
   };
+  /** A confirmed order with one seller order per delivery instant (null: still to ship). */
+  const order = (deliveries: (string | null)[], _confirmed = '2022-01-01T00:00:00') =>
+    orderOf({
+      sellerOrders: deliveries.map((at) =>
+        at === null ? { kind: 'to-ship' as const } : { kind: 'delivered' as const, at: local(at) },
+      ),
+    });
 
   beforeEach(() => {
     allowed = true;
@@ -238,7 +248,7 @@ describe.each([['AU'], ['ZZ']] as const)('ship-to retention in market %s', (code
       expect(JSON.stringify(audit.rows)).not.toContain(due.id);
     });
 
-    it('leaves an order with one seller order not delivered, or delivered too recently', async () => {
+    it('leaves an order with one seller order still to ship (nothing refunded), or delivered too recently', async () => {
       expect((await set({ months: 24 })).ok).toBe(true);
       const undelivered = order(['2021-01-01T00:00:00', null]);
       const recent = order(['2021-01-01T00:00:00', '2026-01-01T00:00:00']);
@@ -306,6 +316,20 @@ describe.each([['AU'], ['ZZ']] as const)('ship-to retention in market %s', (code
       expect(cutoffs.map((c) => c.toString())).toEqual([local('2027-02-28T12:00:00').toString()]);
       expect(lastDay.shipTo).toBeNull();
       expect(dayAfter.shipTo).toBe(SHIP_TO);
+    });
+
+    it('clears cancelled, shipped-never-delivered and refunded-in-full orders by their settling instant', async () => {
+      expect((await set({ months: 24 })).ok).toBe(true);
+      const cases = settlementCases(local('2024-11-15T03:00:00')).map((c) => ({
+        ...c,
+        row: orderOf(c.spec),
+      }));
+      const due = cases.filter((c) => c.purgeable).length;
+
+      expect(await purge()).toEqual({ ok: true, value: { outcome: 'complete', cleared: due } });
+      expect(cases.map((c) => [c.name, c.row.shipTo === null])).toEqual(
+        cases.map((c) => [c.name, c.purgeable]),
+      );
     });
 
     it("never reaches another Market's orders", async () => {

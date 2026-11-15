@@ -116,7 +116,7 @@ export const ORDERING_REFUND_LIMITS_MANAGE = definePermission('ordering', {
 
 /**
  * See the Market's ship-to retention setting (owner decision 2026-11-15): whether, and after how
- * many months, the sealed delivery address of a delivered order is deleted.
+ * many months, the sealed delivery address of a settled order is deleted.
  */
 export const ORDERING_SHIP_TO_RETENTION_VIEW = definePermission('ordering', {
   key: 'ordering.ship-to-retention.view',

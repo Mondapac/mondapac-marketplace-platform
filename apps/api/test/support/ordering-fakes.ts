@@ -38,6 +38,7 @@ import type { RefundLimit } from '../../src/modules/ordering/domain/refund-limit
 import {
   isShipToPurgeable,
   type ShipToRetention,
+  type ShipToSettlementFacts,
 } from '../../src/modules/ordering/domain/ship-to-retention';
 import type {
   ShipToPurgeCursor,
@@ -238,14 +239,12 @@ export class MemoryRefundLimits {
   }
 }
 
-/** One order as the ship-to purge sees it: its sealed ship-to and its seller orders' deliveries. */
+/** One order as the ship-to purge sees it: its sealed ship-to and the facts the rule reads. */
 export interface ShipToOrder {
   readonly id: string;
   readonly marketId: string;
-  readonly status: 'confirmed' | 'pending-payment' | 'cancelled';
-  readonly confirmedAt: Temporal.Instant | null;
   shipTo: string | null;
-  readonly sellerOrders: { deliveredAt: Temporal.Instant | null }[];
+  readonly facts: ShipToSettlementFacts;
 }
 
 /** The ship-to retention setting per Market and the orders the purge clears, in memory. */
@@ -265,6 +264,7 @@ export class MemoryShipToRetention implements ShipToRetentionRepository {
     this.settings.set(market.marketId, { ...setting, version: expectedVersion + 1 });
     return Promise.resolve('saved' as const);
   }
+  /** One walk by order id (the Prisma repository's two phases are its own business). */
   clearDeliveredShipTo(
     market: MarketContext,
     cutoff: Temporal.Instant,
@@ -272,30 +272,25 @@ export class MemoryShipToRetention implements ShipToRetentionRepository {
     limit: number,
   ) {
     this.batches.push({ limit, after });
-    const key = (o: { confirmedAt: Temporal.Instant; id: string }) =>
-      `${o.confirmedAt.epochMilliseconds.toString().padStart(16, '0')}|${o.id}`;
-    const from = after === null ? null : key({ confirmedAt: after.confirmedAt, id: after.orderId });
+    const from = after?.orderId ?? null;
     const rows = this.orders
       .filter(
-        (o): o is ShipToOrder & { confirmedAt: Temporal.Instant } =>
+        (o) =>
           o.marketId === market.marketId &&
-          o.status === 'confirmed' &&
           o.shipTo !== null &&
-          o.confirmedAt !== null &&
-          Temporal.Instant.compare(o.confirmedAt, cutoff) <= 0 &&
-          isShipToPurgeable(o.sellerOrders, cutoff),
+          (from === null || o.id > from) &&
+          isShipToPurgeable(o.facts, cutoff),
       )
-      .filter((o) => from === null || key(o) > from)
-      .sort((a, b) => (key(a) < key(b) ? -1 : 1))
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
       .slice(0, limit);
     for (const row of rows) row.shipTo = null;
-    const last = rows[rows.length - 1];
+    const last = rows.at(-1);
     return Promise.resolve({
       cleared: rows.length,
       next:
         rows.length < limit || last === undefined
           ? null
-          : { confirmedAt: last.confirmedAt, orderId: last.id },
+          : { phase: 'confirmed' as const, at: null, orderId: last.id },
     });
   }
 }

@@ -1,10 +1,15 @@
 import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { ShipToRetention } from '../../domain/ship-to-retention';
 
-/** Where one run of the purge stopped: the last order it looked at, in (confirmedAt, id) order. */
+/**
+ * Where one run of the purge stopped. The run walks confirmed orders by (confirmedAt, id), then
+ * cancelled orders by (cancelledAt, id); `at` and `orderId` are the last order looked at in that
+ * phase, null at its start. Opaque to the use case.
+ */
 export interface ShipToPurgeCursor {
-  readonly confirmedAt: Temporal.Instant;
-  readonly orderId: string;
+  readonly phase: 'confirmed' | 'cancelled';
+  readonly at: Temporal.Instant | null;
+  readonly orderId: string | null;
 }
 
 /** What one batch of the purge did. */
@@ -31,9 +36,10 @@ export interface ShipToRetentionRepository {
     expectedVersion: number,
   ): Promise<'saved' | 'stale'>;
   /**
-   * Clears (sets to null) the sealed ship-to of at most `limit` confirmed orders of `market`
-   * after `after`, whose seller orders all exist and were all delivered at or before `cutoff`
-   * (`isShipToPurgeable`). Orders already cleared are not looked at again.
+   * Looks at up to `limit` orders of `market` after `after` that still hold a sealed ship-to and
+   * could be settled by `cutoff`, and clears (sets to null) the ship-to of those
+   * `isShipToPurgeable` allows. Orders already cleared are not looked at again. `next` is null
+   * once both phases are done.
    */
   clearDeliveredShipTo(
     market: MarketContext,

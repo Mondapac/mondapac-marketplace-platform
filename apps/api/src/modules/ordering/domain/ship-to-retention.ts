@@ -1,6 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
-import type { Fulfilment } from './order';
+import type { Fulfilment, OrderStatus } from './order';
+import { linesRefundedInFull, type RefundState } from './refund';
 import { parseVersion } from './refund-limits';
 
 /**
@@ -62,8 +63,10 @@ export function sellerMaySeeShipTo(facts: ShipToRetentionFacts, now: Temporal.In
 // How long the sealed ship-to of a delivered order is kept (owner decision 2026-11-15): an admin
 // setting per Market, off by default because the deletion is irreversible. When on, a daily job
 // clears the sealed delivery address (address, phone, buyer note) of every order whose seller
-// orders were all delivered at least `months` months ago, counted back in the Market's zone
-// (ADR-0005). Orders with a seller order not delivered are never touched (a decision is pending).
+// orders are all settled, the last of them at least `months` months ago, counted back in the
+// Market's zone (ADR-0005). Settled (owner decision 2026-11-15, 03:42Z): delivered, shipped and
+// never delivered, cancelled with the order, or refunded in full while still to ship. A to-ship
+// seller order that is neither cancelled nor refunded in full is never settled.
 
 /** The fewest and most months an admin may set (and the database CHECK). */
 export const MIN_SHIP_TO_RETENTION_MONTHS = 1;
@@ -133,20 +136,80 @@ export function shipToRetentionCutoff(
   return now.toZonedDateTimeISO(zone).subtract({ months }).toInstant();
 }
 
+/** What the purge rule reads of one order: its state and each seller order with its refunds. */
+export interface ShipToSettlementFacts {
+  readonly status: OrderStatus;
+  /** Set exactly when the order is cancelled (database CHECK `orders_cancel_reason_check`). */
+  readonly cancelledAt: Temporal.Instant | null;
+  readonly sellerOrders: readonly {
+    readonly fulfilment: Fulfilment;
+    readonly shippedAt: Temporal.Instant | null;
+    readonly deliveredAt: Temporal.Instant | null;
+    readonly lines: readonly { readonly lineId: Id<'OrderLine'>; readonly quantity: number }[];
+    /** Every refund of the seller order; failed ones are ignored. */
+    readonly refunds: readonly {
+      readonly state: RefundState;
+      readonly requestedAt: Temporal.Instant;
+      readonly lines: readonly {
+        readonly orderLineId: Id<'OrderLine'>;
+        readonly quantity: number;
+      }[];
+    }[];
+  }[];
+}
+
+type SettlementSellerOrder = ShipToSettlementFacts['sellerOrders'][number];
+
 /**
- * Whether an order's sealed ship-to may be cleared: it has seller orders and every one of them was
- * delivered at or before `cutoff`. The Prisma repository repeats this rule in its query.
+ * The instant the refunds not failed first gave back every unit of a seller order
+ * ({@link linesRefundedInFull}), taking them in the order they were asked: the instant of the
+ * refund that completed it. A pending refund counts (money on its way back is never delivered);
+ * it has no settled time yet, so the instant is when it was asked. Null when not refunded in full.
  */
-export function isShipToPurgeable(
-  sellerOrders: readonly { readonly deliveredAt: Temporal.Instant | null }[],
-  cutoff: Temporal.Instant,
-): boolean {
-  return (
-    sellerOrders.length > 0 &&
-    sellerOrders.every(
-      (sellerOrder) =>
-        sellerOrder.deliveredAt !== null &&
-        Temporal.Instant.compare(sellerOrder.deliveredAt, cutoff) <= 0,
-    )
-  );
+function refundedInFullAt(sellerOrder: SettlementSellerOrder): Temporal.Instant | null {
+  const live = sellerOrder.refunds
+    .filter((refund) => refund.state !== 'failed')
+    .sort((a, b) => Temporal.Instant.compare(a.requestedAt, b.requestedAt));
+  for (let n = 1; n <= live.length; n += 1) {
+    if (linesRefundedInFull(sellerOrder.lines, live.slice(0, n))) return live[n - 1]!.requestedAt;
+  }
+  return null;
+}
+
+/**
+ * When a seller order was settled, or null while it is not:
+ * - the order is cancelled: the order's cancellation instant;
+ * - delivered: `deliveredAt`;
+ * - shipped and never delivered: `shippedAt`;
+ * - still to ship and refunded in full by refunds not failed: the refund that completed it;
+ * - any other to-ship seller order: never settled.
+ * A missing instant the database CHECKs rule out answers null (fail closed: nothing is deleted).
+ */
+export function sellerOrderSettledAt(
+  order: Pick<ShipToSettlementFacts, 'status' | 'cancelledAt'>,
+  sellerOrder: SettlementSellerOrder,
+): Temporal.Instant | null {
+  if (order.status === 'cancelled') return order.cancelledAt;
+  switch (sellerOrder.fulfilment) {
+    case 'delivered':
+      return sellerOrder.deliveredAt;
+    case 'shipped':
+      return sellerOrder.shippedAt;
+    case 'to-ship':
+      return refundedInFullAt(sellerOrder);
+  }
+}
+
+/**
+ * Whether an order's sealed ship-to may be cleared: it has seller orders, every one of them is
+ * settled ({@link sellerOrderSettledAt}), and the latest settling instant is at or before `cutoff`.
+ * The Prisma repository narrows its candidates with a query and then decides with this function,
+ * so the rule lives here only.
+ */
+export function isShipToPurgeable(facts: ShipToSettlementFacts, cutoff: Temporal.Instant): boolean {
+  if (facts.sellerOrders.length === 0) return false;
+  return facts.sellerOrders.every((sellerOrder) => {
+    const settledAt = sellerOrderSettledAt(facts, sellerOrder);
+    return settledAt !== null && Temporal.Instant.compare(settledAt, cutoff) <= 0;
+  });
 }

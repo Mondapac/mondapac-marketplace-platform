@@ -278,6 +278,10 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // Personalization 1d-2: the bought-together rebuild pages confirmed orders by time.
   'ordering.orders_market_id_confirmed_at_id_idx':
     "CREATE INDEX orders_market_id_confirmed_at_id_idx ON ordering.orders USING btree (market_id, confirmed_at, id) WHERE (status = 'confirmed'::text)",
+  // Ship-to retention (owner decision 2026-11-15): the daily purge pages cancelled orders that
+  // still hold a sealed ship-to by cancellation time (its second phase).
+  'ordering.orders_market_id_cancelled_at_id_ship_to_idx':
+    "CREATE INDEX orders_market_id_cancelled_at_id_ship_to_idx ON ordering.orders USING btree (market_id, cancelled_at, id) WHERE ((status = 'cancelled'::text) AND (ship_to_ciphertext IS NOT NULL))",
   // Ship-to retention (owner decision 2026-11-15): the daily purge pages confirmed orders that
   // still hold a sealed ship-to by time; cleared orders leave the index.
   'ordering.orders_market_id_confirmed_at_id_ship_to_idx':

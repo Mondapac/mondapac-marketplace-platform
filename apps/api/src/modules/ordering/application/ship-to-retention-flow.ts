@@ -20,12 +20,14 @@ import type {
   ShipToRetentionRepository,
 } from './ports/ship-to-retention.repository';
 
-// How long the sealed ship-to of a delivered order is kept (owner decision 2026-11-15). An admin
+// How long the sealed ship-to of a settled order is kept (owner decision 2026-11-15). An admin
 // reads the Market's setting with `ordering.ship-to-retention.view` and changes it with
 // `ordering.ship-to-retention.manage` (protected) and a fresh two-step code, spent in the same unit;
 // each change is audited before and after, and a stale edit is refused. With the setting on, the
-// daily job (system actor) clears the sealed ship-to of every order whose seller orders were all
-// delivered at least `months` months ago in the Market's zone, one bounded batch per unit, and
+// daily job (system actor) clears the sealed ship-to of every order whose seller orders are all
+// settled (delivered, shipped and never delivered, cancelled with the order, or refunded in full
+// while to ship), the latest at least `months` months ago in the Market's zone (`isShipToPurgeable`),
+// one bounded batch per unit, and
 // writes one audit row per run with the count. Off, or never set, the job does nothing.
 
 export interface ShipToRetentionDependencies {

@@ -8,7 +8,9 @@ import type {
   ShipToPurgeCursor,
   ShipToRetentionRepository,
 } from '../application/ports/ship-to-retention.repository';
-import type { ShipToRetention } from '../domain/ship-to-retention';
+import type { Fulfilment, OrderStatus } from '../domain/order';
+import type { RefundState } from '../domain/refund';
+import { isShipToPurgeable, type ShipToRetention } from '../domain/ship-to-retention';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
@@ -16,7 +18,9 @@ const toInstant = (date: Date): Temporal.Instant =>
 
 /**
  * {@link ShipToRetentionRepository} on `ordering.ship_to_retention_settings` and the ship-to column
- * of `ordering.orders` (the app role may update that one column, to null only by this code).
+ * of `ordering.orders` (the app role may update that one column, and the trigger
+ * `orders_ship_to_clear_only` lets it only clear). Prisma only: the candidates come from a narrowing
+ * query and the rule is decided by `isShipToPurgeable`.
  */
 export class PrismaShipToRetentionRepository implements ShipToRetentionRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -78,54 +82,122 @@ export class PrismaShipToRetentionRepository implements ShipToRetentionRepositor
     after: ShipToPurgeCursor | null,
     limit: number,
   ): Promise<ShipToPurgeBatch> {
+    const phase = after?.phase ?? 'confirmed';
     const tx = this.prisma.tx(market);
     const until = toDate(cutoff);
-    // The rule of `isShipToPurgeable`: at least one seller order, and every one delivered at or
-    // before the cutoff. An order is delivered after it was
-    // confirmed, so confirmed_at <= cutoff bounds the scan (partial index on uncleared orders).
+    const from =
+      after === null || after.at === null || after.orderId === null
+        ? null
+        : { at: toDate(after.at), orderId: after.orderId };
+    // The query only narrows the candidates (a superset of what `isShipToPurgeable` allows); the
+    // rule itself is decided in code below, so it lives in one place. Each phase walks its own
+    // partial index of orders that still hold a sealed ship-to, bounded by its own instant: every
+    // settling instant of a confirmed order is after its confirmation, and a cancelled order is
+    // settled at its cancellation.
+    const time = phase === 'confirmed' ? 'confirmedAt' : 'cancelledAt';
     const rows = await tx.orderingOrder.findMany({
       where: {
         marketId: market.marketId,
-        status: 'confirmed',
+        status: phase,
         shipToCiphertext: { not: null },
-        confirmedAt: { lte: until },
-        // `every` is NOT EXISTS (... WHERE NOT cond): with SQL's null logic a bare `lte` would let
-        // a seller order with no delivery through (NOT (NULL <= x) is NULL), so the delivery is
-        // also required explicitly. The database spec holds an undelivered seller order back.
-        sellerOrders: {
-          some: {},
-          every: { fulfilment: 'delivered', deliveredAt: { not: null, lte: until } },
-        },
-        ...(after === null
+        [time]: { lte: until },
+        sellerOrders:
+          phase === 'cancelled'
+            ? { some: {} }
+            : {
+                some: {},
+                // `every` is NOT EXISTS (... WHERE NOT cond): each branch names its instant as
+                // not null, since with SQL's null logic NOT (NULL <= x) is NULL and would let a
+                // seller order through. The database spec holds every unsettled shape back.
+                every: {
+                  OR: [
+                    { fulfilment: 'delivered', deliveredAt: { not: null, lte: until } },
+                    { fulfilment: 'shipped', shippedAt: { not: null, lte: until } },
+                    {
+                      fulfilment: 'to-ship',
+                      refunds: { some: { state: { not: 'failed' }, requestedAt: { lte: until } } },
+                    },
+                  ],
+                },
+              },
+        ...(from === null
           ? {}
           : {
-              OR: [
-                { confirmedAt: { gt: toDate(after.confirmedAt) } },
-                { confirmedAt: toDate(after.confirmedAt), id: { gt: after.orderId } },
-              ],
+              OR: [{ [time]: { gt: from.at } }, { [time]: from.at, id: { gt: from.orderId } }],
             }),
       },
-      orderBy: [{ confirmedAt: 'asc' }, { id: 'asc' }],
+      orderBy: [{ [time]: 'asc' }, { id: 'asc' }],
       take: limit,
-      select: { id: true, confirmedAt: true },
-    });
-    if (rows.length === 0) return { cleared: 0, next: null };
-    const changed = await tx.orderingOrder.updateMany({
-      where: {
-        marketId: market.marketId,
-        id: { in: rows.map((row) => row.id) },
-        shipToCiphertext: { not: null },
+      select: {
+        id: true,
+        status: true,
+        confirmedAt: true,
+        cancelledAt: true,
+        sellerOrders: {
+          select: {
+            fulfilment: true,
+            shippedAt: true,
+            deliveredAt: true,
+            lines: { select: { id: true, quantity: true } },
+            refunds: {
+              select: {
+                state: true,
+                requestedAt: true,
+                lines: { select: { orderLineId: true, quantity: true } },
+              },
+            },
+          },
+        },
       },
-      data: { shipToCiphertext: null },
     });
-    const last = rows[rows.length - 1]!;
-    return {
-      cleared: changed.count,
-      next:
-        rows.length < limit || last.confirmedAt === null
-          ? null
-          : { confirmedAt: toInstant(last.confirmedAt), orderId: last.id },
-    };
+    const purgeable = rows
+      .filter((row) =>
+        isShipToPurgeable(
+          {
+            status: row.status as OrderStatus,
+            cancelledAt: row.cancelledAt === null ? null : toInstant(row.cancelledAt),
+            sellerOrders: row.sellerOrders.map((so) => ({
+              fulfilment: so.fulfilment as Fulfilment,
+              shippedAt: so.shippedAt === null ? null : toInstant(so.shippedAt),
+              deliveredAt: so.deliveredAt === null ? null : toInstant(so.deliveredAt),
+              lines: so.lines.map((line) => ({
+                lineId: line.id as Id<'OrderLine'>,
+                quantity: line.quantity,
+              })),
+              refunds: so.refunds.map((refund) => ({
+                state: refund.state as RefundState,
+                requestedAt: toInstant(refund.requestedAt),
+                lines: refund.lines.map((line) => ({
+                  orderLineId: line.orderLineId as Id<'OrderLine'>,
+                  quantity: line.quantity,
+                })),
+              })),
+            })),
+          },
+          cutoff,
+        ),
+      )
+      .map((row) => row.id);
+    const changed =
+      purgeable.length === 0
+        ? { count: 0 }
+        : await tx.orderingOrder.updateMany({
+            where: {
+              marketId: market.marketId,
+              id: { in: purgeable },
+              shipToCiphertext: { not: null },
+            },
+            data: { shipToCiphertext: null },
+          });
+    const last = rows.at(-1);
+    const lastAt = last === undefined ? null : last[time];
+    const next: ShipToPurgeCursor | null =
+      rows.length === limit && last !== undefined && lastAt !== null
+        ? { phase, at: toInstant(lastAt), orderId: last.id }
+        : phase === 'confirmed'
+          ? { phase: 'cancelled', at: null, orderId: null }
+          : null;
+    return { cleared: changed.count, next };
   }
 }
 
