@@ -1,0 +1,289 @@
+import type { CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import {
+  FixedClock,
+  SequenceIdGenerator,
+  testAuthenticatedActor,
+  testCallContext,
+  testMarketContext,
+} from '@mondapac/shared-kernel/testing';
+import { FakeLabels } from '../../../../test/support/ordering-fakes';
+import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
+import type { AuthorisationCheck } from '../../../platform/authz';
+import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
+import { loadMarketConfigs } from '../../../platform/market-config/market-config';
+import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import {
+  shipmentRowActions,
+  shipmentStage,
+  type ShipmentListFilter,
+  type ShipmentListRecord,
+  type ShipmentSort,
+} from '../domain/admin-shipment-list';
+import type { AdminShipmentListReader } from './ports/admin-shipment-list.reader';
+import { AdminListShipments } from './use-cases/admin-list-shipments.use-case';
+
+// The admin Shipments list in memory, on both Market fixtures: the view key, every query check,
+// the search resolved by the owning modules (and failing closed), the names that never fail the
+// read, the stage of each row and its actions. The SQL is in
+// test/db/ordering-shipment-list.db-spec.ts.
+
+const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+const T0 = Temporal.Instant.from('2026-11-15T10:00:00Z');
+const VIEW = 'ordering.order.view';
+
+class RecordingReader implements AdminShipmentListReader {
+  records: ShipmentListRecord[] = [];
+  asked: { filter: ShipmentListFilter; sort: ShipmentSort; offset: number; limit: number }[] = [];
+  page(
+    _m: MarketContext,
+    filter: ShipmentListFilter,
+    sort: ShipmentSort,
+    offset: number,
+    limit: number,
+  ) {
+    this.asked.push({ filter, sort, offset, limit });
+    return Promise.resolve(this.records.slice(offset, offset + limit));
+  }
+  count() {
+    return Promise.resolve(this.records.length);
+  }
+  countByStage() {
+    return Promise.resolve({ toPrepare: 1, ready: 2, shipped: 3, delivered: 4, attention: 5 });
+  }
+}
+
+describe.each(['AU', 'ZZ'] as const)('admin shipment list in market %s', (code) => {
+  const market = testMarketContext(code, 'default');
+  const currency = code === 'AU' ? 'AUD' : 'JPY';
+  const ids = new SequenceIdGenerator(new FixedClock(T0));
+
+  function setup(keys: readonly string[] = [VIEW]) {
+    const check: AuthorisationCheck = {
+      check: (_context, declaration) => {
+        const needs = declaration.rule.kind === 'permissions' ? declaration.rule.allOf : [];
+        return Promise.resolve(
+          needs.every((key) => keys.includes(key))
+            ? { allowed: true }
+            : { allowed: false, denial: { code: 'access.denied' } },
+        );
+      },
+    };
+    const unitOfWork = {
+      run: <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
+    } as unknown as UnitOfWork;
+    const reader = new RecordingReader();
+    const labels = new FakeLabels();
+    const list = new AdminListShipments(createUseCaseGate(markets, check), {
+      unitOfWork,
+      shipments: reader,
+      labels,
+    });
+    const context: CallContext = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'admin',
+        accountId: ids.next<'Account'>(),
+        sessionId: ids.next<'Session'>(),
+        sellerId: null,
+      }),
+    );
+    return { list, reader, labels, context };
+  }
+
+  const record = (overrides: Partial<ShipmentListRecord> = {}): ShipmentListRecord => ({
+    sellerOrderId: ids.next<'SellerOrder'>(),
+    orderId: ids.next<'Order'>(),
+    sellerId: ids.next<'Seller'>(),
+    accountId: ids.next<'Account'>(),
+    paidAt: T0,
+    deliveryMethod: 'instant',
+    deliveryWindow: null,
+    fulfilment: 'to-ship',
+    readyAt: null,
+    shippedAt: null,
+    deliveredAt: null,
+    carrier: null,
+    trackingRef: null,
+    fleet: null,
+    deliveryAttention: null,
+    shipping: { amount: 500n, currency },
+    total: { amount: 1500n, currency },
+    refunded: { amount: 0n, currency },
+    ...overrides,
+  });
+
+  const fieldsOf = (result: Result<unknown, { code: string }>) =>
+    !result.ok && 'fields' in result.error
+      ? (result.error as { fields: { path: string; code: string }[] }).fields
+      : [];
+
+  it('needs ordering.order.view', async () => {
+    expect(AdminListShipments.access.rule).toEqual({ kind: 'permissions', allOf: [VIEW] });
+    const { list, reader, context } = setup([]);
+    const result = await list.execute(context, {});
+    expect(!result.ok && result.error.code).toBe('access.denied');
+    expect(reader.asked).toEqual([]);
+  });
+
+  it('answers the first page, newest payment first, with the total and the stage counts', async () => {
+    const { list, reader, context } = setup();
+    reader.records = [record(), record()];
+    const result = await list.execute(context, {});
+    if (!result.ok) throw new Error(result.error.code);
+    expect(result.value).toMatchObject({
+      total: 2,
+      page: 1,
+      pageSize: 25,
+      counts: { toPrepare: 1, ready: 2, shipped: 3, delivered: 4, attention: 5 },
+    });
+    expect(reader.asked[0]).toMatchObject({
+      sort: { key: 'paid', direction: 'desc' },
+      offset: 0,
+      limit: 25,
+    });
+  });
+
+  it('passes every filter to the reader, parsed', async () => {
+    const { list, reader, context } = setup();
+    const sellerId = ids.next<'Seller'>();
+    const reference = ids.next<'SellerOrder'>();
+    const result = await list.execute(context, {
+      page: 2,
+      pageSize: 10,
+      sort: 'shipped',
+      direction: 'asc',
+      stage: 'ready',
+      q: reference,
+      deliveryMethod: 'scheduled',
+      attention: 'any',
+      fleet: 'uber_direct',
+      sellerId,
+      paidFrom: '2026-11-01T00:00:00Z',
+      paidTo: '2026-11-02T00:00:00Z',
+      shippedFrom: '2026-11-03T00:00:00Z',
+      shippedTo: '2026-11-04T00:00:00Z',
+    });
+    expect(result.ok).toBe(true);
+    expect(reader.asked[0]).toEqual({
+      filter: {
+        stage: 'ready',
+        reference,
+        trackingRef: null,
+        deliveryMethod: 'scheduled',
+        attention: 'any',
+        fleet: 'uber_direct',
+        sellerId,
+        paidFrom: Temporal.Instant.from('2026-11-01T00:00:00Z'),
+        paidTo: Temporal.Instant.from('2026-11-02T00:00:00Z'),
+        shippedFrom: Temporal.Instant.from('2026-11-03T00:00:00Z'),
+        shippedTo: Temporal.Instant.from('2026-11-04T00:00:00Z'),
+        parties: null,
+      },
+      sort: { key: 'shipped', direction: 'asc' },
+      offset: 10,
+      limit: 10,
+    });
+  });
+
+  it('reads a text that is not an id as an exact tracking reference', async () => {
+    const { list, reader, context } = setup();
+    await list.execute(context, { q: ' AP-12345678 ' });
+    expect(reader.asked[0]!.filter).toMatchObject({ trackingRef: 'AP-12345678', reference: null });
+  });
+
+  it('refuses every malformed field at once, before reading', async () => {
+    const { list, reader, context } = setup();
+    const result = await list.execute(context, {
+      page: 0,
+      pageSize: 0,
+      sort: 'customer',
+      direction: 'up',
+      stage: 'lost',
+      deliveryMethod: 'drone',
+      attention: 'late',
+      q: 'has space',
+      search: 'x',
+      fleet: 'Uber Direct',
+      sellerId: 'abc',
+      paidFrom: 'yesterday',
+      paidTo: '2026-11-02',
+      shippedFrom: 1,
+      shippedTo: 'soon',
+    });
+    expect(fieldsOf(result).map((f) => `${f.path}:${f.code}`)).toEqual([
+      'page:range',
+      'pageSize:range',
+      'sort:value',
+      'direction:value',
+      'stage:value',
+      'deliveryMethod:value',
+      'attention:value',
+      'q:format',
+      'search:length',
+      'fleet:format',
+      'sellerId:format',
+      'paidFrom:format',
+      'paidTo:format',
+      'shippedFrom:format',
+      'shippedTo:format',
+    ]);
+    expect(reader.asked).toEqual([]);
+  });
+
+  it('refuses reversed time ranges and pages past 10,000 rows', async () => {
+    const { list, context } = setup();
+    const reversed = await list.execute(context, {
+      paidFrom: '2026-11-02T00:00:00Z',
+      paidTo: '2026-11-01T00:00:00Z',
+      shippedFrom: '2026-11-02T00:00:00Z',
+      shippedTo: '2026-11-02T00:00:00Z',
+    });
+    expect(fieldsOf(reversed)).toEqual([
+      { path: 'paidTo', code: 'range' },
+      { path: 'shippedTo', code: 'range' },
+    ]);
+    const deep = await list.execute(context, { page: 401, pageSize: 25 });
+    expect(fieldsOf(deep)).toEqual([{ path: 'page', code: 'too-deep' }]);
+  });
+
+  it('resolves the search through the owning modules and fails closed', async () => {
+    const { list, reader, labels, context } = setup();
+    const sellerId = ids.next<'Seller'>();
+    labels.stores.set(sellerId, 'Amin Grocers');
+    const found = await list.execute(context, { search: 'amin' });
+    expect(found.ok && found.value.searchScope).toBe('customers-and-stores');
+    expect(reader.asked[0]!.filter.parties).toEqual({ accountIds: [], sellerIds: [sellerId] });
+
+    labels.fail.add('customers');
+    const failed = await list.execute(context, { search: 'amin' });
+    expect(!failed.ok && failed.error.code).toBe('ordering.search-unavailable');
+    expect(reader.asked).toHaveLength(1);
+  });
+
+  it('adds names, the stage and the actions; a failed lookup leaves names null', async () => {
+    const { list, reader, labels, context } = setup();
+    const row = record({ readyAt: T0, fulfilment: 'shipped', trackingRef: 'TRK-1' });
+    reader.records = [row];
+    labels.stores.set(row.sellerId, 'Halal Corner');
+    const named = await list.execute(context, {});
+    expect(named.ok && named.value.rows[0]).toMatchObject({
+      storeName: 'Halal Corner',
+      customer: null,
+      stage: 'shipped',
+      actions: ['view-order', 'copy-tracking-reference'],
+    });
+    labels.fail.add('stores');
+    const unnamed = await list.execute(context, {});
+    expect(unnamed.ok && unnamed.value.rows[0]!.storeName).toBeNull();
+  });
+
+  it('places each seller order on one stage', () => {
+    expect(shipmentStage(record())).toBe('to-prepare');
+    expect(shipmentStage(record({ readyAt: T0 }))).toBe('ready');
+    expect(shipmentStage(record({ readyAt: T0, fulfilment: 'shipped' }))).toBe('shipped');
+    expect(shipmentStage(record({ fulfilment: 'delivered' }))).toBe('delivered');
+    expect(shipmentRowActions(record())).toEqual(['view-order']);
+  });
+});
