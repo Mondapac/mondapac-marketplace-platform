@@ -168,6 +168,8 @@ export class PrismaAdminShipmentListReader implements AdminShipmentListReader {
               ...base,
               AND: [
                 ...base.AND,
+                // The plain bound lets the index start at the cursor; the OR keeps the tie order.
+                { paidAt: { lte: toDate(after.paidAt) } },
                 {
                   OR: [
                     { paidAt: { lt: toDate(after.paidAt) } },
