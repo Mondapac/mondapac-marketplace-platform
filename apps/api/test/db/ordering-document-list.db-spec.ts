@@ -45,6 +45,7 @@ import {
 } from '../support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
+import { documentListPageBody } from '../../src/modules/ordering/presentation/admin-document-list.dto';
 
 // The admin Invoices list on PostgreSQL, as the application role, for both Market fixtures (owner
 // decision 2026-11-15: order confirmations and credit notes until numbered invoices exist): one
@@ -154,11 +155,12 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
   /**
    * A paid order of one seller with one line of `units` units of 11.00 (or 1100), three by
    * default. `oldShipping`: placed before the delivery fee's tax was recorded (all three null).
+   * `oldLineTax`: the line was placed before its tax was recorded (rate, amount and code null).
    */
   const paidOrder = async (
     sellerId: Id<'Seller'>,
     accountId = ids.next<'Account'>(),
-    options: { units?: number; oldShipping?: boolean } = {},
+    options: { units?: number; oldShipping?: boolean; oldLineTax?: boolean } = {},
   ) => {
     const units = options.units ?? 3;
     const old = options.oldShipping === true;
@@ -225,9 +227,10 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
           taxInclusive: inclusive,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
-          taxRateBps: inclusive ? 1000 : 1500,
-          taxAmount: taxOfLine,
-          taxCategoryCode: inclusive ? 'taxable' : 'zz_standard',
+          taxRateBps: options.oldLineTax === true ? null : inclusive ? 1000 : 1500,
+          taxAmount: options.oldLineTax === true ? null : taxOfLine,
+          taxCategoryCode:
+            options.oldLineTax === true ? null : inclusive ? 'taxable' : 'zz_standard',
         },
       ],
     };
@@ -246,12 +249,20 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
     return { orderId, sellerOrderId, lineId, accountId, total: orderTotal };
   };
 
-  /** A refund of `units` units, ending as Stripe answers; the clock moves a minute after it. */
+  /**
+   * A refund of `units` units, ending as Stripe answers; the clock moves a minute after it unless
+   * `sameInstant` keeps it (to issue several documents at one time).
+   */
   const refunded = async (
     sellerId: Id<'Seller'>,
     units: number,
     answer: 'succeeded' | 'pending',
-    options: { accountId?: Id<'Account'>; reason?: string; platform?: boolean } = {},
+    options: {
+      accountId?: Id<'Account'>;
+      reason?: string;
+      platform?: boolean;
+      sameInstant?: boolean;
+    } = {},
   ) => {
     const o = await paidOrder(sellerId, options.accountId);
     gateway.refundAnswers = answer;
@@ -263,7 +274,7 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
       reason: options.reason ?? 'damaged',
       ...(options.platform === true ? { lossBearer: 'platform', lossReasonCode: 'goodwill' } : {}),
     });
-    clock.advance(Temporal.Duration.from({ minutes: 1 }));
+    if (options.sameInstant !== true) clock.advance(Temporal.Duration.from({ minutes: 1 }));
     if (!result.ok) throw new Error(`could not refund: ${result.error.code}`);
     return { ...o, refundId: result.value.refundId };
   };
@@ -444,6 +455,62 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
       expect(two.value.rows.map(pick)).toEqual([first.sellerOrderId]);
       expect(two.value.nextCursor).toBeNull();
     }
+  });
+
+  it('walks documents issued at the same instant by id, for both kinds, skipping and repeating none', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const older = await refunded(sellerId, 1, 'succeeded');
+    const tied = [];
+    for (let i = 0; i < 3; i += 1) {
+      tied.push(await refunded(sellerId, 1, 'succeeded', { sameInstant: i < 2 }));
+    }
+    const newer = await refunded(sellerId, 1, 'succeeded');
+    const list = new AdminListDocuments(gate, {
+      unitOfWork: db.unitOfWork,
+      documents: reader,
+      labels: new FakeLabels(),
+    });
+    for (const kind of ['order-confirmation', 'credit-note'] as const) {
+      const seen: { documentId: string; sellerOrderId: string }[] = [];
+      let cursor: string | null | undefined;
+      for (let step = 0; step < 6; step += 1) {
+        const page = await list.execute(admin, {
+          kind,
+          sellerId,
+          limit: 1,
+          ...(cursor ? { cursor } : {}),
+        });
+        if (!page.ok) throw new Error(page.error.code);
+        seen.push(...page.value.rows);
+        cursor = page.value.nextCursor;
+        if (cursor === null) break;
+      }
+      // The tied documents come by id, newest first (uuid order is byte order), each once.
+      const tiedOrders = new Set(tied.map((t) => t.sellerOrderId as string));
+      const middle = seen.slice(1, 4);
+      expect(seen).toHaveLength(5);
+      expect(seen[0]!.sellerOrderId).toBe(newer.sellerOrderId);
+      expect(seen[4]!.sellerOrderId).toBe(older.sellerOrderId);
+      expect(new Set(middle.map((d) => d.sellerOrderId))).toEqual(tiedOrders);
+      const middleIds = middle.map((d) => d.documentId);
+      expect(middleIds).toEqual([...middleIds].sort().reverse());
+    }
+  });
+
+  it('shows no confirmation tax when a line was placed before its tax was recorded', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const old = await paidOrder(sellerId, undefined, { oldLineTax: true });
+    const [row] = await idsOf({ reference: old.sellerOrderId });
+    expect(row).toMatchObject({ tax: null, total: { amount: old.total, currency } });
+    const list = new AdminListDocuments(gate, {
+      unitOfWork: db.unitOfWork,
+      documents: reader,
+      labels: new FakeLabels(),
+    });
+    const page = await list.execute(admin, { sellerId });
+    if (!page.ok) throw new Error(page.error.code);
+    // The response says null, never a zero tax.
+    expect(documentListPageBody(page.value).documents.map((d) => d.tax)).toEqual([null]);
   });
 
   it('answers a page with its total, kind counts and row actions through the use case', async () => {
