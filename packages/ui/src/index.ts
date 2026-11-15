@@ -33,6 +33,7 @@ export {
   Button,
   LinkButton,
   type ButtonProps,
+  type ButtonSize,
   type ButtonVariant,
   type LinkButtonProps,
 } from './form/button.tsx';
@@ -324,6 +325,11 @@ export {
   type ExportFormat,
 } from './list/export-dialog.tsx';
 export { useRowSelection, type RowSelectionState } from './list/use-row-selection.ts';
+export {
+  FilterChipRow,
+  type FilterChipRowChip,
+  type FilterChipRowProps,
+} from './list/filter-chip-row.tsx';
 export { ListViewsBar, type ListViewsBarProps } from './list/list-views-bar.tsx';
 export {
   DescriptionWriter,

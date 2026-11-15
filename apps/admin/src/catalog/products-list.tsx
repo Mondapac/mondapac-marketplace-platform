@@ -4,7 +4,7 @@ import {
   Banner,
   Button,
   EmptyState,
-  FilterChip,
+  FilterChipRow,
   LinkButton,
   Icon,
   Popover,
@@ -376,32 +376,21 @@ export function ProductsList({
         </p>
       </div>
       {filtered ? (
-        <div className="flex flex-wrap items-center gap-2">
-          {chips.map((chip) => (
-            <FilterChip
-              key={chip.field}
-              label={chip.label}
-              removeLabel={t('chip-remove', { filter: chip.label })}
-              onRemove={() => change({ filters: withoutFilter(chip.field) })}
-            />
-          ))}
-          <Button variant="link" className="min-h-(--mp-size-control-sm)" onClick={clearAll}>
-            {t('clear-all')}
-          </Button>
-          {saved === null || savedId !== null ? null : (
-            <Button
-              variant="link"
-              className="min-h-(--mp-size-control-sm)"
-              onClick={() => setDialog('save')}
-            >
-              <Icon name="star" />
-              {t('saved.save-link')}
-            </Button>
-          )}
-          <p role="status" className="text-sm font-medium text-fg-secondary sm:ms-auto">
-            {answer === null || failure !== null ? '' : t('match', { count: answer.total })}
-          </p>
-        </div>
+        <FilterChipRow
+          chips={chips.map((chip) => ({
+            key: chip.field,
+            label: chip.label,
+            removeLabel: t('chip-remove', { filter: chip.label }),
+            onRemove: () => change({ filters: withoutFilter(chip.field) }),
+          }))}
+          clearAll={{ label: t('clear-all'), onClick: clearAll }}
+          save={
+            saved === null || savedId !== null
+              ? undefined
+              : { label: t('saved.save-link'), onClick: () => setDialog('save') }
+          }
+          status={answer === null || failure !== null ? '' : t('match', { count: answer.total })}
+        />
       ) : null}
       {failure === null ? null : (
         <Banner tone="critical">
