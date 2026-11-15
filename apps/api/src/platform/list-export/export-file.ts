@@ -36,7 +36,7 @@ const failed = (path: string, code: string): { ok: false; error: ExportInputFail
 
 /** `format`: absent means CSV; anything but `csv` or `xlsx` is refused. */
 export function parseExportFormat(value: unknown): Result<ExportFormat, ExportInputFailure> {
-  if (value === undefined || value === '') return ok('csv');
+  if (value === undefined) return ok('csv');
   if (value === 'csv' || value === 'xlsx') return ok(value);
   return failed('format', 'value');
 }

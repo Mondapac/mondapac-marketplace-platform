@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import { ExceljsSheetWriter } from './exceljs-sheet-writer';
 import {
   buildExportFile,
@@ -30,6 +31,7 @@ describe('the shared list export', () => {
     expect(parseExportFormat(undefined)).toEqual({ ok: true, value: 'csv' });
     expect(parseExportFormat('xlsx')).toEqual({ ok: true, value: 'xlsx' });
     expect(parseExportFormat('pdf')).toMatchObject({ ok: false });
+    expect(parseExportFormat('')).toMatchObject({ ok: false });
   });
 
   it('reads the chosen columns in order, once each, and refuses an unknown one', () => {
@@ -52,6 +54,10 @@ describe('the shared list export', () => {
 
   it('refuses more than the cap whole, with the total when it is known', () => {
     expect(checkExportSize(LIST_EXPORT_MAX_ROWS)).toEqual({ ok: true, value: true });
+    expect(checkExportSize(LIST_EXPORT_MAX_ROWS + 1)).toEqual({
+      ok: false,
+      error: { code: 'batch.too-large', max: LIST_EXPORT_MAX_ROWS },
+    });
     expect(checkExportSize(LIST_EXPORT_MAX_ROWS + 1, 12_345)).toEqual({
       ok: false,
       error: { code: 'batch.too-large', max: LIST_EXPORT_MAX_ROWS, total: 12_345 },
@@ -72,9 +78,20 @@ describe('the shared list export', () => {
     const text = await read(file.chunks);
     expect(text.startsWith('﻿')).toBe(true);
     expect(text).toContain("'=SUM(A1)");
+    // A count is its digits, nothing is an empty field, and the guard is on every row.
+    expect(
+      text
+        .replace('\uFEFF', '')
+        .split('\r\n')
+        .filter((line) => line !== ''),
+    ).toEqual(
+      ['Name,Count', `'=SUM(A1),3`, 'Plain,'].map((line) =>
+        line.replace(/^'=SUM\(A1\),3$/, "'=SUM(A1),3"),
+      ),
+    );
   });
 
-  it('writes an XLSX as bytes', async () => {
+  it('writes an XLSX whose every cell is a string, with nothing as a formula or a number', async () => {
     const file = buildExportFile({
       format: 'xlsx',
       baseName: 'things',
@@ -84,8 +101,13 @@ describe('the shared list export', () => {
       sheetWriter: new ExceljsSheetWriter(),
     });
     expect(file.filename).toBe('things-2026-11-15.xlsx');
-    let bytes = 0;
-    for await (const chunk of file.chunks) bytes += (chunk as Uint8Array).length;
-    expect(bytes).toBeGreaterThan(100);
+    const parts: Buffer[] = [];
+    for await (const chunk of file.chunks) parts.push(Buffer.from(chunk as Uint8Array));
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.concat(parts) as unknown as ArrayBuffer);
+    const sheet = workbook.getWorksheet('Things')!;
+    expect(sheet.getRow(2).getCell(1).value).toBe('=SUM(A1)');
+    expect(sheet.getRow(2).getCell(2).value).toBe('3');
+    expect(sheet.getRow(3).getCell(2).value).toBe('');
   });
 });
