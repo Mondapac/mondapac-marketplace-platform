@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, EmptyState, LoadError, SkeletonRows, toast } from '@mondapac/ui';
+import { Banner, Button, EmptyState, LoadError, toast, TableSkeleton } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
@@ -113,7 +113,21 @@ export function SlidesList({
     <div className="flex flex-col gap-4">
       {trulyEmpty ? null : <FilterBar values={filters} onChange={setFilters} />}
       {notice === null ? null : <Banner tone="info">{notice}</Banner>}
-      {load === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
+      {load === 'loading' ? (
+        <TableSkeleton
+          label={t('loading')}
+          slowLabel={tl('slow')}
+          rows={6}
+          columns={[
+            { header: t('col.slide'), kind: 'title' },
+            { header: t('col.type'), kind: 'status' },
+            { header: t('col.positions'), kind: 'text' },
+            { header: t('col.window'), kind: 'date' },
+            { header: t('col.status'), kind: 'status' },
+            { header: t('col.actions'), kind: 'status', place: 'labelled' },
+          ]}
+        />
+      ) : null}
       {load === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"

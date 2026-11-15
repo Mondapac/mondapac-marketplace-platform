@@ -6,9 +6,9 @@ import {
   Button,
   EmptyState,
   LoadError,
-  SkeletonRows,
   TextField,
   toast,
+  DetailSkeleton,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -70,6 +70,7 @@ export function TaxonomyView({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('blog.taxonomy');
+  const tr = useTranslations('route');
   const locale = useLocale();
   const [load, setLoad] = useState<Load>('loading');
   const [data, setData] = useState<Taxonomy | null>(null);
@@ -138,7 +139,9 @@ export function TaxonomyView({
     return true;
   }
 
-  if (load === 'loading') return <SkeletonRows label={t('loading')} rows={4} />;
+  if (load === 'loading') {
+    return <DetailSkeleton label={t('loading')} slowLabel={tr('slow')} rows={4} />;
+  }
   if (load === 'failed' || data === null) {
     return (
       <LoadError

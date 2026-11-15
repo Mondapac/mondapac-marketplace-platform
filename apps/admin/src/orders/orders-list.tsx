@@ -11,13 +11,17 @@ import {
   PrevNext,
   Popover,
   Select,
-  SkeletonRows,
   Tabs,
   TextField,
   browserStorage,
   prefsKey,
   readIds,
   writeIds,
+  ListLoadingStatus,
+  ListRefreshing,
+  TableSkeleton,
+  useListLoading,
+  type TableSkeletonColumn,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -46,6 +50,15 @@ import {
   type SortId,
 } from './orders-query.ts';
 import { FILTERS, type AdminOrder, type AdminOrderPage } from './types.ts';
+
+const SKELETON_KIND: Readonly<Record<OrderColumn, TableSkeletonColumn['kind']>> = {
+  status: 'status',
+  placed: 'date',
+  paid: 'date',
+  customer: 'text',
+  sellers: 'text',
+  total: 'number',
+};
 
 /**
  * The Market's orders (read-only): a tab for each status and for each saved filter, filters, a
@@ -82,6 +95,7 @@ export function OrdersList({
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const status0 = useListLoading(loading, rows.length > 0);
   const latest = useRef(0);
   const [columns, setColumns] = useState<readonly OrderColumn[]>(DEFAULT_COLUMNS);
   // The saved filters: null until they load, and when they cannot (the page then has the status
@@ -363,9 +377,11 @@ export function OrdersList({
         </p>
       ) : null}
       {rows.length > 0 ? (
-        <div ref={listTop} tabIndex={-1} className="outline-none">
-          <OrdersTable rows={rows} columns={columns} zone={zone} />
-        </div>
+        <ListRefreshing refreshing={status0.refreshing} busy={loading}>
+          <div ref={listTop} tabIndex={-1} className="outline-none">
+            <OrdersTable rows={rows} columns={columns} zone={zone} />
+          </div>
+        </ListRefreshing>
       ) : null}
       {!loading && !failed && rows.length === 0 ? (
         <EmptyState
@@ -374,7 +390,23 @@ export function OrdersList({
           body={t(filtered || backwards ? 'empty.filtered.body' : `empty.${status}.body`)}
         />
       ) : null}
-      {loading ? <SkeletonRows label={t('loading')} rows={rows.length > 0 ? 1 : 3} /> : null}
+      {loading && rows.length === 0 ? (
+        <TableSkeleton
+          label={t('loading')}
+          slowLabel={tl('slow')}
+          rows={PAGE_SIZE}
+          columns={[
+            { header: t('col.order'), kind: 'title' },
+            ...columns.map((column) => ({
+              header: t(`col.${column}`),
+              kind: SKELETON_KIND[column],
+            })),
+          ]}
+        />
+      ) : null}
+      {loading && rows.length > 0 ? (
+        <ListLoadingStatus label={t('loading')} slow={false} slowLabel={tl('slow')} />
+      ) : null}
       {cut ? <Banner tone="info">{t('too-many', { limit: number(MAX_PAGED_ROWS) })}</Banner> : null}
       {paging === 'pages' ? (
         <Pagination

@@ -8,7 +8,7 @@ import {
   EmptyState,
   LoadError,
   Select,
-  SkeletonRows,
+  DetailSkeleton,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -117,7 +117,9 @@ export function AttributeLinksTab({
     void fetchLinks();
   }, [fetchLinks]);
 
-  if (load === 'loading') return <SkeletonRows label={t('loading')} rows={4} />;
+  if (load === 'loading') {
+    return <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={4} title={false} />;
+  }
   if (load === 'gone') return <p className="text-fg-muted">{t('gone')}</p>;
   if (load === 'failed' || body === null) {
     return (

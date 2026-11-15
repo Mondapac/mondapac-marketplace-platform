@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, EmptyState, LoadError, SkeletonRows } from '@mondapac/ui';
+import { Banner, Button, EmptyState, LoadError, TableSkeleton } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -40,6 +40,7 @@ export function PayoutsList({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('payouts');
+  const tr = useTranslations('route');
   const locale = useLocale();
   const states = TAB_STATES[tab];
   const [rows, setRows] = useState<readonly PayoutRow[] | null>(null);
@@ -169,7 +170,24 @@ export function PayoutsList({
       />
     );
   }
-  if (rows === null) return <SkeletonRows label={t('loading')} rows={4} />;
+  if (rows === null) {
+    return (
+      <TableSkeleton
+        label={t('loading')}
+        slowLabel={tr('slow')}
+        rows={PAGE_SIZE}
+        columns={[
+          { header: t('col.payout'), kind: 'title' },
+          { header: t('col.state'), kind: 'status' },
+          { header: t('col.seller'), kind: 'text' },
+          { header: t('col.amount'), kind: 'number' },
+          { header: t('col.why'), kind: 'text' },
+          { header: t('col.slot'), kind: 'date' },
+          { header: t('col.actions'), kind: 'status', place: 'labelled' },
+        ]}
+      />
+    );
+  }
 
   const hasMore = Object.keys(cursors).length > 0;
   return (
