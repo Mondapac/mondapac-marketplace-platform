@@ -41,6 +41,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     commission_payouts: ['USAGE'],
     wallet: ['USAGE'],
     reviews: ['USAGE'],
+    lists: ['USAGE'],
     settings: ['USAGE'],
     promotions: ['USAGE'],
     customers: ['USAGE'],
@@ -1655,6 +1656,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     // docs/design/data/catalog.md 3.28: a saved view of an admin list; a filter is a preference, so
     // the application deletes it; only the name and who can use it change.
+    // The shared store of saved filters of every super list (super list phase 0): the same rules,
+    // one table. The two old tables stay until they are dropped one release later.
+    'lists.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
     'catalog.saved_filters': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['name', 'updated_at', 'visibility'],
