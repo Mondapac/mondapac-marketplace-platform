@@ -29,6 +29,7 @@ import { AssistantModule } from './assistant';
 import { WalletModule } from './wallet';
 import { ReviewsModule } from './reviews';
 import { SettingsModule } from './settings';
+import { ListsModule } from './lists';
 import { PromotionsModule } from './promotions';
 import { SecurityModule } from './security';
 import { SystemRequestsModule } from './system-requests';
@@ -59,6 +60,7 @@ export const CORE_MODULES = [
   ReviewsModule,
   PromotionsModule,
   SettingsModule,
+  ListsModule,
   SecurityModule,
   SystemRequestsModule,
 ];

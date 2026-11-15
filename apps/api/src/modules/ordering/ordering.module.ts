@@ -19,6 +19,7 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CART_CHECKOUT_FACADE, CartModule } from '../cart';
 import { CatalogModule } from '../catalog';
+import { ListsModule } from '../lists';
 import { COMMISSION_PAYOUTS_FACADE, CommissionPayoutsModule } from '../commission-payouts';
 import { CUSTOMERS_CHECKOUT_FACADE, CustomersModule } from '../customers';
 import { IdentityModule } from '../identity';
@@ -293,6 +294,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  */
 @Module({
   imports: [
+    ListsModule,
     CartModule,
     CatalogModule,
     CustomersModule,
