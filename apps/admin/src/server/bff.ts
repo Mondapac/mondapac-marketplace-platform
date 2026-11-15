@@ -802,12 +802,17 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/platform-imports/:id/report': ['kind'],
   'catalog/admin/categories/:id/impact': ['action', 'targetId'],
 };
+/** A note for reviewers in a query: 1 to 500 characters (any, newlines included). */
+const NOTE_SHAPE = /^[\s\S]{1,500}$/;
 /** DELETE templates whose query crosses: the version seen and the closed reason code. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
   'ordering/admin/refund-limits/sellers/:id': { expectedVersion: /^[0-9]{1,9}$/ },
+  // The note for the reviewers (System requests), 1 to 500 characters; the API checks it too.
+  'commission-payouts/admin/sellers/:id/commission-rate': { note: NOTE_SHAPE },
   'commission-payouts/admin/sellers/:id/payout-terms': {
     expectedVersion: /^[0-9]{1,9}$/,
     reasonCode: /^(seller-request|risk-review|correction|policy)$/,
+    note: NOTE_SHAPE,
   },
 };
 const QUERY_VALUE_MAX = 512;
