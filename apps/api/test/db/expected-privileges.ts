@@ -56,6 +56,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     notifications: ['USAGE'],
     search: ['USAGE'],
     security: ['USAGE'],
+    system_requests: ['USAGE'],
   },
   tables: {
     // docs/design/data/identity.md section 7: DELETE only for the unverified purge and erasure
@@ -1797,6 +1798,34 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'security.evaluator_runs': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['finished_at', 'opened'],
+    },
+    // System requests (Admin Inbox): a request changes only its decision, supersession and comment
+    // count (triggers keep a decision and a supersession final); activity is append-only; no
+    // DELETE anywhere (triggers refuse it too).
+    'system_requests.requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'comment_count',
+        'decided_at',
+        'decided_by_account_id',
+        'decision',
+        'decision_reason',
+        'status',
+        'superseded_by_request_id',
+      ],
+    },
+    'system_requests.request_activity': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'system_requests.request_counters': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['last_number'],
+    },
+    'system_requests.policy_areas': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['default_risk', 'enabled', 'updated_at', 'updated_by_account_id', 'version'],
+    },
+    'system_requests.policy_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['review_due_days', 'updated_at', 'updated_by_account_id', 'version'],
     },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },

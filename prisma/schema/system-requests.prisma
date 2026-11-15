@@ -1,0 +1,121 @@
+// The system-requests module's tables (Admin Inbox › System requests, owner decisions of
+// 15 Nov 2026): a change to a reviewed area of the platform goes live at once and opens a review
+// request here that keeps the value before and after; another admin approves it, or rejects it and
+// the value before is restored. Every model is named SystemRequests<Name> and mapped to its table
+// with @@map. The CHECKs, the guard triggers and the grants are hand-written in the migration.
+
+/// One review request: a change that is already live, waiting for (or past) a second admin's
+/// decision. Only the decision columns, `superseded_by_request_id` and `comment_count` change.
+model SystemRequestsRequest {
+  id                    String    @id @db.Uuid
+  marketId              String    @map("market_id") @db.VarChar(8)
+  tenantId              String    @map("tenant_id")
+  /// SR-<number>: per Market, from `request_counters`; unique in the Market.
+  number                Int
+  /// The reviewed area (people, money, delivery, catalogue, certification, marketplace, content
+  /// or review-policy; CHECK).
+  area                  String
+  /// What changed, as the owning module names it: `<module>.<subject>` (e.g.
+  /// `system-requests.policy-area`). It also picks the module that restores the value.
+  subjectKind           String    @map("subject_kind")
+  /// Which one of the kind changed (e.g. the area code or the setting code).
+  subjectRef        String    @map("subject_ref")
+  /// low, medium or high (CHECK).
+  risk                  String
+  /// open, approved or reverted (CHECK).
+  status                String
+  /// The values before and after the change: JSON objects of at most 16 KB each (CHECK).
+  before                Json      @db.JsonB
+  after                 Json      @db.JsonB
+  /// The author's note, written when saving (1 to 500 characters).
+  note                  String
+  requestedByAccountId  String    @map("requested_by_account_id") @db.Uuid
+  /// When the change went live (the request is opened in the same transaction).
+  appliedAt             DateTime  @map("applied_at") @db.Timestamptz(6)
+  /// applied_at plus the Market's review period; past it an open request is overdue.
+  reviewDueAt           DateTime  @map("review_due_at") @db.Timestamptz(6)
+  /// approved, rejected (a reviewer reverted it) or withdrawn (the author reverted it); null while
+  /// open (CHECK ties it to `status`).
+  decision              String?
+  decidedByAccountId    String?   @map("decided_by_account_id") @db.Uuid
+  decidedAt             DateTime? @map("decided_at") @db.Timestamptz(6)
+  /// Required for rejected and withdrawn (1 to 500 characters); null for approved (CHECK).
+  decisionReason        String?   @map("decision_reason")
+  /// A later request on the same subject: this one can no longer be reverted.
+  supersededByRequestId String?   @map("superseded_by_request_id") @db.Uuid
+  commentCount          Int       @default(0) @map("comment_count")
+
+  activity SystemRequestsActivity[]
+
+  @@unique([marketId, id])
+  @@unique([marketId, number])
+  /// The queue: open requests by area, oldest first.
+  @@index([marketId, status, area, appliedAt])
+  /// The latest request of one subject (the setting page's banner, superseding).
+  @@index([marketId, subjectKind, subjectRef, appliedAt])
+  @@index([marketId, requestedByAccountId, appliedAt])
+  @@map("requests")
+  @@schema("system_requests")
+}
+
+/// The insert-only history of a request: applied, commented, approved, rejected, withdrawn.
+model SystemRequestsActivity {
+  id               String                @id @db.Uuid
+  marketId         String                @map("market_id") @db.VarChar(8)
+  tenantId         String                @map("tenant_id")
+  requestId        String                @map("request_id") @db.Uuid
+  /// applied, commented, approved, rejected or withdrawn (CHECK).
+  kind             String
+  actorAccountId   String                @map("actor_account_id") @db.Uuid
+  at               DateTime              @db.Timestamptz(6)
+  /// The comment or the reason (1 to 2000 characters); null for applied and approved (CHECK).
+  body             String?
+  request          SystemRequestsRequest @relation(fields: [marketId, requestId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([marketId, requestId, at])
+  @@map("request_activity")
+  @@schema("system_requests")
+}
+
+/// The last SR number given out in a Market. The row lock orders two openings of one Market.
+model SystemRequestsRequestCounter {
+  marketId   String @id @map("market_id") @db.VarChar(8)
+  tenantId   String @map("tenant_id")
+  lastNumber Int    @map("last_number")
+
+  @@map("request_counters")
+  @@schema("system_requests")
+}
+
+/// The review policy of one area in one Market. A missing row means the area's default (declared
+/// in code). A change to it is itself reviewed (area review-policy).
+model SystemRequestsPolicyArea {
+  marketId           String   @map("market_id") @db.VarChar(8)
+  tenantId           String   @map("tenant_id")
+  area               String
+  enabled            Boolean
+  /// low, medium or high (CHECK).
+  defaultRisk        String   @map("default_risk")
+  /// 1 for the first change, +1 for each later one. A stale edit is refused.
+  version            Int
+  updatedAt          DateTime @map("updated_at") @db.Timestamptz(6)
+  updatedByAccountId String   @map("updated_by_account_id") @db.Uuid
+
+  @@id([marketId, area])
+  @@map("policy_areas")
+  @@schema("system_requests")
+}
+
+/// The Market-wide review settings: after how many days an open request is overdue.
+model SystemRequestsPolicySetting {
+  marketId           String   @id @map("market_id") @db.VarChar(8)
+  tenantId           String   @map("tenant_id")
+  /// 1 to 90 (CHECK); 7 while no row exists.
+  reviewDueDays      Int      @map("review_due_days")
+  version            Int
+  updatedAt          DateTime @map("updated_at") @db.Timestamptz(6)
+  updatedByAccountId String   @map("updated_by_account_id") @db.Uuid
+
+  @@map("policy_settings")
+  @@schema("system_requests")
+}
