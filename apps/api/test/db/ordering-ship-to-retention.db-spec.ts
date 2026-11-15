@@ -15,6 +15,7 @@ import { AdminSetShipToRetention } from '../../src/modules/ordering/application/
 import { AdminViewShipToRetention } from '../../src/modules/ordering/application/use-cases/admin-view-ship-to-retention.use-case';
 import { PurgeDeliveredShipTo } from '../../src/modules/ordering/application/use-cases/purge-delivered-ship-to.use-case';
 import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
+import { isShipToPurgeable } from '../../src/modules/ordering/domain/ship-to-retention';
 import type { OrderState, SellerOrder } from '../../src/modules/ordering/domain/order';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
 import {
@@ -237,6 +238,16 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
       )
     ).rows.map((row) => row.after);
 
+  /**
+   * Clears what earlier tests of this file left eligible (switching the setting on with 24 months),
+   * so a following run counts only its own fixtures: other specs place orders delivered in 2026,
+   * never before the 24-month cutoff, and this file is the only one that writes the setting.
+   */
+  const drain = async (months = 24) => {
+    await setting({ enabled: true, months });
+    await purge();
+  };
+
   it('does nothing while never set or off', async () => {
     const old = await placed(['2020-01-01T00:00:00']);
     expect(await purge()).toEqual({ outcome: 'disabled', cleared: 0 });
@@ -246,18 +257,16 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
   });
 
   it("clears orders all delivered 24 months ago in the Market's zone, and nothing else", async () => {
+    await drain();
     const due = await placed(['2024-11-15T03:00:00']);
     const early = await placed(['2024-11-16T03:00:00']);
     const undelivered = await placed(['2021-06-01T00:00:00', null]);
     const twoOld = await placed(['2021-06-01T00:00:00', '2023-01-01T00:00:00']);
     const foreign = await placed(['2020-01-01T00:00:00'], other);
     const before = (await purgeAudits()).length;
-    await setting({ enabled: true, months: 24 });
 
-    const first = await purge();
+    expect(await purge()).toEqual({ outcome: 'complete', cleared: 2 });
 
-    expect(first.outcome).toBe('complete');
-    expect(first.cleared).toBeGreaterThanOrEqual(2);
     expect(await shipToOf(due)).toBeNull();
     expect(await shipToOf(twoOld)).toBeNull();
     expect(await shipToOf(early)).toBe(`v1.ship-to-of-${early}`);
@@ -267,13 +276,92 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
     expect(await purge()).toEqual({ outcome: 'complete', cleared: 0 });
     const audits = (await purgeAudits()).slice(before);
     expect(audits.map((a) => [a.months, a.cleared])).toEqual([
-      [24, first.cleared],
+      [24, 2],
       [24, 0],
     ]);
     expect(JSON.stringify(audits)).not.toContain(due);
   });
 
+  it('counts only the due order, not one already cleared beside it', async () => {
+    await drain();
+    const due = await placed(['2023-05-01T00:00:00']);
+    const cleared = await placed(['2023-05-01T00:00:00']);
+    await owner.query('UPDATE ordering.orders SET ship_to_ciphertext = NULL WHERE id = $1', [
+      cleared,
+    ]);
+
+    expect(await purge()).toEqual({ outcome: 'complete', cleared: 1 });
+    expect(await shipToOf(due)).toBeNull();
+    expect(await shipToOf(cleared)).toBeNull();
+  });
+
+  it('clears exactly the orders isShipToPurgeable allows, on the same fixtures (no drift)', async () => {
+    await drain();
+    const cutoff = local('2024-11-15T03:00:00');
+    const at = (instant: Temporal.Instant) =>
+      instant.toZonedDateTimeISO(zone).toPlainDateTime().toString();
+    const fixtures: (string | null)[][] = [
+      [at(cutoff)],
+      [at(cutoff.subtract({ milliseconds: 1 }))],
+      [at(cutoff.add({ milliseconds: 1 }))],
+      [null],
+      ['2021-01-01T00:00:00', null],
+      ['2021-01-01T00:00:00', '2022-02-02T00:00:00', '2023-03-03T00:00:00'],
+      ['2021-01-01T00:00:00', at(cutoff.add({ hours: 1 }))],
+      [null, null],
+    ];
+    const placedOrders = [];
+    for (const deliveries of fixtures) {
+      placedOrders.push({ id: await placed(deliveries), deliveries });
+    }
+    const expected = placedOrders
+      .filter(({ deliveries }) =>
+        isShipToPurgeable(
+          deliveries.map((d) => ({ deliveredAt: d === null ? null : local(d) })),
+          cutoff,
+        ),
+      )
+      .map(({ id }) => id)
+      .sort();
+
+    const batch = await db.unitOfWork.run(market, async () =>
+      ok(await deps.retention.clearDeliveredShipTo(market, cutoff, null, 500)),
+    );
+    if (!batch.ok) throw new Error('batch failed');
+
+    const actual: string[] = [];
+    for (const { id } of placedOrders) if ((await shipToOf(id)) === null) actual.push(id);
+    expect(expected).toHaveLength(3);
+    expect(actual.sort()).toEqual(expected);
+    expect(batch.value.cleared).toBe(expected.length);
+  });
+
+  it('lets the sealed ship-to only be cleared, for every role (trigger)', async () => {
+    const orderId = await placed([null]);
+    for (const client of [sql, owner]) {
+      await expect(
+        client.query(
+          `UPDATE ordering.orders SET ship_to_ciphertext = 'v1.another-sealed-address-of-the-customer' WHERE id = $1`,
+          [orderId],
+        ),
+      ).rejects.toMatchObject({
+        code: CHECK,
+        message: 'ordering.orders: the sealed ship-to may only be cleared',
+      });
+    }
+    expect(await shipToOf(orderId)).toBe(`v1.ship-to-of-${orderId}`);
+    await expect(
+      sql.query('UPDATE ordering.orders SET ship_to_ciphertext = NULL WHERE id = $1', [orderId]),
+    ).resolves.toBeDefined();
+    expect(await shipToOf(orderId)).toBeNull();
+    // Other columns of the order still change as before (the trigger fires on this column only).
+    await expect(
+      sql.query('UPDATE ordering.orders SET version = version + 1 WHERE id = $1', [orderId]),
+    ).resolves.toBeDefined();
+  });
+
   it('pages by (confirmed_at, id) with a cursor, ties included, until a short batch', async () => {
+    await drain();
     const three = [
       await placed(['2023-03-01T00:00:00']),
       await placed(['2023-03-01T00:00:00']),
@@ -294,6 +382,7 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
     }
     expect(sizes.every((size) => size <= 2)).toBe(true);
     expect(sizes.at(-1)).toBeLessThan(2);
+    expect(sizes.reduce((sum, size) => sum + size, 0)).toBe(3);
     for (const orderId of three) expect(await shipToOf(orderId)).toBeNull();
   });
 
