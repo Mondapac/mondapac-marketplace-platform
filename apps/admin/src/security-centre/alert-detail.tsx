@@ -94,31 +94,45 @@ export function AlertDetailView({
 
   usePoll(() => {
     if (pending || dialogOpen || alert.state === 'resolved') return;
-    void reread().then((fresh) => setRefreshFailedAt(fresh === null ? loadedAt.current : null));
+    const before = alert.state;
+    void reread().then((fresh) => {
+      setRefreshFailedAt(fresh === null ? loadedAt.current : null);
+      if (fresh === null || fresh.state === before) return;
+      // Someone else acted: say who, as a conflict does (Reza M10b). Focus moves only when the
+      // button that held it has gone with the change.
+      setNotice({ tone: 'info', text: changeText(fresh, 'changed') });
+      const focused = document.activeElement;
+      if (
+        focused === null ||
+        focused === document.body ||
+        focused.closest('[data-acts]') !== null
+      ) {
+        focusNext.current = 'notice';
+      }
+    });
   }, PAGE_POLL_MS);
+
+  /** "X acknowledged / resolved this alert …", for a refresh or (with what was lost) a conflict. */
+  const changeText = (fresh: AlertDetail, kind: 'changed' | 'conflict') =>
+    fresh.state === 'resolved'
+      ? t(`${kind}-resolved`, {
+          name: nameOr(fresh.resolvedByName),
+          when: fresh.resolvedAt === null ? '' : ago(fresh.resolvedAt, Date.now()),
+        })
+      : fresh.state === 'acknowledged'
+        ? t(`${kind}-acknowledged`, {
+            name: nameOr(fresh.acknowledgedByName),
+            when: fresh.acknowledgedAt === null ? '' : ago(fresh.acknowledgedAt, Date.now()),
+          })
+        : t('conflict');
 
   /** Someone acted first: read the alert again and say who did what. */
   const explainConflict = async () => {
     const fresh = await reread();
-    if (fresh?.state === 'resolved') {
-      setNotice({
-        tone: 'info',
-        text: t('conflict-resolved', {
-          name: nameOr(fresh.resolvedByName),
-          when: fresh.resolvedAt === null ? '' : ago(fresh.resolvedAt, Date.now()),
-        }),
-      });
-    } else if (fresh?.state === 'acknowledged') {
-      setNotice({
-        tone: 'info',
-        text: t('conflict-acknowledged', {
-          name: nameOr(fresh.acknowledgedByName),
-          when: fresh.acknowledgedAt === null ? '' : ago(fresh.acknowledgedAt, Date.now()),
-        }),
-      });
-    } else {
-      setNotice({ tone: 'info', text: t('conflict') });
-    }
+    setNotice({
+      tone: 'info',
+      text: fresh === null ? t('conflict') : changeText(fresh, 'conflict'),
+    });
     focusNext.current = 'notice';
     return fresh;
   };
@@ -136,7 +150,7 @@ export function AlertDetailView({
     setPending(false);
     if (result.ok) {
       setAlert(result.body);
-      toast.success(t('acknowledged-toast'));
+      toast.success(t(result.body.severity === 's1' ? 'acknowledged-toast' : 'acknowledged-plain'));
       focusNext.current = 'resolve';
       return;
     }
@@ -150,7 +164,7 @@ export function AlertDetailView({
     }
     setNotice({
       tone: 'critical',
-      text: result.failure.status === 403 ? t('acting-as') : t('error'),
+      text: refusalText(result.failure, (key) => t(key)),
     });
     focusNext.current = 'notice';
   };
@@ -244,8 +258,11 @@ export function AlertDetailView({
       <Timeline alert={alert} time={time} nameOr={nameOr} />
 
       {live ? (
-        <div className="sticky bottom-0 -mx-4 flex flex-col gap-2 border-t border-line bg-surface px-4 py-3 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
-          <div className="flex flex-col gap-3 sm:flex-row">
+        <div
+          data-acts
+          className="sticky bottom-0 -mx-4 flex flex-col gap-2 border-t border-line bg-surface px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0"
+        >
+          <div className="flex flex-row gap-3 max-sm:[&>*]:flex-1">
             {alert.state === 'open' ? (
               <Button
                 onClick={() => void acknowledge()}
@@ -553,11 +570,15 @@ function ResolveDialog({
           }),
         );
       } else {
-        setProblem(t('conflict-acknowledged', { name: nameOr(fresh?.acknowledgedByName ?? null) }));
+        setProblem(
+          fresh === null
+            ? td('conflict')
+            : t('conflict-acknowledged', { name: nameOr(fresh.acknowledgedByName) }),
+        );
       }
       return;
     }
-    setProblem(result.failure.status === 403 ? td('acting-as') : td('error'));
+    setProblem(refusalText(result.failure, (key) => td(key)));
   };
 
   return (
@@ -631,4 +652,14 @@ function ResolveDialog({
       </div>
     </Dialog>
   );
+}
+
+/** What a refused act says, by the API's code: a 403 is not always an acting-as session. */
+function refusalText(
+  failure: { readonly status: number; readonly code: string },
+  t: (key: 'denied' | 's1-only' | 'error') => string,
+): string {
+  if (failure.code === 'security.s1-resolver-only') return t('s1-only');
+  if (failure.status === 403 && failure.code === 'access.denied') return t('denied');
+  return t('error');
 }

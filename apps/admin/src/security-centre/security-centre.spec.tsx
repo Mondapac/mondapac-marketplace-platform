@@ -4,13 +4,13 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import { expectToast } from '../../test/toast-spy.ts';
+import { expectToast, toastsOf } from '../../test/toast-spy.ts';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
-import { callApi } from '../api/client.ts';
+import { callApi, type ApiResult } from '../api/client.ts';
 import { AlertDetailView } from './alert-detail.tsx';
-import { AlertsList } from './alerts-list.tsx';
+import { AlertsList, mergeRefresh } from './alerts-list.tsx';
 import { CriticalAlertsBadge } from './critical-badge.tsx';
 import {
   noteLength,
@@ -81,6 +81,12 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+/** usePoll reads again when the tab becomes visible: the same path as the 30 s timer. */
+const poll = () => {
+  Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+};
+
 describe('security centre helpers', () => {
   it('maps the page filter to the API state filter', () => {
     expect(stateQuery('live')).toBe('open,acknowledged');
@@ -93,6 +99,17 @@ describe('security centre helpers', () => {
     expect(rulesStale(null, now)).toBe(true);
     expect(rulesStale('2026-11-15T04:54:00Z', now)).toBe(true);
     expect(rulesStale('2026-11-15T04:58:00Z', now)).toBe(false);
+  });
+
+  it('merges a refresh in the API order and keeps rows loaded with Load more', () => {
+    const many = Array.from({ length: 52 }, (_, n) => row({ id: `id-${String(n)}` }));
+    const fresh = [row({ id: 'new-s1', severity: 's1' }), ...many.slice(0, 49)];
+    const merged = mergeRefresh(many, fresh);
+    expect(merged[0]?.id).toBe('new-s1');
+    expect(merged.map((alert) => alert.id).slice(-2)).toEqual(['id-50', 'id-51']);
+    expect(new Set(merged.map((alert) => alert.id)).size).toBe(merged.length);
+    // A first-page row that left the page (resolved elsewhere) leaves the list.
+    expect(merged.some((alert) => alert.id === 'id-49')).toBe(false);
   });
 
   it('counts the note as the API does: trimmed, by code point', () => {
@@ -138,6 +155,55 @@ describe('AlertsList', () => {
   });
 });
 
+describe('AlertsList refresh', () => {
+  const pages: (() => ApiResult<unknown>)[] = [];
+  beforeEach(() => {
+    pages.length = 0;
+    call.mockImplementation((_method, path) => {
+      if (path === 'security/admin/summary') return Promise.resolve(ok(summary()));
+      if (path === 'security/admin/on-call') return Promise.resolve(ok({ configured: true }));
+      return Promise.resolve((pages.shift() ?? (() => fail(503)))());
+    });
+  });
+
+  it('keeps the last list and says the refresh failed', async () => {
+    pages.push(
+      () => ok({ alerts: [row()], next: null }),
+      () => fail(503),
+    );
+    render(wrap(<AlertsList zone="UTC" />));
+    await screen.findByRole('link', { name: 'Many failed sign-ins for one account' });
+    poll();
+    expect(await screen.findByText(/^Couldn't refresh\. Showing alerts as of/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Many failed sign-ins for one account' })).toBeTruthy();
+  });
+
+  it('never says "no live alerts" when no page has loaded', async () => {
+    pages.push(
+      () => fail(503),
+      () => fail(503),
+    );
+    render(wrap(<AlertsList zone="UTC" />));
+    await screen.findByText(/^Couldn't load alerts\./);
+    poll();
+    await waitFor(() => expect(pages.length).toBe(0));
+    expect(screen.getByText(/^Couldn't load alerts\./)).toBeTruthy();
+    expect(screen.queryByText('No live alerts')).toBeNull();
+  });
+
+  it('starts from the filters in the address', async () => {
+    pages.push(() => ok({ alerts: [], next: null }));
+    render(wrap(<AlertsList zone="UTC" initialState="resolved" initialSeverities={['s1']} />));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'GET',
+        'security/admin/alerts?limit=50&state=resolved&severity=s1',
+      ),
+    );
+    expect(window.location.search).toBe('?state=resolved&severity=s1');
+  });
+});
+
 describe('AlertDetailView', () => {
   const mount = (alert: AlertDetail, over: { canRespond?: boolean; roster?: boolean } = {}) =>
     render(
@@ -154,9 +220,16 @@ describe('AlertDetailView', () => {
     );
 
   it('acknowledges with the version it shows and says the escalation stopped', async () => {
-    mount(detail());
+    mount(detail({ severity: 's1' }));
     call.mockResolvedValueOnce(
-      ok(detail({ state: 'acknowledged', acknowledgedByName: 'Kazem M.', version: 4 })),
+      ok(
+        detail({
+          severity: 's1',
+          state: 'acknowledged',
+          acknowledgedByName: 'Kazem M.',
+          version: 4,
+        }),
+      ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Acknowledge' }));
     await expectToast('Acknowledged. Escalation stopped.');
@@ -207,6 +280,71 @@ describe('AlertDetailView', () => {
     expect(screen.getAllByText(/Hassan R\. resolved this alert/).length).toBeGreaterThan(0);
   });
 
+  it('keeps the dialog, outcome and note when someone acknowledged meanwhile', async () => {
+    mount(detail());
+    fireEvent.click(screen.getByRole('button', { name: 'Resolve…' }));
+    fireEvent.click(screen.getByLabelText(/Contained/));
+    const note = screen.getByLabelText('What happened and what you did');
+    fireEvent.change(note, { target: { value: 'Blocked the IP at the edge.' } });
+    call
+      .mockResolvedValueOnce(fail(409, 'security.conflict'))
+      .mockResolvedValueOnce(
+        ok(detail({ state: 'acknowledged', acknowledgedByName: 'Kazem M.', version: 4 })),
+      );
+    fireEvent.click(screen.getByRole('button', { name: 'Resolve alert' }));
+    expect(await screen.findByText(/Kazem M\. acknowledged this alert meanwhile/)).toBeTruthy();
+    expect((note as HTMLTextAreaElement).value).toBe('Blocked the IP at the edge.');
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Resolve alert' }).disabled).toBe(
+      false,
+    );
+    call.mockResolvedValueOnce(
+      ok(detail({ state: 'resolved', resolution: 'contained', resolvedByName: 'Ada', version: 5 })),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Resolve alert' }));
+    await expectToast('Alert resolved.');
+    expect(call).toHaveBeenLastCalledWith(
+      'POST',
+      `security/admin/alerts/${ID}/resolve`,
+      { expectedVersion: 4, resolution: 'contained', note: 'Blocked the IP at the edge.' },
+      'csrf',
+    );
+  });
+
+  it('says why a refused act was refused, by its code', async () => {
+    mount(detail());
+    call.mockResolvedValueOnce(fail(403, 'access.denied'));
+    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge' }));
+    expect(await screen.findByText(/You can't act on this alert/)).toBeTruthy();
+    expect(toastsOf('success')).toEqual([]);
+  });
+
+  it('says who acted when a refresh finds the alert changed', async () => {
+    mount(detail());
+    call.mockResolvedValueOnce(
+      ok(detail({ state: 'acknowledged', acknowledgedAt: NOW, acknowledgedByName: 'Kazem M.' })),
+    );
+    poll();
+    expect(await screen.findByText(/^Kazem M\. acknowledged this alert/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Acknowledge' })).toBeNull();
+  });
+
+  it('lets an S1 resolver resolve a critical alert', () => {
+    mount(detail({ severity: 's1', viewerResolvesCritical: true }));
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Resolve…' }).disabled).toBe(
+      false,
+    );
+  });
+
+  it('keeps the 15-minute clock and says nobody was told without a roster', () => {
+    mount(detail({ severity: 's1' }), { roster: false });
+    expect(screen.getByText('Respond within 15 minutes')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Not sent: there is no on-call roster, so nobody has been told about this alert.',
+      ),
+    ).toBeTruthy();
+  });
+
   it('tells a non-resolver who may resolve a critical alert', () => {
     mount(detail({ severity: 's1' }));
     expect(
@@ -234,6 +372,7 @@ describe('CriticalAlertsBadge', () => {
     call.mockResolvedValue(ok(summary(0)));
     const { container } = render(wrap(<CriticalAlertsBadge />));
     await waitFor(() => expect(call).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(container.querySelector('a')).toBeNull();
   });
 

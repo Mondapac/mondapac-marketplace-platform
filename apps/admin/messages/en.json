@@ -8922,7 +8922,7 @@
       "alerts": "Alerts",
       "on-call": "On call"
     },
-    "no-access-title": "You don't have access to the security centre",
+    "no-access-title": "You don't have access to Security",
     "no-access": "It needs the View security centre permission (security.centre.view). Ask an admin who manages roles to add it to your role.",
     "not-found-title": "Alert not found",
     "not-found": "This alert does not exist in this Market.",
@@ -8934,9 +8934,9 @@
     "refresh-failed": "Couldn't refresh. Showing alerts as of {time}.",
     "banner": {
       "no-roster-title": "No on-call roster is set up. Alerts are not being sent.",
-      "no-roster": "Nobody is emailed or texted, and critical alerts can't be resolved until the roster file is on the server. Ask DevOps to set it up.",
+      "no-roster": "No one gets an email about any alert, and critical alerts can't be resolved until the roster file is on the server. Ask DevOps to set it up.",
       "stale-title": "The security rules have not run for {minutes} minutes.",
-      "stale": "New alerts may not be created. The rules normally run every minute. Check the job runner, or ask DevOps."
+      "stale": "New alerts may not be created. The rules normally run every minute. Ask DevOps to check the background jobs."
     },
     "tiles": {
       "label": "Live alerts",
@@ -9087,12 +9087,16 @@
       "hint-no-roster": "Critical alerts can't be resolved until the on-call roster is set up.",
       "acknowledged-toast": "Acknowledged. Escalation stopped.",
       "resolved-toast": "Alert resolved.",
-      "conflict-acknowledged": "{name} acknowledged this alert {when}. Nothing you did was saved.",
-      "conflict-resolved": "{name} resolved this alert {when}. Nothing you did was saved.",
-      "conflict": "This alert changed while you were looking. Nothing you did was saved; this is the latest version.",
-      "acting-as": "You are signed in as a seller. Leave that session to act on security alerts.",
+      "conflict-acknowledged": "{name} acknowledged this alert {when}, before your change. Your change was not saved.",
+      "conflict-resolved": "{name} resolved this alert {when}, before your change. Your change was not saved.",
+      "conflict": "This alert changed while you were looking. Your change was not saved; this is the latest version.",
       "error": "Couldn't save. Try again.",
-      "refresh-failed": "Couldn't refresh. Showing this alert as of {time}."
+      "refresh-failed": "Couldn't refresh. Showing this alert as of {time}.",
+      "changed-acknowledged": "{name} acknowledged this alert {when}.",
+      "changed-resolved": "{name} resolved this alert {when}.",
+      "acknowledged-plain": "Acknowledged.",
+      "denied": "You can't act on this alert. Your role may have changed, or you are signed in as a seller; leave that session or ask an admin who manages roles.",
+      "s1-only": "Only the incident commander or the security owner can resolve a critical alert."
     },
     "resolve": {
       "title": "Resolve alert",
@@ -9152,6 +9156,7 @@
       "empty-title": "No on-call roster",
       "empty": "The roster is a file on the server. It names who is on call each week, the escalation order, the incident commander and the security owner. Until it is there, no alert is sent. Ask DevOps to add it."
     },
-    "loading": "Loading alerts"
+    "loading": "Loading alerts",
+    "announce": "New critical alert: {title}"
   }
 }

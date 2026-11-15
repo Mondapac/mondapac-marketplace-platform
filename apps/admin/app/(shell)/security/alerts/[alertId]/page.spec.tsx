@@ -50,7 +50,8 @@ const as = (...permissionKeys: string[]) =>
       csrfToken: 'c',
     } satisfies AdminSession,
   });
-const open = (alertId = 'abc') => SecurityAlertPage({ params: Promise.resolve({ alertId }) });
+const AID = '0190a000-0000-7000-8000-0000000000a1';
+const open = (alertId = AID) => SecurityAlertPage({ params: Promise.resolve({ alertId }) });
 const props = () =>
   mocks.detail.mock.calls[0]?.[0] as {
     canRespond: boolean;
@@ -86,7 +87,7 @@ describe('security alert page', () => {
       Promise.resolve(path.includes('alerts/') ? ALERT : ROSTER),
     );
     render(await open());
-    expect(mocks.get).toHaveBeenCalledWith('security/admin/alerts/abc');
+    expect(mocks.get).toHaveBeenCalledWith(`security/admin/alerts/${AID}`);
     expect(props()).toMatchObject({
       canRespond: true,
       resolvers: { commander: 'Ali K.', owner: 'Hassan R.' },
@@ -121,8 +122,17 @@ describe('security alert page', () => {
     mocks.get.mockImplementation((path: string) =>
       Promise.resolve(path.includes('alerts/') ? { kind: 'not-found' } : ROSTER),
     );
-    render(await open('nope/../x'));
+    render(await open());
     expect(screen.getByText('Alert not found')).toBeTruthy();
-    expect(mocks.get).toHaveBeenCalledWith('security/admin/alerts/nope%2F..%2Fx');
+  });
+
+  it('reads nothing for an id that is not an alert id, such as ..', async () => {
+    as('security.centre.view');
+    for (const bad of ['..', '%2e%2e', 'nope/../x']) {
+      render(await open(bad));
+      expect(screen.getByText('Alert not found')).toBeTruthy();
+      cleanup();
+    }
+    expect(mocks.get).not.toHaveBeenCalled();
   });
 });

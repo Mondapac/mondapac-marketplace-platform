@@ -18,6 +18,8 @@ import { serverGet } from '../../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../../src/server/session.ts';
 import { localZone } from '../../../../../src/shared/format.ts';
 
+const ALERT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function generateMetadata() {
   const t = await getTranslations();
   return { title: t('security-centre.detail.page-title') };
@@ -44,6 +46,16 @@ export default async function SecurityAlertPage({
     return (
       <SecurityFrame session={session} tab={null}>
         <SecurityNoAccess />
+      </SecurityFrame>
+    );
+  }
+  // Only an id of the API's shape reaches it: "..", for one, would change the path it reads.
+  if (!ALERT_ID.test(alertId)) {
+    return (
+      <SecurityFrame session={session} tab={null}>
+        <div className="mb-4">{back}</div>
+        <h2 className="text-lg font-semibold">{t('security-centre.not-found-title')}</h2>
+        <p className="mt-1 text-fg-muted">{t('security-centre.not-found')}</p>
       </SecurityFrame>
     );
   }

@@ -29,17 +29,29 @@ type Failure = 'first' | 'refresh' | 'more' | null;
 /**
  * The Alerts tab: the live counts, the banners that say the system is not working (no roster,
  * rules stopped), and the alerts by severity then newest, with state and severity filters. It
- * reads again every 30 s while visible (F4); a refresh replaces data in place, keeps the order of
- * the rows already shown, never moves focus, and keeps the last list when it fails.
+ * reads again every 30 s while visible (F4); a refresh keeps the list in its sorted order (a new
+ * alert takes its place by severity), never moves focus or resets filters, and keeps the last list
+ * when it fails. Until a first page has loaded, nothing says "no alerts".
  */
-export function AlertsList({ zone }: { readonly zone: string }) {
+export function AlertsList({
+  zone,
+  initialState = 'live',
+  initialSeverities = SEVERITIES,
+}: {
+  readonly zone: string;
+  /** From the address, so Back and a reload keep the filters (Reza M5). */
+  readonly initialState?: StateFilter;
+  readonly initialSeverities?: readonly Severity[];
+}) {
   const t = useTranslations('security-centre');
   const tl = useTranslations('load');
   const locale = useLocale();
   const ago = useAgo();
   const now = useNow();
-  const [stateFilter, setStateFilter] = useState<StateFilter>('live');
-  const [severities, setSeverities] = useState<ReadonlySet<Severity>>(ALL_SEVERITIES);
+  const [stateFilter, setStateFilter] = useState<StateFilter>(initialState);
+  const [severities, setSeverities] = useState<ReadonlySet<Severity>>(() =>
+    initialSeverities.length === 0 ? ALL_SEVERITIES : new Set(initialSeverities),
+  );
   const [rows, setRows] = useState<readonly AlertSummary[]>([]);
   const [next, setNext] = useState<string | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -50,6 +62,25 @@ export function AlertsList({ zone }: { readonly zone: string }) {
   const [announce, setAnnounce] = useState('');
   const latest = useRef(0);
   const lastCritical = useRef<number | null>(null);
+  const loadedAtRef = useRef<string | null>(null);
+  const criticalRose = useRef(false);
+  const shown = useRef<ReadonlySet<string>>(new Set());
+
+  /** A live region reads a change only: clear it first, so a second alert is read too. */
+  const say = (text: string) => {
+    setAnnounce('');
+    setTimeout(() => setAnnounce(text), 50);
+  };
+
+  // The filters live in the address (replace, not push: a filter is not a page of its own).
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (stateFilter === 'live') url.searchParams.delete('state');
+    else url.searchParams.set('state', stateFilter);
+    if (severities.size === SEVERITIES.length) url.searchParams.delete('severity');
+    else url.searchParams.set('severity', SEVERITIES.filter((v) => severities.has(v)).join(','));
+    window.history.replaceState(window.history.state, '', url);
+  }, [stateFilter, severities]);
 
   const query = useCallback(
     (after: string | null, limit: number) => {
@@ -71,7 +102,7 @@ export function AlertsList({ zone }: { readonly zone: string }) {
     if (counts.ok) {
       const critical = counts.body.live.s1;
       if (lastCritical.current !== null && critical > lastCritical.current) {
-        setAnnounce(t('badge.announce'));
+        criticalRose.current = true;
       }
       lastCritical.current = critical;
       setSummary(counts.body);
@@ -100,19 +131,21 @@ export function AlertsList({ zone }: { readonly zone: string }) {
           window.location.assign('/session-ended');
           return;
         }
-        setFailed(refresh ? 'refresh' : 'first');
+        setFailed(refresh && loadedAtRef.current !== null ? 'refresh' : 'first');
         return;
       }
       setFailed(summaryOk ? null : 'refresh');
-      setLoadedAt(new Date().toISOString());
-      setRows((current) => {
-        if (!refresh) return page.body.alerts;
-        // In place: rows already shown keep their place and take the new data; new alerts go first.
-        const fresh = new Map(page.body.alerts.map((alert) => [alert.id, alert]));
-        const kept = current.map((alert) => fresh.get(alert.id) ?? alert);
-        const known = new Set(current.map((alert) => alert.id));
-        return [...page.body.alerts.filter((alert) => !known.has(alert.id)), ...kept];
-      });
+      loadedAtRef.current = new Date().toISOString();
+      setLoadedAt(loadedAtRef.current);
+      const fresh = page.body.alerts;
+      if (criticalRose.current) {
+        criticalRose.current = false;
+        const arrived = fresh.find(
+          (alert) => alert.severity === 's1' && !shown.current.has(alert.id),
+        );
+        say(arrived === undefined ? t('badge.announce') : t('announce', { title: arrived.title }));
+      }
+      setRows((current) => (refresh ? mergeRefresh(current, fresh) : fresh));
       if (!refresh) setNext(page.body.next);
     },
     [query, readSummary],
@@ -142,7 +175,8 @@ export function AlertsList({ zone }: { readonly zone: string }) {
   }, [loadFirst]);
 
   usePoll(() => {
-    if (!loading) void loadFirst(true);
+    // Until a first page has loaded, a poll is a first load again: it never stands in for one.
+    if (!loading) void loadFirst(loadedAt !== null);
   }, PAGE_POLL_MS);
 
   const toggleSeverity = (severity: Severity) =>
@@ -156,6 +190,7 @@ export function AlertsList({ zone }: { readonly zone: string }) {
   const stale = summary !== null && rulesStale(summary.rulesLastRanAt, now);
   const staleMinutes =
     summary?.rulesLastRanAt == null ? null : minutesBetween(summary.rulesLastRanAt, now);
+  shown.current = new Set(rows.map((alert) => alert.id));
   const noRoster = rosterSet === false;
   const timeOf = (iso: string) => shortInstantInZone(iso, locale, zone);
 
@@ -210,7 +245,7 @@ export function AlertsList({ zone }: { readonly zone: string }) {
       {rows.length > 0 ? (
         <AlertsTable rows={rows} now={now} noRoster={noRoster} timeOf={timeOf} />
       ) : null}
-      {!loading && failed !== 'first' && rows.length === 0 ? (
+      {!loading && loadedAt !== null && failed !== 'first' && rows.length === 0 ? (
         stateFilter === 'live' && severities.size === SEVERITIES.length ? (
           <EmptyState
             icon="shield-check"
@@ -283,19 +318,19 @@ function Tiles({
       <div className={`${tile} border-line bg-surface`}>
         <span className="text-sm text-fg-muted">{t('s2')}</span>
         <span className="text-2xl font-semibold tabular-nums">{s2}</span>
-        <span className="truncate text-sm text-fg-muted">{s2 > 0 ? t('s2-sub') : t('none')}</span>
+        <span className="text-sm text-fg-muted">{s2 > 0 ? t('s2-sub') : t('none')}</span>
       </div>
       <div className={`${tile} border-line bg-surface`}>
         <span className="text-sm text-fg-muted">{t('s34')}</span>
         <span className="text-2xl font-semibold tabular-nums">{s3 + s4}</span>
-        <span className="truncate text-sm text-fg-muted">{t('s34-sub')}</span>
+        <span className="text-sm text-fg-muted">{t('s34-sub')}</span>
       </div>
       <div className={`${tile} border-line bg-surface`}>
         <span className="text-sm text-fg-muted">{t('on-call')}</span>
         <span className="truncate text-lg font-semibold">
           {summary.onCall?.name ?? t('nobody')}
         </span>
-        <span className="truncate text-sm text-fg-muted">
+        <span className="text-sm text-fg-muted">
           {noRoster || summary.onCall === null ? t('no-roster') : ' '}
         </span>
       </div>
@@ -359,7 +394,7 @@ function Filters({
             onClick={() => onSeverity(severity)}
             className={chip(severities.size < SEVERITIES.length && severities.has(severity))}
           >
-            {severity.toUpperCase()}
+            {t(`severity.${severity}`)}
           </button>
         ))}
       </div>
@@ -493,4 +528,18 @@ export function ResponseText({
     );
   }
   return <span className="text-fg-muted">{t(`response.${alert.severity}`)}</span>;
+}
+
+/**
+ * A refresh of the first page: its rows in the API's order (severity, then newest), so a new
+ * alert takes its sorted place and one that no longer matches the filters leaves; rows loaded
+ * with "Load more" stay after it, with no row shown twice.
+ */
+export function mergeRefresh(
+  current: readonly AlertSummary[],
+  fresh: readonly AlertSummary[],
+): readonly AlertSummary[] {
+  const ids = new Set(fresh.map((alert) => alert.id));
+  const later = current.slice(PAGE_SIZE).filter((alert) => !ids.has(alert.id));
+  return [...fresh, ...later];
 }

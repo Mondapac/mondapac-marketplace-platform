@@ -1,3 +1,4 @@
+import { Tabs } from '@mondapac/ui';
 import { NextIntlClientProvider } from 'next-intl';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
@@ -118,7 +119,9 @@ window.fetch = ((input: string) => {
           onCall: { code: 'hassan', name: 'Hassan R.' },
         }
       : path === 'security/admin/on-call'
-        ? roster
+        ? view === 'noroster'
+          ? { configured: false }
+          : roster
         : path === 'security/admin/alerts'
           ? { alerts, next: id(4) }
           : detail;
@@ -129,7 +132,7 @@ const frame = async () => {
   if (view === 'oncall') {
     return await OnCallView({ onCall: roster, locale: 'en-AU', now: new Date().toISOString() });
   }
-  if (view === 'list') return <AlertsList zone="Australia/Brisbane" />;
+  if (view === 'list' || view === 'noroster') return <AlertsList zone="Australia/Brisbane" />;
   return (
     <AlertDetailView
       initial={detail}
@@ -149,8 +152,22 @@ void frame().then((body) =>
         <CriticalAlertsBadge />
       </header>
       <main className="mx-auto max-w-7xl p-4 md:p-6">
-        {view === 'list' || view === 'oncall' ? (
-          <h1 className="mb-4 text-2xl font-semibold">{messages['security-centre'].title}</h1>
+        {view === 'list' || view === 'oncall' || view === 'noroster' ? (
+          // As the page frame draws it (frame.tsx is a server component).
+          <>
+            <h1 className="mb-1 text-2xl font-semibold">{messages['security-centre'].title}</h1>
+            <p className="mb-4 text-fg-muted">{messages['security-centre'].intro}</p>
+            <div className="mb-6">
+              <Tabs
+                label={messages['security-centre'].tabs.label}
+                activeId={view === 'oncall' ? 'on-call' : 'alerts'}
+                items={[
+                  { id: 'alerts', label: messages['security-centre'].tabs.alerts, href: '#' },
+                  { id: 'on-call', label: messages['security-centre'].tabs['on-call'], href: '#' },
+                ]}
+              />
+            </div>
+          </>
         ) : null}
         {body}
       </main>
