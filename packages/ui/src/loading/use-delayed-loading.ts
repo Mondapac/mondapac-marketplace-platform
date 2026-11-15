@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /** Panel loading timing (design: panel-loading plan, section 4; approved by the owner). */
 export const LOADING_SHOW_DELAY_MS = 200;
@@ -50,6 +50,13 @@ export function useDelayedLoading(
   // Read when a timer starts, so a caller passing a new options object never restarts the clocks.
   const timing = useRef({ delay, minVisible, slowAfter, stalledAfter });
   timing.current = { delay, minVisible, slowAfter, stalledAfter };
+  // The committed value. A slow render (a long list arriving) can commit "done" after the show
+  // timer is due but before the effect that clears it runs; the timer then shows nothing. Set in a
+  // layout effect, so a render that is thrown away never changes it.
+  const current = useRef(loading);
+  useLayoutEffect(() => {
+    current.current = loading;
+  }, [loading]);
 
   useEffect(() => {
     const { delay, minVisible, slowAfter, stalledAfter } = timing.current;
@@ -63,6 +70,7 @@ export function useDelayedLoading(
       if (shownAt.current === null) {
         timers.push(
           setTimeout(() => {
+            if (!current.current) return;
             shownAt.current = Date.now();
             setVisible(true);
           }, delay),
