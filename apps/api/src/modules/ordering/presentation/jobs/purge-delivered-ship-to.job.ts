@@ -10,7 +10,8 @@ export const PURGE_DELIVERED_SHIP_TO_JOB = 'ordering.purge-delivered-ship-to';
  * `ordering.purge-delivered-ship-to`, daily (owner decision 2026-11-15): for each hosted Market,
  * the scheduler's system-actor context goes unchanged to `PurgeDeliveredShipTo` (rule `system`).
  * Does nothing while the Market's ship-to retention is off or never set. On, it clears the sealed
- * delivery address of orders delivered longer ago than the setting, in batches of 500, and writes
+ * delivery address of orders settled longer ago than the setting (`isShipToPurgeable`; the name
+ * predates the wider rule of 2026-11-15), in batches of 500, and writes
  * one audit row with the count. Idempotent and safe to overlap. Logs counts only.
  */
 export function purgeDeliveredShipToJob(purge: PurgeDeliveredShipTo): JobDefinition {

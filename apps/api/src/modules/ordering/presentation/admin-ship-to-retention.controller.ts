@@ -35,7 +35,7 @@ const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token o
 
 /**
  * The Market's ship-to retention (owner decision 2026-11-15): whether, and how many months after
- * delivery, the sealed delivery address of an order is deleted. The controller authenticates only;
+ * its seller orders are settled, the sealed delivery address of an order is deleted. The controller authenticates only;
  * the use cases need `ordering.ship-to-retention.view` or `ordering.ship-to-retention.manage`.
  * Every response is `Cache-Control: no-store`.
  */
@@ -82,8 +82,10 @@ export class AdminShipToRetentionController {
       'admin (`POST identity/admin/step-up/verify` for ordering.ship-to-retention.change; without ' +
       'it 403 second-factor.required with details.actionKey). Refused in an acting-as session. ' +
       'Switched on, a daily job deletes for good the sealed delivery address (address, phone, ' +
-      'buyer note) of every order whose seller orders were all delivered at least `months` months ' +
-      'ago; orders not fully delivered are not touched. Audited with before and after. ' +
+      'buyer note) of every order whose seller orders are all settled, the last at least `months` ' +
+      'months ago: delivered, shipped and never delivered, cancelled with the order, or refunded ' +
+      'in full while still to ship. An order with a seller order still to ship and not refunded ' +
+      'in full is not touched. Audited with before and after. ' +
       'expectedVersion is the version read (0 when never set); 409 conflict.retry when another ' +
       'admin changed it first.',
   })

@@ -3,11 +3,18 @@ import {
   DEFAULT_SHIP_TO_RETENTION,
   isShipToPurgeable,
   parseShipToRetentionInput,
+  sellerOrderSettledAt,
   shipToRetentionCutoff,
 } from './ship-to-retention';
+import {
+  settlementCases,
+  settlementFacts,
+} from '../../../../test/support/ship-to-settlement-fixtures';
 
-// The admin setting that clears the sealed ship-to of delivered orders (owner decision
-// 2026-11-15): off by default (the deletion is irreversible), 24 months by default, 1 to 120.
+// The admin setting that clears the sealed ship-to of settled orders (owner decisions 2026-11-15):
+// off by default (the deletion is irreversible), 24 months by default, 1 to 120. Settled: every
+// seller order delivered, shipped and never delivered, cancelled with the order, or refunded in
+// full while to ship, the latest at or before the cutoff.
 
 describe.each([
   ['AU', 'Australia/Brisbane'],
@@ -31,22 +38,54 @@ describe.each([
     expect(cutoff.equals(local('2028-02-29T12:00:00'))).toBe(true);
   });
 
-  it('clears an order delivered at the cutoff, not one delivered a day later', () => {
-    const cutoff = shipToRetentionCutoff(now, zone, 24);
-    expect(isShipToPurgeable([{ deliveredAt: local('2024-11-15T03:00:00') }], cutoff)).toBe(true);
-    // 23 months and 29 days ago.
-    expect(isShipToPurgeable([{ deliveredAt: local('2024-11-16T03:00:00') }], cutoff)).toBe(false);
+  const cutoff = shipToRetentionCutoff(now, zone, 24);
+
+  it.each(settlementCases(cutoff).map((c) => [c.name, c.spec, c.purgeable] as const))(
+    'settles: %s',
+    (_name, spec, purgeable) => {
+      expect(isShipToPurgeable(settlementFacts(spec), cutoff)).toBe(purgeable);
+    },
+  );
+
+  it('clears an order delivered 24 months ago in the zone, not one delivered 23 months 29 days ago', () => {
+    const delivered = (at: string) =>
+      settlementFacts({ sellerOrders: [{ kind: 'delivered', at: local(at) }] });
+    expect(isShipToPurgeable(delivered('2024-11-15T03:00:00'), cutoff)).toBe(true);
+    expect(isShipToPurgeable(delivered('2024-11-16T03:00:00'), cutoff)).toBe(false);
   });
 
-  it('needs every seller order delivered before the cutoff, and at least one', () => {
-    const cutoff = shipToRetentionCutoff(now, zone, 24);
-    const old = { deliveredAt: local('2023-01-01T00:00:00') };
-    expect(isShipToPurgeable([old, old], cutoff)).toBe(true);
-    expect(isShipToPurgeable([old, { deliveredAt: null }], cutoff)).toBe(false);
-    expect(isShipToPurgeable([old, { deliveredAt: local('2026-01-01T00:00:00') }], cutoff)).toBe(
-      false,
-    );
-    expect(isShipToPurgeable([], cutoff)).toBe(false);
+  it('never settles a pending-payment order or an order without seller orders', () => {
+    expect(
+      isShipToPurgeable(
+        settlementFacts({ status: 'pending-payment', sellerOrders: [{ kind: 'to-ship' }] }),
+        cutoff,
+      ),
+    ).toBe(false);
+    expect(isShipToPurgeable(settlementFacts({ sellerOrders: [] }), cutoff)).toBe(false);
+    // A cancelled order whose instant is missing (the CHECK rules it out) deletes nothing.
+    expect(
+      isShipToPurgeable(
+        settlementFacts({ status: 'cancelled', sellerOrders: [{ kind: 'to-ship' }] }),
+        cutoff,
+      ),
+    ).toBe(false);
+  });
+
+  it('dates a refund in full by the refund that completed it, not a later one', () => {
+    const old = local('2023-01-01T00:00:00');
+    const facts = settlementFacts({
+      sellerOrders: [{ kind: 'to-ship', refunds: [{ at: old, units: 2 }] }],
+    });
+    // A later refund not failed (for example of the shipping fee only) gives back no line unit.
+    const withLater = {
+      ...facts,
+      sellerOrders: facts.sellerOrders.map((so) => ({
+        ...so,
+        refunds: [...so.refunds, { state: 'succeeded' as const, requestedAt: now, lines: [] }],
+      })),
+    };
+    expect(sellerOrderSettledAt(withLater, withLater.sellerOrders[0]!)?.equals(old)).toBe(true);
+    expect(isShipToPurgeable(withLater, cutoff)).toBe(true);
   });
 
   it.each([

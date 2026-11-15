@@ -15,6 +15,13 @@ import { AdminSetShipToRetention } from '../../src/modules/ordering/application/
 import { AdminViewShipToRetention } from '../../src/modules/ordering/application/use-cases/admin-view-ship-to-retention.use-case';
 import { PurgeDeliveredShipTo } from '../../src/modules/ordering/application/use-cases/purge-delivered-ship-to.use-case';
 import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
+import { isShipToPurgeable } from '../../src/modules/ordering/domain/ship-to-retention';
+import {
+  LINE_QUANTITY,
+  settlementCases,
+  settlementFacts,
+  type OrderSpec,
+} from '../support/ship-to-settlement-fixtures';
 import type { OrderState, SellerOrder } from '../../src/modules/ordering/domain/order';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
 import {
@@ -42,8 +49,9 @@ import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 // The ship-to retention setting and its daily purge on PostgreSQL as the application role, in
 // both Market fixtures (owner decision 2026-11-15): the real use cases on the real unit of work and
 // audit writer set the Market's row and clear the sealed ship-to of orders whose seller orders were
-// all delivered at least `months` months ago in the Market's zone; an order with a seller order not
-// delivered keeps it; a second run clears nothing; no Market reaches another's orders; the CHECKs
+// all settled (delivered, shipped never delivered, cancelled, refunded in full while to ship), the
+// latest at least `months` months ago in the Market's zone; an order with an unsettled seller order
+// keeps it; a second run clears nothing; no Market reaches another's orders; the CHECKs
 // hold; the role may update the ship-to column and the setting's own columns only.
 
 const CHECK = '23514';
@@ -157,13 +165,18 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
     deliveryAttention: null,
     deliveryQuote: null,
   });
-  /** A confirmed order of `target` with one seller order per delivery (null: not delivered). */
-  const placed = async (
-    deliveries: (string | null)[],
+  /**
+   * An order of `target` built from a spec of the shared fixtures: placed confirmed, then moved as
+   * the flows would leave it (shipped, delivered, refunded with the seller order's refunded sum
+   * raised in the same transaction, or cancelled). Each seller order has one line of
+   * LINE_QUANTITY units of 500 minor units each.
+   */
+  const placedSpec = async (
+    spec: OrderSpec,
     target: MarketContext = market,
   ): Promise<Id<'Order'>> => {
     const orderId = ids.next<'Order'>();
-    const sellerOrders = deliveries.map(() => sellerOrder());
+    const sellerOrders = spec.sellerOrders.map(() => sellerOrder());
     const state: OrderState = {
       id: orderId,
       marketId: target.marketId,
@@ -171,7 +184,7 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
       status: 'confirmed',
       cancelReason: null,
       paymentState: 'captured',
-      total: money(1000n * BigInt(deliveries.length), currency(target)),
+      total: money(1000n * BigInt(sellerOrders.length), currency(target)),
       reservationId: ids.next<'Reservation'>(),
       stripeIdempotencyKey: `checkout-${orderId}`,
       stripeSessionId: null,
@@ -189,8 +202,8 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
         sellerOrderId: so.id,
         offerId: ids.next<'Offer'>(),
         variantId: ids.next<'Variant'>(),
-        quantity: 1,
-        unitPrice: money(1000n, currency(target)),
+        quantity: LINE_QUANTITY,
+        unitPrice: money(500n, currency(target)),
         lineAmount: 1000n,
         taxInclusive: true,
         reservationLineId: ids.next<'ReservationLine'>(),
@@ -205,22 +218,102 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
       return ok(undefined);
     });
     if (!done.ok) throw new Error('insert failed');
-    for (const [index, at] of deliveries.entries()) {
-      if (at === null) continue;
-      const delivered = local(at);
+    for (const [index, so] of spec.sellerOrders.entries()) {
+      const sellerOrderId = state.sellerOrders[index]!.id;
+      if (so.kind === 'delivered' || so.kind === 'shipped') {
+        await owner.query(
+          `UPDATE ordering.seller_orders
+              SET fulfilment = $2, carrier = 'Test courier', shipped_at = $3, delivered_at = $4
+            WHERE id = $1`,
+          [
+            sellerOrderId,
+            so.kind,
+            (so.kind === 'delivered' ? so.at.subtract({ hours: 2 }) : so.at).toString(),
+            so.kind === 'delivered' ? so.at.toString() : null,
+          ],
+        );
+        continue;
+      }
+      let unitsBefore = 0;
+      for (const refund of so.refunds ?? []) {
+        const refundState = refund.state ?? 'succeeded';
+        const gross = 500 * refund.units;
+        const refundId = ids.next<'Refund'>();
+        await owner.query('BEGIN');
+        try {
+          if (refundState !== 'failed') {
+            await owner.query(
+              `UPDATE ordering.seller_orders SET refunded_amount = refunded_amount + $2 WHERE id = $1`,
+              [sellerOrderId, gross],
+            );
+          }
+          await owner.query(
+            `INSERT INTO ordering.refunds (id, market_id, tenant_id, order_id, seller_order_id,
+               seller_id, currency, gross_amount, tax_amount, shipping_gross_amount,
+               shipping_tax_amount, reason, actor_population, actor_account_id, state,
+               stripe_idempotency_key, stripe_refund_id, requested_at, settled_at)
+             SELECT $1, market_id, tenant_id, order_id, id, seller_id, $3, $4, 0, 0, 0, 'other',
+                    'admin', $5, $6, $7, $8, $9, $10
+               FROM ordering.seller_orders WHERE id = $2`,
+            [
+              refundId,
+              sellerOrderId,
+              currency(target),
+              gross,
+              ids.next(),
+              refundState,
+              `refund-${refundId}`,
+              refundState === 'succeeded' ? `re_test_${refundId.replaceAll('-', '')}` : null,
+              refund.at.toString(),
+              refundState === 'pending' ? null : refund.at.add({ minutes: 1 }).toString(),
+            ],
+          );
+          await owner.query(
+            `INSERT INTO ordering.refund_lines (market_id, tenant_id, refund_id, seller_order_id,
+               order_line_id, quantity, line_quantity, units_before, gross_amount, tax_amount,
+               tax_rate_bps, tax_inclusive)
+             VALUES ($1, 'default', $2, $3, $4, $5, $6, $7, $8, 0, 0, true)`,
+            [
+              target.marketId,
+              refundId,
+              sellerOrderId,
+              state.lines[index]!.id,
+              refund.units,
+              LINE_QUANTITY,
+              unitsBefore,
+              gross,
+            ],
+          );
+          await owner.query('COMMIT');
+        } catch (error) {
+          await owner.query('ROLLBACK');
+          throw error;
+        }
+        if (refundState !== 'failed') unitsBefore += refund.units;
+      }
+    }
+    if ((spec.status ?? 'confirmed') === 'cancelled') {
       await owner.query(
-        `UPDATE ordering.seller_orders
-            SET fulfilment = 'delivered', carrier = 'Test courier', shipped_at = $2, delivered_at = $3
+        `UPDATE ordering.orders SET status = 'cancelled', cancel_reason = 'expired',
+            payment_state = 'voided', confirmed_at = NULL, cancelled_at = $2
           WHERE id = $1`,
-        [
-          state.sellerOrders[index]!.id,
-          delivered.subtract({ hours: 2 }).toString(),
-          delivered.toString(),
-        ],
+        [orderId, spec.cancelledAt!.toString()],
       );
     }
     return orderId;
   };
+  /** A confirmed order with one seller order per delivery instant (null: still to ship). */
+  const placed = (deliveries: (string | null)[], target: MarketContext = market) =>
+    placedSpec(
+      {
+        sellerOrders: deliveries.map((at) =>
+          at === null
+            ? { kind: 'to-ship' as const }
+            : { kind: 'delivered' as const, at: local(at) },
+        ),
+      },
+      target,
+    );
   const shipToOf = async (orderId: string) =>
     (
       await owner.query<{ ship_to_ciphertext: string | null }>(
@@ -237,6 +330,16 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
       )
     ).rows.map((row) => row.after);
 
+  /**
+   * Clears what earlier tests of this file left eligible (switching the setting on with 24 months),
+   * so a following run counts only its own fixtures: other specs place orders delivered in 2026,
+   * never before the 24-month cutoff, and this file is the only one that writes the setting.
+   */
+  const drain = async (months = 24) => {
+    await setting({ enabled: true, months });
+    await purge();
+  };
+
   it('does nothing while never set or off', async () => {
     const old = await placed(['2020-01-01T00:00:00']);
     expect(await purge()).toEqual({ outcome: 'disabled', cleared: 0 });
@@ -246,18 +349,16 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
   });
 
   it("clears orders all delivered 24 months ago in the Market's zone, and nothing else", async () => {
+    await drain();
     const due = await placed(['2024-11-15T03:00:00']);
     const early = await placed(['2024-11-16T03:00:00']);
     const undelivered = await placed(['2021-06-01T00:00:00', null]);
     const twoOld = await placed(['2021-06-01T00:00:00', '2023-01-01T00:00:00']);
     const foreign = await placed(['2020-01-01T00:00:00'], other);
     const before = (await purgeAudits()).length;
-    await setting({ enabled: true, months: 24 });
 
-    const first = await purge();
+    expect(await purge()).toEqual({ outcome: 'complete', cleared: 2 });
 
-    expect(first.outcome).toBe('complete');
-    expect(first.cleared).toBeGreaterThanOrEqual(2);
     expect(await shipToOf(due)).toBeNull();
     expect(await shipToOf(twoOld)).toBeNull();
     expect(await shipToOf(early)).toBe(`v1.ship-to-of-${early}`);
@@ -267,13 +368,120 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
     expect(await purge()).toEqual({ outcome: 'complete', cleared: 0 });
     const audits = (await purgeAudits()).slice(before);
     expect(audits.map((a) => [a.months, a.cleared])).toEqual([
-      [24, first.cleared],
+      [24, 2],
       [24, 0],
     ]);
     expect(JSON.stringify(audits)).not.toContain(due);
   });
 
+  it('counts only the due order, not one already cleared beside it', async () => {
+    await drain();
+    const due = await placed(['2023-05-01T00:00:00']);
+    const cleared = await placed(['2023-05-01T00:00:00']);
+    await owner.query('UPDATE ordering.orders SET ship_to_ciphertext = NULL WHERE id = $1', [
+      cleared,
+    ]);
+
+    expect(await purge()).toEqual({ outcome: 'complete', cleared: 1 });
+    expect(await shipToOf(due)).toBeNull();
+    expect(await shipToOf(cleared)).toBeNull();
+  });
+
+  it('clears exactly the orders isShipToPurgeable allows, on the shared fixtures (no drift)', async () => {
+    await drain();
+    const cutoff = local('2024-11-15T03:00:00');
+    const cases = settlementCases(cutoff);
+    const placedCases = [];
+    for (const c of cases) placedCases.push({ ...c, id: await placedSpec(c.spec) });
+    // The rule in code on the same specs: the shared answers, and what the database must do.
+    for (const [index, c] of cases.entries()) {
+      expect([c.name, isShipToPurgeable(settlementFacts(c.spec, index), cutoff)]).toEqual([
+        c.name,
+        c.purgeable,
+      ]);
+    }
+
+    let cleared = 0;
+    let after: ShipToPurgeCursor | null = null;
+    for (let n = 0; n < 100; n += 1) {
+      const from: ShipToPurgeCursor | null = after;
+      const batch: Result<ShipToPurgeBatch, never> = await db.unitOfWork.run(market, async () =>
+        ok(await deps.retention.clearDeliveredShipTo(market, cutoff, from, 500)),
+      );
+      if (!batch.ok) throw new Error('batch failed');
+      cleared += batch.value.cleared;
+      after = batch.value.next;
+      if (after === null) break;
+    }
+
+    const actual = [];
+    for (const c of placedCases) actual.push([c.name, (await shipToOf(c.id)) === null]);
+    expect(actual).toEqual(cases.map((c) => [c.name, c.purgeable]));
+    expect(cleared).toBe(cases.filter((c) => c.purgeable).length);
+  });
+
+  it('runs the job over cancelled, shipped-never-delivered and refunded orders, old and new', async () => {
+    await drain();
+    const old = local('2023-01-10T00:00:00');
+    const recent = local('2026-01-10T00:00:00');
+    const cancelledOld = await placedSpec({
+      status: 'cancelled',
+      cancelledAt: old,
+      sellerOrders: [{ kind: 'to-ship' }],
+    });
+    const cancelledNew = await placedSpec({
+      status: 'cancelled',
+      cancelledAt: recent,
+      sellerOrders: [{ kind: 'to-ship' }],
+    });
+    const shippedOld = await placedSpec({ sellerOrders: [{ kind: 'shipped', at: old }] });
+    const shippedNew = await placedSpec({ sellerOrders: [{ kind: 'shipped', at: recent }] });
+    const refundedOld = await placedSpec({
+      sellerOrders: [{ kind: 'to-ship', refunds: [{ at: old, units: 2 }] }],
+    });
+    const refundedNew = await placedSpec({
+      sellerOrders: [{ kind: 'to-ship', refunds: [{ at: recent, units: 2 }] }],
+    });
+    const mixed = await placedSpec({
+      sellerOrders: [{ kind: 'delivered', at: old }, { kind: 'to-ship' }],
+    });
+
+    expect(await purge()).toEqual({ outcome: 'complete', cleared: 3 });
+    for (const orderId of [cancelledOld, shippedOld, refundedOld]) {
+      expect(await shipToOf(orderId)).toBeNull();
+    }
+    for (const orderId of [cancelledNew, shippedNew, refundedNew, mixed]) {
+      expect(await shipToOf(orderId)).toBe(`v1.ship-to-of-${orderId}`);
+    }
+    expect(await purge()).toEqual({ outcome: 'complete', cleared: 0 });
+  });
+
+  it('lets the sealed ship-to only be cleared, for every role (trigger)', async () => {
+    const orderId = await placed([null]);
+    for (const client of [sql, owner]) {
+      await expect(
+        client.query(
+          `UPDATE ordering.orders SET ship_to_ciphertext = 'v1.another-sealed-address-of-the-customer' WHERE id = $1`,
+          [orderId],
+        ),
+      ).rejects.toMatchObject({
+        code: CHECK,
+        message: 'ordering.orders: the sealed ship-to may only be cleared',
+      });
+    }
+    expect(await shipToOf(orderId)).toBe(`v1.ship-to-of-${orderId}`);
+    await expect(
+      sql.query('UPDATE ordering.orders SET ship_to_ciphertext = NULL WHERE id = $1', [orderId]),
+    ).resolves.toBeDefined();
+    expect(await shipToOf(orderId)).toBeNull();
+    // Other columns of the order still change as before (the trigger fires on this column only).
+    await expect(
+      sql.query('UPDATE ordering.orders SET version = version + 1 WHERE id = $1', [orderId]),
+    ).resolves.toBeDefined();
+  });
+
   it('pages by (confirmed_at, id) with a cursor, ties included, until a short batch', async () => {
+    await drain();
     const three = [
       await placed(['2023-03-01T00:00:00']),
       await placed(['2023-03-01T00:00:00']),
@@ -294,6 +502,7 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
     }
     expect(sizes.every((size) => size <= 2)).toBe(true);
     expect(sizes.at(-1)).toBeLessThan(2);
+    expect(sizes.reduce((sum, size) => sum + size, 0)).toBe(3);
     for (const orderId of three) expect(await shipToOf(orderId)).toBeNull();
   });
 

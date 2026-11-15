@@ -1379,10 +1379,11 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       ]);
     });
 
-    it('lets only an admin with ordering.ship-to-retention.manage and a fresh code set the ship-to retention', async () => {
+    const SHIP_TO_ACTION = 'ordering.ship-to-retention.change';
+    /** The root admin with an active second factor (an admin step-up action always asks for a code). */
+    async function seedStepUpAdmin() {
       await seedAdmins();
       seedRoot(REFUNDER, 9);
-      // The root admin's active second factor: an admin step-up action always asks for a code.
       fakes.factors.set(REFUNDER, {
         id: id<'SecondFactor'>(0xf309),
         marketId: code as AccountState['marketId'],
@@ -1401,9 +1402,15 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
         })),
         version: 1,
       });
-      const ACTION = 'ordering.ship-to-retention.change';
-      const prove = (n: number) =>
-        fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf100 + n)}|${ACTION}`, clock.now());
+    }
+    /** A fresh step-up proof of the admin session n for the ship-to retention change. */
+    const proveShipTo = (n: number) =>
+      fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf100 + n)}|${SHIP_TO_ACTION}`, clock.now());
+
+    it('lets only an admin with ordering.ship-to-retention.manage and a fresh code set the ship-to retention', async () => {
+      await seedStepUpAdmin();
+      const ACTION = SHIP_TO_ACTION;
+      const prove = proveShipTo;
       const base = '/ordering/admin/ship-to-retention';
       const body = { enabled: true, months: 24, expectedVersion: 0 };
 
@@ -1482,6 +1489,39 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
             typeof l.correlationId === 'string',
         ),
       ).toBe(true);
+    });
+
+    it('answers a stale expectedVersion with 409 conflict.retry and months 0 with 400, saving nothing', async () => {
+      await seedStepUpAdmin();
+      const base = '/ordering/admin/ship-to-retention';
+      proveShipTo(71);
+      const first = await http()
+        .put(base)
+        .set(writer(REFUNDER, 71))
+        .send({ enabled: false, months: 36, expectedVersion: 0 });
+      proveShipTo(72);
+      const stale = await http()
+        .put(base)
+        .set(writer(REFUNDER, 72))
+        .send({ enabled: true, months: 12, expectedVersion: 0 });
+      proveShipTo(73);
+      const zero = await http()
+        .put(base)
+        .set(writer(REFUNDER, 73))
+        .send({ enabled: true, months: 0, expectedVersion: 1 });
+      const after = await http().get(base).set(adminHeaders(VIEWER, 74));
+
+      expect(first.status).toBe(200);
+      expect(stale.status).toBe(409);
+      expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.retry' });
+      expect(zero.status).toBe(400);
+      expect(zero.body).toEqual({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'months', code: 'range' }] },
+      });
+      expect(after.body).toMatchObject({ enabled: false, months: 36, version: 1 });
+      expect(audit.rows.map((r) => r.action)).toEqual(['ordering.ship-to-retention.changed']);
     });
   });
 });

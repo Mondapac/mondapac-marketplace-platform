@@ -13,7 +13,7 @@ export const SHIP_TO_RETENTION_BODY_KEYS = ['enabled', 'months', 'expectedVersio
 export class ShipToRetentionRequestBody {
   @ApiProperty({
     description:
-      'Whether the daily job deletes the sealed delivery address of delivered orders. ' +
+      'Whether the daily job deletes the sealed delivery address of settled orders. ' +
       'Irreversible: a deleted address is gone from every view.',
   })
   enabled!: boolean;
@@ -21,7 +21,8 @@ export class ShipToRetentionRequestBody {
     minimum: MIN_SHIP_TO_RETENTION_MONTHS,
     maximum: MAX_SHIP_TO_RETENTION_MONTHS,
     description:
-      'Months after the last delivery of an order (every seller order delivered) before its ' +
+      'Months after an order is settled (every seller order delivered, shipped, cancelled or ' +
+      'refunded in full; the latest of those instants) before its ' +
       "address is deleted, counted in the Market's time zone.",
   })
   months!: number;
