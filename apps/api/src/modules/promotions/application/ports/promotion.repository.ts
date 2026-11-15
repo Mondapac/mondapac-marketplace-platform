@@ -1,5 +1,11 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { PromotionRecord, PromotionStatus } from '../../domain/promotion';
+import type { DisplayStatus } from '../../domain/display-status';
+import type {
+  CreatableType,
+  Funding,
+  PromotionRecord,
+  PromotionStatus,
+} from '../../domain/promotion';
 
 /** How much a promotion has been used (written by package T2; read here). */
 export interface UsageRecord {
@@ -15,6 +21,49 @@ export interface PromotionFilter {
   readonly ownerSellerId?: Id<'Seller'>;
   readonly limit: number;
 }
+
+/** What the admin list sorts by; `USES` is the count of uses (never money). */
+export const PROMOTION_SORTS = ['CREATED', 'STARTS', 'ENDS', 'NAME', 'USES'] as const;
+export type PromotionSort = (typeof PROMOTION_SORTS)[number];
+
+/** A tab of the list as the repository takes it: a display status, or the open review queue. */
+export type StatusCriterion = DisplayStatus | 'NEEDS_REVIEW';
+
+/** One search of the admin list. Every part but the paging may be empty (no restriction). */
+export interface PromotionSearch {
+  /** Part of the name, or the start of the code; already trimmed. */
+  readonly text: string | null;
+  /** Empty is any type. */
+  readonly types: readonly CreatableType[];
+  /** Platform promotions (no owner seller) or seller promotions. */
+  readonly owner: 'PLATFORM' | 'SELLER' | null;
+  readonly funding: Funding | null;
+  /** The tab or status filter; null is all. */
+  readonly criterion: StatusCriterion | null;
+  /** The promotions with an open review entry (what `NEEDS_REVIEW` means). */
+  readonly reviewPromotionIds: readonly Id<'Promotion'>[];
+  /**
+   * The Viewer sees no budget state: a promotion whose budget is spent is `ACTIVE` here, as it is
+   * for anyone who may not read budgets.
+   */
+  readonly hideBudget: boolean;
+  readonly sort: PromotionSort;
+  readonly descending: boolean;
+  readonly offset: number;
+  readonly limit: number;
+}
+
+export interface PromotionSearchPage {
+  readonly records: readonly PromotionRecord[];
+  /** How many promotions match the whole search, not just this page. */
+  readonly total: number;
+}
+
+/**
+ * How many promotions match a search for each tab: `ALL` and every {@link StatusCriterion}.
+ * The counts follow the search's text, type, owner and funding but not its own criterion.
+ */
+export type CriterionCounts = ReadonlyMap<StatusCriterion | 'ALL', number>;
 
 /**
  * A row lock that could not be taken (the row kept moving under the reader). The use cases answer
@@ -54,6 +103,18 @@ export interface PromotionRepository {
   ): Promise<readonly PromotionRecord[]>;
   /** Newest first. */
   list(market: MarketContext, filter: PromotionFilter): Promise<readonly PromotionRecord[]>;
+  /** One page of the admin list with the number of matches; `now` decides what has ended. */
+  search(
+    market: MarketContext,
+    search: PromotionSearch,
+    now: Temporal.Instant,
+  ): Promise<PromotionSearchPage>;
+  /** The count of each tab for a search. */
+  countByCriterion(
+    market: MarketContext,
+    search: PromotionSearch,
+    now: Temporal.Instant,
+  ): Promise<CriterionCounts>;
   /**
    * ACTIVE promotions that have started and not ended at `now` and that can apply to a cart with
    * these sellers and products: the platform's promotions and the promotions of a seller in the
@@ -82,6 +143,17 @@ export interface PromotionRepository {
     sellerId: Id<'Seller'>,
     now: Temporal.Instant,
   ): Promise<number>;
+  /**
+   * The co-funded campaigns a seller may join now: ACTIVE, not ended at `now` (a campaign that has
+   * not started yet is included), and aimed at all sellers or at this one. Soonest start first.
+   */
+  listOpenCampaigns(
+    market: MarketContext,
+    now: Temporal.Instant,
+    sellerId: Id<'Seller'>,
+    /** Only this campaign, when given (the preview reads one). */
+    promotionId?: Id<'Promotion'>,
+  ): Promise<readonly PromotionRecord[]>;
   usageOf(
     market: MarketContext,
     ids: readonly Id<'Promotion'>[],

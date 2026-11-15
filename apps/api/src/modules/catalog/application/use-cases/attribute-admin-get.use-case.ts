@@ -55,6 +55,8 @@ export interface AttributeAdminGetOutput extends AttributeSummaryView {
   readonly createdByKind: string;
   readonly createdAt: string;
   readonly version: number;
+  /** The attribute this one was merged into, or null (attributes A8). */
+  readonly mergedInto: { readonly id: string; readonly code: string } | null;
   readonly bounds: AttributeBounds;
   /** Help text, page and search settings, the internal note (admin only) and the order. */
   readonly display: AttributeDisplaySettings;
@@ -167,6 +169,7 @@ export class AttributeAdminGet extends UseCase<
       createdByKind: definition.createdByKind,
       createdAt: definition.createdAt.toString(),
       version: definition.version,
+      mergedInto: definition.mergedInto ?? null,
       bounds: { ...definition.revision.bounds },
       display: {
         ...definition.revision.display,

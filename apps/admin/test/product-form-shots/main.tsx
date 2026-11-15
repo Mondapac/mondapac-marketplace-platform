@@ -107,7 +107,39 @@ const live: ProductView = {
     content: {},
   },
 };
+const gallery = [41, 42, 43].map((n) => ({
+  imageId: id(n),
+  width: 800,
+  height: 800,
+  createdAt: '2026-11-04T01:00:00.000Z',
+}));
+const withFields: ProductView = {
+  ...live,
+  workingCopy: {
+    content: {
+      ...filled,
+      variantAxes: ['size'],
+      imageIds: gallery.map((g) => g.imageId),
+      variants: [
+        {
+          variantId: id(21),
+          optionValues: { size: '1kg' },
+          gtin: '4006381333931',
+          shippingWeightGrams: 1050,
+          shippingLengthMm: 200,
+          shippingWidthMm: 120,
+          shippingHeightMm: 60,
+          imageIds: [id(41), id(42)],
+        },
+        { variantId: id(22), optionValues: { size: '5kg' }, gtin: '12345' },
+      ],
+    },
+    lastSavedAt: '2026-11-06T01:00:00.000Z',
+    baseRevisionId: id(30),
+  },
+};
 const scenarios: Record<string, ProductView> = {
+  variants: withFields,
   add: base,
   published: live,
   inactive: { ...live, pausedAt: '2026-10-31T01:00:00.000Z' },
@@ -120,7 +152,19 @@ window.fetch = ((input: string, init?: RequestInit) => {
   let body: unknown;
   if (path === `catalog/admin/platform-products/${PRODUCT}` && init?.method === 'GET') {
     body = scenarios[scenario];
-  } else body = { variantIds: [], refusedFields: [] };
+  } else if (path.endsWith(`/${PRODUCT}/images`)) {
+    body = { images: scenario === 'variants' ? gallery : [] };
+  } else {
+    body = {
+      variantIds: [],
+      refusedFields: [],
+      items: [],
+      images: [],
+      certificates: [],
+      topics: [],
+      nextAfterId: null,
+    };
+  }
   return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
 }) as typeof fetch;
 

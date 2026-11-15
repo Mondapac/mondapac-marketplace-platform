@@ -75,6 +75,36 @@ export const PayoutTermsCleared = defineAuditAction({
   },
 });
 
+/**
+ * A reviewer rejected, or its author withdrew, a rate change in Admin Inbox › System requests, and
+ * the rate before came back (null = the seller is on the Market rate again). `requestId` names the
+ * System request, so a revert is never mistaken for an admin's own edit.
+ */
+export const CommissionRateReverted = defineAuditAction({
+  action: 'commission-payouts.commission-rate.reverted',
+  targetType: SELLER_COMMISSION_RATE_TARGET,
+  actors: ['authenticated'],
+  before: { rateBps: auditField.optional(auditField.integer()) },
+  after: {
+    rateBps: auditField.optional(auditField.integer()),
+    marketRateBps: auditField.integer(),
+    requestId: auditField.id(),
+  },
+});
+
+/**
+ * A reviewer rejected, or its author withdrew, a payout terms change in Admin Inbox › System
+ * requests, and the override before came back (`version` null = removed). `requestId` names the
+ * System request.
+ */
+export const PayoutTermsReverted = defineAuditAction({
+  action: 'commission-payouts.payout-terms.reverted',
+  targetType: SELLER_PAYOUT_TERMS_TARGET,
+  actors: ['authenticated'],
+  before: termsFields,
+  after: { ...termsFields, requestId: auditField.id() },
+});
+
 /** The audit target type of a payout hold. */
 export const PAYOUT_HOLD_TARGET = 'commission-payouts.payout-hold';
 
@@ -162,6 +192,8 @@ export const COMMISSION_PAYOUTS_AUDIT_ACTIONS = [
   CommissionRateCleared,
   PayoutTermsSet,
   PayoutTermsCleared,
+  CommissionRateReverted,
+  PayoutTermsReverted,
   PayoutHoldPlaced,
   PayoutHoldReleased,
   DisputeDecided,

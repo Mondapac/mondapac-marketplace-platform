@@ -7,6 +7,7 @@ import { DeliverModal } from '../src/delivery/deliver-modal.tsx';
 import { SEARCH_PAUSE_MS, SearchProblem, liveLookup } from '../src/delivery/lookup.ts';
 import {
   forwardUrl,
+  keepUrl,
   parseMapboxConfig,
   placeOfFeature,
   placesOf,
@@ -17,6 +18,12 @@ import {
   reverseUrl,
 } from '../src/delivery/mapbox.ts';
 import {
+  PREFILL_TTL_MS,
+  takeAddressPrefill,
+  writeAddressPrefill,
+} from '../src/delivery/address-prefill.ts';
+import {
+  answerKeep,
   answerSearch,
   answerSuburb,
   lookupIsLive,
@@ -27,16 +34,22 @@ import { clientKey, fixedWindowLimiter } from '../src/delivery/rate-limit.ts';
 import { Header } from '../src/shell/header.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
 import { SAMPLE_DELIVERY_LOCATOR as SOURCE } from '../src/storefront/sample-delivery.ts';
-import type { DeliveryAreaAnswer, GeoPoint } from '../src/storefront/types.ts';
+import type {
+  CheckoutCustomer,
+  DeliveryAreaAnswer,
+  GeoPoint,
+  SavedAddress,
+} from '../src/storefront/types.ts';
 
-const { deliveryAreaFor } = vi.hoisted(() => ({
+const { deliveryAreaFor, push } = vi.hoisted(() => ({
   deliveryAreaFor: vi.fn<(postcode: string) => Promise<DeliveryAreaAnswer>>(),
+  push: vi.fn<(href: string) => void>(),
 }));
 vi.mock('../src/checkout/actions.ts', () => ({ deliveryAreaFor }));
 vi.mock('next/navigation', () => ({
   usePathname: () => '/',
   useSearchParams: () => new URLSearchParams(),
-  useRouter: () => ({ push: () => undefined, replace: () => undefined, refresh: () => undefined }),
+  useRouter: () => ({ push, replace: () => undefined, refresh: () => undefined }),
 }));
 
 const TOKEN = 'pk.test-token-not-real-0123456789';
@@ -300,7 +313,7 @@ describe('server routes', () => {
   const incoming = (host = 'storefront.localhost:3003') =>
     new Headers({ host, 'x-mp-client-address': '203.0.113.9', 'sec-fetch-site': 'same-origin' });
   const mapbox = vi.fn<typeof fetch>();
-  const deps = (limit = 10): PlacesDeps => ({
+  const deps = (limit = 10, keeps = 5): PlacesDeps => ({
     config: parseMapboxConfig({ MAPBOX_SEARCH_TOKEN: TOKEN, MAPBOX_COUNTRIES: 'AU=au' }),
     hosts: [
       {
@@ -311,6 +324,7 @@ describe('server routes', () => {
     ],
     apiOn: true,
     limiter: fixedWindowLimiter(limit, 60_000),
+    keepLimiter: fixedWindowLimiter(keeps, 60_000),
     fetch: mapbox,
   });
   const search = (q: string, d = deps(), h = incoming()) =>
@@ -385,6 +399,75 @@ describe('server routes', () => {
     const asked = new URL(mapbox.mock.calls[0]![0] as string);
     expect(asked.searchParams.get('q')).toBe('12 Example');
     expect(asked.searchParams.get('country')).toBe('au');
+  });
+
+  const signedIn = () => {
+    const h = incoming();
+    h.set('cookie', 'other=1; __Host-session-customer-AU=s3ss10n');
+    return h;
+  };
+  const keepAsk = (q: string, d = deps(), h = signedIn()) =>
+    answerKeep(
+      d,
+      h,
+      new URL(`http://storefront.localhost:3003/api/deliver-to/keep?q=${encodeURIComponent(q)}`),
+    );
+
+  it('asks a saved address as a permanent answer, with its own tighter limit', async () => {
+    mapbox.mockImplementation(() =>
+      Promise.resolve(
+        Response.json({ features: [feature('m1', '12 Example Street', 'Kedron', '4031')] }),
+      ),
+    );
+    const d = deps(10, 1);
+    const response = await keepAsk('12 Example Street, Kedron QLD 4031', d);
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain(TOKEN);
+    expect((JSON.parse(text) as { place: { street: string } }).place.street).toBe(
+      '12 Example Street',
+    );
+    const asked = new URL(mapbox.mock.calls[0]![0] as string);
+    expect(asked.searchParams.get('permanent')).toBe('true');
+    expect(asked.searchParams.get('types')).toBe('address');
+    expect(asked.searchParams.get('country')).toBe('au');
+    // The second save in the minute is refused; the search keeps its own limit.
+    expect((await keepAsk('12 Example Street, Kedron QLD 4031', d)).status).toBe(429);
+    expect(mapbox).toHaveBeenCalledTimes(1);
+    expect((await search('12 Example', d)).status).toBe(200);
+  });
+
+  it('refuses a request without exactly one session cookie of the Market, before Mapbox', async () => {
+    const guest = incoming();
+    expect((await keepAsk('12 Example Street', deps(), guest)).status).toBe(401);
+    const other = incoming();
+    other.set('cookie', '__Host-session-customer-NZ=s3ss10n');
+    expect((await keepAsk('12 Example Street', deps(), other)).status).toBe(401);
+    const twice = incoming();
+    twice.set('cookie', '__Host-session-customer-AU=a; __Host-session-customer-AU=b');
+    expect((await keepAsk('12 Example Street', deps(), twice)).status).toBe(401);
+    const empty = incoming();
+    empty.set('cookie', '__Host-session-customer-AU=');
+    expect((await keepAsk('12 Example Street', deps(), empty)).status).toBe(401);
+    expect(mapbox).not.toHaveBeenCalled();
+  });
+
+  it('refuses a short or long saved address and other sites', async () => {
+    expect((await keepAsk('12')).status).toBe(400);
+    expect((await keepAsk('x'.repeat(121))).status).toBe(400);
+    const crossSite = new Headers({
+      host: 'storefront.localhost:3003',
+      'x-mp-client-address': '203.0.113.9',
+      'sec-fetch-site': 'cross-site',
+    });
+    expect((await keepAsk('12 Example Street', deps(), crossSite)).status).toBe(403);
+    expect(mapbox).not.toHaveBeenCalled();
+  });
+
+  it('answers no place when the permanent answer has no street address', async () => {
+    mapbox.mockResolvedValue(Response.json({ features: [] }));
+    const response = await keepAsk('Nowhere Street');
+    expect(await response.json()).toEqual({ place: null });
   });
 
   it('answers a suburb with the postcode at its centre, ranked towards the pin', async () => {
@@ -641,7 +724,7 @@ describe('Deliver to modal with the live lookup', () => {
   it('refuses an address the API does not deliver to, even inside the preview boundary', async () => {
     deliveryAreaFor.mockResolvedValue({ kind: 'out' });
     await pickAddress('Kedron', '4031');
-    expect(screen.getByText(/We do not deliver here yet/)).toBeTruthy();
+    expect(document.querySelector('.lmst.no')?.textContent).toMatch(/We do not deliver here yet/);
     expect(
       screen.getByRole('button', { name: 'Confirm location' }).getAttribute('aria-disabled'),
     ).toBe('true');
@@ -712,6 +795,154 @@ describe('Deliver to modal with the live lookup', () => {
       ),
     ).toBeTruthy();
   });
+  it('says it is searching while the answer is on its way, and marks the list busy', async () => {
+    let answer: (value: Response) => void = () => undefined;
+    browserFetch.mockReturnValue(new Promise<Response>((resolve) => (answer = resolve)));
+    await typeLive('12 Example');
+    const box = screen.getByRole('combobox', { name: 'Search your address' });
+    expect(screen.getByText('Searching…')).toBeTruthy();
+    expect(box.getAttribute('aria-busy')).toBe('true');
+    await act(async () => {
+      answer(Response.json({ places: [] }));
+      await Promise.resolve();
+    });
+    await act(() => Promise.resolve());
+    expect(screen.queryByText('Searching…')).toBeNull();
+    expect(box.getAttribute('aria-busy')).toBeNull();
+    expect(screen.getByText('No match. Try the street and suburb.')).toBeTruthy();
+  });
+
+  it('announces the settled pick once, not the whole summary box', async () => {
+    deliveryAreaFor.mockResolvedValue({ kind: 'in' });
+    await pickAddress('Kedron', '4031');
+    const dialog = screen.getByRole('dialog', { name: 'Choose where to deliver' });
+    expect(dialog.querySelector('.lmsel')?.getAttribute('aria-live')).toBeNull();
+    const announced = [...dialog.querySelectorAll('[role="status"]')].map((el) => el.textContent);
+    expect(announced).toContain('9 Real Street, Kedron QLD 4031. We deliver to this area');
+  });
+
+  const customer = (addresses: readonly SavedAddress[] = []): CheckoutCustomer => ({
+    firstName: 'Sara',
+    fullName: 'Sara Ahmadi',
+    email: 'sara@example.test',
+    addresses,
+  });
+
+  async function openSignedIn(addresses: readonly SavedAddress[] = []) {
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider initialDeliverTo={null} initialCustomer={customer(addresses)}>
+          <Header delivery={{ label: 'Brisbane 4000' }} />
+          <DeliverModal source={{ ...SOURCE, live: true }} />
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+    await act(() => {
+      fireEvent.click(screen.getByRole('button', { name: /^Delivery area/ }));
+      return Promise.resolve();
+    });
+  }
+
+  it('saves a searched street address through one permanent answer, then opens the Add form', async () => {
+    deliveryAreaFor.mockResolvedValue({ kind: 'in' });
+    push.mockReset();
+    sessionStorage.clear();
+    await openSignedIn();
+    browserFetch.mockResolvedValue(
+      Response.json({ places: [placeOfFeature(feature('m1', '9 Real Street', 'Kedron', '4031'))] }),
+    );
+    await act(async () => {
+      fireEvent.change(screen.getByRole('combobox', { name: 'Search your address' }), {
+        target: { value: '9 Real' },
+      });
+      await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+    });
+    await act(() => {
+      fireEvent.click(screen.getByRole('option', { name: /Kedron/ }));
+      return Promise.resolve();
+    });
+    browserFetch.mockResolvedValue(
+      Response.json({ place: placeOfFeature(feature('p1', '9 Real Street', 'Kedron', '4031')) }),
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add to my addresses…' }));
+      await Promise.resolve();
+    });
+    await act(() => Promise.resolve());
+    const keepCall = browserFetch.mock.calls.at(-1)![0] as string;
+    expect(keepCall).toBe('/api/deliver-to/keep?q=9%20Real%20Street%2C%20Kedron%20QLD%204031');
+    expect(push).toHaveBeenCalledWith('/account/addresses');
+    expect(screen.queryByText('Opening…')).toBeNull();
+    expect(takeAddressPrefill()).toEqual({
+      street: '9 Real Street',
+      suburb: 'Kedron',
+      postcode: '4031',
+    });
+    // Read once: nothing waits for the next visit.
+    expect(takeAddressPrefill()).toBeNull();
+  });
+
+  it('says so when the address could not be prepared, and offers no save to a guest', async () => {
+    deliveryAreaFor.mockResolvedValue({ kind: 'in' });
+    push.mockReset();
+    await pickAddress('Kedron', '4031');
+    expect(screen.queryByRole('button', { name: 'Add to my addresses…' })).toBeNull();
+    cleanup();
+    await openSignedIn();
+    browserFetch.mockResolvedValue(
+      Response.json({ places: [placeOfFeature(feature('m1', '9 Real Street', 'Kedron', '4031'))] }),
+    );
+    await act(async () => {
+      fireEvent.change(screen.getByRole('combobox', { name: 'Search your address' }), {
+        target: { value: '9 Real' },
+      });
+      await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+    });
+    await act(() => {
+      fireEvent.click(screen.getByRole('option', { name: /Kedron/ }));
+      return Promise.resolve();
+    });
+    browserFetch.mockResolvedValue(new Response('', { status: 429 }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Add to my addresses…' }));
+      await Promise.resolve();
+    });
+    await act(() => Promise.resolve());
+    expect(screen.getByRole('alert').textContent).toContain(
+      'We could not prepare this address just now',
+    );
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('shows a saved address that could not be found under the saved addresses', async () => {
+    deliveryAreaFor.mockResolvedValue({ kind: 'in' });
+    await openSignedIn([
+      {
+        id: 'a1',
+        firstName: 'Sara',
+        lastName: 'Ahmadi',
+        street: '1 Lost Lane',
+        line2: null,
+        suburb: 'Kedron',
+        postcode: '4031',
+        phone: '0400000000',
+        deliveryNotes: null,
+        isDefault: true,
+      },
+    ]);
+    browserFetch.mockResolvedValue(new Response('', { status: 503 }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: /1 Lost Lane/ }));
+      await vi.advanceTimersByTimeAsync(SEARCH_PAUSE_MS);
+    });
+    const group = screen.getByRole('group', { name: 'Your saved addresses' });
+    expect(group.querySelector('[role="alert"]')?.textContent).toContain(
+      'We could not find this address on the map just now',
+    );
+    // Not the search box's message.
+    expect(screen.queryByText(/We could not search addresses just now/)).toBeNull();
+  });
+
   it('marks a suburb row, hints at the street after picking it, and ranks only by a pin the buyer set', async () => {
     deliveryAreaFor.mockResolvedValue({ kind: 'in' });
     browserFetch.mockResolvedValue(
@@ -737,5 +968,28 @@ describe('Deliver to modal with the live lookup', () => {
       return Promise.resolve();
     });
     expect(screen.getByText('Search your street or move the pin to the exact spot.')).toBeTruthy();
+  });
+});
+
+describe('saving an address from the Deliver to modal', () => {
+  it('builds a permanent forward request for one street address', () => {
+    const url = new URL(keepUrl(TOKEN, 'nz', '1 Queen Street, Auckland 1010'));
+    expect(url.searchParams.get('permanent')).toBe('true');
+    expect(url.searchParams.get('autocomplete')).toBe('false');
+    expect(url.searchParams.get('limit')).toBe('1');
+    expect(url.searchParams.get('country')).toBe('nz');
+  });
+});
+
+describe('the address hand-over', () => {
+  it('is dropped after ten minutes, so a later buyer on the tab never sees it', () => {
+    writeAddressPrefill({ street: '1 A St', suburb: 'Kedron', postcode: '4031' }, 1_000);
+    expect(takeAddressPrefill(1_000 + PREFILL_TTL_MS + 1)).toBeNull();
+    writeAddressPrefill({ street: '1 A St', suburb: 'Kedron', postcode: '4031' }, 1_000);
+    expect(takeAddressPrefill(1_000 + PREFILL_TTL_MS)).toEqual({
+      street: '1 A St',
+      suburb: 'Kedron',
+      postcode: '4031',
+    });
   });
 });

@@ -11,13 +11,15 @@ import { Client } from 'pg';
 import { OwnOfferRead } from '../../src/modules/catalog/application/use-cases/own-offer-read.use-case';
 import { OwnOffersList } from '../../src/modules/catalog/application/use-cases/own-offers-list.use-case';
 import { OwnProductRead } from '../../src/modules/catalog/application/use-cases/own-product-read.use-case';
+import { PlatformProductRead } from '../../src/modules/catalog/application/use-cases/platform-product-read.use-case';
 import {
   OwnProductsExport,
   type OwnProductsExportInput,
 } from '../../src/modules/catalog/application/use-cases/own-products-export.use-case';
 import { OwnProductsList } from '../../src/modules/catalog/application/use-cases/own-products-list.use-case';
+import { OwnProductEditProbe } from '../../src/modules/catalog/application/use-cases/own-product-edit-probe.use-case';
 import { Offer } from '../../src/modules/catalog/domain/offer';
-import { ExceljsSheetWriter } from '../../src/modules/catalog/infrastructure/xlsx/exceljs-sheet-writer';
+import { ExceljsSheetWriter } from '../../src/platform/list-export/exceljs-sheet-writer';
 import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
 import { PrismaOwnCatalogReader } from '../../src/modules/catalog/infrastructure/prisma-own-catalog.reader';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
@@ -96,12 +98,15 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       anyImage: false,
       variantRemoved: true,
       gtinChanged: true,
+      axisAdded: true,
     }),
     maxVariantsPerProduct: () => 10,
     maxVariantAttributes: () => 2,
     units: () => [],
     maxCategoryDepth: () => 4,
     maxCategoryChangeTags: () => 50_000,
+    maxCategoryImportRows: () => 2000,
+    maxCategoryImportBytes: () => 5 * 1024 * 1024,
     productTypes: () => ['simple', 'configurable'],
     defaultFamily: () => 'default',
     conditions: () => ['new'],
@@ -210,6 +215,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       workingCopies: copies,
       revisions,
       freeze: new FreezeRevision({
+        revisions,
         familyResolver: fixedFamilyResolver(),
         attributes,
         policy,
@@ -310,6 +316,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
   let list: OwnProductsList;
   let exporter: OwnProductsExport;
   let read: OwnProductRead;
+  let readPlatform: PlatformProductRead;
   let listOffers: OwnOffersList;
   let readOffer: OwnOfferRead;
   beforeAll(() => {
@@ -321,6 +328,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       unitOfWork: persistence.unitOfWork,
       ownReader: reader,
       policy,
+      ownEditProbe: new OwnProductEditProbe(gate),
     });
     exporter = new OwnProductsExport(gate, {
       unitOfWork: persistence.unitOfWork,
@@ -330,6 +338,14 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       clock,
     });
     read = new OwnProductRead(gate, {
+      unitOfWork: persistence.unitOfWork,
+      products,
+      workingCopies: copies,
+      revisions,
+      ownReader: reader,
+      policy,
+    });
+    readPlatform = new PlatformProductRead(gate, {
       unitOfWork: persistence.unitOfWork,
       products,
       workingCopies: copies,
@@ -886,6 +902,8 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       productId: product.state.id,
       status: 'draft',
       maxVariants: 10,
+      maxAxes: 2,
+      version: product.state.version,
       published: null,
       pending: null,
     });
@@ -896,6 +914,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       'primary-image',
       'variant-removed',
       'gtin-changed',
+      'axis-added',
       'topics',
       'images',
     ]);
@@ -911,6 +930,52 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     for (const id of [platform.state.id, other.state.id, uuid7() as Id<'Product'>]) {
       expect(await read.execute(sellerContext(), { productId: id })).toEqual(missing);
     }
+  });
+
+  it('reads a platform product with its version and the cap on types, and says when a revision waits', async () => {
+    const product = await draftedProduct('PLATFORM', SELLER, 'Platform read');
+    const before = await readPlatform.execute(adminContext(), { productId: product.state.id });
+    if (!before.ok) throw new Error(before.error.code);
+    expect(before.value).toMatchObject({
+      productId: product.state.id,
+      maxVariants: 10,
+      maxAxes: 2,
+      version: product.state.version,
+      pendingSubmittedAt: null,
+    });
+
+    // A revision waits for review: the product row carries when it was submitted.
+    const revisionId = uuid7();
+    await insert('product_revisions', {
+      id: revisionId,
+      ...base,
+      product_id: product.state.id,
+      revision_no: 1,
+      revision_kind: 'submission',
+      type_code: 'simple',
+      base_revision_id: null,
+      reverted_from_revision_id: null,
+      family_revision_id: familyRevisionId,
+      definition_revision_ids: [],
+      tax_category_code: 't1',
+      attribute_values: '{}',
+      field_provenance: null,
+      sensitive: true,
+      sensitive_reasons: ['name'],
+      content_schema_version: 1,
+      content_hash: `sha256:${'a'.repeat(64)}`,
+      author_kind: 'admin',
+      author_account_id: uuid7(),
+      acting_admin_account_id: null,
+      submitted_at: T0.toString(),
+    });
+    await app.query(
+      `UPDATE catalog.products SET pending_revision_id = $1, pending_submitted_at = $2 WHERE id = $3`,
+      [revisionId, T0.toString(), product.state.id],
+    );
+    const after = await readPlatform.execute(adminContext(), { productId: product.state.id });
+    if (!after.ok) throw new Error(after.error.code);
+    expect(after.value.pendingSubmittedAt).toBe(T0.toString());
   });
 
   it('reads the pending revision after a seller submit', async () => {

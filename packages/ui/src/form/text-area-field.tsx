@@ -15,6 +15,8 @@ export interface TextAreaFieldProps extends Omit<
   readonly counter?: ReactNode;
   /** Marks the label "(optional)"; the text is the Market-neutral word from the caller. */
   readonly optionalLabel?: string;
+  /** A control at the end of the label row (the "Write with AI" button); it is not part of the label. */
+  readonly headAction?: ReactNode;
 }
 
 /** A labelled multi-line text field with help, counter and error text wired through aria-describedby. */
@@ -24,6 +26,7 @@ export function TextAreaField({
   error,
   counter,
   optionalLabel,
+  headAction,
   rows = 6,
   className,
   ...rest
@@ -37,12 +40,24 @@ export function TextAreaField({
     .join(' ');
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-fg">
-        {label}
-        {optionalLabel ? (
-          <span className="font-normal text-fg-muted"> ({optionalLabel})</span>
-        ) : null}
-      </label>
+      {headAction ? (
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor={id} className="text-sm font-medium text-fg">
+            {label}
+            {optionalLabel ? (
+              <span className="font-normal text-fg-muted"> ({optionalLabel})</span>
+            ) : null}
+          </label>
+          {headAction}
+        </div>
+      ) : (
+        <label htmlFor={id} className="text-sm font-medium text-fg">
+          {label}
+          {optionalLabel ? (
+            <span className="font-normal text-fg-muted"> ({optionalLabel})</span>
+          ) : null}
+        </label>
+      )}
       <textarea
         id={id}
         rows={rows}

@@ -42,7 +42,7 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
 
 /**
  * {@link CategoryProductMoveStore} on `catalog.category_product_move_jobs` and `..._items` (C5a
- * migration 20261111100000). Plain Prisma through `PrismaService.tx(market)`, every statement
+ * migration 20261115170000). Plain Prisma through `PrismaService.tx(market)`, every statement
  * scoped by `marketId`; no raw SQL. Claims and counter moves are conditional updates guarded by
  * the lease holder, so a runner that lost its lease changes nothing.
  */

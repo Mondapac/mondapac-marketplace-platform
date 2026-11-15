@@ -2,6 +2,10 @@ import type { FactoryProvider } from '@nestjs/common';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
+import { COMMISSION_PAYOUTS_FACADE, type CommissionPayoutsFacade } from '../../commission-payouts';
+import { CUSTOMERS_READ_FACADE, type CustomersReadFacade } from '../../customers';
+import { FacadeCustomerOrderHistory } from './facade-customer-order-history';
 import { PRICING_FACADE, type PricingFacade } from '../../pricing';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { WALLET_FACADE, type WalletFacade } from '../../wallet';
@@ -43,6 +47,8 @@ import {
   type ReviewQueueRepository,
 } from '../application/ports/review-queue.repository';
 import { SELLER_ACTIVITY, type SellerActivity } from '../application/ports/seller-activity';
+import { SELLER_CATALOGUE, type SellerCatalogue } from '../application/ports/seller-catalogue';
+import { SELLER_COMMISSION, type SellerCommission } from '../application/ports/seller-commission';
 import {
   FIRST_ORDER_SETTINGS_REPOSITORY,
   SHIPPING_THRESHOLD_REPOSITORY,
@@ -54,11 +60,11 @@ import { FacadeWalletCredit } from './facade-wallet-credit';
 import { PrismaCreditRepository } from './prisma-credit.repository';
 import { PrismaReferralRepository } from './prisma-referral.repository';
 import {
-  UnknownCustomerOrderHistory,
   UnknownDeliveredOrderFacts,
   UnknownReferralSignals,
   UnknownStoreFollows,
 } from './unknown-customer-facts';
+import { FacadeSellerCatalogue, FacadeSellerCommission } from './facade-seller-campaign-reads';
 import { FacadePriceHistory, FacadeSellerActivity } from './facade-seller-price-reads';
 import { PrismaMarketSettingRepository } from './prisma-market-setting.repository';
 import { PrismaOptInRepository } from './prisma-opt-in.repository';
@@ -140,10 +146,24 @@ export const promotionsProviders: readonly FactoryProvider[] = [
     inject: [PRICING_FACADE],
     useFactory: (pricing: PricingFacade): PriceHistory => new FacadePriceHistory(pricing),
   },
-  // Phase 3. The reads no module publishes yet are fail-closed adapters (see their file).
+  {
+    provide: SELLER_COMMISSION,
+    inject: [COMMISSION_PAYOUTS_FACADE],
+    useFactory: (payouts: CommissionPayoutsFacade): SellerCommission =>
+      new FacadeSellerCommission(payouts),
+  },
+  {
+    provide: SELLER_CATALOGUE,
+    inject: [CATALOG_FACADE],
+    useFactory: (catalog: CatalogFacade): SellerCatalogue => new FacadeSellerCatalogue(catalog),
+  },
+  // Phase 3. The last-order read is `customers`' facade (customers phase 1); the reads no module
+  // publishes yet are fail-closed adapters (see their file).
   {
     provide: CUSTOMER_ORDER_HISTORY,
-    useFactory: (): CustomerOrderHistory => new UnknownCustomerOrderHistory(),
+    inject: [CUSTOMERS_READ_FACADE],
+    useFactory: (customers: CustomersReadFacade): CustomerOrderHistory =>
+      new FacadeCustomerOrderHistory(customers),
   },
   { provide: STORE_FOLLOWS, useFactory: (): StoreFollows => new UnknownStoreFollows() },
   {

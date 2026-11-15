@@ -6,6 +6,7 @@ import { CertificationSeal } from '../certification/certification-seal.tsx';
 import { checkLoaded } from '../icons/check-loaded.ts';
 import { CategoryArt } from '../icons/category-icon.tsx';
 import { under } from '../shell/breakpoints.ts';
+import { PhotoImage } from '../storefront/photo-image.tsx';
 import type { PhotoSet } from '../storefront/photos.ts';
 import type { CertificationBadge } from '../storefront/types.ts';
 
@@ -108,18 +109,17 @@ export function Gallery({
             {shots.map((shot, i) => (
               // A photo is the API's public photo route (a plain image, not a server-resized one).
               <div key={shot.src} className="gslide">
-                <img
+                <PhotoImage
                   src={shot.src}
-                  {...(shot.set === undefined
-                    ? {}
-                    : { srcSet: shot.set.srcSet, sizes: GALLERY_SIZES })}
+                  set={shot.set}
+                  sizes={GALLERY_SIZES}
                   alt={i === 0 ? name : t('photo-alt', { name, index: i + 1 })}
                   width={shot.set?.width ?? 800}
                   height={shot.set?.height ?? 800}
                   decoding="async"
                   loading={i === 0 ? undefined : 'lazy'}
                   fetchPriority={i === 0 ? 'high' : 'auto'}
-                  ref={(el) => checkLoaded(el, () => fail(shot.src))}
+                  imgRef={(el) => checkLoaded(el, () => fail(shot.src))}
                   onError={() => fail(shot.src)}
                 />
               </div>

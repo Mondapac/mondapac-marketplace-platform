@@ -36,6 +36,8 @@ import type { HandledOnce, UnitOfWork } from '../../src/platform/unit-of-work/un
 import {
   FakeFlashSales,
   FakePriceHistory,
+  FakeSellerCatalogue,
+  FakeSellerCommission,
   FakeSellerActivity,
   FakeStepUp,
   phase3Fakes,
@@ -153,6 +155,8 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
       flashSales: new FakeFlashSales(),
       sellerActivity: activity,
       priceHistory: new FakePriceHistory(),
+      sellerCommission: new FakeSellerCommission(),
+      sellerCatalogue: new FakeSellerCatalogue(),
       ...facts,
       credits: new PrismaCreditRepository(db.service),
       referrals: new PrismaReferralRepository(db.service),
@@ -1054,6 +1058,59 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
       }
       // Newest first; the three that share an instant come by descending id.
       expect(seen).toEqual([made[4], made[3], ...[made[2]!, made[1]!, made[0]!].sort().reverse()]);
+    });
+
+    it("pages one customer's credits across promotions newest first, and no other customer's", async () => {
+      const first = promotionRow();
+      const second = promotionRow();
+      for (const row of [first, second]) {
+        await sql.query(...(insert('promotions', row).slice(0, 2) as [string, unknown[]]));
+      }
+      const base = clock.now();
+      const customer = ids.next<'Account'>();
+      const made: string[] = [];
+      for (let n = 0; n < 5; n += 1) {
+        const source = ids.next<'SellerOrder'>();
+        const id = ids.next<'PromotionCredit'>();
+        // The first three are the customer's, two are someone else's.
+        const recipient = n < 3 ? customer : ids.next<'Account'>();
+        if (n < 3) made.push(id);
+        await sql.query(
+          ...(insert('credit_issuances', {
+            id,
+            market_id: mk,
+            tenant_id: 'default',
+            promotion_id: n % 2 === 0 ? first.id : second.id,
+            kind: 'CASHBACK',
+            recipient_account_id: recipient,
+            order_id: ids.next<'Order'>(),
+            source_kind: 'SELLER_ORDER',
+            source_id: source,
+            amount_minor: 10 + n,
+            currency: 'AUD',
+            status: 'PENDING',
+            failure_code: null,
+            wallet_journal_id: null,
+            idempotency_key: `promotions:cashback:${source}`,
+            created_at: new Date(base.epochMilliseconds + n * 1000),
+            settled_at: null,
+          }).slice(0, 2) as [string, unknown[]]),
+        );
+      }
+      const seen: string[] = [];
+      let after: { createdAt: Temporal.Instant; id: never } | undefined;
+      for (let page = 0; page < 5; page += 1) {
+        const got = await db.unitOfWork.run(
+          market,
+          async () => ok(await deps.credits.listForRecipient(market, customer, 2, after as never)),
+          { readOnly: true },
+        );
+        if (!got.ok || got.value.length === 0) break;
+        seen.push(...got.value.map((c) => c.id));
+        const last = got.value[got.value.length - 1]!;
+        after = { createdAt: last.createdAt, id: last.id as never };
+      }
+      expect(seen).toEqual([made[2], made[1], made[0]]);
     });
 
     it('finds the referral a seller order qualified, and counts pending ones only while open', async () => {

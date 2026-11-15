@@ -341,6 +341,7 @@ export class SubmitProduct {
             id: revisionId,
             productId: product.state.id,
             revisionNo,
+            typeCode: frozen.value.typeCode,
             kind: 'submission',
             baseRevisionId: publishedId,
             revertedFromRevisionId: null,

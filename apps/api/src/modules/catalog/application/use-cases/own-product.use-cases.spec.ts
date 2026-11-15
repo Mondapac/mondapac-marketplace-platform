@@ -225,6 +225,7 @@ describe.each(FIXTURES)(
         },
       } as unknown as UnitOfWork;
       const products: ProductRepository = {
+        findManyByIds: () => Promise.resolve([]),
         lockAtVersion: () => Promise.resolve(true),
         nextProductCode: () => Promise.resolve('P00000001'),
         add: () => Promise.resolve(),
@@ -245,6 +246,7 @@ describe.each(FIXTURES)(
         },
       };
       const revisionRepo: ProductRevisionRepository = {
+        claimShapes: () => Promise.resolve([]),
         nextRevisionNo: (_m, productId) =>
           Promise.resolve(
             [...revisions.values()].filter((revision) => revision.productId === productId).length +
@@ -273,12 +275,15 @@ describe.each(FIXTURES)(
           anyImage: false,
           variantRemoved: true,
           gtinChanged: true,
+          axisAdded: true,
         }),
         maxVariantsPerProduct: () => 100,
         maxVariantAttributes: () => 2,
         units: () => [],
         maxCategoryDepth: () => 4,
         maxCategoryChangeTags: () => 50_000,
+        maxCategoryImportRows: () => 2000,
+        maxCategoryImportBytes: () => 5 * 1024 * 1024,
         productTypes: () => ['simple', 'configurable'],
         defaultFamily: () => 'default',
         conditions: () => ['new'],

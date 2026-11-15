@@ -14,7 +14,8 @@ export type DetailSpecificationValue =
   | { readonly kind: 'list'; readonly items: readonly string[] }
   | { readonly kind: 'number'; readonly value: string }
   | { readonly kind: 'boolean'; readonly value: boolean }
-  | { readonly kind: 'date'; readonly value: string };
+  | { readonly kind: 'date'; readonly value: string }
+  | { readonly kind: 'measure'; readonly value: string; readonly unitLabel: string };
 
 /** The specifications of one family group, in catalog's order. */
 export interface DetailSpecificationGroup {

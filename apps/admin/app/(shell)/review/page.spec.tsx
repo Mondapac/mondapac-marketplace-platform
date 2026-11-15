@@ -57,6 +57,7 @@ const session = (permissionKeys: string[]): AdminSession => ({
   secondFactorActive: true,
   lastSignInAt: null,
   timezone: null,
+  marketTimezone: 'UTC',
   locale: null,
   email: 'ada@example.test',
   displayName: 'Ada',
@@ -88,7 +89,7 @@ describe('review queue page', () => {
     expect(mocks.get).toHaveBeenCalledWith(
       'catalog/admin/review-queue?kind=product-revision&limit=25',
     );
-    expect(screen.getByRole('heading', { level: 1, name: 'Review queue' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Catalogue requests' })).toBeTruthy();
     const revisions = screen.getByRole('link', { name: 'Product revisions (12)' });
     expect(revisions.getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('link', { name: 'Offers (3)' }).getAttribute('href')).toBe(

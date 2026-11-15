@@ -252,7 +252,7 @@ describe('PreferencesCard', () => {
     cleanup();
     mount();
     expect(zone().value).toBe('');
-    expect(zone().selectedOptions[0]?.textContent).toBe('Default (UTC)');
+    expect(zone().selectedOptions[0]?.textContent).toBe('Default (none chosen)');
     expect(language().value).toBe('');
   });
 

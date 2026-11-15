@@ -24,6 +24,11 @@ export interface AddressLookup {
    * previews with the area's boundary, and checkout checks again before it takes an order.
    */
   delivers(postcode: string): Promise<boolean | null>;
+  /**
+   * The street address to save in the address book, asked again so it may be stored (Mapbox's
+   * permanent answer), or null when it could not be.
+   */
+  keep(place: Place): Promise<Place | null>;
 }
 
 const MAX_RESULTS = 6;
@@ -64,6 +69,10 @@ export function sampleLookup(source: DeliveryLocatorSource): AddressLookup {
     },
     delivers() {
       return Promise.resolve(null);
+    },
+    keep(place) {
+      // Sample places are ours to keep.
+      return Promise.resolve(place);
     },
   };
 }
@@ -155,6 +164,13 @@ export function liveLookup(deps: LiveDeps): AddressLookup {
         found.find((p) => p.postcode === postcode);
       // Only the suburb was kept: answer the suburb, not the street address Mapbox matched.
       return place ? { ...place, id: `${place.postcode}:${place.suburb}`, street: '' } : null;
+    },
+    async keep(place) {
+      const body = (await getJson(
+        deps,
+        `/api/deliver-to/keep?q=${encodeURIComponent(addressLine(place))}`,
+      ).catch(() => null)) as { place?: unknown } | null;
+      return isPlace(body?.place) && body.place.street !== '' ? body.place : null;
     },
     async delivers(postcode) {
       try {

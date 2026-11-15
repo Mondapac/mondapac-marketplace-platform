@@ -5,12 +5,13 @@ import request from 'supertest';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { SendLinkMail } from '../src/modules/identity/application/use-cases/send-link-mail.use-case';
+import { ReadOwnSellerHealth } from '../src/modules/sellers/application/use-cases/read-own-seller-health.use-case';
 import { RefreshOwnSellerHealth } from '../src/modules/sellers/application/use-cases/refresh-own-seller-health.use-case';
 import { IdentityFakes } from './support/identity-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
-// The seller's "Refresh now" for their health over HTTP (seller health, HLT-03): the real guards,
+// The seller's own health read and "Refresh now" over HTTP (seller health, HLT-03): the real guards,
 // controller and a real seller session (identity's database ports as in-memory fakes). The use
 // case is a recording stub for the mapping tests (its behaviour is in
 // refresh-own-seller-health.use-case.spec.ts); the real use case is kept for one test to prove the
@@ -41,6 +42,7 @@ const cookieOf = (setCookie: unknown): string => {
 describe('the seller health refresh over HTTP (integration)', () => {
   let app: NestExpressApplication;
   const stub = new Stub();
+  const readStub = new Stub();
   const http = () => request(app.getHttpServer());
 
   async function boot(stubbed: boolean) {
@@ -49,7 +51,13 @@ describe('the seller health refresh over HTTP (integration)', () => {
       panelOrigins: true,
       override: (builder) => {
         const faked = fakes.override(builder);
-        return stubbed ? faked.overrideProvider(RefreshOwnSellerHealth).useValue(stub) : faked;
+        return stubbed
+          ? faked
+              .overrideProvider(RefreshOwnSellerHealth)
+              .useValue(stub)
+              .overrideProvider(ReadOwnSellerHealth)
+              .useValue(readStub)
+          : faked;
       },
     }));
   }
@@ -100,6 +108,15 @@ describe('the seller health refresh over HTTP (integration)', () => {
   beforeEach(() => {
     fakes.reset();
     stub.calls = [];
+    readStub.calls = [];
+    readStub.next = {
+      ok: true,
+      value: {
+        current: null,
+        trend: [],
+        refresh: { pending: false, retryAfterSeconds: 0 },
+      },
+    };
     stub.next = { ok: true, value: { status: 'queued' } };
   });
   afterEach(async () => {
@@ -122,6 +139,35 @@ describe('the seller health refresh over HTTP (integration)', () => {
       expect(stub.calls).toHaveLength(1);
       expect(stub.calls[0]!.context.market.marketId).toBe(code);
       expect(stub.calls[0]!.context.actor).toMatchObject({ population: 'seller' });
+    });
+
+    it('reads my own health with 200, no-store, for the seller of the session', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+
+      const response = await http().get('/sellers/own-health').set(session.headers);
+
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({
+        current: null,
+        trend: [],
+        refresh: { pending: false, retryAfterSeconds: 0 },
+      });
+      expect(readStub.calls).toHaveLength(1);
+      expect(readStub.calls[0]!.context.market.marketId).toBe(code);
+      expect(readStub.calls[0]!.context.actor).toMatchObject({ population: 'seller' });
+    });
+
+    it('answers 503 on the read when the store is unavailable', async () => {
+      await boot(true);
+      const session = await signedIn(code);
+      readStub.next = { ok: false, error: { code: 'sellers.unavailable' } };
+
+      const down = await http().get('/sellers/own-health').set(session.headers);
+
+      expect(down.status).toBe(503);
+      expect(down.headers['cache-control']).toBe('no-store');
     });
 
     it('answers 429 with Retry-After while the cooldown runs', async () => {
@@ -167,7 +213,10 @@ describe('the seller health refresh over HTTP (integration)', () => {
       const anonymous = await http().post('/sellers/own-health/refresh').set(visitor);
       const own = await refresh(session.headers);
 
+      const anonymousRead = await http().get('/sellers/own-health').set(visitor);
+
       expect(anonymous.status).toBe(401);
+      expect(anonymousRead.status).toBe(401);
       // AU requires approval, so a just-registered seller is pending and the gate refuses it (403)
       // before the use case reads anything. ZZ approves at once, so the gate admits the seller and
       // the use case runs; this suite has no database for sellers' repositories, so it fails closed

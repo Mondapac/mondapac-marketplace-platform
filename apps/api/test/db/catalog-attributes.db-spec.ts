@@ -264,18 +264,27 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
     ).toBe('23503');
   });
 
-  it('has no DELETE on the attribute tables and no UPDATE of code, type or flags', async () => {
+  it('has no DELETE on the attribute tables, no UPDATE of code or flags, and a guarded type', async () => {
     const id = await insertDefinition();
     expect(
       await sqlState(sql, 'DELETE FROM catalog.attribute_definitions WHERE id = $1', [id]),
     ).toBe('42501');
-    for (const column of ["code = 'renamed'", "data_type = 'integer'", 'localizable = true']) {
+    for (const column of ["code = 'renamed'", 'localizable = true']) {
       expect(
         await sqlState(sql, `UPDATE catalog.attribute_definitions SET ${column} WHERE id = $1`, [
           id,
         ]),
       ).toBe('42501');
     }
+    // The type has a column grant since attributes A8 (convert type), but the guard trigger
+    // refuses every change that is not one of the two listed conversions with a new revision.
+    expect(
+      await sqlState(
+        sql,
+        "UPDATE catalog.attribute_definitions SET data_type = 'integer' WHERE id = $1",
+        [id],
+      ),
+    ).toBe('23001');
     expect(await sqlState(sql, 'DELETE FROM catalog.attribute_families')).toBe('42501');
     expect(
       await sqlState(sql, "UPDATE catalog.attribute_families SET code = 'renamed' WHERE false"),

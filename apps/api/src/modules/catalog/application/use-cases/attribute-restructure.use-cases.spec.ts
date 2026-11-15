@@ -32,6 +32,7 @@ import { AttributeDefinitionCreate } from './attribute-definition-create.use-cas
 import { AttributeDefinitionEdit } from './attribute-definition-edit.use-case';
 import { AttributeDefinitionPublish } from './attribute-definition-publish.use-case';
 import { AttributeImpactGet } from './attribute-impact-get.use-case';
+import { AttributeConvert } from './attribute-convert.use-case';
 import { AttributeMerge } from './attribute-merge.use-case';
 import { AttributeValuesMerge } from './attribute-values-merge.use-case';
 
@@ -124,6 +125,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
       get: new AttributeImpactGet(gate, deps),
       merge: new AttributeValuesMerge(gate, deps),
       mergeAttribute: new AttributeMerge(gate, deps),
+      convert: new AttributeConvert(gate, deps),
       archive: new AttributeArchive(gate, deps),
       requestArchive: new AttributeArchiveRequestCreate(gate, deps),
       confirmArchive: new AttributeArchiveConfirm(gate, deps),
@@ -146,7 +148,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
   async function published(
     material = false,
     name = 'Pack type',
-    dataType: 'select' | 'text' = 'select',
+    dataType: 'select' | 'text' | 'integer' = 'select',
   ) {
     const uc = build();
     const created = await uc.create.execute(admin(FIRST), {
@@ -653,6 +655,14 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
         }),
       ).toMatchObject(refused);
       expect(
+        await uc.convert.execute(actingAs(), {
+          attributeId: source.id,
+          version: source.version,
+          to: 'multi-select',
+        }),
+      ).toMatchObject(refused);
+      expect(store.rows.get(source.id)!.state.dataType).toBe('select');
+      expect(
         await uc.requestArchive.execute(actingAs(), {
           attributeId: source.id,
           version: source.version,
@@ -898,6 +908,92 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
           target: 'x',
         }),
       ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    });
+  });
+
+  describe('convert type', () => {
+    const convertInput = (attribute: { id: string; version: number }, to: string) => ({
+      attributeId: attribute.id,
+      version: attribute.version,
+      to,
+    });
+
+    it('turns a select into a multi-select as a new revision, with one audit row', async () => {
+      const select = await published(false, 'Pack type');
+      const answer = await build().convert.execute(
+        admin(FIRST),
+        convertInput(select, 'multi-select'),
+      );
+      expect(answer).toMatchObject({
+        ok: true,
+        value: { attribute: { version: select.version + 1, revisionNo: 2 } },
+      });
+      expect(store.rows.get(select.id)!.state.dataType).toBe('multi-select');
+      expect(audits.map((a) => a.action)).toEqual(['catalog.attribute-definition.converted']);
+    });
+
+    it('turns a whole number into a decimal', async () => {
+      const number = await published(false, 'Servings', 'integer');
+      const answer = await build().convert.execute(admin(FIRST), convertInput(number, 'decimal'));
+      expect(answer).toMatchObject({ ok: true, value: { attribute: { status: 'active' } } });
+      expect(store.rows.get(number.id)!.state.dataType).toBe('decimal');
+    });
+
+    it('refuses a path that is not listed, and a text attribute', async () => {
+      const select = await published(false, 'Pack type');
+      const text = await published(false, 'Note', 'text');
+      expect(
+        await build().convert.execute(admin(FIRST), convertInput(select, 'text')),
+      ).toMatchObject({ ok: false, error: { code: 'attribute-definition.convert-invalid' } });
+      expect(
+        await build().convert.execute(admin(FIRST), convertInput(text, 'select')),
+      ).toMatchObject({ ok: false, error: { code: 'attribute-definition.convert-invalid' } });
+      expect(audits).toEqual([]);
+    });
+
+    it('refuses a material attribute, a stale version and an unknown field', async () => {
+      const material = await published(true, 'Heat');
+      const select = await published(false, 'Pack type');
+      expect(
+        await build().convert.execute(admin(FIRST), convertInput(material, 'multi-select')),
+      ).toMatchObject({ ok: false, error: { code: 'attribute-definition.convert-material' } });
+      expect(
+        await build().convert.execute(admin(FIRST), {
+          ...convertInput(select, 'multi-select'),
+          version: select.version + 5,
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'attribute.stale' } });
+      expect(
+        await build().convert.execute(admin(FIRST), {
+          ...convertInput(select, 'multi-select'),
+          extra: 1,
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    });
+
+    it('refuses an attribute that others were merged into', async () => {
+      const source = await published(false, 'Pack type');
+      const target = await published(false, 'Container');
+      const merged = await build().mergeAttribute.execute(admin(FIRST), {
+        attributeId: source.id,
+        version: source.version,
+        target: target.id,
+        targetVersion: target.version,
+        options: { tin: 'tin', can: 'can', jar: 'jar' },
+      });
+      expect(merged.ok).toBe(true);
+      expect(
+        await build().convert.execute(admin(FIRST), convertInput(target, 'multi-select')),
+      ).toMatchObject({ ok: false, error: { code: 'attribute-definition.convert-merged' } });
+    });
+
+    it('needs the restructure key, not only the edit key', async () => {
+      const select = await published(false, 'Pack type');
+      granted = [CATALOG_ATTRIBUTE_EDIT.key];
+      expect(
+        await build().convert.execute(admin(FIRST), convertInput(select, 'multi-select')),
+      ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      expect(store.rows.get(select.id)!.state.dataType).toBe('select');
     });
   });
 });

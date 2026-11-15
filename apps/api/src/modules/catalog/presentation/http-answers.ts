@@ -29,6 +29,9 @@ const DETAIL_KEYS = [
   'detected',
   'rowNumber',
   'typeCodes',
+  'errors',
+  'leftOut',
+  'resetZone',
 ] as const;
 const logger = new Logger('CatalogHttp');
 

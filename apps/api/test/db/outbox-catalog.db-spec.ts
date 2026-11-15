@@ -13,6 +13,15 @@ import { testDatabaseUrl } from './test-database';
  * PostgreSQL prints it. A migration that adds, drops or changes one changes this list.
  */
 const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
+  // Lists (ADR-0049): one saved-filter name per owner and list, and one shared name per list.
+  'lists.saved_filters_owner_name_key':
+    'CREATE UNIQUE INDEX saved_filters_owner_name_key ON lists.saved_filters USING btree (market_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NULL)',
+  'lists.saved_filters_seller_owner_name_key':
+    'CREATE UNIQUE INDEX saved_filters_seller_owner_name_key ON lists.saved_filters USING btree (market_id, seller_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NOT NULL)',
+  'lists.saved_filters_seller_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_seller_shared_name_key ON lists.saved_filters USING btree (market_id, seller_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NOT NULL))",
+  'lists.saved_filters_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON lists.saved_filters USING btree (market_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NULL))",
   // Blog (blog package 1): one open and one live version per post, one featured post per Market,
   // the public list and the worker's due-posts index, and the outbox's unpublished index.
   'reviews.outbox_market_id_event_id_unpublished_idx':
@@ -48,6 +57,13 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX attribute_value_suggestions_open_product_definition_key ON catalog.attribute_value_suggestions USING btree (market_id, product_id, definition_id) WHERE (status = 'open'::text)",
   'catalog.attribute_value_suggestions_notice_due_idx':
     "CREATE INDEX attribute_value_suggestions_notice_due_idx ON catalog.attribute_value_suggestions USING btree (market_id, notice_next_attempt_at, id) WHERE (notice_state = 'pending'::text)",
+  // Variants V7: one open request per offer and combination; the due-notice scan.
+  'catalog.variant_requests_open_offer_option_key':
+    "CREATE UNIQUE INDEX variant_requests_open_offer_option_key ON catalog.variant_requests USING btree (market_id, offer_id, option_key) WHERE (status = 'open'::text)",
+  'catalog.variant_requests_open_queue_idx':
+    "CREATE INDEX variant_requests_open_queue_idx ON catalog.variant_requests USING btree (market_id, created_at, id) WHERE (status = 'open'::text)",
+  'catalog.variant_requests_notice_due_idx':
+    "CREATE INDEX variant_requests_notice_due_idx ON catalog.variant_requests USING btree (market_id, notice_next_attempt_at, id) WHERE (notice_state = 'pending'::text)",
   'catalog.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON catalog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // docs/design/data/catalog.md 3.15 (slice 12): the selection indexes of the certification-event
@@ -76,6 +92,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX offers_market_id_seller_id_seller_sku_open_key ON catalog.offers USING btree (market_id, seller_id, seller_sku) WHERE (status <> 'deleted'::text)",
   'catalog.offers_market_id_submitted_at_pending_idx':
     "CREATE INDEX offers_market_id_submitted_at_pending_idx ON catalog.offers USING btree (market_id, submitted_at, id) WHERE (status = 'pending-first-publish'::text)",
+  // Categories C9a (data design 3.22): the Offers on a shelf (cleared when it closes), the admin
+  // queue of pending proposals, and one pending proposal per seller, parent and name.
+  'catalog.offers_market_id_shelf_category_id_idx':
+    'CREATE INDEX offers_market_id_shelf_category_id_idx ON catalog.offers USING btree (market_id, shelf_category_id) WHERE (shelf_category_id IS NOT NULL)',
+  'catalog.category_proposals_market_id_created_at_pending_idx':
+    "CREATE INDEX category_proposals_market_id_created_at_pending_idx ON catalog.category_proposals USING btree (market_id, created_at, id) WHERE (status = 'pending'::text)",
+  'catalog.category_proposals_pending_name_key':
+    "CREATE UNIQUE INDEX category_proposals_pending_name_key ON catalog.category_proposals USING btree (market_id, seller_id, platform_parent_id, normalised_name) WHERE (status = 'pending'::text)",
   // docs/design/data/catalog.md 3.27 (certification slice 15): the sender job's claim order.
   'catalog.offer_owner_notices_market_id_next_attempt_at_pending_idx':
     "CREATE INDEX offer_owner_notices_market_id_next_attempt_at_pending_idx ON catalog.offer_owner_notices USING btree (market_id, next_attempt_at, id) WHERE (state = 'pending'::text)",
@@ -131,10 +155,16 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_product_revision_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, product_revision_id) WHERE (kind = 'revision-published'::text)",
   'catalog.tag_reevaluation_requests_market_id_source_event_id_key':
     'CREATE UNIQUE INDEX tag_reevaluation_requests_market_id_source_event_id_key ON catalog.tag_reevaluation_requests USING btree (market_id, source_event_id, cause) NULLS NOT DISTINCT WHERE (source_event_id IS NOT NULL)',
+  'catalog.topic_suggestions_notice_due_idx':
+    "CREATE INDEX topic_suggestions_notice_due_idx ON catalog.topic_suggestions USING btree (market_id, notice_next_attempt_at, id) WHERE (notice_state = 'pending'::text)",
+  'catalog.topic_suggestions_open_seller_label_key':
+    "CREATE UNIQUE INDEX topic_suggestions_open_seller_label_key ON catalog.topic_suggestions USING btree (market_id, seller_id, label_key) WHERE (status = 'open'::text)",
   'catalog.product_revision_categories_market_id_revision_id_primary_key':
     'CREATE UNIQUE INDEX product_revision_categories_market_id_revision_id_primary_key ON catalog.product_revision_categories USING btree (market_id, revision_id) WHERE is_primary',
   'catalog.product_revision_variants_market_id_gtin_idx':
     'CREATE INDEX product_revision_variants_market_id_gtin_idx ON catalog.product_revision_variants USING btree (market_id, gtin) WHERE (gtin IS NOT NULL)',
+  'catalog.missing_details_emails_pending_idx':
+    "CREATE INDEX missing_details_emails_pending_idx ON catalog.missing_details_emails USING btree (market_id, requested_at, seller_id, product_id) WHERE (state = 'pending'::text)",
   'catalog.product_variants_market_id_product_id_single_key':
     "CREATE UNIQUE INDEX product_variants_market_id_product_id_single_key ON catalog.product_variants USING btree (market_id, product_id) WHERE (variant_model = 'single'::text)",
   'catalog.products_market_id_owner_seller_id_created_at_idx':
@@ -211,6 +241,10 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX payouts_market_id_transfer_execution_id_key ON commission_payouts.payouts USING btree (market_id, transfer_execution_id) WHERE (transfer_execution_id IS NOT NULL)',
   'customers.addresses_one_default_key':
     'CREATE UNIQUE INDEX addresses_one_default_key ON customers.addresses USING btree (market_id, account_id) WHERE is_default',
+  'customers.customer_directory_email_prefix_idx':
+    "CREATE INDEX customer_directory_email_prefix_idx ON customers.customer_directory USING btree (market_id, email_lower text_pattern_ops) WHERE (email_lower <> ''::text)",
+  'customers.saved_filters_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON customers.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
   'identity.accounts_market_id_signed_up_at_unverified_idx':
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
   'identity.invitations_market_id_email_pending_platform_key':
@@ -253,6 +287,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // least-failed first.
   'ordering.seller_orders_unrecorded_ledger_idx':
     "CREATE INDEX seller_orders_unrecorded_ledger_idx ON ordering.seller_orders USING btree (market_id, ledger_attempts, order_id) WHERE (ledger_state = 'pending'::text)",
+  // Order lists: the saved filters shared with everyone keep one name per list.
+  'ordering.saved_filters_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON ordering.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
   // Seller health: the nightly feed reads the seller's orders marked ready in a few days.
   'ordering.seller_orders_seller_ready_at_idx':
     'CREATE INDEX seller_orders_seller_ready_at_idx ON ordering.seller_orders USING btree (market_id, seller_id, ready_at) WHERE (ready_at IS NOT NULL)',
@@ -260,8 +297,18 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'ordering.seller_orders_unrecorded_shipments_idx':
     "CREATE INDEX seller_orders_unrecorded_shipments_idx ON ordering.seller_orders USING btree (market_id, shipped_at) WHERE ((inventory_recorded_at IS NULL) AND (fulfilment <> 'to-ship'::text))",
   // Personalization 1d-2: the bought-together rebuild pages confirmed orders by time.
+  'ordering.orders_market_id_account_id_confirmed_idx':
+    "CREATE INDEX orders_market_id_account_id_confirmed_idx ON ordering.orders USING btree (market_id, account_id) WHERE (status = 'confirmed'::text)",
   'ordering.orders_market_id_confirmed_at_id_idx':
     "CREATE INDEX orders_market_id_confirmed_at_id_idx ON ordering.orders USING btree (market_id, confirmed_at, id) WHERE (status = 'confirmed'::text)",
+  // Ship-to retention (owner decision 2026-11-15): the daily purge pages cancelled orders that
+  // still hold a sealed ship-to by cancellation time (its second phase).
+  'ordering.orders_market_id_cancelled_at_id_ship_to_idx':
+    "CREATE INDEX orders_market_id_cancelled_at_id_ship_to_idx ON ordering.orders USING btree (market_id, cancelled_at, id) WHERE ((status = 'cancelled'::text) AND (ship_to_ciphertext IS NOT NULL))",
+  // Ship-to retention (owner decision 2026-11-15): the daily purge pages confirmed orders that
+  // still hold a sealed ship-to by time; cleared orders leave the index.
+  'ordering.orders_market_id_confirmed_at_id_ship_to_idx':
+    "CREATE INDEX orders_market_id_confirmed_at_id_ship_to_idx ON ordering.orders USING btree (market_id, confirmed_at, id) WHERE ((status = 'confirmed'::text) AND (ship_to_ciphertext IS NOT NULL))",
   // Phase 5 package 1: a Stripe session or payment intent belongs to one order.
   'ordering.orders_stripe_payment_intent_id_key':
     'CREATE UNIQUE INDEX orders_stripe_payment_intent_id_key ON ordering.orders USING btree (stripe_payment_intent_id) WHERE (stripe_payment_intent_id IS NOT NULL)',
@@ -280,8 +327,15 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX refunds_pending_requested_at_idx ON ordering.refunds USING btree (market_id, requested_at, id) WHERE (state = 'pending'::text)",
   'ordering.refunds_stripe_refund_id_key':
     'CREATE UNIQUE INDEX refunds_stripe_refund_id_key ON ordering.refunds USING btree (stripe_refund_id) WHERE (stripe_refund_id IS NOT NULL)',
+  // ordering.md 3.12c: the seller refund caps' window sum, and one default and one own cap.
+  'ordering.refunds_market_id_seller_id_requested_at_idx':
+    "CREATE INDEX refunds_market_id_seller_id_requested_at_idx ON ordering.refunds USING btree (market_id, seller_id, requested_at) INCLUDE (gross_amount) WHERE ((actor_population = 'seller'::text) AND (state <> 'failed'::text))",
   'ordering.refunds_unrecorded_ledger_idx':
     "CREATE INDEX refunds_unrecorded_ledger_idx ON ordering.refunds USING btree (market_id, ledger_attempts, requested_at, id) WHERE ((state = 'succeeded'::text) AND (ledger_recorded_at IS NULL))",
+  'ordering.seller_refund_limits_default_key':
+    'CREATE UNIQUE INDEX seller_refund_limits_default_key ON ordering.seller_refund_limits USING btree (market_id) WHERE (seller_id IS NULL)',
+  'ordering.seller_refund_limits_seller_key':
+    'CREATE UNIQUE INDEX seller_refund_limits_seller_key ON ordering.seller_refund_limits USING btree (market_id, seller_id) WHERE (seller_id IS NOT NULL)',
   // docs/design/data/pricing.md 3.1 and 3.3: the relay's claim, one pending regular record per
   // series, and the partial GiST index behind the no-overlap exclusion constraint (below).
   'pricing.outbox_market_id_event_id_unpublished_idx':
@@ -303,6 +357,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX special_price_records_market_id_submitted_at_id_pending_idx ON pricing.special_price_records USING btree (market_id, submitted_at, id) WHERE (status = 'pending-review'::text)",
   'pricing.special_price_records_market_id_series_id_pending_key':
     "CREATE UNIQUE INDEX special_price_records_market_id_series_id_pending_key ON pricing.special_price_records USING btree (market_id, series_id) WHERE (status = 'pending-review'::text)",
+  // SOC package 2 (docs/design/data/security.md 2): one live alert per rule and key.
+  'security.alerts_market_id_rule_key_type_key_value_live_key':
+    "CREATE UNIQUE INDEX alerts_market_id_rule_key_type_key_value_live_key ON security.alerts USING btree (market_id, rule, key_type, key_value) WHERE ((state)::text <> 'resolved'::text)",
   // docs/design/data/sellers.md 3.2 and 9.5 (slice 5, section 22): one pending and one live
   // approved revision per file, and the reviewer queue by kind and age.
   // Seller health requests: one pending request per seller, and the pick-up order of the job.
@@ -322,12 +379,18 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON sellers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'sellers.seller_business_activities_one_main_key':
     'CREATE UNIQUE INDEX seller_business_activities_one_main_key ON sellers.seller_business_activities USING btree (market_id, seller_id) WHERE is_main',
+  // Multi-culture package 1: at most one default culture per Market.
+  'catalog.cultures_one_default_key':
+    'CREATE UNIQUE INDEX cultures_one_default_key ON catalog.cultures USING btree (market_id) WHERE is_default',
   // Customers (package 5a): the relay's claim index of customers.outbox.
   'customers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON customers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // Shipping (SHP-02/03): the relay's claim index of shipping.outbox.
   'shipping.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON shipping.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // Storefront (SEO settings S1): the relay's claim index of storefront.outbox.
+  'storefront.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON storefront.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // Shipping (package 5e): the status poll's order, never-asked first, over the open bookings.
   'shipping.carrier_bookings_market_id_fleet_polled_at_open_idx':
     "CREATE INDEX carrier_bookings_market_id_fleet_polled_at_open_idx ON shipping.carrier_bookings USING btree (market_id, fleet, polled_at NULLS FIRST, created_at) WHERE (progress = ANY (ARRAY['booked'::text, 'picked-up'::text]))",

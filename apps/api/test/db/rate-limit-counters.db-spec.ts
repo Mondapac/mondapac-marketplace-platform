@@ -5,7 +5,8 @@ import { SystemClock } from '../../src/platform/clock/system-clock';
 import request from 'supertest';
 import { RoutePopulation } from '../../src/platform/call-context/route-population.decorator';
 import { PostgresRateLimitCounters } from '../../src/platform/persistence/postgres-rate-limit-counters';
-import { RateLimit } from '../../src/platform/rate-limit/rate-limit.decorator';
+import { RATE_LIMIT_CLASSES, RateLimit } from '../../src/platform/rate-limit/rate-limit.decorator';
+import { SUBJECT_LIMIT_WINDOWS } from '../../src/platform/rate-limit/rate-limit-counters';
 import { createTestApp } from '../support/test-app';
 import { createPersistence } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
@@ -144,6 +145,18 @@ describe('rate-limit counters shared across API instances (database)', () => {
     await expect(
       sql.query('INSERT INTO platform.rate_limit_counters VALUES ($1, 1, 1)', [key]),
     ).resolves.toBeDefined();
+  });
+
+  it('accepts a hashed key of every class the code counts (the CHECK lists them all)', async () => {
+    const classes = [...RATE_LIMIT_CLASSES, ...Object.keys(SUBJECT_LIMIT_WINDOWS)];
+    expect(classes).toContain('public-search');
+
+    for (const [index, counted] of classes.entries()) {
+      const key = `${counted}:${index.toString(16).repeat(64).slice(0, 64)}`;
+      await expect(
+        sql.query('INSERT INTO platform.rate_limit_counters VALUES ($1, 1, 1)', [key]),
+      ).resolves.toBeDefined();
+    }
   });
 
   it('refuses a key that is not a hashed origin of a known class (CHECK)', async () => {

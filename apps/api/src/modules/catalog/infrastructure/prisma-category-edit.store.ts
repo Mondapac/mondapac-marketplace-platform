@@ -118,6 +118,28 @@ export class PrismaCategoryEditStore implements CategoryEditStore, CategoryRestr
     return retired !== null;
   }
 
+  async unavailableSlugs(
+    market: MarketContext,
+    slugs: readonly string[],
+    now: Temporal.Instant,
+  ): Promise<ReadonlySet<string>> {
+    const wanted = [...new Set(slugs)];
+    if (wanted.length === 0) return new Set();
+    const tx = this.prisma.tx(market);
+    const current = await tx.catalogPlatformCategory.findMany({
+      where: { marketId: market.marketId, slug: { in: wanted } },
+      select: { slug: true },
+    });
+    const since = toDate(
+      now.toZonedDateTimeISO('UTC').subtract({ months: RETIRED_SLUG_HOLD_MONTHS }).toInstant(),
+    );
+    const retired = await tx.catalogPlatformCategorySlugHistory.findMany({
+      where: { marketId: market.marketId, slug: { in: wanted }, retiredAt: { gt: since } },
+      select: { slug: true },
+    });
+    return new Set([...current, ...retired].map((row) => row.slug));
+  }
+
   async discardFacts(
     market: MarketContext,
     id: Id<'Category'>,

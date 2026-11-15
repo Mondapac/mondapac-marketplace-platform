@@ -31,6 +31,10 @@ const row = (
   position: n,
   version: 3,
   counts: { liveProducts: 0, liveProductsDirect: 0, offers: 0 },
+  featureSetId: null,
+  featureSetCode: null,
+  featureSetFromCategoryId: null,
+  inherited: false,
   ...over,
 });
 const tree = (): TreeBody => ({

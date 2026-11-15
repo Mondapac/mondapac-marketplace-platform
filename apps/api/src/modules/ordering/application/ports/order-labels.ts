@@ -49,10 +49,38 @@ export interface OrderLabels {
     accountIds: readonly Id<'Account'>[],
   ): Promise<ReadonlyMap<Id<'Account'>, OrderCustomer>>;
   /**
+   * identity's `searchCustomerAccounts` (`identity.customer-account.view`): the customer accounts
+   * whose name contains `term`. An admin without the key gets no accounts and `capped: false`
+   * (the search then reaches store names only), not an error. PERSONAL DATA: the term is never
+   * logged.
+   */
+  customerAccountsMatching(
+    context: CallContext,
+    term: string,
+  ): Promise<{
+    readonly accountIds: readonly Id<'Account'>[];
+    readonly capped: boolean;
+    /** False when the caller may not search customer names, so only stores could match. */
+    readonly searched: boolean;
+  }>;
+  /** sellers' `searchStoreNames`: the sellers whose approved public store name contains `term`. */
+  sellersMatching(
+    context: CallContext,
+    term: string,
+  ): Promise<{ readonly sellerIds: readonly Id<'Seller'>[]; readonly capped: boolean }>;
+  /**
    * identity's `customerShortNames` (`identity.customer-short-name.view`), for a seller's own
    * order notices. A seller member without the key gets an empty map, not an error.
    */
   customerShortNamesOf(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, string>>;
+  /**
+   * identity's `changeActors`: the names of the admins who wrote notes, as the asking admin may
+   * see them (identity decides who is named). An account without a name is absent.
+   */
+  staffNamesOf(
     context: CallContext,
     accountIds: readonly Id<'Account'>[],
   ): Promise<ReadonlyMap<Id<'Account'>, string>>;

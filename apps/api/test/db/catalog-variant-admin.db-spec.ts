@@ -191,6 +191,7 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
       product_id: productId,
       revision_no: 1,
       revision_kind: 'submission',
+      type_code: 'configurable',
       base_revision_id: null,
       reverted_from_revision_id: null,
       family_revision_id: type.familyRevisionId,

@@ -4,7 +4,11 @@ import type { CreditPage } from '../application/use-cases/list-promotion-credits
 import type { AppliedReferral } from '../application/use-cases/apply-referral-code.use-case';
 import type { MyReferralView } from '../application/use-cases/view-my-referral.use-case';
 import { PROMOTIONS_STATUSES } from '../domain/market-status';
+import { DISPLAY_STATUSES } from '../domain/display-status';
 import { CREATABLE_TYPES, FUNDINGS, PROMOTION_STATUSES } from '../domain/promotion';
+import type { CampaignMembers } from '../application/use-cases/view-campaign-members.use-case';
+import type { PromotionsPage } from '../application/use-cases/list-promotions.use-case';
+import type { ActivityPage } from '../application/use-cases/view-promotion-activity.use-case';
 import type { FirstOrderView } from '../application/use-cases/view-first-order-settings.use-case';
 import type { ThresholdsView } from '../application/use-cases/list-free-shipping-thresholds.use-case';
 import type { ReviewItem } from '../application/use-cases/list-promotion-reviews.use-case';
@@ -12,6 +16,8 @@ import type { SettingsView } from '../application/use-cases/view-promotions-sett
 import type { PromotionUsageView } from '../application/use-cases/list-promotions.use-case';
 import type { PromotionView } from '../application/use-cases/list-promotions-full.use-case';
 import type { OwnPromotionView } from '../application/use-cases/list-own-promotions.use-case';
+import type { SellerCampaignView } from '../application/use-cases/list-seller-campaigns.use-case';
+import type { SellerPayoutPreviewView } from '../application/use-cases/preview-seller-payout.use-case';
 
 // Bodies of the promotions routes. Amounts are digit strings of minor units in the Market's
 // currency (ADR-0007); instants are ISO strings; ids are UUIDs. A Viewer's body carries usage
@@ -163,11 +169,43 @@ export class OwnPromotionBody extends PromotionCommonBody {
   @ApiProperty({ type: String }) spentMinor!: string;
 }
 
-export class PromotionsBody {
-  @ApiProperty({ type: [PromotionBody] }) items!: PromotionBody[];
+export class PromotionRowBody extends PromotionBody {
+  @ApiProperty({
+    enum: [...DISPLAY_STATUSES],
+    description:
+      'What the admin sees: the stored status, or Scheduled, Ended or Budget used up, which follow from the dates and the usage.',
+  })
+  displayStatus!: string;
 }
-export class PromotionUsageListBody {
-  @ApiProperty({ type: [PromotionUsageBody] }) items!: PromotionUsageBody[];
+export class PromotionUsageRowBody extends PromotionUsageBody {
+  @ApiProperty({ enum: [...DISPLAY_STATUSES] }) displayStatus!: string;
+}
+
+/** How many promotions each tab of the list shows, for the search without its tab or status. */
+export class PromotionCountsBody {
+  @ApiProperty() ALL!: number;
+  @ApiProperty() ACTIVE!: number;
+  @ApiProperty() SCHEDULED!: number;
+  @ApiProperty() PAUSED!: number;
+  @ApiProperty({ description: 'Promotions with an open entry in the review queue.' })
+  NEEDS_REVIEW!: number;
+  @ApiProperty() ENDED!: number;
+  @ApiProperty() PENDING_APPROVAL!: number;
+  @ApiProperty() REJECTED!: number;
+  @ApiProperty() BUDGET_USED_UP!: number;
+}
+
+class PromotionPageBody {
+  @ApiProperty({ description: 'Matches of the whole search, not of this page.' }) total!: number;
+  @ApiProperty({ description: '1-based.' }) page!: number;
+  @ApiProperty() limit!: number;
+  @ApiProperty({ type: PromotionCountsBody }) counts!: PromotionCountsBody;
+}
+export class PromotionsBody extends PromotionPageBody {
+  @ApiProperty({ type: [PromotionRowBody] }) items!: PromotionRowBody[];
+}
+export class PromotionUsageListBody extends PromotionPageBody {
+  @ApiProperty({ type: [PromotionUsageRowBody] }) items!: PromotionUsageRowBody[];
 }
 export class OwnPromotionsBody {
   @ApiProperty({ type: [OwnPromotionBody] }) items!: OwnPromotionBody[];
@@ -298,6 +336,69 @@ export class BudgetRequest {
 
 export class OptInRequest {
   @ApiProperty() optIn!: boolean;
+}
+
+export class SellerCampaignBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({ format: 'date-time' }) startsAt!: string;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) endsAt!: string | null;
+  @ApiProperty({
+    description: 'The campaign has started; leaving it is then a matter for support.',
+  })
+  started!: boolean;
+  @ApiProperty() testMode!: boolean;
+  @ApiProperty({ type: RewardBody }) reward!: RewardBody;
+  @ApiProperty({ description: 'The platform part of the discount, basis points of the discount.' })
+  platformShareBps!: number;
+  @ApiProperty({ nullable: true, type: Number, description: 'PERCENT: basis points of the price.' })
+  sellerPaysBps!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'PERCENT: basis points of the price.' })
+  platformPaysBps!: number | null;
+  @ApiProperty({ nullable: true, type: String }) minSpendMinor!: string | null;
+  @ApiProperty() currency!: string;
+  @ApiProperty() optedIn!: boolean;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) optedInAt!: string | null;
+  @ApiProperty({
+    type: Object,
+    description:
+      '`{ scope: "ALL" | "LISTED", count }`: ALL has no count; LISTED counts the campaign products ' +
+      'the seller sells (null when unknown).',
+  })
+  eligible!: { scope: 'ALL' | 'LISTED'; count: number | null };
+}
+
+export class SellerCampaignsBody {
+  @ApiProperty({ type: [SellerCampaignBody], description: 'Joined ones first, then the others.' })
+  joined!: SellerCampaignBody[];
+  @ApiProperty({ type: [SellerCampaignBody] }) available!: SellerCampaignBody[];
+}
+
+export class SellerPayoutPreviewBody {
+  @ApiProperty() currency!: string;
+  @ApiProperty({ type: String }) priceMinor!: string;
+  @ApiProperty({ type: String }) discountMinor!: string;
+  @ApiProperty({ type: String, description: 'The part of the discount the seller pays.' })
+  sellerFundedMinor!: string;
+  @ApiProperty({ type: String, description: 'The part of the discount the platform pays.' })
+  platformFundedMinor!: string;
+  @ApiProperty({ type: String }) shopperPaysMinor!: string;
+  @ApiProperty({ description: "The seller's commission rate, basis points." })
+  commissionRateBps!: number;
+  @ApiProperty({
+    type: String,
+    description:
+      'The price less the seller-funded part, less provisional tax when prices include tax.',
+  })
+  commissionBaseMinor!: string;
+  @ApiProperty({ type: String }) commissionMinor!: string;
+  @ApiProperty({ type: String, description: 'Before delivery and GST.' }) sellerGetsMinor!: string;
+  @ApiProperty({
+    nullable: true,
+    type: Object,
+    description: '`{ eligible }` when an Offer was asked about, else null.',
+  })
+  wasPrice!: { eligible: boolean } | null;
 }
 
 export class OptInBody {
@@ -510,6 +611,40 @@ export const ownBody = (view: OwnPromotionView): OwnPromotionBody => ({
   spentMinor: minor(view.spentMinor),
 });
 
+export const sellerCampaignBody = (view: SellerCampaignView): SellerCampaignBody => ({
+  id: view.id,
+  name: view.name,
+  startsAt: iso(view.startsAt),
+  endsAt: isoOrNull(view.endsAt),
+  started: view.started,
+  testMode: view.testMode,
+  reward: rewardBody(view.reward),
+  platformShareBps: view.platformShareBps,
+  sellerPaysBps: view.sellerPaysBps,
+  platformPaysBps: view.platformPaysBps,
+  minSpendMinor: minorOrNull(view.minSpendMinor),
+  currency: view.currency,
+  optedIn: view.optedIn,
+  optedInAt: isoOrNull(view.optedInAt),
+  eligible: { scope: view.eligible.scope, count: view.eligible.count },
+});
+
+export const sellerPayoutPreviewBody = (
+  view: SellerPayoutPreviewView,
+): SellerPayoutPreviewBody => ({
+  currency: view.currency,
+  priceMinor: minor(view.price),
+  discountMinor: minor(view.discount),
+  sellerFundedMinor: minor(view.sellerFunded),
+  platformFundedMinor: minor(view.platformFunded),
+  shopperPaysMinor: minor(view.shopperPays),
+  commissionRateBps: view.commissionRateBps,
+  commissionBaseMinor: minor(view.commissionBase),
+  commissionMinor: minor(view.commission),
+  sellerGetsMinor: minor(view.sellerGets),
+  wasPrice: view.wasPrice === null ? null : { eligible: view.wasPrice.eligible },
+});
+
 export const settingsBody = (view: SettingsView): SettingsBody => ({
   status: view.status,
   updatedAt: isoOrNull(view.updatedAt),
@@ -679,3 +814,82 @@ export function creditsBody(page: CreditPage): CreditsBody {
     })),
   };
 }
+
+const pageBody = <V, B>(page: PromotionsPage<V>, row: (item: V) => B) => ({
+  items: page.items.map((item) => ({ ...row(item), displayStatus: item.displayStatus })),
+  total: page.total,
+  page: page.page,
+  limit: page.limit,
+  counts: { ...page.counts },
+});
+
+export const usagePageBody = (page: PromotionsPage<PromotionUsageView>) =>
+  pageBody(page, usageBody);
+export const promotionsPageBody = (page: PromotionsPage<PromotionView>) =>
+  pageBody(page, promotionBody);
+
+export class ReviewCountBody {
+  @ApiProperty({ description: 'Entries of the review queue that are open.' }) open!: number;
+}
+
+export class CampaignMemberBody {
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ format: 'date-time' }) optedInAt!: string;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) withdrawnAt!: string | null;
+}
+export class CampaignMembersBody {
+  @ApiProperty({ format: 'uuid' }) promotionId!: string;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'The platform share of each use, in basis points; the sellers pay the rest.',
+  })
+  platformSplitBps!: number | null;
+  @ApiProperty() liveCount!: number;
+  @ApiProperty({ type: [CampaignMemberBody] }) members!: CampaignMemberBody[];
+}
+export const campaignMembersBody = (view: CampaignMembers): CampaignMembersBody => ({
+  promotionId: view.promotionId,
+  platformSplitBps: view.platformSplitBps,
+  liveCount: view.liveCount,
+  members: view.members.map((member) => ({
+    sellerId: member.sellerId,
+    optedInAt: iso(member.optedInAt),
+    withdrawnAt: isoOrNull(member.withdrawnAt),
+  })),
+});
+
+export class ActivityChangeBody {
+  @ApiProperty({ description: 'The name of the term that changed.' })
+  field!: string;
+  @ApiProperty({
+    nullable: true,
+    description: 'A scalar, or { amount (minor units as a string), currency }.',
+  })
+  before!: unknown;
+  @ApiProperty({ nullable: true }) after!: unknown;
+}
+export class ActivityItemBody {
+  @ApiProperty({ format: 'uuid', description: 'Also the cursor of the next page.' }) id!: string;
+  @ApiProperty({ format: 'date-time' }) at!: string;
+  @ApiProperty({ enum: ['created', 'edited', 'paused', 'resumed', 'budget-changed'] })
+  kind!: string;
+  @ApiProperty({ nullable: true, type: String }) byDisplayName!: string | null;
+  @ApiProperty({ enum: ['member', 'platform', 'system'] }) byKind!: string;
+  @ApiProperty({ type: [ActivityChangeBody] }) changes!: ActivityChangeBody[];
+}
+export class ActivityPageBody {
+  @ApiProperty({ type: [ActivityItemBody] }) items!: ActivityItemBody[];
+  @ApiProperty({ format: 'uuid', nullable: true, type: String }) next!: string | null;
+}
+export const activityBody = (page: ActivityPage): ActivityPageBody => ({
+  items: page.items.map((item) => ({
+    id: item.id,
+    at: iso(item.at),
+    kind: item.kind,
+    byDisplayName: item.byDisplayName,
+    byKind: item.byKind,
+    changes: item.changes.map((change) => ({ ...change })),
+  })),
+  next: page.next,
+});

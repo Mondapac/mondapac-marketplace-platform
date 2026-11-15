@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
+import { holdsBlockedTerm } from '../../../platform/content-filter/content-filter';
 import { BlogPostApproved, BlogPostChangesRequested, BlogPostSubmitted } from '../domain/audit';
 import { blocking, readableTexts, runChecks } from '../domain/checks';
 import type { Finding, ProductFact } from '../domain/checks';
@@ -87,6 +88,7 @@ export async function findingsOf(
     now: deps.clock.now(),
     currencyCode: policy.currencyCode,
     healthTerms: policy.healthTerms,
+    isBlocked: (text) => holdsBlockedTerm(text, policy.blockedTerms),
     products,
     claims,
   });

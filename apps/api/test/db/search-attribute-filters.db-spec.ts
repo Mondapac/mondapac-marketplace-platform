@@ -71,6 +71,7 @@ describe.each(TEST_MARKETS)('attribute filters in market %s (database)', (code) 
     facetCodes: [],
     numbers: {},
     variants: [],
+    cultureCodes: [],
     ...overrides,
   });
   const inUnit = async <T>(target: MarketContext, work: () => Promise<T>, readOnly = false) => {
@@ -373,6 +374,15 @@ describe.each(TEST_MARKETS)('attribute filters in market %s (database)', (code) 
       status: 'running',
       offersDone: 0,
     });
+    // A request during that run (multi-culture package 3a) clears both stamps, so the run's own
+    // finish no longer marks it done and the next tick begins afresh.
+    await inUnit(market, () => progress.request(market, T0));
+    await inUnit(market, () => progress.finish(market, `${code}-2`, T0));
+    expect(await inUnit(market, () => progress.read(market), true)).toMatchObject({
+      doneStamp: null,
+      targetStamp: null,
+      status: 'running',
+    });
     // Another Market's row (left by its own run) is never this Market's.
     const theirs = await inUnit(other, () => progress.read(other), true);
     expect(theirs?.targetStamp ?? '').not.toContain(`${code}-`);
@@ -438,6 +448,7 @@ describe.each(TEST_MARKETS)('variant filters in market %s (database)', (code) =>
     facetCodes: [],
     numbers: {},
     variants: [],
+    cultureCodes: [],
     ...overrides,
   });
   const inUnit = async <T>(target: MarketContext, work: () => Promise<T>, readOnly = false) => {

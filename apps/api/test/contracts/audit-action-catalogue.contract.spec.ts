@@ -49,7 +49,8 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  * change, plan section 11; wallet: the Market wallet switch, customer wallet package 1; reviews: the Market
  * reviews switch, reviews package 1; promotions: the Market switch, the promotion changes, reviews and
  * settings, promotions package T1; customers: the account deletion setting change, package 5a;
- * settings: the change of an admin-editable Market setting, ADR-0026 and ADR-0042).
+ * settings: the change of an admin-editable Market setting, ADR-0026 and ADR-0042; system-requests:
+ * the review requests and the review policy, Admin Inbox › System requests).
  */
 const AUDITING_MODULES = [
   'AssistantModule',
@@ -65,10 +66,12 @@ const AUDITING_MODULES = [
   'PricingModule',
   'PromotionsModule',
   'ReviewsModule',
+  'SecurityModule',
   'SellersModule',
   'SettingsModule',
   'ShippingModule',
   'StorefrontModule',
+  'SystemRequestsModule',
   'TaxModule',
   'WalletModule',
 ] as const;
@@ -163,6 +166,13 @@ const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
   'commission-payouts.dispute.decide.before.capAmount',
   // Seller payout run package 6d: an approval records the transfer amount the admin saw and bound.
   'commission-payouts.payout.approve.after.transfer',
+  // Order detail decision 1: an admin's cancellation records the sum of the refunds it wrote.
+  'ordering.order.cancel-requested.after.amount',
+  // Seller refund caps (owner decision 2026-11-11): an admin's cap on the amount a seller may
+  // refund in 24 hours, before and after a change (Market currency, never Cost).
+  'ordering.refund-limit.removed.before.maxAmount',
+  'ordering.refund-limit.set.after.maxAmount',
+  'ordering.refund-limit.set.before.maxAmount',
   'ordering.refund.requested.after.amount',
   'ordering.refund.requested.after.tax',
   'pricing.price-hold.approved.after.amount',
@@ -500,10 +510,12 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['PricingModule', 'pricing'],
       ['PromotionsModule', 'promotions'],
       ['ReviewsModule', 'reviews'],
+      ['SecurityModule', 'security'],
       ['SellersModule', 'sellers'],
       ['SettingsModule', 'settings'],
       ['ShippingModule', 'shipping'],
       ['StorefrontModule', 'storefront'],
+      ['SystemRequestsModule', 'system-requests'],
       ['TaxModule', 'tax'],
       ['WalletModule', 'wallet'],
     ]);
@@ -553,6 +565,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['PromotionsModule', 'writer'],
       ['ReviewsModule', 'actions'],
       ['ReviewsModule', 'writer'],
+      ['SecurityModule', 'actions'],
+      ['SecurityModule', 'writer'],
       ['SellersModule', 'actions'],
       ['SellersModule', 'writer'],
       ['SettingsModule', 'actions'],
@@ -561,6 +575,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['ShippingModule', 'writer'],
       ['StorefrontModule', 'actions'],
       ['StorefrontModule', 'writer'],
+      ['SystemRequestsModule', 'actions'],
+      ['SystemRequestsModule', 'writer'],
       ['TaxModule', 'actions'],
       ['TaxModule', 'writer'],
       ['WalletModule', 'actions'],
@@ -670,6 +686,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'promotions', 'promotions.module.ts')}: registerAuditActions('promotions')`,
       `${path.join('modules', 'reviews', 'reviews.module.ts')}: auditWriterFor('reviews')`,
       `${path.join('modules', 'reviews', 'reviews.module.ts')}: registerAuditActions('reviews')`,
+      `${path.join('modules', 'security', 'security.module.ts')}: auditWriterFor('security')`,
+      `${path.join('modules', 'security', 'security.module.ts')}: registerAuditActions('security')`,
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: auditWriterFor('sellers')`,
       `${path.join('modules', 'sellers', 'sellers.module.ts')}: registerAuditActions('sellers')`,
       `${path.join('modules', 'settings', 'settings.module.ts')}: auditWriterFor('settings')`,
@@ -678,6 +696,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'shipping', 'shipping.module.ts')}: registerAuditActions('shipping')`,
       `${path.join('modules', 'storefront', 'storefront.module.ts')}: auditWriterFor('storefront')`,
       `${path.join('modules', 'storefront', 'storefront.module.ts')}: registerAuditActions('storefront')`,
+      `${path.join('modules', 'system-requests', 'system-requests.module.ts')}: auditWriterFor('system-requests')`,
+      `${path.join('modules', 'system-requests', 'system-requests.module.ts')}: registerAuditActions('system-requests')`,
       `${path.join('modules', 'tax', 'tax.module.ts')}: auditWriterFor('tax')`,
       `${path.join('modules', 'tax', 'tax.module.ts')}: registerAuditActions('tax')`,
       `${path.join('modules', 'wallet', 'wallet.module.ts')}: auditWriterFor('wallet')`,

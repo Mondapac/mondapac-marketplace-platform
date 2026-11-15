@@ -79,6 +79,24 @@ export function forwardUrl(token: string, country: string, query: string, near?:
 }
 
 /**
+ * One street address the buyer is saving to their address book, asked with `permanent=true`:
+ * Mapbox's terms let only a permanent answer be stored (john, 11 Nov 2026: the search itself
+ * stays temporary; only the save pays the permanent rate).
+ */
+export function keepUrl(token: string, country: string, line: string): string {
+  const params = new URLSearchParams({
+    q: line,
+    country,
+    types: 'address',
+    autocomplete: 'false',
+    permanent: 'true',
+    limit: '1',
+    access_token: token,
+  });
+  return `${BASE}/forward?${params}`;
+}
+
+/**
  * The postcode at a point: a suburb (locality) answer carries none of its own. Asked at the
  * suburb's centre, so a suburb that spans several postcodes gets the central one; checkout checks
  * the delivery area again on the buyer's full address.

@@ -11,6 +11,16 @@ import { ConfigSearchPolicy } from '../infrastructure/config-search-policy';
 import type { OfferDocumentRepository } from './ports/offer-document.repository';
 import type { FeedFacts, OfferFeed } from './ports/offer-feed';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
+import type { OfferFacetReader } from './ports/offer-facet.reader';
+import type { OfferSearchIndex } from './ports/offer-search-index';
+import {
+  StoreRowConflictError,
+  type StoreDocumentRepository,
+} from './ports/store-document.repository';
+import type { StoreDocument, StoreHit } from '../domain/store-document';
+import type { StoreSearchRequest } from './ports/store-search.reader';
+import { SearchStores } from './use-cases/search-stores.use-case';
+import type { NamedCategory, ScopeRow } from '../domain/scope-counts';
 import type { ProductImages, PublicImage } from './ports/product-images';
 import type { PublicVisibility } from './ports/public-visibility';
 import type { SellerEligibility } from './ports/seller-eligibility';
@@ -29,7 +39,10 @@ import type { SearchDependencies } from './search-dependencies';
 import { SYNC_BATCH } from './sync-offers';
 import { RebuildOfferIndex } from './use-cases/rebuild-offer-index.use-case';
 import { SearchProducts } from './use-cases/search-products.use-case';
-import { SyncOfferDocuments } from './use-cases/sync-offer-documents.use-case';
+import {
+  CATEGORY_DIRECT_PAGES,
+  SyncOfferDocuments,
+} from './use-cases/sync-offer-documents.use-case';
 
 // The three search use cases in memory on both Market fixtures (AU: english, en-AU; ZZ: simple,
 // ja-JP): the index follows catalog, a rebuild repairs it, a query is checked against catalog and
@@ -46,6 +59,7 @@ const id = <T extends string>(n: number): Id<T> => {
 };
 const offer = (n: number): Id<'Offer'> => id<'Offer'>(0x1000 + n);
 const SELLER = id<'Seller'>(0x51);
+const OTHER_SELLER = id<'Seller'>(0x52);
 const SUSPENDED = id<'Seller'>(0x52);
 const PRODUCT = id<'Product'>(0x91);
 const CATEGORY = id<'Category'>(0xca);
@@ -141,12 +155,39 @@ class MemoryDocuments implements OfferDocumentRepository {
         .map(([, row]) => row.document.offerId),
     );
   }
+  offerIdsInCategories(
+    market: MarketContext,
+    categoryIds: readonly Id<'Category'>[],
+    limit: number,
+    after?: Id<'Offer'>,
+  ) {
+    return Promise.resolve(
+      [...this.rows.entries()]
+        .filter(([key]) => key.startsWith(`${market.marketId}:`))
+        .filter(([, row]) => row.document.categoryIds.some((c) => categoryIds.includes(c)))
+        .map(([, row]) => row.document.offerId)
+        .sort()
+        .filter((id) => after === undefined || id > after)
+        .slice(0, limit),
+    );
+  }
   offerIdsOfSeller(market: MarketContext, sellerId: Id<'Seller'>) {
     return Promise.resolve(
       [...this.rows.entries()]
         .filter(([key]) => key.startsWith(`${market.marketId}:`))
         .filter(([, row]) => row.document.sellerId === sellerId)
         .map(([, row]) => row.document.offerId),
+    );
+  }
+  offerIdsWithCultureCode(market: MarketContext, code: string, limit: number, after?: Id<'Offer'>) {
+    return Promise.resolve(
+      [...this.rows.entries()]
+        .filter(([key]) => key.startsWith(`${market.marketId}:`))
+        .filter(([, row]) => row.document.cultureCodes.includes(code))
+        .map(([, row]) => row.document.offerId)
+        .sort()
+        .filter((id) => after === undefined || id > after)
+        .slice(0, limit),
     );
   }
   deleteIndexedBefore(market: MarketContext, before: Temporal.Instant, limit: number) {
@@ -221,6 +262,75 @@ class StubReader implements OfferSearchReader {
   search(market: MarketContext, request: OfferSearchRequest) {
     this.requests.push({ market: market.marketId, request });
     return Promise.resolve(this.hits.slice(0, request.limit));
+  }
+}
+
+/** The scope rows the stub index answers (reset by each test's setup). */
+const scopeRowsOf: { rows: readonly ScopeRow[] } = { rows: [] };
+
+/** What the stub store query answers and was asked (reset by each test's setup). */
+const storeSearch: {
+  hits: StoreHit[];
+  counts: Map<Id<'Seller'>, number>;
+  requests: StoreSearchRequest[];
+} = { hits: [], counts: new Map(), requests: [] };
+
+/** The public stores the stub directory answers (reset by each test's setup). */
+const storeNames = new Map<Id<'Seller'>, { slug: string; name: string }>();
+
+const treeOf: { nodes: readonly NamedCategory[] | null } = { nodes: [] };
+
+const noFacets: OfferFacetReader = {
+  searchFiltered: () => Promise.resolve([]),
+  facetRows: () => Promise.resolve([]),
+  numberRows: () => Promise.resolve([]),
+};
+
+/** The index port over the stub reader and the given facet reader (no scope rows). */
+const indexOf = (
+  reader: OfferSearchReader,
+  facets: OfferFacetReader = noFacets,
+): OfferSearchIndex => ({
+  search: (market, request) => reader.search(market, request),
+  searchFiltered: (market, request) => facets.searchFiltered(market, request),
+  facetRows: (market, scope) => facets.facetRows(market, scope),
+  numberRows: (market, scope, attrs) => facets.numberRows(market, scope, attrs),
+  scopeRows: () => Promise.resolve(scopeRowsOf.rows),
+  searchStores: (_market, request) => {
+    storeSearch.requests.push(request);
+    return Promise.resolve(storeSearch.hits.slice(0, request.limit));
+  },
+  suggestOffers: () => Promise.resolve([]),
+  suggestScopeRows: () => Promise.resolve([]),
+  suggestStores: () => Promise.resolve([]),
+});
+
+class MemoryStores implements StoreDocumentRepository {
+  readonly rows = new Map<Id<'Seller'>, StoreDocument>();
+  /** Writes that meet a concurrent sync (a handed-over address) before one goes through. */
+  conflicts = 0;
+  writes = 0;
+  onConflict: () => void = () => undefined;
+  upsertMany(_market: MarketContext, documents: readonly StoreDocument[]) {
+    this.writes += 1;
+    if (this.conflicts > 0) {
+      this.conflicts -= 1;
+      this.onConflict();
+      return Promise.reject(new StoreRowConflictError());
+    }
+    for (const document of documents) this.rows.set(document.sellerId, document);
+    return Promise.resolve();
+  }
+  deleteMany(_market: MarketContext, sellerIds: readonly Id<'Seller'>[]) {
+    let count = 0;
+    for (const sellerId of sellerIds) if (this.rows.delete(sellerId)) count += 1;
+    return Promise.resolve(count);
+  }
+  deleteIndexedBefore() {
+    return Promise.resolve(0);
+  }
+  offerCounts() {
+    return Promise.resolve(storeSearch.counts);
   }
 }
 
@@ -370,6 +480,7 @@ describe.each([
   const anonymous = testCallContext(market, 'anonymous', 'search-anon-abcdef');
 
   let documents: MemoryDocuments;
+  let storeRows: MemoryStores;
   let feed: StubFeed;
   let reader: StubReader;
   let visibility: StubVisibility;
@@ -381,9 +492,23 @@ describe.each([
   let categories: StubCategories;
   let sellUnits: StubSellUnits;
   let deps: SearchDependencies;
+  // The cultures catalog's facade answers per Offer (multi-culture package 3a); `down` fails it.
+  const cultureSource = {
+    codes: new Map<Id<'Offer'>, readonly string[]>(),
+    down: false,
+    asked: [] as Id<'Offer'>[][],
+    visibleCodes(_c: CallContext, offerIds: readonly Id<'Offer'>[]) {
+      this.asked.push([...offerIds]);
+      if (this.down) return Promise.resolve(null);
+      return Promise.resolve(
+        new Map(offerIds.flatMap((id) => (this.codes.has(id) ? [[id, this.codes.get(id)!]] : []))),
+      );
+    },
+  };
 
   beforeEach(() => {
     documents = new MemoryDocuments();
+    storeRows = new MemoryStores();
     feed = new StubFeed();
     reader = new StubReader();
     visibility = new StubVisibility();
@@ -394,15 +519,23 @@ describe.each([
     shelves = new StubShelves();
     categories = new StubCategories();
     sellUnits = new StubSellUnits();
+    scopeRowsOf.rows = [];
+    treeOf.nodes = [];
+    storeNames.clear();
+    storeSearch.hits = [];
+    storeSearch.counts = new Map();
+    storeSearch.requests = [];
+    cultureSource.codes.clear();
+    cultureSource.down = false;
+    cultureSource.asked = [];
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       documents,
-      reader,
-      facets: {
-        searchFiltered: () => Promise.resolve([]),
-        facetRows: () => Promise.resolve([]),
-        numberRows: () => Promise.resolve([]),
-      },
+      storeDocuments: storeRows,
+      index: indexOf(reader),
+      categoryTree: { tree: () => Promise.resolve(treeOf.nodes) },
+      cultures: cultureSource,
+      storeDirectory: { publicStores: () => Promise.resolve(new Map(storeNames.entries())) },
       filterSource: { filters: () => Promise.resolve([]) },
       policy: new ConfigSearchPolicy(markets),
       feed,
@@ -450,12 +583,130 @@ describe.each([
           categoryIds: [CATEGORY],
           textSearchConfig: config,
           searchText: null,
+          cultureCodes: [],
           facetCodes: [],
           numbers: {},
           variants: [],
         },
       ]);
       expect(documents.markets).toEqual(new Set([code]));
+    });
+
+    describe('culture codes (multi-culture package 3a; ADR-0047 decision 8)', () => {
+      const certified = code === 'AU' ? 'muslim' : 'jewish';
+      const sync = (input: Parameters<SyncOfferDocuments['execute']>[1]) =>
+        new SyncOfferDocuments(gate, deps).execute(system, input);
+      const stored = (id: Id<'Offer'>) =>
+        [...documents.rows.values()].find((row) => row.document.offerId === id)?.document;
+
+      it("writes the codes catalog's facade answers, asked only for the Offers that get a document", async () => {
+        feed.facts_.set(offer(1), sellable());
+        feed.facts_.set(offer(2), sellable({ sellable: false }));
+        cultureSource.codes.set(offer(1), ['general', certified]);
+
+        expect(await sync({ offerIds: [offer(1), offer(2)] })).toEqual({
+          ok: true,
+          value: { upserted: 1, deleted: 0 },
+        });
+        expect(stored(offer(1))?.cultureCodes).toEqual(['general', certified]);
+        expect(cultureSource.asked).toEqual([[offer(1)]]);
+      });
+
+      it('an Offer the facade does not name is visible in no culture', async () => {
+        feed.facts_.set(offer(1), sellable());
+        await sync({ offerIds: [offer(1)] });
+        expect(stored(offer(1))?.cultureCodes).toEqual([]);
+      });
+
+      it('throws when the facade cannot answer, so the delivery is retried (never indexed as none)', async () => {
+        feed.facts_.set(offer(1), sellable());
+        cultureSource.codes.set(offer(1), [certified]);
+        await sync({ offerIds: [offer(1)] });
+        cultureSource.down = true;
+        cultureSource.codes.set(offer(1), []);
+
+        await expect(sync({ offerIds: [offer(1)] })).rejects.toThrow('culture visibility');
+        expect(stored(offer(1))?.cultureCodes).toEqual([certified]);
+      });
+
+      it('a culture mark change re-syncs the subtree directly up to the threshold, then hands off', async () => {
+        const many = CATEGORY_DIRECT_PAGES * SYNC_BATCH + 1;
+        for (let n = 1; n <= many; n += 1) {
+          feed.facts_.set(offer(n), sellable());
+          cultureSource.codes.set(offer(n), [certified]);
+        }
+        await sync({ offerIds: Array.from({ length: many }, (_, n) => offer(n + 1)) });
+        for (let n = 1; n <= many; n += 1) cultureSource.codes.set(offer(n), []);
+
+        const small = await sync({ categoryId: CATEGORY });
+        expect(small).toEqual({ ok: true, value: { upserted: many, deleted: 0 } });
+        const handed = await sync({ categoryId: CATEGORY, handOffAbove: true });
+        expect(handed).toEqual({
+          ok: true,
+          value: { upserted: CATEGORY_DIRECT_PAGES * SYNC_BATCH, deleted: 0, handedOff: true },
+        });
+      });
+
+      it('a small subtree is synced in full and never handed off', async () => {
+        feed.facts_.set(offer(1), sellable());
+        cultureSource.codes.set(offer(1), [certified]);
+        await sync({ offerIds: [offer(1)] });
+        cultureSource.codes.set(offer(1), []);
+        expect(await sync({ categoryId: CATEGORY, handOffAbove: true })).toEqual({
+          ok: true,
+          value: { upserted: 1, deleted: 0 },
+        });
+        expect(stored(offer(1))?.cultureCodes).toEqual([]);
+      });
+    });
+
+    describe('names in the searchable text (search 1a)', () => {
+      const parent = '00000000-0000-7000-8000-0000000000c1' as Id<'Category'>;
+      const run = () =>
+        new SyncOfferDocuments(gate, deps).execute(system, { offerIds: [offer(1)] });
+
+      it("adds the seller's public store name and the category names of every level", async () => {
+        treeOf.nodes = [
+          { id: parent, parentId: null, name: 'Meat' },
+          { id: CATEGORY, parentId: parent, name: 'Sausages' },
+        ];
+        storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+        feed.facts_.set(offer(1), sellable({ categoryIds: [CATEGORY] }));
+
+        await run();
+
+        const [row] = [...documents.rows.values()];
+        expect(row?.document.searchText).toBe("Ali's Butcher Sausages Meat");
+      });
+
+      it('re-syncs the Offers that name a renamed category, and only those', async () => {
+        treeOf.nodes = [{ id: CATEGORY, parentId: null, name: 'Sausages' }];
+        feed.facts_.set(offer(1), sellable({ categoryIds: [CATEGORY] }));
+        await run();
+        treeOf.nodes = [{ id: CATEGORY, parentId: null, name: 'Smallgoods' }];
+
+        const result = await new SyncOfferDocuments(gate, deps).execute(system, {
+          categoryId: CATEGORY,
+        });
+
+        expect(result).toEqual({ ok: true, value: { upserted: 1, deleted: 0 } });
+        const [row] = [...documents.rows.values()];
+        expect(row?.document.searchText).toBe('Smallgoods');
+      });
+
+      it('indexes without a store name for a seller that has no public store', async () => {
+        feed.facts_.set(offer(1), sellable());
+        await run();
+        const [row] = [...documents.rows.values()];
+        expect(row?.document.searchText).toBeNull();
+      });
+
+      it('throws, so the delivery is retried, when the category tree cannot be read', async () => {
+        treeOf.nodes = null;
+        feed.facts_.set(offer(1), sellable());
+        await expect(run()).rejects.toThrow('category tree unavailable');
+        expect(documents.rows.size).toBe(0);
+      });
     });
 
     it('deletes the document of an Offer that is unlisted, deleted, unknown or has no text', async () => {
@@ -546,6 +797,24 @@ describe.each([
       );
     });
 
+    it('waits for the public store of a just-approved seller: throws until sellers shows it', async () => {
+      feed.facts_.set(offer(1), sellable());
+      feed.published.push(offer(1));
+      const sync = new SyncOfferDocuments(gate, deps);
+
+      // Sellers has not recorded the store yet (its unit runs after identity's approval commits).
+      await expect(
+        sync.execute(system, { sellerId: SELLER, publicStoreRequired: true }),
+      ).rejects.toThrow('no public store yet');
+      expect(documents.rows.size).toBe(0);
+
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      const result = await sync.execute(system, { sellerId: SELLER, publicStoreRequired: true });
+
+      expect(result).toEqual({ ok: true, value: { upserted: 1, deleted: 0 } });
+      expect([...documents.rows.values()][0]?.document.searchText).toContain("Ali's Butcher");
+    });
+
     it('throws when the may-sell contract cannot answer, writing nothing', async () => {
       feed.facts_.set(offer(1), sellable());
       sellers.failing = true;
@@ -626,9 +895,197 @@ describe.each([
     });
   });
 
+  describe('store rows (search 1a)', () => {
+    const run = (offers = [offer(1)]) =>
+      new SyncOfferDocuments(gate, deps).execute(system, { offerIds: offers });
+
+    it('writes a row for the public store of an indexed Offer', async () => {
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      feed.facts_.set(offer(1), sellable());
+
+      await run();
+
+      expect([...storeRows.rows.values()]).toEqual([
+        { sellerId: SELLER, slug: 'alis-butcher', name: "Ali's Butcher", textSearchConfig: config },
+      ]);
+    });
+
+    it('reads sellers again and writes again when a concurrent sync took the address', async () => {
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      feed.facts_.set(offer(1), sellable());
+      storeRows.conflicts = 1;
+      // The address moved on while the first write waited: the second read sees the new one.
+      storeRows.onConflict = () =>
+        storeNames.set(SELLER, { slug: 'alis-new-butcher', name: "Ali's Butcher" });
+
+      const result = await run();
+
+      expect(result.ok).toBe(true);
+      expect(storeRows.writes).toBe(2);
+      expect([...storeRows.rows.values()]).toEqual([
+        {
+          sellerId: SELLER,
+          slug: 'alis-new-butcher',
+          name: "Ali's Butcher",
+          textSearchConfig: config,
+        },
+      ]);
+    });
+
+    it('gives up after three conflicting attempts and throws, so the delivery is retried', async () => {
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      feed.facts_.set(offer(1), sellable());
+      storeRows.conflicts = 3;
+
+      await expect(run()).rejects.toBeInstanceOf(StoreRowConflictError);
+      expect(storeRows.writes).toBe(3);
+      expect(storeRows.rows.size).toBe(0);
+    });
+
+    it('removes the row of a seller that has no public store any more', async () => {
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+      feed.facts_.set(offer(1), sellable());
+      await run();
+      storeNames.clear();
+
+      await run();
+
+      expect(storeRows.rows.size).toBe(0);
+    });
+  });
+
+  describe('SearchStores', () => {
+    const search = (input: Parameters<SearchStores['execute']>[1]) =>
+      new SearchStores(gate, deps).execute(anonymous, input);
+    const stored = (seller: Id<'Seller'>, slug: string, name: string): StoreHit => ({
+      sellerId: seller,
+      slug,
+      name,
+      rank: 1,
+    });
+
+    it("asks the index with the Market's configuration and answers address, name and count", async () => {
+      storeSearch.hits = [stored(SELLER, 'alis-butcher', "Ali's Butcher")];
+      storeSearch.counts = new Map([[SELLER, 7]]);
+      storeNames.set(SELLER, { slug: 'alis-butcher', name: "Ali's Butcher" });
+
+      const result = await search({ q: '  butcher ', pageSize: 10 });
+
+      expect(result).toEqual({
+        ok: true,
+        value: {
+          items: [{ slug: 'alis-butcher', name: "Ali's Butcher", productCount: 7 }],
+          page: 1,
+          pageSize: 10,
+          hasMore: false,
+        },
+      });
+      expect(storeSearch.requests).toEqual([
+        { textSearchConfig: config, text: 'butcher', limit: 11, offset: 0 },
+      ]);
+    });
+
+    it("uses sellers' live name and address, and drops a store that is not public now", async () => {
+      storeSearch.hits = [
+        stored(SELLER, 'old-address', 'Old name'),
+        stored(OTHER_SELLER, 'gone', 'Gone'),
+      ];
+      storeSearch.counts = new Map([
+        [SELLER, 2],
+        [OTHER_SELLER, 3],
+      ]);
+      storeNames.set(SELLER, { slug: 'new-address', name: 'New name' });
+
+      const result = await search({ q: 'name' });
+
+      expect(result.ok && result.value.items).toEqual([
+        { slug: 'new-address', name: 'New name', productCount: 2 },
+      ]);
+    });
+
+    it('says hasMore only when the next store is visible', async () => {
+      storeSearch.hits = [
+        stored(SELLER, 'one-store', 'One'),
+        stored(OTHER_SELLER, 'two-store', 'Two'),
+      ];
+      storeSearch.counts = new Map([
+        [SELLER, 1],
+        [OTHER_SELLER, 1],
+      ]);
+      storeNames.set(SELLER, { slug: 'one-store', name: 'One' });
+
+      const hidden = await search({ q: 'store', pageSize: 1 });
+      expect(hidden.ok && hidden.value.hasMore).toBe(false);
+
+      storeNames.set(OTHER_SELLER, { slug: 'two-store', name: 'Two' });
+      const shown = await search({ q: 'store', pageSize: 1 });
+      expect(shown.ok && shown.value.hasMore).toBe(true);
+    });
+
+    it('needs a text and refuses a long OR chain', async () => {
+      expect(await search({})).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'q', code: 'required' }] },
+      });
+      const long = Array.from({ length: 9 }, (_, n) => `t${n}`).join(' or ');
+      expect(await search({ q: long })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'q', code: 'too-many-terms' }] },
+      });
+    });
+
+    it('is search.unavailable, never an unchecked list, when sellers cannot answer', async () => {
+      storeSearch.hits = [stored(SELLER, 'one-store', 'One')];
+      deps = { ...deps, storeDirectory: { publicStores: () => Promise.resolve(null) } };
+
+      expect(await search({ q: 'one' })).toEqual({
+        ok: false,
+        error: { code: 'search.unavailable' },
+      });
+    });
+  });
+
   describe('SearchProducts', () => {
     const search = (input: Parameters<SearchProducts['execute']>[1]) =>
       new SearchProducts(gate, deps).execute(anonymous, input);
+
+    describe('counts of the scope (search 1a)', () => {
+      const parent = '00000000-0000-7000-8000-0000000000c1' as Id<'Category'>;
+      const child = '00000000-0000-7000-8000-0000000000c2' as Id<'Category'>;
+      const rows = (): ScopeRow[] => [
+        { productId: PRODUCT, sellerId: SELLER, categoryIds: [child] },
+        { productId: PRODUCT, sellerId: OTHER_SELLER, categoryIds: [child] },
+      ];
+
+      it('counts products once, the stores and the categories right below the asked one', async () => {
+        treeOf.nodes = [
+          { id: parent, parentId: null, name: 'Meat' },
+          { id: child, parentId: parent, name: 'Beef' },
+        ];
+        scopeRowsOf.rows = rows();
+        reader.hits = [hit(1)];
+
+        const result = await search({ q: 'beef' });
+
+        expect(result.ok && result.value.counts).toEqual({
+          total: 1,
+          totalIsCapped: false,
+          categories: [{ categoryId: parent, name: 'Meat', count: 1 }],
+          storeCount: 2,
+        });
+      });
+
+      it('leaves the counts out, not the list, when the tree cannot be read', async () => {
+        treeOf.nodes = null;
+        scopeRowsOf.rows = rows();
+        reader.hits = [hit(1)];
+
+        const result = await search({ q: 'beef' });
+
+        expect(result.ok && result.value.items).toHaveLength(1);
+        expect(result.ok && result.value.counts).toBeNull();
+      });
+    });
 
     it("asks the index with the Market's configuration and returns ids, text and categories", async () => {
       reader.hits = [hit(1), hit(2)];
@@ -670,6 +1127,7 @@ describe.each([
           filters: [],
           filtered: false,
           countsComplete: true,
+          counts: { total: 0, totalIsCapped: false, categories: [], storeCount: 0 },
           exactMatch: null,
         },
       });
@@ -985,6 +1443,7 @@ describe.each([
             filters: [],
             filtered: false,
             countsComplete: true,
+            counts: null,
             exactMatch: null,
           },
         });
@@ -1106,6 +1565,7 @@ describe.each([
             filters: [],
             filtered: false,
             countsComplete: true,
+            counts: null,
             exactMatch: null,
           },
         });
@@ -1321,14 +1781,14 @@ describe.each([
               },
             ]),
         },
-        facets: {
+        index: indexOf(reader, {
           searchFiltered: (_market, request) => {
             narrowed.push(request);
             return Promise.resolve([hit(1)]);
           },
           facetRows: () => Promise.resolve([]),
           numberRows: () => Promise.resolve([]),
-        },
+        }),
       };
 
       const result = await search({ category: CATEGORY, filter: 'weight:10kg', price: '1000..' });
@@ -1409,6 +1869,7 @@ describe.each([
       facetCodes: [],
       numbers: {},
       variants: [],
+      cultureCodes: [],
     };
   }
 });

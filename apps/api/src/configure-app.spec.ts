@@ -1,5 +1,6 @@
 import {
   isCategoryImageUploadRequest,
+  isCategoryImportUploadRequest,
   isSlideImageUploadRequest,
   isPlatformProductImageUploadRequest,
   isStoreImageUploadRequest,
@@ -201,5 +202,53 @@ describe('isPlatformProductImageUploadRequest', () => {
     ['POST', undefined],
   ])('is false for %s %s even with a session', (method, url) => {
     expect(isPlatformProductImageUploadRequest(method, url, ADMIN_OK)).toBe(false);
+  });
+});
+
+describe('isCategoryImportUploadRequest', () => {
+  const ADMIN = '__Host-session-admin-AU=abc123_-XYZ';
+  const ADMIN_OK = { cookie: ADMIN, 'x-csrf-token': 'token' };
+
+  it.each(['dry-run', 'apply'])(
+    'takes the large body of a POST to import/%s with an admin session and CSRF header',
+    (step) => {
+      expect(
+        isCategoryImportUploadRequest(
+          'POST',
+          `/catalog/admin/category-tree/import/${step}`,
+          ADMIN_OK,
+        ),
+      ).toBe(true);
+      expect(
+        isCategoryImportUploadRequest(
+          'POST',
+          `/catalog/admin/category-tree/import/${step}/?x=1`,
+          ADMIN_OK,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each([
+    ['no headers at all', undefined],
+    ['no CSRF header', { cookie: ADMIN }],
+    ['a seller cookie', { cookie: COOKIE, 'x-csrf-token': 't' }],
+  ])('keeps the 64 KiB parser for %s', (_, headers) => {
+    expect(
+      isCategoryImportUploadRequest('POST', '/catalog/admin/category-tree/import/dry-run', headers),
+    ).toBe(false);
+  });
+
+  it.each([
+    ['GET', '/catalog/admin/category-tree/import/dry-run'],
+    ['PUT', '/catalog/admin/category-tree/import/apply'],
+    ['POST', '/catalog/admin/category-tree/export'],
+    ['POST', '/catalog/admin/category-tree/import'],
+    ['POST', '/catalog/admin/category-tree/import/other'],
+    ['POST', '/catalog/admin/category-tree/import/dry-run/x'],
+    [undefined, '/catalog/admin/category-tree/import/apply'],
+    ['POST', undefined],
+  ])('keeps the 64 KiB parser for %s %s', (method, url) => {
+    expect(isCategoryImportUploadRequest(method, url, ADMIN_OK)).toBe(false);
   });
 });

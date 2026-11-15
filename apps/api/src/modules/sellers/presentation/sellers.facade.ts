@@ -6,6 +6,8 @@ import type { SellerBusinessActivities } from '../application/use-cases/seller-b
 import type { SellerBusinessActivitiesSystem } from '../application/use-cases/seller-business-activities-system.use-case';
 import type { BlogAccessSystem } from '../application/use-cases/blog-access-system.use-case';
 import type { BlogAccess } from '../application/use-cases/blog-access.use-case';
+import type { AiAccessSystem } from '../application/use-cases/ai-access-system.use-case';
+import type { AiAccess } from '../application/use-cases/ai-access.use-case';
 import type { MayProposeCategoriesSystem } from '../application/use-cases/may-propose-categories-system.use-case';
 import type { MayProposeCategories } from '../application/use-cases/may-propose-categories.use-case';
 import type { AllowedProductTypesSystem } from '../application/use-cases/allowed-product-types-system.use-case';
@@ -17,8 +19,13 @@ import type { PublishedStoreSellerId } from '../application/use-cases/published-
 import type { PublishedStoreSlugs } from '../application/use-cases/published-store-slugs.use-case';
 import type { ReviewerBusinessDetailsRead } from '../application/use-cases/reviewer-business-details.use-case';
 import type { SellingEligibilitySystem } from '../application/use-cases/selling-eligibility-system.use-case';
+import type { CultureApprovedMembers } from '../application/use-cases/culture-approved-members.use-case';
+import type { ApplySignupCultures } from '../application/use-cases/apply-signup-cultures.use-case';
+import type { SellerApprovedCultures } from '../application/use-cases/seller-approved-cultures.use-case';
+import type { SellerApprovedCulturesSystem } from '../application/use-cases/seller-approved-cultures-system.use-case';
 import type { SellingEligibility } from '../application/use-cases/selling-eligibility.use-case';
 import type { SellerSummariesSystem } from '../application/use-cases/seller-summaries-system.use-case';
+import type { SearchStoreNames } from '../application/use-cases/search-store-names.use-case';
 import type { SellerSummaries } from '../application/use-cases/seller-summaries.use-case';
 import type {
   AllowedProductTypesOf,
@@ -26,7 +33,9 @@ import type {
   ReviewerBusinessDetails,
   SellerBusinessActivitiesMap,
   SellerDetailsNotFound,
+  SellerFileNotFound,
   SellersFacade,
+  SignupCulturesAttached,
   SellingEligibilityMap,
   SellersUnavailable,
   SellersValidationFailed,
@@ -37,6 +46,7 @@ import type { SellerSummary } from '../domain/seller-summary';
 export interface SellersFacadeUseCases {
   readonly sellerSummaries: SellerSummaries;
   readonly sellerSummariesSystem: SellerSummariesSystem;
+  readonly searchStoreNames: SearchStoreNames;
   readonly sellingEligibility: SellingEligibility;
   readonly sellingEligibilitySystem: SellingEligibilitySystem;
   readonly allowedProductTypes: AllowedProductTypes;
@@ -47,6 +57,8 @@ export interface SellersFacadeUseCases {
   readonly blogAccessSystem: BlogAccessSystem;
   readonly mayProposeCategories: MayProposeCategories;
   readonly mayProposeCategoriesSystem: MayProposeCategoriesSystem;
+  readonly aiAccess: AiAccess;
+  readonly aiAccessSystem: AiAccessSystem;
   readonly activeSince: ActiveSince;
   readonly activeSinceSystem: ActiveSinceSystem;
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
@@ -55,6 +67,10 @@ export interface SellersFacadeUseCases {
   readonly carrierPickup: CarrierPickupRead;
   readonly pickupPostcodes: PickupPostcodes;
   readonly operatingZones: OperatingZones;
+  readonly applySignupCultures: ApplySignupCultures;
+  readonly cultureApprovedMembers: CultureApprovedMembers;
+  readonly sellerApprovedCultures: SellerApprovedCultures;
+  readonly sellerApprovedCulturesSystem: SellerApprovedCulturesSystem;
 }
 
 /**
@@ -77,6 +93,18 @@ export class SellersFacadeImplementation implements SellersFacade {
         ? this.useCases.sellerSummariesSystem
         : this.useCases.sellerSummaries;
     return useCase.execute(context, { sellerIds });
+  }
+
+  searchStoreNames(
+    context: CallContext,
+    term: string,
+  ): Promise<
+    Result<
+      { readonly sellerIds: readonly Id<'Seller'>[]; readonly capped: boolean },
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  > {
+    return this.useCases.searchStoreNames.execute(context, { term });
   }
 
   sellingEligibility(
@@ -135,6 +163,15 @@ export class SellersFacadeImplementation implements SellersFacade {
       context.actor.kind === 'system'
         ? this.useCases.mayProposeCategoriesSystem
         : this.useCases.mayProposeCategories;
+    return useCase.execute(context, { sellerId });
+  }
+
+  aiAccessOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>> {
+    const useCase =
+      context.actor.kind === 'system' ? this.useCases.aiAccessSystem : this.useCases.aiAccess;
     return useCase.execute(context, { sellerId });
   }
 
@@ -212,5 +249,40 @@ export class SellersFacadeImplementation implements SellersFacade {
     >
   > {
     return this.useCases.operatingZones.execute(context, { sellerIds });
+  }
+
+  applySignupCultures(
+    context: CallContext,
+    request: { readonly sellerId: Id<'Seller'>; readonly cultures?: unknown },
+  ): Promise<
+    Result<
+      SignupCulturesAttached,
+      AccessDenied | SellersValidationFailed | SellerFileNotFound | SellersUnavailable
+    >
+  > {
+    return this.useCases.applySignupCultures.execute(context, request);
+  }
+
+  cultureHasApprovedMembers(
+    context: CallContext,
+    cultureId: Id<'Culture'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>> {
+    return this.useCases.cultureApprovedMembers.execute(context, { cultureId });
+  }
+
+  approvedCulturesOfSellers(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Seller'>, readonly Id<'Culture'>[]>,
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  > {
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.sellerApprovedCulturesSystem
+        : this.useCases.sellerApprovedCultures;
+    return useCase.execute(context, { sellerIds });
   }
 }

@@ -4,7 +4,8 @@ import {
   type RegisteredSubscription,
   type SubscriberContext,
 } from '../../../../platform/events/event-subscriptions';
-import { OrderPaid, OrderShipped } from '../../../ordering';
+import { OrderPaid, OrderShipped, RefundSucceeded } from '../../../ordering';
+import type { SendItemUnavailableRefundMail } from '../../application/use-cases/send-item-unavailable-refund-mail.use-case';
 import type { SendOrderConfirmationMail } from '../../application/use-cases/send-order-confirmation-mail.use-case';
 import type { SendOrderShippedMail } from '../../application/use-cases/send-order-shipped-mail.use-case';
 import type { SendSellerNewOrderMail } from '../../application/use-cases/send-seller-new-order-mail.use-case';
@@ -13,6 +14,7 @@ import type { SendSellerNewOrderMail } from '../../application/use-cases/send-se
 export const ORDER_CONFIRMATION_MAIL_SUBSCRIBER = 'notifications.order-confirmation-mail';
 export const SELLER_NEW_ORDER_MAIL_SUBSCRIBER = 'notifications.seller-new-order-mail';
 export const ORDER_SHIPPED_MAIL_SUBSCRIBER = 'notifications.order-shipped-mail';
+export const ITEM_UNAVAILABLE_REFUND_MAIL_SUBSCRIBER = 'notifications.item-unavailable-refund-mail';
 
 /**
  * Notifications' subscriptions to `ordering.order-paid.v1` (Q10): the customer's "Order
@@ -24,6 +26,7 @@ export function orderMailSubscriptions(
   confirmation: SendOrderConfirmationMail,
   sellerNewOrder: SendSellerNewOrderMail,
   shipped: SendOrderShippedMail,
+  unavailable: SendItemUnavailableRefundMail,
 ): RegisteredSubscription[] {
   const handler =
     (name: string, useCase: SendOrderConfirmationMail | SendSellerNewOrderMail) =>
@@ -57,6 +60,23 @@ export function orderMailSubscriptions(
         });
         if (!result.ok) {
           throw new Error(`${ORDER_SHIPPED_MAIL_SUBSCRIBER} refused: ${result.error.code}`);
+        }
+      },
+    }),
+    // Order detail decision 6: the customer is told when a seller's unavailable units went back.
+    subscription({
+      name: ITEM_UNAVAILABLE_REFUND_MAIL_SUBSCRIBER,
+      event: RefundSucceeded,
+      handle: async (event, delivery, context: SubscriberContext): Promise<void> => {
+        const result = await unavailable.execute(context, {
+          delivery,
+          orderId: event.payload.orderId,
+          refundId: event.payload.refundId,
+        });
+        if (!result.ok) {
+          throw new Error(
+            `${ITEM_UNAVAILABLE_REFUND_MAIL_SUBSCRIBER} refused: ${result.error.code}`,
+          );
         }
       },
     }),

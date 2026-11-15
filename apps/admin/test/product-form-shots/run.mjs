@@ -39,17 +39,26 @@ const views = [
   ['admin-edit-published-revision', 'published', 'Sella basmati rice', null, null],
   ['admin-edit-inactive', 'inactive', 'This product is inactive', null, null],
   ['admin-edit-turn-off-dialog', 'dialog', 'Sella basmati rice', 'turn-off', null],
+  ['admin-edit-variant-details', 'variants', 'Tick the combinations you sell', null, null],
   ['admin-edit-sellers-selling-it', 'sellers', 'Sellers selling it', null, 'sellers'],
 ];
+const only = process.env.ONLY;
 for (const scheme of ['light', 'dark']) {
   for (const width of [1280, 768, 375]) {
     for (const [name, scenario, waitFor, action, shoot] of views) {
+      if (only && name !== only) continue;
       const ctx = await browser.newContext({
         viewport: { width, height: 900 },
         colorScheme: scheme,
         deviceScaleFactor: 2,
       });
       const page = await ctx.newPage();
+      await page.route('**/images/*/thumb', (route) =>
+        route.fulfill({
+          contentType: 'image/svg+xml',
+          body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#b9a27c"/></svg>',
+        }),
+      );
       await page.goto(`http://localhost:${port}/?s=${scenario}`);
       await page.evaluate(
         (s) => globalThis.document.documentElement.setAttribute('data-theme', s),

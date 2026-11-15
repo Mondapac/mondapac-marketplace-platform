@@ -36,6 +36,8 @@ export interface OptInRepository {
     at: Temporal.Instant,
     by: Id<'Account'>,
   ): Promise<readonly Id<'Seller'>[]>;
+  /** Every opt-in of the promotion, withdrawn ones too, oldest first. */
+  listOf(market: MarketContext, promotionId: Id<'Promotion'>): Promise<readonly OptInRecord[]>;
   /** The sellers with a live (not withdrawn) opt-in, per promotion. */
   liveSellers(
     market: MarketContext,

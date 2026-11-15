@@ -1,3 +1,7 @@
+import { isMeasureValue, measureUnit } from '@mondapac/shared-kernel';
+
+/** The stored value of a measure: a plain decimal in the base unit. */
+const MEASURE_TEXT = /^(0|[1-9]\d{0,11})(\.\d{1,9})?$/;
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
 import type { ClaimCheckedFieldId } from './claim-checked-fields';
@@ -181,6 +185,9 @@ export function draftTextsOf(
       });
       if (typeof value === 'string') found.push(place(defaultLocale, value));
       else if (value === null || typeof value === 'number' || typeof value === 'boolean') continue;
+      // A measure is a number with a unit, not text: nothing in it reaches the claim-text check.
+      else if (isMeasureValue(value) && MEASURE_TEXT.test(value.value) && measureUnit(value.unit))
+        continue;
       else if (Array.isArray(value)) {
         if (value.length > MAX_LIST || !value.every((item) => typeof item === 'string')) {
           return invalid;

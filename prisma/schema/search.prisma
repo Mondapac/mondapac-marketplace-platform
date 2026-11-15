@@ -27,6 +27,10 @@ model SearchOfferDocument {
   /// Facet values as `attribute=value`: option codes (merges followed), `true`, `brand=<slug>`,
   /// `country-of-origin=<iso code>`. At most 100 (CHECK). A filter asks for one of the values.
   facetCodes       String[]                 @default([]) @map("facet_codes")
+  /// The codes of the cultures the Offer is visible in (multi-culture package 3a; ADR-0047
+  /// decisions 5 and 8), from catalog's visibility facade at indexing time. Empty: visible in no
+  /// culture. Not read by a buyer query until package 3b. At most 200 (CHECK).
+  cultureCodes     String[]                 @default([]) @map("culture_codes")
   /// The last write of this row; a rebuild deletes the rows it did not touch.
   indexedAt        DateTime                 @map("indexed_at") @db.Timestamptz(6)
 
@@ -41,6 +45,8 @@ model SearchOfferDocument {
   @@index([categoryIds], type: Gin, map: "offer_documents_category_ids_idx")
   /// The facet filter (a hand-written index; the migration creates it).
   @@index([facetCodes], type: Gin, map: "offer_documents_facet_codes_idx")
+  /// The culture filter of package 3b (`culture_codes && $chosen`).
+  @@index([cultureCodes], type: Gin, map: "offer_documents_culture_codes_idx")
   @@map("offer_documents")
   @@schema("search")
 }
@@ -137,5 +143,32 @@ model SearchOfferVariantDocument {
 
   @@id([marketId, offerId, variantId])
   @@map("offer_variant_documents")
+  @@schema("search")
+}
+
+/// One row per public store that has indexed Offers (search 1a): its address and public name, for
+/// the store search (`GET /search/stores`). Written with the Offers' sync from sellers' published-store
+/// state (an approved revision, a held address, may sell now); rebuilt from it at any time; never a
+/// source of truth. The tsvector is set by a trigger from the name.
+model SearchStoreDocument {
+  marketId         String                   @map("market_id") @db.VarChar(8)
+  tenantId         String                   @map("tenant_id")
+  sellerId         String                   @map("seller_id") @db.Uuid
+  /// The store address (`/s/<slug>` on the buyer site); unique in the Market.
+  slug             String
+  /// The public store name of the approved revision.
+  name             String
+  /// The PostgreSQL text search configuration the vector was built with (Market config).
+  textSearchConfig String                   @map("text_search_config")
+  /// Set by the trigger store_documents_set_vector from the name (weight A).
+  searchVector     Unsupported("tsvector")? @map("search_vector")
+  /// The last write of this row; a rebuild deletes the rows it did not touch.
+  indexedAt        DateTime                 @map("indexed_at") @db.Timestamptz(6)
+
+  @@id([marketId, sellerId])
+  @@unique([marketId, slug])
+  /// The store query (websearch_to_tsquery).
+  @@index([searchVector], type: Gin, map: "store_documents_search_vector_idx")
+  @@map("store_documents")
   @@schema("search")
 }

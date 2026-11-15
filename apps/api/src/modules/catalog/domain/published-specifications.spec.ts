@@ -34,6 +34,10 @@ function build(
     values,
     definitions: new Map(Object.entries(definitions)),
     locales: LOCALES,
+    unitLabels: new Map<string, Record<string, string>>([
+      ['kg', { 'en-AU': 'kg', 'fa-IR': 'کیلوگرم' }],
+      ['g', { 'en-AU': 'g' }],
+    ]),
   });
 }
 
@@ -168,6 +172,13 @@ describe('buildPublishedSpecifications', () => {
     expect(out[0]?.specifications[0]?.value).toEqual({ kind: 'list', items: ['New'] });
     expect(build({ a: 'gone' }, { a: def({ dataType: 'select', options }) })).toEqual([]);
   });
+  it('reads the single code of a select that became a multi-select as a list of one', () => {
+    const options = new Map<string, SpecificationOption>([
+      ['hot', { labels: { 'en-AU': 'Hot' }, mergedInto: null }],
+    ]);
+    const out = build({ a: 'hot' }, { a: def({ dataType: 'multi-select', options }) });
+    expect(out[0]?.specifications[0]?.value).toEqual({ kind: 'list', items: ['Hot'] });
+  });
   describe('a merged attribute (attributes A8)', () => {
     const label = (text: string): SpecificationOption => ({
       labels: { 'en-AU': text },
@@ -230,6 +241,81 @@ describe('buildPublishedSpecifications', () => {
         build({ note: 'Fresh' }, { note, remark: def({ names: { 'en-AU': 'Remark' } }) })[0]
           ?.specifications[0],
       ).toEqual({ code: 'remark', name: 'Remark', value: { kind: 'text', text: 'Fresh' } });
+    });
+  });
+
+  it('lists at most 60 rows and 20 list values', () => {
+    const codes = Array.from({ length: 70 }, (_, i) => `a${i}`);
+    const many = build(
+      Object.fromEntries(codes.map((code) => [code, 'x'])),
+      Object.fromEntries(codes.map((code) => [code, def()])),
+    );
+    expect(many.flatMap((group) => group.specifications)).toHaveLength(60);
+    const options = new Map<string, SpecificationOption>(
+      Array.from({ length: 25 }, (_, i): [string, SpecificationOption] => [
+        `o${i}`,
+        { labels: { 'en-AU': `Option ${i}` }, mergedInto: null },
+      ]),
+    );
+    const list = build(
+      { a: Array.from({ length: 25 }, (_, i) => `o${i}`) },
+      { a: def({ dataType: 'multi-select', options }) },
+    );
+    expect(list[0]?.specifications[0]?.value).toMatchObject({ kind: 'list' });
+    const value = list[0]?.specifications[0]?.value;
+    expect(value?.kind === 'list' ? value.items : []).toHaveLength(20);
+  });
+
+  it('survives odd stored data: localizable non-object, a merge cycle, a name in no locale', () => {
+    // A localizable value that is not a per-locale object is not shown; false is a real value.
+    expect(build({ a: 'plain' }, { a: def({ localizable: true }) })).toEqual([]);
+    expect(
+      build({ a: { 'en-AU': false } }, { a: def({ localizable: true, dataType: 'boolean' }) })[0]
+        ?.specifications[0]?.value,
+    ).toEqual({ kind: 'boolean', value: false });
+    // A cycle of merges ends after the hop cap instead of looping; the option it lands on has a label.
+    const cycle = new Map<string, SpecificationOption>([
+      ['a', { labels: { 'en-AU': 'A' }, mergedInto: 'b' }],
+      ['b', { labels: { 'en-AU': 'B' }, mergedInto: 'a' }],
+    ]);
+    expect(
+      build({ x: 'a' }, { x: def({ dataType: 'select', options: cycle }) })[0]?.specifications[0]
+        ?.value,
+    ).toEqual({ kind: 'text', text: expect.any(String) as string });
+    // An attribute with no name in the asked or fallback locale is left out.
+    expect(build({ a: 'x' }, { a: def({ names: { 'ar-AE': 'س' } }) })).toEqual([]);
+  });
+
+  describe('a measure (attributes A3)', () => {
+    const measure = (decimals = 3) => def({ dataType: 'measure', measureDecimals: decimals });
+    const shown = (stored: unknown, definition = measure()) =>
+      build({ w: stored }, { w: definition })[0]?.specifications[0]?.value;
+
+    it('shows the base-unit value in the unit the seller chose, with that unit in the locale', () => {
+      expect(shown({ value: '500', unit: 'kg' })).toEqual({
+        kind: 'measure',
+        value: '0.5',
+        unitLabel: 'کیلوگرم',
+      });
+      // A unit with no label in the asked locale falls back to English, never to another locale.
+      expect(shown({ value: '250', unit: 'g' })).toEqual({
+        kind: 'measure',
+        value: '250',
+        unitLabel: 'g',
+      });
+    });
+
+    it('rounds to the places the revision allows and keeps exact digits', () => {
+      expect(shown({ value: '1234', unit: 'kg' }, measure(2))).toMatchObject({ value: '1.23' });
+      expect(shown({ value: '1500', unit: 'kg' }, measure(0))).toMatchObject({ value: '2' });
+    });
+
+    it('leaves out a value it cannot show: bad shape, unknown unit, no settings, no label', () => {
+      expect(shown('500')).toBeUndefined();
+      expect(shown({ value: '500', unit: 'stone' })).toBeUndefined();
+      expect(shown({ value: 'abc', unit: 'kg' })).toBeUndefined();
+      expect(shown({ value: '500', unit: 'kg' }, def({ dataType: 'measure' }))).toBeUndefined();
+      expect(shown({ value: '5', unit: 'l' })).toBeUndefined();
     });
   });
 });

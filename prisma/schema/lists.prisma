@@ -1,0 +1,36 @@
+// The lists module's tables (the shared kit of the super lists). Every model is named Lists<Name>
+// and mapped to its table with @@map. The CHECKs, the unique indexes and the grants are
+// hand-written in the migration.
+
+/// A saved filter (saved view) of any admin or seller list: the tab, search, filters, sort and
+/// columns of a list under a name, for one account ("me") or for everyone who can see that list
+/// ("everyone": every admin of the Market, or every member of one store for a store-scoped seller
+/// list). `list_key` names the list (`admin.catalog.products`, `seller.catalog.products`,
+/// `admin.ordering.orders`, `seller.ordering.orders` today); the module that owns the list owns the
+/// meaning of the payload and validates it on write, the CHECKs only bound its type and size. A
+/// store-scoped seller list carries `seller_id`; an admin list never does; an account-scoped seller
+/// list (the seller order list) leaves it null. `owner_account_id` and `seller_id` are ids of other
+/// modules with no foreign key. Copied from `catalog.saved_filters` and `ordering.saved_filters`
+/// by the migration that created this table.
+model ListsSavedFilter {
+  id             String   @id @db.Uuid
+  marketId       String   @map("market_id") @db.VarChar(8)
+  tenantId       String   @map("tenant_id")
+  ownerAccountId String   @map("owner_account_id") @db.Uuid
+  sellerId       String?  @map("seller_id") @db.Uuid
+  /// me | everyone.
+  visibility     String
+  listKey        String   @map("list_key")
+  /// 1 to 60 characters, trimmed, no control character (CHECK).
+  name           String
+  payload        Json
+  /// The order of the owner's filters in the list (1 and up); set at creation.
+  position       Int
+  createdAt      DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([marketId, id])
+  @@index([marketId, sellerId, listKey])
+  @@map("saved_filters")
+  @@schema("lists")
+}

@@ -59,7 +59,7 @@ describe.each(TEST_MARKETS)('catalog variant fields in market %s (database)', (c
     products = new PrismaProductRepository(db.service);
     revisions = new PrismaProductRevisionRepository(db.service);
     registry = new PrismaVariantGtinRegistry(db.service);
-    reader = new PrismaPublishedProductReader(db.service);
+    reader = new PrismaPublishedProductReader(db.service, () => []);
   });
   afterAll(async () => {
     await owner.end();
@@ -220,6 +220,7 @@ describe.each(TEST_MARKETS)('catalog variant fields in market %s (database)', (c
       id: uuid7() as Id<'ProductRevision'>,
       productId: p.state.id,
       revisionNo: 1,
+      typeCode: p.state.typeCode,
       kind: 'submission',
       baseRevisionId: null,
       revertedFromRevisionId: null,

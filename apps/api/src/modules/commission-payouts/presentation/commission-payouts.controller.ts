@@ -44,6 +44,9 @@ import {
   LedgerBody,
   ledgerBody,
   rateBody,
+  rateChangeBody,
+  CommissionRateChangeBody,
+  NOTE_DESCRIPTION,
   SetCommissionRateRequest,
 } from './commission-payouts.dto';
 import { closedBody, parseLimit, refusal } from './http-answers';
@@ -127,7 +130,7 @@ export class AdminCommissionController {
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerId', format: 'uuid' })
   @ApiBody({ type: SetCommissionRateRequest })
-  @ApiOkResponse({ type: CommissionRateBody })
+  @ApiOkResponse({ type: CommissionRateChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({
@@ -147,10 +150,10 @@ export class AdminCommissionController {
     @Body() requestBody: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, requestBody, ['rateBps']);
+    const invalid = closedBody(request, requestBody, ['rateBps', 'note']);
     if (invalid !== null) throw invalid;
-    const rateBps = (requestBody as { rateBps?: unknown }).rateBps;
-    const result = await this.setRate.execute(context, { sellerId, rateBps });
+    const { rateBps, note } = requestBody as { rateBps?: unknown; note?: unknown };
+    const result = await this.setRate.execute(context, { sellerId, rateBps, note });
     logRoute(
       this.#logger,
       'commission-payouts.set-commission-rate-route',
@@ -158,7 +161,7 @@ export class AdminCommissionController {
       result.ok ? 'set' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return rateBody(result.value);
+    return rateChangeBody(result.value);
   }
 
   @Delete('commission-rate')
@@ -174,7 +177,8 @@ export class AdminCommissionController {
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerId', format: 'uuid' })
-  @ApiOkResponse({ type: CommissionRateBody })
+  @ApiQuery({ name: 'note', required: false, description: NOTE_DESCRIPTION })
+  @ApiOkResponse({ type: CommissionRateChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({
@@ -186,10 +190,11 @@ export class AdminCommissionController {
   async clear(
     @Call() context: CallContext,
     @Param('sellerId') sellerId: string,
+    @Query('note') note: unknown,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.clearRate.execute(context, { sellerId });
+    const result = await this.clearRate.execute(context, { sellerId, note });
     logRoute(
       this.#logger,
       'commission-payouts.clear-commission-rate-route',
@@ -197,7 +202,7 @@ export class AdminCommissionController {
       result.ok ? 'cleared' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return rateBody(result.value);
+    return rateChangeBody(result.value);
   }
 
   @Get('ledger')

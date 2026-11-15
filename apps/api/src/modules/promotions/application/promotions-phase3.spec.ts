@@ -12,6 +12,8 @@ import {
   FakeBatchCodeCrypto,
   FakeFlashSales,
   FakePriceHistory,
+  FakeSellerCatalogue,
+  FakeSellerCommission,
   FakeSellerActivity,
   FakeStepUp,
   MemoryBatchCodes,
@@ -41,6 +43,7 @@ import { CheckWasPrice } from './use-cases/check-was-price.use-case';
 import { CreateOwnPromotion } from './use-cases/create-own-promotion.use-case';
 import { CreatePromotion } from './use-cases/create-promotion.use-case';
 import { EditPromotion } from './use-cases/edit-promotion.use-case';
+import { ListCustomerPromotionCredits } from './use-cases/list-customer-promotion-credits.use-case';
 import { ListPromotionCredits } from './use-cases/list-promotion-credits.use-case';
 import { PreviewQuote } from './use-cases/preview-quote.use-case';
 import { QualifyReferralOnDelivery } from './use-cases/qualify-referral-on-delivery.use-case';
@@ -181,6 +184,8 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       flashSales: new FakeFlashSales(),
       sellerActivity: activity,
       priceHistory: new FakePriceHistory(),
+      sellerCommission: new FakeSellerCommission(),
+      sellerCatalogue: new FakeSellerCatalogue(),
       ...p3,
       stepUp,
       audit,
@@ -1608,6 +1613,64 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           }),
         ),
       ).toContain('cursor:value');
+    });
+
+    it("lists one customer's credits across promotions for the customer page, newest first and in pages", async () => {
+      const first = await adminCreate(cashback());
+      const second = await adminCreate(cashback());
+      const credit = (n: number, promotionId: typeof first.id, recipient: Id<'Account'>) =>
+        p3.credits.insert(market, {
+          id: id<'PromotionCredit'>(0xd20 + n),
+          promotionId,
+          kind: 'CASHBACK',
+          recipientAccountId: recipient,
+          orderId: id<'Order'>(0x0d00 + n),
+          sourceKind: 'SELLER_ORDER',
+          sourceId: `0299${n}`,
+          amountMinor: BigInt(n),
+          currency,
+          status: 'GRANTED',
+          failureCode: null,
+          walletJournalId: null,
+          idempotencyKey: `promotions:cashback:cust000${n}`,
+          createdAt: T0.add({ hours: n }),
+          settledAt: T0,
+        });
+      await credit(1, first.id, REFERRER);
+      await credit(2, second.id, REFERRER);
+      await credit(3, first.id, REFERRER);
+      await credit(4, first.id, NEWBIE);
+      expect(ListCustomerPromotionCredits.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: ['promotions.promotion.view'],
+      });
+      const page = await make(ListCustomerPromotionCredits).execute(admin(), {
+        customerAccountId: REFERRER,
+        limit: 2,
+      });
+      if (!page.ok) throw new Error('list failed');
+      expect(page.value.items.map((c) => c.amountMinor)).toEqual([3n, 2n]);
+      const rest = await make(ListCustomerPromotionCredits).execute(admin(), {
+        customerAccountId: REFERRER,
+        limit: 2,
+        cursor: page.value.nextCursor!,
+      });
+      expect(rest.ok && rest.value.items.map((c) => c.amountMinor)).toEqual([1n]);
+      expect(rest.ok && rest.value.nextCursor).toBeNull();
+      const nobody = await make(ListCustomerPromotionCredits).execute(admin(), {
+        customerAccountId: NEWBIE_2,
+      });
+      expect(nobody.ok && nobody.value.items).toEqual([]);
+      expect(
+        fields(
+          await make(ListCustomerPromotionCredits).execute(admin(), { customerAccountId: 'x' }),
+        ),
+      ).toContain('customerAccountId:value');
+      expect(
+        await make(ListCustomerPromotionCredits).execute(actingAs(admin()), {
+          customerAccountId: REFERRER,
+        }),
+      ).toMatchObject({ ok: false });
     });
   });
 });

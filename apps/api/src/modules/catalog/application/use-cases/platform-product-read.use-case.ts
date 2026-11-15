@@ -42,6 +42,12 @@ export interface PlatformProductReadOutput {
   readonly variants: readonly { variantId: string; state: VariantState }[];
   /** The Market's cap on non-retired variants. */
   readonly maxVariants: number;
+  /** The Market's cap on the options a product varies on (1 or 2); Add a second type needs 2. */
+  readonly maxAxes: number;
+  /** The product version, for the commands that name it (Add sizes). */
+  readonly version: number;
+  /** A revision waits for review. */
+  readonly pendingSubmittedAt: string | null;
   readonly lastChangedAt: string;
   readonly createdAt: string;
   /** What the product form is drawn from: the Market's tax categories, the family's fields and the categories. */
@@ -110,11 +116,13 @@ export class PlatformProductRead extends UseCase<
     const { deps } = this;
 
     let maxVariants: number;
+    let maxAxes: number;
     let taxCategoryCodes: readonly string[];
     let locales: { default: string; supported: readonly string[] };
     try {
       taxCategoryCodes = deps.policy.taxCategoryCodes(market);
       maxVariants = deps.policy.maxVariantsPerProduct(market);
+      maxAxes = deps.policy.maxVariantAttributes(market);
       const configured = deps.policy.locales(market);
       locales = { default: configured.default, supported: [...configured.supported] };
     } catch {
@@ -190,6 +198,9 @@ export class PlatformProductRead extends UseCase<
         state: variant.state,
       })),
       maxVariants,
+      maxAxes,
+      version: state.version,
+      pendingSubmittedAt: isoOf(state.pendingSubmittedAt),
       lastChangedAt: state.lastChangedAt.toString(),
       createdAt: state.createdAt.toString(),
       form: { ...form, taxCategoryCodes },

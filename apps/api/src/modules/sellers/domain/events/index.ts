@@ -113,6 +113,23 @@ export const SellerCategoryProposalsRevoked = defineEvent({
 });
 
 /**
+ * A seller's membership of a culture changed status: asked for, approved, rejected, or asked for
+ * again after a rejection (multi-culture package 2; ADR-0047 decisions 3 and 8). Ids and the new
+ * status only: no reason, no code, no name. The aggregate id is derived from the seller and the
+ * culture and its version is the membership's own, so the events of one membership are ordered
+ * (ADR-0006 decision 3). Consumer in package 3: search, to re-index the seller's Offers.
+ */
+export const SellerCultureStatusChanged = defineEvent({
+  type: 'sellers.seller-culture-status-changed.v1',
+  aggregateType: 'seller-culture',
+  payload: {
+    sellerId: eventField.id(),
+    cultureId: eventField.id(),
+    status: eventField.enumOf(['requested', 'approved', 'rejected'] as const),
+  },
+});
+
+/**
  * Every event sellers publishes, declared with `defineEvent` and registered with the event
  * catalogue by `SellersModule`. Each new type changes the catalogue snapshot
  * (`apps/api/test/contracts/event-catalogue.snapshot.json`).
@@ -126,4 +143,5 @@ export const SELLERS_EVENTS: readonly EventDefinition[] = [
   SellerBlogAccessChanged,
   SellerCategoryProposalsGranted,
   SellerCategoryProposalsRevoked,
+  SellerCultureStatusChanged,
 ];

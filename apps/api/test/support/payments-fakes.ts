@@ -216,6 +216,9 @@ export class FakeOrderingFacade implements OrderingFacade {
   shipmentNotice(): ReturnType<OrderingFacade['shipmentNotice']> {
     return Promise.resolve(err({ code: 'ordering.order-not-found' }));
   }
+  refundNotice(): ReturnType<OrderingFacade['refundNotice']> {
+    return Promise.resolve(err({ code: 'ordering.refund-not-found' }));
+  }
   orderPaymentRef(): ReturnType<OrderingFacade['orderPaymentRef']> {
     return Promise.resolve(err({ code: 'ordering.order-not-found' }));
   }
@@ -238,6 +241,14 @@ export class FakeOrderingFacade implements OrderingFacade {
 
   myDeliveredSellerOrders(): ReturnType<OrderingFacade['myDeliveredSellerOrders']> {
     return Promise.resolve(ok([]));
+  }
+
+  customerOrderStats(): ReturnType<OrderingFacade['customerOrderStats']> {
+    return Promise.resolve(err({ code: 'validation.failed' }));
+  }
+
+  customerOrderAccounts(): ReturnType<OrderingFacade['customerOrderAccounts']> {
+    return Promise.resolve(ok({ accountIds: [] }));
   }
 
   sellerHealthCounts(): ReturnType<OrderingFacade['sellerHealthCounts']> {

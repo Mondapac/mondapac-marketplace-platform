@@ -180,7 +180,10 @@ function checkScalar(field: AttributeField, value: unknown, issues: AttributeIss
       }
       return;
     case 'decimal': {
-      if (typeof value !== 'string' || !DECIMAL.test(value)) {
+      // A whole number is stored by an attribute that was an integer before its conversion
+      // (attributes A8): it is a valid decimal.
+      const wasInteger = typeof value === 'number' && Number.isSafeInteger(value);
+      if (!wasInteger && (typeof value !== 'string' || !DECIMAL.test(value))) {
         issues.push({ path, code: 'attribute.type' });
         return;
       }
@@ -223,11 +226,14 @@ function checkScalar(field: AttributeField, value: unknown, issues: AttributeIss
       }
       return;
     case 'multi-select': {
-      if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+      // A value stored while the attribute was a select (before Convert type) is a lone code: it
+      // reads as a list of one.
+      const list = typeof value === 'string' ? [value] : value;
+      if (!Array.isArray(list) || list.some((item) => typeof item !== 'string')) {
         issues.push({ path, code: 'attribute.type' });
         return;
       }
-      const codes = value as readonly string[];
+      const codes = list as readonly string[];
       if (new Set(codes).size !== codes.length) {
         issues.push({ path, code: 'attribute.option-duplicate' });
       }

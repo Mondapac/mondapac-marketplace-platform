@@ -23,6 +23,7 @@ import {
 } from '../search-facets';
 import { MAX_FACET_ROWS, type FacetRow, type NumberRow } from '../ports/offer-facet.reader';
 import type { FilterDefinition } from '../ports/search-filters';
+import { countScope, type CategoryCount } from '../../domain/scope-counts';
 import type { SearchDependencies } from '../search-dependencies';
 
 /**
@@ -82,6 +83,20 @@ export interface ProductSearchPage {
   /** False when the scope was too large to count: option counts are then null. */
   readonly countsComplete: boolean;
   /**
+   * The size of the query's scope (text and category, before attribute filters and price), from the
+   * index without the query-time visibility check (so it may briefly include an Offer that just
+   * became unsellable). Null for a store's or a brand's list and for an exact GTIN hit.
+   */
+  readonly counts: {
+    /** Products (one per product, never Offers); a lower bound when `totalIsCapped`. */
+    readonly total: number;
+    readonly totalIsCapped: boolean;
+    /** "In categories": the categories right below the asked one (top level without one). */
+    readonly categories: readonly CategoryCount[];
+    /** Stores that have a product in the scope. */
+    readonly storeCount: number;
+  } | null;
+  /**
    * The text was exactly one GTIN of a published variant, in stock or not (V8): the storefront goes straight to that
    * product page with `?v=`. Null otherwise.
    */
@@ -115,6 +130,7 @@ const NO_FACETS = {
   filters: [],
   filtered: false,
   countsComplete: true,
+  counts: null,
   exactMatch: null,
 } as const;
 
@@ -244,6 +260,9 @@ export class SearchProducts extends UseCase<
     };
     const rangeCodes = definitions.filter((d) => d.kind === 'range').map((d) => d.code);
     const counted = definitions.length > 0 && (text !== null || categoryIds !== null);
+    // The counts of the scope (search 1a): a text search or a category list, never a store's or a
+    // brand's list.
+    const scoped = filterable && (text !== null || categoryIds !== null);
     const hits = await this.deps.unitOfWork.run(
       market,
       async () => {
@@ -265,7 +284,7 @@ export class SearchProducts extends UseCase<
                   offset,
                 )
               : narrowed
-                ? await this.deps.facets.searchFiltered(market, {
+                ? await this.deps.index.searchFiltered(market, {
                     textSearchConfig,
                     text,
                     categoryIds,
@@ -277,7 +296,7 @@ export class SearchProducts extends UseCase<
                     ...(ratingBoost === null ? {} : { ratingBoost }),
                     ...(sort === 'top-rated' ? { sort } : {}),
                   })
-                : await this.deps.reader.search(market, {
+                : await this.deps.index.search(market, {
                     textSearchConfig,
                     text,
                     categoryIds,
@@ -287,18 +306,21 @@ export class SearchProducts extends UseCase<
                     ...(sort === 'top-rated' ? { sort } : {}),
                   });
         const rows: readonly FacetRow[] = counted
-          ? await this.deps.facets.facetRows(market, scope)
+          ? await this.deps.index.facetRows(market, scope)
           : [];
         // The bounds of a range are those of the whole scope, so the slider does not jump.
         const numbers: readonly NumberRow[] =
           counted && rangeCodes.length > 0
-            ? await this.deps.facets.numberRows(market, { ...scope, ranges: [] }, rangeCodes)
+            ? await this.deps.index.numberRows(market, { ...scope, ranges: [] }, rangeCodes)
             : [];
+        const scopeRows = scoped
+          ? await this.deps.index.scopeRows(market, { textSearchConfig, text, categoryIds })
+          : [];
         const units = await this.deps.variants.sellUnitsOf(
           market,
           list.map((hit) => hit.offerId),
         );
-        return ok({ list, rows, numbers, units });
+        return ok({ list, rows, numbers, scopeRows, units });
       },
       { readOnly: true },
     );
@@ -319,6 +341,21 @@ export class SearchProducts extends UseCase<
         ),
       );
     const items = await withProductImages(this.deps.images, context, facts);
+    let counts: ProductSearchPage['counts'] = null;
+    if (scoped) {
+      // The tree names the "In categories" lines; a tree that cannot be read leaves the counts out
+      // (a count is not a check: the list itself stays right).
+      const tree = await this.deps.categoryTree.tree(context);
+      if (tree !== null) {
+        const scope = countScope(hits.value.scopeRows, tree, categoryId);
+        counts = {
+          total: scope.total,
+          totalIsCapped: scope.totalIsCapped,
+          categories: scope.categoryCounts,
+          storeCount: scope.storeCount,
+        };
+      }
+    }
     const views = counted
       ? await this.filterViews(context, definitions, selection, hits.value.rows, hits.value.numbers)
       : null;
@@ -330,6 +367,7 @@ export class SearchProducts extends UseCase<
       filters: views?.filters ?? [],
       filtered: narrowed,
       countsComplete: views?.complete ?? true,
+      counts,
       exactMatch: null,
     });
   }
@@ -390,6 +428,7 @@ export class SearchProducts extends UseCase<
       filters: [],
       filtered: false,
       countsComplete: true,
+      counts: null,
       // A later page has no items, so it names no match to open.
       exactMatch:
         page === 1

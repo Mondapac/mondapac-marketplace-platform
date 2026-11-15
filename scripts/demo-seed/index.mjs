@@ -535,6 +535,34 @@ async function ensureStoreTerms(admin, sessions) {
   }
 }
 
+// Culture memberships (multi-culture package 2; ADR-0048) -----------------------------------------
+// The worker gives every new seller "universal" at signup: approved in each culture with no required
+// certificate, requested in the others, and the daily job does the same for sellers that predate
+// it. A certified culture is approved only by a reviewer, and only for a seller holding a valid
+// certificate of its type. The demo creates no certificates, so this step approves nothing unless a
+// certificate was added by hand; it never approves without one (the API refuses).
+async function ensureCultureMemberships(admin) {
+  const approved = await approvedSellers(admin);
+  for (const seller of SELLERS.filter((item) => !item.leaveInReview)) {
+    const row = approved.find((item) => item.slug === seller.slug);
+    if (!row) continue;
+    try {
+      const { cultures } = await admin.ok('GET', `/sellers/admin/${row.sellerId}/cultures`);
+      for (const culture of cultures) {
+        if (culture.status !== 'requested' || culture.certificate !== 'held') continue;
+        await admin.ok(
+          'POST',
+          `/sellers/admin/${row.sellerId}/cultures/${culture.cultureId}/decision`,
+          { decision: 'approve' },
+        );
+        log(`  ${seller.key}: approved in ${culture.cultureCode} (valid certificate held)`);
+      }
+    } catch (error) {
+      log(`  ${seller.key}: cultures not checked (${error.message})`);
+    }
+  }
+}
+
 // 6. The buyer ----------------------------------------------------------------------------------
 async function ensureBuyer() {
   const session = new Session('customer');
@@ -604,6 +632,9 @@ try {
     if (session !== null) sessions.set(seller.key, session);
     log(`  ${seller.storeName}${session === null ? ' (left waiting for review)' : ''}`);
   }
+
+  log('  Culture memberships');
+  await ensureCultureMemberships(admin);
 
   log('[4/8] Products');
   const categories = new Map(

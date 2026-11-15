@@ -12,6 +12,8 @@ import { CreatePromotion } from '../../src/modules/promotions/application/use-ca
 import { DecidePromotionReview } from '../../src/modules/promotions/application/use-cases/decide-promotion-review.use-case';
 import { EditOwnPromotion } from '../../src/modules/promotions/application/use-cases/edit-own-promotion.use-case';
 import { EditPromotion } from '../../src/modules/promotions/application/use-cases/edit-promotion.use-case';
+import { CountPromotionReviews } from '../../src/modules/promotions/application/use-cases/count-promotion-reviews.use-case';
+import { ListPromotionsFull } from '../../src/modules/promotions/application/use-cases/list-promotions-full.use-case';
 import { ListPromotionReviews } from '../../src/modules/promotions/application/use-cases/list-promotion-reviews.use-case';
 import { PauseOwnPromotion } from '../../src/modules/promotions/application/use-cases/pause-own-promotion.use-case';
 import { PausePromotion } from '../../src/modules/promotions/application/use-cases/pause-promotion.use-case';
@@ -20,6 +22,7 @@ import { SetCoFundingOptIn } from '../../src/modules/promotions/application/use-
 import { SetFreeShippingThreshold } from '../../src/modules/promotions/application/use-cases/set-free-shipping-threshold.use-case';
 import { SetPromotionBudget } from '../../src/modules/promotions/application/use-cases/set-promotion-budget.use-case';
 import { SetPromotionsStatus } from '../../src/modules/promotions/application/use-cases/set-promotions-status.use-case';
+import { ViewCampaignMembers } from '../../src/modules/promotions/application/use-cases/view-campaign-members.use-case';
 import { ViewPromotionsSettings } from '../../src/modules/promotions/application/use-cases/view-promotions-settings.use-case';
 import { ConfigPromotionsPolicy } from '../../src/modules/promotions/infrastructure/config-promotions-policy';
 import { CryptoBatchCodeCrypto } from '../../src/modules/promotions/infrastructure/crypto-batch-code-crypto';
@@ -41,6 +44,8 @@ import { MarketRegistry } from '../../src/platform/market-config/market-registry
 import {
   FakeFlashSales,
   FakePriceHistory,
+  FakeSellerCatalogue,
+  FakeSellerCommission,
   FakeSellerActivity,
   FakeStepUp,
   phase3Fakes,
@@ -163,6 +168,8 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
       flashSales: new FakeFlashSales(),
       sellerActivity: activity,
       priceHistory: new FakePriceHistory(),
+      sellerCommission: new FakeSellerCommission(),
+      sellerCatalogue: new FakeSellerCatalogue(),
       ...phase3Fakes(),
       credits: new PrismaCreditRepository(db.service),
       referrals: new PrismaReferralRepository(db.service),
@@ -677,6 +684,8 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
           funding: 'CO_FUNDED',
           platformSplitBps: 5000,
           name: 'Campaign',
+          // Leaving is only possible before the start.
+          startsAt: clock.now().add({ hours: 48 }).toString(),
         }),
       );
       expect(campaign.ok).toBe(true);
@@ -868,6 +877,271 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
       expect(await count()).toBe(1);
       await make(PauseOwnPromotion).execute(otherSeller, { promotionId: theirs.value.id });
       expect(await count()).toBe(0);
+    });
+
+    it('lists the open co-funded campaigns a seller may join, aimed ones only for their sellers', async () => {
+      await make(SetPromotionsStatus).execute(admin, { status: 'active' });
+      const other = ids.next<'Seller'>();
+      const campaign = (extra: Record<string, unknown>) =>
+        make(CreatePromotion).execute(
+          admin,
+          platformCart({
+            type: 'CO_FUNDED_CAMPAIGN',
+            funding: 'CO_FUNDED',
+            platformSplitBps: 5000,
+            ...extra,
+          }),
+        );
+      const everyone = await campaign({ name: 'Everyone' });
+      const mineOnly = await campaign({ name: 'Mine', sellerIds: [sellerId] });
+      const theirs = await campaign({ name: 'Theirs', sellerIds: [other] });
+      const ended = await campaign({
+        name: 'Ended',
+        endsAt: clock.now().subtract({ hours: 1 }).toString(),
+      });
+      const later = await campaign({
+        name: 'Later',
+        startsAt: clock.now().add({ hours: 48 }).toString(),
+      });
+      const plain = await make(CreatePromotion).execute(admin, platformCart({ name: 'Cart' }));
+      const paused = await campaign({ name: 'Paused' });
+      const endsNow = await campaign({
+        name: 'Ends now',
+        startsAt: clock.now().subtract({ hours: 2 }).toString(),
+        endsAt: clock.now().toString(),
+      });
+      if (
+        !everyone.ok ||
+        !mineOnly.ok ||
+        !theirs.ok ||
+        !ended.ok ||
+        !later.ok ||
+        !plain.ok ||
+        !paused.ok ||
+        !endsNow.ok
+      ) {
+        throw new Error('setup failed');
+      }
+      await make(PausePromotion).execute(admin, { promotionId: paused.value.id });
+      const read = await deps.unitOfWork.run(
+        market,
+        async () => ({
+          ok: true as const,
+          value: await deps.promotions.listOpenCampaigns(market, clock.now(), sellerId),
+        }),
+        { readOnly: true },
+      );
+      const seen = read.ok ? read.value.map((r) => r.id) : [];
+      expect(seen).toContain(everyone.value.id);
+      expect(seen).toContain(mineOnly.value.id);
+      expect(seen).toContain(later.value.id);
+      expect(seen).not.toContain(theirs.value.id);
+      expect(seen).not.toContain(ended.value.id);
+      expect(seen).not.toContain(plain.value.id);
+      expect(seen).not.toContain(paused.value.id);
+      expect(seen).not.toContain(endsNow.value.id);
+      // Soonest start first: the one that starts later is last.
+      expect(seen[seen.length - 1]).toBe(later.value.id);
+    });
+
+    it('searches the admin list on the stored promotions: display statuses, counts, filters, order and paging', async () => {
+      await make(SetPromotionsStatus).execute(admin, { status: 'active' });
+      const tag = `PB1 ${run}`;
+      const name = (label: string) => `${tag} ${label}`;
+      const made = async (label: string, extra: Record<string, unknown> = {}) => {
+        const created = await make(CreatePromotion).execute(
+          admin,
+          platformCart({ name: name(label), ...extra }),
+        );
+        if (!created.ok) throw new Error(`setup ${label}: ${JSON.stringify(created.error)}`);
+        return created.value.id;
+      };
+      await made('live');
+      const spent = await made('spent', { budgetMinor: '5000' });
+      const scheduled = await made('scheduled');
+      const ended = await made('ended');
+      const paused = await made('paused', {
+        type: 'FREE_SHIPPING',
+        budgetMinor: '90000',
+        minSpendMinor: '5000',
+      });
+      await make(PausePromotion).execute(admin, { promotionId: paused });
+      const sale = await make(CreateOwnPromotion).execute(seller, {
+        type: 'SELLER_SALE',
+        name: name('sale'),
+        funding: 'SELLER',
+        startsAt: clock.now().subtract({ hours: 24 }).toString(),
+        reward: { kind: 'PERCENT', bps: 1000 },
+        productIds: [ids.next<'Product'>()],
+      });
+      if (!sale.ok) throw new Error('setup sale');
+
+      // The counters and the dates are written the way the other packages write them.
+      await owner.query(
+        `INSERT INTO promotions.promotion_usage (market_id, tenant_id, promotion_id, uses_count, spent_minor, seller_share_minor, platform_share_minor, updated_at)
+         VALUES ($1, 'default', $2, 3, 5000, 0, 5000, now())
+         ON CONFLICT (market_id, promotion_id) DO UPDATE SET uses_count = 3, spent_minor = 5000, platform_share_minor = 5000`,
+        [mk, spent],
+      );
+      await owner.query(
+        `UPDATE promotions.promotions SET starts_at = $3 WHERE market_id = $1 AND id = $2`,
+        [mk, scheduled, clock.now().add({ hours: 72 }).toString()],
+      );
+      await owner.query(
+        `UPDATE promotions.promotions SET starts_at = $3, ends_at = $4 WHERE market_id = $1 AND id = $2`,
+        [
+          mk,
+          ended,
+          clock.now().subtract({ hours: 72 }).toString(),
+          clock.now().subtract({ hours: 24 }).toString(),
+        ],
+      );
+
+      const list = async (query: Record<string, unknown>) => {
+        const result = await make(ListPromotionsFull).execute(admin, {
+          text: tag,
+          limit: 100,
+          ...query,
+        });
+        if (!result.ok) throw new Error(`list: ${JSON.stringify(result.error)}`);
+        return result.value;
+      };
+      const every = await list({});
+      expect(every.total).toBe(6);
+      expect(
+        Object.fromEntries(every.items.map((p) => [p.name.slice(tag.length + 1), p.displayStatus])),
+      ).toEqual({
+        live: 'ACTIVE',
+        spent: 'BUDGET_USED_UP',
+        scheduled: 'SCHEDULED',
+        ended: 'ENDED',
+        paused: 'PAUSED',
+        sale: 'ACTIVE',
+      });
+      expect(every.counts).toMatchObject({
+        ALL: 6,
+        ACTIVE: 2,
+        BUDGET_USED_UP: 1,
+        SCHEDULED: 1,
+        ENDED: 1,
+        PAUSED: 1,
+        PENDING_APPROVAL: 0,
+        REJECTED: 0,
+      });
+      const named = async (query: Record<string, unknown>) =>
+        (await list(query)).items.map((p) => p.name.slice(tag.length + 1)).sort();
+      expect(await named({ view: 'ACTIVE' })).toEqual(['live', 'sale']);
+      expect(await named({ status: 'BUDGET_USED_UP' })).toEqual(['spent']);
+      expect(await named({ view: 'SCHEDULED' })).toEqual(['scheduled']);
+      expect(await named({ view: 'ENDED' })).toEqual(['ended']);
+      expect(await named({ view: 'PAUSED' })).toEqual(['paused']);
+      expect(await named({ type: 'FREE_SHIPPING' })).toEqual(['paused']);
+      expect(await named({ owner: 'SELLER' })).toEqual(['sale']);
+      expect(await named({ owner: 'PLATFORM', view: 'ACTIVE' })).toEqual(['live']);
+      expect(await named({ funding: 'SELLER' })).toEqual(['sale']);
+      expect(await named({ text: `${tag} SCH` })).toEqual(['scheduled']);
+      // Counts follow the filters but not the tab.
+      expect((await list({ owner: 'SELLER', view: 'PAUSED' })).counts).toMatchObject({
+        ALL: 1,
+        ACTIVE: 1,
+        PAUSED: 0,
+      });
+
+      // Order and paging: the total is the same on every page, and no row repeats or is skipped.
+      const byName = (await list({ sort: 'NAME' })).items.map((p) => p.name);
+      expect(byName).toEqual([...byName].sort());
+      const pages = [
+        await list({ sort: 'NAME', limit: 4, page: 1 }),
+        await list({ sort: 'NAME', limit: 4, page: 2 }),
+      ];
+      expect(pages.map((p) => p.total)).toEqual([6, 6]);
+      expect(pages.flatMap((p) => p.items.map((i) => i.name))).toEqual(byName);
+      const byUses = (await list({ sort: 'USES' })).items.map((p) => p.name.slice(tag.length + 1));
+      expect(byUses[0]).toBe('spent');
+      const ends = (await list({ sort: 'ENDS', order: 'asc' })).items;
+      expect(ends.at(-1)?.endsAt).toBeNull();
+
+      // The tab for the open review queue is the id set the queue names.
+      const inUnit = <T>(read: () => Promise<T>) =>
+        deps.unitOfWork.run(market, async () => ({ ok: true as const, value: await read() }), {
+          readOnly: true,
+        });
+      const review = await inUnit(() =>
+        deps.promotions.search(
+          market,
+          {
+            text: tag,
+            types: [],
+            owner: null,
+            funding: null,
+            hideBudget: false,
+            criterion: 'NEEDS_REVIEW',
+            reviewPromotionIds: [spent],
+            sort: 'CREATED',
+            descending: true,
+            offset: 0,
+            limit: 10,
+          },
+          clock.now(),
+        ),
+      );
+      expect(review.ok && review.value.records.map((r) => r.id)).toEqual([spent]);
+      // The Viewer's list hides the budget state: a spent promotion stays in the live tab.
+      const hidden = await inUnit(() =>
+        deps.promotions.search(
+          market,
+          {
+            text: tag,
+            types: [],
+            owner: null,
+            funding: null,
+            hideBudget: true,
+            criterion: 'ACTIVE',
+            reviewPromotionIds: [],
+            sort: 'CREATED',
+            descending: true,
+            offset: 0,
+            limit: 10,
+          },
+          clock.now(),
+        ),
+      );
+      expect(hidden.ok && hidden.value.records.map((r) => r.id)).toContain(spent);
+      const open = await make(CountPromotionReviews).execute(admin, {});
+      expect(open.ok && open.value.open).toBeGreaterThanOrEqual(0);
+    });
+
+    it('lists the opt-ins of a campaign with the withdrawn ones', async () => {
+      await make(SetPromotionsStatus).execute(admin, { status: 'active' });
+      const campaign = await make(CreatePromotion).execute(
+        admin,
+        platformCart({
+          type: 'CO_FUNDED_CAMPAIGN',
+          funding: 'CO_FUNDED',
+          platformSplitBps: 4000,
+          startsAt: clock.now().add({ hours: 48 }).toString(),
+          name: `PB1 members ${run}`,
+        }),
+      );
+      if (!campaign.ok) throw new Error(`setup: ${JSON.stringify(campaign.error)}`);
+      await make(SetCoFundingOptIn).execute(seller, {
+        promotionId: campaign.value.id,
+        optIn: true,
+      });
+      const members = await make(ViewCampaignMembers).execute(admin, {
+        promotionId: campaign.value.id,
+      });
+      expect(members.ok && members.value.members.map((m) => m.sellerId)).toEqual([sellerId]);
+      expect(members.ok && members.value.platformSplitBps).toBe(4000);
+      await make(SetCoFundingOptIn).execute(seller, {
+        promotionId: campaign.value.id,
+        optIn: false,
+      });
+      const after = await make(ViewCampaignMembers).execute(admin, {
+        promotionId: campaign.value.id,
+      });
+      expect(after.ok && after.value.liveCount).toBe(0);
+      expect(after.ok && after.value.members[0]?.withdrawnAt).not.toBeNull();
     });
 
     it('serialises two parallel changes of one promotion on its row', async () => {

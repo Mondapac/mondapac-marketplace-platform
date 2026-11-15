@@ -88,7 +88,9 @@ export class OwnProductImageRead extends UseCase<
     if (!read.ok) return err({ code: 'access.unavailable' });
     const found = read.value;
     const rendition =
-      found?.state === 'clean' ? found.renditions.find((r) => r.size === size) : undefined;
+      found?.state === 'clean'
+        ? found.renditions.find((r) => r.size === size && r.format === 'jpeg')
+        : undefined;
     if (rendition === undefined) return err({ code: 'image.not-found' });
     try {
       const bytes = await deps.objectStore.get(rendition.objectKey);

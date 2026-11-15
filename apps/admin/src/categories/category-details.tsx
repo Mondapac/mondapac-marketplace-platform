@@ -4,6 +4,7 @@ import { Badge, Banner, EmptyState, LoadError, SkeletonRows, Tabs } from '@monda
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { AttributeLinksTab } from './attribute-links-tab.tsx';
 import { When } from '../shared/when.tsx';
 import { CategoryImageSection } from './category-image.tsx';
 import { CategoryToolbar } from './category-toolbar.tsx';
@@ -140,6 +141,13 @@ export function CategoryDetails({
           canEdit={canEdit && onChanged !== undefined}
           csrfToken={csrfToken}
           onChanged={onChanged ?? noop}
+        />
+      ) : null}
+      {tab === 'attribute-links' ? (
+        <AttributeLinksTab
+          categoryId={id}
+          canEdit={canEdit && onChanged !== undefined}
+          csrfToken={csrfToken}
         />
       ) : null}
       {tab === 'products' ? <ProductsTab body={body} /> : null}

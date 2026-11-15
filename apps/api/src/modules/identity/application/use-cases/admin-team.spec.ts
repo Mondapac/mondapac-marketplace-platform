@@ -112,13 +112,18 @@ const LEAD_KEYS = [
   'blog.post.read',
   'promotions.promotion.view',
   'ordering.order.view',
+  'ordering.refund-limits.view',
+  'ordering.ship-to-retention.view',
   'payments.connected-account.view',
   'pricing.price-hold.view',
   'sellers.seller.view',
   'commission-payouts.settlement.view',
   'commission-payouts.payout-terms.view',
   'commission-payouts.dispute.view',
+  'settings.ai.view',
+  'settings.cart-mode.view',
   'settings.list-paging.view',
+  'storefront.seo.view',
 ];
 
 describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)', (code) => {

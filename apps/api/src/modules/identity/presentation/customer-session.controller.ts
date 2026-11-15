@@ -197,8 +197,11 @@ export class CustomerSessionController {
       throw fail(ACCESS_DENIED_STATUS['access.denied'], 'access.denied');
     }
     response.setHeader('Cache-Control', 'no-store');
+    // The Market zone is for the admin panel only (ADR-0005); the storefront answer is unchanged.
+    const { marketTimezone: _adminOnly, ...customerSummary } = result.value;
+    void _adminOnly;
     return {
-      ...result.value,
+      ...customerSummary,
       population: 'customer',
       permissionKeys: [...result.value.permissionKeys],
       csrfToken,

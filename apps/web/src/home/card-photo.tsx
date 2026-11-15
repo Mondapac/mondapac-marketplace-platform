@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { checkLoaded } from '../icons/check-loaded.ts';
 import { CategoryArt } from '../icons/category-icon.tsx';
+import { PhotoImage } from '../storefront/photo-image.tsx';
 import type { PhotoSet } from '../storefront/photos.ts';
 
 /**
@@ -29,16 +30,16 @@ export function CardPhoto({
   const [broken, setBroken] = useState(false);
   if (broken) return <CategoryArt code={category} />;
   return (
-    <img
+    <PhotoImage
       className="photo"
       src={src}
-      {...(set === undefined
-        ? {}
-        : { srcSet: set.srcSet, sizes: CARD_SIZES, width: set.width, height: set.height })}
+      set={set}
+      sizes={CARD_SIZES}
+      {...(set === undefined ? {} : { width: set.width, height: set.height })}
       alt=""
       loading="lazy"
       decoding="async"
-      ref={(el) => checkLoaded(el, () => setBroken(true))}
+      imgRef={(el) => checkLoaded(el, () => setBroken(true))}
       onError={() => setBroken(true)}
     />
   );

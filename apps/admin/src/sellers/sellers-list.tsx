@@ -70,13 +70,16 @@ function failureOf(status: number, code: string): Failure {
 export function SellersList({
   csrfToken,
   canReview,
+  initialTab = 'awaiting-review',
 }: {
   readonly csrfToken: string;
   readonly canReview: boolean;
+  /** The tab the list opens on: Sellers opens on All, Inbox › Seller requests on the review tab. */
+  readonly initialTab?: Tab;
 }) {
   const t = useTranslations('sellers.list');
   const tl = useTranslations('load');
-  const [tab, setTab] = useState<Tab>('awaiting-review');
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [kind, setKind] = useState('');
   const [outsideArea, setOutsideArea] = useState(false);
   const [areaCode, setAreaCode] = useState('');
@@ -87,6 +90,7 @@ export function SellersList({
   const [next, setNext] = useState<string | null>(null);
   const [counts, setCounts] = useState<SellerListCounts | null>(null);
   const [stateCounts, setStateCounts] = useState<SellerListStateCounts | null>(null);
+  const [healthDown, setHealthDown] = useState(false);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<Failure | null>(null);
   const latest = useRef(0);
@@ -129,6 +133,7 @@ export function SellersList({
         after === null ? result.body.items : [...current, ...result.body.items],
       );
       setNext(result.body.next);
+      setHealthDown(result.body.healthUnavailable === true);
       setCounts(result.body.counts);
       setAreas(result.body.areas);
       // A later page of a file tab carries no state counts: keep the first page's.
@@ -238,6 +243,7 @@ export function SellersList({
         <SellersTable
           rows={rows}
           canReview={canReview}
+          healthUnavailable={healthDown}
           showOwner={stateCounts !== null}
           empty={
             <EmptyState

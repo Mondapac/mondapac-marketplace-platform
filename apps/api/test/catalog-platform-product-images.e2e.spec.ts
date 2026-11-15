@@ -81,6 +81,12 @@ class MemoryImages implements ProductImageRepository {
   listUnattached() {
     return Promise.resolve([]);
   }
+  listMissingFormats() {
+    return Promise.resolve([]);
+  }
+  addRenditions() {
+    return Promise.resolve(true);
+  }
   deleteUnused(_m: unknown, _p: unknown, imageId: string) {
     const index = this.rows.findIndex((row) => row.id === imageId);
     if (index < 0) return Promise.resolve(false);
@@ -258,7 +264,8 @@ describe('admin platform product photo routes over HTTP (integration)', () => {
       expect(created.body).toMatchObject({ width: 1600, height: 1200 });
       const imageId = (created.body as { imageId: string }).imageId;
       expect(images.rows[0]).toMatchObject({ uploaderAccountId: EDITOR, state: 'clean' });
-      expect(store.objects.size).toBe(3);
+      // Three sizes, each as JPEG, WebP and AVIF (the shared photo pipeline).
+      expect(store.objects.size).toBe(9);
 
       const listed = await http().get(base(PRODUCT)).set(headers(code, session)).expect(200);
       expect(listed.headers['cache-control']).toContain('no-store');

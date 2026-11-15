@@ -33,6 +33,8 @@ export interface ChangeHistoryItem extends LastChanged {
   readonly id: string;
   /** Field names only (never a value). Empty when the row does not say which. */
   readonly fields: readonly string[];
+  /** The settings version the change made, when the scope can say (see `ChangeScope.versionOf`). */
+  readonly version?: number;
 }
 
 export interface ChangeHistoryPage {
@@ -75,6 +77,11 @@ export interface ChangeScope {
    * say it (e.g. the kind of an image). Names only, no value. Takes precedence over both.
    */
   readonly fieldsOf?: (row: AuditTrailRow) => readonly string[];
+  /**
+   * The version a row made, for a page whose changes can be restored by version. A number, or null
+   * when the row does not say. Omitted: the history carries no versions.
+   */
+  readonly versionOf?: (row: AuditTrailRow) => number | null;
 }
 
 export interface ChangeHistoryInput {
@@ -129,6 +136,11 @@ export function fieldsOfRow(row: AuditTrailRow, scope: ChangeScope): readonly st
   const fixed = scope.fixedFields?.[row.action];
   if (fixed !== undefined) return fixed;
   return changedFields(row.before, row.after, scope.ignoreKeys);
+}
+
+function versionOfRow(row: AuditTrailRow, scope: ChangeScope): { version?: number } {
+  const version = scope.versionOf?.(row) ?? null;
+  return version === null ? {} : { version };
 }
 
 /** Who made a row, given the labels identity answered. */
@@ -239,6 +251,7 @@ export class ChangeTrail {
         at: row.occurredAt,
         ...whoOf(row, labels),
         fields: fieldsOfRow(row, scope),
+        ...versionOfRow(row, scope),
       })),
       next: rows.length > limit ? page[page.length - 1]!.id : null,
     });
@@ -297,6 +310,7 @@ export interface ChangeHistoryBody {
   readonly items: readonly (LastChangedBody & {
     readonly id: string;
     readonly fields: readonly string[];
+    readonly version?: number;
   })[];
   readonly next: string | null;
 }
@@ -308,6 +322,7 @@ export const changeHistoryBody = (page: ChangeHistoryPage): ChangeHistoryBody =>
     byDisplayName: item.byDisplayName,
     byKind: item.byKind,
     fields: item.fields,
+    ...(item.version === undefined ? {} : { version: item.version }),
   })),
   next: page.next,
 });

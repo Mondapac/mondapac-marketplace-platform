@@ -58,7 +58,8 @@ export interface OfferSearchFacts {
   readonly attributes: OfferSearchAttributes;
   /**
    * The published variants of the published revision, in position order (variants V8); empty when
-   * the Offer is not sellable or the product has no published revision. Their labels are also in
+   * the Offer is not sellable or the product has no published revision. A variant the seller
+   * switched off for this Offer (V5 `selling = false`) is left out. Their labels are also in
    * `attributes.searchText`.
    */
   readonly variants: readonly OfferSearchVariant[];

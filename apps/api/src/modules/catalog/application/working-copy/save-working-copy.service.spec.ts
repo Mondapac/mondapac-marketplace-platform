@@ -90,6 +90,7 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
       run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
     } as unknown as UnitOfWork;
     const products: ProductRepository = {
+      findManyByIds: () => Promise.resolve([]),
       lockAtVersion: () => Promise.resolve(true),
       nextProductCode: () => Promise.resolve('P00000001'),
       add: () => Promise.resolve(),
@@ -135,6 +136,8 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
       units: () => [],
       maxCategoryDepth: () => 4,
       maxCategoryChangeTags: () => 50_000,
+      maxCategoryImportRows: () => 2000,
+      maxCategoryImportBytes: () => 5 * 1024 * 1024,
       maxVariantsPerProduct: () => {
         if (policy === 'throws') throw new Error('policy down');
         return maxVariants;

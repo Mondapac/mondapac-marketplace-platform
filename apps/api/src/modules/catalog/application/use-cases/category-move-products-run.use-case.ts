@@ -352,6 +352,7 @@ export class CategoryMoveProductsRun extends UseCase<
             const overridden = product.publishCategoryOverride({
               revisionId,
               fromRevisionId: publishedId,
+              revisionTypeCode: published.typeCode,
               familyCode: family.familyCode,
               now,
             });
@@ -360,6 +361,8 @@ export class CategoryMoveProductsRun extends UseCase<
               id: revisionId,
               productId,
               revisionNo,
+              // The override copies the base revision's own type (M-9), as a tax override does.
+              typeCode: published.typeCode,
               kind: 'category-override',
               baseRevisionId: publishedId,
               revertedFromRevisionId: null,

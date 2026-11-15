@@ -62,3 +62,59 @@ describe('chooseAxes', () => {
     expect(result.ok && result.codes).toEqual(['size']);
   });
 });
+
+describe('chooseAxes: add a second axis (variants V9b)', () => {
+  const three = {
+    ...schema,
+    fields: [...schema.fields, select('flavour', true)],
+  } as unknown as AttributeSchema;
+  const refused = (result: ReturnType<typeof chooseAxes>) => !result.ok && result.issues;
+
+  it('accepts the locked axis plus exactly one more when two axes are allowed', () => {
+    const result = chooseAxes(schema, ['size', 'colour'], 2, ['size']);
+    expect(result.ok && result.codes).toEqual(['size', 'colour']);
+    expect(
+      result.ok && result.schema.fields.filter((f) => f.isVariantOption).map((f) => f.code),
+    ).toEqual(['size', 'colour']);
+    // The order of the request does not matter.
+    expect(chooseAxes(schema, ['colour', 'size'], 2, ['size']).ok).toBe(true);
+    expect(chooseAxes(schema, ['colour', 'size'], 2, ['colour']).ok).toBe(true);
+  });
+
+  it('refuses it when the Market allows one axis only', () => {
+    expect(refused(chooseAxes(schema, ['size', 'colour'], 1, ['size']))).toEqual([
+      { path: 'variantAxes', code: 'variants.axes-too-many' },
+      { path: 'variantAxes', code: 'variants.axes-locked' },
+    ]);
+  });
+
+  it('refuses a third axis for a product on two', () => {
+    expect(
+      refused(chooseAxes(three, ['size', 'colour', 'flavour'], 3, ['size', 'colour'])),
+    ).toEqual([{ path: 'variantAxes', code: 'variants.axes-locked' }]);
+  });
+
+  it('refuses two more axes for a product on one', () => {
+    expect(refused(chooseAxes(three, ['size', 'colour', 'flavour'], 3, ['size']))).toEqual([
+      { path: 'variantAxes', code: 'variants.axes-locked' },
+    ]);
+  });
+
+  it('refuses a set that drops a locked axis, from one or two', () => {
+    expect(refused(chooseAxes(three, ['colour', 'flavour'], 2, ['size']))).toEqual([
+      { path: 'variantAxes', code: 'variants.axes-locked' },
+    ]);
+    expect(refused(chooseAxes(three, ['colour'], 2, ['size', 'colour']))).toEqual([
+      { path: 'variantAxes', code: 'variants.axes-locked' },
+    ]);
+  });
+
+  it('refuses a swap', () => {
+    expect(refused(chooseAxes(schema, ['colour'], 2, ['size']))).toEqual([
+      { path: 'variantAxes', code: 'variants.axes-locked' },
+    ]);
+    expect(refused(chooseAxes(three, ['colour', 'flavour'], 2, ['size', 'colour']))).toEqual([
+      { path: 'variantAxes', code: 'variants.axes-locked' },
+    ]);
+  });
+});

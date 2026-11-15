@@ -1,13 +1,17 @@
 import 'server-only';
 import type { ApiRead } from './api.ts';
 import { productIdOfSegment } from './links.ts';
+import { keepProductAnswer, keepStoreAnswer, type KeepRule } from './page-read-cache.ts';
 import { isProductId } from './product-detail.ts';
 import { sampleClosedStore } from './sample-unavailable.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 
-/** One GET of a public API route; `kind: 'off'` while no API is configured. */
-export type MissRead = (path: string) => Promise<ApiRead<unknown>>;
+/**
+ * One GET of a public API route; `kind: 'off'` while no API is configured. `keep` says which
+ * answers the page may reuse from the short page-read cache (./page-read-cache.ts).
+ */
+export type MissRead = (path: string, keep: KeepRule) => Promise<ApiRead<unknown>>;
 
 /** The shape of a store slug, as `loadSeller` checks it. */
 const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -27,7 +31,10 @@ export async function productIsMissing(
   const id = productIdOfSegment(segment);
   // Only the sample has paths that are not product ids; with the API on they are no product.
   if (!isProductId(id)) return apiOn ? true : sampleProduct(id) === undefined;
-  const answer = await read(`search/product-detail/${encodeURIComponent(id.toLowerCase())}`);
+  const answer = await read(
+    `search/product-detail/${encodeURIComponent(id.toLowerCase())}`,
+    keepProductAnswer,
+  );
   if (answer.kind === 'off') return sampleProduct(id) === undefined;
   return answer.kind === 'failed' && answer.status === 404;
 }
@@ -38,7 +45,7 @@ export async function productIsMissing(
  */
 export async function storeIsMissing(slug: string, read: MissRead): Promise<boolean> {
   if (slug.length > 50 || !STORE_SLUG.test(slug)) return sampleClosedStore(slug) === undefined;
-  const answer = await read(`sellers/stores/${encodeURIComponent(slug)}`);
+  const answer = await read(`sellers/stores/${encodeURIComponent(slug)}`, keepStoreAnswer);
   if (answer.kind === 'off') {
     return sampleSeller(slug) === undefined && sampleClosedStore(slug) === undefined;
   }

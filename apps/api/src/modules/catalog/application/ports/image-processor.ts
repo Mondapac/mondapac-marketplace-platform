@@ -1,5 +1,5 @@
 import type { Result } from '@mondapac/shared-kernel';
-import type { RenditionSize } from './product-image.repository';
+import type { RenditionFormat, RenditionSize } from './product-image.repository';
 
 /** Why an upload was refused; codes only, never a file name or content. */
 export type ImageRefusalCode =
@@ -13,6 +13,7 @@ export type ImageRefusalCode =
 
 export interface ProcessedRendition {
   readonly size: RenditionSize;
+  readonly format: RenditionFormat;
   readonly bytes: Buffer;
   readonly width: number;
   readonly height: number;
@@ -24,8 +25,13 @@ export interface ProcessedRendition {
  * block (EXIF, GPS, ICC, thumbnails) dropped. Nothing of the upload survives except its pixels.
  */
 export interface ImageProcessor {
+  /**
+   * Smallest size first, each size as JPEG then WebP then AVIF. `jpegOnly` leaves out the WebP and
+   * AVIF (a caller that stores JPEG only, such as a category image, and need not pay for them).
+   */
   process(
     bytes: Buffer,
+    options?: { readonly jpegOnly?: boolean },
   ): Promise<Result<readonly ProcessedRendition[], { readonly code: ImageRefusalCode }>>;
 }
 

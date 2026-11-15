@@ -161,12 +161,15 @@ import { ListRegisteredSellers } from './application/use-cases/list-registered-s
 import { ContactEmailOf } from './application/use-cases/contact-email-of.use-case';
 import { OwnOwnerEmail } from './application/use-cases/own-owner-email.use-case';
 import { CustomerAccountOf } from './application/use-cases/customer-account-of.use-case';
+import { SearchCustomerAccounts } from './application/use-cases/search-customer-accounts.use-case';
 import { CustomerAccountSummaries } from './application/use-cases/customer-account-summaries.use-case';
 import { CustomerShortNames } from './application/use-cases/customer-short-names.use-case';
 import { MembershipOf } from './application/use-cases/membership-of.use-case';
 import { NotifyAccessReviewers } from './application/use-cases/notify-access-reviewers.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { OwnAccountTiedToSeller } from './application/use-cases/own-account-tied-to-seller.use-case';
+import { CustomerDirectoryPage } from './application/use-cases/customer-directory-page.use-case';
+import { CustomerDirectoryRecords } from './application/use-cases/customer-directory-records.use-case';
 import { CustomerAccountExists } from './application/use-cases/customer-account-exists.use-case';
 import { AdminEndCustomerSessions } from './application/use-cases/admin-end-customer-sessions.use-case';
 import { EndAllCustomerSessions } from './application/use-cases/end-all-customer-sessions.use-case';
@@ -597,6 +600,7 @@ function useCaseProvider<D, U>(
       effectiveKeys: true,
       factors: true,
       records: true,
+      policy: true,
     }),
     useCaseProvider(PurgeExpired, {
       unitOfWork: true,
@@ -896,6 +900,12 @@ function useCaseProvider<D, U>(
       grants: true,
       effectiveKeys: true,
     }),
+    useCaseProvider(SearchCustomerAccounts, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+    }),
     useCaseProvider(CustomerShortNames, {
       unitOfWork: true,
       accounts: true,
@@ -1053,7 +1063,23 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
+    useCaseProvider(CustomerDirectoryRecords, {
+      unitOfWork: true,
+      accounts: true,
+    }),
+    useCaseProvider(CustomerDirectoryPage, {
+      unitOfWork: true,
+      accounts: true,
+    }),
     useCaseProvider(CustomerAccountExists, {
+      unitOfWork: true,
+      accounts: true,
+    }),
+    useCaseProvider(CustomerDirectoryRecords, {
+      unitOfWork: true,
+      accounts: true,
+    }),
+    useCaseProvider(CustomerDirectoryPage, {
       unitOfWork: true,
       accounts: true,
     }),
@@ -1771,6 +1797,7 @@ function useCaseProvider<D, U>(
         RequireStepUp,
         CustomerAccountOf,
         CustomerAccountSummaries,
+        SearchCustomerAccounts,
         CustomerShortNames,
         TeamMemberLabels,
         ChangeActorLabels,
@@ -1778,6 +1805,10 @@ function useCaseProvider<D, U>(
         EndAllCustomerSessions,
         AdminEndCustomerSessions,
         CustomerAccountExists,
+        CustomerDirectoryRecords,
+        CustomerDirectoryPage,
+        CustomerDirectoryRecords,
+        CustomerDirectoryPage,
         OwnAccountTiedToSeller,
         EraseCustomerAccount,
       ],
@@ -1791,6 +1822,7 @@ function useCaseProvider<D, U>(
         requireStepUp: RequireStepUp,
         customerAccountOf: CustomerAccountOf,
         customerAccountSummaries: CustomerAccountSummaries,
+        searchCustomerAccounts: SearchCustomerAccounts,
         customerShortNames: CustomerShortNames,
         teamMemberLabels: TeamMemberLabels,
         changeActorLabels: ChangeActorLabels,
@@ -1798,6 +1830,8 @@ function useCaseProvider<D, U>(
         endAllCustomerSessions: EndAllCustomerSessions,
         adminEndCustomerSessions: AdminEndCustomerSessions,
         customerAccountExists: CustomerAccountExists,
+        customerDirectoryRecords: CustomerDirectoryRecords,
+        customerDirectoryPage: CustomerDirectoryPage,
         ownAccountTiedToSeller: OwnAccountTiedToSeller,
         eraseCustomerAccount: EraseCustomerAccount,
       ) =>
@@ -1811,6 +1845,7 @@ function useCaseProvider<D, U>(
           requireStepUp,
           customerAccountOf,
           customerAccountSummaries,
+          searchCustomerAccounts,
           customerShortNames,
           teamMemberLabels,
           changeActorLabels,
@@ -1818,6 +1853,8 @@ function useCaseProvider<D, U>(
           endAllCustomerSessions,
           adminEndCustomerSessions,
           customerAccountExists,
+          customerDirectoryRecords,
+          customerDirectoryPage,
           ownAccountTiedToSeller,
           eraseCustomerAccount,
         }),

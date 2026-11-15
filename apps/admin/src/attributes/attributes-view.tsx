@@ -111,7 +111,9 @@ export function AttributesView({
           }}
         />
       ) : null}
-      {tab === 'missing-details' ? <MissingDetailsTab /> : null}
+      {tab === 'missing-details' ? (
+        <MissingDetailsTab canEdit={canEdit} csrfToken={csrfToken} />
+      ) : null}
       {tab === 'waiting' && canDecide ? <SuggestionsTab csrfToken={csrfToken} /> : null}
     </div>
   );

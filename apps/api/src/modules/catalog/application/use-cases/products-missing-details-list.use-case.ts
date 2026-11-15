@@ -4,6 +4,7 @@ import type {
   AttributeSchema,
   AttributeValues,
   CallContext,
+  Id,
   MarketContext,
   Result,
 } from '@mondapac/shared-kernel';
@@ -14,6 +15,7 @@ import { closedInput, invalid, type ValidationFailure } from '../brands/brand-vi
 import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { MissingDetailsEmailStore } from '../ports/missing-details-email.store';
 import type { ProductDetailsGapReader } from '../ports/product-details-gap.reader';
 
 /** Rows one page may return. */
@@ -40,6 +42,11 @@ export interface MissingDetailsItem {
   readonly featureSetCode: string;
   /** Codes of the required attributes with no value, in the feature set's order. */
   readonly missing: readonly string[];
+  /**
+   * When an "Email sellers" mail about it last went to its seller (ISO instant, A4-4); null when
+   * never, or while a newer request for it waits (the store keeps the latest request only).
+   */
+  readonly lastEmailedAt: string | null;
 }
 
 export interface ProductsMissingDetailsListOutput {
@@ -61,6 +68,7 @@ export interface ProductsMissingDetailsListDependencies {
   readonly attributes: AttributeRepository;
   readonly policy: CatalogMarketPolicy;
   readonly familyResolver: ProductFamilyResolver;
+  readonly emailStore: MissingDetailsEmailStore;
 }
 
 /**
@@ -178,7 +186,7 @@ export class ProductsMissingDetailsList extends UseCase<
     // product is judged against the feature set its revision was frozen under.
     const session = await this.deps.familyResolver.open(market);
     const schemas = new Map<string, AttributeSchema | null>();
-    const items: MissingDetailsItem[] = [];
+    const items: Omit<MissingDetailsItem, 'lastEmailedAt'>[] = [];
     let cursor = filter.afterId;
     let scanned = 0;
     let exhausted = false;
@@ -205,28 +213,16 @@ export class ProductsMissingDetailsList extends UseCase<
         scanned += 1;
         if (schema === null) continue;
         if (filter.familyCode !== null && familyCode !== filter.familyCode) continue;
-        const raw = product.attributeValues;
-        const values = (typeof raw === 'object' && raw !== null ? raw : {}) as AttributeValues;
-        const checked = validateAttributeValues(schema, values, ordered);
-        if (!checked.ok) {
-          const missing = [
-            ...new Set(
-              checked.error
-                .filter((issue) => issue.code === 'attribute.required')
-                // A localizable text reports `code.locale`; attribute codes hold no dot.
-                .map((issue) => issue.path.split('.')[0] ?? issue.path),
-            ),
-          ];
-          if (missing.length > 0) {
-            items.push({
-              productId: product.productId,
-              productCode: product.productCode,
-              name: product.name,
-              sellerId: product.ownerSellerId,
-              featureSetCode: familyCode,
-              missing,
-            });
-          }
+        const missing = missingRequiredCodes(schema, product.attributeValues, ordered);
+        if (missing.length > 0) {
+          items.push({
+            productId: product.productId,
+            productCode: product.productCode,
+            name: product.name,
+            sellerId: product.ownerSellerId,
+            featureSetCode: familyCode,
+            missing,
+          });
         }
         if (items.length >= filter.limit) {
           // The page is full; the rest of this batch is read by the next call.
@@ -236,8 +232,26 @@ export class ProductsMissingDetailsList extends UseCase<
       }
     }
     const nextAfterId = exhausted ? null : cursor;
+    // "Last emailed" (A4-4): the latest "Email sellers" request of the row's seller and product,
+    // when it was sent. PLATFORM products have no seller and are never emailed.
+    const pairs = items.flatMap((item) =>
+      item.sellerId === null
+        ? []
+        : [{ sellerId: item.sellerId as Id<'Seller'>, productId: item.productId }],
+    );
+    const sentAt = new Map<string, string>();
+    if (pairs.length > 0) {
+      for (const record of await this.deps.emailStore.latest(market, pairs)) {
+        if (record.state === 'sent' && record.settledAt !== null) {
+          sentAt.set(`${record.sellerId}/${record.productId}`, record.settledAt.toString());
+        }
+      }
+    }
     return {
-      items,
+      items: items.map((item) => ({
+        ...item,
+        lastEmailedAt: sentAt.get(`${item.sellerId}/${item.productId}`) ?? null,
+      })),
       nextAfterId,
       scanned,
       unreadableFeatureSets: [...schemas.entries()]
@@ -246,6 +260,31 @@ export class ProductsMissingDetailsList extends UseCase<
         .sort(),
     };
   }
+}
+
+/**
+ * The codes of the required attributes a product's published values leave empty, judged with the
+ * same rule as a submit (`validateAttributeValues`) in the feature set's order. Shared with the
+ * "Email sellers" request, which judges the products it names again on the server.
+ */
+export function missingRequiredCodes(
+  schema: AttributeSchema,
+  rawValues: unknown,
+  orderedLocales: readonly string[],
+): readonly string[] {
+  const values = (
+    typeof rawValues === 'object' && rawValues !== null ? rawValues : {}
+  ) as AttributeValues;
+  const checked = validateAttributeValues(schema, values, orderedLocales);
+  if (checked.ok) return [];
+  return [
+    ...new Set(
+      checked.error
+        .filter((issue) => issue.code === 'attribute.required')
+        // A localizable text reports `code.locale`; attribute codes hold no dot.
+        .map((issue) => issue.path.split('.')[0] ?? issue.path),
+    ),
+  ];
 }
 
 /** `null` when absent, the id when well formed, `undefined` when malformed. */

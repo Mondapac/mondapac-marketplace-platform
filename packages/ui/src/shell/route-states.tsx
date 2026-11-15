@@ -1,20 +1,30 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Button } from '../form/button.tsx';
 
 /**
  * The page frame while a route renders on the server: the sidebar and topbar keep their place, so
- * moving between pages does not make the layout jump, and the content shows placeholder rows.
+ * moving between pages does not make the layout jump, and the content shows placeholder rows, or
+ * the route's own shaped skeleton (`children`).
  */
 export function RouteLoading({
   label,
   collapsed = false,
+  busy = true,
+  children,
 }: {
-  /** Read by screen readers ("Loading the page"). */
+  /** Read by screen readers ("Loading the page"). Unused when `children` is given. */
   readonly label: string;
   /** The saved sidebar choice, so the placeholder column has the sidebar's width. */
   readonly collapsed?: boolean;
+  /** False once the content has given up (a load error in place of the skeleton). */
+  readonly busy?: boolean;
+  /**
+   * The route's own placeholder in place of the generic rows (a settings form skeleton). It
+   * brings its own role="status", so the page is announced once.
+   */
+  readonly children?: ReactNode;
 }) {
   return (
     <div
@@ -26,22 +36,26 @@ export function RouteLoading({
           aria-hidden="true"
           className="h-(--mp-size-topbar-phone) border-b border-line bg-surface md:h-(--mp-size-topbar)"
         />
-        <main aria-busy="true" className="flex min-w-0 flex-1 flex-col gap-4 p-4 sm:p-6">
-          <span role="status" className="sr-only">
-            {label}
-          </span>
-          <div aria-hidden="true" className="flex flex-col gap-4 motion-safe:animate-pulse">
-            <span className="h-7 w-1/3 rounded-sm bg-muted" />
-            <span className="h-4 w-2/3 max-w-(--mp-size-form-max) rounded-sm bg-muted" />
-            <ul className="divide-y divide-line-row rounded-lg border border-line bg-surface">
-              {[0, 1, 2].map((row) => (
-                <li key={row} className="flex flex-col gap-2 p-4">
-                  <span className="h-3 w-2/5 rounded-sm bg-muted" />
-                  <span className="h-3 w-3/5 rounded-sm bg-muted" />
-                </li>
-              ))}
-            </ul>
-          </div>
+        <main aria-busy={busy} className="flex min-w-0 flex-1 flex-col gap-4 p-4 sm:p-6">
+          {children ?? (
+            <>
+              <span role="status" className="sr-only">
+                {label}
+              </span>
+              <div aria-hidden="true" className="flex flex-col gap-4 motion-safe:animate-pulse">
+                <span className="h-7 w-1/3 rounded-sm bg-muted" />
+                <span className="h-4 w-2/3 max-w-(--mp-size-form-max) rounded-sm bg-muted" />
+                <ul className="divide-y divide-line-row rounded-lg border border-line bg-surface">
+                  {[0, 1, 2].map((row) => (
+                    <li key={row} className="flex flex-col gap-2 p-4">
+                      <span className="h-3 w-2/5 rounded-sm bg-muted" />
+                      <span className="h-3 w-3/5 rounded-sm bg-muted" />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          )}
         </main>
       </div>
     </div>

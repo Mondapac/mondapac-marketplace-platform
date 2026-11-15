@@ -13,6 +13,7 @@ import type {
   OwnPickupCodeView,
 } from '../domain/order-views';
 import type { ShipTo } from '../domain/order';
+import { REFUND_REASONS } from '../domain/refund';
 import type {
   MethodPrice,
   SellerDeliveryOptions,
@@ -353,6 +354,19 @@ export class OwnSellerOrderBody extends SellerOrderBody {
 
 export class AdminSellerOrderBody extends SellerOrderBody {
   @ApiProperty({
+    format: 'uuid',
+    description: "The seller order's id: the reference in the order emails and the refund routes.",
+  })
+  sellerOrderId!: string;
+  @ApiProperty({
+    type: MoneyView,
+    nullable: true,
+    description:
+      'The delivery fee as paid, tax included: the most a refund gives back of it. Null when ' +
+      'the delivery tax was not recorded (an older order; such a fee is not refunded here).',
+  })
+  shippingGross!: MoneyView | null;
+  @ApiProperty({
     type: String,
     nullable: true,
     description: "The seller's public store name; null when unknown.",
@@ -409,6 +423,31 @@ export class AdminOrderPageBody {
     description: "The Market's orders per status, whatever the page or filter.",
   })
   counts!: OrderStatusCountsBody;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Page mode only: the orders that match the filter. Null in cursor mode.',
+  })
+  total!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: this page, from 1.' })
+  page!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: rows per page.' })
+  pageSize!: number | null;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'True when `search` matched more than 200 customers or stores, so some matches are left ' +
+      'out; ask the person to type a longer text.',
+  })
+  searchCapped!: boolean;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: ['customers-and-stores', 'stores'],
+    description:
+      'What `search` looked in; `stores` when the admin lacks identity.customer-account.view, so customer names were not searched. Null without `search`.',
+  })
+  searchScope!: 'customers-and-stores' | 'stores' | null;
 }
 
 type SellerOrderLike = OrderView['sellerOrders'][number];
@@ -461,11 +500,48 @@ export class SellerOrderDetailBody extends SellerOrderBody {
   @ApiProperty({ format: 'date-time', description: 'When the customer paid.' }) paidAt!: string;
 }
 
+export class SellerOrderRefundLineBody {
+  @ApiProperty({ format: 'uuid' }) orderLineId!: string;
+  @ApiProperty() quantity!: number;
+}
+
+export class SellerOrderRefundBody {
+  @ApiProperty({ format: 'uuid' }) refundId!: string;
+  @ApiProperty({
+    enum: ['admin', 'seller'],
+    description: 'seller: units the shop marked unavailable before the order was ready.',
+  })
+  requestedBy!: string;
+  @ApiProperty({
+    enum: ['pending', 'succeeded', 'failed'],
+    description: 'failed: nothing went back and the units count as not refunded.',
+  })
+  state!: string;
+  @ApiProperty({ enum: REFUND_REASONS }) reason!: string;
+  @ApiProperty({ type: MoneyView, description: 'Given back to the customer, tax included.' })
+  amount!: MoneyView;
+  @ApiProperty({ type: MoneyView, nullable: true, description: 'The shipping part, if any.' })
+  shipping!: MoneyView | null;
+  @ApiProperty({ type: [SellerOrderRefundLineBody] }) lines!: SellerOrderRefundLineBody[];
+  @ApiProperty({ format: 'date-time' }) requestedAt!: string;
+  @ApiProperty({ format: 'date-time', nullable: true }) settledAt!: string | null;
+}
+
 export class SellerOrderShipBody extends SellerOrderDetailBody {
+  @ApiProperty({
+    type: [SellerOrderRefundBody],
+    description: 'Every refund of this seller order, oldest first, failed ones included.',
+  })
+  refunds!: SellerOrderRefundBody[];
+
   @ApiProperty({
     type: ShipToBody,
     nullable: true,
-    description: `${SHIP_TO_DESCRIPTION} Recipient name, phone and address only.`,
+    description:
+      `${SHIP_TO_DESCRIPTION} Recipient name, phone and address only. Also null once every ` +
+      'unit is refunded (refunds not failed), 30 days after the order was delivered (or ' +
+      'collected, for a pickup order), and 60 days after it was shipped when it was never ' +
+      'delivered.',
   })
   shipTo!: ShipToBody | null;
 
@@ -474,7 +550,9 @@ export class SellerOrderShipBody extends SellerOrderDetailBody {
     nullable: true,
     description:
       "The customer's note to this seller (plain text, 200 characters at most; escape it). " +
-      'Null when none was written, on older orders and once the account was erased.',
+      'Null when none was written, on older orders, once the account was erased, and ' +
+      'whenever `shipTo` is withheld (refunded in full, 30 days after delivery, 60 days after ' +
+      'an undelivered shipment).',
   })
   buyerNote!: string | null;
 
@@ -502,6 +580,16 @@ export class SellerOrderPageBody {
     description: "The shop's paid orders per fulfilment step, whatever the page or filter.",
   })
   counts!: SellerOrderCountsBody;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Page mode only: how many orders match the filter.',
+  })
+  total!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: this page, from 1.' })
+  page!: number | null;
+  @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: rows per page.' })
+  pageSize!: number | null;
 }
 
 export const sellerOrderDetailBody = (
@@ -533,6 +621,17 @@ const shipToBody = (shipTo: ShipTo | null): ShipToBody | null =>
 export const sellerOrderShipBody = (order: LabelledSellerOrderShipView): SellerOrderShipBody => ({
   ...sellerOrderDetailBody(order),
   shipTo: shipToBody(order.shipTo),
+  refunds: order.refunds.map((refund) => ({
+    refundId: refund.refundId,
+    requestedBy: refund.requestedBy,
+    state: refund.state,
+    reason: refund.reason,
+    amount: moneyBody(refund.amount),
+    shipping: refund.shipping === null ? null : moneyBody(refund.shipping),
+    lines: refund.lines.map((line) => ({ orderLineId: line.orderLineId, quantity: line.quantity })),
+    requestedAt: refund.requestedAt.toString(),
+    settledAt: refund.settledAt?.toString() ?? null,
+  })),
   // A seller reads its own note only.
   buyerNote: order.shipTo?.sellerNotes?.[order.sellerId] ?? null,
   pickup:
@@ -545,6 +644,9 @@ export const sellerOrderPageBody = (page: LabelledSellerOrderPageView): SellerOr
   sellerOrders: page.sellerOrders.map(sellerOrderDetailBody),
   nextCursor: page.nextCursor,
   counts: { ...page.counts },
+  total: page.paging?.total ?? null,
+  page: page.paging?.page ?? null,
+  pageSize: page.paging?.pageSize ?? null,
 });
 
 export const orderBody = (order: OrderView): OrderBody => ({
@@ -604,6 +706,8 @@ export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody =>
   taxStrategyId: order.taxStrategyId,
   sellerOrders: order.sellerOrders.map((seller) => ({
     ...sellerOrderBody(seller),
+    sellerOrderId: seller.sellerOrderId,
+    shippingGross: seller.shippingGross === null ? null : moneyBody(seller.shippingGross),
     storeName: seller.storeName,
     lines: seller.lines.map(labelledLineBody),
   })),
@@ -612,6 +716,11 @@ export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody =>
 export const adminOrderPageBody = (page: AdminOrderPageView): AdminOrderPageBody => ({
   ...pageBody(page, adminOrderBody),
   counts: { ...page.counts },
+  total: page.paging?.total ?? null,
+  page: page.paging?.page ?? null,
+  pageSize: page.paging?.pageSize ?? null,
+  searchCapped: page.searchCapped,
+  searchScope: page.searchScope,
 });
 
 export const pageBody = <V, B>(
