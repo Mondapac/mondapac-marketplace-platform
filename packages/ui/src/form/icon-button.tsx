@@ -1,3 +1,5 @@
+'use client';
+
 import type { ButtonHTMLAttributes } from 'react';
 import { Icon, type IconName } from '../icon/icon.tsx';
 import { Spinner } from '../loading/spinner.tsx';
