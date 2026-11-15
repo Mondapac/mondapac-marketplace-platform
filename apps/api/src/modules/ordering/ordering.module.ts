@@ -38,6 +38,12 @@ import { AdminViewShipToRetention } from './application/use-cases/admin-view-shi
 import { PurgeSettledShipTo } from './application/use-cases/purge-settled-ship-to.use-case';
 import { ORDERING_STEP_UP_ACTIONS } from './contracts/step-up';
 import { AdminShipToRetentionController } from './presentation/admin-ship-to-retention.controller';
+import { AdminShipmentsController } from './presentation/admin-shipments.controller';
+import { AdminListShipments } from './application/use-cases/admin-list-shipments.use-case';
+import {
+  ADMIN_SHIPMENT_LIST_READER,
+  type AdminShipmentListReader,
+} from './application/ports/admin-shipment-list.reader';
 import { AdminDocumentsController } from './presentation/admin-documents.controller';
 import { AdminListDocuments } from './application/use-cases/admin-list-documents.use-case';
 import {
@@ -312,6 +318,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminOrdersController,
     AdminRefundLimitsController,
     AdminShipToRetentionController,
+    AdminShipmentsController,
     AdminDocumentsController,
     SellerOrdersController,
     AdminSavedViewsController,
@@ -396,6 +403,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminRemoveRefundLimit,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    {
+      provide: AdminListShipments,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_SHIPMENT_LIST_READER, ORDER_LABELS],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        shipments: AdminShipmentListReader,
+        labels: OrderLabels,
+      ) => new AdminListShipments(gate, { unitOfWork, shipments, labels }),
+    },
     {
       provide: AdminListDocuments,
       inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_DOCUMENT_LIST_READER, ORDER_LABELS],

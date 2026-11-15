@@ -245,7 +245,11 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
         try {
           if (refundState !== 'failed') {
             await owner.query(
-              `UPDATE ordering.seller_orders SET refunded_amount = refunded_amount + $2 WHERE id = $1`,
+              // refunded_in_full follows the refunded gross (CHECK), as the refund unit keeps it.
+              `UPDATE ordering.seller_orders
+                  SET refunded_amount = refunded_amount + $2,
+                      refunded_in_full = (total_amount > 0 AND refunded_amount + $2 = total_amount)
+                WHERE id = $1`,
               [sellerOrderId, gross],
             );
           }

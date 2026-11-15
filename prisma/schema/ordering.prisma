@@ -79,6 +79,10 @@ model OrderingSellerOrder {
   trackingRef            String?             @map("tracking_ref")
   shippedAt              DateTime?           @map("shipped_at") @db.Timestamptz(6)
   deliveredAt            DateTime?           @map("delivered_at") @db.Timestamptz(6)
+  /// When the order was paid (its confirmation time), copied here in the unit that confirms the
+  /// order so that the admin Shipments and Invoices lists read seller_orders alone; null while
+  /// the order is unpaid and on cancelled orders.
+  paidAt                 DateTime?           @map("paid_at") @db.Timestamptz(6)
   /// Set by the worker once inventory has recorded the lines as shipped.
   inventoryRecordedAt    DateTime?           @map("inventory_recorded_at") @db.Timestamptz(6)
   /// pending, recorded or not-applicable (CHECK): whether the worker has written the seller
@@ -90,6 +94,9 @@ model OrderingSellerOrder {
   /// The gross of the refunds not failed (pending or succeeded); never above the total (CHECK).
   /// Raised under the value read, so two refunds of one seller order cannot both pass (tax step 3).
   refundedAmount         BigInt              @default(0) @map("refunded_amount")
+  /// Refunded in full: a positive total whose refunded gross reached it (CHECK holds it to the two
+  /// amounts). Kept by the refund unit; the admin Shipments list's Refunded stage reads it.
+  refundedInFull         Boolean             @default(false) @map("refunded_in_full")
   /// The buyer's delivery method, chosen at checkout: pickup, instant, same_day or scheduled
   /// (CHECK). Orders placed before it was recorded are instant (they were booked at payment).
   deliveryMethod         String              @map("delivery_method")
@@ -128,6 +135,9 @@ model OrderingSellerOrder {
   /// The foreign-key target of the refunds: a refund's order and seller are its seller order's.
   @@unique([marketId, id, orderId, sellerId])
   @@index([marketId, sellerId, orderId])
+  /// The partial indexes (market_id, paid_at DESC, id DESC) WHERE paid_at IS NOT NULL, and the same
+  /// WHERE fulfilment = 'to-ship' as well (admin Shipments and Invoices lists), are hand-written in
+  /// their own migrations, built CONCURRENTLY; Prisma cannot declare them.
   @@map("seller_orders")
   @@schema("ordering")
 }
