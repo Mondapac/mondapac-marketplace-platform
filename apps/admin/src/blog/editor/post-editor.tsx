@@ -21,7 +21,8 @@ import { API_BLOG_POSTS, API_BLOG_TAXONOMY, BLOG_PATH, postPath } from '../types
 import { BlockEditor } from './block-editor.tsx';
 import { EventDetailsCard, EventStatusCard } from './event-cards.tsx';
 import { blankEvent, eventStatusOf } from './event-model.ts';
-import { contentOf, draftOf, isDirty, type Draft } from './editor-model.ts';
+import { contentOf, coverNeedsAlt, draftOf, isDirty, type Draft } from './editor-model.ts';
+import { ImageChooser } from './image-chooser.tsx';
 import { editorProblemOf, reasonFor, type EditorProblem } from './editor-errors.ts';
 import { LIMITS, type ChecksBody, type Finding, type PostDetail, type Taxonomy } from './types.ts';
 
@@ -38,12 +39,15 @@ export function PostEditor({
   postId,
   canEdit,
   canReview,
+  canUploadMedia,
   csrfToken,
   zone,
 }: {
   readonly postId: string;
   readonly canEdit: boolean;
   readonly canReview: boolean;
+  /** The session holds `blog.media.edit`: the picture picker offers Upload. */
+  readonly canUploadMedia: boolean;
   readonly csrfToken: string;
   /** The Market's zone, the default of an event's time zone. */
   readonly zone: string;
@@ -331,6 +335,8 @@ export function PostEditor({
             blocks={draft.blocks}
             disabled={disabled}
             reasonAt={reason}
+            canUpload={canUploadMedia}
+            csrfToken={csrfToken}
             onChange={(blocks) => set({ blocks })}
           />
         </div>
@@ -406,16 +412,24 @@ export function PostEditor({
           </div>
           <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
             <h2 className="text-base font-semibold">{t('side.cover')}</h2>
-            <TextField
-              label={t('field.cover-id')}
-              help={t('field.cover-help')}
-              value={draft.coverImageId}
+            <ImageChooser
+              imageId={draft.coverImageId}
+              onChange={(coverImageId) => set({ coverImageId })}
               disabled={disabled}
-              error={reason('content.coverImageId') === undefined ? undefined : t('field.invalid')}
-              onChange={(event) => set({ coverImageId: event.target.value })}
+              canUpload={canUploadMedia}
+              csrfToken={csrfToken}
+              error={
+                reason('content.coverImageId') === 'not-found'
+                  ? t('field.cover-not-found')
+                  : undefined
+              }
+              name={t('side.cover')}
             />
             <TextField
               label={t('field.cover-alt')}
+              help={draft.coverImageId === '' ? undefined : t('field.cover-alt-help')}
+              required={draft.coverImageId !== ''}
+              error={coverNeedsAlt(draft) ? t('field.cover-alt-missing') : undefined}
               value={draft.coverAlt}
               maxLength={LIMITS.coverAlt}
               disabled={disabled}

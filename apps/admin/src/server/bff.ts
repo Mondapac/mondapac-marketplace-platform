@@ -103,6 +103,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'blog/admin/posts',
     // The blog categories and tags the editor offers (blog), read only.
     'blog/admin/taxonomy',
+    // The blog media library, newest first (blog; query: `page`), read only.
+    'blog/admin/media',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
@@ -227,6 +229,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // A new blog category or tag (blog).
     'blog/admin/taxonomy/categories',
     'blog/admin/taxonomy/tags',
+    // Upload a picture to the blog media library (blog): a base64 picture, so the body cap of this
+    // path is the larger image one.
+    'blog/admin/media',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
     // A new tax strategy, and the choice of the active one (tax; protected key).
@@ -541,6 +546,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/product-certificates/:id/history',
     // The photo library of a platform product, for the form's images card (catalog, P1).
     'catalog/admin/platform-products/:id/images',
+    // A blog library picture, thumbnail and large size only (blog).
+    'blog/admin/media/:id/thumb',
+    'blog/admin/media/:id/large',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
     // A product version's photo opened large, for its review (catalog).
@@ -607,6 +615,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
   'blog/admin/posts': ['status', 'kind', 'owner', 'page'],
+  'blog/admin/media': ['page'],
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
   'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
   'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
@@ -780,6 +789,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     owner: /^(platform|seller)$/,
     page: /^[0-9]{1,4}$/,
   },
+  'blog/admin/media': { page: /^[0-9]{1,4}$/ },
   'storefront/admin/slides/order': {
     position: /^[a-z]+(?:\.[a-z-]+)+$/,
     scope: /^(all|category|product|seller|page)$/,
@@ -976,6 +986,8 @@ const CERT_DOCUMENT_PATH =
   /^certification\/admin\/product-certificates\/[0-9a-f-]{36}\/documents$/i;
 /** A platform product photo upload (catalog, P1): the same base64 photo cap. */
 const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/images$/i;
+/** A blog media library upload (blog): the same base64 picture cap. */
+const BLOG_MEDIA_PATH = 'blog/admin/media';
 
 /** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
 function bodyCapOf(method: string, target: string): number {
@@ -985,6 +997,7 @@ function bodyCapOf(method: string, target: string): number {
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
   if (method === 'POST' && CERT_DOCUMENT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'POST' && PRODUCT_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
+  if (method === 'POST' && target === BLOG_MEDIA_PATH) return MAX_IMAGE_BODY_BYTES;
   return MAX_BODY_BYTES;
 }
 

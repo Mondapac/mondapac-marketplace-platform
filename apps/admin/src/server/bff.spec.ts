@@ -1120,6 +1120,69 @@ describe('relay of the blog editor', () => {
   });
 });
 
+describe('relay of the blog media library', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const send = (method: string, path: string, body?: string) =>
+    new Request(`http://admin.localhost:3002/api/${path}`, {
+      method,
+      headers: { ...sameOrigin, 'content-type': 'application/json' },
+      ...(body === undefined ? {} : { body }),
+    });
+
+  it('takes an upload of a 4 MiB picture as base64 (about 5.6 MB) and refuses a larger body', async () => {
+    const path = 'blog/admin/media';
+    const upstream = upstreamOk();
+    const ok = JSON.stringify({ data: 'A'.repeat(5_600 * 1024) });
+    expect((await relay(config, send('POST', path, ok), path.split('/'), upstream)).status).toBe(
+      200,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/blog/admin/media');
+    const big = JSON.stringify({ data: 'A'.repeat(5_900 * 1024) });
+    expect((await relay(config, send('POST', path, big), path.split('/'), upstream)).status).toBe(
+      413,
+    );
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the usual 16 KB cap on the other blog POST routes', async () => {
+    const upstream = upstreamOk();
+    const path = 'blog/admin/posts';
+    const big = JSON.stringify({ pad: 'x'.repeat(17 * 1024) });
+    expect((await relay(config, send('POST', path, big), path.split('/'), upstream)).status).toBe(
+      413,
+    );
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('passes only a numeric page of the list and drops the rest', async () => {
+    const upstream = upstreamOk();
+    const list = ['blog', 'admin', 'media'];
+    await relay(config, send('GET', 'blog/admin/media?page=3&x=1'), list, upstream);
+    await relay(config, send('GET', 'blog/admin/media?page=0x1'), list, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/blog/admin/media?page=3');
+    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/blog/admin/media');
+  });
+
+  it('relays the thumb and the large rendition, GET only, no other size', async () => {
+    const upstream = upstreamOk();
+    for (const size of ['thumb', 'large']) {
+      const path = ['blog', 'admin', 'media', id, size];
+      expect((await relay(config, send('GET', path.join('/')), path, upstream)).status).toBe(200);
+    }
+    for (const size of ['raw', 'medium']) {
+      const path = ['blog', 'admin', 'media', id, size];
+      expect((await relay(config, send('GET', path.join('/')), path, upstream)).status).toBe(404);
+    }
+    const post = ['blog', 'admin', 'media', id, 'thumb'];
+    expect((await relay(config, send('POST', post.join('/'), '{}'), post, upstream)).status).toBe(
+      404,
+    );
+    const bad = ['blog', 'admin', 'media', 'nope', 'thumb'];
+    expect((await relay(config, send('GET', bad.join('/')), bad, upstream)).status).toBe(404);
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('relay of the blog posts list', () => {
   const request = (path: string) =>
     new Request(`http://admin.localhost:3002/api/${path}`, {
