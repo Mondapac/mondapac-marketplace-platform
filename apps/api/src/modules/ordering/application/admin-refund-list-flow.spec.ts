@@ -16,6 +16,7 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
   refundRowActions,
+  type RefundCursor,
   type RefundListFilter,
   type RefundListRecord,
   type RefundSort,
@@ -34,18 +35,27 @@ const VIEW = 'ordering.order.view';
 /** Answers what it was given and remembers what it was asked. */
 class RecordingReader implements AdminRefundListReader {
   records: RefundListRecord[] = [];
-  asked: { filter: RefundListFilter; sort: RefundSort; offset: number; limit: number }[] = [];
+  asked: {
+    filter: RefundListFilter;
+    sort: RefundSort;
+    offset: number;
+    limit: number;
+    after?: RefundCursor;
+  }[] = [];
+  counted = 0;
   page(
     _m: MarketContext,
     filter: RefundListFilter,
     sort: RefundSort,
     offset: number,
     limit: number,
+    after: RefundCursor | null = null,
   ) {
-    this.asked.push({ filter, sort, offset, limit });
+    this.asked.push({ filter, sort, offset, limit, ...(after === null ? {} : { after }) });
     return Promise.resolve(this.records.slice(offset, offset + limit));
   }
   count() {
+    this.counted += 1;
     return Promise.resolve(this.records.length);
   }
   countByState() {
@@ -126,13 +136,15 @@ describe.each(['AU', 'ZZ'] as const)('admin refund list in market %s', (code) =>
     expect(reader.asked).toEqual([]);
   });
 
-  it('answers the first page, newest first, with the total and the state counts', async () => {
+  it('answers the first page, newest first, with the state counts as the total', async () => {
     const { list, reader, context } = setup();
     reader.records = [record(), record()];
     const result = await list.execute(context, {});
     if (!result.ok) throw new Error(result.error.code);
+    expect(reader.counted).toBe(0);
     expect(result.value).toMatchObject({
-      total: 2,
+      total: 6,
+      nextCursor: null,
       page: 1,
       pageSize: 25,
       counts: { pending: 1, succeeded: 2, failed: 3 },
@@ -188,6 +200,52 @@ describe.each(['AU', 'ZZ'] as const)('admin refund list in market %s', (code) =>
       offset: 20,
       limit: 10,
     });
+  });
+
+  it('takes a state tab total from the counts and counts only a narrower filter', async () => {
+    const { list, reader, context } = setup();
+    const total = async (input: Record<string, unknown>) => {
+      const result = await list.execute(context, input);
+      return result.ok ? result.value.total : null;
+    };
+    expect(await total({ state: 'pending' })).toBe(1);
+    expect(await total({ state: 'failed' })).toBe(3);
+    expect(reader.counted).toBe(0);
+    reader.records = [record()];
+    expect(await total({ state: 'succeeded', ledger: 'recorded' })).toBe(1);
+    expect(reader.counted).toBe(1);
+  });
+
+  it('walks Previous/Next pages newest request first, past row 10,000, with no total', async () => {
+    const { list, reader, context } = setup();
+    const rows = [record(), record(), record()];
+    reader.records = rows;
+    const first = await list.execute(context, { limit: 2 });
+    if (!first.ok) throw new Error(first.error.code);
+    expect(first.value).toMatchObject({ total: null, page: null, pageSize: 2 });
+    expect(first.value.nextCursor).toBe(
+      `${rows[1]!.requestedAt.epochMilliseconds}.${rows[1]!.refundId}`,
+    );
+    expect(reader.asked[0]).toMatchObject({
+      sort: { key: 'requested', direction: 'desc' },
+      offset: 0,
+      limit: 3,
+    });
+    reader.records = [rows[2]!];
+    const last = await list.execute(context, { cursor: first.value.nextCursor, limit: 2 });
+    expect(reader.asked[1]!.after).toEqual({
+      requestedAt: rows[1]!.requestedAt,
+      refundId: rows[1]!.refundId,
+    });
+    expect(last.ok && last.value.nextCursor).toBeNull();
+    expect(reader.counted).toBe(0);
+
+    const refused = await list.execute(context, { cursor: 'x', limit: 101, sort: 'amount' });
+    expect(fieldsOf(refused).map((f) => `${f.path}:${f.code}`)).toEqual([
+      'sort:with-cursor',
+      'cursor:format',
+      'limit:range',
+    ]);
   });
 
   it('reads a Stripe refund id as an exact Stripe reference', async () => {

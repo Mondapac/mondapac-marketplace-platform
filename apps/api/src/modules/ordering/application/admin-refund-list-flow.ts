@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import {
+  type RefundCursor,
   REFUND_SORT_KEYS,
   refundRowActions,
   type RefundLedgerFilter,
@@ -38,6 +39,13 @@ export interface RefundListInput {
   /** The page from 1 (default 1); page x pageSize may not pass 10,000. */
   readonly page?: unknown;
   readonly pageSize?: unknown;
+  /**
+   * Previous/Next paging (List paging `prev-next`, and past row 10,000): `limit` rows from 1 to
+   * 100, after `cursor` (the `nextCursor` of the page before). Newest request first only; no
+   * `page`, `pageSize`, `sort` or `direction` with it.
+   */
+  readonly cursor?: unknown;
+  readonly limit?: unknown;
   readonly sort?: unknown;
   readonly direction?: unknown;
   readonly state?: unknown;
@@ -64,12 +72,29 @@ const LEDGER: readonly RefundLedgerFilter[] = ['waiting', 'recorded'];
 const STRIPE_REFUND_ID = /^re_[A-Za-z0-9]{1,64}$/;
 const AMOUNT = /^[0-9]{1,15}$/;
 
+/** A cursor is `<requested-at ms>.<refund id>`: opaque to callers, checked on the way in. */
+export const encodeRefundCursor = (row: RefundCursor): string =>
+  `${row.requestedAt.epochMilliseconds}.${row.refundId}`;
+
+function decodeCursor(value: unknown): RefundCursor | null {
+  const match = typeof value === 'string' ? /^([0-9]{1,15})\.([0-9a-f-]{36})$/.exec(value) : null;
+  const id = match === null ? null : parseId<'Refund'>(match[2]!);
+  if (match === null || id === null || !id.ok) return null;
+  return {
+    requestedAt: Temporal.Instant.fromEpochMilliseconds(Number(match[1])),
+    refundId: id.value,
+  };
+}
+
+type Paging =
+  | { readonly kind: 'pages'; readonly page: number; readonly pageSize: number }
+  | { readonly kind: 'prev-next'; readonly after: RefundCursor | null; readonly limit: number };
+
 interface Parsed {
   readonly filter: RefundListFilter;
   readonly search: string | null;
   readonly sort: RefundSort;
-  readonly page: number;
-  readonly pageSize: number;
+  readonly paging: Paging;
 }
 
 function parse(input: RefundListInput): Result<Parsed, ReadFailure> {
@@ -96,6 +121,24 @@ function parse(input: RefundListInput): Result<Parsed, ReadFailure> {
     const given = whole(input.pageSize, 1, MAX_PAGE_SIZE);
     if (given === null) fields.push({ path: 'pageSize', code: 'range' });
     else pageSize = given;
+  }
+  // Previous/Next: asked for by a cursor or a limit; it walks newest request first only.
+  const prevNext = input.cursor !== undefined || input.limit !== undefined;
+  let after: RefundCursor | null = null;
+  let limit = DEFAULT_PAGE_SIZE;
+  if (prevNext) {
+    for (const path of ['page', 'pageSize', 'sort', 'direction'] as const) {
+      if (input[path] !== undefined) fields.push({ path, code: 'with-cursor' });
+    }
+    if (input.cursor !== undefined) {
+      after = decodeCursor(input.cursor);
+      if (after === null) fields.push({ path: 'cursor', code: 'format' });
+    }
+    if (input.limit !== undefined) {
+      const given = whole(input.limit, 1, MAX_PAGE_SIZE);
+      if (given === null) fields.push({ path: 'limit', code: 'range' });
+      else limit = given;
+    }
   }
   const key = oneOf('sort', input.sort, REFUND_SORT_KEYS) ?? 'requested';
   const direction = oneOf('direction', input.direction, ['asc', 'desc'] as const) ?? 'desc';
@@ -160,7 +203,7 @@ function parse(input: RefundListInput): Result<Parsed, ReadFailure> {
   if (minAmount !== null && maxAmount !== null && minAmount > maxAmount) {
     fields.push({ path: 'maxAmount', code: 'range' });
   }
-  if (fields.length === 0 && page * pageSize > MAX_PAGED_ROWS) {
+  if (fields.length === 0 && !prevNext && page * pageSize > MAX_PAGED_ROWS) {
     fields.push({ path: 'page', code: 'too-deep' });
   }
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
@@ -181,9 +224,8 @@ function parse(input: RefundListInput): Result<Parsed, ReadFailure> {
       parties: null,
     },
     search,
-    sort: { key, direction },
-    page,
-    pageSize,
+    sort: prevNext ? { key: 'requested', direction: 'desc' } : { key, direction },
+    paging: prevNext ? { kind: 'prev-next', after, limit } : { kind: 'pages', page, pageSize },
   });
 }
 
@@ -200,7 +242,7 @@ export async function listRefunds(
 ): Promise<Result<RefundListPage, ReadFailure>> {
   const parsed = parse(input ?? {});
   if (!parsed.ok) return parsed;
-  const { sort, page, pageSize } = parsed.value;
+  const { sort, paging } = parsed.value;
   let filter = parsed.value.filter;
   let searchCapped = false;
   let searchScope: RefundListPage['searchScope'] = null;
@@ -229,19 +271,36 @@ export async function listRefunds(
   const read = await deps.unitOfWork.run<
     {
       readonly records: readonly RefundListRecord[];
-      readonly total: number;
+      readonly total: number | null;
+      readonly nextCursor: string | null;
       readonly counts: RefundListPage['counts'];
     },
     ReadFailure
   >(
     context.market,
     async () => {
-      const [records, total, counts] = await Promise.all([
+      if (paging.kind === 'prev-next') {
+        // One row more than asked tells whether a next page exists.
+        const [rows, counts] = await Promise.all([
+          deps.refunds.page(context.market, filter, sort, 0, paging.limit + 1, paging.after),
+          deps.refunds.countByState(context.market),
+        ]);
+        const records = rows.slice(0, paging.limit);
+        const last = records[records.length - 1];
+        const nextCursor =
+          rows.length > paging.limit && last !== undefined
+            ? encodeRefundCursor({ requestedAt: last.requestedAt, refundId: last.refundId })
+            : null;
+        return ok({ records, total: null, nextCursor, counts });
+      }
+      const { page, pageSize } = paging;
+      const [records, counts] = await Promise.all([
         deps.refunds.page(context.market, filter, sort, (page - 1) * pageSize, pageSize),
-        deps.refunds.count(context.market, filter),
         deps.refunds.countByState(context.market),
       ]);
-      return ok({ records, total, counts });
+      // A tab with no other filter has its count already; only a narrower filter counts again.
+      const total = tabTotal(filter, counts) ?? (await deps.refunds.count(context.market, filter));
+      return ok({ records, total, nextCursor: null, counts });
     },
     { readOnly: true },
   );
@@ -267,9 +326,23 @@ export async function listRefunds(
     })),
     counts: read.value.counts,
     total: read.value.total,
-    page,
-    pageSize,
+    page: paging.kind === 'pages' ? paging.page : null,
+    pageSize: paging.kind === 'pages' ? paging.pageSize : paging.limit,
+    nextCursor: read.value.nextCursor,
     searchCapped,
     searchScope,
   });
+}
+
+/**
+ * The total of a filter that is only a tab (a state, or nothing), read from the tab counts; null
+ * when the filter narrows further and must be counted.
+ */
+export function tabTotal(
+  filter: RefundListFilter,
+  counts: RefundListPage['counts'],
+): number | null {
+  const { state, ...rest } = filter;
+  if (Object.values(rest).some((value) => value !== null)) return null;
+  return state === null ? counts.pending + counts.succeeded + counts.failed : counts[state];
 }

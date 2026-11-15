@@ -356,6 +356,21 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
     expect(await idsOf({ sellerId, minAmount: smallGross + 1n })).toEqual([big.refundId]);
     expect(await idsOf({ sellerId, from: middle })).toEqual([big.refundId]);
     expect(await idsOf({ sellerId, from: start, to: middle })).toEqual([small.refundId]);
+
+    // Once the worker writes the refund into the seller ledger, it moves to Recorded.
+    const recorded = await db.unitOfWork.run(market, async () => {
+      await db.service.tx(market).orderingRefund.updateMany({
+        where: { marketId: market.marketId, id: small.refundId },
+        data: { ledgerRecordedAt: new Date(clock.now().epochMilliseconds) },
+      });
+      return ok(undefined);
+    });
+    if (!recorded.ok) throw new Error('could not record the ledger');
+    expect(await idsOf({ sellerId, ledger: 'recorded' })).toEqual([small.refundId]);
+    expect(await idsOf({ sellerId, ledger: 'waiting' })).toEqual([]);
+    expect(await idsOf({ sellerId, ledger: 'recorded', state: 'succeeded' })).toEqual([
+      small.refundId,
+    ]);
   });
 
   it('finds a refund by its id, its order, its seller order or its Stripe id', async () => {
@@ -432,6 +447,25 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
       ['view-order', 'copy-stripe-reference'],
       ['view-order', 'copy-stripe-reference'],
     ]);
+  });
+
+  it('walks Previous/Next pages newest request first with a keyset cursor', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const made = [];
+    for (let i = 0; i < 3; i += 1) made.push(await refunded(sellerId, 1, 'succeeded'));
+    const list = new AdminListRefunds(gate, {
+      unitOfWork: db.unitOfWork,
+      refunds: reader,
+      labels: new FakeLabels(),
+    });
+    const one = await list.execute(admin, { sellerId, limit: 2 });
+    if (!one.ok) throw new Error(one.error.code);
+    expect(one.value.total).toBeNull();
+    expect(one.value.rows.map((r) => r.refundId)).toEqual([made[2]!.refundId, made[1]!.refundId]);
+    const two = await list.execute(admin, { sellerId, limit: 2, cursor: one.value.nextCursor });
+    if (!two.ok) throw new Error(two.error.code);
+    expect(two.value.rows.map((r) => r.refundId)).toEqual([made[0]!.refundId]);
+    expect(two.value.nextCursor).toBeNull();
   });
 
   it("never shows another Market's refunds", async () => {

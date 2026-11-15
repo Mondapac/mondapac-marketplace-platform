@@ -3,6 +3,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { AdminRefundListReader } from '../application/ports/admin-refund-list.reader';
 import type {
+  RefundCursor,
   RefundListFilter,
   RefundListRecord,
   RefundSort,
@@ -93,7 +94,7 @@ function where(market: MarketContext, filter: RefundListFilter) {
             ...(filter.maxAmount === null ? {} : { lte: filter.maxAmount }),
           },
         }),
-    ...(and.length === 0 ? {} : { AND: and }),
+    AND: and,
   };
 }
 
@@ -120,9 +121,25 @@ export class PrismaAdminRefundListReader implements AdminRefundListReader {
     sort: RefundSort,
     offset: number,
     limit: number,
+    after: RefundCursor | null = null,
   ): Promise<readonly RefundListRecord[]> {
+    const base = where(market, filter);
     const rows = await this.prisma.tx(market).orderingRefund.findMany({
-      where: where(market, filter),
+      where:
+        after === null
+          ? base
+          : {
+              ...base,
+              AND: [
+                ...base.AND,
+                {
+                  OR: [
+                    { requestedAt: { lt: toDate(after.requestedAt) } },
+                    { requestedAt: toDate(after.requestedAt), id: { lt: after.refundId } },
+                  ],
+                },
+              ],
+            },
       select: SELECT,
       orderBy: orderBy(sort),
       skip: offset,

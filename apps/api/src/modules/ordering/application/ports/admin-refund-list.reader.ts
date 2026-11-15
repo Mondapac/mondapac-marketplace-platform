@@ -1,5 +1,6 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type {
+  RefundCursor,
   RefundListFilter,
   RefundListRecord,
   RefundSort,
@@ -14,13 +15,17 @@ export const ADMIN_REFUND_LIST_READER = Symbol('ADMIN_REFUND_LIST_READER');
  * ever sees the Market's own rows.
  */
 export interface AdminRefundListReader {
-  /** One page of the refunds matching the filter, in the sort's order (ties by id). */
+  /**
+   * One page of the refunds matching the filter, in the sort's order (ties by id). With `after`
+   * (Previous/Next paging, newest request first only) the page starts after that refund.
+   */
   page(
     market: MarketContext,
     filter: RefundListFilter,
     sort: RefundSort,
     offset: number,
     limit: number,
+    after?: RefundCursor | null,
   ): Promise<readonly RefundListRecord[]>;
   /** How many refunds match the filter. */
   count(market: MarketContext, filter: RefundListFilter): Promise<number>;

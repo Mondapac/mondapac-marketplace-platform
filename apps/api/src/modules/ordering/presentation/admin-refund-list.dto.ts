@@ -74,9 +74,26 @@ export class RefundListPageBody {
     description: "The Market's refunds per state, whatever the page or filter (the tab counts).",
   })
   counts!: RefundStateCountsBody;
-  @ApiProperty({ description: 'The refunds that match the filter.' }) total!: number;
-  @ApiProperty({ description: 'This page, from 1.' }) page!: number;
-  @ApiProperty({ description: 'Rows per page.' }) pageSize!: number;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'The refunds that match the filter; null on a Previous/Next page.',
+  })
+  total!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'This page, from 1; null on a Previous/Next page.',
+  })
+  page!: number | null;
+  @ApiProperty({ description: 'Rows per page (the `limit` on a Previous/Next page).' })
+  pageSize!: number;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Previous/Next paging: the `cursor` of the next page; null on the last one.',
+  })
+  nextCursor!: string | null;
   @ApiProperty({
     description:
       'True when `search` matched more than 200 customers or stores, so some are left out.',
@@ -126,6 +143,7 @@ export function refundListPageBody(page: RefundListPage): RefundListPageBody {
     total: page.total,
     page: page.page,
     pageSize: page.pageSize,
+    nextCursor: page.nextCursor,
     searchCapped: page.searchCapped,
     searchScope: page.searchScope,
   };

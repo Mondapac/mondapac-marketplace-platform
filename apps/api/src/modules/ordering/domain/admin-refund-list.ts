@@ -17,6 +17,12 @@ export type RefundLedgerFilter = 'waiting' | 'recorded';
 export const REFUND_SORT_KEYS = ['requested', 'settled', 'amount'] as const;
 export type RefundSortKey = (typeof REFUND_SORT_KEYS)[number];
 
+/** Where a Previous/Next page starts: after this refund, newest request first. */
+export interface RefundCursor {
+  readonly requestedAt: Temporal.Instant;
+  readonly refundId: Id<'Refund'>;
+}
+
 export interface RefundSort {
   readonly key: RefundSortKey;
   readonly direction: 'asc' | 'desc';
@@ -92,9 +98,14 @@ export interface RefundListRow extends RefundListRecord {
 export interface RefundListPage {
   readonly rows: readonly RefundListRow[];
   readonly counts: RefundStateCounts;
-  readonly total: number;
-  readonly page: number;
+  /**
+   * Page numbers (List paging `pages`): the total, the page and its size. Previous/Next
+   * (`prev-next`, or past row 10,000): total and page are null and `nextCursor` leads on.
+   */
+  readonly total: number | null;
+  readonly page: number | null;
   readonly pageSize: number;
+  readonly nextCursor: string | null;
   readonly searchCapped: boolean;
   readonly searchScope: 'customers-and-stores' | 'stores' | null;
 }
