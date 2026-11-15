@@ -375,11 +375,11 @@ describe('suggest a tag form', () => {
 });
 
 describe('seller nav', () => {
-  it('lists Tag suggestions under Catalogue for a seller who may view products', () => {
+  it('lists Tag suggestions under Requests for a seller who may view products', () => {
     const item = visibleNavItems(sellerNav, new Set(['catalog.own-product.view'])).find(
       (entry) => entry.id === 's_tag_suggestions',
     );
-    expect(item).toMatchObject({ href: '/tag-suggestions', group: 'catalogue' });
+    expect(item).toMatchObject({ href: '/tag-suggestions', group: 'requests' });
     expect(
       visibleNavItems(sellerNav, new Set<string>()).some(
         (entry) => entry.id === 's_tag_suggestions',

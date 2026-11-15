@@ -99,14 +99,16 @@
     "reviews": "Reviews",
     "earnings": "Earnings",
     "group": {
-      "orders": "Orders",
+      "requests": "Requests",
+      "sales": "Sales",
       "catalogue": "Catalogue",
-      "money": "Money"
+      "customers": "Customers",
+      "accounting": "Accounting"
     },
     "settings": "Settings",
     "import": "Import",
     "performance": "Performance",
-    "categories": "Shelves"
+    "categories": "Category proposals"
   },
   "home": {
     "title": "Dashboard",
