@@ -19,6 +19,12 @@ export type DocumentRowAction = (typeof DOCUMENT_ROW_ACTIONS)[number];
 export const DOCUMENT_SORT_KEYS = ['issued', 'amount'] as const;
 export type DocumentSortKey = (typeof DOCUMENT_SORT_KEYS)[number];
 
+/** Where a Previous/Next page starts: after this document, newest first. */
+export interface DocumentCursor {
+  readonly issuedAt: Temporal.Instant;
+  readonly documentId: string;
+}
+
 export interface DocumentSort {
   readonly key: DocumentSortKey;
   readonly direction: 'asc' | 'desc';
@@ -56,7 +62,10 @@ export interface DocumentListRecord {
   readonly total: Money;
   /** The tax inside `total`; null when a line was placed before its tax was recorded. */
   readonly tax: Money | null;
-  /** The delivery fee on a confirmation; the shipping part of a credit note. */
+  /**
+   * The delivery fee as the buyer paid it on a confirmation, and the shipping given back on a
+   * credit note; both tax included (the fee plus its tax where the price excluded it).
+   */
   readonly shipping: Money;
   /** Credit notes only: the refund and its reason. */
   readonly refundId: Id<'Refund'> | null;
@@ -80,9 +89,14 @@ export interface DocumentListRow extends DocumentListRecord {
 export interface DocumentListPage {
   readonly rows: readonly DocumentListRow[];
   readonly counts: DocumentKindCounts;
-  readonly total: number;
-  readonly page: number;
+  /**
+   * Page numbers (List paging `pages`): the total, the page and its size. Previous/Next
+   * (`prev-next`, or past row 10,000): total and page are null and `nextCursor` leads on.
+   */
+  readonly total: number | null;
+  readonly page: number | null;
   readonly pageSize: number;
+  readonly nextCursor: string | null;
   readonly searchCapped: boolean;
   readonly searchScope: 'customers-and-stores' | 'stores' | null;
 }

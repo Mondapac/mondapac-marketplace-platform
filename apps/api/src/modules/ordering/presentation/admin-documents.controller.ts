@@ -49,8 +49,9 @@ export class AdminDocumentsController {
   @ApiOperation({
     summary: "The Market's order confirmations or credit notes, newest first (admin)",
     description:
-      'Needs ordering.order.view. One kind per page. Page numbers with a total; page x pageSize ' +
-      'may not pass 10,000 (`too-deep`): narrow the filter instead.',
+      'Needs ordering.order.view. One kind per page. Follows the List paging setting: page ' +
+      'numbers with a total (page x pageSize may not pass 10,000, `too-deep`), or ' +
+      'Previous/Next with `cursor` and `limit`, which also reaches rows past 10,000.',
   })
   @ApiQuery({
     name: 'kind',
@@ -60,6 +61,18 @@ export class AdminDocumentsController {
   })
   @ApiQuery({ name: 'page', required: false, description: 'From 1; default 1.' })
   @ApiQuery({ name: 'pageSize', required: false, description: '1 to 100; default 25.' })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    description:
+      'Previous/Next paging (List paging prev-next, or past row 10,000): the nextCursor of the ' +
+      'page before. Newest first; not with page, pageSize, sort or direction.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Previous/Next paging: 1 to 100 rows; default 25.',
+  })
   @ApiQuery({ name: 'sort', required: false, enum: DOCUMENT_SORT_KEYS })
   @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
   @ApiQuery({
@@ -97,6 +110,8 @@ export class AdminDocumentsController {
       kind: query['kind'],
       page: parseWhole(query['page']),
       pageSize: parseWhole(query['pageSize']),
+      cursor: query['cursor'],
+      limit: parseWhole(query['limit']),
       sort: query['sort'],
       direction: query['direction'],
       q: query['q'],

@@ -3,11 +3,13 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { AdminDocumentListReader } from '../application/ports/admin-document-list.reader';
 import type {
+  DocumentCursor,
   DocumentKindCounts,
   DocumentListFilter,
   DocumentListRecord,
   DocumentSort,
 } from '../domain/admin-document-list';
+import { linesTax, shippingTaxOf } from '../domain/order';
 import type { RefundReason } from '../domain/refund';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
@@ -28,9 +30,11 @@ const CONFIRMATION_SELECT = {
   orderId: true,
   sellerId: true,
   totalAmount: true,
+  paidAt: true,
   shippingAmount: true,
   shippingTaxAmount: true,
-  order: { select: { accountId: true, currency: true, confirmedAt: true } },
+  shippingTaxInclusive: true,
+  order: { select: { accountId: true, currency: true } },
   lines: { select: { taxAmount: true } },
 } as const;
 
@@ -53,7 +57,11 @@ const CREDIT_NOTE_SELECT = {
   },
 } as const;
 
-/** Paid seller orders of the Market: their order confirmations. */
+/**
+ * Paid seller orders of the Market: their order confirmations. `paid_at` is set exactly when the
+ * order is confirmed, so this reads `ordering.seller_orders` alone over its paid-at partial index;
+ * only a customer search joins the order (for its account).
+ */
 function confirmationWhere(market: MarketContext, filter: DocumentListFilter) {
   const and: object[] = [];
   if (filter.reference !== null) {
@@ -63,24 +71,23 @@ function confirmationWhere(market: MarketContext, filter: DocumentListFilter) {
     and.push({
       OR: [
         { sellerId: { in: [...filter.parties.sellerIds] } },
-        { order: { accountId: { in: [...filter.parties.accountIds] } } },
+        {
+          order: {
+            marketId: market.marketId,
+            accountId: { in: [...filter.parties.accountIds] },
+          },
+        },
       ],
     });
   }
   return {
     marketId: market.marketId,
-    order: {
-      marketId: market.marketId,
-      status: 'confirmed',
-      ...(filter.from === null && filter.to === null
-        ? {}
-        : { confirmedAt: range(filter.from, filter.to) }),
-    },
+    paidAt: { not: null, ...range(filter.from, filter.to) },
     ...(filter.sellerId === null ? {} : { sellerId: filter.sellerId }),
     ...(filter.minAmount === null && filter.maxAmount === null
       ? {}
       : { totalAmount: amounts(filter.minAmount, filter.maxAmount) }),
-    ...(and.length === 0 ? {} : { AND: and }),
+    AND: and,
   };
 }
 
@@ -123,24 +130,40 @@ function creditNoteWhere(market: MarketContext, filter: DocumentListFilter) {
     ...(filter.minAmount === null && filter.maxAmount === null
       ? {}
       : { grossAmount: amounts(filter.minAmount, filter.maxAmount) }),
-    ...(and.length === 0 ? {} : { AND: and }),
+    AND: and,
   };
 }
 
-/** The tax of a paid seller order: its lines' and its delivery fee's, or null if one is unknown. */
+/**
+ * The tax of a paid seller order, by the same domain rules as the order page: its lines' frozen
+ * tax (null when a line was placed before tax was recorded) plus its delivery fee's.
+ */
 function confirmationTax(row: {
-  readonly shippingAmount: bigint;
   readonly shippingTaxAmount: bigint | null;
   readonly lines: readonly { readonly taxAmount: bigint | null }[];
 }): bigint | null {
-  let sum = 0n;
-  for (const line of row.lines) {
-    if (line.taxAmount === null) return null;
-    sum += line.taxAmount;
-  }
-  if (row.shippingTaxAmount === null) return row.shippingAmount === 0n ? sum : null;
-  return sum + row.shippingTaxAmount;
+  const lines = linesTax(row.lines);
+  return lines === null ? null : lines + shippingTaxOf({ shippingTax: row.shippingTaxAmount });
 }
+
+/** What the buyer paid for delivery, tax included: the fee, plus its tax where it was excluded. */
+function shippingGross(row: {
+  readonly shippingAmount: bigint;
+  readonly shippingTaxAmount: bigint | null;
+  readonly shippingTaxInclusive: boolean | null;
+}): bigint {
+  return row.shippingTaxInclusive === false && row.shippingTaxAmount !== null
+    ? row.shippingAmount + row.shippingTaxAmount
+    : row.shippingAmount;
+}
+
+/** Keyset: after `after`, newest first (issued time, then id). */
+const afterWhere = (field: 'paidAt' | 'issuedAt', after: DocumentCursor) => ({
+  OR: [
+    { [field]: { lt: toDate(after.issuedAt) } },
+    { [field]: toDate(after.issuedAt), id: { lt: after.documentId } },
+  ],
+});
 
 /** The admin Invoices list: order confirmations and credit notes, one kind per read. */
 export class PrismaAdminDocumentListReader implements AdminDocumentListReader {
@@ -152,12 +175,18 @@ export class PrismaAdminDocumentListReader implements AdminDocumentListReader {
     sort: DocumentSort,
     offset: number,
     limit: number,
+    after: DocumentCursor | null = null,
   ): Promise<readonly DocumentListRecord[]> {
     const tx = this.prisma.tx(market);
     const tie = { id: sort.direction };
     if (filter.kind === 'credit-note') {
       const rows = await tx.orderingCreditNote.findMany({
-        where: creditNoteWhere(market, filter),
+        where: (() => {
+          const base = creditNoteWhere(market, filter);
+          return after === null
+            ? base
+            : { ...base, AND: [...base.AND, afterWhere('issuedAt', after)] };
+        })(),
         select: CREDIT_NOTE_SELECT,
         orderBy:
           sort.key === 'amount'
@@ -182,20 +211,23 @@ export class PrismaAdminDocumentListReader implements AdminDocumentListReader {
       }));
     }
     const rows = await tx.orderingSellerOrder.findMany({
-      where: confirmationWhere(market, filter),
+      where: (() => {
+        const base = confirmationWhere(market, filter);
+        return after === null ? base : { ...base, AND: [...base.AND, afterWhere('paidAt', after)] };
+      })(),
       select: CONFIRMATION_SELECT,
       orderBy:
         sort.key === 'amount'
           ? [{ totalAmount: sort.direction }, tie]
-          : [{ order: { confirmedAt: sort.direction } }, tie],
+          : [{ paidAt: sort.direction }, tie],
       skip: offset,
       take: limit,
     });
     return rows.map((row) => {
       const currency = row.order.currency;
-      if (row.order.confirmedAt === null) {
-        // The WHERE keeps confirmed orders only, and a confirmed order always has the time.
-        throw new Error('ordering: a confirmed order without its confirmation time');
+      if (row.paidAt === null) {
+        // The WHERE keeps paid seller orders only.
+        throw new Error('ordering: a paid seller order without its payment time');
       }
       const tax = confirmationTax(row);
       return {
@@ -205,10 +237,10 @@ export class PrismaAdminDocumentListReader implements AdminDocumentListReader {
         sellerOrderId: row.id as Id<'SellerOrder'>,
         sellerId: row.sellerId as Id<'Seller'>,
         accountId: row.order.accountId as Id<'Account'>,
-        issuedAt: toInstant(row.order.confirmedAt),
+        issuedAt: toInstant(row.paidAt),
         total: { amount: row.totalAmount, currency },
         tax: tax === null ? null : { amount: tax, currency },
-        shipping: { amount: row.shippingAmount, currency },
+        shipping: { amount: shippingGross(row), currency },
         refundId: null,
         refundReason: null,
       };
@@ -226,10 +258,7 @@ export class PrismaAdminDocumentListReader implements AdminDocumentListReader {
     const tx = this.prisma.tx(market);
     const [orderConfirmations, creditNotes] = await Promise.all([
       tx.orderingSellerOrder.count({
-        where: {
-          marketId: market.marketId,
-          order: { marketId: market.marketId, status: 'confirmed' },
-        },
+        where: { marketId: market.marketId, paidAt: { not: null } },
       }),
       tx.orderingCreditNote.count({ where: { marketId: market.marketId } }),
     ]);

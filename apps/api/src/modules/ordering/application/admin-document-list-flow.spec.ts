@@ -16,6 +16,7 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
   documentRowActions,
+  type DocumentCursor,
   type DocumentListFilter,
   type DocumentListRecord,
   type DocumentSort,
@@ -34,18 +35,27 @@ const VIEW = 'ordering.order.view';
 
 class RecordingReader implements AdminDocumentListReader {
   records: DocumentListRecord[] = [];
-  asked: { filter: DocumentListFilter; sort: DocumentSort; offset: number; limit: number }[] = [];
+  asked: {
+    filter: DocumentListFilter;
+    sort: DocumentSort;
+    offset: number;
+    limit: number;
+    after?: DocumentCursor;
+  }[] = [];
+  counted = 0;
   page(
     _m: MarketContext,
     filter: DocumentListFilter,
     sort: DocumentSort,
     offset: number,
     limit: number,
+    after: DocumentCursor | null = null,
   ) {
-    this.asked.push({ filter, sort, offset, limit });
+    this.asked.push({ filter, sort, offset, limit, ...(after === null ? {} : { after }) });
     return Promise.resolve(this.records.slice(offset, offset + limit));
   }
   count() {
+    this.counted += 1;
     return Promise.resolve(this.records.length);
   }
   countByKind() {
@@ -123,7 +133,7 @@ describe.each(['AU', 'ZZ'] as const)('admin document list in market %s', (code) 
     expect(reader.asked).toEqual([]);
   });
 
-  it('reads order confirmations by default, newest first, with the kind counts', async () => {
+  it('reads order confirmations by default, newest first, with the tab count as the total', async () => {
     const { list, reader, context } = setup();
     reader.records = [record()];
     const result = await list.execute(context, {});
@@ -135,9 +145,18 @@ describe.each(['AU', 'ZZ'] as const)('admin document list in market %s', (code) 
       limit: 25,
     });
     expect(result.value).toMatchObject({
-      total: 1,
+      total: 7,
+      page: 1,
+      nextCursor: null,
       counts: { orderConfirmations: 7, creditNotes: 2 },
     });
+    expect(reader.counted).toBe(0);
+    const notes = await list.execute(context, { kind: 'credit-note' });
+    expect(notes.ok && notes.value.total).toBe(2);
+    // A narrower filter is counted.
+    const narrowed = await list.execute(context, { minAmount: '1' });
+    expect(narrowed.ok && narrowed.value.total).toBe(1);
+    expect(reader.counted).toBe(1);
     expect(result.value.rows[0]).toMatchObject({
       documentNumber: null,
       actions: ['view-order', 'download-order-document'],
@@ -203,6 +222,83 @@ describe.each(['AU', 'ZZ'] as const)('admin document list in market %s', (code) 
       'maxAmount:range',
     ]);
     expect(reader.asked).toEqual([]);
+  });
+
+  it('refuses the paging, sort and format fields it cannot read', async () => {
+    const { list, reader, context } = setup();
+    const result = await list.execute(context, {
+      pageSize: 101,
+      direction: 'up',
+      from: 'yesterday',
+      to: '2026-11-02',
+      minAmount: '-1',
+      maxAmount: '1.5',
+    });
+    expect(fieldsOf(result).map((f) => `${f.path}:${f.code}`)).toEqual([
+      'pageSize:range',
+      'direction:value',
+      'from:format',
+      'to:format',
+      'minAmount:format',
+      'maxAmount:format',
+    ]);
+    const deep = await list.execute(context, { page: 101, pageSize: 100 });
+    expect(fieldsOf(deep)).toEqual([{ path: 'page', code: 'too-deep' }]);
+    expect(reader.asked).toEqual([]);
+  });
+
+  it('walks Previous/Next pages newest first, past row 10,000, with no total', async () => {
+    const { list, reader, context } = setup();
+    const rows = [record(), record(), record()];
+    reader.records = rows;
+    const first = await list.execute(context, { kind: 'credit-note', limit: 2 });
+    if (!first.ok) throw new Error(first.error.code);
+    expect(first.value).toMatchObject({ total: null, page: null, pageSize: 2 });
+    expect(first.value.nextCursor).toBe(`${T0.epochMilliseconds}.${rows[1]!.documentId}`);
+    expect(reader.asked[0]).toMatchObject({
+      filter: { kind: 'credit-note' },
+      sort: { key: 'issued', direction: 'desc' },
+      offset: 0,
+      limit: 3,
+    });
+    reader.records = [rows[2]!];
+    const last = await list.execute(context, {
+      kind: 'credit-note',
+      cursor: first.value.nextCursor,
+      limit: 2,
+    });
+    expect(reader.asked[1]!.after).toEqual({ issuedAt: T0, documentId: rows[1]!.documentId });
+    expect(last.ok && last.value.nextCursor).toBeNull();
+    expect(reader.counted).toBe(0);
+
+    const refused = await list.execute(context, { cursor: 'x', limit: 0, page: 1 });
+    expect(fieldsOf(refused).map((f) => `${f.path}:${f.code}`)).toEqual([
+      'page:with-cursor',
+      'cursor:format',
+      'limit:range',
+    ]);
+  });
+
+  it('resolves the search through the owning modules', async () => {
+    const { list, reader, labels, context } = setup();
+    const sellerId = ids.next<'Seller'>();
+    labels.stores.set(sellerId, 'Amin Grocers');
+    const found = await list.execute(context, { search: 'amin' });
+    expect(found.ok && found.value.searchScope).toBe('customers-and-stores');
+    expect(reader.asked[0]!.filter.parties).toEqual({ accountIds: [], sellerIds: [sellerId] });
+  });
+
+  it('adds names; a failed lookup leaves them null and never fails the read', async () => {
+    const { list, reader, labels, context } = setup();
+    const row = record();
+    reader.records = [row];
+    labels.stores.set(row.sellerId, 'Halal Corner');
+    const named = await list.execute(context, {});
+    expect(named.ok && named.value.rows[0]!.storeName).toBe('Halal Corner');
+    labels.fail.add('stores');
+    labels.fail.add('customers');
+    const unnamed = await list.execute(context, {});
+    expect(unnamed.ok && unnamed.value.rows[0]).toMatchObject({ storeName: null, customer: null });
   });
 
   it('fails closed when the search cannot run', async () => {

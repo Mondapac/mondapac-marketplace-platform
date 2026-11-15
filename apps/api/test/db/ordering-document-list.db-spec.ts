@@ -148,8 +148,24 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
   const shippingTax = inclusive ? 50n : 75n;
   const total = inclusive ? 3300n + 550n : 3300n + 451n + 500n + 75n;
 
-  /** A paid order of one seller with one line of three units of 11.00 (or 1100). */
-  const paidOrder = async (sellerId: Id<'Seller'>, accountId = ids.next<'Account'>()) => {
+  /** The delivery fee as the buyer paid it: the fee, plus its tax where it was excluded. */
+  const shippingPaid = inclusive ? shipping : shipping + shippingTax;
+
+  /**
+   * A paid order of one seller with one line of `units` units of 11.00 (or 1100), three by
+   * default. `oldShipping`: placed before the delivery fee's tax was recorded (all three null).
+   */
+  const paidOrder = async (
+    sellerId: Id<'Seller'>,
+    accountId = ids.next<'Account'>(),
+    options: { units?: number; oldShipping?: boolean } = {},
+  ) => {
+    const units = options.units ?? 3;
+    const old = options.oldShipping === true;
+    const goods = 1100n * BigInt(units);
+    const taxOfLine = units === 3 ? lineTax : (inclusive ? 100n : 150n) * BigInt(units);
+    const feeTax = old ? 0n : shippingTax;
+    const orderTotal = inclusive ? goods + shipping : goods + taxOfLine + shipping + feeTax;
     const orderId = ids.next<'Order'>();
     const sellerOrderId = ids.next<'SellerOrder'>();
     const lineId = ids.next<'OrderLine'>();
@@ -160,7 +176,7 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
       status: 'pending-payment',
       cancelReason: null,
       paymentState: 'none',
-      total: money(total, currency),
+      total: money(orderTotal, currency),
       reservationId: ids.next<'Reservation'>(),
       stripeIdempotencyKey: `checkout-${orderId}`,
       stripeSessionId: `cs_${orderId.replaceAll('-', '')}`,
@@ -176,12 +192,12 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
         {
           id: sellerOrderId,
           sellerId,
-          subtotal: 3300n,
+          subtotal: goods,
           shipping,
-          shippingTaxRateBps: inclusive ? 1000 : 1500,
-          shippingTax,
-          shippingTaxInclusive: inclusive,
-          total,
+          shippingTaxRateBps: old ? null : inclusive ? 1000 : 1500,
+          shippingTax: old ? null : shippingTax,
+          shippingTaxInclusive: old ? null : inclusive,
+          total: orderTotal,
           fulfilment: 'to-ship',
           carrier: null,
           trackingRef: null,
@@ -203,14 +219,14 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
           sellerOrderId,
           offerId: ids.next<'Offer'>(),
           variantId: ids.next<'Variant'>(),
-          quantity: 3,
+          quantity: units,
           unitPrice: money(1100n, currency),
-          lineAmount: 3300n,
+          lineAmount: goods,
           taxInclusive: inclusive,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
           taxRateBps: inclusive ? 1000 : 1500,
-          taxAmount: lineTax,
+          taxAmount: taxOfLine,
           taxCategoryCode: inclusive ? 'taxable' : 'zz_standard',
         },
       ],
@@ -227,7 +243,7 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
       amount: order.total,
     });
     if (!confirmed.ok) throw new Error(`could not confirm: ${confirmed.error.code}`);
-    return { orderId, sellerOrderId, lineId, accountId };
+    return { orderId, sellerOrderId, lineId, accountId, total: orderTotal };
   };
 
   /** A refund of `units` units, ending as Stripe answers; the clock moves a minute after it. */
@@ -276,7 +292,8 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
       accountId: first.accountId,
       total: { amount: total, currency },
       tax: { amount: lineTax + shippingTax, currency },
-      shipping: { amount: shipping, currency },
+      // As paid: in a Market whose prices exclude tax, the fee plus its tax.
+      shipping: { amount: shippingPaid, currency },
       refundId: null,
       refundReason: null,
     });
@@ -317,7 +334,7 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
     const sellerB = ids.next<'Seller'>();
     const customer = ids.next<'Account'>();
     const start = clock.now();
-    const a = await paidOrder(sellerA, customer);
+    const a = await paidOrder(sellerA, customer, { units: 1 });
     clock.advance(Temporal.Duration.from({ minutes: 1 }));
     const middle = clock.now();
     const b = await paidOrder(sellerB);
@@ -329,12 +346,104 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
     expect((await idsOf({ ...both, from: start, to: middle })).map((r) => r.documentId)).toEqual([
       a.sellerOrderId,
     ]);
-    expect(await idsOf({ ...both, minAmount: total + 1n })).toEqual([]);
-    expect(await idsOf({ ...both, maxAmount: total })).toHaveLength(2);
+    expect(a.total).toBeLessThan(b.total);
+    expect(await idsOf({ ...both, minAmount: b.total + 1n })).toEqual([]);
+    expect((await idsOf({ ...both, minAmount: b.total })).map((r) => r.documentId)).toEqual([
+      b.sellerOrderId,
+    ]);
+    expect((await idsOf({ ...both, maxAmount: a.total })).map((r) => r.documentId)).toEqual([
+      a.sellerOrderId,
+    ]);
+    // The cheaper order was paid first: the amount sort and the issue sort disagree.
     expect(
-      (await idsOf(both, { key: 'amount', direction: 'asc' })).map((r) => r.documentId).sort(),
-    ).toEqual([a.sellerOrderId, b.sellerOrderId].sort());
+      (await idsOf(both, { key: 'amount', direction: 'asc' })).map((r) => r.documentId),
+    ).toEqual([a.sellerOrderId, b.sellerOrderId]);
+    expect(
+      (await idsOf(both, { key: 'amount', direction: 'desc' })).map((r) => r.documentId),
+    ).toEqual([b.sellerOrderId, a.sellerOrderId]);
     expect(await idsOf({ parties: { accountIds: [], sellerIds: [] } })).toEqual([]);
+  });
+
+  it('takes a confirmation tax by the order page rules, also before the fee tax was recorded', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const old = await paidOrder(sellerId, undefined, { oldShipping: true });
+    const [row] = await idsOf({ reference: old.sellerOrderId });
+    // No recorded fee tax counts as none (shippingTaxOf), never as an unknown tax.
+    expect(row).toMatchObject({
+      tax: { amount: lineTax, currency },
+      shipping: { amount: shipping, currency },
+      total: { amount: old.total, currency },
+    });
+  });
+
+  it('filters and sorts credit notes by issue time, amount, store and customer', async () => {
+    const sellerA = ids.next<'Seller'>();
+    const sellerB = ids.next<'Seller'>();
+    const customer = ids.next<'Account'>();
+    const start = clock.now();
+    const small = await refunded(sellerA, 1, 'succeeded', { accountId: customer });
+    const middle = clock.now();
+    const big = await refunded(sellerB, 2, 'succeeded');
+    const notes = await idsOf({
+      kind: 'credit-note',
+      parties: { accountIds: [customer], sellerIds: [sellerB] },
+    });
+    expect(notes.map((r) => r.refundId)).toEqual([big.refundId, small.refundId]);
+    const [smallNote, bigNote] = [notes[1]!, notes[0]!];
+    expect(smallNote.total.amount).toBeLessThan(bigNote.total.amount);
+    // The customer is reached through the refund's seller order and its order.
+    expect(
+      (
+        await idsOf({ kind: 'credit-note', parties: { accountIds: [customer], sellerIds: [] } })
+      ).map((r) => r.refundId),
+    ).toEqual([small.refundId]);
+    const scope = {
+      kind: 'credit-note' as const,
+      parties: { accountIds: [customer], sellerIds: [sellerB] },
+    };
+    expect((await idsOf({ ...scope, from: start, to: middle })).map((r) => r.refundId)).toEqual([
+      small.refundId,
+    ]);
+    expect(
+      (await idsOf({ ...scope, minAmount: bigNote.total.amount })).map((r) => r.refundId),
+    ).toEqual([big.refundId]);
+    expect(
+      (await idsOf({ ...scope, maxAmount: smallNote.total.amount })).map((r) => r.refundId),
+    ).toEqual([small.refundId]);
+    expect(
+      (await idsOf(scope, { key: 'amount', direction: 'desc' })).map((r) => r.refundId),
+    ).toEqual([big.refundId, small.refundId]);
+    expect(
+      (await idsOf(scope, { key: 'issued', direction: 'asc' })).map((r) => r.refundId),
+    ).toEqual([small.refundId, big.refundId]);
+  });
+
+  it('walks Previous/Next pages of both kinds with a keyset cursor', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const first = await refunded(sellerId, 1, 'succeeded');
+    const second = await refunded(sellerId, 1, 'succeeded');
+    const third = await refunded(sellerId, 1, 'succeeded');
+    const list = new AdminListDocuments(gate, {
+      unitOfWork: db.unitOfWork,
+      documents: reader,
+      labels: new FakeLabels(),
+    });
+    for (const kind of ['order-confirmation', 'credit-note'] as const) {
+      const pick = (r: { sellerOrderId: string }) => r.sellerOrderId;
+      const one = await list.execute(admin, { kind, sellerId, limit: 2 });
+      if (!one.ok) throw new Error(one.error.code);
+      expect(one.value.total).toBeNull();
+      expect(one.value.rows.map(pick)).toEqual([third.sellerOrderId, second.sellerOrderId]);
+      const two = await list.execute(admin, {
+        kind,
+        sellerId,
+        limit: 2,
+        cursor: one.value.nextCursor,
+      });
+      if (!two.ok) throw new Error(two.error.code);
+      expect(two.value.rows.map(pick)).toEqual([first.sellerOrderId]);
+      expect(two.value.nextCursor).toBeNull();
+    }
   });
 
   it('answers a page with its total, kind counts and row actions through the use case', async () => {

@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import {
+  type DocumentCursor,
   DOCUMENT_KINDS,
   DOCUMENT_SORT_KEYS,
   documentRowActions,
@@ -37,6 +38,13 @@ export interface DocumentListInput {
   readonly kind?: unknown;
   readonly page?: unknown;
   readonly pageSize?: unknown;
+  /**
+   * Previous/Next paging (List paging `prev-next`, and past row 10,000): `limit` rows from 1 to
+   * 100, after `cursor` (the `nextCursor` of the page before). Newest first only; no `page`,
+   * `pageSize`, `sort` or `direction` with it.
+   */
+  readonly cursor?: unknown;
+  readonly limit?: unknown;
   readonly sort?: unknown;
   readonly direction?: unknown;
   /** An order, seller order, credit note or refund id, exact. */
@@ -51,12 +59,29 @@ export interface DocumentListInput {
 
 const AMOUNT = /^[0-9]{1,15}$/;
 
+/** A cursor is `<issued-at ms>.<document id>`: opaque to callers, checked on the way in. */
+export const encodeDocumentCursor = (row: DocumentCursor): string =>
+  `${row.issuedAt.epochMilliseconds}.${row.documentId}`;
+
+function decodeCursor(value: unknown): DocumentCursor | null {
+  const match = typeof value === 'string' ? /^([0-9]{1,15})\.([0-9a-f-]{36})$/.exec(value) : null;
+  const id = match === null ? null : parseId(match[2]!);
+  if (match === null || id === null || !id.ok) return null;
+  return {
+    issuedAt: Temporal.Instant.fromEpochMilliseconds(Number(match[1])),
+    documentId: id.value,
+  };
+}
+
+type Paging =
+  | { readonly kind: 'pages'; readonly page: number; readonly pageSize: number }
+  | { readonly kind: 'prev-next'; readonly after: DocumentCursor | null; readonly limit: number };
+
 interface Parsed {
   readonly filter: DocumentListFilter;
   readonly search: string | null;
   readonly sort: DocumentSort;
-  readonly page: number;
-  readonly pageSize: number;
+  readonly paging: Paging;
 }
 
 function parse(input: DocumentListInput): Result<Parsed, ReadFailure> {
@@ -84,6 +109,24 @@ function parse(input: DocumentListInput): Result<Parsed, ReadFailure> {
     const given = whole(input.pageSize, 1, MAX_PAGE_SIZE);
     if (given === null) fields.push({ path: 'pageSize', code: 'range' });
     else pageSize = given;
+  }
+  // Previous/Next: asked for by a cursor or a limit; it walks newest first only.
+  const prevNext = input.cursor !== undefined || input.limit !== undefined;
+  let after: DocumentCursor | null = null;
+  let limit = DEFAULT_PAGE_SIZE;
+  if (prevNext) {
+    for (const path of ['page', 'pageSize', 'sort', 'direction'] as const) {
+      if (input[path] !== undefined) fields.push({ path, code: 'with-cursor' });
+    }
+    if (input.cursor !== undefined) {
+      after = decodeCursor(input.cursor);
+      if (after === null) fields.push({ path: 'cursor', code: 'format' });
+    }
+    if (input.limit !== undefined) {
+      const given = whole(input.limit, 1, MAX_PAGE_SIZE);
+      if (given === null) fields.push({ path: 'limit', code: 'range' });
+      else limit = given;
+    }
   }
   const key = oneOf('sort', input.sort, DOCUMENT_SORT_KEYS) ?? 'issued';
   const direction = oneOf('direction', input.direction, ['asc', 'desc'] as const) ?? 'desc';
@@ -139,16 +182,15 @@ function parse(input: DocumentListInput): Result<Parsed, ReadFailure> {
   if (minAmount !== null && maxAmount !== null && minAmount > maxAmount) {
     fields.push({ path: 'maxAmount', code: 'range' });
   }
-  if (fields.length === 0 && page * pageSize > MAX_PAGED_ROWS) {
+  if (fields.length === 0 && !prevNext && page * pageSize > MAX_PAGED_ROWS) {
     fields.push({ path: 'page', code: 'too-deep' });
   }
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
   return ok({
     filter: { kind, reference, sellerId, from, to, minAmount, maxAmount, parties: null },
     search,
-    sort: { key, direction },
-    page,
-    pageSize,
+    sort: prevNext ? { key: 'issued', direction: 'desc' } : { key, direction },
+    paging: prevNext ? { kind: 'prev-next', after, limit } : { kind: 'pages', page, pageSize },
   });
 }
 
@@ -164,7 +206,7 @@ export async function listDocuments(
 ): Promise<Result<DocumentListPage, ReadFailure>> {
   const parsed = parse(input ?? {});
   if (!parsed.ok) return parsed;
-  const { sort, page, pageSize } = parsed.value;
+  const { sort, paging } = parsed.value;
   let filter = parsed.value.filter;
   let searchCapped = false;
   let searchScope: DocumentListPage['searchScope'] = null;
@@ -193,19 +235,37 @@ export async function listDocuments(
   const read = await deps.unitOfWork.run<
     {
       readonly records: readonly DocumentListRecord[];
-      readonly total: number;
+      readonly total: number | null;
+      readonly nextCursor: string | null;
       readonly counts: DocumentListPage['counts'];
     },
     ReadFailure
   >(
     context.market,
     async () => {
-      const [records, total, counts] = await Promise.all([
+      if (paging.kind === 'prev-next') {
+        // One row more than asked tells whether a next page exists.
+        const [rows, counts] = await Promise.all([
+          deps.documents.page(context.market, filter, sort, 0, paging.limit + 1, paging.after),
+          deps.documents.countByKind(context.market),
+        ]);
+        const records = rows.slice(0, paging.limit);
+        const last = records[records.length - 1];
+        const nextCursor =
+          rows.length > paging.limit && last !== undefined
+            ? encodeDocumentCursor({ issuedAt: last.issuedAt, documentId: last.documentId })
+            : null;
+        return ok({ records, total: null, nextCursor, counts });
+      }
+      const { page, pageSize } = paging;
+      const [records, counts] = await Promise.all([
         deps.documents.page(context.market, filter, sort, (page - 1) * pageSize, pageSize),
-        deps.documents.count(context.market, filter),
         deps.documents.countByKind(context.market),
       ]);
-      return ok({ records, total, counts });
+      // A tab with no other filter has its count already; only a narrower filter counts again.
+      const total =
+        tabTotal(filter, counts) ?? (await deps.documents.count(context.market, filter));
+      return ok({ records, total, nextCursor: null, counts });
     },
     { readOnly: true },
   );
@@ -232,9 +292,20 @@ export async function listDocuments(
     })),
     counts: read.value.counts,
     total: read.value.total,
-    page,
-    pageSize,
+    page: paging.kind === 'pages' ? paging.page : null,
+    pageSize: paging.kind === 'pages' ? paging.pageSize : paging.limit,
+    nextCursor: read.value.nextCursor,
     searchCapped,
     searchScope,
   });
+}
+
+/** The total of a filter that is only a tab (a kind), read from the tab counts; else null. */
+export function tabTotal(
+  filter: DocumentListFilter,
+  counts: DocumentListPage['counts'],
+): number | null {
+  const { kind, ...rest } = filter;
+  if (Object.values(rest).some((value) => value !== null)) return null;
+  return kind === 'credit-note' ? counts.creditNotes : counts.orderConfirmations;
 }
