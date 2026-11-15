@@ -57,6 +57,17 @@ const PAYLOAD = {
 const NEW = { listKey: LIST, name: 'Lamb, active', visibility: 'me', payload: PAYLOAD };
 const ORDERS = 'admin.ordering.orders';
 
+it('maps the refusal codes of the saved-filter routes to their statuses', () => {
+  expect(SAVED_FILTER_STATUS).toEqual({
+    'validation.failed': 400,
+    'saved-filter.not-found': 404,
+    'saved-filter.name-taken': 409,
+    'saved-filter.limit-reached': 409,
+    'saved-filter.shared-limit-reached': 409,
+    'access.unavailable': 503,
+  });
+});
+
 describe('generic saved filters over HTTP (integration)', () => {
   let app: NestExpressApplication;
   let clock: FixedClock;
