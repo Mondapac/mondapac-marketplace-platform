@@ -81,7 +81,7 @@ export class PrismaShipToRetentionRepository implements ShipToRetentionRepositor
     const tx = this.prisma.tx(market);
     const until = toDate(cutoff);
     // The rule of `isShipToPurgeable`: at least one seller order, and every one delivered at or
-    // before the cutoff (a null delivered_at fails `lte`). An order is delivered after it was
+    // before the cutoff. An order is delivered after it was
     // confirmed, so confirmed_at <= cutoff bounds the scan (partial index on uncleared orders).
     const rows = await tx.orderingOrder.findMany({
       where: {
@@ -89,7 +89,13 @@ export class PrismaShipToRetentionRepository implements ShipToRetentionRepositor
         status: 'confirmed',
         shipToCiphertext: { not: null },
         confirmedAt: { lte: until },
-        sellerOrders: { some: {}, every: { deliveredAt: { lte: until } } },
+        // `every` is NOT EXISTS (... WHERE NOT cond): with SQL's null logic a bare `lte` would let
+        // a seller order with no delivery through (NOT (NULL <= x) is NULL), so the delivery is
+        // also required explicitly. The database spec holds an undelivered seller order back.
+        sellerOrders: {
+          some: {},
+          every: { fulfilment: 'delivered', deliveredAt: { not: null, lte: until } },
+        },
         ...(after === null
           ? {}
           : {
