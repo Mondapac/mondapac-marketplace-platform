@@ -35,6 +35,8 @@ function mount(canManage = true) {
 }
 const choose = (state: string) =>
   fireEvent.change(screen.getByLabelText('New state'), { target: { value: state } });
+const note = (text = 'Switching for launch') =>
+  fireEvent.change(screen.getByLabelText('Note for reviewers'), { target: { value: text } });
 const review = () => fireEvent.click(screen.getByRole('button', { name: 'Review change' }));
 const confirmDialog = (name: string) => screen.findByRole('dialog', { name });
 
@@ -159,6 +161,71 @@ describe('SettingsForm', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('asks for a note on a money change, counts it, and sends it', async () => {
+    call.mockResolvedValueOnce(ok(settings({ status: 'paused', reason: 'maintenance' })));
+    mount();
+    await screen.findByText('Never changed');
+    choose('active');
+    review();
+    expect(screen.getByText(/Write a note for the reviewers/)).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
+    note('Open it');
+    expect(screen.getByText('7 / 500')).toBeTruthy();
+    call.mockResolvedValueOnce(
+      ok({ ...settings({ status: 'active' }), request: { id: 'r1', number: 12 } }),
+    );
+    review();
+    await expectToast('Sent for review as SR-12', 'info');
+    expect(call).toHaveBeenLastCalledWith(
+      'PUT',
+      'wallet/admin/settings',
+      { status: 'active', expectedVersion: 0, note: 'Open it' },
+      'csrf',
+    );
+  });
+
+  it('shows no note field for a switch to paused or frozen, and sends none', async () => {
+    call.mockResolvedValueOnce(
+      ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00.000Z' })),
+    );
+    mount();
+    await screen.findByText(/Changed/);
+    expect(screen.getByLabelText('Note for reviewers')).toBeTruthy();
+    choose('frozen');
+    expect(screen.queryByLabelText('Note for reviewers')).toBeNull();
+    choose('paused');
+    expect(screen.queryByLabelText('Note for reviewers')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'maintenance' } });
+    review();
+    await confirmDialog('Pause the wallet?');
+    call.mockResolvedValueOnce(ok(settings({ status: 'paused', reason: 'maintenance' })));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause wallet' }));
+    await expectToast('Wallet is now paused.');
+    const body = call.mock.calls.at(-1)?.[2] as Record<string, unknown>;
+    expect('note' in body).toBe(false);
+  });
+
+  it('shows a 400 on note as an error on the note field', async () => {
+    call.mockResolvedValueOnce(
+      ok(settings({ status: 'paused', reason: 'maintenance', updatedAt: '2026-10-01T00:00:00Z' })),
+    );
+    mount();
+    await screen.findByText(/Changed/);
+    choose('active');
+    note();
+    call.mockResolvedValueOnce({
+      ok: false as const,
+      failure: {
+        status: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'note', code: 'required' }] },
+      },
+    });
+    review();
+    expect(await screen.findByText(/The note was refused/)).toBeTruthy();
+    expect(screen.queryByText('Choose a reason for this state.')).toBeNull();
+  });
+
   it('has a confirm for frozen and off with their own words', async () => {
     call.mockResolvedValueOnce(
       ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00.000Z' })),
@@ -171,6 +238,7 @@ describe('SettingsForm', () => {
     expect(await confirmDialog('Freeze the wallet?')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     choose('off');
+    note();
     review();
     const off = await confirmDialog('Turn the wallet off?');
     expect(off.textContent).toContain('use Paused instead');
@@ -189,6 +257,7 @@ describe('SettingsForm', () => {
     mount();
     await screen.findByText(/Changed/);
     choose('active');
+    note();
     call.mockResolvedValueOnce(
       ok(settings({ status: 'active', updatedAt: '2026-10-27T01:00:00.000Z' })),
     );
@@ -197,7 +266,7 @@ describe('SettingsForm', () => {
     expect(call).toHaveBeenLastCalledWith(
       'PUT',
       'wallet/admin/settings',
-      { status: 'active', expectedVersion: 0 },
+      { status: 'active', expectedVersion: 0, note: 'Switching for launch' },
       'csrf',
     );
   });
@@ -215,6 +284,7 @@ describe('SettingsForm', () => {
     mount();
     await screen.findByText(/Changed/);
     choose('off');
+    note();
     review();
     await confirmDialog('Turn the wallet off?');
     call.mockResolvedValueOnce(refused(status, code));
@@ -306,6 +376,7 @@ describe('SettingsForm', () => {
     mount();
     await screen.findByText(/Changed/);
     choose('off');
+    note();
     review();
     await confirmDialog('Turn the wallet off?');
     call.mockResolvedValueOnce({ ok: false, failure: { status: 0, code: STEP_UP_CANCELLED } });

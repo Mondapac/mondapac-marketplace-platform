@@ -2960,6 +2960,16 @@
       "unset": "not set"
     }
   },
+  "review-note": {
+    "label": "Note for reviewers",
+    "help": "Say why you are making this change. A reviewer reads it in Admin Inbox > System requests.",
+    "counter": "{count} / {max}",
+    "sent": "Sent for review as {number}",
+    "error": {
+      "required": "Write a note for the reviewers (1 to 500 characters).",
+      "rejected": "The note was refused. Write 1 to 500 characters."
+    }
+  },
   "commission": {
     "title": "Commission",
     "intro": "The share of each sale the platform keeps. A change applies to orders placed after it; earlier orders keep the rate they were placed at.",
@@ -8932,6 +8942,8 @@
     "title": "AI",
     "permission-view": "AI settings: view",
     "intro": "Turn AI features on or off for this Market and choose the model tier. Changes apply at once.",
+    "section-review": "Review",
+    "review-intro": "Changes here are reviewed. Write the note first, then change a setting; it is sent with that change.",
     "load-failed": "Couldn't load the AI settings.",
     "read-only": "You can view these settings but not change them.",
     "section-writer": "Write with AI",
@@ -8986,6 +8998,7 @@
     "read-only": "You can view this setting but not change it.",
     "intro": "How lists move between pages, in the admin and seller panels.",
     "section": "Paging",
+    "review-section": "Review",
     "version-defaults": "Not changed yet. The default is in force.",
     "version": "Version {version}",
     "saved": "Saved.",

@@ -2015,6 +2015,50 @@ describe('relay of the wallet and step-up routes', () => {
     );
   });
 
+  it('passes the note for reviewers of the two DELETEs that carry one, and only up to 500 characters', async () => {
+    const note = encodeURIComponent('Back to default & done\nnext line');
+    // The relay re-encodes the query, a space as "+", which the API reads as a space.
+    const sent = 'Back+to+default+%26+done%0Anext+line';
+    const rate = await run(
+      'DELETE',
+      `commission-payouts/admin/sellers/${id}/commission-rate?note=${note}&x=1`,
+    );
+    expect(rate.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/sellers/${id}/commission-rate?note=${sent}`,
+    );
+    const terms = await run(
+      'DELETE',
+      `commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3&reasonCode=policy&note=${note}`,
+    );
+    expect(terms.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3&reasonCode=policy&note=${sent}`,
+    );
+    const long = await run(
+      'DELETE',
+      `commission-payouts/admin/sellers/${id}/commission-rate?note=${'a'.repeat(501)}`,
+    );
+    expect(long.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/sellers/${id}/commission-rate`,
+    );
+  });
+
+  it('relays the body of a write with a note unchanged', async () => {
+    const body = JSON.stringify({ rateBps: 1200, note: 'Fee review' });
+    const path = `commission-payouts/admin/sellers/${id}/commission-rate`;
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method: 'PUT',
+        headers: sameOrigin,
+        body,
+      }),
+      path.split('/'),
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[1]?.body).toBe(body);
+  });
+
   it('does not relay a payout write the panel has no screen for', async () => {
     for (const [method, path] of [
       ['DELETE', `commission-payouts/admin/payouts/${id}`],
