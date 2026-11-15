@@ -143,6 +143,19 @@ describe('SuperList', () => {
       expect(html).toContain(text);
   });
 
+  it('shows a page title and a notice, and a page-made toolbar in place of the three tools', () => {
+    const html = list({
+      heading: { title: 'People', subtitle: '143 people' },
+      notice: <p>View only</p>,
+      toolbar: <fieldset>OWN TOOLS</fieldset>,
+    });
+    expect(html).toContain('<h1');
+    expect(html).toContain('People');
+    expect(html).toContain('View only');
+    expect(html).toContain('OWN TOOLS');
+    expect(html).not.toContain('>Columns<');
+  });
+
   it('shows the loading status before the first answer and the banner with Retry on a failure', () => {
     const loadingHtml = list({ ready: false, loading: true });
     expect(loadingHtml).toContain('Loading');

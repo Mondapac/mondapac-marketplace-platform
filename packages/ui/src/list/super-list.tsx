@@ -23,7 +23,14 @@ export interface SuperListTool {
 
 export interface SuperListProps {
   /** Above the tabs: what the list holds in words, then the bulk action menu and page actions. */
-  readonly heading: { readonly subtitle: string; readonly actions?: ReactNode };
+  readonly heading: {
+    /** A page title (h1) above the subtitle; omit it when the shell's top bar already names the page. */
+    readonly title?: string;
+    readonly subtitle: string;
+    readonly actions?: ReactNode;
+  };
+  /** A notice between the heading and the tabs (for example a view-only banner). */
+  readonly notice?: ReactNode;
   /** Built-in tabs with their counts, then the saved filters, and "Manage filters…". */
   readonly views: ListViewsBarProps;
   readonly search: {
@@ -35,6 +42,11 @@ export interface SuperListProps {
     /** Enter searches at once, without the typing pause. */
     readonly onSubmit: (value: string) => void;
   };
+  /**
+   * The tool buttons in place of `filter`, `sort` and `columns`, for a list whose phone layout
+   * opens them in a sheet. Give it the whole `fieldset`, disabled while `status.skeleton` shows.
+   */
+  readonly toolbar?: ReactNode;
   readonly filter?: SuperListTool;
   readonly sort?: SuperListTool;
   readonly columns?: SuperListTool;
@@ -98,8 +110,10 @@ function Tool({
  */
 export function SuperList({
   heading,
+  notice,
   views,
   search,
+  toolbar,
   filter,
   sort,
   columns,
@@ -120,12 +134,22 @@ export function SuperList({
   const hasTools = filter !== undefined || sort !== undefined || columns !== undefined;
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <p className="min-w-0 text-sm text-fg-muted">{heading.subtitle}</p>
+      <div
+        className={`flex flex-wrap justify-between gap-x-4 gap-y-3 ${heading.title === undefined ? 'items-center' : 'items-start'}`}
+      >
+        {heading.title === undefined ? (
+          <p className="min-w-0 text-sm text-fg-muted">{heading.subtitle}</p>
+        ) : (
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold">{heading.title}</h1>
+            <p className="min-h-5 text-sm text-fg-muted">{heading.subtitle}</p>
+          </div>
+        )}
         {heading.actions === undefined ? null : (
           <div className="flex flex-wrap items-center gap-2">{heading.actions}</div>
         )}
       </div>
+      {notice}
       <ListViewsBar {...views} />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <SearchField
@@ -140,7 +164,8 @@ export function SuperList({
           }}
         />
         {/* The real toolbar shows while the first page loads, but cannot act on rows yet. */}
-        {hasTools ? (
+        {toolbar !== undefined ? toolbar : null}
+        {toolbar === undefined && hasTools ? (
           <fieldset disabled={skeleton} className="flex min-w-0 items-center gap-2">
             {filter === undefined ? null : <Tool tool={filter} kind="filter" />}
             {sort === undefined ? null : <Tool tool={sort} kind="sort" />}

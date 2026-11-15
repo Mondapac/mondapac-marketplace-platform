@@ -375,7 +375,7 @@ describe('export', () => {
     );
     const click = stubDownload(fileOk);
     const dialog = await exportFromHeader();
-    await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(6));
+    await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(7));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
     await screen.findByText('143 products exported.');
     expect(params().get('columns')).toBe('product,offers,created');

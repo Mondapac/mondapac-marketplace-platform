@@ -1021,6 +1021,16 @@
         }
       },
       "export-button": "Export",
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}"
+      },
+      "row": {
+        "menu": {
+          "open": "Open",
+          "edit": "Edit"
+        }
+      },
       "select": {
         "page": "Select all products on this page",
         "page-short": "Select all on this page",

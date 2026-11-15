@@ -246,7 +246,15 @@ describe('seller product list', () => {
     mount();
     await screen.findByText('Olive oil 1L');
     const headers = screen.getAllByRole('columnheader').map((header) => header.textContent);
-    expect(headers).toEqual(['', 'Product', 'Status', 'Category', 'Product code', 'Last changed']);
+    expect(headers).toEqual([
+      '',
+      'Product',
+      'Status',
+      'Category',
+      'Product code',
+      'Last changed',
+      'Actions',
+    ]);
     const cells = within(screen.getAllByRole('row')[1]!);
     expect(cells.getByRole('link', { name: 'Olive oil 1L' }).getAttribute('href')).toBe(
       `/products/${ID}`,
@@ -507,6 +515,7 @@ describe('seller product list', () => {
       'Category',
       'Offers',
       'Last changed',
+      'Actions',
     ]);
     // Without the Code column, the code sits under the name.
     expect(screen.getByText('P00000184')).toBeTruthy();
@@ -529,6 +538,7 @@ describe('seller product list', () => {
       'Category',
       'Product type',
       'Created',
+      'Actions',
     ]);
     fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
     const panel = await screen.findByRole('dialog', { name: 'Columns' });
@@ -541,6 +551,18 @@ describe('seller product list', () => {
       'Category',
       'Product code',
       'Last changed',
+      'Actions',
+    ]);
+  });
+
+  it('offers the row Actions the server allows, in a menu', async () => {
+    serve(() => page([row({ actions: ['open', 'edit'] })]));
+    mount();
+    await screen.findByText('Olive oil 1L');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Olive oil 1L' }));
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Open',
+      'Edit',
     ]);
   });
 
@@ -690,7 +712,7 @@ describe('seller product list', () => {
         [...rows[0]!.querySelectorAll('[data-skeleton]')].map((node) =>
           node.getAttribute('data-skeleton'),
         ),
-      ).toEqual(['select', 'thumb', 'status', 'text', 'text', 'date']);
+      ).toEqual(['select', 'thumb', 'status', 'text', 'text', 'date', 'text']);
       expect(screen.getByRole('button', { name: 'Filter' }).closest('fieldset')?.disabled).toBe(
         true,
       );
