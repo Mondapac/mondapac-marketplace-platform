@@ -50,6 +50,10 @@ export function useDelayedLoading(
   // Read when a timer starts, so a caller passing a new options object never restarts the clocks.
   const timing = useRef({ delay, minVisible, slowAfter, stalledAfter });
   timing.current = { delay, minVisible, slowAfter, stalledAfter };
+  // The value of the latest render. A slow render (a long list arriving) can commit "done" after
+  // the show timer is due but before the effect that clears it runs; the timer then shows nothing.
+  const current = useRef(loading);
+  current.current = loading;
 
   useEffect(() => {
     const { delay, minVisible, slowAfter, stalledAfter } = timing.current;
@@ -63,6 +67,7 @@ export function useDelayedLoading(
       if (shownAt.current === null) {
         timers.push(
           setTimeout(() => {
+            if (!current.current) return;
             shownAt.current = Date.now();
             setVisible(true);
           }, delay),

@@ -2818,7 +2818,8 @@
     }
   },
   "load": {
-    "retry": "Try again"
+    "retry": "Try again",
+    "slow": "Still loading…"
   },
   "security": {
     "title": "Security",

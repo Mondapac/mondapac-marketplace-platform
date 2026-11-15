@@ -4841,7 +4841,8 @@
     }
   },
   "load": {
-    "retry": "Try again"
+    "retry": "Try again",
+    "slow": "Still loading…"
   },
   "payments": {
     "accounts": {
