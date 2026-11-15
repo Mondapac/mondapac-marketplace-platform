@@ -24,6 +24,10 @@ import {
   REFUND_LIMITS_MANAGE_PERMISSION,
   REFUND_LIMITS_VIEW_PERMISSION,
 } from '../refund-limits/types.ts';
+import {
+  SHIP_TO_RETENTION_MANAGE_PERMISSION,
+  SHIP_TO_RETENTION_VIEW_PERMISSION,
+} from '../ship-to-retention/types.ts';
 import { AI_MANAGE_PERMISSION, AI_VIEW_PERMISSION } from '../ai-settings/types.ts';
 import { SUPPORT_MANAGE_PERMISSION, SUPPORT_VIEW_PERMISSION } from './types.ts';
 
@@ -83,6 +87,13 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/account-deletion',
         view: [DELETION_VIEW_PERMISSION],
         manage: [DELETION_MANAGE_PERMISSION],
+      },
+      {
+        id: 'ship-to-retention',
+        labelKey: 'settings.hub.link.ship-to-retention',
+        href: '/settings/ship-to-retention',
+        view: [SHIP_TO_RETENTION_VIEW_PERMISSION],
+        manage: [SHIP_TO_RETENTION_MANAGE_PERMISSION],
       },
       {
         id: 'lists',

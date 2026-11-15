@@ -786,6 +786,24 @@ describe('relay allowlist for seller decisions', () => {
     expect((await read(`sellers/admin/${ID}/blog-access`)).status).toBe(404);
   });
 
+  it('relays the ship-to retention on GET and PUT only, with no query', async () => {
+    const path = 'ordering/admin/ship-to-retention';
+    const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 })));
+    const send = (method: string, target: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${target}`, { method, headers: sameOrigin }),
+        target.split('?')[0]!.split('/'),
+        fetcher,
+      );
+    expect((await send('GET', path)).status).toBe(200);
+    expect((await send('PUT', path)).status).toBe(200);
+    expect((await send('GET', `${path}?x=1`)).status).toBe(200);
+    expect(fetcher.mock.calls[2]?.[0] as string).toMatch(/ship-to-retention$/);
+    expect((await send('DELETE', path)).status).toBe(404);
+    expect((await send('POST', path)).status).toBe(404);
+  });
+
   it('relays the refund caps on their exact methods, with only the seller id and version in a query', async () => {
     const caps = 'ordering/admin/refund-limits';
     const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 })));

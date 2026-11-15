@@ -47,6 +47,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'tax/admin/strategies',
     // The caps on seller refunds (ordering): the Market default, and one seller's (query: `sellerId`).
     'ordering/admin/refund-limits',
+    // The Market's ship-to retention (ordering): whether and when delivery addresses are deleted.
+    'ordering/admin/ship-to-retention',
     'wallet/admin/credit-requests',
     // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
     // `limit`); one case is read by the page server and again after a decision.
@@ -176,6 +178,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Market default cap on seller refunds (ordering); `ordering.refund-limits.manage` is
     // protected, so it may ask a fresh two-step code.
     'ordering/admin/refund-limits',
+    // The Market's ship-to retention (ordering); `ordering.ship-to-retention.manage` is
+    // protected, so it may ask a fresh two-step code.
+    'ordering/admin/ship-to-retention',
     // The promotions Market switch and the first-order discount (promotions); a monthly budget
     // above the Market threshold asks a fresh two-step code. The zone thresholds are below.
     'promotions/admin/settings',
