@@ -2,7 +2,7 @@
 
 import { Banner, Button, Dialog, Select, TextAreaField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { When } from '../../shared/when.tsx';
 import { wordsFor } from './label.ts';
 import {
@@ -182,7 +182,14 @@ export function FullHistory({
   const [entries, setEntries] = useState<readonly HistoryEntry[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
   const [announce, setAnnounce] = useState('');
-  const top = useRef<HTMLDivElement>(null);
+  const area = useRef<HTMLDivElement>(null);
+  /** The row focus moves to once the list shows: the first entry just loaded, or the empty note. */
+  const [focusId, setFocusId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (focusId === null) return;
+    area.current?.querySelector<HTMLElement>(`[data-focus="${focusId}"]`)?.focus();
+  }, [focusId, entries]);
 
   async function load(before: string | null) {
     const query = before === null ? '' : `?beforeId=${encodeURIComponent(before)}`;
@@ -205,12 +212,13 @@ export function FullHistory({
     setEntries((current) => [...(before === null ? [] : (current ?? [])), ...fresh]);
     setNext(answer.body.nextBeforeId);
     setAnnounce(t('loaded', { count: fresh.length }));
-    // The button that was pressed leaves the page: focus moves to the list so it is not lost.
-    queueMicrotask(() => top.current?.focus());
+    // The button that was pressed leaves the page: focus moves to the first new row (or the note
+    // for an empty history) so it is not lost.
+    setFocusId(fresh[0]?.id ?? 'none');
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <div ref={area} className="flex flex-col gap-3">
       <p className="sr-only" role="status">
         {announce}
       </p>
@@ -232,13 +240,20 @@ export function FullHistory({
           </Button>
         </div>
       ) : entries.length === 0 ? (
-        <p className="text-fg-muted">{t('none')}</p>
+        <p data-focus="none" tabIndex={-1} className="text-fg-muted outline-none">
+          {t('none')}
+        </p>
       ) : (
         <>
-          <div ref={top} tabIndex={-1} className="outline-none">
+          <div>
             <ol className="flex flex-col gap-3">
               {entries.map((entry) => (
-                <li key={entry.id} className="text-sm">
+                <li
+                  key={entry.id}
+                  data-focus={entry.id}
+                  tabIndex={-1}
+                  className="text-sm outline-none"
+                >
                   <p>
                     {t('entry', {
                       from:

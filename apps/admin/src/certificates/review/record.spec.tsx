@@ -315,6 +315,10 @@ describe('full history', () => {
       't',
     );
     expect(await screen.findByText(/Created → Awaiting review · by the seller/)).toBeTruthy();
+    // Focus lands on the first row that was just loaded, not on the top of the list.
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toMatch(/Created → Awaiting review/),
+    );
     expect(screen.queryByRole('button', { name: 'Show older' })).toBeNull();
   });
 
@@ -329,9 +333,9 @@ describe('full history', () => {
       body: { entries: [], nextBeforeId: null },
     });
     open('Show history');
-    expect(
-      await screen.findByText('No history yet.', { selector: 'p.text-fg-muted' }),
-    ).toBeTruthy();
+    const none = await screen.findByText('No history yet.', { selector: 'p.text-fg-muted' });
+    expect(none).toBeTruthy();
+    await waitFor(() => expect(document.activeElement?.textContent).toBe('No history yet.'));
   });
 });
 
