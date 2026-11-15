@@ -124,9 +124,12 @@ describe('SellerReviews', () => {
     expect(field.value).toBe('Sorry about that');
     fireEvent.change(field, { target: { value: 'Fixed' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(screen.getByText('Fixed')).toBeTruthy());
+    // Wait for the saved reply, not for 'Fixed': the edit field still holds that text while the
+    // save is in flight, so waiting on it alone passed before the reply was replaced.
+    await waitFor(() => expect(screen.getByText(/edited/)).toBeTruthy());
+    expect(screen.queryByLabelText('Edit your public reply')).toBeNull();
+    expect(screen.getByText('Fixed')).toBeTruthy();
     expect(call.mock.calls[0]?.[0]).toBe('PATCH');
-    expect(screen.getByText(/edited/)).toBeTruthy();
     cleanup();
     mount(page([review({ reply: reply({ editableUntil: PAST }) })]));
     expect(screen.queryByRole('button', { name: 'Edit reply' })).toBeNull();

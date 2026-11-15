@@ -49,7 +49,8 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  * change, plan section 11; wallet: the Market wallet switch, customer wallet package 1; reviews: the Market
  * reviews switch, reviews package 1; promotions: the Market switch, the promotion changes, reviews and
  * settings, promotions package T1; customers: the account deletion setting change, package 5a;
- * settings: the change of an admin-editable Market setting, ADR-0026 and ADR-0042).
+ * settings: the change of an admin-editable Market setting, ADR-0026 and ADR-0042; system-requests:
+ * the review requests and the review policy, Admin Inbox › System requests).
  */
 const AUDITING_MODULES = [
   'AssistantModule',
@@ -70,6 +71,7 @@ const AUDITING_MODULES = [
   'SettingsModule',
   'ShippingModule',
   'StorefrontModule',
+  'SystemRequestsModule',
   'TaxModule',
   'WalletModule',
 ] as const;
@@ -513,6 +515,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['SettingsModule', 'settings'],
       ['ShippingModule', 'shipping'],
       ['StorefrontModule', 'storefront'],
+      ['SystemRequestsModule', 'system-requests'],
       ['TaxModule', 'tax'],
       ['WalletModule', 'wallet'],
     ]);
@@ -572,6 +575,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['ShippingModule', 'writer'],
       ['StorefrontModule', 'actions'],
       ['StorefrontModule', 'writer'],
+      ['SystemRequestsModule', 'actions'],
+      ['SystemRequestsModule', 'writer'],
       ['TaxModule', 'actions'],
       ['TaxModule', 'writer'],
       ['WalletModule', 'actions'],
@@ -691,6 +696,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'shipping', 'shipping.module.ts')}: registerAuditActions('shipping')`,
       `${path.join('modules', 'storefront', 'storefront.module.ts')}: auditWriterFor('storefront')`,
       `${path.join('modules', 'storefront', 'storefront.module.ts')}: registerAuditActions('storefront')`,
+      `${path.join('modules', 'system-requests', 'system-requests.module.ts')}: auditWriterFor('system-requests')`,
+      `${path.join('modules', 'system-requests', 'system-requests.module.ts')}: registerAuditActions('system-requests')`,
       `${path.join('modules', 'tax', 'tax.module.ts')}: auditWriterFor('tax')`,
       `${path.join('modules', 'tax', 'tax.module.ts')}: registerAuditActions('tax')`,
       `${path.join('modules', 'wallet', 'wallet.module.ts')}: auditWriterFor('wallet')`,

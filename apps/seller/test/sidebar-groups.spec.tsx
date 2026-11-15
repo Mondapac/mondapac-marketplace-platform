@@ -2,7 +2,7 @@
 // The grouped sidebar of both panels: independent open and close, the cookie, the active group,
 // keyboard movement and the icon rail.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { Sidebar, visibleNavItems, type NavConfig } from '@mondapac/ui';
+import { navSections, Sidebar, visibleNavItems, type NavConfig } from '@mondapac/ui';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sellerNav, sellerNavItems } from '../src/nav.ts';
 
@@ -176,15 +176,16 @@ describe('seller menu structure', () => {
   const WORK = [
     's_home',
     's_performance',
+    's_categories',
+    's_suggestions',
+    's_tag_suggestions',
     's_orders',
     's_products',
     's_offers',
     's_import',
-    's_suggestions',
-    's_categories',
-    's_tag_suggestions',
     's_reviews',
     's_earnings',
+    's_payout',
   ];
 
   it('shows daily work in the menu and Settings in the footer, and only setup before approval', () => {
@@ -205,11 +206,39 @@ describe('seller menu structure', () => {
 
   it('moves the set-once pages out of the menu, and personal Security out of the sidebar', () => {
     const all = sellerNav.items.map((item) => item.id);
-    for (const gone of ['s_stock', 's_store_profile', 's_payout', 's_team', 's_delivery']) {
+    for (const gone of ['s_stock', 's_store_profile', 's_team', 's_delivery']) {
       expect(all, gone).not.toContain(gone);
     }
     expect(sellerNav.items.some((item) => item.href === '/account/security')).toBe(false);
-    expect(sellerNav.groups?.map((group) => group.id)).toEqual(['orders', 'catalogue', 'money']);
+    expect(sellerNav.groups?.map((group) => group.id)).toEqual([
+      'requests',
+      'sales',
+      'catalogue',
+      'customers',
+      'accounting',
+    ]);
+  });
+
+  it('groups the items like the admin menu: Requests, Sales, Catalogue, Customers, Accounting', () => {
+    const everyKey = new Set(ALL);
+    const sections = navSections(sellerNav.groups, visibleNavItems(sellerNav, everyKey));
+    expect(
+      sections.map((section) =>
+        section.kind === 'group'
+          ? [section.group.id, section.items.map((item) => item.id)]
+          : section.item.id,
+      ),
+    ).toEqual([
+      's_home',
+      's_performance',
+      ['requests', ['s_categories', 's_suggestions', 's_tag_suggestions']],
+      's_orders',
+      ['catalogue', ['s_products', 's_offers', 's_import']],
+      's_reviews',
+      ['accounting', ['s_earnings', 's_payout']],
+      's_settings',
+      's_setup',
+    ]);
   });
 
   it('pins one Settings item to the footer for any settings view key', () => {
@@ -221,11 +250,13 @@ describe('seller menu structure', () => {
     for (const key of [
       'sellers.store-profile.view',
       'inventory.stock.view',
-      'payments.payout-account.view',
       'identity.team-member.view',
     ]) {
       expect(ids([key]), key).toContain('s_settings');
     }
+    // Payout account is its own menu item under Accounting (menu design v2), not a settings page.
+    expect(ids(['payments.payout-account.view'])).toContain('s_payout');
+    expect(ids(['payments.payout-account.view'])).not.toContain('s_settings');
   });
 
   it('hides Settings without a view key; manage keys and work keys alone do not show it', () => {

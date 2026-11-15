@@ -14,7 +14,7 @@ import { MarketRegistry } from '../../../../platform/market-config/market-regist
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import type { FeatureSetRecord } from '../ports/attribute-admin.reader';
-import type { SheetWriter } from '../ports/sheet-writer';
+import type { SheetWriter } from '../../../../platform/list-export/sheet-writer';
 import { PlatformImportTemplate } from './platform-import-template.use-case';
 
 // The product import template with a feature set (attributes package A9), on both Market fixtures.

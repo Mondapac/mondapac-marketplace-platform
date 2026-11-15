@@ -2,7 +2,6 @@ import { LinkButton, LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { ContentNoAccess } from '../../../src/content/content-no-access.tsx';
-import { ContentTabs } from '../../../src/content/content-tabs.tsx';
 import {
   NEW_PAGE_PATH,
   PAGE_CREATE_PERMISSION,
@@ -17,7 +16,7 @@ import { displayZone } from '../../../src/shared/format.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations('content');
-  return { title: t('title') };
+  return { title: t('pages.title') };
 }
 
 /** Content opens on Pages; a role that can read slides only goes straight to Slides. */
@@ -32,27 +31,18 @@ export default async function ContentPage() {
     if (permissionKeys.includes(SLIDE_READ_PERMISSION)) redirect(SLIDES_PATH);
     return <ContentNoAccess session={gate.session} />;
   }
-  const title = t('content.title');
+  const title = t('content.pages.title');
   return (
     <AdminShell session={gate.session} activeId="content" title={title}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">{title}</h1>
-          <p className="text-fg-muted">{t('content.intro')}</p>
+          <p className="text-fg-muted">{t('content.pages.intro')}</p>
         </div>
         {permissionKeys.includes(PAGE_CREATE_PERMISSION) ? (
           <LinkButton href={NEW_PAGE_PATH}>{t('content.pages.list.new')}</LinkButton>
         ) : null}
       </div>
-      <ContentTabs
-        active="pages"
-        permissionKeys={permissionKeys}
-        labels={{
-          nav: t('content.tabs.label'),
-          pages: t('content.tabs.pages'),
-          slides: t('content.tabs.slides'),
-        }}
-      />
       <PagesList
         canEdit={permissionKeys.includes(PAGE_EDIT_PERMISSION)}
         zone={displayZone(timezone)}

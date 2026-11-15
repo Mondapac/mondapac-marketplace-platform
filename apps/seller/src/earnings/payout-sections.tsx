@@ -20,6 +20,7 @@ import { resolveZone } from '../price/zone-time.ts';
 import { dateFormat } from '../shared/intl.ts';
 import type { OwnDispute } from '../disputes/types.ts';
 import { shortId } from '../orders/status.ts';
+import { PAYOUT_ACCOUNT_PATH } from '../payout/types.ts';
 import { formatMinor } from '../price/money.ts';
 import {
   BLOCK_REASONS,
@@ -306,7 +307,7 @@ function NextBody({
     next.slotAt === null ? null : shortInstant(next.slotAt, locale, next.zone ?? undefined);
   const account =
     canOpenAccount && (reason === 'account-not-ready' || reason === null) ? (
-      <a className="font-medium text-link underline" href="/payout-account">
+      <a className="font-medium text-link underline" href={PAYOUT_ACCOUNT_PATH}>
         {t('manage-account')}
       </a>
     ) : null;

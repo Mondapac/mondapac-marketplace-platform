@@ -1,7 +1,6 @@
 import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { ContentNoAccess } from '../../../../../src/content/content-no-access.tsx';
-import { ContentTabs } from '../../../../../src/content/content-tabs.tsx';
 import { placeFromSearch, orderPageHref } from '../../../../../src/content/slides/slide-order.ts';
 import { SlideOrderView } from '../../../../../src/content/slides/slide-order-view.tsx';
 import {
@@ -42,22 +41,13 @@ export default async function SlideOrderPage({
     scope: first(query.scope),
     scopeId: first(query.scopeId),
   });
-  const title = t('content.title');
+  const title = t('content.slides.order.page-title');
   return (
-    <AdminShell session={gate.session} activeId="content" title={title}>
+    <AdminShell session={gate.session} activeId="slides" title={title}>
       <div className="mb-4">
         <h1 className="text-2xl font-semibold">{title}</h1>
-        <p className="text-fg-muted">{t('content.intro')}</p>
+        <p className="text-fg-muted">{t('content.slides.intro')}</p>
       </div>
-      <ContentTabs
-        active="slides"
-        permissionKeys={permissionKeys}
-        labels={{
-          nav: t('content.tabs.label'),
-          pages: t('content.tabs.pages'),
-          slides: t('content.tabs.slides'),
-        }}
-      />
       <div className="mb-4">
         <SlidesViewSwitch
           active="order"

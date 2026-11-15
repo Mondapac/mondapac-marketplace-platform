@@ -4,6 +4,8 @@ import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { COMMISSION_PAYOUTS_FACADE, type CommissionPayoutsFacade } from '../../commission-payouts';
+import { CUSTOMERS_READ_FACADE, type CustomersReadFacade } from '../../customers';
+import { FacadeCustomerOrderHistory } from './facade-customer-order-history';
 import { PRICING_FACADE, type PricingFacade } from '../../pricing';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { WALLET_FACADE, type WalletFacade } from '../../wallet';
@@ -58,7 +60,6 @@ import { FacadeWalletCredit } from './facade-wallet-credit';
 import { PrismaCreditRepository } from './prisma-credit.repository';
 import { PrismaReferralRepository } from './prisma-referral.repository';
 import {
-  UnknownCustomerOrderHistory,
   UnknownDeliveredOrderFacts,
   UnknownReferralSignals,
   UnknownStoreFollows,
@@ -156,10 +157,13 @@ export const promotionsProviders: readonly FactoryProvider[] = [
     inject: [CATALOG_FACADE],
     useFactory: (catalog: CatalogFacade): SellerCatalogue => new FacadeSellerCatalogue(catalog),
   },
-  // Phase 3. The reads no module publishes yet are fail-closed adapters (see their file).
+  // Phase 3. The last-order read is `customers`' facade (customers phase 1); the reads no module
+  // publishes yet are fail-closed adapters (see their file).
   {
     provide: CUSTOMER_ORDER_HISTORY,
-    useFactory: (): CustomerOrderHistory => new UnknownCustomerOrderHistory(),
+    inject: [CUSTOMERS_READ_FACADE],
+    useFactory: (customers: CustomersReadFacade): CustomerOrderHistory =>
+      new FacadeCustomerOrderHistory(customers),
   },
   { provide: STORE_FOLLOWS, useFactory: (): StoreFollows => new UnknownStoreFollows() },
   {

@@ -1,0 +1,744 @@
+import { Logger } from '@nestjs/common';
+import { err, ok, parseId } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
+import type { ConsumedStepUp, StepUpRefusal } from '../../../platform/authz';
+import type { AppliedChange, RecordedRequest, RecordFailure } from '../contracts/recorder';
+import { SYSTEM_REQUESTS_DECIDE_HIGH_STEP_UP } from '../contracts/step-up';
+import {
+  AREA_DEFAULTS,
+  DEFAULT_REVIEW_DUE_DAYS,
+  higherRisk,
+  isPolicyArea,
+  isRisk,
+  REVIEW_AREAS,
+  REVIEW_POLICY_POLICY,
+  type AreaPolicy,
+  type PolicyArea,
+  type ReviewArea,
+  type Risk,
+} from '../domain/areas';
+import { RequestApproved, RequestCommented, RequestOpened, RequestReverted } from '../domain/audit';
+import {
+  actionsFor,
+  checkText,
+  isChangeValues,
+  isOverdue,
+  isSubjectRef,
+  isSubjectKind,
+  MAX_COMMENT,
+  MAX_NOTE,
+  MAX_REASON,
+  sameValues,
+  type ChangeValues,
+  type RequestAction,
+  type SystemRequest,
+  type Viewer,
+} from '../domain/request';
+import type { ActivityRecord } from './ports/request.repository';
+import { REVIEW_KEYS } from './review-keys';
+import type { SystemRequestsDependencies } from './system-requests-dependencies';
+
+// System requests (Admin Inbox › System requests; owner decisions of 15 Nov 2026). A change in a
+// reviewed area goes live at once and opens a request that keeps the values before and after.
+// Another admin who holds the area's review key approves it (it stays live) or rejects it (the
+// owning module restores the value before, in the same unit, only if nobody changed it since).
+// The author never approves or rejects their own change, and may withdraw it (the same revert).
+// High-risk decisions spend a fresh admin step-up proof. There is no expiry: an open request past
+// its review date is overdue. Every write is refused in an acting-as session and audited.
+
+const logger = new Logger('SystemRequestsFlow');
+
+export interface FieldIssue {
+  readonly path: string;
+  readonly code: string;
+}
+
+export type SystemRequestsFailure =
+  | { readonly code: 'access.denied' }
+  | { readonly code: 'access.unavailable' }
+  | { readonly code: 'validation.failed'; readonly fields: readonly FieldIssue[] }
+  | { readonly code: 'second-factor.required'; readonly actionKey: string }
+  | { readonly code: 'second-factor.enrolment-required'; readonly actionKey: string }
+  | { readonly code: 'system-requests.not-found' }
+  /** The request was already approved or reverted. */
+  | { readonly code: 'system-requests.decided' }
+  /** Maker-checker: the author cannot approve or reject their own change. */
+  | { readonly code: 'system-requests.own-request' }
+  /** Only the author withdraws a change. */
+  | { readonly code: 'system-requests.not-author' }
+  /** The caller does not hold the area's review key. */
+  | { readonly code: 'system-requests.not-reviewer' }
+  /**
+   * The subject changed again after this request: reverting would undo the later change too.
+   * `newerRequestId` names the later request when one was opened.
+   */
+  | {
+      readonly code: 'system-requests.changed-since';
+      readonly newerRequestId: Id<'SystemRequest'> | null;
+    }
+  /** The subject no longer exists; there is nothing to restore. */
+  | { readonly code: 'system-requests.subject-gone' }
+  /** No module restores this kind of change in this build. */
+  | { readonly code: 'system-requests.revert-unavailable' }
+  /** Bulk approve takes low-risk requests only. */
+  | { readonly code: 'system-requests.not-low-risk' }
+  /** Another admin changed the policy first; the page reloads. */
+  | { readonly code: 'system-requests.policy-conflict' };
+
+const invalid = (fields: readonly FieldIssue[]): SystemRequestsFailure => ({
+  code: 'validation.failed',
+  fields,
+});
+
+export function isActingAs(context: CallContext): boolean {
+  const actor = context.actor;
+  if (!Object.hasOwn(actor, 'actingAs')) return false;
+  const marker = (actor as { readonly actingAs?: unknown }).actingAs;
+  return marker !== null && marker !== undefined;
+}
+
+/** The signed-in admin acting as themselves, or null (reads and writes alike). */
+export function signedInAdmin(context: CallContext): Id<'Account'> | null {
+  const actor = context.actor;
+  if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAs(context)) {
+    return null;
+  }
+  return actor.accountId;
+}
+
+export const requestIdOf = (value: unknown): Id<'SystemRequest'> | null => {
+  if (typeof value !== 'string') return null;
+  const parsed = parseId(value);
+  return parsed.ok ? (parsed.value as Id<'SystemRequest'>) : null;
+};
+
+/** identity's refusal of the step-up, as these use cases answer it; anything else stays closed. */
+export function stepUpFailure(refusal: StepUpRefusal): SystemRequestsFailure {
+  if (
+    refusal.code === 'second-factor.required' ||
+    refusal.code === 'second-factor.enrolment-required'
+  ) {
+    return { code: refusal.code, actionKey: refusal.actionKey };
+  }
+  return { code: refusal.code === 'access.unavailable' ? 'access.unavailable' : 'access.denied' };
+}
+
+/**
+ * The areas whose review key the caller holds, asked of the authorisation check (one call per
+ * distinct key, outside any unit). A failed check fails closed: the area is not reviewable.
+ */
+export async function reviewableAreas(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+): Promise<ReadonlySet<ReviewArea>> {
+  const answers = new Map<string, boolean>();
+  const areas = new Set<ReviewArea>();
+  for (const area of REVIEW_AREAS) {
+    const key = REVIEW_KEYS[area];
+    let allowed = answers.get(key);
+    if (allowed === undefined) {
+      try {
+        const decision = await deps.authorisation.check(context, {
+          name: 'system-requests.review-area',
+          rule: { kind: 'permissions', allOf: [key] },
+        });
+        allowed = decision.allowed;
+      } catch (error) {
+        logger.error({
+          msg: 'system-requests.review-key-check-failed',
+          error: error instanceof Error ? error.name : 'unknown',
+          marketId: context.market.marketId,
+          correlationId: context.correlationId,
+        });
+        allowed = false;
+      }
+      answers.set(key, allowed);
+    }
+    if (allowed) areas.add(area);
+  }
+  return areas;
+}
+
+/** Whether the caller holds the review key of one area (fails closed). */
+async function reviews(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  area: ReviewArea,
+): Promise<boolean> {
+  try {
+    const decision = await deps.authorisation.check(context, {
+      name: 'system-requests.review-area',
+      rule: { kind: 'permissions', allOf: [REVIEW_KEYS[area]] },
+    });
+    return decision.allowed;
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Opening a request (in an open unit)
+
+/** The policy of an area in the Market, in the open unit: the stored row or the default. */
+export async function policyInUnit(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  area: ReviewArea,
+): Promise<AreaPolicy> {
+  if (area === 'review-policy') return REVIEW_POLICY_POLICY;
+  const row = await deps.policy.area(context.market, area);
+  return row === null ? AREA_DEFAULTS[area] : { enabled: row.enabled, risk: row.risk };
+}
+
+/** The Market's review period in days, in the open unit. */
+async function dueDaysInUnit(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+): Promise<number> {
+  const row = await deps.policy.dueDays(context.market);
+  return row?.reviewDueDays ?? DEFAULT_REVIEW_DUE_DAYS;
+}
+
+export const dueAfter = (appliedAt: Temporal.Instant, days: number): Temporal.Instant =>
+  appliedAt.add({ hours: days * 24 });
+
+export interface ChangeToOpen {
+  readonly area: ReviewArea;
+  readonly subjectKind: string;
+  readonly subjectRef: string;
+  readonly before: ChangeValues;
+  readonly after: ChangeValues;
+  /** Checked already. */
+  readonly note: string;
+  readonly risk?: Risk;
+}
+
+/**
+ * Opens the review of a change already written in the open unit; nothing when the area is not
+ * reviewed in the Market (the review policy itself always is). The caller is a signed-in admin.
+ */
+export async function openInUnit(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  admin: Id<'Account'>,
+  change: ChangeToOpen,
+): Promise<RecordedRequest | null> {
+  const policy = await policyInUnit(deps, context, change.area);
+  if (!policy.enabled) return null;
+  const risk = change.risk === undefined ? policy.risk : higherRisk(policy.risk, change.risk);
+  const now = deps.clock.now();
+  const reviewDueAt = dueAfter(now, await dueDaysInUnit(deps, context));
+  const id = deps.ids.next<'SystemRequest'>();
+  const opened = await deps.requests.open(
+    context.market,
+    {
+      id,
+      area: change.area,
+      subjectKind: change.subjectKind,
+      subjectRef: change.subjectRef,
+      risk,
+      before: change.before,
+      after: change.after,
+      note: change.note,
+      requestedBy: admin,
+      appliedAt: now,
+      reviewDueAt,
+    },
+    deps.ids.next<'SystemRequestActivity'>(),
+  );
+  await deps.audit.record(
+    context,
+    RequestOpened.entry(id, {
+      after: {
+        number: opened.number,
+        area: change.area,
+        risk,
+        reviewDueAt,
+        supersedes: opened.superseded.slice(0, 10),
+      },
+    }),
+  );
+  return { id, number: opened.number, risk, reviewDueAt };
+}
+
+/**
+ * `SystemRequestRecorder.openReview`: checks what the owning module hands over and opens the review
+ * in the caller's open unit. A malformed kind, key or value, an area outside the policy areas,
+ * or a kind no module can revert is a programming error of the caller: it throws, and the
+ * caller's unit rolls back. A missing note is the admin's: `validation.failed` on `note`.
+ */
+export async function recordAppliedChange(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  change: AppliedChange,
+): Promise<Result<RecordedRequest | null, RecordFailure>> {
+  if (!isPolicyArea(change?.area)) throw new TypeError('system-requests: unknown area');
+  if (!isSubjectKind(change.subjectKind)) throw new TypeError('system-requests: bad subject kind');
+  if (change.subjectKind.startsWith('system-requests.')) {
+    throw new TypeError('system-requests: the review policy records its own changes');
+  }
+  if (!isSubjectRef(change.subjectRef)) throw new TypeError('system-requests: bad subject key');
+  if (!isChangeValues(change.before) || !isChangeValues(change.after)) {
+    throw new TypeError('system-requests: values must be a plain JSON object (see isChangeValues)');
+  }
+  if (change.risk !== undefined && !isRisk(change.risk)) {
+    throw new TypeError('system-requests: unknown risk');
+  }
+  const registered = deps.reverters.find(change.subjectKind);
+  if (registered === null) {
+    throw new TypeError(`system-requests: no reverter registered for ${change.subjectKind}`);
+  }
+  if (registered.area !== change.area) {
+    throw new TypeError(
+      `system-requests: ${change.subjectKind} is reviewed in ${registered.area}, not ${change.area}`,
+    );
+  }
+  const admin = signedInAdmin(context);
+  if (admin === null) return err({ code: 'access.denied' });
+  const note = checkText(change.note, MAX_NOTE);
+  if (!note.ok)
+    return err({ code: 'validation.failed', fields: [{ path: 'note', code: note.code }] });
+  if (sameValues(change.before, change.after)) return ok(null);
+  return ok(
+    await openInUnit(deps, context, admin, {
+      area: change.area,
+      subjectKind: change.subjectKind,
+      subjectRef: change.subjectRef,
+      before: change.before,
+      after: change.after,
+      note: note.text,
+      ...(change.risk === undefined ? {} : { risk: change.risk }),
+    }),
+  );
+}
+
+/** `SystemRequestRecorder.areaPolicy`: a read-only unit of its own; the default on a failure. */
+export async function areaPolicyOf(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  area: PolicyArea,
+): Promise<AreaPolicy> {
+  try {
+    const read = await deps.unitOfWork.run(
+      context.market,
+      async () => ok(await policyInUnit(deps, context, area)),
+      { readOnly: true },
+    );
+    return read.ok ? read.value : AREA_DEFAULTS[area];
+  } catch {
+    logger.warn({
+      msg: 'system-requests.policy-read-fell-back-to-default',
+      area,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    return AREA_DEFAULTS[area];
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Views
+
+export interface ActivityView {
+  readonly id: Id<'SystemRequestActivity'>;
+  readonly kind: ActivityRecord['kind'];
+  readonly actor: Id<'Account'>;
+  readonly at: Temporal.Instant;
+  readonly body: string | null;
+}
+
+export interface RequestView extends Omit<SystemRequest, 'before' | 'after'> {
+  /**
+   * The values before and after, for the author and the area's reviewers only; null for any
+   * other admin who sees the queue (Hassan L2: a module's values stay with its reviewers).
+   */
+  readonly before: ChangeValues | null;
+  readonly after: ChangeValues | null;
+  readonly overdue: boolean;
+  /** The key a reviewer of this request holds. */
+  readonly reviewPermission: string;
+  readonly actions: readonly RequestAction[];
+}
+
+export interface RequestDetailView extends RequestView {
+  readonly activity: readonly ActivityView[];
+}
+
+export const requestView = (
+  request: SystemRequest,
+  viewer: Viewer,
+  now: Temporal.Instant,
+): RequestView => {
+  const shown = request.requestedBy === viewer.accountId || viewer.reviews.has(request.area);
+  return {
+    ...request,
+    before: shown ? request.before : null,
+    after: shown ? request.after : null,
+    overdue: isOverdue(request, now),
+    reviewPermission: REVIEW_KEYS[request.area],
+    actions: actionsFor(request, viewer),
+  };
+};
+
+/** `ViewSystemRequest`: one request with its history and the caller's actions. */
+export async function viewRequest(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  input: { readonly requestId: unknown },
+): Promise<Result<RequestDetailView, SystemRequestsFailure>> {
+  const admin = signedInAdmin(context);
+  if (admin === null) return err({ code: 'access.denied' });
+  const id = requestIdOf(input?.requestId);
+  if (id === null) return err(invalid([{ path: 'requestId', code: 'format' }]));
+  const areas = await reviewableAreas(deps, context);
+  const now = deps.clock.now();
+  return deps.unitOfWork.run<RequestDetailView, SystemRequestsFailure>(
+    context.market,
+    async () => {
+      const request = await deps.requests.find(context.market, id);
+      if (request === null) return err({ code: 'system-requests.not-found' });
+      const activity = await deps.requests.activity(context.market, id);
+      return ok({
+        ...requestView(request, { accountId: admin, reviews: areas }, now),
+        activity: activity.map((line) => ({ ...line })),
+      });
+    },
+    { readOnly: true },
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Comments and decisions
+
+/** `CommentOnSystemRequest`: anyone who sees the queue comments, whatever the request's status. */
+export async function commentOnRequest(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  input: { readonly requestId: unknown; readonly body: unknown },
+): Promise<Result<ActivityView, SystemRequestsFailure>> {
+  const admin = signedInAdmin(context);
+  if (admin === null) return err({ code: 'access.denied' });
+  const fields: FieldIssue[] = [];
+  const id = requestIdOf(input?.requestId);
+  if (id === null) fields.push({ path: 'requestId', code: 'format' });
+  const body = checkText(input?.body, MAX_COMMENT);
+  if (!body.ok) fields.push({ path: 'body', code: body.code });
+  if (fields.length > 0 || id === null || !body.ok) return err(invalid(fields));
+  const now = deps.clock.now();
+  return deps.unitOfWork.run<ActivityView, SystemRequestsFailure>(context.market, async () => {
+    const request = await deps.requests.find(context.market, id);
+    if (request === null) return err({ code: 'system-requests.not-found' });
+    const line: ActivityRecord = {
+      id: deps.ids.next<'SystemRequestActivity'>(),
+      kind: 'commented',
+      actor: admin,
+      at: now,
+      body: body.text,
+    };
+    const commentCount = await deps.requests.addComment(context.market, id, line);
+    await deps.audit.record(context, RequestCommented.entry(id, { after: { commentCount } }));
+    return ok(line);
+  });
+}
+
+type DecisionKind = 'approve' | 'reject' | 'withdraw';
+
+interface DecisionInput {
+  readonly requestId: unknown;
+  readonly reason?: unknown;
+}
+
+/**
+ * The checks every decision shares, before its unit: the caller, the id, the reason (reject and
+ * withdraw), and the area's review key (approve and reject), read from a first look at the row.
+ * The unit checks the row again once it is locked.
+ */
+async function prepareDecision(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  kind: DecisionKind,
+  input: DecisionInput,
+): Promise<
+  Result<
+    {
+      readonly admin: Id<'Account'>;
+      readonly id: Id<'SystemRequest'>;
+      readonly reason: string | null;
+    },
+    SystemRequestsFailure
+  >
+> {
+  const admin = signedInAdmin(context);
+  if (admin === null) return err({ code: 'access.denied' });
+  const fields: FieldIssue[] = [];
+  const id = requestIdOf(input?.requestId);
+  if (id === null) fields.push({ path: 'requestId', code: 'format' });
+  let reason: string | null = null;
+  if (kind !== 'approve') {
+    const checked = checkText(input?.reason, MAX_REASON);
+    if (checked.ok) reason = checked.text;
+    else fields.push({ path: 'reason', code: checked.code });
+  }
+  if (fields.length > 0 || id === null) return err(invalid(fields));
+  if (kind === 'withdraw') return ok({ admin, id, reason });
+  const seen = await deps.unitOfWork.run<SystemRequest | null, SystemRequestsFailure>(
+    context.market,
+    async () => ok(await deps.requests.find(context.market, id)),
+    { readOnly: true },
+  );
+  if (!seen.ok) return seen;
+  if (seen.value === null) return err({ code: 'system-requests.not-found' });
+  // The area never changes (a column the application cannot update), so the first look is safe.
+  if (!(await reviews(deps, context, seen.value.area))) {
+    return err({ code: 'system-requests.not-reviewer' });
+  }
+  return ok({ admin, id, reason });
+}
+
+/** The locked open request `admin` may decide this way, or the refusal. */
+async function decidable(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  kind: DecisionKind,
+  admin: Id<'Account'>,
+  id: Id<'SystemRequest'>,
+): Promise<Result<SystemRequest, SystemRequestsFailure>> {
+  const request = await deps.requests.findForUpdate(context.market, id);
+  if (request === null) return err({ code: 'system-requests.not-found' });
+  if (request.status !== 'open') return err({ code: 'system-requests.decided' });
+  const own = request.requestedBy === admin;
+  if (kind === 'withdraw' && !own) return err({ code: 'system-requests.not-author' });
+  if (kind !== 'withdraw' && own) return err({ code: 'system-requests.own-request' });
+  return ok(request);
+}
+
+/** Spends the step-up proof of a high-risk decision; nothing to spend below high. */
+async function spendIfHigh(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  request: SystemRequest,
+): Promise<Result<ConsumedStepUp | null, SystemRequestsFailure>> {
+  if (request.risk !== 'high') return ok(null);
+  const spent = await deps.stepUp.consume(context, SYSTEM_REQUESTS_DECIDE_HIGH_STEP_UP);
+  return spent.ok ? ok(spent.value) : err(stepUpFailure(spent.error));
+}
+
+const proofFields = (proof: ConsumedStepUp | null) => ({
+  stepUpSessionId: proof?.sessionId ?? null,
+  stepUpVerifiedAt: proof?.verifiedAt ?? null,
+});
+
+/** Approves a locked open request in the open unit (the change stays live). */
+async function approveInUnit(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  admin: Id<'Account'>,
+  request: SystemRequest,
+  proof: ConsumedStepUp | null,
+): Promise<SystemRequest> {
+  const now = deps.clock.now();
+  const written = await deps.requests.decide(context.market, request.id, {
+    status: 'approved',
+    decision: 'approved',
+    decidedBy: admin,
+    decidedAt: now,
+    reason: null,
+  });
+  if (!written) throw new Error('system-requests: a locked open request changed');
+  await deps.requests.addActivity(context.market, request.id, {
+    id: deps.ids.next<'SystemRequestActivity'>(),
+    kind: 'approved',
+    actor: admin,
+    at: now,
+    body: null,
+  });
+  await deps.audit.record(
+    context,
+    RequestApproved.entry(request.id, {
+      before: { status: 'open' },
+      after: {
+        status: 'approved',
+        requestedBy: request.requestedBy,
+        risk: request.risk,
+        ...proofFields(proof),
+      },
+    }),
+  );
+  return {
+    ...request,
+    status: 'approved',
+    decision: 'approved',
+    decidedBy: admin,
+    decidedAt: now,
+    decisionReason: null,
+  };
+}
+
+/** `ApproveSystemRequest`: another admin who reviews the area approves; the change stays live. */
+export async function approveRequest(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  input: DecisionInput,
+): Promise<Result<RequestView, SystemRequestsFailure>> {
+  const prepared = await prepareDecision(deps, context, 'approve', input);
+  if (!prepared.ok) return prepared;
+  const { admin, id } = prepared.value;
+  const areas = await reviewableAreas(deps, context);
+  return deps.unitOfWork.run<RequestView, SystemRequestsFailure>(context.market, async () => {
+    const found = await decidable(deps, context, 'approve', admin, id);
+    if (!found.ok) return found;
+    const proof = await spendIfHigh(deps, context, found.value);
+    if (!proof.ok) return proof;
+    const decided = await approveInUnit(deps, context, admin, found.value, proof.value);
+    return ok(requestView(decided, { accountId: admin, reviews: areas }, deps.clock.now()));
+  });
+}
+
+/**
+ * Restores the value before the change (reject or withdraw), in one unit with the decision: the
+ * subject must still hold the value after the change, and no later request may exist for it.
+ */
+async function revertRequest(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  kind: 'reject' | 'withdraw',
+  input: DecisionInput,
+): Promise<Result<RequestView, SystemRequestsFailure>> {
+  const prepared = await prepareDecision(deps, context, kind, input);
+  if (!prepared.ok) return prepared;
+  const { admin, id, reason } = prepared.value;
+  const areas = await reviewableAreas(deps, context);
+  return deps.unitOfWork.run<RequestView, SystemRequestsFailure>(context.market, async () => {
+    const found = await decidable(deps, context, kind, admin, id);
+    if (!found.ok) return found;
+    const request = found.value;
+    if (request.supersededBy !== null) {
+      return err({ code: 'system-requests.changed-since', newerRequestId: request.supersededBy });
+    }
+    const registered = deps.reverters.find(request.subjectKind);
+    if (registered === null) return err({ code: 'system-requests.revert-unavailable' });
+    const reverter = registered.reverter;
+    const proof = await spendIfHigh(deps, context, request);
+    if (!proof.ok) return proof;
+    const outcome = await reverter.revert(context, {
+      requestId: request.id,
+      subjectRef: request.subjectRef,
+      before: request.before,
+      after: request.after,
+    });
+    if (outcome === 'changed-since') {
+      return err({ code: 'system-requests.changed-since', newerRequestId: null });
+    }
+    if (outcome === 'gone') return err({ code: 'system-requests.subject-gone' });
+    if (outcome !== 'reverted') throw new Error('system-requests: unknown revert outcome');
+    const decision = kind === 'reject' ? 'rejected' : 'withdrawn';
+    const now = deps.clock.now();
+    const written = await deps.requests.decide(context.market, request.id, {
+      status: 'reverted',
+      decision,
+      decidedBy: admin,
+      decidedAt: now,
+      reason,
+    });
+    if (!written) throw new Error('system-requests: a locked open request changed');
+    // The subject holds the value before this change again, which is the value after the
+    // requests this one superseded: they are the latest again, and can be decided in full
+    // (Hassan H1: else an author could bury a change by superseding and withdrawing it).
+    await deps.requests.release(context.market, request.id);
+    await deps.requests.addActivity(context.market, request.id, {
+      id: deps.ids.next<'SystemRequestActivity'>(),
+      kind: decision,
+      actor: admin,
+      at: now,
+      body: reason,
+    });
+    await deps.audit.record(
+      context,
+      RequestReverted.entry(request.id, {
+        before: { status: 'open' },
+        after: {
+          status: 'reverted',
+          decision,
+          requestedBy: request.requestedBy,
+          risk: request.risk,
+          ...proofFields(proof.value),
+        },
+      }),
+    );
+    return ok(
+      requestView(
+        {
+          ...request,
+          status: 'reverted',
+          decision,
+          decidedBy: admin,
+          decidedAt: now,
+          decisionReason: reason,
+        },
+        { accountId: admin, reviews: areas },
+        now,
+      ),
+    );
+  });
+}
+
+/** `RejectSystemRequest`: another admin who reviews the area rejects; the value before returns. */
+export const rejectRequest = (
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  input: DecisionInput,
+) => revertRequest(deps, context, 'reject', input);
+
+/** `WithdrawSystemRequest`: the author reverts their own change. */
+export const withdrawRequest = (
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  input: DecisionInput,
+) => revertRequest(deps, context, 'withdraw', input);
+
+export const MAX_BULK = 100;
+
+export interface BulkOutcome {
+  readonly requestId: Id<'SystemRequest'>;
+  /** `approved`, or the refusal's code for this one request. */
+  readonly outcome: 'approved' | SystemRequestsFailure['code'];
+}
+
+/**
+ * `ApproveSystemRequests`: bulk approve, low-risk requests only (Medium and High are opened and
+ * reviewed one by one). Each request is decided in its own unit; one refusal does not stop the
+ * others. Distinct ids, 1 to 100.
+ */
+export async function approveRequests(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  input: { readonly requestIds: unknown },
+): Promise<Result<readonly BulkOutcome[], SystemRequestsFailure>> {
+  const admin = signedInAdmin(context);
+  if (admin === null) return err({ code: 'access.denied' });
+  const raw = input?.requestIds;
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_BULK) {
+    return err(invalid([{ path: 'requestIds', code: 'length' }]));
+  }
+  const ids = raw.map(requestIdOf);
+  if (ids.some((id) => id === null)) return err(invalid([{ path: 'requestIds', code: 'format' }]));
+  if (new Set(ids).size !== ids.length) {
+    return err(invalid([{ path: 'requestIds', code: 'duplicate' }]));
+  }
+  const areas = await reviewableAreas(deps, context);
+  const outcomes: BulkOutcome[] = [];
+  for (const id of ids as Id<'SystemRequest'>[]) {
+    const result = await deps.unitOfWork.run<SystemRequest, SystemRequestsFailure>(
+      context.market,
+      async () => {
+        const found = await decidable(deps, context, 'approve', admin, id);
+        if (!found.ok) return found;
+        if (found.value.risk !== 'low') return err({ code: 'system-requests.not-low-risk' });
+        if (!areas.has(found.value.area)) return err({ code: 'system-requests.not-reviewer' });
+        return ok(await approveInUnit(deps, context, admin, found.value, null));
+      },
+    );
+    outcomes.push({ requestId: id, outcome: result.ok ? 'approved' : result.error.code });
+  }
+  return ok(outcomes);
+}

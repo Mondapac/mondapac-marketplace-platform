@@ -37,6 +37,7 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { ApplyReferralCode } from '../application/use-cases/apply-referral-code.use-case';
+import { ListCustomerPromotionCredits } from '../application/use-cases/list-customer-promotion-credits.use-case';
 import { ListPromotionCredits } from '../application/use-cases/list-promotion-credits.use-case';
 import { ViewMyReferral } from '../application/use-cases/view-my-referral.use-case';
 import { GenerateBatchCodes } from '../application/use-cases/generate-batch-codes.use-case';
@@ -289,6 +290,7 @@ export class AdminPromotionsController {
     private readonly countReviews: CountPromotionReviews,
     private readonly campaignMembers: ViewCampaignMembers,
     private readonly activity: ViewPromotionActivity,
+    private readonly customerCredits: ListCustomerPromotionCredits,
   ) {}
 
   @Get('settings')
@@ -743,6 +745,40 @@ export class AdminPromotionsController {
     });
     return creditsBody(
       settle(this.#logger, 'promotions.list-credits-route', context, result, 'read'),
+    );
+  }
+
+  @Get('customers/:customerAccountId/credits')
+  @ApiOperation({
+    summary: 'The wallet credits one customer received from promotions (admin viewer)',
+    description:
+      'Needs promotions.promotion.view. Newest first, a page at a time (pass nextCursor as ' +
+      'cursor). Works while promotions are switched off. A customer with none gets an empty page.',
+  })
+  @ApiParam({ name: 'customerAccountId', format: 'uuid' })
+  @ApiQuery({ name: 'limit', required: false, description: '1 to 100; default 50.' })
+  @ApiQuery({ name: 'cursor', required: false, description: 'nextCursor of the previous page.' })
+  @ApiOkResponse({ type: CreditsBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async customerCreditsOf(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('customerAccountId') customerAccountId: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    noStore(response);
+    const unknown = closedQuery(query, ['limit', 'cursor']);
+    if (unknown !== null) throw unknown;
+    const result = await this.customerCredits.execute(context, {
+      customerAccountId,
+      limit: limitOf(query.limit),
+      cursor: query.cursor,
+    });
+    return creditsBody(
+      settle(this.#logger, 'promotions.list-customer-credits-route', context, result, 'read'),
     );
   }
 

@@ -320,8 +320,12 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // owner's decision of 2026-11-04, viewer seed version 28).
     // `security.centre.view` is left out too: alerts name accounts and addresses under attack,
     // for the responders only (SOC package 2, docs/design/data/security.md 6).
+    // `customers.customers.view` is left out too: the Customers list and a customer's page show
+    // names, sign-in addresses and order totals, so the Platform Administrator grants it role by
+    // role (customers phase 1, package B2).
     const DECRYPTING_VIEW_KEYS = [
       'security.centre.view',
+      'customers.customers.view',
       'sellers.business-details.view',
       'certification.issuer.view',
       'commission-payouts.payout.view',

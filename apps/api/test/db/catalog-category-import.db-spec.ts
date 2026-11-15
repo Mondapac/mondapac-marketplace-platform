@@ -21,7 +21,7 @@ import {
 } from '../../src/modules/catalog/application/use-cases/category-tree-export.use-case';
 import { IMPORT_PARSERS } from '../../src/modules/catalog/domain/platform-import/import-file';
 import { ConfigCatalogMarketPolicy } from '../../src/modules/catalog/infrastructure/config-catalog-market-policy';
-import { ExceljsSheetWriter } from '../../src/modules/catalog/infrastructure/xlsx/exceljs-sheet-writer';
+import { ExceljsSheetWriter } from '../../src/platform/list-export/exceljs-sheet-writer';
 import { xlsxParser } from '../../src/modules/catalog/infrastructure/xlsx/isolated-xlsx-parser';
 import { PrismaAdminCategoryReader } from '../../src/modules/catalog/infrastructure/prisma-admin-category.reader';
 import { PrismaCategoryEditStore } from '../../src/modules/catalog/infrastructure/prisma-category-edit.store';

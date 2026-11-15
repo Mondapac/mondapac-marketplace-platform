@@ -48,9 +48,9 @@ describe('seller palette index', () => {
   it('shows a setting and an action only with the permission behind them', () => {
     const labels = (keys: string[]) =>
       sellerPaletteEntries('approved', keys, text).map((entry) => entry.label);
-    expect(labels([])).not.toContain('Payout bank account');
+    expect(labels([])).not.toContain('Store logo');
     expect(labels([])).not.toContain('Add product');
-    expect(labels(ALL_KEYS)).toContain('Payout bank account');
+    expect(labels(ALL_KEYS)).toContain('Store logo');
     expect(labels(['catalog.own-product.edit'])).toContain('Add product');
   });
 

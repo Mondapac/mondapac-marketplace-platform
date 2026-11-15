@@ -10,7 +10,7 @@ const buildId = process.env.GIT_SHA ?? process.env.SOURCE_VERSION ?? Date.now().
 const config: NextConfig = {
   generateBuildId: () => buildId,
   env: { NEXT_PUBLIC_BUILD_ID: buildId },
-  transpilePackages: ['@mondapac/panel-server'],
+  transpilePackages: ['@mondapac/panel-server', '@mondapac/ui'],
   poweredByHeader: false,
   // `next dev` writes an AGENTS.md into the app folder; the repository keeps its agent rules elsewhere.
   agentRules: false,

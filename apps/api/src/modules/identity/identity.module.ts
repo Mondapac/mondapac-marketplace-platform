@@ -168,6 +168,8 @@ import { MembershipOf } from './application/use-cases/membership-of.use-case';
 import { NotifyAccessReviewers } from './application/use-cases/notify-access-reviewers.use-case';
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { OwnAccountTiedToSeller } from './application/use-cases/own-account-tied-to-seller.use-case';
+import { CustomerDirectoryPage } from './application/use-cases/customer-directory-page.use-case';
+import { CustomerDirectoryRecords } from './application/use-cases/customer-directory-records.use-case';
 import { CustomerAccountExists } from './application/use-cases/customer-account-exists.use-case';
 import { AdminEndCustomerSessions } from './application/use-cases/admin-end-customer-sessions.use-case';
 import { EndAllCustomerSessions } from './application/use-cases/end-all-customer-sessions.use-case';
@@ -1061,7 +1063,23 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
+    useCaseProvider(CustomerDirectoryRecords, {
+      unitOfWork: true,
+      accounts: true,
+    }),
+    useCaseProvider(CustomerDirectoryPage, {
+      unitOfWork: true,
+      accounts: true,
+    }),
     useCaseProvider(CustomerAccountExists, {
+      unitOfWork: true,
+      accounts: true,
+    }),
+    useCaseProvider(CustomerDirectoryRecords, {
+      unitOfWork: true,
+      accounts: true,
+    }),
+    useCaseProvider(CustomerDirectoryPage, {
       unitOfWork: true,
       accounts: true,
     }),
@@ -1787,6 +1805,10 @@ function useCaseProvider<D, U>(
         EndAllCustomerSessions,
         AdminEndCustomerSessions,
         CustomerAccountExists,
+        CustomerDirectoryRecords,
+        CustomerDirectoryPage,
+        CustomerDirectoryRecords,
+        CustomerDirectoryPage,
         OwnAccountTiedToSeller,
         EraseCustomerAccount,
       ],
@@ -1808,6 +1830,8 @@ function useCaseProvider<D, U>(
         endAllCustomerSessions: EndAllCustomerSessions,
         adminEndCustomerSessions: AdminEndCustomerSessions,
         customerAccountExists: CustomerAccountExists,
+        customerDirectoryRecords: CustomerDirectoryRecords,
+        customerDirectoryPage: CustomerDirectoryPage,
         ownAccountTiedToSeller: OwnAccountTiedToSeller,
         eraseCustomerAccount: EraseCustomerAccount,
       ) =>
@@ -1829,6 +1853,8 @@ function useCaseProvider<D, U>(
           endAllCustomerSessions,
           adminEndCustomerSessions,
           customerAccountExists,
+          customerDirectoryRecords,
+          customerDirectoryPage,
           ownAccountTiedToSeller,
           eraseCustomerAccount,
         }),

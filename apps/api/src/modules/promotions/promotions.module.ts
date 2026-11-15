@@ -23,6 +23,7 @@ import { registerSubscriptionsFrom } from '../../platform/events/event-subscript
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
 import { CREDIT_REPOSITORY, REFERRAL_REPOSITORY } from './application/ports/credit.repository';
+import { CustomersModule } from '../customers';
 import { CUSTOMER_ORDER_HISTORY, STORE_FOLLOWS } from './application/ports/customer-facts';
 import { DELIVERED_ORDER_FACTS } from './application/ports/order-facts';
 import { REFERRAL_SIGNALS } from './application/ports/referral-signals';
@@ -45,6 +46,7 @@ import {
 import type { PromotionsDependencies } from './application/promotions-dependencies';
 import { ApplyReferralCode } from './application/use-cases/apply-referral-code.use-case';
 import { CashbackOnDelivery } from './application/use-cases/cashback-on-delivery.use-case';
+import { ListCustomerPromotionCredits } from './application/use-cases/list-customer-promotion-credits.use-case';
 import { ListPromotionCredits } from './application/use-cases/list-promotion-credits.use-case';
 import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
 import { ViewMyReferral } from './application/use-cases/view-my-referral.use-case';
@@ -154,6 +156,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   imports: [
     CatalogModule,
     CommissionPayoutsModule,
+    CustomersModule,
     IdentityModule,
     PricingModule,
     SellersModule,
@@ -206,6 +209,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       QuoteDiscounts,
       CheckWasPrice,
       ListPromotionCredits,
+      ListCustomerPromotionCredits,
       ApplyReferralCode,
       ViewMyReferral,
       CashbackOnDelivery,
