@@ -223,15 +223,23 @@ export function BlockEditor({
                     csrfToken={csrfToken}
                     error={imageErrorAt(index)}
                     name={name}
+                    altEmpty={block.alt.trim() === ''}
+                    focusAlt={() =>
+                      document
+                        .querySelector<HTMLInputElement>(`[data-alt-for="${block.key}"] input`)
+                        ?.focus()
+                    }
                   />
-                  <TextField
-                    label={t('block.image-alt')}
-                    help={t('block.image-alt-help')}
-                    value={block.alt}
-                    maxLength={LIMITS.imageAlt}
-                    disabled={disabled}
-                    onChange={(event) => set(index, { ...block, alt: event.target.value })}
-                  />
+                  <div data-alt-for={block.key}>
+                    <TextField
+                      label={t('block.image-alt')}
+                      help={t('block.image-alt-help')}
+                      value={block.alt}
+                      maxLength={LIMITS.imageAlt}
+                      disabled={disabled}
+                      onChange={(event) => set(index, { ...block, alt: event.target.value })}
+                    />
+                  </div>
                   <TextField
                     label={t('block.image-caption')}
                     optionalLabel={t('optional')}

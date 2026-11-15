@@ -7367,6 +7367,7 @@
       "empty-readonly": "The library has no images yet.",
       "grid": "Media library",
       "choose": "Choose the image uploaded on {date}, {width} by {height} pixels",
+      "choose-current": "Choose the image uploaded on {date}, {width} by {height} pixels (current image)",
       "load-more": "Load more",
       "more-loaded": "More images loaded.",
       "more-error": "More images could not be loaded. Try again.",

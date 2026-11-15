@@ -64,6 +64,11 @@ export function PostEditor({
   const [problem, setProblem] = useState<EditorProblem | null>(null);
   const [findings, setFindings] = useState<readonly Finding[] | null>(null);
   const working = useRef(false);
+  const altBox = useRef<HTMLDivElement>(null);
+  // The cover alt text is asked for after the person leaves the field or tries to save.
+  const [altTouched, setAltTouched] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const focusCoverAlt = useCallback(() => altBox.current?.querySelector('input')?.focus(), []);
 
   const apply = useCallback(
     (detail: PostDetail) => {
@@ -152,6 +157,7 @@ export function PostEditor({
 
   async function onSave() {
     if (working.current) return;
+    setAttempted(true);
     working.current = true;
     setBusy('save');
     setFindings(null);
@@ -163,6 +169,7 @@ export function PostEditor({
 
   async function onSubmit() {
     if (working.current || post === null) return;
+    setAttempted(true);
     working.current = true;
     setBusy('submit');
     setFindings(null);
@@ -424,17 +431,26 @@ export function PostEditor({
                   : undefined
               }
               name={t('side.cover')}
+              altEmpty={draft.coverAlt.trim() === ''}
+              focusAlt={focusCoverAlt}
             />
-            <TextField
-              label={t('field.cover-alt')}
-              help={draft.coverImageId === '' ? undefined : t('field.cover-alt-help')}
-              required={draft.coverImageId !== ''}
-              error={coverNeedsAlt(draft) ? t('field.cover-alt-missing') : undefined}
-              value={draft.coverAlt}
-              maxLength={LIMITS.coverAlt}
-              disabled={disabled}
-              onChange={(event) => set({ coverAlt: event.target.value })}
-            />
+            <div ref={altBox}>
+              <TextField
+                label={t('field.cover-alt')}
+                help={draft.coverImageId === '' ? undefined : t('field.cover-alt-help')}
+                required={draft.coverImageId !== ''}
+                error={
+                  coverNeedsAlt(draft) && (altTouched || attempted)
+                    ? t('field.cover-alt-missing')
+                    : undefined
+                }
+                value={draft.coverAlt}
+                maxLength={LIMITS.coverAlt}
+                disabled={disabled}
+                onBlur={() => setAltTouched(true)}
+                onChange={(event) => set({ coverAlt: event.target.value })}
+              />
+            </div>
           </div>
           <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
             <h2 className="text-base font-semibold">{t('side.seo')}</h2>

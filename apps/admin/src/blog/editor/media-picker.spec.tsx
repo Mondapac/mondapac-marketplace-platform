@@ -9,7 +9,7 @@ vi.mock('../../categories/image-prepare.ts', () => ({ prepareImage: vi.fn() }));
 
 import { callApi, type ApiResult } from '../../api/client.ts';
 import { prepareImage } from '../../categories/image-prepare.ts';
-import { MediaPickerDialog } from './media-picker.tsx';
+import { MAX_BASE64_CHARS, MediaPickerDialog } from './media-picker.tsx';
 import type { MediaItem, MediaPage } from './types.ts';
 
 const call = vi.mocked(callApi);
@@ -86,11 +86,30 @@ describe('blog media picker', () => {
     expect(thumb.getAttribute('alt')).toBe('');
   });
 
-  it('marks the picture already chosen', async () => {
+  it('marks the picture already chosen by name and by a visible badge, not by colour alone', async () => {
     call.mockResolvedValueOnce(page([item(1), item(2)]));
     mount({ currentId: id(2) });
     const buttons = await screen.findAllByRole('button', { name: /^Choose the image/u });
-    expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+    expect(buttons.map((b) => b.getAttribute('aria-current'))).toEqual([null, 'true']);
+    expect(buttons[0]!.getAttribute('aria-label')).not.toContain('(current image)');
+    expect(buttons[1]!.getAttribute('aria-label')).toMatch(/\(current image\)$/u);
+    expect(buttons[0]!.querySelector('svg')).toBeNull();
+    expect(buttons[1]!.querySelector('svg')).toBeTruthy();
+    expect(buttons.map((b) => b.hasAttribute('aria-pressed'))).toEqual([false, false]);
+  });
+
+  it('names a tile with date and time, and shows its size as 1600×900', async () => {
+    call.mockResolvedValueOnce(page([item(1)]));
+    mount();
+    const tile = await screen.findByRole('button', { name: /^Choose the image/u });
+    expect(tile.getAttribute('aria-label')).toMatch(/\d{1,2}:\d{2}/u);
+    expect(tile.textContent).toContain('1600×900');
+  });
+
+  it('shows skeleton tiles while loading', () => {
+    call.mockReturnValueOnce(new Promise(() => undefined));
+    mount();
+    expect(document.querySelectorAll('ul[aria-hidden="true"] > li')).toHaveLength(6);
   });
 
   it('picks a picture and closes', async () => {
@@ -98,7 +117,7 @@ describe('blog media picker', () => {
     mount();
     const buttons = await screen.findAllByRole('button', { name: /^Choose the image/u });
     fireEvent.click(buttons[1]!);
-    expect(onPick).toHaveBeenCalledWith(id(2));
+    expect(onPick).toHaveBeenCalledWith(id(2), false);
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -134,6 +153,10 @@ describe('blog media picker', () => {
     );
     expect(call).toHaveBeenLastCalledWith('GET', 'blog/admin/media?page=2');
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
+    // The button is gone: focus moved to the first new picture, and the load is announced.
+    const tiles = screen.getAllByRole('button', { name: /^Choose the image/u });
+    expect(document.activeElement).toBe(tiles[2]);
+    expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe('More images loaded.');
   });
 
   it('says so when more pictures cannot be loaded and keeps the ones shown', async () => {
@@ -157,7 +180,7 @@ describe('blog media picker', () => {
       await screen.findByRole('button', { name: /^Choose the image/u });
       call.mockResolvedValueOnce({ ok: true, status: 201, body: item(7) });
       upload(png());
-      await waitFor(() => expect(onPick).toHaveBeenCalledWith(id(7)));
+      await waitFor(() => expect(onPick).toHaveBeenCalledWith(id(7), true));
       expect(call).toHaveBeenLastCalledWith('POST', 'blog/admin/media', { data: 'QUJD' }, 'csrf-1');
       expect(onClose).toHaveBeenCalled();
     });
@@ -175,7 +198,41 @@ describe('blog media picker', () => {
         screen.getByRole('button', { name: /^Choose the image/u }).hasAttribute('disabled'),
       ).toBe(true);
       finish({ ok: true, status: 201, body: item(7) });
-      await waitFor(() => expect(onPick).toHaveBeenCalledWith(id(7)));
+      await waitFor(() => expect(onPick).toHaveBeenCalledWith(id(7), true));
+    });
+
+    it('does not send a prepared picture over 4 MiB decoded, and sends one at the limit', async () => {
+      prepare.mockResolvedValueOnce({ kind: 'ready', data: 'A'.repeat(MAX_BASE64_CHARS + 1) });
+      mount();
+      await screen.findByRole('button', { name: /^Choose the image/u });
+      upload(png());
+      expect(await screen.findByText('This file is too large. The limit is 4 MB.')).toBeTruthy();
+      expect(call).toHaveBeenCalledTimes(1);
+      prepare.mockResolvedValueOnce({ kind: 'ready', data: 'A'.repeat(MAX_BASE64_CHARS) });
+      call.mockResolvedValueOnce({ ok: true, status: 201, body: item(7) });
+      upload(png());
+      await waitFor(() => expect(onPick).toHaveBeenCalledWith(id(7), true));
+    });
+
+    it('cannot be closed while the upload runs (Close and Escape), and can after', async () => {
+      prepare.mockResolvedValueOnce({ kind: 'ready', data: 'QUJD' });
+      mount();
+      await screen.findByRole('button', { name: /^Choose the image/u });
+      let finish: (value: ApiResult<MediaItem>) => void = () => undefined;
+      call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve as never)));
+      upload(png());
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Close' }).hasAttribute('disabled')).toBe(true),
+      );
+      fireEvent(document.querySelector('dialog')!, new Event('cancel', { cancelable: true }));
+      expect(onClose).not.toHaveBeenCalled();
+      finish(failed(422, 'file.too-small'));
+      await screen.findByRole('alert');
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: 'Close' }).hasAttribute('disabled')).toBe(false),
+      );
+      fireEvent(document.querySelector('dialog')!, new Event('cancel', { cancelable: true }));
+      expect(onClose).toHaveBeenCalled();
     });
 
     it('refuses a file of another type in the browser, without a request', async () => {
@@ -243,7 +300,7 @@ describe('blog media picker', () => {
       await screen.findByRole('alert');
       call.mockResolvedValueOnce({ ok: true, status: 201, body: item(8) });
       upload(png());
-      await waitFor(() => expect(onPick).toHaveBeenCalledWith(id(8)));
+      await waitFor(() => expect(onPick).toHaveBeenCalledWith(id(8), true));
       expect(screen.queryByRole('alert')).toBeNull();
     });
   });

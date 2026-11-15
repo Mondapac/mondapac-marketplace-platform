@@ -8,10 +8,12 @@ vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
 vi.mock('../../categories/image-prepare.ts', () => ({ prepareImage: vi.fn() }));
 
 import { callApi, type ApiFailure, type ApiResult } from '../../api/client.ts';
+import { prepareImage } from '../../categories/image-prepare.ts';
 import { PostEditor } from './post-editor.tsx';
 import type { ApiContent, PostDetail, Taxonomy } from './types.ts';
 
 const call = vi.mocked(callApi);
+const prepare = vi.mocked(prepareImage);
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const POST = id(1);
 const COVER = id(20);
@@ -98,6 +100,7 @@ const chooseInPicker = async (index: number) => {
 describe('blog editor: cover and image blocks', () => {
   beforeEach(() => {
     call.mockReset();
+    prepare.mockReset();
     HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
       this.setAttribute('open', '');
     };
@@ -119,9 +122,13 @@ describe('blog editor: cover and image blocks', () => {
     // The button now says Replace, on the same element, so focus is not lost.
     const replace = screen.getByRole('button', { name: 'Replace image, Cover image' });
     expect(replace).toBeTruthy();
-    expect(screen.getByText('Describe the cover image.')).toBeTruthy();
+    // Help, not an error, until the field is left or a save is tried.
+    expect(screen.queryByText('Describe the cover image.')).toBeNull();
+    expect(screen.getByText(/Say what the picture shows/u)).toBeTruthy();
     const alt = screen.getByLabelText(/Cover image description/u);
     expect(alt.hasAttribute('required')).toBe(true);
+    fireEvent.blur(alt);
+    expect(screen.getByText('Describe the cover image.')).toBeTruthy();
     fireEvent.change(alt, { target: { value: 'A shelf of jars' } });
     expect(screen.queryByText('Describe the cover image.')).toBeNull();
     call.mockResolvedValueOnce(ok(post({ coverImageId: COVER, coverAlt: 'A shelf of jars' })));
@@ -130,6 +137,89 @@ describe('blog editor: cover and image blocks', () => {
     const sent = writes()[0]![2] as { content: ApiContent };
     expect(sent.content.coverImageId).toBe(COVER);
     expect(sent.content.coverAlt).toBe('A shelf of jars');
+  });
+
+  it('shows the cover alt error after a save attempt, not before', async () => {
+    serve(post({ coverImageId: COVER, coverAlt: null }));
+    show();
+    await screen.findByLabelText('Title');
+    expect(screen.queryByText('Describe the cover image.')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'New' } });
+    call.mockResolvedValueOnce(ok(post({ coverImageId: COVER, coverAlt: null })));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(await screen.findByText('Describe the cover image.')).toBeTruthy();
+  });
+
+  it('shows only help, never an error, on an image block with empty alt text', async () => {
+    serve(post({ body: [{ type: 'image', imageId: OTHER, alt: '', caption: null }] }));
+    show();
+    await screen.findByLabelText('Title');
+    fireEvent.blur(screen.getByLabelText(/^Image description/u));
+    expect(screen.getByText(/Needed before you send the post for review/u)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'New' } });
+    call.mockResolvedValueOnce(ok(post()));
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  describe('focus after an upload', () => {
+    const uploadFile = async () => {
+      prepare.mockResolvedValue({ kind: 'ready', data: 'QUJD' });
+      await screen.findAllByRole('button', { name: /^Choose the image uploaded on/u });
+      call.mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        body: {
+          id: OTHER,
+          width: 800,
+          height: 800,
+          createdAt: '2026-11-08T10:00:00Z',
+          uploadedBy: null,
+        },
+      });
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+      fireEvent.change(input, {
+        target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] },
+      });
+    };
+
+    it('goes to the cover alt text when it is empty', async () => {
+      serve(post());
+      show();
+      await screen.findByLabelText('Title');
+      fireEvent.click(screen.getByRole('button', { name: 'Choose image, Cover image' }));
+      await uploadFile();
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByLabelText(/Cover image description/u)),
+      );
+    });
+
+    it('goes back to the Replace button when the alt text is already there', async () => {
+      serve(post({ coverImageId: COVER, coverAlt: 'Jars' }));
+      show();
+      await screen.findByLabelText('Title');
+      fireEvent.click(screen.getByRole('button', { name: 'Replace image, Cover image' }));
+      await uploadFile();
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole('button', { name: 'Replace image, Cover image' }),
+        ),
+      );
+    });
+
+    it('goes to the alt text of an image block', async () => {
+      serve(post());
+      show();
+      await screen.findByLabelText('Title');
+      fireEvent.click(screen.getByRole('button', { name: 'Image' }));
+      const block = screen.getByRole('listitem', { name: 'Block 2: Image' });
+      fireEvent.click(within(block).getByRole('button', { name: /^Choose image/u }));
+      await uploadFile();
+      await waitFor(() =>
+        expect(document.activeElement).toBe(within(block).getByLabelText(/^Image description/u)),
+      );
+    });
   });
 
   it('shows the thumbnail of a cover, replaces it, and removes it', async () => {

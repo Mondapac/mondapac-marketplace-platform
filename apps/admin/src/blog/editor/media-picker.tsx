@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Dialog, FileButton, LoadError, SkeletonRows } from '@mondapac/ui';
+import { Banner, Button, Dialog, FileButton, LoadError } from '@mondapac/ui';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
@@ -9,6 +9,8 @@ import { API_BLOG_MEDIA, mediaUrl } from '../types.ts';
 import { mediaProblemOf } from './media-errors.ts';
 import type { MediaItem, MediaPage } from './types.ts';
 
+/** Base64 characters of 4 MiB decoded: ceil(4194304 / 3) * 4. */
+export const MAX_BASE64_CHARS = 5_592_408;
 export const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
 type Load = 'loading' | 'ready' | 'failed';
@@ -28,28 +30,35 @@ export function MediaPickerDialog({
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
-  readonly onPick: (id: string) => void;
+  /** `uploaded` is true for a picture the person just uploaded (the caller moves focus on). */
+  readonly onPick: (id: string, uploaded: boolean) => void;
   /** The picture already chosen, marked in the grid. */
   readonly currentId: string;
   readonly canUpload: boolean;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('blog.media');
+  // While an upload runs the dialog cannot be closed (Close, Escape, the backdrop), so the result
+  // is never lost behind a closed dialog.
+  const [busy, setBusy] = useState(false);
   return (
     <Dialog
       open={open}
       title={t('title')}
-      onClose={onClose}
+      onClose={() => {
+        if (!busy) onClose();
+      }}
       size="form"
       actions={
-        <Button variant="secondary" onClick={onClose}>
+        <Button variant="secondary" disabled={busy} onClick={onClose}>
           {t('close')}
         </Button>
       }
     >
       <Library
-        onPick={(id) => {
-          onPick(id);
+        onBusy={setBusy}
+        onPick={(id, uploaded) => {
+          onPick(id, uploaded);
           onClose();
         }}
         currentId={currentId}
@@ -62,12 +71,14 @@ export function MediaPickerDialog({
 
 /** The body of the dialog; it mounts when the dialog opens, so every opening reads page 1 again. */
 function Library({
+  onBusy,
   onPick,
   currentId,
   canUpload,
   csrfToken,
 }: {
-  readonly onPick: (id: string) => void;
+  readonly onBusy: (busy: boolean) => void;
+  readonly onPick: (id: string, uploaded: boolean) => void;
   readonly currentId: string;
   readonly canUpload: boolean;
   readonly csrfToken: string;
@@ -84,14 +95,31 @@ function Library({
   const [announce, setAnnounce] = useState('');
   const gone = useRef(false);
   const input = useRef<HTMLInputElement>(null);
+  const grid = useRef<HTMLUListElement>(null);
+  /** The first picture of the page Load more just added: it takes focus, as the button goes away. */
+  const focusId = useRef<string | null>(null);
 
-  const read = useCallback(async (next: number): Promise<boolean> => {
+  useEffect(() => {
+    onBusy(uploading);
+    return () => onBusy(false);
+  }, [uploading, onBusy]);
+
+  useEffect(() => {
+    const target = focusId.current;
+    if (target === null) return;
+    focusId.current = null;
+    grid.current?.querySelector<HTMLElement>(`[data-media-id="${target}"]`)?.focus();
+  }, [items]);
+
+  const read = useCallback(async (next: number, known?: ReadonlySet<string>): Promise<boolean> => {
     const result = await callApi<MediaPage>('GET', `${API_BLOG_MEDIA}?page=${next}`);
     if (gone.current) return false;
     if (!result.ok) {
       if (result.failure.status === 401) window.location.assign('/session-ended');
       return false;
     }
+    const fresh = result.body.items.find((item) => !known?.has(item.id));
+    if (known !== undefined && fresh !== undefined) focusId.current = fresh.id;
     setItems((current) => {
       const seen = new Set(current.map((item) => item.id));
       return [...current, ...result.body.items.filter((item) => !seen.has(item.id))];
@@ -118,7 +146,8 @@ function Library({
 
   async function loadMore() {
     setMore('busy');
-    const ok = await read(page + 1);
+    const known = new Set(items.map((item) => item.id));
+    const ok = await read(page + 1, known);
     if (!gone.current) {
       setMore(ok ? 'idle' : 'failed');
       if (ok) setAnnounce(t('more-loaded'));
@@ -139,6 +168,9 @@ function Library({
     const prepared = await prepareImage(file);
     if (prepared.kind === 'refused') {
       setProblem(prepared.reason === 'too-large' ? 'too-large' : 'unreadable');
+    } else if (prepared.data.length > MAX_BASE64_CHARS) {
+      // The server refuses more than 4 MiB decoded; do not send what is certain to be refused.
+      setProblem('too-large');
     } else {
       const result = await callApi<MediaItem>(
         'POST',
@@ -149,7 +181,7 @@ function Library({
       if (gone.current) return;
       if (result.ok) {
         setUploading(false);
-        onPick(result.body.id);
+        onPick(result.body.id, true);
         return;
       }
       if (result.failure.status === 401) {
@@ -188,7 +220,19 @@ function Library({
           <span>{t(`error.${problem}`)}</span>
         </Banner>
       ) : null}
-      {load === 'loading' ? <SkeletonRows label={t('loading')} rows={3} /> : null}
+      {load === 'loading' ? (
+        <div role="status">
+          <span className="sr-only">{t('loading')}</span>
+          <ul
+            aria-hidden="true"
+            className="grid grid-cols-2 gap-3 motion-safe:animate-pulse sm:grid-cols-3"
+          >
+            {Array.from({ length: 6 }, (_, index) => (
+              <li key={index} className="aspect-square rounded-md bg-muted" />
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {load === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3"
@@ -201,23 +245,27 @@ function Library({
         <p className="text-fg-muted">{canUpload ? t('empty') : t('empty-readonly')}</p>
       ) : null}
       {items.length > 0 ? (
-        <ul aria-label={t('grid')} className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <ul ref={grid} aria-label={t('grid')} className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {items.map((item) => {
-            const label = t('choose', {
-              date: format.dateTime(new Date(item.createdAt), { dateStyle: 'medium' }),
+            const current = item.id === currentId;
+            const label = t(current ? 'choose-current' : 'choose', {
+              date: format.dateTime(new Date(item.createdAt), {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              }),
               width: item.width,
               height: item.height,
             });
-            const current = item.id === currentId;
             return (
               <li key={item.id}>
                 <button
                   type="button"
                   aria-label={label}
-                  aria-pressed={current}
+                  aria-current={current ? 'true' : undefined}
+                  data-media-id={item.id}
                   disabled={uploading}
-                  onClick={() => onPick(item.id)}
-                  className={`block w-full overflow-hidden rounded-md border-2 bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-60 ${
+                  onClick={() => onPick(item.id, false)}
+                  className={`relative block w-full overflow-hidden rounded-md border-2 bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-60 ${
                     current ? 'border-accent' : 'border-line'
                   }`}
                 >
@@ -228,6 +276,31 @@ function Library({
                     loading="lazy"
                     className="aspect-square w-full object-cover"
                   />
+                  {current ? (
+                    // A mark, not only a colour: a check badge on the tile that is in use.
+                    <span
+                      aria-hidden="true"
+                      className="absolute end-1 top-1 flex size-6 items-center justify-center rounded-full bg-accent text-on-accent"
+                    >
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="size-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M5 12l5 5 9-10" />
+                      </svg>
+                    </span>
+                  ) : null}
+                  <span
+                    aria-hidden="true"
+                    className="block bg-surface px-2 py-1 text-start text-xs text-fg-muted"
+                  >
+                    {item.width}×{item.height}
+                  </span>
                 </button>
               </li>
             );

@@ -2,7 +2,7 @@
 
 import { Button, ImageSlot } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { mediaUrl } from '../types.ts';
 import { MediaPickerDialog } from './media-picker.tsx';
 
@@ -19,6 +19,8 @@ export function ImageChooser({
   csrfToken,
   error,
   name,
+  altEmpty,
+  focusAlt,
 }: {
   readonly imageId: string;
   readonly onChange: (id: string) => void;
@@ -28,12 +30,28 @@ export function ImageChooser({
   readonly error?: string | undefined;
   /** What the picture is for ("cover image", "block 2"), so each button names its slot. */
   readonly name: string;
+  /** The alt text next to this picture is empty: after an upload, focus goes to it. */
+  readonly altEmpty: boolean;
+  readonly focusAlt: () => void;
 }) {
   const t = useTranslations('blog.media');
   const [open, setOpen] = useState(false);
   const [broken, setBroken] = useState<string | null>(null);
   const choose = useRef<HTMLButtonElement>(null);
   const has = imageId !== '';
+  // After an upload the dialog closes and gives focus back to the opener on the next task; this
+  // effect runs after that is scheduled, so its own task wins: the required next step (the alt
+  // text) when it is empty, else the Replace button.
+  const [after, setAfter] = useState<'alt' | 'replace' | null>(null);
+  useEffect(() => {
+    if (open || after === null) return;
+    const timer = setTimeout(() => {
+      if (after === 'alt') focusAlt();
+      else choose.current?.focus();
+      setAfter(null);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [open, after, focusAlt]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -86,7 +104,10 @@ export function ImageChooser({
       <MediaPickerDialog
         open={open}
         onClose={() => setOpen(false)}
-        onPick={onChange}
+        onPick={(id, uploaded) => {
+          onChange(id);
+          if (uploaded) setAfter(altEmpty ? 'alt' : 'replace');
+        }}
         currentId={imageId}
         canUpload={canUpload}
         csrfToken={csrfToken}
