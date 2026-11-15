@@ -234,10 +234,7 @@ describe('PanelTools', () => {
       within(group)
         .getAllByRole('option')
         .map((option) => option.textContent);
-    expect(rows(groups[0]!)).toEqual([
-      'OrdersSales',
-      'Support contactSettings / Marketplace',
-    ]);
+    expect(rows(groups[0]!)).toEqual(['OrdersSales', 'Support contactSettings / Marketplace']);
     // A pinned page is not listed again under Recent.
     expect(rows(groups[1]!)).toEqual(['SellersSellers']);
     expect(rows(groups[2]!)).toEqual([

@@ -61,7 +61,11 @@ describe('admin nav: Inbox', () => {
   });
 
   it('opens Seller requests on the review tab of the sellers list, for sellers.seller.view', () => {
-    expect(ids(['sellers.seller.view']).slice(0, 3)).toEqual(['home', 'seller-requests', 'sellers']);
+    expect(ids(['sellers.seller.view']).slice(0, 3)).toEqual([
+      'home',
+      'seller-requests',
+      'sellers',
+    ]);
     expect(adminNav.items.find((item) => item.id === 'seller-requests')).toMatchObject({
       href: '/sellers?tab=awaiting-review',
       labelKey: 'nav.seller-requests',
