@@ -291,6 +291,35 @@ describe('team row actions', () => {
     expect(reset.disabled).toBe(false);
   });
 
+  it('shows the step-up note at level 3 only', () => {
+    show(account());
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reset two-step verification…' }));
+    expect(screen.getByText("We'll ask for your two-step code next.")).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep as it is' }));
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate account…' }));
+    expect(screen.queryByText("We'll ask for your two-step code next.")).toBeNull();
+  });
+
+  it('stays quiet and keeps the dialog open when the code dialog is cancelled', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 0, code: 'step-up.cancelled' } });
+    show(account());
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reset two-step verification…' }));
+    typeName();
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: 'Reset' }) as HTMLButtonElement).disabled).toBe(
+        false,
+      ),
+    );
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(router.refresh).not.toHaveBeenCalled();
+  });
+
   it('sends an immediate action once even if it is selected twice before the answer', async () => {
     let finish: (value: { ok: true; status: number; body: object }) => void = () => undefined;
     call.mockReturnValue(new Promise((resolve) => (finish = resolve)));

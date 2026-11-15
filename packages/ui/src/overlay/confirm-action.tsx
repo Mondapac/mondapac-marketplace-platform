@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Banner } from '../form/banner.tsx';
 import { Button } from '../form/button.tsx';
 import { TextAreaField } from '../form/text-area-field.tsx';
@@ -69,7 +69,6 @@ export function ConfirmAction({
   const [typed, setTyped] = useState('');
   const [why, setWhy] = useState('');
   const cancel = useRef<HTMLButtonElement>(null);
-  const noteId = useId();
   // Closed (done or cancelled): the next opening starts empty.
   useEffect(() => {
     if (!open) {
@@ -78,7 +77,8 @@ export function ConfirmAction({
     }
   }, [open]);
 
-  const typedOk = level === 2 || typed.trim() === rowName.trim();
+  // Level 3 fails closed: with no row name to type there is nothing to confirm against.
+  const typedOk = level === 2 || (rowName.trim() !== '' && typed.trim() === rowName.trim());
   const reasonOk = reason === undefined || !reason.required || why.trim().length > 0;
   const ready = typedOk && reasonOk && !pending;
   const close = () => {
@@ -114,11 +114,7 @@ export function ConfirmAction({
     >
       <div className="space-y-3">
         <div>{body}</div>
-        {stepUpNote === undefined ? null : (
-          <p id={noteId} className="text-sm text-fg-muted">
-            {stepUpNote}
-          </p>
-        )}
+        {stepUpNote === undefined ? null : <p className="text-sm text-fg-muted">{stepUpNote}</p>}
         {reason === undefined ? null : (
           <TextAreaField
             label={reason.label}
@@ -133,7 +129,7 @@ export function ConfirmAction({
         {level === 3 ? (
           <TextField
             label={typeLabel ?? rowName}
-            help={rowName}
+            help={<span className="font-medium text-fg">{rowName}</span>}
             value={typed}
             autoComplete="off"
             spellCheck={false}
