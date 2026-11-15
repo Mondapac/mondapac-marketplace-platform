@@ -329,6 +329,32 @@ describe('admin dashboard', () => {
     expect(screen.getByRole('status').textContent).toBe('');
   });
 
+  it('says there is nothing to show when every read is refused after the skeletons', async () => {
+    await act(async () => {
+      render(
+        wrap(
+          <AdminDashboard
+            data={{
+              sellers: Promise.resolve(null),
+              holds: Promise.resolve(null),
+              offers: null,
+              accounts: null,
+              orders: Promise.resolve(null),
+            }}
+            permissionKeys={[
+              'sellers.seller.view',
+              'pricing.price-hold.view',
+              'ordering.order.view',
+            ]}
+          />,
+        ),
+      );
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('Nothing to show here yet')).toBeTruthy();
+    expect(document.querySelector('[data-skeleton]')).toBeNull();
+  });
+
   it('drops a card whose read the API refuses after its skeleton showed', async () => {
     await act(async () => {
       render(

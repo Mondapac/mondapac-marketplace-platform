@@ -5,7 +5,7 @@ import { CARD_TABLE } from '../data/card-table.ts';
 import { Icon, type IconName } from '../icon/icon.tsx';
 import { useDelayedLoading, type DelayedLoading } from '../loading/use-delayed-loading.ts';
 import type { ActivityColumn } from './activity-table.tsx';
-import { DashboardCard, type DistributionPart } from './dashboard.tsx';
+import { DashboardCard, SWATCH, type DistributionPart } from './dashboard.tsx';
 
 type Register = () => () => void;
 
@@ -260,13 +260,6 @@ export interface DistributionCardSkeletonProps extends CardFrameProps {
   readonly parts: readonly Omit<DistributionPart, 'value'>[];
 }
 
-const SWATCH: Record<DistributionPart['tone'], string> = {
-  success: 'bg-success-fg',
-  attention: 'bg-attention-fg',
-  info: 'bg-info-fg',
-  critical: 'bg-critical-fg',
-  neutral: 'bg-neutral-fg',
-};
 
 /** The placeholder of a DashboardCard holding a DistributionBar: a grey bar and the real legend. */
 export function DistributionCardSkeleton({

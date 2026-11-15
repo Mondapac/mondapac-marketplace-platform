@@ -28,12 +28,15 @@ function widget<T>(
   read: () => Promise<ServerGet<T>>,
 ): Promise<Widget<T> | null> | null {
   if (!allowed) return null;
-  return read().then((answer) => {
+  const answer = read().then((answer): Widget<T> | null => {
     if (answer.kind === 'ok') return { kind: 'ok', value: answer.body };
     if (answer.kind === 'signed-out') redirect('/session-ended');
     if (answer.kind === 'forbidden') return null;
     return { kind: 'error' };
   });
+  // The page reads it while it streams; until a card does, a rejection (the redirect) is not unhandled.
+  answer.catch(() => undefined);
+  return answer;
 }
 
 /**

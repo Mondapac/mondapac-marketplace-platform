@@ -25,13 +25,16 @@ function widget<T>(
   read: () => Promise<ServerGet<T>>,
 ): Promise<Widget<T> | null> | null {
   if (!allowed) return null;
-  return read().then((answer) => {
+  const answer = read().then((answer): Widget<T> | null => {
     if (answer.kind === 'ok') return { kind: 'ok', value: answer.body };
     // A refusal means the session may not see this widget after all: hide it, no error card.
     if (answer.kind === 'forbidden') return null;
     if (answer.kind === 'signed-out') redirect('/session-ended');
     return { kind: 'error' };
   });
+  // The page reads it while it streams; until a card does, a rejection (the redirect) is not unhandled.
+  answer.catch(() => undefined);
+  return answer;
 }
 
 /**

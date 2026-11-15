@@ -753,6 +753,13 @@ function QuickActions({ keys }: { readonly keys: ReadonlySet<string> }) {
   );
 }
 
+/** True once every widget has answered with nothing to show (no key, or the API refused). */
+function allRefused(data: AdminDashboardSources): DashboardSource<boolean> {
+  const values = Object.values(data) as unknown[];
+  if (!values.some((value) => value instanceof Promise)) return values.every((v) => v === null);
+  return Promise.all(values).then((answers) => answers.every((answer) => answer === null));
+}
+
 /**
  * The admin dashboard (the home page): every widget is present only when the session holds the
  * key its read needs. Order: what needs attention, the latest activity, then quick actions. Given
@@ -773,8 +780,19 @@ export function AdminDashboard({
   if (nothing) {
     return <EmptyState size="card" icon="home" title={t('none.title')} body={t('none.body')} />;
   }
+  const actions = ACTIONS.some((action) => action.anyOf.every((key) => keys.has(key)));
   return (
     <DashboardLoading label={t('loading')} className="flex flex-col gap-4">
+      {actions ? null : (
+        // Every read the session may ask for came back refused: say so, as for a role with none.
+        <DashboardSlot source={allRefused(data)} fallback={null}>
+          {(refused) =>
+            refused ? (
+              <EmptyState size="card" icon="home" title={t('none.title')} body={t('none.body')} />
+            ) : null
+          }
+        </DashboardSlot>
+      )}
       <Attention data={data} />
       <Applications data={data} />
       <Holds data={data} />
