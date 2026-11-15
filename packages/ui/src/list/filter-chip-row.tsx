@@ -22,8 +22,8 @@ export interface FilterChipRowProps {
 
 /**
  * The row under a list's toolbar: the removable chips, a thin divider, Clear all (neutral text) and
- * Save filter… (small outline button with a star), and the result count at the end. Chips, buttons
- * and divider share one 32 px height. One component for every super list.
+ * Save filter… (small outline button with a star), and the result count at the end. The chips share a 32 px height with the buttons (the touch token makes the buttons 44 px on a phone, where the divider
+ * is left out, so it cannot be orphaned at the start of a wrapped line). One component for every super list.
  */
 export function FilterChipRow({ chips, clearAll, save, status }: FilterChipRowProps) {
   const actions = clearAll !== undefined || save !== undefined;
@@ -38,7 +38,7 @@ export function FilterChipRow({ chips, clearAll, save, status }: FilterChipRowPr
         />
       ))}
       {chips.length > 0 && actions ? (
-        <span aria-hidden="true" className="mx-1 h-5 w-px shrink-0 bg-line" />
+        <span aria-hidden="true" className="mx-1 h-5 w-px shrink-0 bg-line max-sm:hidden" />
       ) : null}
       {clearAll === undefined ? null : (
         <Button variant="quiet" size="sm" onClick={clearAll.onClick}>

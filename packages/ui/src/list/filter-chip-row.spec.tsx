@@ -16,6 +16,7 @@ describe('FilterChipRow', () => {
       />,
     );
     expect(html).toContain('w-px');
+    expect(html).toContain('max-sm:hidden');
     expect(html).toContain('Clear all');
     expect(html).toContain('Save filter…');
     expect(html).toContain('gap-1.5');
