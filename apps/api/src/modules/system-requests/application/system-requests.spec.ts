@@ -568,6 +568,21 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       ).toEqual({ ok: false, error: { code: 'system-requests.subject-gone' } });
     });
 
+    it('answers revert-not-permitted when the owning module refuses the decider, and keeps the request open', async () => {
+      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      subjects.refused.add('list-paging');
+      expect(
+        await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+          requestId: opened.id,
+          reason: 'No',
+        }),
+      ).toEqual({ ok: false, error: { code: 'system-requests.revert-not-permitted' } });
+      const view = await useCase(ViewSystemRequest).execute(admin(CHECKER), {
+        requestId: opened.id,
+      });
+      expect(view.ok && view.value.status).toBe('open');
+    });
+
     it('lets only the author withdraw, which restores the value before', async () => {
       const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
       expect(

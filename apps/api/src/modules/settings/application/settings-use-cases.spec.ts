@@ -543,6 +543,61 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       expect(review.opened).toHaveLength(0);
     });
 
+    it('reviews the AI settings at high risk, and never switches the writer back on by a revert', async () => {
+      review.review('marketplace');
+      const changeAi = (input: Record<string, unknown>) =>
+        new ChangeAiSetting(gate, deps).execute(adminCtx(), { ...input, note: 'AI review' });
+      await changeAi({ code: 'ai-description-writer', value: 'on', expectedVersion: 0 });
+      await changeAi({ code: 'ai-description-writer', value: 'off', expectedVersion: 1 });
+      await changeAi({ code: 'ai-description-writer-tier', value: 'balanced', expectedVersion: 0 });
+      expect(review.opened.map((opened) => opened.risk)).toEqual(['high', 'high', 'high']);
+      const reverter = new SettingsReverter(deps);
+      const revertAi = (subjectRef: string, before: string, after: string) =>
+        reverter.revert(adminCtx(), {
+          requestId: id<'SystemRequest'>(0x5e3),
+          subjectRef,
+          before: { value: before },
+          after: { value: after },
+        });
+      // Rejecting the "off" would switch AI on: refused, the writer stays off.
+      expect(await revertAi('ai-description-writer', 'on', 'off')).toBe('not-permitted');
+      expect(await store.find(market, 'ai-description-writer')).toMatchObject({ value: 'off' });
+      expect(await revertAi('ai-description-writer-tier', 'fast', 'balanced')).toBe('reverted');
+      // Switching AI off again through a revert is allowed (the fail-closed direction).
+      await changeAi({ code: 'ai-description-writer', value: 'on', expectedVersion: 2 });
+      expect(await revertAi('ai-description-writer', 'off', 'on')).toBe('reverted');
+      expect(await store.find(market, 'ai-description-writer')).toMatchObject({ value: 'off' });
+      // A list setting is never reviewed above the area's risk.
+      await change({ code: 'list-paging', value: 'prev-next', expectedVersion: 0, note: 'x' });
+      expect(review.opened.at(-1)?.risk).toBeUndefined();
+    });
+
+    it('restores over the default when the setting has no row yet, as version 1', async () => {
+      expect(await revert({ before: { value: 'prev-next' }, after: { value: 'pages' } })).toBe(
+        'reverted',
+      );
+      expect(await store.find(market, 'list-paging')).toMatchObject({
+        value: 'prev-next',
+        version: 1,
+      });
+    });
+
+    it('answers gone for a value before that is not a value of the setting', async () => {
+      for (const before of [{ value: 25 }, { value: null }, {}]) {
+        expect(await revert({ before, after: { value: 'pages' } })).toBe('gone');
+      }
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('refuses to revert as anyone but a signed-in admin acting as themselves', async () => {
+      const request = { before: { value: 'pages' }, after: { value: 'prev-next' } };
+      await change({ code: 'list-paging', value: 'prev-next', expectedVersion: 0 });
+      for (const context of [sellerCtx(), anonymous, actingAs(adminCtx())]) {
+        await expect(revert(request, context)).rejects.toThrow();
+      }
+      expect(store.history).toHaveLength(1);
+    });
+
     it('answers changed-since once the setting moved on, and gone for a value no longer defined', async () => {
       await change({ code: 'list-paging', value: 'prev-next', expectedVersion: 0 });
       await change({ code: 'list-paging', value: 'pages', expectedVersion: 1 });

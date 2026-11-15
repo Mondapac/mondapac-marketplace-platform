@@ -80,6 +80,8 @@ export type SystemRequestsFailure =
   | { readonly code: 'system-requests.subject-gone' }
   /** No module restores this kind of change in this build. */
   | { readonly code: 'system-requests.revert-unavailable' }
+  /** The owning module refuses this admin the change the revert would make. */
+  | { readonly code: 'system-requests.revert-not-permitted' }
   /** Bulk approve takes low-risk requests only. */
   | { readonly code: 'system-requests.not-low-risk' }
   /** Another admin changed the policy first; the page reloads. */
@@ -633,6 +635,7 @@ async function revertRequest(
       return err({ code: 'system-requests.changed-since', newerRequestId: null });
     }
     if (outcome === 'gone') return err({ code: 'system-requests.subject-gone' });
+    if (outcome === 'not-permitted') return err({ code: 'system-requests.revert-not-permitted' });
     if (outcome !== 'reverted') throw new Error('system-requests: unknown revert outcome');
     const decision = kind === 'reject' ? 'rejected' : 'withdrawn';
     const now = deps.clock.now();

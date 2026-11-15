@@ -7,6 +7,8 @@ import {
   SETTING_DEFINITIONS,
   type CartMode,
   type ListPaging,
+  AI_DESCRIPTION_WRITER_CODE,
+  AI_DESCRIPTION_WRITER_TIER_CODE,
 } from '../domain/definitions';
 import type { RecordedRequest } from '../../system-requests';
 import type { SettingsDependencies } from './settings-dependencies';
@@ -15,6 +17,15 @@ import type { SettingsDependencies } from './settings-dependencies';
 export const SETTING_SUBJECT_KIND = 'settings.market-setting';
 /** The review area every Market setting belongs to. */
 export const SETTINGS_REVIEW_AREA = 'marketplace';
+/**
+ * The AI settings are reviewed at high risk (one at a time, with the reviewer's step-up), and a
+ * revert never switches the AI writer back on: an operator's "off" stands until someone with the
+ * AI setting's own key switches it on (ADR-0019 R8; Hassan, PR #912).
+ */
+const AI_CODES: ReadonlySet<string> = new Set([
+  AI_DESCRIPTION_WRITER_CODE,
+  AI_DESCRIPTION_WRITER_TIER_CODE,
+]);
 
 // Admin-editable Market settings (ADR-0026). A change is refused in an acting-as session, checks
 // the version the admin saw (a stale edit is refused), writes the value and a history row in one
@@ -229,6 +240,7 @@ export async function changeSetting(
       before: { value: was },
       after: { value: next },
       note: input.note,
+      ...(AI_CODES.has(definition.code) ? { risk: 'high' as const } : {}),
     });
     if (!review.ok) return err(review.error);
     return ok({
@@ -256,7 +268,7 @@ export async function revertSetting(
     readonly before: Readonly<Record<string, unknown>>;
     readonly after: Readonly<Record<string, unknown>>;
   },
-): Promise<'reverted' | 'changed-since' | 'gone'> {
+): Promise<'reverted' | 'changed-since' | 'gone' | 'not-permitted'> {
   const adminId = adminAccountId(context);
   if (adminId === null) throw new Error('settings: a revert needs a signed-in admin');
   const definition = findDefinition(request.subjectRef);
@@ -267,6 +279,7 @@ export async function revertSetting(
   const row = await deps.settings.find(context.market, definition.code);
   const current = row?.value ?? definition.defaultValue;
   if (current !== request.after.value) return 'changed-since';
+  if (definition.code === AI_DESCRIPTION_WRITER_CODE && restore === 'on') return 'not-permitted';
   const version = (row?.version ?? 0) + 1;
   const now = deps.clock.now();
   const applied = await deps.settings.apply(context.market, {

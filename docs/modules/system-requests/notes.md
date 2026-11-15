@@ -15,7 +15,9 @@ mode from the design; no separate brief.
   their own request; they may withdraw it, which also restores the value before. A database CHECK
   enforces this too.
 - **Revert only if unchanged**: the owning module's `SystemChangeReverter` compares the current
-  value with `after` and refuses with `changed-since` when they differ. A later request for the same
+  value with `after` and refuses with `changed-since` when they differ. It may also answer
+  `not-permitted` (403 `system-requests.revert-not-permitted`) when the decider may not make the
+  change the revert would make; the request then stays open. A later request for the same
   subject supersedes the earlier ones, which can then only be approved.
 - **High risk** decisions and every review-policy change spend a fresh admin step-up proof
   (`system-requests.request.decide-high`, `system-requests.policy.change`).

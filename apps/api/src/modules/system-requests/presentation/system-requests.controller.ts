@@ -369,7 +369,8 @@ export class SystemRequestsController {
     ...ERROR,
     description:
       'access.denied, request.csrf, system-requests.not-reviewer, system-requests.own-request, ' +
-      'second-factor.required or second-factor.enrolment-required',
+      'system-requests.revert-not-permitted, second-factor.required or ' +
+      'second-factor.enrolment-required',
   })
   @ApiNotFoundResponse({ ...ERROR, description: 'system-requests.not-found' })
   @ApiConflictResponse({
@@ -418,7 +419,8 @@ export class SystemRequestsController {
   @ApiForbiddenResponse({
     ...ERROR,
     description:
-      'access.denied, request.csrf, system-requests.not-author, second-factor.required or ' +
+      'access.denied, request.csrf, system-requests.not-author, ' +
+      'system-requests.revert-not-permitted, second-factor.required or ' +
       'second-factor.enrolment-required',
   })
   @ApiNotFoundResponse({ ...ERROR, description: 'system-requests.not-found' })
