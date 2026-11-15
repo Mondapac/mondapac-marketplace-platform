@@ -30,7 +30,62 @@ const server = createServer((req, res) => {
 const port = server.address().port;
 const { chromium } = createRequire(import.meta.url)('playwright');
 const browser = await chromium.launch();
-const shots = [
+const navShots = [
+  ['nav', '#nav', (p) => p.getByRole('region', { name: 'Left menu' }).waitFor()],
+  [
+    'nav-empty',
+    '#nav-empty',
+    (p) => p.getByText(/Buyers will see the live category tree/).waitFor(),
+  ],
+  [
+    'nav-readonly',
+    '#nav-readonly',
+    (p) => p.getByText(/view the navigation but not change/).waitFor(),
+  ],
+  [
+    'nav-errors',
+    '#nav-errors',
+    async (p) => {
+      await p.getByLabel('Label').first().fill('Changed');
+      await p.getByRole('button', { name: 'Save to draft' }).click();
+      await p.getByText('Check the marked fields and try again.').waitFor();
+    },
+  ],
+  [
+    'nav-dirty-approver',
+    '#nav-approve',
+    async (p) => {
+      await p.getByLabel('Label').first().fill('Changed');
+      await p.getByText('Save the draft first.').waitFor();
+    },
+  ],
+  [
+    'nav-approve-dialog',
+    '#nav-approve',
+    async (p) => {
+      await p.getByRole('button', { name: 'Approve', exact: true }).click();
+      await p.getByRole('heading', { name: 'Approve this navigation?' }).waitFor();
+    },
+  ],
+  [
+    'nav-changed',
+    '#nav-changed',
+    async (p) => {
+      await p.getByRole('button', { name: 'Approve', exact: true }).first().click();
+      await p.getByRole('button', { name: 'Approve', exact: true }).last().click();
+      await p.getByText(/draft changed after you opened/).waitFor();
+    },
+  ],
+  [
+    'nav-restore',
+    '#nav',
+    async (p) => {
+      await p.getByRole('button', { name: 'Restore version 1' }).click();
+      await p.getByRole('heading', { name: 'Restore version 1?' }).waitFor();
+    },
+  ],
+];
+const contentShots = [
   ['content', '#content', (p) => p.getByRole('heading', { name: 'Hero' }).waitFor()],
   ['content-system', '#content-system', (p) => p.getByText(/Filled by the app/).waitFor()],
   [
@@ -191,6 +246,7 @@ const shots = [
     (p) => p.getByText(/view this page but not change/).waitFor(),
   ],
 ];
+const shots = process.env.NAV_ONLY ? navShots : contentShots;
 for (const scheme of ['light', 'dark']) {
   for (const width of [1280, 768, 375]) {
     for (const [name, hash, ready] of shots) {
