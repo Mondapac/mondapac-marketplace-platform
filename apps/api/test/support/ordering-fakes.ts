@@ -35,6 +35,15 @@ import type {
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
 import type { RefundLimit } from '../../src/modules/ordering/domain/refund-limits';
+import {
+  isShipToPurgeable,
+  type ShipToRetention,
+  type ShipToSettlementFacts,
+} from '../../src/modules/ordering/domain/ship-to-retention';
+import type {
+  ShipToPurgeCursor,
+  ShipToRetentionRepository,
+} from '../../src/modules/ordering/application/ports/ship-to-retention.repository';
 import type { PaymentAttemptLimits } from '../../src/modules/ordering/application/ports/payment-attempt-limits';
 import type {
   CardPaymentFailure,
@@ -227,6 +236,62 @@ export class MemoryRefundLimits {
       return Promise.resolve('stale' as const);
     this.rows.delete(sellerId);
     return Promise.resolve('removed' as const);
+  }
+}
+
+/** One order as the ship-to purge sees it: its sealed ship-to and the facts the rule reads. */
+export interface ShipToOrder {
+  readonly id: string;
+  readonly marketId: string;
+  shipTo: string | null;
+  readonly facts: ShipToSettlementFacts;
+}
+
+/** The ship-to retention setting per Market and the orders the purge clears, in memory. */
+export class MemoryShipToRetention implements ShipToRetentionRepository {
+  readonly settings = new Map<string, ShipToRetention>();
+  readonly orders: ShipToOrder[] = [];
+  /** Every batch asked: the limit and whether it had a cursor. */
+  readonly batches: { limit: number; after: ShipToPurgeCursor | null }[] = [];
+
+  find(market: MarketContext) {
+    return Promise.resolve(this.settings.get(market.marketId) ?? null);
+  }
+  save(market: MarketContext, setting: ShipToRetention, expectedVersion: number) {
+    if ((this.settings.get(market.marketId)?.version ?? 0) !== expectedVersion) {
+      return Promise.resolve('stale' as const);
+    }
+    this.settings.set(market.marketId, { ...setting, version: expectedVersion + 1 });
+    return Promise.resolve('saved' as const);
+  }
+  /** One walk by order id (the Prisma repository's two phases are its own business). */
+  clearSettledShipTo(
+    market: MarketContext,
+    cutoff: Temporal.Instant,
+    after: ShipToPurgeCursor | null,
+    limit: number,
+  ) {
+    this.batches.push({ limit, after });
+    const from = after?.orderId ?? null;
+    const rows = this.orders
+      .filter(
+        (o) =>
+          o.marketId === market.marketId &&
+          o.shipTo !== null &&
+          (from === null || o.id > from) &&
+          isShipToPurgeable(o.facts, cutoff),
+      )
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
+      .slice(0, limit);
+    for (const row of rows) row.shipTo = null;
+    const last = rows.at(-1);
+    return Promise.resolve({
+      cleared: rows.length,
+      next:
+        rows.length < limit || last === undefined
+          ? null
+          : { phase: 'confirmed' as const, at: null, orderId: last.id },
+    });
   }
 }
 

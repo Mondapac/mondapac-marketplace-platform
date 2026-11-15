@@ -168,6 +168,47 @@ export const SavedFilterRemovedAudit = defineAuditAction({
   after: { ownedByActor: auditField.boolean() },
 });
 
+/** The audit target type of the ship-to retention setting; the target id is the setting's row. */
+export const SHIP_TO_RETENTION_TARGET = 'ordering.ship-to-retention';
+
+/**
+ * An admin set the Market's ship-to retention (owner decision 2026-11-15), after a fresh two-step
+ * code; the row names the proof. `before` is null on a first set (the Market was off, 24 months).
+ */
+export const ShipToRetentionChanged = defineAuditAction({
+  action: 'ordering.ship-to-retention.changed',
+  targetType: SHIP_TO_RETENTION_TARGET,
+  actors: ['authenticated'],
+  before: {
+    enabled: auditField.optional(auditField.boolean()),
+    months: auditField.optional(auditField.integer()),
+  },
+  after: {
+    enabled: auditField.boolean(),
+    months: auditField.integer(),
+    version: auditField.integer(),
+    stepUpSessionId: auditField.id(),
+    stepUpVerifiedAt: auditField.instant(),
+  },
+});
+
+/**
+ * One run of the daily purge of a Market with the retention on: how many sealed ship-to it
+ * cleared, under which setting and cutoff. A count only: no order id, no address.
+ */
+export const ShipToPurged = defineAuditAction({
+  action: 'ordering.ship-to.purged',
+  targetType: SHIP_TO_RETENTION_TARGET,
+  actors: ['system'],
+  after: {
+    months: auditField.integer(),
+    cutoff: auditField.instant(),
+    cleared: auditField.integer(),
+    /** False when the run stopped at its batch bound: the next run goes on. */
+    complete: auditField.boolean(),
+  },
+});
+
 export const ORDERING_AUDIT_ACTIONS = [
   RefundRequested,
   RefundSettled,
@@ -179,4 +220,6 @@ export const ORDERING_AUDIT_ACTIONS = [
   SavedFilterSharedAudit,
   SavedFilterChangedAudit,
   SavedFilterRemovedAudit,
+  ShipToRetentionChanged,
+  ShipToPurged,
 ] as const;
