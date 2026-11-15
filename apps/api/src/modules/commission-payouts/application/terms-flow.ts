@@ -15,7 +15,9 @@ import type { CommissionPayoutsDependencies } from './commission-payouts-depende
 import { spendStepUp, type StepUpFailure } from './step-up';
 import type { PayoutTermsOverrideRecord } from './ports/payout-terms.repository';
 import type { EffectivePayoutTerms } from './payout-terms-resolver';
-import { sellerIdOf } from './rate-flow';
+import { requestRef, sellerIdOf } from './rate-flow';
+import type { RecordedRequest, RecordFailure } from '../../system-requests';
+import { MONEY_REVIEW_AREA, PAYOUT_TERMS_SUBJECT_KIND, termsValues } from './money-review';
 
 // Payout terms per seller (package 6b; G2 4.4): an admin reads, sets and removes one seller's own
 // terms. The set and the removal are protected keys. The use-case gate checks the key; the fresh
@@ -38,7 +40,13 @@ export type TermsFailure =
   /** The version the admin saw is not the stored one (or the seller has no override yet). */
   | { readonly code: 'commission-payouts.version-conflict' }
   | { readonly code: 'commission-payouts.unavailable' }
-  | StepUpFailure;
+  | StepUpFailure
+  | RecordFailure;
+
+/** A change's answer: the terms and the System requests review it opened (null when none). */
+export interface PayoutTermsChangeView extends PayoutTermsView {
+  readonly request: Pick<RecordedRequest, 'id' | 'number'> | null;
+}
 
 export interface PayoutTermsView {
   readonly sellerId: Id<'Seller'>;
@@ -64,7 +72,7 @@ const toView = (sellerId: Id<'Seller'>, effective: EffectivePayoutTerms): Payout
   version: effective.override?.version ?? null,
 });
 
-const auditValues = (record: PayoutTermsOverrideRecord | null) => ({
+export const termsAuditValues = (record: PayoutTermsOverrideRecord | null) => ({
   weekdaysMask: record?.override.weekdays == null ? null : weekdaysToMask(record.override.weekdays),
   localMinute:
     record?.override.localTime == null ? null : localTimeToMinute(record.override.localTime),
@@ -99,7 +107,7 @@ async function sellerCheck(
  * schedule is worked out again at the next run, and the seller is told through notifications (an
  * event with ids only). The event is its own aggregate, so any number of changes are allowed.
  */
-async function announceTermsChange(
+export async function announceTermsChange(
   deps: CommissionPayoutsDependencies,
   context: CallContext,
   sellerId: Id<'Seller'>,
@@ -150,8 +158,9 @@ export async function setPayoutTerms(
     readonly terms: unknown;
     readonly expectedVersion: unknown;
     readonly reasonCode: unknown;
+    readonly note?: unknown;
   },
-): Promise<Result<PayoutTermsView, TermsFailure>> {
+): Promise<Result<PayoutTermsChangeView, TermsFailure>> {
   const actor = adminOf(context);
   if (actor === null) return err({ code: 'access.denied' });
   const cap = deps.terms.minimumCap(context.market);
@@ -177,7 +186,7 @@ export async function setPayoutTerms(
 
   const expectedVersion = expected ?? null;
   const now = deps.clock.now();
-  return deps.unitOfWork.run<PayoutTermsView, TermsFailure>(context.market, async () => {
+  return deps.unitOfWork.run<PayoutTermsChangeView, TermsFailure>(context.market, async () => {
     const before = await deps.termsOverrides.find(context.market, sellerId);
     if ((before?.version ?? null) !== expectedVersion) {
       return err({ code: 'commission-payouts.version-conflict' } as const);
@@ -203,12 +212,21 @@ export async function setPayoutTerms(
     await deps.audit.record(
       context,
       PayoutTermsSet.entry(sellerId, {
-        before: auditValues(before),
-        after: { ...auditValues(record), reasonCode },
+        before: termsAuditValues(before),
+        after: { ...termsAuditValues(record), reasonCode },
       }),
     );
     await announceTermsChange(deps, context, sellerId, now);
-    return ok(toView(sellerId, effective.value));
+    const review = await deps.review.openReview(context, {
+      area: MONEY_REVIEW_AREA,
+      subjectKind: PAYOUT_TERMS_SUBJECT_KIND,
+      subjectRef: sellerId,
+      before: { terms: before === null ? null : termsValues(before.override) },
+      after: { terms: termsValues(parsed.value) },
+      note: input.note,
+    });
+    if (!review.ok) return err(review.error);
+    return ok({ ...toView(sellerId, effective.value), request: requestRef(review.value) });
   });
 }
 
@@ -220,8 +238,9 @@ export async function clearPayoutTerms(
     readonly sellerId: unknown;
     readonly expectedVersion: unknown;
     readonly reasonCode: unknown;
+    readonly note?: unknown;
   },
-): Promise<Result<PayoutTermsView, TermsFailure>> {
+): Promise<Result<PayoutTermsChangeView, TermsFailure>> {
   if (adminOf(context) === null) return err({ code: 'access.denied' });
   const sellerId = sellerIdOf(input?.sellerId);
   const reasonCode: TermsChangeReason | null = isTermsChangeReason(input?.reasonCode)
@@ -240,7 +259,7 @@ export async function clearPayoutTerms(
   const refused = await sellerCheck(deps, context, sellerId);
   if (refused !== null) return err(refused);
 
-  return deps.unitOfWork.run<PayoutTermsView, TermsFailure>(context.market, async () => {
+  return deps.unitOfWork.run<PayoutTermsChangeView, TermsFailure>(context.market, async () => {
     const before = await deps.termsOverrides.find(context.market, sellerId);
     if (before === null) return err({ code: 'commission-payouts.terms-not-set' } as const);
     if (before.version !== expected) {
@@ -256,11 +275,20 @@ export async function clearPayoutTerms(
     await deps.audit.record(
       context,
       PayoutTermsCleared.entry(sellerId, {
-        before: auditValues(before),
+        before: termsAuditValues(before),
         after: { version: null, reasonCode },
       }),
     );
     await announceTermsChange(deps, context, sellerId, deps.clock.now());
-    return ok(toView(sellerId, effective.value));
+    const review = await deps.review.openReview(context, {
+      area: MONEY_REVIEW_AREA,
+      subjectKind: PAYOUT_TERMS_SUBJECT_KIND,
+      subjectRef: sellerId,
+      before: { terms: termsValues(before.override) },
+      after: { terms: null },
+      note: input.note,
+    });
+    if (!review.ok) return err(review.error);
+    return ok({ ...toView(sellerId, effective.value), request: requestRef(review.value) });
   });
 }

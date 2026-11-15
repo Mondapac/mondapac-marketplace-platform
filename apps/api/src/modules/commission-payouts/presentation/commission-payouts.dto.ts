@@ -9,6 +9,10 @@ import type { LedgerView } from '../application/use-cases/view-own-ledger.use-ca
 
 // Bodies of the commission-payouts routes. Ids, basis points and minor-unit strings only.
 
+export const NOTE_DESCRIPTION =
+  "The admin's note for the reviewer, 1 to 500 characters; required while the Market reviews " +
+  'area money in Admin Inbox › System requests (else 400 on note), ignored otherwise.';
+
 export class CommissionRateBody {
   @ApiProperty({ format: 'uuid' }) sellerId!: string;
   @ApiProperty({ description: 'The rate in force, in basis points (1500 = 15 %).' })
@@ -21,9 +25,25 @@ export class CommissionRateBody {
   @ApiProperty({ description: 'The Market rate, in basis points.' }) marketRateBps!: number;
 }
 
+/** The System requests review a change opened (Admin Inbox › System requests, area money). */
+export class ReviewRequestRef {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ description: 'Shown as SR-<number>.' }) number!: number;
+}
+
+const REQUEST_DESCRIPTION =
+  'The review this change opened in Admin Inbox › System requests; null when the Market does ' +
+  'not review area money.';
+
+export class CommissionRateChangeBody extends CommissionRateBody {
+  @ApiProperty({ type: ReviewRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: ReviewRequestRef | null;
+}
+
 export class SetCommissionRateRequest {
   @ApiProperty({ description: 'Basis points, a whole number from 0 to 3000.', example: 1200 })
   rateBps!: number;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 class LedgerTotalsBody {
@@ -94,6 +114,16 @@ export const rateBody = (view: RateView): CommissionRateBody => ({
   rateBps: view.rateBps,
   source: view.source,
   marketRateBps: view.marketRateBps,
+});
+
+type Requested = { readonly request: { readonly id: string; readonly number: number } | null };
+
+const requestBody = (view: Requested): ReviewRequestRef | null =>
+  view.request === null ? null : { id: view.request.id, number: view.request.number };
+
+export const rateChangeBody = (view: RateView & Requested): CommissionRateChangeBody => ({
+  ...rateBody(view),
+  request: requestBody(view),
 });
 
 export const ledgerBody = (view: LedgerView): LedgerBody => ({
@@ -178,9 +208,15 @@ export class PayoutTermsBody {
   version!: number | null;
 }
 
+export class PayoutTermsChangeBody extends PayoutTermsBody {
+  @ApiProperty({ type: ReviewRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: ReviewRequestRef | null;
+}
+
 export class SetPayoutTermsRequest {
   @ApiProperty({ enum: TERMS_CHANGE_REASONS, description: 'Why the terms change.' })
   reasonCode!: string;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
   @ApiProperty({ enum: PAYOUT_WEEKDAYS, isArray: true, required: false })
   weekdays?: string[];
   @ApiProperty({ required: false, example: '10:00' }) localTime?: string;
@@ -274,3 +310,7 @@ export const payoutHoldBody = (view: PayoutHoldView): PayoutHoldBody => ({
   releasedAt: view.releasedAt === null ? null : view.releasedAt.toString(),
   releaseReason: view.releaseReason,
 });
+
+export const payoutTermsChangeBody = (
+  view: PayoutTermsView & Requested,
+): PayoutTermsChangeBody => ({ ...payoutTermsBody(view), request: requestBody(view) });

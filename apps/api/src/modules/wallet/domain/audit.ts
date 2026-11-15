@@ -34,6 +34,27 @@ export const WalletStatusChanged = defineAuditAction({
   },
 });
 
+/**
+ * A reviewer rejected, or its author withdrew, a switch of the Market's wallet in Admin Inbox ›
+ * System requests, and the state before came back (no step-up of its own: the decision spent the
+ * reviewer's for a high-risk request). `requestId` names the System request.
+ */
+export const WalletStatusReverted = defineAuditAction({
+  action: 'wallet.market-status.reverted',
+  targetType: WALLET_SETTINGS_TARGET,
+  targetId: auditField.enumOf(['wallet-settings'] as const),
+  actors: ['authenticated'],
+  before: {
+    status: auditField.enumOf(WALLET_STATUSES),
+    reason: auditField.optional(auditField.enumOf(WALLET_STATUS_REASONS)),
+  },
+  after: {
+    status: auditField.enumOf(WALLET_STATUSES),
+    reason: auditField.optional(auditField.enumOf(WALLET_STATUS_REASONS)),
+    requestId: auditField.id(),
+  },
+});
+
 /** The audit target type of an admin credit issue or request (package 2a); the target id is its id. */
 export const ADMIN_CREDIT_TARGET = 'wallet.admin-credit-request';
 
@@ -112,6 +133,7 @@ export const AdminCreditExpired = defineAuditAction({
 
 export const WALLET_AUDIT_ACTIONS = [
   WalletStatusChanged,
+  WalletStatusReverted,
   AdminCreditIssued,
   AdminCreditRequested,
   AdminCreditApproved,

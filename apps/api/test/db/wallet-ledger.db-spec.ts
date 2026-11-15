@@ -1,4 +1,5 @@
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
+import { RecordingReview } from '../support/system-request-fakes';
 import { WALLET_AUDIT_ACTIONS } from '../../src/modules/wallet/domain/audit';
 import { dbChangeTrail } from './change-trail-support';
 import { err, money, ok, Temporal } from '@mondapac/shared-kernel';
@@ -92,6 +93,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
   let owner: Client;
   let audit: RecordingAudit;
   let deps: WalletDependencies;
+  let review = new RecordingReview();
   let n = 0;
 
   beforeAll(async () => {
@@ -105,11 +107,13 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
     const catalogue = new AuditActionCatalogue();
     catalogue.register('wallet', WALLET_AUDIT_ACTIONS);
     catalogue.seal();
+    review = new RecordingReview();
     deps = {
       unitOfWork: db.unitOfWork,
       wallet: new PrismaWalletRepository(db.service, ids),
       settings: new PrismaMarketSettingRepository(db.service),
       policy: new ConfigWalletPolicy(markets),
+      review,
       audit,
       ids,
       clock,

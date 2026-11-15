@@ -3363,6 +3363,21 @@
     }
   },
   {
+    "action": "wallet.market-status.reverted",
+    "targetType": "wallet.market-settings",
+    "targetId": "enumOf(wallet-settings)",
+    "actors": ["authenticated"],
+    "before": {
+      "reason": "optional(enumOf(wind-down|security-incident|fraud-suspected|legal-hold|maintenance|owner-decision))",
+      "status": "enumOf(off|active|paused|frozen)"
+    },
+    "after": {
+      "reason": "optional(enumOf(wind-down|security-incident|fraud-suspected|legal-hold|maintenance|owner-decision))",
+      "requestId": "id",
+      "status": "enumOf(off|active|paused|frozen)"
+    }
+  },
+  {
     "action": "catalog.platform-import.started",
     "targetType": "catalog.platform-import",
     "targetId": "id",

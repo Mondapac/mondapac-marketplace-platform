@@ -3,6 +3,7 @@ import {
   FakeChangeActors,
   InMemoryAuditTrail,
 } from '../../../../test/support/change-trail-fakes';
+import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -40,6 +41,8 @@ import { ViewMyWallet } from './use-cases/view-my-wallet.use-case';
 import { ViewWalletSettingsHistory } from './use-cases/view-wallet-settings-history.use-case';
 import { ViewWalletSettings } from './use-cases/view-wallet-settings.use-case';
 import type { WalletDependencies } from './wallet-dependencies';
+import { WALLET_STATUS_SUBJECT_KIND } from './wallet-review';
+import { WalletStatusReverter } from './wallet-reverter';
 
 // The wallet ledger core in memory on both Market fixtures (AU: AUD, cap 500.00, promo 12 months;
 // ZZ: JPY, cap 30000, promo 6 months): the switch (off by default; off, active, paused, frozen),
@@ -53,6 +56,7 @@ const id = <T extends string>(n: number): Id<T> => {
   if (!parsed.ok) throw new Error('bad id');
   return parsed.value as Id<T>;
 };
+const REQUEST = id<'SystemRequest'>(0x5e01);
 const CUSTOMER = id<'Account'>(0xc1);
 const OTHER_CUSTOMER = id<'Account'>(0xc2);
 const ADMIN = id<'Account'>(0xad);
@@ -85,6 +89,7 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
   let audit: RecordingAudit;
   let actors: FakeChangeActors;
   let deps: WalletDependencies;
+  let review = new RecordingReview();
   let seq = 0;
   // identity's spend of the admin step-up proof (issue #491): a proof unless a test says otherwise.
   let stepUpAnswer: Awaited<ReturnType<WalletDependencies['stepUp']['consume']>>;
@@ -129,11 +134,13 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
     audit = new RecordingAudit(clock);
     actors = new FakeChangeActors();
     const unitOfWork = new FakeUnitOfWork();
+    review = new RecordingReview();
     deps = {
       unitOfWork,
       wallet,
       settings: setting,
       policy: new ConfigWalletPolicy(markets),
+      review,
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,
@@ -485,6 +492,100 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
   });
 
   // ---- grants -----------------------------------------------------------------------------
+
+  describe('review of the switch in System requests (area money)', () => {
+    const revert = (
+      before: Record<string, unknown>,
+      after: Record<string, unknown>,
+      context = adminCtx(),
+    ) =>
+      new WalletStatusReverter(deps).revert(context, {
+        requestId: REQUEST,
+        subjectRef: 'wallet-settings',
+        before: before as Record<string, null>,
+        after: after as Record<string, null>,
+      });
+
+    it('opens nothing where the Market does not review money', async () => {
+      expect(await turn('active')).toMatchObject({ ok: true, value: { request: null } });
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('opens a review with the state before and after and the note, and refuses a switch without a note', async () => {
+      review.review('money', 'high');
+      expect(await turn('active')).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'note' }] },
+      });
+      // (The fake unit does not roll back, so the refused save is still stored: start from it.)
+      setting.record = null;
+      const opened = await new SetWalletStatus(gate, deps).execute(adminCtx(), {
+        status: 'active',
+        expectedVersion: 0,
+        note: 'Launch',
+      });
+      expect(opened).toMatchObject({ ok: true, value: { request: { number: 1 } } });
+      expect(review.opened).toEqual([
+        {
+          area: 'money',
+          subjectKind: WALLET_STATUS_SUBJECT_KIND,
+          subjectRef: 'wallet-settings',
+          before: { status: 'off', reason: null },
+          after: { status: 'active', reason: null },
+          note: 'Launch',
+        },
+      ]);
+    });
+
+    it('restores the state before while the switch still holds the state after, audited as a revert', async () => {
+      await open('active');
+      await turn('frozen', 'security-incident');
+      audit.entries.length = 0;
+      expect(
+        await revert(
+          { status: 'active', reason: null },
+          { status: 'frozen', reason: 'security-incident' },
+        ),
+      ).toBe('reverted');
+      expect(setting.record).toMatchObject({ status: 'active', reason: null, version: 3 });
+      expect(audit.entries.map((e) => [e.action, e.before, e.after])).toEqual([
+        [
+          'wallet.market-status.reverted',
+          { status: 'frozen', reason: 'security-incident' },
+          { status: 'active', reason: null, requestId: REQUEST },
+        ],
+      ]);
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('answers changed-since when the switch moved on or off is no longer possible, and gone for a bad state', async () => {
+      await open('active');
+      expect(
+        await revert({ status: 'off', reason: null }, { status: 'paused', reason: 'maintenance' }),
+      ).toBe('changed-since');
+      expect(
+        await revert({ status: 'sideways', reason: null }, { status: 'active', reason: null }),
+      ).toBe('gone');
+      expect(
+        await revert({ status: 'paused', reason: null }, { status: 'active', reason: null }),
+      ).toBe('gone');
+      await grant(500n);
+      // Off with journals: the wallet has moved on.
+      expect(
+        await revert({ status: 'off', reason: null }, { status: 'active', reason: null }),
+      ).toBe('changed-since');
+      expect(setting.record).toMatchObject({ status: 'active', version: 1 });
+    });
+
+    it('throws for anyone but a signed-in admin acting as themselves', async () => {
+      await open('active');
+      for (const context of [customerCtx()]) {
+        await expect(
+          revert({ status: 'off', reason: null }, { status: 'active', reason: null }, context),
+        ).rejects.toThrow();
+      }
+    });
+  });
 
   describe('grants', () => {
     beforeEach(open);

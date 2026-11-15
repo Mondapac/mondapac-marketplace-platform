@@ -62,6 +62,16 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
   page's `note` and answers the request it opened (`request: {id, number}` or null); each setting
   view carries `review: {reviewed, risk}` so the page knows to ask for a note. The reverter writes
   the value before as a new version with its history and audit row.
+- **commission-payouts** (area money): kind `commission-payouts.commission-rate` (subject = seller
+  id, values `{rateBps}`, null = the Market rate) and `commission-payouts.payout-terms` (subject =
+  seller id, values `{terms}`, the override's fields or null). The set and remove routes take
+  `note` (in the body, or the `note` query on DELETE) and answer `request`. A revert restores the
+  rate or the override (as a new version, audited with reason `correction`, the seller's schedule
+  worked out again); terms the Market's bounds no longer allow are `gone`.
+- **wallet** (area money): kind `wallet.market-status` (subject `wallet-settings`, values
+  `{status, reason}`). The switch takes `note` and answers `request`. A revert is audited as
+  `wallet.market-status.reverted` (with the request id, no step-up of its own); going back to `off`
+  once the Market has journals is `changed-since`.
 
 ## Supersession and locks
 

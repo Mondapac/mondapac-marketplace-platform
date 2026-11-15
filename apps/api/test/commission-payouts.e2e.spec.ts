@@ -376,9 +376,16 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
   const LEDGER = `/commission-payouts/admin/sellers/${SELLER}/ledger`;
   const OWN = '/commission-payouts/seller/ledger';
   const PAYOUT = id<'Payout'>(0xc900);
+  const REQUEST = id<'SystemRequest'>(0x5e07);
   const PAYOUTS = '/commission-payouts/admin/payouts';
   const APPROVE = `${PAYOUTS}/${PAYOUT}/approve`;
-  const rate = { sellerId: SELLER, rateBps: 1200, source: 'seller', marketRateBps: 1500 };
+  const rate = {
+    sellerId: SELLER,
+    rateBps: 1200,
+    source: 'seller',
+    marketRateBps: 1500,
+    request: null,
+  };
 
   const money = (amountMinor: bigint) => ({ amountMinor, currency });
   const row = {
@@ -423,16 +430,26 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     const read = await call('get', 'admin', RATE, session);
     expect(read.status).toBe(200);
     expect(read.headers['cache-control']).toBe('no-store');
-    expect(read.body).toEqual(rate);
-    const set = await call('put', 'admin', RATE, session, { rateBps: 1200 });
+    // The read shows the rate only; a change also names the System requests review it opened.
+    const shown = {
+      sellerId: rate.sellerId,
+      rateBps: rate.rateBps,
+      source: rate.source,
+      marketRateBps: rate.marketRateBps,
+    };
+    expect(read.body).toEqual(shown);
+    next = ok({ ...rate, request: { id: REQUEST, number: 7 } });
+    const set = await call('put', 'admin', RATE, session, { rateBps: 1200, note: 'Promo month' });
     expect(set.status).toBe(200);
-    expect(set.body).toEqual(rate);
-    const cleared = await call('delete', 'admin', RATE, session);
+    expect(set.body).toEqual({ ...shown, request: { id: REQUEST, number: 7 } });
+    next = ok(rate);
+    const cleared = await call('delete', 'admin', `${RATE}?note=Back%20to%20market`, session);
     expect(cleared.status).toBe(200);
+    expect(cleared.body).toEqual(rate);
     expect(calls).toEqual([
       { name: 'view-rate', input: { sellerId: SELLER } },
-      { name: 'set-rate', input: { sellerId: SELLER, rateBps: 1200 } },
-      { name: 'clear-rate', input: { sellerId: SELLER } },
+      { name: 'set-rate', input: { sellerId: SELLER, rateBps: 1200, note: 'Promo month' } },
+      { name: 'clear-rate', input: { sellerId: SELLER, note: 'Back to market' } },
     ]);
   });
 
@@ -556,6 +573,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         approvalMode: null,
       },
       version: 2,
+      request: null,
     };
     const hold = {
       holdId: HOLD,

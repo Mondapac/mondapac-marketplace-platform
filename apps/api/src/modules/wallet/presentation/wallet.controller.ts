@@ -37,6 +37,8 @@ import {
   SetSettingsRequest,
   SettingsBody,
   settingsBody,
+  settingsChangeBody,
+  SettingsChangeBody,
 } from './wallet.dto';
 import { closedBody, parseLimit, refusal } from './http-answers';
 
@@ -204,7 +206,7 @@ export class AdminWalletController {
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: SetSettingsRequest })
-  @ApiOkResponse({ type: SettingsBody })
+  @ApiOkResponse({ type: SettingsChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({
@@ -228,14 +230,20 @@ export class AdminWalletController {
     @Body() requestBody: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, requestBody, ['status', 'reasonCode', 'expectedVersion']);
+    const invalid = closedBody(request, requestBody, [
+      'status',
+      'reasonCode',
+      'expectedVersion',
+      'note',
+    ]);
     if (invalid !== null) throw invalid;
-    const { status, reasonCode, expectedVersion } = requestBody as {
+    const { status, reasonCode, expectedVersion, note } = requestBody as {
       status?: unknown;
       reasonCode?: unknown;
       expectedVersion?: unknown;
+      note?: unknown;
     };
-    const result = await this.set.execute(context, { status, reasonCode, expectedVersion });
+    const result = await this.set.execute(context, { status, reasonCode, expectedVersion, note });
     logRoute(
       this.#logger,
       'wallet.set-wallet-status-route',
@@ -243,6 +251,6 @@ export class AdminWalletController {
       result.ok ? 'set' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return settingsBody(result.value);
+    return settingsChangeBody(result.value);
   }
 }
