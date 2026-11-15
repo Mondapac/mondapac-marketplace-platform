@@ -73,4 +73,21 @@ describe('ConfirmAction', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
     expect(onCancel).not.toHaveBeenCalled();
   });
+
+  it('starts empty again when it is closed and opened again', () => {
+    const { rerender } = render(
+      <ConfirmAction {...base({ level: 3, typeLabel: 'Type the name' })} />,
+    );
+    fireEvent.change(screen.getByLabelText('Type the name'), { target: { value: 'Ada' } });
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Suspend' }).disabled).toBe(false);
+    rerender(<ConfirmAction {...base({ open: false, level: 3, typeLabel: 'Type the name' })} />);
+    rerender(<ConfirmAction {...base({ level: 3, typeLabel: 'Type the name' })} />);
+    expect(screen.getByLabelText<HTMLInputElement>('Type the name').value).toBe('');
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Suspend' }).disabled).toBe(true);
+  });
+
+  it('level 3 with no row name never enables Confirm', () => {
+    render(<ConfirmAction {...base({ level: 3, rowName: '', typeLabel: 'Type the name' })} />);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Suspend' }).disabled).toBe(true);
+  });
 });
