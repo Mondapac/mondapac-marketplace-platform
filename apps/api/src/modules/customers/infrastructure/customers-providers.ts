@@ -20,6 +20,13 @@ import {
   type AccountDeletionRequestRepository,
 } from '../application/ports/account-deletion-request.repository';
 import { ACCOUNT_DELETION_PEERS } from '../application/ports/account-deletion-peers';
+import {
+  CUSTOMER_READ_MODEL_REPOSITORY,
+  type CustomerReadModelRepository,
+} from '../application/ports/customer-read-models.repository';
+import { CUSTOMER_READ_MODEL_PEERS } from '../application/ports/customer-read-model-peers';
+import { LateBoundReadModelPeers } from './late-bound-read-model-peers';
+import { PrismaCustomerReadModelRepository } from './prisma-customer-read-models.repository';
 import { LateBoundAccountDeletionPeers } from './late-bound-account-deletion-peers';
 import { PrismaAccountDeletionRequestRepository } from './prisma-account-deletion-request.repository';
 import { PrismaAccountDeletionSettingsRepository } from './prisma-account-deletion-settings.repository';
@@ -59,5 +66,15 @@ export const customersProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AccountDeletionSettingsRepository =>
       new PrismaAccountDeletionSettingsRepository(prisma),
+  },
+  {
+    provide: CUSTOMER_READ_MODEL_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerReadModelRepository =>
+      new PrismaCustomerReadModelRepository(prisma),
+  },
+  {
+    provide: CUSTOMER_READ_MODEL_PEERS,
+    useFactory: (): LateBoundReadModelPeers => new LateBoundReadModelPeers(),
   },
 ];

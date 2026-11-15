@@ -512,6 +512,7 @@ export async function executeAccountDeletions(
           // serializable delete cannot see, so without it an add could outlive the erasure.
           await deps.addresses.lockBook(market, request.accountId);
           await deps.addresses.removeAllOf(market, request.accountId);
+          await deps.readModels.removeAllOf(market, request.accountId);
           if (!(await deps.requests.complete(market, request.id, claimedAt, now))) return ok(false);
           await deps.audit.record(
             context,
