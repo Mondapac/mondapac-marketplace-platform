@@ -107,7 +107,8 @@
     "import": "Import",
     "performance": "Performance",
     "categories": "Category proposals",
-    "payoutAccount": "Payout account"
+    "payoutAccount": "Payout account",
+    "payoutAccountWords": "bank, BSB, payments, get paid"
   },
   "home": {
     "title": "Dashboard",
@@ -2989,6 +2990,12 @@
   },
   "route": {
     "loading": "Loading the page",
+    "loading-page": "Loading {page}",
+    "slow": "Still loading…",
+    "stalled": {
+      "title": "This page is taking too long to load",
+      "message": "Check your connection and try again. Nothing you saved was lost."
+    },
     "error": {
       "title": "This page could not be shown",
       "message": "Something went wrong on our side. Try again, or go back to the dashboard. Nothing you saved was lost.",
@@ -3541,8 +3548,13 @@
       "body": "Try again. If it keeps happening, check the status page."
     },
     "sub": {
-      "label": "Settings pages",
       "back": "Back to Settings"
+    },
+    "menu": {
+      "label": "Settings menu",
+      "back": "Back to Dashboard",
+      "search": "Search settings",
+      "empty": "No settings match"
     },
     "view-only": {
       "title": "View only"

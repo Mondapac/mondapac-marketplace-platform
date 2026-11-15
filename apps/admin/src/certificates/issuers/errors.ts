@@ -7,6 +7,12 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'issuer.accreditation-taken': 'accreditation-taken',
   'issuer.expert-approval-required': 'expert-required',
   'issuer.transition-forbidden': 'transition',
+  'issuer.confirmation-count-mismatch': 'count-changed',
+  'issuer.expert-approval-not-new': 'expert-not-new',
+  'review.proposal-pending': 'proposal-pending',
+  'review.proposal-closed': 'proposal-closed',
+  'review.second-admin-required': 'second-admin',
+  'proposal.not-found': 'proposal-gone',
   'issuer.not-found': 'gone',
   'type.not-found': 'type-gone',
   'conflict.stale': 'stale',
@@ -29,6 +35,13 @@ export function issuerProblemOf(failure: ApiFailure): IssuerProblem {
   const key = named ?? (failure.status === 0 || failure.status >= 500 ? 'unavailable' : 'unknown');
   return {
     key: `certificates.issuers.error.${key}`,
-    reload: key === 'stale' || key === 'gone' || key === 'transition',
+    reload:
+      key === 'stale' ||
+      key === 'gone' ||
+      key === 'transition' ||
+      key === 'count-changed' ||
+      key === 'proposal-pending' ||
+      key === 'proposal-closed' ||
+      key === 'proposal-gone',
   };
 }

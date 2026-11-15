@@ -1,5 +1,12 @@
 export { AppShell, type AppShellProps, type BottomTab } from './shell/app-shell.tsx';
 export { Sidebar, type SidebarProps } from './shell/sidebar.tsx';
+export {
+  buildSettingsMenuGroups,
+  filterSettingsMenu,
+  type SettingsMenu,
+  type SettingsMenuGroup,
+  type SettingsMenuLink,
+} from './shell/settings-menu.ts';
 export { Topbar, type Crumb, type TopbarProps } from './shell/topbar.tsx';
 export {
   AccountMenu,
@@ -20,6 +27,15 @@ export {
   type NavigationProgressProps,
 } from './loading/navigation-progress.tsx';
 export { Spinner } from './loading/spinner.tsx';
+export {
+  SettingsSkeleton,
+  type SettingsSkeletonProps,
+  type SkeletonSection,
+} from './loading/settings-skeleton.tsx';
+export {
+  SettingsRouteLoading,
+  type SettingsRouteLoadingProps,
+} from './loading/settings-route-loading.tsx';
 export {
   useDelayedLoading,
   LOADING_SHOW_DELAY_MS,
@@ -112,7 +128,6 @@ export {
   type SettingsErrorSummaryProps,
 } from './settings/error-summary.tsx';
 export { NoAccess, type NoAccessProps } from './settings/no-access.tsx';
-export { SettingsSubNav, type SubNavGroup } from './settings/settings-sub-nav.tsx';
 export { SettingsTitle } from './settings/settings-title.tsx';
 export {
   relativeTime,

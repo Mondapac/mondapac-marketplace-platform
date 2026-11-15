@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -53,7 +53,7 @@ describe('SettingsForm', () => {
   it('shows a loading state, then a never-changed Off wallet and the meaning of every state', async () => {
     call.mockResolvedValue(ok(settings()));
     mount();
-    expect(screen.getByText('Loading')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('Loading Customer wallet');
     expect(await screen.findByText('Never changed')).toBeTruthy();
     expect(call).toHaveBeenCalledWith('GET', 'wallet/admin/settings');
     expect(screen.getAllByText('Off').length).toBeGreaterThan(0);
@@ -83,6 +83,47 @@ describe('SettingsForm', () => {
     expect(await screen.findByRole('alert')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Never changed')).toBeTruthy();
+  });
+
+  it('gives up at 30 s with a retry, and drops the answer of the abandoned read', async () => {
+    vi.useFakeTimers();
+    try {
+      let answerFirst: (value: ReturnType<typeof ok>) => void = () => undefined;
+      call.mockImplementationOnce(() => new Promise((resolve) => (answerFirst = resolve)));
+      call.mockResolvedValueOnce(ok(settings({ status: 'active' })));
+      mount();
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(document.querySelectorAll('[data-skeleton="section"]')).toHaveLength(3);
+      expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+      expect(screen.getByText('Still loading…')).toBeTruthy();
+      act(() => {
+        vi.advanceTimersByTime(20_000);
+      });
+      expect(screen.getByText('This could not be loaded. Try again.')).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        await Promise.resolve();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+        await Promise.resolve();
+      });
+      expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
+      // The first read answers late: its "off" never replaces the newer answer.
+      await act(async () => {
+        answerFirst(ok(settings({ status: 'off' })));
+        await Promise.resolve();
+      });
+      expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
+      expect(screen.queryByText('This could not be loaded. Try again.')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('shows a view-only admin the danger zone disabled, with the reason and no button', async () => {

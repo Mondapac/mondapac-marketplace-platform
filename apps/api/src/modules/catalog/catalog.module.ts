@@ -518,6 +518,7 @@ import {
   OwnDescriptionWriterController,
 } from './presentation/description-writer.controller';
 import { SettingsModule } from '../settings';
+import { ListsModule } from '../lists';
 import { VARIANT_ADMIN_READER } from './application/ports/variant-admin.reader';
 import { VARIANT_TYPE_SETTINGS_STORE } from './application/ports/variant-type-settings.store';
 import { AdminVariantTypeGet } from './application/use-cases/admin-variant-type-get.use-case';
@@ -837,6 +838,7 @@ const RESTRUCTURE_DEPS = {
     CatalogReferencesModule,
     IdentityModule,
     SettingsModule,
+    ListsModule,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),

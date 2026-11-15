@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import messages from '../../messages/en.json';
 import { SettingsHub } from '@mondapac/ui';
 import { visibleSettings } from './settings-nav.ts';
-import { SettingsSubNav } from '@mondapac/ui';
 
 const text = (key: string): string =>
   key
@@ -84,43 +83,5 @@ describe('SettingsHub', () => {
       screen.getAllByRole('link').some((a) => a.getAttribute('href')?.startsWith('/account')),
     ).toBe(false);
     expect(screen.queryByText(/two-step|sessions|security/i)).toBeNull();
-  });
-});
-
-describe('SettingsSubNav', () => {
-  const groups = [
-    {
-      id: 'store',
-      label: 'Store',
-      links: [
-        { id: 'store-profile', href: '/settings/store-profile', label: 'Store profile' },
-        { id: 'stock-locations', href: '/settings/stock-locations', label: 'Stock locations' },
-      ],
-    },
-    {
-      id: 'money',
-      label: 'Money',
-      links: [{ id: 'payout-account', href: '/settings/payout-account', label: 'Payout account' }],
-    },
-  ];
-
-  it('lists the groups and links in a named landmark and marks only the current page', () => {
-    render(<SettingsSubNav label="Settings pages" groups={groups} activeId="stock-locations" />);
-    const nav = screen.getByRole('navigation', { name: 'Settings pages' });
-    const links = within(nav).getAllByRole('link');
-    expect(links.map((a) => a.textContent)).toEqual([
-      'Store profile',
-      'Stock locations',
-      'Payout account',
-    ]);
-    expect(links.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page', null]);
-    expect(links[0]?.className).toContain('-outline-offset-2');
-  });
-
-  it('draws nothing when the caller may open no page', () => {
-    const { container } = render(
-      <SettingsSubNav label="Settings pages" groups={[]} activeId="x" />,
-    );
-    expect(container.innerHTML).toBe('');
   });
 });

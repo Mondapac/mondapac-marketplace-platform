@@ -13,9 +13,10 @@ import {
   SettingsConflictBanner,
   SettingsPage,
   SettingsSection,
-  SkeletonRows,
+  SettingsSkeleton,
   toast,
   type BadgeTone,
+  useDelayedLoading,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -68,10 +69,17 @@ export function SettingsForm({
   // Before the loading and error returns below: a hook is called on every render.
   const changeHistory = useChangeHistory(settings?.lastChanged, 'wallet/admin/settings/history');
   const winnerTitle = useWinnerTitle();
+  // Shown after 200 ms, held at least 400 ms; at 30 s the load counts as failed.
+  const loading = useDelayedLoading(settings === null && !loadFailed);
 
+  // Each read gets a number; an answer to an older read (one abandoned at the 30 s stall, or
+  // replaced by Try again) is dropped, so it never overwrites what the newer read showed.
+  const attempt = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++attempt.current;
     setLoadFailed(false);
     const result = await callApi<WalletSettings>('GET', 'wallet/admin/settings');
+    if (mine !== attempt.current) return;
     if (result.ok) {
       // A state the panel does not know is not shown as a guess.
       if (WALLET_STATES.includes(result.body.status) && Number.isInteger(result.body.version)) {
@@ -84,6 +92,12 @@ export function SettingsForm({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!loading.stalled) return;
+    attempt.current += 1;
+    setLoadFailed(true);
+  }, [loading.stalled]);
 
   const title = t('settings.title');
   const intro = t('settings.intro');
@@ -99,10 +113,21 @@ export function SettingsForm({
       </SettingsPage>
     );
   }
-  if (settings === null) {
+  if (settings === null || loading.visible) {
     return (
       <SettingsPage title={title} description={intro}>
-        <SkeletonRows label={t('loading')} rows={3} />
+        <SettingsSkeleton
+          label={root('route.loading-page', { page: title })}
+          header={false}
+          sections={[
+            { fields: 2 },
+            { fields: WALLET_STATES.length },
+            { fields: 2, description: true },
+          ]}
+          visible={loading.visible}
+          slow={loading.slow}
+          slowLabel={root('route.slow')}
+        />
       </SettingsPage>
     );
   }
