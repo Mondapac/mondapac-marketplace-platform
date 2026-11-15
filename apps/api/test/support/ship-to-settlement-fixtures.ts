@@ -10,11 +10,27 @@ import type { ShipToSettlementFacts } from '../../src/modules/ordering/domain/sh
 
 export const LINE_QUANTITY = 2;
 
+/**
+ * One refund of the seller order's line. `at` is when Stripe settled it (succeeded or failed); a
+ * pending refund has no settled time, so for it `at` is when it was asked. A settled refund was
+ * asked {@link REFUND_ASKED_BEFORE} earlier ({@link refundRequestedAt}).
+ */
 export interface RefundSpec {
   readonly at: Temporal.Instant;
   readonly units: number;
+  /** Succeeded unless said. */
   readonly state?: RefundState;
 }
+
+export const REFUND_ASKED_BEFORE = { minutes: 1 } as const;
+
+/** When the refund was asked: `at` for a pending one, a minute before it was settled otherwise. */
+export const refundRequestedAt = (refund: RefundSpec): Temporal.Instant =>
+  (refund.state ?? 'succeeded') === 'pending' ? refund.at : refund.at.subtract(REFUND_ASKED_BEFORE);
+
+/** When the refund was settled: null while pending. */
+export const refundSettledAt = (refund: RefundSpec): Temporal.Instant | null =>
+  (refund.state ?? 'succeeded') === 'pending' ? null : refund.at;
 
 export type SellerOrderSpec =
   | { readonly kind: 'delivered'; readonly at: Temporal.Instant }
@@ -45,7 +61,7 @@ export function settlementFacts(spec: OrderSpec, orderIndex = 0): ShipToSettleme
         lines: [{ lineId: line, quantity: LINE_QUANTITY }],
         refunds: (so.kind === 'to-ship' ? (so.refunds ?? []) : []).map((refund) => ({
           state: refund.state ?? 'succeeded',
-          requestedAt: refund.at,
+          settledAt: refundSettledAt(refund),
           lines: [{ orderLineId: line, quantity: refund.units }],
         })),
       };
@@ -94,7 +110,7 @@ export function settlementCases(
       purgeable: false,
     },
     {
-      name: 'refunded in full while to ship, completed at the cutoff',
+      name: 'refunded in full while to ship, the completing refund settled at the cutoff',
       spec: {
         sellerOrders: [
           {
@@ -109,7 +125,7 @@ export function settlementCases(
       purgeable: true,
     },
     {
-      name: 'refunded in full while to ship, completed 1 ms after',
+      name: 'refunded in full while to ship, asked before the cutoff but settled 1 ms after',
       spec: {
         sellerOrders: [
           {
@@ -124,11 +140,26 @@ export function settlementCases(
       purgeable: false,
     },
     {
-      name: 'refunded in full by a pending refund (not failed counts)',
+      name: 'refunded in full only by a pending refund (it may still fail)',
       spec: {
         sellerOrders: [{ kind: 'to-ship', refunds: [{ at: old, units: 2, state: 'pending' }] }],
       },
-      purgeable: true,
+      purgeable: false,
+    },
+    {
+      name: 'refunded in full only with a pending refund for the rest',
+      spec: {
+        sellerOrders: [
+          {
+            kind: 'to-ship',
+            refunds: [
+              { at: old, units: 1 },
+              { at: old, units: 1, state: 'pending' },
+            ],
+          },
+        ],
+      },
+      purgeable: false,
     },
     {
       name: 'refunded in part only',

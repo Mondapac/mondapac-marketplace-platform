@@ -41,7 +41,7 @@ export interface ShipToRetentionRepository {
    * `isShipToPurgeable` allows. Orders already cleared are not looked at again. `next` is null
    * once both phases are done.
    */
-  clearDeliveredShipTo(
+  clearSettledShipTo(
     market: MarketContext,
     cutoff: Temporal.Instant,
     after: ShipToPurgeCursor | null,

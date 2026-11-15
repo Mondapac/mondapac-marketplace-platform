@@ -265,7 +265,7 @@ export class MemoryShipToRetention implements ShipToRetentionRepository {
     return Promise.resolve('saved' as const);
   }
   /** One walk by order id (the Prisma repository's two phases are its own business). */
-  clearDeliveredShipTo(
+  clearSettledShipTo(
     market: MarketContext,
     cutoff: Temporal.Instant,
     after: ShipToPurgeCursor | null,

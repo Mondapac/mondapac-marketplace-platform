@@ -71,6 +71,26 @@ describe.each([
     ).toBe(false);
   });
 
+  it('dates a refund in full by when the completing succeeded refund settled, ignoring pending ones', () => {
+    const at = (text: string) => local(text);
+    const facts = settlementFacts({
+      sellerOrders: [
+        {
+          kind: 'to-ship',
+          refunds: [
+            { at: at('2023-01-01T00:00:00'), units: 1 },
+            { at: at('2023-01-02T00:00:00'), units: 1, state: 'pending' },
+            { at: at('2023-01-03T00:00:00'), units: 1, state: 'failed' },
+            { at: at('2023-01-04T00:00:00'), units: 1 },
+          ],
+        },
+      ],
+    });
+    expect(
+      sellerOrderSettledAt(facts, facts.sellerOrders[0]!)?.equals(at('2023-01-04T00:00:00')),
+    ).toBe(true);
+  });
+
   it('dates a refund in full by the refund that completed it, not a later one', () => {
     const old = local('2023-01-01T00:00:00');
     const facts = settlementFacts({
@@ -81,7 +101,7 @@ describe.each([
       ...facts,
       sellerOrders: facts.sellerOrders.map((so) => ({
         ...so,
-        refunds: [...so.refunds, { state: 'succeeded' as const, requestedAt: now, lines: [] }],
+        refunds: [...so.refunds, { state: 'succeeded' as const, settledAt: now, lines: [] }],
       })),
     };
     expect(sellerOrderSettledAt(withLater, withLater.sellerOrders[0]!)?.equals(old)).toBe(true);

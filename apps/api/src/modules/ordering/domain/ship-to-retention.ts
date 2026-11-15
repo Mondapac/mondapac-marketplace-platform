@@ -65,8 +65,8 @@ export function sellerMaySeeShipTo(facts: ShipToRetentionFacts, now: Temporal.In
 // clears the sealed delivery address (address, phone, buyer note) of every order whose seller
 // orders are all settled, the last of them at least `months` months ago, counted back in the
 // Market's zone (ADR-0005). Settled (owner decision 2026-11-15, 03:42Z): delivered, shipped and
-// never delivered, cancelled with the order, or refunded in full while still to ship. A to-ship
-// seller order that is neither cancelled nor refunded in full is never settled.
+// never delivered, cancelled with the order, or refunded in full by succeeded refunds while still
+// to ship. A to-ship seller order that is neither cancelled nor so refunded is never settled.
 
 /** The fewest and most months an admin may set (and the database CHECK). */
 export const MIN_SHIP_TO_RETENTION_MONTHS = 1;
@@ -146,10 +146,11 @@ export interface ShipToSettlementFacts {
     readonly shippedAt: Temporal.Instant | null;
     readonly deliveredAt: Temporal.Instant | null;
     readonly lines: readonly { readonly lineId: Id<'OrderLine'>; readonly quantity: number }[];
-    /** Every refund of the seller order; failed ones are ignored. */
+    /** Every refund of the seller order; only succeeded ones count for the purge. */
     readonly refunds: readonly {
       readonly state: RefundState;
-      readonly requestedAt: Temporal.Instant;
+      /** When Stripe's answer settled it; null while pending (database CHECK `refunds_state_check`). */
+      readonly settledAt: Temporal.Instant | null;
       readonly lines: readonly {
         readonly orderLineId: Id<'OrderLine'>;
         readonly quantity: number;
@@ -161,17 +162,25 @@ export interface ShipToSettlementFacts {
 type SettlementSellerOrder = ShipToSettlementFacts['sellerOrders'][number];
 
 /**
- * The instant the refunds not failed first gave back every unit of a seller order
- * ({@link linesRefundedInFull}), taking them in the order they were asked: the instant of the
- * refund that completed it. A pending refund counts (money on its way back is never delivered);
- * it has no settled time yet, so the instant is when it was asked. Null when not refunded in full.
+ * The instant the succeeded refunds first gave back every unit of a seller order, taking them in
+ * the order Stripe settled them: the `settledAt` of the refund that completed it. Stricter than
+ * the seller visibility rule (which counts every refund not failed, {@link linesRefundedInFull}):
+ * a pending refund may still fail, and the buyer would then be owed goods with no address left
+ * (Hassan, PR #883). Pending and failed refunds never settle a seller order here. Null when the
+ * succeeded refunds do not cover every unit.
  */
 function refundedInFullAt(sellerOrder: SettlementSellerOrder): Temporal.Instant | null {
-  const live = sellerOrder.refunds
-    .filter((refund) => refund.state !== 'failed')
-    .sort((a, b) => Temporal.Instant.compare(a.requestedAt, b.requestedAt));
-  for (let n = 1; n <= live.length; n += 1) {
-    if (linesRefundedInFull(sellerOrder.lines, live.slice(0, n))) return live[n - 1]!.requestedAt;
+  const succeeded = sellerOrder.refunds
+    .filter(
+      (refund): refund is typeof refund & { readonly settledAt: Temporal.Instant } =>
+        refund.state === 'succeeded' && refund.settledAt !== null,
+    )
+    .sort((a, b) => Temporal.Instant.compare(a.settledAt, b.settledAt));
+  for (let n = 1; n <= succeeded.length; n += 1) {
+    // Every refund passed is succeeded, so "not failed" here means "succeeded".
+    if (linesRefundedInFull(sellerOrder.lines, succeeded.slice(0, n))) {
+      return succeeded[n - 1]!.settledAt;
+    }
   }
   return null;
 }
@@ -181,7 +190,8 @@ function refundedInFullAt(sellerOrder: SettlementSellerOrder): Temporal.Instant 
  * - the order is cancelled: the order's cancellation instant;
  * - delivered: `deliveredAt`;
  * - shipped and never delivered: `shippedAt`;
- * - still to ship and refunded in full by refunds not failed: the refund that completed it;
+ * - still to ship and refunded in full by succeeded refunds: the `settledAt` of the one that
+ *   completed it (pending and failed refunds do not count);
  * - any other to-ship seller order: never settled.
  * A missing instant the database CHECKs rule out answers null (fail closed: nothing is deleted).
  */

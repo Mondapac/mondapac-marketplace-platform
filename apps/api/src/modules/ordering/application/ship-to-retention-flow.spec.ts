@@ -34,7 +34,7 @@ import {
 } from './ship-to-retention-flow';
 import { AdminSetShipToRetention } from './use-cases/admin-set-ship-to-retention.use-case';
 import { AdminViewShipToRetention } from './use-cases/admin-view-ship-to-retention.use-case';
-import { PurgeDeliveredShipTo } from './use-cases/purge-delivered-ship-to.use-case';
+import { PurgeSettledShipTo } from './use-cases/purge-settled-ship-to.use-case';
 
 // The ship-to retention setting and its daily purge (owner decision 2026-11-15) in memory, on
 // both Market fixtures (AU: Australia/Brisbane; ZZ: Asia/Tokyo). The Prisma query and the column
@@ -82,7 +82,7 @@ describe.each([['AU'], ['ZZ']] as const)('ship-to retention in market %s', (code
       expectedVersion: 0,
       ...input,
     });
-  const purge = () => new PurgeDeliveredShipTo(gate, deps).execute(system, {});
+  const purge = () => new PurgeSettledShipTo(gate, deps).execute(system, {});
   let next = 1;
   const orderOf = (spec: OrderSpec) => {
     const row = {
@@ -209,7 +209,7 @@ describe.each([['AU'], ['ZZ']] as const)('ship-to retention in market %s', (code
         kind: 'permissions',
         allOf: ['ordering.ship-to-retention.manage'],
       });
-      expect(PurgeDeliveredShipTo.access.rule).toEqual({ kind: 'system' });
+      expect(PurgeSettledShipTo.access.rule).toEqual({ kind: 'system' });
     });
   });
 
@@ -285,8 +285,8 @@ describe.each([['AU'], ['ZZ']] as const)('ship-to retention in market %s', (code
     it('stops at the next batch when an admin switches it off during the run', async () => {
       expect((await set({ months: 1 })).ok).toBe(true);
       for (let n = 0; n < 501; n += 1) order(['2025-01-01T00:00:00']);
-      const clear = store.clearDeliveredShipTo.bind(store);
-      store.clearDeliveredShipTo = async (...args) => {
+      const clear = store.clearSettledShipTo.bind(store);
+      store.clearSettledShipTo = async (...args) => {
         const batch = await clear(...args);
         const current = store.settings.get(market.marketId)!;
         store.settings.set(market.marketId, { ...current, enabled: false });
@@ -304,8 +304,8 @@ describe.each([['AU'], ['ZZ']] as const)('ship-to retention in market %s', (code
       expect((await set({ months: 1 })).ok).toBe(true);
       deps = { ...deps, clock: new FixedClock(local('2027-03-31T12:00:00')) };
       const cutoffs: Temporal.Instant[] = [];
-      const clear = store.clearDeliveredShipTo.bind(store);
-      store.clearDeliveredShipTo = (m, cutoff, after, limit) => {
+      const clear = store.clearSettledShipTo.bind(store);
+      store.clearSettledShipTo = (m, cutoff, after, limit) => {
         cutoffs.push(cutoff);
         return clear(m, cutoff, after, limit);
       };

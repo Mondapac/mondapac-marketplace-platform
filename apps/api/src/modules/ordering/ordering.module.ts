@@ -35,10 +35,10 @@ import {
 import type { ShipToRetentionDependencies } from './application/ship-to-retention-flow';
 import { AdminSetShipToRetention } from './application/use-cases/admin-set-ship-to-retention.use-case';
 import { AdminViewShipToRetention } from './application/use-cases/admin-view-ship-to-retention.use-case';
-import { PurgeDeliveredShipTo } from './application/use-cases/purge-delivered-ship-to.use-case';
+import { PurgeSettledShipTo } from './application/use-cases/purge-settled-ship-to.use-case';
 import { ORDERING_STEP_UP_ACTIONS } from './contracts/step-up';
 import { AdminShipToRetentionController } from './presentation/admin-ship-to-retention.controller';
-import { purgeDeliveredShipToJob } from './presentation/jobs/purge-delivered-ship-to.job';
+import { purgeSettledShipToJob } from './presentation/jobs/purge-settled-ship-to.job';
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
 import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-policy';
 import { ORDER_LABELS } from './application/ports/order-labels';
@@ -335,7 +335,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ),
     registerPermissions('ordering', ORDERING_PERMISSIONS),
     registerStepUpActions('ordering', ORDERING_STEP_UP_ACTIONS),
-    ...[AdminViewShipToRetention, AdminSetShipToRetention, PurgeDeliveredShipTo].map((type) =>
+    ...[AdminViewShipToRetention, AdminSetShipToRetention, PurgeSettledShipTo].map((type) =>
       shipToRetentionProvider(type as ShipToRetentionUseCaseClass<unknown>),
     ),
     SubjectRateLimits,
@@ -538,7 +538,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         RecordRefundLedger,
         SettleRefunds,
         RebuildOfferPairs,
-        PurgeDeliveredShipTo,
+        PurgeSettledShipTo,
       ],
       (
         shipments: RecordShipments,
@@ -546,14 +546,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         refundLedger: RecordRefundLedger,
         refunds: SettleRefunds,
         pairs: RebuildOfferPairs,
-        purgeShipTo: PurgeDeliveredShipTo,
+        purgeShipTo: PurgeSettledShipTo,
       ) => [
         recordShipmentsJob(shipments),
         recordLedgerJob(ledger),
         recordRefundLedgerJob(refundLedger),
         settleRefundsJob(refunds),
         rebuildOfferPairsJob(pairs),
-        purgeDeliveredShipToJob(purgeShipTo),
+        purgeSettledShipToJob(purgeShipTo),
       ],
     ),
   ],
