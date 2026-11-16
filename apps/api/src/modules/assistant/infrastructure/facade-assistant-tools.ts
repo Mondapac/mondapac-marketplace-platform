@@ -1,7 +1,16 @@
+import { parseId } from '@mondapac/shared-kernel';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { CatalogAssistantFacade } from '../../catalog';
+import type { CertificationFacade } from '../../certification';
 import type { SupportContactFacade } from '../../notifications';
-import type { AssistantProduct, AssistantSpecial, SearchAssistantFacade } from '../../search';
+import type { SellersFacade } from '../../sellers';
+import type {
+  AssistantProduct,
+  AssistantProductDetail,
+  AssistantSpecial,
+  SearchAssistantFacade,
+} from '../../search';
+import type { ServiceAreaDirectory } from '../../../platform/market-config/service-area-directory';
 import type { AssistantTools, ToolOutcome } from '../application/ports/assistant-tools';
 import type { AssistantCard } from '../domain/cards';
 import { TOOL_ITEM_LIMIT, type ToolRequest } from '../domain/tools';
@@ -10,6 +19,13 @@ const shown = (cards: readonly AssistantCard[], forModel: unknown): ToolOutcome 
   forModel: JSON.stringify(forModel),
   isError: false,
   cards,
+  notices: [],
+});
+
+const notFound: ToolOutcome = Object.freeze({
+  forModel: JSON.stringify({ error: 'not found in this store; say so and do not guess' }),
+  isError: true,
+  cards: [],
   notices: [],
 });
 
@@ -27,15 +43,52 @@ const productCard = (item: AssistantProduct | AssistantSpecial): AssistantCard =
   sellerId: item.sellerId,
   name: item.name,
   shortText: item.shortText,
-  price: 'price' in item ? item.price : null,
-  regularPrice: 'regularPrice' in item ? item.regularPrice : null,
-  taxInclusive: 'taxInclusive' in item ? item.taxInclusive : null,
+  sellerName: item.sellerName,
+  price: item.price,
+  regularPrice: item.regularPrice,
+  taxInclusive: item.taxInclusive,
+  priceFrom: item.priceFrom,
+  badges: [],
 });
 
-/** What the model reads of a product: its name and short text only, never a price or stock. */
+/**
+ * What the model reads of a product: ids (to ask for more), name and short text only, never a
+ * price or stock.
+ */
 const forModelOf = (items: readonly AssistantProduct[]) => ({
   shownToBuyer: items.length,
-  products: items.map((item) => ({ name: item.name, shortText: item.shortText })),
+  products: items.map((item) => ({
+    productId: item.productId,
+    sellerId: item.sellerId,
+    name: item.name,
+    shortText: item.shortText,
+  })),
+});
+
+const TEXT_LIMIT = 1500;
+const ATTRIBUTE_LIMIT = 30;
+
+/** Seller-entered text as delimited data: the marker cannot be forged from inside the text. */
+export const sellerText = (value: string | null): string | null =>
+  value === null || value.trim() === ''
+    ? null
+    : `<<seller-text ${value.replace(/<<seller-text|seller-text>>/gi, ' ').slice(0, TEXT_LIMIT)} seller-text>>`;
+
+const detailForModel = (detail: AssistantProductDetail) => ({
+  productId: detail.productId,
+  name: detail.name,
+  brand: sellerText(detail.brandName),
+  shortDescription: sellerText(detail.shortDescription),
+  description: sellerText(detail.description),
+  attributes: detail.attributes.slice(0, ATTRIBUTE_LIMIT).map(({ name, value }) => ({
+    name: sellerText(name),
+    value: sellerText(value),
+  })),
+  soldBy: detail.offers.map((offer) => ({
+    sellerId: offer.sellerId,
+    storeName: sellerText(offer.sellerName),
+  })),
+  shownToBuyer: 'the product card with the prices and certification badges',
 });
 
 /**
@@ -49,6 +102,9 @@ export class FacadeAssistantTools implements AssistantTools {
     private readonly search: SearchAssistantFacade,
     private readonly catalog: CatalogAssistantFacade,
     private readonly support: SupportContactFacade,
+    private readonly sellers: SellersFacade,
+    private readonly certification: CertificationFacade,
+    private readonly areas: ServiceAreaDirectory,
   ) {}
 
   async run(context: CallContext, request: ToolRequest): Promise<ToolOutcome> {
@@ -86,6 +142,35 @@ export class FacadeAssistantTools implements AssistantTools {
         if (!found.ok) return failed;
         return shown(found.value.map(productCard), forModelOf(found.value));
       }
+      case 'get_product': {
+        const found = await this.search.productDetail(context, request.productId);
+        if (!found.ok) {
+          return found.error.code === 'not-found' ? notFound : failed;
+        }
+        const detail = found.value;
+        const [cheapest] = detail.offers;
+        return shown(
+          [
+            {
+              kind: 'product',
+              offerId: cheapest.offerId,
+              productId: detail.productId,
+              sellerId: cheapest.sellerId,
+              name: detail.name,
+              shortText: detail.shortDescription,
+              sellerName: cheapest.sellerName,
+              price: cheapest.price,
+              regularPrice: null,
+              taxInclusive: cheapest.taxInclusive,
+              priceFrom: cheapest.priceFrom,
+              badges: cheapest.badges.map(({ typeCode, typeName }) => ({ typeCode, typeName })),
+            },
+          ],
+          detailForModel(detail),
+        );
+      }
+      case 'get_seller':
+        return this.seller(context, request.sellerId);
       case 'list_categories': {
         const tree = await this.catalog.categories(context);
         if (!tree.ok) return failed;
@@ -120,5 +205,60 @@ export class FacadeAssistantTools implements AssistantTools {
         };
       }
     }
+  }
+
+  /** The public store card of one seller: sellers' store page read, certification, search count. */
+  private async seller(context: CallContext, sellerId: string): Promise<ToolOutcome> {
+    const parsed = parseId<'Seller'>(sellerId);
+    if (!parsed.ok) return notFound;
+    const slugs = await this.sellers.publishedStoreSlugs(context, [parsed.value]);
+    if (!slugs.ok) return failed;
+    const slug = slugs.value.get(parsed.value);
+    if (slug === undefined) return notFound;
+    const store = await this.sellers.publishedStore(context, slug);
+    if (!store.ok) return store.error.code === 'sellers.store-not-found' ? notFound : failed;
+    const { name, serviceAreaCode, sellingSince } = store.value;
+    const city =
+      this.areas.areasOf(context.market.marketId).find((area) => area.code === serviceAreaCode)
+        ?.names['en'] ?? null;
+    const [badges, productCount] = await Promise.all([
+      this.sellerBadges(context, sellerId),
+      this.search.storeProductCount(context, { slug, name }),
+    ]);
+    if (badges === null) return failed;
+    return shown(
+      [{ kind: 'seller', sellerId, slug, name, city, sellingSince, productCount, badges }],
+      {
+        sellerId,
+        storeName: sellerText(name),
+        city: sellerText(city),
+        sellingSince,
+        productCount,
+        shownToBuyer: 'the store card with its certification badges',
+      },
+    );
+  }
+
+  /** The active types the seller holds a valid certificate of; null when it cannot be read. */
+  private async sellerBadges(
+    context: CallContext,
+    sellerId: string,
+  ): Promise<readonly { typeCode: string; typeName: string }[] | null> {
+    const types = await this.certification.certificationTypes(context, { status: 'active' });
+    if (!types.ok) return null;
+    if (types.value.length === 0) return [];
+    const held = await this.certification.sellerValidCertificateTypes(
+      context,
+      [sellerId],
+      types.value.map((type) => type.code).slice(0, 20),
+    );
+    if (!held.ok) return null;
+    const valid = new Set(held.value.flatMap((row) => row.validTypeCodes));
+    return types.value
+      .filter((type) => valid.has(type.code))
+      .map((type) => ({
+        typeCode: type.code,
+        typeName: type.locales['en']?.name ?? type.code,
+      }));
   }
 }

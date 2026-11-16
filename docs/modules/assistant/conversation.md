@@ -42,10 +42,23 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
 - One model entry point (`platform/ai`, `ModelGateway`); only the files on the boundary rule's
   allow-list import it, and no provider SDK is imported anywhere (plain HTTPS to the Messages
   API). Provider failures are logged with the Market, tier and failure kind only.
-- Instructions version `buyer-assistant-2`; the last 12 messages; read-only tools that call the
-  `search`, `catalog` and `notifications` facades with the buyer's own `CallContext`:
-  `search_products`, `list_bestsellers`, `list_specials`, `list_categories`, `show_page`,
-  `support_contact`. `suggest_cart_change` and `open_support_form` answer "not ready yet".
+- Instructions version `buyer-assistant-3`; the last 12 messages; read-only tools that call the
+  `search`, `catalog`, `sellers`, `certification` and `notifications` facades with the buyer's own
+  `CallContext`: `search_products`, `list_bestsellers`, `list_specials`, `get_product`,
+  `get_seller`, `list_categories`, `show_page`, `support_contact`. `suggest_cart_change` and
+  `open_support_form` answer "not ready yet".
+- Product cards carry the seller's public store name and the lowest buyer price of the Offer from
+  pricing (`price`, `taxInclusive`, `priceFrom` when the Variants differ; `regularPrice` only on a
+  special), read through the product page use case (one read per distinct product). A price that
+  cannot be read leaves the card without one. `get_product` (description, attributes, brand, who
+  sells it) and `get_seller` (store name, city, selling-since year, product count) show a product
+  card (with catalog's live badges) and a store card (`kind: 'seller'`, with the certification
+  types the store holds a valid certificate of, a display measure and not a claim); an unknown or
+  not-selling id answers "not found", a failed read answers `tool-failed`.
+- The model gets ids, names and short texts for lists, and for `get_product` / `get_seller` the
+  seller-entered texts between `<<seller-text` and `seller-text>>` (a forged marker inside the
+  text is removed, 1500 characters at most each): data, never instructions. It never gets a price,
+  a stock figure or a certification badge: those reach the buyer only on the cards.
 - The model sees names and short texts only, never a price or stock figure. Its reply is checked
   sentence by sentence (`domain/reply-guard.ts`): money, stock, delivery, minimum-order and
   certification sentences are dropped with a notice; markup, links, addresses and invisible

@@ -10,6 +10,8 @@ import { SubjectRateLimits } from '../../platform/rate-limit/subject-rate-limits
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CatalogModule } from '../catalog';
+import { CertificationModule } from '../certification';
+import { SellersModule } from '../sellers';
 import { NotificationsModule } from '../notifications';
 import { SearchModule } from '../search';
 import type { AssistantDependencies } from './application/assistant-dependencies';
@@ -79,7 +81,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * settings.
  */
 @Module({
-  imports: [SearchModule, CatalogModule, NotificationsModule, IdentityModule],
+  imports: [
+    SearchModule,
+    CatalogModule,
+    CertificationModule,
+    SellersModule,
+    NotificationsModule,
+    IdentityModule,
+  ],
   controllers: [
     AdminAssistantSettingsController,
     StorefrontAssistantController,
