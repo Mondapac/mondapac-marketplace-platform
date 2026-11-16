@@ -89,7 +89,7 @@ Added with the admin blog editor (blog media upload). `blog.media` (one row per 
 account id, size of the `large` rendition, uploaded byte count, `created_at`) and
 `blog.media_renditions` (`large` fits 1600x1600, `thumb` fits 400x400, JPEG only, never enlarged;
 `object_key` is `blog-media/<id>/<size>` by CHECK, with its SHA-256) are insert-only (grants SELECT,
-INSERT). Migration `20261115120000_blog_media`. No alt text is stored: alt belongs to the post
+INSERT). Migration `20261116130000_blog_media`. No alt text is stored: alt belongs to the post
 (`coverAlt`, an image block's `alt`), where the checks and the content filter already read it.
 
 - Upload (`blog.media.edit`, admin only): JSON `{ data }`, standard base64, at most 4 MiB decoded,

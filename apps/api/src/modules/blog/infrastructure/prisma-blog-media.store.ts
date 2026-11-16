@@ -15,7 +15,7 @@ const toDate = (instant: { readonly epochMilliseconds: number }): Date =>
 
 /**
  * {@link BlogMediaStore} on `blog.media` and `blog.media_renditions` (migration
- * `20261115120000_blog_media`). Every statement goes through `PrismaService.tx(market)` with
+ * `20261116130000_blog_media`). Every statement goes through `PrismaService.tx(market)` with
  * `marketId` at the top level of `where`; rows are inserted once and never changed.
  */
 export class PrismaBlogMediaStore implements BlogMediaStore {
