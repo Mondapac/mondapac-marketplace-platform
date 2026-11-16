@@ -1,6 +1,8 @@
 import { parseId } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
 import type { AssistantSettings, Retention } from './assistant-settings';
+import { maskPersonalData } from './personal-data';
+import { SITE_PAGES, type SitePage } from './tools';
 
 /** The longest message a buyer may send, in characters (plan section 8). */
 export const MAX_MESSAGE_CHARACTERS = 1000;
@@ -102,6 +104,54 @@ export function capReached(
   if (spend.todayMicroUsd >= settings.dailySpendCapUsdCents * MICRO_USD_PER_CENT) return 'daily';
   if (spend.monthMicroUsd >= settings.monthlySpendCapUsdCents * MICRO_USD_PER_CENT) {
     return 'monthly';
+  }
+  return null;
+}
+
+/** The longest title of a conversation in the buyer's list, in characters (stage 0, B2). */
+export const TITLE_CHARACTERS = 30;
+/** Conversations one page of the buyer's list shows by default, and at most. */
+export const HISTORY_PAGE_DEFAULT = 20;
+export const HISTORY_PAGE_MAX = 50;
+
+/**
+ * A conversation's title in the buyer's list: its first buyer message on one line, masked again
+ * (it was masked before it was stored), cut to 30 characters with an ellipsis. Empty when no
+ * text is readable.
+ */
+export function conversationTitle(firstBuyerText: string | null): string {
+  if (firstBuyerText === null) return '';
+  const line = maskPersonalData(firstBuyerText).replace(/\s+/gu, ' ').trim();
+  const characters = [...line];
+  if (characters.length <= TITLE_CHARACTERS) return line;
+  return `${characters
+    .slice(0, TITLE_CHARACTERS - 1)
+    .join('')
+    .trimEnd()}…`;
+}
+
+/**
+ * The retention in force for a conversation that stored `storedDays`: the shorter of that and the
+ * current setting (plan section 11: a lower setting shortens older conversations too). 0 when no
+ * text is kept, so the buyer's list never shows it.
+ */
+export const retentionInForce = (storedDays: number, currentDays: number): number =>
+  Math.min(storedDays, currentDays);
+
+/** A card of a stored reply: the kind and ids it was stored with, never its text or price. */
+export type StoredCard =
+  | { readonly kind: 'product'; readonly offerId: string }
+  | { readonly kind: 'page'; readonly page: SitePage }
+  | { readonly kind: 'support' };
+
+/** Reads a stored card ref (see `cardRefOf`); an unknown one is left out. */
+export function storedCardOf(ref: string): StoredCard | null {
+  if (ref === 'support') return { kind: 'support' };
+  const [kind, value, ...rest] = ref.split(':');
+  if (rest.length > 0 || value === undefined || value.length === 0) return null;
+  if (kind === 'product' && parseId(value).ok) return { kind: 'product', offerId: value };
+  if (kind === 'page' && (SITE_PAGES as readonly string[]).includes(value)) {
+    return { kind: 'page', page: value as SitePage };
   }
   return null;
 }

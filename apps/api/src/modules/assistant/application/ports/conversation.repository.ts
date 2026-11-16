@@ -14,6 +14,37 @@ export interface ConversationRecord {
   readonly retentionDays: number;
 }
 
+/** A conversation as found, with its times. */
+export interface FoundConversation extends ConversationRecord {
+  readonly startedAt: Temporal.Instant;
+  readonly lastMessageAt: Temporal.Instant;
+}
+
+/** One row of a buyer's list of conversations, newest activity first. */
+export interface ConversationSummary {
+  readonly id: string;
+  readonly turns: number;
+  readonly startedAt: Temporal.Instant;
+  readonly lastMessageAt: Temporal.Instant;
+  /** The first buyer message, decrypted (masked when stored); null when none is readable. */
+  readonly firstBuyerText: string | null;
+}
+
+/** Where a page of the list starts: after this conversation (keyset, newest first). */
+export interface ConversationCursor {
+  readonly lastMessageAt: Temporal.Instant;
+  readonly id: string;
+}
+
+/** One stored message of a transcript, decrypted, with its card refs and time. */
+export interface TranscriptMessage {
+  readonly position: number;
+  readonly role: 'buyer' | 'assistant';
+  readonly text: string;
+  readonly cards: readonly string[];
+  readonly at: Temporal.Instant;
+}
+
 /** One stored message, decrypted; the buyer's text was masked before it was stored. */
 export interface StoredMessage {
   readonly role: 'buyer' | 'assistant';
@@ -26,7 +57,7 @@ export interface StoredMessage {
  * and a copy of a row reads as nothing. Every method runs in the caller's unit of work.
  */
 export interface ConversationRepository {
-  find(market: MarketContext, id: string): Promise<ConversationRecord | null>;
+  find(market: MarketContext, id: string): Promise<FoundConversation | null>;
   /** Creates the conversation (and its key when text is kept); false if the id is taken. */
   create(
     market: MarketContext,
@@ -46,6 +77,27 @@ export interface ConversationRepository {
     id: string,
     message: StoredMessage & { readonly cards: readonly string[]; readonly at: Temporal.Instant },
   ): Promise<void>;
+  /**
+   * One account's conversations that keep text, newest activity first, after `after`: a
+   * conversation that stored `retentionDays` is listed only when its last message is at or after
+   * `visibleSince[retentionDays]` (a stored retention missing from the map is not listed).
+   */
+  listByAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    query: {
+      readonly visibleSince: ReadonlyMap<number, Temporal.Instant>;
+      readonly after: ConversationCursor | null;
+      readonly limit: number;
+    },
+  ): Promise<readonly ConversationSummary[]>;
+  /** Every stored message of a conversation, oldest first; empty when its key was destroyed. */
+  transcript(market: MarketContext, id: string): Promise<readonly TranscriptMessage[]>;
+  /**
+   * Deletes one account's conversation with its messages and destroys its key (when it had
+   * one). False when no such conversation of that account exists.
+   */
+  deleteOwn(market: MarketContext, id: string, accountId: Id<'Account'>): Promise<boolean>;
   /**
    * Deletes up to `limit` conversations whose last message is older than their retention, with
    * their messages, and destroys their keys. The retention is the shorter of the one stored with
