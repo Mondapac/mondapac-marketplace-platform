@@ -18,6 +18,7 @@ import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed
 import { openSession } from '../../src/modules/identity/domain/session';
 import { ApproveSystemRequest } from '../../src/modules/system-requests/application/use-cases/approve-system-request.use-case';
 import { RejectSystemRequest } from '../../src/modules/system-requests/application/use-cases/reject-system-request.use-case';
+import { WithdrawSystemRequest } from '../../src/modules/system-requests/application/use-cases/withdraw-system-request.use-case';
 import { STEP_UP_CONSUMER } from '../../src/platform/authz';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { withRoleLimit } from '../support/role-limits';
@@ -179,6 +180,45 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
         [code, action, targetId],
       )
     ).rows;
+  const outboxTypesOf = async (aggregateId: string) =>
+    (
+      await sql.query<{ type: string }>(
+        'SELECT type FROM identity.outbox WHERE market_id = $1 AND aggregate_id = $2',
+        [code, aggregateId],
+      )
+    ).rows.map((row) => row.type);
+  const roleVersionOf = async (roleId: Id<'Role'>) =>
+    (
+      await sql.query<{ version: number }>(
+        'SELECT version FROM identity.roles WHERE market_id = $1 AND id = $2',
+        [code, roleId],
+      )
+    ).rows[0]!.version;
+  /** A live admin session of `accountId`, through the real store. */
+  const sessionOf = (accountId: Id<'Account'>) =>
+    app.get<UnitOfWork>(UNIT_OF_WORK).run(market, async () => {
+      await app.get<SessionRepository>(SESSION_REPOSITORY).add(
+        market,
+        openSession({
+          id: newId<'Session'>(),
+          marketId: market.marketId,
+          accountId,
+          population: 'admin',
+          transport: 'cookie',
+          lifetime: { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 },
+          now: Temporal.Now.instant(),
+        }),
+        new Uint8Array(randomBytes(32)),
+      );
+      return ok(undefined);
+    });
+  const revokedReasonsOf = async (accountId: Id<'Account'>) =>
+    (
+      await sql.query<{ revoked_reason: string | null }>(
+        'SELECT revoked_reason FROM identity.sessions WHERE market_id = $1 AND account_id = $2',
+        [code, accountId],
+      )
+    ).rows.map((row) => row.revoked_reason);
   const reject = (reviewer: Id<'Account'>, requestId: Id<'SystemRequest'>) =>
     app.get(RejectSystemRequest).execute(as(reviewer), { requestId, reason: 'Not agreed' });
 
@@ -379,5 +419,96 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
     expect(await reject(target, enabled.value.request.id)).toEqual(ownSubject);
     expect(await statusOf(target)).toBe('active');
     expect((await requestsOf(target)).map((r) => r.status)).toEqual(['open']);
+  });
+
+  it('keeps nothing of an enabling or a role edit without a note: no write, audit row or event', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const target = await admin(await seededRole('viewer'), 'disabled');
+    expect(
+      await app.get(EnableAdminAccount).execute(as(root), { accountId: target }),
+    ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    expect(await statusOf(target)).toBe('disabled');
+    expect(await auditOf('identity.account.enabled', target)).toEqual([]);
+    expect(await outboxTypesOf(target)).toEqual([]);
+    expect(await requestsOf(target)).toEqual([]);
+
+    const role = await customRole(root, ['identity.admin-account.view']);
+    const version = await roleVersionOf(role);
+    const audits = await auditOf('identity.role.updated', role);
+    const events = await outboxTypesOf(role);
+    expect(
+      await app.get(EditPlatformRole).execute(as(root), {
+        roleId: role,
+        expectedVersion: version,
+        name: `Edited ${randomUUID().slice(0, 8)}`,
+        permissionKeys: ['identity.admin-account.view', 'identity.platform-role.view'],
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    expect(await keysOf(role)).toEqual(['identity.admin-account.view']);
+    expect(await roleVersionOf(role)).toBe(version);
+    expect(await auditOf('identity.role.updated', role)).toEqual(audits);
+    expect(await outboxTypesOf(role)).toEqual(events);
+    expect(await requestsOf(role)).toEqual([]);
+  });
+
+  it('disables again an admin whose enabling the author withdraws, ending its sessions', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const target = await admin(await seededRole('viewer'), 'disabled');
+    const enabled = await app
+      .get(EnableAdminAccount)
+      .execute(as(root), { accountId: target, note: 'Back from leave' });
+    if (!enabled.ok || enabled.value.request === null) throw new Error('no request opened');
+    await sessionOf(target);
+
+    expect(
+      await app
+        .get(WithdrawSystemRequest)
+        .execute(as(root), { requestId: enabled.value.request.id, reason: 'Wrong person' }),
+    ).toMatchObject({ ok: true, value: { status: 'reverted', decision: 'withdrawn' } });
+    expect(await statusOf(target)).toBe('disabled');
+    expect(await revokedReasonsOf(target)).toEqual(['account-disabled']);
+    expect(await auditOf('identity.account-status.reverted', target)).toMatchObject([
+      { after: { status: 'disabled', requestId: enabled.value.request.id } },
+    ]);
+  });
+
+  it("refuses an admin's role revert that would widen access or restore the Platform Administrator role", async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const narrow = await customRole(root, ['identity.admin-account.view']);
+    const wide = await customRole(root, [
+      'identity.admin-account.view',
+      'identity.platform-role.view',
+    ]);
+    const assign = app.get(AssignAdminRole);
+    const refused = { ok: false, error: { code: 'system-requests.revert-not-permitted' } };
+
+    const member = await admin(wide);
+    const narrowed = await assign.execute(as(root), {
+      accountId: member,
+      roleId: narrow,
+      note: 'Less is enough',
+    });
+    if (!narrowed.ok || narrowed.value.request === null) throw new Error('no request opened');
+    expect(await reject(checker, narrowed.value.request.id)).toEqual(refused);
+    expect(await roleIdOf(member)).toBe(narrow);
+
+    const former = await admin(pa);
+    const demoted = await assign.execute(as(root), {
+      accountId: former,
+      roleId: narrow,
+      note: 'Steps back',
+    });
+    if (!demoted.ok || demoted.value.request === null) throw new Error('no request opened');
+    expect(await reject(checker, demoted.value.request.id)).toEqual(refused);
+    expect(await roleIdOf(former)).toBe(narrow);
+
+    expect((await requestsOf(member)).map((r) => r.status)).toEqual(['open']);
+    expect((await requestsOf(former)).map((r) => r.status)).toEqual(['open']);
+    expect(await auditOf('identity.account-role.reverted', member)).toEqual([]);
+    expect(await auditOf('identity.account-role.reverted', former)).toEqual([]);
   });
 });
