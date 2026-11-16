@@ -70,6 +70,8 @@ class FakePeers implements CustomerReadModelPeers {
   ordersAsked: { accountId: Id<'Account'>; actor: string }[] = [];
   ordersDenied = false;
   down = false;
+  /** Accounts whose stats read fails (one bad account in a reconcile run). */
+  failing = new Set<string>();
   readonly identity = {
     customerDirectoryRecords: () => Promise.resolve(ok([])),
     customerDirectoryPage: () => Promise.resolve(ok([])),
@@ -86,7 +88,9 @@ class FakePeers implements CustomerReadModelPeers {
     refundNotice: () => Promise.resolve(err({ code: 'ordering.refund-not-found' })),
     customerSellerStats: (_c: CallContext, accountId: Id<'Account'>) =>
       Promise.resolve(
-        this.down ? err({ code: 'ordering.unavailable' }) : ok(this.totals.get(accountId) ?? []),
+        this.down || this.failing.has(accountId)
+          ? err({ code: 'ordering.unavailable' })
+          : ok(this.totals.get(accountId) ?? []),
       ),
     sellerCustomerOrders: (
       context: CallContext,
@@ -362,7 +366,17 @@ describe.each([
     peers.follows.set(BOB, [{ sellerId: SHOP, followedAt: T0 }]);
     expect(await uc.reconcile.execute(system, {})).toEqual({
       ok: true,
-      value: { accounts: 2, rows: 2 },
+      value: { accounts: 2, rows: 2, failed: 0, capped: false },
+    });
+  });
+
+  it('goes on past an account whose sync fails, and counts it', async () => {
+    peers.totals.set(ALICE, [bought(SHOP, 1, 100n)]);
+    peers.follows.set(BOB, [{ sellerId: SHOP, followedAt: T0 }]);
+    peers.failing.add(ALICE);
+    expect(await uc.reconcile.execute(system, {})).toEqual({
+      ok: true,
+      value: { accounts: 1, rows: 1, failed: 1, capped: false },
     });
   });
 

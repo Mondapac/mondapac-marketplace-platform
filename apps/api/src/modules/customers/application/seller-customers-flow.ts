@@ -119,6 +119,10 @@ export async function markHandled(
 export interface SellerCustomerReconcileCounts {
   readonly accounts: number;
   readonly rows: number;
+  /** Accounts whose sync failed; the run goes on past them and the next run tries again. */
+  readonly failed: number;
+  /** True when the run stopped at its page limit with customers left (the job logs a warning). */
+  readonly capped: boolean;
 }
 
 /**
@@ -131,6 +135,8 @@ export async function reconcileSellerCustomers(
 ): Promise<Result<SellerCustomerReconcileCounts, ReadModelFailure>> {
   let accounts = 0;
   let rows = 0;
+  let failed = 0;
+  let capped = true;
   let after: Id<'Account'> | null = null;
   for (let page = 0; page < RECONCILE_MAX_PAGES; page += 1) {
     const ids = await deps.unitOfWork.run<readonly Id<'Account'>[], ReadModelFailure>(
@@ -140,15 +146,22 @@ export async function reconcileSellerCustomers(
     );
     if (!ids.ok) return ids;
     for (const accountId of ids.value) {
-      const synced = await syncSellerCustomers(deps, context, accountId, null);
-      if (!synced.ok) return synced;
+      // One failing account (a peer outage, a lost code race) never stops the others.
+      const synced = await syncSellerCustomers(deps, context, accountId, null).catch(() => null);
+      if (synced === null || !synced.ok) {
+        failed += 1;
+        continue;
+      }
       accounts += 1;
       rows += synced.value.rows;
     }
-    if (ids.value.length < RECONCILE_PAGE) break;
+    if (ids.value.length < RECONCILE_PAGE) {
+      capped = false;
+      break;
+    }
     after = ids.value[ids.value.length - 1]!;
   }
-  return ok({ accounts, rows });
+  return ok({ accounts, rows, failed, capped });
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -236,7 +236,9 @@ export async function followedAmong(
   context: CallContext,
   input: { readonly accountId: Id<'Account'>; readonly sellerIds: readonly Id<'Seller'>[] },
 ): Promise<Result<readonly Id<'Seller'>[], FollowFailure>> {
-  if (context.actor.kind !== 'system' && customerOf(context) !== input.accountId) {
+  const account = typeof input?.accountId === 'string' ? parseId<'Account'>(input.accountId) : null;
+  if (account === null || !account.ok) return invalid('accountId', 'format');
+  if (context.actor.kind !== 'system' && customerOf(context) !== account.value) {
     return err({ code: 'access.denied' });
   }
   if (!Array.isArray(input.sellerIds) || input.sellerIds.length > MAX_FOLLOWED_AMONG) {
@@ -251,7 +253,7 @@ export async function followedAmong(
   return deps.unitOfWork.run<readonly Id<'Seller'>[], FollowFailure>(
     context.market,
     async () => {
-      const rows = await deps.follows.followedAmong(context.market, input.accountId, sellerIds);
+      const rows = await deps.follows.followedAmong(context.market, account.value, sellerIds);
       const followed = new Set(rows.map((row) => row.sellerId));
       return ok(sellerIds.filter((id) => followed.has(id)));
     },

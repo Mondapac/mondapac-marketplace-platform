@@ -72,10 +72,10 @@ CREATE UNIQUE INDEX "seller_customers_market_id_seller_id_customer_code_key" ON 
 CREATE INDEX "seller_customers_market_id_account_id_idx" ON "customers"."seller_customers"("market_id", "account_id");
 
 -- CreateIndex
-CREATE INDEX "seller_customers_market_id_seller_id_last_order_at_account__idx" ON "customers"."seller_customers"("market_id", "seller_id", "last_order_at" DESC, "account_id" DESC);
+CREATE INDEX "seller_customers_market_id_seller_id_last_order_at_account__idx" ON "customers"."seller_customers"("market_id", "seller_id", "last_order_at" DESC NULLS LAST, "account_id" DESC);
 
 -- CreateIndex
-CREATE INDEX "seller_customers_market_id_seller_id_followed_at_account_id_idx" ON "customers"."seller_customers"("market_id", "seller_id", "followed_at" DESC, "account_id" DESC);
+CREATE INDEX "seller_customers_market_id_seller_id_followed_at_account_id_idx" ON "customers"."seller_customers"("market_id", "seller_id", "followed_at" DESC NULLS LAST, "account_id" DESC);
 
 -- AddForeignKey: a seller's customer is a customer of the directory; erasing the account (which
 -- deletes its directory row) deletes every seller's row of it in the same statement.
@@ -101,6 +101,7 @@ ALTER TABLE "customers"."seller_customers"
   ADD CONSTRAINT "seller_customers_customer_code_check" CHECK ("customer_code" ~ '^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$'),
   ADD CONSTRAINT "seller_customers_counts_check" CHECK ("order_count" >= 0 AND "spent_minor" >= 0),
   ADD CONSTRAINT "seller_customers_currency_check" CHECK ("currency" IS NULL OR "currency" ~ '^[A-Z]{3}$'),
+  ADD CONSTRAINT "seller_customers_currency_orders_check" CHECK (("order_count" = 0) = ("currency" IS NULL)),
   ADD CONSTRAINT "seller_customers_order_instants_check" CHECK (
     ("order_count" = 0 AND "first_order_at" IS NULL AND "last_order_at" IS NULL)
     OR ("order_count" > 0 AND "first_order_at" IS NOT NULL AND "last_order_at" IS NOT NULL AND "last_order_at" >= "first_order_at")),

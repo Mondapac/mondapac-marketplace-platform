@@ -3,6 +3,8 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
+import { PrismaCustomerListReader } from '../../src/modules/customers/infrastructure/prisma-customer-list.reader';
+import type { CustomerSelector } from '../../src/modules/customers/domain/customer-list';
 import { PrismaCustomerReadModelRepository } from '../../src/modules/customers/infrastructure/prisma-customer-read-models.repository';
 import { PrismaSellerCustomerRepository } from '../../src/modules/customers/infrastructure/prisma-seller-customers.repository';
 import type { SellerCustomerSelector } from '../../src/modules/customers/domain/seller-customers';
@@ -39,6 +41,21 @@ const ALL: SellerCustomerSelector = {
   spentMax: null,
 };
 
+const BLANK_LIST: CustomerSelector = {
+  view: 'all',
+  text: null,
+  status: null,
+  verified: null,
+  joinedFrom: null,
+  joinedTo: null,
+  lastOrderFrom: null,
+  lastOrderTo: null,
+  ordersMin: null,
+  ordersMax: null,
+  spentMin: null,
+  spentMax: null,
+};
+
 /** The PostgreSQL error class of a refused write, through Prisma's error or its cause. */
 const pgCode = (error: unknown): string | undefined => {
   const text = JSON.stringify(error, Object.getOwnPropertyNames(error ?? {})) + String(error);
@@ -57,6 +74,7 @@ describe.each(TEST_MARKETS)(
     let directory: PrismaCustomerReadModelRepository;
     let customers: PrismaSellerCustomerRepository;
     let follows: PrismaStoreFollowRepository;
+    let list: PrismaCustomerListReader;
     let sql: Client;
 
     beforeAll(async () => {
@@ -64,6 +82,7 @@ describe.each(TEST_MARKETS)(
       directory = new PrismaCustomerReadModelRepository(db.service);
       customers = new PrismaSellerCustomerRepository(db.service);
       follows = new PrismaStoreFollowRepository(db.service);
+      list = new PrismaCustomerListReader(db.service);
       sql = new Client({ connectionString: testDatabaseUrl() });
       await sql.connect();
     });
@@ -184,6 +203,55 @@ describe.each(TEST_MARKETS)(
             customers.upsert(market, entry(shop, alice, { orderCount: 0 }), 'AAAA-0003', T0),
           ),
         ).toBe(CHECK);
+      });
+
+      it('refuses a currency without orders, and orders without a currency', async () => {
+        const shop = ids.next<'Seller'>();
+        const alice = await customer(market, 'Sam');
+        await inUnit(market, () => customers.upsert(market, entry(shop, alice), 'CCCC-0001', T0));
+        const scope = [market.marketId, shop, alice];
+        await expect(
+          sql.query(
+            'UPDATE customers.seller_customers SET currency = NULL WHERE market_id = $1 AND seller_id = $2 AND account_id = $3',
+            scope,
+          ),
+        ).rejects.toMatchObject({ code: CHECK });
+        const bob = await customer(market, 'Omar');
+        const follower = entry(shop, bob, { orderCount: 0, follower: true });
+        expect(
+          await failure(market, () =>
+            customers.upsert(market, { ...follower, currency }, 'CCCC-0002', T0),
+          ),
+        ).toBe(CHECK);
+      });
+
+      it("finds the followers of one store for the admin list's store filter", async () => {
+        const shop = ids.next<'Seller'>();
+        const alice = await customer(market, 'Sam');
+        const bob = await customer(market, 'Omar');
+        const carol = await customer(market, 'Lina');
+        await inUnit(market, async () => {
+          // Alice follows; Bob only bought; Carol follows another store.
+          await customers.upsert(
+            market,
+            entry(shop, alice, { orderCount: 0, follower: true }),
+            'DDDD-0001',
+            T0,
+          );
+          await customers.upsert(market, entry(shop, bob), 'DDDD-0002', T0);
+          await customers.upsert(
+            market,
+            entry(ids.next<'Seller'>(), carol, { orderCount: 0, follower: true }),
+            'DDDD-0003',
+            T0,
+          );
+        });
+        const query = (sellerId: string) => ({
+          selector: { ...BLANK_LIST, followsSellerId: sellerId },
+          now: T0,
+        });
+        expect(await inUnit(market, () => list.ids(market, query(shop), 100))).toEqual([alice]);
+        expect(await inUnit(other, () => list.ids(other, query(shop), 100))).toEqual([]);
       });
 
       it('goes with the directory row at erasure, and removes the sellers asked', async () => {

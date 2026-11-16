@@ -24,12 +24,15 @@ export function reconcileSellerCustomersJob(reconcile: ReconcileSellerCustomers)
       if (!result.ok) {
         throw new Error(`${RECONCILE_SELLER_CUSTOMERS_JOB} refused: ${result.error.code}`);
       }
-      logger.log({
+      const entry = {
         msg: RECONCILE_SELLER_CUSTOMERS_JOB,
         marketId: context.market.marketId,
         correlationId: context.correlationId,
         ...result.value,
-      });
+      };
+      // A capped run or failed accounts leave rows to the events and the next run: say so.
+      if (result.value.capped || result.value.failed > 0) logger.warn(entry);
+      else logger.log(entry);
     },
   };
 }

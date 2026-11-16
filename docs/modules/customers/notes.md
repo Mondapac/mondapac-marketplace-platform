@@ -467,4 +467,17 @@ admin deletes a buyer's account for them, from a support ticket.
 - **Known gaps.** (1) The SEL-15 store setting "let the seller see its customers" does not exist in
   code; access is by key only. (2) The trend is cut in the Market's zone: a seller has no zone of its
   own yet (ADR-0005 fallback). (3) The `lastOrderFrom/To` filter days are UTC days. (4) Seller saved filters wait for the shared list kit's generic endpoints (B0-1b). (5) The
-  reconcile syncs at most 40,000 customers per run; a larger Market relies on the events.
+  reconcile syncs at most 40,000 customers per run; a larger Market relies on the events. The run
+  answers `failed` and `capped`, goes on past an account whose sync fails, and the job logs a warning
+  when either is set.
+- **Accepted from the reviews (2026-11-16).** (1) Two syncs of one account can interleave on stale
+  peer reads (an order event and a follow event at once); the older read can land last and stays
+  until the next event or the nightly reconcile (at most a day). No lock is taken for it.
+  (2) The Follow gift does not check that the store is published: the live follower offers of a
+  hidden store can be read by its seller id, but nothing about a customer is in it and nothing can be
+  bought there. (3) A seller's order page still shows the recipient's name and address while an
+  order is fulfilled (the existing fulfilment design); "code and first name only" applies to the
+  Customers list, its export and the customer page. (4) Spent adds up seller order totals across
+  orders and takes the latest order's currency, which holds while a Market has one currency.
+- **Database.** The sort indexes on `last_order_at` and `followed_at` are `DESC NULLS LAST`, as the
+  list sorts them; a CHECK ties `currency` to `order_count > 0`.

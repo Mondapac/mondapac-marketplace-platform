@@ -257,6 +257,12 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
     expect(await uc.facade.followedAmong(as('admin', BOB), ALICE, [SHOP])).toMatchObject({
       ok: false,
     });
+    // No account at all is refused before the ownership comparison (null !== null is false).
+    const none = null as unknown as Id<'Account'>;
+    expect(await uc.facade.followedAmong(as('admin', BOB), none, [SHOP])).toMatchObject({
+      ok: false,
+    });
+    expect(await uc.facade.followedAmong(system, none, [SHOP])).toMatchObject({ ok: false });
     const many = Array.from({ length: 101 }, (_, n) => id<'Seller'>(0x30000 + n));
     expect(await uc.facade.followedAmong(system, ALICE, many)).toMatchObject({ ok: false });
     expect(await uc.facade.followsOfAccount(system, ALICE)).toEqual({

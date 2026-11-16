@@ -48,6 +48,11 @@ export class SellerCustomerOrdersQuery extends UseCase<
     if (actor.kind !== 'authenticated' || actor.population !== 'seller') {
       return err({ code: 'access.denied' });
     }
+    // A Login as Seller session reads no customer's orders (defence in depth: customers refuses
+    // it too). The account id must come from customers' own lookup of the seller's code.
+    if (Object.hasOwn(actor, 'actingAs') && (actor as { actingAs?: unknown }).actingAs != null) {
+      return err({ code: 'access.denied' });
+    }
     const seller = typeof actor.sellerId === 'string' ? parseId<'Seller'>(actor.sellerId) : null;
     if (seller === null || !seller.ok) return err({ code: 'access.denied' });
     const account =
