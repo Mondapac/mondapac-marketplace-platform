@@ -27,6 +27,7 @@ import {
   answer,
   FakeRuntime,
   FakeTools,
+  FixedQuickPrompts,
   MemoryConversations,
   MemoryLimits,
   MemorySpend,
@@ -150,6 +151,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
       trail: unusedChangeTrail,
+      quickPrompts: new FixedQuickPrompts(),
     };
   });
 
