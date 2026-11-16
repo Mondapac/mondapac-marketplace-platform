@@ -1,4 +1,6 @@
 -- Reverses 20261116100000_identity_customer_pending_email.
+-- Accepted loss: every email change in flight (pending address, its link, an unsent notice to
+-- the previous address) is discarded; the customer keeps the current address.
 SET lock_timeout = '5s';
 DELETE FROM "identity"."one_time_links" WHERE "purpose" = 'confirm-email-change';
 ALTER TABLE "identity"."one_time_links" DROP CONSTRAINT "one_time_links_purpose_check";

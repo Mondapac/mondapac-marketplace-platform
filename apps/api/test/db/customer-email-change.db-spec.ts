@@ -70,6 +70,9 @@ describe('identity customer email change (database)', () => {
     }
   }
 
+  /** A well-formed sealed envelope: version, then base64url, 41 characters or more. */
+  const ENVELOPE = `v1.${'A'.repeat(40)}`;
+
   describe.each(TEST_MARKETS)('in market %s', (code) => {
     const market = marketOf(code);
 
@@ -169,7 +172,7 @@ describe('identity customer email change (database)', () => {
             ),
           ),
         ).toBe('accounts_pending_email_customer_check');
-        expect(await violated(update(sellerId, `email_change_notice = 'v1.x'`))).toBe(
+        expect(await violated(update(sellerId, `email_change_notice = '${ENVELOPE}'`))).toBe(
           'accounts_pending_email_customer_check',
         );
       });
@@ -179,7 +182,15 @@ describe('identity customer email change (database)', () => {
         expect(await violated(update(accountId, `email_change_notice = 'old@example.com'`))).toBe(
           'accounts_email_change_notice_check',
         );
-        expect(await violated(update(accountId, `email_change_notice = 'v1.sealed'`))).toBeNull();
+        for (const plain of ['v1.jane@mail.test', 'v1.short', `v0.${'A'.repeat(40)}`]) {
+          expect(await violated(update(accountId, `email_change_notice = '${plain}'`))).toBe(
+            'accounts_email_change_notice_check',
+          );
+        }
+        expect(await violated(update(accountId, `email_change_notice = '${ENVELOPE}'`))).toBeNull();
+        expect(
+          await violated(update(accountId, `email_change_notice = 'v12.${'b'.repeat(40)}'`)),
+        ).toBeNull();
       });
 
       it('takes the confirm-email-change link purpose and still refuses an unknown one', async () => {

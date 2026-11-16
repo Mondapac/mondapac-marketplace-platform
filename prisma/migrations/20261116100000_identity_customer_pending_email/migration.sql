@@ -35,7 +35,9 @@ ALTER TABLE "identity"."accounts"
       AND "pending_email_normalized" = btrim("pending_email_normalized")
       AND "pending_email_normalized" IS NFC NORMALIZED)),
   ADD CONSTRAINT "accounts_email_change_notice_check"
-    CHECK ("email_change_notice" IS NULL OR "email_change_notice" LIKE 'v1.%');
+    CHECK ("email_change_notice" IS NULL OR (
+      "email_change_notice" ~ '^v[1-9][0-9]*\.[A-Za-z0-9_-]+$'
+      AND char_length("email_change_notice") BETWEEN 41 AND 2048));
 
 -- The new link purpose: the confirmation of a changed sign-in email, mailed to the pending address.
 ALTER TABLE "identity"."one_time_links" DROP CONSTRAINT "one_time_links_purpose_check";
