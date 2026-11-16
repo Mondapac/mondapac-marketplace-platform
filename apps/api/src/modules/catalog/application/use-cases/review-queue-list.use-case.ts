@@ -2,7 +2,17 @@ import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { CATALOG_PRODUCT_VIEW } from '../../contracts/permissions';
+import {
+  heldKeys,
+  listQueryInvalid,
+  pageWindow,
+  parseListQuery,
+  rowActions,
+  type ListPagingMode,
+  type PermissionProbe,
+  type RowActionRule,
+} from '../../../../platform/list-query';
+import { CATALOG_PRODUCT_APPROVE, CATALOG_PRODUCT_VIEW } from '../../contracts/permissions';
 import type { OfferHandling } from '../../domain/offer';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { OfferRepository } from '../ports/offer.repository';
@@ -12,7 +22,26 @@ import type { SellerNamesReader } from '../ports/seller-names.reader';
 import { requiredChecksOf } from '../revisions/review-checks';
 import { invalid, parsePage, isoOf, type ValidationFailure } from '../own-reads/own-reads.shared';
 
+export const REVIEW_QUEUE_SORTS = ['submitted'] as const;
+export const REVIEW_QUEUE_PAGE_DEFAULT = 25;
+export const REVIEW_QUEUE_PAGE_MAX = 50;
+/** Page numbers stop at 1,000 rows: the queue is a work list, and the merge of two sources is in memory. */
+export const REVIEW_QUEUE_MAX_PAGE = 20;
+/** The most rows read from each source for one descending page. */
+const DESC_MAX_ROWS = 1000;
+
+/** What each row action needs: the approve key (the single decisions check it again). */
+export const REVIEW_ROW_ACTION_RULES: readonly RowActionRule<unknown>[] = [
+  { id: 'approve', permission: CATALOG_PRODUCT_APPROVE.key },
+  { id: 'request-changes', permission: CATALOG_PRODUCT_APPROVE.key },
+];
+
 export interface ReviewQueueListInput {
+  readonly sort?: unknown;
+  readonly direction?: unknown;
+  readonly page?: unknown;
+  readonly pageSize?: unknown;
+  readonly paging?: unknown;
   readonly afterId?: unknown;
   readonly limit?: unknown;
   /** `product-revision` or `offer-first-publication`: one kind of row only. */
@@ -50,6 +79,8 @@ export interface OfferReviewRow {
   readonly handling: OfferHandling | null;
   /** The instant the seller submitted; the queue is oldest first. */
   readonly submittedAt: string | null;
+  /** The row actions of the Actions menu the caller may run: `approve`, `request-changes`. */
+  readonly actions: readonly string[];
 }
 
 /** One seller product whose pending revision waits for a decision (design 8.2, 9.2 item 8). */
@@ -82,16 +113,22 @@ export interface ProductRevisionReviewRow {
    */
   readonly warnings: readonly string[];
   readonly submittedAt: string;
+  /** The row actions of the Actions menu the caller may run: `approve`, `request-changes`. */
+  readonly actions: readonly string[];
 }
 
 export type ReviewQueueRow = OfferReviewRow | ProductRevisionReviewRow;
 
 export interface ReviewQueueListOutput {
   readonly items: readonly ReviewQueueRow[];
-  /** The `afterId` of the next page; null on the last page. */
+  /** The `afterId` of the next page; null on the last page (and on a descending read). */
   readonly nextAfterId: string | null;
-  /** The rows the filters keep, over every page. With no filter, the whole queue. */
-  readonly total: number;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly paging: ListPagingMode;
+  readonly hasNext: boolean;
+  /** The rows the filters keep, over every page. With no filter, the whole queue; null in `prev-next` mode. */
+  readonly total: number | null;
   /** Every row of each kind in the Market's queue, whatever the filters (the tab counts). */
   readonly totals: Readonly<Record<ReviewQueueKind, number>>;
 }
@@ -106,6 +143,7 @@ export interface ReviewQueueListDependencies {
   readonly policy: CatalogMarketPolicy;
   readonly sellerNames: SellerNamesReader;
   readonly gtinRegistry: VariantGtinRegistry;
+  readonly productApproveProbe: PermissionProbe;
 }
 
 interface Position {
@@ -209,28 +247,62 @@ export class ReviewQueueList extends UseCase<
     if (actor.kind !== 'authenticated' || actor.population !== 'admin') {
       return err({ code: 'access.denied' });
     }
-    const cursor =
-      typeof input === 'object' && input !== null ? parseCursor(input.afterId) : ok(null);
-    if (!cursor.ok) return cursor;
     const record: Record<string, unknown> =
       typeof input === 'object' && input !== null && !Array.isArray(input)
         ? (input as Record<string, unknown>)
         : {};
-    // The shared page parser checks the size and the keys; the cursor and filters are this queue's.
-    const pageInput: unknown =
-      typeof input === 'object' && input !== null && !Array.isArray(input)
-        ? Object.fromEntries(
-            Object.entries(record).filter(
-              ([key]) => key !== 'afterId' && !(FILTER_KEYS as readonly string[]).includes(key),
-            ),
-          )
-        : input;
-    const page = parsePage<'Offer'>(pageInput);
-    if (!page.ok) return page;
+    const present = (key: string): boolean =>
+      record[key] !== undefined && record[key] !== null && record[key] !== '';
+    // The older cursor read (`afterId`, `limit`) stays for the current panel; it cannot be mixed
+    // with the page keys. Every other call is a page read.
+    const PAGE_KEYS = ['sort', 'direction', 'page', 'pageSize', 'paging'] as const;
+    const cursorMode = present('afterId') || present('limit');
+    if (cursorMode) {
+      const mixed = PAGE_KEYS.find((key) => record[key] !== undefined);
+      if (mixed !== undefined) return listQueryInvalid(mixed, 'conflict');
+    }
     const filter = parseFilter(record);
     if (!filter.ok) return filter;
-    const { limit } = page.value;
-    const after = cursor.value;
+    let cursor: Position | null = null;
+    let limit: number;
+    let offset = 0;
+    let descending = false;
+    let paged: ReturnType<typeof parseListQuery<'submitted'>> | null = null;
+    if (cursorMode) {
+      const parsedCursor = parseCursor(record['afterId']);
+      if (!parsedCursor.ok) return parsedCursor;
+      cursor = parsedCursor.value;
+      const pageInput = Object.fromEntries(
+        Object.entries(record).filter(
+          ([key]) => key !== 'afterId' && !(FILTER_KEYS as readonly string[]).includes(key),
+        ),
+      );
+      const page = parsePage<'Offer'>(pageInput);
+      if (!page.ok) return page;
+      limit = page.value.limit;
+    } else {
+      const pageInput = Object.fromEntries(
+        Object.entries(record).filter(([key]) => !(FILTER_KEYS as readonly string[]).includes(key)),
+      );
+      const unknownKey = Object.keys(pageInput).find(
+        (key) => !(PAGE_KEYS as readonly string[]).includes(key),
+      );
+      if (unknownKey !== undefined) return invalid(unknownKey, 'unknown');
+      paged = parseListQuery(pageInput, {
+        sorts: REVIEW_QUEUE_SORTS,
+        defaultSort: 'submitted',
+        defaultDirection: () => 'asc',
+        defaultPageSize: REVIEW_QUEUE_PAGE_DEFAULT,
+        maxPageSize: REVIEW_QUEUE_PAGE_MAX,
+        maxPage: REVIEW_QUEUE_MAX_PAGE,
+      });
+      if (!paged.ok) return paged;
+      const window = pageWindow(paged.value);
+      offset = window.offset;
+      limit = window.limit;
+      descending = paged.value.direction === 'desc';
+    }
+    const after = cursor;
     const { kind, sellerId, firstPublication, hasImages } = filter.value;
     const revisionOnly = firstPublication !== undefined || hasImages !== undefined;
     const withOffers = kind !== 'product-revision' && !revisionOnly;
@@ -247,32 +319,93 @@ export class ReviewQueueList extends UseCase<
     } catch {
       return err({ code: 'access.unavailable' });
     }
+    const pagesMode = paged !== null && paged.value.paging === 'pages';
+    const pageSize = paged === null ? limit : paged.value.pageSize;
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
-        const offers = withOffers
-          ? await this.deps.offers.listPendingReview(
-              market,
-              { after, limit: limit + 1 },
-              offerFilter,
-            )
-          : [];
-        const revisions = withRevisions
-          ? await this.deps.ownReader.listPendingRevisions(
-              market,
-              { after, limit: limit + 1 },
-              locale,
-              revisionFilter,
-            )
-          : [];
+        const totals = {
+          'product-revision': await this.deps.ownReader.pendingRevisionCount(market),
+          'offer-first-publication': await this.deps.ownReader.pendingReviewCount(market),
+        };
+        const filtered = sellerId !== undefined || revisionOnly;
+        const offerTotal = withOffers
+          ? filtered
+            ? await this.deps.ownReader.pendingReviewCount(market, offerFilter)
+            : totals['offer-first-publication']
+          : 0;
+        const revisionTotal = withRevisions
+          ? filtered
+            ? await this.deps.ownReader.pendingRevisionCount(market, revisionFilter)
+            : totals['product-revision']
+          : 0;
+        const total = offerTotal + revisionTotal;
+        // A descending page reads every row of each source (the sources only walk oldest first).
+        if (descending && (offerTotal > DESC_MAX_ROWS || revisionTotal > DESC_MAX_ROWS)) {
+          return err({
+            code: 'validation.failed' as const,
+            fields: [{ path: 'direction', code: 'range' }],
+          });
+        }
+        const fetchCount = cursorMode
+          ? limit + 1
+          : descending
+            ? Math.max(1, DESC_MAX_ROWS)
+            : offset + limit;
+        const offers =
+          withOffers && !(pagesMode && offset >= total)
+            ? await this.deps.offers.listPendingReview(
+                market,
+                { after, limit: fetchCount },
+                offerFilter,
+              )
+            : [];
+        const revisions =
+          withRevisions && !(pagesMode && offset >= total)
+            ? await this.deps.ownReader.listPendingRevisions(
+                market,
+                { after, limit: fetchCount },
+                locale,
+                revisionFilter,
+              )
+            : [];
+        // Merge the two sources into one order: submit instant, then id.
+        const ordered = [
+          ...offers.map((offer) => ({
+            kind: 'offer' as const,
+            at: offer.state.submittedAt?.epochMilliseconds ?? 0,
+            position: {
+              submittedAt: offer.state.submittedAt ?? Temporal.Instant.fromEpochMilliseconds(0),
+              id: offer.state.id,
+            },
+            offer,
+          })),
+          ...revisions.map((row) => ({
+            kind: 'revision' as const,
+            at: row.submittedAt.epochMilliseconds,
+            position: { submittedAt: row.submittedAt, id: row.productId },
+            row,
+          })),
+        ].sort((a, b) => a.at - b.at || (a.position.id < b.position.id ? -1 : 1));
+        const merged = descending ? ordered.reverse() : ordered;
+        const found = cursorMode ? merged : merged.slice(offset, offset + limit);
+        const shown = found.slice(0, pageSize);
         const labels = await this.deps.ownReader.productLabels(
           market,
-          [...new Set(offers.slice(0, limit).map((offer) => offer.state.productId))],
+          [
+            ...new Set(
+              shown.flatMap((entry) =>
+                entry.kind === 'offer' ? [entry.offer.state.productId] : [],
+              ),
+            ),
+          ],
           locale,
         );
         const warnings = new Map<string, readonly string[]>();
-        for (const row of revisions.slice(0, limit)) {
-          const found =
+        for (const entry of shown) {
+          if (entry.kind !== 'revision') continue;
+          const { row } = entry;
+          const duplicates =
             row.variantGtins.length === 0
               ? []
               : await this.deps.gtinRegistry.duplicatesOf(market, row.productId, [
@@ -280,59 +413,29 @@ export class ReviewQueueList extends UseCase<
                 ]);
           warnings.set(
             row.revisionId,
-            found.length === 0
+            duplicates.length === 0
               ? []
               : [
-                  found.some((d) => d.scope === 'PLATFORM')
+                  duplicates.some((d) => d.scope === 'PLATFORM')
                     ? 'gtin.duplicate-platform'
                     : 'gtin.duplicate',
                 ],
           );
         }
-        const totals = {
-          'product-revision': await this.deps.ownReader.pendingRevisionCount(market),
-          'offer-first-publication': await this.deps.ownReader.pendingReviewCount(market),
-        };
-        const filtered = sellerId !== undefined || revisionOnly;
-        const total =
-          (withOffers
-            ? filtered
-              ? await this.deps.ownReader.pendingReviewCount(market, offerFilter)
-              : totals['offer-first-publication']
-            : 0) +
-          (withRevisions
-            ? filtered
-              ? await this.deps.ownReader.pendingRevisionCount(market, revisionFilter)
-              : totals['product-revision']
-            : 0);
-        return ok({ offers, revisions, labels, total, totals, warnings });
+        return ok({ found, shown, labels, total, totals, warnings });
       },
       { readOnly: true },
     );
-    if (!read.ok) return err({ code: 'access.unavailable' });
-    const { offers, revisions, labels, total, totals, warnings } = read.value;
+    if (!read.ok) {
+      return read.error.code === 'validation.failed' ? read : err({ code: 'access.unavailable' });
+    }
+    const { found, shown, labels, total, totals, warnings } = read.value;
     const labelOf = new Map(labels.map((label) => [label.productId, label]));
-
-    // Merge the two sources into one order: submit instant, then id.
-    const merged = [
-      ...offers.map((offer) => ({
-        kind: 'offer' as const,
-        at: offer.state.submittedAt?.epochMilliseconds ?? 0,
-        position: {
-          submittedAt: offer.state.submittedAt ?? Temporal.Instant.fromEpochMilliseconds(0),
-          id: offer.state.id,
-        },
-        offer,
-      })),
-      ...revisions.map((row) => ({
-        kind: 'revision' as const,
-        at: row.submittedAt.epochMilliseconds,
-        position: { submittedAt: row.submittedAt, id: row.productId },
-        row,
-      })),
-    ].sort((a, b) => a.at - b.at || (a.position.id < b.position.id ? -1 : 1));
-    const shown = merged.slice(0, limit);
     const last = shown[shown.length - 1];
+    const granted = await heldKeys(context, {
+      [CATALOG_PRODUCT_APPROVE.key]: this.deps.productApproveProbe,
+    });
+    const actions = rowActions({}, REVIEW_ROW_ACTION_RULES, granted);
 
     const names = await this.deps.sellerNames.storeNames(context, [
       ...new Set(
@@ -363,6 +466,7 @@ export class ReviewQueueList extends UseCase<
           hasImages: row.hasImages,
           warnings: warnings.get(row.revisionId) ?? [],
           submittedAt: row.submittedAt.toString(),
+          actions,
         };
       }
       const { state } = entry.offer;
@@ -384,13 +488,32 @@ export class ReviewQueueList extends UseCase<
         description: state.description,
         handling: state.handling,
         submittedAt: isoOf(state.submittedAt),
+        actions,
       };
     });
+    const hasMore = found.length > shown.length;
+    if (paged === null) {
+      return ok({
+        items,
+        nextAfterId: hasMore && last !== undefined ? cursorOf(last.position) : null,
+        page: 1,
+        pageSize: limit,
+        paging: 'prev-next',
+        hasNext: hasMore,
+        total,
+        totals,
+      });
+    }
+    const hasNext = pagesMode ? offset + pageSize < total : hasMore;
     return ok({
       items,
-      nextAfterId:
-        merged.length > shown.length && last !== undefined ? cursorOf(last.position) : null,
-      total,
+      // The current panel walks the default order by cursor; a descending read has none.
+      nextAfterId: !descending && hasNext && last !== undefined ? cursorOf(last.position) : null,
+      page: paged.value.page,
+      pageSize,
+      paging: paged.value.paging,
+      hasNext,
+      total: pagesMode ? total : null,
       totals,
     });
   }

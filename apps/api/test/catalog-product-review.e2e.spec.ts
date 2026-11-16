@@ -610,9 +610,66 @@ describe('admin product revision review over HTTP (integration)', () => {
         hasImages: false,
         warnings: [],
         submittedAt: START.add({ minutes: 1 }).toString(),
+        actions: [],
       });
       expect(body.nextAfterId).toBeNull();
       expect(body.total).toBe(3);
+    });
+
+    it('reads the queue as a super list: page numbers, a total, prev-next, descending, and the conflicts', async () => {
+      await boot();
+      await seeded(code);
+      pendingProduct(code, 1);
+      waitingOffer(code, 2);
+      pendingProduct(code, 3);
+      const session = sessionOf(code, VIEWER, 1);
+      type Queue = {
+        items: { kind: string }[];
+        total: number | null;
+        page: number;
+        pageSize: number;
+        paging: string;
+        hasNext: boolean;
+        nextAfterId: string | null;
+      };
+      const read = async (query: string) => get(code, `/review-queue${query}`, session);
+
+      const first = (await read('?page=1&pageSize=2')).body as Queue;
+      expect(first).toMatchObject({
+        page: 1,
+        pageSize: 2,
+        paging: 'pages',
+        total: 3,
+        hasNext: true,
+      });
+      expect(first.items.map((i) => i.kind)).toEqual([
+        'product-revision',
+        'offer-first-publication',
+      ]);
+      expect(first.nextAfterId).not.toBeNull();
+      const second = (await read('?page=2&pageSize=2')).body as Queue;
+      expect(second).toMatchObject({ page: 2, hasNext: false, total: 3 });
+      expect(second.items.map((i) => i.kind)).toEqual(['product-revision']);
+      expect(((await read('?page=9&pageSize=2')).body as Queue).items).toEqual([]);
+
+      const noTotal = (await read('?page=1&pageSize=2&paging=prev-next')).body as Queue;
+      expect(noTotal).toMatchObject({ total: null, paging: 'prev-next', hasNext: true });
+      expect(noTotal.items).toHaveLength(2);
+
+      const desc = (await read('?direction=desc&pageSize=3')).body as Queue;
+      expect(desc.items.map((i) => i.kind)).toEqual([
+        'product-revision',
+        'offer-first-publication',
+        'product-revision',
+      ]);
+      expect(desc.nextAfterId).toBeNull();
+
+      expect((await read('?afterId=' + first.nextAfterId + '&page=1')).status).toBe(400);
+      expect((await read('?limit=2&sort=submitted')).status).toBe(400);
+      expect((await read('?sort=price')).status).toBe(400);
+      expect((await read('?page=21')).status).toBe(400);
+      expect((await read('?pageSize=51')).status).toBe(400);
+      expect((await read('?paging=all')).status).toBe(400);
     });
 
     it('pages across both kinds with the opaque cursor and refuses a bad one', async () => {
