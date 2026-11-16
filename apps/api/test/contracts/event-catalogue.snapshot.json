@@ -691,6 +691,22 @@
     }
   },
   {
+    "type": "identity.account-email-change-requested.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id",
+      "population": "enumOf(customer|seller|admin)"
+    }
+  },
+  {
+    "type": "identity.account-email-changed.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id",
+      "population": "enumOf(customer|seller|admin)"
+    }
+  },
+  {
     "type": "identity.account-email-verified.v1",
     "aggregateType": "account",
     "fields": {
@@ -773,7 +789,7 @@
     "fields": {
       "linkId": "id",
       "accountId": "id",
-      "purpose": "enumOf(verify-email|reset-password|enrol-second-factor|confirm-second-factor-reset)"
+      "purpose": "enumOf(verify-email|reset-password|enrol-second-factor|confirm-second-factor-reset|confirm-email-change)"
     }
   },
   {

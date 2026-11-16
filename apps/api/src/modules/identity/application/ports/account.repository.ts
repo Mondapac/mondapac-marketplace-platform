@@ -154,3 +154,50 @@ export interface AccountRepository {
 
 /** Nest token of the {@link AccountRepository}. */
 export const ACCOUNT_REPOSITORY = Symbol('ACCOUNT_REPOSITORY');
+
+/**
+ * Thrown by {@link AccountRepository.save} when the account's new sign-in address is held by
+ * another account of the same Market and population (the unique key decides; customers admin
+ * email change). The statement failed, so the caller's unit is rolled back as a whole.
+ */
+export class AccountEmailTakenError extends Error {
+  override readonly name = 'AccountEmailTakenError';
+  constructor(readonly accountId: Id<'Account'>) {
+    super('identity.accounts: the new sign-in address is held by another account');
+  }
+}
+
+/**
+ * The parts of an email change kept beside the account (customers admin email change). Every
+ * method runs in the caller's open unit and takes the `MarketContext` only.
+ *
+ * - The previous address waits, sealed under the account's subject key, for the "your sign-in
+ *   email was changed" notice (Hassan R11: no plain previous address anywhere): stored in the
+ *   confirmation's unit, opened by the notice's handler, cleared once the notice is sent. An
+ *   erased account's key is destroyed, so its value can never be opened again.
+ * - A pending address lapses with its link: the hourly purge clears the ones asked for before
+ *   `before`, one version step each (Hassan: "cleared lazily on read and by the existing purge").
+ */
+export interface EmailChangeStore {
+  /** Seals `previousEmail` (as typed) and stores it for the notice; replaces an earlier one. */
+  keepPreviousEmail(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    previousEmail: string,
+  ): Promise<void>;
+
+  /**
+   * The previous address waiting for the notice, opened; null when none waits or the account's
+   * key was destroyed.
+   */
+  previousEmailOf(market: MarketContext, accountId: Id<'Account'>): Promise<string | null>;
+
+  /** Clears the waiting previous address (the notice was sent). No version step. */
+  forgetPreviousEmail(market: MarketContext, accountId: Id<'Account'>): Promise<void>;
+
+  /** Clears the pending addresses asked for at or before `before` (lapsed, as the read); answers how many. */
+  clearLapsedPendingEmails(market: MarketContext, before: Temporal.Instant): Promise<number>;
+}
+
+/** Nest token of the {@link EmailChangeStore}. */
+export const EMAIL_CHANGE_STORE = Symbol('EMAIL_CHANGE_STORE');

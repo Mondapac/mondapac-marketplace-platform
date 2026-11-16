@@ -70,7 +70,22 @@ export const CUSTOMERS_SAVED_FILTER_SHARE = definePermission('customers', {
   protected: false,
 });
 
+/**
+ * Change a customer's sign-in email for them (customers admin email change; Hassan R4): a request
+ * mails a link to the new address and a warning to the current one, and the change takes effect
+ * only when the customer confirms it with the password. Taking over a sign-in, so protected (only
+ * the Platform Administrator, or a custom role it grants it to); every request and cancel also
+ * needs a fresh admin step-up proof of `customers.customer-email.change` and is audited by identity.
+ * Also needs `customers.customers.view`.
+ */
+export const CUSTOMERS_CUSTOMER_EMAIL_CHANGE = definePermission('customers', {
+  key: 'customers.customer-email.change',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CUSTOMERS_PERMISSIONS = declarePermissions('customers', [
+  CUSTOMERS_CUSTOMER_EMAIL_CHANGE,
   CUSTOMERS_CUSTOMER_EXPORT,
   CUSTOMERS_CUSTOMER_VIEW,
   CUSTOMERS_SAVED_FILTER_SHARE,

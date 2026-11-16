@@ -364,3 +364,43 @@ admin deletes a buyer's account for them, from a support ticket.
   (make it a full `text_pattern_ops` index in a new migration). A name search of three characters or
   more is a scan of the Market until `pg_trgm` is approved. The two sort indexes on the stats
   table are not used by the left join and can be dropped later.
+
+## Customers management: admin changes a customer's sign-in email (16 Nov 2026, API only)
+
+Design note of 16 Nov 2026 with Mohammad's and Hassan's reviews (R1 to R12). The storefront
+confirm page and the admin screen are not part of this change.
+
+- **Routes.** `PUT customers/admin/customers/:accountId/email` (body `email` only) and
+  `DELETE customers/admin/customers/:accountId/email-change`: admin sessions, CSRF, `no-store`,
+  keys `customers.customers.view` and the new **protected** `customers.customer-email.change`
+  (held by the Platform Administrator only), and a fresh step-up proof of that key, spent by
+  identity inside its own unit. Anonymous `POST identity/customer/email-change/confirm`
+  (`token`, `password`; `no-store`, `Referrer-Policy: no-referrer`).
+- **Who owns what.** customers checks its own side first (no pending deletion request:
+  `customers.account-deletion-pending`) and maps identity's codes. identity owns the account,
+  the pending address (`identity.accounts.pending_email*`), the `confirm-email-change` link, the
+  step-up spend, the mail counters (`mail.account` for the customer and for the admin, plus
+  `mail.origin`), the audit rows and the events. customers reaches identity through a late-bound
+  `EMAIL_CHANGE_PEER` bound by `CustomersAccountDeletionModule`.
+- **Flow.** The request keeps the current address; the link goes to the new address (SendLinkMail
+  picks the recipient per purpose) and a warning with the new address masked goes to the current
+  one. A newer request replaces an older one and voids its link; the current address again answers
+  `changed: false` and spends nothing. The confirmation needs the link and the account's password
+  and runs through the sign-in sequence (throttles, failure counter): the link must belong to the
+  pending request (bound by its request instant); the address is swapped and verified, every
+  session is revoked (`email-changed`), no session is opened, the account's other live links are
+  cancelled, and a notice goes to the previous address (kept sealed under the account's key in
+  `email_change_notice` until it is sent). Every refusal of the link is `link.rejected`; a clash
+  on the unique email key rolls the unit back and also answers `link.rejected`.
+- **Lapse.** A pending address lapses with its link: `requestedAt` plus the Market's
+  `confirm-email-change` link lifetime (AU 1440 minutes). The customer page stops showing it then;
+  `identity.purge-expired` clears it.
+- **Customer page.** The overview carries `pendingEmailChange` (`email`, `requestedAt`) or null,
+  read from identity at read time (`identity.customer-pending-email-of`, key
+  `customers.customers.view`). The read model takes the new address from
+  `identity.account-email-changed.v1`.
+- **Known gaps.** (1) The deletion-request check runs only at the request; identity cannot read
+  customers' requests, so a deletion requested after the change was asked for does not block the
+  confirmation. (2) No timeline entries: the customer timeline is not on main yet; the
+  subscriber and the three entry kinds follow with it. (3) If a second change is confirmed before
+  the first notice was sent, only the latest previous address gets a notice.

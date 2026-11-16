@@ -233,6 +233,12 @@ const linkTargetsSchema = z
       'verify-email': pageUrl,
       'sign-in': pageUrl,
       'reset-password': pageUrl,
+      /**
+       * The storefront page that confirms a sign-in email an admin changed (customers admin
+       * email change): it posts the token from the fragment with the password. Without it, or
+       * without the lifetime below, no such change can be asked for (`access.unavailable`).
+       */
+      'confirm-email-change': pageUrl.optional(),
     }),
     /**
      * The seller panel's pages (slice 5); absent for a Market without seller sign-up.
@@ -283,6 +289,20 @@ const linkTargetsSchema = z
     // Every seller page is on the origin of the seller sign-in page (Hassan L1, PR #212), as the
     // admin pages are on the review queue's: a seller token is only ever mailed to our own seller
     // panel, never to another host a config change might name.
+    // The same for the email change's confirmation page: on the storefront's own origin.
+    const customerSignIn = hostOf(targets.customer['sign-in']);
+    const confirmChange = targets.customer['confirm-email-change'];
+    if (
+      confirmChange !== undefined &&
+      customerSignIn !== null &&
+      hostOf(confirmChange)?.origin !== customerSignIn.origin
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'a customer page must have the origin of the customer sign-in page',
+        path: ['customer', 'confirm-email-change'],
+      });
+    }
     if (targets.seller !== undefined) {
       const signIn = hostOf(targets.seller['sign-in']);
       for (const [page, url] of Object.entries(targets.seller)) {
@@ -420,6 +440,9 @@ const identitySchema = z
         // Slice 12: the Seller Owner's confirmation of a reset an admin started, at most 24
         // hours (identity design 3.7, HF15).
         'confirm-second-factor-reset': z.number().int().min(1).max(1440).optional(),
+        // Customers admin email change: the confirmation link to the new address, at most 24
+        // hours (Hassan's answer 3); the pending address lapses with it.
+        'confirm-email-change': z.number().int().min(1).max(1440).optional(),
       }),
       targets: linkTargetsSchema,
     }),

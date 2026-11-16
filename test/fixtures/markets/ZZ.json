@@ -192,13 +192,15 @@
         "verify-email": 720,
         "reset-password": 60,
         "enrol-second-factor": 45,
-        "confirm-second-factor-reset": 720
+        "confirm-second-factor-reset": 720,
+        "confirm-email-change": 720
       },
       "targets": {
         "customer": {
           "verify-email": "https://storefront.zz.test/konto/bestaetigen?ref=mail",
           "sign-in": "https://storefront.zz.test/konto/anmelden",
-          "reset-password": "https://storefront.zz.test/konto/passwort?ref=mail"
+          "reset-password": "https://storefront.zz.test/konto/passwort?ref=mail",
+          "confirm-email-change": "https://storefront.zz.test/konto/neue-adresse"
         },
         "seller": {
           "verify-email": "https://seller.zz.test/konto/bestaetigen?ref=mail",

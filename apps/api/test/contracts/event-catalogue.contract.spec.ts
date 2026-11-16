@@ -121,12 +121,17 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'commission-payouts.sync-dispute',
       // Customers phase 1 (B1): the customer directory and stats follow identity's account events and ordering's paid orders and refunds.
       'customers.read-model-disabled',
+      // Customers admin email change: the directory copies the confirmed new sign-in email.
+      'customers.read-model-email-changed',
       'customers.read-model-email-verified',
       'customers.read-model-enabled',
       'customers.read-model-name-changed',
       'customers.read-model-order-paid',
       'customers.read-model-refund-succeeded',
       'customers.read-model-registered',
+      // Customers admin email change: the warning to the current address, the notice to the old.
+      'identity.email-change-requested-mail',
+      'identity.email-changed-mail',
       'identity.existing-account-mail',
       'identity.invitation-mail',
       'identity.link-mail',
@@ -265,6 +270,13 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('identity.one-time-link-requested.v1')).toEqual([
       'identity.link-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.account-email-change-requested.v1')).toEqual([
+      'identity.email-change-requested-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.account-email-changed.v1')).toEqual([
+      'customers.read-model-email-changed',
+      'identity.email-changed-mail',
     ]);
     expect(subscriptions.subscribersOf('identity.sign-up-repeated.v1')).toEqual([
       'identity.existing-account-mail',

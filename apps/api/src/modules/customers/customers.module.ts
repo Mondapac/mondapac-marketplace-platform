@@ -79,8 +79,12 @@ import type { CustomerListDependencies } from './application/customer-list-flow'
 import type { SavedViewDependencies } from './application/saved-views/saved-view-shared';
 import type { AdminCustomersExportDependencies } from './application/use-cases/admin-customers-export.use-case';
 import { AdminCustomerOverview } from './application/use-cases/admin-customer-overview.use-case';
+import { AdminCustomerEmailChangeRequest } from './application/use-cases/admin-customer-email-change-request.use-case';
+import { AdminCustomerEmailChangeCancel } from './application/use-cases/admin-customer-email-change-cancel.use-case';
 import { AdminCustomerTabOpened } from './application/use-cases/admin-customer-tab-opened.use-case';
 import type { CustomerPageDependencies } from './application/customer-page-flow';
+import type { EmailChangeDependencies } from './application/admin-email-change-flow';
+import { EMAIL_CHANGE_PEER, type EmailChangePeer } from './application/ports/email-change-peer';
 import { AdminCustomersExport } from './application/use-cases/admin-customers-export.use-case';
 import { AdminCustomersIds } from './application/use-cases/admin-customers-ids.use-case';
 import { AdminCustomersList } from './application/use-cases/admin-customers-list.use-case';
@@ -292,8 +296,50 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ReadCustomerLastOrder,
       ReadOwnLastOrder,
     ].map((type) => readModelUseCaseProvider(type as ReadModelUseCaseClass<unknown>)),
-    ...[AdminCustomerOverview, AdminCustomerTabOpened].map((type) =>
-      pageUseCaseProvider(type as PageUseCaseClass<unknown>),
+    pageUseCaseProvider(AdminCustomerTabOpened as PageUseCaseClass<unknown>),
+    {
+      // The overview also reads the pending email change from identity (admin email change).
+      provide: AdminCustomerOverview,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        CUSTOMER_LIST_READER,
+        CLOCK,
+        AUDIT_WRITER,
+        EMAIL_CHANGE_PEER,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: CustomerPageDependencies['unitOfWork'],
+        listReader: CustomerPageDependencies['listReader'],
+        clock: CustomerPageDependencies['clock'],
+        audit: CustomerPageDependencies['audit'],
+        peer: EmailChangePeer,
+      ) =>
+        new AdminCustomerOverview(gate, {
+          unitOfWork,
+          listReader,
+          clock,
+          audit,
+          pendingEmails: peer,
+        }),
+    },
+    ...[AdminCustomerEmailChangeRequest, AdminCustomerEmailChangeCancel].map(
+      (type): FactoryProvider => ({
+        provide: type,
+        inject: [
+          USE_CASE_GATE,
+          UNIT_OF_WORK,
+          ACCOUNT_DELETION_REQUEST_REPOSITORY,
+          EMAIL_CHANGE_PEER,
+        ],
+        useFactory: (
+          gate: UseCaseGate,
+          unitOfWork: EmailChangeDependencies['unitOfWork'],
+          requests: EmailChangeDependencies['requests'],
+          identity: EmailChangePeer,
+        ) => new type(gate, { unitOfWork, requests, identity }),
+      }),
     ),
     ...[AdminCustomersList, AdminCustomersIds].map((type) =>
       listUseCaseProvider(type as ListUseCaseClass<unknown>),
@@ -364,6 +410,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     CUSTOMERS_ACCOUNT_DELETION_FACADE,
     CUSTOMERS_READ_FACADE,
     ACCOUNT_DELETION_PEERS,
+    EMAIL_CHANGE_PEER,
     CUSTOMER_READ_MODEL_PEERS,
     SyncCustomerReadModel,
     ReconcileCustomerReadModels,

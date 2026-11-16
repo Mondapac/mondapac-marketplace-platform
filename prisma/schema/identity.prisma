@@ -64,6 +64,14 @@ model IdentityAccount {
   storefrontPalette       String?                     @map("storefront_palette") @db.VarChar(8)
   /// A customer's kept storefront text size (auto, large, small); NULL = no choice.
   storefrontTextSize      String?                     @map("storefront_text_size") @db.VarChar(8)
+  /// Personal. The new sign-in address an admin asked for, as typed; NULL = no pending change. Customer accounts only.
+  pendingEmail            String?                     @map("pending_email")
+  /// Personal. The pending address trimmed, NFC, lower-cased; set exactly when pending_email is.
+  pendingEmailNormalized  String?                     @map("pending_email_normalized")
+  /// When the pending address was asked for; the link of the change is bound to this instant.
+  pendingEmailRequestedAt DateTime?                   @map("pending_email_requested_at") @db.Timestamptz(6)
+  /// Personal, sealed under the account's subject key: the previous address, until the "your sign-in email was changed" notice is sent to it.
+  emailChangeNotice       String?                     @map("email_change_notice")
   /// active | disabled.
   status                  String
   /// NULL while the email is unverified.

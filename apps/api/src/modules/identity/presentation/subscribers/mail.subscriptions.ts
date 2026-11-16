@@ -4,6 +4,8 @@ import {
   type RegisteredSubscription,
   type SubscriberContext,
 } from '../../../../platform/events/event-subscriptions';
+import type { SendEmailChangeRequestedMail } from '../../application/use-cases/send-email-change-requested-mail.use-case';
+import type { SendEmailChangedMail } from '../../application/use-cases/send-email-changed-mail.use-case';
 import type { SendExistingAccountMail } from '../../application/use-cases/send-existing-account-mail.use-case';
 import type { SendInvitationMail } from '../../application/use-cases/send-invitation-mail.use-case';
 import type { SendLinkMail } from '../../application/use-cases/send-link-mail.use-case';
@@ -16,6 +18,8 @@ import type {
 } from '../../application/use-cases/send-seller-access-mail.use-case';
 import type { SendWelcomeMail } from '../../application/use-cases/send-welcome-mail.use-case';
 import {
+  AccountEmailChanged,
+  AccountEmailChangeRequested,
   AccountOtherSessionsSignedOut,
   AccountPasswordChanged,
   InvitationIssued,
@@ -44,6 +48,9 @@ export const SELLER_APPROVED_MAIL_SUBSCRIBER = 'identity.seller-approved-mail';
 export const SELLER_REJECTED_MAIL_SUBSCRIBER = 'identity.seller-rejected-mail';
 export const SELLER_SUSPENDED_MAIL_SUBSCRIBER = 'identity.seller-suspended-mail';
 export const SELLER_REINSTATED_MAIL_SUBSCRIBER = 'identity.seller-reinstated-mail';
+/** Customers admin email change: the warning to the current address, the notice to the old one. */
+export const EMAIL_CHANGE_REQUESTED_MAIL_SUBSCRIBER = 'identity.email-change-requested-mail';
+export const EMAIL_CHANGED_MAIL_SUBSCRIBER = 'identity.email-changed-mail';
 
 /**
  * Identity's subscriptions to its own events for mail (identity design 8, 9; decided by Ali,
@@ -61,6 +68,8 @@ export function identityMailSubscriptions(
   sendSecondFactorMail: SendSecondFactorMail,
   sendSellerAccessMail: SendSellerAccessMail,
   sendOtherSessionsSignedOutMail: SendOtherSessionsSignedOutMail,
+  sendEmailChangeRequestedMail: SendEmailChangeRequestedMail,
+  sendEmailChangedMail: SendEmailChangedMail,
 ): RegisteredSubscription[] {
   /** One decision event's delivery to the decision mail handler. */
   const decisionMail = async (
@@ -215,6 +224,36 @@ export function identityMailSubscriptions(
           throw new Error(
             `${OTHER_SESSIONS_SIGNED_OUT_MAIL_SUBSCRIBER} refused: ${result.error.code}`,
           );
+        }
+      },
+    }),
+    subscription({
+      name: EMAIL_CHANGE_REQUESTED_MAIL_SUBSCRIBER,
+      event: AccountEmailChangeRequested,
+      async handle(event, delivery, context) {
+        const result = await sendEmailChangeRequestedMail.execute(context, {
+          delivery,
+          accountId: event.payload.accountId,
+          occurredAt: event.occurredAt,
+        });
+        if (!result.ok) {
+          throw new Error(
+            `${EMAIL_CHANGE_REQUESTED_MAIL_SUBSCRIBER} refused: ${result.error.code}`,
+          );
+        }
+      },
+    }),
+    subscription({
+      name: EMAIL_CHANGED_MAIL_SUBSCRIBER,
+      event: AccountEmailChanged,
+      async handle(event, delivery, context) {
+        const result = await sendEmailChangedMail.execute(context, {
+          delivery,
+          accountId: event.payload.accountId,
+          occurredAt: event.occurredAt,
+        });
+        if (!result.ok) {
+          throw new Error(`${EMAIL_CHANGED_MAIL_SUBSCRIBER} refused: ${result.error.code}`);
         }
       },
     }),

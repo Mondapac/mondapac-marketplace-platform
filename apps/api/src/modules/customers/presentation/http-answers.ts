@@ -26,6 +26,12 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'saved-filter.shared-limit-reached': 409,
   'batch.too-large': 413,
   'customers.customer-not-found': 404,
+  // Customers admin email change.
+  'customers.customer-not-eligible': 409,
+  'customers.email-taken': 409,
+  'customers.account-deletion-pending': 409,
+  'customers.email-change-not-found': 404,
+  'request.throttled': 429,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
@@ -99,6 +105,9 @@ export function refusal(
     return fail(status, error.code, { actionKey: error.actionKey });
   }
   if (error.limit !== undefined) return fail(status, error.code, { limit: error.limit });
+  if (typeof error.retryAfterSeconds === 'number') {
+    return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
+  }
   if (typeof error.max === 'number') {
     return fail(status, error.code, {
       max: error.max,
