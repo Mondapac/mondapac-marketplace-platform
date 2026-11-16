@@ -32,6 +32,7 @@ import {
   MemoryConversations,
   MemoryLimits,
   MemorySpend,
+  RecordingOutbox,
   SequenceGuestTokens,
   UtcCalendar,
 } from './testing/assistant-fakes';
@@ -153,6 +154,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
       calendar: new UtcCalendar(),
       quickPrompts: new FixedQuickPrompts(),
       previewTokens: new FakePreviewTokens(),
+      outbox: new RecordingOutbox(),
       trail: unusedChangeTrail,
     };
   });
