@@ -404,6 +404,8 @@ describe('whole-word matching', () => {
     ['egg', 'Eggs free range'],
     ['eggs', 'Egg'],
     ['tomato', 'Tomatoes'],
+    ['cherries', 'Cherry'],
+    ['آرد', 'ارد گندم'],
     ['برنج', 'برنج ها'],
     ['تخم مرغ', 'تخم‌مرغ محلی'],
   ])('picks "%s" for "%s"', (text, name) => {

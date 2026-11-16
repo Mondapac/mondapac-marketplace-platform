@@ -52,6 +52,7 @@ export function normaliseText(value: string): string {
     .replace(/[٠-٩]/g, (digit) => String(ARABIC_DIGITS.indexOf(digit)))
     .replace(/[ي]/g, 'ی')
     .replace(/[ك]/g, 'ک')
+    .replace(/[آ]/g, 'ا')
     .replace(/[ً-ٰٟـ]/g, '')
     .replace(/[‌‍]/g, ' ')
     .replace(/٫|،/g, ',')

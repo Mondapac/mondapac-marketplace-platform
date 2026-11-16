@@ -43,7 +43,7 @@ const LOGISTICS = new RegExp(
 // Certification claims of any type (CERT-01 types are data; these are the words a model uses).
 const CERTIFICATION = new RegExp(
   [
-    String.raw`\bhe?l?a+l+\b`,
+    String.raw`\bhe+la+l+\b`,
     String.raw`\bhala+l\b`,
     String.raw`\bkasher\b`,
     String.raw`\bbio\b`,

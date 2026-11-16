@@ -165,6 +165,8 @@ export function tokensOf(text: string): readonly string[] {
 /** One word of a line against one word of a name: equal, or a plural of it ("egg", "eggs"; "برنج", "برنج‌ها"). */
 function sameWord(token: string, word: string): boolean {
   if (word === token) return true;
+  if (token.length >= 4 && token.endsWith('y') && word === `${token.slice(0, -1)}ies`) return true;
+  if (word.length >= 4 && word.endsWith('y') && token === `${word.slice(0, -1)}ies`) return true;
   for (const ending of ['s', 'es', 'ها', 'های']) {
     if (word === token + ending || (token.length >= 4 && token === word + ending)) return true;
   }
