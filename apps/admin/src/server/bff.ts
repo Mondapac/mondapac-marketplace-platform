@@ -49,7 +49,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'ordering/admin/refund-limits',
     // The Market's ship-to retention (ordering): whether and when delivery addresses are deleted.
     'ordering/admin/ship-to-retention',
+    // The admin credit requests (wallet; the Credit requests super list), read-only list (query:
+    // `view`, `status`, `q`, the filters, `sort`, `direction`, `page`, `pageSize`, or `cursor` and
+    // `limit`). The export of the list as a file: the chosen ids or the list's own query.
     'wallet/admin/credit-requests',
+    'wallet/admin/credit-requests/export',
     // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
     // `limit`); one case is read by the page server and again after a decision.
     'commission-payouts/admin/disputes',
@@ -620,7 +624,41 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
   'blog/admin/posts': ['status', 'kind', 'owner', 'page'],
-  'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
+  'wallet/admin/credit-requests': [
+    'view',
+    'status',
+    'reason',
+    'approvalReason',
+    'q',
+    'requestedBy',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+  ],
+  'wallet/admin/credit-requests/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'status',
+    'reason',
+    'approvalReason',
+    'q',
+    'requestedBy',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+  ],
   'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
   'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
   'catalog/admin/products': [
@@ -706,9 +744,50 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'ordering/admin/refund-limits': { sellerId: UUID },
   // The cursor is the API's own: epoch milliseconds, a dot and a request id.
   'wallet/admin/credit-requests': {
-    status: /^(pending|decided|granted)$/,
+    // `status` is one status, or the older queue's view (pending, decided or granted).
+    view: /^(pending|decided|granted|all)$/,
+    status: /^(pending|decided|granted|approved|rejected|expired)$/,
+    reason: /^(goodwill|service-recovery|promotion|correction)$/,
+    approvalReason: /^(issue-cap|daily-cap)$/,
+    // A request id or a customer account id, exact.
+    q: UUID,
+    // An admin account id, or `me` for the caller.
+    requestedBy: /^(me|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i,
+    // ISO instants on the request time (`to` excluded).
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The amount in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(requested|amount|expires|decided)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
     limit: /^[0-9]{1,3}$/,
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'wallet/admin/credit-requests/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(note|approval-reason|expires|decided-by|decided|decision-reason|journal)(,(note|approval-reason|expires|decided-by|decided|decision-reason|journal)){0,6}$/,
+    // At most 200 request ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(pending|decided|granted|all)$/,
+    status: /^(pending|decided|granted|approved|rejected|expired)$/,
+    reason: /^(goodwill|service-recovery|promotion|correction)$/,
+    approvalReason: /^(issue-cap|daily-cap)$/,
+    // A request id or a customer account id, exact.
+    q: UUID,
+    // An admin account id, or `me` for the caller.
+    requestedBy: /^(me|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i,
+    // ISO instants on the request time (`to` excluded).
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The amount in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(requested|amount|expires|decided)$/,
+    direction: /^(asc|desc)$/,
   },
   'reviews/admin/moderation': {
     tab: /^(held|reported|actioned)$/,
@@ -894,6 +973,7 @@ const QUERY_VALUE_MAX = 512;
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
+  'wallet/admin/credit-requests/export:ids': 7400,
   'catalog/admin/attributes:search': 120,
 };
 

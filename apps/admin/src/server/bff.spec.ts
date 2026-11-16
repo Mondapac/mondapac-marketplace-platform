@@ -1480,6 +1480,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['PUT', 'promotions/admin/free-shipping/logan'],
     ['PUT', 'promotions/admin/free-shipping/Gold_Coast-2'],
     ['GET', 'wallet/admin/credit-requests'],
+    ['GET', 'wallet/admin/credit-requests/export'],
     ['POST', 'wallet/admin/credits'],
     ['POST', 'identity/admin/step-up/verify'],
     ['GET', `wallet/admin/customers/${id}`],
@@ -1899,7 +1900,7 @@ describe('relay of the wallet and step-up routes', () => {
     expect(response.status).toBe(403);
   });
 
-  it('passes only the status, cursor and limit of the requests list, in their shapes', async () => {
+  it("passes the older queue's status, cursor and limit of the requests list, in their shapes", async () => {
     const cursor = `1790000000000.${id}`;
     const { upstream } = await run(
       'GET',
@@ -1915,6 +1916,41 @@ describe('relay of the wallet and step-up routes', () => {
       readHeaders,
     );
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/wallet/admin/credit-requests');
+  });
+
+  it('passes the Credit requests super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `wallet/admin/credit-requests?view=all&status=expired&reason=promotion&approvalReason=daily-cap&q=${id}&requestedBy=me&from=2026-11-01T00:00:00Z&minAmount=100&sort=expires&direction=asc&page=2&pageSize=50&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/credit-requests?view=all&status=expired&reason=promotion&approvalReason=daily-cap&q=${id}&requestedBy=me&from=2026-11-01T00%3A00%3A00Z&minAmount=100&sort=expires&direction=asc&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'wallet/admin/credit-requests?view=mine&reason=gift&requestedBy=you&q=abc&sort=customer&pageSize=101&maxAmount=-1',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/wallet/admin/credit-requests',
+    );
+    const file = await run(
+      'GET',
+      `wallet/admin/credit-requests/export?format=xlsx&columns=note,journal&ids=${id}&view=decided&page=2&cursor=1.x`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/credit-requests/export?format=xlsx&columns=note%2Cjournal&ids=${id}&view=decided`,
+    );
+    const badFile = await run(
+      'GET',
+      'wallet/admin/credit-requests/export?format=pdf&columns=fingerprint&ids=x',
+      readHeaders,
+    );
+    expect(badFile.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/wallet/admin/credit-requests/export',
+    );
   });
 
   it('passes no query on the customer summary or the settings', async () => {
