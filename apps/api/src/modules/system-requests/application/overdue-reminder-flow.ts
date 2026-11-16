@@ -68,7 +68,8 @@ export async function remindOverdue(
 ): Promise<Result<OverdueReminderResult, never>> {
   const { market } = context;
   const now = deps.clock.now();
-  const dayStart = startOfMarketDay(now, deps.zone.zoneOf(market));
+  const zone = deps.zone.zoneOf(market);
+  const dayStart = startOfMarketDay(now, zone);
   const areas = await reviewedAreas(deps, context);
   let reminded = 0;
   let handled = 0;
@@ -93,7 +94,7 @@ export async function remindOverdue(
               requestId: request.id,
               number: request.number,
               area: request.area,
-              ageDays: waitingDays(request.appliedAt, now),
+              ageDays: waitingDays(request.appliedAt, now, zone),
             },
           }),
         ]);

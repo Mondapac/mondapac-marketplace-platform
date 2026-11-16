@@ -6,7 +6,7 @@ import { Client } from 'pg';
 import pino from 'pino';
 import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
-import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import { AppModule } from '../../src/app.module';
 import { SystemRequestsModule } from '../../src/modules/system-requests';
 import {
@@ -15,6 +15,18 @@ import {
   type RequestRepository,
 } from '../../src/modules/system-requests/application/ports/request.repository';
 import { RemindOverdueSystemRequests } from '../../src/modules/system-requests/application/use-cases/remind-overdue-system-requests.use-case';
+import {
+  MARKET_ZONE,
+  type MarketZone,
+} from '../../src/modules/system-requests/application/ports/market-zone';
+import {
+  POLICY_REPOSITORY,
+  type PolicyRepository,
+} from '../../src/modules/system-requests/application/ports/policy.repository';
+import { startOfMarketDay } from '../../src/modules/system-requests/domain/overdue';
+import { USE_CASE_GATE, type UseCaseGate } from '../../src/platform/authz';
+import { OUTBOX_WRITER, type OutboxWriter } from '../../src/platform/events/outbox-writer';
+import { ID_GENERATOR } from '../../src/platform/ids/ids.module';
 import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { testAppConfig, TEST_MARKETS } from '../support/test-config';
@@ -26,14 +38,21 @@ import { testDatabaseUrl } from './test-database';
 // the once-per-day rule. Every case runs for both Market fixtures.
 
 const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
-const nowInstant = () => Temporal.Instant.fromEpochMilliseconds(Date.now());
+/**
+ * The test's "now" in a Market: noon of a fixed local day in the Market's zone, so no run can
+ * straddle the Market's midnight whatever the zone (Brisbane, Tokyo, ...) and the real time of day.
+ */
+const FIXED_DAY = Temporal.Instant.from('2026-11-16T12:00:00Z');
 const account = () => randomUUID() as Id<'Account'>;
 
 describe('system request reminders (database integration)', () => {
   let app: INestApplicationContext;
   let unitOfWork: UnitOfWork;
   let requests: RequestRepository;
-  let remind: RemindOverdueSystemRequests;
+  let policy: PolicyRepository;
+  let zone: MarketZone;
+  let reminderDeps: ConstructorParameters<typeof RemindOverdueSystemRequests>[1];
+  let gate: UseCaseGate;
   let sql: Client;
 
   beforeAll(async () => {
@@ -49,7 +68,18 @@ describe('system request reminders (database integration)', () => {
     unitOfWork = app.get<UnitOfWork>(UNIT_OF_WORK);
     const module = app.select(SystemRequestsModule);
     requests = module.get<RequestRepository>(REQUEST_REPOSITORY, { strict: true });
-    remind = module.get(RemindOverdueSystemRequests, { strict: true });
+    policy = module.get<PolicyRepository>(POLICY_REPOSITORY, { strict: true });
+    zone = module.get<MarketZone>(MARKET_ZONE, { strict: true });
+    gate = module.get<UseCaseGate>(USE_CASE_GATE, { strict: false });
+    reminderDeps = {
+      unitOfWork,
+      requests,
+      policy,
+      outbox: module.get<OutboxWriter>(OUTBOX_WRITER, { strict: true }),
+      zone,
+      ids: app.get(ID_GENERATOR),
+      clock: new FixedClock(FIXED_DAY),
+    };
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
   });
@@ -65,9 +95,15 @@ describe('system request reminders (database integration)', () => {
     return result.value;
   };
 
-  /** A request that went live 8 days ago, so its review date (7 days) is already past. */
-  const overdue = (fields: Partial<NewRequest> = {}): NewRequest => {
-    const appliedAt = nowInstant().subtract({ hours: 8 * 24 });
+  /** Noon of the fixed day in the Market's zone. */
+  const noonIn = (market: ReturnType<typeof marketOf>): Temporal.Instant =>
+    startOfMarketDay(FIXED_DAY, zone.zoneOf(market)).add({ hours: 12 });
+  /** A request that went live 8 days before `now`, so its review date (7 days) is past. */
+  const overdue = (
+    market: ReturnType<typeof marketOf>,
+    fields: Partial<NewRequest> = {},
+  ): NewRequest => {
+    const appliedAt = noonIn(market).subtract({ hours: 8 * 24 });
     return {
       id: ids.next<'SystemRequest'>(),
       area: 'catalogue',
@@ -95,11 +131,13 @@ describe('system request reminders (database integration)', () => {
         [market.marketId, request.id],
       )
     ).rows as { type: string; payload: Record<string, unknown> }[];
-  const run = async (market: ReturnType<typeof marketOf>) => {
-    const result = await remind.execute(
-      testCallContext(market, 'system', `db-sr-${randomUUID()}`),
-      {},
-    );
+  /** The use case with a clock fixed at `at` (default: noon of the fixed day in the Market). */
+  const reminderAt = (market: ReturnType<typeof marketOf>, at = noonIn(market)) =>
+    new RemindOverdueSystemRequests(gate, { ...reminderDeps, clock: new FixedClock(at) });
+  const callOf = (market: ReturnType<typeof marketOf>) =>
+    testCallContext(market, 'system', `db-sr-${randomUUID()}`);
+  const run = async (market: ReturnType<typeof marketOf>, at?: Temporal.Instant) => {
+    const result = await reminderAt(market, at).execute(callOf(market), {});
     if (!result.ok) throw new Error(`refused: ${result.error.code}`);
     return result.value.reminded;
   };
@@ -109,10 +147,10 @@ describe('system request reminders (database integration)', () => {
     const otherMarket = marketOf(TEST_MARKETS.find((c) => c !== code)!);
 
     it('stamps a reminder once under its condition, in a real unit', async () => {
-      const request = overdue();
+      const request = overdue(market);
       await open(market, request);
-      const now = nowInstant();
-      const dayStart = now.subtract({ hours: 1 });
+      const now = noonIn(market);
+      const dayStart = startOfMarketDay(now, zone.zoneOf(market));
       const due = await inUnit(market, () =>
         requests.dueForReminder(market, {
           now,
@@ -147,7 +185,7 @@ describe('system request reminders (database integration)', () => {
     });
 
     it('writes one reminder event for an overdue request, and none on a second run the same day', async () => {
-      const request = overdue();
+      const request = overdue(market);
       await open(market, request);
       expect(await run(market)).toBeGreaterThanOrEqual(1);
       const rows = await events(market, request);
@@ -166,24 +204,56 @@ describe('system request reminders (database integration)', () => {
         'SELECT last_reminded_at FROM system_requests.requests WHERE id = $1',
         [request.id],
       );
-      expect(stored.rows[0]!.last_reminded_at).not.toBeNull();
+      expect(stored.rows[0]!.last_reminded_at?.getTime()).toBe(noonIn(market).epochMilliseconds);
+    });
+
+    it('reminds again after the Market midnight, never before it', async () => {
+      const request = overdue(market);
+      await open(market, request);
+      await run(market);
+      const midnight = startOfMarketDay(noonIn(market), zone.zoneOf(market))
+        .toZonedDateTimeISO(zone.zoneOf(market))
+        .add({ days: 1 })
+        .toInstant();
+      await run(market, midnight.subtract({ seconds: 1 }));
+      expect(await events(market, request)).toHaveLength(1);
+      await run(market, midnight);
+      const rows = await events(market, request);
+      expect(rows.map((row) => row.payload.ageDays)).toEqual(expect.arrayContaining([8, 9]));
+      expect(rows).toHaveLength(2);
+    });
+
+    it('writes exactly one event and one stamp when two runs overlap', async () => {
+      const request = overdue(market);
+      await open(market, request);
+      const [first, second] = await Promise.all([
+        reminderAt(market).execute(callOf(market), {}),
+        reminderAt(market).execute(callOf(market), {}),
+      ]);
+      expect(first.ok && second.ok).toBe(true);
+      expect(await events(market, request)).toHaveLength(1);
+      const stamped = await sql.query<{ last_reminded_at: Date | null }>(
+        'SELECT last_reminded_at FROM system_requests.requests WHERE id = $1',
+        [request.id],
+      );
+      expect(stamped.rows[0]!.last_reminded_at?.getTime()).toBe(noonIn(market).epochMilliseconds);
     });
 
     it('does not remind a request that is not yet due, a decided one, or one of an area that is off', async () => {
-      const notDue = overdue({
-        appliedAt: nowInstant(),
-        reviewDueAt: nowInstant().add({ hours: 7 * 24 }),
+      const notDue = overdue(market, {
+        appliedAt: noonIn(market),
+        reviewDueAt: noonIn(market).add({ hours: 7 * 24 }),
       });
-      const decided = overdue();
+      const decided = overdue(market);
       // Marketplace is not reviewed by default: its requests are not reminded.
-      const off = overdue({ area: 'marketplace' });
+      const off = overdue(market, { area: 'marketplace' });
       for (const request of [notDue, decided, off]) await open(market, request);
       await inUnit(market, () =>
         requests.decide(market, decided.id, {
           status: 'approved',
           decision: 'approved',
           decidedBy: account(),
-          decidedAt: nowInstant(),
+          decidedAt: noonIn(market),
           reason: null,
         }),
       );
@@ -194,8 +264,8 @@ describe('system request reminders (database integration)', () => {
     });
 
     it('reminds one Market without touching the other', async () => {
-      const here = overdue();
-      const there = overdue();
+      const here = overdue(market);
+      const there = overdue(otherMarket);
       await open(market, here);
       await open(otherMarket, there);
       await run(market);

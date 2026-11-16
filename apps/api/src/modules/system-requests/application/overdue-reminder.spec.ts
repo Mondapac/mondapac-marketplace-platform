@@ -54,9 +54,28 @@ describe('startOfMarketDay and waitingDays', () => {
   });
 
   it('counts whole days waited and never goes below zero', () => {
-    expect(waitingDays(START, START.add({ hours: 7 * 24 + 5 }))).toBe(7);
-    expect(waitingDays(START, START.add({ hours: 47 }))).toBe(1);
-    expect(waitingDays(START, START.subtract({ hours: 3 }))).toBe(0);
+    const zone = 'Australia/Brisbane';
+    expect(waitingDays(START, START.add({ hours: 7 * 24 + 5 }), zone)).toBe(7);
+    expect(waitingDays(START, START.add({ hours: 47 }), zone)).toBe(2);
+    expect(waitingDays(START, START.subtract({ hours: 3 }), zone)).toBe(0);
+    // Calendar days, not 24-hour blocks: 23:30 to 00:30 the next local day is one day.
+    const late = Temporal.Instant.from('2026-11-15T13:30:00Z'); // 23:30 in Brisbane
+    expect(waitingDays(late, late.add({ hours: 1 }), zone)).toBe(1);
+  });
+
+  it('counts calendar days across a daylight saving change', () => {
+    // Sydney moves to daylight saving on 4 Oct 2026 (the day is 23 hours long); NY ends it on 1 Nov.
+    const sydney = 'Australia/Sydney';
+    const applied = Temporal.Instant.from('2026-10-03T14:00:00Z'); // 00:00 on 4 Oct 2026 in Sydney
+    const zoned = applied.toZonedDateTimeISO(sydney);
+    const sameClockNextDay = zoned.add({ days: 1 }).toInstant(); // 23 hours later in real time
+    expect(sameClockNextDay.epochMilliseconds - applied.epochMilliseconds).toBe(23 * 3_600_000);
+    expect(waitingDays(applied, sameClockNextDay, sydney)).toBe(1);
+    const newYork = 'America/New_York';
+    const fall = Temporal.Instant.from('2026-11-01T03:00:00Z'); // 23:00 on 31 Oct
+    const nextDay = fall.toZonedDateTimeISO(newYork).add({ days: 1 }).toInstant(); // 25 hours
+    expect(nextDay.epochMilliseconds - fall.epochMilliseconds).toBe(25 * 3_600_000);
+    expect(waitingDays(fall, nextDay, newYork)).toBe(1);
   });
 
   it('is due only while open, past the review date and not reminded today', () => {
@@ -190,8 +209,7 @@ describe.each([['AU'], ['ZZ']] as const)('overdue reminders in market %s', (code
     clock.set(tomorrow);
     expect(await run()).toBe(1);
     expect(outbox.events.map((event) => (event.payload as { ageDays: number }).ageDays)).toEqual([
-      7,
-      expect.any(Number),
+      7, 8,
     ]);
   });
 

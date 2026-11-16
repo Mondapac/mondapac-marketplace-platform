@@ -13,10 +13,19 @@ export function startOfMarketDay(now: Temporal.Instant, zone: string): Temporal.
   return now.toZonedDateTimeISO(zone).startOfDay().toInstant();
 }
 
-/** Whole days an open request has waited since the change went live (never negative). */
-export function waitingDays(appliedAt: Temporal.Instant, now: Temporal.Instant): number {
-  const ms = now.epochMilliseconds - appliedAt.epochMilliseconds;
-  return Math.max(0, Math.floor(ms / 86_400_000));
+/**
+ * Calendar days in the Market's zone from the day the change went live to the day of `now` (never
+ * negative). Counted on local dates, so a day that is 23 or 25 hours long (daylight saving) is
+ * still one day.
+ */
+export function waitingDays(
+  appliedAt: Temporal.Instant,
+  now: Temporal.Instant,
+  zone: string,
+): number {
+  const from = appliedAt.toZonedDateTimeISO(zone).toPlainDate();
+  const to = now.toZonedDateTimeISO(zone).toPlainDate();
+  return Math.max(0, from.until(to, { largestUnit: 'days' }).days);
 }
 
 /**
