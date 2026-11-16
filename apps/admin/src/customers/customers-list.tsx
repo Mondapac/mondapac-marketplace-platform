@@ -155,9 +155,12 @@ export function CustomersList({
     return result.body;
   }, [fixedGroup]);
 
+  const [groupsFailed, setGroupsFailed] = useState(false);
   const loadGroups = useCallback(async () => {
+    setGroupsFailed(false);
     const result = await callApi<CustomerGroupsAnswer>('GET', 'customers/admin/groups');
     if (result.ok) setGroups(result.body.items);
+    else setGroupsFailed(true);
   }, []);
 
   useEffect(() => {
@@ -465,6 +468,8 @@ export function CustomersList({
             permissionKeys={permissionKeys}
             csrfToken={csrfToken}
             groups={groups}
+            groupsFailed={groupsFailed}
+            onRetryGroups={() => void loadGroups()}
             group={group}
             onSelectAll={selection.selectAllMatching}
             onClear={selection.clear}

@@ -515,9 +515,24 @@ function routePage(
     overview?: CustomerOverview;
     notes?: readonly CustomerNote[];
     rename?: ApiResult<unknown>;
+    notesRead?: ApiResult<unknown>;
+    activityRead?: ApiResult<unknown>;
+    groupsRead?: ApiResult<unknown>;
   } = {},
 ) {
   call.mockImplementation((method, path) => {
+    if (path.startsWith(`customers/admin/customers/${ID}/notes`) && method === 'GET') {
+      if (over.notesRead !== undefined) return Promise.resolve(over.notesRead as ApiResult<never>);
+    }
+    if (path === `customers/admin/customers/${ID}/activity` && over.activityRead !== undefined) {
+      return Promise.resolve(over.activityRead as ApiResult<never>);
+    }
+    if (path === 'identity/admin/step-up/verify') {
+      return Promise.resolve(ok({ code: 'step-up-verified' }) as ApiResult<never>);
+    }
+    if (path === 'customers/admin/groups' && over.groupsRead !== undefined) {
+      return Promise.resolve(over.groupsRead as ApiResult<never>);
+    }
     if (path === `customers/admin/customers/${ID}`) {
       return Promise.resolve(ok(over.overview ?? overview()) as ApiResult<never>);
     }
@@ -692,5 +707,157 @@ describe('the customer page, phase 2a', () => {
     );
     // No export without the export key.
     expect(within(panel).queryByRole('button', { name: 'Export…' })).toBeNull();
+  });
+});
+
+describe('the phase 2a sections when a read fails', () => {
+  it('hides Notes and Recent activity when the admin may not read them', async () => {
+    routePage({
+      notesRead: refused(403, 'auth.forbidden'),
+      activityRead: refused(403, 'auth.forbidden'),
+    });
+    render(wrap(<CustomerPage {...pageProps} permissionKeys={[VIEW, NOTES]} />));
+    await screen.findByRole('heading', { level: 1, name: 'Sara Ahmadi' });
+    await waitFor(() =>
+      expect(
+        call.mock.calls.some((args) => args[1] === `customers/admin/customers/${ID}/activity`),
+      ).toBe(true),
+    );
+    await waitFor(() => expect(screen.queryByRole('heading', { name: /^Notes/ })).toBeNull());
+    expect(screen.queryByRole('heading', { name: 'Recent activity' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('says a failed read with Retry, and shows the section once Retry works', async () => {
+    routePage({
+      notesRead: refused(503, 'unavailable'),
+      activityRead: refused(503, 'unavailable'),
+    });
+    render(wrap(<CustomerPage {...pageProps} permissionKeys={[VIEW]} />));
+    expect(await screen.findByText(messages.customers.notes.failed)).toBeTruthy();
+    expect(await screen.findByText(messages.customers.activity.failed)).toBeTruthy();
+    routePage({ notes: [note()] });
+    for (const retry of screen.getAllByRole('button', { name: 'Retry' })) fireEvent.click(retry);
+    expect(await screen.findByText(/<b>not bold<\/b>/)).toBeTruthy();
+    expect(await screen.findAllByText('Paid for an order')).not.toHaveLength(0);
+  });
+
+  it('says the groups could not be loaded in Add to group…, and Retry offers them', async () => {
+    routePage({ groupsRead: refused(503, 'unavailable') });
+    render(wrap(<CustomerPage {...pageProps} permissionKeys={[VIEW, MANAGE]} />));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add to group…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add 1 customer to a group' });
+    expect(await within(dialog).findByText('The groups could not be loaded.')).toBeTruthy();
+    routePage();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Retry' }));
+    const picker = await within(dialog).findByLabelText('Group');
+    expect(within(picker).getByRole('option', { name: 'Wholesale' })).toBeTruthy();
+  });
+});
+
+describe('Edit customer', () => {
+  it('shows the email read-only, counts the name and saves only a changed name', async () => {
+    routePage();
+    render(wrap(<CustomerPage {...pageProps} permissionKeys={[VIEW, EDIT]} />));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Edit customer' });
+    const email = within(dialog).getByLabelText<HTMLInputElement>('Email');
+    expect(email.value).toBe('sara@example.com');
+    expect(email.readOnly).toBe(true);
+    expect(within(dialog).getByText('11 of 100')).toBeTruthy();
+    const save = within(dialog).getByRole('button', { name: 'Save' });
+    expect(save.hasAttribute('disabled')).toBe(true);
+    fireEvent.change(within(dialog).getByLabelText('Display name'), {
+      target: { value: 'Sara A.' },
+    });
+    expect(within(dialog).getByText('7 of 100')).toBeTruthy();
+    expect(save.hasAttribute('disabled')).toBe(false);
+  });
+});
+
+describe('the activity export', () => {
+  const createObjectURL = vi.fn(() => 'blob:x');
+  const required = () =>
+    new Response(
+      JSON.stringify({
+        code: 'second-factor.required',
+        details: { actionKey: 'customers.customers.export' },
+      }),
+      { status: 403 },
+    );
+  beforeEach(() => {
+    createObjectURL.mockClear();
+    Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function openExport() {
+    render(
+      wrap(<CustomerPage {...pageProps} permissionKeys={[VIEW, 'customers.customers.export']} />),
+    );
+    await screen.findAllByText('Paid for an order');
+    fireEvent.click(screen.getByRole('button', { name: 'All activity' }));
+    const panel = await screen.findByRole('dialog', { name: 'Activity' });
+    await within(panel).findByRole('table');
+    fireEvent.click(within(panel).getByRole('button', { name: 'Export…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Export activity' });
+    return dialog;
+  }
+
+  // The step-up round trip and the file download take a few seconds on a loaded runner.
+  it(
+    'asks for the code, sends the same export again and downloads it',
+    { timeout: 15_000 },
+    async () => {
+      routePage();
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(required())
+        .mockResolvedValueOnce(new Response('\uFEFFwhen,what\r\n'));
+      vi.stubGlobal('fetch', fetchMock);
+      const dialog = await openExport();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+      await screen.findByRole('dialog', { name: 'Confirm it is you' });
+      fireEvent.paste(screen.getAllByRole('textbox', { name: /Digit \d of 6/ })[0]!, {
+        clipboardData: { getData: () => '123456' },
+      });
+      expect(
+        await screen.findByText('Activity exported.', undefined, { timeout: 10_000 }),
+      ).toBeTruthy();
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        'identity/admin/step-up/verify',
+        { actionKey: 'customers.customers.export', code: '123456' },
+        'csrf',
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
+      expect(url).toBe(`/api/customers/admin/customers/${ID}/activity/export`);
+      expect((init.headers as Record<string, string>)['x-csrf-token']).toBe('csrf');
+      expect(JSON.parse(init.body as string)).toEqual({ format: 'csv', direction: 'desc' });
+      expect((fetchMock.mock.calls[1]![1] as RequestInit).body).toBe(init.body);
+      expect(createObjectURL).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('says how many entries can be exported when the filter is too large', async () => {
+    routePage();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ code: 'batch.too-large', details: { max: 10000, total: 12000 } }),
+          { status: 422 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const dialog = await openExport();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    expect(
+      await screen.findByText(/Up to 10,000 entries can be exported at once/, undefined, {
+        timeout: 3000,
+      }),
+    ).toBeTruthy();
+    expect(createObjectURL).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { ConfirmAction, Select, toast } from '@mondapac/ui';
+import { Button, ConfirmAction, Select, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
@@ -77,6 +77,8 @@ export function GroupMembersDialog({
   action,
   count,
   groups,
+  groupsFailed = false,
+  onRetryGroups,
   fixedGroup,
   target,
   csrfToken,
@@ -89,6 +91,9 @@ export function GroupMembersDialog({
   readonly count: number;
   /** The groups to pick from; null while they are read. */
   readonly groups: readonly GroupRef[] | null;
+  /** The groups could not be read: an error with Retry instead of the picker. */
+  readonly groupsFailed?: boolean;
+  readonly onRetryGroups?: () => void;
   /** A group page's own group, or the chip's group on the customer page: no picker. */
   readonly fixedGroup: GroupRef | null;
   readonly target: MembersTarget;
@@ -161,7 +166,16 @@ export function GroupMembersDialog({
       body={
         <div className="flex flex-col gap-3">
           {fixedGroup === null ? (
-            choices.length === 0 ? (
+            groupsFailed ? (
+              <div role="alert" className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-critical-fg">{t('groups-failed')}</span>
+                {onRetryGroups === undefined ? null : (
+                  <Button variant="secondary" onClick={onRetryGroups}>
+                    {t('retry')}
+                  </Button>
+                )}
+              </div>
+            ) : choices.length === 0 ? (
               <p className="text-fg-muted">{groups === null ? t('loading') : t('none-to-pick')}</p>
             ) : (
               <Select

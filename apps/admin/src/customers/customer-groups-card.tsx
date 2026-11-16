@@ -37,18 +37,27 @@ export function CustomerGroupsCard({
   const [action, setAction] = useState<MembersAction | null>(null);
   const [removing, setRemoving] = useState<GroupRef | null>(null);
   const [choices, setChoices] = useState<readonly GroupRef[] | null>(null);
+  const [choicesFailed, setChoicesFailed] = useState(false);
   const canManage = keys.has(GROUPS_MANAGE);
+
+  async function readChoices() {
+    setChoices(null);
+    setChoicesFailed(false);
+    const result = await callApi<CustomerGroupsAnswer>('GET', 'customers/admin/groups');
+    if (!result.ok) {
+      setChoicesFailed(true);
+      return;
+    }
+    // Groups the customer is already in are not offered again.
+    setChoices(
+      result.body.items.filter((group) => !groups.some((in_) => in_.groupId === group.groupId)),
+    );
+  }
 
   async function openAdd() {
     setRemoving(null);
     setAction('add');
-    const result = await callApi<CustomerGroupsAnswer>('GET', 'customers/admin/groups');
-    // Groups the customer is already in are not offered again.
-    setChoices(
-      result.ok
-        ? result.body.items.filter((group) => !groups.some((in_) => in_.groupId === group.groupId))
-        : [],
-    );
+    await readChoices();
   }
 
   return (
@@ -82,6 +91,8 @@ export function CustomerGroupsCard({
         action={action}
         count={1}
         groups={action === 'add' ? choices : null}
+        groupsFailed={action === 'add' && choicesFailed}
+        onRetryGroups={() => void readChoices()}
         fixedGroup={action === 'remove' ? removing : null}
         target={{ ids: [accountId] }}
         csrfToken={csrfToken}
@@ -89,6 +100,7 @@ export function CustomerGroupsCard({
           setAction(null);
           setRemoving(null);
           setChoices(null);
+          setChoicesFailed(false);
         }}
         onDone={onChanged}
       />

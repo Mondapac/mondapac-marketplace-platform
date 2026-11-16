@@ -13,11 +13,14 @@ import {
   type CustomerNotesPage,
 } from './groups-types.ts';
 
+/** The first notes shown (spec: five), then older ones 20 at a time. */
+const FIRST = 5;
 const PAGE = 20;
 
 type Load =
   | { readonly state: 'loading' }
   | { readonly state: 'failed' }
+  | { readonly state: 'hidden' }
   | {
       readonly state: 'ready';
       readonly items: readonly CustomerNote[];
@@ -27,7 +30,7 @@ type Load =
 
 /**
  * Internal notes about a customer (customers management phase 2a), on the Overview: newest first,
- * each with its author and time in the admin's zone, 20 at a time with "Show older notes". Plain
+ * each with its author and time in the admin's zone, the newest five, then 20 at a time with "Show older notes". Plain
  * text, shown as written (never as markup), and never shown to the customer or a seller. Notes
  * are written once and never changed or removed, as order notes. "Add note…" needs
  * `customers.customer-notes.write`.
@@ -57,7 +60,7 @@ export function CustomerNotes({
     setLoad({ state: 'loading' });
     const result = await callApi<CustomerNotesPage>(
       'GET',
-      `customers/admin/customers/${id}/notes?limit=${PAGE}`,
+      `customers/admin/customers/${id}/notes?limit=${FIRST}`,
     );
     if (result.ok) {
       setLoad({ state: 'ready', ...result.body });
@@ -67,7 +70,8 @@ export function CustomerNotes({
       window.location.assign('/session-ended');
       return;
     }
-    setLoad({ state: 'failed' });
+    // Spec section 8: a section the admin may not read is hidden, not shown as an error.
+    setLoad({ state: result.failure.status === 403 ? 'hidden' : 'failed' });
   }, [id]);
 
   useEffect(() => {
@@ -98,6 +102,7 @@ export function CustomerNotes({
     );
   }
 
+  if (load.state === 'hidden') return null;
   const canWrite = keys.has(NOTES_WRITE);
   const count = load.state === 'ready' ? load.total : null;
   return (

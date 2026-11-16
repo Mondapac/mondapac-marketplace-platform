@@ -15,6 +15,7 @@ import { DISPLAY_NAME_MAX } from './groups-types.ts';
 export function CustomerEditDialog({
   open,
   accountId,
+  email,
   displayName,
   csrfToken,
   onClose,
@@ -22,6 +23,8 @@ export function CustomerEditDialog({
 }: {
   readonly open: boolean;
   readonly accountId: string;
+  /** Shown read-only: the email changes only through its own verified flow. */
+  readonly email: string;
   readonly displayName: string | null;
   readonly csrfToken: string;
   readonly onClose: () => void;
@@ -53,10 +56,7 @@ export function CustomerEditDialog({
       setFieldError(t('error.long', { max: DISPLAY_NAME_MAX }));
       return;
     }
-    if (clean === (displayName ?? '').trim()) {
-      onClose();
-      return;
-    }
+    if (!changed) return;
     busy.current = true;
     setPending(true);
     setFieldError(null);
@@ -97,6 +97,8 @@ export function CustomerEditDialog({
     }
   }
 
+  // The API takes 1 to 100 characters, so a name cannot be emptied (spec deviation, PR note).
+  const changed = name.trim() !== (displayName ?? '').trim();
   const close = () => {
     if (!pending) onClose();
   };
@@ -111,16 +113,24 @@ export function CustomerEditDialog({
           <Button variant="secondary" disabled={pending} onClick={close}>
             {t('cancel')}
           </Button>
-          <Button loading={pending} onClick={() => void save()}>
+          <Button loading={pending} disabled={!changed} onClick={() => void save()}>
             {t('save')}
           </Button>
         </>
       }
     >
       <form className="flex flex-col gap-4" onSubmit={(event) => void save(event)} noValidate>
+        <TextField label={t('email')} help={t('email-help')} value={email} readOnly />
         <TextField
           label={t('name')}
-          help={t('name-help')}
+          help={
+            <span className="flex flex-col">
+              <span>{t('name-help')}</span>
+              <span aria-live="polite">
+                {t('counter', { count: name.trim().length, max: DISPLAY_NAME_MAX })}
+              </span>
+            </span>
+          }
           value={name}
           maxLength={DISPLAY_NAME_MAX}
           autoComplete="off"

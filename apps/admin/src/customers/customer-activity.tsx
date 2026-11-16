@@ -153,6 +153,7 @@ export function RecentActivity({
   const [load, setLoad] = useState<
     | { readonly state: 'loading' }
     | { readonly state: 'failed' }
+    | { readonly state: 'hidden' }
     | { readonly state: 'ready'; readonly items: readonly ActivityEntry[] }
   >({ state: 'loading' });
   const [open, setOpen] = useState(false);
@@ -172,13 +173,15 @@ export function RecentActivity({
       window.location.assign('/session-ended');
       return;
     }
-    setLoad({ state: 'failed' });
+    // Spec section 8: a section the admin may not read is hidden, not shown as an error.
+    setLoad({ state: result.failure.status === 403 ? 'hidden' : 'failed' });
   }, [accountId, csrfToken]);
 
   useEffect(() => {
     void read();
   }, [read, refresh]);
 
+  if (load.state === 'hidden') return null;
   return (
     <Card>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

@@ -5688,12 +5688,13 @@
         "conflict": "Another admin changed this group. Reload to see their change.",
         "invalid": "Check the name and description."
       },
-      "more-chips": "+{count, number}"
+      "more-chips": "+{count, number}",
+      "groups-failed": "The groups could not be loaded."
     },
     "edit": {
       "title": "Edit customer",
       "name": "Display name",
-      "name-help": "How the customer is named in the panel and in their emails. Up to 100 characters.",
+      "name-help": "How the customer is named in the panel and in their emails. 1 to 100 characters; a name cannot be removed.",
       "save": "Save",
       "cancel": "Cancel",
       "saved": "Name saved.",
@@ -5706,7 +5707,10 @@
         "throttled": "Too many changes. Try again in a few minutes.",
         "denied": "You don’t have access to edit customers.",
         "unavailable": "The name could not be saved. Try again."
-      }
+      },
+      "email": "Email",
+      "email-help": "The email is changed through its own verified flow, not here.",
+      "counter": "{count, number} of {max, number}"
     },
     "notes": {
       "title": "Notes",

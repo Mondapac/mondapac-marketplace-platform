@@ -533,6 +533,7 @@ export function CustomerPage({
       <CustomerEditDialog
         open={editing}
         accountId={accountId}
+        email={customer.email}
         displayName={customer.displayName}
         csrfToken={csrfToken}
         onClose={() => setEditing(false)}

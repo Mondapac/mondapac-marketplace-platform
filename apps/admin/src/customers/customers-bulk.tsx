@@ -88,6 +88,8 @@ export function CustomersBulk({
   permissionKeys,
   csrfToken,
   groups = null,
+  groupsFailed = false,
+  onRetryGroups,
   group = null,
   onSelectAll,
   onClear,
@@ -100,6 +102,9 @@ export function CustomersBulk({
   readonly csrfToken: string;
   /** The Market's groups for Add to group… and Remove from group… (phase 2a). */
   readonly groups?: readonly GroupRef[] | null;
+  /** The groups could not be read (the dialog offers Retry). */
+  readonly groupsFailed?: boolean;
+  readonly onRetryGroups?: () => void;
   /** A group page's own group: Remove from this group only. */
   readonly group?: CustomerGroup | null;
   readonly onSelectAll: () => void;
@@ -304,6 +309,8 @@ export function CustomersBulk({
         action={members}
         count={count}
         groups={groups}
+        groupsFailed={groupsFailed}
+        {...(onRetryGroups === undefined ? {} : { onRetryGroups })}
         fixedGroup={
           group === null
             ? null
