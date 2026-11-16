@@ -39,7 +39,7 @@ import {
   type RowAction,
   type RowFilter,
 } from './import-model.ts';
-import { exportTree } from './export-tree.ts';
+import { useTreeExport } from './use-tree-export.ts';
 
 const IMPORT_ACCEPT =
   '.csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -389,21 +389,14 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
 /** The export of the tree, as the starting point of a file. */
 function ExportLinks() {
   const t = useTranslations('categories.import');
-  const [busy, setBusy] = useState(false);
-  const run = async (format: 'csv' | 'xlsx') => {
-    setBusy(true);
-    try {
-      await exportTree(format, t('export-failed'));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { exporting, run } = useTreeExport(t('export-failed'));
   return (
     <span className="flex flex-wrap items-center gap-2 text-sm text-fg-muted">
       {t('upload.export-hint')}
       <Button
         variant="secondary"
-        loading={busy}
+        loading={exporting === 'csv'}
+        disabled={exporting === 'xlsx'}
         aria-label={t('export-csv-label')}
         onClick={() => void run('csv')}
       >
@@ -411,7 +404,8 @@ function ExportLinks() {
       </Button>
       <Button
         variant="secondary"
-        loading={busy}
+        loading={exporting === 'xlsx'}
+        disabled={exporting === 'csv'}
         aria-label={t('export-xlsx-label')}
         onClick={() => void run('xlsx')}
       >

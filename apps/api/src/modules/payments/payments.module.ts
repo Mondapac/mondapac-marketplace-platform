@@ -38,7 +38,12 @@ import { STRIPE_SIGNATURE } from './application/ports/stripe-signature';
 import { STRIPE_TRANSFER_GATEWAY } from './application/ports/transfer-gateway';
 import { TRANSFER_STORE } from './application/ports/transfer-store';
 import { AbandonTransfer } from './application/use-cases/abandon-transfer.use-case';
+import type { AdminAccountListDependencies } from './application/admin-account-list-flow';
+import { CONNECTED_ACCOUNT_LIST_READER } from './application/ports/connected-account-list.reader';
+import { SELLER_NAMES } from './application/ports/seller-names';
+import { AdminExportConnectedAccounts } from './application/use-cases/admin-export-connected-accounts.use-case';
 import { AdminListConnectedAccounts } from './application/use-cases/admin-list-connected-accounts.use-case';
+import { SellersModule } from '../sellers';
 import { AdminViewConnectedAccount } from './application/use-cases/admin-view-connected-account.use-case';
 import { ApplyStripeEvents } from './application/use-cases/apply-stripe-events.use-case';
 import { ConnectPayoutAccount } from './application/use-cases/connect-payout-account.use-case';
@@ -105,6 +110,31 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   };
 }
 
+type ListUseCaseClass<U> = new (gate: UseCaseGate, deps: AdminAccountListDependencies) => U;
+
+const LIST_PORTS: readonly [keyof AdminAccountListDependencies, InjectionToken][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['list', CONNECTED_ACCOUNT_LIST_READER],
+  ['sellerNames', SELLER_NAMES],
+  ['sheetWriter', SHEET_WRITER],
+  ['clock', CLOCK],
+];
+
+/** The admin Seller accounts list (super list 22) and its export: read only, their own ports. */
+function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, ...LIST_PORTS.map(([, token]) => token)],
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+      new type(
+        gate,
+        Object.fromEntries(
+          LIST_PORTS.map(([name], index) => [name, values[index]]),
+        ) as unknown as AdminAccountListDependencies,
+      ),
+  };
+}
+
 /**
  * Payments (Phase 5, speed mode). Package 2: the Stripe webhook receiver. The endpoint verifies
  * and stores each event once; the worker job re-reads the session from Stripe and applies it
@@ -121,7 +151,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * outcome. Test mode only.
  */
 @Module({
-  imports: [OrderingModule, IdentityModule],
+  imports: [OrderingModule, IdentityModule, SellersModule],
   controllers: [
     StripeWebhookController,
     SellerPayoutAccountController,
@@ -150,7 +180,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     useCaseProvider(ResolveTransfers),
     useCaseProvider(DisputesOfOrderQuery),
     useCaseProvider(SyncPayoutSchedules),
-    useCaseProvider(AdminListConnectedAccounts),
+    listUseCaseProvider(AdminListConnectedAccounts),
+    listUseCaseProvider(AdminExportConnectedAccounts),
     useCaseProvider(AdminViewConnectedAccount),
     { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
     ...[

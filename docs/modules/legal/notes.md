@@ -57,7 +57,7 @@ G1/G2 brief. Package 1b of that plan includes customers package 4 (consent recor
 
 ## Consent event (customers management phase 2b, part 4, 16 Nov 2026)
 
-- legal now has an outbox (`legal.outbox`, migration `20261116150000_legal_outbox`, the same
+- legal now has an outbox (`legal.outbox`, migration `20261116200500_legal_outbox`, the same
   table, CHECKs, partial index and grants as every module's outbox) and publishes one event,
   `legal.marketing-consent-changed.v1` (aggregate `marketing-consent-change`, the id of the
   history row, version 1): `accountId` and `channel` (`email`) only. Never the value (granted or

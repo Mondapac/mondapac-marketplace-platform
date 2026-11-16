@@ -152,9 +152,8 @@ Six types on top of the core (migration `20261031090000_promotions_phase2_types`
   generated or matched); a public code and a single-use code cannot share text (checked on both
   sides; the single-use code wins a quote); a malformed stored row is skipped in a quote and logged.
 
-Open for package T2: marking a code used on redemption (the app has SELECT and INSERT only on the codes),
-counting flash units sold, and checking a flash limit lowered below the units already sold. There is no
-re-download of generated codes.
+Package T2 (below) marks a code used on redemption and counts flash units sold. Still open: checking a
+flash limit lowered below the units already sold. There is no re-download of generated codes.
 
 ## Phase 3 discount types
 
@@ -338,4 +337,55 @@ place) and the promotions module.
   keys yet; the Platform Administrator grants them in a custom role.
 - Permission keys have three segments (`promotions.promotion.manage`, `promotions.promotion.view`,
   `promotions.own-promotion.manage`, `promotions.settings.view`, `promotions.settings.manage`).
-- The first-order monthly budget is read as a ceiling here; reserving and spending it is package T2.
+- The first-order monthly budget is spent by package T2 (below).
+
+## Package T2: redemption at checkout (part A, promotions side)
+
+Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it in part B.
+
+- **`promotions.redemptions`**: one row per order and promotion (unique `(market, order, promotion_key)`). The
+  key is the promotion's id, `first-order` or `free-shipping:<zone>` (`kind` PROMOTION, FIRST_ORDER,
+  FREE_SHIPPING). Amount with its seller and platform shares, the customer, the hash of a redeemed single-use
+  code, the units of a flash sale, and for first-order rows the budget month (`YYYY-MM` in the Market zone,
+  Market config `timezone`). Status RESERVED, then CONFIRMED (paid) or RELEASED (`ORDER_CANCELLED`, or
+  `ORDER_REFUNDED` per the owner's refund rule). Never deleted; a trigger allows only RESERVED to CONFIRMED,
+  RESERVED to RELEASED and CONFIRMED to RELEASED, with every other column unchanged, for every role; a row is
+  inserted RESERVED (trigger). Each redeemed order also has a **head row** (`kind` ORDER, key `order`, zero
+  amounts). A cancellation writes that row RELEASED when the order has none, so a cancellation and a redemption
+  of one order always meet on the same unique key: whichever comes second sees the first, in either order.
+  Backstop unique indexes: one live first-order row per customer, one live row per single-use code hash.
+  Every cancelled order leaves one RELEASED head row, even without a discount (small, accepted growth); a
+  reader of a customer's redemptions (the customer page) filters out `kind = 'ORDER'`. A repeat is compared
+  with the stored rows per promotion (amount and shares); the per-line and per-shipping split is not stored
+  here, it is ordering's.
+- **`promotion_batch_codes.redeemed_order_id`**: set with `used_at` (CHECK both or neither); a trigger allows
+  only claim (unused to used) and give back (used to unused). The app may now UPDATE those two columns and the
+  `promotion_usage` counters (the core CHECK keeps them at zero or above).
+- **Facade `redeem`** (rule `system`, use case `promotions.redeem-discounts`): ordering stores the order with the
+  discounts of a `quote`, then asks to redeem them, sending the quote request and `discountSummaryOf(quote)`.
+  In one unit: the order's rows are looked up (a repeat with the same discounts answers `already-redeemed`,
+  with other discounts `validation.failed`; a released order `promotions.redemption-released`); the usage rows of the promotions the order took are locked in id order (and
+  the Market's switch row when it took the first-order discount); everything is read again under the locks and
+  the same calculation runs (`loadCart` + `priceCart`, shared with the quote). Equal to what the order holds: the
+  code is claimed in one conditional update, the rows are written RESERVED and the counters move. Not equal (a
+  budget, a total or per-customer use limit, the flash units or the code was taken meanwhile): nothing is
+  written and the answer is `promotions.quote-changed` with the fresh quote, so the buyer confirms the new total.
+  A lock that cannot be taken in time is `conflict.retry`. Off since the order was priced: `quote-changed` with
+  the bare cart. The first-order discount is once per customer: a live first-order row of the customer on any
+  order (two checkouts at once, an unpaid earlier order) prices the order as not the first. The fresh quote of a
+  `quote-changed` was made with the order's old commission: ordering quotes again before it stores anything.
+- **Subscribers**: `ordering.order-paid.v1` confirms the order's rows (`promotions.confirm-redemptions`);
+  the new `ordering.order-cancelled.v1` (defined here, emitted by ordering in part B) releases them and gives
+  back what they took: counters, budget, first-order money (the month's sum leaves the row out), the code
+  (`promotions.release-cancelled-redemptions`). Both whatever the switch says now; both idempotent through
+  the inbox. Confirm and release take the rows one at a time in key order (no deadlock between a payment and a
+  cancellation of one order); a release re-checks the status under the lock, so a row confirmed meanwhile is
+  still released and a row released already is never given back twice.
+- **Quote changes**: `maxUsesPerCustomer` is now enforced, counting the customer's rows that hold; a quote
+  without a customer gets no promotion that has the limit (fail closed), and the admin preview ignores it.
+  The first-order discount takes what is left of the month's budget. The flash-sale counter
+  (`RedemptionFlashSales`) sums the units of the rows that hold, so flash sales now apply to real orders.
+- Not here yet: ordering's side (part B: the code at checkout, the discounts stored per line, the event, tax,
+  Stripe, the ledger and refunds on the net amounts), the refund release (owner's decision pending), and a sweep
+  of reservations whose order never settles (the order is stored before the redemption, so every row has an
+  order that ordering cancels or confirms; the sweep covers a crash between them).

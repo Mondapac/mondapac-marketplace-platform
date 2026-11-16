@@ -125,6 +125,24 @@ export const RoleDeletedAudit = defineAuditAction({
 });
 
 /**
+ * A reviewer rejected, or its author withdrew, an edit of a custom platform role in Admin Inbox ›
+ * System requests, and the role's name and keys before the edit came back. Only a revert that
+ * removes keys (or only renames) runs, so the row lists the removed keys; `requestId` names the
+ * System request. No step-up of its own: the decision spent the reviewer's (high risk).
+ */
+export const RoleRevertedAudit = defineAuditAction({
+  action: 'identity.role.reverted',
+  targetType: 'identity.role',
+  actors: ['authenticated'],
+  after: {
+    scope: auditField.enumOf(ROLE_SCOPES),
+    removedKeys: auditField.listOf(auditField.permissionKey(), MAX_CUSTOM_ROLE_KEYS),
+    renamed: auditField.boolean(),
+    requestId: auditField.id(),
+  },
+});
+
+/**
  * The founding rows of a self-registered seller (identity design 5.5; PA 5 row 2, Q1 decided
  * by Ali 2026-10-08): written when the Seller Owner verifies the email, the moment the
  * membership and the assignment take effect, in the unit that records `seller-registered`.
@@ -233,6 +251,23 @@ export const AccountRoleChangedAudit = defineAuditAction({
 });
 
 /**
+ * A reviewer rejected, or its author withdrew, a change of an admin's role in Admin Inbox › System
+ * requests, and the role before came back (only a role that confers no key the current one lacks:
+ * a revert never widens access). Target: the admin account. `requestId` names the System request.
+ */
+export const AccountRoleRevertedAudit = defineAuditAction({
+  action: 'identity.account-role.reverted',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  before: { roleId: auditField.id() },
+  after: {
+    roleId: auditField.id(),
+    scope: auditField.enumOf(ROLE_SCOPES),
+    requestId: auditField.id(),
+  },
+});
+
+/**
  * The Seller Owner removed a member from the team (identity design 2.1, R4; slice 11). Target:
  * the removed account. `before` is the role it held (absent only for a member stored without one); in the same unit its assignment was deleted,
  * every session revoked and its open challenges voided. Ids only.
@@ -318,6 +353,24 @@ export const AccountEnabledAudit = defineAuditAction({
   after: {
     status: auditField.enumOf(ACCOUNT_STATUSES),
     population: auditField.enumOf(DISABLEABLE_POPULATIONS),
+  },
+});
+
+/**
+ * A reviewer rejected, or its author withdrew, the enabling of an admin account in Admin Inbox ›
+ * System requests, and the account is disabled again: in the same unit every session of the
+ * account was revoked and its open challenges voided, as a disable does. Never the other way (a
+ * revert never enables an account). Target: the account. `requestId` names the System request.
+ */
+export const AccountStatusRevertedAudit = defineAuditAction({
+  action: 'identity.account-status.reverted',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(ACCOUNT_STATUSES) },
+  after: {
+    status: auditField.enumOf(ACCOUNT_STATUSES),
+    population: auditField.enumOf(['admin'] as const),
+    requestId: auditField.id(),
   },
 });
 
@@ -650,16 +703,19 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   RoleCreatedAudit,
   RoleUpdatedAudit,
   RoleDeletedAudit,
+  RoleRevertedAudit,
   SellerAccessFounded,
   SellerMemberAdded,
   AccountRoleAssigned,
   AccountRoleChangedAudit,
+  AccountRoleRevertedAudit,
   SellerMemberRemovedAudit,
   SellerStepUpPolicyChangedAudit,
   AdminStepUpVerifiedAudit,
   AdminStepUpRefusedAudit,
   AccountDisabledAudit,
   AccountEnabledAudit,
+  AccountStatusRevertedAudit,
   InvitationIssuedAudit,
   InvitationReissuedAudit,
   InvitationRevokedAudit,
