@@ -7,7 +7,7 @@ import type {
   CustomerSessionsView,
   CustomerSignInsPage,
   CustomerSignInsRequest,
-} from '../application/accounts/customer-security';
+} from './customer-security';
 
 export type {
   AdminPasswordResetFailure,
@@ -17,11 +17,8 @@ export type {
   CustomerSignInFact,
   CustomerSignInsPage,
   CustomerSignInsRequest,
-} from '../application/accounts/customer-security';
-export {
-  CUSTOMER_SIGN_IN_RESULTS,
-  type CustomerSignInResult,
-} from '../application/ports/sign-in-record.repository';
+} from './customer-security';
+export { CUSTOMER_SIGN_IN_RESULTS, type CustomerSignInResult } from './customer-security';
 
 /**
  * Who the calling actor is (identity design 8.1 `describeActor`): ids and codes only, never a

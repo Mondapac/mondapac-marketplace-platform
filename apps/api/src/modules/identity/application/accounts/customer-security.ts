@@ -18,7 +18,6 @@ import {
   CustomerSessionsEndedByAdminAudit,
   CustomerSignInAddressRevealedAudit,
 } from '../../domain/audit';
-import type { DeviceCode } from '../../domain/device';
 import { OneTimeLink } from '../../domain/one-time-link';
 import { sessionIsLive, type SessionRevokedReason } from '../../domain/session';
 import type { AccountRepository } from '../ports/account.repository';
@@ -27,10 +26,28 @@ import type { SessionRepository } from '../ports/session.repository';
 import {
   customerSignInResultOf,
   type CustomerSignInQuery,
-  type CustomerSignInResult,
   type SignInRecordRepository,
 } from '../ports/sign-in-record.repository';
 import { isActingAsSession } from '../sellers/access-decision-reads';
+import type {
+  AdminPasswordResetFailure,
+  CustomerSecurityFailure,
+  CustomerSessionFact,
+  CustomerSessionsView,
+  CustomerSignInFact,
+  CustomerSignInsPage,
+  CustomerSignInsRequest,
+} from '../../contracts/customer-security';
+
+export type {
+  AdminPasswordResetFailure,
+  CustomerSecurityFailure,
+  CustomerSessionFact,
+  CustomerSessionsView,
+  CustomerSignInFact,
+  CustomerSignInsPage,
+  CustomerSignInsRequest,
+};
 
 // A customer's security section on the admin customer page (customers management phase 2b): the
 // sign-ins of the last 90 days, the live sessions, the reveal of one sign-in's full address,
@@ -54,11 +71,6 @@ export const CUSTOMER_SESSIONS_LIMIT = 50;
  * request (the customer's own or an admin's): one mail is enough, and a mailbox is not flooded.
  */
 export const ADMIN_RESET_INTERVAL_MINUTES = 5;
-
-export type CustomerSecurityFailure =
-  | { readonly code: 'access.denied' }
-  | { readonly code: 'access.unavailable' }
-  | { readonly code: 'account.unknown' };
 
 export interface CustomerSecurityDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -93,42 +105,6 @@ const ninetyDaysBefore = (now: Temporal.Instant): Temporal.Instant =>
   now.subtract({ hours: 24 * CUSTOMER_SIGN_IN_DAYS });
 
 // ---- sign-ins --------------------------------------------------------------------------------
-
-export interface CustomerSignInsRequest {
-  readonly accountId: Id<'Account'>;
-  readonly results: readonly CustomerSignInResult[] | null;
-  /** Clamped to the last 90 days. */
-  readonly from: Temporal.Instant | null;
-  readonly to: Temporal.Instant | null;
-  readonly direction: 'asc' | 'desc';
-  readonly window: { readonly offset: number; readonly limit: number };
-  /** Count every match (page-number mode); false in Previous and Next mode and for an export. */
-  readonly withTotal: boolean;
-}
-
-/** One sign-in as the customer page shows it: no address, no session id, no correlation id. */
-export interface CustomerSignInFact {
-  readonly signInId: Id<'SignInRecord'>;
-  readonly occurredAt: string;
-  /** The outcome code of identity design 6.3 (`signed-in`, `password.incorrect`, ...). */
-  readonly outcome: string;
-  readonly result: CustomerSignInResult;
-  /** `<browser>.<system>`; null when unknown (older records, no User-Agent). */
-  readonly device: DeviceCode | null;
-  /**
-   * Where the sign-in came from as a rough place. Always null for now: no geo lookup exists and
-   * the owner has not decided to show one (the default is no city). A future lookup fills it
-   * here, from the address, without the address leaving identity.
-   */
-  readonly city: null;
-}
-
-export interface CustomerSignInsPage {
-  readonly rows: readonly CustomerSignInFact[];
-  readonly total: number | null;
-  /** The oldest instant the page can show (now minus 90 days), for the panel's note. */
-  readonly since: string;
-}
 
 /** One page of a customer's sign-ins of the last 90 days, newest first by default. */
 export async function readCustomerSignIns(
@@ -216,19 +192,6 @@ export async function revealCustomerSignInAddress(
 }
 
 // ---- sessions --------------------------------------------------------------------------------
-
-/** One live session of the customer: the coarse device and two instants. No id, token or address. */
-export interface CustomerSessionFact {
-  readonly device: DeviceCode | null;
-  readonly signedInAt: string;
-  readonly lastActiveAt: string;
-}
-
-export interface CustomerSessionsView {
-  readonly items: readonly CustomerSessionFact[];
-  /** True when the account has more live sessions than the list shows. */
-  readonly more: boolean;
-}
 
 /** The customer's live sessions, most recently used first, at most 50. */
 export async function readCustomerSessions(
@@ -325,13 +288,6 @@ export async function signOutCustomerEverywhere(
 }
 
 // ---- password reset ---------------------------------------------------------------------------
-
-export type AdminPasswordResetFailure =
-  | CustomerSecurityFailure
-  /** A disabled account, or one whose email is not verified: no mail goes (as "Forgot password?"). */
-  | { readonly code: 'account.not-eligible' }
-  /** A reset was requested less than five minutes ago. */
-  | { readonly code: 'password-reset.recently-requested' };
 
 /**
  * Sends the customer the password reset mail, as "Forgot password?" does for them: the account's

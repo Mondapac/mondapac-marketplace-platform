@@ -1,5 +1,11 @@
 import type { Id, MarketContext, Population, Temporal } from '@mondapac/shared-kernel';
 import type { DeviceCode } from '../../domain/device';
+import {
+  CUSTOMER_SIGN_IN_RESULTS,
+  type CustomerSignInResult,
+} from '../../contracts/customer-security';
+
+export { CUSTOMER_SIGN_IN_RESULTS, type CustomerSignInResult };
 
 /**
  * One sign-in attempt (identity design 10.2; data design 3.6): never the typed email. `address`
@@ -21,10 +27,6 @@ export interface SignInRecord {
    */
   readonly device: DeviceCode | null;
 }
-
-/** How a customer's sign-in record reads on the customer page: a success, a failure, or a credential change. */
-export const CUSTOMER_SIGN_IN_RESULTS = ['success', 'failure', 'credential-change'] as const;
-export type CustomerSignInResult = (typeof CUSTOMER_SIGN_IN_RESULTS)[number];
 
 /** The outcomes that are a success, and the ones that change a credential; every other is a failure. */
 export const SIGN_IN_SUCCESS_OUTCOMES = ['signed-in'] as const;

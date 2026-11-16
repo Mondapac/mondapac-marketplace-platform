@@ -53,6 +53,8 @@ it('maps every refusal code of the customers routes to its exact status', () => 
     'customers.customer-not-found': 404,
     'customers.customer-not-eligible': 409,
     'customers.group-not-found': 404,
+    'customers.password-reset-recently-requested': 429,
+    'customers.sign-in-not-found': 404,
     'customers.group-name-taken': 409,
     'customers.group-limit-reached': 409,
     'customers.group-archived': 409,

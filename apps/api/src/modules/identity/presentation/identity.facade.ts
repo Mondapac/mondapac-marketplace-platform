@@ -19,7 +19,7 @@ import type { AdminCustomerSessions } from '../application/use-cases/admin-custo
 import type { AdminRevealCustomerSignIn } from '../application/use-cases/admin-reveal-customer-sign-in.use-case';
 import type { AdminSignOutCustomer } from '../application/use-cases/admin-sign-out-customer.use-case';
 import type { AdminSendCustomerPasswordReset } from '../application/use-cases/admin-send-customer-password-reset.use-case';
-import type { CustomerSignInsRequest } from '../application/accounts/customer-security';
+import type { CustomerSignInsRequest } from '../contracts/customer-security';
 import type { EndAllCustomerSessions } from '../application/use-cases/end-all-customer-sessions.use-case';
 import type { EndOtherCustomerSessions } from '../application/use-cases/end-other-customer-sessions.use-case';
 import type { EraseCustomerAccount } from '../application/use-cases/erase-customer-account.use-case';
