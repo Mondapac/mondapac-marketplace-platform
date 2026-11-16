@@ -248,9 +248,24 @@ describe.each(TEST_MARKETS)('the assistant conversation over HTTP in market %s',
       {
         name: 'account',
         actor: 'authenticated',
-        input: { conversationId: CONVERSATION, text: 'hi', visitor: undefined },
+        input: { conversationId: CONVERSATION, text: 'hi', visitor: undefined, preview: undefined },
       },
     ]);
+  });
+
+  it('passes the internal preview header to the use case as sent, never from the body', async () => {
+    await boot();
+    await http()
+      .post(PATH)
+      .set({ 'x-market-id': code, 'x-assistant-preview': 'ap1.token' })
+      .send({ text: 'hi' });
+    const inBody = await http()
+      .post(PATH)
+      .set({ 'x-market-id': code })
+      .send({ text: 'hi', preview: 'ap1.token' });
+    expect(inBody.status).toBe(400);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.input['preview']).toBe('ap1.token');
   });
 
   it('refuses a body with unknown fields or of another type before any use case', async () => {

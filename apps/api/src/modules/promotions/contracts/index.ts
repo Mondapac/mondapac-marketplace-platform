@@ -13,6 +13,7 @@ export type {
   ShippingResult,
 } from '../domain/calculation/types';
 export { PROMOTIONS_STATUSES, type PromotionsStatus } from '../domain/market-status';
+export { summaryOf as discountSummaryOf } from '../domain/redemption';
 export {
   FUNDINGS,
   PROMOTION_STATUSES,
@@ -31,6 +32,10 @@ export {
   PROMOTIONS_FACADE,
   type PromotionsFacade,
   type PromotionsFacadeFailure,
+  type DiscountSummary,
+  type RedeemFacadeFailure,
+  type RedeemRequest,
+  type RedeemResult,
   type QuoteLine,
   type QuoteRequest,
   type QuoteResult,

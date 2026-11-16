@@ -33,6 +33,7 @@ import {
   RecordingOutbox,
   SequenceGuestTokens,
   UtcCalendar,
+  FakePreviewTokens,
   FixedQuickPrompts,
 } from './testing/assistant-fakes';
 import { PurgeConversations } from './use-cases/purge-conversations.use-case';
@@ -85,16 +86,19 @@ const on = (overrides: Partial<AssistantSettings> = {}): AssistantSettings => ({
   ...overrides,
 });
 
-const PRODUCT: AssistantCard = {
+const PRODUCT: Extract<AssistantCard, { kind: 'product' }> = {
   kind: 'product',
   offerId: id<'Offer'>(0x0f1),
   productId: id<'Product'>(0x0e1),
   sellerId: id<'Seller'>(0x051),
   name: 'Lamb mince 500 g',
   shortText: null,
+  sellerName: 'Fresh Farm',
   price: null,
   regularPrice: null,
   taxInclusive: null,
+  priceFrom: false,
+  badges: [],
 };
 
 describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', (code) => {
@@ -158,6 +162,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       calendar: new UtcCalendar(),
       outbox,
       quickPrompts: new FixedQuickPrompts(),
+      previewTokens: new FakePreviewTokens(),
       trail: unusedChangeTrail,
     };
   });
@@ -212,6 +217,37 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       if (overrides.audience === 'percent' && result.ok) return;
       expect(result).toEqual({ ok: false, error: { code: 'assistant.off' } });
       expect(runtime.requests).toHaveLength(0);
+    });
+
+    it('answers a browser with a valid preview token while the audience is internal', async () => {
+      settings.current = on({ audience: 'internal' });
+      const tokens = deps.previewTokens;
+      const token = tokens.issue(market, T0)!.token;
+      const send = (preview: unknown, context = customer()) =>
+        new SendMessage(gate, deps).execute(context, {
+          conversationId: CONVERSATION,
+          text: 'Hi',
+          visitor: undefined,
+          preview,
+        });
+      expect((await send(token)).ok).toBe(true);
+      const asPreviewGuest = await new SendGuestMessage(gate, deps).execute(guest(), {
+        conversationId: SECOND,
+        text: 'Hi',
+        visitor: undefined,
+        preview: token,
+        token: null,
+        origin: '203.0.113.7',
+      });
+      expect(asPreviewGuest.ok).toBe(true);
+      expect(runtime.requests).toHaveLength(2);
+      for (const bad of [undefined, '', token + 'x', ['x'], 'preview:XX:9999999999999']) {
+        expect(await send(bad)).toEqual({ ok: false, error: { code: 'assistant.off' } });
+      }
+      // The kill switch still wins.
+      settings.current = on({ enabled: false, audience: 'internal' });
+      expect(await send(token)).toEqual({ ok: false, error: { code: 'assistant.off' } });
+      expect(runtime.requests).toHaveLength(2);
     });
 
     it('is off with the built-in defaults, without a key, a model or a price', async () => {
@@ -433,6 +469,8 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
         'search_products',
         'list_bestsellers',
         'list_specials',
+        'get_product',
+        'get_seller',
         'list_categories',
         'show_page',
         'support_contact',

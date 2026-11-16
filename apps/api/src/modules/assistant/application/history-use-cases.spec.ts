@@ -25,6 +25,7 @@ import type {
 } from './ports/assistant-settings.repository';
 import {
   answer,
+  FakePreviewTokens,
   FakeRuntime,
   FakeTools,
   FixedQuickPrompts,
@@ -94,9 +95,12 @@ const PRODUCT: AssistantCard = {
   sellerId: id<'Seller'>(0x051),
   name: 'Lamb mince 500 g',
   shortText: null,
+  sellerName: 'Fresh Farm',
   price: null,
   regularPrice: null,
   taxInclusive: null,
+  priceFrom: false,
+  badges: [],
 };
 
 describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (code) => {
@@ -152,6 +156,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
       quickPrompts: new FixedQuickPrompts(),
+      previewTokens: new FakePreviewTokens(),
       outbox: new RecordingOutbox(),
       trail: unusedChangeTrail,
     };
