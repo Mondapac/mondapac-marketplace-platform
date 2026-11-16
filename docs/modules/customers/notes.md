@@ -308,6 +308,10 @@ admin deletes a buyer's account for them, from a support ticket.
   `ordering.customerOrderStats` (both rule `system`, before any unit opens) and replaces the rows, so a
   repeated or late event changes nothing. `customers` cannot import `ordering`, so the peers are
   bound at start by `CustomersReadModelsModule`, like the deletion flow.
+- **Inbox (fix, 16 Nov 2026).** The subscribers handle each event once through `runOnce`, which
+  needs `customers.inbox`. B1 shipped without it, so every delivery failed and was retried until
+  dead-lettered; migration `20261116000000_customers_inbox` adds it, and
+  `email-verification.db-spec.ts` now checks that a sign-up reaches the directory through it.
 - **Backfill and reconcile.** Job `customers.reconcile-read-models` (daily and at worker start) walks
   `identity.customerDirectoryPage` and `ordering.customerOrderAccounts` by keyset (at most 200 pages of
   200 per phase per run) and replaces every row.
