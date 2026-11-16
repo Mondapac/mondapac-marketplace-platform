@@ -133,8 +133,8 @@ a seller or admin session is not read here. Every answer is `Cache-Control: no-s
 - Title: the first buyer message (masked before it was stored, masked again), on one line, at
   most 30 user-perceived characters with an ellipsis. A conversation with no stored buyer message
   is not listed.
-- Cards come back as stored: kind and ids only (`product` with `offerId`, `page` with `page`,
-  `support`). A price or product text is never replayed from an old answer; the widget reads the
+- Cards come back as stored: kind and ids only (`product` with `offerId`, `seller` with
+  `sellerId`, `page` with `page`, `support`). A price or product text is never replayed from an old answer; the widget reads the
   product again if it shows one.
 - List and view answer 403 `assistant.off` while the Market's switch is off. Delete works while
   it is off: a buyer can always erase their own conversation. Delete removes the conversation,

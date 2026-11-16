@@ -157,7 +157,8 @@ export class ConversationController {
     summary: "One of a signed-in buyer's own conversations, every stored message in order",
     description:
       "Another buyer's conversation, a guest's, or one past its retention answers 404. Cards " +
-      'come back as their kind and ids only (product: offerId; page: page; support): a price or ' +
+      'come back as their kind and ids only (product: offerId; seller: sellerId; page: page; ' +
+      'support): a price or ' +
       'product text is never replayed from an old answer. Continue it with POST ' +
       '/assistant/conversations/:id/messages (409 assistant.conversation-full when full is true).',
   })
