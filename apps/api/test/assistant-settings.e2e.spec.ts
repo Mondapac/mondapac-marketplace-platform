@@ -11,6 +11,9 @@ import { SetAssistantSettings } from '../src/modules/assistant/application/use-c
 import { ViewAssistantSettings } from '../src/modules/assistant/application/use-cases/view-assistant-settings.use-case';
 import { ViewAssistantSettingsHistory } from '../src/modules/assistant/application/use-cases/view-assistant-settings-history.use-case';
 import { ViewStorefrontAssistant } from '../src/modules/assistant/application/use-cases/view-storefront-assistant.use-case';
+import { QUICK_PROMPTS } from '../src/modules/assistant/application/ports/quick-prompts';
+import type { QuickPrompts } from '../src/modules/assistant/application/ports/quick-prompts';
+import { CatalogueQuickPrompts } from '../src/modules/assistant/infrastructure/catalogue-quick-prompts';
 import { DEFAULT_ASSISTANT_SETTINGS } from '../src/modules/assistant/domain/assistant-settings';
 import { ASSISTANT_STATUS } from '../src/modules/assistant/presentation/http-answers';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -271,6 +274,25 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
       { name: 'public', input: { visitor: 'visitor-key-0123456789', lang: 'en-AU' } },
     ]);
     expect(actorKinds).toEqual(['anonymous']);
+  });
+
+  it("wires the checked-in quick prompts in the Market's locales", async () => {
+    await boot();
+    const prompts = app!.get<QuickPrompts>(QUICK_PROMPTS, { strict: false });
+    expect(prompts).toBeInstanceOf(CatalogueQuickPrompts);
+    const market = marketOf();
+    const plain = prompts.forBuyer(market, null);
+    expect(plain.length).toBeGreaterThan(0);
+    // AU's default is en-AU; ZZ's is ja-JP, and its en-US has no prompts, so it falls back.
+    if (code === 'ZZ') {
+      expect(plain[0]).toBe('今週の特売は？');
+      expect(prompts.forBuyer(market, 'ja')).toEqual(plain);
+      expect(prompts.forBuyer(market, 'en-US')).toEqual(plain);
+    } else {
+      expect(plain[0]).toMatch(/special/);
+      expect(prompts.forBuyer(market, 'en-GB')).toEqual(plain);
+    }
+    expect(prompts.forBuyer(market, '<script>')).toEqual(plain);
   });
 
   it('refuses the storefront read without a Market header', async () => {

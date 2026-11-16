@@ -266,12 +266,19 @@ export class SequenceGuestTokens implements GuestTokens {
   }
 }
 
-/** Fixed prompts: Japanese for a `ja` tag, else one English prompt; records each tag asked. */
+/**
+ * Fixed prompts shaped like the fixtures: ZZ answers Japanese (its default, with no English
+ * catalogue), AU English unless asked for `ja`; records each tag asked.
+ */
 export class FixedQuickPrompts implements QuickPrompts {
+  static readonly JA = ['今週の特売は？'];
+  static readonly EN = ['What is on special?'];
   readonly asked: (string | null)[] = [];
-  forBuyer(_market: MarketContext, lang: string | null) {
+  forBuyer(market: MarketContext, lang: string | null) {
     this.asked.push(lang);
-    return lang?.startsWith('ja') ? ['今週の特売は？'] : ['What is on special?'];
+    return market.marketId === 'ZZ' || lang?.startsWith('ja')
+      ? FixedQuickPrompts.JA
+      : FixedQuickPrompts.EN;
   }
 }
 
