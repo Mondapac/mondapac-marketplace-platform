@@ -9,7 +9,9 @@ import { Client } from 'pg';
 import {
   FakeRuntime,
   FakeTools,
+  FakeInsights,
   MemoryConversations,
+  MemoryFeedback,
   MemoryLimits,
   SequenceGuestTokens,
 } from '../../src/modules/assistant/application/testing/assistant-fakes';
@@ -94,13 +96,16 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
   });
 
   const actors = new FakeChangeActors();
+  const conversations = new MemoryConversations();
   const deps = () => ({
     unitOfWork: db.unitOfWork,
     settings,
     runtime,
     audit,
     clock,
-    conversations: new MemoryConversations(),
+    conversations,
+    feedback: new MemoryFeedback(conversations),
+    insights: new FakeInsights(),
     spend,
     tools: new FakeTools(),
     limits: new MemoryLimits(),

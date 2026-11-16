@@ -12,6 +12,10 @@ import type {
   ConversationRepository,
   StoredMessage,
 } from '../ports/conversation.repository';
+import type { Feedback } from '../../domain/feedback';
+import type { UnansweredCandidate } from '../../domain/insights';
+import type { FeedbackRepository } from '../ports/feedback.repository';
+import type { DayInsight, FeedbackInsight, InsightsRepository } from '../ports/insights.repository';
 import type { GuestTokens } from '../ports/guest-tokens';
 import type { MarketCalendar } from '../ports/market-calendar';
 import type { MessageLimits } from '../ports/message-limits';
@@ -70,6 +74,8 @@ export function answer(turn: {
 export class FakeTools implements AssistantTools {
   readonly runs: { context: CallContext; request: ToolRequest }[] = [];
   failing = false;
+  /** A product search answers no products and says so. */
+  emptySearch = false;
   products: AssistantCard[] = [];
 
   run(context: CallContext, request: ToolRequest): Promise<ToolOutcome> {
@@ -96,6 +102,7 @@ export class FakeTools implements AssistantTools {
           isError: false,
           cards: this.products,
           notices: [],
+          ...(this.emptySearch ? { noResults: true } : {}),
         });
       default:
         return Promise.resolve({ forModel: '{}', isError: false, cards: [], notices: [] });
@@ -109,7 +116,14 @@ export class MemoryConversations implements ConversationRepository {
     string,
     ConversationRecord & { market: string; lastAt: Temporal.Instant }
   >();
-  readonly messages = new Map<string, (StoredMessage & { cards: readonly string[] })[]>();
+  readonly messages = new Map<
+    string,
+    (StoredMessage & {
+      cards: readonly string[];
+      notices: readonly string[];
+      emptySearch: boolean;
+    })[]
+  >();
 
   find(market: MarketContext, id: string) {
     const row = this.rows.get(id);
@@ -141,10 +155,16 @@ export class MemoryConversations implements ConversationRepository {
   append(
     _market: MarketContext,
     id: string,
-    message: StoredMessage & { cards: readonly string[] },
+    message: Parameters<ConversationRepository['append']>[2],
   ) {
     const list = this.messages.get(id) ?? [];
-    list.push({ role: message.role, text: message.text, cards: message.cards });
+    list.push({
+      role: message.role,
+      text: message.text,
+      cards: message.cards,
+      notices: message.notices ?? [],
+      emptySearch: message.emptySearch ?? false,
+    });
     this.messages.set(id, list);
     return Promise.resolve();
   }
@@ -269,5 +289,54 @@ export class SequenceGuestTokens implements GuestTokens {
 export class UtcCalendar implements MarketCalendar {
   dayOf(_market: MarketContext, at: Temporal.Instant) {
     return at.toZonedDateTimeISO('UTC').toPlainDate();
+  }
+  startOf(_market: MarketContext, day: Temporal.PlainDate) {
+    return day.toZonedDateTime('UTC').toInstant();
+  }
+}
+
+/** Thumbs in memory, keyed by conversation and position; only assistant messages take one. */
+export class MemoryFeedback implements FeedbackRepository {
+  readonly rows = new Map<string, Feedback & { at: Temporal.Instant }>();
+  constructor(private readonly conversations: MemoryConversations) {}
+
+  save(
+    _market: MarketContext,
+    conversationId: string,
+    position: number,
+    feedback: Feedback,
+    at: Temporal.Instant,
+  ) {
+    const message = this.conversations.messages.get(conversationId)?.[position - 1];
+    if (message === undefined || message.role !== 'assistant') return Promise.resolve(false);
+    this.rows.set(`${conversationId}:${position}`, { ...feedback, at });
+    return Promise.resolve(true);
+  }
+}
+
+/** Insights read from fixed answers a spec sets. */
+export class FakeInsights implements InsightsRepository {
+  dayRows: DayInsight[] = [];
+  feedbackTotals: FeedbackInsight = {
+    up: 0,
+    down: 0,
+    reasons: { wrong: 0, 'not-found': 0, other: 0 },
+  };
+  handoffCount = 0;
+  candidates: UnansweredCandidate[] = [];
+  readonly asked: { from: Temporal.Instant; to: Temporal.Instant; limit: number }[] = [];
+
+  days() {
+    return Promise.resolve(this.dayRows);
+  }
+  feedback() {
+    return Promise.resolve(this.feedbackTotals);
+  }
+  handoffs() {
+    return Promise.resolve(this.handoffCount);
+  }
+  unanswered(_market: MarketContext, from: Temporal.Instant, to: Temporal.Instant, limit: number) {
+    this.asked.push({ from, to, limit });
+    return Promise.resolve(this.candidates.slice(0, limit));
   }
 }

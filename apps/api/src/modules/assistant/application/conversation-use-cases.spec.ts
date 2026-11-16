@@ -25,7 +25,9 @@ import {
   answer,
   FakeRuntime,
   FakeTools,
+  FakeInsights,
   MemoryConversations,
+  MemoryFeedback,
   MemoryLimits,
   MemorySpend,
   SequenceGuestTokens,
@@ -145,6 +147,8 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       audit: new NoAudit(),
       clock,
       conversations,
+      feedback: new MemoryFeedback(conversations),
+      insights: new FakeInsights(),
       spend,
       tools,
       limits,
@@ -284,8 +288,14 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       runtime.script.push(answer({ text: 'Noted.' }));
       await asCustomer('Mail me at sam@example.com or call 0412 345 678');
       expect(conversations.messages.get(CONVERSATION)).toEqual([
-        { role: 'buyer', text: `Mail me at ${MASKED} or call ${MASKED}`, cards: [] },
-        { role: 'assistant', text: 'Noted.', cards: [] },
+        {
+          role: 'buyer',
+          text: `Mail me at ${MASKED} or call ${MASKED}`,
+          cards: [],
+          notices: [],
+          emptySearch: false,
+        },
+        { role: 'assistant', text: 'Noted.', cards: [], notices: [], emptySearch: false },
       ]);
       await asCustomer('Thanks');
       const sent = runtime.requests[1]!.messages.map((message) => message.blocks);

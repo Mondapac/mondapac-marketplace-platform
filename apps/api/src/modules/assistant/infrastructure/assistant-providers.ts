@@ -24,11 +24,21 @@ import { GUEST_TOKENS, type GuestTokens } from '../application/ports/guest-token
 import { MARKET_CALENDAR, type MarketCalendar } from '../application/ports/market-calendar';
 import { MESSAGE_LIMITS, type MessageLimits } from '../application/ports/message-limits';
 import { SPEND_REPOSITORY, type SpendRepository } from '../application/ports/spend.repository';
+import {
+  FEEDBACK_REPOSITORY,
+  type FeedbackRepository,
+} from '../application/ports/feedback.repository';
+import {
+  INSIGHTS_REPOSITORY,
+  type InsightsRepository,
+} from '../application/ports/insights.repository';
 import { CryptoGuestTokens } from './crypto-guest-tokens';
 import { FacadeAssistantTools } from './facade-assistant-tools';
 import { GatewayAssistantRuntime } from './gateway-assistant-runtime';
 import { PrismaAssistantSettingsRepository } from './prisma-assistant-settings.repository';
 import { PrismaConversationRepository } from './prisma-conversation.repository';
+import { PrismaFeedbackRepository } from './prisma-feedback.repository';
+import { PrismaInsightsRepository } from './prisma-insights.repository';
 import { PrismaSpendRepository } from './prisma-spend.repository';
 import { RegistryMarketCalendar } from './registry-market-calendar';
 import { SubjectMessageLimits } from './subject-message-limits';
@@ -51,6 +61,17 @@ export const assistantProviders: readonly FactoryProvider[] = [
     inject: [PrismaService, SUBJECT_KEY_SERVICE],
     useFactory: (prisma: PrismaService, keys: SubjectKeyService): ConversationRepository =>
       new PrismaConversationRepository(prisma, keys),
+  },
+  {
+    provide: FEEDBACK_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): FeedbackRepository => new PrismaFeedbackRepository(prisma),
+  },
+  {
+    provide: INSIGHTS_REPOSITORY,
+    inject: [PrismaService, SUBJECT_KEY_SERVICE],
+    useFactory: (prisma: PrismaService, keys: SubjectKeyService): InsightsRepository =>
+      new PrismaInsightsRepository(prisma, keys),
   },
   {
     provide: SPEND_REPOSITORY,

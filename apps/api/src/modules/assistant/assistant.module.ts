@@ -17,6 +17,8 @@ import { ASSISTANT_RUNTIME } from './application/ports/assistant-runtime';
 import { ASSISTANT_SETTINGS_REPOSITORY } from './application/ports/assistant-settings.repository';
 import { ASSISTANT_TOOLS } from './application/ports/assistant-tools';
 import { CONVERSATION_REPOSITORY } from './application/ports/conversation.repository';
+import { FEEDBACK_REPOSITORY } from './application/ports/feedback.repository';
+import { INSIGHTS_REPOSITORY } from './application/ports/insights.repository';
 import { GUEST_TOKENS } from './application/ports/guest-tokens';
 import { MARKET_CALENDAR } from './application/ports/market-calendar';
 import { MESSAGE_LIMITS } from './application/ports/message-limits';
@@ -24,6 +26,9 @@ import { SPEND_REPOSITORY } from './application/ports/spend.repository';
 import { PurgeConversations } from './application/use-cases/purge-conversations.use-case';
 import { SendGuestMessage } from './application/use-cases/send-guest-message.use-case';
 import { SendMessage } from './application/use-cases/send-message.use-case';
+import { SubmitFeedback } from './application/use-cases/submit-feedback.use-case';
+import { SubmitGuestFeedback } from './application/use-cases/submit-guest-feedback.use-case';
+import { ViewAssistantInsights } from './application/use-cases/view-assistant-insights.use-case';
 import { SetAssistantSettings } from './application/use-cases/set-assistant-settings.use-case';
 import { ViewAssistantSettingsHistory } from './application/use-cases/view-assistant-settings-history.use-case';
 import { ViewAssistantSettings } from './application/use-cases/view-assistant-settings.use-case';
@@ -32,6 +37,7 @@ import { ASSISTANT_PERMISSIONS } from './contracts';
 import { ASSISTANT_AUDIT_ACTIONS } from './domain/audit';
 import { assistantProviders } from './infrastructure/assistant-providers';
 import { AdminAssistantSettingsController } from './presentation/admin-assistant-settings.controller';
+import { AdminAssistantInsightsController } from './presentation/admin-assistant-insights.controller';
 import { ConversationController } from './presentation/conversation.controller';
 import { purgeConversationsJob } from './presentation/jobs/purge-conversations.job';
 import { StorefrontAssistantController } from './presentation/storefront-assistant.controller';
@@ -46,6 +52,8 @@ const PORTS: readonly [keyof AssistantDependencies, InjectionToken][] = [
   ['clock', CLOCK],
   ['conversations', CONVERSATION_REPOSITORY],
   ['spend', SPEND_REPOSITORY],
+  ['feedback', FEEDBACK_REPOSITORY],
+  ['insights', INSIGHTS_REPOSITORY],
   ['tools', ASSISTANT_TOOLS],
   ['limits', MESSAGE_LIMITS],
   ['guestTokens', GUEST_TOKENS],
@@ -82,6 +90,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   imports: [SearchModule, CatalogModule, NotificationsModule, IdentityModule],
   controllers: [
     AdminAssistantSettingsController,
+    AdminAssistantInsightsController,
     StorefrontAssistantController,
     ConversationController,
   ],
@@ -100,6 +109,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewStorefrontAssistant,
       SendMessage,
       SendGuestMessage,
+      SubmitFeedback,
+      SubmitGuestFeedback,
+      ViewAssistantInsights,
       PurgeConversations,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     registerJobsFrom('assistant', [PurgeConversations], (purge: PurgeConversations) => [

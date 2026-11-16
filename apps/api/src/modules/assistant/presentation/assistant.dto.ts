@@ -1,5 +1,6 @@
 import { LastChangedDto } from '../../../platform/audit/change-trail.dto';
 import { ApiProperty } from '@nestjs/swagger';
+import { FEEDBACK_REASONS, RATINGS } from '../domain/feedback';
 import {
   AUDIENCES,
   BOUNDS,
@@ -160,4 +161,93 @@ export class SendMessageRequest {
     description: "The widget's random visitor id (16 to 64 of A-Z a-z 0-9 _ -), for a rollout.",
   })
   visitor?: string;
+}
+
+export class FeedbackRequest {
+  @ApiProperty({ enum: RATINGS })
+  rating!: string;
+  @ApiProperty({
+    enum: FEEDBACK_REASONS,
+    required: false,
+    nullable: true,
+    description: 'Only with rating down.',
+  })
+  reason?: string | null;
+}
+
+export class FeedbackBody {
+  @ApiProperty({ enum: RATINGS })
+  rating!: string;
+  @ApiProperty({ enum: FEEDBACK_REASONS, nullable: true, type: String })
+  reason!: string | null;
+}
+
+export class InsightsDayBody {
+  @ApiProperty({ description: "A day of the Market's calendar, YYYY-MM-DD." })
+  day!: string;
+  @ApiProperty()
+  conversations!: number;
+  @ApiProperty({ description: 'Micro US dollars (1e-6 USD).' })
+  spendMicroUsd!: number;
+}
+
+export class InsightsFeedbackBody {
+  @ApiProperty()
+  up!: number;
+  @ApiProperty()
+  down!: number;
+  @ApiProperty({ nullable: true, type: Number, description: 'Up / (up + down), 0 to 1.' })
+  upShare!: number | null;
+  @ApiProperty({
+    description:
+      'Thumbs down by reason: wrong, not-found, other (a down without a reason is in none).',
+    type: 'object',
+    additionalProperties: { type: 'number' },
+  })
+  reasons!: Record<string, number>;
+}
+
+export class UnansweredRowBody {
+  @ApiProperty({ description: 'The latest wording of the group, masked, 200 characters at most.' })
+  query!: string;
+  @ApiProperty()
+  count!: number;
+  @ApiProperty({ description: 'ISO 8601 instant.' })
+  lastAt!: string;
+  @ApiProperty({
+    description: 'Turns of the group by reason: unavailable, tool-failed, no-results, thumbs-down.',
+    type: 'object',
+    additionalProperties: { type: 'number' },
+  })
+  reasons!: Record<string, number>;
+}
+
+export class UnansweredBody {
+  @ApiProperty({ description: 'Groups, at most 200.' })
+  total!: number;
+  @ApiProperty()
+  page!: number;
+  @ApiProperty()
+  pageSize!: number;
+  @ApiProperty({ description: 'True when more flagged turns existed than were read.' })
+  truncated!: boolean;
+  @ApiProperty({ type: [UnansweredRowBody] })
+  rows!: UnansweredRowBody[];
+}
+
+export class InsightsBody {
+  @ApiProperty()
+  from!: string;
+  @ApiProperty()
+  to!: string;
+  @ApiProperty({ type: [InsightsDayBody] })
+  days!: InsightsDayBody[];
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'number' } })
+  totals!: { conversations: number; spendMicroUsd: number };
+  @ApiProperty({ type: InsightsFeedbackBody })
+  feedback!: InsightsFeedbackBody;
+  @ApiProperty({ description: 'Assistant replies that showed the support card.' })
+  handoffs!: number;
+  @ApiProperty({ type: UnansweredBody })
+  unanswered!: UnansweredBody;
 }

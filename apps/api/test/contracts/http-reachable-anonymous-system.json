@@ -5,6 +5,11 @@
     "reason": "A guest's message to the buyer assistant: a guest has no account or session. The conversation answers only the assistant's own guest cookie that started it; Market settings decide whether guests may chat (off by default), and per-origin and per-guest message limits apply."
   },
   {
+    "name": "assistant.submit-guest-feedback",
+    "rule": "anonymous",
+    "reason": "A guest's thumbs up or down on an assistant message: a guest has no account or session. Only the conversation that the assistant's own guest cookie started answers (any other id is the same 404 as an unknown one); one row per message, the last write wins, and the Market switch must be on."
+  },
+  {
     "name": "assistant.view-storefront-assistant",
     "rule": "anonymous",
     "reason": "The storefront asks whether to show the buyer assistant to a visitor who may have no session; the answer is the safe subset only (on for this visitor, guests allowed, reply language, welcome text) and changes nothing."

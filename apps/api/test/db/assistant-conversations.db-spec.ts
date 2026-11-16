@@ -18,6 +18,8 @@ import {
   type AssistantSettings,
 } from '../../src/modules/assistant/domain/assistant-settings';
 import { PrismaConversationRepository } from '../../src/modules/assistant/infrastructure/prisma-conversation.repository';
+import { PrismaFeedbackRepository } from '../../src/modules/assistant/infrastructure/prisma-feedback.repository';
+import { PrismaInsightsRepository } from '../../src/modules/assistant/infrastructure/prisma-insights.repository';
 import { PrismaSpendRepository } from '../../src/modules/assistant/infrastructure/prisma-spend.repository';
 import { RegistryMarketCalendar } from '../../src/modules/assistant/infrastructure/registry-market-calendar';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
@@ -302,6 +304,8 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
         audit: new NoAudit(),
         clock,
         conversations,
+        feedback: new PrismaFeedbackRepository(db.service),
+        insights: new PrismaInsightsRepository(db.service, keys),
         spend,
         tools: new FakeTools(),
         limits: new MemoryLimits(),

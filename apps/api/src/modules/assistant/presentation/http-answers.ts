@@ -12,6 +12,7 @@ export const ASSISTANT_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'assistant.off': 403,
   'assistant.sign-in-required': 403,
   'assistant.conversation-not-found': 404,
+  'assistant.message-not-found': 404,
   'assistant.conflict': 409,
   'assistant.conversation-full': 409,
   'request.throttled': 429,

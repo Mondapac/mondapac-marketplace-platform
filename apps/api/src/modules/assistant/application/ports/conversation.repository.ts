@@ -44,7 +44,14 @@ export interface ConversationRepository {
   append(
     market: MarketContext,
     id: string,
-    message: StoredMessage & { readonly cards: readonly string[]; readonly at: Temporal.Instant },
+    message: StoredMessage & {
+      readonly cards: readonly string[];
+      readonly at: Temporal.Instant;
+      /** The fixed notice codes of an assistant reply (none for a buyer message). */
+      readonly notices?: readonly string[];
+      /** The turn's product search found nothing. */
+      readonly emptySearch?: boolean;
+    },
   ): Promise<void>;
   /**
    * Deletes up to `limit` conversations whose last message is older than their retention, with

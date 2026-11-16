@@ -114,7 +114,7 @@ export class PrismaConversationRepository implements ConversationRepository {
   async append(
     market: MarketContext,
     id: string,
-    message: StoredMessage & { readonly cards: readonly string[]; readonly at: Temporal.Instant },
+    message: Parameters<ConversationRepository['append']>[2],
   ): Promise<void> {
     const tx = this.prisma.tx(market);
     const last = await tx.assistantMessage.aggregate({
@@ -138,6 +138,8 @@ export class PrismaConversationRepository implements ConversationRepository {
         role: message.role,
         textCipher: cipher.value,
         cards: [...message.cards],
+        notices: [...(message.notices ?? [])],
+        emptySearch: message.emptySearch ?? false,
         createdAt: dateOf(message.at),
       },
     });

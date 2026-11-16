@@ -81,8 +81,14 @@ model AssistantMessage {
   textCipher     String                @map("text_cipher")
   /// The cards shown with a reply, by kind and id only (product:<offer id>, page:<page>, support).
   cards          String[]              @db.VarChar(64)
+  /// The fixed notices shown with an assistant reply (unavailable, tool-failed ...); empty for a
+  /// buyer message. Codes only, never text. Feeds the admin insights.
+  notices        String[]              @default([]) @db.VarChar(32)
+  /// True when the turn's product search found nothing; false for a buyer message.
+  emptySearch    Boolean               @default(false) @map("empty_search")
   createdAt      DateTime              @map("created_at") @db.Timestamptz(6)
   conversation   AssistantConversation @relation(fields: [marketId, conversationId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+  feedback       AssistantFeedback?
 
   @@id([marketId, conversationId, position])
   @@map("messages")
@@ -107,5 +113,27 @@ model AssistantSpendDay {
 
   @@id([marketId, day])
   @@map("spend_days")
+  @@schema("assistant")
+}
+
+/// A buyer's thumbs up or down on one assistant message (package B3). One row per message, the
+/// last write wins. It is deleted with its message, so it follows the conversation's retention.
+/// A reason is kept only with a thumbs down (CHECK).
+model AssistantFeedback {
+  marketId       String           @map("market_id") @db.VarChar(8)
+  tenantId       String           @map("tenant_id")
+  conversationId String           @map("conversation_id") @db.Uuid
+  /// The position of the assistant message in its conversation.
+  position       Int              @db.SmallInt
+  /// up | down
+  rating         String           @db.VarChar(4)
+  /// wrong | not-found | other; only with down.
+  reason         String?          @db.VarChar(16)
+  createdAt      DateTime         @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @map("updated_at") @db.Timestamptz(6)
+  message        AssistantMessage @relation(fields: [marketId, conversationId, position], references: [marketId, conversationId, position], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, conversationId, position])
+  @@map("feedback")
   @@schema("assistant")
 }
