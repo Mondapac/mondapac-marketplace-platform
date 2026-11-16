@@ -181,7 +181,8 @@ export class PrismaConversationRepository implements ConversationRepository {
     direction: 'asc' | 'desc',
     window: { readonly offset: number; readonly limit: number },
   ) {
-    // Through the (market, account, started_at) index; only the two instants are selected.
+    // Through the buyer list's partial (market, account, last_message_at) index, then a small sort
+    // over one account's conversations; only the two instants are selected.
     const rows = await this.prisma.tx(market).assistantConversation.findMany({
       where: { marketId: market.marketId, accountId },
       orderBy: [{ startedAt: direction }, { id: direction }],
