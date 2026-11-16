@@ -282,7 +282,7 @@ export async function issuePreviewToken(
   deps: AssistantDependencies,
   context: CallContext,
 ): Promise<Result<PreviewTokenView, PreviewTokenFailure>> {
-  if (!isAdmin(context)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   if (!deps.previewTokens.available()) return err({ code: 'assistant.preview-unavailable' });
   const issued = deps.previewTokens.issue(context.market, deps.clock.now());
   if (issued === null) return err({ code: 'assistant.preview-unavailable' });
