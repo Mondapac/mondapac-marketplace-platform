@@ -25,6 +25,7 @@ import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { RevertRequest } from '../../../system-requests';
+import { CERTIFICATION_CLAIM_POLICY_EDIT } from '../../contracts/permissions';
 import type { TypeRevisionContent } from '../../domain/type-revision';
 import { ClaimPolicyApproveRelaxation } from '../use-cases/claim-policy-approve-relaxation.use-case';
 import { ClaimPolicyRead } from '../use-cases/claim-policy-read.use-case';
@@ -126,7 +127,18 @@ describe.each(['AU', 'ZZ'] as const)('claim policy reviews in market %s', (code)
           sellerId: null,
         }),
       );
-    const reverter = new ClaimPolicyReverter(deps);
+    const held = new Set<string>([CERTIFICATION_CLAIM_POLICY_EDIT.key]);
+    const authorisation: AuthorisationCheck = {
+      check: (_context, declaration) => {
+        const rule = declaration.rule as { readonly allOf?: readonly string[] };
+        return Promise.resolve(
+          (rule.allOf ?? []).every((key) => held.has(key))
+            ? { allowed: true }
+            : { allowed: false, denial: { code: 'access.denied' as const } },
+        );
+      },
+    };
+    const reverter = new ClaimPolicyReverter(deps, authorisation);
     const revert = async (request: RevertRequest, by: CallContext = admin()) => {
       const result = await policies.unitOfWork.run(market, async () =>
         ok(await reverter.revert(by, request)),
@@ -146,6 +158,9 @@ describe.each(['AU', 'ZZ'] as const)('claim policy reviews in market %s', (code)
       row,
       admin,
       revert,
+      catalog,
+      held,
+      check: (request: RevertRequest, by: CallContext = admin()) => reverter.check(by, request),
       save: new ClaimPolicySaveRevision(gate, deps),
       read: new ClaimPolicyRead(gate, deps),
       approve: new ClaimPolicyApproveRelaxation(gate, deps),
@@ -368,6 +383,45 @@ describe.each(['AU', 'ZZ'] as const)('claim policy reviews in market %s', (code)
       }),
     ]);
     expect(await r.revert(request)).toBe('changed-since');
+  });
+
+  it('checks before the decision unit: the edit key and every category a restored row names, failing closed', async () => {
+    const r = rig();
+    const strict = await unwrap(
+      r.save.execute(r.admin(), {
+        typeId: r.typeId,
+        version: 0,
+        rows: [r.row('NOT_APPLICABLE')],
+        note: 'No claims',
+      }),
+    );
+    const loose = await relaxed(r, 2, 'SELLER_OR_MANUFACTURER');
+    const request: RevertRequest = {
+      requestId: REQUEST_ID,
+      subjectRef: r.typeId,
+      before: { revisionId: strict.revisionId, revisionNo: 1 },
+      after: { revisionId: loose, revisionNo: 2 },
+    };
+    expect(await r.check(request)).toBe('ok');
+    expect(r.catalog.calls.at(-1)).toEqual([r.food]);
+
+    r.held.clear();
+    expect(await r.check(request)).toBe('not-permitted');
+    r.held.add(CERTIFICATION_CLAIM_POLICY_EDIT.key);
+
+    // The category was retired since: restoring its row is refused, as a save of it would be.
+    r.catalog.categories.get(market.marketId)!.delete(r.food);
+    expect(await r.check(request)).toBe('not-permitted');
+    r.catalog.add(market, r.food);
+    r.catalog.fail = true;
+    expect(await r.check(request)).toBe('not-permitted');
+    r.catalog.fail = false;
+
+    // A subject that moved on is left to the revert, which writes nothing.
+    expect(await r.check({ ...request, after: { revisionId: strict.revisionId } })).toBe('ok');
+    expect(await r.revert({ ...request, after: { revisionId: strict.revisionId } })).toBe(
+      'changed-since',
+    );
   });
 
   it('restores no rows when only a manufacturer basis row would go', async () => {

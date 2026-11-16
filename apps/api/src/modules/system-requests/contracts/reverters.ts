@@ -32,6 +32,15 @@ export interface RevertRequest {
  */
 export interface SystemChangeReverter {
   revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome>;
+  /**
+   * Optional: the checks of the owning module's own edit that cannot run inside the decision unit
+   * because they open a unit of their own (the decider holding the subject's edit permission,
+   * reference checks against another module, Market data that can change over time). Called by
+   * system-requests before the decision unit opens, for a reject or a withdraw only; it must fail
+   * closed. `not-permitted` writes nothing and leaves the request open. `revert` still checks what
+   * it can inside the unit.
+   */
+  check?(context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'>;
 }
 
 /**

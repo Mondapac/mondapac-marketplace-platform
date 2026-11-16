@@ -54,6 +54,12 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
    the same unit with the values before and after (plain JSON, depth 3, 10 KB at most, no control
    characters, never a secret). An `err` answer is the use case's own refusal.
 3. The page asks for a note only when `areaPolicy(context, area).enabled`.
+4. Every check the module's own edit runs must hold for the restored value too, failing closed.
+   A check that opens a unit of its own (the decider holding the subject's edit key, a reference
+   to another module, Market data that changes over time) goes in the reverter's optional
+   `check(context, request): Promise<'ok' | 'not-permitted'>`: `revertRequest` calls it after
+   `prepareDecision` and before the decision unit opens (reject and withdraw); `not-permitted`
+   writes nothing and leaves the request open (403 `system-requests.revert-not-permitted`).
 
 ## Hooked areas
 
@@ -88,7 +94,10 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
   loosens enforcement** (CERT-21, ADR-0012): it is classified by the save's own rule, and one that
   relaxes (a setting, a removed claim term or locale, a less strict basis, a removed non-manufacturer
   row) is `not-permitted`, as is any revert while a relaxation of the subject waits for a second
-  admin. Content the Market's locales no longer allow is `gone`.
+  admin. Content the Market's locales no longer allow is `gone`. The pre-unit `check` asks that
+  the decider holds `certification.type.edit` / `certification.claim-policy.edit` and that every
+  platform category a restored policy row adds or changes is still active; any error is
+  `not-permitted`.
 
 ### Known limits (follow-ups)
 
@@ -98,7 +107,8 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
 - A rate set for a seller with no rate row yet can race with a second first-time set (no row to
   lock); this predates the review hook.
 - Withdraw checks that the caller is the author, not that the author still holds the edit
-  permission of the subject.
+  permission of the subject, unless the owning reverter's pre-unit `check` asks it
+  (certification does).
 - On DELETE routes the note travels in the `note` query, so it reaches access logs that keep the
   query string; the API's own logs drop it. A body on DELETE comes with the panel package.
 - A published claim-policy save only tightens, so restoring the rows before always loosens: its

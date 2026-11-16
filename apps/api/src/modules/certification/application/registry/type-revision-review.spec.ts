@@ -21,6 +21,7 @@ import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { RevertRequest } from '../../../system-requests';
+import { CERTIFICATION_TYPE_EDIT } from '../../contracts/permissions';
 import type { TypeRevisionContent } from '../../domain/type-revision';
 import { TypeApproveRelaxation } from '../use-cases/type-approve-relaxation.use-case';
 import { TypeRead } from '../use-cases/type-read.use-case';
@@ -130,7 +131,21 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
           } as unknown as CallContext)
         : context;
     };
-    const reverter = new TypeRevisionReverter(deps);
+    // The keys the decider holds, as the gate's authorisation check answers them.
+    const held = new Set<string>([CERTIFICATION_TYPE_EDIT.key]);
+    let checkFails = false;
+    const authorisation: AuthorisationCheck = {
+      check: (_context, declaration) => {
+        if (checkFails) return Promise.reject(new Error('identity unavailable'));
+        const rule = declaration.rule as { readonly allOf?: readonly string[] };
+        return Promise.resolve(
+          (rule.allOf ?? []).every((key) => held.has(key))
+            ? { allowed: true }
+            : { allowed: false, denial: { code: 'access.denied' as const } },
+        );
+      },
+    };
+    const reverter = new TypeRevisionReverter(deps, authorisation);
     const revert = async (request: RevertRequest, by: CallContext = admin()) => {
       const result = await registry.unitOfWork.run(market, async () =>
         ok(await reverter.revert(by, request)),
@@ -148,6 +163,9 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
       seedRevision,
       admin,
       revert,
+      held,
+      failCheck: () => (checkFails = true),
+      check: (by: CallContext) => reverter.check(by),
       setLocales: (next: readonly string[]) => (marketLocales = next),
       save: new TypeSaveRevision(gate, deps),
       read: new TypeRead(gate, deps),
@@ -410,6 +428,17 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
     expect(await r.revert(request)).toBe('gone');
     r.setLocales(locales);
     expect(await r.revert(request)).toBe('reverted');
+  });
+
+  it('checks before the decision unit that the decider holds the type edit key, failing closed', async () => {
+    const r = rig();
+    expect(await r.check(r.admin())).toBe('ok');
+    expect(await r.check(r.admin(true))).toBe('not-permitted');
+    r.held.clear();
+    expect(await r.check(r.admin())).toBe('not-permitted');
+    r.held.add(CERTIFICATION_TYPE_EDIT.key);
+    r.failCheck();
+    expect(await r.check(r.admin())).toBe('not-permitted');
   });
 
   it('refuses to revert outside a signed-in admin acting as themselves', async () => {

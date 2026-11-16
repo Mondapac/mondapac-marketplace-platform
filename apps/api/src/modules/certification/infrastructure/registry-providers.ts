@@ -1,7 +1,12 @@
 import type { FactoryProvider, Provider } from '@nestjs/common';
 import type { Clock, IdGenerator, MarketContext } from '@mondapac/shared-kernel';
 import { AUDIT_WRITER, type AuditWriter } from '../../../platform/audit/audit-writer';
-import { USE_CASE_GATE, type UseCaseGate } from '../../../platform/authz';
+import {
+  AUTHORISATION_CHECK,
+  USE_CASE_GATE,
+  type AuthorisationCheck,
+  type UseCaseGate,
+} from '../../../platform/authz';
 import { CLOCK } from '../../../platform/clock/clock.module';
 import { OUTBOX_WRITER, type OutboxWriter } from '../../../platform/events/outbox-writer';
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
@@ -165,8 +170,9 @@ export const registryProviders: readonly Provider[] = [
   },
   {
     provide: TYPE_REVISION_REVERTER,
-    inject: [REGISTRY_DEPENDENCIES],
-    useFactory: (deps: RegistryDependencies) => new TypeRevisionReverter(deps),
+    inject: [REGISTRY_DEPENDENCIES, AUTHORISATION_CHECK],
+    useFactory: (deps: RegistryDependencies, authorisation: AuthorisationCheck) =>
+      new TypeRevisionReverter(deps, authorisation),
   },
   registerSystemChangeReverter(
     'certification',

@@ -1,6 +1,11 @@
 import type { FactoryProvider, Provider } from '@nestjs/common';
 import type { IdGenerator } from '@mondapac/shared-kernel';
-import { USE_CASE_GATE, type UseCaseGate } from '../../../platform/authz';
+import {
+  AUTHORISATION_CHECK,
+  USE_CASE_GATE,
+  type AuthorisationCheck,
+  type UseCaseGate,
+} from '../../../platform/authz';
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { registerSystemChangeReverter } from '../../system-requests';
@@ -62,8 +67,9 @@ export const claimPolicyProviders: readonly Provider[] = [
   },
   {
     provide: CLAIM_POLICY_REVERTER,
-    inject: [CLAIM_POLICY_DEPENDENCIES],
-    useFactory: (deps: ClaimPolicyDependencies) => new ClaimPolicyReverter(deps),
+    inject: [CLAIM_POLICY_DEPENDENCIES, AUTHORISATION_CHECK],
+    useFactory: (deps: ClaimPolicyDependencies, authorisation: AuthorisationCheck) =>
+      new ClaimPolicyReverter(deps, authorisation),
   },
   registerSystemChangeReverter(
     'certification',

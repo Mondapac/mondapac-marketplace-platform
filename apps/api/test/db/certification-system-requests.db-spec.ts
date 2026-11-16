@@ -29,6 +29,7 @@ import {
   REQUEST_REPOSITORY,
   type RequestRepository,
 } from '../../src/modules/system-requests/application/ports/request.repository';
+import type { AuthorisationCheck } from '../../src/platform/authz';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { ID_GENERATOR } from '../../src/platform/ids/ids.module';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
@@ -59,7 +60,9 @@ const T0 = Temporal.Instant.from('2026-11-16T00:00:00Z');
 describe.each(TEST_MARKETS)('certification reviews in market %s (database)', (code) => {
   const market = marketOf(code);
   const locales = markets.get(market.marketId).supportedLocales;
-  const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
+  // The edit keys are checked by the unit specs; here the stores, the recorder and the writers are real.
+  const admitAll: AuthorisationCheck = { check: () => Promise.resolve({ allowed: true }) };
+  const gate = createUseCaseGate(markets, admitAll);
 
   let app: INestApplicationContext;
   let deps: RegistryDependencies;
@@ -244,7 +247,7 @@ describe.each(TEST_MARKETS)('certification reviews in market %s (database)', (co
       after: { revisionId: saved.value.revisionId, revisionNo: 2 },
     });
 
-    const reverter = new TypeRevisionReverter(deps);
+    const reverter = new TypeRevisionReverter(deps, admitAll);
     const request = {
       requestId,
       subjectRef: typeId,
@@ -292,7 +295,7 @@ describe.each(TEST_MARKETS)('certification reviews in market %s (database)', (co
     if (!saved.ok || saved.value.request === null) throw new Error('no request opened');
     const opened = (await inUnit(() => requests.find(market, saved.value.request!.id)))!;
     const before = await typeRow(typeId);
-    const reverter = new TypeRevisionReverter(deps);
+    const reverter = new TypeRevisionReverter(deps, admitAll);
     expect(
       await inUnit(() =>
         reverter.revert(admin(), {
@@ -332,7 +335,7 @@ describe.each(TEST_MARKETS)('certification reviews in market %s (database)', (co
       after: { revisionId: saved.value.revisionId, changed: [`row:${food}`] },
     });
     const policyId = saved.value.policyId;
-    const reverter = new ClaimPolicyReverter(policyDeps);
+    const reverter = new ClaimPolicyReverter(policyDeps, admitAll);
     expect(
       await inUnit(() =>
         reverter.revert(admin(), {

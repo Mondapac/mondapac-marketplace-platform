@@ -22,6 +22,13 @@ contract is in `docs/modules/system-requests/notes.md` ("Hooked areas").
   `policyRevisionDiff`). One that would relax enforcement is `not-permitted` and the request stays
   open, so a System request can never be used to loosen what `evaluateClaim` allows without the
   second admin of H1. A revert while a relaxation of the subject is pending is `not-permitted` too.
+- Checks that open a unit of their own run in the reverters' pre-unit `check` (the optional
+  `SystemChangeReverter.check`, called by system-requests before the decision unit): the decider
+  (reviewer or withdrawing author) must hold `certification.type.edit` or
+  `certification.claim-policy.edit`, and every platform category a restored policy row adds or
+  changes must still be active in the Market. Any error is `not-permitted`. Inside the unit the
+  revert re-runs the pure checks of the save: `validateTypeRevision` against the Market's locales
+  now (claim terms, texts, `verificationMode`), and the relaxation rule.
 - The type row gained `lockType` (an update under the version guard that changes nothing), the
   same lock-first pattern as the policy row.
 - Open (predates this hook): catalog subscribes to `claim-policy-changed.v1` but not to
