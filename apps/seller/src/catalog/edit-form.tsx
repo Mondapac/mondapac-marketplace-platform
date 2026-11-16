@@ -550,267 +550,272 @@ export function EditForm({
         </Banner>
       )}
       <fieldset disabled={adding && pending} className="min-w-0">
-        {/* Below lg the wrappers vanish (`contents`) so the cards can be ordered: Status, the
-            product and its category, Your offer, the rest, Organisation. */}
-        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_21.25rem] lg:grid-rows-[auto_1fr] lg:items-start">
-          <div className="contents lg:col-start-2 lg:row-start-1 lg:flex lg:flex-col lg:gap-4">
-            <div className="order-1 lg:order-none">
-              <StatusCard
-                status={product.status}
-                waiting={product.pending !== null}
-                published={published}
-                blockers={blockers}
-                canSubmit={missing.length === 0}
-                pending={pending}
-                onSubmit={() => void run('submit')}
-                replacePending={
-                  product.pending === null
-                    ? null
-                    : { checked: replacePending, onChange: setReplacePending }
-                }
-              />
-            </div>
-            {add === undefined ? null : (
-              <div className="order-3 lg:order-none">
-                <YourOfferCard
-                  options={add.options}
-                  typeCode={typeCode}
-                  conditionCode={conditionCode}
-                  sellerSku={sellerSku}
-                  error={(path) => {
-                    const key = offerProblem?.fields[path];
-                    return key === undefined ? undefined : t(key);
-                  }}
-                  onType={(value) => {
-                    setTypeCode(value);
-                    edited();
-                  }}
-                  onCondition={(value) => {
-                    setConditionCode(value);
-                    edited();
-                  }}
-                  onSku={(value) => {
-                    setSellerSku(value);
+        {/* DOM order is the visual order (focus order, WCAG 2.4.3): Status, the product and its
+            category, Your offer, the rest, Organisation. From lg the cards sit on an explicit
+            grid: the main column on the left, the side cards on the right. */}
+        <div
+          className={`flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_21.25rem] lg:items-start ${
+            adding ? 'lg:grid-rows-[auto_auto_1fr_auto]' : 'lg:grid-rows-[auto_1fr_auto]'
+          }`}
+        >
+          <div className="lg:col-start-2 lg:row-start-1">
+            <StatusCard
+              status={product.status}
+              waiting={product.pending !== null}
+              published={published}
+              blockers={blockers}
+              canSubmit={missing.length === 0}
+              pending={pending}
+              onSubmit={() => void run('submit')}
+              replacePending={
+                product.pending === null
+                  ? null
+                  : { checked: replacePending, onChange: setReplacePending }
+              }
+            />
+          </div>
+          <div
+            className={`flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-start-1 ${adding ? 'lg:row-span-3' : 'lg:row-span-2'}`}
+          >
+            {product.pausedAt === null ? null : (
+              <Banner tone="attention" title={t('catalog.edit.paused.title')}>
+                <p>{t('catalog.edit.paused.body')}</p>
+              </Banner>
+            )}
+            {product.published !== null && product.sensitiveFields.length > 0 ? (
+              <Banner tone="info">
+                {t('catalog.edit.sensitive', {
+                  fields: product.sensitiveFields
+                    .map((field) => t(`catalog.edit.sensitive-field.${field}`))
+                    .join(', '),
+                })}
+              </Banner>
+            ) : null}
+            <Card title={t('catalog.edit.product-card')}>
+              {KEYS.map((key) =>
+                key === 'description' ? (
+                  <TextAreaField
+                    key={key}
+                    name={key}
+                    label={t(`catalog.edit.field.${key}`)}
+                    optionalLabel={t('catalog.create.optional')}
+                    rows={5}
+                    headAction={
+                      <DescriptionWriter
+                        call={callApi}
+                        base="catalog/own/description-writer"
+                        csrfToken={csrfToken}
+                        title={texts.name}
+                        category={writerCategory(form.categories, categoryIds, defaultLocale)}
+                        details={writerDetails(attributeFields, inputs, defaultLocale)}
+                        current={texts.description}
+                        onText={(next) => change('description', next)}
+                      />
+                    }
+                    value={texts[key]}
+                    error={refusedMessage(refusedAt(key))}
+                    onChange={(event) => change(key, event.target.value)}
+                  />
+                ) : (
+                  <TextField
+                    key={key}
+                    name={key}
+                    label={t(`catalog.edit.field.${key}`)}
+                    {...(key === 'name' ? { help: t('catalog.edit.field.name-help') } : {})}
+                    optionalLabel={key === 'name' ? undefined : t('catalog.create.optional')}
+                    value={texts[key]}
+                    error={refusedMessage(refusedAt(key))}
+                    onChange={(event) => change(key, event.target.value)}
+                  />
+                ),
+              )}
+            </Card>
+            <ClassificationSection
+              categories={form.categories}
+              taxCategoryCodes={form.taxCategoryCodes}
+              categoryIds={categoryIds}
+              taxCategoryCode={taxCategoryCode}
+              defaultLocale={defaultLocale}
+              {...(adding ? { categoriesEmpty: t('catalog.edit.categories-unavailable') } : {})}
+              onCategories={(ids) => {
+                setCategoryIds(ids);
+                edited();
+              }}
+              onTax={(code) => {
+                setTaxCategoryCode(code);
+                edited();
+              }}
+            >
+              {adding ? (
+                <p className="text-sm text-fg-muted">{t('catalog.add.later.tags')}</p>
+              ) : (
+                <TagField
+                  ids={topicIds}
+                  known={knownTags}
+                  defaultLocale={defaultLocale}
+                  productId={product.productId}
+                  issues={tagIssues}
+                  max={maxTags}
+                  onMax={setMaxTags}
+                  onChange={(ids) => {
+                    setTopicIds(ids);
+                    // The refusals named the old list; they say nothing about this one.
+                    setProblem((current) =>
+                      current?.topicIssues === undefined
+                        ? current
+                        : { ...current, topicIssues: [] },
+                    );
                     edited();
                   }}
                 />
-              </div>
+              )}
+            </ClassificationSection>
+          </div>
+          {add === undefined ? null : (
+            <div className="lg:col-start-2 lg:row-start-2">
+              <YourOfferCard
+                options={add.options}
+                typeCode={typeCode}
+                conditionCode={conditionCode}
+                sellerSku={sellerSku}
+                error={(path) => {
+                  const key = offerProblem?.fields[path];
+                  return key === undefined ? undefined : t(key);
+                }}
+                onType={(value) => {
+                  setTypeCode(value);
+                  edited();
+                }}
+                onCondition={(value) => {
+                  setConditionCode(value);
+                  edited();
+                }}
+                onSku={(value) => {
+                  setSellerSku(value);
+                  edited();
+                }}
+              />
+            </div>
+          )}
+          <div
+            className={`flex min-w-0 flex-col gap-4 lg:col-start-1 ${adding ? 'lg:row-start-4' : 'lg:row-start-3'}`}
+          >
+            {adding ? (
+              <>
+                <LaterCard
+                  title={t('catalog.edit.attributes')}
+                  help={t('catalog.add.later.attributes')}
+                />
+                <LaterCard
+                  title={t('catalog.edit.variants')}
+                  help={t('catalog.add.later.variants')}
+                />
+                <LaterCard
+                  title={t('catalog.edit.photos.title')}
+                  help={t('catalog.add.later.photos')}
+                />
+              </>
+            ) : (
+              <>
+                <AttributesSection
+                  fields={attributeFields}
+                  units={form.units}
+                  inputs={inputs}
+                  locales={locales}
+                  defaultLocale={defaultLocale}
+                  refused={refused}
+                  productId={product.productId}
+                  csrfToken={csrfToken}
+                  suggestions={product.suggestions ?? []}
+                  onSuggested={() => router.refresh()}
+                  onChange={(code: string, value: AttributeInput | undefined) => {
+                    setInputs({ ...inputs, [code]: value });
+                    setRefused((list) => list.filter((item) => item.ref !== code));
+                    edited();
+                  }}
+                />
+                {configurable ? (
+                  <VariantsSection
+                    rows={rows}
+                    fields={form.fields}
+                    axes={axes}
+                    locked={locked}
+                    publishedAxes={publishedAxes}
+                    maxAxes={maxAxes}
+                    review={product.sensitiveFields.includes('axis-added')}
+                    defaultLocale={defaultLocale}
+                    max={product.maxVariants}
+                    productId={product.productId}
+                    galleryIds={imageIds}
+                    notices={notices.map((notice) => notice.variantId)}
+                    onChange={(next) => {
+                      setRows(next.rows);
+                      setAxes(next.axes);
+                      edited();
+                    }}
+                  />
+                ) : canAddSizes(product, form.fields) ? (
+                  <Card title={t('catalog.edit.variants')}>
+                    <p className="text-sm text-fg-muted">{t('catalog.addSizes.card-help')}</p>
+                    {dirty ? (
+                      <p className="text-sm text-fg-muted">{t('catalog.addSizes.save-first')}</p>
+                    ) : null}
+                    <div>
+                      <Button
+                        variant="secondary"
+                        disabled={dirty || pending}
+                        onClick={() => {
+                          setSizesRun((run) => run + 1);
+                          setSizesOpen(true);
+                        }}
+                      >
+                        {t('catalog.addSizes.start')}
+                      </Button>
+                    </div>
+                  </Card>
+                ) : null}
+                <AddSizesDialog
+                  key={sizesRun}
+                  open={sizesOpen}
+                  productId={product.productId}
+                  version={product.version ?? null}
+                  fields={form.fields}
+                  maxAxes={maxAxes}
+                  waiting={product.pending !== null}
+                  defaultLocale={defaultLocale}
+                  csrfToken={csrfToken}
+                  onClose={() => setSizesOpen(false)}
+                  onDone={() => {
+                    setSizesOpen(false);
+                    router.refresh();
+                  }}
+                  onStale={() => {
+                    setSizesOpen(false);
+                    router.refresh();
+                  }}
+                />
+                <PhotosSection
+                  productId={product.productId}
+                  csrfToken={csrfToken}
+                  library={photos}
+                  imageIds={imageIds}
+                  onImageIds={(ids) => {
+                    setImageIds(ids);
+                    // A variant can only pick photos the product keeps.
+                    setRows((list) =>
+                      list.map((row) =>
+                        row.imageIds.every((id) => ids.includes(id))
+                          ? row
+                          : { ...row, imageIds: row.imageIds.filter((id) => ids.includes(id)) },
+                      ),
+                    );
+                    edited();
+                  }}
+                />
+              </>
             )}
           </div>
-          <div className="contents lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
-            <div className="order-2 flex min-w-0 flex-col gap-4 lg:order-none">
-              {product.pausedAt === null ? null : (
-                <Banner tone="attention" title={t('catalog.edit.paused.title')}>
-                  <p>{t('catalog.edit.paused.body')}</p>
-                </Banner>
-              )}
-              {product.published !== null && product.sensitiveFields.length > 0 ? (
-                <Banner tone="info">
-                  {t('catalog.edit.sensitive', {
-                    fields: product.sensitiveFields
-                      .map((field) => t(`catalog.edit.sensitive-field.${field}`))
-                      .join(', '),
-                  })}
-                </Banner>
-              ) : null}
-              <Card title={t('catalog.edit.product-card')}>
-                {KEYS.map((key) =>
-                  key === 'description' ? (
-                    <TextAreaField
-                      key={key}
-                      name={key}
-                      label={t(`catalog.edit.field.${key}`)}
-                      optionalLabel={t('catalog.create.optional')}
-                      rows={5}
-                      headAction={
-                        <DescriptionWriter
-                          call={callApi}
-                          base="catalog/own/description-writer"
-                          csrfToken={csrfToken}
-                          title={texts.name}
-                          category={writerCategory(form.categories, categoryIds, defaultLocale)}
-                          details={writerDetails(attributeFields, inputs, defaultLocale)}
-                          current={texts.description}
-                          onText={(next) => change('description', next)}
-                        />
-                      }
-                      value={texts[key]}
-                      error={refusedMessage(refusedAt(key))}
-                      onChange={(event) => change(key, event.target.value)}
-                    />
-                  ) : (
-                    <TextField
-                      key={key}
-                      name={key}
-                      label={t(`catalog.edit.field.${key}`)}
-                      {...(key === 'name' ? { help: t('catalog.edit.field.name-help') } : {})}
-                      optionalLabel={key === 'name' ? undefined : t('catalog.create.optional')}
-                      value={texts[key]}
-                      error={refusedMessage(refusedAt(key))}
-                      onChange={(event) => change(key, event.target.value)}
-                    />
-                  ),
-                )}
-              </Card>
-              <ClassificationSection
-                categories={form.categories}
-                taxCategoryCodes={form.taxCategoryCodes}
-                categoryIds={categoryIds}
-                taxCategoryCode={taxCategoryCode}
-                defaultLocale={defaultLocale}
-                {...(adding ? { categoriesEmpty: t('catalog.edit.categories-unavailable') } : {})}
-                onCategories={(ids) => {
-                  setCategoryIds(ids);
-                  edited();
-                }}
-                onTax={(code) => {
-                  setTaxCategoryCode(code);
-                  edited();
-                }}
-              >
-                {adding ? (
-                  <p className="text-sm text-fg-muted">{t('catalog.add.later.tags')}</p>
-                ) : (
-                  <TagField
-                    ids={topicIds}
-                    known={knownTags}
-                    defaultLocale={defaultLocale}
-                    productId={product.productId}
-                    issues={tagIssues}
-                    max={maxTags}
-                    onMax={setMaxTags}
-                    onChange={(ids) => {
-                      setTopicIds(ids);
-                      // The refusals named the old list; they say nothing about this one.
-                      setProblem((current) =>
-                        current?.topicIssues === undefined
-                          ? current
-                          : { ...current, topicIssues: [] },
-                      );
-                      edited();
-                    }}
-                  />
-                )}
-              </ClassificationSection>
-            </div>
-            <div className="order-4 flex min-w-0 flex-col gap-4 lg:order-none">
-              {adding ? (
-                <>
-                  <LaterCard
-                    title={t('catalog.edit.attributes')}
-                    help={t('catalog.add.later.attributes')}
-                  />
-                  <LaterCard
-                    title={t('catalog.edit.variants')}
-                    help={t('catalog.add.later.variants')}
-                  />
-                  <LaterCard
-                    title={t('catalog.edit.photos.title')}
-                    help={t('catalog.add.later.photos')}
-                  />
-                </>
-              ) : (
-                <>
-                  <AttributesSection
-                    fields={attributeFields}
-                    units={form.units}
-                    inputs={inputs}
-                    locales={locales}
-                    defaultLocale={defaultLocale}
-                    refused={refused}
-                    productId={product.productId}
-                    csrfToken={csrfToken}
-                    suggestions={product.suggestions ?? []}
-                    onSuggested={() => router.refresh()}
-                    onChange={(code: string, value: AttributeInput | undefined) => {
-                      setInputs({ ...inputs, [code]: value });
-                      setRefused((list) => list.filter((item) => item.ref !== code));
-                      edited();
-                    }}
-                  />
-                  {configurable ? (
-                    <VariantsSection
-                      rows={rows}
-                      fields={form.fields}
-                      axes={axes}
-                      locked={locked}
-                      publishedAxes={publishedAxes}
-                      maxAxes={maxAxes}
-                      review={product.sensitiveFields.includes('axis-added')}
-                      defaultLocale={defaultLocale}
-                      max={product.maxVariants}
-                      productId={product.productId}
-                      galleryIds={imageIds}
-                      notices={notices.map((notice) => notice.variantId)}
-                      onChange={(next) => {
-                        setRows(next.rows);
-                        setAxes(next.axes);
-                        edited();
-                      }}
-                    />
-                  ) : canAddSizes(product, form.fields) ? (
-                    <Card title={t('catalog.edit.variants')}>
-                      <p className="text-sm text-fg-muted">{t('catalog.addSizes.card-help')}</p>
-                      {dirty ? (
-                        <p className="text-sm text-fg-muted">{t('catalog.addSizes.save-first')}</p>
-                      ) : null}
-                      <div>
-                        <Button
-                          variant="secondary"
-                          disabled={dirty || pending}
-                          onClick={() => {
-                            setSizesRun((run) => run + 1);
-                            setSizesOpen(true);
-                          }}
-                        >
-                          {t('catalog.addSizes.start')}
-                        </Button>
-                      </div>
-                    </Card>
-                  ) : null}
-                  <AddSizesDialog
-                    key={sizesRun}
-                    open={sizesOpen}
-                    productId={product.productId}
-                    version={product.version ?? null}
-                    fields={form.fields}
-                    maxAxes={maxAxes}
-                    waiting={product.pending !== null}
-                    defaultLocale={defaultLocale}
-                    csrfToken={csrfToken}
-                    onClose={() => setSizesOpen(false)}
-                    onDone={() => {
-                      setSizesOpen(false);
-                      router.refresh();
-                    }}
-                    onStale={() => {
-                      setSizesOpen(false);
-                      router.refresh();
-                    }}
-                  />
-                  <PhotosSection
-                    productId={product.productId}
-                    csrfToken={csrfToken}
-                    library={photos}
-                    imageIds={imageIds}
-                    onImageIds={(ids) => {
-                      setImageIds(ids);
-                      // A variant can only pick photos the product keeps.
-                      setRows((list) =>
-                        list.map((row) =>
-                          row.imageIds.every((id) => ids.includes(id))
-                            ? row
-                            : { ...row, imageIds: row.imageIds.filter((id) => ids.includes(id)) },
-                        ),
-                      );
-                      edited();
-                    }}
-                  />
-                </>
-              )}
-            </div>
-          </div>
-          <div className="order-5 flex flex-col gap-4 lg:order-none lg:col-start-2 lg:row-start-2">
+          <div className={`lg:col-start-2 ${adding ? 'lg:row-start-3' : 'lg:row-start-2'}`}>
             <OrganisationCard
               marketName={marketName}
               typeCode={adding ? typeCode : product.typeCode}

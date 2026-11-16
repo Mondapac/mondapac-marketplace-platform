@@ -367,9 +367,26 @@ describe('Add product page', () => {
     expect(screen.getByText(/Only a category or subcategory \(levels 3 and 4\)/)).toBeTruthy();
     expect(screen.getByText(/Required\. Separate from the product category/)).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Choose a tax category' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: 'Gst free food' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'GST free food' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Choose a product type' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Choose a condition' })).toBeTruthy();
+  });
+
+  it('keeps the DOM, and so the Tab order, in the visual order', () => {
+    mount();
+    const before = (a: HTMLElement, b: HTMLElement) =>
+      expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const submit = screen.getByRole('button', { name: 'Submit for review' });
+    const title = screen.getByLabelText('Title');
+    const category = screen.getByLabelText('Rice');
+    const tax = screen.getByLabelText('Tax category');
+    const type = screen.getByLabelText('Product type');
+    const sku = screen.getByLabelText(/Your SKU/);
+    const organisation = screen.getByRole('heading', { name: 'Organisation' });
+    [submit, title, category, tax, type, sku, organisation].reduce((a, b) => {
+      before(a, b);
+      return b;
+    });
   });
 
   it('ties the "To submit" line to the disabled Submit button', () => {
@@ -406,5 +423,7 @@ describe('helpers', () => {
 
   it('formats codes', () => {
     expect(readable('dry-goods')).toBe('Dry goods');
+    expect(readable('gst-free-food')).toBe('GST free food');
+    expect(readable('gst')).toBe('GST');
   });
 });
