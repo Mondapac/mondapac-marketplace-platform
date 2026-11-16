@@ -36,6 +36,7 @@ export function InvoicesBulk({
   const t = useTranslations('invoices.bulk');
   const count = selection.allMatching ? (selection.total ?? 0) : selection.ids.length;
   const selected = selection.allMatching || selection.ids.length > 0;
+  const kind = query.tab === 'credit-note' ? 'credit' : 'confirmation';
   const { item, dialog, busy } = useSalesExport({
     path: 'ordering/admin/documents/export',
     fallbackName: query.tab === 'credit-note' ? 'credit-notes' : 'order-confirmations',
@@ -50,8 +51,8 @@ export function InvoicesBulk({
         label={t('button')}
         title={
           selection.allMatching && selection.total === null
-            ? t('all-open')
-            : t('selected', { count })
+            ? t('all-open', { kind })
+            : t('selected', { count, kind })
         }
         items={[item]}
         disabled={!selected || busy}

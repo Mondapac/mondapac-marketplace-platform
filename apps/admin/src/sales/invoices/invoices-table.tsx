@@ -117,7 +117,7 @@ export function InvoicesTable({
       selection={{
         state: selection,
         labels: {
-          page: t('select.page'),
+          page: t('select.page', { kind: tab === 'credit-note' ? 'credit' : 'confirmation' }),
           pageShort: t('select.page-short'),
           row: (name) => t('select.row', { name }),
         },

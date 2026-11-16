@@ -68,6 +68,15 @@ export const adminNav: NavConfig = {
       group: 'sales',
       anyOf: ['ordering.order.view'],
     },
+    // The Transactions item goes between Shipments and Refunds when its page ships.
+    {
+      id: 'refunds',
+      icon: 'wallet',
+      labelKey: 'nav.refunds',
+      href: '/refunds',
+      group: 'sales',
+      anyOf: ['ordering.order.view'],
+    },
     {
       id: 'invoices',
       icon: 'file',

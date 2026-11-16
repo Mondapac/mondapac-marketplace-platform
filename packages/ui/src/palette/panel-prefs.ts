@@ -14,6 +14,7 @@ export type PrefsKind =
   | 'products-columns'
   | 'orders-columns'
   | 'shipments-columns'
+  | 'refunds-columns'
   | 'invoices-columns';
 
 /** The storage key of one list of one account in one Market of one panel. */
